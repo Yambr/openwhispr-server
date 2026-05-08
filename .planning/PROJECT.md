@@ -92,8 +92,24 @@ It is built to enterprise standards for **1000 concurrent active users** in one 
 - [ ] **DOCS-07**: `CONTRIBUTING.md`, `SECURITY.md`, `CODE_OF_CONDUCT.md`, OSS license headers
 - [ ] **DOCS-08**: ADRs for every Key Decision in this document
 - [ ] **DOCS-09**: All source artifacts (documentation, code comments, commit messages, identifiers, log keys) are in **English only** — project hard rule
-- [ ] **I18N-01**: Runtime user-facing & operator-facing strings (UI copy, email templates, notification text, end-user-visible error messages) use an i18n framework with locale resource files; **minimum locales: `en` (default), `ru`**; pluralization-aware; locale negotiation via `Accept-Language` for API responses where applicable
+- [ ] **I18N-01**: Runtime user-facing & operator-facing strings (UI copy, email templates, notification text, end-user-visible error messages) use an i18n framework with locale resource files; **minimum locales: `en` (default), `ru`**; pluralization-aware (CLDR); locale negotiation via `Accept-Language` for API responses where applicable
 - [ ] **I18N-02**: i18n is provider-pluggable: locale resources live in repo for built-in copy; operators can layer overrides without forking
+
+#### Engineering discipline (constitutional rules)
+- [ ] **TDD-01**: Strict TDD across the codebase — tests written **before** the production code they exercise. Enforced via PR-template checklist + reviewer gate
+- [ ] **TDD-02**: Every feature ships with: unit tests, integration tests (against real Postgres/Redis/LiteLLM/Speaches via testcontainers), and end-to-end tests
+- [ ] **CI-01**: GitHub Actions is the canonical CI from day one. Workflows live in `.github/workflows/`. Self-hosted runners only for GPU/Speaches load tests; everything else uses GitHub-hosted runners
+- [ ] **CI-02**: CI matrix runs on every PR and every push to `main`: lint, typecheck, unit, integration (services-as-services in CI via service containers / testcontainers), e2e, contract tests, security scans
+- [ ] **CI-03**: Branch protection on `main` blocks merge unless all required checks are green
+- [ ] **CONTRACT-01**: Contract test suite asserts the server matches `BACKEND_SPEC.md` byte-for-byte (status codes, JSON shapes, headers, NDJSON line behavior, channel-scheme echo). The contract suite runs against any deployed instance via a single command — operators run it against their own deployment
+- [ ] **TEST-COV-01**: Test coverage gate ≥ 85% lines / ≥ 80% branches on the API tier (excluding generated code)
+- [ ] **TEST-MUTATION-01**: Mutation testing (Stryker or stack-equivalent) on critical modules: auth, multi-tenancy enforcement, quota math, billing math
+- [ ] **TEST-LOAD-01**: Load test (k6 or stack-equivalent) runs nightly in CI against an ephemeral environment, asserting 1000 concurrent transcribe+reason+stream at p95 SLO
+- [ ] **TEST-SECURITY-01**: Security automation in CI — SAST (CodeQL), dependency scanning (Dependabot + Trivy), container scanning, secrets scanning (gitleaks), license scanning (FOSSA-equivalent OSS tool)
+- [ ] **TEST-MIGRATION-01**: Database migration tests verify forward apply + rollback on a real Postgres in CI on every change to `migrations/`
+- [ ] **TEST-I18N-01**: i18n completeness test fails CI when a key exists in `en` locale but is missing in `ru`, or vice versa
+- [ ] **TEST-RLS-01**: Row-level-security property tests assert no cross-tenant read or write paths exist (random tenant pairs, every queryable model)
+- [ ] **DEVEX-01**: One-command local dev: `make dev` (or stack-equivalent) brings up the full stack with seeded data; same command runs the full test suite (`make test`)
 
 ### Out of Scope (v1)
 
@@ -124,6 +140,10 @@ It is built to enterprise standards for **1000 concurrent active users** in one 
 - **Concurrency**: 1000 active concurrent users single installation, p95 latency budgets defined per-endpoint in research phase.
 - **Source-artifact language**: **English only** for docs, code, comments, commit messages, identifiers, log keys — hard project rule, no exceptions.
 - **Runtime localization**: user-/operator-facing strings (UI copy, emails, notifications, end-user error messages) ship with i18n and minimum `en` + `ru` locales from day one.
+- **Engineering discipline (constitutional)**:
+  - **Strict TDD** — tests precede production code. No exceptions.
+  - **GitHub Actions** is the only sanctioned CI; workflows live in `.github/workflows/` from the first commit of phase 1.
+  - **Maximum test automation** — there are no human QA testers on this team. Automated coverage spans unit, integration (real services), e2e, contract (against `BACKEND_SPEC.md`), load (1000 concurrent), security (SAST + deps + container + secrets + license), migration safety, i18n completeness, and RLS-isolation property tests.
 - **Open source**: every requirement ships with corresponding documentation; no closed/internal subsystems.
 
 ## Key Decisions
@@ -138,6 +158,9 @@ It is built to enterprise standards for **1000 concurrent active users** in one 
 | Stack chosen by research, not pre-committed | Research phase will compare e.g. Node/Fastify vs Go vs Python/FastAPI against Better-Auth-server-side, multipart streaming, NDJSON flushing, and operator skillset | — Pending |
 | All docs/code in English only | Mixed-language artifacts confuse contributors and tooling | — Pending |
 | Open-source from day one | OSS-grade docs and licensing decisions are easier to make at start than retrofit | — Pending |
+| Strict TDD constitutional | No QA testers; correctness must be enforced at the CI gate, and TDD is the cheapest way to keep the contract test suite honest | — Pending |
+| GitHub Actions as the only CI | Operator audience already uses GitHub; runs reproducibly on hosted runners; no infra to maintain | — Pending |
+| Contract suite is the canonical conformance check | Replaces the "live runtime trace validation" deferred upstream; runs against any deployed instance | — Pending |
 
 ## Evolution
 
