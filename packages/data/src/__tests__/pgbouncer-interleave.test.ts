@@ -171,6 +171,7 @@ SUITE("PgBouncer-interleave: cross-tenant isolation under transaction-pool reuse
   }, 60_000);
 
   async function runInterleave(maxConnections: number): Promise<void> {
+    if (!harness) throw new Error("harness not booted (READY check failed)");
     const pool = makeAppPool(harness, maxConnections);
     const db = drizzle(pool, { schema });
     // Use a per-run salt so the second test (max=3) doesn't collide
