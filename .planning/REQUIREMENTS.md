@@ -50,8 +50,8 @@ Source of truth: `/Users/nick/openwhispr/docs/BACKEND_SPEC.md`, `OAUTH_SPEC.md`,
 
 ### Multi-tenancy & Data
 
-- [ ] **DATA-01**: PostgreSQL 17+ schema with row-level security; `app.tenant_id` GUC set via `SET LOCAL` inside every request transaction (PgBouncer transaction-mode safe)
-- [ ] **DATA-02**: Forward-only migrations via Drizzle; CI verifies forward apply + rollback on real Postgres on every change to `migrations/`
+- [x] **DATA-01**: PostgreSQL 17+ schema with row-level security; `app.tenant_id` GUC set via `SET LOCAL` inside every request transaction (PgBouncer transaction-mode safe)
+- [x] **DATA-02**: Forward-only migrations via Drizzle; CI verifies forward apply + rollback on real Postgres on every change to `migrations/`
 - [ ] **DATA-03**: Usage ledger (transcribe minutes, reason tokens, streaming minutes); idempotent on `request_id`; **observability only — no enforcement** in v1
 - [ ] **DATA-04**: Audit log for auth events, account deletion, key issuance, provider config changes, admin actions
 - [x] **DATA-05**: At-rest encryption for sensitive columns (bearer tokens, LiteLLM virtual keys, third-party API keys) via KEK/DEK pattern; KEK supplied via env / Vault / KMS adapter
@@ -222,8 +222,8 @@ All 89 v1 requirements mapped by `gsd-roadmapper` on 2026-05-08.
 | AUTH-05 | Phase 2 | Pending |
 | AUTH-06 | Phase 2 | Pending |
 | AUTH-07 | Phase 2 | Pending |
-| DATA-01 | Phase 1 | Pending |
-| DATA-02 | Phase 1 | Pending |
+| DATA-01 | Phase 1 | Complete |
+| DATA-02 | Phase 1 | Complete |
 | DATA-03 | Phase 3 | Pending |
 | DATA-04 | Phase 6 | Pending |
 | DATA-05 | Phase 1 | Complete |
