@@ -65,7 +65,7 @@ A drop-in OpenWhispr backend any organization can self-host — open-source out 
   5. MinIO is reachable on the compose network with a per-tenant bucket-prefix convention documented; sensitive columns are encrypted at rest via the KEK/DEK envelope (KEK from env / Vault / KMS adapter).
   6. Tests written first (TDD); all CI checks green.
 **Plans**: 6 plans (3 waves)
-- [ ] 01-01-PLAN.md — Compose stack expansion (10 services with healthchecks) + observability config + Traefik file provider + PgBouncer transaction-mode (Wave 1)
+- [x] 01-01-PLAN.md — Compose stack expansion (10 services with healthchecks) + observability config + Traefik file provider + PgBouncer transaction-mode (Wave 1)
 - [ ] 01-02-PLAN.md — bootstrap.sh refuse-to-start gate + entrypoint defense-in-depth + deny-list self-test (Wave 1)
 - [ ] 01-03-PLAN.md — Drizzle schema + first migration with FORCE RLS + role init (openwhispr_owner BYPASSRLS / openwhispr_app RLS-subject) + two-pool client factory (Wave 2)
 - [ ] 01-04-PLAN.md — Tenant-context middleware (set_config app.tenant_id) + Fastify hook + KEK/DEK envelope encryption + KeyProvider env/Vault/KMS (Wave 2)
