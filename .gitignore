@@ -32,3 +32,10 @@ logs/
 .testcontainers/
 playwright-report/
 test-results/
+
+# Mutation testing
+.stryker-tmp/
+reports/
+
+# Tooling
+.turbo/
