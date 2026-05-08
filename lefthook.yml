@@ -5,7 +5,7 @@ pre-commit:
   commands:
     biome:
       glob: "*.{ts,tsx,js,jsx,json}"
-      run: pnpm exec biome check --apply {staged_files}
+      run: pnpm exec biome check --write {staged_files}
       stage_fixed: true
     english:
       run: pnpm exec tsx tools/lint-english.ts

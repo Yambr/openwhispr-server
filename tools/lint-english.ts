@@ -25,39 +25,44 @@
  * regex is built exclusively from \u escapes so the script does not
  * self-flag.
  */
-import { readFileSync, realpathSync } from 'node:fs';
-import { glob } from 'node:fs/promises';
-import { resolve, sep } from 'node:path';
-import { exit } from 'node:process';
+import { readFileSync, realpathSync } from "node:fs";
+import { glob } from "node:fs/promises";
+import { resolve, sep } from "node:path";
+import { exit } from "node:process";
 
 // Cyrillic (U+0400..U+04FF) + Cyrillic Supplement (U+0500..U+052F).
 // Built only from \u escapes to keep this source ASCII-clean.
 const CYRILLIC = /[\u0400-\u04FF\u0500-\u052F]/;
 
 const PATTERNS = [
-  '**/*.ts',
-  '**/*.tsx',
-  '**/*.js',
-  '**/*.jsx',
-  '**/*.cjs',
-  '**/*.mjs',
-  '**/*.json',
-  '**/*.md',
-  '**/*.mdx',
-  '**/*.yaml',
-  '**/*.yml',
+  "**/*.ts",
+  "**/*.tsx",
+  "**/*.js",
+  "**/*.jsx",
+  "**/*.cjs",
+  "**/*.mjs",
+  "**/*.json",
+  "**/*.md",
+  "**/*.mdx",
+  "**/*.yaml",
+  "**/*.yml",
 ];
 
 const IGNORE = [
-  '**/node_modules/**',
-  '**/dist/**',
-  '**/coverage/**',
-  '**/.stryker-tmp/**',
-  '**/reports/**',
-  '**/.git/**',
-  '**/pnpm-lock.yaml',
-  'packages/i18n/locales/**',
-  'tests/fixtures/i18n/**',
+  "**/node_modules/**",
+  "**/dist/**",
+  "**/coverage/**",
+  "**/.stryker-tmp/**",
+  "**/reports/**",
+  "**/.git/**",
+  "**/pnpm-lock.yaml",
+  "packages/i18n/locales/**",
+  "tests/fixtures/i18n/**",
+  // Reference document — Russian-language description of an upstream
+  // LiteLLM/Speaches deployment that the server is configured against.
+  // Treated as i18n-context input, not a source artifact. Allowlisted per
+  // the resolution path documented in deferred-items.md (D-03-A, option c).
+  "speaches-audio.md",
 ];
 
 interface Offender {
@@ -84,7 +89,7 @@ async function main(): Promise<void> {
   for (const pattern of PATTERNS) {
     // Node 24 native glob; cwd-rooted; exclude list applied per call.
     for await (const file of glob(pattern, { cwd: realCwd, exclude: IGNORE })) {
-      const rel = typeof file === 'string' ? file : String(file);
+      const rel = typeof file === "string" ? file : String(file);
       if (seen.has(rel)) continue;
       seen.add(rel);
 
@@ -96,13 +101,13 @@ async function main(): Promise<void> {
 
       let text: string;
       try {
-        text = readFileSync(full, 'utf8');
+        text = readFileSync(full, "utf8");
       } catch {
         continue;
       }
       scanned += 1;
 
-      const lines = text.split('\n');
+      const lines = text.split("\n");
       for (let i = 0; i < lines.length; i += 1) {
         const lineText = lines[i];
         const m = CYRILLIC.exec(lineText);
@@ -128,9 +133,7 @@ async function main(): Promise<void> {
     exit(1);
   }
 
-  process.stdout.write(
-    `English-only check passed: ${scanned} file(s) scanned in ${realCwd}\n`,
-  );
+  process.stdout.write(`English-only check passed: ${scanned} file(s) scanned in ${realCwd}\n`);
 }
 
 main().catch((err) => {
