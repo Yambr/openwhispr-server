@@ -1,0 +1,168 @@
+#!/usr/bin/env bash
+# tools/bootstrap.sh — idempotent secret generator + refuse-to-start gate.
+#
+# Reads .env.example for the canonical key list, .env for current values,
+# generates random replacements for missing or placeholder values, and
+# aborts with the offending KEY name if any current value matches the
+# deny-list at tools/bootstrap/default-secrets.txt.
+#
+# Idempotency rule (per RESEARCH-TOOLING Pitfall 1): a key's current value
+# is regenerated only if empty or exactly equal to the .env.example
+# placeholder for the same key. Operator-set production values are never
+# overwritten. A second invocation on the same .env produces the same
+# values byte-for-byte.
+#
+# Self-test integration (per RESEARCH-TOOLING Pitfall 7): if the
+# environment variable BOOTSTRAP_REPO_ROOT is set, that path is used as
+# the repo root instead of the script's parent directory. This lets
+# tests/self-tests/refuse-default-secrets.test.ts run against a
+# mkdtempSync directory without clobbering the real repo .env.
+#
+# Exit codes:
+#   0 — .env written or already up-to-date
+#   1 — at least one current value matched the deny-list
+#   2 — internal error (bash too old, missing .env.example, openssl
+#       unavailable, deny-list missing, ...)
+
+set -euo pipefail
+
+# Bash 4+ guard. macOS ships bash 3.2; the associative arrays below
+# require bash >= 4.
+if (( ${BASH_VERSINFO[0]} < 4 )); then
+  echo "bootstrap: bash >= 4 required (current: ${BASH_VERSION})." >&2
+  echo "  macOS: brew install bash && hash -r" >&2
+  exit 2
+fi
+
+REPO_ROOT="${BOOTSTRAP_REPO_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
+readonly REPO_ROOT
+readonly ENV_EXAMPLE="${REPO_ROOT}/.env.example"
+readonly ENV_FILE="${REPO_ROOT}/.env"
+readonly DENY_LIST="${REPO_ROOT}/tools/bootstrap/default-secrets.txt"
+
+if [[ ! -f "${ENV_EXAMPLE}" ]]; then
+  echo "bootstrap: .env.example not found at ${ENV_EXAMPLE}" >&2
+  exit 2
+fi
+if [[ ! -f "${DENY_LIST}" ]]; then
+  echo "bootstrap: deny-list not found at ${DENY_LIST}" >&2
+  exit 2
+fi
+if ! command -v openssl >/dev/null 2>&1; then
+  echo "bootstrap: openssl not found in PATH" >&2
+  exit 2
+fi
+
+# Deny-list: strip blank lines and # comments. mapfile requires bash >= 4.
+mapfile -t DENY_VALUES < <(grep -vE '^[[:space:]]*(#|$)' "${DENY_LIST}" || true)
+
+# Random secret generator: base64url, 43 chars (32 bytes of entropy).
+gen_secret() {
+  openssl rand -base64 32 | tr -d '\n=' | tr '+/' '-_'
+}
+
+# Special-cased generator for BACKUP_AGE_IDENTITY: prefer age-keygen so the
+# value is a real X25519 identity usable by the age CLI. Fall back to
+# openssl + a one-line stderr warning when age is not installed.
+gen_age_identity() {
+  if command -v age-keygen >/dev/null 2>&1; then
+    age-keygen 2>/dev/null | grep '^AGE-SECRET-KEY-' | head -n 1
+  else
+    echo "bootstrap: age-keygen not found; using openssl fallback for BACKUP_AGE_IDENTITY." >&2
+    echo "  Install age and re-run bootstrap before configuring backup/restore." >&2
+    gen_secret
+  fi
+}
+
+# Read existing .env values (if any) into an associative array.
+declare -A CURRENT
+if [[ -f "${ENV_FILE}" ]]; then
+  while IFS= read -r raw_line || [[ -n "${raw_line}" ]]; do
+    line="${raw_line%$'\r'}"
+    [[ -z "${line}" ]] && continue
+    [[ "${line}" =~ ^[[:space:]]*# ]] && continue
+    if [[ "${line}" == *=* ]]; then
+      key="${line%%=*}"
+      value="${line#*=}"
+      CURRENT["${key}"]="${value}"
+    fi
+  done < "${ENV_FILE}"
+fi
+
+# Walk .env.example for the canonical key list, deciding regenerate vs
+# preserve per key. The ordered KEYS array preserves the order of
+# .env.example so the generated .env reads in the same sequence.
+declare -a KEYS=()
+declare -A EXAMPLE
+declare -A RESULT
+declare -a OFFENDERS=()
+declare -i GENERATED=0
+declare -i PRESERVED=0
+
+while IFS= read -r raw_line || [[ -n "${raw_line}" ]]; do
+  line="${raw_line%$'\r'}"
+  [[ -z "${line}" ]] && continue
+  [[ "${line}" =~ ^[[:space:]]*# ]] && continue
+  if [[ ! "${line}" =~ ^[A-Z_][A-Z0-9_]*= ]]; then
+    continue
+  fi
+  key="${line%%=*}"
+  example_value="${line#*=}"
+  KEYS+=("${key}")
+  EXAMPLE["${key}"]="${example_value}"
+done < "${ENV_EXAMPLE}"
+
+# Phase 1: deny-list check on every CURRENT value, before any write. Only
+# values actually present in .env are checked; an unset key is handled by
+# the generation phase, not here.
+for key in "${KEYS[@]}"; do
+  current="${CURRENT[${key}]:-}"
+  [[ -z "${current}" ]] && continue
+  for bad in "${DENY_VALUES[@]}"; do
+    if [[ "${current}" == "${bad}" ]]; then
+      OFFENDERS+=("${key}")
+      break
+    fi
+  done
+done
+
+if (( ${#OFFENDERS[@]} > 0 )); then
+  echo "bootstrap: refusing to write .env — offending keys with deny-list values:" >&2
+  for k in "${OFFENDERS[@]}"; do
+    echo "  ${k}" >&2
+  done
+  exit 1
+fi
+
+# Phase 2: decide regenerate vs preserve per key.
+for key in "${KEYS[@]}"; do
+  current="${CURRENT[${key}]:-}"
+  example_value="${EXAMPLE[${key}]}"
+  if [[ -z "${current}" || "${current}" == "${example_value}" ]]; then
+    if [[ "${key}" == "BACKUP_AGE_IDENTITY" ]]; then
+      RESULT["${key}"]="$(gen_age_identity)"
+    else
+      RESULT["${key}"]="$(gen_secret)"
+    fi
+    GENERATED+=1
+  else
+    RESULT["${key}"]="${current}"
+    PRESERVED+=1
+  fi
+done
+
+# Phase 3: atomic write via mktemp + mv, then chmod 600.
+tmp="$(mktemp "${ENV_FILE}.XXXXXX")"
+{
+  echo "# Generated by tools/bootstrap.sh."
+  echo "# Do not commit — gitignored. Re-run bootstrap to fill new keys; existing"
+  echo "# operator-set values are preserved (only empty / placeholder values are"
+  echo "# regenerated). See tools/bootstrap/README.md for the full contract."
+  for key in "${KEYS[@]}"; do
+    printf '%s=%s\n' "${key}" "${RESULT[${key}]}"
+  done
+} > "${tmp}"
+mv "${tmp}" "${ENV_FILE}"
+chmod 600 "${ENV_FILE}"
+
+echo "bootstrap: .env written (${#KEYS[@]} keys, ${GENERATED} generated, ${PRESERVED} preserved)"
