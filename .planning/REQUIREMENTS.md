@@ -56,7 +56,7 @@ Source of truth: `/Users/dev/openwhispr/docs/BACKEND_SPEC.md`, `OAUTH_SPEC.md`, 
 - [ ] **DATA-04**: Audit log for auth events, account deletion, key issuance, provider config changes, admin actions
 - [x] **DATA-05**: At-rest encryption for sensitive columns (bearer tokens, LiteLLM virtual keys, third-party API keys) via KEK/DEK pattern; KEK supplied via env / Vault / KMS adapter
 - [x] **DATA-06**: Tenants table with explicit "default" tenant created on first migration (single-org installs share the data model)
-- [ ] **DATA-07**: Backup-and-restore tooling — `make backup` produces an encrypted dump; `make restore` is one-command; both run in CI
+- [x] **DATA-07**: Backup-and-restore tooling — `make backup` produces an encrypted dump; `make restore` is one-command; both run in CI
 
 ### Default Backend: Bundled LiteLLM with Open-Source Models
 
@@ -228,7 +228,7 @@ All 89 v1 requirements mapped by `gsd-roadmapper` on 2026-05-08.
 | DATA-04 | Phase 6 | Pending |
 | DATA-05 | Phase 1 | Complete |
 | DATA-06 | Phase 1 | Complete |
-| DATA-07 | Phase 1 | Pending |
+| DATA-07 | Phase 1 | Complete |
 | LITELLM-01 | Phase 3 | Pending |
 | LITELLM-02 | Phase 3 | Pending |
 | LITELLM-03 | Phase 3 | Pending |
