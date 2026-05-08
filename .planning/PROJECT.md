@@ -91,7 +91,9 @@ It is built to enterprise standards for **1000 concurrent active users** in one 
 - [ ] **DOCS-06**: `docs/wire-contract.md` — references `BACKEND_SPEC.md` + `OAUTH_SPEC.md` upstream
 - [ ] **DOCS-07**: `CONTRIBUTING.md`, `SECURITY.md`, `CODE_OF_CONDUCT.md`, OSS license headers
 - [ ] **DOCS-08**: ADRs for every Key Decision in this document
-- [ ] **DOCS-09**: All documentation, code comments, commit messages, and identifiers are in **English only** (project hard rule)
+- [ ] **DOCS-09**: All source artifacts (documentation, code comments, commit messages, identifiers, log keys) are in **English only** — project hard rule
+- [ ] **I18N-01**: Runtime user-facing & operator-facing strings (UI copy, email templates, notification text, end-user-visible error messages) use an i18n framework with locale resource files; **minimum locales: `en` (default), `ru`**; pluralization-aware; locale negotiation via `Accept-Language` for API responses where applicable
+- [ ] **I18N-02**: i18n is provider-pluggable: locale resources live in repo for built-in copy; operators can layer overrides without forking
 
 ### Out of Scope (v1)
 
@@ -120,7 +122,8 @@ It is built to enterprise standards for **1000 concurrent active users** in one 
 - **Wire compatibility**: every endpoint in `BACKEND_SPEC.md` matches byte-for-byte JSON shape, status codes, error envelope, NDJSON streaming behavior. No deviations.
 - **HTTPS only**: never plaintext HTTP on any externally reachable port.
 - **Concurrency**: 1000 active concurrent users single installation, p95 latency budgets defined per-endpoint in research phase.
-- **Documentation language**: **English only**, all artifacts (docs, code, comments, commits, identifiers, error messages where they are operator-facing). Hard project rule — no exceptions.
+- **Source-artifact language**: **English only** for docs, code, comments, commit messages, identifiers, log keys — hard project rule, no exceptions.
+- **Runtime localization**: user-/operator-facing strings (UI copy, emails, notifications, end-user error messages) ship with i18n and minimum `en` + `ru` locales from day one.
 - **Open source**: every requirement ships with corresponding documentation; no closed/internal subsystems.
 
 ## Key Decisions
