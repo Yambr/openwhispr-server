@@ -291,6 +291,27 @@ All 89 v1 requirements mapped by `gsd-roadmapper` on 2026-05-08.
 - Unmapped: 0
 - Phase distribution: 0=9, 1=8, 2=18, 3=11, 4=5, 5=6, 6=9, 7=3, 8=4, 9=5, 10=11
 
+## Phase-Level Plan Traceability
+
+### Phase 1 — Core Infra & Multi-Tenant Data (planned 2026-05-09)
+
+| Requirement | Plan(s) | Primary Artifacts |
+|-------------|---------|-------------------|
+| DATA-01 | 01-03, 01-04, 01-05 | `packages/data/migrations/0000_initial.sql` (FORCE RLS), `packages/data/src/tenant-context.ts` (set_config), `packages/data/src/__tests__/rls-property.test.ts` (100 pairs through PgBouncer) |
+| DATA-02 | 01-03, 01-05 | drizzle-kit migrations + `.github/workflows/ci.yml` test-migration job (forward+drop+forward+rollback) |
+| DATA-05 | 01-02, 01-04 | `tools/bootstrap.sh` MASTER_KEK gen, `apps/api/scripts/check-default-secrets.ts`, `packages/data/src/encryption/{envelope,env-key-provider,vault-key-provider,kms-key-provider}.ts` |
+| DATA-06 | 01-01, 01-02, 01-03 | `docker-compose.yml` postgres service, `tools/bootstrap.sh` POSTGRES_*_PASSWORD gen, `0000_initial.sql` default tenant seed (UUID `00000000-...`) |
+| DATA-07 | 01-06 | `scripts/backup/{make-backup,make-restore}.sh`, `keys/backup.age.pub`, `.github/workflows/nightly.yml` backup-roundtrip job |
+| TEST-MIGRATION-01 | 01-03, 01-05 | `packages/data/src/__tests__/migration-rollback.test.ts`, ci.yml `test-migration` job with pg_dump --schema-only diff |
+| TEST-RLS-01 | 01-05 | `tools/lint-rls.ts` + self-test, `packages/data/src/__tests__/rls-property.test.ts` (fast-check 4.7.0 + edoburu/pgbouncer:1.23.1 sidecar) |
+| PROVIDER-02 | 01-01, 01-04, 01-06 | MinIO bundled in compose; `packages/data/src/encryption/key-provider.ts` (env / Vault stub / KMS stub); `docs/storage.md` bucket-prefix convention |
+
+Wave structure:
+- Wave 1 (parallel): Plan 01 (compose stack) ⊥ Plan 02 (bootstrap + entrypoint check)
+- Wave 2 (parallel after Wave 1): Plan 03 (Drizzle + first migration + roles) ⊥ Plan 04 (tenant-context + KEK/DEK envelope)
+- Wave 3 (parallel after Wave 2): Plan 05 (RLS lint + property tests + GHA jobs) ⊥ Plan 06 (backup/restore + nightly + docs)
+
 ---
+
 *Requirements defined: 2026-05-08*
-*Last updated: 2026-05-08 after baseline pivot (defer Stripe/referrals/quotas; bundle LiteLLM with open-source models; UI-SPEC only)*
+*Last updated: 2026-05-09 — Phase 1 plan-level traceability added (Plans 01-01..01-06).*
