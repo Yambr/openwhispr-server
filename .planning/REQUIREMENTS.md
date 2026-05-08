@@ -109,10 +109,10 @@ Source of truth: `/Users/nick/openwhispr/docs/BACKEND_SPEC.md`, `OAUTH_SPEC.md`,
 
 ### Engineering Discipline (constitutional)
 
-- [ ] **TDD-01**: Strict TDD — tests precede production code on every feature, every bugfix; PR template enforces a "tests first" checklist
+- [x] **TDD-01**: Strict TDD — tests precede production code on every feature, every bugfix; PR template enforces a "tests first" checklist
 - [x] **TDD-02**: Test layers: unit + integration (real Postgres / Redis via testcontainers; LiteLLM mocked at HTTP level via msw or Wiremock — we do not run real LiteLLM in CI) + e2e + contract + load + security + migration + i18n + RLS-property
-- [ ] **CI-01**: GitHub Actions CI from day one; workflows in `.github/workflows/`; GitHub-hosted runners
-- [ ] **CI-02**: CI matrix on every PR: lint + typecheck + unit + integration + e2e + contract + license-scan + secrets-scan (gitleaks) + dep-scan (Trivy + Dependabot) + SAST (CodeQL) + container-scan
+- [x] **CI-01**: GitHub Actions CI from day one; workflows in `.github/workflows/`; GitHub-hosted runners
+- [x] **CI-02**: CI matrix on every PR: lint + typecheck + unit + integration + e2e + contract + license-scan + secrets-scan (gitleaks) + dep-scan (Trivy + Dependabot) + SAST (CodeQL) + container-scan
 - [ ] **CI-03**: Branch protection on `main` blocks merge unless required checks are green
 - [ ] **CONTRACT-01**: Wire-contract conformance test suite asserts the server matches `BACKEND_SPEC.md` byte-for-byte (status codes, JSON shapes, headers, NDJSON line behavior, channel-scheme echo, `set-auth-token` rotation); runs against any deployed instance via `make contract-test BACKEND_URL=...`
 - [x] **TEST-COV-01**: Coverage gate ≥ 85% lines / ≥ 80% branches on the API tier (excluding generated code); enforced in CI
@@ -260,10 +260,10 @@ All 89 v1 requirements mapped by `gsd-roadmapper` on 2026-05-08.
 | DEPLOY-03 | Phase 9 | Pending |
 | DEPLOY-04 | Phase 9 | Pending |
 | DEPLOY-05 | Phase 9 | Pending |
-| TDD-01 | Phase 0 | Pending |
+| TDD-01 | Phase 0 | Complete |
 | TDD-02 | Phase 0 | Complete |
-| CI-01 | Phase 0 | Pending |
-| CI-02 | Phase 0 | Pending |
+| CI-01 | Phase 0 | Complete |
+| CI-02 | Phase 0 | Complete |
 | CI-03 | Phase 0 | Pending |
 | CONTRACT-01 | Phase 2 | Pending |
 | TEST-COV-01 | Phase 0 | Complete |
