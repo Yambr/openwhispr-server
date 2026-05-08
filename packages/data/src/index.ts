@@ -4,6 +4,9 @@
 // Plan 04 adds `tenant-context` and the `encryption/` envelope helpers
 // and extends this barrel with their exports.
 export * from "./client.js";
+export * from "./encryption/index.js";
 export type { TenantScopedTable } from "./schema/index.js";
 export * as schema from "./schema/index.js";
 export { TENANT_SCOPED_TABLES } from "./schema/index.js";
+export type { ExecutableTx, TransactionalDb } from "./tenant-context.js";
+export { withTenant } from "./tenant-context.js";
