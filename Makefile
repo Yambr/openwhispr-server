@@ -57,10 +57,10 @@ seed:
 	@echo "seed target lands in Phase 1"; exit 1
 
 backup:
-	@echo "backup target lands in Phase 1"; exit 1
+	bash scripts/backup/make-backup.sh
 
 restore:
-	@echo "restore target lands in Phase 1"; exit 1
+	bash scripts/backup/make-restore.sh
 
 migrate:
 	pnpm --filter @openwhispr/data exec tsx src/migrate.ts
