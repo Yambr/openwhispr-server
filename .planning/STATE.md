@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.83.7
 milestone_name: milestone
 status: unknown
-last_updated: "2026-05-08T23:06:43.965Z"
+last_updated: "2026-05-08T23:19:40.922Z"
 progress:
   total_phases: 11
   completed_phases: 1
   total_plans: 12
-  completed_plans: 8
-  percent: 67
+  completed_plans: 9
+  percent: 75
 ---
 
 # Project State: OpenWhispr Server
@@ -20,17 +20,17 @@ progress:
 
 **Core value:** A drop-in OpenWhispr backend any organization can self-host — open-source out of the box, corporate-LiteLLM-ready by env override.
 
-**Current focus:** Phase 0 — Repo Bootstrap & Constitutional CI (not yet started)
+**Current focus:** Phase 1 — Core Infra & Multi-Tenant Data (Wave 2 in progress)
 
 ## Current Position
 
 | Field | Value |
 |-------|-------|
 | Milestone | v1 |
-| Phase | 0 — Repo Bootstrap & Constitutional CI |
-| Plan | 04 complete; next: 05 (CI self-tests + branch-protection invocation) |
-| Status | Phase 0 in progress (4 of 6 plans complete) |
-| Phase progress | 0/11 phases complete |
+| Phase | 1 — Core Infra & Multi-Tenant Data |
+| Plan | 03 complete; next: 04 (tenant-context + KEK/DEK envelope encryption) |
+| Status | Phase 1 in progress (3 of 6 plans complete) |
+| Phase progress | 0/11 phases complete; 9/12 plans complete (75%) |
 
 ```
 [ ][ ][ ][ ][ ][ ][ ][ ][ ][ ][ ]
@@ -55,6 +55,7 @@ progress:
 | Phase 00 P05 | 189 | 2 tasks | 10 files |
 | Phase 01 P01 | 298s | 2 tasks | 18 files |
 | Phase 01 P02 | 25min | 2 tasks tasks | 9 files files |
+| Phase 01 P03 | 30min | 2 tasks | 18 files |
 
 ## Accumulated Context
 
@@ -77,6 +78,9 @@ progress:
 - CodeQL v4 adopted from PR #1 (v3 deprecates Dec 2026).
 - Third-party GHA actions SHA-pinned with version-tag comments (Trivy 2026-03-19 incident response).
 - `lint-tdd` is advisory (`continue-on-error: true`) in v1; promoted to required in a later phase.
+- drizzle-kit 0.31.10 does NOT emit ENABLE/FORCE RLS or CREATE POLICY natively (assumption A1 verified empirically) — first migration is hand-augmented after generation; pattern continues for future migrations with Plan 05 RLS lint catching drift.
+- Migrations bookkeeping (`__drizzle_migrations`) lives in dedicated `_meta` schema, not `public` — keeps RLS lint scope clean and isolates from `openwhispr_app` role.
+- Two-pool client factory: `makeOwnerDb` connects DIRECT to Postgres:5432 (BYPASSRLS, DDL only); `makeAppDb` via PgBouncer (RLS-subject); migrate runner refuses to start without `DATABASE_URL_OWNER` to prevent accidental DDL through PgBouncer.
 
 ### Open Todos (Roadmap-level)
 
@@ -100,10 +104,10 @@ progress:
 **Next session entry point:**
 
 ```
-/gsd-execute-phase 0   # continue with Plan 05
+/gsd-execute-phase 1   # continue with Plan 04 (tenant-context + KEK/DEK)
 ```
 
-**Last session stopped at:** Completed 00-04-PLAN.md (Constitutional CI workflows landed).
+**Last session stopped at:** Completed 01-03-PLAN.md (Drizzle schema + first migration with FORCE RLS + role init landed; 8/8 testcontainers-backed tests green).
 
 **Files of record:**
 
