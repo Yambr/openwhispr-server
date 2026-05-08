@@ -10,7 +10,9 @@
     "dev": "tsx watch src/index.ts"
   },
   "dependencies": {
-    "fastify": "^5.0.0"
+    "@openwhispr/data": "workspace:*",
+    "fastify": "^5.0.0",
+    "fastify-plugin": "^5.1.0"
   },
   "devDependencies": {
     "tsx": "^4.19.0"

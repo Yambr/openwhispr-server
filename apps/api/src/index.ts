@@ -1,9 +1,15 @@
 // Phase 0 Fastify placeholder. Provides GET /api/health for `make dev` smoke
 // and as the Phase 2 starting point for real route wiring.
+//
+// Phase 1 Plan 04 wires the `tenantPlugin` (D-19) so every request gets
+// `req.tenantId` populated — Phase 2 swaps the header read for real
+// bearer-token resolution without touching this file again.
 import Fastify from "fastify";
+import { tenantPlugin } from "./middleware/tenant.js";
 
 export const buildApp = () => {
   const app = Fastify({ logger: false });
+  app.register(tenantPlugin);
   app.get("/api/health", async () => ({ status: "phase-0-placeholder" }));
   return app;
 };
