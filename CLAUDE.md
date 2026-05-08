@@ -3,26 +3,27 @@
 
 **OpenWhispr Server**
 
-An open-source, self-hosted, **wire-compatible** backend for the OpenWhispr Electron desktop client. It implements the full `${OPENWHISPR_API_URL}/api/...` surface (auth lifecycle, transcription, reasoning, agent streaming, quotas, billing, referrals) plus the OAuth shim that ends in the `<scheme>://?bearer_token=<token>` custom-protocol redirect, with a default audio/LLM stack built on **LiteLLM Proxy + Speaches** and a multi-provider abstraction so any operator can swap backends (LLM, STT, storage, auth, billing) for their own infrastructure when self-hosting.
+An open-source, enterprise-grade, self-hosted backend for the OpenWhispr Electron desktop client, implementing the wire surface defined by the upstream `SELF_HOSTING.md` / `BACKEND_SPEC.md` / `OAUTH_SPEC.md` (1556 lines of authoritative spec). It bundles a default **LiteLLM Proxy** wired to **open-source AI models** (Whisper for transcription, pyannote for diarization, faster-whisper / Speaches-compatible image for realtime) so a fresh `git clone && docker compose up` works out of the box for OSS users, while corporate operators override `LITELLM_BASE_URL` / `LITELLM_VIRTUAL_KEY` to point at their existing internal LiteLLM Proxy (e.g. the one described in `speaches-audio.md`) without any code changes — LiteLLM is itself the abstraction layer.
 
-It is built to enterprise standards for **1000 concurrent active users** in one installation: HA Postgres, horizontal autoscaling, queues, rate limiting, multi-tenancy, full observability, and reproducible deploys via docker-compose (single-host self-host) and Helm/Kustomize (Kubernetes cloud).
+It is built to enterprise standards for **1000 concurrent active users** in one installation: HA Postgres with row-level multi-tenancy, horizontal autoscaling, BullMQ workers, anti-abuse rate limiting, full observability, and reproducible deploys via docker-compose (single-host self-host) and Helm (Kubernetes cloud).
 
-**Core Value:** **A drop-in OpenWhispr cloud backend that any organization can run on its own infrastructure with its own AI providers — without modifying the desktop client.** Every other goal (multi-provider, multi-tenancy, observability, frontend, OSS docs) exists to serve this one outcome.
+**Core Value:** **A drop-in OpenWhispr backend any organization can self-host — open-source out of the box, corporate-LiteLLM-ready by env override.** Every other goal (multi-tenancy, observability, OSS docs, UI-SPEC) exists to serve this one outcome.
 
 ### Constraints
 
-- **Tech stack**: Open self-selection during research, but must be enterprise-mainstream (boring, well-staffed). Constraints: containerizable, multi-arch (amd64 + arm64), works without GPU on the API tier, Postgres-native.
-- **Database**: PostgreSQL 16+ — non-negotiable.
-- **Default LLM/audio backend**: LiteLLM Proxy + Speaches — non-negotiable as the default; alternatives are configurable.
-- **Wire compatibility**: every endpoint in `BACKEND_SPEC.md` matches byte-for-byte JSON shape, status codes, error envelope, NDJSON streaming behavior. No deviations.
+- **Tech stack (server)**: Node.js 24 LTS + Fastify 5 + TypeScript + Better Auth + Drizzle + Postgres 17 + PgBouncer + Redis/Valkey + BullMQ — boring, well-staffed, multi-arch (amd64+arm64).
+- **Tech stack (frontend)**: Next.js 15 (App Router) + React 19 + TypeScript + Tailwind 4 + shadcn/ui v2 — UI-SPEC target only in v1.
+- **Database**: PostgreSQL 17+ — non-negotiable.
+- **AI plane**: bundled LiteLLM ≥ v1.83.7-stable in default compose with open-source models; corporate operators env-override to point at their internal LiteLLM.
+- **Wire compatibility**: every endpoint we serve matches `BACKEND_SPEC.md` byte-for-byte (JSON shapes, status codes, error envelope, NDJSON streaming, channel-scheme echo, `set-auth-token` rotation).
 - **HTTPS only**: never plaintext HTTP on any externally reachable port.
-- **Concurrency**: 1000 active concurrent users single installation, p95 latency budgets defined per-endpoint in research phase.
-- **Source-artifact language**: **English only** for docs, code, comments, commit messages, identifiers, log keys — hard project rule, no exceptions.
-- **Runtime localization**: user-/operator-facing strings (UI copy, emails, notifications, end-user error messages) ship with i18n and minimum `en` + `ru` locales from day one.
+- **Concurrency**: 1000 active concurrent users single installation, p95 latency budgets validated by load test.
+- **Source-artifact language**: **English only** for docs, code, comments, commit messages, identifiers, log keys — hard rule.
+- **Runtime localization**: `en` + `ru` minimum from day one for UI copy, emails, end-user error messages.
 - **Engineering discipline (constitutional)**:
-  - **Strict TDD** — tests precede production code. No exceptions.
-  - **GitHub Actions** is the only sanctioned CI; workflows live in `.github/workflows/` from the first commit of phase 1.
-  - **Maximum test automation** — there are no human QA testers on this team. Automated coverage spans unit, integration (real services), e2e, contract (against `BACKEND_SPEC.md`), load (1000 concurrent), security (SAST + deps + container + secrets + license), migration safety, i18n completeness, and RLS-isolation property tests.
+  - **Strict TDD** — tests precede production code.
+  - **GitHub Actions** is the only sanctioned CI; workflows in `.github/workflows/` from the first commit of phase 0.
+  - **Maximum test automation** — no human QA; coverage spans unit, integration (real services via testcontainers), e2e, contract (against `BACKEND_SPEC.md`), load (1000 concurrent), security (SAST + deps + container + secrets + license), migration safety, i18n completeness, RLS-isolation property tests.
 - **Open source**: every requirement ships with corresponding documentation; no closed/internal subsystems.
 <!-- GSD:project-end -->
 

@@ -191,16 +191,105 @@ Acknowledged but explicitly deferred from v1.
 
 ## Traceability
 
-Populated by the roadmapper. All v1 requirements must map to exactly one phase.
+All 89 v1 requirements mapped by `gsd-roadmapper` on 2026-05-08.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| (to be filled by `gsd-roadmapper`) | | |
+| WIRE-01 | Phase 2 | Pending |
+| WIRE-02 | Phase 2 | Pending |
+| WIRE-03 | Phase 2 | Pending |
+| WIRE-04 | Phase 2 | Pending |
+| WIRE-05 | Phase 3 | Pending |
+| WIRE-06 | Phase 3 | Pending |
+| WIRE-07 | Phase 4 | Pending |
+| WIRE-08 | Phase 5 | Pending |
+| WIRE-09 | Phase 5 | Pending |
+| WIRE-10 | Phase 5 | Pending |
+| WIRE-11 | Phase 5 | Pending |
+| WIRE-12 | Phase 5 | Pending |
+| WIRE-13 | Phase 4 | Pending |
+| WIRE-14 | Phase 4 | Pending |
+| WIRE-15 | Phase 4 | Pending |
+| WIRE-16 | Phase 5 | Pending |
+| WIRE-17 | Phase 2 | Pending |
+| WIRE-18 | Phase 2 | Pending |
+| WIRE-19 | Phase 2 | Pending |
+| WIRE-20 | Phase 2 | Pending |
+| AUTH-01 | Phase 2 | Pending |
+| AUTH-02 | Phase 2 | Pending |
+| AUTH-03 | Phase 2 | Pending |
+| AUTH-04 | Phase 2 | Pending |
+| AUTH-05 | Phase 2 | Pending |
+| AUTH-06 | Phase 2 | Pending |
+| AUTH-07 | Phase 2 | Pending |
+| DATA-01 | Phase 1 | Pending |
+| DATA-02 | Phase 1 | Pending |
+| DATA-03 | Phase 3 | Pending |
+| DATA-04 | Phase 6 | Pending |
+| DATA-05 | Phase 1 | Pending |
+| DATA-06 | Phase 1 | Pending |
+| DATA-07 | Phase 1 | Pending |
+| LITELLM-01 | Phase 3 | Pending |
+| LITELLM-02 | Phase 3 | Pending |
+| LITELLM-03 | Phase 3 | Pending |
+| LITELLM-04 | Phase 3 | Pending |
+| LITELLM-05 | Phase 3 | Pending |
+| LITELLM-06 | Phase 3 | Pending |
+| LITELLM-07 | Phase 3 | Pending |
+| PROVIDER-01 | Phase 3 | Pending |
+| PROVIDER-02 | Phase 1 | Pending |
+| PROVIDER-03 | Phase 2 | Pending |
+| PROVIDER-04 | Phase 2 | Pending |
+| SCALE-01 | Phase 6 | Pending |
+| SCALE-02 | Phase 8 | Pending |
+| SCALE-03 | Phase 6 | Pending |
+| SCALE-04 | Phase 6 | Pending |
+| SCALE-05 | Phase 4 | Pending |
+| SCALE-06 | Phase 8 | Pending |
+| SCALE-07 | Phase 8 | Pending |
+| OBS-01 | Phase 6 | Pending |
+| OBS-02 | Phase 6 | Pending |
+| OBS-03 | Phase 6 | Pending |
+| OBS-04 | Phase 6 | Pending |
+| OBS-05 | Phase 6 | Pending |
+| UI-SPEC-01 | Phase 7 | Pending |
+| UI-SPEC-02 | Phase 7 | Pending |
+| UI-SPEC-03 | Phase 7 | Pending |
+| DEPLOY-01 | Phase 9 | Pending |
+| DEPLOY-02 | Phase 9 | Pending |
+| DEPLOY-03 | Phase 9 | Pending |
+| DEPLOY-04 | Phase 9 | Pending |
+| DEPLOY-05 | Phase 9 | Pending |
+| TDD-01 | Phase 0 | Pending |
+| TDD-02 | Phase 0 | Pending |
+| CI-01 | Phase 0 | Pending |
+| CI-02 | Phase 0 | Pending |
+| CI-03 | Phase 0 | Pending |
+| CONTRACT-01 | Phase 2 | Pending |
+| TEST-COV-01 | Phase 0 | Pending |
+| TEST-MUTATION-01 | Phase 0 | Pending |
+| TEST-LOAD-01 | Phase 8 | Pending |
+| TEST-MIGRATION-01 | Phase 1 | Pending |
+| TEST-I18N-01 | Phase 10 | Pending |
+| TEST-RLS-01 | Phase 1 | Pending |
+| DEVEX-01 | Phase 0 | Pending |
+| I18N-01 | Phase 10 | Pending |
+| I18N-02 | Phase 10 | Pending |
+| DOCS-01 | Phase 10 | Pending |
+| DOCS-02 | Phase 10 | Pending |
+| DOCS-03 | Phase 10 | Pending |
+| DOCS-04 | Phase 10 | Pending |
+| DOCS-05 | Phase 10 | Pending |
+| DOCS-06 | Phase 10 | Pending |
+| DOCS-07 | Phase 10 | Pending |
+| DOCS-08 | Phase 10 | Pending |
+| DOCS-09 | Phase 0 | Pending |
 
 **Coverage:**
-- v1 requirements: ~78 total
-- Mapped to phases: 0 (pending roadmap)
-- Unmapped: pending ⚠️ (will be 0 after roadmap)
+- v1 requirements: 89 total
+- Mapped to phases: 89 ✓
+- Unmapped: 0
+- Phase distribution: 0=9, 1=8, 2=18, 3=11, 4=5, 5=6, 6=9, 7=3, 8=4, 9=5, 10=11
 
 ---
 *Requirements defined: 2026-05-08*
