@@ -3,8 +3,9 @@
 // Cyrillic ranges:
 //   U+0400-U+04FF (basic Cyrillic block)
 //   U+0500-U+052F (Cyrillic Supplement)
-// The regex literal uses \u escapes so this source file remains ASCII-only.
-const CYRILLIC = /[Ѐ-ӿԀ-ԯ]/u;
+// The regex is built from a string literal that uses backslash-u escapes only,
+// so this source file remains ASCII-only (verifiable via tools/lint-english.ts).
+const CYRILLIC = new RegExp("[\\u0400-\\u04FF\\u0500-\\u052F]", "u");
 
 module.exports = {
   extends: ["@commitlint/config-conventional"],
