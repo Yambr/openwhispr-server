@@ -44,7 +44,13 @@ A drop-in OpenWhispr backend any organization can self-host — open-source out 
   3. CI fails any PR that drops API-tier coverage below 85% lines / 80% branches, that introduces a non-English string in a source artifact, or that lands production code without a preceding test commit (PR template "tests first" checklist enforced).
   4. Mutation testing (Stryker) runs on auth, multi-tenancy, and virtual-key modules and fails PRs on score regression — even though those modules don't yet exist, the harness scaffolding is wired and runs against placeholder code.
   5. All CI checks green on the bootstrap PR; tests written first (TDD).
-**Plans**: TBD
+**Plans**: 6 plans (3 waves)
+- [x] 00-01-PLAN.md — Workspace + TS + Biome + Lefthook + commitlint scaffold (Wave 1)
+- [ ] 00-02-PLAN.md — Vitest 4 + Stryker 9 + skeleton workspaces with placeholders (Wave 1)
+- [ ] 00-03-PLAN.md — tools/lint-english.ts, lint-tdd.ts, Makefile, docker-compose placeholder, branch-protection script (Wave 1)
+- [ ] 00-04-PLAN.md — GHA workflows (ci.yml, security.yml, nightly.yml, release.yml) + dependabot + PR template (Wave 2)
+- [ ] 00-05-PLAN.md — Constitutional self-tests + harness-self-check CI job (Wave 2)
+- [ ] 00-06-PLAN.md — README/CONTRIBUTING/SECURITY/COC/operations + ADRs 0000-0003 + integration smoke (Wave 3)
 **UI hint**: no
 
 ### Phase 1: Core Infra & Multi-Tenant Data
@@ -188,7 +194,7 @@ A drop-in OpenWhispr backend any organization can self-host — open-source out 
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 0. Repo Bootstrap & Constitutional CI | 0/0 | Not started | - |
+| 0. Repo Bootstrap & Constitutional CI | 0/6 | Planned | - |
 | 1. Core Infra & Multi-Tenant Data | 0/0 | Not started | - |
 | 2. Auth + Wire-API Skeleton + Conformance | 0/0 | Not started | - |
 | 3. LiteLLM Integration + Bundled OSS Models | 0/0 | Not started | - |

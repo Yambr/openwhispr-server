@@ -1,3 +1,17 @@
+---
+gsd_state_version: 1.0
+milestone: v1.83.7
+milestone_name: milestone
+status: unknown
+last_updated: "2026-05-08T19:39:30.865Z"
+progress:
+  total_phases: 11
+  completed_phases: 0
+  total_plans: 6
+  completed_plans: 1
+  percent: 17
+---
+
 # Project State: OpenWhispr Server
 
 **Last updated:** 2026-05-08 (rebaseline after pivot)
@@ -34,6 +48,7 @@
 | WSS realtime session ceiling | >= 1h | not measured |
 
 (All targets are validated empirically only after Phase 8.)
+| Phase 00 P01 | 12 | 2 tasks | 10 files |
 
 ## Accumulated Context
 
@@ -80,6 +95,7 @@
 ```
 
 **Files of record:**
+
 - `.planning/PROJECT.md` — Core value, constraints, key decisions, evolution log
 - `.planning/REQUIREMENTS.md` — 89 v1 requirements + v2 deferred + traceability
 - `.planning/ROADMAP.md` — 11 phases, 100% requirement coverage, success criteria
@@ -87,6 +103,7 @@
 - `.planning/research/SUMMARY.md` + `STACK.md` + `ARCHITECTURE.md` + `PITFALLS.md` + `FEATURES.md`
 
 **Recent transitions:**
+
 - 2026-05-08: Rebaseline pivot — defer Stripe/referrals/quotas to v2; bundle LiteLLM with OSS models; UI-SPEC only in v1; English-only source / en+ru runtime; constitutional TDD/GHA. Roadmap rewritten from scratch.
 
 ---
