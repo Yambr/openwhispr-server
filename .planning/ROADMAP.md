@@ -66,7 +66,7 @@ A drop-in OpenWhispr backend any organization can self-host — open-source out 
   6. Tests written first (TDD); all CI checks green.
 **Plans**: 6 plans (3 waves)
 - [x] 01-01-PLAN.md — Compose stack expansion (10 services with healthchecks) + observability config + Traefik file provider + PgBouncer transaction-mode (Wave 1)
-- [ ] 01-02-PLAN.md — bootstrap.sh refuse-to-start gate + entrypoint defense-in-depth + deny-list self-test (Wave 1)
+- [x] 01-02-PLAN.md — bootstrap.sh refuse-to-start gate + entrypoint defense-in-depth + deny-list self-test (Wave 1)
 - [ ] 01-03-PLAN.md — Drizzle schema + first migration with FORCE RLS + role init (openwhispr_owner BYPASSRLS / openwhispr_app RLS-subject) + two-pool client factory (Wave 2)
 - [ ] 01-04-PLAN.md — Tenant-context middleware (set_config app.tenant_id) + Fastify hook + KEK/DEK envelope encryption + KeyProvider env/Vault/KMS (Wave 2)
 - [ ] 01-05-PLAN.md — RLS-introspection lint + TEST-RLS-01 property test (fast-check 100 tenant pairs through PgBouncer) + GHA lint-rls/test-migration jobs + branch protection (Wave 3)
