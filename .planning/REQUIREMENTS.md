@@ -186,17 +186,110 @@ Acknowledged but explicitly deferred from v1.
 
 ## Traceability
 
-Populated by the roadmapper. All v1 requirements (78) must map to exactly one phase.
+All v1 requirements mapped to exactly one phase. Phase mappings populated by `gsd-roadmapper` on 2026-05-08.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| (to be filled by `gsd-roadmapper`) | | |
+| WIRE-01 | Phase 2 | Pending |
+| WIRE-02 | Phase 2 | Pending |
+| WIRE-03 | Phase 2 | Pending |
+| WIRE-04 | Phase 2 | Pending |
+| WIRE-05 | Phase 3 | Pending |
+| WIRE-06 | Phase 3 | Pending |
+| WIRE-07 | Phase 4 | Pending |
+| WIRE-08 | Phase 4 | Pending |
+| WIRE-09 | Phase 6 | Pending |
+| WIRE-10 | Phase 6 | Pending |
+| WIRE-11 | Phase 5 | Pending |
+| WIRE-12 | Phase 5 | Pending |
+| WIRE-13 | Phase 4 | Pending |
+| WIRE-14 | Phase 4 | Pending |
+| WIRE-15 | Phase 4 | Pending |
+| WIRE-16 | Phase 6 | Pending |
+| WIRE-17 | Phase 6 | Pending |
+| WIRE-18 | Phase 6 | Pending |
+| WIRE-19 | Phase 2 | Pending |
+| WIRE-20 | Phase 2 | Pending |
+| WIRE-21 | Phase 2 | Pending |
+| WIRE-22 | Phase 1 | Pending |
+| AUTH-01 | Phase 2 | Pending |
+| AUTH-02 | Phase 2 | Pending |
+| AUTH-03 | Phase 2 | Pending |
+| AUTH-04 | Phase 2 | Pending |
+| AUTH-05 | Phase 2 | Pending |
+| AUTH-06 | Phase 2 | Pending |
+| AUTH-07 | Phase 2 | Pending |
+| DATA-01 | Phase 1 | Pending |
+| DATA-02 | Phase 1 | Pending |
+| DATA-03 | Phase 3 | Pending |
+| DATA-04 | Phase 7 | Pending |
+| DATA-05 | Phase 3 | Pending |
+| DATA-06 | Phase 1 | Pending |
+| DATA-07 | Phase 7 | Pending |
+| LITELLM-01 | Phase 3 | Pending |
+| LITELLM-02 | Phase 3 | Pending |
+| LITELLM-03 | Phase 3 | Pending |
+| LITELLM-04 | Phase 3 | Pending |
+| LITELLM-05 | Phase 3 | Pending |
+| PROVIDER-01 | Phase 5 | Pending |
+| PROVIDER-02 | Phase 5 | Pending |
+| PROVIDER-03 | Phase 5 | Pending |
+| PROVIDER-04 | Phase 5 | Pending |
+| PROVIDER-05 | Phase 6 | Pending |
+| PROVIDER-06 | Phase 5 | Pending |
+| PROVIDER-07 | Phase 5 | Pending |
+| PROVIDER-08 | Phase 5 | Pending |
+| SCALE-01 | Phase 1 | Pending |
+| SCALE-02 | Phase 1 | Pending |
+| SCALE-03 | Phase 7 | Pending |
+| SCALE-04 | Phase 7 | Pending |
+| SCALE-05 | Phase 4 | Pending |
+| SCALE-06 | Phase 9 | Pending |
+| SCALE-07 | Phase 9 | Pending |
+| OBS-01 | Phase 7 | Pending |
+| OBS-02 | Phase 7 | Pending |
+| OBS-03 | Phase 7 | Pending |
+| OBS-04 | Phase 7 | Pending |
+| OBS-05 | Phase 1 | Pending |
+| UI-SPEC-01 | Phase 8 | Pending |
+| UI-SPEC-02 | Phase 8 | Pending |
+| UI-SPEC-03 | Phase 8 | Pending |
+| DEPLOY-01 | Phase 10 | Pending |
+| DEPLOY-02 | Phase 10 | Pending |
+| DEPLOY-03 | Phase 1 (bootstrap + refuse-default-secrets) / Phase 10 (helm upgrade) | Pending |
+| DEPLOY-04 | Phase 10 | Pending |
+| DEPLOY-05 | Phase 10 | Pending |
+| TDD-01 | Phase 0 | Pending |
+| TDD-02 | Phase 0 | Pending |
+| CI-01 | Phase 0 | Pending |
+| CI-02 | Phase 0 | Pending |
+| CI-03 | Phase 0 | Pending |
+| CONTRACT-01 | Phase 2 | Pending |
+| TEST-COV-01 | Phase 0 | Pending |
+| TEST-MUTATION-01 | Phase 0 | Pending |
+| TEST-LOAD-01 | Phase 9 | Pending |
+| TEST-MIGRATION-01 | Phase 1 | Pending |
+| TEST-I18N-01 | Phase 11 | Pending |
+| TEST-RLS-01 | Phase 1 | Pending |
+| DEVEX-01 | Phase 0 | Pending |
+| I18N-01 | Phase 11 | Pending |
+| I18N-02 | Phase 11 | Pending |
+| DOCS-01 | Phase 11 | Pending |
+| DOCS-02 | Phase 11 | Pending |
+| DOCS-03 | Phase 11 | Pending |
+| DOCS-04 | Phase 11 | Pending |
+| DOCS-05 | Phase 11 | Pending |
+| DOCS-06 | Phase 11 | Pending |
+| DOCS-07 | Phase 11 | Pending |
+| DOCS-08 | Phase 11 | Pending |
+| DOCS-09 | Phase 0 | Pending |
 
 **Coverage:**
-- v1 requirements: 78 total
-- Mapped to phases: 0 (pending roadmap)
-- Unmapped: 78 ⚠️ (will be 0 after roadmap)
+- v1 requirements: 93 total (line-item count; preamble figure of "78" predated the constitutional/test-discipline expansion)
+- Mapped to phases: 93 ✓
+- Unmapped: 0 ✓
+- Duplicates: 0 ✓ (DEPLOY-03 is split-mapped between Phase 1 and Phase 10 by deliverable scope, not duplicated)
 
 ---
 *Requirements defined: 2026-05-08*
-*Last updated: 2026-05-08 after initial definition*
+*Traceability populated: 2026-05-08 by gsd-roadmapper*
