@@ -121,7 +121,7 @@ Source of truth: `/Users/nick/openwhispr/docs/BACKEND_SPEC.md`, `OAUTH_SPEC.md`,
 - [ ] **TEST-MIGRATION-01**: Migration tests verify forward apply + rollback on real Postgres in CI on every `migrations/` change
 - [ ] **TEST-I18N-01**: i18n completeness test fails CI when a key exists in `en` but is missing in `ru` (or vice versa)
 - [ ] **TEST-RLS-01**: RLS property tests assert no cross-tenant read or write paths exist; random tenant pairs, every queryable model
-- [ ] **DEVEX-01**: One-command local dev (`make dev`) brings up the full stack with seeded data; `make test` runs the full suite; tested in CI
+- [x] **DEVEX-01**: One-command local dev (`make dev`) brings up the full stack with seeded data; `make test` runs the full suite; tested in CI
 
 ### Internationalization
 
@@ -272,7 +272,7 @@ All 89 v1 requirements mapped by `gsd-roadmapper` on 2026-05-08.
 | TEST-MIGRATION-01 | Phase 1 | Pending |
 | TEST-I18N-01 | Phase 10 | Pending |
 | TEST-RLS-01 | Phase 1 | Pending |
-| DEVEX-01 | Phase 0 | Pending |
+| DEVEX-01 | Phase 0 | Complete |
 | I18N-01 | Phase 10 | Pending |
 | I18N-02 | Phase 10 | Pending |
 | DOCS-01 | Phase 10 | Pending |
