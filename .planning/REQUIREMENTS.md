@@ -118,9 +118,9 @@ Source of truth: `/Users/dev/openwhispr/docs/BACKEND_SPEC.md`, `OAUTH_SPEC.md`, 
 - [x] **TEST-COV-01**: Coverage gate ≥ 85% lines / ≥ 80% branches on the API tier (excluding generated code); enforced in CI
 - [x] **TEST-MUTATION-01**: Mutation testing (Stryker) on critical modules: auth, multi-tenancy enforcement, virtual-key minting; PR fails on score regression
 - [ ] **TEST-LOAD-01**: k6 nightly load test asserts 1000 concurrent at p95 SLO; CI fails on regression
-- [ ] **TEST-MIGRATION-01**: Migration tests verify forward apply + rollback on real Postgres in CI on every `migrations/` change
+- [x] **TEST-MIGRATION-01**: Migration tests verify forward apply + rollback on real Postgres in CI on every `migrations/` change
 - [ ] **TEST-I18N-01**: i18n completeness test fails CI when a key exists in `en` but is missing in `ru` (or vice versa)
-- [ ] **TEST-RLS-01**: RLS property tests assert no cross-tenant read or write paths exist; random tenant pairs, every queryable model
+- [x] **TEST-RLS-01**: RLS property tests assert no cross-tenant read or write paths exist; random tenant pairs, every queryable model
 - [x] **DEVEX-01**: One-command local dev (`make dev`) brings up the full stack with seeded data; `make test` runs the full suite; tested in CI
 
 ### Internationalization
@@ -269,9 +269,9 @@ All 89 v1 requirements mapped by `gsd-roadmapper` on 2026-05-08.
 | TEST-COV-01 | Phase 0 | Complete |
 | TEST-MUTATION-01 | Phase 0 | Complete |
 | TEST-LOAD-01 | Phase 8 | Pending |
-| TEST-MIGRATION-01 | Phase 1 | Pending |
+| TEST-MIGRATION-01 | Phase 1 | Complete |
 | TEST-I18N-01 | Phase 10 | Pending |
-| TEST-RLS-01 | Phase 1 | Pending |
+| TEST-RLS-01 | Phase 1 | Complete |
 | DEVEX-01 | Phase 0 | Complete |
 | I18N-01 | Phase 10 | Pending |
 | I18N-02 | Phase 10 | Pending |
