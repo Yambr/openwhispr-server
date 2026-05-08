@@ -1,0 +1,15 @@
+# PgBouncer userlist.txt — SCRAM-SHA-256 hashed credentials.
+#
+# This file is a TEMPLATE. Plan 02's bootstrap.sh regenerates the real
+# userlist.txt by reading the SCRAM hash from Postgres after creating the
+# openwhispr_app and pgbouncer_admin roles, e.g.:
+#
+#   psql -At -c "SELECT rolpassword FROM pg_authid WHERE rolname='openwhispr_app'"
+#
+# Format (one user per line, double-quoted, space-separated):
+#
+#   "openwhispr_app"   "SCRAM-SHA-256$<iter>:<salt>$<storedkey>:<serverkey>"
+#   "pgbouncer_admin"  "SCRAM-SHA-256$<iter>:<salt>$<storedkey>:<serverkey>"
+#
+# The real userlist.txt is gitignored (matches *.key/*.pem patterns plus an
+# explicit entry added by Plan 02). Do NOT commit live SCRAM hashes.

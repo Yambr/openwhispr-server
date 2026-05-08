@@ -1,14 +1,218 @@
-# Phase 0 placeholder docker-compose.
-# Real services (Postgres 17, PgBouncer, Valkey, LiteLLM, faster-whisper,
-# pyannote, Speaches, the Fastify API) arrive Phase 1+.
+# OpenWhispr Server — full data plane (Phase 1 Plan 01).
 #
-# This file exists so `make up` succeeds on a fresh clone and so future
-# phases have a single canonical compose target to extend (CLAUDE.md
-# constraint #4: never ignore docker-compose).
+# Compose Spec v2: NO `version:` key (legacy and silently ignored by Compose
+# v2.x+). Profiles:
+#   - default  : every service (engineer running `make up` on a fresh clone)
+#   - obs-only : observability stack only (Loki/Tempo/Mimir/Grafana/OTel)
+#   - db-only  : Postgres + PgBouncer only (CI migration testing)
+#
+# Network model (D-05): single internal bridge `openwhispr_internal`. Only
+# Traefik publishes ports (80/443/8080) to the host. Every other service
+# is reachable only inside the network.
+
+name: openwhispr
+
+networks:
+  openwhispr_internal:
+    driver: bridge
+
+volumes:
+  postgres_data:
+  valkey_data:
+  minio_data:
+  loki_data:
+  tempo_data:
+  mimir_data:
+  grafana_data:
 
 services:
-  placeholder:
-    image: alpine:3
-    container_name: openwhispr-placeholder
-    command: ["sh", "-c", "echo 'docker-compose skeleton: services land Phase 1'; sleep 86400"]
-    restart: unless-stopped
+  postgres:
+    image: postgres:17.5-alpine
+    profiles: [default, db-only]
+    networks: [openwhispr_internal]
+    environment:
+      POSTGRES_USER: ${POSTGRES_OWNER_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_OWNER_PASSWORD}
+      POSTGRES_DB: openwhispr
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      # Plan 03 fills this directory with role/RLS bootstrap SQL.
+      - ./packages/data/migrations/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 10s
+
+  # D-02 override: edoburu/pgbouncer instead of bitnami/pgbouncer. Bitnami's
+  # free Docker Hub PgBouncer image was retired in 2025 (paid Bitnami Secure
+  # Images subscription only). edoburu is the de-facto OSS choice with
+  # >10M pulls and env-var-driven config. See 01-RESEARCH-INFRA.md §2.2.
+  pgbouncer:
+    image: edoburu/pgbouncer:1.23.1
+    profiles: [default, db-only]
+    networks: [openwhispr_internal]
+    environment:
+      DB_HOST: postgres
+      DB_PORT: "5432"
+      DB_USER: ${POSTGRES_APP_USER}
+      DB_PASSWORD: ${POSTGRES_APP_PASSWORD}
+      DB_NAME: openwhispr
+      POOL_MODE: transaction
+      AUTH_TYPE: scram-sha-256
+      MAX_CLIENT_CONN: "2000"
+      DEFAULT_POOL_SIZE: "100"
+      RESERVE_POOL_SIZE: "5"
+      MAX_PREPARED_STATEMENTS: "200"
+      IGNORE_STARTUP_PARAMETERS: extra_float_digits,search_path
+    volumes:
+      - ./compose/pgbouncer/pgbouncer.ini:/etc/pgbouncer/pgbouncer.ini:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -p 5432 || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
+
+  valkey:
+    image: valkey/valkey:8.1-alpine
+    profiles: [default]
+    networks: [openwhispr_internal]
+    environment:
+      VALKEY_PASSWORD: ${VALKEY_PASSWORD}
+    command: ["sh", "-c", "exec valkey-server --requirepass \"$$VALKEY_PASSWORD\""]
+    volumes:
+      - valkey_data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "valkey-cli -a \"$$VALKEY_PASSWORD\" ping | grep -q PONG"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  minio:
+    image: minio/minio:RELEASE.2026-03-25T00-00-00Z
+    profiles: [default]
+    networks: [openwhispr_internal]
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
+    command: ["server", "/data", "--console-address", ":9001", "--address", ":9000"]
+    volumes:
+      - minio_data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:9000/minio/health/live"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 10s
+
+  traefik:
+    image: traefik:v3.6
+    profiles: [default]
+    networks: [openwhispr_internal]
+    # Only Traefik publishes host ports (D-05). 80/443 are user traffic;
+    # 8080 is the dev dashboard (gate behind basic-auth in prod, Phase 9).
+    ports:
+      - "80:80"
+      - "443:443"
+      - "8080:8080"
+    volumes:
+      - ./compose/traefik/traefik.yml:/etc/traefik/traefik.yml:ro
+      - ./compose/traefik/dynamic.yml:/etc/traefik/dynamic.yml:ro
+      - ./compose/traefik/certs:/certs:ro
+    command:
+      - --ping=true
+    healthcheck:
+      test: ["CMD", "traefik", "healthcheck", "--ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:0.151.0
+    profiles: [default, obs-only]
+    networks: [openwhispr_internal]
+    command: ["--config=/etc/otelcol-contrib/config.yaml"]
+    volumes:
+      - ./compose/otel-collector/config.yaml:/etc/otelcol-contrib/config.yaml:ro
+    depends_on:
+      loki:
+        condition: service_healthy
+      tempo:
+        condition: service_healthy
+      mimir:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:13133/ >/dev/null 2>&1 || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 10s
+
+  loki:
+    image: grafana/loki:3.5.0
+    profiles: [default, obs-only]
+    networks: [openwhispr_internal]
+    volumes:
+      - loki_data:/loki
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:3100/ready >/dev/null 2>&1 || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 15s
+
+  tempo:
+    image: grafana/tempo:2.8.0
+    profiles: [default, obs-only]
+    networks: [openwhispr_internal]
+    volumes:
+      - tempo_data:/tmp/tempo
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:3200/ready >/dev/null 2>&1 || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 15s
+
+  mimir:
+    image: grafana/mimir:2.16.0
+    profiles: [default, obs-only]
+    networks: [openwhispr_internal]
+    volumes:
+      - mimir_data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:9009/ready >/dev/null 2>&1 || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 15s
+
+  grafana:
+    image: grafana/grafana:11.6.0
+    profiles: [default, obs-only]
+    networks: [openwhispr_internal]
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD}
+    volumes:
+      - ./compose/grafana/provisioning:/etc/grafana/provisioning:ro
+      - grafana_data:/var/lib/grafana
+    depends_on:
+      loki:
+        condition: service_healthy
+      tempo:
+        condition: service_healthy
+      mimir:
+        condition: service_healthy
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - wget -qO- http://127.0.0.1:3000/api/health | grep -q '"database":"ok"'
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 15s

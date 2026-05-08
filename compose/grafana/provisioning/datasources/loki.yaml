@@ -1,0 +1,12 @@
+# Grafana datasource provisioning — Loki (logs).
+# Anonymous read mode (auth_enabled: false on the Loki side) is the dev
+# default; Phase 9 hardening flips this and adds X-Scope-OrgID propagation.
+apiVersion: 1
+datasources:
+  - name: Loki
+    type: loki
+    access: proxy
+    uid: loki
+    url: http://loki:3100
+    jsonData:
+      maxLines: 1000
