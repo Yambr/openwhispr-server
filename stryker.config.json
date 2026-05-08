@@ -1,0 +1,27 @@
+{
+  "$schema": "./node_modules/@stryker-mutator/core/schema/stryker-schema.json",
+  "packageManager": "pnpm",
+  "testRunner": "vitest",
+  "vitest": {
+    "configFile": "vitest.config.ts"
+  },
+  "reporters": ["html", "clear-text", "progress"],
+  "mutate": [
+    "apps/api/src/**/*.ts",
+    "packages/auth/src/**/*.ts",
+    "packages/data/src/**/*.ts",
+    "packages/litellm-client/src/**/*.ts",
+    "!**/*.test.ts",
+    "!**/*.spec.ts",
+    "!**/*.gen.ts"
+  ],
+  "incremental": true,
+  "incrementalFile": "reports/stryker-incremental.json",
+  "thresholds": {
+    "high": 80,
+    "low": 60,
+    "break": 50
+  },
+  "concurrency": 4,
+  "tempDirName": ".stryker-tmp"
+}
