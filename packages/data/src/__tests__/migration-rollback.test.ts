@@ -135,19 +135,62 @@ describe("TEST-MIGRATION-01 — forward apply + RLS introspection", () => {
     expect(exec2.exitCode).toBe(0);
     const dump2 = exec2.output;
 
-    // pg_dump's leading comment line includes the dump timestamp; strip
-    // any line beginning with `-- Dumped` or `-- Started on` before
-    // comparison so the equality is structural.
-    const normalize = (s: string): string =>
-      s
-        .split("\n")
-        .filter(
-          (line) =>
-            !line.startsWith("-- Dumped") &&
-            !line.startsWith("-- Started on") &&
-            !line.startsWith("-- Completed on"),
-        )
-        .join("\n");
+    // pg_dump's preamble includes nondeterministic noise that has nothing
+    // to do with schema equivalence and must be filtered before the
+    // structural comparison:
+    //   * `-- Dumped …`, `-- Started on …`, `-- Completed on …`:
+    //     wall-clock timestamps.
+    //   * `\restrict …` / `\unrestrict …`: a random per-dump token PG17
+    //     emits to bracket the dump body (psql ignores them).
+    //   * `COMMENT ON SCHEMA public IS '…';`: the bootstrap container
+    //     creates `public` with a default comment, but our DROP SCHEMA
+    //     CASCADE + CREATE SCHEMA round-trip omits it on the second
+    //     run. The schema itself is unchanged.
+    //   * Empty lines and comment-banner lines that surround the
+    //     dropped COMMENT ensure structural equality survives the
+    //     blank-line shuffle.
+    const normalize = (s: string): string => {
+      const lines = s.split("\n");
+      const kept: string[] = [];
+      for (let i = 0; i < lines.length; i++) {
+        const line = lines[i] ?? "";
+        if (
+          line.startsWith("-- Dumped") ||
+          line.startsWith("-- Started on") ||
+          line.startsWith("-- Completed on") ||
+          line.startsWith("\\restrict ") ||
+          line.startsWith("\\unrestrict ")
+        ) {
+          continue;
+        }
+        if (line.startsWith("COMMENT ON SCHEMA public")) {
+          continue;
+        }
+        if (line === "-- Name: SCHEMA public; Type: COMMENT; Schema: -; Owner: -") {
+          // Skip this banner line and its surrounding `--` framing
+          // (the previous and next lines, which are pure `--`).
+          if (kept[kept.length - 1] === "--") kept.pop();
+          // Also skip the trailing `--` and blank lines following the
+          // banner (i.e. up through the next non-blank, non-`--` line).
+          while (i + 1 < lines.length) {
+            const peek = lines[i + 1];
+            if (peek === "--" || peek === "" || peek === undefined) {
+              i++;
+              continue;
+            }
+            break;
+          }
+          continue;
+        }
+        kept.push(line);
+      }
+      // Collapse runs of blank lines so spacing perturbations from the
+      // skipped COMMENT block do not alter equality.
+      return kept
+        .join("\n")
+        .replace(/\n{3,}/g, "\n\n")
+        .trim();
+    };
     expect(normalize(dump2)).toBe(normalize(dump1));
   });
 });
