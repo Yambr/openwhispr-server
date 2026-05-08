@@ -157,7 +157,7 @@ describe("DATA-05 self-test: bootstrap.sh is idempotent", () => {
 describe("DATA-05 self-test: bootstrap.sh has a bash >= 4 guard", () => {
   it("contains the BASH_VERSINFO[0] < 4 check at the top of the script", () => {
     const source = readFileSync(SCRIPT, "utf8");
-    expect(source).toMatch(/BASH_VERSINFO\[0\]\s*<\s*4/);
+    expect(source).toMatch(/BASH_VERSINFO\[0\]\}?\s*<\s*4/);
     expect(source).toMatch(/brew install bash/);
     expect(source).toMatch(/set -euo pipefail/);
   });
