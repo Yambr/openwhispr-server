@@ -12,7 +12,9 @@
       "trivy-fs",
       "codeql",
       "license-scan",
-      "harness-self-check"
+      "harness-self-check",
+      "lint-rls",
+      "test-migration"
     ]
   },
   "enforce_admins": true,
