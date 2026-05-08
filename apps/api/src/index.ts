@@ -1,10 +1,10 @@
 // Phase 0 Fastify placeholder. Provides GET /api/health for `make dev` smoke
 // and as the Phase 2 starting point for real route wiring.
-import Fastify from 'fastify';
+import Fastify from "fastify";
 
 export const buildApp = () => {
   const app = Fastify({ logger: false });
-  app.get('/api/health', async () => ({ status: 'phase-0-placeholder' }));
+  app.get("/api/health", async () => ({ status: "phase-0-placeholder" }));
   return app;
 };
 
@@ -12,7 +12,8 @@ export const buildApp = () => {
 if (import.meta.url === `file://${process.argv[1]}`) {
   const app = buildApp();
   const port = Number(process.env.PORT ?? 3000);
-  app.listen({ port, host: '0.0.0.0' }).catch((err) => {
+  app.listen({ port, host: "0.0.0.0" }).catch((err) => {
+    // biome-ignore lint/suspicious/noConsole: server bootstrap fatal-error logger; structured logging arrives in Phase 6 (OBS-03)
     console.error(err);
     process.exit(1);
   });

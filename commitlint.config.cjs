@@ -5,6 +5,9 @@
 //   U+0500-U+052F (Cyrillic Supplement)
 // The regex is built from a string literal that uses backslash-u escapes only,
 // so this source file remains ASCII-only (verifiable via tools/lint-english.ts).
+// A regex literal would require Cyrillic codepoints in this source file, which
+// is exactly what DOCS-09 forbids — hence the RegExp-constructor-with-\u-escapes form.
+// biome-ignore lint/complexity/useRegexLiterals: literal would embed Cyrillic codepoints, violating DOCS-09
 const CYRILLIC = new RegExp("[\\u0400-\\u04FF\\u0500-\\u052F]", "u");
 
 module.exports = {
