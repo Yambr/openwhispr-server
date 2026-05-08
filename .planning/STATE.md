@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.83.7
 milestone_name: milestone
 status: unknown
-last_updated: "2026-05-08T19:41:03.429Z"
+last_updated: "2026-05-08T20:07:27.587Z"
 progress:
   total_phases: 11
   completed_phases: 0
   total_plans: 6
-  completed_plans: 3
-  percent: 50
+  completed_plans: 4
+  percent: 67
 ---
 
 # Project State: OpenWhispr Server
@@ -28,8 +28,8 @@ progress:
 |-------|-------|
 | Milestone | v1 |
 | Phase | 0 — Repo Bootstrap & Constitutional CI |
-| Plan | (none yet — pending `/gsd-plan-phase 0`) |
-| Status | Roadmap complete, awaiting first phase plan |
+| Plan | 04 complete; next: 05 (CI self-tests + branch-protection invocation) |
+| Status | Phase 0 in progress (4 of 6 plans complete) |
 | Phase progress | 0/11 phases complete |
 
 ```
@@ -51,6 +51,7 @@ progress:
 | Phase 00 P01 | 12 | 2 tasks | 10 files |
 | Phase 00 P03 | 30min | 2 tasks | 10 files |
 | Phase 00 P02 | 7 | 2 tasks | 30 files |
+| Phase 00 P04 | 30min | 2 tasks | 6 files |
 
 ## Accumulated Context
 
@@ -70,6 +71,9 @@ progress:
 - Runtime i18n: en + ru minimum from day one.
 - Strict TDD constitutional; GitHub Actions is the only sanctioned CI.
 - Contract suite (CONTRACT-01) is the canonical conformance check, runs against any deployed instance.
+- CodeQL v4 adopted from PR #1 (v3 deprecates Dec 2026).
+- Third-party GHA actions SHA-pinned with version-tag comments (Trivy 2026-03-19 incident response).
+- `lint-tdd` is advisory (`continue-on-error: true`) in v1; promoted to required in a later phase.
 
 ### Open Todos (Roadmap-level)
 
@@ -93,8 +97,10 @@ progress:
 **Next session entry point:**
 
 ```
-/gsd-plan-phase 0
+/gsd-execute-phase 0   # continue with Plan 05
 ```
+
+**Last session stopped at:** Completed 00-04-PLAN.md (Constitutional CI workflows landed).
 
 **Files of record:**
 
