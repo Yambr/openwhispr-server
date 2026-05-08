@@ -55,7 +55,7 @@ Source of truth: `/Users/dev/openwhispr/docs/BACKEND_SPEC.md`, `OAUTH_SPEC.md`, 
 - [ ] **DATA-03**: Usage ledger (transcribe minutes, reason tokens, streaming minutes); idempotent on `request_id`; **observability only — no enforcement** in v1
 - [ ] **DATA-04**: Audit log for auth events, account deletion, key issuance, provider config changes, admin actions
 - [ ] **DATA-05**: At-rest encryption for sensitive columns (bearer tokens, LiteLLM virtual keys, third-party API keys) via KEK/DEK pattern; KEK supplied via env / Vault / KMS adapter
-- [ ] **DATA-06**: Tenants table with explicit "default" tenant created on first migration (single-org installs share the data model)
+- [x] **DATA-06**: Tenants table with explicit "default" tenant created on first migration (single-org installs share the data model)
 - [ ] **DATA-07**: Backup-and-restore tooling — `make backup` produces an encrypted dump; `make restore` is one-command; both run in CI
 
 ### Default Backend: Bundled LiteLLM with Open-Source Models
@@ -71,7 +71,7 @@ Source of truth: `/Users/dev/openwhispr/docs/BACKEND_SPEC.md`, `OAUTH_SPEC.md`, 
 ### Provider Abstraction (lightweight)
 
 - [ ] **PROVIDER-01**: All STT/LLM/Realtime providers route through the configured single LiteLLM endpoint (bundled or operator-supplied); no parallel multi-LLM provider layer in v1
-- [ ] **PROVIDER-02**: Storage provider interface: S3-compatible default (MinIO bundled in compose; any S3 / GCS / Azure Blob via env)
+- [x] **PROVIDER-02**: Storage provider interface: S3-compatible default (MinIO bundled in compose; any S3 / GCS / Azure Blob via env)
 - [ ] **PROVIDER-03**: Identity provider interface: Better Auth's OAuth-Provider plugin handles OIDC; email+password is built-in; SAML deferred to v2
 - [ ] **PROVIDER-04**: Email provider interface: SMTP only in v1 (verification + admin notifications)
 
@@ -227,7 +227,7 @@ All 89 v1 requirements mapped by `gsd-roadmapper` on 2026-05-08.
 | DATA-03 | Phase 3 | Pending |
 | DATA-04 | Phase 6 | Pending |
 | DATA-05 | Phase 1 | Pending |
-| DATA-06 | Phase 1 | Pending |
+| DATA-06 | Phase 1 | Complete |
 | DATA-07 | Phase 1 | Pending |
 | LITELLM-01 | Phase 3 | Pending |
 | LITELLM-02 | Phase 3 | Pending |
@@ -237,7 +237,7 @@ All 89 v1 requirements mapped by `gsd-roadmapper` on 2026-05-08.
 | LITELLM-06 | Phase 3 | Pending |
 | LITELLM-07 | Phase 3 | Pending |
 | PROVIDER-01 | Phase 3 | Pending |
-| PROVIDER-02 | Phase 1 | Pending |
+| PROVIDER-02 | Phase 1 | Complete |
 | PROVIDER-03 | Phase 2 | Pending |
 | PROVIDER-04 | Phase 2 | Pending |
 | SCALE-01 | Phase 6 | Pending |
