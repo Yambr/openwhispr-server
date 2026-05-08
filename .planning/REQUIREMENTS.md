@@ -110,13 +110,13 @@ Source of truth: `/Users/dev/openwhispr/docs/BACKEND_SPEC.md`, `OAUTH_SPEC.md`, 
 ### Engineering Discipline (constitutional)
 
 - [ ] **TDD-01**: Strict TDD — tests precede production code on every feature, every bugfix; PR template enforces a "tests first" checklist
-- [ ] **TDD-02**: Test layers: unit + integration (real Postgres / Redis via testcontainers; LiteLLM mocked at HTTP level via msw or Wiremock — we do not run real LiteLLM in CI) + e2e + contract + load + security + migration + i18n + RLS-property
+- [x] **TDD-02**: Test layers: unit + integration (real Postgres / Redis via testcontainers; LiteLLM mocked at HTTP level via msw or Wiremock — we do not run real LiteLLM in CI) + e2e + contract + load + security + migration + i18n + RLS-property
 - [ ] **CI-01**: GitHub Actions CI from day one; workflows in `.github/workflows/`; GitHub-hosted runners
 - [ ] **CI-02**: CI matrix on every PR: lint + typecheck + unit + integration + e2e + contract + license-scan + secrets-scan (gitleaks) + dep-scan (Trivy + Dependabot) + SAST (CodeQL) + container-scan
 - [ ] **CI-03**: Branch protection on `main` blocks merge unless required checks are green
 - [ ] **CONTRACT-01**: Wire-contract conformance test suite asserts the server matches `BACKEND_SPEC.md` byte-for-byte (status codes, JSON shapes, headers, NDJSON line behavior, channel-scheme echo, `set-auth-token` rotation); runs against any deployed instance via `make contract-test BACKEND_URL=...`
-- [ ] **TEST-COV-01**: Coverage gate ≥ 85% lines / ≥ 80% branches on the API tier (excluding generated code); enforced in CI
-- [ ] **TEST-MUTATION-01**: Mutation testing (Stryker) on critical modules: auth, multi-tenancy enforcement, virtual-key minting; PR fails on score regression
+- [x] **TEST-COV-01**: Coverage gate ≥ 85% lines / ≥ 80% branches on the API tier (excluding generated code); enforced in CI
+- [x] **TEST-MUTATION-01**: Mutation testing (Stryker) on critical modules: auth, multi-tenancy enforcement, virtual-key minting; PR fails on score regression
 - [ ] **TEST-LOAD-01**: k6 nightly load test asserts 1000 concurrent at p95 SLO; CI fails on regression
 - [ ] **TEST-MIGRATION-01**: Migration tests verify forward apply + rollback on real Postgres in CI on every `migrations/` change
 - [ ] **TEST-I18N-01**: i18n completeness test fails CI when a key exists in `en` but is missing in `ru` (or vice versa)
@@ -261,13 +261,13 @@ All 89 v1 requirements mapped by `gsd-roadmapper` on 2026-05-08.
 | DEPLOY-04 | Phase 9 | Pending |
 | DEPLOY-05 | Phase 9 | Pending |
 | TDD-01 | Phase 0 | Pending |
-| TDD-02 | Phase 0 | Pending |
+| TDD-02 | Phase 0 | Complete |
 | CI-01 | Phase 0 | Pending |
 | CI-02 | Phase 0 | Pending |
 | CI-03 | Phase 0 | Pending |
 | CONTRACT-01 | Phase 2 | Pending |
-| TEST-COV-01 | Phase 0 | Pending |
-| TEST-MUTATION-01 | Phase 0 | Pending |
+| TEST-COV-01 | Phase 0 | Complete |
+| TEST-MUTATION-01 | Phase 0 | Complete |
 | TEST-LOAD-01 | Phase 8 | Pending |
 | TEST-MIGRATION-01 | Phase 1 | Pending |
 | TEST-I18N-01 | Phase 10 | Pending |
