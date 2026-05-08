@@ -20,11 +20,11 @@
  *   GITHUB_BASE_REF — base branch name (default: "main")
  *   GITHUB_SHA      — head SHA (default: "HEAD")
  */
-import { execFileSync } from 'node:child_process';
-import { exit } from 'node:process';
+import { execFileSync } from "node:child_process";
+import { exit } from "node:process";
 
-const baseRef = process.env.GITHUB_BASE_REF ?? 'main';
-const headRef = process.env.GITHUB_SHA ?? 'HEAD';
+const baseRef = process.env.GITHUB_BASE_REF ?? "main";
+const headRef = process.env.GITHUB_SHA ?? "HEAD";
 
 interface Violation {
   sha: string;
@@ -32,11 +32,9 @@ interface Violation {
 }
 
 function gitLog(range: string): string {
-  return execFileSync(
-    'git',
-    ['log', '--reverse', '--name-only', '--format=%H', range],
-    { encoding: 'utf8' },
-  );
+  return execFileSync("git", ["log", "--reverse", "--name-only", "--format=%H", range], {
+    encoding: "utf8",
+  });
 }
 
 function parseBlocks(log: string): { sha: string; files: string[] }[] {
@@ -44,7 +42,7 @@ function parseBlocks(log: string): { sha: string; files: string[] }[] {
   //   <sha>\n<file>\n<file>\n\n<sha>\n<file>\n...
   // Split on a blank line followed by a 40-char hex sha.
   const out: { sha: string; files: string[] }[] = [];
-  const lines = log.split('\n');
+  const lines = log.split("\n");
   let current: { sha: string; files: string[] } | null = null;
   for (const line of lines) {
     if (/^[a-f0-9]{40}$/.test(line)) {
@@ -64,8 +62,9 @@ function isTestFile(file: string): boolean {
 
 function isProductionFile(file: string): boolean {
   // Production source: apps/<x>/src/** or packages/<x>/src/**, excluding tests.
-  return /^(apps|packages)\/[^/]+\/src\/.+\.(ts|tsx|js|jsx|mjs|cjs)$/.test(file)
-    && !isTestFile(file);
+  return (
+    /^(apps|packages)\/[^/]+\/src\/.+\.(ts|tsx|js|jsx|mjs|cjs)$/.test(file) && !isTestFile(file)
+  );
 }
 
 function detectRange(): string {
@@ -74,8 +73,8 @@ function detectRange(): string {
   const candidates = [`origin/${baseRef}..${headRef}`, `${baseRef}..${headRef}`];
   for (const r of candidates) {
     try {
-      execFileSync('git', ['rev-parse', '--verify', r.split('..')[0]], {
-        stdio: ['ignore', 'ignore', 'ignore'],
+      execFileSync("git", ["rev-parse", "--verify", r.split("..")[0]], {
+        stdio: ["ignore", "ignore", "ignore"],
       });
       return r;
     } catch {
@@ -110,14 +109,12 @@ function main(): void {
   }
 
   if (violations.length > 0) {
-    process.stderr.write(
-      `TDD heuristic: production-code commit(s) preceded any test commit:\n`,
-    );
+    process.stderr.write(`TDD heuristic: production-code commit(s) preceded any test commit:\n`);
     for (const v of violations) {
-      process.stderr.write(`  ${v.sha} -> ${v.files.join(', ')}\n`);
+      process.stderr.write(`  ${v.sha} -> ${v.files.join(", ")}\n`);
     }
     process.stderr.write(
-      'Advisory only (non-blocking in Phase 0); promote to blocking in Phase 2+.\n',
+      "Advisory only (non-blocking in Phase 0); promote to blocking in Phase 2+.\n",
     );
     exit(1);
     return;

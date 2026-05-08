@@ -1,17 +1,17 @@
-import { describe, expect, it } from 'vitest';
-import { execFileSync } from 'node:child_process';
-import { join } from 'node:path';
+import { execFileSync } from "node:child_process";
+import { join } from "node:path";
+import { describe, expect, it } from "vitest";
 
-const SCRIPT = join(process.cwd(), 'tools', 'lint-tdd.ts');
+const SCRIPT = join(process.cwd(), "tools", "lint-tdd.ts");
 
-describe('lint-tdd.ts', () => {
-  it('runs without throwing and produces a status line', () => {
-    let output = '';
+describe("lint-tdd.ts", () => {
+  it("runs without throwing and produces a status line", () => {
+    let output = "";
     let exitCode = 0;
     try {
-      output = execFileSync('pnpm', ['exec', 'tsx', SCRIPT], {
-        encoding: 'utf8',
-        stdio: ['ignore', 'pipe', 'pipe'],
+      output = execFileSync("pnpm", ["exec", "tsx", SCRIPT], {
+        encoding: "utf8",
+        stdio: ["ignore", "pipe", "pipe"],
       });
     } catch (err: unknown) {
       const e = err as {
@@ -20,7 +20,7 @@ describe('lint-tdd.ts', () => {
         stderr?: Buffer;
       };
       exitCode = e.status ?? 1;
-      output = (e.stdout?.toString() ?? '') + (e.stderr?.toString() ?? '');
+      output = (e.stdout?.toString() ?? "") + (e.stderr?.toString() ?? "");
     }
 
     // Advisory script: a non-zero exit is acceptable when warnings exist.

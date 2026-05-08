@@ -1,6 +1,6 @@
-import { describe, expect, it } from 'vitest';
-import { readFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+import { describe, expect, it } from "vitest";
 
 // TEST-MUTATION-01 self-test: the Stryker mutation gate is configured with a
 // `thresholds.break` value at or above the constitutional floor. This is a
@@ -21,24 +21,24 @@ interface StrykerConfig {
   mutate?: string[];
 }
 
-describe('TEST-MUTATION-01 self-test: Stryker break threshold is configured', () => {
-  const configPath = join(process.cwd(), 'stryker.config.json');
-  const config = JSON.parse(readFileSync(configPath, 'utf8')) as StrykerConfig;
+describe("TEST-MUTATION-01 self-test: Stryker break threshold is configured", () => {
+  const configPath = join(process.cwd(), "stryker.config.json");
+  const config = JSON.parse(readFileSync(configPath, "utf8")) as StrykerConfig;
 
-  it('stryker.config.json has thresholds.break set', () => {
-    expect(config.thresholds, 'thresholds object missing').toBeDefined();
+  it("stryker.config.json has thresholds.break set", () => {
+    expect(config.thresholds, "thresholds object missing").toBeDefined();
     expect(
       config.thresholds?.break,
-      'thresholds.break must be set for the mutation gate to fire',
-    ).toBeTypeOf('number');
+      "thresholds.break must be set for the mutation gate to fire",
+    ).toBeTypeOf("number");
   });
 
-  it('thresholds.break is >= constitutional floor of 50', () => {
+  it("thresholds.break is >= constitutional floor of 50", () => {
     const breakValue = config.thresholds?.break ?? 0;
     expect(breakValue).toBeGreaterThanOrEqual(50);
   });
 
-  it('thresholds are well-ordered: high >= low >= break', () => {
+  it("thresholds are well-ordered: high >= low >= break", () => {
     const high = config.thresholds?.high ?? 0;
     const low = config.thresholds?.low ?? 0;
     const breakValue = config.thresholds?.break ?? 0;
@@ -46,11 +46,11 @@ describe('TEST-MUTATION-01 self-test: Stryker break threshold is configured', ()
     expect(low).toBeGreaterThanOrEqual(breakValue);
   });
 
-  it('testRunner is vitest (matches Plan 02 stack pick)', () => {
-    expect(config.testRunner).toBe('vitest');
+  it("testRunner is vitest (matches Plan 02 stack pick)", () => {
+    expect(config.testRunner).toBe("vitest");
   });
 
-  it('mutate globs are non-empty', () => {
+  it("mutate globs are non-empty", () => {
     expect(Array.isArray(config.mutate)).toBe(true);
     expect((config.mutate ?? []).length).toBeGreaterThan(0);
   });

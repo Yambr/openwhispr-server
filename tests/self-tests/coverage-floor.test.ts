@@ -1,6 +1,6 @@
-import { describe, expect, it } from 'vitest';
-import { readFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+import { describe, expect, it } from "vitest";
 
 // TEST-COV-01 self-test: the coverage threshold gate is configured at or above
 // the constitutional minima. This is a static-config self-test (parses
@@ -22,29 +22,28 @@ const CONSTITUTIONAL_MIN = {
   statements: 85,
 };
 
-describe('TEST-COV-01 self-test: coverage threshold gate is configured', () => {
-  const configPath = join(process.cwd(), 'vitest.config.ts');
-  const source = readFileSync(configPath, 'utf8');
+describe("TEST-COV-01 self-test: coverage threshold gate is configured", () => {
+  const configPath = join(process.cwd(), "vitest.config.ts");
+  const source = readFileSync(configPath, "utf8");
 
-  it('vitest.config.ts has coverage.thresholds nested correctly (Vitest 4 shape)', () => {
+  it("vitest.config.ts has coverage.thresholds nested correctly (Vitest 4 shape)", () => {
     // The flat-key shape `coverage.lines: N` is silently ignored by Vitest 4.
     // The correct shape is `coverage: { thresholds: { lines: N, ... } }`.
     expect(source).toMatch(/coverage\s*:\s*{/);
     expect(source).toMatch(/thresholds\s*:\s*{/);
   });
 
-  it.each(Object.entries(CONSTITUTIONAL_MIN))(
-    'threshold %s is set and >= constitutional minimum %d',
-    (key, min) => {
-      const re = new RegExp(`${key}\\s*:\\s*(\\d+)`);
-      const match = source.match(re);
-      expect(match, `threshold ${key} not found in vitest.config.ts`).not.toBeNull();
-      const value = Number(match?.[1]);
-      expect(value).toBeGreaterThanOrEqual(min);
-    },
-  );
+  it.each(
+    Object.entries(CONSTITUTIONAL_MIN),
+  )("threshold %s is set and >= constitutional minimum %d", (key, min) => {
+    const re = new RegExp(`${key}\\s*:\\s*(\\d+)`);
+    const match = source.match(re);
+    expect(match, `threshold ${key} not found in vitest.config.ts`).not.toBeNull();
+    const value = Number(match?.[1]);
+    expect(value).toBeGreaterThanOrEqual(min);
+  });
 
-  it('coverage provider is v8 (matches Plan 02 RESEARCH guidance)', () => {
+  it("coverage provider is v8 (matches Plan 02 RESEARCH guidance)", () => {
     expect(source).toMatch(/provider\s*:\s*['"]v8['"]/);
   });
 });
