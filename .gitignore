@@ -39,3 +39,11 @@ reports/
 
 # Tooling
 .turbo/
+
+# Bootstrap-generated artifacts (Plan 01-02)
+/.env
+/backups/*
+!/backups/.gitignore
+/keys/*
+!/keys/.gitkeep
+!/keys/backup.age.pub
