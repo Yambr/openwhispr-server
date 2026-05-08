@@ -2,13 +2,13 @@
 
 ## What This Is
 
-An open-source, self-hosted **enterprise** backend for the (forked) OpenWhispr Electron desktop client. It exposes only the wire surface the corporate fork still calls — auth lifecycle, transcription, reasoning, agent NDJSON streaming, realtime tokens, and a few read-only config endpoints — and proxies all AI work to an **already-deployed LiteLLM Proxy** (the one described in `speaches-audio.md`, e.g. ExampleCorp's `llm.internal.example.com`). Stripe / referrals / quota-enforcement / BYOK billing surfaces have been **removed from the desktop fork** and are therefore explicitly out of scope on the server.
+An open-source, enterprise-grade, self-hosted backend for the OpenWhispr Electron desktop client, implementing the wire surface defined by the upstream `SELF_HOSTING.md` / `BACKEND_SPEC.md` / `OAUTH_SPEC.md` (1556 lines of authoritative spec). It bundles a default **LiteLLM Proxy** wired to **open-source AI models** (Whisper for transcription, pyannote for diarization, faster-whisper / Speaches-compatible image for realtime) so a fresh `git clone && docker compose up` works out of the box for OSS users, while corporate operators override `LITELLM_BASE_URL` / `LITELLM_VIRTUAL_KEY` to point at their existing internal LiteLLM Proxy (e.g. the one described in `speaches-audio.md`) without any code changes — LiteLLM is itself the abstraction layer.
 
-The server is a thin, well-tested edge in front of an existing LiteLLM/Speaches deployment: corporate users sign in (email+password or OIDC), the desktop attaches a bearer token, every authenticated request is rewritten to a LiteLLM call with a per-user virtual key, and LiteLLM's spend logs + nginx access logs feed our observability/usage dashboards (read-only — no enforcement).
+It is built to enterprise standards for **1000 concurrent active users** in one installation: HA Postgres with row-level multi-tenancy, horizontal autoscaling, BullMQ workers, anti-abuse rate limiting, full observability, and reproducible deploys via docker-compose (single-host self-host) and Helm (Kubernetes cloud).
 
 ## Core Value
 
-**A clean, enterprise-ready edge between the OpenWhispr desktop fork and an existing corporate LiteLLM Proxy.** Anything that wasn't strictly required for that — quotas, plans, billing, referrals, BYOK key minting beyond LiteLLM virtual keys, GPU/Speaches infrastructure — is removed. Every other goal (multi-IdP auth, multi-tenancy, observability, OSS docs, UI-SPEC for the admin console) exists to serve this one outcome.
+**A drop-in OpenWhispr backend any organization can self-host — open-source out of the box, corporate-LiteLLM-ready by env override.** Every other goal (multi-tenancy, observability, OSS docs, UI-SPEC) exists to serve this one outcome.
 
 ## Requirements
 
@@ -18,179 +18,189 @@ The server is a thin, well-tested edge in front of an existing LiteLLM/Speaches 
 
 ### Active
 
-#### Wire compatibility (corporate-fork surface)
-- [ ] **WIRE-01**: `POST /api/check-user` — pre-auth, returns `{exists}`
-- [ ] **WIRE-02**: `GET /api/auth/verification-status?email=...` — 5s polling, cookie-auth (only used if email signup is enabled)
-- [ ] **WIRE-03**: `DELETE /api/auth/delete-account` — cookie-auth
-- [ ] **WIRE-04**: `GET /api/health` — 3s timeout, body unread
-- [ ] **WIRE-05**: `POST /api/transcribe` — multipart audio; forwards to LiteLLM `/v1/audio/transcriptions`; **returns `limitReached: false` always** (corporate users are unlimited); still emits `{text, wordsUsed, plan, sttProvider, sttModel, ...}` so unmodified desktop builds keep working
-- [ ] **WIRE-06**: `POST /api/reason` — forwards to LiteLLM chat-completions
-- [ ] **WIRE-07**: `POST /api/agent/stream` — `application/x-ndjson`, **flush per line**, no buffering anywhere
-- [ ] **WIRE-08**: `POST /api/agent/web-search` — server-side search tool
-- [ ] **WIRE-09**: `POST /api/streaming-usage` — accept-and-record (no enforcement)
-- [ ] **WIRE-10**: `GET /api/usage` — returns observed usage stats (transcribe minutes, reason tokens, streaming minutes); always reports unlimited plan
-- [ ] **WIRE-11**: `GET /api/stt-config` — server-side STT provider/model selection
+#### Wire compatibility (per upstream `BACKEND_SPEC.md`)
+
+The corporate-internal v1 install does not exercise Stripe / referrals / billing, so those endpoints are deferred to v2 — the upstream spec itself classifies them as "Operational / quota endpoints (recommended)" with stub-as-503 explicitly acceptable for first-launch testing.
+
+##### Auth lifecycle (must implement)
+- [ ] **WIRE-01**: `POST /api/check-user` — pre-auth, returns `{exists}` at 200; non-2xx routes desktop to sign-up branch
+- [ ] **WIRE-02**: `GET /api/auth/verification-status?email=...` — cookie-auth, 5s polling cadence carve-out from rate limiter, 200+`{verified:bool}`, 4xx surfaces "session expired"
+- [ ] **WIRE-03**: `DELETE /api/auth/delete-account` — cookie-auth, 2xx clears local token+cookie+session
+
+##### Operational (v1 must implement)
+- [ ] **WIRE-04**: `GET /api/health` — 3s timeout, body unread, only `res.ok`/`res.status` inspected
+- [ ] **WIRE-05**: `POST /api/transcribe` — multipart audio; returns `{text, wordsUsed, wordsRemaining, plan, limitReached, sttProvider, sttModel, ...}`; quota math runs but `limitReached` always returns `false` in v1 (no enforcement) — schema is preserved for desktop compatibility
+- [ ] **WIRE-06**: `POST /api/reason` — cloud LLM via LiteLLM; returns `{text, model, provider, promptMode, matchType}`
+- [ ] **WIRE-07**: `POST /api/agent/stream` — `application/x-ndjson`, **flush per line**, no buffering anywhere in the chain
+- [ ] **WIRE-08**: `POST /api/agent/web-search` — server-side search tool for the agent
+- [ ] **WIRE-09**: `POST /api/streaming-usage` — accept-and-record streaming session usage
+- [ ] **WIRE-10**: `GET /api/usage` — observed usage stats; v1 always reports unlimited plan
+- [ ] **WIRE-11**: `GET /api/stt-config` — server-side STT provider/model selection per tenant/user
 - [ ] **WIRE-12**: `GET /api/note-recording-config` — note-recording configuration
-- [ ] **WIRE-13**: `POST /api/streaming-token` — mints AssemblyAI streaming token (only if AssemblyAI is configured; otherwise 410 Gone)
+- [ ] **WIRE-13**: `POST /api/streaming-token` — mints AssemblyAI streaming token from server-held key (only if AssemblyAI configured; otherwise 503)
 - [ ] **WIRE-14**: `POST /api/deepgram-streaming-token` — Deepgram streaming token (gated same way)
 - [ ] **WIRE-15**: `POST /api/openai-realtime-token` — OpenAI Realtime token (gated same way)
-- [ ] **WIRE-16**: Generic passthrough channel `cloud-api-request` — proxied with global error envelope
-- [ ] **WIRE-17**: Honor global error envelope `{ "error": "<string>" }` for every non-2xx
-- [ ] **WIRE-18**: HTTP **401** (not 200-with-error) on invalid/expired tokens
-- [ ] **WIRE-19**: Accept `Authorization: Bearer <opaque>` AND session cookies on every authenticated endpoint
+- [ ] **WIRE-16**: Generic passthrough channel `cloud-api-request` — any `/api/<path>` proxied with global error envelope
+
+##### Wire conventions (apply to every endpoint)
+- [ ] **WIRE-17**: Honor global error envelope `{ "error": "<human-readable string>" }` for every non-2xx
+- [ ] **WIRE-18**: Return HTTP **401** (not 200-with-error) on invalid/expired tokens — `withSessionRefresh()` retry path depends on this
+- [ ] **WIRE-19**: Accept `Authorization: Bearer <opaque>` AND session cookies on every authenticated endpoint (main process attaches both; renderer-direct endpoints rely on cookie alone)
 - [ ] **WIRE-20**: HTTPS-only on every externally reachable port
-- [ ] **WIRE-21**: Stripe + referrals routes are explicitly **NOT served** (removed from desktop fork). Document this in DOCS-06.
 
 #### Authentication & OAuth
 - [ ] **AUTH-01**: Host `${AUTH_URL}/api/desktop-signin/{provider}` shim that initiates upstream IdP round-trip
-- [ ] **AUTH-02**: Final OAuth redirect emits `${PROTOCOL}://?bearer_token=<token>` echoing the **exact** scheme received in the `callbackURL` query parameter
-- [ ] **AUTH-03**: Issue opaque bearer tokens (≥30 days), with rotation via `set-auth-token`; new and old overlap ≥5 min
-- [ ] **AUTH-04**: Email/password sign-in via Better Auth contract — first-class, works without any external IdP configured
-- [ ] **AUTH-05**: OIDC pluggable adapter — any OIDC provider configurable (Google Workspace / Azure AD / Okta / generic OIDC); operator picks one or more per installation
-- [ ] **AUTH-06**: `x-openwhispr-source: desktop` header preserved/observable for feature flagging
-- [ ] **AUTH-07**: Open registration model — IdP is the gatekeeper; whoever the configured IdP authorizes gets in. No allowlist on our side. Once signed in, the user is automatically a corporate enterprise user with no plan/tier distinctions.
+- [ ] **AUTH-02**: Final OAuth redirect emits `${PROTOCOL}://?bearer_token=<token>` echoing the **exact** scheme received in the `callbackURL` query parameter (production / `openwhispr-dev` / `openwhispr-staging` / arbitrary override)
+- [ ] **AUTH-03**: Issue opaque bearer tokens (≥30 days), with rotation via `set-auth-token` response header on Better-Auth-style endpoints; new and old tokens overlap ≥5 minutes
+- [ ] **AUTH-04**: Email/password sign-in via Better Auth — first-class, works without any external IdP configured
+- [ ] **AUTH-05**: OIDC pluggable adapter via Better Auth's OAuth-Provider plugin — covers Google Workspace / Azure AD / Okta / generic OIDC with one configuration block per provider
+- [ ] **AUTH-06**: `x-openwhispr-source: desktop` header is preserved/observable for feature flagging
+- [ ] **AUTH-07**: Open IdP scope — IdP is the gatekeeper; no server-side allowlist. Once signed in, the user is automatically a corporate user (no plan/tier distinctions in v1)
 
 #### Multi-tenancy & Data
-- [ ] **DATA-01**: PostgreSQL 17+ schema with row-level security; `app.tenant_id` GUC via `SET LOCAL` (PgBouncer transaction-mode safe)
-- [ ] **DATA-02**: Forward-only Drizzle migrations; CI verifies forward apply + rollback
-- [ ] **DATA-03**: Usage ledger (transcribe minutes, reason tokens, streaming minutes); idempotent on `request_id`; **observability only — no enforcement**
+- [ ] **DATA-01**: PostgreSQL 17+ schema with row-level security; `app.tenant_id` GUC set via `SET LOCAL` inside every request transaction (PgBouncer transaction-mode safe)
+- [ ] **DATA-02**: Forward-only Drizzle migrations; CI verifies forward apply + rollback on real Postgres on every change to `migrations/`
+- [ ] **DATA-03**: Usage ledger (transcribe minutes, reason tokens, streaming minutes); idempotent on `request_id`; **observability only — no enforcement** in v1
 - [ ] **DATA-04**: Audit log for auth events, account deletion, key issuance, provider config changes, admin actions
-- [ ] **DATA-05**: At-rest encryption for sensitive columns (bearer tokens, LiteLLM virtual keys) via KEK/DEK; KEK from env / Vault / KMS adapter
+- [ ] **DATA-05**: At-rest encryption for sensitive columns (bearer tokens, LiteLLM virtual keys, third-party API keys) via KEK/DEK pattern; KEK from env / Vault / KMS adapter
 - [ ] **DATA-06**: Tenants table — single "default" tenant created on first migration; multi-tenant model retained for future per-org installs but enterprise installs run on the default tenant
 - [ ] **DATA-07**: Backup-and-restore tooling — `make backup` produces an encrypted dump; `make restore` is one-command; both run in CI
 
-#### LiteLLM integration (Speaches lives behind LiteLLM — externally managed)
-- [ ] **LITELLM-01**: Configure to call an **already-deployed** LiteLLM Proxy (>= v1.83.7-stable per upstream advisory). The server itself does **not** ship LiteLLM, Speaches, GPUs, or pyannote — those are operator-managed infrastructure
-- [ ] **LITELLM-02**: Convert `speaches-audio.md` into `docs/litellm-target-spec.md` — the **target shape** of the LiteLLM config the operator is expected to have running (Whisper models, pyannote pass-through diarization, Speaches Realtime via `realtime` mode, virtual-key auth, ingress 3600s timeouts)
-- [ ] **LITELLM-03**: Wire calls to the three audio routes via the existing LiteLLM: `POST /v1/audio/transcriptions`, `POST /v1/audio/diarization` (pass-through), `WSS /v1/realtime`
-- [ ] **LITELLM-04**: Mint per-user LiteLLM virtual keys via the LiteLLM `/key/generate` API (no per-user budgets — corporate users are unlimited; key alias is `user-<userId>` for traceability)
-- [ ] **LITELLM-05**: Ingest LiteLLM spend logs into the usage ledger as **observability**; pass-through endpoints (diarization) are not metered by LiteLLM natively — accept this and surface only what LiteLLM gives us (no nginx-log scraping in v1)
+#### Default backend: bundled LiteLLM with open-source models
+- [ ] **LITELLM-01**: Bundle LiteLLM Proxy ≥ v1.83.7-stable in the default `docker-compose.yml` (multipart-passthrough fix native — no patches shipped)
+- [ ] **LITELLM-02**: Default LiteLLM config wires to **open-source models** out of the box: Whisper (`Systran/faster-whisper-large-v3` or equivalent) for transcriptions, pyannote (`pyannote/speaker-diarization-3.1`) for diarization (HF token required at first run), Speaches-compatible open image for `WSS /v1/realtime`
+- [ ] **LITELLM-03**: Implement support for the three audio routes the desktop calls via LiteLLM: `POST /v1/audio/transcriptions` (Whisper), `POST /v1/audio/diarization` (pyannote pass-through), `WSS /v1/realtime` (realtime mode); 3600s ingress read/send timeouts on the realtime route
+- [ ] **LITELLM-04**: Mint per-user LiteLLM virtual keys via the LiteLLM `/key/generate` API (alias `user-<userId>` for traceability; **no per-user budget caps in v1** — corporate users are unlimited)
+- [ ] **LITELLM-05**: Override path documented: corporate operators set `LITELLM_BASE_URL` + `LITELLM_VIRTUAL_KEY` (or admin master key for minting) to point at their existing internal LiteLLM Proxy (the shape described in `speaches-audio.md`) and the bundled LiteLLM container is disabled — same wire surface either way because LiteLLM is the abstraction
+- [ ] **LITELLM-06**: Convert `speaches-audio.md` into `docs/litellm-target-spec.md` — describes both the bundled-default LiteLLM config and the corporate-override LiteLLM config (model definitions, virtual-key auth, `pass_through_endpoints` for diarization, realtime mode, ingress timeouts)
+- [ ] **LITELLM-07**: Ingest LiteLLM spend logs into the platform usage ledger as observability; pass-through endpoints (diarization) are not metered by LiteLLM natively — surface only what LiteLLM gives us, no nginx-log scraping in v1
 
 #### Provider abstraction (lightweight)
-- [ ] **PROVIDER-01**: STT/LLM/Realtime providers are uniformly served via the configured **single LiteLLM endpoint**. The "multi-provider" story = LiteLLM's own model routing config; we do not implement our own LLM/STT abstraction layer
-- [ ] **PROVIDER-02**: Storage provider interface: S3-compatible default (MinIO for self-host or any S3 / GCS / Azure Blob via env)
-- [ ] **PROVIDER-03**: Identity provider interface: Better Auth's OAuth-Provider plugin handles OIDC; email+password is built-in; SAML is out of scope for v1
+- [ ] **PROVIDER-01**: All STT/LLM/Realtime providers route through the configured **single LiteLLM endpoint** (bundled or operator-supplied). LiteLLM is the abstraction; we do not implement a parallel multi-LLM provider layer
+- [ ] **PROVIDER-02**: Storage provider interface: S3-compatible default (MinIO bundled in compose; any S3 / GCS / Azure Blob via env)
+- [ ] **PROVIDER-03**: Identity provider interface: Better Auth's OAuth-Provider plugin handles OIDC; email+password is built-in; SAML deferred to v2
 - [ ] **PROVIDER-04**: Email provider interface: SMTP only in v1 (verification + admin notifications)
 
 #### Enterprise scale (1000 concurrent active users)
-- [ ] **SCALE-01**: API tier is fully stateless; sessions in Postgres; cache state in Redis/Valkey
-- [ ] **SCALE-02**: PgBouncer transaction-mode in front of Postgres; sized for 1000 concurrent
-- [ ] **SCALE-03**: BullMQ on Redis/Valkey for background jobs (audit-log fanout, email delivery, usage rollups)
-- [ ] **SCALE-04**: Rate limiting per-user, per-IP via Redis token-bucket (anti-abuse, NOT quota); polling carve-out for `/api/auth/verification-status`
-- [ ] **SCALE-05**: Streaming endpoints (NDJSON, WSS) survive ingress timeouts up to 1h; `proxy_buffering off` + `X-Accel-Buffering: no`; per-line `res.flush()`
-- [ ] **SCALE-06**: Load test (k6) demonstrates 1000 concurrent active users (mixed transcribe + reason + stream + WSS) at p95 SLO; runs nightly in CI
+- [ ] **SCALE-01**: API tier fully stateless; sessions in Postgres; cache state in Redis/Valkey
+- [ ] **SCALE-02**: PgBouncer transaction-mode in front of Postgres; sized for 1000 concurrent (server-pool 100 × 4 instances)
+- [ ] **SCALE-03**: BullMQ on Redis/Valkey for background jobs (audit-log fanout, email delivery, usage rollups, virtual-key rotation)
+- [ ] **SCALE-04**: Anti-abuse rate limiting per-user, per-IP via Redis/Valkey token-bucket (NOT quota — observability ledger has no limits in v1); polling carve-out for `/api/auth/verification-status`
+- [ ] **SCALE-05**: Streaming endpoints (NDJSON, WSS) survive ingress timeouts up to 1h; nginx `proxy_buffering off` + `X-Accel-Buffering: no`; per-line `res.flush()` in NDJSON
+- [ ] **SCALE-06**: Load test (k6) demonstrates 1000 concurrent active users (mixed transcribe + reason + stream + WSS) at p95 SLO; runs nightly in CI against an ephemeral environment
+- [ ] **SCALE-07**: File-descriptor limits raised to 65535 on API + ingress containers; documented sizing matrix per topology
 
 #### Observability
-- [ ] **OBS-01**: OpenTelemetry auto-instrumentation across the API (Fastify, undici, pg, ioredis); spans correlate API → LiteLLM
-- [ ] **OBS-02**: Prometheus metrics via OTel Collector; default Grafana dashboards for RED + saturation + per-user usage + LiteLLM spend
-- [ ] **OBS-03**: Structured JSON logging to Loki; bearer tokens scrubbed; correlation IDs propagated; English-only log keys
-- [ ] **OBS-04**: LiteLLM spend logs ingested into the usage ledger; reconciliation pass alerts on discrepancies
-- [ ] **OBS-05**: Liveness, readiness, startup probes — readiness fails when Postgres / Redis / LiteLLM unhealthy
+- [ ] **OBS-01**: OpenTelemetry SDK auto-instrumentation for Fastify, undici, pg, ioredis; spans cover API → LiteLLM end-to-end with correlation IDs
+- [ ] **OBS-02**: Prometheus metrics exposed via OTel Collector; default Grafana dashboards shipped for RED + saturation, per-tenant usage, LiteLLM spend
+- [ ] **OBS-03**: Structured JSON logging to Loki via OTel Collector; bearer tokens scrubbed; correlation IDs propagated; English-only log keys
+- [ ] **OBS-04**: LiteLLM spend logs piped into the platform usage ledger; reconciled against per-request ledger entries; discrepancy alerts
+- [ ] **OBS-05**: Liveness, readiness, and startup probes — readiness fails when Postgres / Redis / LiteLLM unhealthy
 
-#### Frontend
-- [ ] **UI-01**: Stack pre-decided: **Next.js 15 (App Router) + React 19 + TypeScript + Tailwind 4 + shadcn/ui v2**; this is what the UI-SPEC targets and what gets implemented later
-- [ ] **UI-02**: Produce `UI-SPEC.md` for **Admin Console**: users list, user detail (auth provider, LiteLLM virtual key alias, observed usage), audit log, IdP config, LiteLLM endpoint config, observability deep-links
-- [ ] **UI-03**: Produce `UI-SPEC.md` for **End-User Self-Service**: profile, observed usage breakdown, account deletion (mirroring desktop-client surface)
-- [ ] **UI-04**: UI-SPEC follows accessibility (WCAG 2.2 AA), responsive, light + dark theme; component inventory enumerated; user generates Claude Design from spec, then I implement against the design
-- [ ] **UI-05**: Implement the frontend in v1 against the Claude-Design output; deployed as a Next.js app behind Traefik in the same compose/Helm stack
+#### Frontend (UI-SPEC only — implementation in v2)
+- [ ] **UI-SPEC-01**: `UI-SPEC.md` for **Operator/Admin Console**: tenants list, tenant detail (members, IdP config, LiteLLM endpoint config, observed usage), users list, virtual-key management, audit log, observability deep-links
+- [ ] **UI-SPEC-02**: `UI-SPEC.md` for **End-User Self-Service**: profile, observed usage breakdown, account deletion (mirroring desktop-client surface)
+- [ ] **UI-SPEC-03**: UI-SPEC targets Next.js 15 + React 19 + Tailwind 4 + shadcn/ui v2 + TanStack Query 5; follows accessibility (WCAG 2.2 AA), responsive, light + dark theme; component inventory enumerated; user generates Claude Design from spec, then implements downstream
 
 #### Deployment
-- [ ] **DEPLOY-01**: `docker-compose.yml` for single-host self-host: API + Frontend (Next.js) + Postgres 17 + PgBouncer + Redis/Valkey + MinIO + Traefik + OTel Collector + Grafana + Loki + Tempo + Mimir. **No Speaches / no LiteLLM** — operator points the server at their existing LiteLLM via env
-- [ ] **DEPLOY-02**: Helm chart for Kubernetes: HA Postgres via CloudNativePG, Traefik 3 ingress (NOT ingress-nginx — retired Mar 2026), HPA, cert-manager hooks, OTel-Collector
+- [ ] **DEPLOY-01**: `docker-compose.yml` for single-host self-host: API + Postgres 17 + PgBouncer + Redis/Valkey + bundled LiteLLM + bundled open-source AI models (Whisper / pyannote / faster-whisper) + MinIO + Traefik + OTel Collector + Grafana + Loki + Tempo + Mimir
+- [ ] **DEPLOY-02**: Helm chart for Kubernetes: HA Postgres via CloudNativePG 1.29, Traefik 3 ingress (NOT ingress-nginx — retired Mar 2026), HPA, cert-manager hooks, OTel-Collector DaemonSet, GPU node-selector for the bundled AI workers (with documented option to disable bundled AI and point at corporate LiteLLM)
 - [ ] **DEPLOY-03**: One-command bootstrap (`make up` or `helm install`); one-command upgrade with safe rollback; refuse to start on default secrets
 - [ ] **DEPLOY-04**: Migrations run as a pre-deploy job; safe under rolling deploy; backwards-compatible across one minor version
-- [ ] **DEPLOY-05**: First-launch SLO — operator goes from `git clone` to first authenticated `/api/transcribe` against their LiteLLM in **< 5 minutes**
+- [ ] **DEPLOY-05**: First-launch SLO — operator goes from `git clone` to first authenticated `/api/transcribe` against the bundled LiteLLM in **< 5 minutes**; CI test enforces this
 
 #### Engineering discipline (constitutional)
-- [ ] **TDD-01**: Strict TDD — tests precede production code on every feature, every bugfix
-- [ ] **TDD-02**: Test layers: unit + integration (real Postgres / Redis via testcontainers; LiteLLM mocked at HTTP level via msw or Wiremock — we don't run real LiteLLM in CI) + e2e + contract + load + security + migration + i18n + RLS-property
-- [ ] **CI-01**: GitHub Actions CI from day one; workflows in `.github/workflows/`; GitHub-hosted runners
+- [ ] **TDD-01**: Strict TDD — tests precede production code on every feature, every bugfix; PR template enforces a "tests first" checklist
+- [ ] **TDD-02**: Test layers: unit + integration (real Postgres / Redis via testcontainers; LiteLLM mocked at HTTP level via msw or Wiremock — we do not run real LiteLLM in CI) + e2e + contract + load + security + migration + i18n + RLS-property
+- [ ] **CI-01**: GitHub Actions CI from day one; workflows in `.github/workflows/`; GitHub-hosted runners (self-hosted only for GPU jobs in v2 if needed)
 - [ ] **CI-02**: CI matrix on every PR: lint + typecheck + unit + integration + e2e + contract + license-scan + secrets-scan (gitleaks) + dep-scan (Trivy + Dependabot) + SAST (CodeQL) + container-scan
 - [ ] **CI-03**: Branch protection on `main` blocks merge unless required checks are green
-- [ ] **CONTRACT-01**: Wire-contract conformance test suite asserts the server matches the corporate-fork surface byte-for-byte (status codes, JSON shapes, headers, NDJSON line behavior, channel-scheme echo, `set-auth-token` rotation); runs against any deployed instance via `make contract-test BACKEND_URL=...`
-- [ ] **TEST-COV-01**: Coverage gate ≥ 85% lines / ≥ 80% branches on the API tier (excluding generated code)
+- [ ] **CONTRACT-01**: Wire-contract conformance test suite asserts the server matches `BACKEND_SPEC.md` byte-for-byte (status codes, JSON shapes, headers, NDJSON line behavior, channel-scheme echo, `set-auth-token` rotation); runs against any deployed instance via `make contract-test BACKEND_URL=...`
+- [ ] **TEST-COV-01**: Coverage gate ≥ 85% lines / ≥ 80% branches on the API tier (excluding generated code); enforced in CI
 - [ ] **TEST-MUTATION-01**: Mutation testing (Stryker) on critical modules: auth, multi-tenancy enforcement, virtual-key minting
-- [ ] **TEST-LOAD-01**: k6 nightly load test asserts 1000 concurrent at p95 SLO
+- [ ] **TEST-LOAD-01**: k6 nightly load test asserts 1000 concurrent at p95 SLO; CI fails on regression
 - [ ] **TEST-MIGRATION-01**: Migration tests verify forward apply + rollback on real Postgres in CI on every `migrations/` change
 - [ ] **TEST-I18N-01**: i18n completeness test fails CI when a key exists in `en` but is missing in `ru` (or vice versa)
-- [ ] **TEST-RLS-01**: RLS property tests assert no cross-tenant read or write paths exist
-- [ ] **DEVEX-01**: One-command local dev (`make dev`) brings up the full stack with seeded data + a mock LiteLLM responder; `make test` runs the full suite
+- [ ] **TEST-RLS-01**: RLS property tests assert no cross-tenant read or write paths exist; random tenant pairs, every queryable model
+- [ ] **DEVEX-01**: One-command local dev (`make dev`) brings up the full stack with seeded data; `make test` runs the full suite; tested in CI
 
 #### Internationalization
-- [ ] **I18N-01**: Runtime user/operator-facing strings (UI copy, email templates, end-user error messages) use i18next + i18next-icu; **minimum locales `en` (default), `ru`**; CLDR pluralization; `Accept-Language` negotiation
+- [ ] **I18N-01**: Runtime user/operator-facing strings (UI copy, email templates, notification text, end-user error messages) use i18next + i18next-icu; **minimum locales: `en` (default), `ru`**; CLDR pluralization (Russian one/few/many handled correctly); `Accept-Language` negotiation for API responses
 - [ ] **I18N-02**: Locale resources are operator-overridable via mounted volume / config map without forking
 
-#### OSS / docs
-- [ ] **DOCS-01**: `README.md` with quickstart — < 5 min to first authenticated `/api/transcribe` against operator's LiteLLM
-- [ ] **DOCS-02**: `docs/architecture.md` — components, request lifecycle, mermaid diagrams
+#### OSS / documentation
+- [ ] **DOCS-01**: `README.md` with quickstart (compose path) — under 5 minutes to first authenticated `/api/transcribe`
+- [ ] **DOCS-02**: `docs/architecture.md` — component decomposition, request lifecycle for the three hot paths, mermaid diagrams
 - [ ] **DOCS-03**: `docs/operations.md` — deploy, upgrade, scale, backup, restore, troubleshoot
-- [ ] **DOCS-04**: `docs/litellm-target-spec.md` — the LiteLLM config the operator must have running (derived from `speaches-audio.md`)
-- [ ] **DOCS-05**: `docs/wire-contract.md` — the corporate-fork wire surface; documents which OpenWhispr-cloud endpoints are intentionally absent (Stripe, referrals)
-- [ ] **DOCS-06**: `docs/auth.md` — how to plug in OIDC providers; how to switch on/off email+password
-- [ ] **DOCS-07**: `CONTRIBUTING.md`, `SECURITY.md`, `CODE_OF_CONDUCT.md`, OSS license headers
+- [ ] **DOCS-04**: `docs/litellm-target-spec.md` — bundled-default LiteLLM config + corporate-override LiteLLM config (derived from `speaches-audio.md`)
+- [ ] **DOCS-05**: `docs/wire-contract.md` — references upstream `BACKEND_SPEC.md` + `OAUTH_SPEC.md`; documents which endpoints are deferred to v2 (Stripe / referrals)
+- [ ] **DOCS-06**: `docs/auth.md` — how to plug in OIDC providers; how to configure email+password; channel-scheme handling
+- [ ] **DOCS-07**: `CONTRIBUTING.md`, `SECURITY.md`, `CODE_OF_CONDUCT.md`, OSS LICENSE (Apache-2.0 default), license headers
 - [ ] **DOCS-08**: ADRs for every Key Decision in this document
-- [ ] **DOCS-09**: All source artifacts in **English only** — hard rule
+- [ ] **DOCS-09**: All source artifacts (docs, code, comments, commit messages, identifiers, log keys) in **English only** — hard rule
 
-### Out of Scope (v1)
+### Out of Scope (v1 — deferred to v2)
 
-- **Stripe / billing / plans** — desktop fork removed these; no `/api/stripe/*` served.
-- **Referrals** — desktop fork removed these; no `/api/referrals/*` served.
-- **Per-user quotas / `limitReached: true` enforcement** — corporate users are unlimited; ledger is observability only.
-- **Running our own Speaches / pyannote / GPU pool** — operator already has a LiteLLM Proxy with these wired up; we connect to it.
-- **Custom multi-LLM-provider abstraction layer** — LiteLLM is the abstraction; we don't reinvent it.
-- **SAML 2.0 / SCIM provisioning** — defer to v2; OIDC covers Google Workspace / Azure AD / Okta in v1.
+- **Stripe / billing / plans** — `POST /api/stripe/{checkout,portal,switch-plan,preview-switch}`. Upstream spec marks these as "Operational / quota endpoints (recommended)" with stub-as-503 acceptable. Corporate-internal v1 has no need.
+- **Referrals** — `GET /api/referrals/stats`, `POST /api/referrals/invite`, `GET /api/referrals/invites`. Same classification as Stripe.
+- **Per-user quota enforcement / `limitReached: true` returns** — schema preserved (always `false`); enforcement is v2 work.
+- **Custom multi-LLM provider abstraction layer beyond LiteLLM** — LiteLLM is itself the abstraction; reimplementing is yak-shaving.
+- **SAML 2.0 / SCIM provisioning** — OIDC covers Google Workspace / Azure AD / Okta in v1.
 - **Magic-link / passwordless email** — defer to v2.
-- **BYOK third-party AI keys (OpenAI/Anthropic/etc. direct from desktop)** — server has no role; if operator wants direct providers, they configure them in their LiteLLM.
-- **Google Calendar OAuth** — desktop talks to Google directly.
-- **Hidden / undocumented OpenWhispr endpoints** — corporate-fork wire surface is the contract.
-- **Live runtime trace validation tooling** — replaced by the conformance suite.
+- **BYOK third-party AI keys called from the desktop directly** — server has no role; if operator wants direct providers, they configure them in their LiteLLM.
+- **Google Calendar OAuth** — desktop talks to Google directly with embedded Desktop OAuth client.
+- **Hidden / undocumented OpenWhispr endpoints** — wire surface is exactly what the upstream spec enumerates.
+- **The actual frontend implementation** — v1 ships UI-SPEC only.
+- **Live runtime trace validation tooling** — replaced by the conformance test suite.
 - **OpenAPI / JSON-Schema generation** — defer to v2.
-- **Reference desktop client modifications** — the fork is owned and modified by the user; server only consumes its requests.
+- **Reference desktop client modifications** — we are wire-compatible by design.
+- **Locales beyond `en` + `ru` in v1** — establish framework first, expand later.
+- **Plaintext HTTP** — desktop never strips the URL scheme.
 
 ## Context
 
-- **Upstream client repo**: `/Users/dev/openwhispr` — already forked by the user; Stripe / referrals / quota UI removed; we're building the matching server.
-- **Authoritative wire spec (full upstream)**: `/Users/dev/openwhispr/docs/SELF_HOSTING.md`, `BACKEND_SPEC.md`, `OAUTH_SPEC.md` (1556 lines). The corporate-fork surface is a **subset**: subtract Stripe + referrals + quota-enforcement; everything else stays byte-compatible.
-- **LiteLLM target config**: `/Users/dev/openwhispr-server/speaches-audio.md` — describes the **already-running** corporate LiteLLM (ExampleCorp's `llm.internal.example.com`). Three audio routes (Whisper, pyannote pass-through, Speaches Realtime), one virtual key. We connect to such a deployment, we do not run it.
-- **Deployment target diversity**: docker-compose on a single VM or Helm on K8s. Both must yield the same wire surface and both connect to the operator's existing LiteLLM endpoint via `LITELLM_BASE_URL` + `LITELLM_VIRTUAL_KEY` (or admin master key for minting per-user keys).
-- **Frontend workflow**: I produce UI-SPEC; user runs Claude Design to generate visuals; I implement Next.js + shadcn/ui + Tailwind 4 to match the design.
+- **Upstream client repo**: `/Users/dev/openwhispr` — Electron desktop app with BYOK third-party AI and Better Auth client.
+- **Authoritative wire spec**: `/Users/dev/openwhispr/docs/SELF_HOSTING.md`, `BACKEND_SPEC.md`, `OAUTH_SPEC.md` (1556 lines). v1 implements the auth lifecycle + operational endpoints; defers the recommended-but-not-required Stripe/referrals to v2.
+- **LiteLLM target reference**: `/Users/dev/openwhispr-server/speaches-audio.md` — describes a real corporate LiteLLM deployment (ExampleCorp's `llm.internal.example.com`). Three audio routes (Whisper, pyannote pass-through, Speaches Realtime), one virtual key. We connect to such a deployment via env override; the OSS quickstart runs an equivalent topology with open-source models.
+- **Deployment paths**: docker-compose on a single VM (OSS quickstart, includes bundled LiteLLM) or Helm on K8s (cloud, optionally points at external LiteLLM).
+- **Multi-tenant data model**: even single-org installs use a single "default" tenant; keeps the data model uniform and unlocks future per-org installs without rewrite.
 
 ## Constraints
 
 - **Tech stack (server)**: Node.js 24 LTS + Fastify 5 + TypeScript + Better Auth + Drizzle + Postgres 17 + PgBouncer + Redis/Valkey + BullMQ — boring, well-staffed, multi-arch (amd64+arm64).
-- **Tech stack (frontend)**: Next.js 15 (App Router) + React 19 + TypeScript + Tailwind 4 + shadcn/ui v2.
+- **Tech stack (frontend)**: Next.js 15 (App Router) + React 19 + TypeScript + Tailwind 4 + shadcn/ui v2 — UI-SPEC target only in v1.
 - **Database**: PostgreSQL 17+ — non-negotiable.
-- **AI plane**: served by the operator's existing LiteLLM Proxy — server does not bundle it.
-- **Wire compatibility**: every endpoint we serve matches the corporate fork's expectations byte-for-byte. Endpoints we **don't** serve (Stripe/referrals) must be confirmed-removed in the fork.
+- **AI plane**: bundled LiteLLM ≥ v1.83.7-stable in default compose with open-source models; corporate operators env-override to point at their internal LiteLLM.
+- **Wire compatibility**: every endpoint we serve matches `BACKEND_SPEC.md` byte-for-byte (JSON shapes, status codes, error envelope, NDJSON streaming, channel-scheme echo, `set-auth-token` rotation).
 - **HTTPS only**: never plaintext HTTP on any externally reachable port.
-- **Concurrency**: 1000 active concurrent users, p95 latency budgets validated by load test.
-- **Source-artifact language**: **English only** for docs, code, comments, commit messages, identifiers, log keys.
+- **Concurrency**: 1000 active concurrent users single installation, p95 latency budgets validated by load test.
+- **Source-artifact language**: **English only** for docs, code, comments, commit messages, identifiers, log keys — hard rule.
 - **Runtime localization**: `en` + `ru` minimum from day one for UI copy, emails, end-user error messages.
 - **Engineering discipline (constitutional)**:
   - **Strict TDD** — tests precede production code.
-  - **GitHub Actions** is the only sanctioned CI; workflows in `.github/workflows/`.
-  - **Maximum test automation** — no human QA; coverage spans unit, integration, e2e, contract, load, security, migration, i18n, RLS-property tests.
+  - **GitHub Actions** is the only sanctioned CI; workflows in `.github/workflows/` from the first commit of phase 0.
+  - **Maximum test automation** — no human QA; coverage spans unit, integration (real services via testcontainers), e2e, contract (against `BACKEND_SPEC.md`), load (1000 concurrent), security (SAST + deps + container + secrets + license), migration safety, i18n completeness, RLS-isolation property tests.
 - **Open source**: every requirement ships with corresponding documentation; no closed/internal subsystems.
 
 ## Key Decisions
 
 | Decision | Rationale | Outcome |
 |----------|-----------|---------|
-| Wire-compatible only with the **corporate fork** of the desktop (no Stripe / no referrals / no quota enforcement) | The user already forked the desktop and removed those surfaces; implementing them server-side would be dead code | — Pending |
-| Server connects to an **existing** LiteLLM Proxy; does not bundle Speaches / GPUs / pyannote | The user already has a corporate LiteLLM deployment matching `speaches-audio.md`; bundling would duplicate effort and confuse operators | — Pending |
-| Usage ledger is **observability-only** (no enforcement / `limitReached` always false) | Corporate users are unlimited; we still want activity dashboards for ops/finance | — Pending |
-| Single-LiteLLM-endpoint provider model (no custom multi-LLM abstraction) | LiteLLM is itself the abstraction; reimplementing it is yak-shaving | — Pending |
-| **Frontend is implemented in v1**, against a Claude-Design output | User explicitly wants a current, polished UI generated by Claude Design from the UI-SPEC | — Pending |
-| Stack: Node 24 + Fastify 5 + Better Auth + Drizzle + Postgres 17 (server); Next.js 15 + Tailwind 4 + shadcn/ui v2 (frontend) | Modern, well-staffed, OSS-mainstream; Better Auth's wire shape already matches the desktop fork | — Pending |
-| Postgres + Redis as the only required infra services | Boring, ubiquitous, operator-friendly | — Pending |
-| Multi-tenancy data model retained, single "default" tenant in v1 | Cheap to keep; gives a future per-org install path without a rewrite | — Pending |
-| Email+password is first-class, no "dev mode" hidden flag | Corporate operators want this for fallback access; no reason to hide it | — Pending |
-| OIDC pluggable via Better Auth OAuth-Provider plugin | Covers Google Workspace / Azure AD / Okta / generic OIDC with one adapter | — Pending |
-| Open IdP scope (no allowlist) | The IdP is the gatekeeper; making the server enforce its own allowlist duplicates configuration | — Pending |
+| Wire-compatible with upstream `BACKEND_SPEC.md` | Desktop client is the canonical "user"; deviations break it transparently | — Pending |
+| v1 implements auth lifecycle + operational endpoints; defers Stripe/referrals to v2 | Upstream spec itself classifies them as "recommended" with stub-as-503 acceptable; corporate-internal install has no use | — Pending |
+| Bundle LiteLLM ≥1.83.7 with open-source models in default compose; allow env override to corporate LiteLLM | OSS quickstart works out of the box; corporate operators get one-flag override path; LiteLLM is itself the abstraction | — Pending |
+| Usage ledger is observability-only (no enforcement / `limitReached` always false) in v1 | Corporate users are unlimited; ledger still drives ops/finance dashboards | — Pending |
+| Single-LiteLLM-endpoint provider model — no parallel multi-LLM abstraction | LiteLLM solves this; reimplementing is yak-shaving | — Pending |
+| UI-SPEC over UI-implementation in v1 | User generates Claude Design from spec; implementation in v2 | — Pending |
+| Stack: Node 24 + Fastify 5 + Better Auth + Drizzle + Postgres 17 + PgBouncer + Valkey + BullMQ | Better Auth wire shape already matches the desktop; Fastify 5 NDJSON line-flush + WSS proxy + Better Auth integration are first-class; Drizzle works with PgBouncer transaction-mode where Prisma struggles | — Pending |
+| Multi-tenancy retained, single "default" tenant in v1 | Cheap to keep; gives per-org install path without rewrite | — Pending |
+| Email+password is first-class, not a hidden dev mode | Corporate fallback access; no reason to hide it | — Pending |
+| OIDC pluggable via Better Auth OAuth-Provider plugin | Covers Google Workspace / Azure AD / Okta / generic OIDC | — Pending |
+| Open IdP scope (no server-side allowlist) | The IdP is the gatekeeper; duplicating the allowlist makes config hard | — Pending |
 | All docs/code in English only | Mixed-language artifacts confuse contributors and tooling | — Pending |
-| Open-source from day one | OSS-grade docs and licensing decisions are easier to make at start than retrofit | — Pending |
-| Strict TDD constitutional | No QA testers; correctness must be enforced at the CI gate | — Pending |
-| GitHub Actions as the only CI | Operator audience already uses GitHub; runs reproducibly on hosted runners | — Pending |
+| Open-source from day one | OSS-grade docs and licensing decisions easier upfront than retrofit | — Pending |
+| Strict TDD constitutional | No QA testers; correctness must be CI-gated; TDD keeps the contract test suite honest | — Pending |
+| GitHub Actions as the only CI | Operator audience already uses GitHub; reproducible on hosted runners | — Pending |
 | Contract suite is the canonical conformance check | Replaces "live runtime trace validation"; runs against any deployed instance | — Pending |
 
 ## Evolution
@@ -211,4 +221,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-05-08 after corporate-scope pivot (Stripe/referrals/quota removed; Speaches externalized; frontend implementation included)*
+*Last updated: 2026-05-08 after baseline pivot (defer Stripe/referrals to v2; bundle LiteLLM with open-source models; env-override to corporate LiteLLM; UI-SPEC only in v1)*
