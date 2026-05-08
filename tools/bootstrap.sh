@@ -166,3 +166,25 @@ mv "${tmp}" "${ENV_FILE}"
 chmod 600 "${ENV_FILE}"
 
 echo "bootstrap: .env written (${#KEYS[@]} keys, ${GENERATED} generated, ${PRESERVED} preserved)"
+
+# Phase 4 (Plan 01-06): derive the X25519 public recipient at
+# keys/backup.age.pub from BACKUP_AGE_IDENTITY when both `age-keygen`
+# is available AND the public file is missing. Idempotent — never
+# overwrites an existing recipient (operators may have committed one
+# already, or rotated the identity manually).
+identity="${RESULT[BACKUP_AGE_IDENTITY]:-}"
+PUBKEY_FILE="${REPO_ROOT}/keys/backup.age.pub"
+if [[ -n "${identity}" && "${identity}" == AGE-SECRET-KEY-1* && ! -f "${PUBKEY_FILE}" ]]; then
+  if command -v age-keygen >/dev/null 2>&1; then
+    mkdir -p "${REPO_ROOT}/keys"
+    if printf '%s\n' "${identity}" | age-keygen -y > "${PUBKEY_FILE}.tmp" 2>/dev/null; then
+      mv "${PUBKEY_FILE}.tmp" "${PUBKEY_FILE}"
+      echo "bootstrap: wrote keys/backup.age.pub (X25519 recipient derived from BACKUP_AGE_IDENTITY)"
+    else
+      rm -f "${PUBKEY_FILE}.tmp"
+      echo "bootstrap: age-keygen -y refused BACKUP_AGE_IDENTITY — value is not a valid X25519 identity" >&2
+    fi
+  else
+    echo "bootstrap: age-keygen not in PATH; cannot derive keys/backup.age.pub. Install age (apt/brew/scoop) and re-run before using make backup." >&2
+  fi
+fi
