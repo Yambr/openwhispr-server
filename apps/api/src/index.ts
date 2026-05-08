@@ -8,6 +8,7 @@ export const buildApp = () => {
   return app;
 };
 
+/* v8 ignore start -- entry-point bootstrap; exercised in dev/prod, not in unit tests */
 if (import.meta.url === `file://${process.argv[1]}`) {
   const app = buildApp();
   const port = Number(process.env.PORT ?? 3000);
@@ -16,3 +17,4 @@ if (import.meta.url === `file://${process.argv[1]}`) {
     process.exit(1);
   });
 }
+/* v8 ignore stop */
