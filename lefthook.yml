@@ -1,0 +1,15 @@
+# Lefthook git hooks for openwhispr-server
+# Source: https://github.com/evilmartians/lefthook
+pre-commit:
+  parallel: true
+  commands:
+    biome:
+      glob: "*.{ts,tsx,js,jsx,json}"
+      run: pnpm exec biome check --apply {staged_files}
+      stage_fixed: true
+    english:
+      run: pnpm exec tsx tools/lint-english.ts
+commit-msg:
+  commands:
+    commitlint:
+      run: pnpm exec commitlint --edit {1}
