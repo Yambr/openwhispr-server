@@ -1,0 +1,14 @@
+# Phase 0 placeholder docker-compose.
+# Real services (Postgres 17, PgBouncer, Valkey, LiteLLM, faster-whisper,
+# pyannote, Speaches, the Fastify API) arrive Phase 1+.
+#
+# This file exists so `make up` succeeds on a fresh clone and so future
+# phases have a single canonical compose target to extend (CLAUDE.md
+# constraint #4: never ignore docker-compose).
+
+services:
+  placeholder:
+    image: alpine:3
+    container_name: openwhispr-placeholder
+    command: ["sh", "-c", "echo 'docker-compose skeleton: services land Phase 1'; sleep 86400"]
+    restart: unless-stopped
