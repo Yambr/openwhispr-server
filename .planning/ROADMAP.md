@@ -64,7 +64,13 @@ A drop-in OpenWhispr backend any organization can self-host — open-source out 
   4. `make backup` produces a KEK/DEK-encrypted dump; `make restore` reconstructs the database in one command; both run in CI on every `migrations/` change, including forward-apply + rollback verification on real Postgres.
   5. MinIO is reachable on the compose network with a per-tenant bucket-prefix convention documented; sensitive columns are encrypted at rest via the KEK/DEK envelope (KEK from env / Vault / KMS adapter).
   6. Tests written first (TDD); all CI checks green.
-**Plans**: TBD
+**Plans**: 6 plans (3 waves)
+- [ ] 01-01-PLAN.md — Compose stack expansion (10 services with healthchecks) + observability config + Traefik file provider + PgBouncer transaction-mode (Wave 1)
+- [ ] 01-02-PLAN.md — bootstrap.sh refuse-to-start gate + entrypoint defense-in-depth + deny-list self-test (Wave 1)
+- [ ] 01-03-PLAN.md — Drizzle schema + first migration with FORCE RLS + role init (openwhispr_owner BYPASSRLS / openwhispr_app RLS-subject) + two-pool client factory (Wave 2)
+- [ ] 01-04-PLAN.md — Tenant-context middleware (set_config app.tenant_id) + Fastify hook + KEK/DEK envelope encryption + KeyProvider env/Vault/KMS (Wave 2)
+- [ ] 01-05-PLAN.md — RLS-introspection lint + TEST-RLS-01 property test (fast-check 100 tenant pairs through PgBouncer) + GHA lint-rls/test-migration jobs + branch protection (Wave 3)
+- [ ] 01-06-PLAN.md — Backup/restore via age envelope encryption + nightly round-trip + operations.md + storage.md (Wave 3)
 **UI hint**: no
 
 ### Phase 2: Auth + Wire-API Skeleton + Conformance Harness
@@ -194,8 +200,8 @@ A drop-in OpenWhispr backend any organization can self-host — open-source out 
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 0. Repo Bootstrap & Constitutional CI | 0/6 | Planned | - |
-| 1. Core Infra & Multi-Tenant Data | 0/0 | Not started | - |
+| 0. Repo Bootstrap & Constitutional CI | 5/6 | In progress | - |
+| 1. Core Infra & Multi-Tenant Data | 0/6 | Planned | - |
 | 2. Auth + Wire-API Skeleton + Conformance | 0/0 | Not started | - |
 | 3. LiteLLM Integration + Bundled OSS Models | 0/0 | Not started | - |
 | 4. Streaming + Realtime | 0/0 | Not started | - |
@@ -304,3 +310,4 @@ A drop-in OpenWhispr backend any organization can self-host — open-source out 
 
 ---
 *Roadmap created: 2026-05-08 after baseline pivot (defer Stripe/referrals/quotas to v2; bundle LiteLLM with OSS models; UI-SPEC only)*
+*Last updated: 2026-05-09 — Phase 1 plan list populated (6 plans across 3 waves).*
