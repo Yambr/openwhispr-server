@@ -136,3 +136,147 @@ jobs:
           pnpm exec stryker --version
           pnpm exec commitlint --version
           pnpm exec lefthook version
+
+  # === Plan 05: RLS-introspection lint against a migrated Postgres. ===
+  # Connects directly to the postgres service on 5432 (NOT through PgBouncer
+  # — RESEARCH-TOOLING Pitfall 3); PgBouncer is intentionally absent from
+  # this job. The lint asserts that every tenant-scoped table has FORCE
+  # RLS plus a tenant_id-referencing policy.
+  lint-rls:
+    runs-on: ubuntu-24.04
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: postgres_super
+          POSTGRES_PASSWORD: super-pw
+          POSTGRES_DB: openwhispr
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres_super -d openwhispr"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    env:
+      POSTGRES_OWNER_PASSWORD: owner-pw
+      POSTGRES_APP_PASSWORD: app-pw
+    steps:
+      - uses: step-security/harden-runner@a5ad31d6a139d249332a2605b85202e8c0b78450  # v2.19.1
+        with: { egress-policy: audit }
+      - uses: actions/checkout@v5
+        with: { fetch-depth: 0 }
+      - uses: pnpm/action-setup@v4
+        with: { version: 11.0.8 }
+      - uses: actions/setup-node@v5
+        with: { node-version: '24', cache: 'pnpm' }
+      - run: pnpm install --frozen-lockfile
+      - name: Bootstrap roles (mirror init/00-roles.sql)
+        env:
+          PGPASSWORD: super-pw
+        run: |
+          psql -h 127.0.0.1 -U postgres_super -d openwhispr -v ON_ERROR_STOP=1 <<SQL
+          CREATE ROLE openwhispr_owner WITH LOGIN BYPASSRLS PASSWORD '${POSTGRES_OWNER_PASSWORD}';
+          CREATE ROLE openwhispr_app   WITH LOGIN          PASSWORD '${POSTGRES_APP_PASSWORD}';
+          ALTER DATABASE openwhispr OWNER TO openwhispr_owner;
+          ALTER SCHEMA public OWNER TO openwhispr_owner;
+          DO \$\$
+          BEGIN
+            IF (SELECT rolbypassrls FROM pg_roles WHERE rolname = 'openwhispr_app') THEN
+              RAISE EXCEPTION 'openwhispr_app must NOT have BYPASSRLS';
+            END IF;
+          END \$\$;
+          SQL
+      - name: Apply migrations as owner
+        env:
+          DATABASE_URL_OWNER: postgres://openwhispr_owner:${{ env.POSTGRES_OWNER_PASSWORD }}@127.0.0.1:5432/openwhispr
+        run: pnpm migrate
+      - name: Run RLS-introspection lint
+        env:
+          DATABASE_URL: postgres://openwhispr_owner:${{ env.POSTGRES_OWNER_PASSWORD }}@127.0.0.1:5432/openwhispr
+        run: pnpm lint:rls
+
+  # === Plan 05: forward-apply + drop + forward-apply schema diff. ===
+  # Migrations need session-level features (advisory locks, CREATE EXTENSION),
+  # so this job connects directly to Postgres on 5432 without PgBouncer
+  # (RESEARCH-TOOLING anti-pattern: never run migrations through transaction
+  # pooling). The schema-only pg_dump on each forward apply must match
+  # byte-for-byte (after preamble normalization) — proving migration idempotency
+  # and de-facto rollback equivalence.
+  test-migration:
+    runs-on: ubuntu-24.04
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: postgres_super
+          POSTGRES_PASSWORD: super-pw
+          POSTGRES_DB: openwhispr
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres_super -d openwhispr"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    env:
+      POSTGRES_OWNER_PASSWORD: owner-pw
+      POSTGRES_APP_PASSWORD: app-pw
+    steps:
+      - uses: step-security/harden-runner@a5ad31d6a139d249332a2605b85202e8c0b78450  # v2.19.1
+        with: { egress-policy: audit }
+      - uses: actions/checkout@v5
+        with: { fetch-depth: 0 }
+      - uses: pnpm/action-setup@v4
+        with: { version: 11.0.8 }
+      - uses: actions/setup-node@v5
+        with: { node-version: '24', cache: 'pnpm' }
+      - run: pnpm install --frozen-lockfile
+      - name: Bootstrap roles (mirror init/00-roles.sql)
+        env:
+          PGPASSWORD: super-pw
+        run: |
+          psql -h 127.0.0.1 -U postgres_super -d openwhispr -v ON_ERROR_STOP=1 <<SQL
+          CREATE ROLE openwhispr_owner WITH LOGIN BYPASSRLS PASSWORD '${POSTGRES_OWNER_PASSWORD}';
+          CREATE ROLE openwhispr_app   WITH LOGIN          PASSWORD '${POSTGRES_APP_PASSWORD}';
+          ALTER DATABASE openwhispr OWNER TO openwhispr_owner;
+          ALTER SCHEMA public OWNER TO openwhispr_owner;
+          SQL
+      - name: Forward apply (round 1)
+        env:
+          DATABASE_URL_OWNER: postgres://openwhispr_owner:${{ env.POSTGRES_OWNER_PASSWORD }}@127.0.0.1:5432/openwhispr
+        run: pnpm migrate
+      - name: pg_dump schema-only (pre)
+        env:
+          PGPASSWORD: ${{ env.POSTGRES_OWNER_PASSWORD }}
+        run: |
+          pg_dump --schema-only --no-owner --no-privileges \
+            -h 127.0.0.1 -U openwhispr_owner -d openwhispr > /tmp/schema-pre.sql
+      - name: Drop public + _meta and forward apply (round 2)
+        env:
+          PGPASSWORD: ${{ env.POSTGRES_OWNER_PASSWORD }}
+          DATABASE_URL_OWNER: postgres://openwhispr_owner:${{ env.POSTGRES_OWNER_PASSWORD }}@127.0.0.1:5432/openwhispr
+        run: |
+          psql -h 127.0.0.1 -U openwhispr_owner -d openwhispr -v ON_ERROR_STOP=1 <<SQL
+          DROP SCHEMA public CASCADE;
+          CREATE SCHEMA public;
+          ALTER SCHEMA public OWNER TO openwhispr_owner;
+          DROP SCHEMA IF EXISTS _meta CASCADE;
+          SQL
+          pnpm migrate
+      - name: pg_dump schema-only (post)
+        env:
+          PGPASSWORD: ${{ env.POSTGRES_OWNER_PASSWORD }}
+        run: |
+          pg_dump --schema-only --no-owner --no-privileges \
+            -h 127.0.0.1 -U openwhispr_owner -d openwhispr > /tmp/schema-post.sql
+      - name: Diff schema dumps (must be empty after preamble normalization)
+        run: |
+          # pg_dump preamble lines (timestamps + per-dump \restrict tokens) are
+          # nondeterministic and must be filtered before comparison. The structural
+          # body of the schema is what we assert is byte-stable.
+          normalize() {
+            grep -Ev '^-- (Dumped|Started on|Completed on)' "$1" \
+              | grep -Ev '^\\(restrict|unrestrict) '
+          }
+          diff -u <(normalize /tmp/schema-pre.sql) <(normalize /tmp/schema-post.sql)
