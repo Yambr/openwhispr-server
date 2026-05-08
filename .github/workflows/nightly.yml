@@ -34,3 +34,82 @@ jobs:
         with: { node-version: '24', cache: 'pnpm' }
       - run: pnpm install --frozen-lockfile
       - run: pnpm audit --prod || true   # advisory; Dependabot is the blocking path
+
+  backup-roundtrip:
+    # Phase 1 / Plan 06: full age-encrypted pg_dump round-trip against a
+    # real Postgres 17 service container. Asserts schema-equivalence
+    # between the pre-drop and post-restore snapshots so client-major /
+    # server-major drift in age or pg_dump is caught nightly.
+    runs-on: ubuntu-24.04
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_PASSWORD: test
+          POSTGRES_DB: openwhispr_test
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: step-security/harden-runner@a5ad31d6a139d249332a2605b85202e8c0b78450  # v2.19.1
+        with: { egress-policy: audit }
+      - uses: actions/checkout@v5
+      - uses: pnpm/action-setup@v4
+        with: { version: 11.0.8 }
+      - uses: actions/setup-node@v5
+        with: { node-version: '24', cache: 'pnpm' }
+      - run: pnpm install --frozen-lockfile
+      - name: Install age and postgresql client 17
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y age postgresql-client-17
+      - name: Setup application roles
+        env:
+          PGPASSWORD: test
+        run: |
+          psql -h localhost -U postgres -d openwhispr_test \
+            -c "CREATE ROLE openwhispr_owner WITH LOGIN BYPASSRLS PASSWORD 'test'"
+          psql -h localhost -U postgres -d openwhispr_test \
+            -c "CREATE ROLE openwhispr_app WITH LOGIN PASSWORD 'test'"
+          psql -h localhost -U postgres -d openwhispr_test \
+            -c "ALTER DATABASE openwhispr_test OWNER TO openwhispr_owner"
+      - name: Forward apply migrations
+        env:
+          DATABASE_URL_OWNER: postgresql://openwhispr_owner:test@localhost:5432/openwhispr_test
+        run: pnpm migrate
+      - name: Restore age identity from secret and derive recipient
+        run: |
+          mkdir -p ~/.age
+          printf '%s\n' "${{ secrets.BACKUP_AGE_IDENTITY }}" > ~/.age/key.txt
+          chmod 600 ~/.age/key.txt
+          mkdir -p keys
+          age-keygen -y ~/.age/key.txt > keys/backup.age.pub
+      - name: Backup
+        env:
+          DATABASE_URL_OWNER: postgresql://openwhispr_owner:test@localhost:5432/openwhispr_test
+        run: bash scripts/backup/make-backup.sh
+      - name: Snapshot pre-drop schema
+        env:
+          PGPASSWORD: test
+        run: pg_dump --schema-only -h localhost -U openwhispr_owner openwhispr_test > /tmp/schema-pre.sql
+      - name: Drop and recreate database
+        env:
+          PGPASSWORD: test
+        run: |
+          psql -h localhost -U postgres -c "DROP DATABASE openwhispr_test"
+          psql -h localhost -U postgres -c "CREATE DATABASE openwhispr_test OWNER openwhispr_owner"
+      - name: Restore from backup
+        env:
+          DATABASE_URL_OWNER: postgresql://openwhispr_owner:test@localhost:5432/openwhispr_test
+          BACKUP_AGE_IDENTITY_FILE: /home/runner/.age/key.txt
+        run: |
+          BACKUP=$(ls -1 backups/*.dump.age | head -n 1) bash scripts/backup/make-restore.sh
+      - name: Snapshot post-restore schema
+        env:
+          PGPASSWORD: test
+        run: pg_dump --schema-only -h localhost -U openwhispr_owner openwhispr_test > /tmp/schema-post.sql
+      - name: Assert schema-equivalent
+        run: diff -u /tmp/schema-pre.sql /tmp/schema-post.sql
