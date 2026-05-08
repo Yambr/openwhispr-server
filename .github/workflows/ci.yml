@@ -114,3 +114,25 @@ jobs:
       - run: pnpm lint:tdd
 
   # === Plan 05: harness-self-check job appended below ===
+  harness-self-check:
+    runs-on: ubuntu-24.04
+    needs: []
+    steps:
+      - uses: step-security/harden-runner@a5ad31d6a139d249332a2605b85202e8c0b78450  # v2.19.1
+        with: { egress-policy: audit }
+      - uses: actions/checkout@v5
+        with: { fetch-depth: 0 }
+      - uses: pnpm/action-setup@v4
+        with: { version: 11.0.8 }
+      - uses: actions/setup-node@v5
+        with: { node-version: '24', cache: 'pnpm' }
+      - run: pnpm install --frozen-lockfile
+      - name: Run constitutional self-tests
+        run: pnpm vitest run tests/self-tests/
+      - name: Tooling version sanity check
+        run: |
+          pnpm exec biome --version
+          pnpm exec vitest --version
+          pnpm exec stryker --version
+          pnpm exec commitlint --version
+          pnpm exec lefthook version

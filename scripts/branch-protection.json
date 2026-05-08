@@ -11,7 +11,8 @@
       "gitleaks",
       "trivy-fs",
       "codeql",
-      "license-scan"
+      "license-scan",
+      "harness-self-check"
     ]
   },
   "enforce_admins": true,
