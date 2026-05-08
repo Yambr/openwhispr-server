@@ -1,0 +1,4 @@
+# Empty cert directory committed for Traefik's read-only mount.
+# Plan 02 bootstrap.sh writes local.crt and local.key here (mkcert if
+# available, openssl self-signed fallback). Generated artifacts are
+# gitignored via the repo-root .gitignore *.key/*.pem rules.

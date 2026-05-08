@@ -3,7 +3,8 @@
 # Future-phase targets stub-fail with a phase-N pointer.
 
 .PHONY: dev test lint format typecheck up down clean help \
-        contract-test load-test seed backup restore migrate
+        contract-test load-test seed backup restore migrate \
+        logs ps restart
 
 help:
 	@grep -E '^[a-zA-Z_-]+:' Makefile | awk -F: '{print $$1}' | sort -u
@@ -25,10 +26,19 @@ typecheck:
 	pnpm typecheck
 
 up:
-	docker compose up -d
+	docker compose --profile default up -d
 
 down:
 	docker compose down
+
+logs:
+	docker compose logs -f
+
+ps:
+	docker compose ps
+
+restart:
+	$(MAKE) down && $(MAKE) up
 
 clean:
 	rm -rf node_modules apps/*/node_modules packages/*/node_modules \

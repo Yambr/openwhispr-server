@@ -1,0 +1,15 @@
+# Grafana datasource provisioning — Mimir (metrics, Prometheus-compatible).
+# Mimir always requires the X-Scope-OrgID header on read queries even when
+# auth is disabled; we pin the single-tenant value `openwhispr` here and
+# in the OTel Collector's prometheusremotewrite exporter.
+apiVersion: 1
+datasources:
+  - name: Mimir
+    type: prometheus
+    access: proxy
+    uid: mimir
+    url: http://mimir:9009/prometheus
+    jsonData:
+      httpHeaderName1: 'X-Scope-OrgID'
+    secureJsonData:
+      httpHeaderValue1: 'openwhispr'

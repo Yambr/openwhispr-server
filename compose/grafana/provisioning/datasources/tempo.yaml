@@ -1,0 +1,18 @@
+# Grafana datasource provisioning — Tempo (traces).
+# Auto-loaded on Grafana startup from /etc/grafana/provisioning/datasources/.
+# Cross-links to the loki and mimir datasources for traces-to-logs and
+# traces-to-metrics navigation in the Explore UI.
+apiVersion: 1
+datasources:
+  - name: Tempo
+    type: tempo
+    access: proxy
+    uid: tempo
+    url: http://tempo:3200
+    jsonData:
+      tracesToLogsV2:
+        datasourceUid: loki
+      tracesToMetrics:
+        datasourceUid: mimir
+      serviceMap:
+        datasourceUid: mimir

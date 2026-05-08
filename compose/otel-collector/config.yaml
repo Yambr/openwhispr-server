@@ -1,0 +1,61 @@
+# OpenTelemetry Collector (contrib distro 0.151.0) — Phase 1 minimal pipeline.
+# Receives OTLP from the API container, batches, and fans out:
+#   traces  -> Tempo (otlp/grpc)
+#   logs    -> Loki  (loki exporter)
+#   metrics -> Mimir (prometheusremotewrite, with X-Scope-OrgID)
+#
+# Mimir requires the X-Scope-OrgID header even in single-tenant mode
+# (see grafana.com/docs/mimir multi-tenancy notes); the same header value
+# is repeated on the Grafana datasource read path.
+
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+      http:
+        endpoint: 0.0.0.0:4318
+
+processors:
+  batch:
+    timeout: 5s
+    send_batch_size: 512
+
+exporters:
+  otlp/tempo:
+    endpoint: tempo:4317
+    tls:
+      insecure: true
+
+  loki:
+    endpoint: http://loki:3100/loki/api/v1/push
+    default_labels_enabled:
+      exporter: false
+      job: true
+
+  prometheusremotewrite:
+    endpoint: http://mimir:9009/api/v1/push
+    tls:
+      insecure: true
+    headers:
+      X-Scope-OrgID: openwhispr
+
+extensions:
+  health_check:
+    endpoint: 0.0.0.0:13133
+
+service:
+  extensions: [health_check]
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [otlp/tempo]
+    logs:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [loki]
+    metrics:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [prometheusremotewrite]

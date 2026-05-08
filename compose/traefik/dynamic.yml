@@ -1,0 +1,41 @@
+# Traefik v3 dynamic config — file provider routes for the three .localhost
+# vhosts. The api router targets the Phase 0 Fastify placeholder on port
+# 3000; Phase 2 wires the real API container. Plan 02's bootstrap.sh writes
+# /certs/local.crt + /certs/local.key (mkcert preferred, openssl fallback).
+
+http:
+  routers:
+    api:
+      rule: "Host(`api.localhost`)"
+      service: api-svc
+      entryPoints: [websecure]
+      tls: {}
+    grafana:
+      rule: "Host(`grafana.localhost`)"
+      service: grafana-svc
+      entryPoints: [websecure]
+      tls: {}
+    minio-console:
+      rule: "Host(`minio-console.localhost`)"
+      service: minio-console-svc
+      entryPoints: [websecure]
+      tls: {}
+
+  services:
+    api-svc:
+      loadBalancer:
+        servers:
+          - url: "http://api:3000"
+    grafana-svc:
+      loadBalancer:
+        servers:
+          - url: "http://grafana:3000"
+    minio-console-svc:
+      loadBalancer:
+        servers:
+          - url: "http://minio:9001"
+
+tls:
+  certificates:
+    - certFile: /certs/local.crt
+      keyFile: /certs/local.key
