@@ -26,15 +26,27 @@ importers:
       '@stryker-mutator/vitest-runner':
         specifier: 9.6.1
         version: 9.6.1(@stryker-mutator/core@9.6.1(@types/node@25.6.2))(vitest@4.1.5)
+      '@testcontainers/postgresql':
+        specifier: 11.14.0
+        version: 11.14.0
       '@types/node':
         specifier: 25.6.2
         version: 25.6.2
+      '@types/pg':
+        specifier: 8.20.0
+        version: 8.20.0
       '@vitest/coverage-v8':
         specifier: 4.1.5
         version: 4.1.5(vitest@4.1.5)
+      drizzle-orm:
+        specifier: 0.45.2
+        version: 0.45.2(@types/pg@8.20.0)(pg@8.20.0)
       lefthook:
         specifier: 2.1.6
         version: 2.1.6
+      pg:
+        specifier: 8.20.0
+        version: 8.20.0
       tsup:
         specifier: 8.5.1
         version: 8.5.1(jiti@2.6.1)(postcss@8.5.14)(tsx@4.21.0)(typescript@6.0.3)(yaml@2.8.4)

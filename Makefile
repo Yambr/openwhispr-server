@@ -2,7 +2,7 @@
 # Phase 0: implements dev/test/lint/format/typecheck/up/down/clean/help.
 # Future-phase targets stub-fail with a phase-N pointer.
 
-.PHONY: dev test lint format typecheck up down clean help \
+.PHONY: dev test lint lint-rls format typecheck up down clean help \
         contract-test load-test seed backup restore migrate migrate-rollback \
         logs ps restart
 
@@ -18,6 +18,9 @@ test:
 lint:
 	pnpm lint
 	pnpm lint:english
+
+lint-rls:
+	pnpm exec tsx tools/lint-rls.ts
 
 format:
 	pnpm format
