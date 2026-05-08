@@ -36,6 +36,7 @@
     "tsup": "8.5.1",
     "tsx": "latest",
     "typescript": "6.0.3",
-    "vitest": "4.1.5"
+    "vitest": "4.1.5",
+    "yaml": "^2.8.4"
   }
 }
