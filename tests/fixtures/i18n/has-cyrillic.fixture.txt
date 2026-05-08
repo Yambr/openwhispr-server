@@ -1,0 +1,4 @@
+# Negative-test fixture for tools/lint-english.ts (Plan 05 self-test).
+# This file is in the allowlist (tests/fixtures/i18n/**); Cyrillic is
+# expected and required here. Do NOT remove the Cyrillic line below.
+привет
