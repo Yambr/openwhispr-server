@@ -1,0 +1,139 @@
+#!/usr/bin/env -S pnpm exec tsx
+/**
+ * lint-english.ts — Standalone Cyrillic-codepoint scanner.
+ *
+ * Enforces DOCS-09 (English-only source artifacts). Scans the configured
+ * working directory (default: process.cwd()) for source files containing
+ * Cyrillic codepoints in the ranges:
+ *   - U+0400..U+04FF (Cyrillic)
+ *   - U+0500..U+052F (Cyrillic Supplement)
+ *
+ * The scope is the repo working tree only. Symlinks are not followed
+ * outside cwd. Files under packages/i18n/locales/** and
+ * tests/fixtures/i18n/** are allowlisted (Cyrillic permitted there).
+ *
+ * Exit codes:
+ *   0 — no Cyrillic found in any non-allowlisted file
+ *   1 — at least one offender; each is printed to stderr as
+ *       file:line:col preview
+ *   2 — internal error during scan
+ *
+ * Usage:
+ *   pnpm exec tsx tools/lint-english.ts [rootDir]
+ *
+ * NOTE: This source MUST contain no literal Cyrillic codepoints — the
+ * regex is built exclusively from \u escapes so the script does not
+ * self-flag.
+ */
+import { readFileSync, realpathSync } from 'node:fs';
+import { glob } from 'node:fs/promises';
+import { resolve, sep } from 'node:path';
+import { exit } from 'node:process';
+
+// Cyrillic (U+0400..U+04FF) + Cyrillic Supplement (U+0500..U+052F).
+// Built only from \u escapes to keep this source ASCII-clean.
+const CYRILLIC = /[\u0400-\u04FF\u0500-\u052F]/;
+
+const PATTERNS = [
+  '**/*.ts',
+  '**/*.tsx',
+  '**/*.js',
+  '**/*.jsx',
+  '**/*.cjs',
+  '**/*.mjs',
+  '**/*.json',
+  '**/*.md',
+  '**/*.mdx',
+  '**/*.yaml',
+  '**/*.yml',
+];
+
+const IGNORE = [
+  '**/node_modules/**',
+  '**/dist/**',
+  '**/coverage/**',
+  '**/.stryker-tmp/**',
+  '**/reports/**',
+  '**/.git/**',
+  '**/pnpm-lock.yaml',
+  'packages/i18n/locales/**',
+  'tests/fixtures/i18n/**',
+];
+
+interface Offender {
+  file: string;
+  line: number;
+  col: number;
+  preview: string;
+}
+
+async function main(): Promise<void> {
+  const rawCwd = process.argv[2] ?? process.cwd();
+  const cwd = resolve(rawCwd);
+  // Resolve to a real path so symlink chicanery is normalized; reject if the
+  // resolved path is not the same prefix as cwd (defense-in-depth).
+  const realCwd = realpathSync(cwd);
+  if (realCwd !== cwd) {
+    // Allowed (e.g., /var on macOS resolves to /private/var); just use realCwd.
+  }
+
+  const offenders: Offender[] = [];
+  const seen = new Set<string>();
+  let scanned = 0;
+
+  for (const pattern of PATTERNS) {
+    // Node 24 native glob; cwd-rooted; exclude list applied per call.
+    for await (const file of glob(pattern, { cwd: realCwd, exclude: IGNORE })) {
+      const rel = typeof file === 'string' ? file : String(file);
+      if (seen.has(rel)) continue;
+      seen.add(rel);
+
+      const full = resolve(realCwd, rel);
+      // Reject paths that escape the root (e.g., via traversal in symlinks).
+      if (!full.startsWith(realCwd + sep) && full !== realCwd) {
+        continue;
+      }
+
+      let text: string;
+      try {
+        text = readFileSync(full, 'utf8');
+      } catch {
+        continue;
+      }
+      scanned += 1;
+
+      const lines = text.split('\n');
+      for (let i = 0; i < lines.length; i += 1) {
+        const lineText = lines[i];
+        const m = CYRILLIC.exec(lineText);
+        if (m && m.index !== undefined) {
+          offenders.push({
+            file: rel,
+            line: i + 1,
+            col: m.index + 1,
+            preview: lineText.trim().slice(0, 80),
+          });
+        }
+      }
+    }
+  }
+
+  if (offenders.length > 0) {
+    process.stderr.write(
+      `English-only violation: ${offenders.length} occurrence(s) in ${realCwd}\n`,
+    );
+    for (const o of offenders) {
+      process.stderr.write(`  ${o.file}:${o.line}:${o.col}  ${o.preview}\n`);
+    }
+    exit(1);
+  }
+
+  process.stdout.write(
+    `English-only check passed: ${scanned} file(s) scanned in ${realCwd}\n`,
+  );
+}
+
+main().catch((err) => {
+  process.stderr.write(`lint-english: internal error: ${String(err)}\n`);
+  exit(2);
+});
