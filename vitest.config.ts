@@ -1,4 +1,4 @@
-import { defineConfig } from 'vitest/config';
+import { defineConfig } from "vitest/config";
 
 // Vitest 4 root config for the pnpm monorepo. Discovers tests across all
 // workspaces and enforces v8 native coverage thresholds.
@@ -12,17 +12,20 @@ import { defineConfig } from 'vitest/config';
 export default defineConfig({
   test: {
     coverage: {
-      provider: 'v8',
-      reporter: ['text', 'json-summary', 'json', 'lcov'],
-      reportsDirectory: './coverage',
-      include: ['apps/**/src/**/*.ts', 'packages/**/src/**/*.ts'],
+      provider: "v8",
+      reporter: ["text", "json-summary", "json", "lcov"],
+      reportsDirectory: "./coverage",
+      include: ["apps/**/src/**/*.ts", "packages/**/src/**/*.ts"],
       exclude: [
-        '**/*.test.ts',
-        '**/*.spec.ts',
-        '**/*.gen.ts',
-        '**/dist/**',
-        '**/node_modules/**',
-        'packages/i18n/locales/**',
+        "**/*.test.ts",
+        "**/*.spec.ts",
+        "**/*.gen.ts",
+        "**/dist/**",
+        "**/node_modules/**",
+        "packages/i18n/locales/**",
+        "tools/**",
+        "tests/**",
+        "scripts/**",
       ],
       thresholds: {
         lines: 85,
