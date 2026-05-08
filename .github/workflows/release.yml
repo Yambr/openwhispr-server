@@ -1,0 +1,12 @@
+name: Release
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  placeholder:
+    runs-on: ubuntu-24.04
+    steps:
+      - run: echo "Release workflow lands in Phase 9 (Helm Chart and Cloud Deploy)"
