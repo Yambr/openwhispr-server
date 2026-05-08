@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.83.7
 milestone_name: milestone
 status: unknown
-last_updated: "2026-05-08T23:41:32.173Z"
+last_updated: "2026-05-08T23:45:42.413Z"
 progress:
   total_phases: 11
-  completed_phases: 1
+  completed_phases: 2
   total_plans: 12
-  completed_plans: 11
-  percent: 92
+  completed_plans: 12
+  percent: 100
 ---
 
 # Project State: OpenWhispr Server
@@ -20,20 +20,20 @@ progress:
 
 **Core value:** A drop-in OpenWhispr backend any organization can self-host — open-source out of the box, corporate-LiteLLM-ready by env override.
 
-**Current focus:** Phase 1 — Core Infra & Multi-Tenant Data (Wave 2 in progress)
+**Current focus:** Phase 1 complete; ready for Phase 2 (auth + wire-shape).
 
 ## Current Position
 
 | Field | Value |
 |-------|-------|
 | Milestone | v1 |
-| Phase | 1 — Core Infra & Multi-Tenant Data |
-| Plan | 03 complete; next: 04 (tenant-context + KEK/DEK envelope encryption) |
-| Status | Phase 1 in progress (3 of 6 plans complete) |
-| Phase progress | 0/11 phases complete; 9/12 plans complete (75%) |
+| Phase | 1 — Core Infra & Multi-Tenant Data (COMPLETE) |
+| Plan | 06 complete (Phase 1 capstone — backup/restore + ops docs) |
+| Status | Phase 1 closed; ready to begin Phase 2 |
+| Phase progress | 2/11 phases complete; 12/12 plans complete (100%) |
 
 ```
-[ ][ ][ ][ ][ ][ ][ ][ ][ ][ ][ ]
+[X][X][ ][ ][ ][ ][ ][ ][ ][ ][ ]
  0  1  2  3  4  5  6  7  8  9  10
 ```
 
@@ -58,6 +58,7 @@ progress:
 | Phase 01 P03 | 30min | 2 tasks | 18 files |
 | Phase 01 P04 | 30min | 2 tasks | 13 files |
 | Phase 01 P05 | 10min | 3 tasks tasks | 8 files files |
+| Phase 01 P06 | 30min | 2 tasks | 8 files |
 
 ## Accumulated Context
 
@@ -83,6 +84,9 @@ progress:
 - drizzle-kit 0.31.10 does NOT emit ENABLE/FORCE RLS or CREATE POLICY natively (assumption A1 verified empirically) — first migration is hand-augmented after generation; pattern continues for future migrations with Plan 05 RLS lint catching drift.
 - Migrations bookkeeping (`__drizzle_migrations`) lives in dedicated `_meta` schema, not `public` — keeps RLS lint scope clean and isolates from `openwhispr_app` role.
 - Two-pool client factory: `makeOwnerDb` connects DIRECT to Postgres:5432 (BYPASSRLS, DDL only); `makeAppDb` via PgBouncer (RLS-subject); migrate runner refuses to start without `DATABASE_URL_OWNER` to prevent accidental DDL through PgBouncer.
+- Backup encryption uses age (X25519 envelope) with `BACKUP_AGE_IDENTITY` separate from `MASTER_KEK` — different crypto primitives (X25519 vs AES-256), independent rotation cadences; conflating them couples unrelated rotation policies.
+- `make-restore.sh` refuses on non-empty target (information_schema.tables count > 0) rather than CASCADE-dropping — accidental clobber prevention outweighs ergonomic cost; explicit DROP DATABASE override path documented in operations.md.
+- MinIO single-bucket layout `openwhispr` with key prefix `tenants/<tenant-uuid>/<resource-type>/<resource-id>` (D-27/D-28); v1 relies on app-tier prefix discipline, MinIO IAM enforcement deferred to Phase 6+.
 
 ### Open Todos (Roadmap-level)
 
@@ -106,10 +110,10 @@ progress:
 **Next session entry point:**
 
 ```
-/gsd-execute-phase 1   # continue with Plan 04 (tenant-context + KEK/DEK)
+/gsd-plan-phase 2     # Phase 2: auth lifecycle + wire-shape (Better Auth)
 ```
 
-**Last session stopped at:** Completed 01-03-PLAN.md (Drizzle schema + first migration with FORCE RLS + role init landed; 8/8 testcontainers-backed tests green).
+**Last session stopped at:** Completed 01-06-PLAN.md (backup/restore via age envelope encryption; nightly round-trip CI; ops + storage docs). Phase 1 closed — all 6 plans landed, all Phase-1 requirements (DATA-01..02, DATA-05..07, PROVIDER-02, TEST-MIGRATION-01, TEST-RLS-01) complete.
 
 **Files of record:**
 
