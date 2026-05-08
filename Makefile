@@ -3,7 +3,7 @@
 # Future-phase targets stub-fail with a phase-N pointer.
 
 .PHONY: dev test lint format typecheck up down clean help \
-        contract-test load-test seed backup restore migrate \
+        contract-test load-test seed backup restore migrate migrate-rollback \
         logs ps restart
 
 help:
@@ -60,4 +60,7 @@ restore:
 	@echo "restore target lands in Phase 1"; exit 1
 
 migrate:
-	@echo "migrate target lands in Phase 1"; exit 1
+	pnpm --filter @openwhispr/data exec tsx src/migrate.ts
+
+migrate-rollback:
+	pnpm --filter @openwhispr/data exec drizzle-kit drop --config=drizzle.config.ts

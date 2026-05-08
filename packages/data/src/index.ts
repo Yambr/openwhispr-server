@@ -1,8 +1,8 @@
 // @openwhispr/data — Phase 1 Wave 2 surface.
 //
-// Plan 03 (this) lands schema + two-pool client factory + the first migration.
-// Plan 04 will add `tenant-context` and the `encryption/` envelope helpers
-// and re-export them from this barrel.
+// Plan 03 lands schema + two-pool client factory + the first migration.
+// Plan 04 adds `tenant-context` and the `encryption/` envelope helpers
+// and extends this barrel with their exports.
 export * from "./client.js";
 export type { TenantScopedTable } from "./schema/index.js";
 export * as schema from "./schema/index.js";
