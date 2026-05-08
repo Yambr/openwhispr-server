@@ -138,7 +138,7 @@ Source of truth: `/Users/nick/openwhispr/docs/BACKEND_SPEC.md`, `OAUTH_SPEC.md`,
 - [ ] **DOCS-06**: `docs/auth.md` — how to plug in OIDC providers; how to configure email+password; channel-scheme handling
 - [ ] **DOCS-07**: `CONTRIBUTING.md`, `SECURITY.md`, `CODE_OF_CONDUCT.md`, OSS LICENSE (Apache-2.0 default), license headers
 - [ ] **DOCS-08**: ADRs for every Key Decision in this document
-- [ ] **DOCS-09**: All source artifacts (docs, code, comments, commit messages, identifiers, log keys) in **English only** — hard rule, enforced by lint where mechanical, by review otherwise
+- [x] **DOCS-09**: All source artifacts (docs, code, comments, commit messages, identifiers, log keys) in **English only** — hard rule, enforced by lint where mechanical, by review otherwise
 
 ## v2 Requirements
 
@@ -283,7 +283,7 @@ All 89 v1 requirements mapped by `gsd-roadmapper` on 2026-05-08.
 | DOCS-06 | Phase 10 | Pending |
 | DOCS-07 | Phase 10 | Pending |
 | DOCS-08 | Phase 10 | Pending |
-| DOCS-09 | Phase 0 | Pending |
+| DOCS-09 | Phase 0 | Complete |
 
 **Coverage:**
 - v1 requirements: 89 total
