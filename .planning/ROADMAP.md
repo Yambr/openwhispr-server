@@ -46,7 +46,7 @@ A drop-in OpenWhispr backend any organization can self-host — open-source out 
   5. All CI checks green on the bootstrap PR; tests written first (TDD).
 **Plans**: 6 plans (3 waves)
 - [x] 00-01-PLAN.md — Workspace + TS + Biome + Lefthook + commitlint scaffold (Wave 1)
-- [ ] 00-02-PLAN.md — Vitest 4 + Stryker 9 + skeleton workspaces with placeholders (Wave 1)
+- [x] 00-02-PLAN.md — Vitest 4 + Stryker 9 + skeleton workspaces with placeholders (Wave 1)
 - [x] 00-03-PLAN.md — tools/lint-english.ts, lint-tdd.ts, Makefile, docker-compose placeholder, branch-protection script (Wave 1)
 - [ ] 00-04-PLAN.md — GHA workflows (ci.yml, security.yml, nightly.yml, release.yml) + dependabot + PR template (Wave 2)
 - [ ] 00-05-PLAN.md — Constitutional self-tests + harness-self-check CI job (Wave 2)
