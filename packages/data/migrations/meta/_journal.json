@@ -29,6 +29,13 @@
       "when": 1778281976165,
       "tag": "0003_better_auth_tenant_defaults",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1778281976166,
+      "tag": "0004_email_lowercase_normalize",
+      "breakpoints": true
     }
   ]
 }

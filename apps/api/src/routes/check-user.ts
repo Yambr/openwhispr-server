@@ -17,13 +17,11 @@
 //
 // D-09 / T-02-03-03 (email enumeration): documented and accepted for
 // v1; rate limit on top mitigates the abuse surface.
-import type { FastifyInstance } from "fastify";
+
+import { CheckUserRequest, CheckUserResponse } from "@openwhispr/contract-tests/schemas";
+import { type ExecutableTx, type TransactionalDb, withTenant } from "@openwhispr/data";
 import { sql } from "drizzle-orm";
-import {
-  CheckUserRequest,
-  CheckUserResponse,
-} from "@openwhispr/contract-tests/schemas";
-import { withTenant, type TransactionalDb, type ExecutableTx } from "@openwhispr/data";
+import type { FastifyInstance } from "fastify";
 import { resolveDefaultTenantId } from "../lib/default-tenant.js";
 
 export interface CheckUserDeps {
@@ -55,7 +53,10 @@ export const buildCheckUserRoutes = (deps: CheckUserDeps) =>
           // `.select().from(users).where(eq(users.email, ...))` and
           // doesn't drag the schema graph into this file.
           const res = (await tx.execute(
-            sql`SELECT 1 FROM users WHERE email = ${body.email} LIMIT 1`,
+            // Phase 02.7 / Plan 05 / D-03 Layer B — case-insensitive lookup
+            // hits the new functional unique index `users_tenant_email_lower_unique`
+            // (migration 0004) so this remains an index lookup, not a seq scan.
+            sql`SELECT 1 FROM users WHERE lower(email) = lower(${body.email}) LIMIT 1`,
           )) as { rows: unknown[] };
           return res.rows.length > 0;
         });
