@@ -280,3 +280,64 @@ jobs:
               | grep -Ev '^\\(restrict|unrestrict) '
           }
           diff -u <(normalize /tmp/schema-pre.sql) <(normalize /tmp/schema-post.sql)
+
+  # === Plan 06: CONTRACT-01 conformance suite, runs against the docker-compose
+  # stack. Brings up `default` + `contract-test` profiles (api, postgres,
+  # pgbouncer, valkey, traefik, migrate one-shot, fixture-idp), seeds the
+  # conformance fixture users, runs the suite against http://api.localhost,
+  # captures compose logs on failure, always tears down. Required check
+  # (scripts/branch-protection.json).
+  #
+  # All third-party action references SHA-pinned per Trivy 2026-03-19
+  # incident response.
+  contract-test:
+    runs-on: ubuntu-24.04
+    needs: [lint, typecheck, test]
+    timeout-minutes: 20
+    env:
+      OPENWHISPR_PROTOCOL: mycorp-whispr
+      AUTH_URL: http://api.localhost
+      OPENWHISPR_API_URL: http://api.localhost
+    steps:
+      - uses: step-security/harden-runner@a5ad31d6a139d249332a2605b85202e8c0b78450  # v2.19.1
+        with: { egress-policy: audit }
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd  # v5
+        with: { fetch-depth: 0 }
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1  # v4
+        with: { version: 11.0.8 }
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444  # v5
+        with: { node-version: '24', cache: 'pnpm' }
+      - run: pnpm install --frozen-lockfile
+      - name: Bootstrap fixture .env
+        run: |
+          cp .env.example .env
+          if [ -x tools/bootstrap.sh ]; then
+            tools/bootstrap.sh --ci || true
+          fi
+      - name: Build api + migrate images
+        run: docker compose build api migrate
+      - name: Bring up stack (default + contract-test profiles)
+        run: docker compose --profile default --profile contract-test up -d --wait
+      - name: Seed conformance fixtures
+        env:
+          SMTP_HOST: ""
+          AUTH_URL: http://api.localhost
+          DATABASE_URL_OWNER: postgres://openwhispr_owner:owner-pw@127.0.0.1:5432/openwhispr
+        run: pnpm -F @openwhispr/data run seed:conformance
+      - name: Run conformance suite
+        env:
+          BACKEND_URL: http://api.localhost
+          AUTH_URL: http://auth.localhost
+          OPENWHISPR_PROTOCOL: mycorp-whispr
+        run: pnpm -F @openwhispr/contract-tests test --run
+      - name: Capture compose logs on failure
+        if: failure()
+        run: docker compose logs --no-color > compose-logs.txt
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4
+        if: failure()
+        with:
+          name: compose-logs
+          path: compose-logs.txt
+      - name: Tear down
+        if: always()
+        run: docker compose down -v

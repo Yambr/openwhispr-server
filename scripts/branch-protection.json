@@ -14,7 +14,8 @@
       "license-scan",
       "harness-self-check",
       "lint-rls",
-      "test-migration"
+      "test-migration",
+      "contract-test"
     ]
   },
   "enforce_admins": true,
