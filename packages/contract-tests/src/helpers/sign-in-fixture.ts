@@ -11,7 +11,7 @@
 // `pending@conformance.test` rather than verifying the email afterward
 // (v1 has no in-test email-link click harness).
 import { AUTH_URL } from "../env.js";
-import { makeJarFetch, type JarFetch } from "./cookie-jar.js";
+import { type JarFetch, makeJarFetch } from "./cookie-jar.js";
 
 export const FIXTURE_PASSWORD = "test-PW-12345!";
 
@@ -25,14 +25,21 @@ export interface SignInOpts {
  * cookie. Throws if Better Auth does not return a 2xx — tests catch and
  * surface as failures.
  */
-export async function signInFixture(
-  email: string,
-  _opts?: SignInOpts,
-): Promise<JarFetch> {
+export async function signInFixture(email: string, _opts?: SignInOpts): Promise<JarFetch> {
   const jf = makeJarFetch();
   const res = await jf.fetch(`${AUTH_URL}/api/auth/sign-in/email`, {
     method: "POST",
-    headers: { "content-type": "application/json" },
+    headers: {
+      "content-type": "application/json",
+      // Phase 02.10 — Better Auth's CSRF gate rejects sign-in POSTs whose
+      // Origin header is absent or not in `trustedOrigins` with HTTP 403
+      // MISSING_OR_NULL_ORIGIN. Server-to-server fetch() doesn't auto-set
+      // Origin; we forward AUTH_URL so the request matches the
+      // `trustedOrigins: [AUTH_URL, OPENWHISPR_API_URL]` allowlist declared
+      // in apps/api/src/auth.ts. Mirrors the proven seed-time pattern in
+      // packages/data/src/seed/conformance.ts:46-58 (Phase 02.3).
+      origin: AUTH_URL,
+    },
     body: JSON.stringify({ email, password: FIXTURE_PASSWORD }),
   });
   if (!res.ok) {
