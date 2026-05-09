@@ -105,6 +105,46 @@ Plans:
 - [x] 02-07-PLAN.md — Auth docs (auth.md / oidc-operator-config.md / channel-scheme-override.md) + planning state finalization + Phase 1 SC#1 closure + integration smoke (Wave 4)
 **UI hint**: no
 
+### Phase 02.12: Better Auth session.token field missing — Phase 02 Plan 01 designed sessions.tokenHash bytea (AUTH-04) but BA v1.6.9 expects plain session.token text; advisor research recommends Option C (drop tokenHash, use plain token, defer hash-only to v2 hardening); preserves AUTH-04 5-min overlap contract (INSERTED)
+
+**Goal:** [Urgent work - to be planned]
+**Requirements**: TBD
+**Depends on:** Phase 2
+**Plans:** 0 plans
+
+Plans:
+- [ ] TBD (run /gsd-plan-phase 02.12 to break down)
+
+### Phase 02.10: Group A — signInFixture helper missing Origin header → 403 MISSING_OR_NULL_ORIGIN on 4 contract tests; mirror seed-time origin: baseUrl pattern from Phase 02.3 conformance.ts; TDD per TDD-01b (INSERTED)
+
+**Goal:** [Urgent work - to be planned]
+**Requirements**: TBD
+**Depends on:** Phase 2
+**Plans:** 0 plans
+
+Plans:
+- [ ] TBD (run /gsd-plan-phase 02.10 to break down)
+
+### Phase 02.9: Better Auth email-validator rejects @local fixtures — packages/data/src/seed/conformance.ts uses rotation-test@local + similar @local addresses; Better Auth v1.6.9 hardened email validator rejects (no TLD per RFC 5321/5322); surfaced by Phase 02.8 contract-test E2E after UUID mismatch closed. Trivial fix: rewrite 3 fixture emails to @example.com (RFC 2606 reserved TLD for examples). TDD: extend seed-signup-non-2xx-loud test or add fixture-email-rfc-compliance test (INSERTED)
+
+**Goal:** [Urgent work - to be planned]
+**Requirements**: TBD
+**Depends on:** Phase 2
+**Plans:** 0 plans
+
+Plans:
+- [ ] TBD (run /gsd-plan-phase 02.9 to break down)
+
+### Phase 02.8: Better Auth ID type vs Postgres uuid mismatch — Better Auth v1.6.9 default generateId emits 32-char base32 strings (e.g. '04xaRzi0ScgyXxWRtKwGG74OkqNZb0yO') but users.id (and likely sessions.id, account.id, verification.id) are Postgres uuid columns → 22P02 parse error → 422 from /api/auth/sign-up/email; surfaced by Phase 02.7-04 loud-fail discipline + 02.7-06 E2E. Discuss-phase + research-first required: A) advanced.generateId override in auth.ts, B) schema migration uuid→text on all 4 BA tables incl FK cascade, C) defensive create-user hook (rejected as workaround). Need investigation of related id columns (sessions, account, verification, oauth_state) before locking. BLOCKS Phase 02.7 plan 06+07 closure (INSERTED)
+
+**Goal:** [Urgent work - to be planned]
+**Requirements**: TBD
+**Depends on:** Phase 2
+**Plans:** 0 plans
+
+Plans:
+- [ ] TBD (run /gsd-plan-phase 02.8 to break down)
+
 ### Phase 02.7: Phase 02 contract-test conformance gaps — 13/26 contract tests RED after Phase 02.5+02.6 unblocked the auth surface; new architectural defects in signInFixture (HTTP 404 — endpoint missing or path mismatch), Bearer-invalid handling (returns 500 instead of contract-spec 401), OAuth final-redirect (returns 200 instead of channel-scheme custom-protocol — was deferred per 02.5 D-06 / Phase 02 Plan 05 territory), check-user contract (exists:true returning false — likely RLS visibility issue), AND Makefile test harness uses BACKEND_URL=http:// against Traefik HTTPS-only ingress causing 308→silent-skip; full discuss-phase + research-first plan required (no yolo) (INSERTED)
 
 **Goal:** Close the 13/26 contract-test conformance gaps left after Phases 02.5+02.6 unblocked the auth surface. Six discrete defects, all Phase-02-internal: D-01 OAuth channel-scheme mintBearer (real internalAdapter path, not the broken auth.handler delegation); D-02 bearer-invalid envelope hybrid (dual-auth try/catch + setErrorHandler APIError recognizer); D-03 A+B check-user lifecycle (seed signUp() loud-fail) + lower(email) functional unique index; D-04 AUTH_URL default collapse; D-05 cert-gen in bootstrap.sh + HTTPS contract-test path. End state: `make contract-test` 26/26 GREEN, 02-HUMAN-UAT.md Item 1 flippable without scope qualifier.
