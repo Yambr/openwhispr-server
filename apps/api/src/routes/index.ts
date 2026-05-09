@@ -33,7 +33,9 @@ import {
 import {
   buildAuthCallbackRoutes,
   type AuthCallbackDeps,
+  type MintBearer,
 } from "./auth-callback.js";
+import { buildTestOnlyRoutes } from "./test-only.js";
 import healthRoutes from "./health.js";
 
 export type RoutePlugin = (app: FastifyInstance) => Promise<void>;
@@ -41,6 +43,13 @@ export type RoutePlugin = (app: FastifyInstance) => Promise<void>;
 export interface AllRoutesDeps {
   db: TransactionalDb<ExecutableTx>;
   auth: AuthLike;
+  /** Plan 08: production MintBearer adapter; tests inject fakes. */
+  mintBearer?: MintBearer;
+  /**
+   * Plan 08: when true OR NODE_ENV='test', register the /api/_test/*
+   * routes consumed by packages/contract-tests/src/token-rotation.test.ts.
+   */
+  testOnly?: boolean;
 }
 
 /**
@@ -59,8 +68,11 @@ export function buildAllRoutes(deps: AllRoutesDeps): readonly RoutePlugin[] {
     auth: deps.auth,
   };
   const desktopSigninDeps: DesktopSigninDeps = { db: deps.db };
-  const authCallbackDeps: AuthCallbackDeps = { db: deps.db };
-  return [
+  const authCallbackDeps: AuthCallbackDeps = {
+    db: deps.db,
+    mintBearer: deps.mintBearer,
+  };
+  const plugins: RoutePlugin[] = [
     healthRoutes,
     buildCheckUserRoutes(checkUserDeps),
     buildVerificationStatusRoutes(verificationDeps),
@@ -68,6 +80,13 @@ export function buildAllRoutes(deps: AllRoutesDeps): readonly RoutePlugin[] {
     buildDesktopSigninRoutes(desktopSigninDeps),
     buildAuthCallbackRoutes(authCallbackDeps),
   ];
+  // Plan 08: register the /api/_test/* surface when explicitly enabled
+  // OR when running under NODE_ENV='test'. The plugin itself enforces
+  // the gate as well — defense in depth.
+  if (deps.testOnly === true || process.env.NODE_ENV === "test") {
+    plugins.push(buildTestOnlyRoutes({ db: deps.db, auth: deps.auth }));
+  }
+  return plugins;
 }
 
 export { healthRoutes };
@@ -76,3 +95,4 @@ export { buildVerificationStatusRoutes };
 export { buildDeleteAccountRoutes };
 export { buildDesktopSigninRoutes };
 export { buildAuthCallbackRoutes };
+export { buildTestOnlyRoutes };
