@@ -2,8 +2,8 @@
 gsd_state_version: 1.0
 milestone: v1.83.7
 milestone_name: milestone
-status: Ready to execute
-last_updated: "2026-05-09T11:34:31.486Z"
+status: Phase 01.1 partial — blocked on Phase 02.1
+last_updated: "2026-05-09T17:35:00.000Z"
 progress:
   total_phases: 11
   completed_phases: 2
@@ -20,17 +20,18 @@ progress:
 
 **Core value:** A drop-in OpenWhispr backend any organization can self-host — open-source out of the box, corporate-LiteLLM-ready by env override.
 
-**Current focus:** Phase 1 complete; ready for Phase 2 (auth + wire-shape).
+**Current focus:** Phase 01.1 partial (Plans 01–04 done, Plan 05 blocked on Phase 02.1 Dockerfile defect). MinIO image-pin defect proven closed; full stack-up gated on a distinct, pre-existing pnpm-v10 Dockerfile defect uncovered by the now-passing pull check.
 
 ## Current Position
 
 | Field | Value |
 |-------|-------|
 | Milestone | v1 |
-| Phase | 1 — Core Infra & Multi-Tenant Data (COMPLETE) |
-| Plan | 06 complete (Phase 1 capstone — backup/restore + ops docs) |
-| Status | Phase 1 closed; ready to begin Phase 2 |
-| Phase progress | 2/11 phases complete; 12/12 plans complete (100%) |
+| Phase | 01.1 — Baseline image-pin audit and fix (PARTIAL) |
+| Plan | 01.1-04 complete (compose pins corrected, single atomic commit `f6eda58`); 01.1-05 BLOCKED |
+| Status | Phase 01.1 partial — Plan 05 awaits Phase 02.1 Dockerfile fix (pnpm v10 ERR_PNPM_DEPLOY_NONINJECTED_WORKSPACE) |
+| Phase progress | 2/11 phases complete + Phase 01.1 4/5 plans done (Plan 05 blocked) |
+| Next action | `/gsd-discuss-phase 02.1` — discuss proper Dockerfile fix (NO `--legacy` workaround); candidates: `inject-workspace-packages: true` in pnpm-workspace.yaml, OR multi-stage Dockerfile without `pnpm deploy` |
 
 ```
 [X][X][ ][ ][ ][ ][ ][ ][ ][ ][ ]
