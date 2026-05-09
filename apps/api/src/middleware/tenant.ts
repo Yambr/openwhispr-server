@@ -8,6 +8,17 @@
 // (the `req.tenantId` field on FastifyRequest, the `withTenant` wiring)
 // stays put.
 //
+// Phase 2 / Plan 03 status (WIRE-Q1 resolution):
+//   The dual-auth and cookie-only hooks (`./dual-auth.ts`,
+//   `./require-cookie-only.ts`) set `req.tenant` (note: `tenant`, NOT
+//   `tenantId`) from the resolved session. Authenticated route handlers
+//   call `withTenant(db, req.tenant, async (tx) => {...})` directly so
+//   the GUC binding lives inside the same DB transaction as the actual
+//   query — sidestepping any Fastify preHandler-vs-handler scope
+//   ambiguity. This file's `req.tenantId` header-read survives for
+//   pre-auth routes (e.g. `/api/check-user`, `/api/health`) and the
+//   Phase 1 unit tests; auth'd routes use `req.tenant`.
+//
 // Threat note (T-01-04-08): trusting a header is acceptable ONLY because
 // Phase 2 will replace it. The unit test `tenant.test.ts` proves that an
 // array-valued `x-tenant-id` (which Fastify 5 / Node http normalize into
