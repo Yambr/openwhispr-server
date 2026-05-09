@@ -81,10 +81,10 @@ clean-stack:
 # stopped containers leak after the run.
 contract-test:
 	docker compose --profile default --profile contract-test up -d --wait
-	@docker compose --profile contract-test run --rm seed ; \
+	@docker compose --profile default --profile contract-test run --rm seed ; \
 	rc=$$? ; \
 	if [ $$rc -ne 0 ]; then docker compose down -v ; exit $$rc ; fi ; \
-	docker compose --profile contract-test run --rm contract-test-runner ; \
+	docker compose --profile default --profile contract-test run --rm contract-test-runner ; \
 	rc=$$? ; docker compose down -v ; exit $$rc
 
 # Run the conformance suite against an arbitrary deployed backend.

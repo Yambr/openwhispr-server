@@ -49,7 +49,18 @@ COPY tsconfig.base.json ./
 # Test source. Bind-mount in compose for fast iteration during local
 # dev would defeat the linux-arch isolation we set up above, so we COPY
 # instead — the image rebuilds on test changes (cheap; one layer).
-COPY packages/contract-tests packages/contract-tests
+# `--chown=node:node` because vitest writes a transient
+# `vitest.config.ts.timestamp-*.mjs` next to the config file at startup
+# (vite's bundleAndLoadConfigFile path); the unprivileged `node` user
+# below MUST own this directory or vitest aborts EACCES.
+COPY --chown=node:node packages/contract-tests packages/contract-tests
+
+# `/app/packages/contract-tests` itself was created by the earlier
+# `COPY packages/contract-tests/package.json` step (owned by root);
+# `COPY --chown` only sets ownership of the copied contents, not the
+# pre-existing parent dir. Vitest writes the timestamp shim AS A
+# SIBLING of vitest.config.ts so the directory itself must be writable.
+RUN chown node:node /app/packages/contract-tests
 
 WORKDIR /app/packages/contract-tests
 
@@ -57,6 +68,15 @@ WORKDIR /app/packages/contract-tests
 USER node
 
 # `--run` mode — single pass, no watch, exits with non-zero on any
-# failed/errored test. Matches the host-side `pnpm test --run` invocation
-# already used by `make contract-test-deployed`.
-ENTRYPOINT ["pnpm", "exec", "vitest", "run"]
+# failed/errored test. Invoke vitest's mjs entry directly via node:
+#   - `pnpm exec vitest` would re-validate the corepack-pinned pnpm
+#     against npmjs.org at runtime, requiring external internet from
+#     inside openwhispr_internal AND being wholly unnecessary because
+#     all deps are already installed.
+#   - `node ./node_modules/.bin/vitest` fails because the bin shim is
+#     a posix-sh script (pnpm install creates `#!/bin/sh` wrappers in
+#     .bin/, not standalone Node scripts).
+# Resolve the symlink target at install time and invoke vitest.mjs
+# directly. The `node_modules/vitest/vitest.mjs` path is stable across
+# vitest 1.x-4.x releases.
+ENTRYPOINT ["node", "./node_modules/vitest/vitest.mjs", "run"]
