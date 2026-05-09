@@ -310,6 +310,34 @@ describe("GET /api/auth/desktop-callback/:provider", () => {
     });
   });
 
+  describe("CR-01 — diagnostic ordering when row is both expired and consumed", () => {
+    it("returns 'state expired' when row is both expired and consumed", async () => {
+      // Per code review CR-01 (02-REVIEW.md) and 02-VERIFICATION.md gap 3:
+      // a row with consumed_at != NULL AND expires_at < now() must be
+      // diagnosed as 'expired' (the more authoritative time-based signal),
+      // NOT as 'already consumed'. The CAS UPDATE rejects the row (both
+      // conditions in the WHERE clause fail) and the diagnostic probe
+      // checks expires_at FIRST.
+      const row = freshRow("openwhispr");
+      row.consumed_at = new Date(Date.now() - 11 * 60_000).toISOString();
+      row.expires_at = new Date(Date.now() - 60_000).toISOString();
+      const rows = new Map([[VALID_STATE_ID, row]]);
+      const { db } = makeFakeDb(rows);
+      const mintBearer = vi.fn();
+      const app = buildApp({
+        db,
+        mintBearer: mintBearer as unknown as MintBearer,
+      });
+      const res = await app.inject({
+        method: "GET",
+        url: `/api/auth/desktop-callback/oidc?state=${VALID_STATE_ID}&code=c`,
+      });
+      expect(res.statusCode).toBe(400);
+      expect(res.json()).toEqual({ error: "state expired" });
+      await app.close();
+    });
+  });
+
   describe("operator-misconfigured (no mintBearer adapter)", () => {
     it("returns 503 when mintBearer is unset and state is valid", async () => {
       const rows = new Map([[VALID_STATE_ID, freshRow("openwhispr")]]);
