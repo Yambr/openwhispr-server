@@ -216,3 +216,87 @@ services:
       timeout: 3s
       retries: 10
       start_period: 15s
+
+  # Phase 2 Plan 02 — One-shot migration runner. Runs as openwhispr_owner
+  # DIRECT to postgres:5432 (NOT pgbouncer). DDL through transaction-mode
+  # pooling is the documented anti-pattern; migrate.ts asserts the URL
+  # hostname does not contain "pgbouncer".
+  #
+  # `restart: "no"` is QUOTED (Pitfall #8): unquoted `no` parses as boolean
+  # false in some YAML libraries.
+  #
+  # The api service gates on `service_completed_successfully` so api never
+  # boots until migrate exits 0 — rolling-deploy ready (DEPLOY-04).
+  migrate:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    profiles: [default, db-only]
+    networks: [openwhispr_internal]
+    restart: "no"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      pgbouncer:
+        condition: service_healthy
+    env_file: .env
+    command: ["node", "/app/packages/data/dist/migrate.js"]
+
+  # Phase 2 Plan 02 — API container. Closes Phase 1 D-08 / SC#1 partial:
+  # the entrypoint runs check-default-secrets.cjs BEFORE node main, so
+  # `MASTER_KEK=changeme` is rejected at start time even if the operator
+  # bypassed bootstrap.sh.
+  #
+  # No `ports:` directive — Traefik (compose/traefik/dynamic.yml) routes
+  # https://api.localhost → http://api:3000. Only Traefik publishes ports
+  # to the host (D-05).
+  api:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    profiles: [default]
+    networks: [openwhispr_internal]
+    env_file: .env
+    environment:
+      NODE_ENV: production
+      OPENWHISPR_API_URL: ${OPENWHISPR_API_URL:-https://api.localhost}
+      AUTH_URL: ${AUTH_URL:-https://api.localhost}
+      OPENWHISPR_PROTOCOL: ${OPENWHISPR_PROTOCOL:-openwhispr}
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      pgbouncer:
+        condition: service_healthy
+      valkey:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:3000/api/health"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 30s
+    restart: unless-stopped
+
+  # Phase 2 Plan 02 — Mailpit dev SMTP catch-all. ONLY in the `dev`
+  # profile (Pitfall: never instantiate in production via plain
+  # `docker compose up`). Image pinned to a minor tag (NOT `:latest`).
+  #
+  # Healthcheck: /livez was added in v1.20+ but is documented to
+  # respond with 200 in v1.29. We use `--spider` which only checks
+  # status; if /livez ever 404s, the fallback to /api/v1/info is wired
+  # via `||` so the healthcheck stays green regardless (CONTAINER-A2).
+  mailpit:
+    image: axllent/mailpit:v1.29
+    profiles: [dev]
+    networks: [openwhispr_internal]
+    environment:
+      MP_MAX_MESSAGES: "5000"
+      MP_SMTP_AUTH_ACCEPT_ANY: "1"
+      MP_SMTP_AUTH_ALLOW_INSECURE: "1"
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - wget --quiet --tries=1 --spider http://localhost:8025/livez || wget --quiet --tries=1 --spider http://localhost:8025/api/v1/info
+      interval: 10s
+      timeout: 3s
+      retries: 3
