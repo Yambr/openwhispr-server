@@ -3,12 +3,12 @@ gsd_state_version: 1.0
 milestone: v1.83.7
 milestone_name: milestone
 status: Ready to execute
-last_updated: "2026-05-09T18:56:56.892Z"
+last_updated: "2026-05-09T19:08:34.921Z"
 progress:
   total_phases: 18
   completed_phases: 4
   total_plans: 32
-  completed_plans: 32
+  completed_plans: 33
   percent: 100
 ---
 
@@ -27,11 +27,11 @@ progress:
 | Field | Value |
 |-------|-------|
 | Milestone | v1 |
-| Phase | 01.1 — Baseline image-pin audit and fix (PARTIAL) |
-| Plan | 01.1-04 complete (compose pins corrected, single atomic commit `f6eda58`); 01.1-05 BLOCKED |
-| Status | Phase 01.1 partial — Plan 05 awaits Phase 02.1 Dockerfile fix (pnpm v10 ERR_PNPM_DEPLOY_NONINJECTED_WORKSPACE) |
-| Phase progress | 2/11 phases complete + Phase 01.1 4/5 plans done (Plan 05 blocked) |
-| Next action | `/gsd-discuss-phase 02.1` — discuss proper Dockerfile fix (NO `--legacy` workaround); candidates: `inject-workspace-packages: true` in pnpm-workspace.yaml, OR multi-stage Dockerfile without `pnpm deploy` |
+| Phase | 02.5 — Better Auth drizzle schema (IN PROGRESS — Plans 01-04 done) |
+| Plan | 02.5-04 complete (contract-test result captured); Plan 05 next |
+| Status | PARTIAL — `make contract-test` reaches seed; Plans 02+03 verified live; signup blocked by NEW DEFECT (`apps/api/src/index.ts:229-233` passes `makeAppDb()` wrapper-object to `drizzleAdapter` instead of destructured `.db`). Phase 02.6 candidate. |
+| Phase progress | Phase 01.1 4/5 plans done (Plan 05 blocked); Phase 02.5 4/5 plans done |
+| Next action | `/gsd-execute-phase 02.5` to land Plan 05 (SUMMARY + reverse-patch evidence + 02-HUMAN-UAT flip). Phase 02.6 to fix index.ts wrapper-`db` defect. |
 
 ```
 [X][X][ ][ ][ ][ ][ ][ ][ ][ ][ ]
@@ -67,6 +67,7 @@ progress:
 | Phase 02.5 P01 | 4m 15s | 3 tasks | 3 files |
 | Phase 02.5 P03 | 3m | 1 tasks | 1 files |
 | Phase 02.5 P02 | 6m | 2 tasks | 5 files |
+| Phase 02.5 P04 | 6m | 2 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -78,6 +79,7 @@ progress:
 - Phase 02.4 inserted after Phase 2 (URGENT, GAP-CLOSURE): Backfill TDD test coverage for the entire Phase 02.x Yolo cascade — 6 production fixes (commits 451e9b3, 26eaa69, 7ccb8bb, 059b948, 5f274e6) shipped without per-fix tests, violating the new constitutional rule (PROJECT.md TDD-01b: ≥90% coverage on every phase including decimals). Test-only phase, no production code changes. MUST land before Phase 02.5.
 - Phase 02.5 inserted after Phase 2: Better Auth drizzle schema — drizzleAdapter call missing `schema` option AND `@openwhispr/data` lacks Better Auth required tables (`user`/`session`/`account`/`verification` — singular per Better Auth convention vs our pluralized tables). Add tables, pass schema to adapter, re-run migrations, `make contract-test` passes end-to-end → 02-HUMAN-UAT.md Item 1 finally flippable.
 - **Constitutional update (2026-05-09):** PROJECT.md + CLAUDE.md amended with TDD-01b (≥90% per-phase coverage on touched files) and explicit "Yolo-mode does NOT exempt from TDD" clause. Triggered by Phase 02.x cascade shipping 5 commits without tests.
+- Phase 02.5 Plans 01-04 landed (commits prior + `91784ab` + `eb92282` + this Plan 04 commit): RED tests → migration 0003 (tenant default binding) + auth.ts schema map → live `make contract-test` PARTIAL. Plans 02+03 verified live: migrate=ok, Better Auth resolves model `user`→`users` and dispatches into adapter `findOne`. Signup still 500s due to a SEPARATE wrapper-`db` defect in `apps/api/src/index.ts:229-233` (NOT the schema/tenant issue). 02-HUMAN-UAT.md Item 1 flippable: NO until Phase 02.6 fixes the one-line bootstrap destructure.
 
 ### Key Decisions Logged
 
