@@ -181,6 +181,16 @@ Plans:
 **Plans**: TBD
 **UI hint**: no
 
+### Phase 06.1: Add tempo + mimir minimal filesystem-backed configs — both crash on default empty backend; uncovered after Phase 02.2 brought api healthy (INSERTED)
+
+**Goal:** [Urgent work - to be planned]
+**Requirements**: TBD
+**Depends on:** Phase 6
+**Plans:** 0 plans
+
+Plans:
+- [ ] TBD (run /gsd-plan-phase 06.1 to break down)
+
 ### Phase 7: Frontend UI-SPEC
 **Goal**: An operator (or downstream code-generation agent) reads two markdown specs and can implement the admin console + end-user self-service UI in Next.js 15 + shadcn/ui v2 without ambiguity — every screen, component, design token, and accessibility requirement is enumerated.
 **Depends on**: Phase 6

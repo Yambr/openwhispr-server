@@ -1,0 +1,84 @@
+# Mimir monolithic config — Phase 06.1.
+#
+# Filesystem backend (`backend: filesystem`) for self-host single-VM.
+# Operators pointing at S3/MinIO/GCS for production swap the
+# `blocks_storage.backend` (and matching `*_storage.backend`) values
+# without otherwise restructuring this file. K8s/HA deployments use
+# per-component Mimir Helm charts in Phase 9.
+#
+# `target: all` runs distributor / ingester / querier / store-gateway /
+# compactor / ruler / alertmanager inside one process. Single-replica
+# ring with `instance_addr: 127.0.0.1` so the in-process discovery
+# does not depend on DNS resolution that may not be available in
+# default compose.
+
+target: all
+
+multitenancy_enabled: false
+
+server:
+  http_listen_port: 9009
+  grpc_listen_port: 9095
+  log_level: info
+
+common:
+  storage:
+    backend: filesystem
+    filesystem:
+      dir: /data/mimir
+
+blocks_storage:
+  storage_prefix: blocks
+  bucket_store:
+    sync_dir: /data/mimir/tsdb-sync
+  tsdb:
+    dir: /data/mimir/tsdb
+
+ruler_storage:
+  storage_prefix: ruler
+
+alertmanager_storage:
+  storage_prefix: alertmanager
+
+compactor:
+  data_dir: /data/mimir/compactor
+  sharding_ring:
+    kvstore:
+      store: memberlist
+
+distributor:
+  ring:
+    instance_addr: 127.0.0.1
+    kvstore:
+      store: memberlist
+
+ingester:
+  ring:
+    replication_factor: 1
+    instance_addr: 127.0.0.1
+    kvstore:
+      store: memberlist
+
+store_gateway:
+  sharding_ring:
+    replication_factor: 1
+    instance_addr: 127.0.0.1
+    kvstore:
+      store: memberlist
+
+memberlist:
+  bind_addr: ["127.0.0.1"]
+  advertise_addr: 127.0.0.1
+
+ruler:
+  ring:
+    instance_addr: 127.0.0.1
+    kvstore:
+      store: memberlist
+
+usage_stats:
+  enabled: false
+
+limits:
+  ingestion_rate: 100000
+  ingestion_burst_size: 200000
