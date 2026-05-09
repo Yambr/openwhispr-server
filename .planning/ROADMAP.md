@@ -105,6 +105,32 @@ Plans:
 - [x] 02-07-PLAN.md — Auth docs (auth.md / oidc-operator-config.md / channel-scheme-override.md) + planning state finalization + Phase 1 SC#1 closure + integration smoke (Wave 4)
 **UI hint**: no
 
+### Phase 02.7: Phase 02 contract-test conformance gaps — 13/26 contract tests RED after Phase 02.5+02.6 unblocked the auth surface; new architectural defects in signInFixture (HTTP 404 — endpoint missing or path mismatch), Bearer-invalid handling (returns 500 instead of contract-spec 401), OAuth final-redirect (returns 200 instead of channel-scheme custom-protocol — was deferred per 02.5 D-06 / Phase 02 Plan 05 territory), check-user contract (exists:true returning false — likely RLS visibility issue), AND Makefile test harness uses BACKEND_URL=http:// against Traefik HTTPS-only ingress causing 308→silent-skip; full discuss-phase + research-first plan required (no yolo) (INSERTED)
+
+**Goal:** Close the 13/26 contract-test conformance gaps left after Phases 02.5+02.6 unblocked the auth surface. Six discrete defects, all Phase-02-internal: D-01 OAuth channel-scheme mintBearer (real internalAdapter path, not the broken auth.handler delegation); D-02 bearer-invalid envelope hybrid (dual-auth try/catch + setErrorHandler APIError recognizer); D-03 A+B check-user lifecycle (seed signUp() loud-fail) + lower(email) functional unique index; D-04 AUTH_URL default collapse; D-05 cert-gen in bootstrap.sh + HTTPS contract-test path. End state: `make contract-test` 26/26 GREEN, 02-HUMAN-UAT.md Item 1 flippable without scope qualifier.
+**Requirements**: TDD-01, TDD-01b, AUTH-A1, AUTH-02, WIRE-01, WIRE-17, WIRE-18, WIRE-19, WIRE-20, CONTRACT-01
+**Depends on:** Phase 2
+**Plans:** 7 plans (3 waves)
+
+Plans:
+- [ ] 02.7-01-PLAN.md — Wave 1: D-04 + D-05 — bootstrap cert-gen + https contract-test + AUTH_URL collapse + probe loud-fail
+- [ ] 02.7-02-PLAN.md — Wave 2: D-01 — real mintBearer via internalAdapter + IdP token exchange (closes AUTH-A1)
+- [ ] 02.7-03-PLAN.md — Wave 2: D-02 — bearer-invalid 401 envelope via dual-auth try/catch + setErrorHandler APIError recognizer
+- [ ] 02.7-04-PLAN.md — Wave 2: D-03A — seed signUp() loud-fail on non-duplicate 4xx + preflight row check
+- [ ] 02.7-05-PLAN.md — Wave 2: D-03B — migration 0004 functional unique on lower(email) + check-user lower() lookup
+- [ ] 02.7-06-PLAN.md — Wave 3: contract-test 26/26 GREEN witness + reverse-patch evidence
+- [ ] 02.7-07-PLAN.md — Wave 3: phase summary + UAT flip + STATE/ROADMAP refresh
+
+### Phase 02.6: Fix apps/api/src/index.ts entrypoint — passes makeAppDb() wrapper {db, pool} to buildAuth/buildApp instead of destructuring the .db Drizzle instance; surfaced by Phase 02.5-04 contract-test (TypeError: db.select is not a function in better-auth findOne); one-line destructure fix + remove the 'as never' casts that hid the type mismatch + plus stale-volume cleanup helper (make clean-stack) for repeatable contract-test runs after secret rotation; TDD per TDD-01b (INSERTED)
+
+**Goal:** [Urgent work - to be planned]
+**Requirements**: TBD
+**Depends on:** Phase 2
+**Plans:** 0 plans
+
+Plans:
+- [ ] TBD (run /gsd-plan-phase 02.6 to break down)
+
 ### Phase 02.5: Better Auth drizzle schema — drizzleAdapter missing schema option AND @openwhispr/data lacks Better Auth required tables (user/session/account/verification — singular names per Better Auth convention vs our pluralized users/sessions/accounts/verifications); add tables, pass schema to drizzleAdapter(db, {provider:pg, schema}), re-run drizzle migrate, make contract-test passes end-to-end → 02-HUMAN-UAT.md Item 1 finally flippable; TDD per CLAUDE.md TDD-01b (≥90% on touched files) (INSERTED)
 
 **Goal:** Close the Better Auth ↔ Drizzle binding gap surfaced at Phase 02.3 — `drizzleAdapter` receives an explicit canonical-name schema map (D-01), and a new migration 0003 binds `app.tenant_id` per openwhispr_app connection (D-02) plus column DEFAULTs on Better Auth tables (D-03), so Better Auth's tenant-blind INSERTs satisfy FORCE RLS transparently. After this phase, `make contract-test` runs end-to-end (signup → verify-skipped → signin → token rotation), unblocking 02-HUMAN-UAT.md Item 1.
@@ -392,8 +418,8 @@ Plans:
 | DOCS-06 | 10 |
 | DOCS-07 | 10 |
 | DOCS-08 | 10 |
-| DOCS-09 | 0 |
+| DOCS-09 | 10 |
 
 ---
 *Roadmap created: 2026-05-08 after baseline pivot (defer Stripe/referrals/quotas to v2; bundle LiteLLM with OSS models; UI-SPEC only)*
-*Last updated: 2026-05-09 — Phase 1 plan list populated (6 plans across 3 waves).*
+*Last updated: 2026-05-09 — Phase 02.7 plan list populated (7 plans across 3 waves).*
