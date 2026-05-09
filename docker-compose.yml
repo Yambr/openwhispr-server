@@ -300,6 +300,18 @@ services:
       # Comma-separated list parsed by apps/api/src/auth.ts; in addition to
       # AUTH_URL + OPENWHISPR_API_URL, NOT a replacement.
       AUTH_TRUSTED_ORIGINS_EXTRA: "http://api:3000"
+      # Phase 02.13 — OIDC env defaults pointing at the contract-test
+      # `fixture-idp` service (D-01). Default-profile boot is unaffected:
+      # Better Auth's genericOAuth uses LAZY discovery (it only fetches
+      # `${OIDC_ISSUER_URL}/.well-known/openid-configuration` when an
+      # OAuth flow is actually attempted). Operators with real OIDC
+      # override these via .env. fixture-idp accepts ANY client_id /
+      # client_secret (tests/fixtures/idp/server.mjs has no validation
+      # in /token), so the literal values below are documentation-grade
+      # only.
+      OIDC_ISSUER_URL: ${OIDC_ISSUER_URL:-http://fixture-idp:9000}
+      OIDC_CLIENT_ID: ${OIDC_CLIENT_ID:-conformance-test-client}
+      OIDC_CLIENT_SECRET: ${OIDC_CLIENT_SECRET:-conformance-test-secret-do-not-use-in-prod}
     depends_on:
       migrate:
         condition: service_completed_successfully
