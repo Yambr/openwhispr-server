@@ -62,6 +62,10 @@ progress:
 
 ## Accumulated Context
 
+### Roadmap Evolution
+
+- Phase 01.1 inserted after Phase 1: Phase 1 baseline image-pin audit and fix (URGENT) — discovered during Phase 02 contract-test auto-run that `minio/minio:RELEASE.2026-03-25T00-00-00Z` does not exist on Docker Hub (latest valid tag: `RELEASE.2025-09-07T16-13-09Z`); blocks `make contract-test` and any `docker compose up`. Audit + fix all baseline image pins.
+
 ### Key Decisions Logged
 
 - Wire-compatible byte-for-byte with upstream `BACKEND_SPEC.md` / `OAUTH_SPEC.md` / `SELF_HOSTING.md` (1556 lines).
