@@ -23,6 +23,8 @@
 // Defensive: the default path emits "Internal server error" rather than
 // `err.message` to avoid leaking internal state. Stack traces NEVER leak
 // — the full error is logged server-side via `req.log.warn`.
+
+import { APIError } from "better-auth/api";
 import type { FastifyInstance } from "fastify";
 import { ZodError } from "zod";
 import {
@@ -33,6 +35,7 @@ import {
   ServiceUnavailable,
   ValidationError,
 } from "./errors.js";
+import { resolveApiErrorStatus } from "./lib/api-error-status.js";
 
 const JSON_CT = "application/json; charset=utf-8";
 
@@ -76,6 +79,27 @@ export function registerErrorHandler(app: FastifyInstance): void {
     } else if (err instanceof ServerError) {
       status = 500;
       message = err.message || "Internal server error";
+    } else if (err instanceof APIError) {
+      // Phase 02.7 D-02 Layer 2: Better Auth's `/api/auth/*` plugin routes
+      // (sign-in, verify-email, sign-out) raise APIError directly when
+      // their own validations fail. These bypass dualAuthHook (auth=false
+      // on the namespace) and arrive here. Map to canonical envelope per
+      // status; NEVER emit `err.message` (avoids leaking internal state /
+      // upstream messages — WIRE-17 + threat T-02.7-09).
+      const apiStatus = resolveApiErrorStatus(err);
+      if (apiStatus === 401 || apiStatus === 403) {
+        status = apiStatus;
+        message = "Session expired";
+      } else if (apiStatus === 400) {
+        status = 400;
+        message = "Invalid request";
+      } else if (apiStatus >= 500) {
+        status = 500;
+        message = "Internal server error";
+      } else {
+        status = apiStatus;
+        message = "Request failed";
+      }
     }
     // Default: status=500, message="Internal server error" (NO err.message
     // — the catch-all path NEVER leaks the underlying message).
