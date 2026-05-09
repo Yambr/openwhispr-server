@@ -10,7 +10,9 @@
     "dev": "tsx watch src/index.ts"
   },
   "dependencies": {
+    "@fastify/cookie": "11.0.2",
     "@openwhispr/data": "workspace:*",
+    "better-auth": "1.6.9",
     "fastify": "^5.0.0",
     "fastify-plugin": "^5.1.0"
   },

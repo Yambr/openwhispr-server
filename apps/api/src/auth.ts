@@ -1,0 +1,141 @@
+// Phase 2 / Plan 01 / Task 3 — Better Auth instance factory.
+//
+// Source of truth: 02-RESEARCH-AUTH.md § Pattern: Better Auth instance.
+//
+// CRITICAL: the Drizzle adapter binds to Phase 1's `appDb` (PgBouncer,
+// RLS-subject), NEVER `ownerDb`. Every Better Auth query runs as
+// openwhispr_app and is RLS-policed. Passing ownerDb here would defeat
+// tenant isolation across the entire auth surface.
+//
+// OIDC is silently disabled when any of OIDC_ISSUER_URL / OIDC_CLIENT_ID
+// / OIDC_CLIENT_SECRET is unset (D-02). genericOAuth is registered only
+// when all three are present; the smoke test pins both env permutations.
+//
+// AUTH-A1 (genericOAuth.onSuccess redirect rewriting) is Plan 05's
+// concern and is intentionally NOT wired here. Plan 05 hooks the OAuth
+// callback to consume the oauth_state row and emit the channel-scheme
+// custom-protocol redirect. This factory only stands up the auth
+// instance; no callback rewriting yet.
+import { betterAuth } from "better-auth";
+import { drizzleAdapter } from "better-auth/adapters/drizzle";
+import { bearer } from "better-auth/plugins/bearer";
+import { genericOAuth } from "better-auth/plugins/generic-oauth";
+import type { AppDb } from "@openwhispr/data/client";
+import * as schema from "@openwhispr/data/schema";
+import { cookieDomainConfig } from "./lib/cookie-domain.js";
+
+/**
+ * Structural return type for buildAuth. Better Auth's full instance type
+ * generic-leaks zod-internals (`$strip` from zod's v4 core) which TS6
+ * cannot serialise across package boundaries. We expose only the surface
+ * Plan 03+ actually consumes (handler + getSession via api + options
+ * for smoke-testing); concrete typing happens at the call site via
+ * direct usage of the Better Auth functions/values.
+ *
+ * Internal callers cast through this minimum. Do NOT widen it; if a
+ * future plan needs more surface, prefer importing the relevant Better
+ * Auth helper directly over enriching this interface.
+ */
+export interface AuthInstance {
+  readonly options: {
+    plugins?: ReadonlyArray<{ id: string }>;
+  };
+}
+
+export interface BuildAuthOptions {
+  db: AppDb;
+  /** Optional logger; not consumed by Better Auth itself but available for hooks. */
+  log?: { info: (msg: unknown) => void; warn: (msg: unknown) => void };
+}
+
+interface OidcProviderConfig {
+  providerId: string;
+  discoveryUrl: string;
+  clientId: string;
+  clientSecret: string;
+}
+
+function readOidcProviders(): OidcProviderConfig[] {
+  const issuer = process.env.OIDC_ISSUER_URL;
+  const clientId = process.env.OIDC_CLIENT_ID;
+  const clientSecret = process.env.OIDC_CLIENT_SECRET;
+  if (!issuer || !clientId || !clientSecret) return [];
+  return [
+    {
+      providerId: "oidc",
+      discoveryUrl: `${issuer.replace(/\/+$/, "")}/.well-known/openid-configuration`,
+      clientId,
+      clientSecret,
+    },
+  ];
+}
+
+/**
+ * Build a Better Auth instance bound to the given `appDb`.
+ *
+ * Return type is intentionally `ReturnType<typeof betterAuth>`; the
+ * concrete type leaks zod-internals through Better Auth's plugin
+ * generics, which TS6 cannot serialise across package boundaries
+ * without a `$strip` import. We rely on Better Auth's own type export
+ * (re-exported below) for downstream type narrowing.
+ *
+ * @throws if BETTER_AUTH_SECRET validation fails inside Better Auth (we
+ *         deliberately do not pre-validate; let Better Auth's own check
+ *         emit the canonical error).
+ */
+export function buildAuth(opts: BuildAuthOptions): AuthInstance {
+  const { db } = opts;
+  const oidcProviders = readOidcProviders();
+
+  const plugins = [
+    // Bearer plugin: emits opaque tokens + set-auth-token rotation header.
+    // Per AUTH-04 we will layer a 5-minute overlap window on top via the
+    // sessions.previous_token_hash columns added in 0001_better_auth.sql.
+    // The DB-touching helpers for that overlap land in a Wave 2 plan.
+    bearer(),
+    ...(oidcProviders.length > 0
+      ? [
+          genericOAuth({
+            // Plan 05 wires onSuccess for the channel-scheme custom-protocol
+            // redirect. Until then the plugin runs with default behavior.
+            config: oidcProviders,
+          }),
+        ]
+      : []),
+  ];
+
+  return betterAuth({
+    database: drizzleAdapter(db, {
+      provider: "pg",
+      schema,
+    }),
+    secret: process.env.BETTER_AUTH_SECRET,
+    baseURL: process.env.AUTH_URL ?? "http://localhost:3000",
+    trustedOrigins: [process.env.OPENWHISPR_API_URL, process.env.AUTH_URL].filter(
+      (s): s is string => typeof s === "string" && s.length > 0,
+    ),
+    emailAndPassword: {
+      enabled: true,
+      requireEmailVerification: true,
+      // Plan 04 wires nodemailer; placeholder here keeps the factory
+      // self-contained for Wave 1 typecheck.
+      sendVerificationEmail: async () => {
+        /* implemented in Plan 04 */
+      },
+    },
+    session: {
+      // D-03: ≥30-day TTL.
+      expiresIn: 60 * 60 * 24 * 30,
+      updateAge: 60 * 60 * 24,
+      cookieCache: { enabled: true, maxAge: 5 * 60 },
+    },
+    advanced: {
+      cookiePrefix: "openwhispr",
+      crossSubDomainCookies: cookieDomainConfig(),
+      useSecureCookies: process.env.NODE_ENV === "production",
+    },
+    plugins,
+  }) as unknown as AuthInstance;
+}
+
+export type Auth = AuthInstance;
