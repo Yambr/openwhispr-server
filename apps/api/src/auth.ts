@@ -23,6 +23,7 @@ import { genericOAuth } from "better-auth/plugins/generic-oauth";
 import type { AppDb } from "@openwhispr/data/client";
 import * as schema from "@openwhispr/data/schema";
 import { cookieDomainConfig } from "./lib/cookie-domain.js";
+import { makeEmailService, type EmailService } from "./email.js";
 
 /**
  * Structural return type for buildAuth. Better Auth's full instance type
@@ -46,6 +47,15 @@ export interface BuildAuthOptions {
   db: AppDb;
   /** Optional logger; not consumed by Better Auth itself but available for hooks. */
   log?: { info: (msg: unknown) => void; warn: (msg: unknown) => void };
+  /**
+   * Email transport for verification flows (Plan 04). When omitted we
+   * construct one from `process.env.SMTP_*`; the dev-fallback path
+   * (SMTP_HOST unset) returns a stub that resolves without sending.
+   * Pitfall #4 (Better Auth swallowing nodemailer errors) is mitigated
+   * by `makeEmailService` re-throwing on transport failure — Better
+   * Auth then leaves the account unverified.
+   */
+  email?: EmailService;
 }
 
 interface OidcProviderConfig {
@@ -86,6 +96,25 @@ function readOidcProviders(): OidcProviderConfig[] {
 export function buildAuth(opts: BuildAuthOptions): AuthInstance {
   const { db } = opts;
   const oidcProviders = readOidcProviders();
+  // Email service: caller can inject for tests; production path
+  // constructs the nodemailer-backed service from env. The dev fallback
+  // (SMTP_HOST unset) inside makeEmailService preserves the < 5 min
+  // OSS first-launch SLO without requiring an SMTP relay.
+  const fallbackLog = {
+    info: () => {},
+    warn: () => {},
+    error: () => {},
+    fatal: () => {},
+    trace: () => {},
+    debug: () => {},
+    silent: () => {},
+    level: "info" as const,
+    child() {
+      return this;
+    },
+  };
+  const email: EmailService =
+    opts.email ?? makeEmailService((opts.log ?? fallbackLog) as never);
 
   const plugins = [
     // Bearer plugin: emits opaque tokens + set-auth-token rotation header.
@@ -117,10 +146,17 @@ export function buildAuth(opts: BuildAuthOptions): AuthInstance {
     emailAndPassword: {
       enabled: true,
       requireEmailVerification: true,
-      // Plan 04 wires nodemailer; placeholder here keeps the factory
-      // self-contained for Wave 1 typecheck.
-      sendVerificationEmail: async () => {
-        /* implemented in Plan 04 */
+      // Plan 04 wiring: route verification emails through `email.send()`.
+      // If the transport throws (Pitfall #4), Better Auth keeps the
+      // account unverified — operator sees the error and the desktop's
+      // verification-status poll keeps returning false.
+      sendVerificationEmail: async ({ user, url }: { user: { email: string }; url: string }) => {
+        await email.send({
+          to: user.email,
+          subject: "Verify your OpenWhispr account",
+          text: `Click to verify: ${url}`,
+          html: `<p>Click to verify: <a href="${url}">${url}</a></p>`,
+        });
       },
     },
     session: {
