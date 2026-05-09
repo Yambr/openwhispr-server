@@ -94,8 +94,15 @@ async function bootPgWithPgBouncer(): Promise<PoolHarness> {
 
   // Bootstrap roles + ownership so migrations can run as owner.
   const superPool = new Pool({ connectionString: pg.getConnectionUri() });
-  await superPool.query(`CREATE ROLE openwhispr_owner WITH LOGIN BYPASSRLS PASSWORD 'owner-pw'`);
+  await superPool.query(
+    `CREATE ROLE openwhispr_owner WITH LOGIN BYPASSRLS CREATEROLE PASSWORD 'owner-pw'`,
+  );
   await superPool.query(`CREATE ROLE openwhispr_app   WITH LOGIN          PASSWORD 'app-pw'`);
+  // Phase 02.5 / Plan 02 — migration 0003 ALTERs openwhispr_app's role
+  // config; owner needs CREATEROLE + ADMIN OPTION on app + SET grant on the
+  // custom GUC `app.tenant_id`. In production owner is bootstrap superuser.
+  await superPool.query(`GRANT openwhispr_app TO openwhispr_owner WITH ADMIN OPTION`);
+  await superPool.query(`GRANT SET, ALTER SYSTEM ON PARAMETER "app.tenant_id" TO openwhispr_owner`);
   await superPool.query(`ALTER DATABASE openwhispr OWNER TO openwhispr_owner`);
   await superPool.query(`ALTER SCHEMA public OWNER TO openwhispr_owner`);
   await superPool.end();
