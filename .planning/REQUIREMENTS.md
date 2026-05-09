@@ -311,6 +311,37 @@ Wave structure:
 - Wave 2 (parallel after Wave 1): Plan 03 (Drizzle + first migration + roles) ⊥ Plan 04 (tenant-context + KEK/DEK envelope)
 - Wave 3 (parallel after Wave 2): Plan 05 (RLS lint + property tests + GHA jobs) ⊥ Plan 06 (backup/restore + nightly + docs)
 
+
+
+### Phase 2 — Auth + Wire-API Skeleton + Conformance Harness (planned 2026-05-09)
+
+| Requirement | Plan(s) | Primary Artifacts |
+|-------------|---------|-------------------|
+| WIRE-01 | 02-03, 02-06 | `apps/api/src/routes/check-user.ts`, `packages/contract-tests/src/check-user.test.ts` |
+| WIRE-02 | 02-03, 02-04, 02-06 | `apps/api/src/routes/verification-status.ts` (cookie-only via `require-cookie-only.ts`), `@fastify/rate-limit` 30/min/(ip,email) keyGenerator (Plan 04), `packages/contract-tests/src/verification-status.test.ts` |
+| WIRE-03 | 02-03, 02-06 | `apps/api/src/routes/delete-account.ts` (cookie-only, cascading delete + audit log + clearCookie), `packages/contract-tests/src/delete-account.test.ts` |
+| WIRE-04 | 02-03, 02-06 | `apps/api/src/routes/health.ts` (rateLimit:false), `packages/contract-tests/src/health.test.ts` |
+| WIRE-17 | 02-03, 02-06 | `apps/api/src/error-handler.ts` centralized `setErrorHandler`, `packages/contract-tests/src/conventions.test.ts` ErrorEnvelope.parse |
+| WIRE-18 | 02-03, 02-06 | `apps/api/src/middleware/dual-auth.ts` throws AuthError → 401 (never 200-with-error), `conventions.test.ts` 401-not-200 matrix |
+| WIRE-19 | 02-03, 02-04 | `apps/api/src/plugins/request-log.ts` (x-openwhispr-source pino child field), `apps/api/src/__tests__/openwhispr-source-log.test.ts` |
+| WIRE-20 | 02-04 | Traefik `compose/traefik/static.yml` http→websecure 308 redirect, `tests/self-tests/traefik-https-only.test.ts` |
+| AUTH-01 | 02-01, 02-03 | `apps/api/src/auth.ts` Better Auth instance (emailAndPassword.enabled), Plan 03 routes use it |
+| AUTH-02 | 02-01, 02-05, 02-06 | `apps/api/src/lib/scheme-allowlist.ts` (allow-list + reject + buildProtocolRedirect), `apps/api/src/routes/desktop-signin.ts`, `apps/api/src/routes/auth-callback.ts`, `packages/contract-tests/src/oauth-redirect.test.ts` (4-scheme matrix + reject) |
+| AUTH-03 | 02-01, 02-03, 02-05 | Better Auth opaque bearer ≥30-day TTL (`auth.ts` session.expiresIn), dual-auth hook, `apps/api/src/lib/token-rotation.ts` (overlap helpers) |
+| AUTH-04 | 02-01, 02-05 | `packages/data/migrations/0001_better_auth.sql` (previous_token_hash + previous_token_expires_at + lookup_session_by_previous_token SECURITY DEFINER fn), `apps/api/src/__tests__/token-rotation-overlap.test.ts` (100 concurrent), `packages/contract-tests/src/token-rotation.test.ts` |
+| AUTH-05 | 02-01 | `apps/api/src/auth.ts` genericOAuth conditional registration (silent-disable on missing OIDC_* env per D-02) |
+| AUTH-06 | 02-03, 02-04 | `apps/api/src/plugins/request-log.ts`, `apps/api/src/__tests__/openwhispr-source-log.test.ts` |
+| AUTH-07 | 02-01, 02-05, 02-06 | `apps/api/src/lib/cookie-domain.ts` (eTLD+1 logic), wired into `auth.ts` advanced.crossSubDomainCookies, `packages/contract-tests/src/cookie-host.test.ts` |
+| PROVIDER-03 | 02-01, 02-07 | OIDC plug-in via Better Auth genericOAuth (Plan 01); `docs/auth.md`, `docs/oidc-operator-config.md` (Plan 07) |
+| PROVIDER-04 | 02-02, 02-04 | `docker-compose.yml` mailpit dev profile, `apps/api/src/email.ts` nodemailer + dev fallback, `apps/api/src/__tests__/email-mailpit.test.ts` |
+| CONTRACT-01 | 02-03, 02-06 | `packages/contract-tests/src/schemas.ts` zod source of truth (Plan 03), 8 test files (Plan 06), `Makefile` `contract-test` target, `.github/workflows/ci.yml` `contract-test` job, `scripts/branch-protection.json` updated |
+
+Wave structure:
+- Wave 1 (parallel): Plan 02-01 (auth substrate + migrations) ⊥ Plan 02-02 (API container + compose)
+- Wave 2 (parallel after Wave 1): Plan 02-03 (wire endpoints + envelope + dual auth) ⊥ Plan 02-04 (HTTPS + rate limit + email)
+- Wave 3 (parallel after Wave 2): Plan 02-05 (OAuth shim + token rotation) ⊥ Plan 02-06 (CONTRACT-01 conformance suite)
+- Wave 4 (final after Wave 3): Plan 02-07 (docs + state finalization + integration smoke)
+
 ---
 
 *Requirements defined: 2026-05-08*

@@ -85,7 +85,14 @@ A drop-in OpenWhispr backend any organization can self-host — open-source out 
   5. The CONTRACT-01 conformance suite is runnable via `make contract-test BACKEND_URL=...`, asserts byte-for-byte spec compliance for the auth-lifecycle endpoints + `/api/health` + global conventions, and is wired as a required GHA check on every PR — Phases 3, 4, 5 will extend it endpoint by endpoint.
   6. `/api/check-user`, `/api/auth/verification-status` (with 5s polling carve-out from rate limiting), `/api/auth/delete-account`, `/api/health` (3s timeout, body unread) all conform; `x-openwhispr-source: desktop` is preserved/observable.
   7. SMTP email provider is wired for verification + admin notifications; tests written first (TDD); all CI checks green.
-**Plans**: TBD
+**Plans**: 7 plans (4 waves)
+- [ ] 02-01-PLAN.md — Better Auth wiring + migrations 0001/0002 + scheme/cookie/token-rotation libs (Wave 1)
+- [ ] 02-02-PLAN.md — API container Dockerfile + compose api/migrate/mailpit services + closes Phase 1 D-08 (Wave 1)
+- [ ] 02-03-PLAN.md — 4 wire endpoints + global error envelope + dual-auth + cookie-only middleware + zod source of truth (Wave 2)
+- [ ] 02-04-PLAN.md — HTTPS-only at Traefik + @fastify/rate-limit with envelope-conformant 429 + nodemailer SMTP + AUTH-06 logs (Wave 2)
+- [ ] 02-05-PLAN.md — OAuth shim + callback redirect + token rotation overlap (5-min) + cookie host scoping (Wave 3)
+- [ ] 02-06-PLAN.md — CONTRACT-01 conformance suite (8 test files) + fixture-idp + GHA contract-test job + branch protection (Wave 3)
+- [ ] 02-07-PLAN.md — Auth docs (auth.md / oidc-operator-config.md / channel-scheme-override.md) + planning state finalization + Phase 1 SC#1 closure + integration smoke (Wave 4)
 **UI hint**: no
 
 ### Phase 3: LiteLLM Integration + Bundled OSS Models
@@ -202,7 +209,7 @@ A drop-in OpenWhispr backend any organization can self-host — open-source out 
 |-------|----------------|--------|-----------|
 | 0. Repo Bootstrap & Constitutional CI | 5/6 | In progress | - |
 | 1. Core Infra & Multi-Tenant Data | 0/6 | Planned | - |
-| 2. Auth + Wire-API Skeleton + Conformance | 0/0 | Not started | - |
+| 2. Auth + Wire-API Skeleton + Conformance | 0/7 | Planned | - |
 | 3. LiteLLM Integration + Bundled OSS Models | 0/0 | Not started | - |
 | 4. Streaming + Realtime | 0/0 | Not started | - |
 | 5. Operational Endpoints | 0/0 | Not started | - |
