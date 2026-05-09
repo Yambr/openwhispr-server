@@ -140,9 +140,19 @@ export function buildAuth(opts: BuildAuthOptions): AuthInstance {
     }),
     secret: process.env.BETTER_AUTH_SECRET,
     baseURL: process.env.AUTH_URL ?? "http://localhost:3000",
-    trustedOrigins: [process.env.OPENWHISPR_API_URL, process.env.AUTH_URL].filter(
-      (s): s is string => typeof s === "string" && s.length > 0,
-    ),
+    // Phase 02.3 — AUTH_TRUSTED_ORIGINS_EXTRA: optional comma-separated
+    // list of additional origins admitted by better-auth's CSRF gate.
+    // Used by in-cluster traffic (e.g. the contract-test seed service
+    // POST-ing to http://api:3000) that doesn't go through the public
+    // https://api.localhost traefik route. Production deployments leave
+    // this unset.
+    trustedOrigins: [
+      process.env.OPENWHISPR_API_URL,
+      process.env.AUTH_URL,
+      ...(process.env.AUTH_TRUSTED_ORIGINS_EXTRA ?? "")
+        .split(",")
+        .map((s) => s.trim()),
+    ].filter((s): s is string => typeof s === "string" && s.length > 0),
     emailAndPassword: {
       enabled: true,
       requireEmailVerification: true,

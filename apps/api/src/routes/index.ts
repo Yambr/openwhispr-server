@@ -36,6 +36,10 @@ import {
   type MintBearer,
 } from "./auth-callback.js";
 import { buildTestOnlyRoutes } from "./test-only.js";
+import {
+  buildBetterAuthHandlerRoutes,
+  type BetterAuthHandlerDeps,
+} from "./better-auth-handler.js";
 import healthRoutes from "./health.js";
 
 export type RoutePlugin = (app: FastifyInstance) => Promise<void>;
@@ -71,8 +75,14 @@ export function buildAllRoutes(deps: AllRoutesDeps): readonly RoutePlugin[] {
   const authCallbackDeps: AuthCallbackDeps = deps.mintBearer
     ? { db: deps.db, mintBearer: deps.mintBearer }
     : { db: deps.db };
+  // Phase 02.3 — mount Better Auth's universal handler at /api/auth/*.
+  // Phase 02 Plan 04 left this wiring undone; without it sign-up,
+  // sign-in, /verify-email, /sign-out, etc. are all caught by
+  // dualAuthHook (no session) and 401'd before Better Auth sees them.
+  const betterAuthHandlerDeps: BetterAuthHandlerDeps = { auth: deps.auth };
   const plugins: RoutePlugin[] = [
     healthRoutes,
+    buildBetterAuthHandlerRoutes(betterAuthHandlerDeps),
     buildCheckUserRoutes(checkUserDeps),
     buildVerificationStatusRoutes(verificationDeps),
     buildDeleteAccountRoutes(deleteAccountDeps),
@@ -89,6 +99,7 @@ export function buildAllRoutes(deps: AllRoutesDeps): readonly RoutePlugin[] {
 }
 
 export { healthRoutes };
+export { buildBetterAuthHandlerRoutes };
 export { buildCheckUserRoutes };
 export { buildVerificationStatusRoutes };
 export { buildDeleteAccountRoutes };
