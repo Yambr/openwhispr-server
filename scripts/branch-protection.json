@@ -15,7 +15,8 @@
       "harness-self-check",
       "lint-rls",
       "test-migration",
-      "contract-test"
+      "contract-test",
+      "verify-images"
     ]
   },
   "enforce_admins": true,
