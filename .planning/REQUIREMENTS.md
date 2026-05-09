@@ -328,7 +328,7 @@ Wave structure:
 | AUTH-01 | 02-01, 02-03 | `apps/api/src/auth.ts` Better Auth instance (emailAndPassword.enabled), Plan 03 routes use it |
 | AUTH-02 | 02-01, 02-05, 02-06 | `apps/api/src/lib/scheme-allowlist.ts` (allow-list + reject + buildProtocolRedirect), `apps/api/src/routes/desktop-signin.ts`, `apps/api/src/routes/auth-callback.ts`, `packages/contract-tests/src/oauth-redirect.test.ts` (4-scheme matrix + reject) |
 | AUTH-03 | 02-01, 02-03, 02-05 | Better Auth opaque bearer ≥30-day TTL (`auth.ts` session.expiresIn), dual-auth hook, `apps/api/src/lib/token-rotation.ts` (overlap helpers) |
-| AUTH-04 | 02-01, 02-05 | `packages/data/migrations/0001_better_auth.sql` (previous_token_hash + previous_token_expires_at + lookup_session_by_previous_token SECURITY DEFINER fn), `apps/api/src/__tests__/token-rotation-overlap.test.ts` (100 concurrent), `packages/contract-tests/src/token-rotation.test.ts` |
+| AUTH-04 | 02-01, 02-05, 02-06 | `packages/data/migrations/0001_better_auth.sql` (previous_token_hash + previous_token_expires_at + lookup_session_by_previous_token SECURITY DEFINER fn), `apps/api/src/__tests__/token-rotation-overlap.test.ts` (100 concurrent), `packages/contract-tests/src/token-rotation.test.ts` |
 | AUTH-05 | 02-01 | `apps/api/src/auth.ts` genericOAuth conditional registration (silent-disable on missing OIDC_* env per D-02) |
 | AUTH-06 | 02-03, 02-04 | `apps/api/src/plugins/request-log.ts`, `apps/api/src/__tests__/openwhispr-source-log.test.ts` |
 | AUTH-07 | 02-01, 02-05, 02-06 | `apps/api/src/lib/cookie-domain.ts` (eTLD+1 logic), wired into `auth.ts` advanced.crossSubDomainCookies, `packages/contract-tests/src/cookie-host.test.ts` |
