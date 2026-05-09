@@ -7,7 +7,8 @@
   "exports": {
     ".": "./src/index.ts",
     "./schema": "./src/schema/index.ts",
-    "./client": "./src/client.ts"
+    "./client": "./src/client.ts",
+    "./seed/conformance": "./src/seed/conformance.ts"
   },
   "scripts": {
     "test": "vitest run",
