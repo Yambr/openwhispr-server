@@ -1,4 +1,5 @@
 // Phase 2 Plan 02 — Build artifacts for the API container.
+// Phase 02.1 — make the api bundle self-contained for container runtime.
 //
 // Two entry points:
 //   1. src/index.ts        -> dist/index.js  (ESM, runtime main bundle)
@@ -9,6 +10,15 @@
 // CJS for the script is intentional: the entrypoint shell shells out to
 // `node /app/dist/scripts/check-default-secrets.cjs` with no flags; CJS
 // avoids ESM URL-resolution edge cases and keeps the file standalone.
+//
+// `noExternal: [/^@openwhispr\//]` — workspace packages (@openwhispr/data,
+// @openwhispr/contract-tests) are inlined into the bundle. Without this,
+// the runtime container would need to ship those packages' TypeScript
+// source (their `exports` maps point at `./src/*.ts`) plus a TS loader,
+// which would defeat the purpose of bundling. Inlining keeps the runtime
+// image small, removes any dependency on `pnpm deploy` (which broke under
+// pnpm v10+ ERR_PNPM_DEPLOY_NONINJECTED_WORKSPACE), and makes the build
+// reproducible from a flat `pnpm install --prod` of non-workspace deps.
 import { defineConfig } from "tsup";
 
 export default defineConfig([
@@ -21,6 +31,7 @@ export default defineConfig([
     sourcemap: false,
     splitting: false,
     bundle: true,
+    noExternal: [/^@openwhispr\//],
   },
   {
     entry: { "scripts/check-default-secrets": "scripts/check-default-secrets.ts" },
