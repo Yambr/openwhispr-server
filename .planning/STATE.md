@@ -2,14 +2,14 @@
 gsd_state_version: 1.0
 milestone: v1.83.7
 milestone_name: milestone
-status: Phase 01.1 partial — blocked on Phase 02.1
-last_updated: "2026-05-09T17:35:00.000Z"
+status: Ready to execute
+last_updated: "2026-05-09T18:08:35.240Z"
 progress:
-  total_phases: 11
-  completed_phases: 2
-  total_plans: 20
-  completed_plans: 19
-  percent: 95
+  total_phases: 18
+  completed_phases: 4
+  total_plans: 27
+  completed_plans: 26
+  percent: 96
 ---
 
 # Project State: OpenWhispr Server
@@ -60,6 +60,7 @@ progress:
 | Phase 01 P04 | 30min | 2 tasks | 13 files |
 | Phase 01 P05 | 10min | 3 tasks tasks | 8 files files |
 | Phase 01 P06 | 30min | 2 tasks | 8 files |
+| Phase 02.4 P02 | 2m | 1 tasks | 1 files |
 
 ## Accumulated Context
 
@@ -67,6 +68,10 @@ progress:
 
 - Phase 01.1 inserted after Phase 1: Phase 1 baseline image-pin audit and fix (URGENT) — discovered during Phase 02 contract-test auto-run that `minio/minio:RELEASE.2026-03-25T00-00-00Z` does not exist on Docker Hub (latest valid tag: `RELEASE.2025-09-07T16-13-09Z`); blocks `make contract-test` and any `docker compose up`. Audit + fix all baseline image pins.
 - Phase 02.1 inserted after Phase 2: Fix `apps/api/Dockerfile` pnpm v10 `ERR_PNPM_DEPLOY_NONINJECTED_WORKSPACE` (URGENT) — uncovered while running Phase 01.1 Plan 05 stack-up; was previously hidden behind the MinIO pull failure. Replace broken `pnpm --filter ... --prod deploy /out` with proper enterprise fix (`inject-workspace-packages: true` in pnpm-workspace.yaml OR multi-stage Dockerfile without `pnpm deploy`). Explicitly NOT `--legacy` escape hatch. Unblocks Phase 01.1 Plan 05.
+- Phase 01.2 / 02.2 / 02.3 / 06.1 inserted during Yolo cascade resolution (see commits 451e9b3 / 7ccb8bb / 5f274e6 / 059b948) — each fixed a defect surfaced by the previous fix; all DONE.
+- Phase 02.4 inserted after Phase 2 (URGENT, GAP-CLOSURE): Backfill TDD test coverage for the entire Phase 02.x Yolo cascade — 6 production fixes (commits 451e9b3, 26eaa69, 7ccb8bb, 059b948, 5f274e6) shipped without per-fix tests, violating the new constitutional rule (PROJECT.md TDD-01b: ≥90% coverage on every phase including decimals). Test-only phase, no production code changes. MUST land before Phase 02.5.
+- Phase 02.5 inserted after Phase 2: Better Auth drizzle schema — drizzleAdapter call missing `schema` option AND `@openwhispr/data` lacks Better Auth required tables (`user`/`session`/`account`/`verification` — singular per Better Auth convention vs our pluralized tables). Add tables, pass schema to adapter, re-run migrations, `make contract-test` passes end-to-end → 02-HUMAN-UAT.md Item 1 finally flippable.
+- **Constitutional update (2026-05-09):** PROJECT.md + CLAUDE.md amended with TDD-01b (≥90% per-phase coverage on touched files) and explicit "Yolo-mode does NOT exempt from TDD" clause. Triggered by Phase 02.x cascade shipping 5 commits without tests.
 
 ### Key Decisions Logged
 

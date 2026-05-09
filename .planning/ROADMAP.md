@@ -105,6 +105,31 @@ Plans:
 - [x] 02-07-PLAN.md — Auth docs (auth.md / oidc-operator-config.md / channel-scheme-override.md) + planning state finalization + Phase 1 SC#1 closure + integration smoke (Wave 4)
 **UI hint**: no
 
+### Phase 02.5: Better Auth drizzle schema — drizzleAdapter missing schema option AND @openwhispr/data lacks Better Auth required tables (user/session/account/verification — singular names per Better Auth convention vs our pluralized users/sessions/accounts/verifications); add tables, pass schema to drizzleAdapter(db, {provider:pg, schema}), re-run drizzle migrate, make contract-test passes end-to-end → 02-HUMAN-UAT.md Item 1 finally flippable; TDD per CLAUDE.md TDD-01b (≥90% on touched files) (INSERTED)
+
+**Goal:** [Urgent work - to be planned]
+**Requirements**: TBD
+**Depends on:** Phase 2
+**Plans:** 0 plans
+
+Plans:
+- [ ] TBD (run /gsd-plan-phase 02.5 to break down)
+
+### Phase 02.4: Backfill TDD test coverage for Phase 02.x Yolo cascade — 6 production fixes (commits 451e9b3, 26eaa69, 7ccb8bb, 059b948, 5f274e6) shipped without per-fix tests, violating constitutional ≥90% per-phase coverage floor; test-only phase (no production code changes); aggregate coverage on touched files must reach ≥90%; vitest+CI green; MUST land before Phase 02.5 better-auth drizzle schema (INSERTED)
+
+**Goal:** Backfill TDD test coverage for the Phase 02.x Yolo cascade. Six production fixes (commits 451e9b3, 26eaa69, 7ccb8bb, 059b948, 5f274e6) shipped without per-fix tests, violating PROJECT.md TDD-01b (≥90% per-phase coverage). Test-only phase — zero production code changes. Aggregate coverage on touched files reaches ≥90%; vitest+CI green; reverse-patch evidence per test group. MUST land before Phase 02.5.
+**Requirements**: TDD-01, TDD-01b
+**Depends on:** Phase 2
+**Plans:** 1/6 plans executed
+
+Plans:
+- [ ] 02.4-01-PLAN.md — G1: tools/bootstrap.sh interpolate + three-way value semantics (Wave 1)
+- [x] 02.4-02-PLAN.md — G3: api Dockerfile no-pnpm-deploy + tsup external pg/pg-native/better-auth (Wave 1)
+- [ ] 02.4-03-PLAN.md — G5a + G5b: better-auth handler bridge + AUTH_TRUSTED_ORIGINS_EXTRA (Wave 1)
+- [ ] 02.4-04-PLAN.md — G2: postgres role init idempotency via testcontainer (Wave 2)
+- [ ] 02.4-05-PLAN.md — G4: docker compose obs-only stack-up smoke (Wave 2)
+- [ ] 02.4-06-PLAN.md — Aggregate coverage report + reverse-patch verification + atomic commit + SUMMARY (Wave 3)
+
 ### Phase 02.3: Add seed compose service for contract-test — make contract-test seed:conformance step runs from host shell with internal-only postgres hostname; needs in-network compose service like migrate (INSERTED)
 
 **Goal:** [Urgent work - to be planned]
