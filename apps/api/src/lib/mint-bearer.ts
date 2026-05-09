@@ -1,44 +1,77 @@
-// Phase 2 / Plan 08 / Task 1 — production `MintBearer` adapter.
+// Phase 02.7 / Plan 02.7-02 / D-01 — production `MintBearer` adapter.
 //
-// Closes 02-VERIFICATION.md Gap 1.
+// Closes AUTH-A1 (deferred from Phase 02 Plan 05). Replaces the previous
+// auth.handler('/api/auth/oauth2/callback/...') delegation, which could
+// never work: Better Auth's callbackOAuth route reads PKCE state from its
+// own internal `verification` table (parseState in
+// node_modules/better-auth/dist/api/routes/callback.mjs:58), but our
+// desktop-signin route writes state to our own `oauth_state` table —
+// every delegation attempt 400'd with state_not_found.
 //
-// Given an OAuth code+state arriving at `/api/auth/desktop-callback/:provider`,
-// this adapter forwards the exchange to Better Auth's universal
-// `auth.handler(Request)` entrypoint at the genericOAuth callback path
-// (`/api/auth/oauth2/callback/${providerId}` — see
-// node_modules/better-auth/dist/plugins/generic-oauth/routes.mjs:116) and
-// extracts the freshly-minted opaque bearer.
+// New design (per RESEARCH §D-01 "Recommended (plain fetch)"):
+//   1. POST OIDC_TOKEN_URL (form-urlencoded) with code + code_verifier
+//      + redirect_uri + client credentials → access_token (+ optional
+//      id_token).
+//   2. GET OIDC_USERINFO_URL with Bearer access_token → {sub, email, …}.
+//   3. await auth.$context → ctx.internalAdapter.findUserByEmail(
+//      email.toLowerCase()) — explicit lowercase even though the installed
+//      Better Auth lowercases on read; D-03 alignment requires the
+//      explicit guard so any future behavior change does not regress us.
+//   4. If user exists → reuse user.id; else internalAdapter.createOAuthUser
+//      with explicit lowercased email (createOAuthUser does NOT lowercase
+//      automatically — verified in internal-adapter.mjs:39 vs createUser:62).
+//   5. internalAdapter.createSession(userId, false) → session.token is the
+//      raw 32-char string. The bearer plugin self-signs on receive when
+//      the token has no `.` (verified plugins/bearer/index.mjs:32-37 with
+//      requireSignature unset), so returning it raw is correct.
 //
-// Bearer extraction strategy (per 02-08-PLAN Task 1 action step 2):
-//   PRIMARY: response.headers.get("set-auth-token")
-//     — emitted by the bearer plugin's `after` hook on any auth-mutating
-//       response that carries a `set-cookie` session token (see
-//       node_modules/better-auth/dist/plugins/bearer/index.mjs:71-72).
-//   FALLBACK: JSON.parse(await response.text()).token
-//     — covers Better Auth response variants that surface the token in
-//       the JSON body (e.g. sign-in/email).
-//
-// Failure cases throw `Error("mint bearer failed: <reason>")`; the
-// centralized setErrorHandler then emits a 500 envelope.
-//
-// PKCE: Better Auth itself owns the code_verifier round-trip during the
-// IdP redirect. The `codeVerifier` arg here is informational only (for
-// trace logs); we do NOT re-implement PKCE.
-import type { TransactionalDb, ExecutableTx } from "@openwhispr/data";
+// Threat boundaries (T-02.7-07): error messages include only status code
+// + provider name, NEVER the IdP response body — IdP body may contain
+// PII or attacker-controlled values.
+import type { ExecutableTx, TransactionalDb } from "@openwhispr/data";
 import type { MintBearer, MintBearerArgs } from "../routes/auth-callback.js";
 
-/** Minimal Better Auth surface this adapter consumes. */
-export interface AuthHandlerLike {
-  handler: (request: Request) => Promise<Response>;
+/**
+ * Minimal Better Auth surface this adapter consumes. Narrowing to a
+ * structural type (rather than importing Better Auth's exported `Auth`)
+ * keeps the test fakes ergonomic and avoids leaking the full plugin
+ * configuration into mint-bearer's call signature.
+ */
+export interface AuthContextLike {
+  internalAdapter: {
+    findUserByEmail: (
+      email: string,
+      options?: unknown,
+    ) => Promise<{ user: { id: string }; accounts?: unknown[] } | null>;
+    createOAuthUser: (
+      user: {
+        email: string;
+        name: string;
+        emailVerified: boolean;
+        image?: string | null;
+      },
+      account: {
+        providerId: string;
+        accountId: string;
+        accessToken?: string;
+        idToken?: string | null;
+        scope?: string;
+      },
+    ) => Promise<{ user: { id: string }; account: unknown }>;
+    createSession: (
+      userId: string,
+      dontRememberMe?: boolean,
+    ) => Promise<{ token: string; userId: string }>;
+  };
+}
+
+export interface AuthLike {
+  $context: Promise<AuthContextLike>;
 }
 
 export interface BuildMintBearerOpts {
-  auth: AuthHandlerLike;
-  /**
-   * Optional db handle (reserved for future plans that need to upsert the
-   * tenant binding alongside the token mint). Currently unused — the
-   * Better Auth handler owns the user/session row creation.
-   */
+  auth: AuthLike;
+  /** Reserved for future use; tenant binding is automatic via role-level GUC. */
   db?: TransactionalDb<ExecutableTx>;
   log?: {
     info?: (msg: unknown) => void;
@@ -46,51 +79,110 @@ export interface BuildMintBearerOpts {
   };
 }
 
+interface OidcTokenResponse {
+  access_token: string;
+  id_token?: string;
+}
+
+interface OidcUserinfo {
+  sub: string;
+  email: string;
+  name?: string;
+  picture?: string;
+}
+
+function requireEnv(name: string): string {
+  const value = process.env[name];
+  if (!value || value.length === 0) {
+    throw new Error(`mint bearer: ${name} is not configured`);
+  }
+  return value;
+}
+
 /**
  * Build the production `MintBearer` adapter bound to a Better Auth
- * instance. The returned function exchanges an OAuth code at the
- * genericOAuth callback URL and returns the resulting opaque bearer.
+ * instance. The returned function performs a real OIDC code exchange,
+ * upserts the user via Better Auth's internalAdapter, mints a session,
+ * and returns the raw opaque bearer.
  */
 export function buildMintBearer(opts: BuildMintBearerOpts): MintBearer {
   const { auth } = opts;
-  const baseUrl = process.env.AUTH_URL ?? "http://localhost:3000";
 
   return async function mintBearer(args: MintBearerArgs): Promise<string> {
-    const url = new URL(
-      `/api/auth/oauth2/callback/${encodeURIComponent(args.provider)}`,
-      baseUrl,
-    );
-    url.searchParams.set("code", args.code);
-    url.searchParams.set("state", args.stateId);
+    // Fail-fast env validation BEFORE any network call so misconfigured
+    // operators see a clear error rather than a confusing 502 from the IdP.
+    const clientId = requireEnv("OIDC_CLIENT_ID");
+    const clientSecret = requireEnv("OIDC_CLIENT_SECRET");
+    const tokenEndpoint = requireEnv("OIDC_TOKEN_URL");
+    const userinfoEndpoint = requireEnv("OIDC_USERINFO_URL");
+    const authUrl = requireEnv("AUTH_URL");
 
-    const request = new Request(url.toString(), { method: "GET" });
-    const response = await auth.handler(request);
+    const redirectUri = `${authUrl.replace(/\/+$/, "")}/api/auth/desktop-callback/${args.provider}`;
 
-    if (response.status >= 400) {
-      throw new Error(`mint bearer failed: ${response.status}`);
+    // Step 1 — token exchange.
+    const tokenRes = await fetch(tokenEndpoint, {
+      method: "POST",
+      headers: { "content-type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({
+        grant_type: "authorization_code",
+        code: args.code,
+        redirect_uri: redirectUri,
+        client_id: clientId,
+        client_secret: clientSecret,
+        code_verifier: args.codeVerifier,
+      }),
+    });
+    if (!tokenRes.ok) {
+      // T-02.7-07 — DO NOT include response body in the error message.
+      throw new Error(`mint bearer: token exchange ${tokenRes.status} (provider=${args.provider})`);
+    }
+    const tokens = (await tokenRes.json()) as OidcTokenResponse;
+
+    // Step 2 — userinfo.
+    const uiRes = await fetch(userinfoEndpoint, {
+      headers: { authorization: `Bearer ${tokens.access_token}` },
+    });
+    if (!uiRes.ok) {
+      throw new Error(`mint bearer: userinfo ${uiRes.status} (provider=${args.provider})`);
+    }
+    const profile = (await uiRes.json()) as OidcUserinfo;
+
+    // Step 3 — explicit lowercase BEFORE adapter calls (D-03 alignment).
+    // Better Auth's findUserByEmail also lowercases internally
+    // (internal-adapter.mjs:448) but createOAuthUser does NOT (line 39 —
+    // it spreads `...user` only). Lowercasing ourselves at one chokepoint
+    // keeps both paths case-consistent and survives any future Better
+    // Auth refactor.
+    const email = profile.email.toLowerCase();
+
+    const ctx = await auth.$context;
+    const ia = ctx.internalAdapter;
+
+    let userId: string;
+    const existing = await ia.findUserByEmail(email);
+    if (existing) {
+      userId = existing.user.id;
+    } else {
+      const created = await ia.createOAuthUser(
+        {
+          email,
+          name: profile.name ?? profile.email,
+          emailVerified: true,
+          image: profile.picture ?? null,
+        },
+        {
+          providerId: args.provider,
+          accountId: profile.sub,
+          accessToken: tokens.access_token,
+          idToken: tokens.id_token ?? null,
+          scope: "openid email profile",
+        },
+      );
+      userId = created.user.id;
     }
 
-    // PRIMARY — bearer plugin's `set-auth-token` header.
-    const headerToken = response.headers.get("set-auth-token");
-    if (headerToken && headerToken.length > 0) {
-      return headerToken;
-    }
-
-    // FALLBACK — JSON body `{token: "..."}`.
-    try {
-      const text = await response.text();
-      if (text.length > 0) {
-        const parsed = JSON.parse(text) as { token?: unknown };
-        if (typeof parsed.token === "string" && parsed.token.length > 0) {
-          return parsed.token;
-        }
-      }
-    } catch {
-      // Non-JSON or unreadable body — falls through to the throw below.
-    }
-
-    throw new Error(
-      `mint bearer failed: response had no set-auth-token header and no body token (status ${response.status})`,
-    );
+    // Step 5 — mint session. dontRememberMe=false → full sessionExpiration.
+    const session = await ia.createSession(userId, false);
+    return session.token;
   };
 }
