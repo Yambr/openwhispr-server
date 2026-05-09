@@ -1,0 +1,15 @@
+# Test fixture for bootstrap-interpolate.test.ts
+# Category 1: PLACEHOLDER_BOOTSTRAP_WILL_REPLACE → regenerate
+SECRET_A=PLACEHOLDER_BOOTSTRAP_WILL_REPLACE
+SECRET_B=PLACEHOLDER_BOOTSTRAP_WILL_REPLACE
+
+# Category 3: real default — preserve
+OPENWHISPR_API_URL=https://api.localhost
+POSTGRES_USER=openwhispr_owner
+SMTP_PORT=1025
+SMTP_HOST=
+ADMIN_EMAIL=no-reply@openwhispr.local
+
+# Category 2: composite — interpolate (declared AFTER its references)
+DATABASE_URL=postgres://app:${SECRET_A}@db:5432/openwhispr
+COMPOSITE_TWO_REFS=${SECRET_A}-${SECRET_B}
