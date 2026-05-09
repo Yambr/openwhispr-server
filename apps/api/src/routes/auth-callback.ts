@@ -166,6 +166,16 @@ export const buildAuthCallbackRoutes = (deps: AuthCallbackDeps) =>
           }
           const row = probe.rows[0];
           if (!row) return { kind: "missing" as const };
+          // CR-01 (02-REVIEW.md) / 02-VERIFICATION.md gap 3:
+          // Check expires_at FIRST. A row that is both expired AND
+          // consumed (legitimate consumption ≥10 min ago) must report
+          // "expired" — the more authoritative time-based signal —
+          // rather than the misleading "already consumed". This avoids
+          // ambiguity for both the desktop client and operator logs.
+          const expiresAtMs = new Date(row.expires_at).getTime();
+          if (Number.isFinite(expiresAtMs) && expiresAtMs <= Date.now()) {
+            return { kind: "expired" as const };
+          }
           if (row.consumed_at) {
             return { kind: "consumed" as const };
           }
