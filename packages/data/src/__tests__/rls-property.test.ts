@@ -454,7 +454,15 @@ SUITE("TEST-RLS-01: 100+ random tenant pairs through PgBouncer", () => {
     // export forces a property-test failure here, which is the
     // intentional gate (Plan 03 + Plan 05 cross-reference).
     expect([...TENANT_SCOPED_TABLES].sort()).toEqual(
-      ["audit_log", "sessions", "usage_ledger", "users"].sort(),
+      [
+        "account",
+        "audit_log",
+        "oauth_state",
+        "sessions",
+        "usage_ledger",
+        "users",
+        "verification",
+      ].sort(),
     );
   });
 });
