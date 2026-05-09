@@ -295,6 +295,11 @@ services:
       OPENWHISPR_API_URL: ${OPENWHISPR_API_URL:-https://api.localhost}
       AUTH_URL: ${AUTH_URL:-https://api.localhost}
       OPENWHISPR_PROTOCOL: ${OPENWHISPR_PROTOCOL:-openwhispr}
+      # Phase 02.3 — extra trusted origins for in-cluster traffic (e.g.
+      # the contract-test seed service POST-ing http://api:3000/api/auth/sign-up).
+      # Comma-separated list parsed by apps/api/src/auth.ts; in addition to
+      # AUTH_URL + OPENWHISPR_API_URL, NOT a replacement.
+      AUTH_TRUSTED_ORIGINS_EXTRA: "http://api:3000"
     depends_on:
       migrate:
         condition: service_completed_successfully
@@ -353,3 +358,35 @@ services:
       timeout: 3s
       retries: 5
       start_period: 5s
+
+  # Phase 02.3 — One-shot conformance fixture seeder. Invoked via
+  # `docker compose --profile contract-test run --rm seed` from the
+  # contract-test Make target. Lives inside openwhispr_internal so
+  # DATABASE_URL_OWNER (postgres://...@postgres:5432/...) and AUTH_URL
+  # (http://api:3000) resolve via the internal DNS — host shell can't.
+  # Reuses the api image (which already ships data/dist/seed-conformance.cjs
+  # via the Phase 02.1 Dockerfile rewrite). `restart: "no"` because this
+  # is a one-shot seed, not a long-running service.
+  seed:
+    image: openwhispr-api
+    profiles: [contract-test]
+    networks: [openwhispr_internal]
+    restart: "no"
+    depends_on:
+      api:
+        condition: service_healthy
+    env_file: .env
+    environment:
+      # Disable mailpit dependency: seed-conformance signs up users via
+      # Better Auth which would otherwise try to send verification mail.
+      # Empty SMTP_HOST routes through the dev no-op email path.
+      SMTP_HOST: ""
+      # The seed posts directly to the api container on the internal
+      # network (no traefik / TLS hop). better-auth's CSRF gate compares
+      # the request Origin header against trustedOrigins; the api service
+      # below adds `http://api:3000` to its trustedOrigins via the
+      # AUTH_TRUSTED_ORIGINS_EXTRA env var so this in-cluster path is
+      # accepted alongside the public https://api.localhost origin.
+      AUTH_URL: "http://api:3000"
+    entrypoint: ["node"]
+    command: ["/app/packages/data/dist/seed-conformance.cjs"]

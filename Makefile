@@ -60,7 +60,9 @@ clean:
 # deployment via `make contract-test-deployed BACKEND_URL=...`.
 contract-test:
 	docker compose --profile default --profile contract-test up -d --wait
-	@SMTP_HOST= pnpm -F @openwhispr/data run seed:conformance ; \
+	@docker compose --profile contract-test run --rm seed ; \
+	rc=$$? ; \
+	if [ $$rc -ne 0 ]; then docker compose down -v ; exit $$rc ; fi ; \
 	BACKEND_URL=http://api.localhost AUTH_URL=http://auth.localhost \
 	  pnpm -F @openwhispr/contract-tests test --run ; \
 	rc=$$? ; docker compose down -v ; exit $$rc

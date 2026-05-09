@@ -11,8 +11,16 @@
 // package.json `type` field.
 import { defineConfig } from "tsup";
 
+// Phase 02.3 — second entry: seed-conformance.cjs. The contract-test
+// compose service `seed` runs `node /app/packages/data/dist/seed-conformance.cjs`
+// inside the openwhispr_internal network so DATABASE_URL_OWNER can resolve
+// the `postgres` hostname (host shell can't). Same CJS bundling rules as
+// migrate; entry has its own CLI detect via require.main === module.
 export default defineConfig({
-  entry: { migrate: "src/migrate.ts" },
+  entry: {
+    migrate: "src/migrate.ts",
+    "seed-conformance": "src/seed/conformance.ts",
+  },
   format: ["cjs"],
   target: "node24",
   outDir: "dist",

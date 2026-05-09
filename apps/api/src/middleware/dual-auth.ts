@@ -54,6 +54,14 @@ export interface AuthLike {
   api: {
     getSession(opts: { headers: Headers }): Promise<SessionResult | null>;
   };
+  /**
+   * Phase 02.3 — Better Auth's universal Web Request entry point used by
+   * the `/api/auth/*` route plugin to forward Fastify requests into Better
+   * Auth's internal router (sign-up, sign-in, /verify-email, /sign-out,
+   * etc.). Optional in the type so existing test fakes that only stub
+   * `api.getSession` continue to compile.
+   */
+  handler?: (req: Request) => Promise<Response>;
 }
 
 /**
@@ -154,7 +162,7 @@ export function buildDualAuthHook(opts: DualAuthOptions) {
  * headers via comma-join (the Web platform's documented multi-value
  * behavior).
  */
-function fastifyHeadersToWebHeaders(
+export function fastifyHeadersToWebHeaders(
   src: Record<string, string | string[] | undefined>,
 ): Headers {
   const headers = new Headers();

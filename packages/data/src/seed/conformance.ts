@@ -47,10 +47,19 @@ async function signUp(
   authUrl: string,
   user: FixtureUser,
 ): Promise<{ created: boolean }> {
-  const url = `${authUrl.replace(/\/+$/, "")}/api/auth/sign-up/email`;
+  const baseUrl = authUrl.replace(/\/+$/, "");
+  const url = `${baseUrl}/api/auth/sign-up/email`;
   const res = await fetch(url, {
     method: "POST",
-    headers: { "content-type": "application/json" },
+    headers: {
+      "content-type": "application/json",
+      // Phase 02.3 — Better Auth's CSRF protection rejects requests whose
+      // Origin header is absent or not in `trustedOrigins`. Server-to-server
+      // fetch() doesn't auto-set Origin; we forward AUTH_URL as Origin so
+      // the request matches `trustedOrigins: [AUTH_URL, OPENWHISPR_API_URL]`
+      // declared in apps/api/src/auth.ts.
+      origin: baseUrl,
+    },
     body: JSON.stringify({
       email: user.email,
       password: FIXTURE_PASSWORD,
@@ -111,7 +120,21 @@ export async function seedConformanceFixtures(opts?: {
 }
 
 // CLI entry point.
-if (import.meta.url === `file://${process.argv[1]}`) {
+// Phase 02.3 — dual ESM/CJS detect: tsx (ESM dev mode) sets import.meta.url,
+// while the tsup CJS bundle for the compose `seed` service has no
+// import.meta and falls back to the require.main check. Wrapping import.meta
+// access in a typeof guard avoids ReferenceError under CJS evaluation.
+const isEsmEntry =
+  typeof import.meta !== "undefined" &&
+  // biome-ignore lint/suspicious/noExplicitAny: import.meta typing differs across module systems
+  (import.meta as any).url === `file://${process.argv[1]}`;
+const isCjsEntry =
+  typeof require !== "undefined" &&
+  typeof module !== "undefined" &&
+  // biome-ignore lint/suspicious/noExplicitAny: require typing differs across module systems
+  (require as any).main === module;
+
+if (isEsmEntry || isCjsEntry) {
   seedConformanceFixtures()
     .then((results) => {
       // eslint-disable-next-line no-console

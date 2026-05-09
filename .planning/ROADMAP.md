@@ -105,6 +105,16 @@ Plans:
 - [x] 02-07-PLAN.md — Auth docs (auth.md / oidc-operator-config.md / channel-scheme-override.md) + planning state finalization + Phase 1 SC#1 closure + integration smoke (Wave 4)
 **UI hint**: no
 
+### Phase 02.3: Add seed compose service for contract-test — make contract-test seed:conformance step runs from host shell with internal-only postgres hostname; needs in-network compose service like migrate (INSERTED)
+
+**Goal:** [Urgent work - to be planned]
+**Requirements**: TBD
+**Depends on:** Phase 2
+**Plans:** 0 plans
+
+Plans:
+- [ ] TBD (run /gsd-plan-phase 02.3 to break down)
+
 ### Phase 02.2: Externalize pg native module from api tsup bundle — Phase 02.1 noExternal pulled pg in via drizzle and broke ESM (INSERTED)
 
 **Goal:** [Urgent work - to be planned]
