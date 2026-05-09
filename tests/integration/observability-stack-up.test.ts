@@ -126,5 +126,5 @@ skipIfNoDocker("Phase 02.4 G4 — observability stack-up smoke", () => {
     const psR = run(["compose", ...COMPOSE_PROFILE, "ps", "--format", "json"]);
     const lines = psR.stdout.trim().split("\n").filter(Boolean);
     expect(lines.length).toBe(0);
-  });
+  }, 60_000);
 });
