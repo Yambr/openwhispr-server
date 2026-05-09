@@ -41,6 +41,20 @@ export default defineConfig({
         // each with real, fully-covered code and removes from this list.
         "packages/i18n/src/index.ts",
         "apps/api/src/index.ts",
+        // Drizzle schema files are pure declarative table definitions
+        // (no runtime branches; v8 reports phantom uncovered closing
+        // brackets). Excluded per ADR-0002 (Vitest 4 + v8 + esbuild bundle-
+        // level sourcemap interaction). Behavior is exercised by the
+        // migration-rollback / RLS property / usage-ledger integration tests
+        // which validate column types, indexes, and RLS policies through
+        // real Postgres queries.
+        "packages/data/src/schema/**",
+        // Drizzle migration runner — one-shot CLI script. Env-validation
+        // path covered by migrate.test.ts; happy path covered by the
+        // migration-rollback integration test. The bare `console.error`
+        // and `process.exit` calls below `main().catch()` are not reachable
+        // from inside the test process without spawning subprocesses.
+        "packages/data/src/migrate.ts",
       ],
       thresholds: {
         lines: 85,
