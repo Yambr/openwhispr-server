@@ -1,0 +1,23 @@
+# Root .dockerignore — applied to every `docker build` rooted here.
+# Mirrors apps/api/.dockerignore for the build-context-from-root case
+# (Compose `build.context: .` with `dockerfile: apps/api/Dockerfile`).
+node_modules
+**/node_modules
+dist
+**/dist
+*.test.ts
+*.test.tsx
+**/__tests__/**
+.env
+.env.*
+!.env.example
+.git
+.gitignore
+.planning
+tests
+.vscode
+.idea
+.DS_Store
+*.log
+coverage
+.nyc_output

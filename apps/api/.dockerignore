@@ -1,0 +1,22 @@
+# Keep secrets, dev junk, and build cruft out of the image — Pitfall #7
+# (never bake .env into a layer) and §Standard Stack (.dockerignore).
+node_modules
+**/node_modules
+dist
+**/dist
+*.test.ts
+*.test.tsx
+**/__tests__/**
+.env
+.env.*
+!.env.example
+.git
+.gitignore
+.planning
+tests
+.vscode
+.idea
+.DS_Store
+*.log
+coverage
+.nyc_output

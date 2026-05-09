@@ -18,11 +18,38 @@ import { readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
-const here = dirname(fileURLToPath(import.meta.url));
+// Resolve the script directory in a way that survives both runtime modes:
+//   - tsx (ESM) loads this file directly from source; import.meta.url is set.
+//   - tsup --format cjs strips import.meta; we fall back to __dirname which
+//     CJS provides natively at runtime (and which the bundle injects).
+// Using a typeof guard keeps both paths first-class.
+const here =
+  typeof import.meta?.url === "string"
+    ? dirname(fileURLToPath(import.meta.url))
+    : // biome-ignore lint/correctness/noUndeclaredVariables: __dirname is a CJS runtime global
+      // biome-ignore lint/style/noNonNullAssertion: CJS bundle guarantees __dirname
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      ((globalThis as unknown as { __dirname?: string }).__dirname ??
+        // biome-ignore lint/correctness/noUndeclaredVariables: CJS-only fallback
+        (typeof __dirname !== "undefined" ? __dirname : ""));
+
+// In the container image the deny-list ships at /app/tools/bootstrap/default-secrets.txt
+// (Dockerfile COPY). Local invocation (tsx, vitest) finds it via the
+// monorepo-relative path. Operators can override via DENY_LIST_PATH.
+const containerDenyPath = "/app/tools/bootstrap/default-secrets.txt";
+const monorepoDenyPath = resolve(
+  here,
+  "..",
+  "..",
+  "..",
+  "tools",
+  "bootstrap",
+  "default-secrets.txt",
+);
 
 const denyPath = resolve(
   process.env.DENY_LIST_PATH ??
-    resolve(here, "..", "..", "..", "tools", "bootstrap", "default-secrets.txt"),
+    (here.startsWith("/app") ? containerDenyPath : monorepoDenyPath),
 );
 
 const deny = readFileSync(denyPath, "utf8")
