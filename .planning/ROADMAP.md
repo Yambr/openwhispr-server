@@ -110,11 +110,11 @@ Plans:
 **Goal:** Close the Better Auth ↔ Drizzle binding gap surfaced at Phase 02.3 — `drizzleAdapter` receives an explicit canonical-name schema map (D-01), and a new migration 0003 binds `app.tenant_id` per openwhispr_app connection (D-02) plus column DEFAULTs on Better Auth tables (D-03), so Better Auth's tenant-blind INSERTs satisfy FORCE RLS transparently. After this phase, `make contract-test` runs end-to-end (signup → verify-skipped → signin → token rotation), unblocking 02-HUMAN-UAT.md Item 1.
 **Requirements**: TDD-01, TDD-01b, DATA-01, AUTH-01, AUTH-04, CONTRACT-01
 **Depends on:** Phase 2
-**Plans:** 2/5 plans executed
+**Plans:** 3/5 plans executed
 
 Plans:
 - [x] 02.5-01-PLAN.md — Wave 1: RED tests (auth-schema-mapping unit + 0003 testcontainer integration) + contract-test RED baseline capture
-- [ ] 02.5-02-PLAN.md — Wave 2: migration 0003_better_auth_tenant_defaults.sql (D-02 ALTER ROLE + D-03 column DEFAULTs) + journal append; turns Plan 01 integration test GREEN
+- [x] 02.5-02-PLAN.md — Wave 2: migration 0003_better_auth_tenant_defaults.sql (D-02 ALTER ROLE + D-03 column DEFAULTs) + journal append; turns Plan 01 integration test GREEN
 - [x] 02.5-03-PLAN.md — Wave 2: apps/api/src/auth.ts explicit schema map (D-01); turns Plan 01 unit test GREEN; coverage ≥90%
 - [ ] 02.5-04-PLAN.md — Wave 3: end-to-end `make contract-test` run + capture GREEN witness
 - [ ] 02.5-05-PLAN.md — Wave 3: SUMMARY + 3-scenario reverse-patch evidence + 02-HUMAN-UAT.md Item 1 flip
