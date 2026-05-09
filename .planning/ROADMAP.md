@@ -73,6 +73,16 @@ A drop-in OpenWhispr backend any organization can self-host — open-source out 
 - [x] 01-06-PLAN.md — Backup/restore via age envelope encryption + nightly round-trip + operations.md + storage.md (Wave 3)
 **UI hint**: no
 
+### Phase 01.2: Fix postgres init env passthrough — POSTGRES_OWNER_PASSWORD and POSTGRES_APP_PASSWORD not propagated to 00-roles.sh; uncovered after Phase 02.1 unblocked api/migrate builds; postgres exits 2 on first init (INSERTED)
+
+**Goal:** [Urgent work - to be planned]
+**Requirements**: TBD
+**Depends on:** Phase 1
+**Plans:** 0 plans
+
+Plans:
+- [ ] TBD (run /gsd-plan-phase 01.2 to break down)
+
 ### Phase 2: Auth + Wire-API Skeleton + Conformance Harness
 **Goal**: A desktop client can complete the full auth lifecycle (sign-up / sign-in / verification-poll / delete-account) against the server over any channel scheme it presents, receive opaque bearer tokens that rotate cleanly without logging the user out, and the wire-contract conformance suite (CONTRACT-01) is the canonical regression net for everything subsequent phases add.
 **Depends on**: Phase 1
@@ -94,6 +104,16 @@ A drop-in OpenWhispr backend any organization can self-host — open-source out 
 - [x] 02-06-PLAN.md — CONTRACT-01 conformance suite (8 test files) + fixture-idp + GHA contract-test job + branch protection (Wave 3)
 - [x] 02-07-PLAN.md — Auth docs (auth.md / oidc-operator-config.md / channel-scheme-override.md) + planning state finalization + Phase 1 SC#1 closure + integration smoke (Wave 4)
 **UI hint**: no
+
+### Phase 02.2: Externalize pg native module from api tsup bundle — Phase 02.1 noExternal pulled pg in via drizzle and broke ESM (INSERTED)
+
+**Goal:** [Urgent work - to be planned]
+**Requirements**: TBD
+**Depends on:** Phase 2
+**Plans:** 0 plans
+
+Plans:
+- [ ] TBD (run /gsd-plan-phase 02.2 to break down)
 
 ### Phase 02.1: Fix apps/api/Dockerfile pnpm v10 ERR_PNPM_DEPLOY_NONINJECTED_WORKSPACE — replace broken pnpm deploy with proper enterprise fix (NOT --legacy); inject-workspace-packages or multi-stage Dockerfile; api+migrate images build clean, full stack up --wait succeeds, no workspace regressions, unblocks Phase 01.1 Plan 05 (INSERTED)
 

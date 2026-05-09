@@ -19,6 +19,14 @@
 // image small, removes any dependency on `pnpm deploy` (which broke under
 // pnpm v10+ ERR_PNPM_DEPLOY_NONINJECTED_WORKSPACE), and makes the build
 // reproducible from a flat `pnpm install --prod` of non-workspace deps.
+//
+// Phase 02.2 — `external: ["pg", "pg-native", "better-auth"]`. tsup's noExternal
+// for @openwhispr/* transitively pulled in `pg` (via drizzle-orm/node-postgres
+// inside @openwhispr/data) and tried to bundle its CommonJS into our ESM image,
+// which broke at runtime with `require is not defined` on pg's native bindings.
+// Native modules with C addons (pg) MUST stay external so Node loads them via
+// the runtime node_modules. better-auth is also kept external because it ships
+// dual ESM/CJS subpath exports that tsup can't reliably inline into pure ESM.
 import { defineConfig } from "tsup";
 
 export default defineConfig([
@@ -32,6 +40,7 @@ export default defineConfig([
     splitting: false,
     bundle: true,
     noExternal: [/^@openwhispr\//],
+    external: ["pg", "pg-native", "better-auth"],
   },
   {
     entry: { "scripts/check-default-secrets": "scripts/check-default-secrets.ts" },
