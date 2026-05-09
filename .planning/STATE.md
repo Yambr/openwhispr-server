@@ -1,14 +1,14 @@
 ---
 gsd_state_version: 1.0
-milestone: v1.83.7
-milestone_name: milestone
+milestone: v1.6.9
+milestone_name: expects plain session.token text; advisor research recommends Option C
 status: Ready to execute
-last_updated: "2026-05-09T21:07:18.621Z"
+last_updated: "2026-05-09T23:13:33.415Z"
 progress:
-  total_phases: 20
+  total_phases: 24
   completed_phases: 5
   total_plans: 39
-  completed_plans: 41
+  completed_plans: 45
   percent: 100
 ---
 
@@ -74,6 +74,7 @@ progress:
 | Phase 02.7 P03 | 5min | 3 tasks | 6 files |
 | Phase 02.7 P05 | 22min | 3 tasks | 5 files |
 | Phase 02.7 P06 | 3m | 2 tasks | 3 files |
+| Phase 02.12 P01 | 21m 13s | 13 tasks | 17 files |
 
 ## Accumulated Context
 
@@ -86,6 +87,8 @@ progress:
 - Phase 02.5 inserted after Phase 2: Better Auth drizzle schema — drizzleAdapter call missing `schema` option AND `@openwhispr/data` lacks Better Auth required tables (`user`/`session`/`account`/`verification` — singular per Better Auth convention vs our pluralized tables). Add tables, pass schema to adapter, re-run migrations, `make contract-test` passes end-to-end → 02-HUMAN-UAT.md Item 1 finally flippable.
 - **Constitutional update (2026-05-09):** PROJECT.md + CLAUDE.md amended with TDD-01b (≥90% per-phase coverage on touched files) and explicit "Yolo-mode does NOT exempt from TDD" clause. Triggered by Phase 02.x cascade shipping 5 commits without tests.
 - Phase 02.5 Plans 01-04 landed (commits prior + `91784ab` + `eb92282` + this Plan 04 commit): RED tests → migration 0003 (tenant default binding) + auth.ts schema map → live `make contract-test` PARTIAL. Plans 02+03 verified live: migrate=ok, Better Auth resolves model `user`→`users` and dispatches into adapter `findOne`. Signup still 500s due to a SEPARATE wrapper-`db` defect in `apps/api/src/index.ts:229-233` (NOT the schema/tenant issue). 02-HUMAN-UAT.md Item 1 flippable: NO until Phase 02.6 fixes the one-line bootstrap destructure.
+- **Phase 02.12 inserted (2026-05-10): Better-Auth-native plain `session.token` text storage.** Closes Phase 02.5-04 cascade tail #11 (`BetterAuthError: The field "token" does not exist in the schema for the model "session"`). Phase 02 Plan 01's bytea hash-only `tokenHash` design (AUTH-04 v1) is incompatible with BA v1.6.9, which has no native hashed-token support. Migration `0005_session_token_plain.sql` drops bytea columns + recreates SECURITY DEFINER lookup functions with `text` parameter; AUTH-04 5-minute overlap CONTRACT preserved via plain-text `previous_token`. Atomic commit `a7456d9`. Contract suite advances from 0 → 16/27 passing; remaining failures all classified as pre-existing Group B (OIDC 503) and Group C (rate-limit cascades).
+- **AUTH-04 v2 hardening DEFERRED (Phase 02.12 / D-05):** Application-layer hash-only token storage was over-engineered for v1 (entire OSS auth ecosystem stores plain bearers). v2 hardening sweep will introduce either (a) column-level pgcrypto on `sessions.token` with Vault/KMS-rotated DEK, or (b) Postgres TDE / disk-level encryption documented in operator runbook. Phase 02 single-tenant dev posture acceptable until v2 multi-tenant sweep. Rationale + reverse-patch evidence in `02.12-SUMMARY.md`.
 
 ### Key Decisions Logged
 
