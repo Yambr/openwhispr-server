@@ -79,14 +79,24 @@ describe.skipIf(!HAS_DOCKER)("Phase 02.14 — contract-test-runner in compose ne
     expect(services).not.toContain("contract-test-runner");
   });
 
-  it("contract-test-runner BACKEND_URL points at the in-cluster api:3000 (not Traefik)", () => {
+  // Phase 02.15 update: Group G closure flipped BACKEND_URL/AUTH_URL from
+  // the in-cluster `http://api:3000` shortcut to the canonical-public
+  // `https://api.localhost` URL. Docker network aliases (traefik service
+  // block) make `api.localhost` resolve in-cluster, and the runner trusts
+  // the bootstrap-generated cert via NODE_EXTRA_CA_CERTS. The Phase 02.14
+  // contract is preserved by the network-residence + DNS-view assertions
+  // (above); URL is now the public one because OAuth-redirect tests follow
+  // 302s the api emits to its publicly-configured callback URL — those
+  // URLs MUST match what the api advertises, otherwise the redirect
+  // chain ECONNREFUSEs (Group G defect this update closed).
+  it("contract-test-runner BACKEND_URL points at the canonical-public https://api.localhost (Phase 02.15 — network alias + CA trust)", () => {
     const merged = composeConfig(["default", "contract-test"]);
-    expect(merged).toMatch(/BACKEND_URL:\s*http:\/\/api:3000/);
+    expect(merged).toMatch(/BACKEND_URL:\s*https:\/\/api\.localhost/);
   });
 
-  it("contract-test-runner AUTH_URL points at the in-cluster api:3000", () => {
+  it("contract-test-runner AUTH_URL points at the canonical-public https://api.localhost (Phase 02.15)", () => {
     const merged = composeConfig(["default", "contract-test"]);
-    expect(merged).toMatch(/AUTH_URL:\s*http:\/\/api:3000/);
+    expect(merged).toMatch(/AUTH_URL:\s*https:\/\/api\.localhost/);
   });
 
   it("contract-test-runner does NOT set NODE_TLS_REJECT_UNAUTHORIZED (http only — no TLS to validate)", () => {
