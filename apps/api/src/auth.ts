@@ -16,14 +16,27 @@
 // callback to consume the oauth_state row and emit the channel-scheme
 // custom-protocol redirect. This factory only stands up the auth
 // instance; no callback rewriting yet.
+
+import type { AppDb } from "@openwhispr/data/client";
+// Phase 02.5 / Plan 03 / D-01 — Explicit Better-Auth-canonical schema map.
+//
+// Better Auth's drizzle adapter looks up models by their canonical (singular)
+// names: user / session / account / verification. Our drizzle exports are
+// pluralized (users / sessions / accounts / verifications). Renaming the
+// exports would ripple through TENANT_SCOPED_TABLES, the Plan 05 RLS lint,
+// every consumer of `@openwhispr/data/schema`, and the migration test fixtures
+// — not worth the blast radius for a name-mapping problem.
+//
+// Instead, bind the canonical names to the pluralized table objects below,
+// scoped only to the drizzleAdapter call. The drizzle exports keep their
+// pluralized names everywhere else.
+import { accounts, sessions, users, verifications } from "@openwhispr/data/schema";
 import { betterAuth } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import { bearer } from "better-auth/plugins/bearer";
 import { genericOAuth } from "better-auth/plugins/generic-oauth";
-import type { AppDb } from "@openwhispr/data/client";
-import * as schema from "@openwhispr/data/schema";
+import { type EmailService, makeEmailService } from "./email.js";
 import { cookieDomainConfig } from "./lib/cookie-domain.js";
-import { makeEmailService, type EmailService } from "./email.js";
 
 /**
  * Structural return type for buildAuth. Better Auth's full instance type
@@ -113,8 +126,7 @@ export function buildAuth(opts: BuildAuthOptions): AuthInstance {
       return this;
     },
   };
-  const email: EmailService =
-    opts.email ?? makeEmailService((opts.log ?? fallbackLog) as never);
+  const email: EmailService = opts.email ?? makeEmailService((opts.log ?? fallbackLog) as never);
 
   const plugins = [
     // Bearer plugin: emits opaque tokens + set-auth-token rotation header.
@@ -136,7 +148,14 @@ export function buildAuth(opts: BuildAuthOptions): AuthInstance {
   return betterAuth({
     database: drizzleAdapter(db, {
       provider: "pg",
-      schema,
+      // Better Auth canonical model names (left) ↔ our pluralized drizzle
+      // table objects (right). Phase 02.5 / Plan 03 / D-01.
+      schema: {
+        user: users,
+        session: sessions,
+        account: accounts,
+        verification: verifications,
+      },
     }),
     secret: process.env.BETTER_AUTH_SECRET,
     baseURL: process.env.AUTH_URL ?? "http://localhost:3000",
@@ -149,9 +168,7 @@ export function buildAuth(opts: BuildAuthOptions): AuthInstance {
     trustedOrigins: [
       process.env.OPENWHISPR_API_URL,
       process.env.AUTH_URL,
-      ...(process.env.AUTH_TRUSTED_ORIGINS_EXTRA ?? "")
-        .split(",")
-        .map((s) => s.trim()),
+      ...(process.env.AUTH_TRUSTED_ORIGINS_EXTRA ?? "").split(",").map((s) => s.trim()),
     ].filter((s): s is string => typeof s === "string" && s.length > 0),
     emailAndPassword: {
       enabled: true,
