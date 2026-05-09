@@ -30,9 +30,18 @@ import type { AuthLike } from "../middleware/dual-auth.js";
 import { AuthError } from "../errors.js";
 import { hashToken, recordPreviousToken } from "../lib/token-rotation.js";
 
+/**
+ * Local AuthLike-with-handler shape: dual-auth's AuthLike only declares
+ * `api.getSession`; the test-only force-rotate path additionally tries
+ * `auth.handler(Request)` (Better Auth's universal Web Request entry).
+ */
+export interface TestOnlyAuth extends AuthLike {
+  handler?: (req: Request) => Promise<Response>;
+}
+
 export interface TestOnlyDeps {
   db: TransactionalDb<ExecutableTx>;
-  auth: AuthLike;
+  auth: TestOnlyAuth;
 }
 
 function extractBearer(authHeader: string | string[] | undefined): string | null {
@@ -121,26 +130,28 @@ export function buildTestOnlyRoutes(deps: TestOnlyDeps) {
       // rotation seam in the future, prefer that. Today we use the
       // direct DB rotation shortcut documented in 02-08-PLAN Task 2.
       let newBearer: string | undefined;
-      try {
-        const url = new URL(
-          "/api/auth/rotate-session",
-          process.env.AUTH_URL ?? "http://localhost:3000",
-        );
-        const resp = await auth.handler(
-          new Request(url.toString(), {
-            method: "POST",
-            headers: { authorization: `Bearer ${oldBearer}` },
-          }),
-        );
-        const headerToken = resp.headers.get("set-auth-token");
-        if (resp.status < 400 && headerToken && headerToken !== oldBearer) {
-          newBearer = headerToken;
-          // Mirror the rotation into our previous_token machinery so the
-          // SECURITY DEFINER lookup admits the OLD bearer for 5 minutes.
-          await recordPreviousToken(db, r.tenant, sessionId, hashToken(oldBearer));
+      if (typeof auth.handler === "function") {
+        try {
+          const url = new URL(
+            "/api/auth/rotate-session",
+            process.env.AUTH_URL ?? "http://localhost:3000",
+          );
+          const resp = await auth.handler(
+            new Request(url.toString(), {
+              method: "POST",
+              headers: { authorization: `Bearer ${oldBearer}` },
+            }),
+          );
+          const headerToken = resp.headers.get("set-auth-token");
+          if (resp.status < 400 && headerToken && headerToken !== oldBearer) {
+            newBearer = headerToken;
+            // Mirror the rotation into our previous_token machinery so the
+            // SECURITY DEFINER lookup admits the OLD bearer for 5 minutes.
+            await recordPreviousToken(db, r.tenant, sessionId, hashToken(oldBearer));
+          }
+        } catch {
+          // Better Auth has no rotation route — fall through to DB shortcut.
         }
-      } catch {
-        // Better Auth has no rotation route — fall through to DB shortcut.
       }
 
       if (!newBearer) {

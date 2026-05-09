@@ -111,7 +111,9 @@ function makeFakeAuth(opts: FakeAuthOpts = {}) {
     handler: vi.fn(async () => new Response(null, { status: 404 })),
     api: {
       getSession: vi.fn(async () =>
-        opts.user ? { user: opts.user } : null,
+        opts.user
+          ? { user: opts.user, session: { id: "session-fixture-id" } }
+          : null,
       ),
     },
   };

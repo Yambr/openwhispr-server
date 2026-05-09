@@ -41,6 +41,8 @@ import { resolveDefaultTenantId } from "../lib/default-tenant.js";
  */
 export interface SessionResult {
   user: { id: string; email: string; tenantId?: string | null };
+  /** Better Auth's session row when available (id at minimum). */
+  session?: { id?: string };
 }
 
 /**
@@ -71,6 +73,13 @@ declare module "fastify" {
   interface FastifyRequest {
     user?: SessionResult["user"];
     tenant?: string;
+    /**
+     * Plan 08: Better Auth session id, populated by the dual-auth hook
+     * when a session is resolved. Read by the recordPreviousToken
+     * onSend hook in buildApp() to bind the OLD token's hash to the
+     * exact session row that just rotated.
+     */
+    sessionId?: string;
   }
   interface FastifyContextConfig {
     /**
@@ -110,6 +119,13 @@ export function buildDualAuthHook(opts: DualAuthOptions) {
     if (session) {
       req.user = session.user;
       req.tenant = session.user.tenantId ?? (await resolveDefaultTenantId());
+      // Plan 08: stash session id so the recordPreviousToken onSend hook
+      // can bind the OLD token's hash to the exact session row that
+      // rotated. Better Auth's getSession returns `session.id`; if a
+      // future variant doesn't, the onSend hook simply skips.
+      if (session.session?.id) {
+        req.sessionId = session.session.id;
+      }
       return;
     }
 
@@ -159,6 +175,10 @@ function extractBearer(authHeader: string | string[] | undefined): string | null
   const match = /^Bearer\s+(.+)$/i.exec(value);
   return match ? (match[1]?.trim() ?? null) : null;
 }
+
+// Plan 08: extractBearer is consumed by the recordPreviousToken onSend
+// hook in apps/api/src/index.ts as well as direct unit tests.
+export { extractBearer };
 
 // Exported for direct unit-testing.
 export const __test = { fastifyHeadersToWebHeaders, extractBearer };

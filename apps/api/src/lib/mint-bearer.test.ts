@@ -39,7 +39,9 @@ describe("buildMintBearer", () => {
     const token = await mint(ARGS);
     expect(token).toBe("OPAQUE_BEARER_FROM_HEADER");
     expect(handler).toHaveBeenCalledTimes(1);
-    const req = handler.mock.calls[0]?.[0] as Request;
+    const calls = (handler as unknown as { mock: { calls: unknown[][] } }).mock
+      .calls;
+    const req = calls[0]?.[0] as Request;
     expect(req.url).toMatch(/\/api\/auth\/oauth2\/callback\/oidc/);
     expect(req.url).toContain(`code=${ARGS.code}`);
     expect(req.url).toContain(`state=${ARGS.stateId}`);

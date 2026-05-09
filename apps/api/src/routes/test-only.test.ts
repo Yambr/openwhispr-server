@@ -46,7 +46,8 @@ function makeFakeAuth(opts: FakeAuthOpts = {}) {
       headers: { "set-auth-token": newBearer, "content-type": "application/json" },
     });
   });
-  const getSession = vi.fn(async () => {
+  const getSession = vi.fn(async (_args: { headers: Headers }) => {
+    void _args;
     if (!opts.withSession) return null;
     return { user: FAKE_USER };
   });
