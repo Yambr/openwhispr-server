@@ -29,8 +29,11 @@
 //     ...)` themselves. That keeps the GUC binding next to the actual
 //     query and avoids any preHandler-vs-handler transaction-scope
 //     ambiguity under Fastify's hook lifecycle.
+
+import { APIError } from "better-auth/api";
 import type { FastifyRequest } from "fastify";
 import { AuthError } from "../errors.js";
+import { resolveApiErrorStatus } from "../lib/api-error-status.js";
 import { resolveDefaultTenantId } from "../lib/default-tenant.js";
 
 /**
@@ -122,7 +125,28 @@ export function buildDualAuthHook(opts: DualAuthOptions) {
     if (req.routeOptions?.config?.auth === false) return;
 
     const headers = fastifyHeadersToWebHeaders(req.headers);
-    const session = await auth.api.getSession({ headers });
+    // Phase 02.7 D-02 Layer 1: Better Auth's bearer plugin THROWS APIError
+    // on malformed tokens (and certain auth-failure paths) rather than
+    // returning null. Convert 4xx APIErrors to a null session so the
+    // existing AuthError fall-through emits the canonical 401 envelope;
+    // re-throw 5xx and non-APIError so infra errors stay visible (never
+    // silently downgrade a DB outage to 401). Original error reference is
+    // preserved on the re-throw path per CONTEXT D-02 "Specific Ideas".
+    let session: SessionResult | null;
+    try {
+      session = await auth.api.getSession({ headers });
+    } catch (err) {
+      if (err instanceof APIError) {
+        const status = resolveApiErrorStatus(err);
+        if (status >= 400 && status < 500) {
+          session = null; // 4xx → fall through to AuthError emission below
+        } else {
+          throw err; // 5xx (or unmapped → 500) → re-throw, preserve infra-error semantics
+        }
+      } else {
+        throw err; // non-APIError → unrelated infra; re-throw as-is
+      }
+    }
 
     if (session) {
       req.user = session.user;
