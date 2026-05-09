@@ -300,3 +300,23 @@ services:
       interval: 10s
       timeout: 3s
       retries: 3
+
+  # Phase 2 Plan 06 — Fixture OIDC IdP for the CONTRACT-01 conformance
+  # suite (multi-channel scheme matrix). NEVER instantiated in production
+  # — gated by `profiles: [contract-test]`. The fixture serves a minimal
+  # OIDC discovery doc + 302's /authorize back to the API callback with
+  # state echoed; see tests/fixtures/idp/server.mjs.
+  fixture-idp:
+    build:
+      context: ./tests/fixtures/idp
+    profiles: [contract-test]
+    networks: [openwhispr_internal]
+    environment:
+      ISSUER: http://fixture-idp:9000
+      PORT: "9000"
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:9000/livez"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+      start_period: 5s
