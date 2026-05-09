@@ -169,26 +169,57 @@ interpolate() {
   printf '%s' "${result}"
 }
 
+# Phase 02.2 — `.env.example` uses three distinct value semantics, and
+# bootstrap MUST treat them differently:
+#
+#   1. literal `PLACEHOLDER_BOOTSTRAP_WILL_REPLACE` — explicit secret slot;
+#      always regenerated to a fresh random secret.
+#   2. value containing `${OTHER_KEY}` — composite (e.g. DATABASE_URL);
+#      always rebuilt from the current RESULT map. Operator-set overrides
+#      for composites are intentionally NOT supported (keeps password
+#      rotation safe).
+#   3. anything else (including empty string and concrete defaults like
+#      `https://api.localhost`, `openwhispr_owner`, `1025`,
+#      `no-reply@openwhispr.local`, the empty SMTP_HOST=) — a real default
+#      config value or empty operator slot. Preserved as-is on first
+#      bootstrap; preserved if operator overrode in their .env.
+#
+# The previous logic regenerated category 3 as random secrets when current
+# was empty or matched the example, which corrupted URL-shaped keys
+# (OPENWHISPR_API_URL, AUTH_URL, OIDC_*, SMTP_*) into opaque base64 tokens
+# — surfaced via api container "Invalid URL" crash on better-auth init.
+readonly PLACEHOLDER_LITERAL='PLACEHOLDER_BOOTSTRAP_WILL_REPLACE'
+
 for key in "${KEYS[@]}"; do
   current="${CURRENT[${key}]:-}"
   example_value="${EXAMPLE[${key}]}"
   if contains_placeholder "${example_value}"; then
-    # Composite value — always rebuilt from current RESULT map. Operator
-    # overrides for composites are intentionally not supported: the URL
-    # must always reflect the current secret values, otherwise rotation
-    # silently breaks downstream services.
     RESULT["${key}"]="$(interpolate "${example_value}")"
     GENERATED+=1
-  elif [[ -z "${current}" || "${current}" == "${example_value}" ]]; then
-    if [[ "${key}" == "BACKUP_AGE_IDENTITY" ]]; then
-      RESULT["${key}"]="$(gen_age_identity)"
+  elif [[ "${example_value}" == "${PLACEHOLDER_LITERAL}" ]]; then
+    # Explicit secret slot. Regenerate if current is empty OR still the
+    # placeholder; preserve operator-set value otherwise.
+    if [[ -z "${current}" || "${current}" == "${PLACEHOLDER_LITERAL}" ]]; then
+      if [[ "${key}" == "BACKUP_AGE_IDENTITY" ]]; then
+        RESULT["${key}"]="$(gen_age_identity)"
+      else
+        RESULT["${key}"]="$(gen_secret)"
+      fi
+      GENERATED+=1
     else
-      RESULT["${key}"]="$(gen_secret)"
+      RESULT["${key}"]="${current}"
+      PRESERVED+=1
     fi
-    GENERATED+=1
   else
-    RESULT["${key}"]="${current}"
-    PRESERVED+=1
+    # Real default / operator-overridable config value. Use current if set,
+    # else the .env.example default (which may legitimately be empty).
+    if [[ -n "${current}" ]]; then
+      RESULT["${key}"]="${current}"
+      PRESERVED+=1
+    else
+      RESULT["${key}"]="${example_value}"
+      GENERATED+=1
+    fi
   fi
 done
 
