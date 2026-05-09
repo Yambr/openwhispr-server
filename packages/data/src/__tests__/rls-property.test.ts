@@ -86,8 +86,15 @@ async function bootHarness(): Promise<Harness> {
     .start();
 
   const superPool = new Pool({ connectionString: pg.getConnectionUri() });
-  await superPool.query(`CREATE ROLE openwhispr_owner WITH LOGIN BYPASSRLS PASSWORD 'owner-pw'`);
+  await superPool.query(
+    `CREATE ROLE openwhispr_owner WITH LOGIN BYPASSRLS CREATEROLE PASSWORD 'owner-pw'`,
+  );
   await superPool.query(`CREATE ROLE openwhispr_app   WITH LOGIN          PASSWORD 'app-pw'`);
+  // Phase 02.5 / Plan 02 — migration 0003 ALTERs openwhispr_app's role
+  // config; owner needs CREATEROLE + ADMIN OPTION on app + SET grant on the
+  // custom GUC `app.tenant_id`. In production owner is bootstrap superuser.
+  await superPool.query(`GRANT openwhispr_app TO openwhispr_owner WITH ADMIN OPTION`);
+  await superPool.query(`GRANT SET, ALTER SYSTEM ON PARAMETER "app.tenant_id" TO openwhispr_owner`);
   await superPool.query(`ALTER DATABASE openwhispr OWNER TO openwhispr_owner`);
   await superPool.query(`ALTER SCHEMA public OWNER TO openwhispr_owner`);
   await superPool.end();
@@ -323,37 +330,41 @@ SUITE("TEST-RLS-01: 100+ random tenant pairs through PgBouncer", () => {
       }),
     },
     { numRuns: 30 },
-  )("audit_log: cross-tenant inserts stay isolated", async ({ tenantA, tenantB, actions }) => {
-    fc.pre(tenantA !== tenantB);
-    if (!harness) throw new Error("harness not booted");
-    await resetTenantTables(harness.ownerUri);
-    await seedTenants(harness.ownerUri, tenantA, tenantB);
-    const db = drizzle(harness.appPool, { schema });
+  )(
+    "audit_log: cross-tenant inserts stay isolated",
+    async ({ tenantA, tenantB, actions }) => {
+      fc.pre(tenantA !== tenantB);
+      if (!harness) throw new Error("harness not booted");
+      await resetTenantTables(harness.ownerUri);
+      await seedTenants(harness.ownerUri, tenantA, tenantB);
+      const db = drizzle(harness.appPool, { schema });
 
-    await withTenant(db, tenantA, async (tx) => {
-      for (const action of actions) {
-        await tx.execute(
-          sql`INSERT INTO audit_log (tenant_id, action, payload)
+      await withTenant(db, tenantA, async (tx) => {
+        for (const action of actions) {
+          await tx.execute(
+            sql`INSERT INTO audit_log (tenant_id, action, payload)
                 VALUES (${tenantA}::uuid, ${action}, '{}'::jsonb)`,
-        );
-      }
-    });
+          );
+        }
+      });
 
-    const seenAsB = (await withTenant(db, tenantB, async (tx) =>
-      tx.execute(sql`SELECT tenant_id::text AS tenant_id FROM audit_log`),
-    )) as { rows: Array<{ tenant_id: string }> };
-    for (const r of seenAsB.rows ?? []) expect(r.tenant_id).toBe(tenantB);
+      const seenAsB = (await withTenant(db, tenantB, async (tx) =>
+        tx.execute(sql`SELECT tenant_id::text AS tenant_id FROM audit_log`),
+      )) as { rows: Array<{ tenant_id: string }> };
+      for (const r of seenAsB.rows ?? []) expect(r.tenant_id).toBe(tenantB);
 
-    const upd = (await withTenant(db, tenantB, async (tx) =>
-      tx.execute(sql`UPDATE audit_log SET action = 'mutated'`),
-    )) as { rowCount: number | null };
-    expect(upd.rowCount ?? 0).toBe(0);
+      const upd = (await withTenant(db, tenantB, async (tx) =>
+        tx.execute(sql`UPDATE audit_log SET action = 'mutated'`),
+      )) as { rowCount: number | null };
+      expect(upd.rowCount ?? 0).toBe(0);
 
-    const del = (await withTenant(db, tenantB, async (tx) =>
-      tx.execute(sql`DELETE FROM audit_log`),
-    )) as { rowCount: number | null };
-    expect(del.rowCount ?? 0).toBe(0);
-  }, TIMEOUT);
+      const del = (await withTenant(db, tenantB, async (tx) =>
+        tx.execute(sql`DELETE FROM audit_log`),
+      )) as { rowCount: number | null };
+      expect(del.rowCount ?? 0).toBe(0);
+    },
+    TIMEOUT,
+  );
 
   test.prop(
     {

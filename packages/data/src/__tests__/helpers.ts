@@ -54,11 +54,28 @@ export async function bootMigratedPostgres(): Promise<BootResult> {
   // (postgres_super) is a superuser, so it can create roles + assign
   // BYPASSRLS without ALTER ROLE round-trips.
   await superPool.query(
-    `CREATE ROLE openwhispr_owner WITH LOGIN BYPASSRLS PASSWORD '${ownerPassword}'`,
+    `CREATE ROLE openwhispr_owner WITH LOGIN BYPASSRLS CREATEROLE PASSWORD '${ownerPassword}'`,
   );
   await superPool.query(
     `CREATE ROLE openwhispr_app   WITH LOGIN          PASSWORD '${appPassword}'`,
   );
+  // Phase 02.5 / Plan 02 — migration 0003 issues `ALTER ROLE openwhispr_app
+  // SET app.tenant_id TO ...`. In production, openwhispr_owner IS the
+  // bootstrap superuser (per init/00-roles.sql.tpl semantics) and can ALTER
+  // any role. In this test harness, owner is a non-superuser created by the
+  // container's bootstrap user; we must grant CREATEROLE (above) AND ADMIN
+  // OPTION on openwhispr_app so the migration's ALTER ROLE succeeds. Both
+  // grants are scoped to the testcontainer and do not weaken production
+  // security posture.
+  await superPool.query(`GRANT openwhispr_app TO openwhispr_owner WITH ADMIN OPTION`);
+  // PG 15+ parameter-level privileges: setting a custom (un-prefixed-class)
+  // GUC like `app.tenant_id` at role/database scope normally requires
+  // superuser. Grant openwhispr_owner explicit SET+ALTER SYSTEM on the
+  // canonical custom GUC so migration 0003's `ALTER ROLE openwhispr_app
+  // SET app.tenant_id ...` works without making owner a superuser. In
+  // production, openwhispr_owner IS the bootstrap superuser and this grant
+  // is implicit.
+  await superPool.query(`GRANT SET, ALTER SYSTEM ON PARAMETER "app.tenant_id" TO openwhispr_owner`);
   await superPool.query(`ALTER DATABASE openwhispr OWNER TO openwhispr_owner`);
   // Owner needs CREATE on public to add tables; on PG 15+ public is owned
   // by the bootstrap user, so transfer ownership of the schema too.
