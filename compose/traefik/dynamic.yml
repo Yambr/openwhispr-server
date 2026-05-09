@@ -28,6 +28,22 @@ http:
       service: mailpit-svc
       entryPoints: [websecure]
       tls: {}
+    # Phase 2 Plan 06 — split-host topology routers for the cookie-host
+    # conformance test (CONTRACT-01 D-20). Both target the same api
+    # service; only the Host header differs. Inert in production (no
+    # traffic on auth/api.example.test); active during contract-test runs
+    # where the runner sends Host: auth.example.test then api.example.test
+    # against the same Traefik instance.
+    auth-example-test:
+      rule: "Host(`auth.example.test`)"
+      service: api-svc
+      entryPoints: [websecure]
+      tls: {}
+    api-example-test:
+      rule: "Host(`api.example.test`)"
+      service: api-svc
+      entryPoints: [websecure]
+      tls: {}
 
   services:
     api-svc:
