@@ -77,13 +77,15 @@ contract-test:
 	@docker compose --profile contract-test run --rm seed ; \
 	rc=$$? ; \
 	if [ $$rc -ne 0 ]; then docker compose down -v ; exit $$rc ; fi ; \
-	BACKEND_URL=http://api.localhost AUTH_URL=http://auth.localhost \
+	BACKEND_URL=https://api.localhost \
+	  NODE_EXTRA_CA_CERTS=$(PWD)/compose/traefik/certs/local.crt \
 	  pnpm -F @openwhispr/contract-tests test --run ; \
 	rc=$$? ; docker compose down -v ; exit $$rc
 
 # Run the conformance suite against an arbitrary deployed backend.
 # `make contract-test-deployed BACKEND_URL=https://api.customer.com AUTH_URL=...`
 contract-test-deployed:
+	@test "$$NODE_TLS_REJECT_UNAUTHORIZED" != "0" || (echo "refusing to run with TLS verification disabled (NODE_TLS_REJECT_UNAUTHORIZED=0)" && exit 1)
 	@test -n "$(BACKEND_URL)" || (echo "set BACKEND_URL=https://api.customer.com" && exit 1)
 	BACKEND_URL=$(BACKEND_URL) AUTH_URL=$(AUTH_URL) \
 	  pnpm -F @openwhispr/contract-tests test --run

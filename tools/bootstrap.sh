@@ -260,3 +260,71 @@ if [[ -n "${identity}" && "${identity}" == AGE-SECRET-KEY-1* && ! -f "${PUBKEY_F
     echo "bootstrap: age-keygen not in PATH; cannot derive keys/backup.age.pub. Install age (apt/brew/scoop) and re-run before using make backup." >&2
   fi
 fi
+
+# Phase 02.7 / D-05 — Traefik self-signed cert for *.localhost + *.example.test.
+#
+# compose/traefik/dynamic.yml expects /certs/local.crt + /certs/local.key.
+# Without these files Traefik falls back to its built-in TRAEFIK DEFAULT
+# CERTIFICATE, which (a) violates the dynamic.yml contract, and (b) made
+# Phase 02.6 reach for an insecure TLS-bypass workaround — we close both
+# defects here.
+#
+# Idempotent: regenerate only if cert is missing OR expires within 30 days.
+# 10-year validity (-days 3650) for self-host dev convenience.
+CERT_DIR="${REPO_ROOT}/compose/traefik/certs"
+CERT_FILE="${CERT_DIR}/local.crt"
+KEY_FILE="${CERT_DIR}/local.key"
+mkdir -p "${CERT_DIR}"
+
+needs_cert=1
+if [[ -f "${CERT_FILE}" && -f "${KEY_FILE}" ]]; then
+  if openssl x509 -checkend $((86400 * 30)) -noout -in "${CERT_FILE}" >/dev/null 2>&1; then
+    needs_cert=0
+  fi
+fi
+
+if (( needs_cert )); then
+  # Build a temp openssl config so SANs are declared explicitly.
+  # No mkcert dependency (per project boring rule + CONTEXT D-07).
+  openssl_config="$(mktemp)"
+  cat > "${openssl_config}" <<'OPENSSL_CONFIG'
+[req]
+distinguished_name = req_distinguished_name
+x509_extensions = v3_req
+prompt = no
+
+[req_distinguished_name]
+CN = openwhispr-local-dev
+
+[v3_req]
+basicConstraints = CA:FALSE
+keyUsage = nonRepudiation, digitalSignature, keyEncipherment
+extendedKeyUsage = serverAuth
+subjectAltName = @alt_names
+
+[alt_names]
+DNS.1 = localhost
+DNS.2 = *.localhost
+DNS.3 = api.localhost
+DNS.4 = auth.localhost
+DNS.5 = grafana.localhost
+DNS.6 = minio-console.localhost
+DNS.7 = mailpit.localhost
+DNS.8 = api.example.test
+DNS.9 = auth.example.test
+DNS.10 = *.example.test
+IP.1 = 127.0.0.1
+IP.2 = ::1
+OPENSSL_CONFIG
+
+  openssl req -x509 -nodes -days 3650 -newkey rsa:2048 \
+    -keyout "${KEY_FILE}" -out "${CERT_FILE}" \
+    -config "${openssl_config}" -extensions v3_req >/dev/null 2>&1
+
+  rm -f "${openssl_config}"
+  chmod 600 "${KEY_FILE}"
+  chmod 644 "${CERT_FILE}"
+  echo "bootstrap: generated ${CERT_FILE} (10-year validity, SANs cover *.localhost + *.example.test)"
+else
+  echo "bootstrap: ${CERT_FILE} valid for >=30 days — skip regeneration"
+fi
