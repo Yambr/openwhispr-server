@@ -402,3 +402,39 @@ services:
       AUTH_URL: "http://api:3000"
     entrypoint: ["node"]
     command: ["/app/packages/data/dist/seed-conformance.cjs"]
+
+  # Phase 02.14 — Contract-test runner inside openwhispr_internal.
+  # Closes Group E (surfaced by Phase 02.13): host-side vitest cannot
+  # resolve docker-internal DNS (`fixture-idp`, `api`), so the OAuth
+  # 302 hop fails with `getaddrinfo ENOTFOUND fixture-idp`. Running
+  # the suite in-network gives it the same DNS view as the api itself.
+  #
+  # Image is built from packages/contract-tests/Dockerfile — a thin
+  # linux pnpm install of just the @openwhispr/contract-tests subgraph.
+  # We deliberately do NOT bind-mount host node_modules: host is
+  # darwin-arm64 with pnpm-symlinked layout, container is linux; native
+  # deps (rollup/esbuild/vitest bundler) would mismatch architectures.
+  #
+  # BACKEND_URL/AUTH_URL point at the in-cluster `api:3000` endpoint
+  # (no Traefik/TLS hop) — Origin matches the AUTH_TRUSTED_ORIGINS_EXTRA
+  # already declared on the api service for the Phase 02.3 seed flow.
+  #
+  # NODE_TLS_REJECT_UNAUTHORIZED is intentionally NOT set: the URLs are
+  # http:// so Node's fetch never engages TLS. Setting it would be a
+  # CLAUDE.md-prohibited workaround for a problem that does not exist.
+  contract-test-runner:
+    build:
+      context: .
+      dockerfile: packages/contract-tests/Dockerfile
+    image: openwhispr-contract-test-runner
+    profiles: [contract-test]
+    networks: [openwhispr_internal]
+    restart: "no"
+    depends_on:
+      api:
+        condition: service_healthy
+      fixture-idp:
+        condition: service_healthy
+    environment:
+      BACKEND_URL: http://api:3000
+      AUTH_URL: http://api:3000

@@ -72,14 +72,19 @@ clean-stack:
 # patches), runs the conformance suite against http://api.localhost,
 # tears down regardless of pass/fail. Operators target their own
 # deployment via `make contract-test-deployed BACKEND_URL=...`.
+# Phase 02.14 — runner moved INSIDE openwhispr_internal (Group E closure).
+# The host-side runner could not resolve docker-internal DNS (e.g. when
+# the api 302'd OAuth flows to http://fixture-idp:9000/...), so Group E
+# tests failed with `getaddrinfo ENOTFOUND fixture-idp`. The runner now
+# joins the same network the api sees. Two sequential `run --rm` calls:
+# seed first (must succeed), then contract-test-runner. Both --rm so no
+# stopped containers leak after the run.
 contract-test:
 	docker compose --profile default --profile contract-test up -d --wait
 	@docker compose --profile contract-test run --rm seed ; \
 	rc=$$? ; \
 	if [ $$rc -ne 0 ]; then docker compose down -v ; exit $$rc ; fi ; \
-	BACKEND_URL=https://api.localhost \
-	  NODE_EXTRA_CA_CERTS=$(PWD)/compose/traefik/certs/local.crt \
-	  pnpm -F @openwhispr/contract-tests test --run ; \
+	docker compose --profile contract-test run --rm contract-test-runner ; \
 	rc=$$? ; docker compose down -v ; exit $$rc
 
 # Run the conformance suite against an arbitrary deployed backend.
