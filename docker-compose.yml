@@ -151,13 +151,15 @@ services:
       tempo:
         condition: service_healthy
       mimir:
-        condition: service_healthy
-    healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:13133/ >/dev/null 2>&1 || exit 1"]
-      interval: 5s
-      timeout: 3s
-      retries: 10
-      start_period: 10s
+        # Phase 06.1 — distroless image cannot expose docker HEALTHCHECK;
+        # `service_started` is the contract upgrade. The OTLP receiver
+        # tolerates upstream-not-ready by buffering + retrying with backoff.
+        condition: service_started
+    # Phase 06.1 — no HEALTHCHECK: otel/opentelemetry-collector-contrib:0.151
+    # is distroless (no shell, no wget, no curl — only the otelcol-contrib
+    # binary). Docker HEALTHCHECK requires an in-image executable. Dependents
+    # below switch to `service_started`; the collector is itself a buffering
+    # tier so partial-readiness is tolerated.
 
   loki:
     image: grafana/loki:3.5.0
@@ -176,27 +178,42 @@ services:
     image: grafana/tempo:2.8.0
     profiles: [default, obs-only]
     networks: [openwhispr_internal]
+    # Phase 06.1 — explicit config file. The grafana/tempo image has no
+    # usable default backend; without -config.file the binary aborts
+    # with `unknown backend ""`.
+    command: ["-config.file=/etc/tempo/tempo.yaml"]
     volumes:
-      - tempo_data:/tmp/tempo
+      - ./compose/tempo/tempo.yaml:/etc/tempo/tempo.yaml:ro
+      - tempo_data:/var/tempo
     healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:3200/ready >/dev/null 2>&1 || exit 1"]
+      # Phase 06.1 — grafana/tempo:2.x is distroless (no /bin/sh), so
+      # CMD-SHELL is unusable. Invoke busybox wget directly via CMD form.
+      # `--spider` returns 0 only on HTTP 2xx, so /ready 503 (ring-join)
+      # naturally fails the probe; start_period budgets cold-start time.
+      test: ["CMD", "/busybox/wget", "--spider", "-q", "http://127.0.0.1:3200/ready"]
       interval: 5s
       timeout: 3s
-      retries: 10
-      start_period: 15s
+      retries: 12
+      start_period: 60s
 
   mimir:
     image: grafana/mimir:2.16.0
     profiles: [default, obs-only]
     networks: [openwhispr_internal]
+    # Phase 06.1 — explicit config file with target=all (single-binary)
+    # and filesystem backend. Without it mimir starts with the upstream
+    # default that expects S3 + memberlist with multi-replica ring,
+    # never reaching `ready`.
+    command: ["-config.file=/etc/mimir/mimir.yaml"]
     volumes:
+      - ./compose/mimir/mimir.yaml:/etc/mimir/mimir.yaml:ro
       - mimir_data:/data
-    healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:9009/ready >/dev/null 2>&1 || exit 1"]
-      interval: 5s
-      timeout: 3s
-      retries: 10
-      start_period: 15s
+    # Phase 06.1 — no HEALTHCHECK: grafana/mimir:2.x is a distroless image
+    # (no shell, no wget, no curl — only the `mimir` binary). Docker
+    # HEALTHCHECK requires an in-image executable. Dependents below switch
+    # to `service_started` for mimir specifically; orchestration-level
+    # liveness moves to Helm/K8s probes in Phase 9 where a sidecar
+    # (or kubelet HTTP probe) issues the /ready check.
 
   grafana:
     image: grafana/grafana:11.6.0
@@ -213,15 +230,22 @@ services:
       tempo:
         condition: service_healthy
       mimir:
-        condition: service_healthy
+        # Phase 06.1 — distroless mimir cannot expose docker HEALTHCHECK;
+        # grafana provisions mimir as a datasource at first request, which
+        # tolerates a not-yet-ready upstream and retries on each query.
+        condition: service_started
     healthcheck:
       test:
         - CMD-SHELL
         - wget -qO- http://127.0.0.1:3000/api/health | grep -q '"database":"ok"'
       interval: 5s
       timeout: 3s
-      retries: 10
-      start_period: 15s
+      retries: 12
+      # Phase 06.1 — first-boot installs the grafana-pyroscope-app plugin
+      # over the network (~22s on a cold cache); api/health serves
+      # `database:starting` until the bootstrap finishes. start_period
+      # budgets that one-time delay.
+      start_period: 90s
 
   # Phase 2 Plan 02 — One-shot migration runner. Runs as openwhispr_owner
   # DIRECT to postgres:5432 (NOT pgbouncer). DDL through transaction-mode

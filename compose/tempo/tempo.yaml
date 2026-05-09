@@ -1,0 +1,48 @@
+# Tempo single-binary config — Phase 06.1.
+#
+# Filesystem backend for self-host single-VM deployments. Operators
+# pointing at S3/MinIO/GCS for production should override this file via
+# a compose volume mount or build a derived image; the schema is the
+# same, only the `storage.trace.backend` and `storage.trace.<backend>:`
+# block change.
+#
+# Single-binary mode (`target: all` in launcher arg) co-locates the
+# distributor / ingester / querier / compactor inside one process,
+# which is the boring choice for the OpenWhispr default-compose stack.
+# K8s/HA deployments will move to per-component Helm charts in Phase 9.
+
+stream_over_http_enabled: true
+
+server:
+  http_listen_port: 3200
+  grpc_listen_port: 9095
+  log_level: info
+
+distributor:
+  receivers:
+    otlp:
+      protocols:
+        grpc:
+          endpoint: 0.0.0.0:4317
+        http:
+          endpoint: 0.0.0.0:4318
+
+ingester:
+  trace_idle_period: 10s
+  max_block_bytes: 1_000_000
+  max_block_duration: 5m
+
+compactor:
+  compaction:
+    block_retention: 24h
+
+storage:
+  trace:
+    backend: local
+    local:
+      path: /var/tempo/blocks
+    wal:
+      path: /var/tempo/wal
+
+usage_report:
+  reporting_enabled: false
