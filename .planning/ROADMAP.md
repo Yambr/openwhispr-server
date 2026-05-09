@@ -110,14 +110,14 @@ Plans:
 **Goal:** Close the 13/26 contract-test conformance gaps left after Phases 02.5+02.6 unblocked the auth surface. Six discrete defects, all Phase-02-internal: D-01 OAuth channel-scheme mintBearer (real internalAdapter path, not the broken auth.handler delegation); D-02 bearer-invalid envelope hybrid (dual-auth try/catch + setErrorHandler APIError recognizer); D-03 A+B check-user lifecycle (seed signUp() loud-fail) + lower(email) functional unique index; D-04 AUTH_URL default collapse; D-05 cert-gen in bootstrap.sh + HTTPS contract-test path. End state: `make contract-test` 26/26 GREEN, 02-HUMAN-UAT.md Item 1 flippable without scope qualifier.
 **Requirements**: TDD-01, TDD-01b, AUTH-A1, AUTH-02, WIRE-01, WIRE-17, WIRE-18, WIRE-19, WIRE-20, CONTRACT-01
 **Depends on:** Phase 2
-**Plans:** 3/7 plans executed
+**Plans:** 4/7 plans executed
 
 Plans:
 - [x] 02.7-01-PLAN.md — Wave 1: D-04 + D-05 — bootstrap cert-gen + https contract-test + AUTH_URL collapse + probe loud-fail
 - [x] 02.7-02-PLAN.md — Wave 2: D-01 — real mintBearer via internalAdapter + IdP token exchange (closes AUTH-A1)
 - [x] 02.7-03-PLAN.md — Wave 2: D-02 — bearer-invalid 401 envelope via dual-auth try/catch + setErrorHandler APIError recognizer
 - [ ] 02.7-04-PLAN.md — Wave 2: D-03A — seed signUp() loud-fail on non-duplicate 4xx + preflight row check
-- [ ] 02.7-05-PLAN.md — Wave 2: D-03B — migration 0004 functional unique on lower(email) + check-user lower() lookup
+- [x] 02.7-05-PLAN.md — Wave 2: D-03B — migration 0004 functional unique on lower(email) + check-user lower() lookup
 - [ ] 02.7-06-PLAN.md — Wave 3: contract-test 26/26 GREEN witness + reverse-patch evidence
 - [ ] 02.7-07-PLAN.md — Wave 3: phase summary + UAT flip + STATE/ROADMAP refresh
 
