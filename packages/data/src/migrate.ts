@@ -12,8 +12,16 @@ import { drizzle } from "drizzle-orm/node-postgres";
 import { migrate } from "drizzle-orm/node-postgres/migrator";
 import { Pool } from "pg";
 
-const __dirname = dirname(fileURLToPath(import.meta.url));
-const MIGRATIONS_FOLDER = resolve(__dirname, "..", "migrations");
+// Resolve script directory across both runtimes:
+//   - tsx (ESM, dev / vitest) — import.meta.url is set.
+//   - tsup --format cjs (container image) — falls back to __dirname.
+// In the container the bundle ships at /app/packages/data/dist/migrate.js
+// and the migrations live alongside at /app/packages/data/migrations.
+const here =
+  typeof import.meta?.url === "string"
+    ? dirname(fileURLToPath(import.meta.url))
+    : (typeof __dirname !== "undefined" ? __dirname : process.cwd());
+const MIGRATIONS_FOLDER = resolve(here, "..", "migrations");
 
 async function main(): Promise<void> {
   const url = process.env.DATABASE_URL_OWNER;
@@ -21,6 +29,25 @@ async function main(): Promise<void> {
     // biome-ignore lint/suspicious/noConsole: one-shot CLI script
     console.error("migrate: DATABASE_URL_OWNER not set — refusing to run as owner");
     process.exit(2);
+  }
+
+  // CONTAINER-A1 (Phase 2 Plan 02): refuse to run DDL through PgBouncer
+  // transaction-mode. Transaction-pool connection reuse breaks
+  // CREATE INDEX CONCURRENTLY and any DDL-in-transaction sequence; the
+  // owner role MUST connect direct to Postgres on 5432.
+  let parsedHost: string | null = null;
+  try {
+    parsedHost = new URL(url).hostname;
+  } catch {
+    // If the URL is malformed pg.Pool will surface a clearer error below;
+    // do NOT swallow that diagnostic.
+  }
+  if (parsedHost && /pgbouncer/i.test(parsedHost)) {
+    // biome-ignore lint/suspicious/noConsole: one-shot CLI script
+    console.error(
+      `migrate: refusing to run DDL through pgbouncer host "${parsedHost}" — owner must connect direct to postgres:5432`,
+    );
+    process.exit(3);
   }
 
   const pool = new Pool({ connectionString: url, max: 2 });
