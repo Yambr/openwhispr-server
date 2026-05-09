@@ -196,6 +196,29 @@ export function buildAuth(opts: BuildAuthOptions): AuthInstance {
       cookiePrefix: "openwhispr",
       crossSubDomainCookies: cookieDomainConfig(),
       useSecureCookies: process.env.NODE_ENV === "production",
+      // Phase 02.8 / D-01 — Better Auth UUID mode.
+      //
+      // Resolution chain (verified at v1.6.9 pin):
+      //   1. @better-auth/core/dist/db/adapter/get-id-field.mjs:12 reads
+      //      `options.advanced?.database?.generateId === "uuid"`.
+      //   2. @better-auth/drizzle-adapter declares `supportsUUIDs:true` for
+      //      `provider:"pg"` (line 432 of dist/index.mjs).
+      //   3. Result: shouldGenerateId=false → BA stops emitting 32-char
+      //      base32 strings into our Postgres `uuid` columns.
+      //   4. Postgres `users.id uuid PRIMARY KEY DEFAULT gen_random_uuid()`
+      //      (and the same on sessions/accounts/verifications) does the work.
+      //
+      // CRITICAL: this is the FIRST-CLASS path, not a workaround. Removing
+      // this line reintroduces the 22P02 / 422 signup failure surfaced by
+      // Phase 02.7-06 contract-test E2E. Reverse-patch evidence is captured
+      // by tests/self-tests/better-auth-plugin-uuid-safety.test.ts and
+      // apps/api/src/__tests__/auth-schema-mapping.test.ts.
+      //
+      // Residual risk: BA plugins `organization`/`anonymous` import
+      // `generateId` directly from `@better-auth/core/utils/id`, bypassing
+      // this override. Adding either requires Option B schema migration
+      // (uuid → text) FIRST. Enforced by the CI lint test above.
+      database: { generateId: "uuid" },
     },
     plugins,
   }) as unknown as AuthInstance;
