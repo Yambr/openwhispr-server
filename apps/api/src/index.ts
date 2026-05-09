@@ -42,28 +42,29 @@
 //      dual-auth hook so req.user / req.tenant / req.sessionId are
 //      populated by the time it fires.
 //   9. Register Plan 03's routes via `allRoutes` from routes/index.ts.
-import Fastify, { type FastifyInstance } from "fastify";
+
 import fastifyCookie from "@fastify/cookie";
+import type { ExecutableTx, TransactionalDb } from "@openwhispr/data";
+import Fastify, { type FastifyInstance } from "fastify";
 import { registerErrorHandler } from "./error-handler.js";
-import { zodTypeProvider } from "./plugins/zod-type-provider.js";
-import { requestLog } from "./plugins/request-log.js";
-import { rateLimitPlugin } from "./plugins/rate-limit.js";
-import {
-  buildDualAuthHook,
-  extractBearer,
-  type AuthLike,
-  type TryPreviousToken,
-} from "./middleware/dual-auth.js";
-import { buildAllRoutes } from "./routes/index.js";
-import type { MintBearer } from "./routes/auth-callback.js";
-import { tenantPlugin } from "./middleware/tenant.js";
+import { buildMintBearer } from "./lib/mint-bearer.js";
 import {
   hashToken,
   recordPreviousToken as recordPreviousTokenLib,
   tryPreviousToken as tryPreviousTokenLib,
 } from "./lib/token-rotation.js";
-import { buildMintBearer } from "./lib/mint-bearer.js";
-import type { TransactionalDb, ExecutableTx } from "@openwhispr/data";
+import {
+  type AuthLike,
+  buildDualAuthHook,
+  extractBearer,
+  type TryPreviousToken,
+} from "./middleware/dual-auth.js";
+import { tenantPlugin } from "./middleware/tenant.js";
+import { rateLimitPlugin } from "./plugins/rate-limit.js";
+import { requestLog } from "./plugins/request-log.js";
+import { zodTypeProvider } from "./plugins/zod-type-provider.js";
+import type { MintBearer } from "./routes/auth-callback.js";
+import { buildAllRoutes } from "./routes/index.js";
 
 /** Signature of the recordPreviousToken library function (for tests). */
 type RecordPreviousToken = typeof recordPreviousTokenLib;
@@ -104,9 +105,7 @@ export interface BuildAppOptions {
   recordPreviousToken?: RecordPreviousToken;
 }
 
-export const buildApp = async (
-  opts: BuildAppOptions = {},
-): Promise<FastifyInstance> => {
+export const buildApp = async (opts: BuildAppOptions = {}): Promise<FastifyInstance> => {
   // 1. trustProxy:true — Pitfall #2.
   const app = Fastify({ logger: false, trustProxy: true });
 
@@ -155,9 +154,7 @@ export const buildApp = async (
           }
         : undefined);
     const dualAuthHook = buildDualAuthHook(
-      tryPrev
-        ? { auth: opts.auth, tryPreviousToken: tryPrev }
-        : { auth: opts.auth },
+      tryPrev ? { auth: opts.auth, tryPreviousToken: tryPrev } : { auth: opts.auth },
     );
     app.addHook("onRequest", dualAuthHook);
 
@@ -166,8 +163,7 @@ export const buildApp = async (
     //     hash on the matching session row so subsequent OLD-token
     //     requests are admitted via tryPreviousToken for 5 minutes.
     if (opts.db) {
-      const recPrev: RecordPreviousToken =
-        opts.recordPreviousToken ?? recordPreviousTokenLib;
+      const recPrev: RecordPreviousToken = opts.recordPreviousToken ?? recordPreviousTokenLib;
       app.addHook("onSend", async (req, reply, _payload) => {
         const newBearerHeader = reply.getHeader("set-auth-token");
         const newBearer =
@@ -188,10 +184,7 @@ export const buildApp = async (
           try {
             await recPrev(opts.db!, req.tenant, req.sessionId, hashToken(oldBearer));
           } catch (err) {
-            req.log?.warn?.(
-              { err },
-              "recordPreviousToken failed (Plan 08 onSend hook)",
-            );
+            req.log?.warn?.({ err }, "recordPreviousToken failed (Plan 08 onSend hook)");
           }
         }
       });
@@ -228,9 +221,15 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   // "minimal mode" gap from 02-VERIFICATION.md.
   const { makeAppDb } = await import("@openwhispr/data/client");
   const { buildAuth } = await import("./auth.js");
-  const db = makeAppDb();
-  const auth = buildAuth({ db: db as never }) as unknown as AuthLike;
-  const app = await buildApp({ db: db as never, auth });
+  // Phase 02.6 / D-01 — destructure the {db, pool} wrapper. Passing the
+  // wrapper instead of the bare Drizzle instance was the root cause of
+  // the Phase 02.5-04 contract-test failure (`TypeError: db.select is
+  // not a function` inside @better-auth/drizzle-adapter findOne). The
+  // prior `as never` casts hid the type mismatch from tsc; they are
+  // removed here so a future wrapper-leak fails typecheck immediately.
+  const { db } = makeAppDb();
+  const auth = buildAuth({ db }) as unknown as AuthLike;
+  const app = await buildApp({ db, auth });
   const port = Number(process.env.PORT ?? 3000);
   app.listen({ port, host: "0.0.0.0" }).catch((err) => {
     // biome-ignore lint/suspicious/noConsole: server bootstrap fatal-error logger; structured logging arrives in Phase 6 (OBS-03)

@@ -2,7 +2,7 @@
 # Phase 0: implements dev/test/lint/format/typecheck/up/down/clean/help.
 # Future-phase targets stub-fail with a phase-N pointer.
 
-.PHONY: dev test lint lint-rls format typecheck up down clean help \
+.PHONY: dev test lint lint-rls format typecheck up down clean clean-stack help \
         contract-test contract-test-deployed load-test seed backup restore \
         migrate migrate-rollback logs ps restart verify-images
 
@@ -49,6 +49,20 @@ verify-images:
 clean:
 	rm -rf node_modules apps/*/node_modules packages/*/node_modules \
 	       coverage reports .stryker-tmp dist
+
+# Phase 02.6 / D-02 — operator-friendly stack reset.
+#
+# Tears down all containers (default + contract-test profiles), removes
+# orphans, and DROPS named volumes. Required after `tools/bootstrap.sh`
+# rotates secrets — without this, the `openwhispr_postgres_data` volume
+# retains the original init password and migrations fail with
+# `password authentication failed for user "openwhispr_owner"`. This was
+# the Phase 02.5-04 first-attempt failure mode; this target makes the
+# safe path one command.
+clean-stack:
+	docker compose --profile default --profile contract-test down -v --remove-orphans || true
+	docker volume ls -q | grep -E '^openwhispr_' | xargs -r docker volume rm || true
+	@echo "Stack volumes cleaned. Run 'tools/bootstrap.sh' to regenerate .env, then 'make build' + 'docker compose --profile default up -d --wait'."
 
 # Phase 2 / Plan 06 — CONTRACT-01 conformance suite, locally.
 #
