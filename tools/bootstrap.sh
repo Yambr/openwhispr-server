@@ -135,10 +135,51 @@ if (( ${#OFFENDERS[@]} > 0 )); then
 fi
 
 # Phase 2: decide regenerate vs preserve per key.
+#
+# Phase 01.2 — composite values containing `${OTHER_KEY}` placeholders are
+# interpolated against the running RESULT map instead of being treated as
+# secret-generation candidates. This is required for compose env-vars like
+# DATABASE_URL=postgres://user:${POSTGRES_APP_PASSWORD}@host/db whose
+# correct value is a structured connection string built from earlier-
+# generated secrets, NOT a random opaque token. Iteration over KEYS in
+# .env.example order guarantees the referenced secrets are already in
+# RESULT by the time the composite key is processed.
+contains_placeholder() {
+  [[ "${1}" == *'${'*'}'* ]]
+}
+
+interpolate() {
+  # Replace every ${KEY} reference in $1 with RESULT[KEY]. Unknown keys
+  # are left literally so the operator notices the misconfiguration in
+  # the written .env (better than a silent empty substitution).
+  local template="${1}"
+  local result="${template}"
+  local ref ref_key ref_value
+  while [[ "${result}" =~ \$\{([A-Z_][A-Z0-9_]*)\} ]]; do
+    ref_key="${BASH_REMATCH[1]}"
+    ref="\${${ref_key}}"
+    ref_value="${RESULT[${ref_key}]:-}"
+    if [[ -z "${ref_value}" ]]; then
+      echo "bootstrap: warning — composite value references unset \${${ref_key}}; leaving literal" >&2
+      break
+    fi
+    # Substitute every occurrence; a key may legitimately appear twice.
+    result="${result//${ref}/${ref_value}}"
+  done
+  printf '%s' "${result}"
+}
+
 for key in "${KEYS[@]}"; do
   current="${CURRENT[${key}]:-}"
   example_value="${EXAMPLE[${key}]}"
-  if [[ -z "${current}" || "${current}" == "${example_value}" ]]; then
+  if contains_placeholder "${example_value}"; then
+    # Composite value — always rebuilt from current RESULT map. Operator
+    # overrides for composites are intentionally not supported: the URL
+    # must always reflect the current secret values, otherwise rotation
+    # silently breaks downstream services.
+    RESULT["${key}"]="$(interpolate "${example_value}")"
+    GENERATED+=1
+  elif [[ -z "${current}" || "${current}" == "${example_value}" ]]; then
     if [[ "${key}" == "BACKUP_AGE_IDENTITY" ]]; then
       RESULT["${key}"]="$(gen_age_identity)"
     else

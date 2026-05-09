@@ -15,7 +15,7 @@ import { Pool } from "pg";
 // Resolve script directory across both runtimes:
 //   - tsx (ESM, dev / vitest) — import.meta.url is set.
 //   - tsup --format cjs (container image) — falls back to __dirname.
-// In the container the bundle ships at /app/packages/data/dist/migrate.js
+// In the container the bundle ships at /app/packages/data/dist/migrate.cjs
 // and the migrations live alongside at /app/packages/data/migrations.
 const here =
   typeof import.meta?.url === "string"
