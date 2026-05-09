@@ -88,4 +88,24 @@ describe("KeyProvider — Phase 1 Plan 04", () => {
     await expect(p.wrapDek(randomBytes(16))).rejects.toThrow(/DEK must be 32 bytes/);
     await expect(p.wrapDek(randomBytes(64))).rejects.toThrow(/DEK must be 32 bytes/);
   });
+
+  it("VaultKeyProvider.wrapDek throws the deferred error", async () => {
+    const p = new VaultKeyProvider();
+    await expect(p.wrapDek()).rejects.toThrow(/VaultKeyProvider not implemented in v1/);
+  });
+
+  it("VaultKeyProvider.unwrapDek throws the deferred error", async () => {
+    const p = new VaultKeyProvider();
+    await expect(p.unwrapDek()).rejects.toThrow(/VaultKeyProvider not implemented in v1/);
+  });
+
+  it("KmsKeyProvider.wrapDek throws the deferred error", async () => {
+    const p = new KmsKeyProvider();
+    await expect(p.wrapDek()).rejects.toThrow(/KmsKeyProvider not implemented in v1/);
+  });
+
+  it("KmsKeyProvider.unwrapDek throws the deferred error", async () => {
+    const p = new KmsKeyProvider();
+    await expect(p.unwrapDek()).rejects.toThrow(/KmsKeyProvider not implemented in v1/);
+  });
 });
