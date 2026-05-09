@@ -50,7 +50,7 @@ services:
   # Images subscription only). edoburu is the de-facto OSS choice with
   # >10M pulls and env-var-driven config. See 01-RESEARCH-INFRA.md §2.2.
   pgbouncer:
-    image: edoburu/pgbouncer:1.23.1
+    image: edoburu/pgbouncer:v1.25.1-p0
     profiles: [default, db-only]
     networks: [openwhispr_internal]
     environment:
@@ -94,7 +94,7 @@ services:
       retries: 10
 
   minio:
-    image: minio/minio:RELEASE.2026-03-25T00-00-00Z
+    image: minio/minio:RELEASE.2025-09-07T16-13-09Z
     profiles: [default]
     networks: [openwhispr_internal]
     environment:
