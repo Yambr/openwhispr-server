@@ -11,13 +11,13 @@ Requirements for the initial OSS release. Stripe / referrals / quota-enforcement
 
 Source of truth: `/Users/dev/openwhispr/docs/BACKEND_SPEC.md`, `OAUTH_SPEC.md`, `SELF_HOSTING.md` (1556 lines, byte-for-byte authoritative).
 
-- [ ] **WIRE-01**: `POST /api/check-user` — pre-auth; returns `{exists:boolean}` at 200; non-2xx routes desktop to sign-up branch
-- [ ] **WIRE-02**: `GET /api/auth/verification-status?email=...` — cookie-auth; 5s polling cadence carve-out from rate limiter; 200+`{verified:bool}`, 4xx surfaces "session expired"
-- [ ] **WIRE-03**: `DELETE /api/auth/delete-account` — cookie-auth; 2xx clears local token+cookie+session
+- [x] **WIRE-01**: `POST /api/check-user` — pre-auth; returns `{exists:boolean}` at 200; non-2xx routes desktop to sign-up branch
+- [x] **WIRE-02**: `GET /api/auth/verification-status?email=...` — cookie-auth; 5s polling cadence carve-out from rate limiter; 200+`{verified:bool}`, 4xx surfaces "session expired"
+- [x] **WIRE-03**: `DELETE /api/auth/delete-account` — cookie-auth; 2xx clears local token+cookie+session
 
 ### Wire Compatibility — Operational Endpoints (v1)
 
-- [ ] **WIRE-04**: `GET /api/health` — 3s timeout; body unread; only `res.ok` and `res.status` are inspected
+- [x] **WIRE-04**: `GET /api/health` — 3s timeout; body unread; only `res.ok` and `res.status` are inspected
 - [ ] **WIRE-05**: `POST /api/transcribe` — multipart audio; forwards to LiteLLM `/v1/audio/transcriptions`; returns `{text, wordsUsed, wordsRemaining, plan, limitReached, sttProvider, sttModel, ...}`; **`limitReached` always returns `false` in v1** (schema preserved for desktop compatibility, no enforcement)
 - [ ] **WIRE-06**: `POST /api/reason` — cloud LLM via LiteLLM; returns `{text, model, provider, promptMode, matchType}`
 - [ ] **WIRE-07**: `POST /api/agent/stream` — `Content-Type: application/x-ndjson`; **flush per line**; no buffering anywhere in the chain
@@ -33,20 +33,20 @@ Source of truth: `/Users/dev/openwhispr/docs/BACKEND_SPEC.md`, `OAUTH_SPEC.md`, 
 
 ### Wire Compatibility — Conventions (apply to every endpoint)
 
-- [ ] **WIRE-17**: Honor the global error envelope `{ "error": "<human-readable string>" }` for every non-2xx response
-- [ ] **WIRE-18**: Return HTTP **401** (not 200-with-error) on invalid/expired tokens — `withSessionRefresh()` retry-once-with-backoff path depends on this
-- [ ] **WIRE-19**: Accept `Authorization: Bearer <opaque>` AND session cookies on every authenticated endpoint (main process attaches both; renderer-direct endpoints rely on cookie alone)
-- [ ] **WIRE-20**: HTTPS-only — never serve any externally reachable port over plaintext HTTP
+- [x] **WIRE-17**: Honor the global error envelope `{ "error": "<human-readable string>" }` for every non-2xx response
+- [x] **WIRE-18**: Return HTTP **401** (not 200-with-error) on invalid/expired tokens — `withSessionRefresh()` retry-once-with-backoff path depends on this
+- [x] **WIRE-19**: Accept `Authorization: Bearer <opaque>` AND session cookies on every authenticated endpoint (main process attaches both; renderer-direct endpoints rely on cookie alone)
+- [x] **WIRE-20**: HTTPS-only — never serve any externally reachable port over plaintext HTTP
 
 ### Authentication & OAuth
 
-- [ ] **AUTH-01**: Host `${AUTH_URL}/api/desktop-signin/{provider}` shim that initiates the upstream IdP round-trip
-- [ ] **AUTH-02**: Final OAuth redirect emits `${PROTOCOL}://?bearer_token=<token>` echoing the **exact** scheme received in the `callbackURL` query parameter (production / `openwhispr-dev` / `openwhispr-staging` / arbitrary override per `OPENWHISPR_PROTOCOL`)
-- [ ] **AUTH-03**: Issue opaque bearer tokens long-lived enough to survive desktop relaunches (≥30 days), with rotation via the `set-auth-token` response header on Better-Auth-style endpoints; new and old tokens overlap ≥5 minutes (covers `withSessionRefresh()` 60s grace window with margin)
-- [ ] **AUTH-04**: Email/password sign-in via Better Auth — first-class, works without any external IdP configured
-- [ ] **AUTH-05**: OIDC pluggable via Better Auth's OAuth-Provider plugin — operator configures any OIDC provider (Google Workspace / Azure AD / Okta / generic OIDC) via env/YAML
-- [ ] **AUTH-06**: `x-openwhispr-source: desktop` header is preserved/observable for feature flagging
-- [ ] **AUTH-07**: Open IdP scope — IdP is the gatekeeper; no server-side allowlist. Once signed in, the user is automatically a corporate user (no plan/tier distinctions in v1)
+- [x] **AUTH-01**: Host `${AUTH_URL}/api/desktop-signin/{provider}` shim that initiates the upstream IdP round-trip
+- [x] **AUTH-02**: Final OAuth redirect emits `${PROTOCOL}://?bearer_token=<token>` echoing the **exact** scheme received in the `callbackURL` query parameter (production / `openwhispr-dev` / `openwhispr-staging` / arbitrary override per `OPENWHISPR_PROTOCOL`)
+- [x] **AUTH-03**: Issue opaque bearer tokens long-lived enough to survive desktop relaunches (≥30 days), with rotation via the `set-auth-token` response header on Better-Auth-style endpoints; new and old tokens overlap ≥5 minutes (covers `withSessionRefresh()` 60s grace window with margin)
+- [x] **AUTH-04**: Email/password sign-in via Better Auth — first-class, works without any external IdP configured
+- [x] **AUTH-05**: OIDC pluggable via Better Auth's OAuth-Provider plugin — operator configures any OIDC provider (Google Workspace / Azure AD / Okta / generic OIDC) via env/YAML
+- [x] **AUTH-06**: `x-openwhispr-source: desktop` header is preserved/observable for feature flagging
+- [x] **AUTH-07**: Open IdP scope — IdP is the gatekeeper; no server-side allowlist. Once signed in, the user is automatically a corporate user (no plan/tier distinctions in v1)
 
 ### Multi-tenancy & Data
 
@@ -72,8 +72,8 @@ Source of truth: `/Users/dev/openwhispr/docs/BACKEND_SPEC.md`, `OAUTH_SPEC.md`, 
 
 - [ ] **PROVIDER-01**: All STT/LLM/Realtime providers route through the configured single LiteLLM endpoint (bundled or operator-supplied); no parallel multi-LLM provider layer in v1
 - [x] **PROVIDER-02**: Storage provider interface: S3-compatible default (MinIO bundled in compose; any S3 / GCS / Azure Blob via env)
-- [ ] **PROVIDER-03**: Identity provider interface: Better Auth's OAuth-Provider plugin handles OIDC; email+password is built-in; SAML deferred to v2
-- [ ] **PROVIDER-04**: Email provider interface: SMTP only in v1 (verification + admin notifications)
+- [x] **PROVIDER-03**: Identity provider interface: Better Auth's OAuth-Provider plugin handles OIDC; email+password is built-in; SAML deferred to v2
+- [x] **PROVIDER-04**: Email provider interface: SMTP only in v1 (verification + admin notifications)
 
 ### Enterprise Scale (1000 concurrent active users)
 
@@ -114,7 +114,7 @@ Source of truth: `/Users/dev/openwhispr/docs/BACKEND_SPEC.md`, `OAUTH_SPEC.md`, 
 - [x] **CI-01**: GitHub Actions CI from day one; workflows in `.github/workflows/`; GitHub-hosted runners
 - [x] **CI-02**: CI matrix on every PR: lint + typecheck + unit + integration + e2e + contract + license-scan + secrets-scan (gitleaks) + dep-scan (Trivy + Dependabot) + SAST (CodeQL) + container-scan
 - [ ] **CI-03**: Branch protection on `main` blocks merge unless required checks are green
-- [ ] **CONTRACT-01**: Wire-contract conformance test suite asserts the server matches `BACKEND_SPEC.md` byte-for-byte (status codes, JSON shapes, headers, NDJSON line behavior, channel-scheme echo, `set-auth-token` rotation); runs against any deployed instance via `make contract-test BACKEND_URL=...`
+- [x] **CONTRACT-01**: Wire-contract conformance test suite asserts the server matches `BACKEND_SPEC.md` byte-for-byte (status codes, JSON shapes, headers, NDJSON line behavior, channel-scheme echo, `set-auth-token` rotation); runs against any deployed instance via `make contract-test BACKEND_URL=...`
 - [x] **TEST-COV-01**: Coverage gate ≥ 85% lines / ≥ 80% branches on the API tier (excluding generated code); enforced in CI
 - [x] **TEST-MUTATION-01**: Mutation testing (Stryker) on critical modules: auth, multi-tenancy enforcement, virtual-key minting; PR fails on score regression
 - [ ] **TEST-LOAD-01**: k6 nightly load test asserts 1000 concurrent at p95 SLO; CI fails on regression
@@ -195,10 +195,10 @@ All 89 v1 requirements mapped by `gsd-roadmapper` on 2026-05-08.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| WIRE-01 | Phase 2 | Pending |
-| WIRE-02 | Phase 2 | Pending |
-| WIRE-03 | Phase 2 | Pending |
-| WIRE-04 | Phase 2 | Pending |
+| WIRE-01 | Phase 2 | Complete |
+| WIRE-02 | Phase 2 | Complete |
+| WIRE-03 | Phase 2 | Complete |
+| WIRE-04 | Phase 2 | Complete |
 | WIRE-05 | Phase 3 | Pending |
 | WIRE-06 | Phase 3 | Pending |
 | WIRE-07 | Phase 4 | Pending |
@@ -211,17 +211,17 @@ All 89 v1 requirements mapped by `gsd-roadmapper` on 2026-05-08.
 | WIRE-14 | Phase 4 | Pending |
 | WIRE-15 | Phase 4 | Pending |
 | WIRE-16 | Phase 5 | Pending |
-| WIRE-17 | Phase 2 | Pending |
-| WIRE-18 | Phase 2 | Pending |
-| WIRE-19 | Phase 2 | Pending |
-| WIRE-20 | Phase 2 | Pending |
-| AUTH-01 | Phase 2 | Pending |
-| AUTH-02 | Phase 2 | Pending |
-| AUTH-03 | Phase 2 | Pending |
-| AUTH-04 | Phase 2 | Pending |
-| AUTH-05 | Phase 2 | Pending |
-| AUTH-06 | Phase 2 | Pending |
-| AUTH-07 | Phase 2 | Pending |
+| WIRE-17 | Phase 2 | Complete |
+| WIRE-18 | Phase 2 | Complete |
+| WIRE-19 | Phase 2 | Complete |
+| WIRE-20 | Phase 2 | Complete |
+| AUTH-01 | Phase 2 | Complete |
+| AUTH-02 | Phase 2 | Complete |
+| AUTH-03 | Phase 2 | Complete |
+| AUTH-04 | Phase 2 | Complete |
+| AUTH-05 | Phase 2 | Complete |
+| AUTH-06 | Phase 2 | Complete |
+| AUTH-07 | Phase 2 | Complete |
 | DATA-01 | Phase 1 | Complete |
 | DATA-02 | Phase 1 | Complete |
 | DATA-03 | Phase 3 | Pending |
@@ -238,8 +238,8 @@ All 89 v1 requirements mapped by `gsd-roadmapper` on 2026-05-08.
 | LITELLM-07 | Phase 3 | Pending |
 | PROVIDER-01 | Phase 3 | Pending |
 | PROVIDER-02 | Phase 1 | Complete |
-| PROVIDER-03 | Phase 2 | Pending |
-| PROVIDER-04 | Phase 2 | Pending |
+| PROVIDER-03 | Phase 2 | Complete |
+| PROVIDER-04 | Phase 2 | Complete |
 | SCALE-01 | Phase 6 | Pending |
 | SCALE-02 | Phase 8 | Pending |
 | SCALE-03 | Phase 6 | Pending |
@@ -265,7 +265,7 @@ All 89 v1 requirements mapped by `gsd-roadmapper` on 2026-05-08.
 | CI-01 | Phase 0 | Complete |
 | CI-02 | Phase 0 | Complete |
 | CI-03 | Phase 0 | Pending |
-| CONTRACT-01 | Phase 2 | Pending |
+| CONTRACT-01 | Phase 2 | Complete |
 | TEST-COV-01 | Phase 0 | Complete |
 | TEST-MUTATION-01 | Phase 0 | Complete |
 | TEST-LOAD-01 | Phase 8 | Pending |
