@@ -10,6 +10,15 @@
 // Plan 04 owns the assembly. Order is load-bearing — see the comments
 // at each step.
 //
+// Plan 08 closes the residual integration gaps from 02-VERIFICATION.md:
+//   * mintBearer adapter plumbed to buildAllRoutes (Gap 1).
+//   * tryPreviousToken passed to buildDualAuthHook (Gap 2a).
+//   * recordPreviousToken hooked via Fastify `onSend` whenever a route
+//     emits a `set-auth-token` response header (Gap 2b).
+//   * Production entrypoint constructs `auth` + `db` so a real `node
+//     dist/index.js` boot wires the full route surface (no minimal-mode
+//     residue).
+//
 // CRITICAL ordering (per 02-04-PLAN.md Task 2):
 //   1. Construct Fastify with `trustProxy:true` so req.ip resolves the
 //      X-Forwarded-For client behind Traefik (Pitfall #2 — without this
@@ -29,23 +38,35 @@
 //   8. Register `dualAuthHook` as `onRequest` (routes opt out via
 //      config.auth=false). This MUST come AFTER rate-limit but BEFORE
 //      route registration so it sees route configs at preHandler time.
-//      (Fastify resolves route-level config at registration; the hook
-//      reads it via req.routeOptions at request time.)
+//   8b. Plan 08: register the recordPreviousToken onSend hook AFTER the
+//      dual-auth hook so req.user / req.tenant / req.sessionId are
+//      populated by the time it fires.
 //   9. Register Plan 03's routes via `allRoutes` from routes/index.ts.
-//
-// Dependencies for the routes (`db`, `auth`) are constructed inside
-// `buildApp` from app-level singletons. For tests, callers can pass
-// overrides via `BuildAppOptions` to avoid env-time side effects.
 import Fastify, { type FastifyInstance } from "fastify";
 import fastifyCookie from "@fastify/cookie";
 import { registerErrorHandler } from "./error-handler.js";
 import { zodTypeProvider } from "./plugins/zod-type-provider.js";
 import { requestLog } from "./plugins/request-log.js";
 import { rateLimitPlugin } from "./plugins/rate-limit.js";
-import { buildDualAuthHook, type AuthLike } from "./middleware/dual-auth.js";
+import {
+  buildDualAuthHook,
+  extractBearer,
+  type AuthLike,
+  type TryPreviousToken,
+} from "./middleware/dual-auth.js";
 import { buildAllRoutes } from "./routes/index.js";
+import type { MintBearer } from "./routes/auth-callback.js";
 import { tenantPlugin } from "./middleware/tenant.js";
+import {
+  hashToken,
+  recordPreviousToken as recordPreviousTokenLib,
+  tryPreviousToken as tryPreviousTokenLib,
+} from "./lib/token-rotation.js";
+import { buildMintBearer } from "./lib/mint-bearer.js";
 import type { TransactionalDb, ExecutableTx } from "@openwhispr/data";
+
+/** Signature of the recordPreviousToken library function (for tests). */
+type RecordPreviousToken = typeof recordPreviousTokenLib;
 
 export interface BuildAppOptions {
   /**
@@ -66,6 +87,21 @@ export interface BuildAppOptions {
    * `false`.
    */
   testMode?: boolean;
+  /**
+   * Plan 08: production wires `buildMintBearer({auth, db})`; tests can
+   * inject a deterministic fake to avoid Better Auth round-trips.
+   */
+  mintBearer?: MintBearer;
+  /**
+   * Plan 08: production wires `(t) => tryPreviousTokenLib(db, t)`;
+   * tests inject fakes that return a synthetic match without DB.
+   */
+  tryPreviousToken?: TryPreviousToken;
+  /**
+   * Plan 08: production wires the SECURITY-DEFINER-backed library
+   * function; tests inject a spy to assert call shape.
+   */
+  recordPreviousToken?: RecordPreviousToken;
 }
 
 export const buildApp = async (
@@ -101,13 +137,76 @@ export const buildApp = async (
   // health route which has no auth/db needs.
   if (opts.auth) {
     // 8. Dual-auth hook BEFORE routes.
-    const dualAuthHook = buildDualAuthHook({ auth: opts.auth });
+    //    Plan 08: bind tryPreviousToken so the AUTH-04 5-minute overlap
+    //    window is active in the deployed binary.
+    const tryPrev: TryPreviousToken | undefined =
+      opts.tryPreviousToken ??
+      (opts.db
+        ? async (bearer: string) => {
+            const m = await tryPreviousTokenLib(
+              opts.db as unknown as { execute(q: unknown): Promise<unknown> },
+              bearer,
+            );
+            if (!m) return null;
+            return {
+              user: { id: m.userId, email: "", tenantId: m.tenantId },
+              tenantId: m.tenantId,
+            };
+          }
+        : undefined);
+    const dualAuthHook = buildDualAuthHook(
+      tryPrev
+        ? { auth: opts.auth, tryPreviousToken: tryPrev }
+        : { auth: opts.auth },
+    );
     app.addHook("onRequest", dualAuthHook);
+
+    // 8b. Plan 08: when a route emits `set-auth-token` (Better Auth
+    //     rotation OR /api/_test/force-rotate), record the OLD token's
+    //     hash on the matching session row so subsequent OLD-token
+    //     requests are admitted via tryPreviousToken for 5 minutes.
+    if (opts.db) {
+      const recPrev: RecordPreviousToken =
+        opts.recordPreviousToken ?? recordPreviousTokenLib;
+      app.addHook("onSend", async (req, reply, _payload) => {
+        const newBearerHeader = reply.getHeader("set-auth-token");
+        const newBearer =
+          typeof newBearerHeader === "string"
+            ? newBearerHeader
+            : Array.isArray(newBearerHeader)
+              ? String(newBearerHeader[0] ?? "")
+              : "";
+        const oldBearer = extractBearer(req.headers["authorization"]);
+        if (
+          newBearer.length > 0 &&
+          oldBearer &&
+          newBearer !== oldBearer &&
+          req.tenant &&
+          req.user &&
+          req.sessionId
+        ) {
+          try {
+            await recPrev(opts.db!, req.tenant, req.sessionId, hashToken(oldBearer));
+          } catch (err) {
+            req.log?.warn?.(
+              { err },
+              "recordPreviousToken failed (Plan 08 onSend hook)",
+            );
+          }
+        }
+      });
+    }
   }
 
   // 9. Routes.
   if (opts.auth && opts.db) {
-    const routes = buildAllRoutes({ auth: opts.auth, db: opts.db });
+    const mintBearer: MintBearer =
+      opts.mintBearer ?? buildMintBearer({ auth: opts.auth as never, db: opts.db });
+    const routes = buildAllRoutes({
+      auth: opts.auth,
+      db: opts.db,
+      mintBearer,
+    });
     for (const plugin of routes) {
       await app.register(plugin);
     }
@@ -123,7 +222,15 @@ export const buildApp = async (
 
 /* v8 ignore start -- entry-point bootstrap; exercised in dev/prod, not in unit tests */
 if (import.meta.url === `file://${process.argv[1]}`) {
-  const app = await buildApp();
+  // Plan 08: production entrypoint constructs the real auth + db so the
+  // deployed binary wires the full route surface (mintBearer,
+  // tryPreviousToken, recordPreviousToken). Closes the residual
+  // "minimal mode" gap from 02-VERIFICATION.md.
+  const { makeAppDb } = await import("@openwhispr/data/client");
+  const { buildAuth } = await import("./auth.js");
+  const db = makeAppDb();
+  const auth = buildAuth({ db: db as never }) as unknown as AuthLike;
+  const app = await buildApp({ db: db as never, auth });
   const port = Number(process.env.PORT ?? 3000);
   app.listen({ port, host: "0.0.0.0" }).catch((err) => {
     // biome-ignore lint/suspicious/noConsole: server bootstrap fatal-error logger; structured logging arrives in Phase 6 (OBS-03)

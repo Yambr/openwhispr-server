@@ -68,10 +68,9 @@ export function buildAllRoutes(deps: AllRoutesDeps): readonly RoutePlugin[] {
     auth: deps.auth,
   };
   const desktopSigninDeps: DesktopSigninDeps = { db: deps.db };
-  const authCallbackDeps: AuthCallbackDeps = {
-    db: deps.db,
-    mintBearer: deps.mintBearer,
-  };
+  const authCallbackDeps: AuthCallbackDeps = deps.mintBearer
+    ? { db: deps.db, mintBearer: deps.mintBearer }
+    : { db: deps.db };
   const plugins: RoutePlugin[] = [
     healthRoutes,
     buildCheckUserRoutes(checkUserDeps),
