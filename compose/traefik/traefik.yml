@@ -17,6 +17,11 @@ entryPoints:
         entryPoint:
           to: websecure
           scheme: https
+          # Phase 2 Plan 04 (WIRE-20): permanent → 308. PROJECT.md hard
+          # rule: HTTPS-only on every externally reachable port. Plain
+          # HTTP requests are 308'd; the `web` entrypoint exists ONLY
+          # for the redirect (no router targets `web` directly).
+          permanent: true
   websecure:
     address: ":443"
     http:
