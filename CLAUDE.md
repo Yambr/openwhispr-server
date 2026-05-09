@@ -21,7 +21,8 @@ It is built to enterprise standards for **1000 concurrent active users** in one 
 - **Source-artifact language**: **English only** for docs, code, comments, commit messages, identifiers, log keys — hard rule.
 - **Runtime localization**: `en` + `ru` minimum from day one for UI copy, emails, end-user error messages.
 - **Engineering discipline (constitutional)**:
-  - **Strict TDD** — tests precede production code.
+  - **Strict TDD** — tests precede production code on EVERY phase, including decimal/insertion phases (X.Y). Yolo-mode does NOT exempt from TDD. Each fix lands with its tests in the SAME atomic commit.
+  - **Per-phase coverage floor ≥ 90%** on all new/modified code in that phase (above the project-wide 85/80/80/85 vitest floor). Applies equally to integer phases and decimal/insertion phases. A phase that ships < 90% on its diff REQUIRES a gap-closure phase BEFORE the next phase starts.
   - **GitHub Actions** is the only sanctioned CI; workflows in `.github/workflows/` from the first commit of phase 0.
   - **Maximum test automation** — no human QA; coverage spans unit, integration (real services via testcontainers), e2e, contract (against `BACKEND_SPEC.md`), load (1000 concurrent), security (SAST + deps + container + secrets + license), migration safety, i18n completeness, RLS-isolation property tests.
 - **Open source**: every requirement ships with corresponding documentation; no closed/internal subsystems.
