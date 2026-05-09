@@ -47,3 +47,4 @@ reports/
 /keys/*
 !/keys/.gitkeep
 !/keys/backup.age.pub
+.claude/worktrees/
