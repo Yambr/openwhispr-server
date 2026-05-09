@@ -66,6 +66,7 @@ progress:
 ### Roadmap Evolution
 
 - Phase 01.1 inserted after Phase 1: Phase 1 baseline image-pin audit and fix (URGENT) — discovered during Phase 02 contract-test auto-run that `minio/minio:RELEASE.2026-03-25T00-00-00Z` does not exist on Docker Hub (latest valid tag: `RELEASE.2025-09-07T16-13-09Z`); blocks `make contract-test` and any `docker compose up`. Audit + fix all baseline image pins.
+- Phase 02.1 inserted after Phase 2: Fix `apps/api/Dockerfile` pnpm v10 `ERR_PNPM_DEPLOY_NONINJECTED_WORKSPACE` (URGENT) — uncovered while running Phase 01.1 Plan 05 stack-up; was previously hidden behind the MinIO pull failure. Replace broken `pnpm --filter ... --prod deploy /out` with proper enterprise fix (`inject-workspace-packages: true` in pnpm-workspace.yaml OR multi-stage Dockerfile without `pnpm deploy`). Explicitly NOT `--legacy` escape hatch. Unblocks Phase 01.1 Plan 05.
 
 ### Key Decisions Logged
 
