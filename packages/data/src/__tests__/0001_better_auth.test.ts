@@ -1,13 +1,25 @@
-// Phase 2 / Plan 01 / Task 2 — RED tests for migration 0001_better_auth.sql.
+// Phase 2 / Plan 01 / Task 2 — tests for migration 0001_better_auth.sql.
 //
-// Asserts that on a freshly-migrated Postgres 17 container:
+// Phase 02.12 superseded the bytea storage half of this migration with
+// 0005_session_token_plain.sql (Better-Auth-native plain `token` text).
+// The Phase 2 columns + function this file originally pinned (
+// `previous_token_hash`, `lookup_session_by_previous_token(bytea)`) are
+// dropped in 0005 and replaced with plain-text equivalents +
+// `text` parameter signatures. The post-migration assertions below
+// reflect the FINAL on-disk state (after 0005 lands); the
+// session-token-plain-roundtrip integration test in tests/integration/
+// pins the 0005-specific contract independently.
+//
+// What this file still asserts on the freshly-migrated Postgres 17
+// container (chain through 0005):
 //   1. `account` and `verification` tables exist with FORCE RLS + tenant
-//      isolation policy.
+//      isolation policy (unchanged by 0005).
 //   2. `users` gained name / email_verified / email_verified_at / image
-//      / password_hash columns.
-//   3. `sessions` gained previous_token_hash / previous_token_expires_at
-//      / ip_address / user_agent columns plus the partial index.
-//   4. `lookup_session_by_previous_token(bytea)` SECURITY DEFINER function
+//      / password_hash columns (unchanged by 0005).
+//   3. `sessions` carries the post-0005 plain-text `token` / `previous_token`
+//      columns plus `previous_token_expires_at` / `ip_address` / `user_agent`
+//      (the bytea hash columns originally added by 0001 are gone).
+//   4. `lookup_session_by_previous_token(text)` SECURITY DEFINER function
 //      exists, executes only when the overlap window is open, and is
 //      grantable to openwhispr_app while REVOKEd from PUBLIC.
 import { Pool } from "pg";
@@ -65,79 +77,82 @@ describe("0001_better_auth migration — Better Auth tables", () => {
     }
   });
 
-  it.each(["account", "verification"])(
-    "%s table has FORCE ROW LEVEL SECURITY",
-    async (tbl) => {
-      const pool = new Pool({ connectionString: booted.ownerUri });
-      try {
-        const { rows } = await pool.query<{
-          relrowsecurity: boolean;
-          relforcerowsecurity: boolean;
-        }>(
-          `SELECT relrowsecurity, relforcerowsecurity FROM pg_class
+  it.each(["account", "verification"])("%s table has FORCE ROW LEVEL SECURITY", async (tbl) => {
+    const pool = new Pool({ connectionString: booted.ownerUri });
+    try {
+      const { rows } = await pool.query<{
+        relrowsecurity: boolean;
+        relforcerowsecurity: boolean;
+      }>(
+        `SELECT relrowsecurity, relforcerowsecurity FROM pg_class
            WHERE relname = $1`,
-          [tbl],
-        );
-        expect(rows[0]?.relrowsecurity).toBe(true);
-        expect(rows[0]?.relforcerowsecurity).toBe(true);
-      } finally {
-        await pool.end();
-      }
-    },
-  );
+        [tbl],
+      );
+      expect(rows[0]?.relrowsecurity).toBe(true);
+      expect(rows[0]?.relforcerowsecurity).toBe(true);
+    } finally {
+      await pool.end();
+    }
+  });
 
-  it.each(["account", "verification"])(
-    "%s table has a tenant_isolation policy referencing app.tenant_id",
-    async (tbl) => {
-      const pool = new Pool({ connectionString: booted.ownerUri });
-      try {
-        const { rows } = await pool.query<{
-          policyname: string;
-          qual: string | null;
-          with_check: string | null;
-        }>(
-          `SELECT policyname, qual, with_check FROM pg_policies
+  it.each([
+    "account",
+    "verification",
+  ])("%s table has a tenant_isolation policy referencing app.tenant_id", async (tbl) => {
+    const pool = new Pool({ connectionString: booted.ownerUri });
+    try {
+      const { rows } = await pool.query<{
+        policyname: string;
+        qual: string | null;
+        with_check: string | null;
+      }>(
+        `SELECT policyname, qual, with_check FROM pg_policies
            WHERE schemaname='public' AND tablename=$1`,
-          [tbl],
-        );
-        expect(rows.length).toBeGreaterThan(0);
-        const hasTenantRef = rows.some(
-          (r) =>
-            (r.qual ?? "").includes("app.tenant_id") &&
-            (r.with_check ?? "").includes("app.tenant_id"),
-        );
-        expect(hasTenantRef).toBe(true);
-      } finally {
-        await pool.end();
-      }
-    },
-  );
+        [tbl],
+      );
+      expect(rows.length).toBeGreaterThan(0);
+      const hasTenantRef = rows.some(
+        (r) =>
+          (r.qual ?? "").includes("app.tenant_id") &&
+          (r.with_check ?? "").includes("app.tenant_id"),
+      );
+      expect(hasTenantRef).toBe(true);
+    } finally {
+      await pool.end();
+    }
+  });
 });
 
 describe("0001_better_auth migration — users / sessions extensions", () => {
-  it.each(["name", "email_verified", "email_verified_at", "image", "password_hash"])(
-    "users gained column %s",
-    async (col) => {
-      const pool = new Pool({ connectionString: booted.ownerUri });
-      try {
-        const { rows } = await pool.query<{ column_name: string }>(
-          `SELECT column_name FROM information_schema.columns
-           WHERE table_schema='public' AND table_name='users' AND column_name=$1`,
-          [col],
-        );
-        expect(rows).toHaveLength(1);
-      } finally {
-        await pool.end();
-      }
-    },
-  );
-
   it.each([
-    "previous_token_hash",
+    "name",
+    "email_verified",
+    "email_verified_at",
+    "image",
+    "password_hash",
+  ])("users gained column %s", async (col) => {
+    const pool = new Pool({ connectionString: booted.ownerUri });
+    try {
+      const { rows } = await pool.query<{ column_name: string }>(
+        `SELECT column_name FROM information_schema.columns
+           WHERE table_schema='public' AND table_name='users' AND column_name=$1`,
+        [col],
+      );
+      expect(rows).toHaveLength(1);
+    } finally {
+      await pool.end();
+    }
+  });
+
+  // Phase 02.12 — post-0005 plain-text columns. The bytea hash columns
+  // originally added by 0001 are dropped in 0005.
+  it.each([
+    "token",
+    "previous_token",
     "previous_token_expires_at",
     "ip_address",
     "user_agent",
-  ])("sessions gained column %s", async (col) => {
+  ])("sessions has post-0005 column %s", async (col) => {
     const pool = new Pool({ connectionString: booted.ownerUri });
     try {
       const { rows } = await pool.query<{ column_name: string; data_type: string }>(
@@ -151,13 +166,13 @@ describe("0001_better_auth migration — users / sessions extensions", () => {
     }
   });
 
-  it("sessions has a partial index on previous_token_hash", async () => {
+  it("sessions has a partial index on previous_token (post-0005)", async () => {
     const pool = new Pool({ connectionString: booted.ownerUri });
     try {
       const { rows } = await pool.query<{ indexname: string; indexdef: string }>(
         `SELECT indexname, indexdef FROM pg_indexes
          WHERE schemaname='public' AND tablename='sessions'
-           AND indexname='sessions_previous_token_hash_idx'`,
+           AND indexname='sessions_previous_token_idx'`,
       );
       expect(rows).toHaveLength(1);
       expect(rows[0]?.indexdef).toMatch(/WHERE/i);
@@ -182,15 +197,14 @@ describe("0001_better_auth migration — lookup_session_by_previous_token functi
     }
   });
 
-  it("PUBLIC is REVOKEd; openwhispr_app has EXECUTE", async () => {
+  it("PUBLIC is REVOKEd; openwhispr_app has EXECUTE (post-0005 text signature)", async () => {
     const pool = new Pool({ connectionString: booted.ownerUri });
     try {
-      // Determine if public lost the EXECUTE privilege and openwhispr_app
-      // gained it. has_function_privilege returns true/false.
+      // Phase 02.12 — function signature is now (text), not (bytea).
       const { rows: appRow } = await pool.query<{ has: boolean }>(
         `SELECT has_function_privilege(
            'openwhispr_app',
-           'lookup_session_by_previous_token(bytea)',
+           'lookup_session_by_previous_token(text)',
            'EXECUTE'
          ) AS has`,
       );
@@ -199,7 +213,7 @@ describe("0001_better_auth migration — lookup_session_by_previous_token functi
       const { rows: pubRow } = await pool.query<{ has: boolean }>(
         `SELECT has_function_privilege(
            'public',
-           'lookup_session_by_previous_token(bytea)',
+           'lookup_session_by_previous_token(text)',
            'EXECUTE'
          ) AS has`,
       );
@@ -209,11 +223,9 @@ describe("0001_better_auth migration — lookup_session_by_previous_token functi
     }
   });
 
-  it("returns 0 rows when previous_token_expires_at <= now()", async () => {
+  it("returns 0 rows when previous_token_expires_at <= now() (plain-text)", async () => {
     const pool = new Pool({ connectionString: booted.ownerUri });
     try {
-      // Seed: insert a tenant, user, and session with an EXPIRED
-      // previous_token_hash window. Use the seeded default tenant.
       const tenantId = "00000000-0000-0000-0000-000000000000";
       await pool.query(
         `INSERT INTO users (id, tenant_id, email)
@@ -225,17 +237,17 @@ describe("0001_better_auth migration — lookup_session_by_previous_token functi
         `SELECT id FROM users WHERE email = 'expired@local'`,
       );
       const userId = userRow[0]?.id;
-      const hash = Buffer.from("a".repeat(32), "utf-8");
+      const bearer = "expired-bearer-AAA";
       await pool.query(
-        `INSERT INTO sessions (id, tenant_id, user_id, token_hash, expires_at,
-                               previous_token_hash, previous_token_expires_at)
+        `INSERT INTO sessions (id, tenant_id, user_id, token, expires_at,
+                               previous_token, previous_token_expires_at)
          VALUES (gen_random_uuid(), $1, $2, $3, now() + interval '30 days',
                  $4, now() - interval '1 minute')`,
-        [tenantId, userId, hash, hash],
+        [tenantId, userId, "current-bearer-AAA", bearer],
       );
       const { rows } = await pool.query(
         `SELECT user_id, tenant_id FROM lookup_session_by_previous_token($1)`,
-        [hash],
+        [bearer],
       );
       expect(rows).toHaveLength(0);
     } finally {
@@ -243,7 +255,7 @@ describe("0001_better_auth migration — lookup_session_by_previous_token functi
     }
   });
 
-  it("returns 1 row when previous_token_expires_at > now()", async () => {
+  it("returns 1 row when previous_token_expires_at > now() (plain-text)", async () => {
     const pool = new Pool({ connectionString: booted.ownerUri });
     try {
       const tenantId = "00000000-0000-0000-0000-000000000000";
@@ -257,17 +269,17 @@ describe("0001_better_auth migration — lookup_session_by_previous_token functi
         `SELECT id FROM users WHERE email = 'fresh@local'`,
       );
       const userId = userRow[0]?.id;
-      const hash = Buffer.from("b".repeat(32), "utf-8");
+      const bearer = "fresh-bearer-BBB";
       await pool.query(
-        `INSERT INTO sessions (id, tenant_id, user_id, token_hash, expires_at,
-                               previous_token_hash, previous_token_expires_at)
+        `INSERT INTO sessions (id, tenant_id, user_id, token, expires_at,
+                               previous_token, previous_token_expires_at)
          VALUES (gen_random_uuid(), $1, $2, $3, now() + interval '30 days',
                  $4, now() + interval '5 minutes')`,
-        [tenantId, userId, hash, hash],
+        [tenantId, userId, "current-bearer-BBB", bearer],
       );
       const { rows } = await pool.query<{ user_id: string; tenant_id: string }>(
         `SELECT user_id, tenant_id FROM lookup_session_by_previous_token($1)`,
-        [hash],
+        [bearer],
       );
       expect(rows).toHaveLength(1);
       expect(rows[0]?.user_id).toBe(userId);

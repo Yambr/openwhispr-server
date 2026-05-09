@@ -49,7 +49,6 @@ import Fastify, { type FastifyInstance } from "fastify";
 import { registerErrorHandler } from "./error-handler.js";
 import { buildMintBearer } from "./lib/mint-bearer.js";
 import {
-  hashToken,
   recordPreviousToken as recordPreviousTokenLib,
   tryPreviousToken as tryPreviousTokenLib,
 } from "./lib/token-rotation.js";
@@ -182,7 +181,10 @@ export const buildApp = async (opts: BuildAppOptions = {}): Promise<FastifyInsta
           req.sessionId
         ) {
           try {
-            await recPrev(opts.db!, req.tenant, req.sessionId, hashToken(oldBearer));
+            // Phase 02.12 — store the old bearer plain-text (no hashing).
+            // The AUTH-04 5-minute overlap CONTRACT is preserved; only
+            // the storage representation flipped from bytea(SHA-256) to text.
+            await recPrev(opts.db!, req.tenant, req.sessionId, oldBearer);
           } catch (err) {
             req.log?.warn?.({ err }, "recordPreviousToken failed (Plan 08 onSend hook)");
           }

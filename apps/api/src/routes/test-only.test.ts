@@ -8,9 +8,9 @@
 // Coverage matrix:
 //   Test 1: NODE_ENV !== 'test' → routes 404.
 //   Test 2: NODE_ENV='test' + valid bearer → POST force-rotate returns
-//           200, set-auth-token header carries a NEW bearer, and
-//           recordPreviousToken was called with (db, tenantId, sessionId,
-//           hashToken(oldBearer)).
+//           200, set-auth-token header carries a NEW bearer, and an
+//           UPDATE sessions ... previous_token (plain, post-02.12) query
+//           was issued.
 //   Test 3: NODE_ENV='test' + valid bearer → GET health-authed returns
 //           200 + {status:"ok", userId}. Without bearer → 401 envelope.
 //   Test 4: NODE_ENV='production' → both routes 404 (gate honored).
@@ -80,7 +80,7 @@ function makeFakeDb() {
       }
       const text = parts.join("");
       recorded.push({ sql: text, params });
-      // session lookup by token_hash
+      // session lookup by token (plain text, post-02.12)
       if (/SELECT\s+id.*FROM\s+sessions/i.test(text)) {
         return { rows: [{ id: FAKE_SESSION_ID }] };
       }
@@ -174,11 +174,13 @@ describe("test-only routes (NODE_ENV=test gated)", () => {
     expect(res.statusCode).toBe(200);
     expect(res.headers["set-auth-token"]).toBe("NEW_BEARER_AAA");
     expect(res.headers["set-auth-token"]).not.toBe("OLD_BEARER_xyz");
-    // Confirm an UPDATE sessions ... previous_token_hash query was executed.
+    // Confirm an UPDATE sessions ... previous_token (plain, post-02.12)
+    // query was executed. Negative: previous_token_hash must NOT appear.
     const recordedPrev = recorded.find((q) =>
-      /UPDATE\s+sessions[\s\S]*previous_token_hash/i.test(q.sql),
+      /UPDATE\s+sessions[\s\S]*previous_token\b/i.test(q.sql),
     );
     expect(recordedPrev).toBeTruthy();
+    expect(recordedPrev?.sql).not.toMatch(/previous_token_hash/);
     await app.close();
   });
 
