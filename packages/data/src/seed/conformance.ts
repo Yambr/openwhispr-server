@@ -33,7 +33,7 @@ export const CONFORMANCE_FIXTURES: readonly FixtureUser[] = [
   { email: "fixture@conformance.test", name: "Fixture User", verified: true },
   { email: "verified@conformance.test", name: "Verified User", verified: true },
   { email: "pending@conformance.test", name: "Pending User", verified: false },
-  { email: "rotation-test@local", name: "Rotation Test", verified: true },
+  { email: "rotation-test@example.com", name: "Rotation Test", verified: true },
   { email: "poll@conformance.test", name: "Polling User", verified: true },
 ] as const;
 
