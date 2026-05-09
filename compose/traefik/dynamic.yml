@@ -20,6 +20,14 @@ http:
       service: minio-console-svc
       entryPoints: [websecure]
       tls: {}
+    # Phase 2 Plan 02 — dev-only mailpit web UI. The router stays inert
+    # until the operator brings up the `dev` profile; Traefik's file
+    # provider tolerates dangling backends (CONTAINER-A4 verified).
+    mailpit:
+      rule: "Host(`mailpit.localhost`)"
+      service: mailpit-svc
+      entryPoints: [websecure]
+      tls: {}
 
   services:
     api-svc:
@@ -34,6 +42,10 @@ http:
       loadBalancer:
         servers:
           - url: "http://minio:9001"
+    mailpit-svc:
+      loadBalancer:
+        servers:
+          - url: "http://mailpit:8025"
 
 tls:
   certificates:
