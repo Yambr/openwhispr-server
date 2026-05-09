@@ -78,6 +78,20 @@ declare module "fastify" {
      * Used by `/api/check-user` (pre-auth flow) and `/api/health`.
      */
     auth?: boolean;
+    /**
+     * Per-route rate-limit configuration. The shape mirrors
+     * `@fastify/rate-limit`'s route-config; we keep the type loose
+     * here since Plan 04 (which owns the limiter wiring) registers
+     * the actual plugin and the plugin's own typings supersede this.
+     * `false` disables limiting on the route (e.g. `/api/health`).
+     */
+    rateLimit?:
+      | false
+      | {
+          max?: number;
+          timeWindow?: string | number;
+          keyGenerator?: (req: import("fastify").FastifyRequest) => string;
+        };
   }
 }
 
