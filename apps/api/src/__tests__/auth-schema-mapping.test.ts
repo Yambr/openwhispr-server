@@ -14,16 +14,22 @@
 import { accounts, sessions, users, verifications } from "@openwhispr/data/schema";
 import { describe, expect, it, vi } from "vitest";
 
-const captured: { schema?: Record<string, unknown> } = {};
+const captured: {
+  schema?: Record<string, unknown>;
+  cfg: Record<string, unknown>;
+} = { cfg: {} };
 
 vi.mock("better-auth/adapters/drizzle", () => ({
   drizzleAdapter: (_db: unknown, opts: { schema?: Record<string, unknown> }) => {
-    captured.schema = opts.schema;
+    if (opts.schema !== undefined) captured.schema = opts.schema;
     return { id: "stub-adapter" };
   },
 }));
 vi.mock("better-auth", () => ({
-  betterAuth: (cfg: unknown) => ({ options: { plugins: [] }, _cfg: cfg }),
+  betterAuth: (cfg: Record<string, unknown>) => {
+    captured.cfg = cfg;
+    return { options: cfg, _cfg: cfg };
+  },
 }));
 vi.mock("better-auth/plugins/bearer", () => ({ bearer: () => ({ id: "bearer" }) }));
 vi.mock("better-auth/plugins/generic-oauth", () => ({
@@ -66,5 +72,36 @@ describe("buildAuth schema-key mapping (D-01)", () => {
     expect(keys.has("sessions")).toBe(false);
     expect(keys.has("accounts")).toBe(false);
     expect(keys.has("verifications")).toBe(false);
+  });
+});
+
+// Phase 02.8 / D-01 — Better Auth UUID mode: `advanced.database.generateId: "uuid"`.
+// Goes RED if the line is removed from apps/api/src/auth.ts (reverse-patch evidence).
+// Resolution chain verified: @better-auth/core get-id-field.mjs:12 reads
+// options.advanced?.database?.generateId === "uuid"; @better-auth/drizzle-adapter
+// declares supportsUUIDs:true for provider:"pg" → shouldGenerateId=false →
+// Postgres `uuid PRIMARY KEY DEFAULT gen_random_uuid()` does the work.
+describe("buildAuth UUID mode + plugin allowlist (Phase 02.8 / D-01,D-02)", () => {
+  it("sets advanced.database.generateId to 'uuid' (closes 22P02 cascade tail)", () => {
+    const advanced = (captured.cfg as { advanced?: { database?: { generateId?: unknown } } })
+      ?.advanced;
+    expect(advanced).toBeDefined();
+    expect(advanced?.database).toBeDefined();
+    expect(advanced?.database?.generateId).toBe("uuid");
+  });
+
+  it("plugins array contains only UUID-safe entries (no organization/anonymous)", () => {
+    // Allowlist check at the buildAuth call level — sanity guard against
+    // accidentally registering plugins that import generateId directly from
+    // @better-auth/core/utils/id and bypass the database.generateId override.
+    const cfg = captured.cfg as { plugins?: Array<{ id?: string }> };
+    expect(cfg.plugins).toBeDefined();
+    const ids = (cfg.plugins ?? [])
+      .map((p) => p?.id)
+      .filter((s): s is string => typeof s === "string");
+    const denylist = ["organization", "anonymous"];
+    for (const id of ids) {
+      expect(denylist).not.toContain(id);
+    }
   });
 });
