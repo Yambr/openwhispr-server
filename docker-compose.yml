@@ -34,6 +34,12 @@ services:
       POSTGRES_USER: ${POSTGRES_OWNER_USER}
       POSTGRES_PASSWORD: ${POSTGRES_OWNER_PASSWORD}
       POSTGRES_DB: openwhispr
+      # Phase 01.2 — pass through the role passwords so 00-roles.sh can
+      # envsubst them into 00-roles.sql.tpl before piping to psql. The
+      # Postgres entrypoint only auto-exposes POSTGRES_USER/PASSWORD/DB
+      # to init scripts; everything else must be declared explicitly.
+      POSTGRES_OWNER_PASSWORD: ${POSTGRES_OWNER_PASSWORD}
+      POSTGRES_APP_PASSWORD: ${POSTGRES_APP_PASSWORD}
     volumes:
       - postgres_data:/var/lib/postgresql/data
       # Plan 03 fills this directory with role/RLS bootstrap SQL.
@@ -240,7 +246,10 @@ services:
       pgbouncer:
         condition: service_healthy
     env_file: .env
-    command: ["node", "/app/packages/data/dist/migrate.js"]
+    # Phase 01.2 — bundle is now `.cjs` (was `.js`) so Node treats it
+    # as CommonJS regardless of the api package.json `type: module` that
+    # ships in the same image at /app/package.json.
+    command: ["node", "/app/packages/data/dist/migrate.cjs"]
 
   # Phase 2 Plan 02 — API container. Closes Phase 1 D-08 / SC#1 partial:
   # the entrypoint runs check-default-secrets.cjs BEFORE node main, so

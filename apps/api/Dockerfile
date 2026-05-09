@@ -51,8 +51,8 @@ COPY tools tools
 
 # Build api (which now inlines @openwhispr/* via noExternal in tsup config).
 # Build data separately for the standalone migrate service — it ships its own
-# CJS bundle at packages/data/dist/migrate.js that the migrate compose service
-# invokes directly via `node /app/packages/data/dist/migrate.js`.
+# CJS bundle at packages/data/dist/migrate.cjs that the migrate compose service
+# invokes directly via `node /app/packages/data/dist/migrate.cjs`.
 RUN pnpm --filter @openwhispr/api build \
  && pnpm --filter @openwhispr/data build
 
@@ -98,9 +98,12 @@ COPY --from=builder --chown=node:node /app/apps/api/dist /app/dist
 COPY --from=builder --chown=node:node /app/apps/api/package.json /app/package.json
 
 # Built data artifact for the migrate compose service:
-# `command: ["node", "/app/packages/data/dist/migrate.js"]`. The data tsup
+# `command: ["node", "/app/packages/data/dist/migrate.cjs"]`. The data tsup
 # config bundles drizzle-orm + pg + schema into one CJS file (external: pg-native).
 COPY --from=builder --chown=node:node /app/packages/data/dist /app/packages/data/dist
+# drizzle migration files (sql + meta/_journal.json) — migrate.cjs resolves
+# them via `resolve(__dirname, "..", "migrations")` so they MUST sit next to dist/.
+COPY --from=builder --chown=node:node /app/packages/data/migrations /app/packages/data/migrations
 
 # Ship the deny-list at a known absolute path (entrypoint reads it).
 COPY --from=builder --chown=node:node /app/tools/bootstrap/default-secrets.txt \
