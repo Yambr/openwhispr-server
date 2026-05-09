@@ -119,7 +119,22 @@ services:
   traefik:
     image: traefik:v3.6
     profiles: [default]
-    networks: [openwhispr_internal]
+    # Phase 02.15 — Network aliases for in-cluster `api.localhost` /
+    # `auth.localhost` resolution (Group G closure). Docker's embedded DNS
+    # resolves these names to traefik's container IP for every service on
+    # `openwhispr_internal`, so the contract-test-runner (and any future
+    # in-cluster client that needs to follow an api 302 to its publicly-
+    # configured `OPENWHISPR_API_URL=https://api.localhost`) reaches
+    # traefik via the canonical-public hostname instead of ECONNREFUSE-ing
+    # on container loopback 127.0.0.1:443. Symmetric with prod DNS:
+    # operators publish api.localhost via /etc/hosts on the host; we
+    # publish it via Docker DNS inside the network. SAN on the bootstrap
+    # cert already covers both hostnames.
+    networks:
+      openwhispr_internal:
+        aliases:
+          - api.localhost
+          - auth.localhost
     # Only Traefik publishes host ports (D-05). 80/443 are user traffic;
     # 8080 is the dev dashboard (gate behind basic-auth in prod, Phase 9).
     ports:
@@ -435,6 +450,21 @@ services:
         condition: service_healthy
       fixture-idp:
         condition: service_healthy
+    # Phase 02.15 — runner now drives traffic through Traefik via the
+    # canonical-public `https://api.localhost` URL. Docker DNS resolves
+    # `api.localhost` to the traefik container (network aliases above);
+    # the bootstrap-generated cert at compose/traefik/certs/local.crt
+    # is mounted read-only and trusted via NODE_EXTRA_CA_CERTS. This
+    # exercises the full Traefik+TLS+cert-SAN path end-to-end and lets
+    # api 302 redirects to its public callback URL resolve in-cluster
+    # (closes Group G ECONNREFUSED). AUTH_TRUSTED_ORIGINS_EXTRA is
+    # intentionally NOT set on the runner: it's a seed-side concern
+    # (the seed posts directly to api:3000 with that Origin); the
+    # runner's Origin is now the public `https://api.localhost` which
+    # Better Auth already accepts via AUTH_URL.
     environment:
-      BACKEND_URL: http://api:3000
-      AUTH_URL: http://api:3000
+      BACKEND_URL: https://api.localhost
+      AUTH_URL: https://api.localhost
+      NODE_EXTRA_CA_CERTS: /certs/local.crt
+    volumes:
+      - ./compose/traefik/certs/local.crt:/certs/local.crt:ro
