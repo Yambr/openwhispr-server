@@ -139,6 +139,92 @@ Object storage layout is documented in [storage.md](storage.md). The
 backup tier is local-disk only in v1; Phase 9 wires off-site replication
 to a customer-owned S3 target.
 
+## Auth
+
+Phase 2 lands the auth plane: Better Auth 1.6.9 + email+password + pluggable
+OIDC + opaque bearer + cookie + token rotation overlap + channel-scheme echo
+on the desktop OAuth flow. Operator-facing reference:
+
+- [auth.md](auth.md) — overview, sign-in flow, dual auth, cookie-host scoping,
+  troubleshooting.
+- [oidc-operator-config.md](oidc-operator-config.md) — per-IdP env walkthroughs
+  (Generic OIDC / Keycloak / Authentik / Google Workspace / Azure AD / Okta).
+- [channel-scheme-override.md](channel-scheme-override.md) — channel-scheme
+  allow-list rules, OPENWHISPR_PROTOCOL override, deny-list, reject behavior.
+
+### Configuring SMTP
+
+Verification emails (Better Auth's sign-up flow) and admin notifications are
+delivered via SMTP (PROVIDER-04). The transport is configured via env:
+
+```bash
+SMTP_HOST=smtp.example.com
+SMTP_PORT=587                            # 587 STARTTLS, 465 direct TLS, 25 plain
+SMTP_USER=apikey
+SMTP_PASSWORD=REPLACE_ME
+SMTP_FROM="OpenWhispr <noreply@example.com>"
+```
+
+`apps/api/src/email.ts` selects TLS mode automatically based on port. The
+`.send()` method **re-throws** on transport error so the calling Better Auth
+flow can surface the failure to the user.
+
+**Dev fallback.** With `SMTP_HOST` unset, the email service returns a no-op
+stub that logs `event=email.smtp_not_configured` and returns success. This
+keeps dev sign-up flows green without requiring an actual SMTP server. To
+inspect outbound mail in development, bring up the bundled mailpit service:
+
+```bash
+docker compose --profile dev up -d mailpit
+# Set SMTP_HOST=mailpit, SMTP_PORT=1025 in .env
+# Open http://mailpit.localhost (Traefik routes it via the dev-profile router)
+```
+
+mailpit is **profile-gated**; the default `docker compose up` never starts it.
+
+### Rotating BETTER_AUTH_SECRET
+
+`BETTER_AUTH_SECRET` is the HMAC key Better Auth uses to sign opaque bearer
+tokens. Rotating it **invalidates every existing session** — every signed-in
+user is forced back to the sign-in page on their next request. Plan for the
+operator runbook:
+
+1. Communicate the forced-relogin event to users.
+2. Generate a fresh secret: `openssl rand -base64 32`.
+3. Update `BETTER_AUTH_SECRET` in `.env` (and the equivalent in your secret
+   manager / Helm values).
+4. `docker compose restart api` (or roll the API deployment in K8s).
+5. Confirm: every existing token returns 401; new sign-ins succeed.
+
+There is no "graceful" rotation in v1 — sessions cannot survive a secret
+change. Treat the secret as a long-lived credential rotated only on
+compromise.
+
+### Default-secrets entrypoint check
+
+The API container refuses to boot if any required env var holds a deny-list
+placeholder value (`changeme`, `sk-1234`, etc.). The check runs in
+`apps/api/scripts/check-default-secrets.ts` (compiled to `dist/scripts/check-default-secrets.cjs`)
+via the container's `ENTRYPOINT`. The deny-list lives at
+`tools/bootstrap/default-secrets.txt`.
+
+Operators can override the deny-list path via `DENY_LIST_PATH=/path/to/file`
+if running outside the standard container layout. The self-test
+`tests/self-tests/api-entrypoint-default-secrets.test.ts` exercises the
+contract end-to-end (compose up → fixture .env with `MASTER_KEK=changeme` →
+container exit non-zero with the offending key on stderr).
+
+### Troubleshooting common 401 patterns
+
+| Symptom | Likely cause | Fix |
+|---------|--------------|-----|
+| All users receive 401 immediately after deploy | `BETTER_AUTH_SECRET` rotated | Communicate forced relogin (see above) |
+| Random users 401 a few hours into a session | Token rotation overlap < 5 min on a slow desktop | Verify `apps/api/src/lib/token-rotation.ts` overlap = 5 min; check API container clock skew vs DB |
+| Desktop main process gets 401 but renderer cookie works | Bearer not being rotated by main process | Desktop `tokenStore.js` issue; out of scope for the server |
+| Renderer cookie 401 but bearer works | Cookie not reaching API host (split-host) | See [auth.md § Cookie host scoping](auth.md) |
+| `/api/desktop-signin/{provider}` returns 503 | OIDC not configured | Set all three of `OIDC_ISSUER_URL`/`OIDC_CLIENT_ID`/`OIDC_CLIENT_SECRET` (see [oidc-operator-config.md](oidc-operator-config.md)) |
+| `/api/desktop-signin/{provider}` returns 400 `invalid callback scheme` | Channel scheme not on allow-list | See [channel-scheme-override.md](channel-scheme-override.md) |
+
 ## Future phases
 
 - **Phase 1:** docker-compose stack (Postgres / PgBouncer / Redis / observability) — `make up` brings real services online
