@@ -4,7 +4,7 @@
 
 .PHONY: dev test lint lint-rls format typecheck up down clean help \
         contract-test contract-test-deployed load-test seed backup restore \
-        migrate migrate-rollback logs ps restart
+        migrate migrate-rollback logs ps restart verify-images
 
 help:
 	@grep -E '^[a-zA-Z_-]+:' Makefile | awk -F: '{print $$1}' | sort -u
@@ -42,6 +42,9 @@ ps:
 
 restart:
 	$(MAKE) down && $(MAKE) up
+
+verify-images:
+	bash scripts/verify-images.sh
 
 clean:
 	rm -rf node_modules apps/*/node_modules packages/*/node_modules \
