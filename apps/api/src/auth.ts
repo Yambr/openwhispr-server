@@ -130,9 +130,11 @@ export function buildAuth(opts: BuildAuthOptions): AuthInstance {
 
   const plugins = [
     // Bearer plugin: emits opaque tokens + set-auth-token rotation header.
-    // Per AUTH-04 we will layer a 5-minute overlap window on top via the
-    // sessions.previous_token_hash columns added in 0001_better_auth.sql.
-    // The DB-touching helpers for that overlap land in a Wave 2 plan.
+    // Per AUTH-04 we layer a 5-minute overlap window on top via the
+    // sessions.previous_token (text) column. Phase 02.12 dropped the
+    // bytea hash storage in favor of Better Auth's canonical plain-text
+    // session.token shape; the DB-touching helpers live in
+    // apps/api/src/lib/token-rotation.ts.
     bearer(),
     ...(oidcProviders.length > 0
       ? [

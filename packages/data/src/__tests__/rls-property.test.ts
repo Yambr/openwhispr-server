@@ -291,12 +291,16 @@ SUITE("TEST-RLS-01: 100+ random tenant pairs through PgBouncer", () => {
       const userId = userIdRows.rows[0]?.id;
       if (!userId) throw new Error("seeded user missing id");
 
+      // Phase 02.12 — sessions.token is plain text (BA-native). Bind a unique
+      // bearer per insert so the UNIQUE index doesn't reject duplicates.
       await withTenant(db, tenantA, async (tx) => {
+        let i = 0;
         for (const sec of expirations) {
+          const bearer = `rls-prop-${tenantA}-${userId}-${i++}-${sec}`;
           await tx.execute(
-            sql`INSERT INTO sessions (tenant_id, user_id, token_hash, expires_at)
+            sql`INSERT INTO sessions (tenant_id, user_id, token, expires_at)
                 VALUES (${tenantA}::uuid, ${userId}::uuid,
-                        decode(repeat('00', 32), 'hex'),
+                        ${bearer},
                         now() + (${sec}::int * interval '1 second'))`,
           );
         }

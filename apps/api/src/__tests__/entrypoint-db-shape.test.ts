@@ -109,7 +109,7 @@ vi.mock("../middleware/dual-auth.js", () => ({
 vi.mock("../routes/index.js", () => ({ buildAllRoutes: () => [] }));
 vi.mock("../lib/mint-bearer.js", () => ({ buildMintBearer: () => async () => "" }));
 vi.mock("../lib/token-rotation.js", () => ({
-  hashToken: (s: string) => s,
+  // Phase 02.12 — hashToken removed; recordPreviousToken now takes plain text.
   recordPreviousToken: async () => {},
   tryPreviousToken: async () => null,
 }));

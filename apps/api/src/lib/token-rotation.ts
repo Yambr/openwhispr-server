@@ -1,54 +1,35 @@
-// Phase 2 / Plan 01 + 05 — token-rotation helpers for the AUTH-04
-// 5-minute overlap window.
+// Phase 02.12 — adopt Better Auth v1.6.9's plain-text session.token model.
+// Phase 02 Plan 01's hashToken (SHA-256) helper + bytea storage are removed
+// in favor of plain-text bearer storage on `sessions.token` and
+// `sessions.previous_token`. The AUTH-04 5-minute overlap CONTRACT
+// (recordPreviousToken + tryPreviousToken behavior) is preserved unchanged
+// at the API level — only the storage representation flipped from bytea
+// to text. At-rest hardening is deferred to v2 (column-level pgcrypto or
+// Postgres TDE — ADR placeholder in `.planning/STATE.md` Roadmap Evolution).
 //
-// Source of truth: 02-RESEARCH-AUTH.md § Token Rotation Overlap.
+// Source of truth (rev): 02.12-CONTEXT.md D-02 (simplify token-rotation.ts).
 //
-// Plan 01 shipped: hashToken (SHA-256 pure function).
-// Plan 05 adds:    recordPreviousToken + tryPreviousToken (DB-touching).
-//
-// AUTH-A3 finding (2026-05-09):
+// AUTH-A3 finding (2026-05-09) preserved verbatim:
 //   Better Auth 1.6.9's bearer plugin (node_modules/better-auth/dist/
 //   plugins/bearer/index.mjs) does NOT support a built-in rotation
 //   overlap. The `set-auth-token` header carries the freshly-rotated
 //   value; the OLD token's signed-cookie HMAC verification stops working
 //   the moment Better Auth rotates the underlying session cookie value.
-//   Therefore we MUST keep the previous_token_hash machinery — this
-//   plan lands the helpers that operate on it.
-//
-//   The actual hook-into-Better-Auth wiring (calling recordPreviousToken
-//   on the rotation event) is intentionally NOT part of these helpers —
-//   it is a small wiring step that lives in apps/api/src/auth.ts and is
-//   exercised end-to-end by Plan 06's CONTRACT-01 token-rotation
-//   contract test against a real backend. The helpers themselves are
-//   unit-testable in isolation against a recording fake DB; the
-//   SECURITY DEFINER function they call is exercised by the existing
-//   migration tests in packages/data.
-import { createHash } from "node:crypto";
+//   Therefore we MUST keep the previous_token machinery — this module
+//   lands the helpers that operate on it.
+
+import { type ExecutableTx, type TransactionalDb, withTenant } from "@openwhispr/data";
 import { sql } from "drizzle-orm";
-import {
-  withTenant,
-  type ExecutableTx,
-  type TransactionalDb,
-} from "@openwhispr/data";
 
 /**
- * Compute the SHA-256 digest of an opaque bearer token. Returns a 32-byte
- * Buffer suitable for the `bytea` column types on `sessions.token_hash`
- * and `sessions.previous_token_hash`.
- *
- * Determinism: identical input ALWAYS yields identical output (verified
- * by token-rotation.test.ts). Empty-string input is a defined SHA-256
- * output (`e3b0c4...`); we don't special-case it.
- */
-export function hashToken(token: string): Buffer {
-  return createHash("sha256").update(token).digest();
-}
-
-/**
- * Record the previously-active token hash on a session row before Better
+ * Record the previously-active bearer token on a session row before Better
  * Auth's rotation completes. The `previous_token_expires_at` column is
  * stamped to `now() + 5 minutes` per AUTH-04. Subsequent requests using
  * the OLD token within that window are accepted via `tryPreviousToken`.
+ *
+ * Phase 02.12 — `oldToken` is the plain-text bearer (no hashing). Stored
+ * verbatim into `sessions.previous_token` (text). The AUTH-04 overlap
+ * CONTRACT is preserved; only the representation changed.
  *
  * Runs inside `withTenant(db, tenantId, ...)` so the UPDATE is bound by
  * the existing tenant_isolation policy on `sessions`. Caller MUST pass
@@ -58,12 +39,12 @@ export async function recordPreviousToken(
   db: TransactionalDb<ExecutableTx>,
   tenantId: string,
   sessionId: string,
-  oldHash: Buffer,
+  oldToken: string,
 ): Promise<void> {
   await withTenant(db, tenantId, async (tx) => {
     await tx.execute(
       sql`UPDATE sessions
-          SET previous_token_hash = ${oldHash},
+          SET previous_token = ${oldToken},
               previous_token_expires_at = now() + interval '5 minutes'
           WHERE id = ${sessionId}::uuid`,
     );
@@ -76,14 +57,14 @@ export interface PreviousTokenMatch {
 }
 
 /**
- * Look up a session by its `previous_token_hash`. Calls the SECURITY
- * DEFINER function `lookup_session_by_previous_token(bytea)` defined in
- * migration 0001_better_auth.sql, which:
+ * Look up a session by its `previous_token`. Calls the SECURITY DEFINER
+ * function `lookup_session_by_previous_token(text)` defined in migration
+ * 0005_session_token_plain.sql (Phase 02.12), which:
  *   1. Bypasses RLS deliberately (the caller doesn't yet know the
  *      tenant — that's exactly what we're resolving).
  *   2. Returns ONLY (user_id, tenant_id) tuples — no row data — so a
- *      malicious caller probing arbitrary hashes learns nothing beyond
- *      "this hash maps to <opaque ids>".
+ *      malicious caller probing arbitrary tokens learns nothing beyond
+ *      "this token maps to <opaque ids>".
  *   3. Filters by `previous_token_expires_at > now()` so expired
  *      overlap windows do not match.
  *
@@ -99,10 +80,9 @@ export async function tryPreviousToken(
   db: { execute(query: unknown): Promise<unknown> },
   bearerToken: string,
 ): Promise<PreviousTokenMatch | null> {
-  const hash = hashToken(bearerToken);
   const r = (await db.execute(
     sql`SELECT user_id, tenant_id
-        FROM lookup_session_by_previous_token(${hash})`,
+        FROM lookup_session_by_previous_token(${bearerToken})`,
   )) as { rows: Array<{ user_id: string; tenant_id: string }> };
   const first = r.rows[0];
   if (!first) return null;

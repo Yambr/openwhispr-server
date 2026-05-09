@@ -76,9 +76,7 @@ function makeFakeDb(opts: FakeDbBuildOpts = {}) {
         return row ? { rows: [row] } : { rows: [] };
       }
       if (/lookup_session_by_previous_token/i.test(text)) {
-        return opts.previousTokenMatch
-          ? { rows: [opts.previousTokenMatch] }
-          : { rows: [] };
+        return opts.previousTokenMatch ? { rows: [opts.previousTokenMatch] } : { rows: [] };
       }
       if (/UPDATE\s+sessions/i.test(text)) {
         return { rows: [] };
@@ -111,9 +109,7 @@ function makeFakeAuth(opts: FakeAuthOpts = {}) {
     handler: vi.fn(async () => new Response(null, { status: 404 })),
     api: {
       getSession: vi.fn(async () =>
-        opts.user
-          ? { user: opts.user, session: { id: "session-fixture-id" } }
-          : null,
+        opts.user ? { user: opts.user, session: { id: "session-fixture-id" } } : null,
       ),
     },
   };
@@ -154,9 +150,7 @@ describe("buildApp() — Plan 08 wiring", () => {
       url: `/api/auth/desktop-callback/oidc?state=${VALID_STATE_ID}&code=fixture-code`,
     });
     expect(res.statusCode).toBe(302);
-    expect(res.headers.location).toMatch(
-      /^openwhispr:\/\/\?bearer_token=OPAQUE_FROM_MINT$/,
-    );
+    expect(res.headers.location).toMatch(/^openwhispr:\/\/\?bearer_token=OPAQUE_FROM_MINT$/);
     expect(mintBearer).toHaveBeenCalledTimes(1);
     await app.close();
   });
@@ -216,7 +210,7 @@ describe("buildApp() — Plan 08 wiring", () => {
     expect(res.statusCode).toBe(200);
     // The hook MAY be invoked once; we tolerate both 0 and 1 because
     // the test-only route also calls recordPreviousToken via its own
-    // path (rotateSessionInDb already records previous_token_hash). The
+    // path (rotateSessionInDb already records previous_token plain text). The
     // contractual requirement of Plan 08 Task 3 is that the spy was
     // wired and reachable — assert call count >= 0 and that the spy
     // was passed through. Stricter assertion would couple to internal

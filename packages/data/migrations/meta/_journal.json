@@ -36,6 +36,13 @@
       "when": 1778281976166,
       "tag": "0004_email_lowercase_normalize",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1778281976167,
+      "tag": "0005_session_token_plain",
+      "breakpoints": true
     }
   ]
 }
