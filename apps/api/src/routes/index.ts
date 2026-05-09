@@ -26,6 +26,14 @@ import {
   buildDeleteAccountRoutes,
   type DeleteAccountDeps,
 } from "./delete-account.js";
+import {
+  buildDesktopSigninRoutes,
+  type DesktopSigninDeps,
+} from "./desktop-signin.js";
+import {
+  buildAuthCallbackRoutes,
+  type AuthCallbackDeps,
+} from "./auth-callback.js";
 import healthRoutes from "./health.js";
 
 export type RoutePlugin = (app: FastifyInstance) => Promise<void>;
@@ -50,11 +58,15 @@ export function buildAllRoutes(deps: AllRoutesDeps): readonly RoutePlugin[] {
     db: deps.db,
     auth: deps.auth,
   };
+  const desktopSigninDeps: DesktopSigninDeps = { db: deps.db };
+  const authCallbackDeps: AuthCallbackDeps = { db: deps.db };
   return [
     healthRoutes,
     buildCheckUserRoutes(checkUserDeps),
     buildVerificationStatusRoutes(verificationDeps),
     buildDeleteAccountRoutes(deleteAccountDeps),
+    buildDesktopSigninRoutes(desktopSigninDeps),
+    buildAuthCallbackRoutes(authCallbackDeps),
   ];
 }
 
@@ -62,3 +74,5 @@ export { healthRoutes };
 export { buildCheckUserRoutes };
 export { buildVerificationStatusRoutes };
 export { buildDeleteAccountRoutes };
+export { buildDesktopSigninRoutes };
+export { buildAuthCallbackRoutes };
