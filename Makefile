@@ -3,11 +3,11 @@
 # Future-phase targets stub-fail with a phase-N pointer.
 
 .PHONY: dev test lint lint-rls format typecheck up down clean clean-stack help \
-        contract-test contract-test-deployed load-test seed backup restore \
+        contract-test contract-test-deployed e2e-test load-test seed backup restore \
         migrate migrate-rollback logs ps restart verify-images
 
 help:
-	@grep -E '^[a-zA-Z_-]+:' Makefile | awk -F: '{print $$1}' | sort -u
+	@grep -E '^[a-zA-Z0-9_-]+:' Makefile | awk -F: '{print $$1}' | sort -u
 
 dev: up
 	pnpm -r --parallel dev
@@ -92,6 +92,31 @@ contract-test:
 	rc=$$? ; \
 	if [ $$rc -ne 0 ]; then docker compose down -v ; exit $$rc ; fi ; \
 	LITELLM_CONFIG_FILE=litellm_config.contract.yaml OPENWHISPR_TEST_ROUTES=true docker compose --profile default --profile contract-test run --rm contract-test-runner ; \
+	rc=$$? ; docker compose down -v ; exit $$rc
+
+# Phase 3 / Plan 09 — D-05B: E2E contract suite against REAL provider APIs.
+# Operator supplies .env.e2e with OPENROUTER_API_KEY + GROQ_API_KEY +
+# OPENAI_API_KEY + PYANNOTE_API_KEY (real values, NOT bootstrap-generated).
+# Costs real money — runs locally or via scheduled (NOT main) CI.
+# Mounts the production litellm_config.yaml (NOT the mock contract config),
+# exercises real provider key paths end-to-end. Diarization uses the Fastify
+# sync-wrapper against pyannote.ai directly (D-07 REVISED — NOT via LiteLLM).
+# .env.e2e is gitignored via the .env.* glob in .gitignore.
+e2e-test:
+	@test -f .env.e2e || (echo "Refusing to run: .env.e2e not found. Create it (see .env.e2e.example) with real OPENROUTER_API_KEY + GROQ_API_KEY + OPENAI_API_KEY + PYANNOTE_API_KEY values." && exit 1)
+	@grep -q '^OPENROUTER_API_KEY=' .env.e2e || (echo "OPENROUTER_API_KEY missing in .env.e2e" && exit 1)
+	@grep -q '^GROQ_API_KEY=' .env.e2e || (echo "GROQ_API_KEY missing in .env.e2e (D-11 — Whisper-large-v3 STT)" && exit 1)
+	@grep -q '^OPENAI_API_KEY=' .env.e2e || (echo "OPENAI_API_KEY missing in .env.e2e (D-12 — Realtime WSS direct)" && exit 1)
+	@grep -q '^PYANNOTE_API_KEY=' .env.e2e || (echo "PYANNOTE_API_KEY missing in .env.e2e (D-07 REVISED — diarization sync-wrapper requires it)" && exit 1)
+	OPENWHISPR_TEST_ROUTES=true LITELLM_CONFIG_FILE=litellm_config.yaml RUN_E2E=true \
+	  docker compose --env-file .env --env-file .env.e2e \
+	  --profile default --profile contract-test up -d --wait
+	@OPENWHISPR_TEST_ROUTES=true RUN_E2E=true docker compose --env-file .env --env-file .env.e2e \
+	  --profile default --profile contract-test run --rm seed ; \
+	rc=$$? ; \
+	if [ $$rc -ne 0 ]; then docker compose down -v ; exit $$rc ; fi ; \
+	OPENWHISPR_TEST_ROUTES=true RUN_E2E=true docker compose --env-file .env --env-file .env.e2e \
+	  --profile default --profile contract-test run --rm contract-test-runner ; \
 	rc=$$? ; docker compose down -v ; exit $$rc
 
 # Run the conformance suite against an arbitrary deployed backend.
