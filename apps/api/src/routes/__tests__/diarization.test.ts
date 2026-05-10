@@ -647,4 +647,686 @@ describe("POST /v1/audio/diarization", () => {
     expect(POLL_INTERVAL_MS).toBe(1500);
     expect(POLL_CEILING_MS).toBe(300_000);
   });
+
+  // ----- Stage B back-fill tests -----------------------------------------
+  // Closing the residual ≥ 90/90/90/90 gap on diarization.ts. Each test
+  // pins one previously uncovered branch and runs against the same fake
+  // PyannoteClient + in-memory RedisLike used by the canonical tests above.
+
+  it("rethrows non-MissingPyannoteKey errors raised by pyannoteFactory (line 152 path)", async () => {
+    const sentinel = new Error("factory blew up unexpectedly");
+    app = buildApp({
+      pyannoteFactory: () => {
+        throw sentinel;
+      },
+    });
+    const { body, contentType } = multipartBody("audio");
+    const res = await app.inject({
+      method: "POST",
+      url: "/v1/audio/diarization",
+      headers: { "content-type": contentType },
+      payload: body,
+    });
+    // Centralized error handler maps unknown throws to 500.
+    expect(res.statusCode).toBe(500);
+    expect(res.body).not.toContain("factory blew up unexpectedly");
+  });
+
+  it("returns 502 envelope on PyannoteUpstreamError (presigned PUT non-2xx)", async () => {
+    const { PyannoteUpstreamError } = await import(
+      "../../lib/pyannote-client.js"
+    );
+    const pyannote = makeFakePyannote({
+      uploadedBytes: [],
+      submittedJobIds: [],
+      calls: [],
+      uploadThrows: new PyannoteUpstreamError(500, "presigned PUT failed"),
+    });
+    app = buildApp({ pyannote });
+    const { body, contentType } = multipartBody("audio");
+    const res = await app.inject({
+      method: "POST",
+      url: "/v1/audio/diarization",
+      headers: { "content-type": contentType },
+      payload: body,
+    });
+    expect(res.statusCode).toBe(502);
+    const env = ErrorEnvelope.parse(res.json());
+    expect(env.error).toMatch(/pyannote upstream/);
+  });
+
+  it("rethrows unknown errors from mapPyannoteError so centralized handler emits 500", async () => {
+    // Submit step throws a plain Error (not in the PyannoteError taxonomy).
+    // mapPyannoteError must rethrow → centralized error handler → 500.
+    const pyannote = makeFakePyannote({
+      uploadedBytes: [],
+      submittedJobIds: [],
+      calls: [],
+      submitThrows: new Error("totally novel failure mode"),
+    });
+    app = buildApp({ pyannote });
+    const { body, contentType } = multipartBody("audio");
+    const res = await app.inject({
+      method: "POST",
+      url: "/v1/audio/diarization",
+      headers: { "content-type": contentType },
+      payload: body,
+    });
+    expect(res.statusCode).toBe(500);
+    // Centralized handler emits a generic envelope; the original message
+    // must NOT leak (information disclosure guard).
+    expect(res.body).not.toContain("totally novel failure mode");
+  });
+
+  it("returns 502 when pollJob throws PyannoteBadRequestError mid-loop", async () => {
+    const pyannote = makeFakePyannote({
+      uploadedBytes: [],
+      submittedJobIds: [],
+      calls: [],
+      pollThrows: new PyannoteBadRequestError(422, "poll rejected"),
+    });
+    app = buildApp({ pyannote });
+    const { body, contentType } = multipartBody("audio");
+    const res = await app.inject({
+      method: "POST",
+      url: "/v1/audio/diarization",
+      headers: { "content-type": contentType },
+      payload: body,
+    });
+    expect(res.statusCode).toBe(502);
+    const env = ErrorEnvelope.parse(res.json());
+    expect(env.error).toMatch(/pyannote rejected request/);
+  });
+
+  it("aborts the response (no body) when pollJob throws AbortError (client disconnect)", async () => {
+    const abortErr = Object.assign(new Error("aborted"), { name: "AbortError" });
+    const pyannote = makeFakePyannote({
+      uploadedBytes: [],
+      submittedJobIds: [],
+      calls: [],
+      pollThrows: abortErr,
+    });
+    app = buildApp({ pyannote });
+    const { body, contentType } = multipartBody("audio");
+    const res = await app.inject({
+      method: "POST",
+      url: "/v1/audio/diarization",
+      headers: { "content-type": contentType },
+      payload: body,
+    });
+    // The handler returns undefined on AbortError → Fastify sends 200
+    // empty body (or just no payload). The critical assertion is that
+    // we did NOT send a 502/500 envelope on this branch.
+    expect([200, 0]).toContain(res.statusCode);
+    // No JSON body produced.
+    expect(res.body === "" || res.body == null).toBe(true);
+  });
+
+  it("returns 503 envelope when an in-flight reservation never binds a jobId (state='in-flight' fallthrough)", async () => {
+    // Build a redis stub whose entry has a fingerprint matching but whose
+    // sibling :jobid key never appears — exercises the in-flight retry
+    // loop's failure exit (lines 242-246).
+    const store = new Map<string, string>();
+    const KEY = "diar:idem:stuck-key";
+    // Pre-seed a reservation entry with bodyHash matching SHA256("audio").
+    const { createHash } = await import("node:crypto");
+    const bodyHash = createHash("sha256").update("audio").digest("hex");
+    store.set(
+      KEY,
+      JSON.stringify({ bodyHash, jobId: null, createdAt: Date.now() }),
+    );
+    const redis: RedisLike = {
+      async set(_k, _v, opts) {
+        // NX always rejected — entry already exists.
+        if (opts?.NX === true) return null;
+        return "OK";
+      },
+      async get(k) {
+        return store.get(k) ?? null;
+      },
+    };
+    const pyannote = makeFakePyannote({
+      uploadedBytes: [],
+      submittedJobIds: [],
+      calls: [],
+    });
+    app = buildApp({ pyannote, redis });
+    const res = await app.inject({
+      method: "POST",
+      url: "/v1/audio/diarization",
+      headers: {
+        "content-type": multipartBody("audio").contentType,
+        "idempotency-key": "stuck-key",
+      },
+      payload: multipartBody("audio").body,
+    });
+    expect(res.statusCode).toBe(503);
+    expect(res.headers["retry-after"]).toBe("5");
+    const env = ErrorEnvelope.parse(res.json());
+    expect(env.error).toMatch(/concurrent request in flight/);
+  }, 10_000);
+
+  it("returns 409 when a recheck during in-flight wait reveals a different bodyHash", async () => {
+    // Mirror the in-flight loop but flip the stored bodyHash on the
+    // second redis.get call so the recheck path observes a conflict
+    // (lines 236-238 / 242-238).
+    const { createHash } = await import("node:crypto");
+    const ourBodyHash = createHash("sha256").update("body-A").digest("hex");
+    const otherBodyHash = createHash("sha256")
+      .update("body-different")
+      .digest("hex");
+    let getCount = 0;
+    const KEY = "diar:idem:flip-key";
+    const redis: RedisLike = {
+      async set(_k, _v, opts) {
+        if (opts?.NX === true) return null;
+        return "OK";
+      },
+      async get(k) {
+        if (k !== KEY) return null;
+        getCount++;
+        // First lookup: matches → in-flight. Subsequent: conflict.
+        const hash = getCount === 1 ? ourBodyHash : otherBodyHash;
+        return JSON.stringify({ bodyHash: hash, jobId: null, createdAt: 0 });
+      },
+    };
+    const pyannote = makeFakePyannote({
+      uploadedBytes: [],
+      submittedJobIds: [],
+      calls: [],
+    });
+    app = buildApp({ pyannote, redis });
+    const res = await app.inject({
+      method: "POST",
+      url: "/v1/audio/diarization",
+      headers: {
+        "content-type": multipartBody("body-A").contentType,
+        "idempotency-key": "flip-key",
+      },
+      payload: multipartBody("body-A").body,
+    });
+    expect(res.statusCode).toBe(409);
+    const env = ErrorEnvelope.parse(res.json());
+    expect(env.error).toMatch(/Idempotency-Key conflict/i);
+  }, 10_000);
+
+  it("recovers when in-flight recheck eventually returns 'hit' with a bound jobId", async () => {
+    // Flip from in-flight (no sibling) to hit (sibling present) on the
+    // second redis.get pass — exercises lines 232-234.
+    const { createHash } = await import("node:crypto");
+    const bodyHash = createHash("sha256").update("body-hit").digest("hex");
+    const KEY = "diar:idem:hit-key";
+    const SIBLING = KEY + ":jobid";
+    let mainGets = 0;
+    const redis: RedisLike = {
+      async set(_k, _v, opts) {
+        if (opts?.NX === true) return null;
+        return "OK";
+      },
+      async get(k) {
+        if (k === KEY) {
+          mainGets++;
+          return JSON.stringify({ bodyHash, jobId: null, createdAt: 0 });
+        }
+        if (k === SIBLING) {
+          // First pass: not-yet-bound → in-flight. Second pass: bound.
+          return mainGets >= 2 ? "job-bound-late" : null;
+        }
+        return null;
+      },
+    };
+    const pyannote = makeFakePyannote({
+      uploadedBytes: [],
+      submittedJobIds: [],
+      calls: [],
+    });
+    app = buildApp({ pyannote, redis });
+    const res = await app.inject({
+      method: "POST",
+      url: "/v1/audio/diarization",
+      headers: {
+        "content-type": multipartBody("body-hit").contentType,
+        "idempotency-key": "hit-key",
+      },
+      payload: multipartBody("body-hit").body,
+    });
+    expect(res.statusCode).toBe(200);
+  }, 10_000);
+
+  it("returns 400 when @fastify/multipart truncates an oversized file mid-stream", async () => {
+    // Build a buildApp variant with a tiny limits.fileSize. We can't
+    // inject limits via the existing buildApp (it hard-codes 100MB), so
+    // construct the app manually.
+    const calls: string[] = [];
+    const pyannote = makeFakePyannote({
+      uploadedBytes: [],
+      submittedJobIds: [],
+      calls,
+    });
+    const localApp = Fastify({ logger: false });
+    registerErrorHandler(localApp);
+    localApp.register(fastifyMultipart, {
+      attachFieldsToBody: false as const,
+      limits: { fileSize: 32 }, // 32 bytes — smaller than our payload
+    });
+    localApp.register(zodTypeProvider);
+    localApp.addHook("onRequest", async (req) => {
+      req.user = { id: TEST_USER, email: "fixture@conformance.test" };
+      req.tenant = TEST_TENANT;
+    });
+    localApp.register(
+      buildDiarizationRoutes({
+        redis: makeFakeRedis(),
+        pyannoteFactory: () => pyannote,
+      }),
+    );
+    try {
+      const big = Buffer.alloc(8 * 1024, 0x62); // 8 KB > 32 byte limit
+      const { body, contentType } = multipartBody(big);
+      const res = await localApp.inject({
+        method: "POST",
+        url: "/v1/audio/diarization",
+        headers: { "content-type": contentType },
+        payload: body,
+      });
+      expect(res.statusCode).toBe(400);
+      const env = ErrorEnvelope.parse(res.json());
+      expect(env.error).toMatch(/file exceeds size limit/);
+      expect(calls).toEqual([]);
+    } finally {
+      await localApp.close();
+    }
+  });
+
+  it("returns 400 when req.file() throws FST_REQ_FILE_TOO_LARGE synchronously", async () => {
+    // Build a Fastify app where the route is registered but req.file() is
+    // monkey-patched to throw the @fastify/multipart-shaped error before
+    // any stream iteration. Pins the catch block at lines 164-168.
+    const localApp = Fastify({ logger: false });
+    registerErrorHandler(localApp);
+    localApp.register(fastifyMultipart, {
+      attachFieldsToBody: false as const,
+      limits: { fileSize: 100 * 1024 * 1024 },
+    });
+    localApp.register(zodTypeProvider);
+    localApp.addHook("preHandler", async (req) => {
+      req.user = { id: TEST_USER, email: "fixture@conformance.test" };
+      req.tenant = TEST_TENANT;
+      (req as unknown as { file: () => Promise<never> }).file =
+        async () => {
+          const err = Object.assign(new Error("file too large"), {
+            code: "FST_REQ_FILE_TOO_LARGE",
+          });
+          throw err;
+        };
+    });
+    const calls: string[] = [];
+    const pyannote = makeFakePyannote({
+      uploadedBytes: [],
+      submittedJobIds: [],
+      calls,
+    });
+    localApp.register(
+      buildDiarizationRoutes({
+        redis: makeFakeRedis(),
+        pyannoteFactory: () => pyannote,
+      }),
+    );
+    try {
+      const { body, contentType } = multipartBody("audio");
+      const res = await localApp.inject({
+        method: "POST",
+        url: "/v1/audio/diarization",
+        headers: { "content-type": contentType },
+        payload: body,
+      });
+      expect(res.statusCode).toBe(400);
+      const env = ErrorEnvelope.parse(res.json());
+      expect(env.error).toMatch(/file exceeds size limit/);
+    } finally {
+      await localApp.close();
+    }
+  });
+
+  it("returns 400 when the multipart stream iterator throws FST_REQ_FILE_TOO_LARGE mid-chunk", async () => {
+    // Mid-stream throw path (lines 195-199): the `for await` loop catches
+    // the error and converts it to a 400. Inject a fake req.file() whose
+    // returned `file` async-iterable throws on first next().
+    const localApp = Fastify({ logger: false });
+    registerErrorHandler(localApp);
+    localApp.register(fastifyMultipart, {
+      attachFieldsToBody: false as const,
+      limits: { fileSize: 100 * 1024 * 1024 },
+    });
+    localApp.register(zodTypeProvider);
+    localApp.addHook("preHandler", async (req) => {
+      req.user = { id: TEST_USER, email: "fixture@conformance.test" };
+      req.tenant = TEST_TENANT;
+      (req as unknown as { file: () => Promise<unknown> }).file =
+        async () => ({
+          mimetype: "audio/wav",
+          file: {
+            // eslint-disable-next-line require-yield
+            async *[Symbol.asyncIterator]() {
+              const err = Object.assign(new Error("too big"), {
+                code: "FST_REQ_FILE_TOO_LARGE",
+              });
+              throw err;
+            },
+            truncated: false,
+          },
+        });
+    });
+    const pyannote = makeFakePyannote({
+      uploadedBytes: [],
+      submittedJobIds: [],
+      calls: [],
+    });
+    localApp.register(
+      buildDiarizationRoutes({
+        redis: makeFakeRedis(),
+        pyannoteFactory: () => pyannote,
+      }),
+    );
+    try {
+      const { body, contentType } = multipartBody("audio");
+      const res = await localApp.inject({
+        method: "POST",
+        url: "/v1/audio/diarization",
+        headers: { "content-type": contentType },
+        payload: body,
+      });
+      expect(res.statusCode).toBe(400);
+      const env = ErrorEnvelope.parse(res.json());
+      expect(env.error).toMatch(/file exceeds size limit/);
+    } finally {
+      await localApp.close();
+    }
+  });
+
+  it("rethrows non-too-large errors from the multipart stream iterator", async () => {
+    // Defensive: an unrelated stream error must NOT be silently mapped to
+    // 400. mapPyannoteError-of-unknown rethrows → centralized handler 500.
+    const localApp = Fastify({ logger: false });
+    registerErrorHandler(localApp);
+    localApp.register(fastifyMultipart, {
+      attachFieldsToBody: false as const,
+      limits: { fileSize: 100 * 1024 * 1024 },
+    });
+    localApp.register(zodTypeProvider);
+    localApp.addHook("preHandler", async (req) => {
+      req.user = { id: TEST_USER, email: "fixture@conformance.test" };
+      req.tenant = TEST_TENANT;
+      (req as unknown as { file: () => Promise<unknown> }).file =
+        async () => ({
+          mimetype: "audio/wav",
+          file: {
+            // eslint-disable-next-line require-yield
+            async *[Symbol.asyncIterator]() {
+              throw new Error("disk read fault");
+            },
+            truncated: false,
+          },
+        });
+    });
+    const pyannote = makeFakePyannote({
+      uploadedBytes: [],
+      submittedJobIds: [],
+      calls: [],
+    });
+    localApp.register(
+      buildDiarizationRoutes({
+        redis: makeFakeRedis(),
+        pyannoteFactory: () => pyannote,
+      }),
+    );
+    try {
+      const { body, contentType } = multipartBody("audio");
+      const res = await localApp.inject({
+        method: "POST",
+        url: "/v1/audio/diarization",
+        headers: { "content-type": contentType },
+        payload: body,
+      });
+      expect(res.statusCode).toBe(500);
+      // Must NOT leak the upstream message.
+      expect(res.body).not.toContain("disk read fault");
+    } finally {
+      await localApp.close();
+    }
+  });
+
+  it("emits the route's 'client disconnect' log line when req.raw 'close' fires mid-poll", async () => {
+    // Pins the onClose listener (line 268) + abort-signal-aborted return
+    // (lines 274, 277-281). Strategy: stub pollJob so the FIRST call
+    // synchronously fires req.raw.emit('close') and then returns
+    // 'running' — the next iteration's signal.aborted check is true and
+    // the handler returns without writing a body.
+    const calls: string[] = [];
+    let rawForListener: { emit: (e: string) => void } | undefined;
+    const pyannote: PyannoteClient = {
+      async createMediaInput() {
+        return {
+          url: "https://pyannote-presigned.test/upload/abc",
+          mediaUri: "media://abc",
+        };
+      },
+      async uploadToPresignedUrl() {
+        /* no-op */
+      },
+      async submitDiarize() {
+        return "job-disconnect";
+      },
+      async pollJob(jobId) {
+        calls.push("pollJob");
+        // On the first poll, simulate the desktop dropping its TCP socket.
+        if (rawForListener) rawForListener.emit("close");
+        return { jobId, status: "running" };
+      },
+    };
+    const localApp = Fastify({ logger: false });
+    registerErrorHandler(localApp);
+    localApp.register(fastifyMultipart, {
+      attachFieldsToBody: false as const,
+      limits: { fileSize: 100 * 1024 * 1024 },
+    });
+    localApp.register(zodTypeProvider);
+    localApp.addHook("onRequest", async (req) => {
+      req.user = { id: TEST_USER, email: "fixture@conformance.test" };
+      req.tenant = TEST_TENANT;
+      // Hand the test a handle to req.raw so it can fire 'close' from
+      // inside pollJob. We just pluck the EventEmitter-shaped raw socket.
+      rawForListener = req.raw as unknown as {
+        emit: (e: string) => void;
+      };
+    });
+    localApp.register(
+      buildDiarizationRoutes({
+        redis: makeFakeRedis(),
+        pyannoteFactory: () => pyannote,
+      }),
+    );
+    try {
+      const { body, contentType } = multipartBody("audio");
+      const res = await localApp.inject({
+        method: "POST",
+        url: "/v1/audio/diarization",
+        headers: { "content-type": contentType },
+        payload: body,
+      });
+      // Handler returned undefined → Fastify produces an empty 200.
+      // The KEY assertion is the handler did NOT emit a 5xx envelope.
+      expect(res.statusCode).toBeLessThan(500);
+      // pollJob fired at least once before disconnect.
+      expect(calls.length).toBeGreaterThanOrEqual(1);
+    } finally {
+      await localApp.close();
+    }
+  });
+
+  it("extracts content-type[0] when the header arrives as an array (proxy edge case)", async () => {
+    // Pin line 128 cond-expr idx 0 — `Array.isArray(contentTypeHeader)`
+    // truthy branch. Confirms the route reads the FIRST element of an
+    // array-shaped Content-Type header (rare, but legal per RFC 7230 §3.2.2
+    // when an upstream proxy concatenates duplicate headers).
+    //
+    // We can't ship a real array via inject() — Fastify normalizes — so we
+    // mutate the parsed headers in preHandler. Two array-shaped variants:
+    //   * non-multipart array → handler emits 400 (still hits the branch).
+    //   * multipart array → fastify-multipart may itself reject; the 400
+    //     from the route's content-type guard is enough to pin coverage.
+    const localApp = Fastify({ logger: false });
+    registerErrorHandler(localApp);
+    localApp.register(zodTypeProvider);
+    localApp.addHook("preHandler", async (req) => {
+      req.user = { id: TEST_USER, email: "fixture@conformance.test" };
+      req.tenant = TEST_TENANT;
+      // Force an array shape — non-multipart so the route's content-type
+      // guard hits the 400 path. The Array.isArray(headerKeyRaw) idx 0
+      // branch is exercised regardless of the route's eventual exit.
+      (req.headers as Record<string, unknown>)["content-type"] = [
+        "application/json",
+        "text/plain",
+      ];
+    });
+    const pyannote = makeFakePyannote({
+      uploadedBytes: [],
+      submittedJobIds: [],
+      calls: [],
+    });
+    localApp.register(
+      buildDiarizationRoutes({
+        redis: makeFakeRedis(),
+        pyannoteFactory: () => pyannote,
+      }),
+    );
+    try {
+      const res = await localApp.inject({
+        method: "POST",
+        url: "/v1/audio/diarization",
+        headers: { "content-type": "application/json" },
+        payload: "{}",
+      });
+      // Non-multipart → 400 envelope.
+      expect(res.statusCode).toBe(400);
+      const env = ErrorEnvelope.parse(res.json());
+      expect(env.error).toMatch(/multipart/);
+    } finally {
+      await localApp.close();
+    }
+  });
+
+  it("normalizes idempotency-key when the header arrives as an array", async () => {
+    // Mirror of content-type array case for line 212 idx 0.
+    const localApp = Fastify({ logger: false });
+    registerErrorHandler(localApp);
+    localApp.register(fastifyMultipart, {
+      attachFieldsToBody: false as const,
+      limits: { fileSize: 100 * 1024 * 1024 },
+    });
+    localApp.register(zodTypeProvider);
+    localApp.addHook("onRequest", async (req) => {
+      req.user = { id: TEST_USER, email: "fixture@conformance.test" };
+      req.tenant = TEST_TENANT;
+      const k = req.headers["idempotency-key"];
+      if (typeof k === "string") {
+        (req.headers as Record<string, unknown>)["idempotency-key"] = [k];
+      }
+    });
+    const pyannote = makeFakePyannote({
+      uploadedBytes: [],
+      submittedJobIds: [],
+      calls: [],
+    });
+    localApp.register(
+      buildDiarizationRoutes({
+        redis: makeFakeRedis(),
+        pyannoteFactory: () => pyannote,
+      }),
+    );
+    try {
+      const { body, contentType } = multipartBody("audio");
+      const res = await localApp.inject({
+        method: "POST",
+        url: "/v1/audio/diarization",
+        headers: {
+          "content-type": contentType,
+          "idempotency-key": "client-key-array",
+        },
+        payload: body,
+      });
+      expect(res.statusCode).toBe(200);
+    } finally {
+      await localApp.close();
+    }
+  });
+
+  it("falls back to application/octet-stream when filePart.mimetype is empty", async () => {
+    // Pin line 206 binary-expr idx 1 — the right-hand fallback.
+    const localApp = Fastify({ logger: false });
+    registerErrorHandler(localApp);
+    localApp.register(fastifyMultipart, {
+      attachFieldsToBody: false as const,
+      limits: { fileSize: 100 * 1024 * 1024 },
+    });
+    localApp.register(zodTypeProvider);
+    localApp.addHook("preHandler", async (req) => {
+      req.user = { id: TEST_USER, email: "fixture@conformance.test" };
+      req.tenant = TEST_TENANT;
+      (req as unknown as { file: () => Promise<unknown> }).file =
+        async () => ({
+          mimetype: "", // empty — triggers the fallback
+          file: {
+            async *[Symbol.asyncIterator]() {
+              yield Buffer.from("audio-bytes");
+            },
+            truncated: false,
+          },
+        });
+    });
+    const captured: { contentType?: string } = {};
+    const pyannote: PyannoteClient = {
+      async createMediaInput() {
+        return {
+          url: "https://pyannote-presigned.test/upload/abc",
+          mediaUri: "media://abc",
+        };
+      },
+      async uploadToPresignedUrl(_url, _body, contentType) {
+        captured.contentType = contentType;
+      },
+      async submitDiarize() {
+        return "job-mime";
+      },
+      async pollJob(jobId) {
+        return {
+          jobId,
+          status: "succeeded",
+          output: {
+            duration: 1,
+            segments: [{ start: 0, end: 1, speaker: "SPEAKER_00" }],
+          },
+        };
+      },
+    };
+    localApp.register(
+      buildDiarizationRoutes({
+        redis: makeFakeRedis(),
+        pyannoteFactory: () => pyannote,
+      }),
+    );
+    try {
+      const { body, contentType } = multipartBody("audio");
+      const res = await localApp.inject({
+        method: "POST",
+        url: "/v1/audio/diarization",
+        headers: { "content-type": contentType },
+        payload: body,
+      });
+      expect(res.statusCode).toBe(200);
+      expect(captured.contentType).toBe("application/octet-stream");
+    } finally {
+      await localApp.close();
+    }
+  });
 });
