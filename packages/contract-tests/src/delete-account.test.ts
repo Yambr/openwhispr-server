@@ -6,21 +6,40 @@
 // session was invalidated as part of the cascade. The test re-uses the
 // jar and asserts 401 + envelope.
 import { describe, expect, it } from "vitest";
-import { BACKEND_URL, probeBackend } from "./env.js";
+import { AUTH_URL, BACKEND_URL, probeBackend } from "./env.js";
+import { makeJarFetch } from "./helpers/cookie-jar.js";
 import { fetchAndParse } from "./helpers/http.js";
-import { signInFixture } from "./helpers/sign-in-fixture.js";
+import { FIXTURE_PASSWORD } from "./helpers/sign-in-fixture.js";
 import { DeleteAccountResponse, ErrorEnvelope } from "./schemas.js";
 
 const REACHABLE = await probeBackend();
 
 describe.skipIf(!REACHABLE)("DELETE /api/auth/delete-account", () => {
   it("cookie → 200; same jar then verification-status → 401 (cascade)", async () => {
-    const transientEmail = `delete-${Date.now()}@conformance.test`;
-    // The seed creates a long-lived `fixture@conformance.test`; for a
-    // delete test we sign up a fresh user via Better Auth's email path
-    // so the deletion target is unique. We post to the sign-up endpoint
-    // first then use the resulting cookie.
-    const jf = await signInFixture("fixture@conformance.test");
+    // Sign up a transient user — DELETE is destructive, so we cannot reuse
+    // the long-lived `fixture@conformance.test` (subsequent runs would 401
+    // on sign-in once the row is gone). Better Auth's sign-up/email path
+    // returns the session cookie directly so we can DELETE in the same jar.
+    const transientEmail = `delete-${Date.now()}-${Math.random().toString(36).slice(2, 8)}@conformance.test`;
+    const jf = makeJarFetch();
+    const signUp = await jf.fetch(`${AUTH_URL}/api/auth/sign-up/email`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        origin: AUTH_URL,
+      },
+      body: JSON.stringify({
+        email: transientEmail,
+        password: FIXTURE_PASSWORD,
+        name: "Delete Test User",
+      }),
+    });
+    if (!signUp.ok) {
+      const text = await signUp.text();
+      throw new Error(
+        `sign-up(${transientEmail}) failed: ${signUp.status} body=${text.slice(0, 200)}`,
+      );
+    }
 
     const del = await jf.fetch(`${BACKEND_URL}/api/auth/delete-account`, {
       method: "DELETE",
