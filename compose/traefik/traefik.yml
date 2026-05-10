@@ -1,6 +1,21 @@
 # Traefik v3 static config — file provider only (D-31). No Docker provider.
-# respondingTimeouts at 3700s cover SCALE-05 (1h streaming sessions on
-# /api/agent/stream and /v1/realtime, with buffer for client clock skew).
+#
+# Phase 04 Plan 05 — TWO TLS entrypoints (SCALE-05 / T-04-02 mitigation):
+#   :443  websecure          — short-JSON routes; Traefik 3 defaults
+#                              (readTimeout 60s, writeTimeout 0, idleTimeout
+#                              180s). Reverted from the prior shared
+#                              long-timeout regime that exposed every JSON
+#                              route on :443 to ingress-pool exhaustion
+#                              under WSS load.
+#   :8443 websecure-realtime — long-running WSS realtime sessions ONLY.
+#                              respondingTimeouts (readTimeout 0, writeTimeout
+#                              0, idleTimeout 3600s) cover the 1h ceiling
+#                              demanded by BACKEND_SPEC.md L788-L791.
+#
+# Cert reuse (D-21 / RESEARCH §2.3): both entrypoints declare `http.tls: {}`
+# so Traefik loads `tls.certificates` from dynamic.yml — a SHARED list. No
+# separate ACME, no DNS-01, no entrypoint-specific cert minting. Operator
+# K8s topology (Phase 04 plan 10) maps the same logic to cert-manager.
 
 api:
   dashboard: true
@@ -41,11 +56,43 @@ entryPoints:
         - 10.0.0.0/8       # RFC 1918 Class A private
         - 172.16.0.0/12    # RFC 1918 Class B private (Docker default bridge pool)
         - 192.168.0.0/16   # RFC 1918 Class C private
+    # Phase 04 Plan 05 — :443 reverted to Traefik 3 defaults. The prior
+    # multi-thousand-second read/write timeouts (originally added to give
+    # /v1/realtime 1h headroom) are GONE; long-running WSS now lives on
+    # :8443 via the websecure-realtime entrypoint below. Short-JSON routes
+    # on :443 can no longer hold ingress-pool slots for an hour
+    # (T-04-02 mitigation).
     transport:
       respondingTimeouts:
-        readTimeout: 3700s
-        writeTimeout: 3700s
+        readTimeout: 60s
+        writeTimeout: 0
         idleTimeout: 180s
+  # Phase 04 Plan 05 — websecure-realtime entrypoint (SCALE-05).
+  # Dedicated TLS entrypoint on :8443 carrying ONLY long-running WSS
+  # realtime sessions (api-realtime router in dynamic.yml binds here
+  # exclusively). respondingTimeouts: readTimeout 0 + writeTimeout 0
+  # remove the upper bound on individual reads/writes during a 60-min
+  # dictation; idleTimeout 3600s caps the connection's overall idle
+  # window at the 1h ceiling demanded by BACKEND_SPEC.md L788-L791.
+  # forwardedHeaders.trustedIPs mirrors :443 so the in-cluster contract-
+  # test runner's per-fixture XFF survives the Traefik hop on the
+  # realtime path as well (Phase 02.19 trust-boundary inheritance).
+  # http.tls: {} causes shared-cert reuse from dynamic.yml's
+  # tls.certificates (D-21) — no separate ACME / no per-entrypoint cert.
+  websecure-realtime:
+    address: ":8443"
+    http:
+      tls: {}
+    forwardedHeaders:
+      trustedIPs:
+        - 10.0.0.0/8       # RFC 1918 Class A private
+        - 172.16.0.0/12    # RFC 1918 Class B private (Docker default bridge pool)
+        - 192.168.0.0/16   # RFC 1918 Class C private
+    transport:
+      respondingTimeouts:
+        readTimeout: 0
+        writeTimeout: 0
+        idleTimeout: 3600s
   ping:
     address: ":8081"
   traefik:
