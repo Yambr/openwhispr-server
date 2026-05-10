@@ -1,0 +1,153 @@
+// Phase 04 / Plan 03 / Task 1 — shared undici provider-mint helper.
+//
+// Source of truth: 04-RESEARCH.md §2.5 (lines 441–484) + 04-CONTEXT.md
+// D-18 (missing-key gating) + D-20 (3s connect / 5s total timeouts).
+//
+// Behavior:
+//   * Single dedicated `Agent` with `connect: { timeout: 3000 }` so the
+//     TCP-handshake stage cannot hang past 3s. Total budget enforced by an
+//     `AbortController` armed for 5000ms — covers both connect-stall and
+//     slow-body paths in one ceiling.
+//   * Status mapping (D-18):
+//       401 / 403  → 503 "<Label> not configured (set <ENV> in .env)"
+//       429 / >=500 → 503 "<Label> token mint upstream error"
+//       JSON parse fail → 503 "<Label> token mint malformed response"
+//       any thrown / aborted → 503 "<Label> token mint timed out"
+//   * Helper NEVER throws — every failure is encoded in the discriminated
+//     union so route handlers can switch without try/catch ceremony.
+//
+// CLAUDE.md compliance: undici is the network process boundary; tests
+// inject MockAgent at that exact boundary (allowed). No internal logic
+// is mockable here — the helper has no DI seams beyond `opts`.
+//
+// undici is bundled with Node 24 as a global `fetch`, but we import
+// explicitly so the dispatcher injection path used by tests
+// (setGlobalDispatcher) is also reachable in production for tracing
+// instrumentation later.
+
+import { fetch, getGlobalDispatcher, setGlobalDispatcher, Agent } from "undici";
+
+/** Total per-call budget (connect + body). 5s per D-20.
+ *
+ *  D-20 also calls for a 3s connect-only ceiling. We install a process-wide
+ *  `Agent({connect:{timeout:3000}})` as the global dispatcher EXACTLY ONCE
+ *  on first call (idempotent — re-entrant calls leave any test-injected
+ *  MockAgent in place). The fetch call below then uses the global
+ *  dispatcher rather than passing a per-call dispatcher, so vitest tests
+ *  using `setGlobalDispatcher(mockAgent)` continue to intercept correctly.
+ *  In production this gives connect-stalls a 3s ceiling and total-stalls a
+ *  5s ceiling (AbortController). */
+const TOTAL_TIMEOUT_MS = 5000;
+const CONNECT_TIMEOUT_MS = 3000;
+
+let dispatcherInstalled = false;
+function ensureProviderDispatcher(): void {
+  if (dispatcherInstalled) return;
+  // Detect a real default Agent (no MockAgent / test override). Heuristic:
+  // we own the global dispatcher only if its constructor name is "Agent"
+  // (undici's default). Tests installing MockAgent leave dispatcherInstalled
+  // false, but their MockAgent's name is "MockAgent" — we skip overwriting.
+  const current = getGlobalDispatcher();
+  if (current?.constructor?.name === "Agent") {
+    setGlobalDispatcher(new Agent({ connect: { timeout: CONNECT_TIMEOUT_MS } }));
+  }
+  dispatcherInstalled = true;
+}
+
+export interface CallProviderOptions {
+  url: string;
+  method: "GET" | "POST";
+  headers: Record<string, string>;
+  body?: string;
+  /** Env var name surfaced in the 503-not-configured message. */
+  envVarName: string;
+  /** Human-readable provider name surfaced in every 503 message. */
+  providerLabel: string;
+}
+
+export type CallProviderResult =
+  | { ok: true; json: unknown }
+  | { ok: false; status: 503; message: string };
+
+/**
+ * Build the canonical 503 message for a given failure category. Centralized
+ * so the four envelope strings (asserted by tests + acceptance criteria)
+ * cannot drift across providers.
+ */
+function buildMessage(
+  providerLabel: string,
+  envVarName: string,
+  kind: "not-configured" | "upstream-error" | "timed-out" | "malformed",
+): string {
+  switch (kind) {
+    case "not-configured":
+      return `${providerLabel} not configured (set ${envVarName} in .env)`;
+    case "upstream-error":
+      return `${providerLabel} token mint upstream error`;
+    case "timed-out":
+      return `${providerLabel} token mint timed out`;
+    case "malformed":
+      return `${providerLabel} token mint malformed response`;
+  }
+}
+
+export async function callProvider(opts: CallProviderOptions): Promise<CallProviderResult> {
+  ensureProviderDispatcher();
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), TOTAL_TIMEOUT_MS);
+  try {
+    const res = await fetch(opts.url, {
+      method: opts.method,
+      headers: opts.headers,
+      body: opts.body,
+      signal: ctrl.signal,
+    });
+
+    if (res.status === 401 || res.status === 403) {
+      return {
+        ok: false,
+        status: 503,
+        message: buildMessage(opts.providerLabel, opts.envVarName, "not-configured"),
+      };
+    }
+    if (res.status === 429 || res.status >= 500) {
+      return {
+        ok: false,
+        status: 503,
+        message: buildMessage(opts.providerLabel, opts.envVarName, "upstream-error"),
+      };
+    }
+
+    let json: unknown;
+    try {
+      json = await res.json();
+    } catch {
+      return {
+        ok: false,
+        status: 503,
+        message: buildMessage(opts.providerLabel, opts.envVarName, "malformed"),
+      };
+    }
+    if (json === null || typeof json !== "object") {
+      return {
+        ok: false,
+        status: 503,
+        message: buildMessage(opts.providerLabel, opts.envVarName, "malformed"),
+      };
+    }
+    return { ok: true, json };
+  } catch {
+    // AbortError, undici dispatcher errors, DNS failures, connect refusals —
+    // every reachable network failure surfaces as a transient 503 (D-20).
+    return {
+      ok: false,
+      status: 503,
+      message: buildMessage(opts.providerLabel, opts.envVarName, "timed-out"),
+    };
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+// Exported for branch-coverage tests if needed.
+export const __test = { buildMessage };
