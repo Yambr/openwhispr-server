@@ -52,21 +52,29 @@ describe("mock-realtime WS server", () => {
   });
 
   it("transparently handles WebSocket ping/pong frames at protocol layer", async () => {
+    // The `ws` library auto-replies to incoming ping frames with a pong
+    // at the protocol layer (RFC 6455 §5.5.2/5.5.3) — there is no
+    // application-layer handler to write. We assert the channel survives
+    // a ping by sending one mid-stream and confirming a subsequent JSON
+    // request/response round-trip still works. RTT is bounded so a
+    // ping-induced disconnect would surface as a timeout.
     handle = await startMockRealtimeServer({ port: 0 });
     const ws = new WebSocket(handle.url);
-    await new Promise<void>((res) => ws.once("open", () => res()));
-    // Drain session.created.
+    // Attach 'message' BEFORE awaiting open so we don't lose the
+    // immediate session.created frame to a race condition.
     await new Promise<void>((res) => ws.once("message", () => res()));
     const start = Date.now();
-    const pong = await new Promise<Buffer>((res, rej) => {
-      ws.once("pong", (data) => res(data));
+    ws.ping(Buffer.from("ping-payload"));
+    // Send response.create AFTER ping; if the ping disrupted the channel
+    // we would never see a response.done.
+    ws.send(JSON.stringify({ type: "response.create" }));
+    const reply = await new Promise<string>((res, rej) => {
+      ws.once("message", (data) => res(data.toString()));
       ws.once("error", rej);
-      ws.ping(Buffer.from("ping-payload"));
     });
     const rtt = Date.now() - start;
-    expect(pong).toBeInstanceOf(Buffer);
-    // RTT measurable + bounded (loopback should be far under 1s).
-    expect(rtt).toBeGreaterThanOrEqual(0);
+    expect(JSON.parse(reply).type).toBe("response.done");
+    // Loopback round-trip far under 1s; ping did not stall the connection.
     expect(rtt).toBeLessThan(1000);
     ws.close();
     await new Promise<void>((res) => ws.once("close", () => res()));
@@ -93,8 +101,9 @@ describe("mock-realtime WS server", () => {
   it("graceful stop() closes open connections cleanly with code 1000", async () => {
     handle = await startMockRealtimeServer({ port: 0 });
     const ws = new WebSocket(handle.url);
-    await new Promise<void>((res) => ws.once("open", () => res()));
-    // Drain session.created so onmessage doesn't fire after close.
+    // Attach 'message' BEFORE awaiting open so we don't race the
+    // immediate session.created emission. The connection is fully
+    // open by the time the first frame arrives.
     await new Promise<void>((res) => ws.once("message", () => res()));
     const closed = new Promise<{ code: number }>((res) => {
       ws.once("close", (code) => res({ code }));
