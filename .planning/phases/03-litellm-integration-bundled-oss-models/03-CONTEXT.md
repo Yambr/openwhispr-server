@@ -57,11 +57,11 @@ API использует **один LITELLM_MASTER_KEY** для аутентиф
 
 **Why:** CI должен быть быстрым/детерминированным — mocks. Real wire correctness против реальных провайдеров — отдельный режим, чтобы не флакать main CI.
 
-### D-06 — Default LLM model для /api/reason: qwen3.5-plus
+### D-06 — Default LLM model для /api/reason: qwen3.6-plus (revised post-OpenRouter API verification)
 
-Когда desktop client не передаёт `model` в request body, default = `qwen/qwen-3.5-plus` через OpenRouter (или `qwen3.5-plus` alias в LiteLLM model_list).
+Когда desktop client не передаёт `model` в request body, default = `qwen/qwen3.6-plus` через OpenRouter.
 
-**Why:** User-specified. Qwen 3.5 Plus — strong reasoning model with good price/quality.
+**Why:** User-specified, verified live via `curl https://openrouter.ai/api/v1/models` 2026-05-10. Qwen 3.6 Plus имеет 1M context, $0.33/1M prompt + $1.95/1M completion — strong reasoning + long context. Старый `qwen3.5-plus` устарел, заменён на 3.6.
 
 ## STILL TO INVESTIGATE (advisor research in plan-phase)
 
@@ -109,18 +109,34 @@ User направление: "идём строго по схеме клиент
 
 **Why:** Desktop клиент готовый и не правится без необходимости. Нельзя угадывать схему — один источник истины.
 
-### D-10 — OpenRouter model lineup: 3 моделей в bundled-default config
+### D-10 — OpenRouter model lineup: 3 модели (revised post-API verification)
 
-`compose/litellm/litellm_config.yaml` `model_list` для LLMs:
-- `qwen3.5-plus` (default per D-06) — `qwen/qwen-3.5-plus` через OpenRouter
-- `gemini-3-flash` — `google/gemini-3.0-flash` через OpenRouter
-- `gpt-4o-mini` — `openai/gpt-4o-mini` через OpenRouter (cheap fallback)
+Verified live via `curl https://openrouter.ai/api/v1/models` 2026-05-10. `compose/litellm/litellm_config.yaml` `model_list` для LLMs:
 
-Все три через OPENROUTER_API_KEY (один ключ).
+| LiteLLM alias | OpenRouter model id | Pricing $/1M (in/out) | Context | Role |
+|---|---|---|---|---|
+| `qwen3.6-plus` (default) | `qwen/qwen3.6-plus` | $0.33 / $1.95 | 1M | Default reasoning |
+| `gemini-3-flash` | `google/gemini-3.1-flash-lite` | $0.25 / $1.50 | 1M | Cheap fast |
+| `gpt-4o-mini` | `openai/gpt-4o-mini` | $0.15 / $0.60 | 128k | Cheapest |
 
-**Planner action:** verify exact OpenRouter model identifiers via `curl https://openrouter.ai/api/v1/models` at plan time (assumption A8 in research).
+Все через OPENROUTER_API_KEY (один ключ). Operator может расширить yaml дополнительными моделями (поддерживаются claude, gemini-pro, qwen-max и др — всё через OpenRouter).
 
-**Why:** Desktop model-picker имеет meaningful choice без операторской editing. Один ключ = простота setup.
+**Why:** User-selected "minimum 3 models". qwen3.5-plus устарел, qwen/qwen3.6-plus актуальный. gemini-3.0-flash не существует на OpenRouter, ближайший stable = gemini-3.1-flash-lite. gpt-4o-mini остался корректным.
+
+### D-11 — STT provider: Groq Whisper-large-v3 (NOT OpenAI direct)
+
+OpenRouter не проксирует Whisper API. Используем **Groq Whisper-large-v3** напрямую (OpenAI-compatible endpoint, free tier, $0.04/hr audio в paid).
+
+`compose/litellm/litellm_config.yaml` model_list для STT:
+- `whisper-large-v3` — Groq endpoint (`api_base: https://api.groq.com/openai/v1`, `model: whisper-large-v3`), `api_key: os.environ/GROQ_API_KEY`
+
+User должен предоставить **GROQ_API_KEY**. Без него `/api/transcribe` → 503 envelope.
+
+**Why:** Groq быстрее и дешевле OpenAI direct, OpenAI-compatible (zero LiteLLM config quirks), free tier для smoke-тестов. Replicate медленнее (cold-start GPU). OpenAI direct требовал бы дополнительный ключ + дороже без выигрыша.
+
+**.env.example update:** добавить `GROQ_API_KEY=` (помимо OPENROUTER_API_KEY, PYANNOTE_API_KEY, LITELLM_MASTER_KEY).
+
+**Out of scope:** OPENAI_API_KEY больше не нужен в Phase 3 (всё через OpenRouter + Groq). Если корпоративный оператор хочет OpenAI Whisper direct — они переопределяют свой LiteLLM config (LITELLM_BASE_URL).
 
 ## Files (likely affected)
 
