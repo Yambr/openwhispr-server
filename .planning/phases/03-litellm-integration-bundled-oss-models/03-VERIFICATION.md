@@ -200,5 +200,11 @@ The four human-verification tests catalogued above (end-to-end bundled boot, WSS
 
 ---
 
+## Operational debt closed
+
+- Lefthook prepare-hook conflict fixed in commit 382ebfc — `--no-verify` no longer required on `git commit`.
+
+---
+
 _Verified: 2026-05-10T20:30:00Z_
 _Verifier: Claude (gsd-verifier)_
