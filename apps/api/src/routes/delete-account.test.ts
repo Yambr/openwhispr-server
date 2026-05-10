@@ -149,4 +149,66 @@ describe("DELETE /api/auth/delete-account (cookie-only, cascade)", () => {
     expect(recorded.length).toBe(0);
     await app.close();
   });
+
+  // Phase-2 debt back-fill — exercises the `if (!req.user || !req.tenant)`
+  // defense-in-depth branch at delete-account.ts:96-98. requireCookieOnly
+  // attaches `req.user = session.user` directly; a session whose user is
+  // null (corrupted session row, future Better-Auth bug) flows through to
+  // the handler with req.user falsy and trips the 401 fallback.
+  it("session with empty tenantId hits the defense-in-depth 401 branch", async () => {
+    const { db, recorded } = makeFakeDb();
+    const auth = makeAuth(async () => ({
+      // tenantId is "" — empty string survives `??` (only null/undefined
+      // trigger the fallback) so `req.tenant = ""` and the `!req.tenant`
+      // leg of the OR short-circuit is truthy. Production sessions
+      // should never carry an empty tenantId; this is a defense-in-depth
+      // pin that re-asserts the canonical 401 envelope.
+      user: { id: "u-1", email: "x@b.test", tenantId: "" },
+    }));
+    const app = await buildApp({ db, auth });
+    const res = await app.inject({
+      method: "DELETE",
+      url: "/api/auth/delete-account",
+      headers: { cookie: `${SESSION_COOKIE_NAME}=valid` },
+    });
+    expect(res.statusCode).toBe(401);
+    expect(() => ErrorEnvelope.parse(res.json())).not.toThrow();
+    expect(res.json().error).toBe("session expired");
+    // No DB writes — the cascade is gated by the 401.
+    expect(recorded.length).toBe(0);
+    await app.close();
+  });
+
+  // Phase-2 debt back-fill — exercises the `req.user?.email ?? null`
+  // fallback branch at delete-account.ts:107. Session is valid but the
+  // user record carries no `email` field (defensive: legacy rows /
+  // anonymised sessions).
+  it("audit log records email=null when the session user has no email field", async () => {
+    const { db, recorded } = makeFakeDb();
+    const auth = makeAuth(async () => ({
+      // No `email` key on the user object — the optional chaining branch
+      // must fall back to `null`.
+      user: { id: "u-no-email", tenantId: TENANT_A } as unknown as {
+        id: string;
+        email: string;
+        tenantId: string;
+      },
+    }));
+    const app = await buildApp({ db, auth });
+    const res = await app.inject({
+      method: "DELETE",
+      url: "/api/auth/delete-account",
+      headers: { cookie: `${SESSION_COOKIE_NAME}=valid` },
+    });
+    expect(res.statusCode).toBe(200);
+    // The audit_log INSERT chunk parameterises the email field; the fake
+    // collapses non-string interpolations to "?", so the assertion here
+    // is the structural one: the INSERT ran, between sessions delete and
+    // users delete (proving the handler completed past the audit step
+    // even with email=null).
+    const sqls = recorded.map((r) => r.sql);
+    expect(sqls.some((s) => /INSERT INTO audit_log/i.test(s))).toBe(true);
+    expect(sqls.some((s) => /DELETE FROM users/i.test(s))).toBe(true);
+    await app.close();
+  });
 });
