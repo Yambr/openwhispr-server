@@ -18,6 +18,10 @@ import type { FastifyInstance } from "fastify";
 import type { RedisLike } from "../lib/idempotency-cache.js";
 import type { AuthLike } from "../middleware/dual-auth.js";
 import {
+  type AgentStreamDeps,
+  buildAgentStreamRoutes,
+} from "./agent/stream.js";
+import {
   type AuthCallbackDeps,
   buildAuthCallbackRoutes,
   type MintBearer,
@@ -31,6 +35,9 @@ import healthRoutes from "./health.js";
 import { buildReasonRoutes, type ReasonDeps } from "./reason.js";
 import { buildRealtimeRoutes, type RealtimeDeps } from "./realtime.js";
 import { buildTestOnlyRoutes } from "./test-only.js";
+import { buildAssemblyAITokenRoutes } from "./tokens/assemblyai.js";
+import { buildDeepgramTokenRoutes } from "./tokens/deepgram.js";
+import { buildOpenAIRealtimeTokenRoutes } from "./tokens/openai-realtime.js";
 import { buildTranscribeRoutes, type TranscribeDeps } from "./transcribe.js";
 import {
   buildVerificationStatusRoutes,
@@ -125,6 +132,16 @@ export function buildAllRoutes(deps: AllRoutesDeps): readonly RoutePlugin[] {
     buildDeleteAccountRoutes(deleteAccountDeps),
     buildDesktopSigninRoutes(desktopSigninDeps),
     buildAuthCallbackRoutes(authCallbackDeps),
+    // Phase 04 / Plan 06 — three streaming-token mint routes (D-13: each
+    // calls its provider HTTP API directly via undici, NOT via LiteLLM, so
+    // they register UNCONDITIONALLY regardless of whether deps.litellm is
+    // present). Missing per-provider keys are gated inside the route's
+    // preHandler (D-18 missing-key 503 envelope); operators get a clear
+    // "<Provider> not configured (set <ENV_VAR_NAME> in .env)" signal at
+    // request time.
+    buildAssemblyAITokenRoutes(),
+    buildDeepgramTokenRoutes(),
+    buildOpenAIRealtimeTokenRoutes(),
   ];
   // Phase 03 / Plan 04: conditionally register the transcribe route only
   // when a LiteLLM client was constructed (LITELLM_MASTER_KEY present).
@@ -132,6 +149,16 @@ export function buildAllRoutes(deps: AllRoutesDeps): readonly RoutePlugin[] {
   if (deps.litellm) {
     const transcribeDeps: TranscribeDeps = { db: deps.db, litellm: deps.litellm };
     plugins.push(buildTranscribeRoutes(transcribeDeps));
+    // Phase 04 / Plan 06 — POST /api/agent/stream forwards to LiteLLM
+    // /v1/chat/completions, so it shares the same litellm-presence gate as
+    // transcribe/reason. Without litellm the route is NOT registered and
+    // /api/agent/stream surfaces the canonical 404 envelope (operator-
+    // actionable: "you forgot to wire LITELLM_MASTER_KEY").
+    const agentStreamDeps: AgentStreamDeps = {
+      db: deps.db,
+      litellm: deps.litellm,
+    };
+    plugins.push(buildAgentStreamRoutes(agentStreamDeps));
     // Phase 03 / Plan 05 — POST /api/reason mirrors the transcribe wiring
     // template (Plan 04 Pattern 1). Same conditional gate: skipped when
     // LITELLM_MASTER_KEY is unset at boot, registered when the shared
@@ -201,12 +228,16 @@ export function buildAllRoutes(deps: AllRoutesDeps): readonly RoutePlugin[] {
 }
 
 export {
+  buildAgentStreamRoutes,
+  buildAssemblyAITokenRoutes,
   buildAuthCallbackRoutes,
   buildBetterAuthHandlerRoutes,
   buildCheckUserRoutes,
+  buildDeepgramTokenRoutes,
   buildDeleteAccountRoutes,
   buildDesktopSigninRoutes,
   buildDiarizationRoutes,
+  buildOpenAIRealtimeTokenRoutes,
   buildReasonRoutes,
   buildRealtimeRoutes,
   buildTestOnlyRoutes,
