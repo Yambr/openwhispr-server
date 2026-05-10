@@ -4,6 +4,7 @@
 
 .PHONY: dev test lint lint-rls format typecheck up down clean clean-stack help \
         contract-test contract-test-deployed contract-test-missing-keys e2e-test \
+        e2e-hermetic \
         load-test seed backup restore migrate migrate-rollback logs ps restart \
         verify-images
 
@@ -147,6 +148,25 @@ e2e-test:
 	OPENWHISPR_TEST_ROUTES=true RUN_E2E=true docker compose --env-file .env --env-file .env.e2e \
 	  --profile default --profile contract-test run --rm contract-test-runner ; \
 	rc=$$? ; docker compose down -v ; exit $$rc
+
+# DISCIPLINE rule 3 back-fill — host-side e2e suite against the
+# hermetic mock-LiteLLM stack. Unlike `make e2e-test` (which requires
+# real provider keys in .env.e2e), this target runs from a fresh clone
+# with NO real keys: every chat-completions / transcription call short-
+# circuits inside LiteLLM via mock_response. Diarization runs in mock
+# mode (MOCK_DIARIZATION=true) so PYANNOTE_API_KEY is not required;
+# realtime asserts auth gate + proxy hop only (the wider live OpenAI
+# Realtime path is `make e2e-test` territory).
+#
+# The test runner is HOST-SIDE (Node + vitest), dialing
+# https://api.localhost through Traefik with the dev self-signed cert.
+# Compose stack-up + tear-down is handled by tests/e2e/setup.ts so
+# this target is a single-shot `pnpm test:hermetic` invocation.
+e2e-hermetic:
+	cd tests/e2e && E2E=1 LITELLM_CONFIG_FILE=litellm_config.contract.yaml \
+	  OPENWHISPR_TEST_ROUTES=true \
+	  MOCK_DIARIZATION=true \
+	  node_modules/.bin/vitest run --config vitest.config.ts
 
 # Run the conformance suite against an arbitrary deployed backend.
 # `make contract-test-deployed BACKEND_URL=https://api.customer.com AUTH_URL=...`

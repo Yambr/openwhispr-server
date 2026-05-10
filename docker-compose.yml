@@ -438,6 +438,14 @@ services:
       # diarization route (apps/api/src/routes/diarization.ts in Plan 06),
       # NOT by the LiteLLM sidecar. Forwarded only to the api container.
       PYANNOTE_API_KEY: ${PYANNOTE_API_KEY:-}
+      # Phase 03 e2e back-fill — MOCK_DIARIZATION=true short-circuits the
+      # diarization route to a fixture response (apps/api/src/routes/diarization.ts:71).
+      # Forwarded from the host env so `make e2e-hermetic` (and any other
+      # caller that wants the mock-mode happy path without a real
+      # PYANNOTE_API_KEY) can opt in via export. Default is empty —
+      # production operators MUST NOT set this in their .env (mock mode
+      # returns canned segments regardless of audio content).
+      MOCK_DIARIZATION: ${MOCK_DIARIZATION:-}
       # Phase 03 / CR-01 fix — Valkey URL for the diarization idempotency
       # cache. buildApp() reads VALKEY_URL and constructs the redis client;
       # if unset the /v1/audio/diarization route is intentionally NOT
