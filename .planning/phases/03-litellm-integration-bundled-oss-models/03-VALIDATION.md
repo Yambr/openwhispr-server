@@ -6,6 +6,7 @@ nyquist_compliant: true
 wave_0_complete: false
 created: 2026-05-10
 updated: 2026-05-10
+revision: 1-checker-feedback
 ---
 
 # Phase 03 — Validation Strategy
@@ -42,11 +43,13 @@ updated: 2026-05-10
 | Task ID | Plan | Wave | Requirement | Threat Ref | Secure Behavior | Test Type | Automated Command | File Exists | Status |
 |---------|------|------|-------------|------------|-----------------|-----------|-------------------|-------------|--------|
 | 03-01-T1 | 01 | 0 | LITELLM-06 (D-09) | — | Wire-contracts doc captures upstream BACKEND_SPEC.md verbatim; no improvisation | docs lint | `pnpm exec tsx tools/lint-docs-headings.ts docs/wire-contracts-phase-3.md` | ❌ W0 | ⬜ pending |
-| 03-01-T2 | 01 | 0 | LITELLM-01, LITELLM-02, LITELLM-05 | T-03-01-01..05 | LiteLLM v1.83.14-stable healthy; separate `litellm` DB; bundled config parses | smoke + integration | `docker compose --profile default config && pnpm vitest run tests/self-tests/litellm-up.test.ts` | ❌ W0 | ⬜ pending |
+| 03-01-T2 | 01 | 0 | LITELLM-01, LITELLM-02, LITELLM-05 (+ HIGH-1 migrate auto-create + HIGH-2 diarization spike) | T-03-01-01..05 | LiteLLM v1.83.14-stable healthy; separate `litellm` DB created on BOTH fresh-init (initdb script) AND existing-volume upgrade (migrate runner auto-create — HIGH-1); bundled config parses; diarization decision spike-evidenced (HIGH-2) | smoke + integration | `docker compose --profile default config && pnpm --filter @openwhispr/data test packages/data/src/__tests__/migrate-litellm-db.test.ts && pnpm vitest run tests/self-tests/litellm-up.test.ts` | ❌ W0 | ⬜ pending |
 | 03-02-T1 | 02 | 0 | LITELLM-01 (CI) | T-03-02-01 | Mock contract config parses with mock_response per model | unit | `pnpm exec tsx -e "..." && docker compose --profile default --profile contract-test config` | ❌ W0 | ⬜ pending |
 | 03-02-T2 | 02 | 0 | LITELLM-07 (D-08 spike) | T-03-02-02 | request_id metadata round-trip into LiteLLM_SpendLogs.metadata column | live integration | `LITELLM_BASE_URL=... pnpm vitest run apps/api/src/__tests__/litellm-spike-request-id.test.ts` | ❌ W0 | ⬜ pending |
 | 03-02-T3 | 02 | 0 | WIRE-05/06, LITELLM-03 (zod schemas) | — | Phase 3 wire schemas exported; match wire-contracts doc | unit | `pnpm --filter @openwhispr/contract-tests test packages/contract-tests/src/__tests__/schemas-phase-3.test.ts` | ❌ W0 | ⬜ pending |
+| 03-02-T4 | 02 | 0 | CLAUDE.md ≥90% (HIGH-3) | — | Per-package vitest configs author NESTED `coverage.thresholds.{lines,branches,functions,statements}=90` for apps/api, packages/litellm-client, apps/worker, packages/data | unit | `pnpm exec tsx -e "import('./apps/api/vitest.config.ts').then(m=>{const t=m.default.test.coverage.thresholds;if(t.lines!==90)throw 0})"` | ❌ W0 | ⬜ pending |
 | 03-03-T1 | 03 | 1 | LITELLM-04, LITELLM-05, PROVIDER-01 | T-03-03-01..04 | litellm-client injects master key + user param + metadata; MissingProviderKeyError vs LitellmUpstreamError distinct | unit | `pnpm --filter @openwhispr/litellm-client test --run` | ❌ W0 | ⬜ pending |
+| 03-03-T2 | 03 | 1 | WIRE-05/LITELLM-03 shared infra (HIGH-4) | — | @fastify/multipart registered once at buildApp (attachFieldsToBody:false, 100MB limit) — Plans 04+06 consume without re-registering, no Wave-2 collision | unit | `pnpm --filter @openwhispr/api test apps/api/src/__tests__/multipart-registered.test.ts` | ❌ W0 | ⬜ pending |
 | 03-04-T1 | 04 | 2 | WIRE-05, DATA-03, LITELLM-04 | T-03-04-01..06 | /api/transcribe streams multipart; ledger row idempotent; 503-not-401 on missing key | unit + integration | `pnpm --filter @openwhispr/api test apps/api/src/routes/transcribe.test.ts apps/api/src/lib/word-units.test.ts apps/api/src/__tests__/multipart-registered.test.ts` | ❌ W0 | ⬜ pending |
 | 03-04-T2 | 04 | 2 | WIRE-05, CONTRACT-01 | T-03-04-01..06 | Contract test against mock LiteLLM | contract | `make contract-test` | ❌ W0 | ⬜ pending |
 | 03-05-T1 | 05 | 2 | WIRE-06, LITELLM-04, DATA-03 | T-03-05-01..05 | /api/reason default qwen3.5-plus; user param injected; ledger reason_tokens; 503-not-401 | unit | `pnpm --filter @openwhispr/api test apps/api/src/routes/reason.test.ts` | ❌ W0 | ⬜ pending |
@@ -59,7 +62,7 @@ updated: 2026-05-10
 | 03-09-T1 | 09 | 3 | LITELLM-06 | T-03-09-01..02 | docs/litellm-target-spec.md + mock-mode docs lint-clean | docs lint | `pnpm exec tsx tools/lint-docs-headings.ts docs/litellm-target-spec.md docs/litellm-mock-mode.md` | ❌ W0 | ⬜ pending |
 | 03-09-T2 | 09 | 3 | LITELLM-05 | T-03-09-03 | make e2e-test refuses without .env.e2e; README updated | unit | `make help \| grep e2e-test && grep -q 'Provider Keys' README.md` | ❌ W0 | ⬜ pending |
 | 03-10-T1 | 10 | 3 | PROVIDER-01, DATA-03, CONTRACT-01 | T-03-10-01..04 | Cross-cutting: PROVIDER-01 + Pitfall #8 (503-not-401) + DATA-03 idempotency | contract + integration (testcontainers) | `pnpm --filter @openwhispr/data test packages/data/src/__tests__/usage-ledger-idempotency.test.ts && make contract-test && MISSING_KEY_TEST_MODE=1 make contract-test-missing-keys` | ❌ W0 | ⬜ pending |
-| 03-10-T2 | 10 | 3 | LITELLM-05 (CI) | T-03-10-01..02 | nightly e2e-test job gated on secret presence | yaml lint | `pnpm exec actionlint .github/workflows/ci.yml .github/workflows/nightly.yml` | ❌ W0 | ⬜ pending |
+| 03-10-T2 | 10 | 3 | LITELLM-05 (CI) (+ CRIT-1 step-gated secret check) | T-03-10-01..02 | nightly e2e-test job gated on secret presence via STEP-LEVEL `id: gate` env-probe (CRIT-1: GHA forbids `secrets` context in job-level `if:` — Plan 10 fixed) | yaml lint | `pnpm exec actionlint .github/workflows/ci.yml .github/workflows/nightly.yml && ! grep -E '^\s+if:\s+\$\{\{\s*secrets\.' .github/workflows/nightly.yml` | ❌ W0 | ⬜ pending |
 
 *Status: ⬜ pending · ✅ green · ❌ red · ⚠️ flaky*
 
@@ -102,3 +105,11 @@ updated: 2026-05-10
 - [x] `nyquist_compliant: true` set in frontmatter
 
 **Approval:** approved by gsd-planner 2026-05-10 — every task has an automated verify command; cross-cutting tests in Plan 10 catch contract/idempotency drift.
+
+**Revision 1 (2026-05-10) — applied checker feedback:**
+- CRIT-1: Plan 10 Task 2 GHA job-level `if: ${{ secrets.* }}` replaced with step-level env-probe gate
+- HIGH-1: Plan 01 Task 2 + Plan 09 — migrate runner auto-creates `litellm` DB on every up (idempotent); `make clean-stack` workaround language removed from Plan 09 docs
+- HIGH-2: Plan 01 Task 2 step 3 — diarization spike (Replicate/HF) now MANDATORY before 503-only fallback
+- HIGH-3: Plan 02 added Task 4 — per-package vitest configs author NESTED `coverage.thresholds.{lines,branches,functions,statements}=90` for apps/api, packages/litellm-client, apps/worker, packages/data; Plans 03-08 `<done>` blocks reference verifiable `pnpm --filter <pkg> test --coverage` gate
+- HIGH-4: `@fastify/multipart` registration moved from Plan 04 (Wave 2) into a new Plan 03 Task 2 (Wave 1, single sibling) — eliminates Wave-2 cross-plan edit collision with Plan 06
+- MEDIUM-3 (incidental): Plan 10 files_modified now includes `Makefile` + `.github/workflows/nightly.yml`
