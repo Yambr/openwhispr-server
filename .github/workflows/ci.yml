@@ -341,3 +341,55 @@ jobs:
       - name: Tear down
         if: always()
         run: docker compose down -v
+
+  # === DISCIPLINE rule 3 / Phase 03 e2e back-fill ===
+  # Host-side e2e suite. Boots the full docker-compose stack with the
+  # hermetic mock-LiteLLM contract config, then dials https://api.localhost
+  # through Traefik (TLS) round-tripping POST /api/transcribe, /api/reason,
+  # /v1/audio/diarization, and the WSS /v1/realtime auth gate. Requires NO
+  # provider keys — every chat-completions / transcription call short-
+  # circuits inside LiteLLM via mock_response. The wire-shape e2e matrix
+  # MUST always run on every PR per DISCIPLINE rule 6.
+  e2e-hermetic:
+    runs-on: ubuntu-24.04
+    needs: [lint, typecheck, test]
+    timeout-minutes: 25
+    steps:
+      - uses: step-security/harden-runner@a5ad31d6a139d249332a2605b85202e8c0b78450  # v2.19.1
+        with: { egress-policy: audit }
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd  # v5
+        with: { fetch-depth: 0 }
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1  # v4
+        with: { version: 11.0.8 }
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444  # v5
+        with: { node-version: '24', cache: 'pnpm' }
+      - run: pnpm install --frozen-lockfile
+      - name: Bootstrap fixture .env
+        run: |
+          cp .env.example .env
+          if [ -x tools/bootstrap.sh ]; then
+            tools/bootstrap.sh --ci || true
+          fi
+      - name: Add /etc/hosts entries for *.localhost
+        run: |
+          # Linux glibc DOES NOT auto-resolve *.localhost (RFC 6761
+          # implementations vary). macOS + musl do; ubuntu-24.04's
+          # nss-files/nss-dns chain stops at "localhost" itself. Pin
+          # api.localhost to 127.0.0.1 explicitly so the host-side test
+          # process reaches Traefik on the runner's loopback.
+          echo "127.0.0.1 api.localhost auth.localhost" | sudo tee -a /etc/hosts
+      - name: Build api + migrate images
+        run: docker compose build api migrate
+      - name: Run host-side e2e suite (boots compose + tears down)
+        run: make e2e-hermetic
+      - name: Capture compose logs on failure
+        if: failure()
+        run: docker compose logs --no-color > compose-logs-e2e.txt
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4
+        if: failure()
+        with:
+          name: compose-logs-e2e
+          path: compose-logs-e2e.txt
+      - name: Tear down (defensive — setup.ts already does this)
+        if: always()
+        run: docker compose down -v --remove-orphans || true
