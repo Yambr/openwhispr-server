@@ -52,7 +52,14 @@ export interface RedisLike {
 
 export interface IdempotencyCache {
   lookupOrReserve(key: string, bodyHash: string): Promise<LookupState>;
-  bindJobId(key: string, jobId: string): Promise<void>;
+  /**
+   * WR-01: `bodyHash` is required so the rescue path (cache expired /
+   * corrupt between reserve and bind) can re-create the entry with the
+   * real body fingerprint instead of a sentinel "unknown" — without it,
+   * a legitimate retry with the same body would compare against
+   * "unknown" and surface a spurious 409 conflict.
+   */
+  bindJobId(key: string, jobId: string, bodyHash: string): Promise<void>;
 }
 
 export function createIdempotencyCache(redis: RedisLike): IdempotencyCache {
@@ -101,7 +108,7 @@ export function createIdempotencyCache(redis: RedisLike): IdempotencyCache {
       return { state: "in-flight" };
     },
 
-    async bindJobId(key, jobId) {
+    async bindJobId(key, jobId, bodyHash) {
       const k = KEY_PREFIX + key;
       const raw = await redis.get(k);
       if (!raw) {
@@ -109,8 +116,11 @@ export function createIdempotencyCache(redis: RedisLike): IdempotencyCache {
         // if the submit step took >24h, which is impossible — the
         // POLL_CEILING_MS is 5min). Best-effort: re-create the entry at
         // full TTL so an immediate retry hits the cache.
+        // WR-01: persist the real bodyHash (NOT "unknown") so a
+        // subsequent identical retry returns state='hit' instead of
+        // state='conflict' against a sentinel.
         const entry: CacheEntry = {
-          bodyHash: "unknown",
+          bodyHash,
           jobId,
           createdAt: Date.now(),
         };
@@ -121,8 +131,9 @@ export function createIdempotencyCache(redis: RedisLike): IdempotencyCache {
       try {
         existing = JSON.parse(raw) as CacheEntry;
       } catch {
+        // WR-01: same fix on the corrupted-JSON branch.
         const entry: CacheEntry = {
-          bodyHash: "unknown",
+          bodyHash,
           jobId,
           createdAt: Date.now(),
         };

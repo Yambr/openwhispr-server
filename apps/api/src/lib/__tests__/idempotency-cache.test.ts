@@ -89,14 +89,14 @@ describe("createIdempotencyCache.lookupOrReserve", () => {
 
   it("returns state='hit' with bound jobId when same body posts again", async () => {
     await cache.lookupOrReserve(KEY, BODY_A);
-    await cache.bindJobId(KEY, "job-12345");
+    await cache.bindJobId(KEY, "job-12345", BODY_A);
     const second = await cache.lookupOrReserve(KEY, BODY_A);
     expect(second).toEqual({ state: "hit", jobId: "job-12345" });
   });
 
   it("returns state='conflict' when same key reused with different body hash (Stripe semantics)", async () => {
     await cache.lookupOrReserve(KEY, BODY_A);
-    await cache.bindJobId(KEY, "job-A");
+    await cache.bindJobId(KEY, "job-A", BODY_A);
     const second = await cache.lookupOrReserve(KEY, BODY_B);
     expect(second).toEqual({ state: "conflict" });
   });
@@ -162,7 +162,7 @@ describe("createIdempotencyCache.bindJobId", () => {
 
   it("updates the reservation with the new jobId via SET KEEPTTL (preserves expiry window)", async () => {
     await cache.lookupOrReserve(KEY, BODY_A);
-    await cache.bindJobId(KEY, "job-55");
+    await cache.bindJobId(KEY, "job-55", BODY_A);
     // The bind call should have used KEEPTTL.
     const bindCall = redis.setCalls[redis.setCalls.length - 1]!;
     expect(bindCall.opts?.KEEPTTL).toBe(true);
@@ -175,29 +175,44 @@ describe("createIdempotencyCache.bindJobId", () => {
     expect(persisted.bodyHash).toBe(BODY_A); // bodyHash preserved
   });
 
-  it("re-creates the entry with full TTL when reservation has expired (best-effort)", async () => {
+  it("re-creates the entry with full TTL when reservation has expired (best-effort) — preserves bodyHash (WR-01)", async () => {
     // No prior reservation — bindJobId called against expired key.
-    await cache.bindJobId(KEY, "job-rescue");
+    await cache.bindJobId(KEY, "job-rescue", BODY_A);
     const last = redis.setCalls[redis.setCalls.length - 1]!;
     expect(last.opts?.EX).toBe(TTL_SECONDS);
     expect(last.opts?.KEEPTTL).toBeUndefined();
     const persisted = JSON.parse(last.value);
     expect(persisted.jobId).toBe("job-rescue");
+    // WR-01: rescue must persist the real bodyHash (not a sentinel "unknown")
+    // or a subsequent identical retry surfaces a spurious 409 conflict.
+    expect(persisted.bodyHash).toBe(BODY_A);
   });
 
-  it("re-creates entry on corrupted JSON during bind (defensive)", async () => {
+  it("re-creates entry on corrupted JSON during bind (defensive) — preserves bodyHash (WR-01)", async () => {
     redis.store.set(`diar:idem:${KEY}`, "not-json{");
-    await cache.bindJobId(KEY, "job-rescue");
+    await cache.bindJobId(KEY, "job-rescue", BODY_A);
     const last = redis.setCalls[redis.setCalls.length - 1]!;
     // Recreated with EX (full TTL), not KEEPTTL.
     expect(last.opts?.EX).toBe(TTL_SECONDS);
     const persisted = JSON.parse(last.value);
     expect(persisted.jobId).toBe("job-rescue");
+    expect(persisted.bodyHash).toBe(BODY_A);
+  });
+
+  it("WR-01: legitimate retry after rescue path still returns state='hit' (no spurious 409)", async () => {
+    // Simulate the rescue path: bindJobId called without a prior
+    // reservation (key expired or corrupt). Pre-fix this wrote
+    // bodyHash:"unknown" — the next lookupOrReserve with the real
+    // body would see "unknown" !== bodyHash and return state='conflict'.
+    // Post-fix: bodyHash is persisted, retry returns state='hit'.
+    await cache.bindJobId(KEY, "job-rescue", BODY_A);
+    const second = await cache.lookupOrReserve(KEY, BODY_A);
+    expect(second).toEqual({ state: "hit", jobId: "job-rescue" });
   });
 
   it("bind followed by lookup with same body returns state='hit' with correct jobId", async () => {
     await cache.lookupOrReserve(KEY, BODY_A);
-    await cache.bindJobId(KEY, "job-final");
+    await cache.bindJobId(KEY, "job-final", BODY_A);
     const lookup = await cache.lookupOrReserve(KEY, BODY_A);
     expect(lookup).toEqual({ state: "hit", jobId: "job-final" });
   });
