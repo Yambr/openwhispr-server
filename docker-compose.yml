@@ -435,6 +435,48 @@ services:
       start_period: 30s
     restart: unless-stopped
 
+  # Phase 03 Plan 08 — BullMQ worker that ingests LiteLLM_SpendLogs into
+  # our usage_ledger every 30s (LITELLM-07 / DATA-03 / SCALE-03).
+  #
+  # Runs as `openwhispr_owner` (BYPASSRLS) so it can write usage_ledger
+  # rows for any tenant after resolving tenant_id per row from the users
+  # table. Reads LiteLLM_SpendLogs DIRECT from postgres:5432 (NOT
+  # pgbouncer — Pitfall #9, cross-DB queries break through transaction-
+  # mode pooling). Watermark stored in Valkey under
+  # `litellm:spend:last_start_time` — replay-safe via ON CONFLICT DO
+  # NOTHING on usage_ledger.request_id (UPSERT converges with the api
+  # routes' inline ledger writes from Plan 04/05).
+  #
+  # No published port (worker has no HTTP listener). `restart:
+  # unless-stopped` recovers from process death; the BullMQ job loop is
+  # the liveness signal.
+  worker:
+    build:
+      context: .
+      dockerfile: apps/worker/Dockerfile
+    profiles: [default]
+    networks: [openwhispr_internal]
+    env_file: .env
+    environment:
+      NODE_ENV: production
+      VALKEY_HOST: valkey
+      VALKEY_PORT: "6379"
+      VALKEY_PASSWORD: ${VALKEY_PASSWORD}
+      # Direct postgres connection (NOT pgbouncer). Defaults to the same
+      # owner credentials used by the migrate runner; an operator can set
+      # LITELLM_READ_DATABASE_URL explicitly to point at a different
+      # cluster.
+      LITELLM_READ_DATABASE_URL: ${LITELLM_READ_DATABASE_URL:-postgres://${POSTGRES_OWNER_USER}:${POSTGRES_OWNER_PASSWORD}@postgres:5432/litellm}
+      # DATABASE_URL_OWNER is already in .env (Phase 1).
+    depends_on:
+      litellm:
+        condition: service_healthy
+      valkey:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    restart: unless-stopped
+
   # Phase 2 Plan 02 — Mailpit dev SMTP catch-all. ONLY in the `dev`
   # profile (Pitfall: never instantiate in production via plain
   # `docker compose up`). Image pinned to a minor tag (NOT `:latest`).
