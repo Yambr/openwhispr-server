@@ -167,6 +167,54 @@ describe("createMediaInput", () => {
       PyannoteBadRequestError,
     );
   });
+
+  it("WR-04: PyannoteBadRequestError.message does NOT include upstream body (body parked on .bodyText)", async () => {
+    const SECRET_BODY = '{"error":"Authorization header malformed: sk-leak-1234"}';
+    agent
+      .get(PYANNOTE_BASE)
+      .intercept({ path: "/v1/media/input", method: "POST" })
+      .reply(400, SECRET_BODY);
+    const client = createPyannoteClient({ apiKey: "k" });
+    try {
+      await client.createMediaInput();
+      throw new Error("expected throw");
+    } catch (err) {
+      expect(err).toBeInstanceOf(PyannoteBadRequestError);
+      const e = err as PyannoteBadRequestError;
+      // .message is generic — safe to log via err.message.
+      expect(e.message).toBe("pyannote 400");
+      expect(e.message).not.toContain("sk-leak-1234");
+      expect(e.message).not.toContain("Authorization");
+      // Body is parked on a separate field for structured diagnostics
+      // (callers that need it can opt in explicitly; default logs of
+      // err.message are safe).
+      expect(e.bodyText).toContain("Authorization");
+    }
+  });
+
+  it("WR-04: PyannoteUpstreamError.message does NOT include upstream body (body parked on .bodyText)", async () => {
+    const PRESIGNED_HOST = "https://pyannote-uploads.example.com";
+    const LEAKY_BODY = "<xml>signature: sig-secret-deadbeef</xml>";
+    agent
+      .get(PRESIGNED_HOST)
+      .intercept({ path: "/leak-key", method: "PUT" })
+      .reply(403, LEAKY_BODY);
+    const client = createPyannoteClient({ apiKey: "k" });
+    try {
+      await client.uploadToPresignedUrl(
+        `${PRESIGNED_HOST}/leak-key`,
+        Buffer.from("x"),
+        "audio/wav",
+      );
+      throw new Error("expected throw");
+    } catch (err) {
+      expect(err).toBeInstanceOf(PyannoteUpstreamError);
+      const e = err as PyannoteUpstreamError;
+      expect(e.message).toBe("pyannote 403");
+      expect(e.message).not.toContain("sig-secret");
+      expect(e.bodyText).toContain("sig-secret");
+    }
+  });
 });
 
 describe("uploadToPresignedUrl", () => {

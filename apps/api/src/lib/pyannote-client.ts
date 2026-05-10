@@ -50,23 +50,33 @@ export class PyannoteUnavailableError extends Error {
   }
 }
 
+/**
+ * WR-04: keep upstream body OFF the Error message (`.message` may be
+ * surfaced via `req.log.warn` or echoed by middleware that doesn't
+ * know to redact). Body is parked on a separate `bodyText` field for
+ * structured diagnostics.
+ */
 export class PyannoteBadRequestError extends Error {
   override name = "PyannoteBadRequestError";
+  public readonly bodyText: string;
   constructor(
     public readonly status: number,
-    message: string,
+    bodyText = "",
   ) {
-    super(message);
+    super(`pyannote ${status}`);
+    this.bodyText = bodyText;
   }
 }
 
 export class PyannoteUpstreamError extends Error {
   override name = "PyannoteUpstreamError";
+  public readonly bodyText: string;
   constructor(
     public readonly status: number,
-    message: string,
+    bodyText = "",
   ) {
-    super(message);
+    super(`pyannote ${status}`);
+    this.bodyText = bodyText;
   }
 }
 
@@ -136,12 +146,12 @@ export function createPyannoteClient(
       throw new PyannoteUnavailableError(status, `pyannote ${status}`);
     }
     if (status >= 400) {
-      throw new PyannoteBadRequestError(
-        status,
-        `pyannote ${status}: ${body.slice(0, 200)}`,
-      );
+      // WR-04: bodyText (truncated to 200 chars) is parked on the Error
+      // for structured diagnostics; the .message stays generic so any
+      // accidental log of err.message can't leak upstream payload.
+      throw new PyannoteBadRequestError(status, body.slice(0, 200));
     }
-    throw new PyannoteUpstreamError(status, `pyannote unexpected ${status}`);
+    throw new PyannoteUpstreamError(status, body.slice(0, 200));
   }
 
   function deriveMediaUri(presignedUrl: string): string {
@@ -200,10 +210,9 @@ export function createPyannoteClient(
       const res = await doRequest(url, reqOpts);
       if (res.statusCode >= 300) {
         const text = await res.body.text();
-        throw new PyannoteUpstreamError(
-          res.statusCode,
-          `presigned PUT failed (${res.statusCode}): ${text.slice(0, 200)}`,
-        );
+        // WR-04: park body text on the Error's bodyText field, not in
+        // the user-visible .message — defense against incidental logs.
+        throw new PyannoteUpstreamError(res.statusCode, text.slice(0, 200));
       }
       // Drain so the connection can return to the pool.
       try {
