@@ -29,6 +29,11 @@ export const BACKEND_URL = "https://api.localhost";
 export const HERMETIC_ENV = {
   LITELLM_CONFIG_FILE: "litellm_config.contract.yaml",
   OPENWHISPR_TEST_ROUTES: "true",
+  // Forwarded into the api container via the docker-compose `environment:`
+  // interpolation `MOCK_DIARIZATION: ${MOCK_DIARIZATION:-}`. With this set
+  // the /v1/audio/diarization route returns canned segments without
+  // calling pyannote.ai — required for hermetic e2e (no PYANNOTE_API_KEY).
+  MOCK_DIARIZATION: "true",
 } as const;
 
 /**
@@ -72,19 +77,31 @@ export async function bringStackUp(): Promise<void> {
     );
   }
 
-  const upCode = await compose(
-    "--profile",
-    "default",
-    "--profile",
-    "contract-test",
-    "up",
-    "-d",
-    "--wait",
-  );
+  // Bring up the `default` profile. Two design choices:
+  //
+  // 1. NOT `--profile contract-test`: the contract-test profile carries
+  //    `seed` (one-shot) and `contract-test-runner` (vitest container
+  //    that exits after its own in-cluster suite finishes). Including
+  //    them in `up --wait` would cause `--wait` to fail on runner exit.
+  //    Seed is invoked separately via `run --rm seed` below.
+  //
+  // 2. NO `--wait`: the observability stack (grafana in particular) is
+  //    flaky on cold-cache laptops and occasionally reports unhealthy
+  //    for a few seconds before stabilizing. `up --wait` would fail the
+  //    entire run on a transient grafana hiccup that the host-side e2e
+  //    doesn't care about. The follow-up `waitForApiHealth()` polls the
+  //    api healthcheck via Traefik directly — that's the only readiness
+  //    signal the e2e actually needs. `make contract-test` uses --wait
+  //    because the in-cluster runner depends on every observability
+  //    target via its own depends_on; our host-side suite does not.
+  const upCode = await compose("--profile", "default", "up", "-d");
   if (upCode !== 0) {
     throw new Error(`docker compose up failed with exit code ${upCode}`);
   }
 
+  // Seed lives in the `contract-test` profile but is invoked here as a
+  // one-shot via `run --rm` — that bypasses the profile gating without
+  // dragging contract-test-runner into the started set.
   const seedCode = await compose(
     "--profile",
     "default",

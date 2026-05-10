@@ -44,7 +44,8 @@ describe("e2e — POST /v1/audio/diarization (hermetic mock-mode)", () => {
       body,
     });
     expect(res.status).toBe(200);
-    const parsed = DiarizationResponse.parse(await res.json());
+    const json = await res.json();
+    const parsed = DiarizationResponse.parse(json);
     expect(parsed.segments.length).toBeGreaterThan(0);
     expect(typeof parsed.segments[0]?.start).toBe("number");
     expect(typeof parsed.segments[0]?.end).toBe("number");
@@ -59,6 +60,7 @@ describe("e2e — POST /v1/audio/diarization (hermetic mock-mode)", () => {
       body,
     });
     expect(res.status).toBe(401);
-    expect(() => ErrorEnvelope.parse(await res.json())).not.toThrow();
+    const json = await res.json();
+    expect(() => ErrorEnvelope.parse(json)).not.toThrow();
   });
 });
