@@ -23,7 +23,7 @@ import Fastify, { type FastifyInstance } from "fastify";
 import { afterEach, describe, expect, it } from "vitest";
 import WebSocket, { WebSocketServer, type RawData } from "ws";
 import { registerErrorHandler } from "../error-handler.js";
-import { buildRealtimeRoutes } from "./realtime.js";
+import { buildRealtimeRoutes, httpToWsScheme } from "./realtime.js";
 
 const TEST_TENANT = "00000000-0000-0000-0000-000000000000";
 const TEST_USER = "11111111-1111-1111-1111-111111111111";
@@ -104,6 +104,29 @@ async function buildApp(opts: {
   await app.ready();
   return app;
 }
+
+describe("httpToWsScheme — WR-03 case-insensitive scheme conversion", () => {
+  it("converts http:// to ws://", () => {
+    expect(httpToWsScheme("http://litellm:4000")).toBe("ws://litellm:4000");
+  });
+  it("converts https:// to wss://", () => {
+    expect(httpToWsScheme("https://litellm.example.com:4000")).toBe(
+      "wss://litellm.example.com:4000",
+    );
+  });
+  it("normalizes uppercase HTTPS:// to wss:// (regression test for sloppy $1 capture)", () => {
+    // Pre-fix: `replace(/^http(s?):/i, "ws$1:")` produced "wsS://" because
+    // the $1 capture preserved the uppercase S. The new implementation
+    // writes the literal replacement string and yields a clean "wss://".
+    expect(httpToWsScheme("HTTPS://litellm:4000")).toBe("wss://litellm:4000");
+  });
+  it("normalizes uppercase HTTP:// to ws://", () => {
+    expect(httpToWsScheme("HTTP://litellm:4000")).toBe("ws://litellm:4000");
+  });
+  it("normalizes mixed-case Https:// to wss://", () => {
+    expect(httpToWsScheme("Https://litellm:4000")).toBe("wss://litellm:4000");
+  });
+});
 
 describe("WSS /v1/realtime route", () => {
   let app: FastifyInstance | undefined;
