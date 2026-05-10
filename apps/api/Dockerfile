@@ -37,6 +37,10 @@ COPY pnpm-lock.yaml pnpm-workspace.yaml package.json ./
 COPY apps/api/package.json apps/api/
 COPY packages/data/package.json packages/data/
 COPY packages/contract-tests/package.json packages/contract-tests/
+# Phase 03 e2e fix — packages/litellm-client (Plan 03-03) was added as a
+# workspace dependency of apps/api but never copied into the build context;
+# tsup's noExternal pattern needs the source tree to inline the package.
+COPY packages/litellm-client/package.json packages/litellm-client/
 
 # Full install (dev included — needed for tsup/typescript).
 # --ignore-scripts skips lefthook prepare which has no purpose in the image.
@@ -47,6 +51,7 @@ COPY tsconfig.base.json ./
 COPY apps/api apps/api
 COPY packages/data packages/data
 COPY packages/contract-tests packages/contract-tests
+COPY packages/litellm-client packages/litellm-client
 COPY tools tools
 
 # Build api (which now inlines @openwhispr/* via noExternal in tsup config).

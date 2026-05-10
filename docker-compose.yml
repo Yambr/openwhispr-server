@@ -41,22 +41,27 @@ services:
       POSTGRES_OWNER_PASSWORD: ${POSTGRES_OWNER_PASSWORD}
       POSTGRES_APP_PASSWORD: ${POSTGRES_APP_PASSWORD}
       # Phase 03 Plan 01 — POSTGRES_OWNER_USER is read by
-      # compose/postgres/initdb/01-litellm-database.sh to set the OWNER of
-      # the `litellm` database. Already set above as POSTGRES_USER on first
-      # init; declared explicitly so the script's quote_ident interpolation
-      # is decoupled from the bootstrap-superuser env-var name.
+      # packages/data/migrations/init/01-litellm-database.sh to set the
+      # OWNER of the `litellm` database. Already set above as POSTGRES_USER
+      # on first init; declared explicitly so the script's quote_ident
+      # interpolation is decoupled from the bootstrap-superuser env-var name.
       POSTGRES_OWNER_USER: ${POSTGRES_OWNER_USER}
     volumes:
       - postgres_data:/var/lib/postgresql/data
-      # Plan 03 fills this directory with role/RLS bootstrap SQL.
+      # Plan 03 (phase 01) fills this directory with role/RLS bootstrap SQL;
+      # Phase 03 Plan 01 added 01-litellm-database.sh as the fresh-install
+      # path for the separate `litellm` Postgres database (LITELLM-01).
+      # Existing-volume upgrade path (HIGH-1) is covered by the migrate
+      # runner's ensureLitellmDatabase() helper — initdb scripts only run
+      # on a freshly-initialized data volume.
+      #
+      # CRITICAL (Phase 03 e2e fix): both scripts MUST live in the same
+      # mounted directory. A second mount of `compose/postgres/initdb` to
+      # `/docker-entrypoint-initdb.d/litellm` failed at runtime — Docker
+      # cannot create a subdir inside a `:ro` mount. The 01-litellm-database.sh
+      # script was relocated into packages/data/migrations/init alongside
+      # 00-roles.sh; the redundant second mount was removed.
       - ./packages/data/migrations/init:/docker-entrypoint-initdb.d:ro
-      # Phase 03 Plan 01 / Task 2 — fresh-install path for the separate
-      # `litellm` Postgres database (LITELLM-01). Mounted under a subdir
-      # so it does NOT collide with the existing init dir above. Existing-
-      # volume upgrade path (HIGH-1) is covered by the migrate runner's
-      # ensureLitellmDatabase() helper — initdb scripts only run on a
-      # freshly-initialized data volume.
-      - ./compose/postgres/initdb:/docker-entrypoint-initdb.d/litellm:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
       interval: 5s
@@ -325,7 +330,13 @@ services:
     networks: [openwhispr_internal]
     environment:
       LITELLM_MASTER_KEY: ${LITELLM_MASTER_KEY}
-      LITELLM_DATABASE_URL: ${LITELLM_DATABASE_URL}
+      # Phase 03 e2e fix — LiteLLM v1.83+ requires DATABASE_URL non-empty
+      # at boot (Prisma engine validates via P1012). Default to the
+      # bundled `litellm` co-tenant DB created by
+      # packages/data/migrations/init/01-litellm-database.sh; operators
+      # who already export LITELLM_DATABASE_URL keep their override.
+      LITELLM_DATABASE_URL: ${LITELLM_DATABASE_URL:-postgres://${POSTGRES_OWNER_USER}:${POSTGRES_OWNER_PASSWORD}@postgres:5432/litellm}
+      DATABASE_URL: ${LITELLM_DATABASE_URL:-postgres://${POSTGRES_OWNER_USER}:${POSTGRES_OWNER_PASSWORD}@postgres:5432/litellm}
       # Provider keys — `:-` so a fresh clone with empty keys does NOT
       # block container boot. Endpoints whose backing key is missing
       # surface 503 envelopes at request time (per Plan 03/04/07
@@ -341,14 +352,23 @@ services:
       # block must return zero hits).
     command: ["--config", "/etc/litellm/config.yaml", "--port", "4000", "--num_workers", "2"]
     volumes:
-      - ./compose/litellm/litellm_config.yaml:/etc/litellm/config.yaml:ro
+      # Phase 03 e2e fix — LITELLM_CONFIG_FILE selects the active config:
+      # default = litellm_config.yaml (production); contract-test profile
+      # uses litellm_config.contract.yaml (hermetic mock_response). The
+      # `make contract-test` target sets LITELLM_CONFIG_FILE so the bind
+      # picks the right file without needing two compose files.
+      - ./compose/litellm/${LITELLM_CONFIG_FILE:-litellm_config.yaml}:/etc/litellm/config.yaml:ro
     depends_on:
       postgres:
         condition: service_healthy
       migrate:
         condition: service_completed_successfully
     healthcheck:
-      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:4000/health/liveliness"]
+      # Phase 03 e2e fix — the bundled LiteLLM image (ghcr.io/berriai/litellm)
+      # does NOT ship wget or curl. Use the venv'd python3 (always present
+      # since LiteLLM is a Python service) with urllib to probe liveliness.
+      # urllib raises non-zero on non-2xx, satisfying healthcheck contract.
+      test: ["CMD", "python3", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:4000/health/liveliness',timeout=2).status==200 else 1)"]
       interval: 10s
       timeout: 3s
       retries: 5
