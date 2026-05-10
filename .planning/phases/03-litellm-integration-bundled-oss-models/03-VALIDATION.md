@@ -24,7 +24,7 @@ revision: 1-checker-feedback
 | **Config file** | `vitest.config.ts` (per-package), workspace root |
 | **Quick run command** | `pnpm -w test --filter <package>` |
 | **Full suite command** | `pnpm -w test && make contract-test` |
-| **E2E (manual / scheduled)** | `make e2e-test` (requires `.env.e2e` with real OPENROUTER_API_KEY + GROQ_API_KEY + PYANNOTE_API_KEY) |
+| **E2E (manual / scheduled)** | `make e2e-test` (requires `.env.e2e` with real OPENROUTER_API_KEY + GROQ_API_KEY + OPENAI_API_KEY (D-12 Realtime) + PYANNOTE_API_KEY) |
 | **Estimated runtime** | ~120s unit/integration; ~120s contract-test profile (mock_response, no internet, includes 6 new Phase 3 tests); ~5min e2e (real APIs) |
 
 ---
@@ -56,7 +56,7 @@ revision: 1-checker-feedback
 | 03-05-T2 | 05 | 2 | WIRE-06, CONTRACT-01 | T-03-05-01..05 | Contract test against mock LiteLLM | contract | `make contract-test` | ❌ W0 | ⬜ pending |
 | 03-06-T1 | 06 | 2 | LITELLM-03 (diarization) | T-03-06-01..04 | Diarization mounted at locked path; mock-mode + provider-key gate work | unit + contract | `pnpm --filter @openwhispr/api test apps/api/src/routes/diarization.test.ts && make contract-test` | ❌ W0 | ⬜ pending |
 | 03-07-T1 | 07 | 2 | LITELLM-03 (WSS), LITELLM-04 | T-03-07-01..05 | WSS proxy with auth preHandler + master-key inject + ?user query | unit | `pnpm --filter @openwhispr/api test apps/api/src/routes/realtime.test.ts` | ❌ W0 | ⬜ pending |
-| 03-07-T2 | 07 | 2 | LITELLM-03 (WSS) | T-03-07-03..05 | Traefik 3600s timeouts on /v1/realtime; handshake test green | contract | `docker compose --profile default config && make contract-test` | ❌ W0 | ⬜ pending |
+| 03-07-T2 | 07 | 2 | LITELLM-03 (WSS), D-12 (OpenAI Realtime upstream) | T-03-07-03..05 | Traefik 3600s timeouts on /v1/realtime; handshake test green; bundled-default upstream is OpenAI Realtime API direct (LiteLLM `gpt-realtime` mode: realtime, OPENAI_API_KEY) | contract | `docker compose --profile default config && make contract-test` | ❌ W0 | ⬜ pending |
 | 03-08-T1 | 08 | 3 | LITELLM-07, SCALE-03 | T-03-08-04..06 | apps/worker package + infer-kind + pool factories tested | unit | `pnpm --filter @openwhispr/worker test --run && pnpm --filter @openwhispr/worker typecheck` | ❌ W0 | ⬜ pending |
 | 03-08-T2 | 08 | 3 | LITELLM-07, DATA-03 | T-03-08-01..06 | BullMQ scheduler 30s; idempotent UPSERT; tenant resolution; SIGTERM drain | integration (testcontainers) | `pnpm --filter @openwhispr/worker test --run` | ❌ W0 | ⬜ pending |
 | 03-09-T1 | 09 | 3 | LITELLM-06 | T-03-09-01..02 | docs/litellm-target-spec.md + mock-mode docs lint-clean | docs lint | `pnpm exec tsx tools/lint-docs-headings.ts docs/litellm-target-spec.md docs/litellm-mock-mode.md` | ❌ W0 | ⬜ pending |
@@ -91,7 +91,7 @@ revision: 1-checker-feedback
 | Real /api/transcribe with Groq Whisper-large-v3 (D-11) | WIRE-05 | Costs real money + requires user-supplied GROQ_API_KEY | `make e2e-test`; verify `text` field populated from real audio |
 | Real /api/reason with OpenRouter qwen3.6-plus | WIRE-06 | Real API call, costs money | `make e2e-test`; verify `text` non-empty, `model="qwen3.6-plus"` |
 | Real /api/diarization with pyannote.ai or chosen single-hop provider | LITELLM-03 | Real cost; depends on D-07 final outcome | `make e2e-test`; verify segments[] returned |
-| Realtime WSS 65-min smoke | LITELLM-03 | Long-lived test, Phase 4 scope | DEFERRED to Phase 4 per CONTEXT |
+| Realtime WSS 65-min smoke against OpenAI Realtime API direct (D-12) | LITELLM-03 | Long-lived test + costs real OPENAI_API_KEY money ($0.06/min in + $0.24/min out for `gpt-realtime`); Phase 4 scope | DEFERRED to Phase 4 per CONTEXT; bundled-default upstream confirmed live 2026-05-10 (14 OpenAI realtime models accessible) |
 
 ---
 
@@ -105,6 +105,14 @@ revision: 1-checker-feedback
 - [x] `nyquist_compliant: true` set in frontmatter
 
 **Approval:** approved by gsd-planner 2026-05-10 — every task has an automated verify command; cross-cutting tests in Plan 10 catch contract/idempotency drift.
+
+**Revision 2 (2026-05-10) — D-12 sync (OpenAI Realtime API direct as bundled-default Realtime upstream):**
+- CONTEXT.md: D-12 added (OpenAI Realtime direct, verified live, OPENAI_API_KEY required)
+- Plan 01: model_list adds `gpt-realtime` / `gpt-realtime-mini` / `gpt-4o-realtime-preview` with `mode: realtime`; .env.example + litellm service env include OPENAI_API_KEY; model_list count threshold raised 4→7
+- Plan 02: contract config mirrors D-12 entries; mock_response check exempts `mode: realtime` rows (LiteLLM does not honor mock_response for WSS)
+- Plan 07: must_haves + objective + STRIDE + success_criteria reference D-12; downstream upstream is OpenAI direct
+- Plan 09: docs/litellm-target-spec.md + README provider keys section include OPENAI_API_KEY (D-12)
+- Plan 10: nightly e2e job writes OPENAI_API_KEY to .env.e2e
 
 **Revision 1 (2026-05-10) — applied checker feedback:**
 - CRIT-1: Plan 10 Task 2 GHA job-level `if: ${{ secrets.* }}` replaced with step-level env-probe gate
