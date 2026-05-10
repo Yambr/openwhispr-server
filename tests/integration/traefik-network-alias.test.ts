@@ -87,18 +87,21 @@ describe.skipIf(!HAS_DOCKER)("Phase 02.15 — traefik network aliases + runner C
     expect(runner).toMatch(/AUTH_URL:\s*https:\/\/api\.localhost/);
   });
 
-  it("contract-test-runner trusts bootstrap-generated cert via NODE_EXTRA_CA_CERTS (D-02a)", () => {
+  // Phase 02.22 — NODE_EXTRA_CA_CERTS must point at the issuing CA, not the
+  // end-entity leaf. Node 24 + OpenSSL 3 reject a leaf (CA:FALSE) as a trust
+  // anchor (X509Certificate.ca === false → DEPTH_ZERO_SELF_SIGNED_CERT). The
+  // bootstrap-generated root-ca.crt is what Node trusts; the leaf chains up.
+  it("contract-test-runner trusts bootstrap-generated root CA via NODE_EXTRA_CA_CERTS (Phase 02.22)", () => {
     const merged = composeConfig(["default", "contract-test"]);
     const runner = extractServiceBlock(merged, "contract-test-runner");
-    expect(runner).toMatch(/NODE_EXTRA_CA_CERTS:\s*\/certs\/local\.crt/);
+    expect(runner).toMatch(/NODE_EXTRA_CA_CERTS:\s*\/certs\/root-ca\.crt/);
   });
 
-  it("contract-test-runner mounts local.crt read-only at /certs/local.crt (D-02a — no image rebuild on rotation)", () => {
+  it("contract-test-runner mounts root-ca.crt read-only at /certs/root-ca.crt (Phase 02.22 — no image rebuild on rotation)", () => {
     const merged = composeConfig(["default", "contract-test"]);
     const runner = extractServiceBlock(merged, "contract-test-runner");
-    // `docker compose config` normalizes volumes to long-form; assert source + target + ro.
-    expect(runner).toMatch(/local\.crt/);
-    expect(runner).toMatch(/target:\s*\/certs\/local\.crt/);
+    expect(runner).toMatch(/root-ca\.crt/);
+    expect(runner).toMatch(/target:\s*\/certs\/root-ca\.crt/);
     expect(runner).toMatch(/read_only:\s*true/);
   });
 
