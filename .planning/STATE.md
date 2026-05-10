@@ -3,7 +3,7 @@ gsd_state_version: 1.0
 milestone: v1.6.9
 milestone_name: expects plain session.token text; advisor research recommends Option C
 status: Ready to execute
-last_updated: "2026-05-10T03:06:38.492Z"
+last_updated: "2026-05-10T03:30:00Z"
 progress:
   total_phases: 15
   completed_phases: 3
@@ -27,11 +27,11 @@ progress:
 | Field | Value |
 |-------|-------|
 | Milestone | v1 |
-| Phase | 02.5 — Better Auth drizzle schema (IN PROGRESS — Plans 01-04 done) |
-| Plan | 02.5-04 complete (contract-test result captured); Plan 05 next |
-| Status | PARTIAL — `make contract-test` reaches seed; Plans 02+03 verified live; signup blocked by NEW DEFECT (`apps/api/src/index.ts:229-233` passes `makeAppDb()` wrapper-object to `drizzleAdapter` instead of destructured `.db`). Phase 02.6 candidate. |
-| Phase progress | Phase 01.1 4/5 plans done (Plan 05 blocked); Phase 02.5 4/5 plans done |
-| Next action | `/gsd-execute-phase 02.5` to land Plan 05 (SUMMARY + reverse-patch evidence + 02-HUMAN-UAT flip). Phase 02.6 to fix index.ts wrapper-`db` defect. |
+| Phase | 02.7 — Phase 02 contract-test conformance gaps (COMPLETE — 25/26 GREEN + 1 deliberate skip) |
+| Plan | 02.7-07 complete; Phase 02 fully closed via cascade tail (02.8 → 02.21) |
+| Status | DONE — `make contract-test` 25 passed | 1 deliberate skipped (26); 02-HUMAN-UAT Item 1 flipped without scope qualifier; Phase 02 wire-spec scope fully delivered |
+| Phase progress | Phase 01.1 4/5 plans done (Plan 05 blocked); Phase 02.5 5/5 done; Phase 02.6 done; Phase 02.7 7/7 done; Phases 02.8 → 02.21 all done |
+| Next action | Begin Phase 3 — `/gsd-plan-phase 3` (LiteLLM Integration + Bundled OSS Models) |
 
 ```
 [X][X][ ][ ][ ][ ][ ][ ][ ][ ][ ]
@@ -131,7 +131,7 @@ progress:
 
 (— ready to begin Phase 0.)
 
-- Phase 02.7 Plan 06: NEW defect — Better Auth string-id vs Postgres uuid column mismatch (FAILED_TO_CREATE_USER, SQLSTATE 22P02). Surfaced by Plan 02.7-04 D-03A loud-fail. Phase 02.8 (or 02.7-08 hot-fix) required. UAT flip (Plan 07) BLOCKED.
+(— no current blockers; Phase 02.7 + cascade tail closed cleanly; 02.7 Plan 06 RE-RUN GREEN at 25/26 + 1 documented skip. Phase 02 wire-spec scope fully delivered.)
 
 ### Risk Register (Top 3)
 
@@ -147,7 +147,7 @@ progress:
 /gsd-plan-phase 2     # Phase 2: auth lifecycle + wire-shape (Better Auth)
 ```
 
-**Last session stopped at:** Completed 01-06-PLAN.md (backup/restore via age envelope encryption; nightly round-trip CI; ops + storage docs). Phase 1 closed — all 6 plans landed, all Phase-1 requirements (DATA-01..02, DATA-05..07, PROVIDER-02, TEST-MIGRATION-01, TEST-RLS-01) complete.
+**Last session stopped at:** Completed 02.7-07-PLAN.md — Phase 02.7 closed cleanly. `make contract-test` 25 passed | 1 deliberate skipped (26) on the canonical compose stack. 02-HUMAN-UAT.md Item 1 flipped without scope qualifier. Phase 02 wire-spec scope fully delivered via Plans 01-07 + cascade tail (02.8 → 02.21). Phase 03 (LiteLLM Integration) unblocked.
 
 **Files of record:**
 
@@ -159,6 +159,7 @@ progress:
 
 **Recent transitions:**
 
+- 2026-05-10: Phase 02.7 CLOSED — 7 plans + cascade tail (Phases 02.8 → 02.21, 9 numbered decimal phases) collectively closed all original 13/26 contract failures + every additional defect surfaced by the D-03A loud-fail discipline (Better Auth uuid id-mode, fixture email RFC, signInFixture Origin/XFF, session.token plain, OIDC env+discovery, runner-in-network, traefik aliases+trustedIPs, mycorp scheme comma-list, unverified-fixture helper, Group C residuals — 404 envelope + cookie cascade + suite isolation). `make contract-test` 25 passed | 1 deliberate skipped (26). 02-HUMAN-UAT.md Item 1 flipped without qualifier. 30+ atomic commits across the cascade. Phase 03 unblocked.
 - 2026-05-08: Rebaseline pivot — defer Stripe/referrals/quotas to v2; bundle LiteLLM with OSS models; UI-SPEC only in v1; English-only source / en+ru runtime; constitutional TDD/GHA. Roadmap rewritten from scratch.
 
 ---

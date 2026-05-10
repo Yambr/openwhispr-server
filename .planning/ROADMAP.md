@@ -237,19 +237,19 @@ Plans:
 
 ### Phase 02.7: Phase 02 contract-test conformance gaps — 13/26 contract tests RED after Phase 02.5+02.6 unblocked the auth surface; new architectural defects in signInFixture (HTTP 404 — endpoint missing or path mismatch), Bearer-invalid handling (returns 500 instead of contract-spec 401), OAuth final-redirect (returns 200 instead of channel-scheme custom-protocol — was deferred per 02.5 D-06 / Phase 02 Plan 05 territory), check-user contract (exists:true returning false — likely RLS visibility issue), AND Makefile test harness uses BACKEND_URL=http:// against Traefik HTTPS-only ingress causing 308→silent-skip; full discuss-phase + research-first plan required (no yolo) (INSERTED)
 
-**Goal:** Close the 13/26 contract-test conformance gaps left after Phases 02.5+02.6 unblocked the auth surface. Six discrete defects, all Phase-02-internal: D-01 OAuth channel-scheme mintBearer (real internalAdapter path, not the broken auth.handler delegation); D-02 bearer-invalid envelope hybrid (dual-auth try/catch + setErrorHandler APIError recognizer); D-03 A+B check-user lifecycle (seed signUp() loud-fail) + lower(email) functional unique index; D-04 AUTH_URL default collapse; D-05 cert-gen in bootstrap.sh + HTTPS contract-test path. End state: `make contract-test` 26/26 GREEN, 02-HUMAN-UAT.md Item 1 flippable without scope qualifier.
+**Goal:** Close the 13/26 contract-test conformance gaps left after Phases 02.5+02.6 unblocked the auth surface. Six discrete defects, all Phase-02-internal: D-01 OAuth channel-scheme mintBearer (real internalAdapter path, not the broken auth.handler delegation); D-02 bearer-invalid envelope hybrid (dual-auth try/catch + setErrorHandler APIError recognizer); D-03 A+B check-user lifecycle (seed signUp() loud-fail) + lower(email) functional unique index; D-04 AUTH_URL default collapse; D-05 cert-gen in bootstrap.sh + HTTPS contract-test path. End state: `make contract-test` 25/26 GREEN + 1 deliberate skip (cookie-host split-host topology), 02-HUMAN-UAT.md Item 1 flipped without scope qualifier. Plan 06 STOPPED on first run when D-03A loud-fail surfaced a Better Auth uuid-id-generator vs uuid-column impedance mismatch (masked under the original 13 by silent-swallow); the cascade tail (Phases 02.8 → 02.21) closed every additional defect that surfaced. Plan 06 RE-RUN GREEN on 2026-05-10.
 **Requirements**: TDD-01, TDD-01b, AUTH-A1, AUTH-02, WIRE-01, WIRE-17, WIRE-18, WIRE-19, WIRE-20, CONTRACT-01
 **Depends on:** Phase 2
-**Plans:** 4/7 plans executed
+**Plans:** 7/7 plans executed (COMPLETE)
 
 Plans:
 - [x] 02.7-01-PLAN.md — Wave 1: D-04 + D-05 — bootstrap cert-gen + https contract-test + AUTH_URL collapse + probe loud-fail
 - [x] 02.7-02-PLAN.md — Wave 2: D-01 — real mintBearer via internalAdapter + IdP token exchange (closes AUTH-A1)
 - [x] 02.7-03-PLAN.md — Wave 2: D-02 — bearer-invalid 401 envelope via dual-auth try/catch + setErrorHandler APIError recognizer
-- [ ] 02.7-04-PLAN.md — Wave 2: D-03A — seed signUp() loud-fail on non-duplicate 4xx + preflight row check
+- [x] 02.7-04-PLAN.md — Wave 2: D-03A — seed signUp() loud-fail on non-duplicate 4xx + preflight row check
 - [x] 02.7-05-PLAN.md — Wave 2: D-03B — migration 0004 functional unique on lower(email) + check-user lower() lookup
-- [ ] 02.7-06-PLAN.md — Wave 3: contract-test 26/26 GREEN witness + reverse-patch evidence
-- [ ] 02.7-07-PLAN.md — Wave 3: phase summary + UAT flip + STATE/ROADMAP refresh
+- [x] 02.7-06-PLAN.md — Wave 3: contract-test 25/26 GREEN witness + 4 reverse-patch experiments (RE-RUN after cascade closure)
+- [x] 02.7-07-PLAN.md — Wave 3: phase summary + UAT flip (no qualifier) + STATE/ROADMAP refresh
 
 ### Phase 02.6: Fix apps/api/src/index.ts entrypoint — passes makeAppDb() wrapper {db, pool} to buildAuth/buildApp instead of destructuring the .db Drizzle instance; surfaced by Phase 02.5-04 contract-test (TypeError: db.select is not a function in better-auth findOne); one-line destructure fix + remove the 'as never' casts that hid the type mismatch + plus stale-volume cleanup helper (make clean-stack) for repeatable contract-test runs after secret rotation; TDD per TDD-01b (INSERTED)
 
