@@ -24,7 +24,7 @@ revision: 1-checker-feedback
 | **Config file** | `vitest.config.ts` (per-package), workspace root |
 | **Quick run command** | `pnpm -w test --filter <package>` |
 | **Full suite command** | `pnpm -w test && make contract-test` |
-| **E2E (manual / scheduled)** | `make e2e-test` (requires `.env.e2e` with real OPENROUTER_API_KEY + OPENAI_API_KEY + PYANNOTE_API_KEY) |
+| **E2E (manual / scheduled)** | `make e2e-test` (requires `.env.e2e` with real OPENROUTER_API_KEY + GROQ_API_KEY + PYANNOTE_API_KEY) |
 | **Estimated runtime** | ~120s unit/integration; ~120s contract-test profile (mock_response, no internet, includes 6 new Phase 3 tests); ~5min e2e (real APIs) |
 
 ---
@@ -52,7 +52,7 @@ revision: 1-checker-feedback
 | 03-03-T2 | 03 | 1 | WIRE-05/LITELLM-03 shared infra (HIGH-4) | — | @fastify/multipart registered once at buildApp (attachFieldsToBody:false, 100MB limit) — Plans 04+06 consume without re-registering, no Wave-2 collision | unit | `pnpm --filter @openwhispr/api test apps/api/src/__tests__/multipart-registered.test.ts` | ❌ W0 | ⬜ pending |
 | 03-04-T1 | 04 | 2 | WIRE-05, DATA-03, LITELLM-04 | T-03-04-01..06 | /api/transcribe streams multipart; ledger row idempotent; 503-not-401 on missing key | unit + integration | `pnpm --filter @openwhispr/api test apps/api/src/routes/transcribe.test.ts apps/api/src/lib/word-units.test.ts apps/api/src/__tests__/multipart-registered.test.ts` | ❌ W0 | ⬜ pending |
 | 03-04-T2 | 04 | 2 | WIRE-05, CONTRACT-01 | T-03-04-01..06 | Contract test against mock LiteLLM | contract | `make contract-test` | ❌ W0 | ⬜ pending |
-| 03-05-T1 | 05 | 2 | WIRE-06, LITELLM-04, DATA-03 | T-03-05-01..05 | /api/reason default qwen3.5-plus; user param injected; ledger reason_tokens; 503-not-401 | unit | `pnpm --filter @openwhispr/api test apps/api/src/routes/reason.test.ts` | ❌ W0 | ⬜ pending |
+| 03-05-T1 | 05 | 2 | WIRE-06, LITELLM-04, DATA-03 | T-03-05-01..05 | /api/reason default qwen3.6-plus; user param injected; ledger reason_tokens; 503-not-401 | unit | `pnpm --filter @openwhispr/api test apps/api/src/routes/reason.test.ts` | ❌ W0 | ⬜ pending |
 | 03-05-T2 | 05 | 2 | WIRE-06, CONTRACT-01 | T-03-05-01..05 | Contract test against mock LiteLLM | contract | `make contract-test` | ❌ W0 | ⬜ pending |
 | 03-06-T1 | 06 | 2 | LITELLM-03 (diarization) | T-03-06-01..04 | Diarization mounted at locked path; mock-mode + provider-key gate work | unit + contract | `pnpm --filter @openwhispr/api test apps/api/src/routes/diarization.test.ts && make contract-test` | ❌ W0 | ⬜ pending |
 | 03-07-T1 | 07 | 2 | LITELLM-03 (WSS), LITELLM-04 | T-03-07-01..05 | WSS proxy with auth preHandler + master-key inject + ?user query | unit | `pnpm --filter @openwhispr/api test apps/api/src/routes/realtime.test.ts` | ❌ W0 | ⬜ pending |
@@ -88,8 +88,8 @@ revision: 1-checker-feedback
 
 | Behavior | Requirement | Why Manual | Test Instructions |
 |----------|-------------|------------|-------------------|
-| Real /api/transcribe with OpenAI Whisper | WIRE-05 | Costs real money + requires user-supplied key | `make e2e-test`; verify `text` field populated from real audio |
-| Real /api/reason with OpenRouter qwen3.5-plus | WIRE-06 | Real API call, costs money | `make e2e-test`; verify `text` non-empty, `model="qwen3.5-plus"` |
+| Real /api/transcribe with Groq Whisper-large-v3 (D-11) | WIRE-05 | Costs real money + requires user-supplied GROQ_API_KEY | `make e2e-test`; verify `text` field populated from real audio |
+| Real /api/reason with OpenRouter qwen3.6-plus | WIRE-06 | Real API call, costs money | `make e2e-test`; verify `text` non-empty, `model="qwen3.6-plus"` |
 | Real /api/diarization with pyannote.ai or chosen single-hop provider | LITELLM-03 | Real cost; depends on D-07 final outcome | `make e2e-test`; verify segments[] returned |
 | Realtime WSS 65-min smoke | LITELLM-03 | Long-lived test, Phase 4 scope | DEFERRED to Phase 4 per CONTEXT |
 
