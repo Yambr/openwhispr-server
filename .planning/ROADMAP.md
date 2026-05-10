@@ -365,7 +365,17 @@ Plans:
   2. A 65-minute synthetic WSS smoke test against `WSS /v1/realtime` survives end-to-end with zero ingress-timeout disconnects (3600s read/send timeouts on the realtime route).
   3. `POST /api/streaming-token` mints AssemblyAI streaming tokens from the server-held key (or returns 503 when AssemblyAI is not configured); `POST /api/deepgram-streaming-token` does the same for Deepgram; `POST /api/openai-realtime-token` mints OpenAI Realtime tokens with `streams=2` and returns `clientSecrets[]`.
   4. CONTRACT-01 extended for all four streaming/realtime endpoints (NDJSON line-flush behavior, gating-503 shape, `streams=2` payload); tests written first (TDD); all CI checks green.
-**Plans**: TBD
+**Plans**: 10 plans (5 waves)
+- [ ] 04-01-PLAN.md — Wave 0: SSE fixture corpus + provider shape spikes + mock-realtime skeleton + RED test stubs
+- [ ] 04-02-PLAN.md — Wave 1: SSE→NDJSON parser + tool-call accumulator (TDD pure utilities)
+- [ ] 04-03-PLAN.md — Wave 1: AssemblyAI + Deepgram token-mint routes + _call-provider helper
+- [ ] 04-04-PLAN.md — Wave 1: OpenAI Realtime token-mint route with parallel-mint Promise.all (streams=2)
+- [ ] 04-05-PLAN.md — Wave 1: Traefik websecure-realtime entrypoint :8443 + dynamic.yml router binding + 8443 port mapping
+- [ ] 04-06-PLAN.md — Wave 2: /api/agent/stream route handler + tool-translation helpers + buildAllRoutes wiring
+- [ ] 04-07-PLAN.md — Wave 2: hermetic mock-realtime WS server + e2e compose overlay + realtime.ts D-27 tightening
+- [ ] 04-08-PLAN.md — Wave 3: CONTRACT-01 extension (4 files) + buffering-injection negative-control trio + per-user rate-limit isolation
+- [ ] 04-09-PLAN.md — Wave 3: e2e first-line-latency test + hermetic 5-min WSS soak through real Traefik :8443
+- [ ] 04-10-PLAN.md — Wave 4: nightly-realtime-soak GHA workflow (65-min live OpenAI) + operator docs for :8443 and new env vars
 **UI hint**: no
 
 ### Phase 5: Operational Endpoints

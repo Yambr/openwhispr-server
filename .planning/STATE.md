@@ -1,15 +1,15 @@
 ---
 gsd_state_version: 1.0
-milestone: v1
-milestone_name: Phase 3 closed with full audit trail; live e2e green against real providers
-status: Phase 3 complete (passed_with_audit_trail + debt fully closed); Phase 4 unblocked
-last_updated: "2026-05-11T03:30:00.000Z"
+milestone: v1.6.9
+milestone_name: expects plain session.token text; advisor research recommends Option C
+status: Ready to execute
+last_updated: "2026-05-10T20:33:17.300Z"
 progress:
-  total_phases: 15
-  completed_phases: 4
-  total_plans: 30
-  completed_plans: 42
-  percent: 36
+  total_phases: 16
+  completed_phases: 3
+  total_plans: 20
+  completed_plans: 32
+  percent: 100
 ---
 
 # Project State: OpenWhispr Server
