@@ -154,10 +154,15 @@ services:
           - api.localhost
           - auth.localhost
     # Only Traefik publishes host ports (D-05). 80/443 are user traffic;
-    # 8080 is the dev dashboard (gate behind basic-auth in prod, Phase 9).
+    # 8443 is the Phase 04 Plan 05 dedicated WSS realtime entrypoint
+    # (websecure-realtime, idleTimeout 3600s — isolates long-lived
+    # /v1/realtime sessions from the short-JSON :443 ingress pool to
+    # mitigate T-04-02 ingress-pool exhaustion). 8080 is the dev
+    # dashboard (gate behind basic-auth in prod, Phase 9).
     ports:
       - "80:80"
       - "443:443"
+      - "8443:8443"
       - "8080:8080"
     volumes:
       - ./compose/traefik/traefik.yml:/etc/traefik/traefik.yml:ro

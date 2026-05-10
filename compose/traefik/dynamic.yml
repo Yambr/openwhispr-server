@@ -45,19 +45,19 @@ http:
       entryPoints: [websecure]
       tls: {}
     # Phase 03 / Plan 07 (LITELLM-03, D-04) — dedicated router for the
-    # WSS /v1/realtime reverse-proxy. Co-resident on `api.localhost`
-    # with the catch-all `api` router but matched FIRST via priority so
-    # WS upgrades land on the long-lived-tuned `api-realtime-svc`. The
-    # service uses a `serversTransport` whose `idleConnTimeout` is set
-    # to 3600s (per Pitfall #7) — combined with the websecure
-    # entrypoint's `respondingTimeouts.read/writeTimeout: 3700s` (set in
-    # traefik.yml), this yields the 3600s ceiling demanded by the
-    # WSS realtime spec (BACKEND_SPEC.md L788-L791) without disturbing
-    # short-lived JSON traffic on the catch-all router.
+    # WSS /v1/realtime reverse-proxy. The service uses a `serversTransport`
+    # whose `idleConnTimeout` is set to 3600s (per Pitfall #7).
+    # Phase 04 Plan 05 (SCALE-05 / T-04-02) — bound EXCLUSIVELY to the
+    # websecure-realtime entrypoint on :8443. Combined with the matching
+    # entrypoint `respondingTimeouts` (readTimeout 0 / writeTimeout 0 /
+    # idleTimeout 3600s set in traefik.yml), this yields the 3600s ceiling
+    # demanded by BACKEND_SPEC.md L788-L791. Short-JSON routes on :443
+    # (websecure) no longer share the long-timeout regime — the prior
+    # multi-thousand-second values on :443 are reverted to defaults.
     api-realtime:
       rule: "Host(`api.localhost`) && PathPrefix(`/v1/realtime`)"
       service: api-realtime-svc
-      entryPoints: [websecure]
+      entryPoints: [websecure-realtime]
       priority: 100
       tls: {}
 
@@ -92,11 +92,13 @@ http:
     # Phase 03 / Plan 07 (LITELLM-03, D-04, Pitfall #7) — long-lived
     # transport for the WSS /v1/realtime reverse-proxy. `idleConnTimeout`
     # of 3600s prevents Traefik from closing the upstream Fastify
-    # connection during a 60-minute realtime session. The matching
-    # entrypoint-level `respondingTimeouts.read/writeTimeout: 3700s`
-    # (compose/traefik/traefik.yml) covers the read/write side of the
-    # client-facing WSS so the desktop's long dictations don't trigger
-    # spurious mid-session disconnects.
+    # connection during a 60-minute realtime session. Phase 04 Plan 05:
+    # the matching entrypoint-level `respondingTimeouts` now lives on
+    # the dedicated `websecure-realtime` (:8443) entrypoint
+    # (readTimeout 0 / writeTimeout 0 / idleTimeout 3600s in
+    # compose/traefik/traefik.yml) so the desktop's long dictations
+    # don't trigger spurious mid-session disconnects, AND short-JSON
+    # routes on :443 are no longer dragged into the long-timeout regime.
     api-realtime-transport:
       forwardingTimeouts:
         dialTimeout: "30s"
@@ -108,4 +110,6 @@ tls:
     - certFile: /certs/local.crt
       keyFile: /certs/local.key
 
-# Phase 04 placeholder — Wave 1 plan 04 will add `websecure-realtime` entrypoint binding for /v1/realtime router.
+# Phase 04 Plan 05 — websecure-realtime binding landed (api-realtime router
+# above). Static-config side: compose/traefik/traefik.yml entrypoints block
+# defines websecure-realtime on :8443 with idleTimeout 3600s.
