@@ -347,25 +347,28 @@ if (import.meta.url === `file://${process.argv[1]}`) {
       (err as Error).message,
     );
   }
-  // Phase 03 / Plan 06 (CR-01): construct the Valkey/Redis client for the
-  // diarization idempotency cache. We use the same `@redis/client` family
-  // already pulled in by apps/api/src/plugins/rate-limit.ts so the runtime
-  // dependency surface stays single-vendor. When VALKEY_URL is unset, leave
-  // `redis` undefined — buildAllRoutes will skip /v1/audio/diarization
+  // Phase 03 / Plan 06 (CR-01) + e2e fix: construct the Valkey/Redis
+  // client for the diarization idempotency cache. We use ioredis (same
+  // library as apps/worker and required by @fastify/rate-limit's
+  // RedisStore which calls `redis.defineCommand('rateLimit', ...)` for
+  // an atomic Lua-script counter+TTL op — `@redis/client` does NOT
+  // expose defineCommand, which crashed the api at boot when VALKEY_URL
+  // was set). Single ioredis client serves both rate-limit and
+  // diarization since both consume the same RedisLike subset (get/set
+  // with EX/NX/PX flags). When VALKEY_URL is unset, leave `redis`
+  // undefined — buildAllRoutes will skip /v1/audio/diarization
   // registration and operators get an operator-actionable 404 from
-  // notFoundHandler (one-line warning below tells them exactly what to set).
+  // notFoundHandler (one-line warning below tells them exactly what to
+  // set).
   let redis: RedisLike | undefined;
   if (process.env.VALKEY_URL) {
     try {
-      const { createClient } = await import("@redis/client");
-      const clientOpts: { url: string; password?: string } = {
-        url: process.env.VALKEY_URL,
-      };
-      if (process.env.VALKEY_PASSWORD) {
-        clientOpts.password = process.env.VALKEY_PASSWORD;
-      }
-      const client = createClient(clientOpts);
-      await client.connect();
+      const { Redis } = await import("ioredis");
+      const url = process.env.VALKEY_URL;
+      const client = new Redis(url, {
+        maxRetriesPerRequest: null,
+        lazyConnect: false,
+      });
       redis = client as unknown as RedisLike;
     } catch (err) {
       // biome-ignore lint/suspicious/noConsole: server bootstrap warning; structured logging arrives in Phase 6

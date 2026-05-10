@@ -52,15 +52,24 @@ async function rateLimitPluginInner(
   let redis: any | undefined = opts.redis;
 
   if (!redis && process.env.VALKEY_URL) {
-    const { createClient } = await import("@redis/client");
-    const clientOpts: { url: string; password?: string } = {
-      url: process.env.VALKEY_URL,
-    };
-    if (process.env.VALKEY_PASSWORD) {
-      clientOpts.password = process.env.VALKEY_PASSWORD;
-    }
-    redis = createClient(clientOpts);
-    await redis.connect();
+    // Phase 03 e2e fix — @fastify/rate-limit's RedisStore calls
+    // `redis.defineCommand('rateLimit', ...)` to register a Lua script
+    // for atomic counter+TTL ops. Only ioredis exposes that API; the
+    // newer `@redis/client` (node-redis v4) does NOT, so the api
+    // process crashes at boot with `defineCommand is not a function`
+    // when VALKEY_URL is set. Switching the rate-limit client to
+    // ioredis matches what apps/worker already uses (BullMQ also
+    // requires ioredis), and keeps `@redis/client` available for
+    // libraries that prefer it. The diarization idempotency cache
+    // accepts the same RedisLike shape ioredis exposes (get/set with
+    // EX/NX/PX flags), so a single ioredis client serves both use
+    // cases out of the same env var.
+    const { Redis } = await import("ioredis");
+    const url = process.env.VALKEY_URL;
+    redis = new Redis(url, {
+      maxRetriesPerRequest: null, // BullMQ-style: let ioredis retry indefinitely with backoff
+      lazyConnect: false,
+    });
     fastify.addHook("onClose", async () => {
       try {
         await redis.quit();
