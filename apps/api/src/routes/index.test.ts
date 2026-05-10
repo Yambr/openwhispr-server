@@ -160,4 +160,40 @@ describe("buildAllRoutes — Phase 03 conditional registration", () => {
       expect(typeof plugin).toBe("function");
     }
   });
+
+  // ----- Stage B back-fill — close residual gaps to 90/90/90/90 -----------
+
+  it("registers the test-only plugin when deps.testOnly === true even with NODE_ENV unset", async () => {
+    // Pins line 184 if idx 1 — the explicit testOnly opt-in branch.
+    // Save NODE_ENV state and set it to a non-test value so the
+    // OR-fallthrough doesn't accidentally pass.
+    const prevNodeEnv = process.env.NODE_ENV;
+    const prevOpenwhispr = process.env.OPENWHISPR_TEST_ROUTES;
+    process.env.NODE_ENV = "production";
+    delete process.env.OPENWHISPR_TEST_ROUTES;
+    try {
+      const withTestOnly = buildAllRoutes({
+        db: fakeDb(),
+        auth: fakeAuth(),
+        testOnly: true,
+      });
+      const withoutTestOnly = buildAllRoutes({
+        db: fakeDb(),
+        auth: fakeAuth(),
+        testOnly: false,
+      });
+      // Plan 04+ baseline plugins are registered regardless; the diff
+      // between the two arrays is exactly the test-only plugin.
+      expect(withTestOnly.length).toBe(withoutTestOnly.length + 1);
+    } finally {
+      if (prevNodeEnv === undefined) {
+        delete process.env.NODE_ENV;
+      } else {
+        process.env.NODE_ENV = prevNodeEnv;
+      }
+      if (prevOpenwhispr !== undefined) {
+        process.env.OPENWHISPR_TEST_ROUTES = prevOpenwhispr;
+      }
+    }
+  });
 });
