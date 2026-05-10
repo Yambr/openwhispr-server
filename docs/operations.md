@@ -225,6 +225,131 @@ container exit non-zero with the offending key on stderr).
 | `/api/desktop-signin/{provider}` returns 503 | OIDC not configured | Set all three of `OIDC_ISSUER_URL`/`OIDC_CLIENT_ID`/`OIDC_CLIENT_SECRET` (see [oidc-operator-config.md](oidc-operator-config.md)) |
 | `/api/desktop-signin/{provider}` returns 400 `invalid callback scheme` | Channel scheme not on allow-list | See [channel-scheme-override.md](channel-scheme-override.md) |
 
+## Realtime ingress (`:8443`)
+
+> **Phase 4 / Plan 05 + Plan 10.** Source-of-truth wire spec:
+> `BACKEND_SPEC.md` `/v1/realtime` section (upstream OpenWhispr repo).
+
+Phase 4 split the Traefik ingress into two TLS entrypoints. WSS realtime
+sessions live on a dedicated `:8443` entrypoint (`websecure-realtime`,
+`idleTimeout: 3600s`); every other JSON / NDJSON / multipart route stays
+on `:443` (`websecure`, Traefik 3 default timeouts: 60s read / 0 write /
+180s idle). The split is a **T-04-02 mitigation** — the long-timeout
+regime that realtime needs cannot be allowed to hold short-JSON-route
+ingress slots open for an hour at a time.
+
+### Topology (after Plan 05)
+
+| Entrypoint | Port | Routes | Timeouts |
+|------------|------|--------|----------|
+| `websecure` | `:443` | every non-realtime route (auth, agent stream, tokens, transcribe, …) | read 60s / write 0 / idle 180s (Traefik 3 defaults) |
+| `websecure-realtime` | `:8443` | `/v1/realtime` (WSS upgrade) only | read 0 / write 0 / idle 3600s |
+
+`docker-compose.yml` publishes both ports on the host (`80, 443, 8443,
+8080`). Operators MUST open `:8443` on any firewall / security-group
+fronting the host — otherwise the desktop client cannot reach realtime.
+
+### TLS certificate strategy (cert-reuse, not separate ACME)
+
+Both entrypoints reuse the **same** TLS certificate(s) from the shared
+`tls.certificates` block in `compose/traefik/dynamic.yml`. Each
+entrypoint declares `http: { tls: {} }` (no per-entrypoint cert) so
+Traefik picks up the cert from the dynamic-config store regardless of
+listener.
+
+This matters in production because **HTTP-01 ACME challenges cannot
+validate on `:8443`** — Let's Encrypt only probes ports 80 and 443 via
+HTTP-01. Two operator-supported issuance paths:
+
+1. **Cert-reuse (recommended).** Issue / renew the cert via the normal
+   `:443` HTTP-01 challenge (or whichever ACME flow your operator
+   already runs). Both entrypoints serve the same renewed cert — no
+   second ACME flow required.
+2. **DNS-01 alternative (TODO, not yet wired).** For environments
+   that disable inbound `:443` from the public internet but need
+   inbound `:8443` only, switch the Traefik ACME resolver to DNS-01
+   (e.g. via the Traefik DNS provider matching your DNS host). Plan
+   10 ships the entrypoint topology; the DNS-01 hook lands when an
+   operator first asks for it.
+
+In K8s deployments using cert-manager, the same `Secret` is mounted
+into both `Listener` resources — cert-manager handles the renewal,
+both entrypoints pick up the new material on Traefik's rolling
+config refresh.
+
+### Soak validation (nightly)
+
+`.github/workflows/nightly-realtime-soak.yml` runs a 65-minute live
+soak against the **real OpenAI Realtime API** every night at 06:00 UTC
+and on every `v*` tag push. The soak exercises the FULL production
+chain (Traefik `:8443` → Fastify api proxy → LiteLLM `mode:realtime` →
+OpenAI Realtime), records every WS close frame, and uploads the
+close-frame log as a workflow artifact (`realtime-soak-log`) regardless
+of pass/fail. The job's `if:` guard restricts execution to scheduled
+events / tag pushes / `workflow_dispatch` — PRs (including from forks)
+cannot trigger it, so contributors never accidentally consume OpenAI
+budget.
+
+The 5-minute hermetic counterpart (`tests/e2e/realtime-soak-hermetic.test.ts`,
+exercised by `make e2e-test`) is the per-PR gate. Both share the same
+close-code attribution table (RESEARCH §2.10):
+
+| Close code | Origin | Verdict |
+|------------|--------|---------|
+| 1000 (normal) | either side | pass — clean close at end of soak |
+| 1001 (going away) | Traefik shutdown | **FAIL if before T+3600s** — ingress disconnect |
+| 1006 (abnormal) | upstream / network | log; tolerate (community-documented OpenAI flake) |
+| 1011 (server error) | Traefik or Fastify | **FAIL** — ingress error |
+
+If a nightly run fails, download the `realtime-soak-log` artifact (JSONL,
+one event per line) — the close-frame attribution column tells you
+whether the failure was ingress-side or upstream-side.
+
+## Phase 4 — Streaming + Realtime env vars
+
+Phase 4 added three env-keyed token-mint endpoints. Each refuses to
+serve (returns `503` with operator-actionable wording) when the
+corresponding key is missing, so a deployment without the key does not
+silently break the desktop client — operators see the 503 and know to
+configure the key. **Missing-key 503 is intentional D-18 behavior; do
+NOT diagnose it as a server fault.**
+
+| Env var | Required | Default | Consumed by | Notes |
+|---------|----------|---------|-------------|-------|
+| `ASSEMBLYAI_API_KEY` | for `/api/streaming-token` | none — route returns 503 if absent | `apps/api/src/routes/tokens/assemblyai.ts` | AssemblyAI v3 streaming token mint (Plan 03; D-14, D-18). |
+| `ASSEMBLYAI_TOKEN_TTL` | optional | `60` (seconds) | `apps/api/src/routes/tokens/assemblyai.ts` | Override only if the desktop client's keepalive cadence demands it. |
+| `DEEPGRAM_API_KEY` | for `/api/deepgram-streaming-token` | none — route returns 503 if absent | `apps/api/src/routes/tokens/deepgram.ts` | Deepgram Grant Token (Plan 03; D-15, D-18). |
+| `DEEPGRAM_TOKEN_TTL` | optional | `30` (seconds) | `apps/api/src/routes/tokens/deepgram.ts` | Same caveat as `ASSEMBLYAI_TOKEN_TTL`. |
+| `OPENAI_API_KEY` | for `/api/openai-realtime-token` and `/v1/realtime` | none — route returns 503 if absent | `apps/api/src/routes/tokens/openai-realtime.ts`, LiteLLM realtime upstream | Already documented for the Phase 3 realtime WSS proxy (D-12); Phase 4 adds the parallel-mint route (`streams=2`) via `/v1/realtime/client_secrets` (Plan 04; D-16, D-17). |
+| `DEFAULT_AGENT_MODEL` | optional | `qwen/qwen3.6-plus` | `apps/api/src/routes/agent/stream.ts` | Override the default model id for `/api/agent/stream` requests that don't pass `model:` in the body. |
+
+All three token routes share a per-user 30/min rate limit keyed on
+`req.user.id` (T-04-04 mitigation: leaked-bearer abuse is bounded
+per-user, not per-IP).
+
+### Troubleshooting `/api/agent/stream`
+
+The route emits NDJSON with `Content-Type: application/x-ndjson` AND
+the `X-Accel-Buffering: no` header so Traefik does not buffer the
+stream. Headers are flushed BEFORE the upstream LLM call so the desktop
+client can render `Connecting…` UI within the first-byte budget
+(WIRE-07 SC#1: round-trip < 500ms — verified by
+`tests/e2e/agent-stream-first-line-latency.test.ts`).
+
+| Symptom | Likely cause | Fix |
+|---------|--------------|-----|
+| `200 OK` with a single terminal NDJSON line `{type:"finish", finishReason:"upstream_error", ...}` | LiteLLM upstream unavailable AFTER headers flushed (per BACKEND_SPEC contract — the route cannot retroactively change status once the first byte is on the wire) | Grep api logs for the matching `x-litellm-call-id` header — LiteLLM emits this on every upstream attempt; the value identifies which provider/model failed. |
+| Stream hangs > 60s with no chunks | Traefik buffering middleware accidentally re-introduced on the route | Verify `X-Accel-Buffering: no` is present on the response and `compose/traefik/dynamic.yml` has no `buffering` middleware on the `agent-stream` router (Plan 05 Test 5 pins this). |
+| `503` immediately on first POST | `OPENAI_API_KEY` (or operator's chosen `DEFAULT_AGENT_MODEL` provider key) absent | Set the key in `.env` and restart the api container. |
+
+Cross-references:
+- Wire shapes: `BACKEND_SPEC.md` `/v1/realtime` + `/api/agent/stream`
+  + `/api/streaming-token` + `/api/deepgram-streaming-token` +
+  `/api/openai-realtime-token` sections.
+- Threat model: `.planning/phases/04-streaming-realtime/04-CONTEXT.md`
+  T-04-01 (missing-key leakage), T-04-02 (long-timeout DoS),
+  T-04-04 (leaked-bearer rate-limit), T-04-COST (CI cost prevention).
+
 ## Future phases
 
 - **Phase 1:** docker-compose stack (Postgres / PgBouncer / Redis / observability) — `make up` brings real services online
