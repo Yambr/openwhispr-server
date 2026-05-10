@@ -44,12 +44,37 @@ http:
       service: api-svc
       entryPoints: [websecure]
       tls: {}
+    # Phase 03 / Plan 07 (LITELLM-03, D-04) — dedicated router for the
+    # WSS /v1/realtime reverse-proxy. Co-resident on `api.localhost`
+    # with the catch-all `api` router but matched FIRST via priority so
+    # WS upgrades land on the long-lived-tuned `api-realtime-svc`. The
+    # service uses a `serversTransport` whose `idleConnTimeout` is set
+    # to 3600s (per Pitfall #7) — combined with the websecure
+    # entrypoint's `respondingTimeouts.read/writeTimeout: 3700s` (set in
+    # traefik.yml), this yields the 3600s ceiling demanded by the
+    # WSS realtime spec (BACKEND_SPEC.md L788-L791) without disturbing
+    # short-lived JSON traffic on the catch-all router.
+    api-realtime:
+      rule: "Host(`api.localhost`) && PathPrefix(`/v1/realtime`)"
+      service: api-realtime-svc
+      entryPoints: [websecure]
+      priority: 100
+      tls: {}
 
   services:
     api-svc:
       loadBalancer:
         servers:
           - url: "http://api:3000"
+    # Phase 03 / Plan 07 — long-lived-tuned upstream for WSS /v1/realtime.
+    # Targets the same Fastify api container as `api-svc`; the only
+    # difference is `serversTransport`, which selects the
+    # `api-realtime-transport` block below with a 3600s idleConnTimeout.
+    api-realtime-svc:
+      loadBalancer:
+        servers:
+          - url: "http://api:3000"
+        serversTransport: api-realtime-transport
     grafana-svc:
       loadBalancer:
         servers:
@@ -62,6 +87,21 @@ http:
       loadBalancer:
         servers:
           - url: "http://mailpit:8025"
+
+  serversTransports:
+    # Phase 03 / Plan 07 (LITELLM-03, D-04, Pitfall #7) — long-lived
+    # transport for the WSS /v1/realtime reverse-proxy. `idleConnTimeout`
+    # of 3600s prevents Traefik from closing the upstream Fastify
+    # connection during a 60-minute realtime session. The matching
+    # entrypoint-level `respondingTimeouts.read/writeTimeout: 3700s`
+    # (compose/traefik/traefik.yml) covers the read/write side of the
+    # client-facing WSS so the desktop's long dictations don't trigger
+    # spurious mid-session disconnects.
+    api-realtime-transport:
+      forwardingTimeouts:
+        dialTimeout: "30s"
+        responseHeaderTimeout: "30s"
+        idleConnTimeout: "3600s"
 
 tls:
   certificates:
