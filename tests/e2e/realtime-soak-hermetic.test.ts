@@ -55,10 +55,18 @@ function realtimeSoakUrl(): string {
   // would kill any soak > 60s — the WHOLE POINT of the split.
   // BACKEND_URL is https://api.localhost (port 443 implicit); rewrite
   // to wss + :8443 here.
+  //
+  // ?model=realtime — LiteLLM dispatches realtime upstreams from the
+  // model_list keyed on this query param (the OpenAI Realtime SDK
+  // sends it; LiteLLM v1.83.x mirrors the contract). Without it
+  // LiteLLM closes the upstream with 1011/'unexpected response'.
+  // The Plan 09 e2e LiteLLM config (litellm_config.e2e-realtime.yaml)
+  // declares `realtime` as a model_name pointed at mock-realtime.
   const url = new URL(BACKEND_URL);
   url.protocol = "wss:";
   url.port = "8443";
   url.pathname = "/v1/realtime";
+  url.searchParams.set("model", "realtime");
   return url.toString();
 }
 
