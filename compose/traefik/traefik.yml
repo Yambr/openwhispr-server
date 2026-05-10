@@ -26,6 +26,21 @@ entryPoints:
     address: ":443"
     http:
       tls: {}
+    # Phase 02.19 — trust X-Forwarded-For ONLY from RFC 1918 private CIDRs.
+    # Closes Group F end-to-end (cascade tail from 02.18 D-DISC): the
+    # contract-test runner inside `openwhispr_internal` (Docker default
+    # bridge, allocates within 172.16.0.0/12) can now have its per-fixture
+    # XFF preserved end-to-end so Better Auth's rate-limiter buckets per
+    # synthetic test IP. Production safety: external clients on real
+    # public IPs are NOT in any of these ranges, so Traefik continues to
+    # overwrite their XFF with the immediate socket IP — abuse vector
+    # remains closed. CIDRs strictly RFC 1918 (no CGNAT, no loopback,
+    # no 0.0.0.0/0). See tests/integration/traefik-forwarded-headers.test.ts.
+    forwardedHeaders:
+      trustedIPs:
+        - 10.0.0.0/8       # RFC 1918 Class A private
+        - 172.16.0.0/12    # RFC 1918 Class B private (Docker default bridge pool)
+        - 192.168.0.0/16   # RFC 1918 Class C private
     transport:
       respondingTimeouts:
         readTimeout: 3700s
