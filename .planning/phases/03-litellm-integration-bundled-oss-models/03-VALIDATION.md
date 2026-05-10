@@ -1,16 +1,17 @@
 ---
 phase: 03
 slug: litellm-integration-bundled-oss-models
-status: draft
-nyquist_compliant: false
+status: locked
+nyquist_compliant: true
 wave_0_complete: false
 created: 2026-05-10
+updated: 2026-05-10
 ---
 
 # Phase 03 — Validation Strategy
 
 > Per-phase validation contract for feedback sampling during execution.
-> Derived from RESEARCH.md §10 (Validation Architecture) — to be finalized by gsd-planner during plan creation.
+> Finalized by gsd-planner during plan creation (Plans 01..10).
 
 ---
 
@@ -18,12 +19,12 @@ created: 2026-05-10
 
 | Property | Value |
 |----------|-------|
-| **Framework** | vitest 4.x (workspace existing) + testcontainers-postgresql for ingest worker |
+| **Framework** | vitest 4.x (workspace existing) + @testcontainers/postgresql for ingest worker + @testcontainers (redis) |
 | **Config file** | `vitest.config.ts` (per-package), workspace root |
 | **Quick run command** | `pnpm -w test --filter <package>` |
 | **Full suite command** | `pnpm -w test && make contract-test` |
-| **E2E (manual / scheduled)** | `make e2e-test` (requires .env.e2e with real OPENROUTER_API_KEY + OPENAI_API_KEY + PYANNOTE_API_KEY) |
-| **Estimated runtime** | ~120s unit/integration; ~90s contract-test profile (mock_response, no internet); ~5min e2e (real APIs) |
+| **E2E (manual / scheduled)** | `make e2e-test` (requires `.env.e2e` with real OPENROUTER_API_KEY + OPENAI_API_KEY + PYANNOTE_API_KEY) |
+| **Estimated runtime** | ~120s unit/integration; ~120s contract-test profile (mock_response, no internet, includes 6 new Phase 3 tests); ~5min e2e (real APIs) |
 
 ---
 
@@ -38,34 +39,45 @@ created: 2026-05-10
 
 ## Per-Task Verification Map
 
-> To be filled by gsd-planner per-plan during plan creation. Skeleton:
-
 | Task ID | Plan | Wave | Requirement | Threat Ref | Secure Behavior | Test Type | Automated Command | File Exists | Status |
 |---------|------|------|-------------|------------|-----------------|-----------|-------------------|-------------|--------|
-| 03-01-XX | 01 spike | 0 | LITELLM-01 | — | LiteLLM container starts; /health returns 200 | integration | `pnpm -w test --filter spike-litellm` | ❌ W0 | ⬜ pending |
-| 03-02-XX | 02 schema | 0 | LITELLM-07 | — | `litellm` database created idempotently | integration | `pnpm -w test --filter migrate` | ❌ W0 | ⬜ pending |
-| 03-03-XX | 03 transcribe | 1 | WIRE-05 | T-03-01 (multipart upload bypass) | Bearer auth required; multipart streamed without buffering | unit+contract | `pnpm -w test apps/api/src/routes/transcribe` + `make contract-test` | ❌ W0 | ⬜ pending |
-| 03-04-XX | 04 reason | 1 | WIRE-06 | T-03-02 (prompt injection via metadata) | `user: <userId>` injected; LITELLM_MASTER_KEY never leaks | unit+contract | `pnpm -w test apps/api/src/routes/reason` | ❌ W0 | ⬜ pending |
-| 03-05-XX | 05 diarization | 1 | LITELLM-03 | T-03-03 (file upload abuse) | File size limit; bearer auth | unit+contract | `pnpm -w test apps/api/src/routes/diarization` | ❌ W0 | ⬜ pending |
-| 03-06-XX | 06 realtime | 1 | LITELLM-03 (WSS) | T-03-04 (WS auth bypass) | bearer-auth in upgrade preHandler; master key not exposed | unit+contract | `pnpm -w test apps/api/src/routes/realtime` | ❌ W0 | ⬜ pending |
-| 03-07-XX | 07 spend ingest | 2 | LITELLM-07, DATA-03 | T-03-05 (idempotency replay) | UPSERT idempotent on request_id | integration (testcontainer) | `pnpm -w test apps/worker/src/jobs/ingest-spend` | ❌ W0 | ⬜ pending |
-| 03-08-XX | 08 docs | 2 | LITELLM-06 | — | docs/litellm-target-spec.md exists, references both modes | docs lint | `markdown-link-check docs/litellm-target-spec.md` | ❌ W0 | ⬜ pending |
+| 03-01-T1 | 01 | 0 | LITELLM-06 (D-09) | — | Wire-contracts doc captures upstream BACKEND_SPEC.md verbatim; no improvisation | docs lint | `pnpm exec tsx tools/lint-docs-headings.ts docs/wire-contracts-phase-3.md` | ❌ W0 | ⬜ pending |
+| 03-01-T2 | 01 | 0 | LITELLM-01, LITELLM-02, LITELLM-05 | T-03-01-01..05 | LiteLLM v1.83.14-stable healthy; separate `litellm` DB; bundled config parses | smoke + integration | `docker compose --profile default config && pnpm vitest run tests/self-tests/litellm-up.test.ts` | ❌ W0 | ⬜ pending |
+| 03-02-T1 | 02 | 0 | LITELLM-01 (CI) | T-03-02-01 | Mock contract config parses with mock_response per model | unit | `pnpm exec tsx -e "..." && docker compose --profile default --profile contract-test config` | ❌ W0 | ⬜ pending |
+| 03-02-T2 | 02 | 0 | LITELLM-07 (D-08 spike) | T-03-02-02 | request_id metadata round-trip into LiteLLM_SpendLogs.metadata column | live integration | `LITELLM_BASE_URL=... pnpm vitest run apps/api/src/__tests__/litellm-spike-request-id.test.ts` | ❌ W0 | ⬜ pending |
+| 03-02-T3 | 02 | 0 | WIRE-05/06, LITELLM-03 (zod schemas) | — | Phase 3 wire schemas exported; match wire-contracts doc | unit | `pnpm --filter @openwhispr/contract-tests test packages/contract-tests/src/__tests__/schemas-phase-3.test.ts` | ❌ W0 | ⬜ pending |
+| 03-03-T1 | 03 | 1 | LITELLM-04, LITELLM-05, PROVIDER-01 | T-03-03-01..04 | litellm-client injects master key + user param + metadata; MissingProviderKeyError vs LitellmUpstreamError distinct | unit | `pnpm --filter @openwhispr/litellm-client test --run` | ❌ W0 | ⬜ pending |
+| 03-04-T1 | 04 | 2 | WIRE-05, DATA-03, LITELLM-04 | T-03-04-01..06 | /api/transcribe streams multipart; ledger row idempotent; 503-not-401 on missing key | unit + integration | `pnpm --filter @openwhispr/api test apps/api/src/routes/transcribe.test.ts apps/api/src/lib/word-units.test.ts apps/api/src/__tests__/multipart-registered.test.ts` | ❌ W0 | ⬜ pending |
+| 03-04-T2 | 04 | 2 | WIRE-05, CONTRACT-01 | T-03-04-01..06 | Contract test against mock LiteLLM | contract | `make contract-test` | ❌ W0 | ⬜ pending |
+| 03-05-T1 | 05 | 2 | WIRE-06, LITELLM-04, DATA-03 | T-03-05-01..05 | /api/reason default qwen3.5-plus; user param injected; ledger reason_tokens; 503-not-401 | unit | `pnpm --filter @openwhispr/api test apps/api/src/routes/reason.test.ts` | ❌ W0 | ⬜ pending |
+| 03-05-T2 | 05 | 2 | WIRE-06, CONTRACT-01 | T-03-05-01..05 | Contract test against mock LiteLLM | contract | `make contract-test` | ❌ W0 | ⬜ pending |
+| 03-06-T1 | 06 | 2 | LITELLM-03 (diarization) | T-03-06-01..04 | Diarization mounted at locked path; mock-mode + provider-key gate work | unit + contract | `pnpm --filter @openwhispr/api test apps/api/src/routes/diarization.test.ts && make contract-test` | ❌ W0 | ⬜ pending |
+| 03-07-T1 | 07 | 2 | LITELLM-03 (WSS), LITELLM-04 | T-03-07-01..05 | WSS proxy with auth preHandler + master-key inject + ?user query | unit | `pnpm --filter @openwhispr/api test apps/api/src/routes/realtime.test.ts` | ❌ W0 | ⬜ pending |
+| 03-07-T2 | 07 | 2 | LITELLM-03 (WSS) | T-03-07-03..05 | Traefik 3600s timeouts on /v1/realtime; handshake test green | contract | `docker compose --profile default config && make contract-test` | ❌ W0 | ⬜ pending |
+| 03-08-T1 | 08 | 3 | LITELLM-07, SCALE-03 | T-03-08-04..06 | apps/worker package + infer-kind + pool factories tested | unit | `pnpm --filter @openwhispr/worker test --run && pnpm --filter @openwhispr/worker typecheck` | ❌ W0 | ⬜ pending |
+| 03-08-T2 | 08 | 3 | LITELLM-07, DATA-03 | T-03-08-01..06 | BullMQ scheduler 30s; idempotent UPSERT; tenant resolution; SIGTERM drain | integration (testcontainers) | `pnpm --filter @openwhispr/worker test --run` | ❌ W0 | ⬜ pending |
+| 03-09-T1 | 09 | 3 | LITELLM-06 | T-03-09-01..02 | docs/litellm-target-spec.md + mock-mode docs lint-clean | docs lint | `pnpm exec tsx tools/lint-docs-headings.ts docs/litellm-target-spec.md docs/litellm-mock-mode.md` | ❌ W0 | ⬜ pending |
+| 03-09-T2 | 09 | 3 | LITELLM-05 | T-03-09-03 | make e2e-test refuses without .env.e2e; README updated | unit | `make help \| grep e2e-test && grep -q 'Provider Keys' README.md` | ❌ W0 | ⬜ pending |
+| 03-10-T1 | 10 | 3 | PROVIDER-01, DATA-03, CONTRACT-01 | T-03-10-01..04 | Cross-cutting: PROVIDER-01 + Pitfall #8 (503-not-401) + DATA-03 idempotency | contract + integration (testcontainers) | `pnpm --filter @openwhispr/data test packages/data/src/__tests__/usage-ledger-idempotency.test.ts && make contract-test && MISSING_KEY_TEST_MODE=1 make contract-test-missing-keys` | ❌ W0 | ⬜ pending |
+| 03-10-T2 | 10 | 3 | LITELLM-05 (CI) | T-03-10-01..02 | nightly e2e-test job gated on secret presence | yaml lint | `pnpm exec actionlint .github/workflows/ci.yml .github/workflows/nightly.yml` | ❌ W0 | ⬜ pending |
 
 *Status: ⬜ pending · ✅ green · ❌ red · ⚠️ flaky*
 
 ---
 
-## Wave 0 Requirements
+## Wave 0 Requirements (resolved by Plans 01 + 02)
 
-- [ ] `compose/litellm/litellm_config.contract.yaml` — mock_response variant for CI
-- [ ] `compose/litellm/litellm_config.yaml` — bundled-default config
-- [ ] `compose/postgres/initdb/01-litellm-database.sh` (or migration) — idempotent CREATE DATABASE litellm
-- [ ] `apps/api/src/routes/__tests__/` shared multipart fixture (small wav file)
-- [ ] `apps/worker/` package skeleton OR worker entry point in apps/api (decision in plan)
-- [ ] Spike test for `x-litellm-spend-logs-metadata` header → metadata column persistence (resolves RESEARCH open question A4)
-- [ ] BACKEND_SPEC.md cross-reference for `wordsUsed` semantics (resolves RESEARCH open question)
+- [ ] `compose/litellm/litellm_config.yaml` — bundled-default config (Plan 01)
+- [ ] `compose/litellm/litellm_config.contract.yaml` — mock_response variant (Plan 02)
+- [ ] `compose/postgres/initdb/01-litellm-database.sh` — idempotent CREATE DATABASE litellm (Plan 01)
+- [ ] `tests/fixtures/audio/sample-1s.wav` — multipart fixture (Plan 02)
+- [ ] `apps/worker/` package skeleton (Plan 08, but treated as Wave 0 dep for Wave-3 worker development)
+- [ ] Spike test for `x-litellm-spend-logs-metadata` header → metadata column persistence (Plan 02 Task 2 — resolves A4 / D-08)
+- [ ] BACKEND_SPEC.md cross-reference for `wordsUsed` semantics + diarization mount point (Plan 01 Task 1 — resolves A5/A6 + D-09)
+- [ ] `docs/wire-contracts-phase-3.md` (Plan 01 — single source of truth for endpoint plans)
+- [ ] `packages/contract-tests/src/schemas.ts` extension with TranscribeRequestFields/Response, ReasonRequest/Response, DiarizationResponse (Plan 02 Task 3)
 
-*Validation framework already installed (vitest, testcontainers) — Wave 0 is fixture-creation only.*
+*Validation framework already installed (vitest, testcontainers) — Wave 0 is fixture + spike + schemas only.*
 
 ---
 
@@ -75,18 +87,18 @@ created: 2026-05-10
 |----------|-------------|------------|-------------------|
 | Real /api/transcribe with OpenAI Whisper | WIRE-05 | Costs real money + requires user-supplied key | `make e2e-test`; verify `text` field populated from real audio |
 | Real /api/reason with OpenRouter qwen3.5-plus | WIRE-06 | Real API call, costs money | `make e2e-test`; verify `text` non-empty, `model="qwen3.5-plus"` |
-| Real /api/diarization with pyannote.ai | LITELLM-03 | Two-step pyannote API + real cost | `make e2e-test`; verify segments[] returned |
-| Realtime WSS 65-min smoke | LITELLM-03 | Long-lived test, runs in scheduled CI not main | `make e2e-realtime-soak` (deferred to Phase 4 per CONTEXT) |
+| Real /api/diarization with pyannote.ai or chosen single-hop provider | LITELLM-03 | Real cost; depends on D-07 final outcome | `make e2e-test`; verify segments[] returned |
+| Realtime WSS 65-min smoke | LITELLM-03 | Long-lived test, Phase 4 scope | DEFERRED to Phase 4 per CONTEXT |
 
 ---
 
 ## Validation Sign-Off
 
-- [ ] All tasks have `<automated>` verify or Wave 0 dependencies
-- [ ] Sampling continuity: no 3 consecutive tasks without automated verify
-- [ ] Wave 0 covers all MISSING references (litellm_config files, multipart fixture, db init, A4 spike)
-- [ ] No watch-mode flags
-- [ ] Feedback latency < 120s
-- [ ] `nyquist_compliant: true` set in frontmatter (planner sets after Per-Task map filled)
+- [x] All tasks have `<automated>` verify or Wave 0 dependencies
+- [x] Sampling continuity: no 3 consecutive tasks without automated verify
+- [x] Wave 0 covers all MISSING references (litellm_config files, multipart fixture, db init, A4 spike, schemas, wire-contracts doc)
+- [x] No watch-mode flags
+- [x] Feedback latency < 120s (excluding e2e and 65-min Phase 4 deferral)
+- [x] `nyquist_compliant: true` set in frontmatter
 
-**Approval:** pending — to be approved by gsd-planner after PLAN.md files created and per-task map populated
+**Approval:** approved by gsd-planner 2026-05-10 — every task has an automated verify command; cross-cutting tests in Plan 10 catch contract/idempotency drift.
