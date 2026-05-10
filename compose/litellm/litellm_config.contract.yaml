@@ -59,6 +59,29 @@ model_list:
       api_key: "fake-key-for-mock"
       mode: realtime
 
+  # Phase 04 / Plan 08 / Task 1f (D-29) — streaming mock for /api/agent/stream
+  # contract + e2e first-line latency tests. When `stream:true` is set on
+  # the upstream chat-completions request, LiteLLM serves the multi-line
+  # mock_response below as 3 SSE chunks at its default ~50ms cadence — the
+  # first SSE frame ('Hello') therefore reaches our route well within the
+  # 200ms (contract) / 500ms (e2e round-trip) budgets, while still giving
+  # the load-bearing buffering-injection negative-control trio (Plan 08
+  # Task 2) a real wire-rate signal to assert against. Used by:
+  #   * packages/contract-tests/src/agent-stream.test.ts Test 4 (first-line
+  #     latency < 500ms over real HTTPS through Traefik)
+  #   * Plan 09 Task 2 e2e first-line latency (when authored).
+  - model_name: qwen3.6-plus-streaming
+    litellm_params:
+      model: openai/qwen-3.6-plus
+      mock_response: |
+        data: {"choices":[{"delta":{"content":"Hello"}}]}
+
+        data: {"choices":[{"delta":{"content":" world"}}]}
+
+        data: {"choices":[{"delta":{},"finish_reason":"stop"}],"usage":{"prompt_tokens":10,"completion_tokens":2,"total_tokens":12}}
+
+        data: [DONE]
+
 general_settings:
   master_key: os.environ/LITELLM_MASTER_KEY
   database_url: os.environ/LITELLM_DATABASE_URL
