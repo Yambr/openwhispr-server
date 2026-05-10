@@ -261,46 +261,76 @@ if [[ -n "${identity}" && "${identity}" == AGE-SECRET-KEY-1* && ! -f "${PUBKEY_F
   fi
 fi
 
-# Phase 02.7 / D-05 — Traefik self-signed cert for *.localhost + *.example.test.
+# Phase 02.7 / D-05 + Phase 02.22 — Traefik TLS chain for *.localhost + *.example.test.
 #
 # compose/traefik/dynamic.yml expects /certs/local.crt + /certs/local.key.
-# Without these files Traefik falls back to its built-in TRAEFIK DEFAULT
-# CERTIFICATE, which (a) violates the dynamic.yml contract, and (b) made
-# Phase 02.6 reach for an insecure TLS-bypass workaround — we close both
-# defects here.
+# contract-test-runner (and any in-cluster Node 24 client) trusts the CA via
+# NODE_EXTRA_CA_CERTS=/certs/root-ca.crt.
 #
-# Idempotent: regenerate only if cert is missing OR expires within 30 days.
+# Two-tier chain (Phase 02.22): a previous self-signed leaf (basicConstraints
+# CA:FALSE) was rejected by Node 24 + OpenSSL 3 as a trust anchor — Node
+# requires NODE_EXTRA_CA_CERTS entries to satisfy X509Certificate.ca === true
+# (i.e. be a real CA). Result: DEPTH_ZERO_SELF_SIGNED_CERT inside the runner,
+# 8/9 contract test files skipping via describe.skipIf(!REACHABLE). The fix:
+# bootstrap mints a self-signed root CA (CA:TRUE, keyCertSign) and signs the
+# leaf with it. Node trusts the root; the leaf chains up.
+#
+# Idempotent: regenerate the chain only if any of root-ca.{crt,key} or
+# local.{crt,key} is missing, OR either cert expires within 30 days.
 # 10-year validity (-days 3650) for self-host dev convenience.
 CERT_DIR="${REPO_ROOT}/compose/traefik/certs"
 CERT_FILE="${CERT_DIR}/local.crt"
 KEY_FILE="${CERT_DIR}/local.key"
+ROOT_CA_FILE="${CERT_DIR}/root-ca.crt"
+ROOT_CA_KEY="${CERT_DIR}/root-ca.key"
 mkdir -p "${CERT_DIR}"
 
 needs_cert=1
-if [[ -f "${CERT_FILE}" && -f "${KEY_FILE}" ]]; then
-  if openssl x509 -checkend $((86400 * 30)) -noout -in "${CERT_FILE}" >/dev/null 2>&1; then
+if [[ -f "${ROOT_CA_FILE}" && -f "${ROOT_CA_KEY}" && -f "${CERT_FILE}" && -f "${KEY_FILE}" ]]; then
+  if openssl x509 -checkend $((86400 * 30)) -noout -in "${ROOT_CA_FILE}" >/dev/null 2>&1 \
+     && openssl x509 -checkend $((86400 * 30)) -noout -in "${CERT_FILE}" >/dev/null 2>&1; then
     needs_cert=0
   fi
 fi
 
 if (( needs_cert )); then
-  # Build a temp openssl config so SANs are declared explicitly.
+  # Build temp openssl configs so SANs and CA/leaf extensions are explicit.
   # No mkcert dependency (per project boring rule + CONTEXT D-07).
-  openssl_config="$(mktemp)"
-  cat > "${openssl_config}" <<'OPENSSL_CONFIG'
+  root_ca_config="$(mktemp)"
+  leaf_config="$(mktemp)"
+  leaf_extfile="$(mktemp)"
+
+  cat > "${root_ca_config}" <<'ROOT_CA_CONFIG'
 [req]
 distinguished_name = req_distinguished_name
-x509_extensions = v3_req
+x509_extensions = v3_ca
+prompt = no
+
+[req_distinguished_name]
+CN = openwhispr-local-dev-ca
+
+[v3_ca]
+basicConstraints = critical, CA:TRUE, pathlen:0
+keyUsage = critical, keyCertSign, cRLSign
+subjectKeyIdentifier = hash
+ROOT_CA_CONFIG
+
+  cat > "${leaf_config}" <<'LEAF_CONFIG'
+[req]
+distinguished_name = req_distinguished_name
 prompt = no
 
 [req_distinguished_name]
 CN = openwhispr-local-dev
+LEAF_CONFIG
 
-[v3_req]
+  cat > "${leaf_extfile}" <<'LEAF_EXT'
 basicConstraints = CA:FALSE
 keyUsage = nonRepudiation, digitalSignature, keyEncipherment
 extendedKeyUsage = serverAuth
 subjectAltName = @alt_names
+authorityKeyIdentifier = keyid,issuer
+subjectKeyIdentifier = hash
 
 [alt_names]
 DNS.1 = localhost
@@ -315,16 +345,32 @@ DNS.9 = auth.example.test
 DNS.10 = *.example.test
 IP.1 = 127.0.0.1
 IP.2 = ::1
-OPENSSL_CONFIG
+LEAF_EXT
 
+  # 1) Mint root CA (self-signed, CA:TRUE).
   openssl req -x509 -nodes -days 3650 -newkey rsa:2048 \
-    -keyout "${KEY_FILE}" -out "${CERT_FILE}" \
-    -config "${openssl_config}" -extensions v3_req >/dev/null 2>&1
+    -keyout "${ROOT_CA_KEY}" -out "${ROOT_CA_FILE}" \
+    -config "${root_ca_config}" -extensions v3_ca >/dev/null 2>&1
 
-  rm -f "${openssl_config}"
-  chmod 600 "${KEY_FILE}"
-  chmod 644 "${CERT_FILE}"
-  echo "bootstrap: generated ${CERT_FILE} (10-year validity, SANs cover *.localhost + *.example.test)"
+  # 2) Generate leaf key + CSR.
+  leaf_csr="$(mktemp)"
+  openssl req -new -nodes -newkey rsa:2048 \
+    -keyout "${KEY_FILE}" -out "${leaf_csr}" \
+    -config "${leaf_config}" >/dev/null 2>&1
+
+  # 3) Sign the leaf CSR with the root CA. `openssl x509 -req -CA … -CAkey …`
+  #    is the boring (non-`openssl ca`) way — no index.txt/serial DB needed.
+  openssl x509 -req -in "${leaf_csr}" \
+    -CA "${ROOT_CA_FILE}" -CAkey "${ROOT_CA_KEY}" -CAcreateserial \
+    -out "${CERT_FILE}" -days 3650 -sha256 \
+    -extfile "${leaf_extfile}" >/dev/null 2>&1
+
+  # Clean up temp config + CSR + serial file (.srl is regenerated each run).
+  rm -f "${root_ca_config}" "${leaf_config}" "${leaf_extfile}" "${leaf_csr}" "${CERT_DIR}/root-ca.srl"
+
+  chmod 600 "${ROOT_CA_KEY}" "${KEY_FILE}"
+  chmod 644 "${ROOT_CA_FILE}" "${CERT_FILE}"
+  echo "bootstrap: generated ${ROOT_CA_FILE} + ${CERT_FILE} (two-tier chain, 10-year validity, SANs cover *.localhost + *.example.test)"
 else
-  echo "bootstrap: ${CERT_FILE} valid for >=30 days — skip regeneration"
+  echo "bootstrap: ${ROOT_CA_FILE} + ${CERT_FILE} both valid for >=30 days — skip regeneration"
 fi
