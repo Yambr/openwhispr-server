@@ -1,0 +1,60 @@
+# Phase 04 / Plan 07 / Task 2 — `e2e` profile compose overlay.
+#
+# Adds the hermetic mock-realtime WS upstream so the Wave 3 plan 04-09
+# 5-min realtime soak test can run with zero provider cost or flake.
+# Only services declared with `profiles: [e2e]` start when the operator
+# runs:
+#
+#   docker compose -f docker-compose.yml \
+#                  -f compose/e2e/docker-compose.e2e.yml \
+#                  --profile e2e up -d
+#
+# Production compose-up never sees this service (the profile gate keeps
+# it dormant). The mock-realtime container is internal-only — no host
+# port published, no Traefik route. LiteLLM dials it at
+# `ws://mock-realtime:8765/v1/realtime` over the shared
+# `openwhispr_internal` network.
+#
+# T-04-MOCK-EXPOSE: ACCEPTED disposition. Container runs only under the
+# `e2e` profile; no production attack surface (see plan 04-07
+# <threat_model>).
+
+# Re-declare the network as external so this overlay attaches the new
+# service to the network created by docker-compose.yml. The base file
+# uses `name: openwhispr` → docker-compose creates `openwhispr_openwhispr_internal`
+# under the hood; we reference it via the unprefixed key + `external` flag.
+networks:
+  openwhispr_internal:
+    external: true
+    name: openwhispr_openwhispr_internal
+
+services:
+  mock-realtime:
+    profiles: [e2e]
+    container_name: openwhispr-mock-realtime
+    build:
+      # Use a project-root-relative context resolved via the
+      # COMPOSE_PROJECT_DIR / PWD pattern. Compose resolves relative
+      # build contexts against the FIRST -f file's directory; explicit
+      # ${MOCK_REALTIME_CONTEXT:-./tests/e2e/mock-realtime} keeps the
+      # path predictable regardless of which compose file is "base".
+      context: ${MOCK_REALTIME_CONTEXT:-./tests/e2e/mock-realtime}
+      dockerfile: Dockerfile
+    environment:
+      PORT: "8765"
+    networks: [openwhispr_internal]
+    # Healthcheck dials the WS upgrade endpoint over plain HTTP — the
+    # server returns 426 Upgrade Required for a non-WS GET, which proves
+    # the listener is bound and the route is mounted. We use plain
+    # `node -e` because the alpine image ships no curl/wget by default.
+    healthcheck:
+      test:
+        - "CMD"
+        - "node"
+        - "-e"
+        - "require('http').get('http://localhost:8765/v1/realtime',(r)=>process.exit(r.statusCode>=200&&r.statusCode<500?0:1)).on('error',()=>process.exit(1))"
+      interval: 5s
+      timeout: 3s
+      retries: 12
+      start_period: 5s
+    restart: "no"
