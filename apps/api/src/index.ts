@@ -44,6 +44,7 @@
 //   9. Register Plan 03's routes via `allRoutes` from routes/index.ts.
 
 import fastifyCookie from "@fastify/cookie";
+import fastifyMultipart from "@fastify/multipart";
 import type { ExecutableTx, TransactionalDb } from "@openwhispr/data";
 import Fastify, { type FastifyInstance } from "fastify";
 import { registerErrorHandler } from "./error-handler.js";
@@ -67,6 +68,19 @@ import { buildAllRoutes } from "./routes/index.js";
 
 /** Signature of the recordPreviousToken library function (for tests). */
 type RecordPreviousToken = typeof recordPreviousTokenLib;
+
+/**
+ * @fastify/multipart options used at buildApp level (HIGH-4).
+ *
+ * Exported so multipart-registered.test.ts can assert against the exact
+ * shape AND so future Wave-2 plans (transcribe / diarization) can read
+ * the canonical values rather than re-deriving them. Mutating this
+ * object MUST stay in sync with the wire-contract docs.
+ */
+export const MULTIPART_OPTIONS = {
+  attachFieldsToBody: false as const,
+  limits: { fileSize: 100 * 1024 * 1024 }, // 100 MB hard cap
+} as const;
 
 export interface BuildAppOptions {
   /**
@@ -114,6 +128,21 @@ export const buildApp = async (opts: BuildAppOptions = {}): Promise<FastifyInsta
 
   // 3. Cookie support (delete-account.clearCookie + Better Auth cookies).
   await app.register(fastifyCookie);
+
+  // 3b. HIGH-4 (Plan 03 Task 2 / Wave 1): register @fastify/multipart ONCE
+  //     at buildApp level. Both Plan 04 (/api/transcribe) and Plan 06
+  //     (/api/diarization) consume multipart streaming — registering here
+  //     in Wave 1 (single sibling owns the shared edit) avoids the
+  //     Wave-2 cross-plan edit collision on this file.
+  //
+  //     attachFieldsToBody:false is REQUIRED — routes forward req.raw
+  //     (or the AsyncIterable parts() iterator) directly to LiteLLM via
+  //     undici without buffering (RESEARCH Pitfall #5: avoid buffering
+  //     large audio uploads into Node memory at SCALE-01 1000 concurrent).
+  //
+  //     100MB hard cap mirrors the desktop client's largest expected
+  //     transcription payload; LiteLLM upstream enforces its own cap.
+  await app.register(fastifyMultipart, MULTIPART_OPTIONS);
 
   // 4. zod schemas at validation + serialization compilers.
   await app.register(zodTypeProvider);
