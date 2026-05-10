@@ -83,12 +83,18 @@ importers:
       '@openwhispr/data':
         specifier: workspace:*
         version: link:../../packages/data
+      '@openwhispr/litellm-client':
+        specifier: workspace:*
+        version: link:../../packages/litellm-client
       '@redis/client':
         specifier: ^5.12.1
         version: 5.12.1
       better-auth:
         specifier: 1.6.9
         version: 1.6.9(drizzle-kit@0.31.10)(drizzle-orm@0.45.2(@types/pg@8.20.0)(kysely@0.28.17)(pg@8.20.0))(pg@8.20.0)(vitest@4.1.5)
+      drizzle-orm:
+        specifier: 0.45.2
+        version: 0.45.2(@types/pg@8.20.0)(kysely@0.28.17)(pg@8.20.0)
       fastify:
         specifier: ^5.0.0
         version: 5.8.5
@@ -98,6 +104,9 @@ importers:
       nodemailer:
         specifier: 8.0.7
         version: 8.0.7
+      undici:
+        specifier: 7.25.0
+        version: 7.25.0
       zod:
         specifier: 4.4.3
         version: 4.4.3
@@ -105,6 +114,12 @@ importers:
       '@types/nodemailer':
         specifier: ^8.0.0
         version: 8.0.0
+      '@types/pg':
+        specifier: ^8.11.10
+        version: 8.20.0
+      pg:
+        specifier: 8.20.0
+        version: 8.20.0
       tsx:
         specifier: ^4.19.0
         version: 4.21.0
