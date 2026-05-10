@@ -455,6 +455,173 @@ describe("BullMQ wiring (no-redis smoke)", () => {
     await w.close();
   });
 
+  // Stage B back-fill — close residual gaps to 90/90/90/90.
+
+  it("createWorker's job callback invokes runIngestOnce and logs the result", async () => {
+    // Pins the anonymous_4 function (line 186) — previously the Worker
+    // class was constructed but its job callback never fired in tests.
+    let queryCount = 0;
+    const litellmPool = {
+      async query() {
+        queryCount++;
+        return { rows: [] };
+      },
+    } as never;
+    const appOwnerPool = { async query() { return { rows: [] }; } } as never;
+    const fakeRedis = new FakeRedis();
+    const w = createWorker({
+      litellmPool,
+      appOwnerPool,
+      connection: { host: "127.0.0.1", port: 16399 },
+      redis: fakeRedis,
+    });
+    try {
+      // Reach into the BullMQ Worker's processor to invoke it directly.
+      // The Worker class stores the user-supplied callback as `processFn`
+      // (BullMQ 5.x); calling it with a stub Job object exercises the
+      // anonymous_4 wrapper without standing up Redis.
+      const fakeJob = {} as never;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const processor = (w as any).processFn ?? (w as any).processor;
+      expect(typeof processor).toBe("function");
+      const result = await processor(fakeJob);
+      expect(result).toEqual({ rowsProcessed: 0, rowsScanned: 0 });
+      expect(queryCount).toBeGreaterThanOrEqual(1);
+    } finally {
+      await w.close();
+    }
+  });
+
+  it("treats string startTime values from pg as ISO and writes them to redis verbatim", async () => {
+    // Pins line 168 cond-expr idx 1 (string branch). pg returns Date by
+    // default but the ?? typecast in the SELECT can yield strings on
+    // certain configs. Drive runIngestOnce against a stubbed pool whose
+    // rows carry an ISO string.
+    const fakeRedis = new FakeRedis();
+    const isoTs = "2026-05-09T10:00:00.000Z";
+    const litellmPool = {
+      async query() {
+        return {
+          rows: [
+            {
+              request_id: "rid-string",
+              end_user: "user-1",
+              total_tokens: 10,
+              model: "qwen3.6",
+              startTime: isoTs,
+              metadata: { openwhispr_request_id: "ow-string" },
+            },
+          ],
+        };
+      },
+    } as never;
+    let inserted = 0;
+    const appOwnerPool = {
+      async query(text: string) {
+        if (/SELECT\s+tenant_id\s+FROM\s+users/i.test(text)) {
+          return { rows: [{ tenant_id: "tenant-1" }] };
+        }
+        if (/INSERT\s+INTO\s+usage_ledger/i.test(text)) {
+          inserted++;
+          return { rowCount: 1 };
+        }
+        return { rows: [] };
+      },
+    } as never;
+    const result = await runIngestOnce({
+      litellmPool,
+      appOwnerPool,
+      connection: {} as never,
+      redis: fakeRedis,
+    });
+    expect(result.rowsScanned).toBe(1);
+    expect(result.rowsProcessed).toBe(1);
+    expect(inserted).toBe(1);
+    expect(await fakeRedis.get(WATERMARK_KEY)).toBe(isoTs);
+  });
+
+  it("doesn't count an INSERT with rowCount=0 (ON CONFLICT) toward rowsProcessed", async () => {
+    // Pins line 159 binary-expr idx 1 (the ?? 0 fallback when rowCount
+    // is null/undefined) and the > 0 false branch.
+    const fakeRedis = new FakeRedis();
+    const litellmPool = {
+      async query() {
+        return {
+          rows: [
+            {
+              request_id: "rid-conflict",
+              end_user: "user-1",
+              total_tokens: 0,
+              model: "qwen3.6",
+              startTime: new Date(),
+              metadata: { openwhispr_request_id: "ow-conflict" },
+            },
+          ],
+        };
+      },
+    } as never;
+    const appOwnerPool = {
+      async query(text: string) {
+        if (/SELECT\s+tenant_id\s+FROM\s+users/i.test(text)) {
+          return { rows: [{ tenant_id: "tenant-1" }] };
+        }
+        // Simulate ON CONFLICT DO NOTHING: rowCount is null.
+        return { rowCount: null };
+      },
+    } as never;
+    const result = await runIngestOnce({
+      litellmPool,
+      appOwnerPool,
+      connection: {} as never,
+      redis: fakeRedis,
+    });
+    expect(result.rowsScanned).toBe(1);
+    expect(result.rowsProcessed).toBe(0);
+  });
+
+  it("treats null total_tokens as 0 for reason_tokens kind", async () => {
+    // Pins line 148 binary-expr idx 1 — the `r.total_tokens ?? 0` fallback.
+    const fakeRedis = new FakeRedis();
+    const litellmPool = {
+      async query() {
+        return {
+          rows: [
+            {
+              request_id: "rid-null-tokens",
+              end_user: "user-1",
+              total_tokens: null,
+              model: "qwen3.6",
+              startTime: new Date(),
+              metadata: { openwhispr_request_id: "ow-null-tokens" },
+            },
+          ],
+        };
+      },
+    } as never;
+    let captured: unknown[] | undefined;
+    const appOwnerPool = {
+      async query(text: string, params?: unknown[]) {
+        if (/SELECT\s+tenant_id/i.test(text)) {
+          return { rows: [{ tenant_id: "tenant-1" }] };
+        }
+        if (/INSERT\s+INTO\s+usage_ledger/i.test(text)) {
+          captured = params;
+          return { rowCount: 1 };
+        }
+        return { rows: [] };
+      },
+    } as never;
+    await runIngestOnce({
+      litellmPool,
+      appOwnerPool,
+      connection: {} as never,
+      redis: fakeRedis,
+    });
+    // Last positional param ($5) is `units`. With null total_tokens the
+    // route's fallback yields 0.
+    expect(captured?.[4]).toBe(0);
+  });
+
   it("ensureScheduler delegates to queue.upsertJobScheduler with canonical args", async () => {
     const calls: Array<{
       key: string;
