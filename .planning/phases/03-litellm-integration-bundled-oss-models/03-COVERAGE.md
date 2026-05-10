@@ -224,3 +224,76 @@ because ubuntu-24.04 glibc does not auto-resolve `*.localhost`.
 | (5)       | align e2e assertions with real LiteLLM behavior (discoveries 1-4)    |
 | (6)       | wire MOCK_DIARIZATION env to api + add make e2e-hermetic             |
 | (7)       | wire e2e-hermetic into CI on every PR                                |
+
+## Stage D — Phase-2 Debt Closure (2026-05-10)
+
+The six pre-existing Phase-2 files flagged in Stage-A's "Pre-existing
+debt NOT in Phase 3 scope" section (auth.ts, error-handler.ts,
+lib/default-tenant.ts, plugins/rate-limit.ts, routes/delete-account.ts,
+routes/verification-status.ts) are now ≥90/90/90/90 on all four axes.
+Each file landed in its own atomic commit per the constitutional rule
+that tests and the production code they exercise ship together.
+
+| File                                       | L before | L after | B before | B after | F before | F after | S before | S after |
+| ------------------------------------------ | -------: | ------: | -------: | ------: | -------: | ------: | -------: | ------: |
+| `apps/api/src/auth.ts`                     |    86.66 | **100** |      100 | **100** |    38.46 | **100** |     87.5 | **100** |
+| `apps/api/src/error-handler.ts`            |      100 |     100 |    83.33 |   93.75 |      100 |     100 |      100 |     100 |
+| `apps/api/src/lib/default-tenant.ts`       |      100 | **100** |       50 | **100** |      100 | **100** |    83.33 | **100** |
+| `apps/api/src/plugins/rate-limit.ts`       |       50 | **100** |       67 |  **90** |       75 | **100** |       50 | **100** |
+| `apps/api/src/routes/delete-account.ts`    |       95 | **100** |    66.66 | **100** |      100 | **100** |       95 | **100** |
+| `apps/api/src/routes/verification-status.ts` |     92.3 | **100** |       75 | **100** |      100 | **100** |     92.3 | **100** |
+
+### Per-package totals after Stage D
+
+| Package      | L     | B     | F     | S     |
+| ------------ | ----: | ----: | ----: | ----: |
+| `apps/api`   | 98.92 | 94.52 | 100   | 98.38 |
+
+### Commits landed in Stage D
+
+| Commit    | Description                                                                          |
+| --------- | ------------------------------------------------------------------------------------ |
+| `f02a183` | test(api): cover error-handler empty-message defaults to ≥90/90/90/90                |
+| `2991f54` | test(api): cover default-tenant memoisation to ≥90/90/90/90                          |
+| `f4927fc` | test(api): cover verification-status defense-in-depth 401 to ≥90/90/90/90            |
+| `264064f` | test(api): cover delete-account defense-in-depth + email-null to ≥90/90/90/90        |
+| `7a8e0b1` | refactor(api): collapse fallbackLog noop methods + cover sendVerificationEmail       |
+| `1206a9e` | test(api): cover rate-limit Valkey/ioredis construction to ≥90/90/90/90              |
+
+### Strategy notes
+
+- **auth.ts F=38 → 100**: required a small production refactor (extract
+  `fallbackLog` to a module-level export; collapse seven per-level no-op
+  methods to a single shared `noop` reused across info/warn/error/fatal/
+  trace/debug/silent). The FastifyBaseLogger conformance surface is
+  unchanged. Tests then call `fallbackLog.warn()` / `child()` directly.
+  This is the only file where the back-fill required touching production
+  code; everything else was purely test-side coverage of existing
+  defensive branches.
+- **rate-limit.ts**: real Valkey 8 testcontainer (no mocks). Per CLAUDE.md
+  "Real services in tests" rule for infrastructure deps. Adds
+  `testcontainers@^11.14.0` to apps/api devDependencies (was already
+  present in packages/data and apps/worker; this just exposes it to
+  apps/api).
+- **delete-account / verification-status**: both defense-in-depth `if
+  (!req.tenant)` branches are reachable by injecting a session whose
+  `tenantId` is the empty string — `??` only catches null/undefined, so
+  the empty string propagates and trips the falsy check. Production
+  sessions never carry an empty tenantId; the tests pin the canonical
+  401 envelope so the defense doesn't regress silently.
+- **error-handler / default-tenant**: pure test-side closure. Empty-
+  message variants exercise the `|| "<default>"` fallback branches;
+  twin sequential calls exercise the memoisation short-circuit.
+
+### Carry-overs (NOT addressed in Stage D)
+
+- DATA-06 deny-list test failures (4 in
+  `scripts/check-default-secrets.test.ts`) remain pre-existing,
+  blocked on the lefthook prepare-hook conflict (`core.hooksPath is set
+  locally` vs the `prepare` script auto-installing hooks). Owner: the
+  separate lefthook-fix work, out-of-scope for this back-fill.
+- `packages/data/src/seed/conformance.ts` is still 0/0/0/0 — Phase-02.7
+  conformance fixture seeder, intentionally untested at unit level per
+  Stage-A flag. Decision pending: either delete the seeder (replaced by
+  Better-Auth-canonical sign-up calls inside contract-tests) or add a
+  smoke test that asserts the seed runs end-to-end. Tracked separately.
