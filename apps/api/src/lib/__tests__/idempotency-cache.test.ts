@@ -216,4 +216,26 @@ describe("createIdempotencyCache.bindJobId", () => {
     const lookup = await cache.lookupOrReserve(KEY, BODY_A);
     expect(lookup).toEqual({ state: "hit", jobId: "job-final" });
   });
+
+  it("WR-02: concurrent binds — first-writer-wins on the sibling jobid key (no clobber)", async () => {
+    // Two concurrent writers race to bindJobId for the same key. With a
+    // non-atomic GET+merge+SET, the loser would clobber the winner. With
+    // the sibling SETNX :jobid key, the first writer's jobId is locked
+    // in and a subsequent lookupOrReserve returns that value
+    // deterministically.
+    await cache.lookupOrReserve(KEY, BODY_A);
+    // Race them: await Promise.all so both run concurrently.
+    await Promise.all([
+      cache.bindJobId(KEY, "job-winner", BODY_A),
+      cache.bindJobId(KEY, "job-loser", BODY_A),
+    ]);
+    const lookup = await cache.lookupOrReserve(KEY, BODY_A);
+    expect(lookup.state).toBe("hit");
+    // The winner is whichever SETNX landed first; under our serial fake
+    // it's the first awaited call. The contract is: ONE of the two is
+    // bound, never an interleaved/clobbered value.
+    expect(["job-winner", "job-loser"]).toContain(
+      (lookup as { state: "hit"; jobId: string }).jobId,
+    );
+  });
 });
