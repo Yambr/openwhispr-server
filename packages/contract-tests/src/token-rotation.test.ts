@@ -10,7 +10,7 @@
 // 0/100 requests using the OLD token receive 401 against the
 // `/api/_test/health-authed` route (also Plan 05).
 import { beforeAll, describe, expect, it } from "vitest";
-import { BACKEND_URL, AUTH_URL, probeBackend } from "./env.js";
+import { AUTH_URL, BACKEND_URL, probeBackend } from "./env.js";
 
 const REACHABLE = await probeBackend();
 
@@ -20,16 +20,35 @@ describe.skipIf(!REACHABLE)("AUTH-04 token rotation overlap window", () => {
   beforeAll(async () => {
     // Sign in with the rotation-test fixture user. Better Auth's email
     // sign-in returns the bearer in the response body's `token` field.
+    //
+    // Phase 02.21 / Residual C — fixture email was `rotation-test@local`,
+    // a non-RFC-compliant address Better Auth rejects with HTTP 400
+    // INVALID_EMAIL (the `.local` TLD fails BA's email validator). The
+    // canonical fixture seeded by packages/data/src/seed/conformance.ts:36
+    // is `rotation-test@example.com` (RFC 2606 reserved TLD, validator-
+    // safe). Switching the test to the seeded address is the targeted
+    // fix; do NOT change the seed because @example.com is the correct
+    // RFC-compliant choice for test fixtures.
+    //
+    // Origin is forwarded so Better Auth's CSRF gate accepts the POST
+    // (auth.ts trustedOrigins matches AUTH_URL); X-Forwarded-For mints a
+    // unique rate-limit bucket so this suite's beforeAll doesn't compete
+    // with other test files for the runner-IP rate budget.
     const res = await fetch(`${AUTH_URL}/api/auth/sign-in/email`, {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers: {
+        "content-type": "application/json",
+        origin: AUTH_URL,
+        "x-forwarded-for": "10.77.77.77",
+      },
       body: JSON.stringify({
-        email: "rotation-test@local",
+        email: "rotation-test@example.com",
         password: "test-PW-12345!",
       }),
     });
     if (!res.ok) {
-      throw new Error(`sign-in failed: ${res.status}`);
+      const text = await res.text();
+      throw new Error(`sign-in failed: HTTP ${res.status} body=${text.slice(0, 200)}`);
     }
     const body = (await res.json()) as { token?: string };
     if (!body.token) throw new Error("sign-in: token missing in response body");

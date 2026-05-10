@@ -322,6 +322,17 @@ services:
       # Comma-separated list parsed by apps/api/src/auth.ts; in addition to
       # AUTH_URL + OPENWHISPR_API_URL, NOT a replacement.
       AUTH_TRUSTED_ORIGINS_EXTRA: "http://api:3000"
+      # Phase 02.21 / Residual C — opt-in flag for the test-only routes
+      # plugin (/api/_test/force-rotate, /api/_test/health-authed) needed
+      # by the AUTH-04 token-rotation contract test. Default OFF — the
+      # `make contract-test` target sets this to "true" via the env file
+      # bootstrap so the in-cluster contract suite can mint rotations,
+      # while every other docker-compose invocation (operator self-host,
+      # `docker compose up`) inherits the safe default and 404s on the
+      # _test paths. PRODUCTION OPERATORS MUST NEVER set this var to
+      # "true" in their .env — it exposes a session-rotation shortcut
+      # intended only for the contract-test stack inside openwhispr_internal.
+      OPENWHISPR_TEST_ROUTES: ${OPENWHISPR_TEST_ROUTES:-false}
       # Phase 02.13 — OIDC env defaults pointing at the contract-test
       # `fixture-idp` service (D-01). Default-profile boot is unaffected:
       # Better Auth's genericOAuth uses LAZY discovery (it only fetches

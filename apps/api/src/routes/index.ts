@@ -11,36 +11,25 @@
 // (the actual `app.register(plugin)` calls inside `buildApp`) is Plan
 // 04's territory. This avoids the index.ts authorship race the plan
 // explicitly calls out.
+
+import type { ExecutableTx, TransactionalDb } from "@openwhispr/data";
 import type { FastifyInstance } from "fastify";
 import type { AuthLike } from "../middleware/dual-auth.js";
-import type { TransactionalDb, ExecutableTx } from "@openwhispr/data";
 import {
-  buildCheckUserRoutes,
-  type CheckUserDeps,
-} from "./check-user.js";
+  type AuthCallbackDeps,
+  buildAuthCallbackRoutes,
+  type MintBearer,
+} from "./auth-callback.js";
+import { type BetterAuthHandlerDeps, buildBetterAuthHandlerRoutes } from "./better-auth-handler.js";
+import { buildCheckUserRoutes, type CheckUserDeps } from "./check-user.js";
+import { buildDeleteAccountRoutes, type DeleteAccountDeps } from "./delete-account.js";
+import { buildDesktopSigninRoutes, type DesktopSigninDeps } from "./desktop-signin.js";
+import healthRoutes from "./health.js";
+import { buildTestOnlyRoutes } from "./test-only.js";
 import {
   buildVerificationStatusRoutes,
   type VerificationStatusDeps,
 } from "./verification-status.js";
-import {
-  buildDeleteAccountRoutes,
-  type DeleteAccountDeps,
-} from "./delete-account.js";
-import {
-  buildDesktopSigninRoutes,
-  type DesktopSigninDeps,
-} from "./desktop-signin.js";
-import {
-  buildAuthCallbackRoutes,
-  type AuthCallbackDeps,
-  type MintBearer,
-} from "./auth-callback.js";
-import { buildTestOnlyRoutes } from "./test-only.js";
-import {
-  buildBetterAuthHandlerRoutes,
-  type BetterAuthHandlerDeps,
-} from "./better-auth-handler.js";
-import healthRoutes from "./health.js";
 
 export type RoutePlugin = (app: FastifyInstance) => Promise<void>;
 
@@ -92,17 +81,30 @@ export function buildAllRoutes(deps: AllRoutesDeps): readonly RoutePlugin[] {
   // Plan 08: register the /api/_test/* surface when explicitly enabled
   // OR when running under NODE_ENV='test'. The plugin itself enforces
   // the gate as well — defense in depth.
-  if (deps.testOnly === true || process.env.NODE_ENV === "test") {
+  //
+  // Phase 02.21 / Residual C — also accept the `OPENWHISPR_TEST_ROUTES`
+  // env opt-in so the compose contract-test stack (running with
+  // NODE_ENV=production for deploy-posture parity) can still expose
+  // /api/_test/force-rotate + /api/_test/health-authed for the AUTH-04
+  // token-rotation contract test. PRODUCTION OPERATORS MUST NOT set
+  // this var to "true" — it exposes a session-rotation shortcut.
+  if (
+    deps.testOnly === true ||
+    process.env.NODE_ENV === "test" ||
+    process.env.OPENWHISPR_TEST_ROUTES === "true"
+  ) {
     plugins.push(buildTestOnlyRoutes({ db: deps.db, auth: deps.auth }));
   }
   return plugins;
 }
 
-export { healthRoutes };
-export { buildBetterAuthHandlerRoutes };
-export { buildCheckUserRoutes };
-export { buildVerificationStatusRoutes };
-export { buildDeleteAccountRoutes };
-export { buildDesktopSigninRoutes };
-export { buildAuthCallbackRoutes };
-export { buildTestOnlyRoutes };
+export {
+  buildAuthCallbackRoutes,
+  buildBetterAuthHandlerRoutes,
+  buildCheckUserRoutes,
+  buildDeleteAccountRoutes,
+  buildDesktopSigninRoutes,
+  buildTestOnlyRoutes,
+  buildVerificationStatusRoutes,
+  healthRoutes,
+};
