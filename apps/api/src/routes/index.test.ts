@@ -50,15 +50,17 @@ describe("buildAllRoutes — Phase 03 conditional registration", () => {
     // litellm.
     const baselineCount = routes.length;
     expect(baselineCount).toBeGreaterThanOrEqual(7);
-    // Now add litellm — count must increase by exactly 2 (transcribe +
-    // reason register together when the shared LiteLLM client is
-    // constructed at boot).
+    // Now add litellm — count must increase by exactly 3 (transcribe +
+    // reason + agent/stream register together when the shared LiteLLM
+    // client is constructed at boot). agent/stream landed in Phase 04
+    // Plan 06 alongside the three Phase-4 token routes (which register
+    // unconditionally and are already in the baseline).
     const withLitellm = buildAllRoutes({
       db: fakeDb(),
       auth: fakeAuth(),
       litellm: fakeLitellm(),
     });
-    expect(withLitellm.length).toBe(baselineCount + 2);
+    expect(withLitellm.length).toBe(baselineCount + 3);
   });
 
   it("registers the transcribe + reason plugins when deps.litellm is provided", () => {
