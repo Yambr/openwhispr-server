@@ -101,17 +101,71 @@ describe("tryPreviousToken (Phase 02.12 plain-text)", () => {
     const db = { execute: vi.fn().mockResolvedValue({ rows: [] }) };
     const out = await tryPreviousToken(db, "unknown-bearer");
     expect(out).toBeNull();
+    // Only the SECURITY DEFINER lookup runs when the bearer is unknown
+    // (no email follow-up needed).
     expect(db.execute).toHaveBeenCalledTimes(1);
   });
 
-  it("returns {userId, tenantId} when the SECURITY DEFINER function returns a row", async () => {
+  it("returns {userId, tenantId, email} when the SECURITY DEFINER function returns a row (WR-05)", async () => {
+    let call = 0;
     const db = {
-      execute: vi.fn().mockResolvedValue({
-        rows: [{ user_id: "user-uuid-1", tenant_id: "tenant-uuid-1" }],
+      execute: vi.fn().mockImplementation(async () => {
+        call += 1;
+        if (call === 1) {
+          return {
+            rows: [{ user_id: "user-uuid-1", tenant_id: "tenant-uuid-1" }],
+          };
+        }
+        return { rows: [{ email: "user1@example.test" }] };
       }),
     };
     const out = await tryPreviousToken(db, "old-bearer");
-    expect(out).toEqual({ userId: "user-uuid-1", tenantId: "tenant-uuid-1" });
+    expect(out).toEqual({
+      userId: "user-uuid-1",
+      tenantId: "tenant-uuid-1",
+      email: "user1@example.test",
+    });
+  });
+
+  it("WR-05: returns email=null (NOT empty string) when the user row was deleted mid-rotation", async () => {
+    let call = 0;
+    const db = {
+      execute: vi.fn().mockImplementation(async () => {
+        call += 1;
+        if (call === 1) {
+          return {
+            rows: [{ user_id: "user-uuid-1", tenant_id: "tenant-uuid-1" }],
+          };
+        }
+        return { rows: [] };
+      }),
+    };
+    const out = await tryPreviousToken(db, "old-bearer");
+    expect(out).not.toBeNull();
+    // Fail-loud sentinel: null is OBVIOUS to consumers; pre-fix code in
+    // index.ts hard-coded "" which silently propagated through audit
+    // logs and ledger metadata.
+    expect(out!.email).toBeNull();
+    expect(out!.userId).toBe("user-uuid-1");
+    expect(out!.tenantId).toBe("tenant-uuid-1");
+  });
+
+  it("WR-05: returns email=null when the email follow-up query throws (defensive)", async () => {
+    let call = 0;
+    const db = {
+      execute: vi.fn().mockImplementation(async () => {
+        call += 1;
+        if (call === 1) {
+          return {
+            rows: [{ user_id: "user-uuid-1", tenant_id: "tenant-uuid-1" }],
+          };
+        }
+        throw new Error("RLS denied");
+      }),
+    };
+    const out = await tryPreviousToken(db, "old-bearer");
+    expect(out).not.toBeNull();
+    expect(out!.email).toBeNull();
   });
 
   it("calls lookup_session_by_previous_token with the plain bearer text (no hashing)", async () => {

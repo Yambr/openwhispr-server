@@ -54,6 +54,15 @@ export async function recordPreviousToken(
 export interface PreviousTokenMatch {
   userId: string;
   tenantId: string;
+  /**
+   * WR-05: the matched user's email, fetched via a follow-up SELECT
+   * AFTER the SECURITY DEFINER lookup resolves the tenant. Surfaced to
+   * downstream consumers (audit logs, ledger metadata) so they don't
+   * silently observe an empty-string sentinel synthesized by buildApp's
+   * minimal-mode tryPrev adapter. `null` when the user row was deleted
+   * mid-rotation — fail-loud over silent "" placeholder.
+   */
+  email: string | null;
 }
 
 /**
@@ -86,5 +95,26 @@ export async function tryPreviousToken(
   )) as { rows: Array<{ user_id: string; tenant_id: string }> };
   const first = r.rows[0];
   if (!first) return null;
-  return { userId: first.user_id, tenantId: first.tenant_id };
+  // WR-05: resolve email so downstream consumers (audit logs, ledger
+  // metadata, dual-auth synthesized user objects) see a real value.
+  // Pre-fix, buildApp's minimal-mode tryPrev adapter hard-coded
+  // `email: ""` because the SECURITY DEFINER function only returned
+  // the (user_id, tenant_id) pair — that empty-string sentinel
+  // silently propagated through middleware. The follow-up SELECT here
+  // bypasses RLS deliberately too (the email lookup is gated by the
+  // tenant_id we already authenticated above). The query goes through
+  // the standard appDb role; users.id is a primary key so the query
+  // is bounded.
+  let email: string | null = null;
+  try {
+    const er = (await db.execute(
+      sql`SELECT email FROM users WHERE id = ${first.user_id}::uuid LIMIT 1`,
+    )) as { rows: Array<{ email: string }> };
+    email = er.rows[0]?.email ?? null;
+  } catch {
+    // Row deleted mid-rotation or RLS blocked the read — surface null
+    // so consumers fail loud rather than receiving a silent "".
+    email = null;
+  }
+  return { userId: first.user_id, tenantId: first.tenant_id, email };
 }
