@@ -33,79 +33,175 @@ const REQUIRED_PHASE_3_H2S = [
 
 const REQUIRED_DECISIONS = ["wordsUsed semantics", "diarization mount"] as const;
 
+// Phase 03 / Plan 09 — operator-facing docs (LITELLM-05 + LITELLM-06).
+// docs/litellm-target-spec.md: bundled-default + corporate-override topology.
+// docs/litellm-mock-mode.md: hermetic contract-test architecture.
+const REQUIRED_TARGET_SPEC_H2S = [
+  "Topologies",
+  "Bundled-Default Configuration",
+  "Corporate-Override Configuration",
+  "Request ID Propagation",
+  "Env Override Path",
+  "Diarization (Sync-Wrapper Pattern)",
+  "Realtime WSS Topology",
+  "Spend Log Ingestion",
+] as const;
+
+// D-07 REVISED grep-asserted phrases in docs/litellm-target-spec.md.
+const REQUIRED_TARGET_SPEC_PHRASES = [
+  "sync-wrapper",
+  "4-step",
+  "Idempotency-Key",
+  "1500",
+  "PYANNOTE_API_KEY",
+  "NOT via LiteLLM",
+  "speaches-audio.md",
+] as const;
+
+const REQUIRED_MOCK_MODE_H2S = [
+  "What This Solves",
+  "How It Works",
+  "Per-Model mock_response",
+  "Diarization Mock",
+  "Running Locally",
+] as const;
+
+const REQUIRED_MOCK_MODE_PHRASES = ["MOCK_DIARIZATION"] as const;
+
 interface Issue {
   rule: string;
   detail: string;
 }
 
-function main(): number {
-  const target = process.argv[2];
-  if (!target) {
-    process.stderr.write("lint-docs-headings: usage: lint-docs-headings.ts <markdown-file>\n");
-    return 2;
-  }
+interface DocSpec {
+  basename: string;
+  requiredH2s: readonly string[];
+  requiredPhrases: readonly string[];
+  /** When true, this doc is the wire-contracts file with extra structural rules. */
+  isWireContracts: boolean;
+}
 
+const DOC_SPECS: readonly DocSpec[] = [
+  {
+    basename: "wire-contracts-phase-3.md",
+    requiredH2s: REQUIRED_PHASE_3_H2S,
+    requiredPhrases: [],
+    isWireContracts: true,
+  },
+  {
+    basename: "litellm-target-spec.md",
+    requiredH2s: REQUIRED_TARGET_SPEC_H2S,
+    requiredPhrases: REQUIRED_TARGET_SPEC_PHRASES,
+    isWireContracts: false,
+  },
+  {
+    basename: "litellm-mock-mode.md",
+    requiredH2s: REQUIRED_MOCK_MODE_H2S,
+    requiredPhrases: REQUIRED_MOCK_MODE_PHRASES,
+    isWireContracts: false,
+  },
+];
+
+function specFor(target: string): DocSpec {
+  for (const spec of DOC_SPECS) {
+    if (target.endsWith(spec.basename)) return spec;
+  }
+  // Default to the legacy wire-contracts ruleset for backward compatibility.
+  return DOC_SPECS[0]!;
+}
+
+function lintFile(target: string): Issue[] {
+  const issues: Issue[] = [];
   let body: string;
   try {
     body = readFileSync(resolve(target), "utf8");
   } catch (err) {
-    process.stderr.write(`lint-docs-headings: cannot read ${target}: ${(err as Error).message}\n`);
+    issues.push({
+      rule: "io-error",
+      detail: `cannot read ${target}: ${(err as Error).message}`,
+    });
+    return issues;
+  }
+
+  const spec = specFor(target);
+
+  // 1. Required H2 sections.
+  for (const heading of spec.requiredH2s) {
+    const re = new RegExp(`^##\\s+${escapeRegex(heading)}\\s*$`, "m");
+    if (!re.test(body)) {
+      issues.push({ rule: "missing-h2", detail: `## ${heading}` });
+    }
+  }
+
+  // 2. Wire-contracts file has extra structural rules.
+  if (spec.isWireContracts) {
+    // 2a. Each required H2 has at least one fenced code block before the next H2 / EOF.
+    for (const heading of spec.requiredH2s) {
+      const slice = sliceSection(body, heading);
+      if (slice && !/```[\s\S]+?```/.test(slice)) {
+        issues.push({
+          rule: "no-fenced-quote",
+          detail: `## ${heading} contains no fenced code block (verbatim quote required)`,
+        });
+      }
+    }
+    // 2b. At least one BACKEND_SPEC.md:L citation anywhere in the doc.
+    if (!/BACKEND_SPEC\.md:L\d+/.test(body)) {
+      issues.push({
+        rule: "no-source-citation",
+        detail: "Document contains zero BACKEND_SPEC.md:L<line> source citations",
+      });
+    }
+    // 2c. Decision subsections.
+    for (const decision of REQUIRED_DECISIONS) {
+      const re = new RegExp(`Decision:\\s*${escapeRegex(decision)}`, "i");
+      if (!re.test(body)) {
+        issues.push({
+          rule: "missing-decision",
+          detail: `Decision subsection not found: "${decision}"`,
+        });
+      }
+    }
+  }
+
+  // 3. Required literal phrases (case-sensitive substring match).
+  for (const phrase of spec.requiredPhrases) {
+    if (!body.includes(phrase)) {
+      issues.push({
+        rule: "missing-phrase",
+        detail: `Required phrase not found: "${phrase}"`,
+      });
+    }
+  }
+
+  return issues;
+}
+
+function main(): number {
+  const targets = process.argv.slice(2);
+  if (targets.length === 0) {
+    process.stderr.write("lint-docs-headings: usage: lint-docs-headings.ts <markdown-file> [<markdown-file>...]\n");
     return 2;
   }
 
-  const issues: Issue[] = [];
-
-  // 1. Required H2 sections.
-  for (const heading of REQUIRED_PHASE_3_H2S) {
-    const re = new RegExp(`^##\\s+${escapeRegex(heading)}\\s*$`, "m");
-    if (!re.test(body)) {
-      issues.push({
-        rule: "missing-h2",
-        detail: `## ${heading}`,
-      });
+  let totalIssues = 0;
+  let ioFailed = false;
+  for (const target of targets) {
+    const issues = lintFile(target);
+    if (issues.length === 0) {
+      process.stdout.write(`lint-docs-headings: ${target} ok\n`);
+      continue;
+    }
+    totalIssues += issues.length;
+    process.stderr.write(`lint-docs-headings: ${issues.length} violation(s) in ${target}:\n`);
+    for (const issue of issues) {
+      if (issue.rule === "io-error") ioFailed = true;
+      process.stderr.write(`  [${issue.rule}] ${issue.detail}\n`);
     }
   }
 
-  // 2. Each required H2 has at least one fenced code block before the next H2 / EOF.
-  for (const heading of REQUIRED_PHASE_3_H2S) {
-    const slice = sliceSection(body, heading);
-    if (slice && !/```[\s\S]+?```/.test(slice)) {
-      issues.push({
-        rule: "no-fenced-quote",
-        detail: `## ${heading} contains no fenced code block (verbatim quote required)`,
-      });
-    }
-  }
-
-  // 3. At least one BACKEND_SPEC.md:L citation anywhere in the doc.
-  if (!/BACKEND_SPEC\.md:L\d+/.test(body)) {
-    issues.push({
-      rule: "no-source-citation",
-      detail: "Document contains zero BACKEND_SPEC.md:L<line> source citations",
-    });
-  }
-
-  // 4. Decision subsections.
-  for (const decision of REQUIRED_DECISIONS) {
-    const re = new RegExp(`Decision:\\s*${escapeRegex(decision)}`, "i");
-    if (!re.test(body)) {
-      issues.push({
-        rule: "missing-decision",
-        detail: `Decision subsection not found: "${decision}"`,
-      });
-    }
-  }
-
-  if (issues.length === 0) {
-    process.stdout.write(`lint-docs-headings: ${target} ok (${REQUIRED_PHASE_3_H2S.length} required H2 sections, ${REQUIRED_DECISIONS.length} decisions)\n`);
-    return 0;
-  }
-
-  process.stderr.write(`lint-docs-headings: ${issues.length} violation(s) in ${target}:\n`);
-  for (const issue of issues) {
-    process.stderr.write(`  [${issue.rule}] ${issue.detail}\n`);
-  }
-  return 1;
+  if (ioFailed) return 2;
+  return totalIssues === 0 ? 0 : 1;
 }
 
 function escapeRegex(s: string): string {
