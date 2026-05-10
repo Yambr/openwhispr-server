@@ -46,6 +46,7 @@
 import fastifyCookie from "@fastify/cookie";
 import fastifyMultipart from "@fastify/multipart";
 import type { ExecutableTx, TransactionalDb } from "@openwhispr/data";
+import type { LitellmClient } from "@openwhispr/litellm-client";
 import Fastify, { type FastifyInstance } from "fastify";
 import { registerErrorHandler } from "./error-handler.js";
 import { buildMintBearer } from "./lib/mint-bearer.js";
@@ -116,6 +117,14 @@ export interface BuildAppOptions {
    * function; tests inject a spy to assert call shape.
    */
   recordPreviousToken?: RecordPreviousToken;
+  /**
+   * Phase 03 / Plan 04+: when supplied, the build registers the LiteLLM-
+   * backed routes (transcribe today; reason/diarization/realtime as
+   * Plans 05/06/07 land). Production constructs via
+   * `buildLitellmClient(loadLitellmConfigFromEnv())` and passes it
+   * through; tests inject fakes that satisfy the LitellmClient surface.
+   */
+  litellm?: LitellmClient;
 }
 
 export const buildApp = async (opts: BuildAppOptions = {}): Promise<FastifyInstance> => {
@@ -230,6 +239,7 @@ export const buildApp = async (opts: BuildAppOptions = {}): Promise<FastifyInsta
       auth: opts.auth,
       db: opts.db,
       mintBearer,
+      ...(opts.litellm ? { litellm: opts.litellm } : {}),
     });
     for (const plugin of routes) {
       await app.register(plugin);
@@ -260,7 +270,26 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   // removed here so a future wrapper-leak fails typecheck immediately.
   const { db } = makeAppDb();
   const auth = buildAuth({ db }) as unknown as AuthLike;
-  const app = await buildApp({ db, auth });
+  // Phase 03 / Plan 04: construct the shared LiteLLM client when
+  // LITELLM_MASTER_KEY is configured. Missing key -> log a one-line
+  // warning and skip; transcribe/reason/diarization/realtime routes are
+  // simply not registered (404 on unconfigured surfaces, not 503 — the
+  // operator gets a clear "you forgot to set LITELLM_MASTER_KEY" signal
+  // distinct from a per-provider 503 emitted from inside the route).
+  let litellm: LitellmClient | undefined;
+  try {
+    const { buildLitellmClient, loadLitellmConfigFromEnv } = await import(
+      "@openwhispr/litellm-client"
+    );
+    litellm = buildLitellmClient(loadLitellmConfigFromEnv());
+  } catch (err) {
+    // biome-ignore lint/suspicious/noConsole: server bootstrap warning; structured logging arrives in Phase 6
+    console.warn(
+      "[buildApp] LiteLLM client not constructed; LITELLM-backed routes (transcribe, reason, diarization, realtime) will not be registered:",
+      (err as Error).message,
+    );
+  }
+  const app = await buildApp(litellm ? { db, auth, litellm } : { db, auth });
   const port = Number(process.env.PORT ?? 3000);
   app.listen({ port, host: "0.0.0.0" }).catch((err) => {
     // biome-ignore lint/suspicious/noConsole: server bootstrap fatal-error logger; structured logging arrives in Phase 6 (OBS-03)
