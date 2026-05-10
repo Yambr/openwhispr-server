@@ -101,11 +101,14 @@ describe("LiteLLM x-litellm-spend-logs-metadata propagation (D-08 spike)", () =>
 
   it("audio fixture exists with valid RIFF/WAVE header", async () => {
     const { readFileSync, existsSync } = await import("node:fs");
-    const { join } = await import("node:path");
-    const fixturePath = join(
-      process.cwd(),
-      "tests/fixtures/audio/sample-1s.wav",
-    );
+    const { dirname, join } = await import("node:path");
+    const { fileURLToPath } = await import("node:url");
+    // Resolve relative to this test file so the assertion does not depend on
+    // process.cwd() (vitest runs per-package = apps/api; the fixture lives at
+    // the repo root). Walk up from apps/api/src/__tests__/ to repo root.
+    const here = dirname(fileURLToPath(import.meta.url));
+    const repoRoot = join(here, "..", "..", "..", "..");
+    const fixturePath = join(repoRoot, "tests/fixtures/audio/sample-1s.wav");
     expect(existsSync(fixturePath)).toBe(true);
     const buf = readFileSync(fixturePath);
     // Bytes 0-3 = "RIFF", bytes 8-11 = "WAVE"
