@@ -3,8 +3,9 @@
 # Future-phase targets stub-fail with a phase-N pointer.
 
 .PHONY: dev test lint lint-rls format typecheck up down clean clean-stack help \
-        contract-test contract-test-deployed e2e-test load-test seed backup restore \
-        migrate migrate-rollback logs ps restart verify-images
+        contract-test contract-test-deployed contract-test-missing-keys e2e-test \
+        load-test seed backup restore migrate migrate-rollback logs ps restart \
+        verify-images
 
 help:
 	@grep -E '^[a-zA-Z0-9_-]+:' Makefile | awk -F: '{print $$1}' | sort -u
@@ -93,6 +94,34 @@ contract-test:
 	if [ $$rc -ne 0 ]; then docker compose down -v ; exit $$rc ; fi ; \
 	LITELLM_CONFIG_FILE=litellm_config.contract.yaml OPENWHISPR_TEST_ROUTES=true docker compose --profile default --profile contract-test run --rm contract-test-runner ; \
 	rc=$$? ; docker compose down -v ; exit $$rc
+
+# Phase 3 / Plan 10 — Pitfall #8 contract test suite (missing-key → 503 NOT 401).
+#
+# Boots the standard contract-test stack BUT injects empty provider keys via
+# a transient .env.missing-keys overlay so the api's transcribe / reason /
+# diarization routes hit the unconfigured-provider 503 path. The contract
+# tests in `packages/contract-tests/src/missing-key-503.test.ts` are gated
+# by MISSING_KEY_TEST_MODE=1 — that env is set ONLY for the runner here so
+# the standard `make contract-test` (which uses fake-but-present keys)
+# leaves them skipped. A separate target keeps the assertion target focused:
+# the standard suite asserts happy paths, this suite asserts the 503 envelope
+# shape on misconfigured operators.
+contract-test-missing-keys:
+	@printf 'GROQ_API_KEY=\nOPENROUTER_API_KEY=\nPYANNOTE_API_KEY=\n' > .env.missing-keys
+	LITELLM_CONFIG_FILE=litellm_config.contract.yaml OPENWHISPR_TEST_ROUTES=true \
+	  docker compose --env-file .env --env-file .env.missing-keys \
+	  --profile default --profile contract-test up -d --wait
+	@LITELLM_CONFIG_FILE=litellm_config.contract.yaml OPENWHISPR_TEST_ROUTES=true \
+	  docker compose --env-file .env --env-file .env.missing-keys \
+	  --profile default --profile contract-test run --rm seed ; \
+	rc=$$? ; \
+	if [ $$rc -ne 0 ]; then docker compose down -v ; rm -f .env.missing-keys ; exit $$rc ; fi ; \
+	MISSING_KEY_TEST_MODE=1 LITELLM_CONFIG_FILE=litellm_config.contract.yaml \
+	  OPENWHISPR_TEST_ROUTES=true \
+	  docker compose --env-file .env --env-file .env.missing-keys \
+	  --profile default --profile contract-test run --rm \
+	  -e MISSING_KEY_TEST_MODE=1 contract-test-runner ; \
+	rc=$$? ; docker compose down -v ; rm -f .env.missing-keys ; exit $$rc
 
 # Phase 3 / Plan 09 — D-05B: E2E contract suite against REAL provider APIs.
 # Operator supplies .env.e2e with OPENROUTER_API_KEY + GROQ_API_KEY +

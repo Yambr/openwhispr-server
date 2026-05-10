@@ -610,5 +610,13 @@ services:
       BACKEND_URL: https://api.localhost
       AUTH_URL: https://api.localhost
       NODE_EXTRA_CA_CERTS: /certs/local.crt
+      # Phase 03 / Plan 10 — pass the resolved LITELLM_BASE_URL through to
+      # the contract-test runner as LITELLM_BASE_URL_PROBE. The
+      # `litellm-base-url-override.test.ts` test compares the api's
+      # introspection-seam value to this env (PROVIDER-01 strict assert).
+      # Operators overriding LITELLM_BASE_URL in their .env automatically
+      # get the strict comparison; default contract-test stack uses
+      # http://litellm:4000 which the api also resolves.
+      LITELLM_BASE_URL_PROBE: ${LITELLM_BASE_URL:-http://litellm:4000}
     volumes:
       - ./compose/traefik/certs/local.crt:/certs/local.crt:ro
