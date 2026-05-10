@@ -619,11 +619,12 @@ services:
         condition: service_healthy
       fixture-idp:
         condition: service_healthy
-    # Phase 02.15 — runner now drives traffic through Traefik via the
+    # Phase 02.15 + 02.22 — runner now drives traffic through Traefik via the
     # canonical-public `https://api.localhost` URL. Docker DNS resolves
     # `api.localhost` to the traefik container (network aliases above);
-    # the bootstrap-generated cert at compose/traefik/certs/local.crt
-    # is mounted read-only and trusted via NODE_EXTRA_CA_CERTS. This
+    # the bootstrap-generated root CA at compose/traefik/certs/root-ca.crt
+    # is mounted read-only and trusted via NODE_EXTRA_CA_CERTS. The leaf
+    # served by Traefik (local.crt) chains up to that root. This
     # exercises the full Traefik+TLS+cert-SAN path end-to-end and lets
     # api 302 redirects to its public callback URL resolve in-cluster
     # (closes Group G ECONNREFUSED). AUTH_TRUSTED_ORIGINS_EXTRA is
@@ -643,7 +644,7 @@ services:
     environment:
       BACKEND_URL: https://api.localhost
       AUTH_URL: https://api.localhost
-      NODE_EXTRA_CA_CERTS: /certs/local.crt
+      NODE_EXTRA_CA_CERTS: /certs/root-ca.crt
       # Phase 03 / Plan 10 — pass the resolved LITELLM_BASE_URL through to
       # the contract-test runner as LITELLM_BASE_URL_PROBE. The
       # `litellm-base-url-override.test.ts` test compares the api's
@@ -653,4 +654,4 @@ services:
       # http://litellm:4000 which the api also resolves.
       LITELLM_BASE_URL_PROBE: ${LITELLM_BASE_URL:-http://litellm:4000}
     volumes:
-      - ./compose/traefik/certs/local.crt:/certs/local.crt:ro
+      - ./compose/traefik/certs/root-ca.crt:/certs/root-ca.crt:ro

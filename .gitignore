@@ -49,3 +49,9 @@ reports/
 !/keys/.gitkeep
 !/keys/backup.age.pub
 .claude/worktrees/
+
+# Bootstrap-generated TLS chain (Phase 02.7 / 02.22) — root-ca + leaf are
+# minted by tools/bootstrap.sh on first run. Never commit cert material.
+compose/traefik/certs/*.crt
+compose/traefik/certs/*.srl
+!compose/traefik/certs/.gitkeep
