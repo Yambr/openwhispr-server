@@ -132,6 +132,86 @@ describe("httpToWsScheme — WR-03 case-insensitive scheme conversion", () => {
   });
 });
 
+describe("WSS /v1/realtime route — D-27 wsClientOptions tightening (Phase 04 Plan 07)", () => {
+  // These tests assert the @fastify/http-proxy register call options
+  // match D-27 (handshakeTimeout 10000ms, wsReconnect false) by
+  // intercepting the register invocation via a Fastify decorator
+  // wrapper. Direct option introspection is the only way to verify
+  // these are applied — they affect failure-mode behavior that is
+  // expensive and flaky to elicit at runtime in unit tests.
+
+  // Capture register options for the http-proxy plugin using a
+  // module-level spy installed via Fastify's onRoute hook + a small
+  // adapter app that records the options object.
+  it("registers @fastify/http-proxy with wsClientOptions.handshakeTimeout=10000 (D-27)", async () => {
+    // Read the buildRealtimeRoutes source via dynamic introspection: the
+    // returned plugin calls app.register(fastifyHttpProxy, opts). We
+    // wrap fastify.register to capture opts.
+    const upstream = await startUpstream();
+    try {
+      const app = Fastify({ logger: false });
+      registerErrorHandler(app);
+      const captured: Array<Record<string, unknown>> = [];
+      const origRegister = app.register.bind(app);
+      // @ts-expect-error — runtime monkey-patch for test introspection.
+      app.register = (plugin: unknown, opts?: Record<string, unknown>) => {
+        if (opts && typeof opts === "object") captured.push(opts);
+        return origRegister(plugin as never, opts as never);
+      };
+      const litellm = { baseUrl: upstream.url } as unknown as LitellmClient;
+      await app.register(
+        buildRealtimeRoutes({ litellm, masterKey: TEST_MASTER_KEY }),
+      );
+      await app.ready();
+      // Find the http-proxy register call (the one with `wsUpstream`).
+      const proxyOpts = captured.find(
+        (o) => typeof o.wsUpstream === "string",
+      );
+      expect(proxyOpts).toBeDefined();
+      expect(proxyOpts).toHaveProperty("wsClientOptions");
+      const wsClientOptions = proxyOpts!.wsClientOptions as Record<
+        string,
+        unknown
+      >;
+      expect(wsClientOptions.handshakeTimeout).toBe(10000);
+      await app.close();
+    } finally {
+      await upstream.close();
+    }
+  });
+
+  it("registers @fastify/http-proxy with wsReconnect=false (D-27 — let client handle reconnect)", async () => {
+    const upstream = await startUpstream();
+    try {
+      const app = Fastify({ logger: false });
+      registerErrorHandler(app);
+      const captured: Array<Record<string, unknown>> = [];
+      const origRegister = app.register.bind(app);
+      // @ts-expect-error — runtime monkey-patch for test introspection.
+      app.register = (plugin: unknown, opts?: Record<string, unknown>) => {
+        if (opts && typeof opts === "object") captured.push(opts);
+        return origRegister(plugin as never, opts as never);
+      };
+      const litellm = { baseUrl: upstream.url } as unknown as LitellmClient;
+      await app.register(
+        buildRealtimeRoutes({ litellm, masterKey: TEST_MASTER_KEY }),
+      );
+      await app.ready();
+      const proxyOpts = captured.find(
+        (o) => typeof o.wsUpstream === "string",
+      );
+      expect(proxyOpts).toBeDefined();
+      // wsReconnect MUST be explicitly false at the top level of the
+      // register options (sibling of wsClientOptions, NOT nested inside
+      // it — per @fastify/http-proxy v11 API).
+      expect(proxyOpts).toHaveProperty("wsReconnect", false);
+      await app.close();
+    } finally {
+      await upstream.close();
+    }
+  });
+});
+
 describe("WSS /v1/realtime route", () => {
   let app: FastifyInstance | undefined;
   let upstream: Awaited<ReturnType<typeof startUpstream>> | undefined;
