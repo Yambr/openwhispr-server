@@ -105,6 +105,56 @@ Plans:
 - [x] 02-07-PLAN.md — Auth docs (auth.md / oidc-operator-config.md / channel-scheme-override.md) + planning state finalization + Phase 1 SC#1 closure + integration smoke (Wave 4)
 **UI hint**: no
 
+### Phase 02.17: Group E variant — mycorp-whispr scheme test 400 because OPENWHISPR_PROTOCOL accepts only single override; extend parser to comma-list + add mycorp-whispr to contract-test compose env (INSERTED)
+
+**Goal:** [Urgent work - to be planned]
+**Requirements**: TBD
+**Depends on:** Phase 2
+**Plans:** 0 plans
+
+Plans:
+- [ ] TBD (run /gsd-plan-phase 02.17 to break down)
+
+### Phase 02.16: Group H NEW — api OAuth callback completion 500 (3 oauth-redirect tests); Group G transport closed but server-side handler errors; likely Better Auth genericOAuth token-exchange against fixture-idp /token shape mismatch OR mintBearer issue; needs api debug log capture + diagnosis (INSERTED)
+
+**Goal:** [Urgent work - to be planned]
+**Requirements**: TBD
+**Depends on:** Phase 2
+**Plans:** 0 plans
+
+Plans:
+- [ ] TBD (run /gsd-plan-phase 02.16 to break down)
+
+### Phase 02.15: Group G — api 302s to https://api.localhost from inside cluster ECONNREFUSED; advisor recommends Option B network-alias variant: add aliases:[api.localhost,auth.localhost] to traefik service network block + mount cert + update-ca-certificates in runner image + flip runner BACKEND_URL/AUTH_URL to https://api.localhost; preserves canonical-public URL byte-for-byte (INSERTED)
+
+**Goal:** [Urgent work - to be planned]
+**Requirements**: TBD
+**Depends on:** Phase 2
+**Plans:** 0 plans
+
+Plans:
+- [ ] TBD (run /gsd-plan-phase 02.15 to break down)
+
+### Phase 02.14: Group E — host-side contract-test runner cant resolve docker-internal fixture-idp DNS; advisor research recommends Option C: contract-test runner inside compose network (mirror Phase 02.3 seed pattern); one URL one issuer no /etc/hosts mutation (INSERTED)
+
+**Goal:** [Urgent work - to be planned]
+**Requirements**: TBD
+**Depends on:** Phase 2
+**Plans:** 0 plans
+
+Plans:
+- [ ] TBD (run /gsd-plan-phase 02.14 to break down)
+
+### Phase 02.13: OIDC env provisioning for contract-test profile — apps/api auth.ts silently disables genericOAuth when OIDC_ISSUER_URL/CLIENT_ID/CLIENT_SECRET unset; contract-test profile fixture-idp running on http://fixture-idp:9000 but api container has no env vars pointing at it; result: 5 OAuth contract tests get 503; mechanical fix: add OIDC_* env vars to api service in contract-test profile context (INSERTED)
+
+**Goal:** [Urgent work - to be planned]
+**Requirements**: TBD
+**Depends on:** Phase 2
+**Plans:** 0 plans
+
+Plans:
+- [ ] TBD (run /gsd-plan-phase 02.13 to break down)
+
 ### Phase 02.12: Better Auth session.token field missing — Phase 02 Plan 01 designed sessions.tokenHash bytea (AUTH-04) but BA v1.6.9 expects plain session.token text; advisor research recommends Option C (drop tokenHash, use plain token, defer hash-only to v2 hardening); preserves AUTH-04 5-min overlap contract (INSERTED)
 
 **Goal:** [Urgent work - to be planned]
