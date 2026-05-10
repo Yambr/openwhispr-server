@@ -125,14 +125,15 @@ describe("validateScheme — accept paths", () => {
     else process.env.OPENWHISPR_PROTOCOL = original;
   });
 
-  it.each(["openwhispr", "openwhispr-dev", "openwhispr-staging"])(
-    "accepts builtin scheme: %s",
-    (s) => {
-      const r = validateScheme(s);
-      expect(r.ok).toBe(true);
-      if (r.ok) expect(r.scheme).toBe(s);
-    },
-  );
+  it.each([
+    "openwhispr",
+    "openwhispr-dev",
+    "openwhispr-staging",
+  ])("accepts builtin scheme: %s", (s) => {
+    const r = validateScheme(s);
+    expect(r.ok).toBe(true);
+    if (r.ok) expect(r.scheme).toBe(s);
+  });
 
   it("accepts a custom scheme via OPENWHISPR_PROTOCOL override", () => {
     process.env.OPENWHISPR_PROTOCOL = "mycorp-whispr";
@@ -154,6 +155,36 @@ describe("validateScheme — accept paths", () => {
     // But arbitrary custom does not
     expect(validateScheme("anything").ok).toBe(false);
   });
+
+  // Phase 02.17 / D-01 + D-03 — OPENWHISPR_PROTOCOL accepts comma-list
+  it("accepts comma-separated list of custom schemes (D-01)", () => {
+    process.env.OPENWHISPR_PROTOCOL = "foo-scheme,bar-scheme";
+    expect(validateScheme("foo-scheme").ok).toBe(true);
+    expect(validateScheme("bar-scheme").ok).toBe(true);
+    // Unrelated custom still rejected
+    expect(validateScheme("baz-scheme").ok).toBe(false);
+  });
+
+  it("trims whitespace around each entry in comma-list", () => {
+    process.env.OPENWHISPR_PROTOCOL = "  foo-scheme , bar-scheme  ";
+    expect(validateScheme("foo-scheme").ok).toBe(true);
+    expect(validateScheme("bar-scheme").ok).toBe(true);
+  });
+
+  it("ignores empty segments in comma-list (e.g. trailing comma)", () => {
+    process.env.OPENWHISPR_PROTOCOL = "foo-scheme,,";
+    expect(validateScheme("foo-scheme").ok).toBe(true);
+    // Builtin still works alongside comma-list
+    expect(validateScheme("openwhispr").ok).toBe(true);
+  });
+
+  it("comma-list coexists with builtin schemes", () => {
+    process.env.OPENWHISPR_PROTOCOL = "mycorp-whispr,acme-app";
+    expect(validateScheme("openwhispr").ok).toBe(true);
+    expect(validateScheme("openwhispr-dev").ok).toBe(true);
+    expect(validateScheme("mycorp-whispr").ok).toBe(true);
+    expect(validateScheme("acme-app").ok).toBe(true);
+  });
 });
 
 describe("buildProtocolRedirect", () => {
@@ -164,9 +195,7 @@ describe("buildProtocolRedirect", () => {
   });
 
   it("preserves the scheme verbatim", () => {
-    expect(buildProtocolRedirect("openwhispr-dev", "tk")).toBe(
-      "openwhispr-dev://?bearer_token=tk",
-    );
+    expect(buildProtocolRedirect("openwhispr-dev", "tk")).toBe("openwhispr-dev://?bearer_token=tk");
   });
 
   it("encodes ASCII-safe tokens as-is", () => {
