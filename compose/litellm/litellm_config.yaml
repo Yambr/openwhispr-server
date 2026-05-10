@@ -1,0 +1,76 @@
+# Phase 03 / Plan 01 — Bundled-default LiteLLM Proxy config.
+#
+# Wired-up providers in BUNDLED mode (LITELLM-02 / D-01 / D-10 / D-11 / D-12):
+#   - LLMs (D-10): OpenRouter routes to qwen3.6-plus, gemini-3-flash, gpt-4o-mini.
+#   - STT (D-11): Groq Whisper-large-v3 (https://api.groq.com/openai/v1).
+#   - Realtime (D-12): OpenAI Realtime API direct (mode: realtime).
+#
+# Diarization (pyannote.ai) is NOT configured here per D-07 REVISED (2026-05-10).
+# The Fastify route apps/api/src/routes/diarization.ts orchestrates pyannote.ai's
+# 4-step async API (media/input → presigned PUT → diarize → poll jobs/{jobId})
+# because LiteLLM pass_through_endpoints is single-hop and cannot drive it.
+# Corporate operators with a single-hop pyannote-compatible endpoint behind their
+# own LiteLLM may add pass_through_endpoints in their override config and route
+# traffic via LITELLM_BASE_URL — but bundled mode does NOT use LiteLLM for
+# diarization. (HIGH-2 spike RESOLVED — Option A locked.)
+#
+# Corporate operators OVERRIDE this entire surface by setting LITELLM_BASE_URL
+# to point at their internal LiteLLM (LITELLM-05). The bundled container is
+# only used when LITELLM_BASE_URL=http://litellm:4000 (the default).
+
+model_list:
+  # ---- LLMs (OpenRouter — D-10 verified live 2026-05-10) ----
+  - model_name: qwen3.6-plus
+    litellm_params:
+      model: openrouter/qwen/qwen3.6-plus
+      api_key: os.environ/OPENROUTER_API_KEY
+
+  - model_name: gemini-3-flash
+    litellm_params:
+      model: openrouter/google/gemini-3.1-flash-lite
+      api_key: os.environ/OPENROUTER_API_KEY
+
+  - model_name: gpt-4o-mini
+    litellm_params:
+      model: openrouter/openai/gpt-4o-mini
+      api_key: os.environ/OPENROUTER_API_KEY
+
+  # ---- STT (Groq Whisper — D-11) ----
+  - model_name: whisper-large-v3
+    litellm_params:
+      model: whisper-large-v3
+      api_base: https://api.groq.com/openai/v1
+      api_key: os.environ/GROQ_API_KEY
+
+  # ---- Realtime (OpenAI direct — D-12, verified accessible 2026-05-10) ----
+  # `gpt-realtime` is the default model when the desktop opens
+  # WSS /v1/realtime without specifying one (replaces the deprecated
+  # gpt-4o-realtime-preview). Per D-12 OpenAI Realtime is the only
+  # public-cloud SaaS that speaks the OpenAI Realtime WSS spec verbatim;
+  # corporate operators with Speaches/Azure override via LITELLM_BASE_URL.
+  - model_name: gpt-realtime
+    litellm_params:
+      model: openai/gpt-realtime
+      api_key: os.environ/OPENAI_API_KEY
+      mode: realtime
+
+  - model_name: gpt-realtime-mini
+    litellm_params:
+      model: openai/gpt-realtime-mini
+      api_key: os.environ/OPENAI_API_KEY
+      mode: realtime
+
+  - model_name: gpt-4o-realtime-preview  # legacy alias for backward compat
+    litellm_params:
+      model: openai/gpt-4o-realtime-preview
+      api_key: os.environ/OPENAI_API_KEY
+      mode: realtime
+
+general_settings:
+  master_key: os.environ/LITELLM_MASTER_KEY
+  database_url: os.environ/LITELLM_DATABASE_URL
+  store_model_in_db: True
+
+litellm_settings:
+  drop_params: True
+  set_verbose: False
