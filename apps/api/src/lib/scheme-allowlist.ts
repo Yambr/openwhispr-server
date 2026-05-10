@@ -27,9 +27,7 @@ const DANGEROUS_PREFIXES = ["ms-"] as const;
 
 const BUILTIN_SCHEMES = ["openwhispr", "openwhispr-dev", "openwhispr-staging"] as const;
 
-export type ValidationResult =
-  | { ok: true; scheme: string }
-  | { ok: false; reason: string };
+export type ValidationResult = { ok: true; scheme: string } | { ok: false; reason: string };
 
 /**
  * Validate a candidate channel scheme against the OpenWhispr allow-list.
@@ -71,9 +69,18 @@ export function validateScheme(input: string | undefined | null): ValidationResu
     }
   }
   const allowed = new Set<string>(BUILTIN_SCHEMES);
+  // Phase 02.17 / D-01 — OPENWHISPR_PROTOCOL accepts a comma-separated list
+  // so contract-test profiles can register multiple custom schemes (e.g.
+  // `mycorp-whispr` alongside the built-ins). Backwards compatible: a
+  // single value is just a one-element list.
   const override = process.env.OPENWHISPR_PROTOCOL?.trim();
   if (override && override.length > 0) {
-    allowed.add(override);
+    for (const s of override
+      .split(",")
+      .map((x) => x.trim())
+      .filter(Boolean)) {
+      allowed.add(s);
+    }
   }
   if (!allowed.has(input)) {
     return { ok: false, reason: "scheme is not in the configured allow-list" };

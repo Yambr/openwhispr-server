@@ -309,7 +309,14 @@ services:
       NODE_ENV: production
       OPENWHISPR_API_URL: ${OPENWHISPR_API_URL:-https://api.localhost}
       AUTH_URL: ${AUTH_URL:-https://api.localhost}
-      OPENWHISPR_PROTOCOL: ${OPENWHISPR_PROTOCOL:-openwhispr}
+      # Phase 02.17 / D-02 — OPENWHISPR_PROTOCOL accepts a comma-separated
+      # list (parsed in apps/api/src/lib/scheme-allowlist.ts). The default
+      # registers `mycorp-whispr` so contract tests covering the custom-
+      # override scheme matrix in oauth-redirect.test.ts pass out of the
+      # box. Built-ins (openwhispr, openwhispr-dev, openwhispr-staging) are
+      # always allowed via BUILTIN_SCHEMES — no need to repeat here.
+      # Production operators override with their own scheme list.
+      OPENWHISPR_PROTOCOL: ${OPENWHISPR_PROTOCOL:-mycorp-whispr}
       # Phase 02.3 — extra trusted origins for in-cluster traffic (e.g.
       # the contract-test seed service POST-ing http://api:3000/api/auth/sign-up).
       # Comma-separated list parsed by apps/api/src/auth.ts; in addition to
