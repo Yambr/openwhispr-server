@@ -106,6 +106,36 @@ function readOidcProviders(): OidcProviderConfig[] {
  *         deliberately do not pre-validate; let Better Auth's own check
  *         emit the canonical error).
  */
+/**
+ * Defensive no-op logger satisfying the FastifyBaseLogger surface that
+ * `makeEmailService` and Better-Auth-internals call into when no
+ * `opts.log` is supplied by the caller. Exported for test coverage: the
+ * fallback must implement every level (info/warn/error/fatal/trace/
+ * debug/silent) plus `child()` so a Better-Auth internal that decides
+ * to `log.child({ ... }).warn(...)` doesn't crash at runtime.
+ *
+ * The shared `noop` keeps the function count low (one declared function
+ * reused across seven log levels) without sacrificing the
+ * FastifyBaseLogger conformance the consumer expects.
+ */
+const noop = (): void => {
+  /* fallback log methods are intentional no-ops */
+};
+
+export const fallbackLog = {
+  info: noop,
+  warn: noop,
+  error: noop,
+  fatal: noop,
+  trace: noop,
+  debug: noop,
+  silent: noop,
+  level: "info" as const,
+  child(): typeof fallbackLog {
+    return fallbackLog;
+  },
+};
+
 export function buildAuth(opts: BuildAuthOptions): AuthInstance {
   const { db } = opts;
   const oidcProviders = readOidcProviders();
@@ -113,19 +143,6 @@ export function buildAuth(opts: BuildAuthOptions): AuthInstance {
   // constructs the nodemailer-backed service from env. The dev fallback
   // (SMTP_HOST unset) inside makeEmailService preserves the < 5 min
   // OSS first-launch SLO without requiring an SMTP relay.
-  const fallbackLog = {
-    info: () => {},
-    warn: () => {},
-    error: () => {},
-    fatal: () => {},
-    trace: () => {},
-    debug: () => {},
-    silent: () => {},
-    level: "info" as const,
-    child() {
-      return this;
-    },
-  };
   const email: EmailService = opts.email ?? makeEmailService((opts.log ?? fallbackLog) as never);
 
   const plugins = [
