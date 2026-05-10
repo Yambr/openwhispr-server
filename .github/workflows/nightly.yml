@@ -24,6 +24,95 @@ jobs:
     steps:
       - run: echo "k6 load test placeholder - wired in Phase 8 (TEST-LOAD-01)"
 
+  # Phase 03 / Plan 10 — E2E contract suite against REAL provider APIs.
+  #
+  # Runs `make e2e-test` which boots the full docker-compose stack with the
+  # production litellm_config.yaml (NOT the mock contract-test config) and
+  # hits real Groq STT (D-11) + OpenRouter chat (reason) + OpenAI Realtime
+  # (D-12) + pyannote.ai diarization (D-07 sync-wrapper) endpoints with
+  # the operator-supplied keys.
+  #
+  # CRITICAL — `secrets` context is NOT available in job-level `if:`
+  # conditions (CRIT-1). Using `if: ${{ secrets.X != '' }}` at the job
+  # level fails workflow validation OR silently skips every run. We gate
+  # via a probe step that reads the secret through an env var and writes
+  # `have_keys=true|false` to step output; subsequent steps condition on
+  # `steps.gate.outputs.have_keys == 'true'`.
+  #
+  # Cost discipline: nightly cron only (NOT on PR). When the secrets are
+  # absent (forks, fresh repos), every step after `gate` is a no-op and
+  # the job emits a `::notice::` annotation. NOT in branch-protection
+  # required checks (`scripts/branch-protection.json`) — real-API tests
+  # are intentionally allowed to flake.
+  e2e-test:
+    name: E2E (real provider APIs)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: step-security/harden-runner@a5ad31d6a139d249332a2605b85202e8c0b78450  # v2.19.1
+        with: { egress-policy: audit }
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd  # v5
+        with: { fetch-depth: 0 }
+      - name: Check provider-key secret presence
+        id: gate
+        env:
+          OPENROUTER_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+        run: |
+          if [ -n "$OPENROUTER_KEY" ]; then
+            echo "have_keys=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "have_keys=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::OPENROUTER_API_KEY not configured — skipping E2E."
+          fi
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1  # v4
+        if: steps.gate.outputs.have_keys == 'true'
+        with: { version: 11.0.8 }
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444  # v5
+        if: steps.gate.outputs.have_keys == 'true'
+        with: { node-version: '24', cache: 'pnpm' }
+      - name: pnpm install
+        if: steps.gate.outputs.have_keys == 'true'
+        run: pnpm install --frozen-lockfile
+      - name: Bootstrap fixture .env
+        if: steps.gate.outputs.have_keys == 'true'
+        run: |
+          cp .env.example .env
+          if [ -x tools/bootstrap.sh ]; then
+            tools/bootstrap.sh --ci || true
+          fi
+      - name: Write .env.e2e (real provider keys)
+        if: steps.gate.outputs.have_keys == 'true'
+        env:
+          # Env-var indirection (not direct ${{ secrets.* }} expansion in
+          # the script body) so GHA's secret-masking applies and avoids
+          # shell-quoting pitfalls.
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          PYANNOTE_API_KEY: ${{ secrets.PYANNOTE_API_KEY }}
+        run: |
+          : > .env.e2e
+          printf 'OPENROUTER_API_KEY=%s\n' "$OPENROUTER_API_KEY" >> .env.e2e
+          printf 'GROQ_API_KEY=%s\n' "$GROQ_API_KEY" >> .env.e2e
+          # OPENAI_API_KEY powers Realtime E2E (D-12). When absent, the
+          # realtime contract test skips at runtime; non-realtime E2E
+          # paths still execute. PYANNOTE_API_KEY is required by the
+          # diarization sync-wrapper (D-07 REVISED) — make e2e-test
+          # refuses to run without it (Plan 09 Makefile guard).
+          printf 'OPENAI_API_KEY=%s\n' "$OPENAI_API_KEY" >> .env.e2e
+          printf 'PYANNOTE_API_KEY=%s\n' "$PYANNOTE_API_KEY" >> .env.e2e
+      - name: Run E2E
+        if: steps.gate.outputs.have_keys == 'true'
+        run: make e2e-test
+      - name: Capture compose logs on failure
+        if: failure() && steps.gate.outputs.have_keys == 'true'
+        run: docker compose logs --no-color > compose-logs.txt || true
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4
+        if: failure() && steps.gate.outputs.have_keys == 'true'
+        with:
+          name: e2e-compose-logs
+          path: compose-logs.txt
+
   dep-audit:
     runs-on: ubuntu-24.04
     steps:
