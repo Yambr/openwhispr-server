@@ -417,6 +417,118 @@ describe("pollJob", () => {
   });
 });
 
+// ----- Stage B back-fill — close residual gaps to 90/90/90/90 ------------
+
+describe("PyannoteAuthError / PyannoteUnavailableError default messages", () => {
+  it("PyannoteAuthError uses fallback message when none provided", () => {
+    const err = new PyannoteAuthError(401);
+    expect(err.message).toMatch(/pyannote auth failed \(401\)/);
+  });
+
+  it("PyannoteUnavailableError uses fallback message when none provided", () => {
+    const err = new PyannoteUnavailableError(503);
+    expect(err.message).toMatch(/pyannote unavailable \(503\)/);
+  });
+});
+
+describe("classify() unknown-status fallthrough", () => {
+  it("emits PyannoteUpstreamError for non-2xx, non-4xx, non-5xx (e.g. 300-class redirects)", async () => {
+    // pyannote.ai shouldn't return 3xx in practice, but the route's
+    // classify() has a fallthrough for "anything else >= 300 and < 400"
+    // → PyannoteUpstreamError. Pinning prevents a future refactor from
+    // silently turning a redirect into a 200.
+    agent
+      .get(PYANNOTE_BASE)
+      .intercept({ path: "/v1/media/input", method: "POST" })
+      .reply(308, "redirect to /v2/media/input");
+    const client = createPyannoteClient({ apiKey: "k" });
+    await expect(client.createMediaInput()).rejects.toBeInstanceOf(
+      PyannoteUpstreamError,
+    );
+  });
+});
+
+describe("deriveMediaUri edge cases", () => {
+  it("falls back to media://unknown when presigned URL has no path segments", async () => {
+    agent
+      .get(PYANNOTE_BASE)
+      .intercept({ path: "/v1/media/input", method: "POST" })
+      .reply(201, {
+        url: "https://pyannote-presigned.example.com/", // no segments
+      });
+    const client = createPyannoteClient({ apiKey: "k" });
+    const r = await client.createMediaInput();
+    expect(r.mediaUri).toBe("media://unknown");
+  });
+
+  it("falls back to media://unknown when the URL is not parseable", async () => {
+    agent
+      .get(PYANNOTE_BASE)
+      .intercept({ path: "/v1/media/input", method: "POST" })
+      .reply(201, {
+        url: "this-is-not-a-url",
+      });
+    const client = createPyannoteClient({ apiKey: "k" });
+    const r = await client.createMediaInput();
+    expect(r.mediaUri).toBe("media://unknown");
+  });
+});
+
+describe("dispatcher option", () => {
+  it("forwards a custom dispatcher into every undici request", async () => {
+    // We can't easily observe whether opts.dispatcher reached undici without
+    // intercepting at the request level, but the easiest way to pin the
+    // four `if (opts.dispatcher)` branches (lines 184, 207, 234, 254) is to
+    // construct the client with `dispatcher: agent` (which is itself a
+    // valid Dispatcher) and run all four method paths end-to-end. The
+    // global dispatcher is unset for this test so the only way the
+    // requests can succeed is via the explicit dispatcher.
+    setGlobalDispatcher(
+      new MockAgent({ connections: 1 }), // unused empty pool
+    );
+    const explicit = new MockAgent({ connections: 1 });
+    explicit.disableNetConnect();
+    explicit
+      .get(PYANNOTE_BASE)
+      .intercept({ path: "/v1/media/input", method: "POST" })
+      .reply(201, {
+        url: "https://pyannote-presigned.example.com/abc/uploads/k1?sig=x",
+      });
+    explicit
+      .get("https://pyannote-presigned.example.com")
+      .intercept({ path: /^\/abc\/uploads\/k1/, method: "PUT" })
+      .reply(200, "");
+    explicit
+      .get(PYANNOTE_BASE)
+      .intercept({ path: "/v1/diarize", method: "POST" })
+      .reply(201, { jobId: "job-d" });
+    explicit
+      .get(PYANNOTE_BASE)
+      .intercept({ path: "/v1/jobs/job-d", method: "GET" })
+      .reply(200, { jobId: "job-d", status: "running" });
+
+    const client = createPyannoteClient({
+      apiKey: "k",
+      dispatcher: explicit,
+    });
+    const m = await client.createMediaInput();
+    expect(m.mediaUri).toMatch(/^media:\/\//);
+    await client.uploadToPresignedUrl(
+      "https://pyannote-presigned.example.com/abc/uploads/k1?sig=x",
+      Buffer.from("x"),
+      "audio/wav",
+    );
+    const jid = await client.submitDiarize("media://k1");
+    expect(jid).toBe("job-d");
+    const job = await client.pollJob(jid);
+    expect(job.status).toBe("running");
+
+    await explicit.close();
+    // Restore the per-test agent so afterEach can close it cleanly.
+    setGlobalDispatcher(agent);
+  });
+});
+
 describe("baseUrl override", () => {
   it("respects custom baseUrl (corporate-override mode is route-side, but factory accepts)", async () => {
     const CUSTOM = "https://pyannote.internal.corp.example";
