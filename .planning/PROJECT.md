@@ -29,8 +29,8 @@ The corporate-internal v1 install does not exercise Stripe / referrals / billing
 
 ##### Operational (v1 must implement)
 - [ ] **WIRE-04**: `GET /api/health` — 3s timeout, body unread, only `res.ok`/`res.status` inspected
-- [ ] **WIRE-05**: `POST /api/transcribe` — multipart audio; returns `{text, wordsUsed, wordsRemaining, plan, limitReached, sttProvider, sttModel, ...}`; quota math runs but `limitReached` always returns `false` in v1 (no enforcement) — schema is preserved for desktop compatibility
-- [ ] **WIRE-06**: `POST /api/reason` — cloud LLM via LiteLLM; returns `{text, model, provider, promptMode, matchType}`
+- [x] **WIRE-05**: `POST /api/transcribe` — multipart audio; returns `{text, wordsUsed, wordsRemaining, plan, limitReached, sttProvider, sttModel, ...}`; quota math runs but `limitReached` always returns `false` in v1 (no enforcement) — schema is preserved for desktop compatibility
+- [x] **WIRE-06**: `POST /api/reason` — cloud LLM via LiteLLM; returns `{text, model, provider, promptMode, matchType}`
 - [ ] **WIRE-07**: `POST /api/agent/stream` — `application/x-ndjson`, **flush per line**, no buffering anywhere in the chain
 - [ ] **WIRE-08**: `POST /api/agent/web-search` — server-side search tool for the agent
 - [ ] **WIRE-09**: `POST /api/streaming-usage` — accept-and-record streaming session usage
@@ -60,23 +60,23 @@ The corporate-internal v1 install does not exercise Stripe / referrals / billing
 #### Multi-tenancy & Data
 - [ ] **DATA-01**: PostgreSQL 17+ schema with row-level security; `app.tenant_id` GUC set via `SET LOCAL` inside every request transaction (PgBouncer transaction-mode safe)
 - [ ] **DATA-02**: Forward-only Drizzle migrations; CI verifies forward apply + rollback on real Postgres on every change to `migrations/`
-- [ ] **DATA-03**: Usage ledger (transcribe minutes, reason tokens, streaming minutes); idempotent on `request_id`; **observability only — no enforcement** in v1
+- [x] **DATA-03**: Usage ledger (transcribe minutes, reason tokens, streaming minutes); idempotent on `request_id`; **observability only — no enforcement** in v1
 - [ ] **DATA-04**: Audit log for auth events, account deletion, key issuance, provider config changes, admin actions
 - [ ] **DATA-05**: At-rest encryption for sensitive columns (bearer tokens, LiteLLM virtual keys, third-party API keys) via KEK/DEK pattern; KEK from env / Vault / KMS adapter
 - [ ] **DATA-06**: Tenants table — single "default" tenant created on first migration; multi-tenant model retained for future per-org installs but enterprise installs run on the default tenant
 - [ ] **DATA-07**: Backup-and-restore tooling — `make backup` produces an encrypted dump; `make restore` is one-command; both run in CI
 
 #### Default backend: bundled LiteLLM with open-source models
-- [ ] **LITELLM-01**: Bundle LiteLLM Proxy ≥ v1.83.7-stable in the default `docker-compose.yml` (multipart-passthrough fix native — no patches shipped)
-- [ ] **LITELLM-02**: Default LiteLLM config wires to **open-source models** out of the box: Whisper (`Systran/faster-whisper-large-v3` or equivalent) for transcriptions, pyannote (`pyannote/speaker-diarization-3.1`) for diarization (HF token required at first run), Speaches-compatible open image for `WSS /v1/realtime`
-- [ ] **LITELLM-03**: Implement support for the three audio routes the desktop calls via LiteLLM: `POST /v1/audio/transcriptions` (Whisper), `POST /v1/audio/diarization` (pyannote pass-through), `WSS /v1/realtime` (realtime mode); 3600s ingress read/send timeouts on the realtime route
-- [ ] **LITELLM-04**: Mint per-user LiteLLM virtual keys via the LiteLLM `/key/generate` API (alias `user-<userId>` for traceability; **no per-user budget caps in v1** — corporate users are unlimited)
-- [ ] **LITELLM-05**: Override path documented: corporate operators set `LITELLM_BASE_URL` + `LITELLM_VIRTUAL_KEY` (or admin master key for minting) to point at their existing internal LiteLLM Proxy (the shape described in `speaches-audio.md`) and the bundled LiteLLM container is disabled — same wire surface either way because LiteLLM is the abstraction
-- [ ] **LITELLM-06**: Convert `speaches-audio.md` into `docs/litellm-target-spec.md` — describes both the bundled-default LiteLLM config and the corporate-override LiteLLM config (model definitions, virtual-key auth, `pass_through_endpoints` for diarization, realtime mode, ingress timeouts)
-- [ ] **LITELLM-07**: Ingest LiteLLM spend logs into the platform usage ledger as observability; pass-through endpoints (diarization) are not metered by LiteLLM natively — surface only what LiteLLM gives us, no nginx-log scraping in v1
+- [x] **LITELLM-01**: Bundle LiteLLM Proxy ≥ v1.83.7-stable in the default `docker-compose.yml` (multipart-passthrough fix native — no patches shipped)
+- [x] **LITELLM-02**: Default LiteLLM config wires to **open-source models** out of the box: Whisper (`Systran/faster-whisper-large-v3` or equivalent) for transcriptions, pyannote (`pyannote/speaker-diarization-3.1`) for diarization (HF token required at first run), Speaches-compatible open image for `WSS /v1/realtime`
+- [x] **LITELLM-03**: Implement support for the three audio routes the desktop calls via LiteLLM: `POST /v1/audio/transcriptions` (Whisper), `POST /v1/audio/diarization` (pyannote pass-through), `WSS /v1/realtime` (realtime mode); 3600s ingress read/send timeouts on the realtime route
+- [x] **LITELLM-04**: Mint per-user LiteLLM virtual keys via the LiteLLM `/key/generate` API (alias `user-<userId>` for traceability; **no per-user budget caps in v1** — corporate users are unlimited)
+- [x] **LITELLM-05**: Override path documented: corporate operators set `LITELLM_BASE_URL` + `LITELLM_VIRTUAL_KEY` (or admin master key for minting) to point at their existing internal LiteLLM Proxy (the shape described in `speaches-audio.md`) and the bundled LiteLLM container is disabled — same wire surface either way because LiteLLM is the abstraction
+- [x] **LITELLM-06**: Convert `speaches-audio.md` into `docs/litellm-target-spec.md` — describes both the bundled-default LiteLLM config and the corporate-override LiteLLM config (model definitions, virtual-key auth, `pass_through_endpoints` for diarization, realtime mode, ingress timeouts)
+- [x] **LITELLM-07**: Ingest LiteLLM spend logs into the platform usage ledger as observability; pass-through endpoints (diarization) are not metered by LiteLLM natively — surface only what LiteLLM gives us, no nginx-log scraping in v1
 
 #### Provider abstraction (lightweight)
-- [ ] **PROVIDER-01**: All STT/LLM/Realtime providers route through the configured **single LiteLLM endpoint** (bundled or operator-supplied). LiteLLM is the abstraction; we do not implement a parallel multi-LLM provider layer
+- [x] **PROVIDER-01**: All STT/LLM/Realtime providers route through the configured **single LiteLLM endpoint** (bundled or operator-supplied). LiteLLM is the abstraction; we do not implement a parallel multi-LLM provider layer
 - [ ] **PROVIDER-02**: Storage provider interface: S3-compatible default (MinIO bundled in compose; any S3 / GCS / Azure Blob via env)
 - [ ] **PROVIDER-03**: Identity provider interface: Better Auth's OAuth-Provider plugin handles OIDC; email+password is built-in; SAML deferred to v2
 - [ ] **PROVIDER-04**: Email provider interface: SMTP only in v1 (verification + admin notifications)
@@ -223,4 +223,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-05-08 after baseline pivot (defer Stripe/referrals to v2; bundle LiteLLM with open-source models; env-override to corporate LiteLLM; UI-SPEC only in v1)*
+*Last updated: 2026-05-10 after Phase 3 (LiteLLM Integration + Bundled OSS Models) — WIRE-05/06, LITELLM-01..07, PROVIDER-01, DATA-03 validated. Two user-ratified overrides: LITELLM-02 cloud-provider pivot (memory `feedback_no_bundled_local_models`); LITELLM-04 per-user attribution via OpenAI `user` body parameter (D-03) instead of `/key/generate`.*
