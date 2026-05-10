@@ -1,0 +1,13 @@
+# source: hand-authored — captured 2026-05-10
+# Shape: one frame contains invalid JSON in data: payload, sandwiched between two valid frames.
+# The parser MUST log + skip the malformed frame and continue draining the stream.
+data: {"id":"chatcmpl-mock-mal","object":"chat.completion.chunk","created":1700000000,"model":"qwen3.6-plus","choices":[{"index":0,"delta":{"role":"assistant","content":"before"},"finish_reason":null}]}
+
+data: {invalid json here}
+
+data: {"id":"chatcmpl-mock-mal","object":"chat.completion.chunk","created":1700000000,"model":"qwen3.6-plus","choices":[{"index":0,"delta":{"content":"after"},"finish_reason":null}]}
+
+data: {"id":"chatcmpl-mock-mal","object":"chat.completion.chunk","created":1700000000,"model":"qwen3.6-plus","choices":[{"index":0,"delta":{},"finish_reason":"stop"}],"usage":{"prompt_tokens":5,"completion_tokens":2,"total_tokens":7}}
+
+data: [DONE]
+

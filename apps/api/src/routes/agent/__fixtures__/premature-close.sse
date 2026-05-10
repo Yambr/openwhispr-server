@@ -1,0 +1,9 @@
+# source: hand-authored — captured 2026-05-10
+# Shape: stream ends mid-frame, no [DONE] sentinel, no terminating \n\n.
+# The parser MUST surface a synthetic finish chunk with finishReason="incomplete"
+# rather than hanging or losing the partial buffer.
+data: {"id":"chatcmpl-mock-prem","object":"chat.completion.chunk","created":1700000000,"model":"qwen3.6-plus","choices":[{"index":0,"delta":{"role":"assistant","content":""},"finish_reason":null}]}
+
+data: {"id":"chatcmpl-mock-prem","object":"chat.completion.chunk","created":1700000000,"model":"qwen3.6-plus","choices":[{"index":0,"delta":{"content":"This is fine"},"finish_reason":null}]}
+
+data: {"choices":[{"delta":{"content":"partial

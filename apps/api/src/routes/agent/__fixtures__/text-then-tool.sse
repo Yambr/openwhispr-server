@@ -1,0 +1,19 @@
+# source: hand-authored — captured 2026-05-10
+# Shape: text content deltas followed by a tool_calls delta (LiteLLM#17246 shape).
+# Spec: OpenAI chat.completions stream — model emits a brief text preamble then a tool call.
+# This is the shape that LiteLLM#17246 historically dropped; the parser MUST emit both the
+# text-delta chunks AND the consolidated tool-call chunk.
+data: {"id":"chatcmpl-mock-mix","object":"chat.completion.chunk","created":1700000000,"model":"qwen3.6-plus","choices":[{"index":0,"delta":{"role":"assistant","content":""},"finish_reason":null}]}
+
+data: {"id":"chatcmpl-mock-mix","object":"chat.completion.chunk","created":1700000000,"model":"qwen3.6-plus","choices":[{"index":0,"delta":{"content":"Let me"},"finish_reason":null}]}
+
+data: {"id":"chatcmpl-mock-mix","object":"chat.completion.chunk","created":1700000000,"model":"qwen3.6-plus","choices":[{"index":0,"delta":{"content":" check"},"finish_reason":null}]}
+
+data: {"id":"chatcmpl-mock-mix","object":"chat.completion.chunk","created":1700000000,"model":"qwen3.6-plus","choices":[{"index":0,"delta":{"content":" the weather."},"finish_reason":null}]}
+
+data: {"id":"chatcmpl-mock-mix","object":"chat.completion.chunk","created":1700000000,"model":"qwen3.6-plus","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"id":"call_mix1","type":"function","function":{"name":"get_weather","arguments":"{\"location\":\"Berlin\"}"}}]},"finish_reason":null}]}
+
+data: {"id":"chatcmpl-mock-mix","object":"chat.completion.chunk","created":1700000000,"model":"qwen3.6-plus","choices":[{"index":0,"delta":{},"finish_reason":"tool_calls"}],"usage":{"prompt_tokens":35,"completion_tokens":18,"total_tokens":53}}
+
+data: [DONE]
+

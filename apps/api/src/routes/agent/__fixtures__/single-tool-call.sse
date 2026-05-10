@@ -1,0 +1,20 @@
+# source: hand-authored — captured 2026-05-10
+# Shape: one tool_calls delta with arguments string split across 5 deltas + finish_reason=tool_calls.
+# Spec: OpenAI chat.completions stream — choices[0].delta.tool_calls[i].function.arguments fragments
+# accumulate by index. The function.name appears once on the first delta (index 0).
+data: {"id":"chatcmpl-mock-tool1","object":"chat.completion.chunk","created":1700000000,"model":"qwen3.6-plus","choices":[{"index":0,"delta":{"role":"assistant","content":null,"tool_calls":[{"index":0,"id":"call_abc123","type":"function","function":{"name":"get_weather","arguments":""}}]},"finish_reason":null}]}
+
+data: {"id":"chatcmpl-mock-tool1","object":"chat.completion.chunk","created":1700000000,"model":"qwen3.6-plus","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"function":{"arguments":"{\"loc"}}]},"finish_reason":null}]}
+
+data: {"id":"chatcmpl-mock-tool1","object":"chat.completion.chunk","created":1700000000,"model":"qwen3.6-plus","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"function":{"arguments":"ation"}}]},"finish_reason":null}]}
+
+data: {"id":"chatcmpl-mock-tool1","object":"chat.completion.chunk","created":1700000000,"model":"qwen3.6-plus","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"function":{"arguments":"\":\"Paris"}}]},"finish_reason":null}]}
+
+data: {"id":"chatcmpl-mock-tool1","object":"chat.completion.chunk","created":1700000000,"model":"qwen3.6-plus","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"function":{"arguments":",FR"}}]},"finish_reason":null}]}
+
+data: {"id":"chatcmpl-mock-tool1","object":"chat.completion.chunk","created":1700000000,"model":"qwen3.6-plus","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"function":{"arguments":"\"}"}}]},"finish_reason":null}]}
+
+data: {"id":"chatcmpl-mock-tool1","object":"chat.completion.chunk","created":1700000000,"model":"qwen3.6-plus","choices":[{"index":0,"delta":{},"finish_reason":"tool_calls"}],"usage":{"prompt_tokens":42,"completion_tokens":11,"total_tokens":53}}
+
+data: [DONE]
+
