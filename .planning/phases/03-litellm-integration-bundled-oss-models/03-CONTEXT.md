@@ -77,20 +77,49 @@ API использует **один LITELLM_MASTER_KEY** для аутентиф
 
 ## RESEARCH-ROUND-2 LOCKED DECISIONS (post 03-RESEARCH.md, 2026-05-10)
 
-### D-07 — Diarization через LiteLLM pass_through_endpoints (NOT Fastify-direct)
+### D-07 — Diarization: Fastify sync-wrapper над pyannote.ai async API (REVISED 2026-05-10)
 
-User направление: "у людей через конфиг который указан" — то есть mirror pattern из `speaches-audio.md` где LiteLLM `pass_through_endpoints` указывает на корпоративный pyannote endpoint (за nginx).
+**Wire-shape requirement:** speaches-audio.md показывает sync `POST /v1/audio/diarization` multipart → 200 `{duration, segments[]}`. Desktop client готовый и не правится.
 
-**Implication:** Bundled-default НЕ может использовать pyannote.ai cloud двухшаговый API (LiteLLM pass_through это single-hop). Вариант: использовать **pyannote-compatible single-hop endpoint** в качестве bundled-default. Кандидаты для researcher round 2:
-- pyannote.audio self-hosted REST wrapper (locally not bundled per CONTEXT — operator-supplied)
-- Replicate.com pyannote endpoint (single-hop, requires REPLICATE_API_TOKEN)
-- HuggingFace inference endpoint (single-hop)
+**Backend reality (verified live 2026-05-10):** pyannote.ai cloud — async by design:
+1. `POST /v1/media/input` → 201 `{url}` (presigned S3 PUT)
+2. `PUT <presigned_url>` (upload binary)
+3. `POST /v1/diarize {url}` → 200 `{jobId, status:"created"}`
+4. `GET /v1/jobs/{jobId}` → poll until `status:"succeeded"` → `{output:{duration, segments[]}}`
 
-**Default behavior без PYANNOTE keys:** /api/diarization → 503 envelope с message "Configure DIARIZATION_API_KEY + DIARIZATION_BASE_URL or set LITELLM_BASE_URL to your corporate LiteLLM with diarization pass_through".
+**Decision (advisor research 2026-05-10):** **Fastify sync-wrapper** orchestrates 4-step async flow за клиента, возвращает sync 200 как Speaches. **NOT через LiteLLM pass_through** — pass_through single-hop, не подходит для 4-step flow. **NOT exposing async/jobId к клиенту** — ломает wire-spec.
 
-**Why:** Сохраняем architectural symmetry с corporate operators (которые уже имеют single-hop pyannote endpoint за их LiteLLM pass_through). Bundled-default = same pattern с public single-hop provider.
+**Implementation contract:**
+- Route: `POST /v1/audio/diarization` (mount per BACKEND_SPEC.md spike в Plan 01)
+- Auth: bearer (dual-auth-hook)
+- Multipart input: `file` field + `model` field (pyannote/speaker-diarization-3.1 default)
+- Idempotency: `Idempotency-Key` header (Stripe pattern), fallback к SHA-256(file). Valkey 24h TTL → existing jobId reuse
+- Polling: 1.5s interval, max 5min ceiling
+- Client disconnect: `request.raw.on('close')` aborts poll loop (pyannote job continues, idem cache позволяет cheap retry)
+- Per-route Fastify `connectionTimeout: 360_000` (6min, оставляет global default 120s для других routes)
 
-**Planner action:** spike в plan 01 — investigate какой single-hop pyannote-compatible cloud endpoint доступен. Если ни один не подходит, fall back на 503-only diarization для bundled-default + документировать что operator должен предоставить single-hop endpoint.
+**Status code matrix:**
+- `200` — succeeded в пределах 5min ceiling, body = `{duration, segments[]}` (Speaches wire-shape)
+- `400` — malformed multipart / unsupported audio format
+- `409` — idempotency-key reuse с conflicting body hash (Stripe semantics)
+- `502` — pyannote returned `failed`/`cancelled`
+- `503` — pyannote 5xx unreachable, missing PYANNOTE_API_KEY (with `Retry-After` если applicable)
+- `504` — exceeded 5min ceiling, message "use bundled Speaches for files > 5min" + jobId для manual retrieval
+
+**Migration path для Phase 5+:** Option B (webhook + Valkey pub/sub) — nижний latency (нет polling), но требует public webhook ingress + HMAC verify. Drop-in handler swap когда webhook infra появится.
+
+**Out-of-scope для Phase 3:**
+- LiteLLM `pass_through_endpoints` для diarization (не подходит для async backend)
+- Webhook delivery (Phase 5+)
+- Per-tenant pyannote.ai sub-accounts (v2)
+
+**Why this and not pass_through через single-hop alt (Replicate/HF):** Replicate cold-start GPU 30-90s (хуже чем pyannote.ai 5-60s), HF inference unstable. pyannote.ai cloud — production-grade, ключ user уже дал и verified. Sync-wrapper в Fastify — это 50-line route handler, минимальный complexity vs архитектурный compromise.
+
+**Planner action для Plan 06 (diarization):**
+- Implement sync wrapper exactly per advisor pseudocode (Stripe-style idempotency, 1.5s poll, 5min ceiling, abort-on-disconnect)
+- TDD: failing test FIRST для каждого status code (200/400/409/502/503/504)
+- Reverse-patch evidence для polling logic
+- E2E test через .env.e2e PYANNOTE_API_KEY ✅ (уже provisioned)
 
 ### D-08 — request_id propagation: Wave 0 spike (verify live)
 
