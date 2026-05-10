@@ -42,6 +42,23 @@ import type { FastifyInstance } from "fastify";
 import type { LitellmClient } from "@openwhispr/litellm-client";
 import { AuthError } from "../errors.js";
 
+/**
+ * WR-03: Convert an http(s) baseUrl to its ws(s) counterpart.
+ *
+ * Implemented as two narrow case-insensitive replaces (https before
+ * http) instead of a single regex with a `(s?)` capture group: the
+ * old form `replace(/^http(s?):/i, "ws$1:")` was sloppy because the
+ * `$1` capture preserved the casing of the captured `s` — `HTTPS:`
+ * yielded `wsS:` (uppercase trailing S), a malformed scheme. We
+ * normalize to lowercase by writing the replacement string fully
+ * (`wss:` / `ws:`).
+ *
+ * Exported for direct unit-testing; the route consumer just calls it.
+ */
+export function httpToWsScheme(httpUrl: string): string {
+  return httpUrl.replace(/^https:/i, "wss:").replace(/^http:/i, "ws:");
+}
+
 export interface RealtimeDeps {
   /**
    * The shared LiteLLM client (constructed in apps/api/src/index.ts via
@@ -74,7 +91,7 @@ export const buildRealtimeRoutes = (deps: RealtimeDeps) =>
     // client config validates baseUrl as http or https, so the regex is
     // narrow on purpose — anything else (e.g. an env-misconfigured `tcp://`)
     // would land outside the validated set and we want to fail loud here.
-    const upstreamWs = upstreamHttp.replace(/^http(s?):/i, "ws$1:");
+    const upstreamWs = httpToWsScheme(upstreamHttp);
 
     await app.register(fastifyHttpProxy, {
       upstream: upstreamHttp,
