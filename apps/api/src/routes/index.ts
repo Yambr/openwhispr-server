@@ -13,6 +13,7 @@
 // explicitly calls out.
 
 import type { ExecutableTx, TransactionalDb } from "@openwhispr/data";
+import type { LitellmClient } from "@openwhispr/litellm-client";
 import type { FastifyInstance } from "fastify";
 import type { AuthLike } from "../middleware/dual-auth.js";
 import {
@@ -26,6 +27,7 @@ import { buildDeleteAccountRoutes, type DeleteAccountDeps } from "./delete-accou
 import { buildDesktopSigninRoutes, type DesktopSigninDeps } from "./desktop-signin.js";
 import healthRoutes from "./health.js";
 import { buildTestOnlyRoutes } from "./test-only.js";
+import { buildTranscribeRoutes, type TranscribeDeps } from "./transcribe.js";
 import {
   buildVerificationStatusRoutes,
   type VerificationStatusDeps,
@@ -43,6 +45,18 @@ export interface AllRoutesDeps {
    * routes consumed by packages/contract-tests/src/token-rotation.test.ts.
    */
   testOnly?: boolean;
+  /**
+   * Phase 03 / Plan 04+: present when LITELLM_MASTER_KEY is configured at
+   * buildApp() time. Routes that require LiteLLM (transcribe, reason,
+   * diarization, realtime token) are conditionally registered. When
+   * absent, those routes are NOT registered — operators get a 404 on
+   * unconfigured surfaces, which the centralized notFoundHandler maps to
+   * the canonical envelope. The 404 (not 503) is intentional — it tells
+   * the operator the route was never wired, distinct from a runtime
+   * config error (missing GROQ_API_KEY for whisper-large-v3 etc, which
+   * surfaces as 503 from inside the route).
+   */
+  litellm?: LitellmClient;
 }
 
 /**
@@ -78,6 +92,13 @@ export function buildAllRoutes(deps: AllRoutesDeps): readonly RoutePlugin[] {
     buildDesktopSigninRoutes(desktopSigninDeps),
     buildAuthCallbackRoutes(authCallbackDeps),
   ];
+  // Phase 03 / Plan 04: conditionally register the transcribe route only
+  // when a LiteLLM client was constructed (LITELLM_MASTER_KEY present).
+  // Plans 05/06/07 follow the same pattern as they land.
+  if (deps.litellm) {
+    const transcribeDeps: TranscribeDeps = { db: deps.db, litellm: deps.litellm };
+    plugins.push(buildTranscribeRoutes(transcribeDeps));
+  }
   // Plan 08: register the /api/_test/* surface when explicitly enabled
   // OR when running under NODE_ENV='test'. The plugin itself enforces
   // the gate as well — defense in depth.
@@ -105,6 +126,7 @@ export {
   buildDeleteAccountRoutes,
   buildDesktopSigninRoutes,
   buildTestOnlyRoutes,
+  buildTranscribeRoutes,
   buildVerificationStatusRoutes,
   healthRoutes,
 };
