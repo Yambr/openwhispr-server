@@ -469,6 +469,15 @@ services:
     # (the seed posts directly to api:3000 with that Origin); the
     # runner's Origin is now the public `https://api.localhost` which
     # Better Auth already accepts via AUTH_URL.
+    # Phase 02.20 / D-01 — runner needs DATABASE_URL_OWNER for the
+    # signInFixture(verified:false) branch (Group I closure). The owner
+    # pool flips users.email_verified=true ONLY long enough to mint a
+    # real BA-issued cookie for the unverified-fixture sign-in path,
+    # then reverts in a try/finally. Production-safety preserved:
+    # DATABASE_URL_OWNER is contract-test-runner-internal only;
+    # requireEmailVerification:true continues to reject all non-test
+    # callers. Same env shape as the seed service above.
+    env_file: .env
     environment:
       BACKEND_URL: https://api.localhost
       AUTH_URL: https://api.localhost

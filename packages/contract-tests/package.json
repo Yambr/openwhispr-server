@@ -16,9 +16,11 @@
   },
   "dependencies": {
     "zod": "4.4.3",
-    "tough-cookie": "5.1.2"
+    "tough-cookie": "5.1.2",
+    "pg": "8.20.0"
   },
   "devDependencies": {
-    "vitest": "4.1.5"
+    "vitest": "4.1.5",
+    "@types/pg": "^8.20.0"
   }
 }
