@@ -1,0 +1,69 @@
+# CONTRACT-TEST PROFILE ONLY. Every chat/audio model has `mock_response`.
+#
+# Phase 3 / Plan 02 / D-05A: hermetic LiteLLM config used by `make
+# contract-test`. No real provider keys, no outbound network egress —
+# every chat-completions and transcription call short-circuits to the
+# mock_response payload below before LiteLLM dispatches to any provider.
+#
+# Realtime entries (D-12) are listed for parity with the bundled-default
+# `litellm_config.yaml` so the model_list shape matches across profiles.
+# They DO NOT carry a `mock_response`: WSS upgrade short-circuits before
+# the chat-completions mock layer is consulted in LiteLLM today (verified
+# 2026-05; see Plan 07's contract handshake test for the consequence —
+# it asserts the proxy reaches LiteLLM and gets a definitive close code,
+# NOT a successful realtime session).
+#
+# Operators MUST NOT use this config in production — it returns canned
+# data on every chat-completions / transcription call.
+model_list:
+  - model_name: qwen3.6-plus
+    litellm_params:
+      model: openai/qwen3.6-plus
+      api_key: "fake-key-for-mock"
+      mock_response: '{"id":"chatcmpl-mock","object":"chat.completion","created":1000,"model":"qwen3.6-plus","choices":[{"index":0,"message":{"role":"assistant","content":"mocked reasoning"},"finish_reason":"stop"}],"usage":{"prompt_tokens":10,"completion_tokens":5,"total_tokens":15}}'
+  - model_name: gemini-3-flash
+    litellm_params:
+      model: openai/gemini-3-flash
+      api_key: "fake-key-for-mock"
+      mock_response: '{"id":"chatcmpl-mock","object":"chat.completion","created":1000,"model":"gemini-3-flash","choices":[{"index":0,"message":{"role":"assistant","content":"mock"},"finish_reason":"stop"}],"usage":{"prompt_tokens":1,"completion_tokens":1,"total_tokens":2}}'
+  - model_name: gpt-4o-mini
+    litellm_params:
+      model: openai/gpt-4o-mini
+      api_key: "fake-key-for-mock"
+      mock_response: '{"id":"chatcmpl-mock","object":"chat.completion","created":1000,"model":"gpt-4o-mini","choices":[{"index":0,"message":{"role":"assistant","content":"mock"},"finish_reason":"stop"}],"usage":{"prompt_tokens":1,"completion_tokens":1,"total_tokens":2}}'
+  - model_name: whisper-large-v3
+    litellm_params:
+      model: groq/whisper-large-v3
+      api_key: "fake-key-for-mock"
+      mock_response: '{"text":"mocked transcript","language":"en","duration":1.0,"segments":[]}'
+  # D-12 realtime entries — parity with bundled-default config (Plan 01).
+  # `mode: realtime` + `mock_response` is NOT a supported combination in
+  # LiteLLM as of v1.83.x: the WSS upgrade short-circuits before the
+  # mock_response layer is consulted. Plan 07 contract handshake test
+  # asserts only proxy-reaches-LiteLLM behavior; real realtime smoke
+  # against OpenAI direct is e2e/Phase 4 (requires OPENAI_API_KEY in
+  # `.env.e2e`).
+  - model_name: gpt-realtime
+    litellm_params:
+      model: openai/gpt-realtime
+      api_key: "fake-key-for-mock"
+      mode: realtime
+  - model_name: gpt-realtime-mini
+    litellm_params:
+      model: openai/gpt-realtime-mini
+      api_key: "fake-key-for-mock"
+      mode: realtime
+  - model_name: gpt-4o-realtime-preview
+    litellm_params:
+      model: openai/gpt-4o-realtime-preview
+      api_key: "fake-key-for-mock"
+      mode: realtime
+
+general_settings:
+  master_key: os.environ/LITELLM_MASTER_KEY
+  database_url: os.environ/LITELLM_DATABASE_URL
+  store_model_in_db: True
+
+litellm_settings:
+  drop_params: True
+  set_verbose: False
