@@ -119,3 +119,146 @@ export const DiarizationResponse = z
   })
   .passthrough();
 export type DiarizationResponse = z.infer<typeof DiarizationResponse>;
+
+// ---------------------------------------------------------------------
+// Phase 4 — Streaming + realtime token mints. Source of truth:
+// BACKEND_SPEC.md §/api/agent/stream (NDJSON chunk vocabulary),
+// §/api/streaming-token, §/api/deepgram-streaming-token,
+// §/api/openai-realtime-token.
+//
+// Plan 04-08 / Task 1a (D-28). The chunk schemas mirror BACKEND_SPEC's
+// locked v3-era vocabulary byte-for-byte (text-delta / tool-call /
+// tool-result / finish). NO Vercel AI SDK v5/v6 vocabulary — those
+// chunk type names (`text-start`, `tool-input-start`,
+// `tool-output-available`) do not match the wire spec. See 04-CONTEXT.md
+// D-01 for the full rationale.
+// ---------------------------------------------------------------------
+
+/** NDJSON chunk: `{type:"text-delta", text:"..."}` — token text fragment. */
+export const TextDeltaChunk = z
+  .object({
+    type: z.literal("text-delta"),
+    text: z.string(),
+  })
+  .passthrough();
+export type TextDeltaChunk = z.infer<typeof TextDeltaChunk>;
+
+/**
+ * NDJSON chunk: `{type:"tool-call", toolCallId, toolName, args}`.
+ *
+ * Per D-09, args is a COMPLETE parsed object (not a partial JSON string).
+ * Tool-call delta accumulation happens server-side; one consolidated
+ * chunk is emitted per tool call when `finish_reason==="tool_calls"`.
+ */
+export const ToolCallChunk = z
+  .object({
+    type: z.literal("tool-call"),
+    toolCallId: z.string(),
+    toolName: z.string(),
+    args: z.unknown(),
+  })
+  .passthrough();
+export type ToolCallChunk = z.infer<typeof ToolCallChunk>;
+
+/**
+ * NDJSON chunk: `{type:"tool-result", toolCallId, result}`.
+ *
+ * Per D-08, the route is stateless and never executes tools inline —
+ * tool-result chunks only appear when LiteLLM itself echoes a tool-result
+ * role from the conversation history. The desktop submits tool results
+ * by POSTing a follow-up /api/agent/stream with the tool result in
+ * `messages`.
+ */
+export const ToolResultChunk = z
+  .object({
+    type: z.literal("tool-result"),
+    toolCallId: z.string(),
+    result: z.unknown(),
+  })
+  .passthrough();
+export type ToolResultChunk = z.infer<typeof ToolResultChunk>;
+
+/**
+ * NDJSON terminal chunk: `{type:"finish", finishReason, usage:{promptTokens, completionTokens}}`.
+ *
+ * Per D-12, `stream_options.include_usage:true` is forwarded upstream
+ * to guarantee the final usage chunk. Server maps LiteLLM
+ * `usage.prompt_tokens → promptTokens` and `usage.completion_tokens →
+ * completionTokens`. The terminal-chunk contract: the LAST non-empty
+ * NDJSON line MUST be a finish chunk so the desktop NDJSON consumer
+ * deterministically knows the stream is closed.
+ */
+export const FinishChunk = z
+  .object({
+    type: z.literal("finish"),
+    finishReason: z.string(),
+    usage: z
+      .object({
+        promptTokens: z.number(),
+        completionTokens: z.number(),
+      })
+      .passthrough(),
+  })
+  .passthrough();
+export type FinishChunk = z.infer<typeof FinishChunk>;
+
+/**
+ * Discriminated union of every NDJSON chunk type emitted by
+ * /api/agent/stream. Contract tests parse each non-empty NDJSON line
+ * with this schema; any line that doesn't match is a wire-shape
+ * regression (T-04-03 mitigation at the contract layer).
+ */
+export const StreamChunk = z.discriminatedUnion("type", [
+  TextDeltaChunk,
+  ToolCallChunk,
+  ToolResultChunk,
+  FinishChunk,
+]);
+export type StreamChunk = z.infer<typeof StreamChunk>;
+
+/**
+ * POST /api/streaming-token (AssemblyAI v3) success body.
+ *
+ * Wire shape per BACKEND_SPEC.md §/api/streaming-token. The server
+ * mints an ephemeral AssemblyAI token via the v3 API and surfaces it
+ * verbatim to the desktop. NOT `.strict()` — desktop ignores extras
+ * and we keep forward-compat headroom (e.g. ttl echo could be added
+ * without breaking existing clients).
+ */
+export const StreamingTokenResponse = z.object({
+  token: z.string().min(1),
+});
+export type StreamingTokenResponse = z.infer<typeof StreamingTokenResponse>;
+
+/**
+ * POST /api/deepgram-streaming-token success body.
+ *
+ * Same wire shape as AssemblyAI but kept as a SEPARATE named schema
+ * for grep clarity and so each provider's contract evolves
+ * independently if upstream changes. The route renames Deepgram's
+ * `access_token` to `token` server-side per D-15.
+ */
+export const DeepgramStreamingTokenResponse = z.object({
+  token: z.string().min(1),
+});
+export type DeepgramStreamingTokenResponse = z.infer<typeof DeepgramStreamingTokenResponse>;
+
+/**
+ * POST /api/openai-realtime-token success body.
+ *
+ * Wire shape per BACKEND_SPEC.md §/api/openai-realtime-token.
+ *   * `clientSecret` — convenience field, equals `clientSecrets[0]`.
+ *   * `clientSecrets` — array of ephemeral OpenAI Realtime client
+ *     secrets, length === streams (always 1 or 2 per D-17).
+ * The desktop asserts `clientSecrets.length >= 2` when streams=2.
+ *
+ * `.min(1)` because the server's fail-fast (Promise.all) guarantees
+ * at least one secret on success — partial-failure responses 503 with
+ * the canonical envelope rather than serializing a partial body
+ * (T-04-01 partial-success-leakage mitigation).
+ */
+export const OpenAIRealtimeTokenResponse = z.object({
+  clientSecret: z.string().min(1),
+  clientSecrets: z.array(z.string().min(1)).min(1),
+});
+export type OpenAIRealtimeTokenResponse = z.infer<typeof OpenAIRealtimeTokenResponse>;
