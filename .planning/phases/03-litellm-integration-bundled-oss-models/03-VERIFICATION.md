@@ -2,9 +2,29 @@
 phase: 03-litellm-integration-bundled-oss-models
 verified: 2026-05-10T20:30:00Z
 re_verified: 2026-05-10T20:35:00Z
-status: passed
-score: "7/8 hard-pass + 2 user-ratified overrides; SC#7 partial reconciled (doc/roadmap wording divergence noted, not blocking)"
-gap_closed_by: "commit 6d0fa9e — VALKEY_URL passthrough in docker-compose.yml api service env + .env.example stanza"
+re_verified_v2: 2026-05-10T20:55:00Z
+status: passed_with_audit_trail
+score: "8/8 with full audit trail — 6 user-ratified overrides + 0 open gaps"
+constitutional_compliance:
+  tdd: enforced
+  coverage: "litellm-client 100/100/100/100; apps/worker 98.7/95.6/100/97.5; apps/api 97.7/92.7/93.1/97.1 — all phase-3 files individually above 90/90/90/90 floor"
+  e2e_mandatory: "PASS — make e2e-hermetic — 4 test files / 8 tests / 65s real docker compose stack via Traefik TLS"
+  no_internal_mocks: "verified — mocks live only at LiteLLM provider boundary (mock_response in litellm_config.contract.yaml)"
+  real_services: "PASS — Postgres + PgBouncer + Valkey + Traefik + LiteLLM all real containers under test"
+  audit_trail: "complete — PLAN.md (10), SUMMARY.md (10), REVIEW.md, REVIEW-FIX.md, VERIFICATION.md (this), COVERAGE.md"
+audit_trail:
+  initial_pass: "Reported passed without ever running --coverage or e2e — constitutional rule 7 violation."
+  back_fill_triggered_by: "user demand for honest verification (TDD + 90% diff + e2e)"
+  back_fill_stages:
+    - stage: A
+      action: "measured coverage; found 6 phase-3 files below 90/90/90/90"
+    - stage: B
+      action: "TDD back-fill of all 6 files via 8 atomic commits + 36 new tests; canRunDocker macOS bug fixed"
+    - stage: C
+      action: "tests/e2e/ harness + 4 e2e files boot real docker compose + round-trip every phase-3 wire surface; make e2e-hermetic + CI job"
+    - stage: D
+      action: "this re-verification — all numbers verified independently by orchestrator"
+gap_closed_by: "commit 6d0fa9e — VALKEY_URL passthrough in docker-compose.yml api service env + .env.example stanza; b199419 — six compose stack-up defects (init-script mount, LITELLM_DATABASE_URL, LITELLM_CONFIG_FILE, healthcheck wget, ioredis switch, Dockerfile workspace copy)"
 overrides_applied: 2
 overrides:
   - must_have: "SC#1 — bundled OSS local models (faster-whisper, pyannote/speaker-diarization-3.1, Speaches-compatible image)"
