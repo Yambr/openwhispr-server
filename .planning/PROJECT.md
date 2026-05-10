@@ -1,5 +1,29 @@
 # OpenWhispr Server
 
+## Engineering Discipline (Constitutional, NON-NEGOTIABLE)
+
+These rules apply to EVERY phase, every plan, every commit. Violations block phase completion. The gsd-verifier agent enforces them.
+
+1. **Strict TDD** — RED → GREEN → REFACTOR. Tests precede production code on EVERY phase, including decimal/insertion phases (X.Y). Each fix lands with its tests in the SAME atomic commit. No exceptions, no "yolo mode", no "small fix" carve-outs.
+
+2. **Per-phase coverage floor ≥ 90/90/90/90** (lines / branches / functions / statements) on all new/modified code. Applies to every package and every phase. A phase MAY NOT close — verifier MUST report `gaps_found` — when any new/modified file is < 90% on any axis.
+
+3. **E2E is mandatory, not optional.** Every phase that touches a user-visible route, wire surface, or operator-facing artifact MUST ship at least one e2e test that boots the real `docker compose` stack (or hermetic mock-LiteLLM profile when the upstream is a paid SaaS provider) and round-trips the route. E2E tests live in `tests/e2e/` and run via `make e2e-test` (gated on `E2E=1` env). Phase verification MUST execute the e2e suite, not just unit tests, before reporting `passed`.
+
+4. **No mocks of internal logic.** Mocks are allowed ONLY at process/network boundaries (HTTP clients to third-party SaaS, OS time, filesystem). Mocking a function the route under test calls is forbidden. If an integration is hard to test, write a real testcontainer/integration test, not a mock. The `vi.mock` of project-internal modules in route tests is a TDD anti-pattern and will be flagged by code review.
+
+5. **Real services in tests.** `packages/data` and any DB-touching code MUST run testcontainer integration tests against real Postgres + PgBouncer + Valkey. Local Docker MUST be running before phase verification claims a phase passes. CI MUST run testcontainers in matrix; a phase that ships testcontainer-skipped tests because Docker is unavailable does NOT pass verification.
+
+6. **GitHub Actions** is the only sanctioned CI; workflows in `.github/workflows/` from the first commit of phase 0. CI MUST run unit + integration + contract + e2e on every PR. E2E secrets gate only the live-provider matrix; the wire-shape matrix (against hermetic mock-LiteLLM) MUST always run.
+
+7. **Verification gate.** The gsd-verifier agent MUST execute `make e2e-test` (or its hermetic equivalent) and parse `pnpm -r test --coverage` JSON output. A phase passes only when ALL of: (a) every must_have observable truth is verified against the live codebase; (b) coverage ≥ 90/90/90/90 on the diff; (c) e2e suite is green; (d) no testcontainer-skipped tests due to missing Docker. Anything else is `gaps_found`.
+
+8. **Maximum test automation, no human QA.** Coverage spans unit, integration (real services via testcontainers), e2e (live compose stack), contract (against `BACKEND_SPEC.md`), load (1000 concurrent), security (SAST + deps + container + secrets + license), migration safety, i18n completeness, RLS-isolation property tests.
+
+9. **No environment short-cuts.** `--no-verify` is permitted only when (a) the orchestrator runs in parallel-worktree mode and (b) the post-wave hook validation will run hooks once the wave merges back. NEVER for individual developer commits. NEVER for skipping a failing test or coverage check.
+
+10. **Audit trail.** Every phase MUST ship: PLAN.md, SUMMARY.md, REVIEW.md (code-review agent), VERIFICATION.md (verifier agent), and a coverage delta report (`<phase>-COVERAGE.md`) showing per-file before/after on the four axes. Missing any of these → `gaps_found`.
+
 ## What This Is
 
 An open-source, enterprise-grade, self-hosted backend for the OpenWhispr Electron desktop client, implementing the wire surface defined by the upstream `SELF_HOSTING.md` / `BACKEND_SPEC.md` / `OAUTH_SPEC.md` (1556 lines of authoritative spec). It bundles a default **LiteLLM Proxy** wired to **open-source AI models** (Whisper for transcription, pyannote for diarization, faster-whisper / Speaches-compatible image for realtime) so a fresh `git clone && docker compose up` works out of the box for OSS users, while corporate operators override `LITELLM_BASE_URL` / `LITELLM_VIRTUAL_KEY` to point at their existing internal LiteLLM Proxy (e.g. the one described in `speaches-audio.md`) without any code changes — LiteLLM is itself the abstraction layer.
