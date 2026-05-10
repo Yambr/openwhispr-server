@@ -28,6 +28,7 @@ import { PostgreSqlContainer } from "@testcontainers/postgresql";
 import type { StartedPostgreSqlContainer } from "@testcontainers/postgresql";
 import pg from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { canRunDocker } from "../lib/can-run-docker.js";
 import {
   BATCH_SIZE,
   INITIAL_LOOKBACK_MS,
@@ -55,22 +56,6 @@ class FakeRedis {
 }
 
 const SKIP = !process.env["TESTCONTAINERS_RYUK_DISABLED"] && !canRunDocker();
-
-function canRunDocker(): boolean {
-  // Conservative: enable testcontainers tests only when a docker-host
-  // hint is present. CI sets DOCKER_HOST or runs on Linux with the
-  // default unix socket; local laptops with Docker Desktop also expose
-  // /var/run/docker.sock.
-  if (process.env["DOCKER_HOST"]) return true;
-  // On unix-like systems testcontainers will try /var/run/docker.sock.
-  try {
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const fs = require("node:fs") as typeof import("node:fs");
-    return fs.existsSync("/var/run/docker.sock");
-  } catch {
-    return false;
-  }
-}
 
 describe.skipIf(SKIP)("runIngestOnce (integration)", () => {
   let container: StartedPostgreSqlContainer;
