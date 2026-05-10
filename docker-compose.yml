@@ -653,5 +653,20 @@ services:
       # get the strict comparison; default contract-test stack uses
       # http://litellm:4000 which the api also resolves.
       LITELLM_BASE_URL_PROBE: ${LITELLM_BASE_URL:-http://litellm:4000}
+      # Phase 02.22 — test-suite skip gates (RUN_E2E, MOCK_DIARIZATION,
+      # OPENWHISPR_TEST_ROUTES, MISSING_KEY_TEST_MODE) are exported by the
+      # `make e2e-test` target into the host environment, but `docker
+      # compose run --rm` only propagates env vars that are EXPLICITLY
+      # declared on the service. Without these passthroughs the runner
+      # sees `process.env.RUN_E2E === undefined` and diarization/realtime
+      # tests fall through `describe.skipIf(process.env.RUN_E2E !== 'true')`
+      # even after the TLS chain (Phase 02.22 above) makes the api
+      # reachable. Default-empty (`:-`) so the runner still boots when
+      # the host hasn't exported them (developer-local `docker compose
+      # up`); the test suite's own skipIfs gate the actual assertions.
+      RUN_E2E: ${RUN_E2E:-}
+      MOCK_DIARIZATION: ${MOCK_DIARIZATION:-}
+      OPENWHISPR_TEST_ROUTES: ${OPENWHISPR_TEST_ROUTES:-}
+      MISSING_KEY_TEST_MODE: ${MISSING_KEY_TEST_MODE:-}
     volumes:
       - ./compose/traefik/certs/root-ca.crt:/certs/root-ca.crt:ro
