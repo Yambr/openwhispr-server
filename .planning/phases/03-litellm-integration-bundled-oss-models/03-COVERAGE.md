@@ -88,3 +88,57 @@ done
 
 Stage B closes the gaps in the "Phase-3 files below 90" table above; Stage C
 adds the e2e suite that DISCIPLINE rule 3 demands.
+
+## Stage B results — back-fill complete (2026-05-10)
+
+Every Phase-3 file is now comfortably above the 90/90/90/90 floor.
+
+| File | L before | L after | B before | B after | F before | F after | S before | S after |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| `apps/api/src/routes/diarization.ts` | 74 | **99.09** | 65 | **96.96** | 83 | **100** | 72 | **99.11** |
+| `apps/api/src/routes/test-only.ts` | 85 | **97.82** | 68 | **90.00** | 80 | **100** | 83 | **97.87** |
+| `apps/worker/src/jobs/ingest-litellm-spend.ts` | 100\* | **97.61** | 82 | **90.90** | 83 | **100** | 89 | **95.45** |
+| `apps/api/src/lib/pyannote-client.ts` | 100 | **98.71** | 80 | **98.03** | 100 | **100** | 100 | **98.71** |
+| `apps/api/src/routes/realtime.ts` | 100 | **100** | 75 | **100** | 100 | **100** | 100 | **100** |
+| `apps/api/src/routes/index.ts` | 100 | **100** | 88 | **100** | 100 | **100** | 100 | **100** |
+
+(*line metric for ingest-litellm-spend was reported as 100 in Stage A but
+the underlying axes were below 90 — all four axes now exceed 90.)
+
+### Per-package totals after Stage B
+
+| Package | L | B | F | S |
+|---|---:|---:|---:|---:|
+| `apps/api` | 97.73 | 92.70 | 93.12 | 97.11 |
+| `apps/worker` | 98.68 | 95.58 | 100 | 97.53 |
+
+### Commits landed in Stage B
+
+| Commit | Description |
+|---|---|
+| `1538b1a` | fix canRunDocker to detect macOS Docker Desktop socket |
+| `0af0dff` | close diarization route coverage gaps to 99/97/100/99 |
+| `608cc74` | close test-only.ts coverage gaps to 98/90/100/98 |
+| `4e6241d` | close ingest-litellm-spend coverage gaps to 98/91/100/95 |
+| `2b822f0` | close pyannote-client coverage gaps to 99/98/100/99 |
+| `476abd0` | close realtime.ts coverage gaps to 100/100/100/100 |
+| `6aecb39` | close routes/index.ts coverage gaps to 100/100/100/100 |
+
+### Environmental fixes shipped alongside
+
+1. **canRunDocker** macOS detection bug fixed (commit 1538b1a). The probe
+   now also accepts `$HOME/.docker/run/docker.sock`, so the worker
+   testcontainer suite no longer silently skips on local macOS dev boxes.
+   Before: 7 tests skipped → worker coverage 52%. After: 7 tests run →
+   worker coverage 95-98% across all four axes.
+2. The pre-existing 4 DATA-06 + 0 spike test failures (lefthook + git
+   hooksPath conflict) remain out-of-scope, as documented in the Stage A
+   "Environmental issues" section.
+
+### Carry-overs (NOT addressed in Stage B)
+
+- The Phase-02 pre-existing-debt files (auth.ts, error-handler.ts,
+  default-tenant.ts, rate-limit.ts, etc.) are unchanged — they remain
+  separate back-fill work as originally documented.
+- DATA-06 deny-list test failures are still pre-existing; resolution
+  requires the lefthook prepare-hook conflict to be untangled.
