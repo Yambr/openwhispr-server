@@ -1,0 +1,13 @@
+# split-at-byte: 685
+# source: hand-authored - captured 2026-05-10
+# Shape: multi-byte UTF-8 character (emoji 🎉) bytes appear at the marked offset
+# Tests slice the buffer at `: split-at-byte-N` to feed two read() calls; the parser must
+# rejoin the bytes via TextDecoder({stream:true}) and yield the emoji unbroken.
+data: {"id":"chatcmpl-mock-utf8","object":"chat.completion.chunk","created":1700000000,"model":"qwen3.6-plus","choices":[{"index":0,"delta":{"role":"assistant","content":"start "},"finish_reason":null}]}
+
+data: {"id":"chatcmpl-mock-utf8","object":"chat.completion.chunk","created":1700000000,"model":"qwen3.6-plus","choices":[{"index":0,"delta":{"content":"party 🎉"},"finish_reason":null}]}
+
+data: {"id":"chatcmpl-mock-utf8","object":"chat.completion.chunk","created":1700000000,"model":"qwen3.6-plus","choices":[{"index":0,"delta":{},"finish_reason":"stop"}],"usage":{"prompt_tokens":3,"completion_tokens":2,"total_tokens":5}}
+
+data: [DONE]
+
