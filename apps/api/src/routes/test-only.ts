@@ -36,6 +36,7 @@
 // test's overlap assertion holds.
 import { randomBytes } from "node:crypto";
 import { type ExecutableTx, type TransactionalDb, withTenant } from "@openwhispr/data";
+import type { LitellmClient } from "@openwhispr/litellm-client";
 import { sql } from "drizzle-orm";
 import type { FastifyInstance, FastifyRequest } from "fastify";
 import { AuthError } from "../errors.js";
@@ -54,6 +55,19 @@ export interface TestOnlyAuth extends AuthLike {
 export interface TestOnlyDeps {
   db: TransactionalDb<ExecutableTx>;
   auth: TestOnlyAuth;
+  /**
+   * Phase 03 / Plan 10 — PROVIDER-01 introspection seam. When supplied,
+   * registers `GET /api/_test/litellm-baseurl` which echoes
+   * `client.baseUrl` (the value resolved by `loadLitellmConfigFromEnv()`
+   * at boot, including any LITELLM_BASE_URL override). The contract test
+   * `packages/contract-tests/src/litellm-base-url-override.test.ts`
+   * asserts every LiteLLM-backed route reads from this single source —
+   * proving PROVIDER-01's "single endpoint abstraction works under
+   * env override" without spinning a second LiteLLM container. Gated by
+   * the same OPENWHISPR_TEST_ROUTES env flag as the rest of this file
+   * (production /api/_test/* always 404 — the gate is unchanged).
+   */
+  litellm?: LitellmClient;
 }
 
 function extractBearer(authHeader: string | string[] | undefined): string | null {
@@ -116,7 +130,19 @@ export function buildTestOnlyRoutes(deps: TestOnlyDeps) {
       return;
     }
 
-    const { db, auth } = deps;
+    const { db, auth, litellm } = deps;
+
+    // Phase 03 / Plan 10 — PROVIDER-01 introspection. When the LiteLLM
+    // client is wired (production / contract-test stack), expose the
+    // resolved baseUrl so the contract suite can assert it matches the
+    // LITELLM_BASE_URL env (proving the override is honored end-to-end).
+    // Unauthenticated and rate-limit-free — same posture as the other
+    // test-only diagnostic routes. Gate is OPENWHISPR_TEST_ROUTES (above).
+    if (litellm) {
+      app.get("/api/_test/litellm-baseurl", { config: { rateLimit: false } }, async () => {
+        return { baseUrl: litellm.baseUrl };
+      });
+    }
 
     // Phase 02.21 / Residual C — opt out of the global 60/min rate-limit.
     // The token-rotation contract test fires 100 concurrent OLD-bearer

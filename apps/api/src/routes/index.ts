@@ -186,7 +186,16 @@ export function buildAllRoutes(deps: AllRoutesDeps): readonly RoutePlugin[] {
     process.env.NODE_ENV === "test" ||
     process.env.OPENWHISPR_TEST_ROUTES === "true"
   ) {
-    plugins.push(buildTestOnlyRoutes({ db: deps.db, auth: deps.auth }));
+    plugins.push(
+      buildTestOnlyRoutes({
+        db: deps.db,
+        auth: deps.auth,
+        // Phase 03 / Plan 10 — when litellm is wired, expose the
+        // /api/_test/litellm-baseurl introspection seam so the contract
+        // suite can prove PROVIDER-01 (env override → all routes follow).
+        ...(deps.litellm ? { litellm: deps.litellm } : {}),
+      }),
+    );
   }
   return plugins;
 }

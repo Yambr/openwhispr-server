@@ -223,4 +223,49 @@ describe("test-only routes (NODE_ENV=test gated)", () => {
     expect(res.statusCode).toBe(404);
     await app.close();
   });
+
+  // Phase 03 / Plan 10 — PROVIDER-01 introspection seam.
+  it(
+    "Test 5: GET /api/_test/litellm-baseurl returns the LiteLLM client baseUrl when wired",
+    async () => {
+      vi.stubEnv("NODE_ENV", "test");
+      const app = Fastify({ logger: false });
+      registerErrorHandler(app);
+      const fakeAuth = makeFakeAuth({ withSession: true });
+      const fakeDb = makeFakeDb().db;
+      const fakeLitellm = {
+        baseUrl: "https://corporate-litellm.example.com",
+      } as unknown as Parameters<typeof buildTestOnlyRoutes>[0]["litellm"];
+      app.register(
+        buildTestOnlyRoutes({
+          auth: fakeAuth as unknown as Parameters<typeof buildTestOnlyRoutes>[0]["auth"],
+          db: fakeDb as unknown as Parameters<typeof buildTestOnlyRoutes>[0]["db"],
+          litellm: fakeLitellm,
+        }),
+      );
+      await app.ready();
+      const res = await app.inject({
+        method: "GET",
+        url: "/api/_test/litellm-baseurl",
+      });
+      expect(res.statusCode).toBe(200);
+      expect(res.json()).toEqual({ baseUrl: "https://corporate-litellm.example.com" });
+      await app.close();
+    },
+  );
+
+  it(
+    "Test 5b: /api/_test/litellm-baseurl returns 404 when litellm dep is omitted",
+    async () => {
+      vi.stubEnv("NODE_ENV", "test");
+      const app = buildLocalApp({ authed: true });
+      await app.ready();
+      const res = await app.inject({
+        method: "GET",
+        url: "/api/_test/litellm-baseurl",
+      });
+      expect(res.statusCode).toBe(404);
+      await app.close();
+    },
+  );
 });
