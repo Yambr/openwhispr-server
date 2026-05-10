@@ -45,3 +45,77 @@ export type DeleteAccountResponse = z.infer<typeof DeleteAccountResponse>;
 // GET /api/health
 export const HealthResponse = z.object({ status: z.literal("ok") });
 export type HealthResponse = z.infer<typeof HealthResponse>;
+
+// ---------------------------------------------------------------------
+// Phase 3 — LiteLLM-backed endpoints. Source of truth: docs/wire-contracts-phase-3.md
+// (extracted verbatim from upstream BACKEND_SPEC.md per D-09). When
+// docs/wire-contracts-phase-3.md updates, these schemas update in the
+// same commit — no parallel definitions, no drift.
+// ---------------------------------------------------------------------
+
+// POST /api/transcribe — multipart audio in, JSON out.
+// Note: Request body is multipart so we describe the FIELDS, not a JSON
+// body. Contract suite uses FormData; this schema documents the field
+// contract for type-safe builders.
+export const TranscribeRequestFields = z
+  .object({
+    file: z.unknown(), // Blob/Buffer in tests, multipart field on wire
+    language: z.string().optional(),
+    model: z.string().optional(),
+    response_format: z.enum(["json", "verbose_json", "text"]).optional(),
+  })
+  .strict();
+export type TranscribeRequestFields = z.infer<typeof TranscribeRequestFields>;
+
+export const TranscribeResponse = z.object({
+  text: z.string(),
+  wordsUsed: z.number(), // semantics locked in Plan 01 (minutes per A6 default)
+  wordsRemaining: z.number(),
+  plan: z.string(), // 'unlimited' in v1
+  limitReached: z.literal(false), // always false in v1 per WIRE-05
+  sttProvider: z.string(),
+  sttModel: z.string(),
+  language: z.string().optional(),
+  duration: z.number().optional(),
+  segments: z.array(z.unknown()).optional(),
+});
+export type TranscribeResponse = z.infer<typeof TranscribeResponse>;
+
+// POST /api/reason
+export const ReasonRequest = z
+  .object({
+    text: z.string().min(1),
+    model: z.string().optional(),
+    provider: z.string().optional(),
+    promptMode: z.string().optional(),
+    matchType: z.string().optional(),
+  })
+  .strict();
+export type ReasonRequest = z.infer<typeof ReasonRequest>;
+
+export const ReasonResponse = z.object({
+  text: z.string(),
+  model: z.string(),
+  provider: z.string(),
+  promptMode: z.string(),
+  matchType: z.string(),
+});
+export type ReasonResponse = z.infer<typeof ReasonResponse>;
+
+// Diarization — shape per docs/wire-contracts-phase-3.md "Diarization"
+// section (locked in Plan 01). Two-step pyannote shape OR single-hop
+// wrapped shape; Plan 01 records which one. Permissive `passthrough()`
+// because the upstream pyannote payload may carry additional fields
+// (e.g. confidence scores per segment) we forward without validation.
+export const DiarizationResponse = z
+  .object({
+    segments: z.array(
+      z.object({
+        start: z.number(),
+        end: z.number(),
+        speaker: z.string(),
+      }),
+    ),
+  })
+  .passthrough();
+export type DiarizationResponse = z.infer<typeof DiarizationResponse>;
