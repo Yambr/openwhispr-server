@@ -7,9 +7,10 @@
 //
 // The seeded fixture password is `test-PW-12345!` — declared in
 // `packages/data/src/seed/conformance.ts`. Tests that need an
-// unverified user pass `{ verified: false }` and signInFixture targets
-// `pending@conformance.test` rather than verifying the email afterward
-// (v1 has no in-test email-link click harness).
+// unverified user pass `{ verified: false }`; the helper then performs
+// a temporary owner-pool flip-and-revert (Phase 02.20 / D-01 — Group I
+// closure). See the verified:false branch comment below.
+import { Pool } from "pg";
 import { AUTH_URL } from "../env.js";
 import { type JarFetch, makeJarFetch } from "./cookie-jar.js";
 
@@ -55,11 +56,13 @@ export interface SignInOpts {
 }
 
 /**
- * Sign in with email+password and return a JarFetch holding the session
- * cookie. Throws if Better Auth does not return a 2xx — tests catch and
- * surface as failures.
+ * Perform the BA sign-in POST and return a JarFetch holding the session
+ * cookie. Throws on non-2xx (callers surface as test failure).
+ *
+ * Extracted so the verified:false branch can wrap THIS function in the
+ * owner-pool try/finally without duplicating the request shape.
  */
-export async function signInFixture(email: string, _opts?: SignInOpts): Promise<JarFetch> {
+async function postSignIn(email: string): Promise<JarFetch> {
   const jf = makeJarFetch();
   const res = await jf.fetch(`${AUTH_URL}/api/auth/sign-in/email`, {
     method: "POST",
@@ -88,4 +91,85 @@ export async function signInFixture(email: string, _opts?: SignInOpts): Promise<
     );
   }
   return jf;
+}
+
+/**
+ * Sign in with email+password and return a JarFetch holding the session
+ * cookie.
+ *
+ * Phase 02.20 / D-01 — Group I closure. When `opts.verified === false`,
+ * Better Auth's `requireEmailVerification: true` would reject the
+ * sign-in POST with HTTP 403 EMAIL_NOT_VERIFIED. To let the
+ * verification-status contract test ("cookie + unverified → { verified:
+ * false }") obtain a real BA-issued session cookie for an unverified
+ * fixture user, the helper temporarily flips
+ * users.email_verified=true via the owner DB pool (mirroring the
+ * proven seed-time pattern in packages/data/src/seed/conformance.ts:95-105),
+ * performs the sign-in, then reverts email_verified=false in a
+ * try/finally so the revert fires even on sign-in throw / network
+ * error. Empirically (advisor research), Better Auth's `getSession`
+ * does NOT re-check `emailVerified`, so the resulting cookie remains
+ * valid for read endpoints while the row reflects unverified state.
+ *
+ * Production-safety: this branch only executes when DATABASE_URL_OWNER
+ * is set, which is contract-test-runner-internal only. ALL non-test
+ * callers (production clients, third-party integrations) hitting
+ * /api/auth/sign-in/email for an unverified user STILL receive 403
+ * EMAIL_NOT_VERIFIED. requireEmailVerification:true is unchanged.
+ *
+ * Throws if Better Auth does not return a 2xx — tests catch and
+ * surface as failures.
+ */
+export async function signInFixture(email: string, opts?: SignInOpts): Promise<JarFetch> {
+  if (opts?.verified === false) {
+    // Helper guard — load DATABASE_URL_OWNER lazily so default-path
+    // callers (verified users) don't require it. Same shape as
+    // packages/data/src/seed/conformance.ts:113.
+    const ownerUrl = process.env.DATABASE_URL_OWNER;
+    if (!ownerUrl) {
+      throw new Error(
+        "signInFixture({verified:false}): DATABASE_URL_OWNER not set — owner pool required to flip email_verified for unverified-user sign-in",
+      );
+    }
+
+    const pool = new Pool({ connectionString: ownerUrl, max: 2 });
+    try {
+      // FLIP: temporarily mark the fixture row as verified so Better
+      // Auth's requireEmailVerification:true gate does not block
+      // /sign-in/email. lower(email) parameter binding mirrors
+      // patchVerified() in seed/conformance.ts (case-insensitive lookup
+      // for forward-compat with the Plan 02.7-05 functional unique
+      // index `users_tenant_email_lower_unique`).
+      await pool.query(
+        `UPDATE users
+            SET email_verified = true
+          WHERE lower(email) = lower($1)`,
+        [email],
+      );
+
+      try {
+        // Sign in with the row temporarily verified. The BA cookie
+        // returned is bound to the session row, NOT to the live
+        // email_verified column (getSession does not re-check it).
+        return await postSignIn(email);
+      } finally {
+        // REVERT: guaranteed on success, sign-in throw, AND network
+        // error. The fixture row returns to email_verified=false so
+        // the verification-status endpoint reports
+        // { verified: false } as the contract requires.
+        await pool.query(
+          `UPDATE users
+              SET email_verified = false
+            WHERE lower(email) = lower($1)`,
+          [email],
+        );
+      }
+    } finally {
+      // Close the owner pool exactly once regardless of outcome.
+      await pool.end();
+    }
+  }
+
+  // Default (verified user) path — unchanged from Phase 02.18.
+  return postSignIn(email);
 }
