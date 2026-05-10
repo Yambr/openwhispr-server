@@ -49,6 +49,7 @@ import type { ExecutableTx, TransactionalDb } from "@openwhispr/data";
 import type { LitellmClient } from "@openwhispr/litellm-client";
 import Fastify, { type FastifyInstance } from "fastify";
 import { registerErrorHandler } from "./error-handler.js";
+import type { RedisLike } from "./lib/idempotency-cache.js";
 import { buildMintBearer } from "./lib/mint-bearer.js";
 import {
   recordPreviousToken as recordPreviousTokenLib,
@@ -135,6 +136,25 @@ export interface BuildAppOptions {
    * registered and /v1/realtime returns 404.
    */
   litellmMasterKey?: string;
+  /**
+   * Phase 03 / Plan 06 (CR-01): pre-connected Valkey/Redis client used by
+   * the diarization route's Stripe-style idempotency cache (and potentially
+   * other request-time caches in future plans). Production constructs a
+   * @redis/client `createClient({url: VALKEY_URL})` in the entrypoint and
+   * passes it through; tests inject a fake `RedisLike`. When omitted, the
+   * /v1/audio/diarization route is NOT registered — operators get the
+   * canonical 404 envelope from notFoundHandler (operator-actionable
+   * "wire VALKEY_URL" signal, distinct from a runtime 503).
+   */
+  redis?: RedisLike;
+  /**
+   * Phase 03 / Plan 06: short-circuit the diarization route to a fixture
+   * response (no pyannote.ai dependency). Used by the contract-test
+   * profile so `make contract-test` runs hermetically. Production .env
+   * MUST NOT enable this (bootstrap.sh deny-list refuses placeholder
+   * values in real deploys).
+   */
+  mockDiarization?: boolean;
 }
 
 export const buildApp = async (opts: BuildAppOptions = {}): Promise<FastifyInstance> => {
@@ -251,6 +271,15 @@ export const buildApp = async (opts: BuildAppOptions = {}): Promise<FastifyInsta
       mintBearer,
       ...(opts.litellm ? { litellm: opts.litellm } : {}),
       ...(opts.litellmMasterKey ? { litellmMasterKey: opts.litellmMasterKey } : {}),
+      // Phase 03 / Plan 06 (CR-01): forward the Valkey client + the
+      // mockDiarization flag so /v1/audio/diarization is registered when
+      // the operator wired VALKEY_URL at boot. Without this thread-through,
+      // buildAllRoutes (which gates the route on `deps.redis`) silently
+      // dropped the route in every prod boot.
+      ...(opts.redis ? { redis: opts.redis } : {}),
+      ...(opts.mockDiarization !== undefined
+        ? { mockDiarization: opts.mockDiarization }
+        : {}),
     });
     for (const plugin of routes) {
       await app.register(plugin);
@@ -307,13 +336,46 @@ if (import.meta.url === `file://${process.argv[1]}`) {
       (err as Error).message,
     );
   }
-  const app = await buildApp(
-    litellm
-      ? litellmMasterKey
-        ? { db, auth, litellm, litellmMasterKey }
-        : { db, auth, litellm }
-      : { db, auth },
-  );
+  // Phase 03 / Plan 06 (CR-01): construct the Valkey/Redis client for the
+  // diarization idempotency cache. We use the same `@redis/client` family
+  // already pulled in by apps/api/src/plugins/rate-limit.ts so the runtime
+  // dependency surface stays single-vendor. When VALKEY_URL is unset, leave
+  // `redis` undefined — buildAllRoutes will skip /v1/audio/diarization
+  // registration and operators get an operator-actionable 404 from
+  // notFoundHandler (one-line warning below tells them exactly what to set).
+  let redis: RedisLike | undefined;
+  if (process.env.VALKEY_URL) {
+    try {
+      const { createClient } = await import("@redis/client");
+      const clientOpts: { url: string; password?: string } = {
+        url: process.env.VALKEY_URL,
+      };
+      if (process.env.VALKEY_PASSWORD) {
+        clientOpts.password = process.env.VALKEY_PASSWORD;
+      }
+      const client = createClient(clientOpts);
+      await client.connect();
+      redis = client as unknown as RedisLike;
+    } catch (err) {
+      // biome-ignore lint/suspicious/noConsole: server bootstrap warning; structured logging arrives in Phase 6
+      console.warn(
+        "[buildApp] Valkey client not constructed; /v1/audio/diarization will NOT be registered. Set VALKEY_URL to enable diarization:",
+        (err as Error).message,
+      );
+    }
+  } else {
+    // biome-ignore lint/suspicious/noConsole: server bootstrap warning; structured logging arrives in Phase 6
+    console.warn(
+      "[buildApp] VALKEY_URL is unset; /v1/audio/diarization will NOT be registered (operator-actionable: set VALKEY_URL to enable bundled-mode diarization).",
+    );
+  }
+  const mockDiarization = process.env.MOCK_DIARIZATION === "true";
+  const buildOpts: BuildAppOptions = { db, auth };
+  if (litellm) buildOpts.litellm = litellm;
+  if (litellmMasterKey) buildOpts.litellmMasterKey = litellmMasterKey;
+  if (redis) buildOpts.redis = redis;
+  if (mockDiarization) buildOpts.mockDiarization = true;
+  const app = await buildApp(buildOpts);
   const port = Number(process.env.PORT ?? 3000);
   app.listen({ port, host: "0.0.0.0" }).catch((err) => {
     // biome-ignore lint/suspicious/noConsole: server bootstrap fatal-error logger; structured logging arrives in Phase 6 (OBS-03)
