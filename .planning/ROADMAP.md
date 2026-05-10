@@ -105,6 +105,46 @@ Plans:
 - [x] 02-07-PLAN.md — Auth docs (auth.md / oidc-operator-config.md / channel-scheme-override.md) + planning state finalization + Phase 1 SC#1 closure + integration smoke (Wave 4)
 **UI hint**: no
 
+### Phase 02.21: Group C residuals — 3 pre-existing carries: conventions 404 envelope (got 401), delete-account cookie cascade (got 200 expected 401), token-rotation suite (sign-in 403 in beforeAll); diagnose-then-fix; potentially 3 distinct sub-fixes (INSERTED)
+
+**Goal:** [Urgent work - to be planned]
+**Requirements**: TBD
+**Depends on:** Phase 2
+**Plans:** 0 plans
+
+Plans:
+- [ ] TBD (run /gsd-plan-phase 02.21 to break down)
+
+### Phase 02.20: Group I — verification-status test for unverified user; signInFixture verified:false branch flips email_verified=true via owner pool, signs in to get real BA cookie, flips back to false in try/finally; exploits BA getSession not re-checking emailVerified; preserves prod requireEmailVerification:true posture (INSERTED)
+
+**Goal:** [Urgent work - to be planned]
+**Requirements**: TBD
+**Depends on:** Phase 2
+**Plans:** 0 plans
+
+Plans:
+- [ ] TBD (run /gsd-plan-phase 02.20 to break down)
+
+### Phase 02.19: Group F E2E closure — configure Traefik forwardedHeaders.trustedIPs for openwhispr_internal docker network so contract-test runner-injected X-Forwarded-For survives the edge to Better Auth rate-limiter; Phase 02.18 unit fix is correct, this enables E2E delivery (INSERTED)
+
+**Goal:** [Urgent work - to be planned]
+**Requirements**: TBD
+**Depends on:** Phase 2
+**Plans:** 0 plans
+
+Plans:
+- [ ] TBD (run /gsd-plan-phase 02.19 to break down)
+
+### Phase 02.18: Group F — Better Auth rate-limiter cant see client IP behind Traefik (real prod security defect: WARN log Rate limiting skipped); recommended Option B: configure advanced.ipAddress.ipAddressHeaders + per-fixture unique X-Forwarded-For in signInFixture; fixes prod abuse hole AND unblocks 2 verification-status tests (INSERTED)
+
+**Goal:** [Urgent work - to be planned]
+**Requirements**: TBD
+**Depends on:** Phase 2
+**Plans:** 0 plans
+
+Plans:
+- [ ] TBD (run /gsd-plan-phase 02.18 to break down)
+
 ### Phase 02.17: Group E variant — mycorp-whispr scheme test 400 because OPENWHISPR_PROTOCOL accepts only single override; extend parser to comma-list + add mycorp-whispr to contract-test compose env (INSERTED)
 
 **Goal:** [Urgent work - to be planned]
