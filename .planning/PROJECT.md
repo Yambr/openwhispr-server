@@ -55,15 +55,15 @@ The corporate-internal v1 install does not exercise Stripe / referrals / billing
 - [ ] **WIRE-04**: `GET /api/health` — 3s timeout, body unread, only `res.ok`/`res.status` inspected
 - [x] **WIRE-05**: `POST /api/transcribe` — multipart audio; returns `{text, wordsUsed, wordsRemaining, plan, limitReached, sttProvider, sttModel, ...}`; quota math runs but `limitReached` always returns `false` in v1 (no enforcement) — schema is preserved for desktop compatibility
 - [x] **WIRE-06**: `POST /api/reason` — cloud LLM via LiteLLM; returns `{text, model, provider, promptMode, matchType}`
-- [ ] **WIRE-07**: `POST /api/agent/stream` — `application/x-ndjson`, **flush per line**, no buffering anywhere in the chain
+- [x] **WIRE-07**: `POST /api/agent/stream` — `application/x-ndjson`, **flush per line**, no buffering anywhere in the chain (validated Phase 4: e2e first-line 8.27ms < 500ms; D-05 buffering negative-control trio GREEN)
 - [ ] **WIRE-08**: `POST /api/agent/web-search` — server-side search tool for the agent
 - [ ] **WIRE-09**: `POST /api/streaming-usage` — accept-and-record streaming session usage
 - [ ] **WIRE-10**: `GET /api/usage` — observed usage stats; v1 always reports unlimited plan
 - [ ] **WIRE-11**: `GET /api/stt-config` — server-side STT provider/model selection per tenant/user
 - [ ] **WIRE-12**: `GET /api/note-recording-config` — note-recording configuration
-- [ ] **WIRE-13**: `POST /api/streaming-token` — mints AssemblyAI streaming token from server-held key (only if AssemblyAI configured; otherwise 503)
-- [ ] **WIRE-14**: `POST /api/deepgram-streaming-token` — Deepgram streaming token (gated same way)
-- [ ] **WIRE-15**: `POST /api/openai-realtime-token` — OpenAI Realtime token (gated same way)
+- [x] **WIRE-13**: `POST /api/streaming-token` — mints AssemblyAI streaming token from server-held key (only if AssemblyAI configured; otherwise 503) (validated Phase 4)
+- [x] **WIRE-14**: `POST /api/deepgram-streaming-token` — Deepgram streaming token (gated same way) (validated Phase 4)
+- [x] **WIRE-15**: `POST /api/openai-realtime-token` — OpenAI Realtime token, parallel-mint streams=2 returns clientSecrets[] (validated Phase 4)
 - [ ] **WIRE-16**: Generic passthrough channel `cloud-api-request` — any `/api/<path>` proxied with global error envelope
 
 ##### Wire conventions (apply to every endpoint)
@@ -110,7 +110,7 @@ The corporate-internal v1 install does not exercise Stripe / referrals / billing
 - [ ] **SCALE-02**: PgBouncer transaction-mode in front of Postgres; sized for 1000 concurrent (server-pool 100 × 4 instances)
 - [ ] **SCALE-03**: BullMQ on Redis/Valkey for background jobs (audit-log fanout, email delivery, usage rollups, virtual-key rotation)
 - [ ] **SCALE-04**: Anti-abuse rate limiting per-user, per-IP via Redis/Valkey token-bucket (NOT quota — observability ledger has no limits in v1); polling carve-out for `/api/auth/verification-status`
-- [ ] **SCALE-05**: Streaming endpoints (NDJSON, WSS) survive ingress timeouts up to 1h; nginx `proxy_buffering off` + `X-Accel-Buffering: no`; per-line `res.flush()` in NDJSON
+- [x] **SCALE-05**: Streaming endpoints (NDJSON, WSS) survive ingress timeouts up to 1h; nginx `proxy_buffering off` + `X-Accel-Buffering: no`; per-line `res.flush()` in NDJSON (validated Phase 4 hermetic: dedicated Traefik :8443 entrypoint with idleTimeout 3600s, 5-min soak p95 14ms, 0 ingress closes; 65-min live arm gated to nightly cron — surfaced via 04-HUMAN-UAT.md)
 - [ ] **SCALE-06**: Load test (k6) demonstrates 1000 concurrent active users (mixed transcribe + reason + stream + WSS) at p95 SLO; runs nightly in CI against an ephemeral environment
 - [ ] **SCALE-07**: File-descriptor limits raised to 65535 on API + ingress containers; documented sizing matrix per topology
 
@@ -247,4 +247,6 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
+*Last updated: 2026-05-11 after Phase 4 (Streaming + Realtime) — WIRE-07/13/14/15, SCALE-05 validated. NDJSON first-line via e2e: 8.27ms (budget 500ms). Hermetic Traefik :8443 5-min soak: 0 ingress closes, p95 14ms (budget 1000ms). 65-min live OpenAI Realtime soak gated to nightly cron + tag (never on PR) — surfaced via 04-HUMAN-UAT.md.*
+
 *Last updated: 2026-05-10 after Phase 3 (LiteLLM Integration + Bundled OSS Models) — WIRE-05/06, LITELLM-01..07, PROVIDER-01, DATA-03 validated. Two user-ratified overrides: LITELLM-02 cloud-provider pivot (memory `feedback_no_bundled_local_models`); LITELLM-04 per-user attribution via OpenAI `user` body parameter (D-03) instead of `/key/generate`.*
