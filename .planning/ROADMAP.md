@@ -342,7 +342,7 @@ Plans:
 - [x] 03-06-PLAN.md — Wave 2: Diarization endpoint (pass-through OR 503-only fallback per Plan 01 outcome)
 - [x] 03-07-PLAN.md — Wave 2: WSS /v1/realtime (Fastify wsUpstream + auth preHandler + Traefik 3600s)
 - [x] 03-08-PLAN.md — Wave 3: apps/worker BullMQ spend-ingest job (30s scheduler + co-tenant Postgres read + idempotent UPSERT)
-- [ ] 03-09-PLAN.md — Wave 3: docs/litellm-target-spec.md + docs/litellm-mock-mode.md + Makefile e2e-test + README quickstart
+- [x] 03-09-PLAN.md — Wave 3: docs/litellm-target-spec.md + docs/litellm-mock-mode.md + Makefile e2e-test + README quickstart
 - [x] 03-10-PLAN.md — Wave 3: cross-cutting contract tests (PROVIDER-01 override + Pitfall #8 503-not-401 + DATA-03 idempotency) + nightly e2e CI job
 **UI hint**: no
 
