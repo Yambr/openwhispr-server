@@ -69,6 +69,41 @@ describe("registerErrorHandler — global envelope (D-13)", () => {
       err.statusCode = 503;
       throw err;
     });
+    // Phase-2 debt back-fill — empty-message variants force the `||
+    // "<default>"` fallback branches at lines 76/82/85/88/91 of
+    // error-handler.ts. The AuthError empty-message branch is already
+    // covered above by `/throw-auth-default`.
+    app.get("/throw-validation-empty", async () => {
+      throw new ValidationError("");
+    });
+    app.get("/throw-notfound-empty", async () => {
+      throw new NotFoundError("");
+    });
+    app.get("/throw-ratelimit-empty", async () => {
+      // RateLimitError thrown with empty message AND no statusCode
+      // surface — fv.statusCode is undefined, instanceof RateLimitError
+      // is true, so the branch enters the "Too many requests" default.
+      const e = new RateLimitError("");
+      throw e;
+    });
+    app.get("/throw-503-empty", async () => {
+      throw new ServiceUnavailable("");
+    });
+    app.get("/throw-server-empty", async () => {
+      throw new ServerError("");
+    });
+    // Fastify-style err.statusCode === 429 with empty message — exercises
+    // the `errMessage || "Too many requests"` default on the same branch.
+    app.get("/throw-fastify-429-empty", async () => {
+      const err = new Error("") as Error & { statusCode: number };
+      err.statusCode = 429;
+      throw err;
+    });
+    app.get("/throw-fastify-503-empty", async () => {
+      const err = new Error("") as Error & { statusCode: number };
+      err.statusCode = 503;
+      throw err;
+    });
   });
 
   afterEach(async () => {
@@ -152,6 +187,48 @@ describe("registerErrorHandler — global envelope (D-13)", () => {
     const raw = res.body;
     expect(raw).not.toContain("at ");
     expect(raw).not.toContain("error-handler.test.ts");
+  });
+
+  it("ValidationError with empty message defaults to 'Invalid request'", async () => {
+    const res = await app.inject({ method: "GET", url: "/throw-validation-empty" });
+    expect(res.statusCode).toBe(400);
+    expect(res.json().error).toBe("Invalid request");
+  });
+
+  it("NotFoundError with empty message defaults to 'Not found'", async () => {
+    const res = await app.inject({ method: "GET", url: "/throw-notfound-empty" });
+    expect(res.statusCode).toBe(404);
+    expect(res.json().error).toBe("Not found");
+  });
+
+  it("RateLimitError with empty message defaults to 'Too many requests'", async () => {
+    const res = await app.inject({ method: "GET", url: "/throw-ratelimit-empty" });
+    expect(res.statusCode).toBe(429);
+    expect(res.json().error).toBe("Too many requests");
+  });
+
+  it("ServiceUnavailable with empty message defaults to 'Service temporarily unavailable'", async () => {
+    const res = await app.inject({ method: "GET", url: "/throw-503-empty" });
+    expect(res.statusCode).toBe(503);
+    expect(res.json().error).toBe("Service temporarily unavailable");
+  });
+
+  it("ServerError with empty message defaults to 'Internal server error'", async () => {
+    const res = await app.inject({ method: "GET", url: "/throw-server-empty" });
+    expect(res.statusCode).toBe(500);
+    expect(res.json().error).toBe("Internal server error");
+  });
+
+  it("fastify-style err.statusCode=429 with empty message → 'Too many requests'", async () => {
+    const res = await app.inject({ method: "GET", url: "/throw-fastify-429-empty" });
+    expect(res.statusCode).toBe(429);
+    expect(res.json().error).toBe("Too many requests");
+  });
+
+  it("fastify-style err.statusCode=503 with empty message → 'Service temporarily unavailable'", async () => {
+    const res = await app.inject({ method: "GET", url: "/throw-fastify-503-empty" });
+    expect(res.statusCode).toBe(503);
+    expect(res.json().error).toBe("Service temporarily unavailable");
   });
 
   it("every error response has Content-Type application/json; charset=utf-8", async () => {
