@@ -1,0 +1,51 @@
+# Phase 04 / Plan 10 / Task 1 — live-realtime LiteLLM config overlay.
+#
+# Mounted by compose/live-soak/docker-compose.live.yml (used EXCLUSIVELY
+# by .github/workflows/nightly-realtime-soak.yml). Repoints the realtime
+# model entry at the REAL OpenAI Realtime API (wss://api.openai.com/v1/realtime)
+# so the 65-min soak validates the FULL production topology end-to-end:
+#
+#   wss://api.localhost:8443/v1/realtime
+#     → Traefik websecure-realtime entrypoint (Plan 05; idleTimeout 3600s)
+#     → Fastify api /v1/realtime route (@fastify/http-proxy + wsUpstream)
+#     → LiteLLM (mode: realtime) — THIS FILE — pointed at wss://api.openai.com
+#     → OpenAI Realtime API (real provider)
+#
+# This file MUST NOT reference any hermetic-echo upstream — verified by
+# the Plan 10 Task 1 acceptance grep gate.
+
+model_list:
+  # Realtime entry pointed at REAL OpenAI Realtime. LiteLLM v1.83.x
+  # dispatches `mode: realtime` model entries via `api_base` for the WSS
+  # upgrade — we leave api_base unset so LiteLLM defaults to OpenAI's
+  # canonical wss://api.openai.com/v1/realtime endpoint and consumes
+  # OPENAI_API_KEY from the workflow-injected env (NOT a static literal).
+  - model_name: realtime
+    litellm_params:
+      model: openai/gpt-realtime
+      api_key: os.environ/OPENAI_API_KEY
+      mode: realtime
+  - model_name: gpt-realtime
+    litellm_params:
+      model: openai/gpt-realtime
+      api_key: os.environ/OPENAI_API_KEY
+      mode: realtime
+  - model_name: gpt-realtime-mini
+    litellm_params:
+      model: openai/gpt-realtime-mini
+      api_key: os.environ/OPENAI_API_KEY
+      mode: realtime
+  - model_name: gpt-4o-realtime-preview
+    litellm_params:
+      model: openai/gpt-4o-realtime-preview
+      api_key: os.environ/OPENAI_API_KEY
+      mode: realtime
+
+general_settings:
+  master_key: os.environ/LITELLM_MASTER_KEY
+  database_url: os.environ/LITELLM_DATABASE_URL
+  store_model_in_db: True
+
+litellm_settings:
+  drop_params: True
+  set_verbose: False
