@@ -2,9 +2,11 @@ packages:
   - 'apps/*'
   - 'packages/*'
   - 'tests/e2e'
+  - 'tests/e2e/mock-realtime'
 allowBuilds:
   cpu-features: true
   esbuild: true
   lefthook: true
+  msgpackr-extract: false
   protobufjs: true
   ssh2: true

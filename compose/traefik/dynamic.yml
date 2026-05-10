@@ -107,3 +107,5 @@ tls:
   certificates:
     - certFile: /certs/local.crt
       keyFile: /certs/local.key
+
+# Phase 04 placeholder — Wave 1 plan 04 will add `websecure-realtime` entrypoint binding for /v1/realtime router.
