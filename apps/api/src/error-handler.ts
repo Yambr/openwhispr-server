@@ -46,6 +46,16 @@ interface FastifyValidationLike {
 }
 
 export function registerErrorHandler(app: FastifyInstance): void {
+  // Phase 02.21 / Residual A — emit the canonical envelope on unmatched
+  // routes. Throw NotFoundError so the single setErrorHandler below is the
+  // sole emission point (D-13). Without this, Fastify's default 404 body
+  // (`{message,error,statusCode}`) would leak through and the dual-auth
+  // hook would 401 unmatched routes (its skip on undefined route is the
+  // companion fix in middleware/dual-auth.ts).
+  app.setNotFoundHandler((_req, _reply) => {
+    throw new NotFoundError("not found");
+  });
+
   app.setErrorHandler((err, req, reply) => {
     let status = 500;
     let message = "Internal server error";
