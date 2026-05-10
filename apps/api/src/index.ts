@@ -125,6 +125,16 @@ export interface BuildAppOptions {
    * through; tests inject fakes that satisfy the LitellmClient surface.
    */
   litellm?: LitellmClient;
+  /**
+   * Phase 03 / Plan 07 (LITELLM-03, D-04): the LITELLM_MASTER_KEY string
+   * the WSS /v1/realtime reverse-proxy injects on upstream-bound upgrade
+   * headers. Production passes the same key that fed
+   * `buildLitellmClient(loadLitellmConfigFromEnv())`; tests inject a
+   * synthetic value without env mutation. When omitted (e.g. an operator
+   * who hasn't set LITELLM_MASTER_KEY) the realtime route is NOT
+   * registered and /v1/realtime returns 404.
+   */
+  litellmMasterKey?: string;
 }
 
 export const buildApp = async (opts: BuildAppOptions = {}): Promise<FastifyInstance> => {
@@ -240,6 +250,7 @@ export const buildApp = async (opts: BuildAppOptions = {}): Promise<FastifyInsta
       db: opts.db,
       mintBearer,
       ...(opts.litellm ? { litellm: opts.litellm } : {}),
+      ...(opts.litellmMasterKey ? { litellmMasterKey: opts.litellmMasterKey } : {}),
     });
     for (const plugin of routes) {
       await app.register(plugin);
@@ -277,11 +288,18 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   // operator gets a clear "you forgot to set LITELLM_MASTER_KEY" signal
   // distinct from a per-provider 503 emitted from inside the route).
   let litellm: LitellmClient | undefined;
+  let litellmMasterKey: string | undefined;
   try {
     const { buildLitellmClient, loadLitellmConfigFromEnv } = await import(
       "@openwhispr/litellm-client"
     );
-    litellm = buildLitellmClient(loadLitellmConfigFromEnv());
+    const litellmConfig = loadLitellmConfigFromEnv();
+    litellm = buildLitellmClient(litellmConfig);
+    // Plan 07 — surface masterKey separately so buildAllRoutes can pass
+    // it into the WSS /v1/realtime reverse-proxy's wsClientOptions
+    // header rewrite. Same source-of-truth as the client construction
+    // above, so they can never drift out of sync at boot.
+    litellmMasterKey = litellmConfig.masterKey;
   } catch (err) {
     // biome-ignore lint/suspicious/noConsole: server bootstrap warning; structured logging arrives in Phase 6
     console.warn(
@@ -289,7 +307,13 @@ if (import.meta.url === `file://${process.argv[1]}`) {
       (err as Error).message,
     );
   }
-  const app = await buildApp(litellm ? { db, auth, litellm } : { db, auth });
+  const app = await buildApp(
+    litellm
+      ? litellmMasterKey
+        ? { db, auth, litellm, litellmMasterKey }
+        : { db, auth, litellm }
+      : { db, auth },
+  );
   const port = Number(process.env.PORT ?? 3000);
   app.listen({ port, host: "0.0.0.0" }).catch((err) => {
     // biome-ignore lint/suspicious/noConsole: server bootstrap fatal-error logger; structured logging arrives in Phase 6 (OBS-03)

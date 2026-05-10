@@ -29,6 +29,7 @@ import { buildDesktopSigninRoutes, type DesktopSigninDeps } from "./desktop-sign
 import { buildDiarizationRoutes, type DiarizationDeps } from "./diarization.js";
 import healthRoutes from "./health.js";
 import { buildReasonRoutes, type ReasonDeps } from "./reason.js";
+import { buildRealtimeRoutes, type RealtimeDeps } from "./realtime.js";
 import { buildTestOnlyRoutes } from "./test-only.js";
 import { buildTranscribeRoutes, type TranscribeDeps } from "./transcribe.js";
 import {
@@ -60,6 +61,18 @@ export interface AllRoutesDeps {
    * surfaces as 503 from inside the route).
    */
   litellm?: LitellmClient;
+  /**
+   * Phase 03 / Plan 07 (LITELLM-03, D-04): the LITELLM_MASTER_KEY string
+   * that the WSS /v1/realtime reverse-proxy injects on upstream-bound
+   * upgrade headers (replacing the desktop's opaque bearer). Production
+   * loads this from `loadLitellmConfigFromEnv().masterKey` alongside the
+   * client itself; tests inject a synthetic key without env mutation.
+   * The realtime route is registered only when BOTH `litellm` AND
+   * `litellmMasterKey` are supplied — missing key at boot leaves the
+   * /v1/realtime surface unwired (centralized notFoundHandler emits the
+   * canonical 404 envelope, distinct from a registered-but-dead 503).
+   */
+  litellmMasterKey?: string;
   /**
    * Phase 03 / Plan 06 (D-07 REVISED): Valkey client for the diarization
    * route's Stripe-style idempotency cache. When supplied (production
@@ -125,6 +138,22 @@ export function buildAllRoutes(deps: AllRoutesDeps): readonly RoutePlugin[] {
     // client is constructed.
     const reasonDeps: ReasonDeps = { db: deps.db, litellm: deps.litellm };
     plugins.push(buildReasonRoutes(reasonDeps));
+    // Phase 03 / Plan 07 (LITELLM-03, D-04): WSS /v1/realtime reverse-
+    // proxy. Registered only when LITELLM_MASTER_KEY was loadable at
+    // boot (its absence is the canonical "operator hasn't wired
+    // realtime yet" signal — the centralized notFoundHandler emits a
+    // 404 envelope on /v1/realtime which is the right operator UX,
+    // distinct from a transient-looking 503 on a registered-but-dead
+    // route). The same master-key string is injected on upstream-bound
+    // upgrade headers (`authorization: Bearer ${masterKey}`) so the
+    // desktop's opaque bearer never reaches LiteLLM.
+    if (deps.litellmMasterKey) {
+      const realtimeDeps: RealtimeDeps = {
+        litellm: deps.litellm,
+        masterKey: deps.litellmMasterKey,
+      };
+      plugins.push(buildRealtimeRoutes(realtimeDeps));
+    }
   }
   // Phase 03 / Plan 06 (D-07 REVISED): conditionally register the
   // diarization route. Bundled-mode requires a Valkey client (idempotency
@@ -170,6 +199,7 @@ export {
   buildDesktopSigninRoutes,
   buildDiarizationRoutes,
   buildReasonRoutes,
+  buildRealtimeRoutes,
   buildTestOnlyRoutes,
   buildTranscribeRoutes,
   buildVerificationStatusRoutes,
