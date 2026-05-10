@@ -254,7 +254,10 @@ function handleDiarization(deps: DiarizationDeps, idem: IdempotencyCache) {
           await pyannote.createMediaInput();
         await pyannote.uploadToPresignedUrl(presignedUrl, fileBuffer, fileMime);
         jobId = await pyannote.submitDiarize(mediaUri);
-        await idem.bindJobId(idemKey, jobId);
+        // WR-01: pass bodyHash so the rescue path (expired/corrupt cache)
+        // can preserve the real fingerprint and retries return 'hit'
+        // instead of a spurious 409 against bodyHash:"unknown".
+        await idem.bindJobId(idemKey, jobId, bodyHash);
       } catch (err) {
         return mapPyannoteError(err, reply, req);
       }
