@@ -1,6 +1,7 @@
 packages:
   - 'apps/*'
   - 'packages/*'
+  - 'tests/e2e'
 allowBuilds:
   cpu-features: true
   esbuild: true
