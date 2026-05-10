@@ -91,12 +91,61 @@ interface OidcUserinfo {
   picture?: string;
 }
 
+interface OidcDiscoveryDoc {
+  token_endpoint?: string;
+  userinfo_endpoint?: string;
+}
+
 function requireEnv(name: string): string {
   const value = process.env[name];
   if (!value || value.length === 0) {
     throw new Error(`mint bearer: ${name} is not configured`);
   }
   return value;
+}
+
+// Phase 02.16 — process-lifetime cache for the OIDC discovery doc.
+// OIDC issuers consider discovery stable; the spec (OIDC Discovery 1.0
+// §4) explicitly permits clients to cache the document. A process-
+// lifetime cache is sufficient for our scale and avoids paying the
+// roundtrip on every callback. Reset on process restart (operator
+// rolls the api pod after rotating the IdP).
+//
+// Keyed by issuer URL (post-trim) to support — in theory — multiple
+// IdPs in one process. The map stays bounded by the small set of
+// configured issuers.
+const discoveryCache = new Map<string, OidcDiscoveryDoc>();
+
+/**
+ * Fetch (and cache) the OIDC issuer's discovery doc. Per RFC 8414 /
+ * OpenID Connect Discovery 1.0 §4, the metadata document lives at
+ * `${issuer}/.well-known/openid-configuration` and contains the
+ * `token_endpoint` + `userinfo_endpoint` URLs the relying party uses
+ * for code exchange and profile retrieval. Operators set ONE env var
+ * (OIDC_ISSUER_URL) and we resolve the rest — matches Better Auth
+ * genericOAuth's lazy-discovery contract (auth.ts:89–90).
+ *
+ * T-02.7-07 — error messages include the HTTP status only, NEVER the
+ * response body (discovery doc may be served from a misconfigured
+ * proxy that leaks PII or attacker-controlled values).
+ */
+async function discoverOidc(issuerUrl: string): Promise<OidcDiscoveryDoc> {
+  const issuer = issuerUrl.replace(/\/+$/, "");
+  const cached = discoveryCache.get(issuer);
+  if (cached) return cached;
+  const url = `${issuer}/.well-known/openid-configuration`;
+  const res = await fetch(url);
+  if (!res.ok) {
+    throw new Error(`mint bearer: discovery ${res.status} (issuer=${issuer})`);
+  }
+  const doc = (await res.json()) as OidcDiscoveryDoc;
+  discoveryCache.set(issuer, doc);
+  return doc;
+}
+
+/** Test-only: clear the discovery cache between vitest runs. */
+export function __resetOidcDiscoveryCacheForTests(): void {
+  discoveryCache.clear();
 }
 
 /**
@@ -111,11 +160,39 @@ export function buildMintBearer(opts: BuildMintBearerOpts): MintBearer {
   return async function mintBearer(args: MintBearerArgs): Promise<string> {
     // Fail-fast env validation BEFORE any network call so misconfigured
     // operators see a clear error rather than a confusing 502 from the IdP.
+    //
+    // Phase 02.16 — token_endpoint / userinfo_endpoint may now come from
+    // the OIDC discovery doc when the explicit env overrides are unset.
+    // Real-world operators set ONE env var (OIDC_ISSUER_URL) and rely on
+    // RFC 8414 / OpenID Connect Discovery 1.0; the explicit env vars
+    // remain available for non-conforming IdPs that don't publish a
+    // discovery doc at the standard path.
     const clientId = requireEnv("OIDC_CLIENT_ID");
     const clientSecret = requireEnv("OIDC_CLIENT_SECRET");
-    const tokenEndpoint = requireEnv("OIDC_TOKEN_URL");
-    const userinfoEndpoint = requireEnv("OIDC_USERINFO_URL");
     const authUrl = requireEnv("AUTH_URL");
+    const explicitTokenUrl = process.env.OIDC_TOKEN_URL;
+    const explicitUserinfoUrl = process.env.OIDC_USERINFO_URL;
+    let tokenEndpoint: string;
+    let userinfoEndpoint: string;
+    if (explicitTokenUrl && explicitUserinfoUrl) {
+      tokenEndpoint = explicitTokenUrl;
+      userinfoEndpoint = explicitUserinfoUrl;
+    } else {
+      const issuerUrl = requireEnv("OIDC_ISSUER_URL");
+      const doc = await discoverOidc(issuerUrl);
+      const discoveredToken = explicitTokenUrl ?? doc.token_endpoint;
+      const discoveredUserinfo = explicitUserinfoUrl ?? doc.userinfo_endpoint;
+      if (!discoveredToken) {
+        throw new Error(`mint bearer: discovery doc missing token_endpoint (issuer=${issuerUrl})`);
+      }
+      if (!discoveredUserinfo) {
+        throw new Error(
+          `mint bearer: discovery doc missing userinfo_endpoint (issuer=${issuerUrl})`,
+        );
+      }
+      tokenEndpoint = discoveredToken;
+      userinfoEndpoint = discoveredUserinfo;
+    }
 
     const redirectUri = `${authUrl.replace(/\/+$/, "")}/api/auth/desktop-callback/${args.provider}`;
 
