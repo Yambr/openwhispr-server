@@ -334,16 +334,16 @@ Plans:
   7. `docs/litellm-target-spec.md` exists (derived from `speaches-audio.md`) and documents both the bundled-default and corporate-override LiteLLM configurations including model definitions, virtual-key auth, `pass_through_endpoints` for diarization, realtime mode, and 3600s ingress timeouts.
   8. CONTRACT-01 extended for `/api/transcribe` and `/api/reason`; tests written first (TDD); all CI checks green.
 **Plans**: 10 plans (4 waves)
-- [ ] 03-01-PLAN.md — Wave 0: Wire-contract extraction + LiteLLM stack-up (sidecar + separate `litellm` DB + bundled config)
-- [ ] 03-02-PLAN.md — Wave 0: contract-mock LiteLLM config + request_id metadata spike + audio fixture + Phase-3 zod schemas
-- [ ] 03-03-PLAN.md — Wave 1: packages/litellm-client real client (master-key + user param + metadata header injection; PROVIDER-01 single endpoint abstraction)
-- [ ] 03-04-PLAN.md — Wave 2: POST /api/transcribe (multipart streaming + ledger idempotent + 503-on-missing-key)
-- [ ] 03-05-PLAN.md — Wave 2: POST /api/reason (default qwen3.5-plus + user-attribution + ledger reason_tokens)
-- [ ] 03-06-PLAN.md — Wave 2: Diarization endpoint (pass-through OR 503-only fallback per Plan 01 outcome)
-- [ ] 03-07-PLAN.md — Wave 2: WSS /v1/realtime (Fastify wsUpstream + auth preHandler + Traefik 3600s)
-- [ ] 03-08-PLAN.md — Wave 3: apps/worker BullMQ spend-ingest job (30s scheduler + co-tenant Postgres read + idempotent UPSERT)
+- [x] 03-01-PLAN.md — Wave 0: Wire-contract extraction + LiteLLM stack-up (sidecar + separate `litellm` DB + bundled config)
+- [x] 03-02-PLAN.md — Wave 0: contract-mock LiteLLM config + request_id metadata spike + audio fixture + Phase-3 zod schemas
+- [x] 03-03-PLAN.md — Wave 1: packages/litellm-client real client (master-key + user param + metadata header injection; PROVIDER-01 single endpoint abstraction)
+- [x] 03-04-PLAN.md — Wave 2: POST /api/transcribe (multipart streaming + ledger idempotent + 503-on-missing-key)
+- [x] 03-05-PLAN.md — Wave 2: POST /api/reason (default qwen3.5-plus + user-attribution + ledger reason_tokens)
+- [x] 03-06-PLAN.md — Wave 2: Diarization endpoint (pass-through OR 503-only fallback per Plan 01 outcome)
+- [x] 03-07-PLAN.md — Wave 2: WSS /v1/realtime (Fastify wsUpstream + auth preHandler + Traefik 3600s)
+- [x] 03-08-PLAN.md — Wave 3: apps/worker BullMQ spend-ingest job (30s scheduler + co-tenant Postgres read + idempotent UPSERT)
 - [ ] 03-09-PLAN.md — Wave 3: docs/litellm-target-spec.md + docs/litellm-mock-mode.md + Makefile e2e-test + README quickstart
-- [ ] 03-10-PLAN.md — Wave 3: cross-cutting contract tests (PROVIDER-01 override + Pitfall #8 503-not-401 + DATA-03 idempotency) + nightly e2e CI job
+- [x] 03-10-PLAN.md — Wave 3: cross-cutting contract tests (PROVIDER-01 override + Pitfall #8 503-not-401 + DATA-03 idempotency) + nightly e2e CI job
 **UI hint**: no
 
 ### Phase 4: Streaming + Realtime
