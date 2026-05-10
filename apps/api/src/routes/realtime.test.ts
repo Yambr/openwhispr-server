@@ -23,7 +23,11 @@ import Fastify, { type FastifyInstance } from "fastify";
 import { afterEach, describe, expect, it } from "vitest";
 import WebSocket, { WebSocketServer, type RawData } from "ws";
 import { registerErrorHandler } from "../error-handler.js";
-import { buildRealtimeRoutes, httpToWsScheme } from "./realtime.js";
+import {
+  buildRealtimeRoutes,
+  buildRewriteRequestHeaders,
+  httpToWsScheme,
+} from "./realtime.js";
 
 const TEST_TENANT = "00000000-0000-0000-0000-000000000000";
 const TEST_USER = "11111111-1111-1111-1111-111111111111";
@@ -245,6 +249,100 @@ describe("WSS /v1/realtime route", () => {
     expect(upstreamUrl.searchParams.get("intent")).toBe("transcription");
     ws.close();
     await new Promise<void>((res) => ws.once("close", () => res()));
+  });
+
+  // ----- Stage B back-fill — close residual branch gaps to 90/90/90/90 ----
+
+  it("buildRewriteRequestHeaders falls back to user='anonymous' when user.id is missing (line 115 idx 1)", () => {
+    // Direct unit test on the exported closure factory.
+    const rh = buildRewriteRequestHeaders(TEST_MASTER_KEY);
+    // Case A: user is undefined.
+    const out1 = rh({ authorization: "Bearer client" }, { id: "req-1" });
+    expect(JSON.parse(out1["x-litellm-spend-logs-metadata"]!).openwhispr_user_id).toBe(
+      "anonymous",
+    );
+    // Case B: user object present but id missing.
+    const out2 = rh({}, { id: "req-2", user: {} });
+    expect(JSON.parse(out2["x-litellm-spend-logs-metadata"]!).openwhispr_user_id).toBe(
+      "anonymous",
+    );
+    // Sanity: when user.id is set, it's used verbatim.
+    const out3 = rh({}, { id: "req-3", user: { id: "real-user" } });
+    expect(JSON.parse(out3["x-litellm-spend-logs-metadata"]!).openwhispr_user_id).toBe(
+      "real-user",
+    );
+    // Master key always swapped in; inbound bearer always stripped.
+    expect(out1.authorization).toBe(`Bearer ${TEST_MASTER_KEY}`);
+    expect(out1.authorization).not.toBe("Bearer client");
+  });
+
+  it("buildRewriteRequestHeaders strips both 'authorization' and 'Authorization' casings", () => {
+    const rh = buildRewriteRequestHeaders(TEST_MASTER_KEY);
+    const out = rh(
+      {
+        authorization: "Bearer lower",
+        // @ts-expect-error — legacy mixed-case casing intentionally provided.
+        Authorization: "Bearer upper",
+      },
+      { id: "r" },
+    );
+    // Final authorization is the master-key bearer (we set last).
+    expect(out.authorization).toBe(`Bearer ${TEST_MASTER_KEY}`);
+    // No stale upper-case Authorization left behind.
+    expect((out as Record<string, unknown>).Authorization).toBeUndefined();
+  });
+
+  it("preHandler tolerates a missing req.raw.url (line 145 fallback to req.url)", async () => {
+    // Pin line 145 binary-expr idx 1. Drive the preHandler directly with
+    // a stub request whose `raw.url` is undefined; it must read from
+    // `req.url` instead. We import the route builder and access its
+    // preHandler via the registered route's options object.
+    upstream = await startUpstream();
+    app = await buildApp({ upstream: upstream.url });
+
+    // Find the registered route and pluck its preHandler.
+    let capturedPreHandler:
+      | ((req: unknown, reply: unknown) => Promise<void>)
+      | undefined;
+    type RouteOpts = {
+      url?: string;
+      preHandler?: (req: unknown, reply: unknown) => Promise<void>;
+    };
+    // Fastify v5 exposes routes via printRoutes; intercept registration
+    // via app.addHook('onRoute', ...).
+    const localApp = Fastify({ logger: false });
+    registerErrorHandler(localApp);
+    localApp.addHook("onRequest", async (req) => {
+      (req as unknown as { user: { id: string } }).user = { id: TEST_USER };
+    });
+    localApp.addHook("onRoute", (route: RouteOpts) => {
+      if (route.url === "/v1/realtime" && route.preHandler) {
+        capturedPreHandler = route.preHandler;
+      }
+    });
+    const litellm = { baseUrl: upstream.url } as unknown as LitellmClient;
+    await localApp.register(
+      buildRealtimeRoutes({ litellm, masterKey: TEST_MASTER_KEY }),
+    );
+    await localApp.ready();
+    expect(capturedPreHandler).toBeDefined();
+
+    // Synthesize a Fastify-shaped request: raw.url undefined, req.url set.
+    const fakeReq = {
+      user: { id: TEST_USER },
+      raw: { url: undefined },
+      url: "/v1/realtime?intent=hello",
+    };
+    await capturedPreHandler!(fakeReq, {});
+    // After preHandler the raw.url MUST be rewritten with ?user=...
+    expect((fakeReq.raw as { url?: string }).url).toBeDefined();
+    const u = new URL(
+      (fakeReq.raw as { url: string }).url,
+      "http://internal",
+    );
+    expect(u.searchParams.get("user")).toBe(TEST_USER);
+    expect(u.searchParams.get("intent")).toBe("hello");
+    await localApp.close();
   });
 
   it("derives the upstream ws:// URL from litellm.baseUrl (http→ws scheme swap)", async () => {

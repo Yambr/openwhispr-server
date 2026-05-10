@@ -43,6 +43,34 @@ import type { LitellmClient } from "@openwhispr/litellm-client";
 import { AuthError } from "../errors.js";
 
 /**
+ * Build the rewriteRequestHeaders closure consumed by @fastify/http-proxy
+ * on the upstream-bound WS upgrade. Exported for direct unit-testing of
+ * the master-key swap, spend-logs metadata injection, and the
+ * `?user=anonymous` fallback when the upgrade arrives without an
+ * authenticated user.id.
+ */
+export function buildRewriteRequestHeaders(masterKey: string) {
+  return (
+    headers: Record<string, string | string[] | undefined>,
+    request: { id?: string; user?: { id?: string } },
+  ): Record<string, string> => {
+    const userId = request.user?.id ?? "anonymous";
+    const requestId = request.id;
+    const next: Record<string, string | string[] | undefined> = {
+      ...headers,
+    };
+    delete next.authorization;
+    delete next.Authorization;
+    next.authorization = `Bearer ${masterKey}`;
+    next["x-litellm-spend-logs-metadata"] = JSON.stringify({
+      openwhispr_request_id: requestId,
+      openwhispr_user_id: userId,
+    });
+    return next as Record<string, string>;
+  };
+}
+
+/**
  * WR-03: Convert an http(s) baseUrl to its ws(s) counterpart.
  *
  * Implemented as two narrow case-insensitive replaces (https before
@@ -102,31 +130,10 @@ export const buildRealtimeRoutes = (deps: RealtimeDeps) =>
       wsClientOptions: {
         // Strip the desktop's opaque bearer; inject the LiteLLM master
         // key + spend-logs metadata so LiteLLM authenticates us AND tags
-        // the resulting spend rows with our request_id + user_id.
-        //
-        // Header lowercasing: `headers` is the WS upgrade's outgoing
-        // header map (an `IncomingHttpHeaders`-shaped object passed by
-        // @fastify/http-proxy). We delete the inbound `authorization`
-        // BEFORE injecting our own to avoid any case-sensitivity edge
-        // (Node's http module normalizes header keys to lower-case on
-        // read but accepts mixed-case writes — the deletion is defensive).
-        rewriteRequestHeaders: (headers, request) => {
-          const userId =
-            (request as unknown as { user?: { id?: string } }).user?.id ??
-            "anonymous";
-          const requestId = request.id;
-          const next: Record<string, string | string[] | undefined> = {
-            ...headers,
-          };
-          delete next.authorization;
-          delete next.Authorization;
-          next.authorization = `Bearer ${deps.masterKey}`;
-          next["x-litellm-spend-logs-metadata"] = JSON.stringify({
-            openwhispr_request_id: requestId,
-            openwhispr_user_id: userId,
-          });
-          return next as Record<string, string>;
-        },
+        // the resulting spend rows with our request_id + user_id. The
+        // closure is built by buildRewriteRequestHeaders so it can be
+        // unit-tested in isolation (Stage B back-fill).
+        rewriteRequestHeaders: buildRewriteRequestHeaders(deps.masterKey),
       },
       preHandler: async (req, _reply) => {
         // dualAuthHook is the global onRequest hook and is responsible
