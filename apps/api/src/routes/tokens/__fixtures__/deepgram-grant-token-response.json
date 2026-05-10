@@ -1,0 +1,4 @@
+{
+  "access_token": "<REDACTED-deepgram-grant-jwt-eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.payload.signature>",
+  "expires_in": 30
+}
