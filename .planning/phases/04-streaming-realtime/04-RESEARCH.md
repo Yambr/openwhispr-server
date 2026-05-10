@@ -1160,15 +1160,15 @@ All A1-A3 resolve in Wave 0 spikes (~2 hr total). A4-A6 resolve during Wave 1 im
 | Validation architecture | HIGH | Five test layers map cleanly to five requirements; coverage strategy file-by-file |
 | Open questions | LOW-but-bounded | 7 spike-resolvable items, ~2hr total Wave 0 work; none change design |
 
-### Open Questions
+### Open Questions (RESOLVED)
 
-1. LiteLLM SSE chunk shape for tool_calls — capture fixture in Wave 0.
-2. OpenAI client_secrets field name — single curl in Wave 0.
-3. Deepgram Grant-Token body param — single curl in Wave 0.
-4. mkcert serves `:8443` (very likely yes, smoke-test in W1-P5).
-5. `@fastify/websocket` + `@fastify/http-proxy` v11 mock-realtime smoke (W2-P2).
-6. E2E first-byte timing precision (W3-P3).
-7. LiteLLM `mock_response` streaming behavior vs custom stub (W2-P2 alternative).
+1. LiteLLM SSE chunk shape for tool_calls — capture fixture in Wave 0. **RESOLVED:** Wave 0 plan 04-01 Task 1/2 captures the fixture corpus under `apps/api/src/routes/agent/__fixtures__/*.sse` (≥7 fixtures including multi-tool-call.sse).
+2. OpenAI client_secrets field name — single curl in Wave 0. **RESOLVED:** Wave 0 plan 04-01 Task 1/2 (provider shape spike, recorded in `tests/spikes/04-provider-shapes.md`).
+3. Deepgram Grant-Token body param — single curl in Wave 0. **RESOLVED:** Wave 0 plan 04-01 Task 1/2 (same provider shape spike).
+4. mkcert serves `:8443` (very likely yes, smoke-test in W1-P5). **RESOLVED:** Wave 1 plan 04-05 (Traefik `:8443` entrypoint integration test parses traefik.yml + smokes the entrypoint via the integration harness).
+5. `@fastify/websocket` + `@fastify/http-proxy` v11 mock-realtime smoke (W2-P2). **RESOLVED:** Wave 2 plan 04-07 (mock-realtime package + WSS proxy smoke through Fastify wsUpstream).
+6. E2E first-byte timing precision (W3-P3). **RESOLVED:** Wave 3 plan 04-09 Task 2 (fetch-send → first-byte timing, < 500ms round-trip assertion).
+7. LiteLLM `mock_response` streaming behavior vs custom stub (W2-P2 alternative). **RESOLVED:** Wave 3 plan 04-08 Task 1 sub-task 1f (verbatim `qwen3.6-plus-streaming` mock_response YAML in `compose/litellm/litellm_config.contract.yaml` confirms mock_response chunked streaming is the chosen path; custom stub not needed).
 
 ### Ready for Planning
 
