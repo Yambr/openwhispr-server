@@ -214,8 +214,19 @@ export const buildApp = async (opts: BuildAppOptions = {}): Promise<FastifyInsta
               bearer,
             );
             if (!m) return null;
+            // WR-05: tryPreviousTokenLib now resolves the user's email
+            // via a follow-up SELECT. When the user row was deleted
+            // mid-rotation (m.email === null), surface a sentinel that
+            // is OBVIOUSLY synthetic ('<previous-token-no-email>') so
+            // downstream consumers (audit logs, ledger metadata) fail
+            // loud on accidental dependence — pre-fix this was a silent
+            // empty string that silently propagated.
             return {
-              user: { id: m.userId, email: "", tenantId: m.tenantId },
+              user: {
+                id: m.userId,
+                email: m.email ?? "<previous-token-no-email>",
+                tenantId: m.tenantId,
+              },
               tenantId: m.tenantId,
             };
           }
