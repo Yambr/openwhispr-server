@@ -121,6 +121,16 @@ export function buildDualAuthHook(opts: DualAuthOptions) {
   const { auth, tryPreviousToken } = opts;
 
   return async function dualAuthHook(req: FastifyRequest): Promise<void> {
+    // Phase 02.21 / Residual A — when no route matches, `req.routeOptions.url`
+    // is undefined. Skipping here lets Fastify's setNotFoundHandler fire
+    // (registered in error-handler.ts) which throws NotFoundError → the
+    // centralized error handler emits the canonical 404 envelope. Without
+    // this, the auth check below would short-circuit to AuthError → 401
+    // for any unmatched path (e.g. GET /api/does-not-exist), violating
+    // WIRE-17 + the conventions.test.ts contract that non-2xx bodies
+    // match ErrorEnvelope and unmatched paths return 404 (not 401).
+    if (req.routeOptions?.url === undefined) return;
+
     // Per-route opt-out (e.g. /api/check-user pre-auth flow).
     if (req.routeOptions?.config?.auth === false) return;
 
