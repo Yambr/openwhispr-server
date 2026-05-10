@@ -200,4 +200,28 @@ describe("GET /api/auth/verification-status (cookie-only)", () => {
     expect(res.statusCode).toBe(400);
     await app.close();
   });
+
+  // Phase-2 debt back-fill — exercises the `if (!req.tenant)` defense-
+  // in-depth branch at verification-status.ts:53-56. Reachable when the
+  // session resolves but tenantId is the empty string (`?? fallback`
+  // does not catch ""). Production should never hit this; the test pins
+  // the canonical 401 envelope so the defense doesn't regress silently.
+  it("session with empty tenantId hits the defense-in-depth 401 branch", async () => {
+    const db = makeFakeDb(() => []);
+    const auth = makeAuth(async () => ({
+      // tenantId is "" — empty string survives `??` and produces
+      // `req.tenant = ""`, then `if (!req.tenant)` is true → AuthError.
+      user: { id: "u-1", email: "x@b.test", tenantId: "" },
+    }));
+    const app = buildApp({ db, auth });
+    const res = await app.inject({
+      method: "GET",
+      url: "/api/auth/verification-status?email=ok%40b.test",
+      headers: { cookie: "openwhispr.session_token=valid" },
+    });
+    expect(res.statusCode).toBe(401);
+    expect(() => ErrorEnvelope.parse(res.json())).not.toThrow();
+    expect(res.json().error).toBe("session expired");
+    await app.close();
+  });
 });
