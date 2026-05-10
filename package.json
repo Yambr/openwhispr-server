@@ -8,7 +8,7 @@
     "pnpm": "11.x"
   },
   "scripts": {
-    "prepare": "lefthook install",
+    "prepare": "node tools/install-hooks.cjs",
     "lint": "biome check .",
     "lint:fix": "biome check --apply .",
     "format": "biome format --write .",
