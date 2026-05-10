@@ -15,6 +15,7 @@
 import type { ExecutableTx, TransactionalDb } from "@openwhispr/data";
 import type { LitellmClient } from "@openwhispr/litellm-client";
 import type { FastifyInstance } from "fastify";
+import type { RedisLike } from "../lib/idempotency-cache.js";
 import type { AuthLike } from "../middleware/dual-auth.js";
 import {
   type AuthCallbackDeps,
@@ -25,6 +26,7 @@ import { type BetterAuthHandlerDeps, buildBetterAuthHandlerRoutes } from "./bett
 import { buildCheckUserRoutes, type CheckUserDeps } from "./check-user.js";
 import { buildDeleteAccountRoutes, type DeleteAccountDeps } from "./delete-account.js";
 import { buildDesktopSigninRoutes, type DesktopSigninDeps } from "./desktop-signin.js";
+import { buildDiarizationRoutes, type DiarizationDeps } from "./diarization.js";
 import healthRoutes from "./health.js";
 import { buildReasonRoutes, type ReasonDeps } from "./reason.js";
 import { buildTestOnlyRoutes } from "./test-only.js";
@@ -58,6 +60,24 @@ export interface AllRoutesDeps {
    * surfaces as 503 from inside the route).
    */
   litellm?: LitellmClient;
+  /**
+   * Phase 03 / Plan 06 (D-07 REVISED): Valkey client for the diarization
+   * route's Stripe-style idempotency cache. When supplied (production
+   * wires the same client used by the rate-limit plugin), the
+   * /v1/audio/diarization route is registered. When omitted, the route
+   * is NOT registered and the centralized notFoundHandler emits the
+   * canonical 404 envelope (operator must wire VALKEY_URL to enable
+   * diarization in bundled mode).
+   */
+  redis?: RedisLike;
+  /**
+   * Phase 03 / Plan 06 (D-07 REVISED): MOCK_DIARIZATION=true short-
+   * circuits the diarization route to a fixture response. Set in the
+   * contract-test profile so `make contract-test` runs hermetically
+   * (no pyannote.ai dependency in CI). Production .env MUST NOT set
+   * this — bootstrap.sh deny-list refuses placeholder values.
+   */
+  mockDiarization?: boolean;
 }
 
 /**
@@ -106,6 +126,22 @@ export function buildAllRoutes(deps: AllRoutesDeps): readonly RoutePlugin[] {
     const reasonDeps: ReasonDeps = { db: deps.db, litellm: deps.litellm };
     plugins.push(buildReasonRoutes(reasonDeps));
   }
+  // Phase 03 / Plan 06 (D-07 REVISED): conditionally register the
+  // diarization route. Bundled-mode requires a Valkey client (idempotency
+  // cache backing) — when omitted, the route is NOT registered and the
+  // notFoundHandler emits the canonical 404 envelope. PYANNOTE_API_KEY is
+  // consumed inside the route at request time (NOT at registration), so a
+  // missing key surfaces as 503 (Pitfall #8 — never 401 to the desktop)
+  // only when the route is actually invoked.
+  if (deps.redis) {
+    const diarizationDeps: DiarizationDeps = {
+      redis: deps.redis,
+      mockMode:
+        deps.mockDiarization === true ||
+        process.env.MOCK_DIARIZATION === "true",
+    };
+    plugins.push(buildDiarizationRoutes(diarizationDeps));
+  }
   // Plan 08: register the /api/_test/* surface when explicitly enabled
   // OR when running under NODE_ENV='test'. The plugin itself enforces
   // the gate as well — defense in depth.
@@ -132,6 +168,7 @@ export {
   buildCheckUserRoutes,
   buildDeleteAccountRoutes,
   buildDesktopSigninRoutes,
+  buildDiarizationRoutes,
   buildReasonRoutes,
   buildTestOnlyRoutes,
   buildTranscribeRoutes,
