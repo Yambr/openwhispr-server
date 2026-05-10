@@ -12,6 +12,7 @@
   },
   "dependencies": {
     "@fastify/cookie": "11.0.2",
+    "@fastify/http-proxy": "^11.4.4",
     "@fastify/multipart": "10.0.0",
     "@fastify/rate-limit": "10.3.0",
     "@fastify/type-provider-zod": "1.0.0",
@@ -19,18 +20,20 @@
     "@openwhispr/data": "workspace:*",
     "@openwhispr/litellm-client": "workspace:*",
     "@redis/client": "^5.12.1",
-    "drizzle-orm": "0.45.2",
-    "undici": "7.25.0",
     "better-auth": "1.6.9",
+    "drizzle-orm": "0.45.2",
     "fastify": "^5.0.0",
     "fastify-plugin": "^5.1.0",
     "nodemailer": "8.0.7",
+    "undici": "7.25.0",
     "zod": "4.4.3"
   },
   "devDependencies": {
     "@types/nodemailer": "^8.0.0",
     "@types/pg": "^8.11.10",
+    "@types/ws": "^8.18.1",
     "pg": "8.20.0",
-    "tsx": "^4.19.0"
+    "tsx": "^4.19.0",
+    "ws": "^8.20.0"
   }
 }
