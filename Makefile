@@ -3,7 +3,7 @@
 # Future-phase targets stub-fail with a phase-N pointer.
 
 .PHONY: dev test lint lint-rls format typecheck up down clean clean-stack help \
-        contract-test contract-test-deployed contract-test-missing-keys e2e-test \
+        contract-test contract-test-deployed contract-test-missing-keys e2e-test e2e-test-live \
         e2e-hermetic \
         load-test seed backup restore migrate migrate-rollback logs ps restart \
         verify-images
@@ -124,6 +124,45 @@ contract-test-missing-keys:
 	  -e MISSING_KEY_TEST_MODE=1 contract-test-runner ; \
 	rc=$$? ; docker compose down -v ; rm -f .env.missing-keys ; exit $$rc
 
+# Phase 04 / Plan 09 — `make e2e-test` (hermetic, gated on E2E=1).
+#
+# Brings up the full docker-compose stack PLUS the Plan 07 e2e overlay
+# (mock-realtime + LiteLLM repointed at the e2e-realtime config). Runs
+# the Plan 09 e2e tests via the dedicated `tests/e2e/vitest.e2e.config.ts`
+# discovery glob:
+#
+#   * tests/e2e/agent-stream-first-line-latency.test.ts  (WIRE-07 SC#1)
+#   * tests/e2e/realtime-soak-hermetic.test.ts           (SCALE-05 5-min)
+#
+# Hermetic — NO real provider keys required. The litellm container
+# loads litellm_config.e2e-realtime.yaml (mock_response on every chat
+# entry; realtime upstream pointed at mock-realtime). MOCK_DIARIZATION
+# defaults true so /v1/audio/diarization short-circuits without a
+# pyannote key. Live realtime against OpenAI is `make e2e-test-live`.
+#
+# CLAUDE.md mandatory-e2e clause requires `gated on E2E=1` — refuse to
+# run without it so accidental `make e2e-test` from a non-e2e shell
+# doesn't spin up Docker.
+#
+# Tear-down is unconditional (regardless of vitest exit code) so a
+# failing test never leaves the stack live.
+e2e-test:
+	@if [ "$$E2E" != "1" ]; then \
+	  echo "Refusing to run: E2E=1 required (CLAUDE.md mandatory-e2e gate)." ; \
+	  echo "Usage: E2E=1 make e2e-test" ; \
+	  exit 1 ; \
+	fi
+	@test -f .env || (echo "Refusing to run: .env not found at repo root. Run tools/bootstrap.sh first." && exit 1)
+	OPENWHISPR_TEST_ROUTES=true MOCK_DIARIZATION=true \
+	  docker compose -f docker-compose.yml -f compose/e2e/docker-compose.e2e.yml \
+	  --profile default --profile e2e up -d --wait
+	@E2E=1 OPENWHISPR_TEST_ROUTES=true MOCK_DIARIZATION=true \
+	  pnpm exec vitest run --config tests/e2e/vitest.e2e.config.ts ; \
+	  rc=$$? ; \
+	  docker compose -f docker-compose.yml -f compose/e2e/docker-compose.e2e.yml \
+	    --profile default --profile e2e down -v --remove-orphans ; \
+	  exit $$rc
+
 # Phase 3 / Plan 09 — D-05B: E2E contract suite against REAL provider APIs.
 # Operator supplies .env.e2e with OPENROUTER_API_KEY + GROQ_API_KEY +
 # OPENAI_API_KEY + PYANNOTE_API_KEY (real values, NOT bootstrap-generated).
@@ -132,7 +171,13 @@ contract-test-missing-keys:
 # exercises real provider key paths end-to-end. Diarization uses the Fastify
 # sync-wrapper against pyannote.ai directly (D-07 REVISED — NOT via LiteLLM).
 # .env.e2e is gitignored via the .env.* glob in .gitignore.
-e2e-test:
+#
+# Phase 04 / Plan 09 deviation: renamed from `e2e-test` to `e2e-test-live`
+# so the new hermetic `e2e-test` target (above) can take the canonical name
+# per the plan + CLAUDE.md mandatory-e2e contract. The live-key target is
+# operator-only (no .env.e2e on a fresh clone) so this rename does NOT
+# break the default contributor path.
+e2e-test-live:
 	@test -f .env.e2e || (echo "Refusing to run: .env.e2e not found. Create it (see .env.e2e.example) with real OPENROUTER_API_KEY + GROQ_API_KEY + OPENAI_API_KEY + PYANNOTE_API_KEY values." && exit 1)
 	@grep -q '^OPENROUTER_API_KEY=' .env.e2e || (echo "OPENROUTER_API_KEY missing in .env.e2e" && exit 1)
 	@grep -q '^GROQ_API_KEY=' .env.e2e || (echo "GROQ_API_KEY missing in .env.e2e (D-11 — Whisper-large-v3 STT)" && exit 1)

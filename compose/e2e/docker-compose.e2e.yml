@@ -29,6 +29,34 @@ networks:
     name: openwhispr_openwhispr_internal
 
 services:
+  # Phase 04 / Plan 09 / Task 1a — overlay-bind the e2e-realtime config
+  # onto the LiteLLM container, on top of whatever the base
+  # docker-compose.yml resolved via LITELLM_CONFIG_FILE. Compose merges
+  # `volumes:` lists by appending — the LAST bind targeting the same
+  # container path WINS. This means the e2e profile always serves the
+  # e2e-realtime config regardless of any LITELLM_CONFIG_FILE export
+  # that may be in the operator's shell environment, eliminating a
+  # whole class of "wrong config got loaded" footguns.
+  #
+  # The realtime entry inside litellm_config.e2e-realtime.yaml points
+  # at ws://mock-realtime:8765/v1/realtime so LiteLLM forwards the WSS
+  # upgrade to the in-cluster mock-realtime echo server (D-09 Option A:
+  # keep production api → LiteLLM → upstream chain; only the upstream
+  # is repointed). The chat-completions mocks
+  # (qwen3.6-plus-streaming et al.) are inlined so the profile is
+  # self-sufficient (no second config file to mount).
+  #
+  # Wait for mock-realtime to be healthy before starting LiteLLM —
+  # otherwise LiteLLM may attempt the realtime upstream resolution
+  # before the mock is bound. Plan 09 acceptance: smoke `up -d --wait`
+  # must converge cleanly.
+  litellm:
+    volumes:
+      - ./compose/litellm/litellm_config.e2e-realtime.yaml:/etc/litellm/config.yaml:ro
+    depends_on:
+      mock-realtime:
+        condition: service_healthy
+
   mock-realtime:
     profiles: [e2e]
     container_name: openwhispr-mock-realtime
