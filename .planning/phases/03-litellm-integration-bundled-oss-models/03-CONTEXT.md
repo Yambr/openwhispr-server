@@ -138,6 +138,36 @@ User должен предоставить **GROQ_API_KEY**. Без него `/a
 
 **Out of scope:** OPENAI_API_KEY больше не нужен в Phase 3 (всё через OpenRouter + Groq). Если корпоративный оператор хочет OpenAI Whisper direct — они переопределяют свой LiteLLM config (LITELLM_BASE_URL).
 
+> **Updated by D-12 (2026-05-10):** OPENAI_API_KEY *is* required in Phase 3 — the bundled-default Realtime upstream is OpenAI Realtime API direct (`mode: realtime` in LiteLLM). See D-12 below. The "out-of-scope" sentence above applies only to Whisper STT (still Groq via D-11).
+
+### D-12 — Realtime WSS upstream: OpenAI Realtime API direct
+
+`WSS /v1/realtime` bundled-default routes to **OpenAI Realtime API** via LiteLLM `mode: realtime`. Verified live 2026-05-10 — OPENAI_API_KEY accessible, 14 realtime models present (including `gpt-realtime` GA, `gpt-4o-realtime-preview`, `gpt-realtime-mini`).
+
+`compose/litellm/litellm_config.yaml` model_list realtime entry:
+```yaml
+- model_name: gpt-realtime
+  litellm_params:
+    model: openai/gpt-realtime
+    api_key: os.environ/OPENAI_API_KEY
+    mode: realtime
+```
+
+Default model when client doesn't specify: `gpt-realtime` (latest GA, replaces deprecated `gpt-4o-realtime-preview`).
+
+Aliases for compatibility (all routed to OpenAI direct via OPENAI_API_KEY):
+- `gpt-realtime` (default) — latest GA
+- `gpt-realtime-mini` — cheap fallback
+- `gpt-4o-realtime-preview` — legacy alias for backward compat
+
+**Why:** Groq/OpenRouter/Replicate do NOT support the OpenAI Realtime WSS spec. Speaches self-hosted does, but bundled-default cannot ship GPU containers (per the no-bundled-models rule). OpenAI Realtime is the only public cloud SaaS that speaks the exact WSS protocol from `speaches-audio.md` spec. Corporate operator with Speaches/Azure overrides via `LITELLM_BASE_URL`.
+
+**Pricing:** $0.06/min audio in + $0.24/min audio out (`gpt-realtime`) — most expensive endpoint, but the only path that preserves spec wire-compat.
+
+**.env.example update:** add `OPENAI_API_KEY=` (in addition to OPENROUTER_API_KEY, GROQ_API_KEY, PYANNOTE_API_KEY, LITELLM_MASTER_KEY). Without it `WSS /v1/realtime` upgrade attempts → 503/close envelope citing `OPENAI_API_KEY`.
+
+**Out-of-scope deferred to Phase 4:** 65-min soak test, first-line latency benchmark — these are Phase 4 success criteria.
+
 ## Files (likely affected)
 
 - `docker-compose.yml` — `litellm` service + new `postgres` db init для litellm database
@@ -169,6 +199,6 @@ User должен предоставить **GROQ_API_KEY**. Без него `/a
 
 ## Acceptance Gate
 
-1. ✅ All 6 gray areas (D-01..D-06) have explicit user-locked decisions
+1. ✅ All 6 gray areas (D-01..D-06) have explicit user-locked decisions; D-07..D-12 added in research/sync rounds
 2. ✅ CONTEXT.md saved as final (not -DRAFT)
 3. Ready for `/gsd-plan-phase 3 --research`
