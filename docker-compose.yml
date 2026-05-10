@@ -40,10 +40,23 @@ services:
       # to init scripts; everything else must be declared explicitly.
       POSTGRES_OWNER_PASSWORD: ${POSTGRES_OWNER_PASSWORD}
       POSTGRES_APP_PASSWORD: ${POSTGRES_APP_PASSWORD}
+      # Phase 03 Plan 01 — POSTGRES_OWNER_USER is read by
+      # compose/postgres/initdb/01-litellm-database.sh to set the OWNER of
+      # the `litellm` database. Already set above as POSTGRES_USER on first
+      # init; declared explicitly so the script's quote_ident interpolation
+      # is decoupled from the bootstrap-superuser env-var name.
+      POSTGRES_OWNER_USER: ${POSTGRES_OWNER_USER}
     volumes:
       - postgres_data:/var/lib/postgresql/data
       # Plan 03 fills this directory with role/RLS bootstrap SQL.
       - ./packages/data/migrations/init:/docker-entrypoint-initdb.d:ro
+      # Phase 03 Plan 01 / Task 2 — fresh-install path for the separate
+      # `litellm` Postgres database (LITELLM-01). Mounted under a subdir
+      # so it does NOT collide with the existing init dir above. Existing-
+      # volume upgrade path (HIGH-1) is covered by the migrate runner's
+      # ensureLitellmDatabase() helper — initdb scripts only run on a
+      # freshly-initialized data volume.
+      - ./compose/postgres/initdb:/docker-entrypoint-initdb.d/litellm:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
       interval: 5s
@@ -290,6 +303,58 @@ services:
     # ships in the same image at /app/package.json.
     command: ["node", "/app/packages/data/dist/migrate.cjs"]
 
+  # Phase 03 / Plan 01 — Bundled LiteLLM Proxy sidecar (LITELLM-01 / D-01).
+  #
+  # Pinned to v1.83.14-stable (>= v1.83.7-stable carries the multipart-
+  # passthrough fix natively — PROJECT.md "What NOT to Use" forbids 1.82.x).
+  # Multi-arch image: ghcr.io/berriai/litellm publishes amd64 + arm64.
+  #
+  # Operator override: set LITELLM_BASE_URL in .env to point at a corporate
+  # LiteLLM (LITELLM-05). The bundled service is still in the `default`
+  # profile but the api service ignores it whenever LITELLM_BASE_URL points
+  # elsewhere.
+  #
+  # depends_on:
+  #   - postgres healthy : litellm shares the pg cluster (separate `litellm`
+  #     database, init script + migrate runner ensure it exists)
+  #   - migrate completed : ensureLitellmDatabase() in the runner is the
+  #     existing-volume safety net (HIGH-1)
+  litellm:
+    image: ghcr.io/berriai/litellm:main-v1.83.14-stable
+    profiles: [default]
+    networks: [openwhispr_internal]
+    environment:
+      LITELLM_MASTER_KEY: ${LITELLM_MASTER_KEY}
+      LITELLM_DATABASE_URL: ${LITELLM_DATABASE_URL}
+      # Provider keys — `:-` so a fresh clone with empty keys does NOT
+      # block container boot. Endpoints whose backing key is missing
+      # surface 503 envelopes at request time (per Plan 03/04/07
+      # error-envelope contract).
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
+      GROQ_API_KEY: ${GROQ_API_KEY:-}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      # Phase 03 D-07 REVISED — PYANNOTE_API_KEY is consumed by the
+      # Fastify diarization route on the `api` service, NEVER forwarded
+      # into the litellm container. Threat T-03-01-06 mitigation: the
+      # absence of PYANNOTE_API_KEY here is intentional and verified by
+      # the plan's automated check (grep PYANNOTE on the litellm env
+      # block must return zero hits).
+    command: ["--config", "/etc/litellm/config.yaml", "--port", "4000", "--num_workers", "2"]
+    volumes:
+      - ./compose/litellm/litellm_config.yaml:/etc/litellm/config.yaml:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:4000/health/liveliness"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 30s
+    restart: unless-stopped
+
   # Phase 2 Plan 02 — API container. Closes Phase 1 D-08 / SC#1 partial:
   # the entrypoint runs check-default-secrets.cjs BEFORE node main, so
   # `MASTER_KEK=changeme` is rejected at start time even if the operator
@@ -345,9 +410,19 @@ services:
       OIDC_ISSUER_URL: ${OIDC_ISSUER_URL:-http://fixture-idp:9000}
       OIDC_CLIENT_ID: ${OIDC_CLIENT_ID:-conformance-test-client}
       OIDC_CLIENT_SECRET: ${OIDC_CLIENT_SECRET:-conformance-test-secret-do-not-use-in-prod}
+      # Phase 03 / Plan 01 — bundled LiteLLM endpoint + master key. Override
+      # LITELLM_BASE_URL in .env to point at a corporate LiteLLM (LITELLM-05).
+      LITELLM_BASE_URL: ${LITELLM_BASE_URL:-http://litellm:4000}
+      LITELLM_MASTER_KEY: ${LITELLM_MASTER_KEY}
+      # Phase 03 D-07 REVISED — pyannote.ai key is consumed by the Fastify
+      # diarization route (apps/api/src/routes/diarization.ts in Plan 06),
+      # NOT by the LiteLLM sidecar. Forwarded only to the api container.
+      PYANNOTE_API_KEY: ${PYANNOTE_API_KEY:-}
     depends_on:
       migrate:
         condition: service_completed_successfully
+      litellm:
+        condition: service_healthy
       pgbouncer:
         condition: service_healthy
       valkey:
