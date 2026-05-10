@@ -1,0 +1,101 @@
+# Phase 04 / Plan 09 / Task 1a — e2e-realtime LiteLLM config overlay.
+#
+# Topology rationale (Plan 09 D-09 Option A): keep the production
+# api → LiteLLM → upstream chain (Phase 3 D-04); switch the LiteLLM
+# realtime model entry to point at the hermetic mock-realtime container
+# ONLY when the e2e profile is active. Option B (api bypassing LiteLLM
+# directly) was rejected — deviates from production topology and would
+# leave the LiteLLM hop untested.
+#
+# This file is mounted by the e2e profile via
+#   compose/e2e/docker-compose.e2e.yml
+# which sets LITELLM_CONFIG_FILE=litellm_config.e2e-realtime.yaml on
+# the litellm service. The contract config is NOT mounted alongside;
+# instead, this file inlines BOTH the contract chat-completions mocks
+# (via mock_response — needed for Plan 09 Task 2 first-line latency
+# test on `qwen3.6-plus-streaming`) AND the realtime entry pointed at
+# mock-realtime. This keeps the realtime soak test (Task 3) hermetic
+# and the agent-stream test (Task 2) wire-rate accurate.
+#
+# Operators MUST NOT use this config in production — every chat /
+# realtime call short-circuits to mock data; realtime sessions go to
+# the in-cluster mock-realtime echo server.
+model_list:
+  # Realtime model entry repointed at mock-realtime (D-09 Option A).
+  # LiteLLM v1.83.x dispatches `mode: realtime` model entries via
+  # `api_base` for the WSS upgrade — by setting api_base to the
+  # internal mock-realtime DNS name we cause LiteLLM to forward the
+  # WSS handshake to the hermetic echo server instead of OpenAI.
+  - model_name: realtime
+    litellm_params:
+      model: openai/gpt-realtime
+      api_base: ws://mock-realtime:8765/v1/realtime
+      api_key: sk-mock-e2e-realtime
+      mode: realtime
+  - model_name: gpt-realtime
+    litellm_params:
+      model: openai/gpt-realtime
+      api_base: ws://mock-realtime:8765/v1/realtime
+      api_key: sk-mock-e2e-realtime
+      mode: realtime
+
+  # Chat-completions mocks — mirrored from
+  # compose/litellm/litellm_config.contract.yaml so the e2e profile
+  # does NOT need both files mounted simultaneously. The streaming
+  # entry (qwen3.6-plus-streaming) feeds Plan 09 Task 2's first-line
+  # latency assertion through the real Traefik chain.
+  - model_name: qwen3.6-plus
+    litellm_params:
+      model: openai/qwen3.6-plus
+      api_key: "fake-key-for-mock"
+      mock_response: '{"id":"chatcmpl-mock","object":"chat.completion","created":1000,"model":"qwen3.6-plus","choices":[{"index":0,"message":{"role":"assistant","content":"mocked reasoning"},"finish_reason":"stop"}],"usage":{"prompt_tokens":10,"completion_tokens":5,"total_tokens":15}}'
+  - model_name: gemini-3-flash
+    litellm_params:
+      model: openai/gemini-3-flash
+      api_key: "fake-key-for-mock"
+      mock_response: '{"id":"chatcmpl-mock","object":"chat.completion","created":1000,"model":"gemini-3-flash","choices":[{"index":0,"message":{"role":"assistant","content":"mock"},"finish_reason":"stop"}],"usage":{"prompt_tokens":1,"completion_tokens":1,"total_tokens":2}}'
+  - model_name: gpt-4o-mini
+    litellm_params:
+      model: openai/gpt-4o-mini
+      api_key: "fake-key-for-mock"
+      mock_response: '{"id":"chatcmpl-mock","object":"chat.completion","created":1000,"model":"gpt-4o-mini","choices":[{"index":0,"message":{"role":"assistant","content":"mock"},"finish_reason":"stop"}],"usage":{"prompt_tokens":1,"completion_tokens":1,"total_tokens":2}}'
+  - model_name: whisper-large-v3
+    litellm_params:
+      model: groq/whisper-large-v3
+      api_key: "fake-key-for-mock"
+      mock_response: '{"text":"mocked transcript","language":"en","duration":1.0,"segments":[]}'
+  - model_name: gpt-realtime-mini
+    litellm_params:
+      model: openai/gpt-realtime-mini
+      api_key: "fake-key-for-mock"
+      mode: realtime
+  - model_name: gpt-4o-realtime-preview
+    litellm_params:
+      model: openai/gpt-4o-realtime-preview
+      api_key: "fake-key-for-mock"
+      mode: realtime
+
+  # Plan 08 Task 1f / D-29 — streaming mock_response for Plan 09 Task 2
+  # first-line-latency test (round-trip < 500ms through the real Traefik
+  # chain). Mirrored from litellm_config.contract.yaml so the e2e profile
+  # is self-sufficient.
+  - model_name: qwen3.6-plus-streaming
+    litellm_params:
+      model: openai/qwen-3.6-plus
+      mock_response: |
+        data: {"choices":[{"delta":{"content":"Hello"}}]}
+
+        data: {"choices":[{"delta":{"content":" world"}}]}
+
+        data: {"choices":[{"delta":{},"finish_reason":"stop"}],"usage":{"prompt_tokens":10,"completion_tokens":2,"total_tokens":12}}
+
+        data: [DONE]
+
+general_settings:
+  master_key: os.environ/LITELLM_MASTER_KEY
+  database_url: os.environ/LITELLM_DATABASE_URL
+  store_model_in_db: True
+
+litellm_settings:
+  drop_params: True
+  set_verbose: False
