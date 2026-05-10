@@ -1,40 +1,40 @@
 ---
 gsd_state_version: 1.0
-milestone: v1.6.9
-milestone_name: expects plain session.token text; advisor research recommends Option C
-status: Milestone complete
-last_updated: "2026-05-10T17:04:13.921Z"
+milestone: v1
+milestone_name: Phase 3 closed with full audit trail; live e2e green against real providers
+status: Phase 3 complete (passed_with_audit_trail + debt fully closed); Phase 4 unblocked
+last_updated: "2026-05-11T03:30:00.000Z"
 progress:
   total_phases: 15
-  completed_phases: 3
-  total_plans: 20
-  completed_plans: 32
-  percent: 100
+  completed_phases: 4
+  total_plans: 30
+  completed_plans: 42
+  percent: 36
 ---
 
 # Project State: OpenWhispr Server
 
-**Last updated:** 2026-05-08 (rebaseline after pivot)
+**Last updated:** 2026-05-11 (Phase 3 closure + TLS/coverage/lefthook debt closure)
 
 ## Project Reference
 
 **Core value:** A drop-in OpenWhispr backend any organization can self-host — open-source out of the box, corporate-LiteLLM-ready by env override.
 
-**Current focus:** Phase 01.1 partial (Plans 01–04 done, Plan 05 blocked on Phase 02.1 Dockerfile defect). MinIO image-pin defect proven closed; full stack-up gated on a distinct, pre-existing pnpm-v10 Dockerfile defect uncovered by the now-passing pull check.
+**Current focus:** Phase 3 (LiteLLM Integration + Bundled OSS Models) DONE end-to-end. Live e2e suite 25 passed | 1 conditional skip | 0 failed against real OpenRouter / Groq / OpenAI / pyannote.ai. Operational debt (TLS bootstrap two-tier CA chain, lefthook prepare-hook, Phase-2 coverage debt across 6 files) fully closed. 320 commits ahead of origin/main, push deferred per user direction.
 
 ## Current Position
 
 | Field | Value |
 |-------|-------|
 | Milestone | v1 |
-| Phase | 02.7 — Phase 02 contract-test conformance gaps (COMPLETE — 25/26 GREEN + 1 deliberate skip) |
-| Plan | 02.7-07 complete; Phase 02 fully closed via cascade tail (02.8 → 02.21) |
-| Status | DONE — `make contract-test` 25 passed | 1 deliberate skipped (26); 02-HUMAN-UAT Item 1 flipped without scope qualifier; Phase 02 wire-spec scope fully delivered |
-| Phase progress | Phase 01.1 4/5 plans done (Plan 05 blocked); Phase 02.5 5/5 done; Phase 02.6 done; Phase 02.7 7/7 done; Phases 02.8 → 02.21 all done |
-| Next action | Begin Phase 3 — `/gsd-plan-phase 3` (LiteLLM Integration + Bundled OSS Models) |
+| Phase | 3 — LiteLLM Integration + Bundled OSS Models (COMPLETE — passed_with_audit_trail + debt closed) |
+| Plan | 03-01 → 03-10 complete; Phase-2 coverage debt back-fill complete; Phase 02.22 TLS bootstrap complete; lefthook prepare-hook fix complete |
+| Status | DONE — `make e2e-test` against real providers: 25 passed | 1 conditional skip (missing-key-503, gated on separate make target) | 0 failed. apps/api coverage: L=98.92 / B=94.52 / F=100 / S=98.38. All four constitutional axes ≥90 on every touched file. |
+| Phase progress | Phases 0/1/2/3 closed; 02.x cascade fully closed; 03.x debt back-fill complete; Phase 02.22 (TLS bootstrap two-tier CA chain) inserted and closed |
+| Next action | Begin Phase 4 — `/gsd-plan-phase 4` (Streaming + Realtime: NDJSON line-flush + WSS realtime 3600s + 3 realtime token endpoints) |
 
 ```
-[X][X][ ][ ][ ][ ][ ][ ][ ][ ][ ]
+[X][X][X][X][ ][ ][ ][ ][ ][ ][ ]
  0  1  2  3  4  5  6  7  8  9  10
 ```
 
@@ -93,6 +93,11 @@ progress:
 - Phase 02.5 Plans 01-04 landed (commits prior + `91784ab` + `eb92282` + this Plan 04 commit): RED tests → migration 0003 (tenant default binding) + auth.ts schema map → live `make contract-test` PARTIAL. Plans 02+03 verified live: migrate=ok, Better Auth resolves model `user`→`users` and dispatches into adapter `findOne`. Signup still 500s due to a SEPARATE wrapper-`db` defect in `apps/api/src/index.ts:229-233` (NOT the schema/tenant issue). 02-HUMAN-UAT.md Item 1 flippable: NO until Phase 02.6 fixes the one-line bootstrap destructure.
 - **Phase 02.12 inserted (2026-05-10): Better-Auth-native plain `session.token` text storage.** Closes Phase 02.5-04 cascade tail #11 (`BetterAuthError: The field "token" does not exist in the schema for the model "session"`). Phase 02 Plan 01's bytea hash-only `tokenHash` design (AUTH-04 v1) is incompatible with BA v1.6.9, which has no native hashed-token support. Migration `0005_session_token_plain.sql` drops bytea columns + recreates SECURITY DEFINER lookup functions with `text` parameter; AUTH-04 5-minute overlap CONTRACT preserved via plain-text `previous_token`. Atomic commit `a7456d9`. Contract suite advances from 0 → 16/27 passing; remaining failures all classified as pre-existing Group B (OIDC 503) and Group C (rate-limit cascades).
 - **AUTH-04 v2 hardening DEFERRED (Phase 02.12 / D-05):** Application-layer hash-only token storage was over-engineered for v1 (entire OSS auth ecosystem stores plain bearers). v2 hardening sweep will introduce either (a) column-level pgcrypto on `sessions.token` with Vault/KMS-rotated DEK, or (b) Postgres TDE / disk-level encryption documented in operator runbook. Phase 02 single-tenant dev posture acceptable until v2 multi-tenant sweep. Rationale + reverse-patch evidence in `02.12-SUMMARY.md`.
+- **Phase 3 closed (2026-05-11): LiteLLM Integration + Bundled OSS Models.** All 10 plans landed; `passed_with_audit_trail` per gsd-verifier with 8/8 hard-pass + 6 user-ratified overrides. Live `make e2e-test` against real OpenRouter (chat) / Groq (Whisper-large-v3 STT) / OpenAI (Realtime WSS) / pyannote.ai (diarization sync-wrapper) — 25 passed | 1 conditional skip | 0 failed. Decisions of note: D-06 (Groq direct STT, not via LiteLLM) / D-07 REVISED (pyannote sync-wrapper in Fastify, not LiteLLM passthrough) / D-10 (OpenRouter chat completions) / D-11 (Groq STT explicit) / D-12 (OpenAI Realtime direct, not LiteLLM passthrough). Hermetic mock-LiteLLM profile (`make e2e-hermetic`) wired into CI on every PR.
+- **Phase 02.22 inserted + closed (2026-05-11): TLS bootstrap two-tier CA chain.** Surfaced during Phase 3 live e2e validation: `tools/bootstrap.sh` emitted a self-signed end-entity cert with `basicConstraints = CA:FALSE`. Node 24 + OpenSSL 3 reject this as a trust anchor when supplied via `NODE_EXTRA_CA_CERTS`, so `contract-test-runner` could not probe `https://api.localhost/api/health` from inside `openwhispr_internal` (DEPTH_ZERO_SELF_SIGNED_CERT). 8 of 9 contract test files hit `describe.skipIf(!REACHABLE)` → 1 passed | 25 skipped baseline. Fix: rewrite bootstrap as root-CA (`CA:TRUE, keyCertSign`) signing leaf (`CA:FALSE, serverAuth`); compose `contract-test-runner` now mounts/trusts `root-ca.crt` instead of `local.crt`. Atomic commits 344f4dd / 546096c / 97da5c1. Result: 25 passed | 1 skipped | 0 failed.
+- **Phase-2 coverage debt closed (2026-05-11):** 6 pre-existing Phase-2 files brought to ≥90/90/90/90: `error-handler.ts` (B 83→94), `lib/default-tenant.ts` (B 50/S 83 → 100/100), `routes/verification-status.ts` (B 75→100), `routes/delete-account.ts` (B 67→100), `auth.ts` (L 87 / F 38 / S 88 → 100/100/100, with one production refactor: `fallbackLog` extracted + 7 per-level no-op methods collapsed to shared `noop`), `plugins/rate-limit.ts` (50/67/75/50 → 100/90/100/100, real Valkey 8 testcontainer for ioredis construction tests). apps/api totals: L=98.92 / B=94.52 / F=100 / S=98.38. Atomic commits f02a183 / 2991f54 / f4927fc / 264064f / 7a8e0b1 / 1206a9e / e1372a9.
+- **Lefthook prepare-hook fix (2026-05-11):** Root cause — `package.json` `prepare` script ran `lefthook install` directly, which refused to install when `core.hooksPath` was set locally. Every `pnpm install` failed → contributors fell back to `git commit --no-verify`. Fix: `tools/install-hooks.cjs` idempotent wrapper (exits silently when `.git/` absent, honors `SKIP_LEFTHOOK_INSTALL=1`, invokes `lefthook install --force`). Commits 382ebfc / f09ee84. `--no-verify` no longer required.
+- **Test design fix (2026-05-11):** `delete-account.test.ts` previously used shared `fixture@conformance.test` and deleted it — broke on any repeated run against the same volume. Now signs up a transient unique user via Better Auth `/api/auth/sign-up/email` and deletes that. Idempotent across runs and shared volumes. Commit a73c70a.
 
 ### Key Decisions Logged
 
@@ -122,16 +127,15 @@ progress:
 
 ### Open Todos (Roadmap-level)
 
-- Begin Phase 0 (`/gsd-plan-phase 0`) once roadmap is approved.
+- **Push 320 commits to origin/main** (deferred per user direction 2026-05-11; live e2e green, ready when user signals).
 - Author ADRs incrementally for every Key Decision (final consolidation in Phase 10).
-- Decide token TTL + rotation overlap policy in Phase 2 (recommended: >=30d TTL, >=5min overlap, no scheduled batch rotation).
-- Design tenant-scoped provider resolver shape in Phase 3 LiteLLM integration (anticipate v1.5 multi-provider needs but do NOT build them in v1).
+- `packages/data/src/seed/conformance.ts` at 0/0/0/0 — decision pending (delete vs back-fill); flagged in 03-COVERAGE.md.
+- 4 DATA-06 deny-list test failures still pre-existing (unrelated to debt back-fill scope) — separate ticket.
+- Design tenant-scoped provider resolver shape revisited for Phase 4 (anticipate v1.5 multi-provider needs but do NOT build them in v1).
 
 ### Blockers
 
-(— ready to begin Phase 0.)
-
-(— no current blockers; Phase 02.7 + cascade tail closed cleanly; 02.7 Plan 06 RE-RUN GREEN at 25/26 + 1 documented skip. Phase 02 wire-spec scope fully delivered.)
+(— no current blockers; Phase 3 closed end-to-end; live e2e green against real providers; operational debt fully retired. Phase 4 ready to begin.)
 
 ### Risk Register (Top 3)
 
@@ -144,10 +148,10 @@ progress:
 **Next session entry point:**
 
 ```
-/gsd-plan-phase 2     # Phase 2: auth lifecycle + wire-shape (Better Auth)
+/gsd-plan-phase 4     # Phase 4: Streaming + Realtime (NDJSON line-flush + WSS realtime 3600s + 3 realtime token endpoints)
 ```
 
-**Last session stopped at:** Completed 02.7-07-PLAN.md — Phase 02.7 closed cleanly. `make contract-test` 25 passed | 1 deliberate skipped (26) on the canonical compose stack. 02-HUMAN-UAT.md Item 1 flipped without scope qualifier. Phase 02 wire-spec scope fully delivered via Plans 01-07 + cascade tail (02.8 → 02.21). Phase 03 (LiteLLM Integration) unblocked.
+**Last session stopped at:** 2026-05-11 — Phase 3 closed end-to-end. Operational debt closure trio (TLS bootstrap two-tier CA chain via Phase 02.22, Phase-2 coverage debt back-fill across 6 files, lefthook prepare-hook idempotent wrapper) all landed in parallel agents. Final live e2e validation: `make e2e-test` against real providers (OpenRouter / Groq Whisper-large-v3 / OpenAI Realtime / pyannote.ai) → 25 passed | 1 conditional skip | 0 failed. apps/api coverage on every touched file ≥90/90/90/90. 320 commits ahead of origin/main, push deferred per user direction. Phase 4 (Streaming + Realtime) unblocked.
 
 **Files of record:**
 
@@ -159,6 +163,7 @@ progress:
 
 **Recent transitions:**
 
+- 2026-05-11: Phase 3 CLOSED end-to-end — 10 plans + parallel debt closure (Phase 02.22 TLS bootstrap, Phase-2 coverage back-fill across 6 files, lefthook prepare-hook fix, delete-account test design fix). Live `make e2e-test` against real OpenRouter / Groq / OpenAI / pyannote.ai → 25 passed | 1 conditional skip | 0 failed. apps/api coverage L=98.92 / B=94.52 / F=100 / S=98.38. 18 atomic commits across the closure (344f4dd / 546096c / 97da5c1 / 382ebfc / f09ee84 / f02a183 / 2991f54 / f4927fc / 264064f / 7a8e0b1 / 1206a9e / e1372a9 / a73c70a + Phase-3 verification commits). Phase 4 unblocked.
 - 2026-05-10: Phase 02.7 CLOSED — 7 plans + cascade tail (Phases 02.8 → 02.21, 9 numbered decimal phases) collectively closed all original 13/26 contract failures + every additional defect surfaced by the D-03A loud-fail discipline (Better Auth uuid id-mode, fixture email RFC, signInFixture Origin/XFF, session.token plain, OIDC env+discovery, runner-in-network, traefik aliases+trustedIPs, mycorp scheme comma-list, unverified-fixture helper, Group C residuals — 404 envelope + cookie cascade + suite isolation). `make contract-test` 25 passed | 1 deliberate skipped (26). 02-HUMAN-UAT.md Item 1 flipped without qualifier. 30+ atomic commits across the cascade. Phase 03 unblocked.
 - 2026-05-08: Rebaseline pivot — defer Stripe/referrals/quotas to v2; bundle LiteLLM with OSS models; UI-SPEC only in v1; English-only source / en+ru runtime; constitutional TDD/GHA. Roadmap rewritten from scratch.
 

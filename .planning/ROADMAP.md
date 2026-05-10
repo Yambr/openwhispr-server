@@ -20,11 +20,11 @@ A drop-in OpenWhispr backend any organization can self-host — open-source out 
 
 ## Phases
 
-- [ ] **Phase 0: Repo Bootstrap & Constitutional CI** — Establish TDD discipline, GitHub Actions, license/secrets/dep scanning, coverage gate from commit #1
-- [ ] **Phase 1: Core Infra & Multi-Tenant Data** — Compose stack scaffolding (Postgres+PgBouncer+Redis+observability+Traefik+MinIO), RLS DDL, tenant-context middleware, no-default-secrets gate
-- [ ] **Phase 2: Auth + Wire-API Skeleton + Conformance Harness** — Better Auth (email+pwd + OIDC pluggable), OAuth shim with channel-scheme echo, token rotation, CONTRACT-01 harness, all 3 auth-lifecycle endpoints + `/api/health`
-- [ ] **Phase 3: LiteLLM Integration + Bundled OSS Models** — Bundle LiteLLM ≥1.83.7 with faster-whisper / pyannote / Speaches-compatible image; env-override path documented; sync `/api/transcribe` + `/api/reason` end-to-end with usage ledger (observability only)
-- [ ] **Phase 4: Streaming + Realtime** — `/api/agent/stream` NDJSON line-flush + WSS realtime 3600s + 3 realtime token endpoints
+- [x] **Phase 0: Repo Bootstrap & Constitutional CI** — Establish TDD discipline, GitHub Actions, license/secrets/dep scanning, coverage gate from commit #1
+- [x] **Phase 1: Core Infra & Multi-Tenant Data** — Compose stack scaffolding (Postgres+PgBouncer+Redis+observability+Traefik+MinIO), RLS DDL, tenant-context middleware, no-default-secrets gate
+- [x] **Phase 2: Auth + Wire-API Skeleton + Conformance Harness** — Better Auth (email+pwd + OIDC pluggable), OAuth shim with channel-scheme echo, token rotation, CONTRACT-01 harness, all 3 auth-lifecycle endpoints + `/api/health` (closed via Phases 02.1 → 02.22 cascade)
+- [x] **Phase 3: LiteLLM Integration + Bundled OSS Models** — Bundle LiteLLM ≥1.83.7 with faster-whisper / pyannote / Speaches-compatible image; env-override path documented; sync `/api/transcribe` + `/api/reason` end-to-end with usage ledger (observability only). Live e2e green against real OpenRouter / Groq / OpenAI / pyannote.ai (2026-05-11).
+- [ ] **Phase 4: Streaming + Realtime** — `/api/agent/stream` NDJSON line-flush + WSS realtime 3600s + 3 realtime token endpoints **← NEXT**
 - [ ] **Phase 5: Operational Endpoints** — `/api/usage`, `/api/stt-config`, `/api/note-recording-config`, `/api/streaming-usage`, `/api/agent/web-search`, generic `cloud-api-request` passthrough
 - [ ] **Phase 6: Observability + Ops Hardening + Workers** — OTel/Prom/Loki end-to-end + audit log + BullMQ workers + tenant-context job middleware + anti-abuse rate limit + SSRF defense
 - [ ] **Phase 7: Frontend UI-SPEC** — Admin console + end-user self-service specs targeting Next.js 15 + shadcn/ui v2; design tokens; component inventory
@@ -104,6 +104,16 @@ Plans:
 - [x] 02-06-PLAN.md — CONTRACT-01 conformance suite (8 test files) + fixture-idp + GHA contract-test job + branch protection (Wave 3)
 - [x] 02-07-PLAN.md — Auth docs (auth.md / oidc-operator-config.md / channel-scheme-override.md) + planning state finalization + Phase 1 SC#1 closure + integration smoke (Wave 4)
 **UI hint**: no
+
+### Phase 02.22: TLS bootstrap two-tier CA chain — bootstrap.sh emitted self-signed end-entity cert (CA:FALSE); Node 24 + OpenSSL 3 reject as trust anchor; contract-test-runner could not probe https://api.localhost from openwhispr_internal (DEPTH_ZERO_SELF_SIGNED_CERT) → 8/9 test files skip on REACHABLE gate; surfaced during Phase 3 live e2e validation (INSERTED + CLOSED 2026-05-11)
+
+**Goal:** Rewrite bootstrap as root-CA (CA:TRUE, keyCertSign) signing leaf (CA:FALSE, serverAuth); compose contract-test-runner mounts/trusts root-ca.crt instead of local.crt; Node fetch from in-cluster trusts the issuing CA properly.
+**Requirements:** SECURITY-01 (TLS only), TEST-CONTRACT-01 (in-cluster runner reachability)
+**Depends on:** Phase 1 (cert mounting), Phase 02.15 (network aliases)
+**Plans:** 1 inline (TDD: failing tests first, then bootstrap.sh + compose update)
+
+Plans:
+- [x] inline — `tests/unit/bootstrap-cert-gen.test.ts` (13 tests: X509.ca true/false, issuer chain, openssl verify, idempotency) + `tests/integration/traefik-network-alias.test.ts` (9 tests, flipped to root-ca.crt mount) + tools/bootstrap.sh rewrite + docker-compose.yml runner cert mount + RUN_E2E/MOCK_DIARIZATION/OPENWHISPR_TEST_ROUTES env passthrough. Commits 344f4dd / 546096c / 97da5c1.
 
 ### Phase 02.21: Group C residuals — 3 pre-existing carries: conventions 404 envelope (got 401), delete-account cookie cascade (got 200 expected 401), token-rotation suite (sign-in 403 in beforeAll); diagnose-then-fix; potentially 3 distinct sub-fixes (INSERTED)
 
