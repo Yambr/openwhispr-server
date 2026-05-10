@@ -26,6 +26,7 @@ import { buildCheckUserRoutes, type CheckUserDeps } from "./check-user.js";
 import { buildDeleteAccountRoutes, type DeleteAccountDeps } from "./delete-account.js";
 import { buildDesktopSigninRoutes, type DesktopSigninDeps } from "./desktop-signin.js";
 import healthRoutes from "./health.js";
+import { buildReasonRoutes, type ReasonDeps } from "./reason.js";
 import { buildTestOnlyRoutes } from "./test-only.js";
 import { buildTranscribeRoutes, type TranscribeDeps } from "./transcribe.js";
 import {
@@ -98,6 +99,12 @@ export function buildAllRoutes(deps: AllRoutesDeps): readonly RoutePlugin[] {
   if (deps.litellm) {
     const transcribeDeps: TranscribeDeps = { db: deps.db, litellm: deps.litellm };
     plugins.push(buildTranscribeRoutes(transcribeDeps));
+    // Phase 03 / Plan 05 — POST /api/reason mirrors the transcribe wiring
+    // template (Plan 04 Pattern 1). Same conditional gate: skipped when
+    // LITELLM_MASTER_KEY is unset at boot, registered when the shared
+    // client is constructed.
+    const reasonDeps: ReasonDeps = { db: deps.db, litellm: deps.litellm };
+    plugins.push(buildReasonRoutes(reasonDeps));
   }
   // Plan 08: register the /api/_test/* surface when explicitly enabled
   // OR when running under NODE_ENV='test'. The plugin itself enforces
@@ -125,6 +132,7 @@ export {
   buildCheckUserRoutes,
   buildDeleteAccountRoutes,
   buildDesktopSigninRoutes,
+  buildReasonRoutes,
   buildTestOnlyRoutes,
   buildTranscribeRoutes,
   buildVerificationStatusRoutes,
