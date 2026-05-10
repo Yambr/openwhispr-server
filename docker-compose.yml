@@ -418,6 +418,12 @@ services:
       # diarization route (apps/api/src/routes/diarization.ts in Plan 06),
       # NOT by the LiteLLM sidecar. Forwarded only to the api container.
       PYANNOTE_API_KEY: ${PYANNOTE_API_KEY:-}
+      # Phase 03 / CR-01 fix — Valkey URL for the diarization idempotency
+      # cache. buildApp() reads VALKEY_URL and constructs the redis client;
+      # if unset the /v1/audio/diarization route is intentionally NOT
+      # registered (operator-actionable 404). Wire to the bundled valkey
+      # service so default `docker compose up` boots with diarization on.
+      VALKEY_URL: ${VALKEY_URL:-redis://:${VALKEY_PASSWORD}@valkey:6379/0}
     depends_on:
       migrate:
         condition: service_completed_successfully
