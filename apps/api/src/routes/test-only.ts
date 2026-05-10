@@ -13,8 +13,18 @@
 //     returning {status:"ok", userId}. Used by the contract test to
 //     fire 100 concurrent OLD-token requests post-rotation.
 //
-// Gating: when NODE_ENV !== 'test' the plugin registers NO routes —
-// production / dev / staging builds therefore 404 on these paths.
+// Gating: registered ONLY when EITHER
+//   (a) NODE_ENV === 'test' (in-process unit tests, vitest sets it), OR
+//   (b) OPENWHISPR_TEST_ROUTES === 'true' (compose contract-test stack
+//       opts in via docker-compose.yml api service environment block).
+//
+// Phase 02.21 / Residual C — the compose api container runs with
+// NODE_ENV=production (per the cluster's deploy posture), so the
+// NODE_ENV=test branch alone never registered the routes inside the
+// contract-test E2E and `/api/_test/force-rotate` returned 404. The
+// explicit env opt-in keeps production builds 404 on these paths
+// (operators NEVER set OPENWHISPR_TEST_ROUTES=true in production .env)
+// while letting the canonical contract-test invocation mint the rotation.
 //
 // Token rotation strategy: per 02-08-PLAN Task 2, this test-only path
 // generates a fresh 32-byte opaque bearer via crypto.randomBytes and
@@ -99,14 +109,24 @@ interface AuthedReq extends FastifyRequest {
  */
 export function buildTestOnlyRoutes(deps: TestOnlyDeps) {
   return async function testOnlyRoutes(app: FastifyInstance): Promise<void> {
-    if (process.env.NODE_ENV !== "test") {
+    const enabled =
+      process.env.NODE_ENV === "test" || process.env.OPENWHISPR_TEST_ROUTES === "true";
+    if (!enabled) {
       // Gate: production / dev / staging — no routes registered.
       return;
     }
 
     const { db, auth } = deps;
 
-    app.post("/api/_test/force-rotate", async (req, reply) => {
+    // Phase 02.21 / Residual C — opt out of the global 60/min rate-limit.
+    // The token-rotation contract test fires 100 concurrent OLD-bearer
+    // requests against /api/_test/health-authed in a single burst to
+    // assert the AUTH-04 5-minute overlap window. With the global default
+    // applied, all 100 collapse onto one IP bucket and trip 429 long
+    // before the overlap-window assertion can fire. These routes are
+    // gated behind OPENWHISPR_TEST_ROUTES (production = unregistered),
+    // so the rate-limit opt-out has zero production exposure.
+    app.post("/api/_test/force-rotate", { config: { rateLimit: false } }, async (req, reply) => {
       const r = req as AuthedReq;
       const oldBearer = extractBearer(req.headers["authorization"]);
       if (!oldBearer || !r.user || !r.tenant) {
@@ -161,7 +181,7 @@ export function buildTestOnlyRoutes(deps: TestOnlyDeps) {
       return { rotated: true };
     });
 
-    app.get("/api/_test/health-authed", async (req) => {
+    app.get("/api/_test/health-authed", { config: { rateLimit: false } }, async (req) => {
       const r = req as AuthedReq;
       // dual-auth hook (or its test fake) already enforced auth and
       // populated req.user. If we reach the handler without a user
