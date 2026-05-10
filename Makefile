@@ -155,8 +155,40 @@ e2e-test:
 	@test -f .env || (echo "Refusing to run: .env not found at repo root. Run tools/bootstrap.sh first." && exit 1)
 	OPENWHISPR_TEST_ROUTES=true MOCK_DIARIZATION=true \
 	  docker compose -f docker-compose.yml -f compose/e2e/docker-compose.e2e.yml \
-	  --profile default --profile e2e up -d --wait
+	  --profile default --profile e2e up -d
+	@# NO --wait. Rationale (mirrored from tests/e2e/compose-helper.ts):
+	@# the observability stack (grafana in particular) is flaky on
+	@# cold-cache laptops and occasionally reports unhealthy for a few
+	@# seconds before stabilizing. `up --wait` would fail the entire run
+	@# on a transient grafana hiccup that the e2e tests don't care
+	@# about. The api healthcheck via Traefik is the only readiness
+	@# signal these tests actually need; the test files themselves
+	@# probe the api before driving any assertion. We poll the api
+	@# /api/health endpoint with a 120s deadline before invoking vitest.
+	@echo "Waiting for api /api/health via Traefik (120s deadline)..."
+	@DEADLINE=$$(( $$(date +%s) + 120 )) ; \
+	  until curl -ksSf https://api.localhost/api/health >/dev/null 2>&1 ; do \
+	    if [ $$(date +%s) -ge $$DEADLINE ]; then \
+	      echo "api /api/health did not become reachable within 120s" ; \
+	      docker compose -f docker-compose.yml -f compose/e2e/docker-compose.e2e.yml \
+	        --profile default --profile e2e down -v --remove-orphans ; \
+	      exit 1 ; \
+	    fi ; \
+	    sleep 2 ; \
+	  done
+	@echo "api healthy. Seeding conformance fixtures..."
+	@OPENWHISPR_TEST_ROUTES=true MOCK_DIARIZATION=true \
+	  docker compose -f docker-compose.yml -f compose/e2e/docker-compose.e2e.yml \
+	    --profile default --profile contract-test --profile e2e \
+	    run --rm seed ; \
+	  rc=$$? ; \
+	  if [ $$rc -ne 0 ]; then \
+	    docker compose -f docker-compose.yml -f compose/e2e/docker-compose.e2e.yml \
+	      --profile default --profile e2e down -v --remove-orphans ; \
+	    exit $$rc ; \
+	  fi
 	@E2E=1 OPENWHISPR_TEST_ROUTES=true MOCK_DIARIZATION=true \
+	  NODE_TLS_REJECT_UNAUTHORIZED=0 \
 	  pnpm exec vitest run --config tests/e2e/vitest.e2e.config.ts ; \
 	  rc=$$? ; \
 	  docker compose -f docker-compose.yml -f compose/e2e/docker-compose.e2e.yml \

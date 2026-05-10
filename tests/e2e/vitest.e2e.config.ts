@@ -31,7 +31,18 @@ const E2E_ENABLED = process.env.E2E === "1";
 export default defineConfig({
   test: {
     include: E2E_ENABLED ? ["tests/e2e/**/*.test.ts"] : [],
-    exclude: ["node_modules/**", "dist/**", "tests/e2e/mock-realtime/**"],
+    // Exclude:
+    //   * mock-realtime — has its own vitest config (Plan 07)
+    //   * legacy `*.e2e.test.ts` files — discovered by tests/e2e/vitest.config.ts
+    //     (DISCIPLINE rule 3 back-fill; runs under `make e2e-hermetic`).
+    //     This Plan-09 config owns ONLY `*.test.ts` (no `.e2e.` infix)
+    //     so the two suites don't shadow each other.
+    exclude: [
+      "node_modules/**",
+      "dist/**",
+      "tests/e2e/mock-realtime/**",
+      "tests/e2e/**/*.e2e.test.ts",
+    ],
     reporters: ["verbose"],
     testTimeout: 600_000,
     hookTimeout: 600_000,
