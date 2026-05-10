@@ -1,0 +1,53 @@
+# Phase 04 / Plan 10 / Task 1 — `live-soak` compose overlay.
+#
+# Live-mode overlay used EXCLUSIVELY by .github/workflows/nightly-realtime-soak.yml
+# to drive the 65-min OpenAI Realtime soak against the REAL OpenAI Realtime API.
+# Distinct from compose/e2e/docker-compose.e2e.yml (the hermetic in-cluster-echo
+# overlay used by `make e2e-test`) — the two overlays MUST NOT be combined and
+# MUST NOT reference each other:
+#
+#   * compose/e2e/docker-compose.e2e.yml      → hermetic echo upstream (zero cost; PR safe)
+#   * compose/live-soak/docker-compose.live.yml (this file) → real OpenAI Realtime
+#                                                             (~$15-25 per 65-min run)
+#
+# Used by the nightly workflow as:
+#
+#   docker compose -f docker-compose.yml \
+#                  -f compose/live-soak/docker-compose.live.yml \
+#                  up -d
+#
+# What this overlay does:
+#   Overlay-binds compose/litellm/litellm_config.live-realtime.yaml onto
+#   the LiteLLM container's /etc/litellm/config.yaml so the realtime model
+#   entry resolves to wss://api.openai.com/v1/realtime via the
+#   `openai/gpt-realtime` model, consuming OPENAI_API_KEY from the
+#   workflow-injected environment. This keeps the production
+#   api → LiteLLM → upstream chain intact (D-09 Option A) — only the
+#   realtime upstream is repointed at OpenAI.
+#
+# This overlay does NOT declare a hermetic-echo upstream service and MUST
+# NOT reference one — a grep on this file for the hermetic-echo container
+# name MUST return zero results (Plan 10 verification gate).
+#
+# Cost discipline (T-04-COST):
+#   * The nightly workflow if-guard restricts execution to scheduled
+#     events + tag pushes + workflow_dispatch (forks/PRs cannot read
+#     OPENAI_API_KEY and cannot trigger this overlay).
+#   * 65-min wall-clock × OpenAI Realtime per-min audio billing caps the
+#     spend per run at the documented ~$15-25 ceiling.
+
+services:
+  # Overlay-bind the live-realtime LiteLLM config onto the container.
+  # Compose merges `volumes:` lists by appending; the LAST bind targeting
+  # the same container target path wins, so this overrides whatever the
+  # base resolved via LITELLM_CONFIG_FILE — the live overlay always
+  # serves the live-realtime config regardless of operator shell state
+  # (mirrors the e2e overlay pattern from Plan 09 Task 1a).
+  litellm:
+    volumes:
+      - ./compose/live-soak/litellm_config.live-realtime.yaml:/etc/litellm/config.yaml:ro
+    environment:
+      # OPENAI_API_KEY flows from the GHA workflow → docker compose →
+      # LiteLLM container env. The live-realtime config references this
+      # via `os.environ/OPENAI_API_KEY` so the key never lands in a file.
+      OPENAI_API_KEY: ${OPENAI_API_KEY:?OPENAI_API_KEY is required for the live-soak overlay}
