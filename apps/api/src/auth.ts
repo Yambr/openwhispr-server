@@ -221,6 +221,30 @@ export function buildAuth(opts: BuildAuthOptions): AuthInstance {
       // this override. Adding either requires Option B schema migration
       // (uuid → text) FIRST. Enforced by the CI lint test above.
       database: { generateId: "uuid" },
+      // Phase 02.18 / D-01 — Better Auth rate-limiter IP resolution.
+      //
+      // Better Auth's built-in rate-limiter (sign-in, sign-up,
+      // forgot-password, verification-status polling carve-out) buckets by
+      // client IP via `getRequestIp`. By default it reads `request.ip`,
+      // which behind Traefik is the proxy IP (or empty when invoked from
+      // the in-cluster network). Without this override every rate-limited
+      // route in production collapses onto a single shared bucket =
+      // anti-abuse limiter is effectively disabled, AND the contract-test
+      // suite's parallel sign-ins all bucket on the test runner's source
+      // IP, tripping the polling carve-out on adjacent tests.
+      //
+      // Setting `ipAddressHeaders: ["x-forwarded-for"]` makes Better Auth
+      // resolve the client IP from the X-Forwarded-For header that Traefik
+      // sets on every proxied request. NOT a header-spoofing risk: Traefik
+      // strips client-supplied X-Forwarded-For at the public edge by
+      // default (see compose/traefik/traefik.yml + 02.18-SUMMARY.md
+      // production-safety verification).
+      //
+      // Reverse-patch evidence:
+      // apps/api/src/__tests__/auth-ip-address-headers.test.ts.
+      ipAddress: {
+        ipAddressHeaders: ["x-forwarded-for"],
+      },
     },
     plugins,
   }) as unknown as AuthInstance;
