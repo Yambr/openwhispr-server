@@ -127,6 +127,14 @@ export const buildRealtimeRoutes = (deps: RealtimeDeps) =>
       prefix: "/v1/realtime",
       rewritePrefix: "/v1/realtime",
       websocket: true,
+      // Phase 04 / Plan 07 / D-27 — tighten WS upgrade behavior:
+      //
+      // * `wsReconnect: false` (sibling of wsClientOptions per
+      //   @fastify/http-proxy v11 API). Auto-reconnect in the proxy
+      //   masks ingress timeout bugs and creates retry storms when the
+      //   upstream is unhealthy — let the client decide when/how to
+      //   reconnect (T-04-RECONNECT-LOOP mitigation).
+      wsReconnect: false,
       wsClientOptions: {
         // Strip the desktop's opaque bearer; inject the LiteLLM master
         // key + spend-logs metadata so LiteLLM authenticates us AND tags
@@ -134,6 +142,13 @@ export const buildRealtimeRoutes = (deps: RealtimeDeps) =>
         // closure is built by buildRewriteRequestHeaders so it can be
         // unit-tested in isolation (Stage B back-fill).
         rewriteRequestHeaders: buildRewriteRequestHeaders(deps.masterKey),
+        // Phase 04 / Plan 07 / D-27 — 10s handshake ceiling. Without
+        // this, a stuck-connecting client (TCP up, WS upgrade never
+        // completes) would hold an ingress slot indefinitely on the
+        // dedicated :8443 entrypoint (Plan 04-05). 10000ms is generous
+        // for healthy upstreams (loopback < 10ms, cross-region < 500ms)
+        // and a tight cap for pathological cases (T-04-02 mitigation).
+        handshakeTimeout: 10000,
       },
       preHandler: async (req, _reply) => {
         // dualAuthHook is the global onRequest hook and is responsible
