@@ -268,4 +268,176 @@ describe("test-only routes (NODE_ENV=test gated)", () => {
       await app.close();
     },
   );
+
+  // ----- Stage B back-fill — close coverage gaps to 90/90/90/90 ----------
+
+  it("Test 6: NODE_ENV=production + OPENWHISPR_TEST_ROUTES=true ALSO registers the routes", async () => {
+    // Pins line 127 cond-expr idx 1 (the OR fallback). The compose
+    // contract-test stack uses this opt-in to expose force-rotate while
+    // running with NODE_ENV=production for deploy-posture parity.
+    vi.stubEnv("NODE_ENV", "production");
+    vi.stubEnv("OPENWHISPR_TEST_ROUTES", "true");
+    const app = buildLocalApp({ authed: true });
+    await app.ready();
+    const res = await app.inject({
+      method: "GET",
+      url: "/api/_test/health-authed",
+      headers: { authorization: "Bearer X" },
+    });
+    expect(res.statusCode).toBe(200);
+    await app.close();
+  });
+
+  it("Test 7: force-rotate falls back to DB shortcut when auth.handler throws", async () => {
+    // Pins lines 195-197 (catch + fallthrough) + 200-203 (rotateSessionInDb).
+    vi.stubEnv("NODE_ENV", "test");
+    const fakeAuth = {
+      handler: vi.fn(async () => {
+        throw new Error("no rotation seam in this build");
+      }),
+      api: {
+        getSession: vi.fn(async () => ({ user: FAKE_USER })),
+      },
+    };
+    const { db, recorded } = makeFakeDb();
+    const app = buildLocalApp({ authed: true, fakeAuth, fakeDb: db });
+    await app.ready();
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/_test/force-rotate",
+      headers: { authorization: "Bearer OLD_BEARER_xyz" },
+    });
+    expect(res.statusCode).toBe(200);
+    // The DB shortcut must have run — the UPDATE sessions row carries
+    // BOTH previous_token AND a fresh `token` value.
+    const update = recorded.find((q) =>
+      /UPDATE\s+sessions[\s\S]*previous_token[\s\S]*token\s*=/i.test(q.sql),
+    );
+    expect(update).toBeTruthy();
+    expect(res.headers["set-auth-token"]).toBeTruthy();
+    expect(res.headers["set-auth-token"]).not.toBe("OLD_BEARER_xyz");
+    await app.close();
+  });
+
+  it("Test 8: force-rotate falls back to DB when handler returns a non-rotation response", async () => {
+    // auth.handler returns 200 but with NO set-auth-token header — the
+    // route must fall through to the DB shortcut (line 200 `if !newBearer`).
+    vi.stubEnv("NODE_ENV", "test");
+    const fakeAuth = {
+      handler: vi.fn(async () => new Response(null, { status: 200 })),
+      api: {
+        getSession: vi.fn(async () => ({ user: FAKE_USER })),
+      },
+    };
+    const { db, recorded } = makeFakeDb();
+    const app = buildLocalApp({ authed: true, fakeAuth, fakeDb: db });
+    await app.ready();
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/_test/force-rotate",
+      headers: { authorization: "Bearer OLD_DEFAULT" },
+    });
+    expect(res.statusCode).toBe(200);
+    // DB shortcut must have written a NEW token.
+    const update = recorded.find((q) =>
+      /UPDATE\s+sessions[\s\S]*previous_token/i.test(q.sql),
+    );
+    expect(update).toBeTruthy();
+    await app.close();
+  });
+
+  it("Test 9: force-rotate returns 401 envelope when no Authorization bearer is present", async () => {
+    // Pins line 158 — `if (!oldBearer ...)`. The onRequest hook still
+    // populates req.user via the fake session; the absent header is the
+    // discriminator. We use a non-handler auth so getSession admits the
+    // request unconditionally.
+    vi.stubEnv("NODE_ENV", "test");
+    const fakeAuth = {
+      handler: vi.fn(),
+      api: {
+        getSession: vi.fn(async () => ({ user: FAKE_USER })),
+      },
+    };
+    const app = buildLocalApp({ authed: true, fakeAuth });
+    await app.ready();
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/_test/force-rotate",
+      // No `authorization` header.
+    });
+    expect(res.statusCode).toBe(401);
+    expect(res.json()).toEqual({ error: "unauthorized" });
+    await app.close();
+  });
+
+  it("Test 10: force-rotate returns 401 envelope when bearer doesn't match any session row", async () => {
+    // Pins line 167-169 — sessionId resolution fails after lookup.
+    vi.stubEnv("NODE_ENV", "test");
+    const fakeAuth = {
+      handler: vi.fn(),
+      api: {
+        getSession: vi.fn(async () => ({ user: FAKE_USER })),
+      },
+    };
+    // DB returns no rows for the SELECT id FROM sessions lookup.
+    const fakeDb = {
+      async transaction<T>(cb: (t: unknown) => Promise<T>): Promise<T> {
+        return cb({
+          execute: async () => ({ rows: [] }),
+        });
+      },
+    } as unknown as Parameters<typeof buildTestOnlyRoutes>[0]["db"];
+    // We need the onRequest hook to NOT pre-stash sessionId so the route
+    // falls into the DB lookup branch. Build a custom app.
+    const app = Fastify({ logger: false });
+    registerErrorHandler(app);
+    app.addHook("onRequest", async (req) => {
+      const headers = new Headers();
+      for (const [k, v] of Object.entries(req.headers)) {
+        if (typeof v === "string") headers.set(k, v);
+      }
+      const session = await fakeAuth.api.getSession({ headers });
+      if (!session) throw new AuthError("unauthorized");
+      (req as unknown as { user: FakeUser }).user = session.user;
+      (req as unknown as { tenant: string }).tenant = session.user.tenantId;
+      // Intentionally NOT setting sessionId — route must do its own lookup.
+    });
+    app.register(
+      buildTestOnlyRoutes({
+        auth: fakeAuth as unknown as Parameters<typeof buildTestOnlyRoutes>[0]["auth"],
+        db: fakeDb,
+      }),
+    );
+    await app.ready();
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/_test/force-rotate",
+      headers: { authorization: "Bearer NO_MATCH" },
+    });
+    expect(res.statusCode).toBe(401);
+    expect(res.json()).toEqual({ error: "session not found" });
+    await app.close();
+  });
+
+  it("Test 11: extractBearer rejects malformed authorization headers (e.g. 'Basic ...')", async () => {
+    // Indirectly pins extractBearer's no-match branch (line 77) via a
+    // request whose Authorization is non-Bearer. The route then fails
+    // closed at line 158 → 401.
+    vi.stubEnv("NODE_ENV", "test");
+    const fakeAuth = {
+      handler: vi.fn(),
+      api: {
+        getSession: vi.fn(async () => ({ user: FAKE_USER })),
+      },
+    };
+    const app = buildLocalApp({ authed: true, fakeAuth });
+    await app.ready();
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/_test/force-rotate",
+      headers: { authorization: "Basic dXNlcjpwYXNz" },
+    });
+    expect(res.statusCode).toBe(401);
+    await app.close();
+  });
 });
