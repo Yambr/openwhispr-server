@@ -20,6 +20,9 @@
 // reservations don't accumulate.
 
 const KEY_PREFIX = "diar:idem:";
+/** WR-02: jobId is stored on a sibling key so SETNX provides
+ * first-writer-wins atomicity against concurrent binds. */
+const JOBID_SUFFIX = ":jobid";
 export const TTL_SECONDS = 86_400; // 24h
 
 /** Persisted entry shape inside Valkey. */
@@ -102,14 +105,28 @@ export function createIdempotencyCache(redis: RedisLike): IdempotencyCache {
       if (existing.bodyHash !== bodyHash) {
         return { state: "conflict" };
       }
-      if (existing.jobId) {
-        return { state: "hit", jobId: existing.jobId };
+      // WR-02: jobId now lives on a sibling key (atomic SETNX-bound).
+      // Fall back to existing.jobId for backward-compat with entries
+      // written by older builds (first 24h after deploy).
+      const siblingJobId = await redis.get(k + JOBID_SUFFIX);
+      const jobId = siblingJobId ?? existing.jobId;
+      if (jobId) {
+        return { state: "hit", jobId };
       }
       return { state: "in-flight" };
     },
 
     async bindJobId(key, jobId, bodyHash) {
       const k = KEY_PREFIX + key;
+      // WR-02: write jobId to the sibling :jobid key with SET NX EX.
+      // If another concurrent writer beat us, the SETNX is a no-op —
+      // first-writer-wins. The losing job becomes orphaned (mitigated by
+      // pyannote billing-on-success-only); attribution converges on the
+      // winner for all subsequent retries.
+      await redis.set(k + JOBID_SUFFIX, jobId, {
+        EX: TTL_SECONDS,
+        NX: true,
+      });
       const raw = await redis.get(k);
       if (!raw) {
         // Reservation expired between submit and bind (would only happen
