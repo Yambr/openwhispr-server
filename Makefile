@@ -79,12 +79,19 @@ clean-stack:
 # joins the same network the api sees. Two sequential `run --rm` calls:
 # seed first (must succeed), then contract-test-runner. Both --rm so no
 # stopped containers leak after the run.
+# Phase 3 / Plan 02 — D-05A: hermetic contract-test profile picks the
+# mock-mode LiteLLM config via LITELLM_CONFIG_FILE. Plan 03-01 wires the
+# litellm service in docker-compose.yml to mount
+# `./compose/litellm/${LITELLM_CONFIG_FILE:-litellm_config.yaml}`. With the
+# override below, `make contract-test` boots LiteLLM with mock_response
+# on every chat/audio model — no provider keys, no outbound network.
+# Phase 3 / Plan 09 adds `make e2e-test` (separate target) for real-key e2e.
 contract-test:
-	OPENWHISPR_TEST_ROUTES=true docker compose --profile default --profile contract-test up -d --wait
-	@OPENWHISPR_TEST_ROUTES=true docker compose --profile default --profile contract-test run --rm seed ; \
+	LITELLM_CONFIG_FILE=litellm_config.contract.yaml OPENWHISPR_TEST_ROUTES=true docker compose --profile default --profile contract-test up -d --wait
+	@LITELLM_CONFIG_FILE=litellm_config.contract.yaml OPENWHISPR_TEST_ROUTES=true docker compose --profile default --profile contract-test run --rm seed ; \
 	rc=$$? ; \
 	if [ $$rc -ne 0 ]; then docker compose down -v ; exit $$rc ; fi ; \
-	OPENWHISPR_TEST_ROUTES=true docker compose --profile default --profile contract-test run --rm contract-test-runner ; \
+	LITELLM_CONFIG_FILE=litellm_config.contract.yaml OPENWHISPR_TEST_ROUTES=true docker compose --profile default --profile contract-test run --rm contract-test-runner ; \
 	rc=$$? ; docker compose down -v ; exit $$rc
 
 # Run the conformance suite against an arbitrary deployed backend.
