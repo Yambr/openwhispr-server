@@ -33,6 +33,7 @@ import {
 } from "./notes/delete-all.js";
 import { buildNotesDeleteRoutes, type NotesDeleteDeps } from "./notes/delete.js";
 import { buildNotesListRoutes, type NotesListDeps } from "./notes/list.js";
+import { buildNotesSearchRoutes, type NotesSearchDeps } from "./notes/search.js";
 import { buildNotesUpdateRoutes, type NotesUpdateDeps } from "./notes/update.js";
 import {
   type AuthCallbackDeps,
@@ -204,6 +205,10 @@ export function buildAllRoutes(deps: AllRoutesDeps): readonly RoutePlugin[] {
     buildNotesDeleteRoutes({ db: deps.db } satisfies NotesDeleteDeps),
     buildNotesDeleteAllRoutes({ db: deps.db } satisfies NotesDeleteAllDeps),
     buildNotesListRoutes({ db: deps.db } satisfies NotesListDeps),
+    // Phase 05 / Plan 05 / Task 3 — POST /api/notes/search (WIRE-22).
+    // Uses websearch_to_tsquery('simple', $1) + ts_rank on the GIN-
+    // indexed content_search tsvector from Plan 01.
+    buildNotesSearchRoutes({ db: deps.db } satisfies NotesSearchDeps),
   ];
   // Phase 03 / Plan 04: conditionally register the transcribe route only
   // when a LiteLLM client was constructed (LITELLM_MASTER_KEY present).
@@ -305,6 +310,7 @@ export {
   buildNotesDeleteAllRoutes,
   buildNotesDeleteRoutes,
   buildNotesListRoutes,
+  buildNotesSearchRoutes,
   buildNotesUpdateRoutes,
   buildOpenAIRealtimeTokenRoutes,
   buildReasonRoutes,
