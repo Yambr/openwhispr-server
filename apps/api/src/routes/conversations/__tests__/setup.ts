@@ -14,6 +14,7 @@ import { buildConversationsCreateRoutes } from "../create.js";
 import { buildConversationsUpdateRoutes } from "../update.js";
 import { buildConversationsDeleteRoutes } from "../delete.js";
 import { buildConversationsListRoutes } from "../list.js";
+import { buildConversationsMessagesRoutes } from "../messages.js";
 import { buildConversationsSearchRoutes } from "../search.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -116,6 +117,7 @@ export async function buildTestApp(opts: {
   await app.register(buildConversationsDeleteRoutes({ db: dbAny }));
   await app.register(buildConversationsListRoutes({ db: dbAny }));
   await app.register(buildConversationsSearchRoutes({ db: dbAny }));
+  await app.register(buildConversationsMessagesRoutes({ db: dbAny }));
   await app.ready();
   return app;
 }

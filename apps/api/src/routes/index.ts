@@ -35,6 +35,10 @@ import {
   type ConversationsListDeps,
 } from "./conversations/list.js";
 import {
+  buildConversationsMessagesRoutes,
+  type ConversationsMessagesDeps,
+} from "./conversations/messages.js";
+import {
   buildConversationsSearchRoutes,
   type ConversationsSearchDeps,
 } from "./conversations/search.js";
@@ -283,6 +287,13 @@ export function buildAllRoutes(deps: AllRoutesDeps): readonly RoutePlugin[] {
     buildConversationsSearchRoutes({
       db: deps.db,
     } satisfies ConversationsSearchDeps),
+    // Phase 05 / Plan 07 / Task 3 — WIRE-25 dual-method
+    // /api/conversations/messages (POST add + GET list). Registered
+    // UNCONDITIONALLY — DB-only. 4 KiB metadata cap enforced in handler
+    // (T-MSG-INJ).
+    buildConversationsMessagesRoutes({
+      db: deps.db,
+    } satisfies ConversationsMessagesDeps),
   ];
   // Phase 03 / Plan 04: conditionally register the transcribe route only
   // when a LiteLLM client was constructed (LITELLM_MASTER_KEY present).
@@ -377,6 +388,7 @@ export {
   buildConversationsCreateRoutes,
   buildConversationsDeleteRoutes,
   buildConversationsListRoutes,
+  buildConversationsMessagesRoutes,
   buildConversationsSearchRoutes,
   buildConversationsUpdateRoutes,
   buildDeepgramTokenRoutes,
