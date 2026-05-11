@@ -31,6 +31,19 @@ Source of truth: `/Users/dev/openwhispr/docs/BACKEND_SPEC.md`, `OAUTH_SPEC.md`, 
 - [ ] **WIRE-15**: `POST /api/openai-realtime-token` — OpenAI Realtime token (`streams=2` for OpenAI realtime; gated same way)
 - [ ] **WIRE-16**: Generic passthrough channel `cloud-api-request` — any `/api/<path>` proxied with global error envelope
 
+### Wire Compatibility — CRUD Resource Families (v1, Phase 5 scope-expansion 2026-05-11)
+
+Authoritative wire shapes pinned by the OpenWhispr client TS interfaces at `~/openwhispr/src/services/*.ts`. Every resource: soft-delete via `deleted_at`; `client_<resource>_id` for offline-first idempotent retry; RLS-scoped to `current_setting('app.tenant_id')`; keyset list pagination on `(created_at, id)` via `?limit=&before=&since=`.
+
+- [ ] **WIRE-22**: Notes CRUD + list + search + batch-create — `POST /api/notes/create`, `POST /api/notes/batch-create`, `PATCH /api/notes/update`, `DELETE /api/notes/delete`, `DELETE /api/notes/delete-all`, `GET /api/notes/list`, `POST /api/notes/search` (Postgres `tsvector + GIN`, `'simple'` config); shapes per `~/openwhispr/src/services/NotesService.ts` (`NoteInput`, `CloudNote`, `SearchResult` with `score`)
+- [ ] **WIRE-23**: Folders CRUD + list + batch-create — `POST /api/folders/create`, `POST /api/folders/batch-create`, `PATCH /api/folders/update`, `DELETE /api/folders/delete`, `GET /api/folders/list`; shapes per `~/openwhispr/src/services/FoldersService.ts` (`FolderInput`, `CloudFolder`)
+- [ ] **WIRE-24**: Conversations CRUD + list + search — `POST /api/conversations/create`, `PATCH /api/conversations/update`, `DELETE /api/conversations/delete`, `GET /api/conversations/list` (supports `include=messages` JOIN), `POST /api/conversations/search`; shapes per `~/openwhispr/src/services/ConversationsService.ts` (`ConversationInput`, `CloudConversation`, `CloudConversationWithMessages`)
+- [ ] **WIRE-25**: Conversations messages — `POST /api/conversations/messages` (add single message), `GET /api/conversations/messages?conversation_id=...&limit=&before=` (list messages keyset-paginated); shape `CloudMessage` per same file
+- [ ] **WIRE-26**: Transcriptions CRUD + list + batch — `POST /api/transcriptions/create`, `POST /api/transcriptions/batch-create`, `GET /api/transcriptions/list`, `DELETE /api/transcriptions/delete`, `POST /api/transcriptions/batch-delete`; shapes per `~/openwhispr/src/services/TranscriptionsService.ts` (`TranscriptionInput`, `CloudTranscription`)
+- [ ] **WIRE-27**: API Keys list + create — `GET /api/v1/keys/list`, `POST /api/v1/keys/create`; shapes per `~/openwhispr/src/services/ApiKeysService.ts` (`ApiKey`, `CreateApiKeyResponse`); UNIQUE `{data: T}` envelope wrapper per client contract (different from rest of API); Argon2id-hashed `key_hash` at rest; `key` field returned **once** on creation only
+- [ ] **WIRE-28**: Settings storage — `tenant_settings(tenant_id PK, stt_config JSONB, note_recording_config JSONB)` + `user_settings(user_id PK, tenant_id, stt_overrides JSONB, note_recording_overrides JSONB)` tables with RLS + FORCE RLS; resolution order user_settings → tenant_settings → env defaults; Phase 5 ships GET-only paths (WIRE-11, WIRE-12); mutation deferred to Phase 7 UI
+- [ ] **WIRE-29**: CONTRACT-01 negative matrix — for every implemented `/api/*` route AND synthetic `/api/nonexistent-<uuid>` paths, assert non-2xx responses match the global envelope (`{error: string}` default; tolerant of structured `{error: {message, code?}}` only at the receiver per client contract); proves `cloud-api-request` passthrough invariant end-to-end
+
 ### Wire Compatibility — Conventions (apply to every endpoint)
 
 - [x] **WIRE-17**: Honor the global error envelope `{ "error": "<human-readable string>" }` for every non-2xx response
@@ -215,6 +228,14 @@ All 89 v1 requirements mapped by `gsd-roadmapper` on 2026-05-08.
 | WIRE-18 | Phase 2 | Complete |
 | WIRE-19 | Phase 2 | Complete |
 | WIRE-20 | Phase 2 | Complete |
+| WIRE-22 | Phase 5 | Pending |
+| WIRE-23 | Phase 5 | Pending |
+| WIRE-24 | Phase 5 | Pending |
+| WIRE-25 | Phase 5 | Pending |
+| WIRE-26 | Phase 5 | Pending |
+| WIRE-27 | Phase 5 | Pending |
+| WIRE-28 | Phase 5 | Pending |
+| WIRE-29 | Phase 5 | Pending |
 | AUTH-01 | Phase 2 | Complete |
 | AUTH-02 | Phase 2 | Complete |
 | AUTH-03 | Phase 2 | Complete |
@@ -286,10 +307,10 @@ All 89 v1 requirements mapped by `gsd-roadmapper` on 2026-05-08.
 | DOCS-09 | Phase 0 | Complete |
 
 **Coverage:**
-- v1 requirements: 89 total
-- Mapped to phases: 89 ✓
+- v1 requirements: 97 total (89 baseline + 8 added 2026-05-11 for Phase 5 CRUD scope-expansion: WIRE-22..29)
+- Mapped to phases: 97 ✓
 - Unmapped: 0
-- Phase distribution: 0=9, 1=8, 2=18, 3=11, 4=5, 5=6, 6=9, 7=3, 8=4, 9=5, 10=11
+- Phase distribution: 0=9, 1=8, 2=18, 3=11, 4=5, 5=14, 6=9, 7=3, 8=4, 9=5, 10=11
 
 ## Phase-Level Plan Traceability
 
