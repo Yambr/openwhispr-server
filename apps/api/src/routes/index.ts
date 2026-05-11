@@ -34,6 +34,11 @@ import { buildDiarizationRoutes, type DiarizationDeps } from "./diarization.js";
 import healthRoutes from "./health.js";
 import { buildReasonRoutes, type ReasonDeps } from "./reason.js";
 import { buildRealtimeRoutes, type RealtimeDeps } from "./realtime.js";
+import {
+  buildStreamingUsageRoutes,
+  type StreamingUsageDeps,
+} from "./streaming-usage.js";
+import { buildUsageRoutes, type UsageDeps } from "./usage.js";
 import { buildTestOnlyRoutes } from "./test-only.js";
 import { buildAssemblyAITokenRoutes } from "./tokens/assemblyai.js";
 import { buildDeepgramTokenRoutes } from "./tokens/deepgram.js";
@@ -142,6 +147,14 @@ export function buildAllRoutes(deps: AllRoutesDeps): readonly RoutePlugin[] {
     buildAssemblyAITokenRoutes(),
     buildDeepgramTokenRoutes(),
     buildOpenAIRealtimeTokenRoutes(),
+    // Phase 05 / Plan 02 — WIRE-09 + WIRE-10. Both routes are registered
+    // UNCONDITIONALLY (do not gate on litellm presence) because their
+    // contract is database-only: idempotent ledger insert + SUM aggregator.
+    // The desktop client calls them on every streaming-STT session and
+    // periodically polls /api/usage; conditional registration would break
+    // wire shape for operators who deploy without LITELLM_MASTER_KEY.
+    buildStreamingUsageRoutes({ db: deps.db } satisfies StreamingUsageDeps),
+    buildUsageRoutes({ db: deps.db } satisfies UsageDeps),
   ];
   // Phase 03 / Plan 04: conditionally register the transcribe route only
   // when a LiteLLM client was constructed (LITELLM_MASTER_KEY present).
@@ -240,8 +253,10 @@ export {
   buildOpenAIRealtimeTokenRoutes,
   buildReasonRoutes,
   buildRealtimeRoutes,
+  buildStreamingUsageRoutes,
   buildTestOnlyRoutes,
   buildTranscribeRoutes,
+  buildUsageRoutes,
   buildVerificationStatusRoutes,
   healthRoutes,
 };

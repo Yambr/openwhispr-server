@@ -243,6 +243,33 @@ export const DeepgramStreamingTokenResponse = z.object({
 });
 export type DeepgramStreamingTokenResponse = z.infer<typeof DeepgramStreamingTokenResponse>;
 
+// ---------------------------------------------------------------------
+// Phase 5 — Operational endpoints. Source of truth: BACKEND_SPEC.md
+// §/api/streaming-usage (lines 377-412) + §/api/usage (lines 416-435).
+// Plan 05-02 (WIRE-09, WIRE-10).
+// ---------------------------------------------------------------------
+
+/**
+ * Shared usage-response shape returned by BOTH
+ *   - POST /api/streaming-usage (after recording the session)
+ *   - GET  /api/usage           (cumulative aggregate)
+ *
+ * `plan` is literal "unlimited" in v1 (D-12). `limitReached` is literal
+ * `false`. `wordsRemaining` is the sentinel 999_999_999. NOT `.strict()`
+ * so a future phase can add an audit field without breaking the contract.
+ */
+export const UsageResponse = z.object({
+  wordsUsed: z.number(),
+  wordsRemaining: z.number(),
+  plan: z.literal("unlimited"),
+  limitReached: z.literal(false),
+});
+export type UsageResponse = z.infer<typeof UsageResponse>;
+
+/** POST /api/streaming-usage response body — same shape as UsageResponse. */
+export const StreamingUsageResponse = UsageResponse;
+export type StreamingUsageResponse = UsageResponse;
+
 /**
  * POST /api/openai-realtime-token success body.
  *
