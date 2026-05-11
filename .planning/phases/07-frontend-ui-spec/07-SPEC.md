@@ -34,27 +34,55 @@ Both UIs run as a single Next.js 15 App Router application served from the same 
 
 ## In Scope
 
-### Admin Console — 7 screens
+### Admin Console — 3 screens (operator-only tooling)
 
 | # | Screen | Route | Data source |
 |---|--------|-------|-------------|
 | A1 | Audit log viewer | `/admin/audit` | DB read of `audit_log` table (Phase 6 partition-aware) |
 | A2 | Observability hub | `/admin/observability` | Static deep-links into Grafana dashboards (Phase 6 Plan 11) |
 | A3 | Config view | `/admin/config` | `GET /api/stt-config` + `GET /api/note-recording-config` |
-| A4 | Transcriptions list (own scope) | `/admin/transcriptions` | `GET /api/v1/transcriptions/list` |
-| A5 | Notes list (own scope, with folders) | `/admin/notes` | `GET /api/v1/notes/list` + folders |
-| A6 | Conversations list | `/admin/conversations` | `GET /api/v1/conversations/list` |
-| A7 | Conversation detail (messages drill-down) | `/admin/conversations/[id]` | `GET /api/v1/conversations/:id/messages` |
 
-### End-User UI — 5 screens
+### End-User UI — 13 screens (account + own resources)
+
+**Auth flow (3):**
 
 | # | Screen | Route | Data source |
 |---|--------|-------|-------------|
 | U1 | Sign-in | `/sign-in` | Better Auth `/api/auth/sign-in/email` + OIDC `/api/auth/sign-in/social/:provider` |
 | U2 | Sign-up | `/sign-up` | Better Auth `/api/auth/sign-up/email` |
 | U3 | Verify email | `/verify-email?token=...` | Better Auth verification handler |
-| U4 | Usage dashboard | `/app` (post-auth landing) | `GET /api/usage` + `GET /api/streaming-usage` |
+
+**Account (2):**
+
+| # | Screen | Route | Data source |
+|---|--------|-------|-------------|
+| U4 | Usage dashboard (post-auth landing) | `/app` | `GET /api/usage` + `GET /api/streaming-usage` |
 | U5 | Profile + account deletion | `/app/account` | `GET /api/auth/get-session` + `DELETE /api/auth/delete-account` |
+
+**Own resources — read-only viewer (server is single source of truth; desktop client is a mirror):**
+
+| # | Screen | Route | Data source |
+|---|--------|-------|-------------|
+| U6 | Transcriptions list | `/app/transcriptions` | `GET /api/transcriptions/list` (keyset pagination) |
+| U7 | Transcription detail | `/app/transcriptions/[id]` | `GET /api/transcriptions/list?id=...` (single-row filter) — shows full `text`, `raw_text`, `word_count`, `provider`, `model`, `language`, `audio_duration_ms`, `status`, `created_at` |
+| U8 | Notes list (with folder tree sidebar) | `/app/notes` | `GET /api/notes/list` + `GET /api/folders/list` |
+| U9 | Note detail | `/app/notes/[id]` | `GET /api/notes/list?id=...` — shows full `content`, `transcript`, `enhanced_content`, `enhancement_prompt`, `audio_duration_seconds`, `participants`, `note_type`, folder breadcrumb |
+| U10 | Notes search | `/app/notes/search?q=...` | `GET /api/notes/search` |
+| U11 | Conversations list | `/app/conversations` | `GET /api/conversations/list` |
+| U12 | Conversation detail (messages thread) | `/app/conversations/[id]` | `GET /api/conversations/messages?conversation_id=...` — full chat history with roles/content/metadata |
+| U13 | Conversations search | `/app/conversations/search?q=...` | `GET /api/conversations/search` |
+
+**Actions across resource screens:**
+- All detail views are **read-only** (no editing — desktop client owns the write surface; web-side edits would conflict with sync).
+- **Delete** (soft-delete) is the one exception: `DELETE /api/notes/delete`, `DELETE /api/transcriptions/delete`, `DELETE /api/conversations/delete` — wire a single confirm-modal pattern.
+- **Copy-to-clipboard** on detail screens for the primary content (text/transcript/message).
+- **Client-side export** (.md / .json blob download) on each detail screen — no new API surface, just a Blob from the already-fetched data.
+
+### Cross-routing convention
+
+- `/sign-in`, `/sign-up`, `/verify-email` — public.
+- `/app/*` — requires authenticated user (Better Auth session).
+- `/admin/*` — requires authenticated user AND `role:admin` (in single-tenant self-host the first registered user is admin by default).
 
 ### Shared cross-cutting concerns
 
