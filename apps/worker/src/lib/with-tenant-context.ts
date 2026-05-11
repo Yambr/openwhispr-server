@@ -28,9 +28,10 @@
 // have the GUC) from system-mode callers (BYPASSRLS allowed).
 import { AsyncLocalStorage } from "node:async_hooks";
 import { trace } from "@opentelemetry/api";
+import { makePino } from "@openwhispr/observability";
 import type { Job } from "bullmq";
 import type { Pool } from "pg";
-import pino, { type Logger } from "pino";
+import type { Logger } from "pino";
 import type { z } from "zod";
 
 export interface TenantContextStore {
@@ -52,7 +53,11 @@ export function getTenantContext(): TenantContextStore | undefined {
 }
 
 const tracer = trace.getTracer("worker");
-const baseLog = pino({ name: "worker" });
+// Phase 6 / Plan 06-10 — pino instance comes from the shared
+// @openwhispr/observability factory so the Worker tier scrubs the SAME
+// D-T4 redact paths as the API tier. `service: 'worker'` lets operators
+// filter by tier in Loki / Grafana.
+const baseLog = makePino({ base: { service: "worker" } });
 
 /**
  * Zod schema constraint for tenant-mode jobs: must define `tenant_id` as a

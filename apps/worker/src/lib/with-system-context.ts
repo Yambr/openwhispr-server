@@ -20,13 +20,18 @@
 // 06-09) and the property test (D-W4 layer 3) both treat un-wrapped handlers
 // as violations.
 import { trace } from "@opentelemetry/api";
+import { makePino } from "@openwhispr/observability";
 import type { Job } from "bullmq";
-import pino, { type Logger } from "pino";
+import type { Logger } from "pino";
 import type { z } from "zod";
 import { tenantAls } from "./with-tenant-context.js";
 
 const tracer = trace.getTracer("worker");
-const baseLog = pino({ name: "worker" });
+// Phase 6 / Plan 06-10 — pino instance comes from the shared
+// @openwhispr/observability factory so the Worker tier scrubs the SAME
+// D-T4 redact paths as the API tier. `service: 'worker'` lets operators
+// filter by tier in Loki / Grafana.
+const baseLog = makePino({ base: { service: "worker" } });
 
 /** Sentinel tenant id used inside the ALS store for system-mode jobs. */
 export const SYSTEM_TENANT_SENTINEL = "__system__";
