@@ -254,6 +254,15 @@ describe("Phase 02.7 D-03A — seedConformanceFixtures preflight diagnostic", ()
       if (/count\(\*\)/i.test(sqlText)) {
         return { rows: [{ n: 1 }], rowCount: 1 };
       }
+      // seedPhase5Resources (Plan 05-01) does a SELECT id FROM users
+      // for the fixture row before its own INSERTs — return the row so
+      // that helper doesn't throw before patchVerified() runs.
+      if (/SELECT\s+id\s+FROM\s+users/i.test(sqlText)) {
+        return {
+          rows: [{ id: "00000000-0000-4000-8000-000000000001" }],
+          rowCount: 1,
+        };
+      }
       // Simulate a driver returning null/undefined rowCount on UPDATE.
       return { rows: [], rowCount: null };
     });
