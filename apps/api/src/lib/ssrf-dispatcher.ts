@@ -22,9 +22,10 @@
 // `request-filtering-agent`'s canonical list).
 
 import { lookup as dnsLookupCb, type LookupAddress } from "node:dns";
+import { isIP } from "node:net";
 import { promisify } from "node:util";
 import ipaddr from "ipaddr.js";
-import { Agent, type Dispatcher } from "undici";
+import { Agent, buildConnector, type Dispatcher } from "undici";
 
 const dnsLookup = promisify(dnsLookupCb);
 
@@ -310,23 +311,132 @@ export function makeSSRFLookup(
 }
 
 /**
+ * Phase 6 / Plan 06-12e — IP-literal connect guard.
+ *
+ * Node's `net.connect({ host, lookup })` skips the `lookup` callback
+ * entirely when `host` is already a valid IP literal (verified via
+ * direct probe on Node 24).  That bypasses the SSRF dispatcher's
+ * `connect.lookup` hook for any `fetch('http://10.0.0.1')` or
+ * `fetch('http://169.254.169.254')` call — the canonical SSRF exploit
+ * shape.  Without this guard:
+ *
+ *   * allow-list bypassed (no `host_not_allowed` rule fires);
+ *   * block-list bypassed (no `rfc1918_*` / `link_local_v4` /
+ *     `loopback_v4` / `ula_v6` rule fires);
+ *   * undici proceeds to attempt the raw TCP connect, which either
+ *     succeeds (the SSRF actually lands) or raises `ECONNREFUSED`
+ *     which the error handler maps to a generic 500.
+ *
+ * The guard runs SYNCHRONOUSLY in the wrapped connector BEFORE undici's
+ * default connector fires.  Returns `null` on permit, an
+ * `SSRFBlockedError` on reject (the caller funnels it into the connect
+ * callback to surface in the route's catch chain as `.cause`).
+ *
+ * Non-IP-literal hostnames bypass the guard untouched — the
+ * `connect.lookup` hook still owns the resolved-IP path for those.
+ */
+export function makeSSRFConnectGuard(
+  opts: SSRFOptions,
+): (connectOptions: { hostname: string }) => SSRFBlockedError | null {
+  const privateSet = new Set(opts.privateHostAllowlist.map((s) => s.toLowerCase()));
+  return (connectOptions): SSRFBlockedError | null => {
+    const rawHostname = connectOptions.hostname;
+    if (!rawHostname) return null;
+    // Strip IPv6 brackets if present (undici hands us `[::1]` for v6 URLs).
+    const stripped =
+      rawHostname.startsWith("[") && rawHostname.endsWith("]")
+        ? rawHostname.slice(1, -1)
+        : rawHostname;
+    const family = isIP(stripped);
+    if (family === 0) {
+      // Not an IP literal — the connect.lookup path handles allow-list
+      // + block-list for resolved hostnames.  Pass through.
+      return null;
+    }
+
+    const normalised = stripped.toLowerCase();
+
+    // 1. Allow-list gate (default-deny — same posture as makeSSRFLookup).
+    if (!hostMatches(normalised, opts.allowedHosts)) {
+      const ctx: SSRFBlockContext = {
+        host: rawHostname,
+        ip: stripped,
+        rule: "host_not_allowed",
+        mode: opts.mode,
+      };
+      try {
+        opts.onBlock(ctx);
+      } catch {
+        /* never let audit hook crash the dispatcher */
+      }
+      if (opts.mode === "enforce") {
+        return new SSRFBlockedError("host_not_allowed", rawHostname, stripped);
+      }
+      return null;
+    }
+
+    // 2. privateHostAllowlist bypass (docker-compose service names that
+    //    legitimately resolve to RFC1918 / etc).  For IP literals we
+    //    accept either the bare host token OR the literal IP.
+    if (privateSet.has(normalised)) return null;
+
+    // 3. Per-IP block-list — link_local_v4 (AWS IMDS), rfc1918_*,
+    //    loopback_v4/v6, ula_v6, etc.
+    const rule = checkBlocklist(stripped, family as 4 | 6, {
+      allowLoopback: opts.allowLoopback,
+      ...(opts.nodeEnv !== undefined ? { nodeEnv: opts.nodeEnv } : {}),
+    });
+    if (rule) {
+      const ctx: SSRFBlockContext = {
+        host: rawHostname,
+        ip: stripped,
+        rule,
+        mode: opts.mode,
+      };
+      try {
+        opts.onBlock(ctx);
+      } catch {
+        /* swallow */
+      }
+      if (opts.mode === "enforce") {
+        return new SSRFBlockedError(rule, rawHostname, stripped);
+      }
+    }
+    return null;
+  };
+}
+
+/**
  * Build a process-wide undici Dispatcher (Agent) with the SSRF lookup
  * hook installed. Caller invokes `setGlobalDispatcher(makeSSRFDispatcher(opts))`
  * during boot (apps/api/src/bootstrap.ts), BEFORE any route registration.
+ *
+ * Two-layer SSRF defense:
+ *   1. `connect.lookup` — owns the resolved-hostname path (the legacy
+ *      D-S2 single-resolve-then-connect-by-IP design).
+ *   2. Wrapped connector — runs `makeSSRFConnectGuard` against the raw
+ *      hostname BEFORE undici's default connector fires.  This closes
+ *      the IP-literal bypass (Plan 06-12e) because Node's
+ *      `net.connect({ host: <literal>, lookup })` skips lookup entirely
+ *      for IP literals.
  */
 export function makeSSRFDispatcher(opts: SSRFOptions): Dispatcher {
+  const ssrfLookup = makeSSRFLookup(opts);
+  const ssrfGuard = makeSSRFConnectGuard(opts);
+  // Build undici's default connector, configured to use our lookup for
+  // hostname resolution.  We then wrap it so the IP-literal guard runs
+  // first for every connect (literals AND hostnames — the guard cheaply
+  // no-ops on non-literals).
+  const defaultConnector = buildConnector({ lookup: ssrfLookup as never });
+  const ssrfConnector: typeof defaultConnector = (connectOptions, callback) => {
+    const blocked = ssrfGuard(connectOptions);
+    if (blocked) {
+      callback(blocked, null);
+      return;
+    }
+    defaultConnector(connectOptions, callback);
+  };
   return new Agent({
-    connect: {
-      // undici's lookup signature: (hostname, options, cb) — cb expects
-      // (err | null, address, family). We perform a single resolve and
-      // hand the resolved IP back so undici connects by IP (not by
-      // hostname) — that closes the TOCTOU window. undici preserves the
-      // original URL hostname for TLS SNI and the Host: header.
-      // undici's LookupFunction type narrows the variadic cb shape; ours
-      // is a strict superset (handles both legacy single-address and
-      // `{all:true}` array shapes). Cast is safe — Node's net.connect
-      // invokes us as documented in the source.
-      lookup: makeSSRFLookup(opts) as never,
-    },
+    connect: ssrfConnector,
   });
 }
