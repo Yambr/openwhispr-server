@@ -14,6 +14,7 @@
       "license-scan",
       "harness-self-check",
       "lint-rls",
+      "lint-tenant-context",
       "test-migration",
       "contract-test",
       "verify-images"
