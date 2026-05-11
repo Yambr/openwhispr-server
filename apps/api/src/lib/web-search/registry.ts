@@ -2,7 +2,7 @@
 //
 // Source of truth: 05-03-PLAN.md + 05-RESEARCH.md § Pattern 5.
 //
-// Design (D-01: "учти что провайдеров потом может быть больше"):
+// Design (D-01: more providers may be added later — keep this extensible):
 //   * `webSearchRegistry`: `Map<string, WebSearchProvider>` keyed by the
 //     provider's `name`. Future providers add an entry — no route
 //     changes (Pitfall #6: route registers UNCONDITIONALLY).
@@ -22,13 +22,12 @@ import { YandexAdapter } from "./yandex-adapter.js";
  * so test harnesses can install fakes via `webSearchRegistry.set(...)` and
  * tear them down via `.delete(...)` between cases — see registry.test.ts.
  */
-export const webSearchRegistry: Map<string, WebSearchProvider> = new Map<
-  string,
-  WebSearchProvider
->([
-  ["tavily", new TavilyAdapter()],
-  ["yandex", new YandexAdapter()],
-]);
+export const webSearchRegistry: Map<string, WebSearchProvider> = new Map<string, WebSearchProvider>(
+  [
+    ["tavily", new TavilyAdapter()],
+    ["yandex", new YandexAdapter()],
+  ],
+);
 
 /** Default provider when `WEB_SEARCH_PROVIDER` is unset. Matches the
  *  .env.example default and the project's OSS-first stance (Tavily is
@@ -46,9 +45,7 @@ export function resolveWebSearchProvider(): WebSearchProvider {
   const provider = webSearchRegistry.get(name);
   if (!provider) {
     const known = Array.from(webSearchRegistry.keys()).join(", ");
-    throw new Error(
-      `Unknown WEB_SEARCH_PROVIDER='${name}'. Known providers: ${known}.`,
-    );
+    throw new Error(`Unknown WEB_SEARCH_PROVIDER='${name}'. Known providers: ${known}.`);
   }
   return provider;
 }

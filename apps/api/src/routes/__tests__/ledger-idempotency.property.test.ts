@@ -69,9 +69,7 @@ function makeFakeDb(): {
   };
 }
 
-function buildApp(
-  deps: Parameters<typeof buildStreamingUsageRoutes>[0],
-): FastifyInstance {
+function buildApp(deps: Parameters<typeof buildStreamingUsageRoutes>[0]): FastifyInstance {
   const app = Fastify({ logger: false });
   registerErrorHandler(app);
   app.register(zodTypeProvider);
@@ -143,11 +141,11 @@ describe("ledger-idempotency — property: every INSERT carries ON CONFLICT", ()
 
     const adversarial = [
       "session with spaces",
-      "Сессия-2026", // cyrillic
+      "\u0421\u0435\u0441\u0441\u0438\u044f-2026", // "Sessiya-2026" written as ASCII unicode escapes — keeps source bytes English-only while exercising cyrillic sessionId at runtime
       "🎙️-emoji-session",
       "x".repeat(500), // long
       "session\twith\ttabs",
-      "session\"with\"quotes",
+      'session"with"quotes',
       "session'with'apostrophes",
       "session;DROP TABLE--", // SQL injection canary; drizzle parameterizes
     ];
@@ -169,9 +167,7 @@ describe("ledger-idempotency — property: every INSERT carries ON CONFLICT", ()
     }
     // Defense-in-depth: drizzle's sql template parameterizes — the
     // injection canary MUST land as a bound param, not as raw SQL text.
-    const injectionInsert = recorded.find((r) =>
-      JSON.stringify(r.params).includes("DROP TABLE"),
-    );
+    const injectionInsert = recorded.find((r) => JSON.stringify(r.params).includes("DROP TABLE"));
     expect(injectionInsert).toBeDefined();
     // The raw SQL text must NOT contain DROP TABLE.
     expect(injectionInsert!.sql).not.toMatch(/DROP TABLE/);
