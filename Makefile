@@ -282,6 +282,9 @@ e2e-test-phase6:
 	  pnpm exec vitest run --config tests/e2e/vitest.e2e.config.ts \
 	    tests/e2e/probes-dependency.test.ts \
 	    tests/e2e/audit-log-write.test.ts \
+	    tests/e2e/horizontal-scale.test.ts \
+	    tests/e2e/ssrf-block.test.ts \
+	    tests/e2e/rate-limit-layered.test.ts \
 	    tests/e2e/reconciliation-drift.test.ts \
 	    tests/e2e/log-scrub-sentinel.test.ts \
 	    tests/e2e/otel-trace-propagation.test.ts

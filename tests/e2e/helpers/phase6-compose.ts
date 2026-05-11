@@ -574,6 +574,156 @@ export async function curlInContainer(
   return { exitCode: result.exitCode, body: result.output };
 }
 
+/**
+ * Phase 6 / Plan 06-12b — handle returned by `phase6BringStackUpScaled`.
+ *
+ * Unlike `Phase6Stack`, this is shell-managed: testcontainers v11 does
+ * NOT expose a `withScale(service, n)` method, so we bypass
+ * DockerComposeEnvironment entirely and drive the compose CLI ourselves.
+ * The handle exposes `projectName` (so callers can shell-exec follow-on
+ * docker commands), a teardown thunk, and the same `pollUrl` /
+ * `BACKEND_URL` exports the test reaches for.
+ */
+export interface Phase6ScaledStack {
+  projectName: string;
+  /** Tear the stack down + drop named volumes. */
+  down: () => Promise<void>;
+}
+
+/**
+ * Phase 6 / Plan 06-12b / SCALE-01 — boot the compose stack with
+ * `--scale api=N` for the horizontal-scale e2e. Pure shell because
+ * testcontainers v11 has no `withScale` API.
+ *
+ * The caller MUST supply a compose override file that swaps Traefik's
+ * dynamic.yml mount onto one that enumerates ALL N replica DNS names
+ * as discrete `servers:` entries (otherwise the production file-provider
+ * dynamic.yml pins to one replica via a single `url: http://api:3000`
+ * server entry, defeating the SCALE-01 round-robin invariant).  See
+ * tests/e2e/helpers/phase6-scale-dynamic.yml + phase6-scale-override.yml.
+ *
+ * Boot timeline (informational, sets caller expectation):
+ *   - `up -d --scale api=2` against the openwhispr project on a warm
+ *     image cache: ~30-60s.
+ *   - poll /livez until 200: usually fast once api containers are
+ *     up; budget 60s.
+ *   - Total beforeAll budget should be ≥ 180_000 ms.
+ */
+export async function phase6BringStackUpScaled(opts: {
+  /** Number of api replicas. */
+  apiScale: number;
+  /** Compose override files to layer on top of docker-compose.yml.
+   *  REQUIRED: must include phase6-scale-override.yml or the Traefik
+   *  routing will pin to one replica. */
+  overrideComposeFiles: string[];
+  /** Override the compose project name. Defaults to `openwhispr`. */
+  projectName?: string;
+  /** Boot poll deadline in ms. Defaults to 180_000. */
+  timeoutMs?: number;
+  /** Skip seeding (the scale test does not need conformance fixtures). */
+  seed?: boolean;
+}): Promise<Phase6ScaledStack> {
+  process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0";
+  const projectName = opts.projectName ?? "openwhispr";
+  const timeoutMs = opts.timeoutMs ?? 180_000;
+
+  // Compose the `-f docker-compose.yml -f <override1> -f <override2>`
+  // argument list.  Override files are paths relative to REPO_ROOT.
+  const fileArgs: string[] = ["-f", "docker-compose.yml"];
+  for (const f of opts.overrideComposeFiles) {
+    fileArgs.push("-f", f);
+  }
+
+  // Bring the stack up scaled.  `--no-build --pull never` mirrors the
+  // phase6BringStackUp posture (image-cache reuse, no registry pulls).
+  const upCode = await runCmd(
+    "docker",
+    [
+      "compose",
+      "-p",
+      projectName,
+      ...fileArgs,
+      "--profile",
+      "default",
+      "up",
+      "-d",
+      "--no-build",
+      "--pull",
+      "never",
+      "--scale",
+      `api=${opts.apiScale}`,
+      "--wait",
+      "--wait-timeout",
+      String(Math.floor(timeoutMs / 1000)),
+    ],
+    { env: { ...HERMETIC_ENV } },
+  );
+  if (upCode !== 0) {
+    // Best-effort teardown so a half-up stack doesn't poison subsequent
+    // suites.
+    await runCmd(
+      "docker",
+      ["compose", "-p", projectName, ...fileArgs, "down", "-v", "--remove-orphans"],
+      { quiet: true },
+    ).catch(() => {});
+    throw new Error(
+      `phase6BringStackUpScaled: \`docker compose up\` exit=${upCode}; \`docker compose ps\` for triage`,
+    );
+  }
+
+  // Belt-and-suspenders: poll Traefik → /livez to confirm at least
+  // one replica is serving.  --wait already gates on healthchecks but
+  // Traefik routing may need a moment to settle.
+  await pollUrl(`${BACKEND_URL}/livez`, {
+    expectStatus: 200,
+    deadlineMs: 60_000,
+    intervalMs: 1000,
+  });
+
+  if (opts.seed) {
+    const seedCode = await runCmd(
+      "docker",
+      [
+        "compose",
+        "-p",
+        projectName,
+        ...fileArgs,
+        "--profile",
+        "default",
+        "--profile",
+        "contract-test",
+        "run",
+        "--rm",
+        "seed",
+      ],
+      { env: { ...HERMETIC_ENV } },
+    );
+    if (seedCode !== 0) {
+      await runCmd(
+        "docker",
+        ["compose", "-p", projectName, ...fileArgs, "down", "-v", "--remove-orphans"],
+        { quiet: true },
+      ).catch(() => {});
+      throw new Error(`phase6BringStackUpScaled: seed exited ${seedCode}`);
+    }
+  }
+
+  const down = async (): Promise<void> => {
+    const code = await runCmd(
+      "docker",
+      ["compose", "-p", projectName, ...fileArgs, "down", "-v", "--remove-orphans"],
+      { quiet: true },
+    );
+    if (code !== 0) {
+      // Best-effort: surface non-fatal so afterAll cleanup continues.
+      // biome-ignore lint/suspicious/noConsole: e2e teardown diagnostic
+      console.warn(`phase6BringStackUpScaled.down: exit=${code}`);
+    }
+  };
+
+  return { projectName, down };
+}
+
 /** Read .env file into a Record. Lightweight — no dotenv dep. */
 function readDotenv(): Record<string, string> {
   // Lazy import so tests that don't need this don't pay the cost.

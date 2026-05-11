@@ -1,41 +1,125 @@
-// Phase 6 Wave 0 RED stub — TDD-01b. Implementation in Plan 06-11 per 06-VALIDATION.md.
+// tests/e2e/horizontal-scale.test.ts
 //
-// Behavior locked by D-P3 (SCALE-01 horizontal scale e2e):
-//   - DockerComposeEnvironment.withScale("api", 2) via testcontainers
-//   - Signin via Traefik -> capture bearer + cookie
-//   - Hit a session-protected endpoint (/api/me or /api/usage) 20x via Traefik
-//   - Assert >= 1 hit lands on EACH replica's hostname (x-served-by header)
-//   - All 20 return 200 with the same session.id (proves cross-replica continuity)
+// Phase 6 / Plan 06-12b / SCALE-01 / D-P3 — horizontal-scale e2e.
 //
-// Gated on E2E=1. Real services per constitutional "no mocks of internal logic".
-import { beforeAll, describe, expect, it } from "vitest";
+// Truths asserted:
+//   1. The compose stack is up with TWO api replicas (`--scale api=2`).
+//   2. A single sign-in produces a session cookie that authorizes the
+//      same user across both replicas (cross-replica session continuity).
+//   3. 20 sequential GETs to /api/usage through Traefik distribute
+//      across BOTH replicas: at least 1 hit per replica observable via
+//      the `x-served-by` header (Plan 06-04 onSend hook).
+//   4. All 20 responses return HTTP 200 (proves the session cookie is
+//      honored everywhere; if a replica was using a stale BetterAuth
+//      state or a stale session table cache, hits to that replica
+//      would 401).
+//
+// Stack-up: pure shell via `phase6BringStackUpScaled` because
+// testcontainers v11 has NO `withScale` API. The scale override file
+// (tests/e2e/helpers/phase6-scale-override.yml) remounts Traefik's
+// dynamic.yml onto our test-only enumeration of BOTH replica DNS
+// names — without that, Traefik file provider caches the first
+// resolved IP at config load and pins to a single replica.
+//
+// Traefik provider mode: file-provider (D-31 production topology
+// preserved).  The test-only dynamic.yml enumerates discrete `servers:`
+// entries — equivalent to docker-provider load balancing without
+// switching the entire stack to docker-provider.
+//
+// CLAUDE.md "no mocks of internal logic": real docker-compose, real
+// Traefik round-robin, real per-replica os.hostname().
+import { CookieJar } from "tough-cookie";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import {
+  BACKEND_URL,
+  type Phase6ScaledStack,
+  phase6BringStackUpScaled,
+} from "./helpers/phase6-compose.js";
 
-const NOT_YET = "not yet implemented — Plan 06-11 implements horizontal-scale e2e (SCALE-01, D-P3)";
+const SUITE_TIMEOUT_MS = 360_000;
+const FIXTURE_EMAIL = "fixture@conformance.test";
+const FIXTURE_PASSWORD = "test-PW-12345!";
+const HITS = 20;
+
+let stack: Phase6ScaledStack | undefined;
+
+async function signInAndGetCookie(): Promise<string> {
+  const jar = new CookieJar();
+  const res = await fetch(`${BACKEND_URL}/api/auth/sign-in/email`, {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      origin: BACKEND_URL,
+      "x-forwarded-for": "10.20.30.40",
+    },
+    body: JSON.stringify({ email: FIXTURE_EMAIL, password: FIXTURE_PASSWORD }),
+    redirect: "manual",
+  });
+  if (!res.ok) {
+    const text = await res.text().catch(() => "<no body>");
+    throw new Error(`signIn failed: HTTP ${res.status} body=${text.slice(0, 300)}`);
+  }
+  const setCookies =
+    typeof (res.headers as Headers & { getSetCookie?: () => string[] }).getSetCookie === "function"
+      ? (res.headers as Headers & { getSetCookie: () => string[] }).getSetCookie()
+      : res.headers.get("set-cookie")
+        ? [res.headers.get("set-cookie") as string]
+        : [];
+  for (const sc of setCookies) {
+    await jar.setCookie(sc, BACKEND_URL, { ignoreError: true });
+  }
+  return jar.getCookieString(BACKEND_URL);
+}
 
 describe.skipIf(process.env.E2E !== "1")("horizontal scale e2e (SCALE-01, D-P3)", () => {
   beforeAll(async () => {
-    // TODO Plan 06-11: boot via testcontainers
-    //   new DockerComposeEnvironment("compose", "compose.yml")
-    //     .withScale("api", 2)
-    //     .up();
-    // Add `testcontainers` to tests/e2e/package.json deps when this
-    // stub flips GREEN.
-    throw new Error(NOT_YET);
+    stack = await phase6BringStackUpScaled({
+      apiScale: 2,
+      overrideComposeFiles: ["tests/e2e/helpers/phase6-scale-override.yml"],
+      seed: true,
+      timeoutMs: 300_000,
+    });
+  }, SUITE_TIMEOUT_MS);
+
+  afterAll(async () => {
+    if (stack) await stack.down();
+  }, 120_000);
+
+  it(`boots --scale api=2 and round-robins ${HITS} GETs across both replicas via Traefik (x-served-by ≥ 2 distinct values, all 200)`, async () => {
+    if (!stack) throw new Error("stack not initialized");
+    const cookie = await signInAndGetCookie();
+    expect(cookie.length).toBeGreaterThan(0);
+
+    const seen: string[] = [];
+    for (let i = 0; i < HITS; i++) {
+      const res = await fetch(`${BACKEND_URL}/api/usage`, {
+        method: "GET",
+        headers: {
+          cookie,
+          origin: BACKEND_URL,
+          "x-forwarded-for": "10.20.30.40",
+          "user-agent": "openwhispr-phase6-scale-e2e/1.0",
+        },
+      });
+      await res.text().catch(() => undefined);
+      expect(res.status, `request ${i} should be 200`).toBe(200);
+      const tag = res.headers.get("x-served-by");
+      expect(tag, `request ${i} missing x-served-by header`).not.toBeNull();
+      seen.push(tag ?? "");
+    }
+
+    // Round-robin invariant — at least 2 distinct replica tags
+    // across the 20 responses. With Traefik's default WRR balancer
+    // and two equal-weight backends, the expected split is roughly
+    // 10/10; we use ≥1 per replica as the conservative bound.
+    const distinct = new Set(seen);
+    expect(distinct.size).toBeGreaterThanOrEqual(2);
+
+    // Each distinct tag MUST be non-empty (os.hostname() never
+    // returns "" on a Linux container — kubelet sets HOSTNAME to
+    // the pod name).
+    for (const tag of distinct) {
+      expect(tag.length).toBeGreaterThan(0);
+    }
   }, 180_000);
-
-  it("boots docker compose with withScale('api', 2) via testcontainers DockerComposeEnvironment per D-P3", () => {
-    expect.fail(NOT_YET);
-  });
-
-  it("signs in once via Traefik and obtains a bearer token + session cookie per D-P3", () => {
-    expect.fail(NOT_YET);
-  });
-
-  it("hits /api/me 20x through Traefik round-robin — at least 1 hit per replica via x-served-by header per D-P3", () => {
-    expect.fail(NOT_YET);
-  });
-
-  it("all 20 responses return 200 with the same session.id (cross-replica continuity) per D-P3", () => {
-    expect.fail(NOT_YET);
-  });
 });

@@ -1,0 +1,39 @@
+# tests/e2e/helpers/phase6-scale-override.yml
+#
+# Phase 6 / Plan 06-12b — docker-compose override for the horizontal-scale
+# e2e (tests/e2e/horizontal-scale.test.ts).
+#
+# Two adjustments:
+#
+#   1. traefik service — remount /etc/traefik/dynamic.yml onto our
+#      test-only `phase6-scale-dynamic.yml` which enumerates BOTH
+#      replicas as discrete `servers:` entries (see that file's
+#      header for the rationale).  The production dynamic.yml has a
+#      single `url: http://api:3000` server that Traefik caches at
+#      load time — fine for `--scale api=1` but useless for the
+#      SCALE-01 round-robin test.
+#
+#   2. api service — NODE_ENV=test so the /__test/fetch debug surface
+#      registers (no functional requirement for the scale test, but
+#      keeps the override files consistent across 12b's three e2es).
+#
+# Stack-up command (driven by the test, not the operator):
+#   docker compose -p openwhispr \
+#     -f docker-compose.yml \
+#     -f tests/e2e/helpers/phase6-scale-override.yml \
+#     --profile default up -d --no-build --pull never --scale api=2
+#
+# Teardown restores the production dynamic.yml automatically because
+# the test calls `docker compose down -v --remove-orphans` which
+# removes the override.
+
+services:
+  traefik:
+    volumes:
+      - ./compose/traefik/traefik.yml:/etc/traefik/traefik.yml:ro
+      - ./tests/e2e/helpers/phase6-scale-dynamic.yml:/etc/traefik/dynamic.yml:ro
+      - ./compose/traefik/certs:/certs:ro
+  api:
+    environment:
+      NODE_ENV: test
+      OPENWHISPR_TEST_ROUTES: "true"
