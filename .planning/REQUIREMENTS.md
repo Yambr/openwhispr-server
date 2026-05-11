@@ -90,7 +90,7 @@ Authoritative wire shapes pinned by the OpenWhispr client TS interfaces at `~/op
 
 ### Enterprise Scale (1000 concurrent active users)
 
-- [ ] **SCALE-01**: API tier is fully stateless; sessions stored in Postgres; cache state in Redis/Valkey; horizontal scaling validated
+- [x] **SCALE-01**: API tier is fully stateless; sessions stored in Postgres; cache state in Redis/Valkey; horizontal scaling validated
 - [ ] **SCALE-02**: PgBouncer transaction-mode in front of Postgres; sized for 1000 concurrent (server-pool 100 × 4 instances)
 - [ ] **SCALE-03**: BullMQ on Redis/Valkey for background jobs (audit-log fanout, email delivery, usage rollups, virtual-key rotation)
 - [ ] **SCALE-04**: Anti-abuse rate limiting per-user, per-IP via Redis/Valkey token-bucket (NOT quota — observability ledger has no limits in v1); polling carve-out for `/api/auth/verification-status`
@@ -104,7 +104,7 @@ Authoritative wire shapes pinned by the OpenWhispr client TS interfaces at `~/op
 - [x] **OBS-02**: Prometheus metrics exposed via OTel Collector; default Grafana dashboards shipped for RED + saturation, per-tenant usage, LiteLLM spend
 - [x] **OBS-03**: Structured JSON logging to Loki via OTel Collector; bearer tokens scrubbed; correlation IDs propagated; English-only log keys
 - [ ] **OBS-04**: LiteLLM spend logs piped into the platform usage ledger; reconciled against per-request ledger entries; discrepancy alerts
-- [ ] **OBS-05**: Liveness, readiness, and startup probes — readiness fails when Postgres / Redis / LiteLLM unhealthy
+- [x] **OBS-05**: Liveness, readiness, and startup probes — readiness fails when Postgres / Redis / LiteLLM unhealthy
 
 ### Frontend (UI-SPEC only — implementation deferred to v2)
 
@@ -261,7 +261,7 @@ All 89 v1 requirements mapped by `gsd-roadmapper` on 2026-05-08.
 | PROVIDER-02 | Phase 1 | Complete |
 | PROVIDER-03 | Phase 2 | Complete |
 | PROVIDER-04 | Phase 2 | Complete |
-| SCALE-01 | Phase 6 | Pending |
+| SCALE-01 | Phase 6 | Complete |
 | SCALE-02 | Phase 8 | Pending |
 | SCALE-03 | Phase 6 | Pending |
 | SCALE-04 | Phase 6 | Pending |
@@ -272,7 +272,7 @@ All 89 v1 requirements mapped by `gsd-roadmapper` on 2026-05-08.
 | OBS-02 | Phase 6 | Complete |
 | OBS-03 | Phase 6 | Complete |
 | OBS-04 | Phase 6 | Pending |
-| OBS-05 | Phase 6 | Pending |
+| OBS-05 | Phase 6 | Complete |
 | UI-SPEC-01 | Phase 7 | Pending |
 | UI-SPEC-02 | Phase 7 | Pending |
 | UI-SPEC-03 | Phase 7 | Pending |
