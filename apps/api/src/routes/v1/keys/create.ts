@@ -76,7 +76,14 @@ export const buildKeysCreateRoutes = (deps: KeysCreateDeps) =>
         const userId = req.user.id;
 
         const body = CreateBodySchema.parse(req.body ?? {});
-        const scopes = body.scopes ?? [];
+        const scopesArr = body.scopes ?? [];
+        // PG array literal: ARRAY['a', 'b']::text[] — drizzle's sql template
+        // would otherwise expand a JS array as varargs ($6, $7, ...), which
+        // doesn't compose with ::text[] cast. Use sql.join() to interpolate
+        // each element as its own parameter inside an explicit ARRAY[] form.
+        const scopesSql = scopesArr.length
+          ? sql`ARRAY[${sql.join(scopesArr.map((s) => sql`${s}`), sql`, `)}]::text[]`
+          : sql`ARRAY[]::text[]`;
         const expiresAt = computeExpiresAt(body.expiresInDays);
 
         // Generate PAK + Argon2id hash BEFORE entering the transaction.
@@ -96,7 +103,7 @@ export const buildKeysCreateRoutes = (deps: KeysCreateDeps) =>
               ) VALUES (
                 ${tenantId}::uuid, ${userId}::uuid, ${body.name},
                 ${prefix}, ${keyHash},
-                ${scopes}::text[], ${expiresAt}
+                ${scopesSql}, ${expiresAt}
               )
               RETURNING "id", "name", "key_prefix", "scopes",
                         "last_used_at", "expires_at", "created_at", "revoked_at"
@@ -111,7 +118,10 @@ export const buildKeysCreateRoutes = (deps: KeysCreateDeps) =>
           // D-30 — partial UNIQUE (tenant_id, name) WHERE revoked_at IS
           // NULL collision → 409. `code: '23505'` is the Postgres
           // unique_violation SQLSTATE.
-          const sqlState = (err as { code?: string } | null)?.code;
+          // drizzle wraps pg errors in DrizzleQueryError; the original
+          // pg SQLSTATE lives on `.cause.code` (or `.code` if not wrapped).
+          const raw = err as { code?: string; cause?: { code?: string } } | null;
+          const sqlState = raw?.code ?? raw?.cause?.code;
           if (sqlState === "23505") {
             return reply
               .code(409)

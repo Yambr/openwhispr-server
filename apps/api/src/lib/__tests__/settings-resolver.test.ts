@@ -62,9 +62,8 @@ function makeFakeTx(opts: FakeTxOpts = {}): {
       const parts: string[] = [];
       const params: unknown[] = [];
       for (const c of chunks) {
-        if (typeof c === "string") {
-          parts.push(c);
-        } else if (c && typeof c === "object" && "value" in c) {
+        if (c && typeof c === "object" && "value" in c) {
+          // drizzle StringChunk — literal SQL text (array of strings)
           const v = (c as { value: unknown }).value;
           if (Array.isArray(v) && v.every((x) => typeof x === "string")) {
             parts.push((v as string[]).join(""));
@@ -73,7 +72,9 @@ function makeFakeTx(opts: FakeTxOpts = {}): {
             params.push(v);
           }
         } else {
-          parts.push(String(c));
+          // Bare value (string/number/etc) — bound parameter, NOT literal SQL
+          parts.push("?");
+          params.push(c);
         }
       }
       const sqlText = parts.join("");

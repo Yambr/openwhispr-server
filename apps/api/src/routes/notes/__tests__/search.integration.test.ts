@@ -99,13 +99,16 @@ describe("integration — POST /api/notes/search", () => {
     expect(typeof notes[0]!.score).toBe("number");
   });
 
-  it("uses websearch_to_tsquery — multi-word phrase query 'quarterly roadmap' does not error", async () => {
+  it("uses websearch_to_tsquery — multi-word OR query 'quarterly OR roadmap' does not error", async () => {
     await seedSearchCorpus();
     const res = await appA.inject({
       method: "POST",
       url: "/api/notes/search",
       headers: { "content-type": "application/json" },
-      payload: JSON.stringify({ query: "quarterly roadmap" }),
+      // websearch_to_tsquery default semantics is AND between terms.
+      // Use the explicit "or" operator to match any-of (corpus has
+      // quarterly in note q-2 and roadmap in note q-4 separately).
+      payload: JSON.stringify({ query: "quarterly or roadmap" }),
     });
     expect(res.statusCode).toBe(200);
     const { notes } = res.json() as { notes: { title: string }[] };

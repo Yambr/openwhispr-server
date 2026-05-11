@@ -58,14 +58,20 @@ export const buildTranscriptionsBatchDeleteRoutes = (
         const userId = req.user.id;
 
         const deleted = await withTenant(deps.db, tenantId, async (tx) => {
-          // Single-statement bulk update — ANY($1::uuid[]) lets Postgres
-          // plan a single index scan against transcriptions_pkey + RLS.
-          // Returns RETURNING id of the rows actually flipped (already-
-          // deleted rows are excluded by `deleted_at IS NULL`).
+          // Empty list short-circuits — ARRAY[]::uuid[] is valid SQL but
+          // pointless and avoids a no-op DB roundtrip.
+          if (body.ids.length === 0) return [];
+          // Build ARRAY[$1, $2, ...]::uuid[] via sql.join() — drizzle would
+          // otherwise expand the JS array as varargs ($1, $2) which casts
+          // to record, not uuid[]. See Plan 09 create.ts for the same fix.
+          const idsArr = sql`ARRAY[${sql.join(
+            body.ids.map((id) => sql`${id}`),
+            sql`, `,
+          )}]::uuid[]`;
           const result = (await tx.execute(sql`
             UPDATE "transcriptions"
                SET "deleted_at" = NOW()
-             WHERE "id" = ANY(${body.ids}::uuid[])
+             WHERE "id" = ANY(${idsArr})
                AND "user_id" = ${userId}::uuid
                AND "deleted_at" IS NULL
              RETURNING "id"

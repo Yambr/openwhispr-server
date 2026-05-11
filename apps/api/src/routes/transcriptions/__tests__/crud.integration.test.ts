@@ -268,7 +268,7 @@ describe("integration — transcriptions CRUD (real Postgres + RLS)", () => {
       url: "/api/transcriptions/delete",
       headers: { "content-type": "application/json" },
       payload: JSON.stringify({
-        id: "11111111-2222-3333-4444-555555555555",
+        id: "11111111-1111-4111-8111-111111111111",
       }),
     });
     expect(ghost.statusCode).toBe(404);

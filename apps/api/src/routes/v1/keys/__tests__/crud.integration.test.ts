@@ -86,7 +86,8 @@ describe("integration — /api/v1/keys CRUD (real Postgres + RLS)", () => {
       key_hash: string;
       key_prefix: string;
     }>(`SELECT key_hash, key_prefix FROM api_keys WHERE id = $1`, [body.id]);
-    expect(rows[0]?.key_hash.startsWith("$argon2id$v=19$m=65536$t=3$p=1$")).toBe(
+    // @node-rs/argon2 emits PHC string with comma-separated params per RFC 9106
+    expect(rows[0]?.key_hash.startsWith("$argon2id$v=19$m=65536,t=3,p=1$")).toBe(
       true,
     );
     expect(rows[0]?.key_prefix).toBe(body.key_prefix);

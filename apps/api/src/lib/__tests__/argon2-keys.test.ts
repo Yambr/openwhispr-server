@@ -38,10 +38,11 @@ describe("argon2-keys — generatePak()", () => {
 });
 
 describe("argon2-keys — hashKey() / verifyKey()", () => {
-  it("hashKey() emits OWASP 2026 Argon2id format string ($argon2id$v=19$m=65536$t=3$p=1$…)", async () => {
+  it("hashKey() emits OWASP 2026 Argon2id format string ($argon2id$v=19$m=65536,t=3,p=1$…)", async () => {
     const { clearText } = generatePak();
     const stored = await hashKey(clearText);
-    expect(stored.startsWith("$argon2id$v=19$m=65536$t=3$p=1$")).toBe(true);
+    // @node-rs/argon2 emits PHC-string with comma-separated params per RFC 9106
+    expect(stored.startsWith("$argon2id$v=19$m=65536,t=3,p=1$")).toBe(true);
   });
 
   it("verifyKey() returns true for the matching pair", async () => {
