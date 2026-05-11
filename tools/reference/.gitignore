@@ -1,0 +1,6 @@
+# Phase 05 / Plan 03 — operator-supplied vendor reference files. Real
+# Python adapters drop here (e.g. yandex-search-server.py) and may carry
+# live API keys; we never commit them. *.example.py files (sanitized
+# templates) are the only exception.
+*.py
+!*.example.py
