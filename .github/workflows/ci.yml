@@ -414,3 +414,75 @@ jobs:
       - name: Tear down (defensive — setup.ts already does this)
         if: always()
         run: docker compose down -v --remove-orphans || true
+
+  # === Phase 6 / Plan 06-12d — Phase 6 e2e PR-gate (quick subset). ===
+  # Runs the 3 fastest Phase 6 e2e tests on every PR:
+  #   * probes-dependency.test.ts (OBS-05) — ~110s
+  #   * audit-log-write.test.ts    (DATA-04) — ~120s
+  #   * rate-limit-layered.test.ts (SCALE-04) — ~165s
+  # The full 8-test suite (incl. horizontal-scale + ssrf-block + the 3
+  # LGTM-trio tests) runs nightly via .github/workflows/nightly.yml's
+  # e2e-phase6 job. This PR-gate keeps the must-have observability /
+  # audit / rate-limit invariants green on every PR without burning a
+  # 45-min budget per merge.
+  #
+  # Each test owns its docker-compose lifecycle via testcontainers
+  # DockerComposeEnvironment (see tests/e2e/helpers/phase6-compose.ts).
+  # No real provider keys required — LITELLM_CONFIG_FILE=
+  # litellm_config.contract.yaml + MOCK_DIARIZATION=true keeps the
+  # stack hermetic.
+  e2e-phase6-quick:
+    runs-on: ubuntu-24.04
+    needs: [lint, typecheck, test]
+    timeout-minutes: 20
+    steps:
+      - uses: step-security/harden-runner@a5ad31d6a139d249332a2605b85202e8c0b78450  # v2.19.1
+        with: { egress-policy: audit }
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd  # v5
+        with: { fetch-depth: 0 }
+      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f  # v3.12.0
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1  # v4
+        with: { version: 11.0.8 }
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444  # v5
+        with: { node-version: '24', cache: 'pnpm' }
+      - run: pnpm install --frozen-lockfile
+      - name: Bootstrap fixture .env
+        run: |
+          cp .env.example .env
+          if [ -x tools/bootstrap.sh ]; then
+            tools/bootstrap.sh --ci || true
+          fi
+      - name: Add /etc/hosts entries for *.localhost
+        run: |
+          echo "127.0.0.1 api.localhost auth.localhost" | sudo tee -a /etc/hosts
+      - name: Build api + migrate + worker images
+        run: docker compose build api migrate worker
+      - name: Run Phase 6 e2e quick subset (3 tests)
+        run: |
+          E2E=1 \
+          LITELLM_CONFIG_FILE=litellm_config.contract.yaml \
+          OPENWHISPR_TEST_ROUTES=true \
+          MOCK_DIARIZATION=true \
+          NODE_TLS_REJECT_UNAUTHORIZED=0 \
+          TESTCONTAINERS_RYUK_DISABLED=true \
+          pnpm exec vitest run --config tests/e2e/vitest.e2e.config.ts \
+            tests/e2e/probes-dependency.test.ts \
+            tests/e2e/audit-log-write.test.ts \
+            tests/e2e/rate-limit-layered.test.ts \
+            --reporter=default --reporter=junit --outputFile=reports/junit-phase6-quick.xml
+      - name: Capture compose logs on failure
+        if: failure()
+        run: docker compose logs --no-color > compose-logs-phase6-quick.txt || true
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4
+        if: failure()
+        with:
+          name: compose-logs-phase6-quick
+          path: compose-logs-phase6-quick.txt
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4
+        if: failure()
+        with:
+          name: phase6-quick-junit
+          path: reports/junit-phase6-quick.xml
+      - name: Tear down (defensive)
+        if: always()
+        run: docker compose down -v --remove-orphans || true
