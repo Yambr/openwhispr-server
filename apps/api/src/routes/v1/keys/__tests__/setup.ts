@@ -19,6 +19,7 @@ import { registerErrorHandler } from "../../../../error-handler.js";
 import { zodTypeProvider } from "../../../../plugins/zod-type-provider.js";
 import { buildKeysCreateRoutes } from "../create.js";
 import { buildKeysListRoutes } from "../list.js";
+import { buildKeysRevokeRoutes } from "../revoke.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 // apps/api/src/routes/v1/keys/__tests__ -> packages/data/migrations
@@ -128,6 +129,7 @@ export async function buildTestApp(opts: {
   const dbAny = db as unknown as Parameters<typeof buildKeysListRoutes>[0]["db"];
   await app.register(buildKeysListRoutes({ db: dbAny }));
   await app.register(buildKeysCreateRoutes({ db: dbAny }));
+  await app.register(buildKeysRevokeRoutes({ db: dbAny }));
   await app.ready();
   return app;
 }
