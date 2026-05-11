@@ -16,6 +16,7 @@
     "@fastify/multipart": "10.0.0",
     "@fastify/rate-limit": "10.3.0",
     "@fastify/type-provider-zod": "1.0.0",
+    "@node-rs/argon2": "2.0.2",
     "@openwhispr/contract-tests": "workspace:*",
     "@openwhispr/data": "workspace:*",
     "@openwhispr/litellm-client": "workspace:*",
