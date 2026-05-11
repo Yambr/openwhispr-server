@@ -95,4 +95,66 @@ describe("request-log pino redact paths (D-T4)", () => {
     // biome-ignore lint/suspicious/noControlCharactersInRegex: 7-bit ASCII range scan
     expect(chunks.join("")).toMatch(/^[\x00-\x7F]+$/);
   });
+
+  // Plan 06-10 — sentinel sweep across the 6 leak vectors enumerated in
+  // tests/integration/log-scrub-sentinel.test.ts. Mirrors them at the
+  // unit level so the API tier's redact contract is checked on every
+  // `pnpm -F @openwhispr/api test` run (cheap, no testcontainer).
+  it("Plan 06-10 sweep #1: Authorization: Bearer SENTINEL never reaches stdout", () => {
+    const SENTINEL = `SENTINEL-AUTH-${Date.now()}-1`;
+    const chunks: string[] = [];
+    const log = buildLogger({ destination: { write: (c) => chunks.push(c) } });
+    log.info({ req: { headers: { authorization: `Bearer ${SENTINEL}` } } }, "auth");
+    expect(chunks.join("")).not.toContain(SENTINEL);
+    expect(chunks.join("")).toContain("[REDACTED]");
+  });
+
+  it("Plan 06-10 sweep #2: Cookie: session=SENTINEL never reaches stdout", () => {
+    const SENTINEL = `SENTINEL-COOKIE-${Date.now()}-2`;
+    const chunks: string[] = [];
+    const log = buildLogger({ destination: { write: (c) => chunks.push(c) } });
+    log.info({ req: { headers: { cookie: `session=${SENTINEL}` } } }, "session");
+    expect(chunks.join("")).not.toContain(SENTINEL);
+  });
+
+  it("Plan 06-10 sweep #3: req.body.password SENTINEL never reaches stdout", () => {
+    const SENTINEL = `SENTINEL-PWD-${Date.now()}-3`;
+    const chunks: string[] = [];
+    const log = buildLogger({ destination: { write: (c) => chunks.push(c) } });
+    log.info({ req: { body: { password: SENTINEL } } }, "signup");
+    expect(chunks.join("")).not.toContain(SENTINEL);
+  });
+
+  it("Plan 06-10 sweep #4: URL ?code=SENTINEL&state=SENTINEL never reaches stdout", () => {
+    const SENTINEL_CODE = `SENTINEL-CODE-${Date.now()}-4a`;
+    const SENTINEL_STATE = `SENTINEL-STATE-${Date.now()}-4b`;
+    const chunks: string[] = [];
+    const log = buildLogger({ destination: { write: (c) => chunks.push(c) } });
+    log.info({ req: { query: { code: SENTINEL_CODE, state: SENTINEL_STATE } } }, "oauth cb");
+    const joined = chunks.join("");
+    expect(joined).not.toContain(SENTINEL_CODE);
+    expect(joined).not.toContain(SENTINEL_STATE);
+  });
+
+  it("Plan 06-10 sweep #5: api-key creation flow (apiKey field) never reaches stdout", () => {
+    const SENTINEL = `SENTINEL-APIKEY-${Date.now()}-5`;
+    const chunks: string[] = [];
+    const log = buildLogger({ destination: { write: (c) => chunks.push(c) } });
+    log.info({ event: "api_key.issued", apiKey: SENTINEL, key_id: "k_123" }, "issued");
+    expect(chunks.join("")).not.toContain(SENTINEL);
+    expect(chunks.join("")).toContain("k_123");
+  });
+
+  it("Plan 06-10 sweep #6: worker job payload virtual_key SENTINEL never reaches stdout", () => {
+    const SENTINEL = `SENTINEL-VK-${Date.now()}-6`;
+    const chunks: string[] = [];
+    const log = buildLogger({ destination: { write: (c) => chunks.push(c) } });
+    log.error({ job: { virtual_key: SENTINEL }, err: { message: "boom" } }, "worker fail");
+    expect(chunks.join("")).not.toContain(SENTINEL);
+  });
+
+  it("Plan 06-10: REDACT_PATHS legacy alias mirrors redactPaths exactly", async () => {
+    const mod = await import("./request-log.js");
+    expect(mod.REDACT_PATHS).toBe(mod.redactPaths);
+  });
 });

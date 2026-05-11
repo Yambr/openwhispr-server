@@ -2,87 +2,39 @@
 // (D-16 / WIRE-19).
 //
 // Phase 6 / Plan 03 / Task 1 — pino logger factory + D-T4 redact paths.
+// Phase 6 / Plan 10 — extracted to the shared @openwhispr/observability
+// package so the Worker tier reuses the SAME redact policy without
+// inverting the apps->packages dependency direction.
 //
-// The desktop client sends `x-openwhispr-source: desktop` on every
-// request so server logs can be filtered to client-traffic-only when
-// triaging. We mirror it onto every `req.log` child so structured log
-// lines carry it automatically.
+// Backwards-compatible re-exports:
+//   - `redactPaths` (legacy name) -> REDACT_PATHS from @openwhispr/observability.
+//   - `buildLogger({ destination })` -> thin wrapper around makePino.
 //
-// `null` is the explicit value when the header is absent, which is
-// preferable to leaving the field undefined (Loki / Grafana queries
-// can match on the canonical absent-value sentinel rather than special-
-// casing the missing-field branch).
-//
-// `redactPaths` + `buildLogger()` (Phase 6 D-T4) configure pino to
-// scrub bearer tokens / cookies / OAuth callback params / generic
-// `*.token` `*.secret` `*.password` `*.apiKey` keys at SOURCE. The
-// scrubbing happens before the log record reaches stdout, closing the
-// brief stdout-leak window that a Collector-side scrubber would leave
-// open (CloudWatch/EKS node-log capture would otherwise grab the raw
-// secret).
+// The Fastify `requestLog` plugin keeps its Phase 2 behavior unchanged
+// (mirrors the `x-openwhispr-source` header onto every `req.log` child).
+
+import { makePino, REDACT_PATHS } from "@openwhispr/observability";
 import type { FastifyInstance } from "fastify";
 import fp from "fastify-plugin";
-import pino, { type DestinationStream, type Logger } from "pino";
+import type { DestinationStream, Logger } from "pino";
 
-/**
- * Pino redact paths — Phase 6 D-T4 verbatim.
- *
- * Every entry below maps to a documented leak vector. The unit test
- * in `request-log.test.ts` asserts each is present.
- */
-export const redactPaths: readonly string[] = [
-  "req.headers.authorization",
-  "req.headers.cookie",
-  'req.headers["set-cookie"]',
-  'res.headers["set-auth-token"]',
-  'res.headers["set-cookie"]',
-  "*.token",
-  "*.secret",
-  "*.password",
-  "*.apiKey",
-  "*.api_key",
-  "*.virtualKey",
-  "*.client_secret",
-  "*.access_token",
-  "*.refresh_token",
-  // Top-level redactions — pino wildcard `*.foo` matches one-level-
-  // deep keys only. The explicit top-level entries below close the
-  // gap so a stray `log.info({ token })` cannot leak the bearer.
-  "token",
-  "secret",
-  "password",
-  "apiKey",
-  "api_key",
-  "virtualKey",
-  "client_secret",
-  "access_token",
-  "refresh_token",
-  "req.body.password",
-  "req.body.token",
-  "req.query.code",
-  "req.query.state",
-];
+/** Legacy alias preserved for the existing Phase 6 / Plan 03 callers + tests. */
+export const redactPaths: readonly string[] = REDACT_PATHS;
+
+/** Re-export the canonical path list under its new name for new callers. */
+export { REDACT_PATHS } from "@openwhispr/observability";
 
 /**
  * Build a pino logger with the Phase 6 D-T4 redact policy applied.
  *
- * The optional `destination` parameter lets tests capture serialized
- * output without writing to stdout. In production the default stdout
- * stream is used so the OTel Collector's filelog receiver (configured
- * in `compose/otel-collector/config.yaml`, 06.1 D-04) can ingest log
- * records and forward them to Loki via `otlphttp`.
+ * Backwards-compatible alias for `makePino` — the existing API-tier tests
+ * pass `{ destination }` to capture serialized output without writing to
+ * stdout. The factory now delegates to `@openwhispr/observability` so the
+ * API and Worker tiers share one redact policy.
  */
 export const buildLogger = (opts?: { destination?: DestinationStream }): Logger => {
-  const pinoOptions: pino.LoggerOptions = {
-    redact: {
-      paths: [...redactPaths],
-      censor: "[REDACTED]",
-    },
-  };
-  if (opts?.destination) {
-    return pino(pinoOptions, opts.destination);
-  }
-  return pino(pinoOptions);
+  if (opts?.destination) return makePino({ destination: opts.destination });
+  return makePino();
 };
 
 async function requestLogInner(app: FastifyInstance): Promise<void> {
