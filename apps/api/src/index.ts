@@ -65,6 +65,7 @@ import { registerErrorHandler } from "./error-handler.js";
 import { type DepCheck, makeDepCheck } from "./lib/dep-check.js";
 import type { RedisLike } from "./lib/idempotency-cache.js";
 import { buildMintBearer } from "./lib/mint-bearer.js";
+import { SSRFBlockedError } from "./lib/ssrf-dispatcher.js";
 import {
   recordPreviousToken as recordPreviousTokenLib,
   tryPreviousToken as tryPreviousTokenLib,
@@ -80,6 +81,7 @@ import { rateLimitPlugin } from "./plugins/rate-limit.js";
 import { requestLog } from "./plugins/request-log.js";
 import { servedByPlugin } from "./plugins/served-by.js";
 import { zodTypeProvider } from "./plugins/zod-type-provider.js";
+import { buildDebugFetchRoutes } from "./routes/__test/fetch.js";
 import type { MintBearer } from "./routes/auth-callback.js";
 import { buildAllRoutes } from "./routes/index.js";
 import { markStartupComplete, registerProbes } from "./routes/probes.js";
@@ -257,6 +259,49 @@ export const buildApp = async (opts: BuildAppOptions = {}): Promise<FastifyInsta
   }
   await app.register(rateLimitPlugin, rateLimitOpts);
 
+  // 6b. Phase 6 / Plan 06-12b / SCALE-04 / T-ssrf — emit a
+  //     `security.ssrf_blocked` audit row whenever the global SSRF
+  //     dispatcher refuses an outbound connect.  The dispatcher's own
+  //     `onBlock` callback runs at the undici-lookup layer (no request
+  //     context, no DB handle, no tenant) and only writes a structured
+  //     WARN line to stdout; the durable audit row must be written
+  //     inside the request transaction so the row is tenant-scoped and
+  //     correlated to `req.id`.
+  //
+  //     `onError` fires BEFORE `setErrorHandler` so the audit insert
+  //     completes before the 502 envelope is emitted. Best-effort:
+  //     unauthenticated pre-route abuse has no tenant context and is
+  //     silently dropped (logged at warn). Mirrors the rate-limit audit
+  //     emission posture above (D-RL3).
+  if (opts.db) {
+    const dbForSsrf = opts.db as unknown as TransactionalDb<ExecutableTx>;
+    app.addHook("onError", async (req, _reply, err) => {
+      if (!(err instanceof SSRFBlockedError)) return;
+      const tenantId = (req as { tenant?: string }).tenant;
+      if (!tenantId) return;
+      const user = (req as { user?: { id?: string } }).user;
+      try {
+        const { recordAudit, auditCtxFromRequest } = await import("./lib/audit.js");
+        await dbForSsrf.transaction(async (tx: ExecutableTx) => {
+          const ctx = auditCtxFromRequest(
+            req as unknown as { id: string; ip: string; headers: Record<string, unknown> },
+            tenantId,
+            user?.id ?? null,
+          );
+          await recordAudit(tx, ctx, "security.ssrf_blocked", {
+            target_url_host: err.host,
+            rule: err.rule,
+          });
+        });
+      } catch (auditErr) {
+        req.log.warn(
+          { err: auditErr, ssrf_rule: err.rule, ssrf_host: err.host },
+          "ssrf audit emission failed",
+        );
+      }
+    });
+  }
+
   // 7. Phase 1 tenant middleware (D-19) — populates req.tenantId from
   //    the placeholder header until Plan 03's dual-auth hook supersedes
   //    it. Kept here for backward-compat with Phase 1 tests; Plan 03's
@@ -368,6 +413,15 @@ export const buildApp = async (opts: BuildAppOptions = {}): Promise<FastifyInsta
   // `registerProbes` so there's a single source-of-truth for the health
   // surface across the app's lifecycle.
   await registerProbes(app, opts.depCheck ? { depCheck: opts.depCheck } : {});
+
+  // Phase 6 / Plan 06-12b — debug-only outbound-fetch helper. Registered
+  // ONLY when NODE_ENV === 'test' so production / dev / staging boots
+  // never expose `/__test/fetch`.  The plugin itself enforces the gate
+  // again at registration (defense in depth — same pattern as
+  // apps/api/src/routes/test-only.ts).
+  if (process.env.NODE_ENV === "test") {
+    await app.register(buildDebugFetchRoutes());
+  }
 
   await app.ready();
 

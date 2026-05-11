@@ -129,6 +129,12 @@ vi.mock("../plugins/served-by.js", () => ({ servedByPlugin: async () => {} }));
 vi.mock("../lib/dep-check.js", () => ({
   makeDepCheck: () => async () => ({ ok: true, latency_ms: 0 }),
 }));
+// Phase 6 / Plan 06-12b — debug-only /__test/fetch route. Stubbed so the
+// entrypoint-db-shape test stays narrowly scoped to the Phase 02.6 D-01
+// invariant (no incidental coupling to the debug surface).
+vi.mock("../routes/__test/fetch.js", () => ({
+  buildDebugFetchRoutes: () => async () => {},
+}));
 
 // Resolve the absolute path the entrypoint's `import.meta.url ===
 // file://${process.argv[1]}` check expects. Point process.argv[1] at the
