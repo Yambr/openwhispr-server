@@ -23,6 +23,18 @@ import {
 } from "./agent/stream.js";
 import { buildWebSearchRoutes, type WebSearchDeps } from "./agent/web-search.js";
 import {
+  buildNotesBatchCreateRoutes,
+  type NotesBatchCreateDeps,
+} from "./notes/batch-create.js";
+import { buildNotesCreateRoutes, type NotesCreateDeps } from "./notes/create.js";
+import {
+  buildNotesDeleteAllRoutes,
+  type NotesDeleteAllDeps,
+} from "./notes/delete-all.js";
+import { buildNotesDeleteRoutes, type NotesDeleteDeps } from "./notes/delete.js";
+import { buildNotesListRoutes, type NotesListDeps } from "./notes/list.js";
+import { buildNotesUpdateRoutes, type NotesUpdateDeps } from "./notes/update.js";
+import {
   type AuthCallbackDeps,
   buildAuthCallbackRoutes,
   type MintBearer,
@@ -179,6 +191,19 @@ export function buildAllRoutes(deps: AllRoutesDeps): readonly RoutePlugin[] {
     // honors WEB_SEARCH_PROVIDER at boot via resolveWebSearchProvider()
     // (D-02 boot-fatal on unknown value).
     buildWebSearchRoutes({ db: deps.db } satisfies WebSearchDeps),
+    // Phase 05 / Plan 05 — WIRE-22 notes CRUD family (6 routes here;
+    // /api/notes/search lands in the same plan but is registered below
+    // alongside the rest of the search/notes block to keep the route
+    // table grouped). Registered UNCONDITIONALLY — DB-only, no LiteLLM
+    // dependency. Establishes the canonical CRUD pattern (keyset
+    // pagination + soft-delete + client-id upsert) that Plans 06-09
+    // mirror for folders, conversations, transcriptions, api-keys.
+    buildNotesCreateRoutes({ db: deps.db } satisfies NotesCreateDeps),
+    buildNotesBatchCreateRoutes({ db: deps.db } satisfies NotesBatchCreateDeps),
+    buildNotesUpdateRoutes({ db: deps.db } satisfies NotesUpdateDeps),
+    buildNotesDeleteRoutes({ db: deps.db } satisfies NotesDeleteDeps),
+    buildNotesDeleteAllRoutes({ db: deps.db } satisfies NotesDeleteAllDeps),
+    buildNotesListRoutes({ db: deps.db } satisfies NotesListDeps),
   ];
   // Phase 03 / Plan 04: conditionally register the transcribe route only
   // when a LiteLLM client was constructed (LITELLM_MASTER_KEY present).
@@ -275,6 +300,12 @@ export {
   buildDesktopSigninRoutes,
   buildDiarizationRoutes,
   buildNoteRecordingConfigRoutes,
+  buildNotesBatchCreateRoutes,
+  buildNotesCreateRoutes,
+  buildNotesDeleteAllRoutes,
+  buildNotesDeleteRoutes,
+  buildNotesListRoutes,
+  buildNotesUpdateRoutes,
   buildOpenAIRealtimeTokenRoutes,
   buildReasonRoutes,
   buildRealtimeRoutes,
