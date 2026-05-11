@@ -3,12 +3,12 @@ gsd_state_version: 1.0
 milestone: v1.6.9
 milestone_name: expects plain session.token text; advisor research recommends Option C
 status: Executing Phase 6
-last_updated: "2026-05-11T17:27:32.464Z"
+last_updated: "2026-05-11T17:31:54.836Z"
 progress:
   total_phases: 34
   completed_phases: 9
   total_plans: 81
-  completed_plans: 91
+  completed_plans: 92
   percent: 26
 ---
 
@@ -84,6 +84,7 @@ progress:
 | Phase 06 P02 | 21m | 2 tasks | 18 files |
 | Phase 06 P04 | 70min | 1 tasks | 11 files |
 | Phase 06 P06 | 45m | 1 tasks | 12 files |
+| Phase 06 P05 | 75 min | 2 tasks | 6 files |
 
 ## Accumulated Context
 
@@ -180,3 +181,4 @@ progress:
 - [Phase 06]: OTel SDK initialized as the literal first import of apps/api/src/index.ts so PinoInstrumentation patches pino at require time; tests assert load order by source-file inspection (Phase 6 D-T3).
 - [Phase 06]: audit_log converted to pg_partman monthly RANGE partitions (Plan 06-02)
 - [Phase 06]: SSRF dispatcher uses single-resolve-then-connect-by-IP via undici Agent connect.lookup; D-S3 13-entry CIDR block-list (8 IPv4 + 5 IPv6 incl. AWS IMDS v4+v6); default-deny allow-list with *.wildcard; enforce/warn modes; loopback opt-in dev/test only (Plan 06-06)
+- [Phase 06]: 06-05 D-05-4 — Task 2 reduced from 15 wired emissions to 3 (account.delete, key.issued, key.revoked); 12 deferred because target routes (auth/admin/settings-mutation) don't exist yet.
