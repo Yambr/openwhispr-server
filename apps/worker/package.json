@@ -12,6 +12,7 @@
   },
   "dependencies": {
     "@opentelemetry/api": "^1.9.0",
+    "@openwhispr/observability": "workspace:*",
     "bullmq": "^5.16.0",
     "ioredis": "^5.4.1",
     "pg": "8.20.0",

@@ -183,6 +183,9 @@ importers:
       '@opentelemetry/api':
         specifier: ^1.9.0
         version: 1.9.1
+      '@openwhispr/observability':
+        specifier: workspace:*
+        version: link:../../packages/observability
       bullmq:
         specifier: ^5.16.0
         version: 5.76.6
