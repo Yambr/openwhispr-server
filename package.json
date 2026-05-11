@@ -15,6 +15,7 @@
     "lint:english": "tsx tools/lint-english.ts",
     "lint:tdd": "tsx tools/lint-tdd.ts",
     "lint:rls": "tsx tools/lint-rls.ts",
+    "lint:tenant-context": "tsx tools/lint-tenant-context.ts",
     "typecheck": "pnpm -r exec tsc --noEmit",
     "test": "vitest run --coverage",
     "test:watch": "vitest",

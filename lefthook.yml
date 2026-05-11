@@ -9,6 +9,12 @@ pre-commit:
       stage_fixed: true
     english:
       run: pnpm exec tsx tools/lint-english.ts
+    # Phase 6 / Plan 06-09 / D-W4 layer 1 — fail-fast if any BullMQ job
+    # handler is not wrapped in withTenantContext / withSystemContext.
+    # The scan is ~1s against 8 job files; fast enough for pre-commit.
+    tenant-context:
+      glob: "apps/worker/src/jobs/*.ts"
+      run: pnpm exec tsx tools/lint-tenant-context.ts
 commit-msg:
   commands:
     commitlint:
