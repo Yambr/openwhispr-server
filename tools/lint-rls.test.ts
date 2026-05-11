@@ -175,3 +175,42 @@ describe("tools/lint-rls.ts", () => {
     await resetBadFixture(booted.ownerUri);
   }, 60_000);
 });
+
+// ──────────────────────────────────────────────────────────────────────
+// Phase 6 Wave 0 RED stubs — TDD-01b. Implementation in Plan 06-02 per
+// 06-VALIDATION.md. APPENDED to the existing Phase 1 suite above.
+//
+// Phase 6 audit_log conversion to a pg_partman monthly-RANGE partitioned
+// parent (D-A2) creates partman-named children e.g. `audit_log_2026_05`.
+// The Phase 1 RLS lint MUST:
+//   - Confirm the partitioned PARENT has RLS enabled + a tenant-scoped policy
+//   - NOT false-positive-report inherited children as "missing RLS"
+//     (children inherit the parent's policy at relkind='r' partman level;
+//     the lint should either skip child names matching audit_log_\d{4}_\d{2}
+//     OR detect inheritance from a partitioned parent and treat as covered).
+// ──────────────────────────────────────────────────────────────────────
+
+const PHASE_6_NOT_YET =
+  "not yet implemented — Plan 06-02 extends lint-rls.ts for pg_partman children (D-A2)";
+
+describe("tools/lint-rls.ts — pg_partman child handling (Phase 6, D-A2)", () => {
+  it("reports the audit_log partitioned PARENT has RLS enabled", () => {
+    throw new Error(PHASE_6_NOT_YET);
+  });
+
+  it("does NOT false-positive-flag partman child audit_log_2026_05 as missing RLS", () => {
+    throw new Error(PHASE_6_NOT_YET);
+  });
+
+  it("skips child table names matching the audit_log_\\d{4}_\\d{2} pattern", () => {
+    throw new Error(PHASE_6_NOT_YET);
+  });
+
+  it("alternatively, detects inheritance from a partitioned parent (relkind='p') and treats child as covered", () => {
+    throw new Error(PHASE_6_NOT_YET);
+  });
+
+  it("STILL flags a non-partman table that lacks RLS (regression — existing behavior preserved)", () => {
+    throw new Error(PHASE_6_NOT_YET);
+  });
+});
