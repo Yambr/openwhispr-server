@@ -225,7 +225,37 @@ export const buildApp = async (opts: BuildAppOptions = {}): Promise<FastifyInsta
   await app.register(requestLog);
 
   // 6. Rate-limit BEFORE routes so per-route configs apply.
-  await app.register(rateLimitPlugin);
+  // Phase 6 / Plan 06-09 / D-RL3 — when EITHER tier emits 429, fire a
+  // best-effort `security.rate_limit_exceeded` audit row via the
+  // injectable onRateLimitExceeded callback. Emission requires an
+  // authenticated tenant context (req.tenant + req.user). Pre-auth
+  // abuse traffic has neither — log warning + drop the audit fanout to
+  // preserve forward progress. Wired here (not in the plugin) because
+  // recordAudit needs the live DB tx + tenant resolution which only
+  // buildApp owns.
+  const rateLimitOpts: Parameters<typeof rateLimitPlugin>[1] = {};
+  if (opts.db) {
+    const dbForTx = opts.db as unknown as TransactionalDb<ExecutableTx>;
+    rateLimitOpts.onRateLimitExceeded = async (req, rule, route) => {
+      try {
+        const tenantId = (req as { tenant?: string }).tenant;
+        const user = (req as { user?: { id?: string } }).user;
+        if (!tenantId) return;
+        const { recordAudit, auditCtxFromRequest } = await import("./lib/audit.js");
+        await dbForTx.transaction(async (tx: ExecutableTx) => {
+          const ctx = auditCtxFromRequest(
+            req as unknown as { id: string; ip: string; headers: Record<string, unknown> },
+            tenantId,
+            user?.id ?? null,
+          );
+          await recordAudit(tx, ctx, "security.rate_limit_exceeded", { rule, route });
+        });
+      } catch (err) {
+        req.log.warn({ err, rule, route }, "rate-limit audit emission failed");
+      }
+    };
+  }
+  await app.register(rateLimitPlugin, rateLimitOpts);
 
   // 7. Phase 1 tenant middleware (D-19) — populates req.tenantId from
   //    the placeholder header until Plan 03's dual-auth hook supersedes
