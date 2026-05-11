@@ -1,0 +1,115 @@
+# tests/e2e/helpers/phase6-scale-dynamic.yml
+#
+# Phase 6 / Plan 06-12b — Traefik v3 dynamic config used ONLY by the
+# horizontal-scale e2e (tests/e2e/horizontal-scale.test.ts).
+#
+# Why this file exists:
+#   The project's production dynamic.yml (compose/traefik/dynamic.yml,
+#   D-31 file-provider topology) declares the api service with a single
+#   `url: http://api:3000` server entry.  Docker's embedded DNS returns
+#   multiple A records when `--scale api=2` runs, but Traefik v3's file
+#   provider performs a one-shot DNS lookup at config load and caches
+#   the first resolved IP — so all traffic pins to one replica, defeating
+#   the SCALE-01 invariant we're trying to prove.
+#
+#   To get HONEST round-robin across replicas without switching the
+#   entire stack from file-provider to docker-provider (an invasive
+#   change to the production topology), we mount this file in place of
+#   the production dynamic.yml for the duration of the scale test only.
+#   It enumerates BOTH replica DNS names (`openwhispr-api-1` and
+#   `openwhispr-api-2`) as discrete `servers:` entries so Traefik's
+#   round-robin load balancer picks ONE per request, alternating across
+#   the two backends.
+#
+# Test stack-up:
+#   1. `docker compose -p openwhispr -f docker-compose.yml -f
+#      tests/e2e/helpers/phase6-scale-override.yml up -d --scale api=2`
+#   2. The override file remounts /etc/traefik/dynamic.yml onto THIS
+#      file inside the traefik container.
+#   3. Docker compose creates `openwhispr-api-1` and `openwhispr-api-2`;
+#      Docker DNS resolves each container name to its own IP.
+#
+# Everything else (routers, TLS certificates, realtime entrypoint binding)
+# is preserved byte-for-byte from compose/traefik/dynamic.yml.
+
+http:
+  routers:
+    api:
+      rule: "Host(`api.localhost`)"
+      service: api-svc
+      entryPoints: [websecure]
+      tls: {}
+    grafana:
+      rule: "Host(`grafana.localhost`)"
+      service: grafana-svc
+      entryPoints: [websecure]
+      tls: {}
+    minio-console:
+      rule: "Host(`minio-console.localhost`)"
+      service: minio-console-svc
+      entryPoints: [websecure]
+      tls: {}
+    mailpit:
+      rule: "Host(`mailpit.localhost`)"
+      service: mailpit-svc
+      entryPoints: [websecure]
+      tls: {}
+    auth-example-test:
+      rule: "Host(`auth.example.test`)"
+      service: api-svc
+      entryPoints: [websecure]
+      tls: {}
+    api-example-test:
+      rule: "Host(`api.example.test`)"
+      service: api-svc
+      entryPoints: [websecure]
+      tls: {}
+    api-realtime:
+      rule: "Host(`api.localhost`) && PathPrefix(`/v1/realtime`)"
+      service: api-realtime-svc
+      entryPoints: [websecure-realtime]
+      priority: 100
+      tls: {}
+
+  services:
+    # Phase 6 / Plan 06-12b — TWO discrete servers point at the two
+    # scaled replicas by their docker-compose container DNS names.
+    # Traefik's default load balancer round-robins requests across the
+    # entries; combined with the api process's `x-served-by` onSend
+    # plugin (Plan 06-04), the e2e can observe distinct replica hostnames
+    # across a burst of requests, proving SCALE-01.
+    api-svc:
+      loadBalancer:
+        servers:
+          - url: "http://openwhispr-api-1:3000"
+          - url: "http://openwhispr-api-2:3000"
+    api-realtime-svc:
+      loadBalancer:
+        servers:
+          - url: "http://openwhispr-api-1:3000"
+          - url: "http://openwhispr-api-2:3000"
+        serversTransport: api-realtime-transport
+    grafana-svc:
+      loadBalancer:
+        servers:
+          - url: "http://grafana:3000"
+    minio-console-svc:
+      loadBalancer:
+        servers:
+          - url: "http://minio:9001"
+    mailpit-svc:
+      loadBalancer:
+        servers:
+          - url: "http://mailpit:8025"
+
+  serversTransports:
+    api-realtime-transport:
+      forwardingTimeouts:
+        dialTimeout: "30s"
+        responseHeaderTimeout: "30s"
+        idleConnTimeout: "3600s"
+
+tls:
+  certificates:
+    - certFile: /certs/local.crt
+      keyFile: /certs/local.key
