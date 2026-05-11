@@ -1,0 +1,34 @@
+# tests/e2e/helpers/phase6-rate-limit-override.yml
+#
+# Phase 6 / Plan 06-12b — docker-compose override for the layered
+# rate-limit e2e (tests/e2e/rate-limit-layered.test.ts).
+#
+# Adjustments to the api service:
+#
+#   1. NODE_ENV=test  + OPENWHISPR_TEST_ROUTES=true  — same posture as
+#      phase6-ssrf-override.yml so the test stack carries the audit
+#      machinery consistently.
+#
+#   2. RATE_LIMIT_GLOBAL_IP_CEILING=30  — production default is 600/min/IP.
+#      An e2e that wants to prove the IP-tier 429 fires by exhausting the
+#      ceiling cannot reasonably make 600 HTTPS requests inside a 60s
+#      window (latency budget alone makes that flaky).  We pin the
+#      ceiling to 30 so the test fires after ~31 hits.  The user-tier
+#      transcribe ceiling (RATE_LIMIT_TRANSCRIBE_USER=20 by default)
+#      remains BELOW 30 so the user-tier test still trips its own
+#      counter before the global ceiling has a chance.
+#
+#   3. The remaining RATE_LIMIT_* env vars are untouched — the test
+#      asserts the per-route defaults (transcribe user=20,
+#      verification-status (IP,email) = 30) fire correctly.
+#
+# Production safety: never load this file in a real `docker compose up`.
+# Lowering RATE_LIMIT_GLOBAL_IP_CEILING to 30 in production would
+# trivially DoS the platform.
+
+services:
+  api:
+    environment:
+      NODE_ENV: test
+      OPENWHISPR_TEST_ROUTES: "true"
+      RATE_LIMIT_GLOBAL_IP_CEILING: "30"
