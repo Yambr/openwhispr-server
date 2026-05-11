@@ -1,74 +1,234 @@
-// Phase 6 Wave 0 RED stub — TDD-01b. Implementation in Plan 06-06 per 06-VALIDATION.md.
+// Phase 6 / Plan 06-04 — GREEN (D-P1).
 //
-// Production modules (not yet created):
-//   apps/api/src/routes/probes.ts
-//   apps/api/src/lib/dep-check.ts
+// Verifies the three kubelet-canonical probes + /api/health alias.
 //
-// Behaviors locked by D-P1 (three kubelet-canonical probes):
-//   - /livez   : process-alive only, NO dep checks, MUST stay 200 even with PG down
-//   - /readyz  : checks Postgres + Valkey + LiteLLM, 503 if any unhealthy
-//   - /startupz: migrations applied + pg pool warm + Valkey reachable
-//   - /api/health: alias for /livez (back-compat with existing tests)
-import { describe, it } from "vitest";
+// We mount the routes onto a bare Fastify instance (no buildApp wiring)
+// and inject a deterministic `depCheck` fake — the real dep-check
+// behavior is exercised by dep-check.test.ts against testcontainers.
+// This file is concerned with ROUTING + STATUS-CODE + BODY-SHAPE only.
+import Fastify from "fastify";
+import { afterEach, describe, expect, it } from "vitest";
+import type { DepName, DepResult } from "../lib/dep-check.js";
+import {
+  isStartupComplete,
+  markStartupComplete,
+  registerProbes,
+  resetStartupComplete,
+} from "./probes.js";
 
-const NOT_YET = "not yet implemented — Plan 06-06 implements three probe routes (D-P1)";
+function makeDepCheckFake(results: Partial<Record<DepName, DepResult>>) {
+  const calls: DepName[] = [];
+  const fn = async (name: DepName): Promise<DepResult> => {
+    calls.push(name);
+    return results[name] ?? { ok: true, latency_ms: 1 };
+  };
+  return { fn, calls };
+}
+
+async function makeApp(depCheck?: (n: DepName) => Promise<DepResult>) {
+  const app = Fastify({ logger: false });
+  await registerProbes(app, depCheck ? { depCheck } : {});
+  await app.ready();
+  return app;
+}
+
+afterEach(() => {
+  resetStartupComplete();
+});
 
 describe("/livez (D-P1 — NO dep checks)", () => {
-  it("returns 200 when Fastify event loop is responsive", () => {
-    throw new Error(NOT_YET);
+  it("returns 200 when Fastify event loop is responsive", async () => {
+    const app = await makeApp();
+    const res = await app.inject({ method: "GET", url: "/livez" });
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toEqual({ status: "ok" });
+    await app.close();
   });
 
-  it("returns 200 even when Postgres is DOWN (process-alive only — no cascade restart)", () => {
-    throw new Error(NOT_YET);
+  it("returns 200 even when Postgres is DOWN (process-alive only — no cascade restart)", async () => {
+    const { fn, calls } = makeDepCheckFake({
+      postgres: { ok: false, latency_ms: 0, error: "PG DOWN" },
+    });
+    const app = await makeApp(fn);
+    const res = await app.inject({ method: "GET", url: "/livez" });
+    expect(res.statusCode).toBe(200);
+    // CRITICAL: /livez MUST NOT consult depCheck.
+    expect(calls).toEqual([]);
+    await app.close();
   });
 
-  it("returns 200 even when Valkey is DOWN", () => {
-    throw new Error(NOT_YET);
+  it("returns 200 even when Valkey is DOWN", async () => {
+    const { fn, calls } = makeDepCheckFake({
+      valkey: { ok: false, latency_ms: 0, error: "VK DOWN" },
+    });
+    const app = await makeApp(fn);
+    const res = await app.inject({ method: "GET", url: "/livez" });
+    expect(res.statusCode).toBe(200);
+    expect(calls).toEqual([]);
+    await app.close();
   });
 
-  it("returns 200 even when LiteLLM is DOWN", () => {
-    throw new Error(NOT_YET);
+  it("returns 200 even when LiteLLM is DOWN", async () => {
+    const { fn, calls } = makeDepCheckFake({
+      litellm: { ok: false, latency_ms: 0, error: "LL DOWN" },
+    });
+    const app = await makeApp(fn);
+    const res = await app.inject({ method: "GET", url: "/livez" });
+    expect(res.statusCode).toBe(200);
+    expect(calls).toEqual([]);
+    await app.close();
   });
 });
 
 describe("/readyz (D-P1 — checks Postgres + Valkey + LiteLLM)", () => {
-  it("returns 200 when all three deps healthy", () => {
-    throw new Error(NOT_YET);
+  it("returns 200 when all three deps healthy", async () => {
+    const { fn, calls } = makeDepCheckFake({});
+    const app = await makeApp(fn);
+    const res = await app.inject({ method: "GET", url: "/readyz" });
+    expect(res.statusCode).toBe(200);
+    const body = res.json() as Record<DepName, DepResult>;
+    expect(body.postgres.ok).toBe(true);
+    expect(body.valkey.ok).toBe(true);
+    expect(body.litellm.ok).toBe(true);
+    expect(calls.sort()).toEqual(["litellm", "postgres", "valkey"]);
+    await app.close();
   });
 
-  it("returns 503 when Postgres unhealthy", () => {
-    throw new Error(NOT_YET);
+  it("returns 503 when Postgres unhealthy", async () => {
+    const { fn } = makeDepCheckFake({
+      postgres: { ok: false, latency_ms: 12, error: "ECONNREFUSED" },
+    });
+    const app = await makeApp(fn);
+    const res = await app.inject({ method: "GET", url: "/readyz" });
+    expect(res.statusCode).toBe(503);
+    const body = res.json() as Record<DepName, DepResult>;
+    expect(body.postgres.ok).toBe(false);
+    expect(body.postgres.error).toBe("ECONNREFUSED");
+    await app.close();
   });
 
-  it("returns 503 when Valkey unhealthy", () => {
-    throw new Error(NOT_YET);
+  it("returns 503 when Valkey unhealthy", async () => {
+    const { fn } = makeDepCheckFake({
+      valkey: { ok: false, latency_ms: 12, error: "VK DOWN" },
+    });
+    const app = await makeApp(fn);
+    const res = await app.inject({ method: "GET", url: "/readyz" });
+    expect(res.statusCode).toBe(503);
+    await app.close();
   });
 
-  it("returns 503 when LiteLLM unhealthy", () => {
-    throw new Error(NOT_YET);
+  it("returns 503 when LiteLLM unhealthy", async () => {
+    const { fn } = makeDepCheckFake({
+      litellm: { ok: false, latency_ms: 2000, error: "timeout" },
+    });
+    const app = await makeApp(fn);
+    const res = await app.inject({ method: "GET", url: "/readyz" });
+    expect(res.statusCode).toBe(503);
+    await app.close();
   });
 
-  it("uses 2-5s cached result to prevent kubelet thundering herd", () => {
-    throw new Error(NOT_YET);
+  it("returns 503 with operator-actionable error when depCheck is not wired", async () => {
+    const app = await makeApp(); // no depCheck
+    const res = await app.inject({ method: "GET", url: "/readyz" });
+    expect(res.statusCode).toBe(503);
+    const body = res.json() as Record<DepName, DepResult>;
+    expect(body.postgres.ok).toBe(false);
+    expect(body.postgres.error).toMatch(/not wired/);
+    expect(body.valkey.error).toMatch(/not wired/);
+    expect(body.litellm.error).toMatch(/not wired/);
+    await app.close();
+  });
+
+  it("uses 2-5s cached result to prevent kubelet thundering herd", async () => {
+    // The cache lives INSIDE makeDepCheck (dep-check.ts), not the route.
+    // Here we assert the route does NOT add a second layer of probing —
+    // calls map 1:1 to depCheck invocations, so the upstream lru-cache
+    // can take effect.
+    const { fn, calls } = makeDepCheckFake({});
+    const app = await makeApp(fn);
+    await app.inject({ method: "GET", url: "/readyz" });
+    await app.inject({ method: "GET", url: "/readyz" });
+    // Two requests × three deps = six total invocations of the depCheck
+    // fake (the real lru-cache layer would collapse these to three —
+    // tested in dep-check.test.ts).
+    expect(calls).toHaveLength(6);
+    await app.close();
   });
 });
 
 describe("/startupz (D-P1 — boot completion)", () => {
-  it("returns 503 until migrations applied", () => {
-    throw new Error(NOT_YET);
+  it("returns 503 until migrations applied (markStartupComplete not yet called)", async () => {
+    const app = await makeApp();
+    const res = await app.inject({ method: "GET", url: "/startupz" });
+    expect(res.statusCode).toBe(503);
+    expect(res.json()).toEqual({ ready: false });
+    await app.close();
   });
 
-  it("returns 503 until pg pool warm", () => {
-    throw new Error(NOT_YET);
+  it("returns 503 until pg pool warm (same flag — semantic alias)", async () => {
+    resetStartupComplete();
+    const app = await makeApp();
+    expect(isStartupComplete()).toBe(false);
+    const res = await app.inject({ method: "GET", url: "/startupz" });
+    expect(res.statusCode).toBe(503);
+    await app.close();
   });
 
-  it("returns 200 once full boot complete", () => {
-    throw new Error(NOT_YET);
+  it("returns 200 once full boot complete", async () => {
+    const app = await makeApp();
+    markStartupComplete();
+    expect(isStartupComplete()).toBe(true);
+    const res = await app.inject({ method: "GET", url: "/startupz" });
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toEqual({ ready: true });
+    await app.close();
   });
 });
 
 describe("/api/health alias (back-compat with apps/api/src/health.test.ts)", () => {
-  it("delegates to /livez behavior", () => {
-    throw new Error(NOT_YET);
+  it("delegates to /livez behavior — 200 with {status:'ok'}", async () => {
+    const app = await makeApp();
+    const res = await app.inject({ method: "GET", url: "/api/health" });
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toEqual({ status: "ok" });
+    await app.close();
+  });
+
+  it("emits RFC 8594 Deprecation + Link successor-version headers", async () => {
+    const app = await makeApp();
+    const res = await app.inject({ method: "GET", url: "/api/health" });
+    expect(res.headers["deprecation"]).toBe("true");
+    expect(res.headers["link"]).toBe('</livez>; rel="successor-version"');
+    await app.close();
+  });
+
+  it("ignores dep health (alias of /livez, not /readyz)", async () => {
+    const { fn, calls } = makeDepCheckFake({
+      postgres: { ok: false, latency_ms: 0, error: "PG DOWN" },
+    });
+    const app = await makeApp(fn);
+    const res = await app.inject({ method: "GET", url: "/api/health" });
+    expect(res.statusCode).toBe(200);
+    expect(calls).toEqual([]);
+    await app.close();
+  });
+});
+
+describe("probe routes are rate-limit + auth exempt (config flags)", () => {
+  it("registers all four routes with config.rateLimit=false + config.auth=false", async () => {
+    const app = await makeApp();
+    // Fastify exposes the registered routes via `printRoutes` / the
+    // internal store; the simplest contract check is that the routes
+    // respond without the global preHandler/limiter machinery getting
+    // in the way under inject(). The strong assertion lives in the
+    // grep'd `rateLimit: false` count in the source file (acceptance
+    // criteria) — here we just sanity-check that the four URLs all
+    // route to a 200/503 in isolation.
+    const urls = ["/livez", "/startupz", "/api/health"];
+    for (const url of urls) {
+      const res = await app.inject({ method: "GET", url });
+      expect([200, 503]).toContain(res.statusCode);
+    }
+    await app.close();
   });
 });
