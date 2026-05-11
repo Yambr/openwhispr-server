@@ -340,6 +340,9 @@ export async function phase6BringStackUp(
     for (const f of opts.overrideComposeFiles ?? []) {
       seedFileArgs.push("-f", f);
     }
+    // `--no-deps` so `compose run` does NOT recreate the api container
+    // under a stale compose-file view.  api is already up + healthy
+    // from testcontainers' `.up()` step; we skip the depends_on bootstrap.
     const code = await runCmd(
       "docker",
       [
@@ -353,6 +356,7 @@ export async function phase6BringStackUp(
         "contract-test",
         "run",
         "--rm",
+        "--no-deps",
         "seed",
       ],
       { env: { ...HERMETIC_ENV } },
@@ -723,6 +727,20 @@ export async function phase6BringStackUpScaled(opts: {
 
   // Bring the stack up scaled.  `--no-build --pull never` mirrors the
   // phase6BringStackUp posture (image-cache reuse, no registry pulls).
+  //
+  // Plan 06-12e — do NOT pass `--wait` here.  `docker compose --wait`
+  // gates on EVERY service's healthcheck across the stack, including
+  // the (pre-existing-flaky) grafana healthcheck whose pattern
+  // `grep -q '"database":"ok"'` doesn't match Grafana 11.6's
+  // pretty-printed JSON response shape `"database": "ok"` (note the
+  // space after the colon).  That false-negative trips compose-up
+  // exit=1 even though api/postgres/valkey/litellm/traefik all reached
+  // `healthy`.  We poll Traefik → /livez below — the api is the only
+  // dependency the test actually exercises, and its docker
+  // HEALTHCHECK is the gate that matters for the SCALE-01 invariant.
+  // The non-scaled `phase6BringStackUp` already takes this posture
+  // via testcontainers' per-container wait strategy; we mirror it for
+  // the shell-driven scaled path.
   const upCode = await runCmd(
     "docker",
     [
@@ -739,9 +757,6 @@ export async function phase6BringStackUpScaled(opts: {
       "never",
       "--scale",
       `api=${opts.apiScale}`,
-      "--wait",
-      "--wait-timeout",
-      String(Math.floor(timeoutMs / 1000)),
     ],
     { env: { ...HERMETIC_ENV } },
   );
@@ -758,16 +773,60 @@ export async function phase6BringStackUpScaled(opts: {
     );
   }
 
-  // Belt-and-suspenders: poll Traefik → /livez to confirm at least
-  // one replica is serving.  --wait already gates on healthchecks but
-  // Traefik routing may need a moment to settle.
+  // Poll Traefik → /livez until at least one api replica is serving.
+  // This is the ONLY readiness gate the test depends on; per-container
+  // HEALTHCHECKs on api/postgres/valkey/litellm/traefik are already
+  // strict, and grafana's pre-existing healthcheck false-negative
+  // (see comment in the compose-up call above) does NOT block us.
   await pollUrl(`${BACKEND_URL}/livez`, {
     expectStatus: 200,
-    deadlineMs: 60_000,
+    deadlineMs: timeoutMs,
     intervalMs: 1000,
   });
 
+  // Plan 06-12e — for the scaled-up path we MUST further confirm that
+  // EVERY replica is responsive, not just one.  Traefik round-robins
+  // across all `servers:` entries in the static dynamic.yml; if api-2
+  // is still booting when the test fires its first request, Traefik
+  // can pick api-2 and return 502 Bad Gateway even though api-1 is
+  // healthy and answered /livez.  We burst N×scale `/livez` GETs and
+  // require all of them to be 200 — this saturates the round-robin
+  // and surfaces any not-yet-ready backend before sign-in is attempted.
+  const livezBurst = Math.max(opts.apiScale * 4, 10);
+  for (let attempt = 0; attempt < 30; attempt++) {
+    let allOk = true;
+    for (let i = 0; i < livezBurst; i++) {
+      try {
+        const res = await fetch(`${BACKEND_URL}/livez`, {
+          signal: AbortSignal.timeout(3000),
+        });
+        await res.text().catch(() => undefined);
+        if (res.status !== 200) {
+          allOk = false;
+          break;
+        }
+      } catch {
+        allOk = false;
+        break;
+      }
+    }
+    if (allOk) break;
+    await new Promise((r) => setTimeout(r, 2000));
+    if (attempt === 29) {
+      throw new Error(
+        `phase6BringStackUpScaled: not all ${opts.apiScale} api replicas became Traefik-routable within 60s after /livez first succeeded`,
+      );
+    }
+  }
+
   if (opts.seed) {
+    // Plan 06-12e — `--no-deps` so `compose run` does NOT touch the
+    // already-running api containers.  Without this, `compose run --rm
+    // seed` notices the api service is "over-scaled" relative to the
+    // compose-file default of 1 and silently stops api-2, killing the
+    // SCALE-01 invariant before the test even starts.  api is already
+    // up + healthy from the earlier `up --scale api=N` step, so we
+    // safely skip the depends_on bootstrap.
     const seedCode = await runCmd(
       "docker",
       [
@@ -781,6 +840,7 @@ export async function phase6BringStackUpScaled(opts: {
         "contract-test",
         "run",
         "--rm",
+        "--no-deps",
         "seed",
       ],
       { env: { ...HERMETIC_ENV } },
