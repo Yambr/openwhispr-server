@@ -80,6 +80,26 @@ import { buildNotesListRoutes, type NotesListDeps } from "./notes/list.js";
 import { buildNotesSearchRoutes, type NotesSearchDeps } from "./notes/search.js";
 import { buildNotesUpdateRoutes, type NotesUpdateDeps } from "./notes/update.js";
 import {
+  buildTranscriptionsBatchCreateRoutes,
+  type TranscriptionsBatchCreateDeps,
+} from "./transcriptions/batch-create.js";
+import {
+  buildTranscriptionsBatchDeleteRoutes,
+  type TranscriptionsBatchDeleteDeps,
+} from "./transcriptions/batch-delete.js";
+import {
+  buildTranscriptionsCreateRoutes,
+  type TranscriptionsCreateDeps,
+} from "./transcriptions/create.js";
+import {
+  buildTranscriptionsDeleteRoutes,
+  type TranscriptionsDeleteDeps,
+} from "./transcriptions/delete.js";
+import {
+  buildTranscriptionsListRoutes,
+  type TranscriptionsListDeps,
+} from "./transcriptions/list.js";
+import {
   type AuthCallbackDeps,
   buildAuthCallbackRoutes,
   type MintBearer,
@@ -294,6 +314,28 @@ export function buildAllRoutes(deps: AllRoutesDeps): readonly RoutePlugin[] {
     buildConversationsMessagesRoutes({
       db: deps.db,
     } satisfies ConversationsMessagesDeps),
+    // Phase 05 / Plan 08 — WIRE-26 transcriptions CRUD family (5 routes:
+    // create, batch-create, list, delete, batch-delete — NO search, NO
+    // update per upstream TranscriptionsService.ts). Registered
+    // UNCONDITIONALLY — DB-only. D-32 invariant: storage-only, NO
+    // usage_ledger writes (Phase 3 /api/transcribe is the only ledger
+    // debit point). Mirrors the canonical CRUD pattern with
+    // table=transcriptions, clientIdColumn=client_transcription_id.
+    buildTranscriptionsCreateRoutes({
+      db: deps.db,
+    } satisfies TranscriptionsCreateDeps),
+    buildTranscriptionsBatchCreateRoutes({
+      db: deps.db,
+    } satisfies TranscriptionsBatchCreateDeps),
+    buildTranscriptionsListRoutes({
+      db: deps.db,
+    } satisfies TranscriptionsListDeps),
+    buildTranscriptionsDeleteRoutes({
+      db: deps.db,
+    } satisfies TranscriptionsDeleteDeps),
+    buildTranscriptionsBatchDeleteRoutes({
+      db: deps.db,
+    } satisfies TranscriptionsBatchDeleteDeps),
   ];
   // Phase 03 / Plan 04: conditionally register the transcribe route only
   // when a LiteLLM client was constructed (LITELLM_MASTER_KEY present).
@@ -415,6 +457,11 @@ export {
   buildStreamingUsageRoutes,
   buildTestOnlyRoutes,
   buildTranscribeRoutes,
+  buildTranscriptionsBatchCreateRoutes,
+  buildTranscriptionsBatchDeleteRoutes,
+  buildTranscriptionsCreateRoutes,
+  buildTranscriptionsDeleteRoutes,
+  buildTranscriptionsListRoutes,
   buildUsageRoutes,
   buildVerificationStatusRoutes,
   buildWebSearchRoutes,
