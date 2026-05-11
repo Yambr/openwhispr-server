@@ -12,7 +12,7 @@
 //   * missing key (isConfigured()=false) → 503 actionable envelope
 //   * upstream UpstreamError → 502 generic envelope
 //   * upstream MissingProviderKeyError (raised by provider mid-call) → 503
-//   * upstream YandexSearchPendingError → 503 "yandex provider pending"
+//   * upstream UpstreamError from Yandex live adapter → 502 generic envelope
 //   * empty query → 400 envelope BEFORE provider.search is called
 //   * numResults > 10 → 400 envelope (wire schema caps at 10)
 //   * 401 envelope when req.user missing
@@ -28,7 +28,6 @@ import {
   MissingProviderKeyError,
   UpstreamError,
   type WebSearchProvider,
-  YandexSearchPendingError,
 } from "../../lib/web-search/types.js";
 import { buildWebSearchRoutes } from "../agent/web-search.js";
 
@@ -244,12 +243,12 @@ describe("POST /api/agent/web-search", () => {
     expect(env.error).toBe("Tavily not configured (set TAVILY_API_KEY in .env)");
   });
 
-  it("returns 503 'yandex provider pending' on YandexSearchPendingError (stub branch)", async () => {
+  it("Yandex live adapter — UpstreamError surfaces as the generic 502 envelope (no stub-pending branch)", async () => {
     const { db } = makeFakeDb();
     const provider = makeFakeProvider("yandex", {
-      configured: true, // Provider says yes (ENABLED=true + keys), but search() rejects.
+      configured: true,
       onSearch: async () => {
-        throw new YandexSearchPendingError("pending; reference missing");
+        throw new UpstreamError("Yandex upstream returned 429");
       },
     });
     app = await buildApp({ db, provider });
@@ -259,9 +258,9 @@ describe("POST /api/agent/web-search", () => {
       headers: { "content-type": "application/json" },
       payload: JSON.stringify({ query: "x" }),
     });
-    expect(res.statusCode).toBe(503);
+    expect(res.statusCode).toBe(502);
     const env = ErrorEnvelope.parse(res.json());
-    expect(env.error).toBe("yandex provider pending");
+    expect(env.error).toBe("web-search upstream failed");
   });
 
   it("returns 400 envelope on empty query (zod min(1))", async () => {

@@ -9,6 +9,17 @@
 // wire surface stays provider-agnostic (D-01).
 
 /**
+ * Optional per-call options. Currently used by the Yandex live adapter to
+ * select a Yandex `searchType`/`region`/`l10n` triple; Tavily ignores it.
+ * Adapters MUST treat all fields as optional and apply sensible defaults
+ * (the Yandex adapter defaults to 'ru' when omitted).
+ */
+export interface WebSearchOptions {
+  /** Loose region hint: 'ru' | 'tr' | 'en' | unknown. Adapter-specific. */
+  region?: string;
+}
+
+/**
  * Common contract every web-search provider adapter implements. The route
  * resolves a single provider at boot via `resolveWebSearchProvider()` and
  * calls `provider.search(query, numResults)` per request.
@@ -24,6 +35,7 @@ export interface WebSearchProvider {
   search(
     query: string,
     numResults: number,
+    options?: WebSearchOptions,
   ): Promise<{
     results: Array<{ title: string; url: string; snippet: string }>;
   }>;
@@ -47,19 +59,8 @@ export class UpstreamError extends Error {
   code = "UPSTREAM_FAILED" as const;
 }
 
-/**
- * 503-mapped: the Yandex adapter is a wire-shape placeholder until the
- * reference implementation lands. Separate from `MissingProviderKeyError`
- * so the route handler can emit a distinct, intentionally non-actionable
- * envelope ("yandex provider pending") — the operator should know setting
- * the env vars alone is insufficient, the adapter itself is awaiting the
- * Python reference at `tools/reference/yandex-search-server.py`.
- *
- * Thrown by `YandexAdapter.search()` even when env keys are set, UNLESS
- * the `YANDEX_SEARCH_ENABLED=true` feature flag is also set (which signals
- * the operator has manually wired a reference-compatible implementation).
- */
-export class YandexSearchPendingError extends Error {
-  override name = "YandexSearchPendingError" as const;
-  code = "PROVIDER_UNAVAILABLE" as const;
-}
+// NOTE: `YandexSearchPendingError` was removed when the Yandex adapter
+// became live (replacing the wire-shape stub from the initial Plan 03
+// commit). The route handler now maps Yandex error responses through the
+// shared `MissingProviderKeyError` / `UpstreamError` classes alongside
+// Tavily.
