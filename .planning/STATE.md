@@ -3,12 +3,12 @@ gsd_state_version: 1.0
 milestone: v1.6.9
 milestone_name: expects plain session.token text; advisor research recommends Option C
 status: Executing Phase 6
-last_updated: "2026-05-11T18:53:13.017Z"
+last_updated: "2026-05-11T19:12:28.595Z"
 progress:
   total_phases: 34
   completed_phases: 9
   total_plans: 85
-  completed_plans: 98
+  completed_plans: 99
   percent: 26
 ---
 
@@ -91,6 +91,7 @@ progress:
 | Phase 06 P09 | 35m | 2 tasks | 12 files |
 | Phase 06 P08 | 70m | 2 tasks | 25 files |
 | Phase 06 P12a | 75min | 2 tasks | 10 files |
+| Phase 06 P12b | 65 | 3 tasks | 14 files |
 
 ## Accumulated Context
 
@@ -196,3 +197,5 @@ progress:
 - [Phase 06]: 06-08: New usage_rollup_daily migration (0015) added inline; runIngestOnce(since,until) refactor deferred — idempotency on request_id makes window-bounded SQL a nice-to-have, not a correctness requirement
 - [Phase 06]: 12a — Reuse openwhispr compose project name (testcontainers.withProjectName) to dodge 10-15min cold-rebuild; drop withNoRecreate (v11 resets projectName)
 - [Phase 06]: 12a — Audit e2e pivots from auth.signin to key.issued per 06-05-SUMMARY D-A1 deferral
+- [Phase 06]: Plan 12b D-12b-1: Traefik file-provider preserved for scale test (test-only dynamic.yml enumerating both replicas), not switched to docker-provider.
+- [Phase 06]: Plan 12b D-12b-3: SSRF audit emission via Fastify onError hook in buildApp (recordAudit needs req.tenant + db tx; dispatcher onBlock has neither).
