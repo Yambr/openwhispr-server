@@ -3,12 +3,12 @@ gsd_state_version: 1.0
 milestone: v1.6.9
 milestone_name: expects plain session.token text; advisor research recommends Option C
 status: Executing Phase 6
-last_updated: "2026-05-11T19:37:43.104Z"
+last_updated: "2026-05-11T20:30:39.475Z"
 progress:
   total_phases: 34
   completed_phases: 9
   total_plans: 85
-  completed_plans: 100
+  completed_plans: 101
   percent: 26
 ---
 
@@ -93,6 +93,7 @@ progress:
 | Phase 06 P12a | 75min | 2 tasks | 10 files |
 | Phase 06 P12b | 65 | 3 tasks | 14 files |
 | Phase 06 P12c | 180 | 3 tasks | 10 files |
+| Phase 06 P12d | 75min | 2 tasks | 6 files |
 
 ## Accumulated Context
 
@@ -202,3 +203,4 @@ progress:
 - [Phase 06]: 12a — Audit e2e pivots from auth.signin to key.issued per 06-05-SUMMARY D-A1 deferral
 - [Phase 06]: Plan 12b D-12b-1: Traefik file-provider preserved for scale test (test-only dynamic.yml enumerating both replicas), not switched to docker-provider.
 - [Phase 06]: Plan 12b D-12b-3: SSRF audit emission via Fastify onError hook in buildApp (recordAudit needs req.tenant + db tx; dispatcher onBlock has neither).
+- [Phase 06]: Plan 12d: Phase 6 close-out — CI wiring (PR-gate quick + nightly full) + Makefile global gate + per-file COVERAGE.md audit (28 green / 24 rationalised / 0 follow-up). Transcribe rate-limit Rule-2 wire-up fix landed inline. 5/8 e2e wall-time GREEN; 2 wire-up gaps documented as Phase 6.x follow-up (SSRF NODE_ENV propagation; verification-status auth-vs-rate-limit hook order).
