@@ -48,31 +48,52 @@ export const makeDepCheck = (deps: DepCheckDeps): DepCheck => {
   const cache = new LRUCache<DepName, DepResult>({ max: 16, ttl: 5_000 });
   const inflight = new Map<DepName, Promise<DepResult>>();
 
+  // Hard ceiling per probe. The header comment promised 2s; without
+  // this Promise.race the postgres + valkey probes have no wall-clock
+  // cap and a paused/unresponsive upstream would hang /readyz
+  // indefinitely (the e2e probes-dependency suite caught this when
+  // `docker pause postgres` made pg.Pool.connect() block forever).
+  // litellm already had bodyTimeout / headersTimeout inside undici;
+  // this race is the unified ceiling across all three probes.
+  const PROBE_TIMEOUT_MS = 2_000;
+
   const probe = async (name: DepName): Promise<DepResult> => {
     const start = Date.now();
+    let timeoutHandle: NodeJS.Timeout | undefined;
+    const timeoutPromise = new Promise<never>((_, reject) => {
+      timeoutHandle = setTimeout(
+        () => reject(new Error(`${name} probe exceeded ${PROBE_TIMEOUT_MS}ms`)),
+        PROBE_TIMEOUT_MS,
+      );
+    });
     try {
-      if (name === "postgres") {
-        const client = await deps.pg.connect();
-        try {
-          await client.query("SELECT 1");
-        } finally {
-          client.release();
-        }
-      } else if (name === "valkey") {
-        await deps.valkey.ping();
-      } else {
-        const { statusCode, body } = await request(`${deps.litellmUrl}/health`, {
-          method: "GET",
-          bodyTimeout: 2_000,
-          headersTimeout: 2_000,
-        });
-        // Drain body to release the socket back to the undici pool —
-        // otherwise repeated probes accumulate hung sockets.
-        await body.dump();
-        if (statusCode >= 500) {
-          throw new Error(`litellm ${statusCode}`);
-        }
-      }
+      await Promise.race([
+        (async () => {
+          if (name === "postgres") {
+            const client = await deps.pg.connect();
+            try {
+              await client.query("SELECT 1");
+            } finally {
+              client.release();
+            }
+          } else if (name === "valkey") {
+            await deps.valkey.ping();
+          } else {
+            const { statusCode, body } = await request(`${deps.litellmUrl}/health`, {
+              method: "GET",
+              bodyTimeout: PROBE_TIMEOUT_MS,
+              headersTimeout: PROBE_TIMEOUT_MS,
+            });
+            // Drain body to release the socket back to the undici pool —
+            // otherwise repeated probes accumulate hung sockets.
+            await body.dump();
+            if (statusCode >= 500) {
+              throw new Error(`litellm ${statusCode}`);
+            }
+          }
+        })(),
+        timeoutPromise,
+      ]);
       return { ok: true, latency_ms: Date.now() - start };
     } catch (err) {
       return {
@@ -80,6 +101,8 @@ export const makeDepCheck = (deps: DepCheckDeps): DepCheck => {
         latency_ms: Date.now() - start,
         error: (err as Error).message,
       };
+    } finally {
+      if (timeoutHandle) clearTimeout(timeoutHandle);
     }
   };
 
