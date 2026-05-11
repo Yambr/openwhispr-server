@@ -3,12 +3,12 @@ gsd_state_version: 1.0
 milestone: v1.6.9
 milestone_name: expects plain session.token text; advisor research recommends Option C
 status: Executing Phase 6
-last_updated: "2026-05-11T17:48:57.909Z"
+last_updated: "2026-05-11T17:51:33.182Z"
 progress:
   total_phases: 34
   completed_phases: 9
   total_plans: 81
-  completed_plans: 94
+  completed_plans: 95
   percent: 26
 ---
 
@@ -87,6 +87,7 @@ progress:
 | Phase 06 P05 | 75 min | 2 tasks | 6 files |
 | Phase 06 P07 | 35m | 2 tasks | 12 files |
 | Phase 06 P11 | 25m | 2 tasks | 9 files |
+| Phase 06 P10 | 7m | 1 tasks | 11 files |
 
 ## Accumulated Context
 
@@ -186,3 +187,4 @@ progress:
 - [Phase 06]: 06-05 D-05-4 — Task 2 reduced from 15 wired emissions to 3 (account.delete, key.issued, key.revoked); 12 deferred because target routes (auth/admin/settings-mutation) don't exist yet.
 - [Phase 06]: Plan 06-07: Worker tenant-context primitives shipped — withTenantContext (D-W1), withSystemContext (D-W2), typedQueue (D-W3), runtime app-pool guard + property test (D-W4 layers 2+3). Static lint (D-W4 layer 1) deferred to Plan 06-09 per CONTEXT.
 - [Phase 06]: Plan 06-11: 4 Grafana dashboards + 2 unified-alerting reconciliation rules + postgres-readonly datasource shipped; grafana_reader role bootstrap deferred to operator (documented in postgres.yaml header)
+- [Phase 06]: Plan 06-10: shared @openwhispr/observability package introduced — apps/api + apps/worker both import makePino + REDACT_PATHS; canonical sensitive-key list extends D-T4 with Phase 3/5 provider env keys; sentinel sweep integration test passes (12 tests).
