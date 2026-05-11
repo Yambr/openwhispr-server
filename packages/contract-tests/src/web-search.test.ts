@@ -85,9 +85,9 @@ describe.skipIf(!REACHABLE)("WIRE-08 — POST /api/agent/web-search", () => {
       expect(res.status).toBe(503);
       expect(res.status).not.toBe(401);
       const env = ErrorEnvelope.parse(await res.json());
-      // Operator-actionable: must surface the env var name OR a yandex-pending hint.
+      // Operator-actionable: must surface the env var name.
       expect(env.error).toMatch(
-        /TAVILY_API_KEY|YANDEX_SEARCH_API_KEY|yandex provider pending|not configured/i,
+        /TAVILY_API_KEY|YANDEX_SEARCH_API_KEY|YANDEX_SEARCH_FOLDER_ID|not configured/i,
       );
     },
   );

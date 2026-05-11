@@ -4,13 +4,6 @@
 //   Request:  { query: string (1..256), numResults?: number (1..10, default 5) }
 //   Success:  200 { results: [{title, url, snippet}, ...] }
 //   503:      { error: "<Provider> not configured (set <ENV_VAR> in .env)" }
-//   503:      { error: { code: "PROVIDER_UNAVAILABLE", message: "yandex provider pending" } }
-//             — Yandex stub branch only; canonical envelope is `{error:string}`,
-//             so we serialize the structured object as JSON inside the error
-//             field so the existing strict ErrorEnvelope shape still matches
-//             and the desktop client can introspect the code.
-//             (Actual behavior: 503 with operator-actionable message; the
-//             stub variant uses a distinct phrase the desktop can pattern-match.)
 //   502:      { error: "web-search upstream failed" }
 //   400:      { error: <zod issue> } on empty query / bad numResults / etc.
 //   429:      Standard envelope (rate-limit plugin) — 30/min/user (D-07).
@@ -26,7 +19,6 @@
 //         — never 401). For Yandex this is also where the operator's
 //         half-configured deployment (keys set, ENABLED flag unset) lands.
 //      c. provider.search(query, numResults). Per-error mapping:
-//         - YandexSearchPendingError → 503 PROVIDER_UNAVAILABLE
 //         - MissingProviderKeyError → 503 with err.message verbatim
 //         - UpstreamError           → 502 generic
 //         - other                   → rethrow → 500 generic
@@ -61,7 +53,6 @@ import {
   MissingProviderKeyError,
   UpstreamError,
   type WebSearchProvider,
-  YandexSearchPendingError,
 } from "../../lib/web-search/types.js";
 
 export interface WebSearchDeps {
@@ -106,7 +97,7 @@ export const buildWebSearchRoutes = (deps: WebSearchDeps) =>
         if (!provider.isConfigured()) {
           // Per-provider 503 envelope. Pitfall #8 — NEVER 401.
           const envVarName = provider.name === "tavily" ? "TAVILY_API_KEY"
-            : provider.name === "yandex" ? "YANDEX_SEARCH_API_KEY + YANDEX_FOLDER_ID + YANDEX_SEARCH_ENABLED"
+            : provider.name === "yandex" ? "YANDEX_SEARCH_API_KEY + YANDEX_SEARCH_FOLDER_ID"
             : "<provider env vars>";
           const label = provider.name === "tavily" ? "Tavily"
             : provider.name === "yandex" ? "Yandex"
@@ -120,14 +111,6 @@ export const buildWebSearchRoutes = (deps: WebSearchDeps) =>
         try {
           result = await provider.search(body.query, body.numResults);
         } catch (e) {
-          if (e instanceof YandexSearchPendingError) {
-            // Operator-set ENABLED flag without a real reference impl.
-            // Distinct phrasing so desktop / contract tests can detect
-            // the stub branch.
-            return reply.code(503).send({
-              error: "yandex provider pending",
-            });
-          }
           if (e instanceof MissingProviderKeyError) {
             return reply.code(503).send({ error: e.message });
           }
