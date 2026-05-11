@@ -418,7 +418,19 @@ Plans:
   5. BullMQ workers run audit-log fanout, email delivery, usage rollups, and virtual-key rotation; a tenant-context job middleware re-establishes the DB GUC + log MDC + OTel context before every handler invocation, verified by a CI introspection gate.
   6. Anti-abuse rate limiting (per-user, per-IP, Redis token-bucket) is enforced with the polling carve-out for `/api/auth/verification-status`; SSRF defense (private-IP block + DNS-rebinding defense) gates every server-side outbound HTTP call.
   7. Tests written first (TDD); all CI checks green.
-**Plans**: TBD
+**Plans**: 12 plans (4 waves)
+- [ ] 06-01-PLAN.md — Wave 0: Materialize 31 RED test stubs (apps/api + apps/worker + packages/data + tools + integration)
+- [ ] 06-02-PLAN.md — Wave 0: pg_partman custom postgres image + migration 0011 (audit_log → monthly RANGE partition) + [BLOCKING] db:push
+- [ ] 06-03-PLAN.md — Wave 0: OTel SDK bootstrap + pino redact + Loki↔Tempo derivedFields + 8 e2e RED stubs
+- [ ] 06-04-PLAN.md — Wave 1: /livez /readyz /startupz probes + dep-check lru-cache + x-served-by hook (OBS-05, SCALE-01 prep)
+- [ ] 06-05-PLAN.md — Wave 1: recordAudit helper + 18-action const-union + 15 emission sites wired (DATA-04, OBS-03)
+- [ ] 06-06-PLAN.md — Wave 1: undici SSRF Dispatcher (12 CIDRs + single-resolve + 502 + security.ssrf_blocked audit row) (SCALE-04 security half)
+- [ ] 06-07-PLAN.md — Wave 1: withTenantContext + withSystemContext + typedQueue + app-pool runtime guard + worker-rls property test (SCALE-03 layers 2+3)
+- [ ] 06-08-PLAN.md — Wave 2: 7 new BullMQ queues + scheduler (email-delivery, usage-rollup-daily, virtual-key-rotation, reconciliation-daily-check, reconciliation-discrepancy, partman-maintenance, audit-archive) (SCALE-03, DATA-04, OBS-04)
+- [ ] 06-09-PLAN.md — Wave 2: Layered IP+user rate-limit + per-route rpm matrix + X-RateLimit-* headers + tools/lint-tenant-context.ts GHA gate (SCALE-04, SCALE-03 layer 1)
+- [ ] 06-10-PLAN.md — Wave 2: Log scrubbing finalization across api + worker tier + sentinel-token sweep integration test (OBS-03)
+- [ ] 06-11-PLAN.md — Wave 2: 4 Grafana dashboards (RED+sat, per-tenant usage, LiteLLM spend, reconciliation drift) + reconciliation alert rule + docs/observability.md (OBS-01, OBS-02, OBS-04)
+- [ ] 06-12-PLAN.md — Wave 3: 8 e2e tests flipped GREEN (horizontal-scale, ssrf-block, audit-log-write, reconciliation-drift, log-scrub-sentinel, probes-dependency, rate-limit-layered, otel-trace-propagation) + coverage ≥90/90/90/90 gate + nightly CI
 **UI hint**: no
 
 ### Phase 06.1: Add tempo + mimir minimal filesystem-backed configs — both crash on default empty backend; uncovered after Phase 02.2 brought api healthy (INSERTED)
