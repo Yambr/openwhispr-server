@@ -49,6 +49,7 @@ import {
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import * as schema from "../schema/index.js";
 import { withTenant } from "../tenant-context.js";
+import { provisionPgPartman } from "./helpers.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const MIGRATIONS_FOLDER = resolve(__dirname, "..", "..", "migrations");
@@ -84,7 +85,8 @@ interface PoolHarness {
 async function bootPgWithPgBouncer(): Promise<PoolHarness> {
   const network = await new Network().start();
 
-  const pg = await new PostgreSqlContainer("postgres:17-alpine")
+  // Phase 6 / Plan 02 — migration 0014 requires pg_partman.
+  const pg = await new PostgreSqlContainer("openwhispr/postgres:17.5-pgpartman")
     .withNetwork(network)
     .withNetworkAliases("postgres")
     .withDatabase("openwhispr")
@@ -105,6 +107,7 @@ async function bootPgWithPgBouncer(): Promise<PoolHarness> {
   await superPool.query(`GRANT SET, ALTER SYSTEM ON PARAMETER "app.tenant_id" TO openwhispr_owner`);
   await superPool.query(`ALTER DATABASE openwhispr OWNER TO openwhispr_owner`);
   await superPool.query(`ALTER SCHEMA public OWNER TO openwhispr_owner`);
+  await provisionPgPartman(superPool);
   await superPool.end();
 
   const ownerUri = `postgres://openwhispr_owner:owner-pw@${pg.getHost()}:${pg.getMappedPort(5432)}/openwhispr`;

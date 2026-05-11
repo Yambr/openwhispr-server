@@ -99,6 +99,13 @@
       "when": 1778281976175,
       "tag": "0013_transcriptions_cloud_columns",
       "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1778518800000,
+      "tag": "0014_audit_log_partition",
+      "breakpoints": true
     }
   ]
 }

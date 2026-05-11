@@ -119,6 +119,12 @@ describe("TEST-MIGRATION-01 — forward apply + RLS introspection", () => {
       await ownerPool.query(`CREATE SCHEMA public`);
       await ownerPool.query(`ALTER SCHEMA public OWNER TO openwhispr_owner`);
       await ownerPool.query(`DROP SCHEMA IF EXISTS _meta CASCADE`);
+      // Phase 6 / Plan 02 — clear pg_partman's part_config so 0014 can
+      // re-register the parent on the second forward-apply. The partman
+      // schema lives outside `public` and survives the DROP above.
+      await ownerPool.query(
+        `DELETE FROM partman.part_config WHERE parent_table='public.audit_log'`,
+      );
       const ownerDb = drizzle(ownerPool, { schema });
       await migrate(ownerDb, {
         migrationsFolder: MIGRATIONS_FOLDER,

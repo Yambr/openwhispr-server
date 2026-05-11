@@ -24,6 +24,7 @@ import { migrate } from "drizzle-orm/node-postgres/migrator";
 import { Pool } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import * as schema from "../schema/index.js";
+import { provisionPgPartman } from "./helpers.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const MIGRATIONS_FOLDER = resolve(__dirname, "..", "..", "migrations");
@@ -58,7 +59,8 @@ interface Harness {
 }
 
 async function bootHarness(): Promise<Harness> {
-  const pg = await new PostgreSqlContainer("postgres:17-alpine")
+  // Phase 6 / Plan 02 — migration 0014 requires pg_partman.
+  const pg = await new PostgreSqlContainer("openwhispr/postgres:17.5-pgpartman")
     .withDatabase("openwhispr")
     .withUsername("postgres_super")
     .withPassword("super-pw")
@@ -73,6 +75,7 @@ async function bootHarness(): Promise<Harness> {
   await superPool.query(`GRANT SET, ALTER SYSTEM ON PARAMETER "app.tenant_id" TO openwhispr_owner`);
   await superPool.query(`ALTER DATABASE openwhispr OWNER TO openwhispr_owner`);
   await superPool.query(`ALTER SCHEMA public OWNER TO openwhispr_owner`);
+  await provisionPgPartman(superPool);
   await superPool.end();
 
   const ownerUri = `postgres://openwhispr_owner:owner-pw@${pg.getHost()}:${pg.getMappedPort(5432)}/openwhispr`;
@@ -108,153 +111,190 @@ SUITE("Phase 5 / Plan 01 — settings + new-table RLS introspection", () => {
     if (harness) await harness.stop();
   }, 60_000);
 
-  it("every new Phase-5 table has relrowsecurity = TRUE and relforcerowsecurity = TRUE", async () => {
-    if (!harness) throw new Error("harness not booted");
-    const pool = new Pool({ connectionString: harness.ownerUri });
-    try {
-      const res = await pool.query<{ relname: string; relrowsecurity: boolean; relforcerowsecurity: boolean }>(
-        `SELECT c.relname, c.relrowsecurity, c.relforcerowsecurity
+  it(
+    "every new Phase-5 table has relrowsecurity = TRUE and relforcerowsecurity = TRUE",
+    async () => {
+      if (!harness) throw new Error("harness not booted");
+      const pool = new Pool({ connectionString: harness.ownerUri });
+      try {
+        const res = await pool.query<{
+          relname: string;
+          relrowsecurity: boolean;
+          relforcerowsecurity: boolean;
+        }>(
+          `SELECT c.relname, c.relrowsecurity, c.relforcerowsecurity
            FROM pg_class c
            JOIN pg_namespace n ON n.oid = c.relnamespace
           WHERE n.nspname = 'public' AND c.relname = ANY($1::text[])`,
-        [Array.from(NEW_TENANT_TABLES)],
-      );
-      const seen = new Map(res.rows.map((r) => [r.relname, r]));
-      for (const t of NEW_TENANT_TABLES) {
-        const row = seen.get(t);
-        expect(row, `table ${t} should exist after migrations`).toBeDefined();
-        expect(row?.relrowsecurity, `${t} ENABLE RLS`).toBe(true);
-        expect(row?.relforcerowsecurity, `${t} FORCE RLS`).toBe(true);
+          [Array.from(NEW_TENANT_TABLES)],
+        );
+        const seen = new Map(res.rows.map((r) => [r.relname, r]));
+        for (const t of NEW_TENANT_TABLES) {
+          const row = seen.get(t);
+          expect(row, `table ${t} should exist after migrations`).toBeDefined();
+          expect(row?.relrowsecurity, `${t} ENABLE RLS`).toBe(true);
+          expect(row?.relforcerowsecurity, `${t} FORCE RLS`).toBe(true);
+        }
+      } finally {
+        await pool.end();
       }
-    } finally {
-      await pool.end();
-    }
-  }, TIMEOUT);
+    },
+    TIMEOUT,
+  );
 
-  it("every new Phase-5 table has an isolation policy referencing current_setting('app.tenant_id'", async () => {
-    if (!harness) throw new Error("harness not booted");
-    const pool = new Pool({ connectionString: harness.ownerUri });
-    try {
-      const res = await pool.query<{ tablename: string; qual: string | null; with_check: string | null }>(
-        `SELECT tablename, qual, with_check
+  it(
+    "every new Phase-5 table has an isolation policy referencing current_setting('app.tenant_id'",
+    async () => {
+      if (!harness) throw new Error("harness not booted");
+      const pool = new Pool({ connectionString: harness.ownerUri });
+      try {
+        const res = await pool.query<{
+          tablename: string;
+          qual: string | null;
+          with_check: string | null;
+        }>(
+          `SELECT tablename, qual, with_check
            FROM pg_policies
           WHERE schemaname = 'public' AND tablename = ANY($1::text[])`,
-        [Array.from(NEW_TENANT_TABLES)],
-      );
-      const grouped = new Map<string, typeof res.rows>();
-      for (const row of res.rows) {
-        const list = grouped.get(row.tablename) ?? [];
-        list.push(row);
-        grouped.set(row.tablename, list);
-      }
-      for (const t of NEW_TENANT_TABLES) {
-        const policies = grouped.get(t) ?? [];
-        expect(policies.length, `${t} should have ≥1 policy`).toBeGreaterThan(0);
-        const matchesGuc = policies.some((p) =>
-          (p.qual ?? "").includes("current_setting('app.tenant_id'") ||
-          (p.with_check ?? "").includes("current_setting('app.tenant_id'"),
+          [Array.from(NEW_TENANT_TABLES)],
         );
-        expect(matchesGuc, `${t} policy must reference app.tenant_id GUC`).toBe(true);
+        const grouped = new Map<string, typeof res.rows>();
+        for (const row of res.rows) {
+          const list = grouped.get(row.tablename) ?? [];
+          list.push(row);
+          grouped.set(row.tablename, list);
+        }
+        for (const t of NEW_TENANT_TABLES) {
+          const policies = grouped.get(t) ?? [];
+          expect(policies.length, `${t} should have ≥1 policy`).toBeGreaterThan(0);
+          const matchesGuc = policies.some(
+            (p) =>
+              (p.qual ?? "").includes("current_setting('app.tenant_id'") ||
+              (p.with_check ?? "").includes("current_setting('app.tenant_id'"),
+          );
+          expect(matchesGuc, `${t} policy must reference app.tenant_id GUC`).toBe(true);
+        }
+      } finally {
+        await pool.end();
       }
-    } finally {
-      await pool.end();
-    }
-  }, TIMEOUT);
+    },
+    TIMEOUT,
+  );
 
-  it("seed_tenant_settings trigger on tenants is AFTER INSERT (Pitfall #8)", async () => {
-    if (!harness) throw new Error("harness not booted");
-    const pool = new Pool({ connectionString: harness.ownerUri });
-    try {
-      const res = await pool.query<{ action_timing: string; event_manipulation: string }>(
-        `SELECT action_timing, event_manipulation
+  it(
+    "seed_tenant_settings trigger on tenants is AFTER INSERT (Pitfall #8)",
+    async () => {
+      if (!harness) throw new Error("harness not booted");
+      const pool = new Pool({ connectionString: harness.ownerUri });
+      try {
+        const res = await pool.query<{ action_timing: string; event_manipulation: string }>(
+          `SELECT action_timing, event_manipulation
            FROM information_schema.triggers
           WHERE event_object_table = 'tenants'
             AND trigger_name = 'tenants_seed_settings'`,
-      );
-      expect(res.rows.length).toBeGreaterThan(0);
-      expect(res.rows[0]?.action_timing).toBe("AFTER");
-      expect(res.rows[0]?.event_manipulation).toBe("INSERT");
-    } finally {
-      await pool.end();
-    }
-  }, TIMEOUT);
+        );
+        expect(res.rows.length).toBeGreaterThan(0);
+        expect(res.rows[0]?.action_timing).toBe("AFTER");
+        expect(res.rows[0]?.event_manipulation).toBe("INSERT");
+      } finally {
+        await pool.end();
+      }
+    },
+    TIMEOUT,
+  );
 
-  it("inserting a new tenant auto-seeds tenant_settings (trigger fires)", async () => {
-    if (!harness) throw new Error("harness not booted");
-    const pool = new Pool({ connectionString: harness.ownerUri });
-    try {
-      const newTenant = "00000000-0000-0000-0000-00000000abcd";
-      await pool.query(
-        `INSERT INTO tenants (id, name) VALUES ($1, 'trigger-test') ON CONFLICT DO NOTHING`,
-        [newTenant],
-      );
-      const res = await pool.query<{ tenant_id: string }>(
-        `SELECT tenant_id::text AS tenant_id FROM tenant_settings WHERE tenant_id = $1`,
-        [newTenant],
-      );
-      expect(res.rowCount).toBe(1);
-      expect(res.rows[0]?.tenant_id).toBe(newTenant);
-    } finally {
-      await pool.end();
-    }
-  }, TIMEOUT);
+  it(
+    "inserting a new tenant auto-seeds tenant_settings (trigger fires)",
+    async () => {
+      if (!harness) throw new Error("harness not booted");
+      const pool = new Pool({ connectionString: harness.ownerUri });
+      try {
+        const newTenant = "00000000-0000-0000-0000-00000000abcd";
+        await pool.query(
+          `INSERT INTO tenants (id, name) VALUES ($1, 'trigger-test') ON CONFLICT DO NOTHING`,
+          [newTenant],
+        );
+        const res = await pool.query<{ tenant_id: string }>(
+          `SELECT tenant_id::text AS tenant_id FROM tenant_settings WHERE tenant_id = $1`,
+          [newTenant],
+        );
+        expect(res.rowCount).toBe(1);
+        expect(res.rows[0]?.tenant_id).toBe(newTenant);
+      } finally {
+        await pool.end();
+      }
+    },
+    TIMEOUT,
+  );
 
-  it("notes.content_search expression references only own-row immutable columns (Pitfall #1)", async () => {
-    if (!harness) throw new Error("harness not booted");
-    const pool = new Pool({ connectionString: harness.ownerUri });
-    try {
-      const res = await pool.query<{ generation_expression: string }>(
-        `SELECT generation_expression
+  it(
+    "notes.content_search expression references only own-row immutable columns (Pitfall #1)",
+    async () => {
+      if (!harness) throw new Error("harness not booted");
+      const pool = new Pool({ connectionString: harness.ownerUri });
+      try {
+        const res = await pool.query<{ generation_expression: string }>(
+          `SELECT generation_expression
            FROM information_schema.columns
           WHERE table_schema = 'public'
             AND table_name = 'notes'
             AND column_name = 'content_search'`,
-      );
-      const expr = res.rows[0]?.generation_expression ?? "";
-      // Must NOT reference now() or current_setting (would mutate per
-      // request and invalidate the index).
-      expect(expr.toLowerCase()).not.toContain("now(");
-      expect(expr.toLowerCase()).not.toContain("current_setting");
-      // Must reference both title + content for the GENERATED expression
-      // (catches accidental drift from the canonical setweight() shape).
-      expect(expr.toLowerCase()).toContain("title");
-      expect(expr.toLowerCase()).toContain("content");
-    } finally {
-      await pool.end();
-    }
-  }, TIMEOUT);
+        );
+        const expr = res.rows[0]?.generation_expression ?? "";
+        // Must NOT reference now() or current_setting (would mutate per
+        // request and invalidate the index).
+        expect(expr.toLowerCase()).not.toContain("now(");
+        expect(expr.toLowerCase()).not.toContain("current_setting");
+        // Must reference both title + content for the GENERATED expression
+        // (catches accidental drift from the canonical setweight() shape).
+        expect(expr.toLowerCase()).toContain("title");
+        expect(expr.toLowerCase()).toContain("content");
+      } finally {
+        await pool.end();
+      }
+    },
+    TIMEOUT,
+  );
 
-  it("notes content_search has a GIN index", async () => {
-    if (!harness) throw new Error("harness not booted");
-    const pool = new Pool({ connectionString: harness.ownerUri });
-    try {
-      const res = await pool.query<{ indexdef: string }>(
-        `SELECT indexdef FROM pg_indexes WHERE schemaname = 'public' AND tablename = 'notes'`,
-      );
-      const hasGinOnSearch = res.rows.some((r) =>
-        /USING gin/i.test(r.indexdef) && /content_search/i.test(r.indexdef),
-      );
-      expect(hasGinOnSearch).toBe(true);
-    } finally {
-      await pool.end();
-    }
-  }, TIMEOUT);
+  it(
+    "notes content_search has a GIN index",
+    async () => {
+      if (!harness) throw new Error("harness not booted");
+      const pool = new Pool({ connectionString: harness.ownerUri });
+      try {
+        const res = await pool.query<{ indexdef: string }>(
+          `SELECT indexdef FROM pg_indexes WHERE schemaname = 'public' AND tablename = 'notes'`,
+        );
+        const hasGinOnSearch = res.rows.some(
+          (r) => /USING gin/i.test(r.indexdef) && /content_search/i.test(r.indexdef),
+        );
+        expect(hasGinOnSearch).toBe(true);
+      } finally {
+        await pool.end();
+      }
+    },
+    TIMEOUT,
+  );
 
-  it("notes has partial UNIQUE on (tenant_id, user_id, client_note_id) WHERE NOT NULL", async () => {
-    if (!harness) throw new Error("harness not booted");
-    const pool = new Pool({ connectionString: harness.ownerUri });
-    try {
-      const res = await pool.query<{ indexdef: string }>(
-        `SELECT indexdef FROM pg_indexes WHERE schemaname='public' AND tablename='notes' AND indexname='notes_client_id_idx'`,
-      );
-      expect(res.rowCount).toBe(1);
-      const def = res.rows[0]?.indexdef ?? "";
-      expect(def).toMatch(/UNIQUE/i);
-      expect(def).toMatch(/client_note_id IS NOT NULL/i);
-    } finally {
-      await pool.end();
-    }
-  }, TIMEOUT);
+  it(
+    "notes has partial UNIQUE on (tenant_id, user_id, client_note_id) WHERE NOT NULL",
+    async () => {
+      if (!harness) throw new Error("harness not booted");
+      const pool = new Pool({ connectionString: harness.ownerUri });
+      try {
+        const res = await pool.query<{ indexdef: string }>(
+          `SELECT indexdef FROM pg_indexes WHERE schemaname='public' AND tablename='notes' AND indexname='notes_client_id_idx'`,
+        );
+        expect(res.rowCount).toBe(1);
+        const def = res.rows[0]?.indexdef ?? "";
+        expect(def).toMatch(/UNIQUE/i);
+        expect(def).toMatch(/client_note_id IS NOT NULL/i);
+      } finally {
+        await pool.end();
+      }
+    },
+    TIMEOUT,
+  );
 });
 
 if (!READY) {

@@ -27,7 +27,8 @@ let ownerUri: string;
 
 beforeAll(async () => {
   const ownerPassword = "owner-pw-self";
-  container = await new PostgreSqlContainer("postgres:17-alpine")
+  // Phase 6 / Plan 02 — migration 0014 requires pg_partman.
+  container = await new PostgreSqlContainer("openwhispr/postgres:17.5-pgpartman")
     .withDatabase("openwhispr")
     .withUsername("postgres_super")
     .withPassword("super-pw")
@@ -35,11 +36,20 @@ beforeAll(async () => {
 
   const superPool = new Pool({ connectionString: container.getConnectionUri() });
   await superPool.query(
-    `CREATE ROLE openwhispr_owner WITH LOGIN BYPASSRLS PASSWORD '${ownerPassword}'`,
+    `CREATE ROLE openwhispr_owner WITH LOGIN BYPASSRLS CREATEROLE PASSWORD '${ownerPassword}'`,
   );
   await superPool.query(`CREATE ROLE openwhispr_app WITH LOGIN PASSWORD 'app-pw-self'`);
+  await superPool.query(`GRANT openwhispr_app TO openwhispr_owner WITH ADMIN OPTION`);
+  await superPool.query(`GRANT SET, ALTER SYSTEM ON PARAMETER "app.tenant_id" TO openwhispr_owner`);
   await superPool.query(`ALTER DATABASE openwhispr OWNER TO openwhispr_owner`);
   await superPool.query(`ALTER SCHEMA public OWNER TO openwhispr_owner`);
+  await superPool.query("CREATE SCHEMA IF NOT EXISTS partman");
+  await superPool.query("CREATE EXTENSION IF NOT EXISTS pg_partman SCHEMA partman");
+  await superPool.query(`GRANT ALL ON SCHEMA partman TO openwhispr_owner`);
+  await superPool.query(`GRANT ALL ON ALL TABLES IN SCHEMA partman TO openwhispr_owner`);
+  await superPool.query(`GRANT ALL ON ALL SEQUENCES IN SCHEMA partman TO openwhispr_owner`);
+  await superPool.query(`GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA partman TO openwhispr_owner`);
+  await superPool.query(`GRANT EXECUTE ON ALL PROCEDURES IN SCHEMA partman TO openwhispr_owner`);
   await superPool.end();
 
   const host = container.getHost();
