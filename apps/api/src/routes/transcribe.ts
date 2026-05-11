@@ -33,11 +33,7 @@
 // Multipart plugin registration: @fastify/multipart is registered ONCE in
 // buildApp (HIGH-4, Plan 03 Wave-1). This route does NOT re-register it.
 
-import {
-  type ExecutableTx,
-  type TransactionalDb,
-  withTenant,
-} from "@openwhispr/data";
+import { type ExecutableTx, type TransactionalDb, withTenant } from "@openwhispr/data";
 import {
   type LitellmClient,
   LitellmUpstreamError,
@@ -45,6 +41,7 @@ import {
 } from "@openwhispr/litellm-client";
 import { sql } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
+import { routeRateLimitConfig } from "../config/rate-limits.js";
 import { ServiceUnavailable } from "../errors.js";
 import { minutesFromDuration } from "../lib/word-units.js";
 
@@ -69,7 +66,13 @@ export const buildTranscribeRoutes = (deps: TranscribeDeps) =>
     app.route({
       method: "POST",
       url: "/api/transcribe",
-      config: { rateLimit: { max: 60, timeWindow: "1 minute" } },
+      // Phase 6 / Plan 06-09: route now opts into the canonical per-route
+      // rate-limit matrix (D-RL2). User-tier 20/min user (transcribe is
+      // GPU-expensive; tight user-tier cap), IP-tier 60/min handled by
+      // the global GLOBAL_IP_CEILING. Previously hard-coded `max: 60`
+      // shadowed Plan 06-09's transcribe entry — Phase 06-12d Rule 2
+      // wire-up gap closed.
+      config: { rateLimit: routeRateLimitConfig("transcribe") },
       // No `schema.body` — multipart bodies bypass the JSON body parser.
       // Response shape is the canonical TranscribeResponse from Plan 01.
       handler: async (req, reply) => {
@@ -82,13 +85,8 @@ export const buildTranscribeRoutes = (deps: TranscribeDeps) =>
         const contentType = Array.isArray(contentTypeHeader)
           ? contentTypeHeader[0]
           : contentTypeHeader;
-        if (
-          !contentType ||
-          !contentType.toLowerCase().startsWith("multipart/form-data")
-        ) {
-          return reply
-            .code(400)
-            .send({ error: "expected multipart/form-data audio upload" });
+        if (!contentType || !contentType.toLowerCase().startsWith("multipart/form-data")) {
+          return reply.code(400).send({ error: "expected multipart/form-data audio upload" });
         }
 
         let upstreamJson: UpstreamWhisperJson;
@@ -108,13 +106,8 @@ export const buildTranscribeRoutes = (deps: TranscribeDeps) =>
             throw new ServiceUnavailable(err.message);
           }
           if (err instanceof LitellmUpstreamError) {
-            req.log.warn(
-              { status: err.status },
-              "litellm upstream error on /api/transcribe",
-            );
-            return reply
-              .code(502)
-              .send({ error: "upstream transcription provider failure" });
+            req.log.warn({ status: err.status }, "litellm upstream error on /api/transcribe");
+            return reply.code(502).send({ error: "upstream transcription provider failure" });
           }
           throw err;
         }
@@ -143,15 +136,9 @@ export const buildTranscribeRoutes = (deps: TranscribeDeps) =>
           limitReached: false as const,
           sttProvider: STT_PROVIDER,
           sttModel: STT_MODEL,
-          ...(upstreamJson.language !== undefined
-            ? { language: upstreamJson.language }
-            : {}),
-          ...(upstreamJson.duration !== undefined
-            ? { duration: upstreamJson.duration }
-            : {}),
-          ...(upstreamJson.segments !== undefined
-            ? { segments: upstreamJson.segments }
-            : {}),
+          ...(upstreamJson.language !== undefined ? { language: upstreamJson.language } : {}),
+          ...(upstreamJson.duration !== undefined ? { duration: upstreamJson.duration } : {}),
+          ...(upstreamJson.segments !== undefined ? { segments: upstreamJson.segments } : {}),
         };
         return reply.code(200).send(response);
       },
