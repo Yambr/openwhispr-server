@@ -36,6 +36,7 @@ import {
   ValidationError,
 } from "./errors.js";
 import { resolveApiErrorStatus } from "./lib/api-error-status.js";
+import { SSRFBlockedError } from "./lib/ssrf-dispatcher.js";
 
 const JSON_CT = "application/json; charset=utf-8";
 
@@ -89,6 +90,12 @@ export function registerErrorHandler(app: FastifyInstance): void {
     } else if (err instanceof ServerError) {
       status = 500;
       message = err.message || "Internal server error";
+    } else if (err instanceof SSRFBlockedError) {
+      // Phase 6 / Plan 06 (SCALE-04, D-S5) — outbound blocked by SSRF
+      // gate. 502 envelope; audit_log row already written by the
+      // dispatcher's onBlock callback (action='security.ssrf_blocked').
+      status = 502;
+      message = "Upstream blocked by SSRF policy";
     } else if (err instanceof APIError) {
       // Phase 02.7 D-02 Layer 2: Better Auth's `/api/auth/*` plugin routes
       // (sign-in, verify-email, sign-out) raise APIError directly when
