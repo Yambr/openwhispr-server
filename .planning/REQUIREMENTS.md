@@ -93,7 +93,7 @@ Authoritative wire shapes pinned by the OpenWhispr client TS interfaces at `~/op
 - [x] **SCALE-01**: API tier is fully stateless; sessions stored in Postgres; cache state in Redis/Valkey; horizontal scaling validated
 - [ ] **SCALE-02**: PgBouncer transaction-mode in front of Postgres; sized for 1000 concurrent (server-pool 100 × 4 instances)
 - [ ] **SCALE-03**: BullMQ on Redis/Valkey for background jobs (audit-log fanout, email delivery, usage rollups, virtual-key rotation)
-- [ ] **SCALE-04**: Anti-abuse rate limiting per-user, per-IP via Redis/Valkey token-bucket (NOT quota — observability ledger has no limits in v1); polling carve-out for `/api/auth/verification-status`
+- [x] **SCALE-04**: Anti-abuse rate limiting per-user, per-IP via Redis/Valkey token-bucket (NOT quota — observability ledger has no limits in v1); polling carve-out for `/api/auth/verification-status`
 - [ ] **SCALE-05**: Streaming endpoints (NDJSON, WSS) survive ingress timeouts up to 1h; nginx `proxy_buffering off` + `X-Accel-Buffering: no` set; per-line `res.flush()` in NDJSON
 - [ ] **SCALE-06**: Load test (k6) demonstrates 1000 concurrent active users (mixed transcribe + reason + stream + WSS) at p95 latency SLO; runs nightly in CI against an ephemeral environment
 - [ ] **SCALE-07**: File-descriptor limits raised to 65535 on API + ingress containers; documented sizing matrix per topology
@@ -264,7 +264,7 @@ All 89 v1 requirements mapped by `gsd-roadmapper` on 2026-05-08.
 | SCALE-01 | Phase 6 | Complete |
 | SCALE-02 | Phase 8 | Pending |
 | SCALE-03 | Phase 6 | Pending |
-| SCALE-04 | Phase 6 | Pending |
+| SCALE-04 | Phase 6 | Complete |
 | SCALE-05 | Phase 4 | Pending |
 | SCALE-06 | Phase 8 | Pending |
 | SCALE-07 | Phase 8 | Pending |

@@ -424,7 +424,7 @@ Plans:
 - [x] 06-03-PLAN.md — Wave 0: OTel SDK bootstrap + pino redact + Loki↔Tempo derivedFields + 8 e2e RED stubs
 - [x] 06-04-PLAN.md — Wave 1: /livez /readyz /startupz probes + dep-check lru-cache + x-served-by hook (OBS-05, SCALE-01 prep)
 - [ ] 06-05-PLAN.md — Wave 1: recordAudit helper + 18-action const-union + 15 emission sites wired (DATA-04, OBS-03)
-- [ ] 06-06-PLAN.md — Wave 1: undici SSRF Dispatcher (12 CIDRs + single-resolve + 502 + security.ssrf_blocked audit row) (SCALE-04 security half)
+- [x] 06-06-PLAN.md — Wave 1: undici SSRF Dispatcher (12 CIDRs + single-resolve + 502 + security.ssrf_blocked audit row) (SCALE-04 security half)
 - [ ] 06-07-PLAN.md — Wave 1: withTenantContext + withSystemContext + typedQueue + app-pool runtime guard + worker-rls property test (SCALE-03 layers 2+3)
 - [ ] 06-08-PLAN.md — Wave 2: 7 new BullMQ queues + scheduler (email-delivery, usage-rollup-daily, virtual-key-rotation, reconciliation-daily-check, reconciliation-discrepancy, partman-maintenance, audit-archive) (SCALE-03, DATA-04, OBS-04)
 - [ ] 06-09-PLAN.md — Wave 2: Layered IP+user rate-limit + per-route rpm matrix + X-RateLimit-* headers + tools/lint-tenant-context.ts GHA gate (SCALE-04, SCALE-03 layer 1)
@@ -438,7 +438,7 @@ Plans:
 **Goal:** [Urgent work - to be planned]
 **Requirements**: TBD
 **Depends on:** Phase 6
-**Plans:** 4/12 plans executed
+**Plans:** 5/12 plans executed
 
 Plans:
 - [ ] TBD (run /gsd-plan-phase 06.1 to break down)
