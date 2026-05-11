@@ -3,12 +3,12 @@ gsd_state_version: 1.0
 milestone: v1.6.9
 milestone_name: expects plain session.token text; advisor research recommends Option C
 status: Executing Phase 6
-last_updated: "2026-05-11T16:58:10.209Z"
+last_updated: "2026-05-11T17:00:16.761Z"
 progress:
   total_phases: 34
   completed_phases: 9
   total_plans: 81
-  completed_plans: 87
+  completed_plans: 88
   percent: 26
 ---
 
@@ -80,6 +80,7 @@ progress:
 | Phase 02.18 Pinline | 15m | 1 tasks | 5 files |
 | Phase 02.21 Pinline | 75m | 3 tasks | 9 files |
 | Phase 06 P01 | 70m | 2 tasks | 27 files |
+| Phase 06 P03 | 15m | 2 tasks | 6 files |
 
 ## Accumulated Context
 
@@ -170,3 +171,7 @@ progress:
 
 ---
 *State initialized: 2026-05-08*
+
+## Decisions
+
+- [Phase 06]: OTel SDK initialized as the literal first import of apps/api/src/index.ts so PinoInstrumentation patches pino at require time; tests assert load order by source-file inspection (Phase 6 D-T3).

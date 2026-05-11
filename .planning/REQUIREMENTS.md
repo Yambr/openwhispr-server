@@ -100,9 +100,9 @@ Authoritative wire shapes pinned by the OpenWhispr client TS interfaces at `~/op
 
 ### Observability
 
-- [ ] **OBS-01**: OpenTelemetry SDK auto-instrumentation for Fastify, undici, pg, ioredis; spans cover API → LiteLLM end-to-end with correlation IDs
-- [ ] **OBS-02**: Prometheus metrics exposed via OTel Collector; default Grafana dashboards shipped for RED + saturation, per-tenant usage, LiteLLM spend
-- [ ] **OBS-03**: Structured JSON logging to Loki via OTel Collector; bearer tokens scrubbed; correlation IDs propagated; English-only log keys
+- [x] **OBS-01**: OpenTelemetry SDK auto-instrumentation for Fastify, undici, pg, ioredis; spans cover API → LiteLLM end-to-end with correlation IDs
+- [x] **OBS-02**: Prometheus metrics exposed via OTel Collector; default Grafana dashboards shipped for RED + saturation, per-tenant usage, LiteLLM spend
+- [x] **OBS-03**: Structured JSON logging to Loki via OTel Collector; bearer tokens scrubbed; correlation IDs propagated; English-only log keys
 - [ ] **OBS-04**: LiteLLM spend logs piped into the platform usage ledger; reconciled against per-request ledger entries; discrepancy alerts
 - [ ] **OBS-05**: Liveness, readiness, and startup probes — readiness fails when Postgres / Redis / LiteLLM unhealthy
 
@@ -268,9 +268,9 @@ All 89 v1 requirements mapped by `gsd-roadmapper` on 2026-05-08.
 | SCALE-05 | Phase 4 | Pending |
 | SCALE-06 | Phase 8 | Pending |
 | SCALE-07 | Phase 8 | Pending |
-| OBS-01 | Phase 6 | Pending |
-| OBS-02 | Phase 6 | Pending |
-| OBS-03 | Phase 6 | Pending |
+| OBS-01 | Phase 6 | Complete |
+| OBS-02 | Phase 6 | Complete |
+| OBS-03 | Phase 6 | Complete |
 | OBS-04 | Phase 6 | Pending |
 | OBS-05 | Phase 6 | Pending |
 | UI-SPEC-01 | Phase 7 | Pending |
