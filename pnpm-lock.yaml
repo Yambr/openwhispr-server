@@ -110,6 +110,9 @@ importers:
       '@openwhispr/litellm-client':
         specifier: workspace:*
         version: link:../../packages/litellm-client
+      '@openwhispr/observability':
+        specifier: workspace:*
+        version: link:../../packages/observability
       '@openwhispr/wire-schemas':
         specifier: workspace:*
         version: link:../../packages/wire-schemas

@@ -24,6 +24,7 @@
     "@openwhispr/contract-tests": "workspace:*",
     "@openwhispr/data": "workspace:*",
     "@openwhispr/litellm-client": "workspace:*",
+    "@openwhispr/observability": "workspace:*",
     "@openwhispr/wire-schemas": "workspace:*",
     "@redis/client": "^5.12.1",
     "better-auth": "1.6.9",
