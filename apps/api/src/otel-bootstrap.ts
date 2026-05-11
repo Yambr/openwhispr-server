@@ -78,29 +78,46 @@ export const sdk = new NodeSDK({
   instrumentations: [autoInstrumentations, pinoInstrumentation],
 });
 
+/**
+ * Start the NodeSDK. Exported so tests can exercise the catch branch
+ * (start-failure must not crash the API). Production-path callers
+ * invoke this once at module load (see immediate call below).
+ */
+export const startSdk = (target = sdk): void => {
+  try {
+    target.start();
+  } catch (err) {
+    // Failing to start the OTel SDK MUST NOT crash the API. Emit a
+    // single diag-error and fall through; the API still serves
+    // requests, just without telemetry. This mirrors the upstream
+    // recommendation for production hardening.
+    diag.error("OTel SDK failed to start", err as Error);
+  }
+};
+
+/**
+ * Best-effort flush + shutdown the SDK. Exported so the SIGTERM
+ * handler installed below can be unit-tested without actually
+ * killing the process. Returns the underlying shutdown Promise so
+ * callers can await it; the SIGTERM-installed wrapper consumes its
+ * rejection to keep Node's signal-handler contract synchronous.
+ */
+export const shutdownSdk = (target = sdk): Promise<void> => {
+  return target.shutdown().catch((err) => {
+    diag.error("OTel SDK shutdown failed", err as Error);
+  });
+};
+
 // Start synchronously at module load — the load-order test in
 // `otel-bootstrap.test.ts` plus the literal-first-import discipline
 // in `apps/api/src/index.ts` together guarantee this runs before any
 // `import pino from "pino"` resolves.
-try {
-  sdk.start();
-} catch (err) {
-  // Failing to start the OTel SDK MUST NOT crash the API. Emit a
-  // single diag-error and fall through; the API still serves
-  // requests, just without telemetry. This mirrors the upstream
-  // recommendation for production hardening.
-  diag.error("OTel SDK failed to start", err as Error);
-}
+startSdk();
 
-// SIGTERM hook — best-effort flush + shutdown so spans/logs/metrics
-// reach the Collector before the container is killed.
-const installShutdownHook = (): void => {
-  const handler = (): void => {
-    sdk.shutdown().catch((err) => {
-      diag.error("OTel SDK shutdown failed", err as Error);
-    });
-  };
-  process.once("SIGTERM", handler);
-  process.once("SIGINT", handler);
+// SIGTERM hook — best-effort flush so spans/logs/metrics reach the
+// Collector before the container is killed.
+const onSignal = (): void => {
+  void shutdownSdk();
 };
-installShutdownHook();
+process.once("SIGTERM", onSignal);
+process.once("SIGINT", onSignal);
