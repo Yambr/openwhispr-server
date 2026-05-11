@@ -1,3 +1,9 @@
+// Phase 6 / Plan 06-12c — OTel SDK bootstrap MUST be the first executable
+// import so PinoInstrumentation patches `pino` before any worker code
+// imports it (D-T3). Without this, `metrics.getMeter()` returns a no-op
+// instrument and reconciliation-daily-check's gauges never reach Mimir.
+import "./otel-bootstrap.js";
+
 // Phase 03 Plan 08 — Worker process entry point.
 // Phase 6 Plan 06-08 — extended to host the 7 new queues, their workers,
 // and the recurring-job scheduler.

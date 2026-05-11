@@ -19,5 +19,22 @@ export default defineConfig({
   sourcemap: false,
   splitting: false,
   bundle: true,
-  external: ["pg", "pg-native"],
+  // Phase 6 / Plan 06-12c — OTel SDK + pino kept external so the
+  // PinoInstrumentation patches the same pino module instance the
+  // worker imports (same pattern the api side has been running with
+  // since Plan 06-03). The OTel exporter-metrics-otlp-grpc package
+  // dynamically requires platform-specific grpc native bindings; the
+  // runtime image's flat node_modules supplies them via the prod-deps
+  // stage of apps/worker/Dockerfile.
+  external: [
+    "pg",
+    "pg-native",
+    "pino",
+    "@opentelemetry/api",
+    "@opentelemetry/auto-instrumentations-node",
+    "@opentelemetry/exporter-metrics-otlp-grpc",
+    "@opentelemetry/instrumentation-pino",
+    "@opentelemetry/sdk-metrics",
+    "@opentelemetry/sdk-node",
+  ],
 });
