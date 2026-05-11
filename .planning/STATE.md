@@ -3,7 +3,7 @@ gsd_state_version: 1.0
 milestone: v1.6.9
 milestone_name: expects plain session.token text; advisor research recommends Option C
 status: Executing Phase 6
-last_updated: "2026-05-11T20:30:39.475Z"
+last_updated: "2026-05-12T01:30:00.000Z"
 progress:
   total_phases: 34
   completed_phases: 9
@@ -28,13 +28,13 @@ progress:
 |-------|-------|
 | Milestone | v1 |
 | Phase | 6 — Observability + Ops Hardening + Workers (EXECUTING, wave-by-wave) |
-| Plan | 06-01 closed (RED stubs, 23 files, 4 commits); 06-02 + 06-03 GREEN-landed in parallel; 06-04..12 remaining |
-| Status | EXECUTING — Wave 0 progressing (3/3 plans landed) |
-| Phase progress | Phases 0/1/2/3/4/5 closed; 02.x cascade fully closed; 03.x + 02.22 debt closed; Phase 6 Wave 0 in flight |
-| Next action | Wave 1 dispatch — 06-04 (request-log integration), 06-05 (audit_log sync writer), 06-06 (probes + dep-check), 06-07 (worker tenant-context HOFs + 3-layer CI gate) |
+| Plan | 06-01..12 all closed (12 plans + 12a/b/c/d splits). 06-12e post-12d follow-up: 3 e2e gaps closed (SSRF IP-literal bypass + fetch cause-chain + harness wiring). |
+| Status | READY FOR VERIFIER — all 12 plans landed, `make e2e-test-phase6` reports 8/8 GREEN (14 tests / 853s wall-time) |
+| Phase progress | Phases 0/1/2/3/4/5/6 closed; 02.x cascade fully closed; 03.x + 02.22 debt closed; Phase 6 complete pending verifier sign-off |
+| Next action | gsd-verifier adjudication of Phase 6 |
 
 ```
-[X][X][X][X][X][X][~][ ][ ][ ][ ]
+[X][X][X][X][X][X][X][ ][ ][ ][ ]
  0  1  2  3  4  5  6  7  8  9  10
 ```
 
@@ -204,3 +204,4 @@ progress:
 - [Phase 06]: Plan 12b D-12b-1: Traefik file-provider preserved for scale test (test-only dynamic.yml enumerating both replicas), not switched to docker-provider.
 - [Phase 06]: Plan 12b D-12b-3: SSRF audit emission via Fastify onError hook in buildApp (recordAudit needs req.tenant + db tx; dispatcher onBlock has neither).
 - [Phase 06]: Plan 12d: Phase 6 close-out — CI wiring (PR-gate quick + nightly full) + Makefile global gate + per-file COVERAGE.md audit (28 green / 24 rationalised / 0 follow-up). Transcribe rate-limit Rule-2 wire-up fix landed inline. 5/8 e2e wall-time GREEN; 2 wire-up gaps documented as Phase 6.x follow-up (SSRF NODE_ENV propagation; verification-status auth-vs-rate-limit hook order).
+- [Phase 06]: Plan 12e (post-12d follow-up): all 3 remaining e2e gaps CLOSED → `make e2e-test-phase6` reports 8/8 GREEN, 14 tests, 853s wall-time. Two REAL production-code SSRF defenses landed: (a) `makeSSRFConnectGuard` closes the IP-literal connect-bypass where Node's `net.connect` skips the dispatcher's `lookup` callback entirely for IP literals (rfc1918, link_local, ula, loopback, etc.); (b) `findSSRFBlockedError` walks `err.cause` chain to map Node 24's `TypeError('fetch failed', { cause })` wrapping back to the canonical 502 envelope. Plus 3 test-harness wiring fixes in `tests/e2e/helpers/phase6-compose.ts`: `compose run --no-deps` (avoid recreate-under-stale-config), `TESTCONTAINERS_RYUK_DISABLED=true` (avoid ryuk reaping locally-built images via `addComposeProject` label match), drop `compose --wait` for scaled path (grafana healthcheck false-negative blocks). Commits af6a3c8 + 949f1d7.
