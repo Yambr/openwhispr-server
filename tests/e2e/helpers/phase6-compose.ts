@@ -557,6 +557,59 @@ export async function getBullMQJobsByName(
 }
 
 /**
+ * Phase 6 / Plan 06-12c — capture container stdout/stderr SINCE an epoch
+ * timestamp WITHOUT following. testcontainers v11's
+ * `StartedTestContainer.logs()` hard-codes `follow: true` on the Docker
+ * Engine API call, which produces a Readable that never terminates while
+ * the container is running — `for await` on it hangs the test.
+ *
+ * We shell out to `docker logs --since <epoch>` which closes the stream
+ * once caught up to "now", giving a deterministic snapshot for substring
+ * assertions. Used by the log-scrub-sentinel and otel-trace-propagation
+ * e2e suites.
+ */
+export async function containerLogsSnapshot(
+  container: StartedTestContainer,
+  sinceEpochSec: number,
+  opts: { composeProject?: string; composeService?: string } = {},
+): Promise<string> {
+  const secondsAgo = Math.max(1, Math.floor(Date.now() / 1000) - sinceEpochSec);
+  // If compose project + service are supplied, prefer
+  // `docker compose -p <p> logs <s> --since <Ns> --no-color` over raw
+  // `docker logs <id>`. This is resilient to container recreation
+  // mid-suite (compose-level service name persists) and explicit about
+  // intent. Falls back to `docker logs <id>` when caller can't supply.
+  return await new Promise<string>((res, rej) => {
+    const args =
+      opts.composeProject && opts.composeService
+        ? [
+            "compose",
+            "-p",
+            opts.composeProject,
+            "logs",
+            "--no-color",
+            "--since",
+            `${secondsAgo}s`,
+            opts.composeService,
+          ]
+        : ["logs", "--since", `${secondsAgo}s`, container.getId()];
+    const child = spawn("docker", args, { cwd: REPO_ROOT });
+    let out = "";
+    let err = "";
+    child.stdout.on("data", (d) => (out += d.toString()));
+    child.stderr.on("data", (d) => (err += d.toString()));
+    child.on("close", (code) => {
+      // `docker logs` writes container stderr to the parent stderr and
+      // container stdout to parent stdout. We merge both so substring
+      // sweeps see everything pino emitted (pino writes JSON lines to
+      // stdout in our config, but other libs may go to stderr).
+      if (code === 0) res(out + err);
+      else rej(new Error(`docker logs exit=${code}: ${err} ${out}`));
+    });
+  });
+}
+
+/**
  * Phase 6 / Plan 06-12c — fetch a URL from inside the grafana container
  * (which has wget). Used to query Tempo, Loki, Mimir which only expose
  * HTTP on the internal docker network.

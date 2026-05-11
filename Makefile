@@ -279,6 +279,7 @@ e2e-test-phase6:
 	E2E=1 LITELLM_CONFIG_FILE=litellm_config.contract.yaml \
 	  OPENWHISPR_TEST_ROUTES=true MOCK_DIARIZATION=true \
 	  NODE_TLS_REJECT_UNAUTHORIZED=0 \
+	  TESTCONTAINERS_RYUK_DISABLED=true \
 	  pnpm exec vitest run --config tests/e2e/vitest.e2e.config.ts \
 	    tests/e2e/probes-dependency.test.ts \
 	    tests/e2e/audit-log-write.test.ts \
