@@ -39,7 +39,10 @@ import {
 } from "./helpers/phase6-compose.js";
 
 const SUITE_TIMEOUT_MS = 600_000;
-const TENANT_A = "11111111-1111-1111-1111-111111111111";
+// Use the seeded default tenant so we don't need to navigate RLS-protected
+// tenants-table INSERTs. The Plan 06-12a audit-log-write test follows the
+// same convention.
+const TENANT_A = "00000000-0000-0000-0000-000000000000";
 const USER_A = "22222222-2222-2222-2222-222222222222";
 
 // Window in the recent past — the worker's reconciliation handler accepts
@@ -53,9 +56,10 @@ let stack: Phase6Stack | undefined;
 
 async function seedReconciliationDrift(): Promise<{ litellmRows: number; ledgerRows: number }> {
   if (!stack) throw new Error("stack not initialized");
-  // 1. Ensure a users row exists mapping USER_A -> TENANT_A.
+  // 1. Ensure tenant + user rows exist mapping USER_A -> TENANT_A.
   //    The reconciliation-daily-check joins LiteLLM_SpendLogs.end_user
-  //    (= users.id) through this table to get tenant_id.
+  //    (= users.id) through `users` to get tenant_id; `users.tenant_id`
+  //    has a FK against `tenants(id)` so we must INSERT the tenant first.
   await psqlOwner(
     stack.postgres,
     "openwhispr",
@@ -74,26 +78,27 @@ async function seedReconciliationDrift(): Promise<{ litellmRows: number; ledgerR
   const endMs = Date.parse(WIN_END);
   for (let i = 0; i < litellmRows; i++) {
     const ts = new Date(startMs + ((endMs - startMs) * (i + 1)) / (litellmRows + 1)).toISOString();
-    inserts.push(`('recon-e2e-${Date.now()}-${i}', '${USER_A}', 0, '${ts}'::timestamptz)`);
+    // LiteLLM's prisma-generated `LiteLLM_SpendLogs` schema (the proxy
+    // creates the table on first boot per the Prisma client) has many
+    // NOT NULL columns without defaults: request_id, call_type, api_key,
+    // model, startTime, endTime. The reconciliation-daily-check only
+    // reads end_user, request_id, spend, startTime; we still have to
+    // satisfy every NOT NULL constraint for the INSERT to succeed.
+    inserts.push(
+      `('recon-e2e-${Date.now()}-${i}', '${USER_A}', 0,
+        '${ts}'::timestamptz, '${ts}'::timestamptz,
+        'completion', '', 'recon-e2e-model')`,
+    );
   }
-  // Insert SpendLogs into the litellm database. LiteLLM auto-creates the
-  // table when the proxy boots; if not present yet we materialize the
-  // shape used by reconciliation-daily-check (request_id, end_user,
-  // spend, startTime).
+  // The LiteLLM proxy created the table on first boot; we only INSERT.
+  // call_type, api_key, model are NOT NULL with no defaults (Prisma
+  // schema); we set them to harmless stub values. endTime mirrors
+  // startTime so the row appears as a zero-duration request.
   await psqlOwner(
     stack.postgres,
     "litellm",
-    `CREATE TABLE IF NOT EXISTS "LiteLLM_SpendLogs" (
-       request_id text PRIMARY KEY,
-       "end_user" text,
-       spend numeric NOT NULL DEFAULT 0,
-       "startTime" timestamptz NOT NULL DEFAULT now()
-     )`,
-  );
-  await psqlOwner(
-    stack.postgres,
-    "litellm",
-    `INSERT INTO "LiteLLM_SpendLogs" (request_id, "end_user", spend, "startTime")
+    `INSERT INTO "LiteLLM_SpendLogs"
+       (request_id, "end_user", spend, "startTime", "endTime", call_type, api_key, model)
      VALUES ${inserts.join(", ")}
      ON CONFLICT (request_id) DO NOTHING`,
   );
