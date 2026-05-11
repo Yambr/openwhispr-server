@@ -217,6 +217,24 @@ export function buildTestOnlyRoutes(deps: TestOnlyDeps) {
       }
       return { status: "ok" as const, userId: r.user.id };
     });
+
+    // Phase 05 / Plan 10 / Task 1 — WIRE-29 negative-matrix enumeration seam.
+    //
+    // Returns the full Fastify route tree (output of
+    // `app.printRoutes({commonPrefix:false})`) as plain text so the
+    // CONTRACT-01 enumeration test (Pitfall #6 mitigation) can assert
+    // every runtime `/api/*` path is covered by the negative matrix
+    // inventory. Gated by the same OPENWHISPR_TEST_ROUTES env flag —
+    // production deployments always 404 this path.
+    //
+    // The handler itself MUST grep `printRoutes` for the plan AC; the
+    // /api/_test/* gate above keeps it safe.
+    app.get("/api/_test/route-list", { config: { rateLimit: false } }, async () => {
+      // app.printRoutes is the canonical Fastify route-tree introspection
+      // API (also used by apps/api/src/__tests__/build-app-diarization-wiring.test.ts).
+      const tree = app.printRoutes({ commonPrefix: false });
+      return { tree };
+    });
   };
 }
 
