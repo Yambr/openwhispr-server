@@ -21,6 +21,7 @@ import {
   type AgentStreamDeps,
   buildAgentStreamRoutes,
 } from "./agent/stream.js";
+import { buildWebSearchRoutes, type WebSearchDeps } from "./agent/web-search.js";
 import {
   type AuthCallbackDeps,
   buildAuthCallbackRoutes,
@@ -155,6 +156,13 @@ export function buildAllRoutes(deps: AllRoutesDeps): readonly RoutePlugin[] {
     // wire shape for operators who deploy without LITELLM_MASTER_KEY.
     buildStreamingUsageRoutes({ db: deps.db } satisfies StreamingUsageDeps),
     buildUsageRoutes({ db: deps.db } satisfies UsageDeps),
+    // Phase 05 / Plan 03 — WIRE-08 POST /api/agent/web-search. Registers
+    // UNCONDITIONALLY (Pitfall #6): even when no provider key is wired,
+    // the route exists and surfaces a 503 missing-key envelope so the
+    // CONTRACT-01 negative matrix can enumerate it. Provider selection
+    // honors WEB_SEARCH_PROVIDER at boot via resolveWebSearchProvider()
+    // (D-02 boot-fatal on unknown value).
+    buildWebSearchRoutes({ db: deps.db } satisfies WebSearchDeps),
   ];
   // Phase 03 / Plan 04: conditionally register the transcribe route only
   // when a LiteLLM client was constructed (LITELLM_MASTER_KEY present).
@@ -258,5 +266,6 @@ export {
   buildTranscribeRoutes,
   buildUsageRoutes,
   buildVerificationStatusRoutes,
+  buildWebSearchRoutes,
   healthRoutes,
 };
