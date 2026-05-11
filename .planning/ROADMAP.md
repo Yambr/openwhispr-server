@@ -427,7 +427,7 @@ Plans:
 - [x] 06-06-PLAN.md — Wave 1: undici SSRF Dispatcher (12 CIDRs + single-resolve + 502 + security.ssrf_blocked audit row) (SCALE-04 security half)
 - [x] 06-07-PLAN.md — Wave 1: withTenantContext + withSystemContext + typedQueue + app-pool runtime guard + worker-rls property test (SCALE-03 layers 2+3)
 - [ ] 06-08-PLAN.md — Wave 2: 7 new BullMQ queues + scheduler (email-delivery, usage-rollup-daily, virtual-key-rotation, reconciliation-daily-check, reconciliation-discrepancy, partman-maintenance, audit-archive) (SCALE-03, DATA-04, OBS-04)
-- [ ] 06-09-PLAN.md — Wave 2: Layered IP+user rate-limit + per-route rpm matrix + X-RateLimit-* headers + tools/lint-tenant-context.ts GHA gate (SCALE-04, SCALE-03 layer 1)
+- [x] 06-09-PLAN.md — Wave 2: Layered IP+user rate-limit + per-route rpm matrix + X-RateLimit-* headers + tools/lint-tenant-context.ts GHA gate (SCALE-04, SCALE-03 layer 1)
 - [x] 06-10-PLAN.md — Wave 2: Log scrubbing finalization across api + worker tier + sentinel-token sweep integration test (OBS-03)
 - [x] 06-11-PLAN.md — Wave 2: 4 Grafana dashboards (RED+sat, per-tenant usage, LiteLLM spend, reconciliation drift) + reconciliation alert rule + docs/observability.md (OBS-01, OBS-02, OBS-04)
 - [ ] 06-12-PLAN.md — Wave 3: 8 e2e tests flipped GREEN (horizontal-scale, ssrf-block, audit-log-write, reconciliation-drift, log-scrub-sentinel, probes-dependency, rate-limit-layered, otel-trace-propagation) + coverage ≥90/90/90/90 gate + nightly CI
@@ -438,7 +438,7 @@ Plans:
 **Goal:** [Urgent work - to be planned]
 **Requirements**: TBD
 **Depends on:** Phase 6
-**Plans:** 9/12 plans executed
+**Plans:** 10/12 plans executed
 
 Plans:
 - [ ] TBD (run /gsd-plan-phase 06.1 to break down)

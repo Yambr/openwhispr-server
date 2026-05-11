@@ -3,12 +3,12 @@ gsd_state_version: 1.0
 milestone: v1.6.9
 milestone_name: expects plain session.token text; advisor research recommends Option C
 status: Executing Phase 6
-last_updated: "2026-05-11T17:51:33.182Z"
+last_updated: "2026-05-11T18:02:44.441Z"
 progress:
   total_phases: 34
   completed_phases: 9
   total_plans: 81
-  completed_plans: 95
+  completed_plans: 96
   percent: 26
 ---
 
@@ -88,6 +88,7 @@ progress:
 | Phase 06 P07 | 35m | 2 tasks | 12 files |
 | Phase 06 P11 | 25m | 2 tasks | 9 files |
 | Phase 06 P10 | 7m | 1 tasks | 11 files |
+| Phase 06 P09 | 35m | 2 tasks | 12 files |
 
 ## Accumulated Context
 
@@ -188,3 +189,5 @@ progress:
 - [Phase 06]: Plan 06-07: Worker tenant-context primitives shipped — withTenantContext (D-W1), withSystemContext (D-W2), typedQueue (D-W3), runtime app-pool guard + property test (D-W4 layers 2+3). Static lint (D-W4 layer 1) deferred to Plan 06-09 per CONTEXT.
 - [Phase 06]: Plan 06-11: 4 Grafana dashboards + 2 unified-alerting reconciliation rules + postgres-readonly datasource shipped; grafana_reader role bootstrap deferred to operator (documented in postgres.yaml header)
 - [Phase 06]: Plan 06-10: shared @openwhispr/observability package introduced — apps/api + apps/worker both import makePino + REDACT_PATHS; canonical sensitive-key list extends D-T4 with Phase 3/5 provider env keys; sentinel sweep integration test passes (12 tests).
+- [Phase 06]: Plan 06-09 D-W4 layer 1 — TS-AST static lint chosen over GritQL (TypeScript Compiler API already devDep, mirrors lint-rls.ts; works on first try across every BullMQ handler shape)
+- [Phase 06]: Plan 06-09 D-RL1 — single @fastify/rate-limit registration with hook:'preHandler' override; IP-tier ceiling implemented as separate onRequest hook with dedicated ioredis INCR+PEXPIRE counter (NOT a second plugin registration — fastify-plugin is idempotent). KeyGenerator reads req.user?.id (codebase shape) not req.session.userId (plan spec text).
