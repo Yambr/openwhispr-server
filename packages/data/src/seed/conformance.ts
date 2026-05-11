@@ -22,6 +22,17 @@ import { Pool } from "pg";
 
 export const FIXTURE_PASSWORD = "test-PW-12345!";
 
+// Phase 5 / Plan 01 — deterministic seed UUIDs for the new CRUD resource
+// families. Contract tests (CONTRACT-01) and route smoke tests reference
+// these constants, so the IDs must NOT drift between seed runs.
+export const SEED_FOLDER_ID = "11111111-0000-4000-8000-000000000001";
+export const SEED_NOTE_ID = "11111111-0000-4000-8000-000000000002";
+export const SEED_CONVERSATION_ID = "11111111-0000-4000-8000-000000000003";
+export const SEED_MESSAGE_ID = "11111111-0000-4000-8000-000000000004";
+export const SEED_TRANSCRIPTION_ID = "11111111-0000-4000-8000-000000000005";
+export const SEED_API_KEY_ID = "11111111-0000-4000-8000-000000000006";
+export const DEFAULT_TENANT_ID = "00000000-0000-0000-0000-000000000000";
+
 interface FixtureUser {
   email: string;
   name: string;
@@ -146,10 +157,76 @@ export async function seedConformanceFixtures(opts?: {
         "seed: preflight failed — fixture@conformance.test row not present after signUp loop",
       );
     }
+    // Phase 5 / Plan 01 — deterministic seeds for the CRUD resource
+    // families. Bound to the canonical fixture user under the default
+    // tenant. Idempotent via ON CONFLICT DO NOTHING on the stable IDs.
+    await seedPhase5Resources(pool);
     return results;
   } finally {
     await pool.end();
   }
+}
+
+/**
+ * Phase 5 / Plan 01 — idempotent seed for the CRUD resource families.
+ * Uses stable UUIDs (exported as SEED_*_ID constants) so contract tests
+ * can reference rows by ID. Bound to fixture@conformance.test under the
+ * default tenant; runs as openwhispr_owner so RLS does not gate the
+ * INSERTs. ON CONFLICT DO NOTHING keeps the function fully idempotent.
+ */
+export async function seedPhase5Resources(pool: Pool): Promise<void> {
+  const userRes = await pool.query<{ id: string }>(
+    `SELECT id FROM users WHERE lower(email) = $1 AND tenant_id = $2`,
+    ["fixture@conformance.test", DEFAULT_TENANT_ID],
+  );
+  const userId = userRes.rows[0]?.id;
+  if (!userId) {
+    // Fixture user not present — upstream signUp loop should have failed
+    // first. Surface a precise error rather than crash mid-INSERT.
+    throw new Error(
+      "seedPhase5Resources: fixture@conformance.test user row missing — cannot seed resource family rows",
+    );
+  }
+  await pool.query(
+    `INSERT INTO folders (id, tenant_id, user_id, name)
+       VALUES ($1, $2, $3, 'Seed Folder') ON CONFLICT (id) DO NOTHING`,
+    [SEED_FOLDER_ID, DEFAULT_TENANT_ID, userId],
+  );
+  await pool.query(
+    `INSERT INTO notes (id, tenant_id, user_id, folder_id, title, content)
+       VALUES ($1, $2, $3, $4, 'Seed Note', 'seed content')
+       ON CONFLICT (id) DO NOTHING`,
+    [SEED_NOTE_ID, DEFAULT_TENANT_ID, userId, SEED_FOLDER_ID],
+  );
+  await pool.query(
+    `INSERT INTO conversations (id, tenant_id, user_id, title)
+       VALUES ($1, $2, $3, 'Seed Conversation') ON CONFLICT (id) DO NOTHING`,
+    [SEED_CONVERSATION_ID, DEFAULT_TENANT_ID, userId],
+  );
+  await pool.query(
+    `INSERT INTO messages (id, conversation_id, tenant_id, user_id, role, content)
+       VALUES ($1, $2, $3, $4, 'user', 'seed message') ON CONFLICT (id) DO NOTHING`,
+    [SEED_MESSAGE_ID, SEED_CONVERSATION_ID, DEFAULT_TENANT_ID, userId],
+  );
+  await pool.query(
+    `INSERT INTO transcriptions (id, tenant_id, user_id, text, status)
+       VALUES ($1, $2, $3, 'seed transcript', 'complete') ON CONFLICT (id) DO NOTHING`,
+    [SEED_TRANSCRIPTION_ID, DEFAULT_TENANT_ID, userId],
+  );
+  await pool.query(
+    `INSERT INTO api_keys (id, tenant_id, user_id, name, key_prefix, key_hash, scopes)
+       VALUES ($1, $2, $3, 'seed-key', 'pak_seed', 'argon2id$placeholder', ARRAY['read'])
+       ON CONFLICT (id) DO NOTHING`,
+    [SEED_API_KEY_ID, DEFAULT_TENANT_ID, userId],
+  );
+  // user_settings — explicit row for the fixture user (in addition to
+  // the AFTER INSERT trigger's tenant_settings row that the default
+  // tenant already received via 0006 backfill).
+  await pool.query(
+    `INSERT INTO user_settings (user_id, tenant_id) VALUES ($1, $2)
+       ON CONFLICT (user_id) DO NOTHING`,
+    [userId, DEFAULT_TENANT_ID],
+  );
 }
 
 // CLI entry point.

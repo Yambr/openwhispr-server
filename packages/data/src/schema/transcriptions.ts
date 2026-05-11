@@ -1,0 +1,24 @@
+// Phase 5 / Plan 01 — Tenant-scoped transcriptions. RLS in 0009_transcriptions.sql.
+import { integer, pgTable, real, text, timestamp, uuid } from "drizzle-orm/pg-core";
+import { tenants } from "./tenants.js";
+import { users } from "./users.js";
+
+export const transcriptions = pgTable("transcriptions", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  tenantId: uuid("tenant_id")
+    .notNull()
+    .references(() => tenants.id, { onDelete: "cascade" }),
+  userId: uuid("user_id")
+    .notNull()
+    .references(() => users.id, { onDelete: "cascade" }),
+  text: text("text").notNull().default(""),
+  language: text("language"),
+  durationSeconds: real("duration_seconds"),
+  audioDurationMs: integer("audio_duration_ms"),
+  model: text("model"),
+  provider: text("provider"),
+  clientTranscriptionId: text("client_transcription_id"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  deletedAt: timestamp("deleted_at", { withTimezone: true }),
+});

@@ -179,8 +179,25 @@ async function resetTenantTables(ownerUri: string): Promise<void> {
     // CASCADE handles the FK chain users <- sessions <- usage_ledger
     // and audit_log -> users (actor_user_id is nullable so cascade not
     // required there).
+    // Phase 5 / Plan 01 — extend with the 8 new tables. CASCADE handles
+    // every FK chain (notes → folders, messages → conversations,
+    // user_settings → users, tenant_settings → tenants etc.). tenants is
+    // not truncated; the per-property `seedTenants` re-inserts the pair.
     await pool.query(
-      `TRUNCATE TABLE usage_ledger, audit_log, sessions, users RESTART IDENTITY CASCADE`,
+      `TRUNCATE TABLE
+         api_keys,
+         transcriptions,
+         messages,
+         conversations,
+         notes,
+         folders,
+         user_settings,
+         tenant_settings,
+         usage_ledger,
+         audit_log,
+         sessions,
+         users
+       RESTART IDENTITY CASCADE`,
     );
   } finally {
     await pool.end();
@@ -462,6 +479,427 @@ SUITE("TEST-RLS-01: 100+ random tenant pairs through PgBouncer", () => {
     }
   });
 
+  // ===================================================================
+  // Phase 5 / Plan 01 — cross-tenant isolation for the 8 new tables.
+  // Each block: insert as tenantA, attempt SELECT/UPDATE/DELETE as tenantB
+  // and assert zero leakage in either direction.
+  // ===================================================================
+
+  test.prop(
+    {
+      tenantA: fc.uuid({ version: 4 }),
+      tenantB: fc.uuid({ version: 4 }),
+    },
+    { numRuns: 100 },
+  )(
+    "tenant_settings: cross-tenant SELECT/UPDATE/DELETE leakage = 0",
+    async ({ tenantA, tenantB }) => {
+      fc.pre(tenantA !== tenantB);
+      if (!harness) throw new Error("harness not booted");
+      await resetTenantTables(harness.ownerUri);
+      // seedTenants triggers seed_tenant_settings AFTER INSERT — both
+      // tenants get a tenant_settings row automatically.
+      await seedTenants(harness.ownerUri, tenantA, tenantB);
+      const db = drizzle(harness.appPool, { schema });
+
+      const seen = (await withTenant(db, tenantB, async (tx) =>
+        tx.execute(sql`SELECT tenant_id::text AS tenant_id FROM tenant_settings`),
+      )) as { rows: Array<{ tenant_id: string }> };
+      for (const r of seen.rows ?? []) expect(r.tenant_id).toBe(tenantB);
+
+      const upd = (await withTenant(db, tenantB, async (tx) =>
+        tx.execute(sql`UPDATE tenant_settings SET stt_config = '{"x":1}'::jsonb WHERE tenant_id = ${tenantA}::uuid`),
+      )) as { rowCount: number | null };
+      expect(upd.rowCount ?? 0).toBe(0);
+
+      const del = (await withTenant(db, tenantB, async (tx) =>
+        tx.execute(sql`DELETE FROM tenant_settings WHERE tenant_id = ${tenantA}::uuid`),
+      )) as { rowCount: number | null };
+      expect(del.rowCount ?? 0).toBe(0);
+    },
+    TIMEOUT,
+  );
+
+  test.prop(
+    {
+      tenantA: fc.uuid({ version: 4 }),
+      tenantB: fc.uuid({ version: 4 }),
+    },
+    { numRuns: 100 },
+  )(
+    "user_settings: cross-tenant SELECT/UPDATE/DELETE leakage = 0",
+    async ({ tenantA, tenantB }) => {
+      fc.pre(tenantA !== tenantB);
+      if (!harness) throw new Error("harness not booted");
+      await resetTenantTables(harness.ownerUri);
+      await seedTenants(harness.ownerUri, tenantA, tenantB);
+      const db = drizzle(harness.appPool, { schema });
+
+      const userIdRows = (await withTenant(db, tenantA, async (tx) =>
+        tx.execute(
+          sql`INSERT INTO users (tenant_id, email) VALUES (${tenantA}::uuid, ${`u-${tenantA}@ex.com`}) RETURNING id`,
+        ),
+      )) as { rows: Array<{ id: string }> };
+      const userId = userIdRows.rows[0]?.id;
+      if (!userId) throw new Error("seeded user missing id");
+
+      await withTenant(db, tenantA, async (tx) =>
+        tx.execute(
+          sql`INSERT INTO user_settings (user_id, tenant_id) VALUES (${userId}::uuid, ${tenantA}::uuid)`,
+        ),
+      );
+
+      const seen = (await withTenant(db, tenantB, async (tx) =>
+        tx.execute(sql`SELECT tenant_id::text AS tenant_id FROM user_settings`),
+      )) as { rows: Array<{ tenant_id: string }> };
+      for (const r of seen.rows ?? []) expect(r.tenant_id).toBe(tenantB);
+
+      const upd = (await withTenant(db, tenantB, async (tx) =>
+        tx.execute(sql`UPDATE user_settings SET stt_overrides = '{"x":1}'::jsonb`),
+      )) as { rowCount: number | null };
+      expect(upd.rowCount ?? 0).toBe(0);
+
+      const del = (await withTenant(db, tenantB, async (tx) =>
+        tx.execute(sql`DELETE FROM user_settings`),
+      )) as { rowCount: number | null };
+      expect(del.rowCount ?? 0).toBe(0);
+    },
+    TIMEOUT,
+  );
+
+  test.prop(
+    {
+      tenantA: fc.uuid({ version: 4 }),
+      tenantB: fc.uuid({ version: 4 }),
+      names: fc.array(fc.string({ minLength: 1, maxLength: 20 }), {
+        minLength: 1,
+        maxLength: 5,
+      }),
+    },
+    { numRuns: 100 },
+  )(
+    "folders: cross-tenant leakage = 0",
+    async ({ tenantA, tenantB, names }) => {
+      fc.pre(tenantA !== tenantB);
+      if (!harness) throw new Error("harness not booted");
+      await resetTenantTables(harness.ownerUri);
+      await seedTenants(harness.ownerUri, tenantA, tenantB);
+      const db = drizzle(harness.appPool, { schema });
+
+      const userRows = (await withTenant(db, tenantA, async (tx) =>
+        tx.execute(
+          sql`INSERT INTO users (tenant_id, email) VALUES (${tenantA}::uuid, ${`u-${tenantA}@ex.com`}) RETURNING id`,
+        ),
+      )) as { rows: Array<{ id: string }> };
+      const userId = userRows.rows[0]?.id;
+      if (!userId) throw new Error("seeded user missing id");
+
+      await withTenant(db, tenantA, async (tx) => {
+        for (const n of names) {
+          await tx.execute(
+            sql`INSERT INTO folders (tenant_id, user_id, name) VALUES (${tenantA}::uuid, ${userId}::uuid, ${n})`,
+          );
+        }
+      });
+
+      const seen = (await withTenant(db, tenantB, async (tx) =>
+        tx.execute(sql`SELECT tenant_id::text AS tenant_id FROM folders`),
+      )) as { rows: Array<{ tenant_id: string }> };
+      for (const r of seen.rows ?? []) expect(r.tenant_id).toBe(tenantB);
+
+      const upd = (await withTenant(db, tenantB, async (tx) =>
+        tx.execute(sql`UPDATE folders SET name = 'mutated'`),
+      )) as { rowCount: number | null };
+      expect(upd.rowCount ?? 0).toBe(0);
+
+      const del = (await withTenant(db, tenantB, async (tx) =>
+        tx.execute(sql`DELETE FROM folders`),
+      )) as { rowCount: number | null };
+      expect(del.rowCount ?? 0).toBe(0);
+    },
+    TIMEOUT,
+  );
+
+  test.prop(
+    {
+      tenantA: fc.uuid({ version: 4 }),
+      tenantB: fc.uuid({ version: 4 }),
+      titles: fc.array(fc.string({ minLength: 0, maxLength: 30 }), {
+        minLength: 1,
+        maxLength: 5,
+      }),
+    },
+    { numRuns: 100 },
+  )(
+    "notes: cross-tenant leakage = 0",
+    async ({ tenantA, tenantB, titles }) => {
+      fc.pre(tenantA !== tenantB);
+      if (!harness) throw new Error("harness not booted");
+      await resetTenantTables(harness.ownerUri);
+      await seedTenants(harness.ownerUri, tenantA, tenantB);
+      const db = drizzle(harness.appPool, { schema });
+
+      const userRows = (await withTenant(db, tenantA, async (tx) =>
+        tx.execute(
+          sql`INSERT INTO users (tenant_id, email) VALUES (${tenantA}::uuid, ${`u-${tenantA}@ex.com`}) RETURNING id`,
+        ),
+      )) as { rows: Array<{ id: string }> };
+      const userId = userRows.rows[0]?.id;
+      if (!userId) throw new Error("seeded user missing id");
+
+      await withTenant(db, tenantA, async (tx) => {
+        for (const t of titles) {
+          await tx.execute(
+            sql`INSERT INTO notes (tenant_id, user_id, title, content) VALUES (${tenantA}::uuid, ${userId}::uuid, ${t}, ${t})`,
+          );
+        }
+      });
+
+      const seen = (await withTenant(db, tenantB, async (tx) =>
+        tx.execute(sql`SELECT tenant_id::text AS tenant_id FROM notes`),
+      )) as { rows: Array<{ tenant_id: string }> };
+      for (const r of seen.rows ?? []) expect(r.tenant_id).toBe(tenantB);
+
+      const upd = (await withTenant(db, tenantB, async (tx) =>
+        tx.execute(sql`UPDATE notes SET content = 'mutated'`),
+      )) as { rowCount: number | null };
+      expect(upd.rowCount ?? 0).toBe(0);
+
+      const del = (await withTenant(db, tenantB, async (tx) =>
+        tx.execute(sql`DELETE FROM notes`),
+      )) as { rowCount: number | null };
+      expect(del.rowCount ?? 0).toBe(0);
+    },
+    TIMEOUT,
+  );
+
+  test.prop(
+    {
+      tenantA: fc.uuid({ version: 4 }),
+      tenantB: fc.uuid({ version: 4 }),
+      titles: fc.array(fc.string({ minLength: 0, maxLength: 30 }), {
+        minLength: 1,
+        maxLength: 5,
+      }),
+    },
+    { numRuns: 100 },
+  )(
+    "conversations: cross-tenant leakage = 0",
+    async ({ tenantA, tenantB, titles }) => {
+      fc.pre(tenantA !== tenantB);
+      if (!harness) throw new Error("harness not booted");
+      await resetTenantTables(harness.ownerUri);
+      await seedTenants(harness.ownerUri, tenantA, tenantB);
+      const db = drizzle(harness.appPool, { schema });
+
+      const userRows = (await withTenant(db, tenantA, async (tx) =>
+        tx.execute(
+          sql`INSERT INTO users (tenant_id, email) VALUES (${tenantA}::uuid, ${`u-${tenantA}@ex.com`}) RETURNING id`,
+        ),
+      )) as { rows: Array<{ id: string }> };
+      const userId = userRows.rows[0]?.id;
+      if (!userId) throw new Error("seeded user missing id");
+
+      await withTenant(db, tenantA, async (tx) => {
+        for (const t of titles) {
+          await tx.execute(
+            sql`INSERT INTO conversations (tenant_id, user_id, title) VALUES (${tenantA}::uuid, ${userId}::uuid, ${t})`,
+          );
+        }
+      });
+
+      const seen = (await withTenant(db, tenantB, async (tx) =>
+        tx.execute(sql`SELECT tenant_id::text AS tenant_id FROM conversations`),
+      )) as { rows: Array<{ tenant_id: string }> };
+      for (const r of seen.rows ?? []) expect(r.tenant_id).toBe(tenantB);
+
+      const upd = (await withTenant(db, tenantB, async (tx) =>
+        tx.execute(sql`UPDATE conversations SET title = 'mutated'`),
+      )) as { rowCount: number | null };
+      expect(upd.rowCount ?? 0).toBe(0);
+
+      const del = (await withTenant(db, tenantB, async (tx) =>
+        tx.execute(sql`DELETE FROM conversations`),
+      )) as { rowCount: number | null };
+      expect(del.rowCount ?? 0).toBe(0);
+    },
+    TIMEOUT,
+  );
+
+  test.prop(
+    {
+      tenantA: fc.uuid({ version: 4 }),
+      tenantB: fc.uuid({ version: 4 }),
+      contents: fc.array(fc.string({ minLength: 1, maxLength: 30 }), {
+        minLength: 1,
+        maxLength: 5,
+      }),
+    },
+    { numRuns: 100 },
+  )(
+    "messages: cross-tenant leakage = 0",
+    async ({ tenantA, tenantB, contents }) => {
+      fc.pre(tenantA !== tenantB);
+      if (!harness) throw new Error("harness not booted");
+      await resetTenantTables(harness.ownerUri);
+      await seedTenants(harness.ownerUri, tenantA, tenantB);
+      const db = drizzle(harness.appPool, { schema });
+
+      const userRows = (await withTenant(db, tenantA, async (tx) =>
+        tx.execute(
+          sql`INSERT INTO users (tenant_id, email) VALUES (${tenantA}::uuid, ${`u-${tenantA}@ex.com`}) RETURNING id`,
+        ),
+      )) as { rows: Array<{ id: string }> };
+      const userId = userRows.rows[0]?.id;
+      if (!userId) throw new Error("seeded user missing id");
+
+      const convRows = (await withTenant(db, tenantA, async (tx) =>
+        tx.execute(
+          sql`INSERT INTO conversations (tenant_id, user_id, title) VALUES (${tenantA}::uuid, ${userId}::uuid, 'rls-prop') RETURNING id`,
+        ),
+      )) as { rows: Array<{ id: string }> };
+      const convId = convRows.rows[0]?.id;
+      if (!convId) throw new Error("seeded conv missing id");
+
+      await withTenant(db, tenantA, async (tx) => {
+        for (const c of contents) {
+          await tx.execute(
+            sql`INSERT INTO messages (conversation_id, tenant_id, user_id, role, content)
+                VALUES (${convId}::uuid, ${tenantA}::uuid, ${userId}::uuid, 'user', ${c})`,
+          );
+        }
+      });
+
+      const seen = (await withTenant(db, tenantB, async (tx) =>
+        tx.execute(sql`SELECT tenant_id::text AS tenant_id FROM messages`),
+      )) as { rows: Array<{ tenant_id: string }> };
+      for (const r of seen.rows ?? []) expect(r.tenant_id).toBe(tenantB);
+
+      const upd = (await withTenant(db, tenantB, async (tx) =>
+        tx.execute(sql`UPDATE messages SET content = 'mutated'`),
+      )) as { rowCount: number | null };
+      expect(upd.rowCount ?? 0).toBe(0);
+
+      const del = (await withTenant(db, tenantB, async (tx) =>
+        tx.execute(sql`DELETE FROM messages`),
+      )) as { rowCount: number | null };
+      expect(del.rowCount ?? 0).toBe(0);
+    },
+    TIMEOUT,
+  );
+
+  test.prop(
+    {
+      tenantA: fc.uuid({ version: 4 }),
+      tenantB: fc.uuid({ version: 4 }),
+      texts: fc.array(fc.string({ minLength: 1, maxLength: 30 }), {
+        minLength: 1,
+        maxLength: 5,
+      }),
+    },
+    { numRuns: 100 },
+  )(
+    "transcriptions: cross-tenant leakage = 0",
+    async ({ tenantA, tenantB, texts }) => {
+      fc.pre(tenantA !== tenantB);
+      if (!harness) throw new Error("harness not booted");
+      await resetTenantTables(harness.ownerUri);
+      await seedTenants(harness.ownerUri, tenantA, tenantB);
+      const db = drizzle(harness.appPool, { schema });
+
+      const userRows = (await withTenant(db, tenantA, async (tx) =>
+        tx.execute(
+          sql`INSERT INTO users (tenant_id, email) VALUES (${tenantA}::uuid, ${`u-${tenantA}@ex.com`}) RETURNING id`,
+        ),
+      )) as { rows: Array<{ id: string }> };
+      const userId = userRows.rows[0]?.id;
+      if (!userId) throw new Error("seeded user missing id");
+
+      await withTenant(db, tenantA, async (tx) => {
+        for (const t of texts) {
+          await tx.execute(
+            sql`INSERT INTO transcriptions (tenant_id, user_id, text) VALUES (${tenantA}::uuid, ${userId}::uuid, ${t})`,
+          );
+        }
+      });
+
+      const seen = (await withTenant(db, tenantB, async (tx) =>
+        tx.execute(sql`SELECT tenant_id::text AS tenant_id FROM transcriptions`),
+      )) as { rows: Array<{ tenant_id: string }> };
+      for (const r of seen.rows ?? []) expect(r.tenant_id).toBe(tenantB);
+
+      const upd = (await withTenant(db, tenantB, async (tx) =>
+        tx.execute(sql`UPDATE transcriptions SET text = 'mutated'`),
+      )) as { rowCount: number | null };
+      expect(upd.rowCount ?? 0).toBe(0);
+
+      const del = (await withTenant(db, tenantB, async (tx) =>
+        tx.execute(sql`DELETE FROM transcriptions`),
+      )) as { rowCount: number | null };
+      expect(del.rowCount ?? 0).toBe(0);
+    },
+    TIMEOUT,
+  );
+
+  test.prop(
+    {
+      tenantA: fc.uuid({ version: 4 }),
+      tenantB: fc.uuid({ version: 4 }),
+      names: fc.array(fc.string({ minLength: 1, maxLength: 20 }), {
+        minLength: 1,
+        maxLength: 5,
+      }),
+    },
+    { numRuns: 100 },
+  )(
+    "api_keys: cross-tenant leakage = 0",
+    async ({ tenantA, tenantB, names }) => {
+      fc.pre(tenantA !== tenantB);
+      if (!harness) throw new Error("harness not booted");
+      await resetTenantTables(harness.ownerUri);
+      await seedTenants(harness.ownerUri, tenantA, tenantB);
+      const db = drizzle(harness.appPool, { schema });
+
+      const userRows = (await withTenant(db, tenantA, async (tx) =>
+        tx.execute(
+          sql`INSERT INTO users (tenant_id, email) VALUES (${tenantA}::uuid, ${`u-${tenantA}@ex.com`}) RETURNING id`,
+        ),
+      )) as { rows: Array<{ id: string }> };
+      const userId = userRows.rows[0]?.id;
+      if (!userId) throw new Error("seeded user missing id");
+
+      const dedup = Array.from(new Set(names));
+      await withTenant(db, tenantA, async (tx) => {
+        let i = 0;
+        for (const n of dedup) {
+          // key_prefix is GLOBALLY UNIQUE (D-29) — bind a unique
+          // suffix so shrunk inputs with duplicate names don't collide.
+          const prefix = `pak_${tenantA.slice(0, 4)}${userId.slice(0, 4)}${i++}`;
+          await tx.execute(
+            sql`INSERT INTO api_keys (tenant_id, user_id, name, key_prefix, key_hash)
+                VALUES (${tenantA}::uuid, ${userId}::uuid, ${n}, ${prefix}, 'argon2id$placeholder')`,
+          );
+        }
+      });
+
+      const seen = (await withTenant(db, tenantB, async (tx) =>
+        tx.execute(sql`SELECT tenant_id::text AS tenant_id FROM api_keys`),
+      )) as { rows: Array<{ tenant_id: string }> };
+      for (const r of seen.rows ?? []) expect(r.tenant_id).toBe(tenantB);
+
+      const upd = (await withTenant(db, tenantB, async (tx) =>
+        tx.execute(sql`UPDATE api_keys SET name = 'mutated'`),
+      )) as { rowCount: number | null };
+      expect(upd.rowCount ?? 0).toBe(0);
+
+      const del = (await withTenant(db, tenantB, async (tx) =>
+        tx.execute(sql`DELETE FROM api_keys`),
+      )) as { rowCount: number | null };
+      expect(del.rowCount ?? 0).toBe(0);
+    },
+    TIMEOUT,
+  );
+
   it("schema export TENANT_SCOPED_TABLES covers the v1 surface", () => {
     // Auto-discovery hook for future migrations: every tenant-scoped
     // table the property test exercises must appear in the schema
@@ -471,10 +909,18 @@ SUITE("TEST-RLS-01: 100+ random tenant pairs through PgBouncer", () => {
     expect([...TENANT_SCOPED_TABLES].sort()).toEqual(
       [
         "account",
+        "api_keys",
         "audit_log",
+        "conversations",
+        "folders",
+        "messages",
+        "notes",
         "oauth_state",
         "sessions",
+        "tenant_settings",
+        "transcriptions",
         "usage_ledger",
+        "user_settings",
         "users",
         "verification",
       ].sort(),
