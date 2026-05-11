@@ -85,6 +85,13 @@
       "when": 1778281976173,
       "tag": "0011_notes_cloud_columns",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1778281976174,
+      "tag": "0012_folders_cloud_columns",
+      "breakpoints": true
     }
   ]
 }

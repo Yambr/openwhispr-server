@@ -23,6 +23,26 @@ import {
 } from "./agent/stream.js";
 import { buildWebSearchRoutes, type WebSearchDeps } from "./agent/web-search.js";
 import {
+  buildFoldersBatchCreateRoutes,
+  type FoldersBatchCreateDeps,
+} from "./folders/batch-create.js";
+import {
+  buildFoldersCreateRoutes,
+  type FoldersCreateDeps,
+} from "./folders/create.js";
+import {
+  buildFoldersDeleteRoutes,
+  type FoldersDeleteDeps,
+} from "./folders/delete.js";
+import {
+  buildFoldersListRoutes,
+  type FoldersListDeps,
+} from "./folders/list.js";
+import {
+  buildFoldersUpdateRoutes,
+  type FoldersUpdateDeps,
+} from "./folders/update.js";
+import {
   buildNotesBatchCreateRoutes,
   type NotesBatchCreateDeps,
 } from "./notes/batch-create.js";
@@ -209,6 +229,19 @@ export function buildAllRoutes(deps: AllRoutesDeps): readonly RoutePlugin[] {
     // Uses websearch_to_tsquery('simple', $1) + ts_rank on the GIN-
     // indexed content_search tsvector from Plan 01.
     buildNotesSearchRoutes({ db: deps.db } satisfies NotesSearchDeps),
+    // Phase 05 / Plan 06 — WIRE-23 folders CRUD family (5 routes: no
+    // search, no delete-all per upstream FoldersService.ts). Registered
+    // UNCONDITIONALLY — DB-only, no LiteLLM dependency. Mirrors the
+    // canonical CRUD pattern established by Plan 05 (Notes): reuses the
+    // shared keyset-pagination + soft-delete + client-id-upsert helpers
+    // verbatim with table=folders, clientIdColumn=client_folder_id.
+    buildFoldersCreateRoutes({ db: deps.db } satisfies FoldersCreateDeps),
+    buildFoldersBatchCreateRoutes({
+      db: deps.db,
+    } satisfies FoldersBatchCreateDeps),
+    buildFoldersUpdateRoutes({ db: deps.db } satisfies FoldersUpdateDeps),
+    buildFoldersDeleteRoutes({ db: deps.db } satisfies FoldersDeleteDeps),
+    buildFoldersListRoutes({ db: deps.db } satisfies FoldersListDeps),
   ];
   // Phase 03 / Plan 04: conditionally register the transcribe route only
   // when a LiteLLM client was constructed (LITELLM_MASTER_KEY present).
@@ -304,6 +337,11 @@ export {
   buildDeleteAccountRoutes,
   buildDesktopSigninRoutes,
   buildDiarizationRoutes,
+  buildFoldersBatchCreateRoutes,
+  buildFoldersCreateRoutes,
+  buildFoldersDeleteRoutes,
+  buildFoldersListRoutes,
+  buildFoldersUpdateRoutes,
   buildNoteRecordingConfigRoutes,
   buildNotesBatchCreateRoutes,
   buildNotesCreateRoutes,
