@@ -2,39 +2,39 @@
 gsd_state_version: 1.0
 milestone: v1.6.9
 milestone_name: expects plain session.token text; advisor research recommends Option C
-status: Milestone complete
-last_updated: "2026-05-11T14:36:17.694Z"
+status: Executing Phase 6
+last_updated: "2026-05-11T16:30:00.000Z"
 progress:
-  total_phases: 16
-  completed_phases: 3
-  total_plans: 20
-  completed_plans: 32
-  percent: 100
+  total_phases: 34
+  completed_phases: 9
+  total_plans: 81
+  completed_plans: 86
+  percent: 26
 ---
 
 # Project State: OpenWhispr Server
 
-**Last updated:** 2026-05-11 (Phase 3 closure + TLS/coverage/lefthook debt closure)
+**Last updated:** 2026-05-11 (Phase 6 dispatch — observability + ops hardening + workers)
 
 ## Project Reference
 
 **Core value:** A drop-in OpenWhispr backend any organization can self-host — open-source out of the box, corporate-LiteLLM-ready by env override.
 
-**Current focus:** Phase 3 (LiteLLM Integration + Bundled OSS Models) DONE end-to-end. Live e2e suite 25 passed | 1 conditional skip | 0 failed against real OpenRouter / Groq / OpenAI / pyannote.ai. Operational debt (TLS bootstrap two-tier CA chain, lefthook prepare-hook, Phase-2 coverage debt across 6 files) fully closed. 320 commits ahead of origin/main, push deferred per user direction.
+**Current focus:** Phase 6 (Observability + Ops Hardening + Workers) — 12 plans across 4 waves. OTel/Prom/Loki end-to-end, audit log + pg_partman partitioning, 7 BullMQ queues with tenant-context middleware, anti-abuse rate limit, SSRF defense, Grafana dashboards. Phases 4 (Streaming + Realtime) and 5 (Operational Endpoints + CRUD) closed; both ship summaries on disk. Push to origin still deferred.
 
 ## Current Position
 
 | Field | Value |
 |-------|-------|
 | Milestone | v1 |
-| Phase | 3 — LiteLLM Integration + Bundled OSS Models (COMPLETE — passed_with_audit_trail + debt closed) |
-| Plan | 03-01 → 03-10 complete; Phase-2 coverage debt back-fill complete; Phase 02.22 TLS bootstrap complete; lefthook prepare-hook fix complete |
-| Status | DONE — `make e2e-test` against real providers: 25 passed | 1 conditional skip (missing-key-503, gated on separate make target) | 0 failed. apps/api coverage: L=98.92 / B=94.52 / F=100 / S=98.38. All four constitutional axes ≥90 on every touched file. |
-| Phase progress | Phases 0/1/2/3 closed; 02.x cascade fully closed; 03.x debt back-fill complete; Phase 02.22 (TLS bootstrap two-tier CA chain) inserted and closed |
-| Next action | Begin Phase 4 — `/gsd-plan-phase 4` (Streaming + Realtime: NDJSON line-flush + WSS realtime 3600s + 3 realtime token endpoints) |
+| Phase | 6 — Observability + Ops Hardening + Workers (EXECUTING, wave-by-wave) |
+| Plan | 06-01 → 06-12 dispatching; Wave 0 (01/02/03) → Wave 1 (04/05/06/07) → Wave 2 (08/09/10/11) → Wave 3 (12) |
+| Status | EXECUTING — gsd-execute-phase wave dispatch initiated 2026-05-11 |
+| Phase progress | Phases 0/1/2/3/4/5 closed; 02.x cascade fully closed; 03.x + 02.22 debt closed; Phase 6 in flight |
+| Next action | Wave 0 dispatch — gsd-executor agents for 06-01 (RED test stubs), 06-02 (pg_partman + audit_log partitioning), 06-03 (OTel pre-pino bootstrap + 8 e2e RED stubs) |
 
 ```
-[X][X][X][X][ ][ ][ ][ ][ ][ ][ ]
+[X][X][X][X][X][X][~][ ][ ][ ][ ]
  0  1  2  3  4  5  6  7  8  9  10
 ```
 
