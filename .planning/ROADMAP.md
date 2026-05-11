@@ -394,16 +394,16 @@ Plans:
 **Plans:** 10 plans
 
 Plans:
-- [ ] 05-01-PLAN.md — Wave 0: wire-schemas + migrations 0006..0010 + RLS extension + schema-push BLOCKING
-- [ ] 05-02-PLAN.md — Wave 1: /api/streaming-usage + /api/usage (WIRE-09, WIRE-10)
-- [ ] 05-03-PLAN.md — Wave 1: /api/agent/web-search registry + Tavily + Yandex adapters (WIRE-08, WIRE-16)
-- [ ] 05-04-PLAN.md — Wave 1: settings-resolver + /api/stt-config + /api/note-recording-config (WIRE-11, WIRE-12, WIRE-28)
-- [ ] 05-05-PLAN.md — Wave 2: notes CRUD + tsvector search + batch + delete-all + shared CRUD helpers (WIRE-22)
-- [ ] 05-06-PLAN.md — Wave 2: folders CRUD + batch (WIRE-23)
-- [ ] 05-07-PLAN.md — Wave 2: conversations + messages CRUD + include=messages + search (WIRE-24, WIRE-25)
-- [ ] 05-08-PLAN.md — Wave 2: transcriptions CRUD + batch-create + batch-delete (WIRE-26)
-- [ ] 05-09-PLAN.md — Wave 2: API keys list + create + revoke + Argon2id + {data: T} envelope (WIRE-27)
-- [ ] 05-10-PLAN.md — Wave 3: CONTRACT-01 negative matrix + envelope passthrough + docs/conventions + REQUIREMENTS traceability (WIRE-16, WIRE-29)
+- [x] 05-01-PLAN.md — Wave 0: wire-schemas + migrations 0006..0010 + RLS extension + schema-push BLOCKING
+- [x] 05-02-PLAN.md — Wave 1: /api/streaming-usage + /api/usage (WIRE-09, WIRE-10)
+- [x] 05-03-PLAN.md — Wave 1: /api/agent/web-search registry + Tavily + Yandex adapters (WIRE-08, WIRE-16)
+- [x] 05-04-PLAN.md — Wave 1: settings-resolver + /api/stt-config + /api/note-recording-config (WIRE-11, WIRE-12, WIRE-28)
+- [x] 05-05-PLAN.md — Wave 2: notes CRUD + tsvector search + batch + delete-all + shared CRUD helpers (WIRE-22)
+- [x] 05-06-PLAN.md — Wave 2: folders CRUD + batch (WIRE-23)
+- [x] 05-07-PLAN.md — Wave 2: conversations + messages CRUD + include=messages + search (WIRE-24, WIRE-25)
+- [x] 05-08-PLAN.md — Wave 2: transcriptions CRUD + batch-create + batch-delete (WIRE-26)
+- [x] 05-09-PLAN.md — Wave 2: API keys list + create + revoke + Argon2id + {data: T} envelope (WIRE-27)
+- [x] 05-10-PLAN.md — Wave 3: CONTRACT-01 negative matrix + envelope passthrough + docs/conventions + REQUIREMENTS traceability (WIRE-16, WIRE-29)
 **UI hint**: no (Phase 5 lays UI groundwork via settings tables; actual UI is Phase 7)
 
 ### Phase 6: Observability + Ops Hardening + Workers

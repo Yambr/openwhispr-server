@@ -3,7 +3,7 @@ gsd_state_version: 1.0
 milestone: v1.6.9
 milestone_name: expects plain session.token text; advisor research recommends Option C
 status: Milestone complete
-last_updated: "2026-05-10T23:14:19.312Z"
+last_updated: "2026-05-11T14:36:17.694Z"
 progress:
   total_phases: 16
   completed_phases: 3
