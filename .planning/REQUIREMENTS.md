@@ -215,27 +215,27 @@ All 89 v1 requirements mapped by `gsd-roadmapper` on 2026-05-08.
 | WIRE-05 | Phase 3 | Pending |
 | WIRE-06 | Phase 3 | Pending |
 | WIRE-07 | Phase 4 | Pending |
-| WIRE-08 | Phase 5 | Pending |
-| WIRE-09 | Phase 5 | Pending |
-| WIRE-10 | Phase 5 | Pending |
-| WIRE-11 | Phase 5 | Pending |
-| WIRE-12 | Phase 5 | Pending |
+| WIRE-08 | Phase 5 | Complete |
+| WIRE-09 | Phase 5 | Complete |
+| WIRE-10 | Phase 5 | Complete |
+| WIRE-11 | Phase 5 | Complete |
+| WIRE-12 | Phase 5 | Complete |
 | WIRE-13 | Phase 4 | Pending |
 | WIRE-14 | Phase 4 | Pending |
 | WIRE-15 | Phase 4 | Pending |
-| WIRE-16 | Phase 5 | Pending |
+| WIRE-16 | Phase 5 | Complete |
 | WIRE-17 | Phase 2 | Complete |
 | WIRE-18 | Phase 2 | Complete |
 | WIRE-19 | Phase 2 | Complete |
 | WIRE-20 | Phase 2 | Complete |
-| WIRE-22 | Phase 5 | Pending |
-| WIRE-23 | Phase 5 | Pending |
-| WIRE-24 | Phase 5 | Pending |
-| WIRE-25 | Phase 5 | Pending |
-| WIRE-26 | Phase 5 | Pending |
-| WIRE-27 | Phase 5 | Pending |
-| WIRE-28 | Phase 5 | Pending |
-| WIRE-29 | Phase 5 | Pending |
+| WIRE-22 | Phase 5 | Complete |
+| WIRE-23 | Phase 5 | Complete |
+| WIRE-24 | Phase 5 | Complete |
+| WIRE-25 | Phase 5 | Complete |
+| WIRE-26 | Phase 5 | Complete |
+| WIRE-27 | Phase 5 | Complete |
+| WIRE-28 | Phase 5 | Complete |
+| WIRE-29 | Phase 5 | Complete |
 | AUTH-01 | Phase 2 | Complete |
 | AUTH-02 | Phase 2 | Complete |
 | AUTH-03 | Phase 2 | Complete |
@@ -365,5 +365,31 @@ Wave structure:
 
 ---
 
+### Phase 5 — Operational Endpoints + CRUD Resource Families (planned 2026-05-11)
+
+| Requirement | Plan(s) | Primary Artifacts |
+|-------------|---------|-------------------|
+| WIRE-08 | 05-03 | apps/api/src/routes/agent/web-search.ts, apps/api/src/lib/web-search/{registry,tavily-adapter,yandex-adapter}.ts, packages/contract-tests/src/web-search.test.ts |
+| WIRE-09 | 05-02 | apps/api/src/routes/streaming-usage.ts, packages/contract-tests/src/streaming-usage.test.ts |
+| WIRE-10 | 05-02 | apps/api/src/routes/usage.ts, packages/contract-tests/src/usage.test.ts |
+| WIRE-11 | 05-04 | apps/api/src/routes/stt-config.ts, apps/api/src/lib/settings-resolver.ts |
+| WIRE-12 | 05-04 | apps/api/src/routes/note-recording-config.ts, apps/api/src/lib/settings-resolver.ts |
+| WIRE-16 | 05-10 | packages/contract-tests/src/negative-matrix.test.ts, packages/contract-tests/src/negative-matrix.ts (TolerantEnvelope z.union per D-33) |
+| WIRE-22 | 05-05 | apps/api/src/routes/notes/*.ts, packages/contract-tests/src/notes.test.ts |
+| WIRE-23 | 05-06 | apps/api/src/routes/folders/*.ts, packages/contract-tests/src/folders.test.ts |
+| WIRE-24 | 05-07 | apps/api/src/routes/conversations/{create,update,delete,list,search}.ts |
+| WIRE-25 | 05-07 | apps/api/src/routes/conversations/messages.ts |
+| WIRE-26 | 05-08 | apps/api/src/routes/transcriptions/*.ts, packages/contract-tests/src/transcriptions.test.ts |
+| WIRE-27 | 05-09 | apps/api/src/routes/v1/keys/*.ts, apps/api/src/lib/argon2-keys.ts |
+| WIRE-28 | 05-01, 05-04 | packages/data/migrations/0006_tenant_settings.sql, apps/api/src/lib/settings-resolver.ts |
+| WIRE-29 | 05-10 | packages/contract-tests/src/negative-matrix.test.ts, packages/contract-tests/src/__tests__/negative-matrix-enumeration.test.ts, tests/e2e/phase-05-negative-matrix.spec.ts, docs/conventions.md, docs/wire-contract.md |
+
+Wave structure:
+- Wave 1 (parallel): Plan 05-01 (settings + CRUD schemas migration) ⊥ Plan 05-02 (streaming-usage + usage ledger) ⊥ Plan 05-03 (web-search adapters) ⊥ Plan 05-04 (settings resolver + read endpoints)
+- Wave 2 (parallel after Wave 1): Plan 05-05 (notes CRUD) ⊥ Plan 05-06 (folders CRUD) ⊥ Plan 05-07 (conversations + messages) ⊥ Plan 05-08 (transcriptions CRUD) ⊥ Plan 05-09 (api keys CRUD)
+- Wave 3 (final after Wave 2): Plan 05-10 (CONTRACT-01 negative matrix + conventions docs + REQUIREMENTS.md traceability)
+
+---
+
 *Requirements defined: 2026-05-08*
-*Last updated: 2026-05-09 — Phase 1 plan-level traceability added (Plans 01-01..01-06).*
+*Last updated: 2026-05-11 — Phase 5 WIRE-08..29 flipped to Complete + plan-level traceability added (Plans 05-01..05-10).*
