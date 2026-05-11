@@ -22,8 +22,13 @@ CREATE EXTENSION IF NOT EXISTS pg_partman SCHEMA partman;
 DO $$
 BEGIN
     IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'openwhispr_owner') THEN
-        GRANT USAGE ON SCHEMA partman TO openwhispr_owner;
+        -- pg_partman 5.x's create_parent / run_maintenance_proc do
+        -- dynamic SQL that references partman.part_config + helper
+        -- tables. Owner needs CREATE on the partman schema (not just
+        -- USAGE) plus full DML on partman tables/sequences.
+        GRANT ALL ON SCHEMA partman TO openwhispr_owner;
         GRANT ALL ON ALL TABLES IN SCHEMA partman TO openwhispr_owner;
+        GRANT ALL ON ALL SEQUENCES IN SCHEMA partman TO openwhispr_owner;
         GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA partman TO openwhispr_owner;
         GRANT EXECUTE ON ALL PROCEDURES IN SCHEMA partman TO openwhispr_owner;
     END IF;

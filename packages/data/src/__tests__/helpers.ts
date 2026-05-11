@@ -37,11 +37,47 @@ export interface BootResult {
  * its bootstrap role. We re-assign ownership to openwhispr_owner so the
  * 0000_initial.sql DDL (run as owner) can create tables in `public`.
  */
-export async function bootMigratedPostgres(): Promise<BootResult> {
+export interface BootOptions {
+  /**
+   * Override the Postgres container image. Phase 6 / Plan 02 introduces
+   * `openwhispr/postgres:17.5-pgpartman` (postgres:17.5-alpine + pg_partman
+   * 5.2.4) for the audit_log partitioning tests. Default remains the stock
+   * upstream image so Phase 1–5 tests are unaffected.
+   *
+   * The image MUST be locally available (built via
+   * `docker build ./compose/postgres -t openwhispr/postgres:17.5-pgpartman`)
+   * because testcontainers does not pull from a registry by default.
+   */
+  image?: string;
+  /**
+   * If true, `CREATE EXTENSION pg_partman` is provisioned in the database
+   * before running drizzle migrations. The custom image ships the
+   * extension files; we still need to CREATE EXTENSION inside the openwhispr
+   * database (initdb scripts run on the bootstrap database only after the
+   * container is fully up, but testcontainers' wait-strategy may race the
+   * /docker-entrypoint-initdb.d hook). Setting this flag makes the harness
+   * idempotently provision the extension as the superuser before migrate().
+   */
+  withPgPartman?: boolean;
+}
+
+export async function bootMigratedPostgres(opts: BootOptions = {}): Promise<BootResult> {
   const ownerPassword = "owner-pw-test";
   const appPassword = "app-pw-test";
+  // Phase 6 / Plan 02 — migration 0014 requires pg_partman. The default
+  // image is therefore `openwhispr/postgres:17.5-pgpartman` (built by
+  // compose/postgres/Dockerfile). Existing Phase 1-5 tests inherit this
+  // change transparently: pg_partman's presence is benign for any
+  // migration that does not invoke it.
+  const image = opts.image ?? "openwhispr/postgres:17.5-pgpartman";
+  // pg_partman is always provisioned when running migrations because 0014
+  // calls partman.create_parent at apply time. Callers can pass
+  // `withPgPartman: false` only if they pin a non-default image that
+  // doesn't ship the extension — in that case migrations beyond 0013
+  // will fail by design.
+  const withPgPartman = opts.withPgPartman ?? true;
 
-  const container = await new PostgreSqlContainer("postgres:17-alpine")
+  const container = await new PostgreSqlContainer(image)
     .withDatabase("openwhispr")
     .withUsername("postgres_super")
     .withPassword("super-pw")
@@ -49,6 +85,14 @@ export async function bootMigratedPostgres(): Promise<BootResult> {
 
   const superUri = container.getConnectionUri();
   const superPool = new Pool({ connectionString: superUri });
+
+  if (withPgPartman) {
+    // Custom image has pg_partman 5.2.4 in pg_available_extensions; we
+    // explicitly CREATE EXTENSION in the openwhispr database (the initdb
+    // hook may not run in testcontainers' bootstrap flow).
+    await superPool.query("CREATE SCHEMA IF NOT EXISTS partman");
+    await superPool.query("CREATE EXTENSION IF NOT EXISTS pg_partman SCHEMA partman");
+  }
 
   // Create our two constitutional roles. The container's bootstrap role
   // (postgres_super) is a superuser, so it can create roles + assign
@@ -80,6 +124,19 @@ export async function bootMigratedPostgres(): Promise<BootResult> {
   // Owner needs CREATE on public to add tables; on PG 15+ public is owned
   // by the bootstrap user, so transfer ownership of the schema too.
   await superPool.query(`ALTER SCHEMA public OWNER TO openwhispr_owner`);
+  if (withPgPartman) {
+    // Mirror the GRANT chain from packages/data/migrations/init/02-pg-partman.sql
+    // so the migration runner (openwhispr_owner) can call partman.create_parent
+    // and UPDATE partman.part_config.
+    // pg_partman 5.x's create_parent does dynamic SQL that needs CREATE on
+    // the partman schema (it writes into partman.part_config and creates
+    // child partitions in the user schema but references partman objects).
+    await superPool.query(`GRANT ALL ON SCHEMA partman TO openwhispr_owner`);
+    await superPool.query(`GRANT ALL ON ALL TABLES IN SCHEMA partman TO openwhispr_owner`);
+    await superPool.query(`GRANT ALL ON ALL SEQUENCES IN SCHEMA partman TO openwhispr_owner`);
+    await superPool.query(`GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA partman TO openwhispr_owner`);
+    await superPool.query(`GRANT EXECUTE ON ALL PROCEDURES IN SCHEMA partman TO openwhispr_owner`);
+  }
   await superPool.end();
 
   const host = container.getHost();
@@ -110,3 +167,33 @@ export async function bootMigratedPostgres(): Promise<BootResult> {
 }
 
 export const DEFAULT_TENANT_ID = "00000000-0000-0000-0000-000000000000";
+
+/**
+ * Phase 6 / Plan 02 — image tag for the custom Postgres 17.5 build that
+ * bundles pg_partman 5.2.4. Tests that boot their own `PostgreSqlContainer`
+ * (i.e. do not use `bootMigratedPostgres`) but apply migrations beyond
+ * 0013 must reference this image and call `provisionPgPartman()` on the
+ * superuser pool before granting privileges to openwhispr_owner.
+ */
+export const POSTGRES_PARTMAN_IMAGE = "openwhispr/postgres:17.5-pgpartman";
+
+/**
+ * Idempotently provision the `partman` schema + pg_partman extension on a
+ * given superuser pool, and grant the owner role the privileges
+ * pg_partman 5.x needs to drive create_parent / run_maintenance_proc
+ * (CREATE on schema, all on tables/sequences, EXECUTE on funcs+procs).
+ *
+ * Call this AFTER creating `openwhispr_owner` but BEFORE running migrate().
+ */
+export async function provisionPgPartman(
+  superPool: Pool,
+  ownerRole = "openwhispr_owner",
+): Promise<void> {
+  await superPool.query("CREATE SCHEMA IF NOT EXISTS partman");
+  await superPool.query("CREATE EXTENSION IF NOT EXISTS pg_partman SCHEMA partman");
+  await superPool.query(`GRANT ALL ON SCHEMA partman TO ${ownerRole}`);
+  await superPool.query(`GRANT ALL ON ALL TABLES IN SCHEMA partman TO ${ownerRole}`);
+  await superPool.query(`GRANT ALL ON ALL SEQUENCES IN SCHEMA partman TO ${ownerRole}`);
+  await superPool.query(`GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA partman TO ${ownerRole}`);
+  await superPool.query(`GRANT EXECUTE ON ALL PROCEDURES IN SCHEMA partman TO ${ownerRole}`);
+}

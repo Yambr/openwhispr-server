@@ -31,7 +31,10 @@ describe("DATA-04 — audit_log", () => {
         `INSERT INTO audit_log (tenant_id, action, payload)
                  VALUES ($1, $2, $3::jsonb)
                  RETURNING id`,
-        [DEFAULT_TENANT_ID, "test.event", JSON.stringify(payload)],
+        // Phase 6 / Plan 02 — `action` is now CHECK-constrained to the
+        // 18 canonical D-A6 values. Use `auth.signin` as a generic
+        // canonical action to exercise JSONB-payload round-trip.
+        [DEFAULT_TENANT_ID, "auth.signin", JSON.stringify(payload)],
       );
       const { rows } = await pool.query<{ payload: unknown }>(
         `SELECT payload FROM audit_log WHERE id = $1`,

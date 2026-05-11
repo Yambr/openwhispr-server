@@ -78,6 +78,15 @@ interface Diagnostic {
 
 // Q_TENANT_TABLES: tables in `public` that own a `tenant_id` column.
 // These are the lint scope; tables without `tenant_id` are out of scope.
+//
+// Phase 6 / Plan 02 — pg_partman 5.x names monthly child partitions of
+// `audit_log` as `audit_log_pYYYYMMDD` (the first-day-of-month stamp)
+// plus an `audit_log_default` catch-all when infinite_time_partitions
+// is true. Children inherit RLS from the partitioned parent (PG 13+
+// native behaviour) but do NOT have their own rows in pg_policies. We
+// exclude them from the lint scope to prevent NO_POLICY false-positives
+// while keeping the parent (`audit_log`) — relkind 'p' — in scope.
+const AUDIT_LOG_CHILD_REGEX = "^audit_log_(p[0-9]{8}|default)$";
 const Q_TENANT_TABLES = `
   SELECT c.table_name AS tablename
   FROM information_schema.columns c
@@ -87,6 +96,7 @@ const Q_TENANT_TABLES = `
   WHERE c.table_schema = $1
     AND c.column_name  = 'tenant_id'
     AND t.table_type   = 'BASE TABLE'
+    AND c.table_name !~ $2
   ORDER BY c.table_name;
 `;
 
@@ -101,7 +111,7 @@ const Q_RLS_FLAGS = `
   JOIN pg_namespace n ON n.oid = c.relnamespace
   WHERE n.nspname = $1
     AND c.relname = ANY($2::text[])
-    AND c.relkind = 'r';
+    AND c.relkind IN ('r', 'p');
 `;
 
 // Q_POLICIES: every policy attached to the relevant tables. We then
@@ -145,7 +155,9 @@ async function lint(databaseUrl: string): Promise<Diagnostic[]> {
   await client.connect();
   const diags: Diagnostic[] = [];
   try {
-    const tables = (await client.query<{ tablename: string }>(Q_TENANT_TABLES, [SCHEMA])).rows
+    const tables = (
+      await client.query<{ tablename: string }>(Q_TENANT_TABLES, [SCHEMA, AUDIT_LOG_CHILD_REGEX])
+    ).rows
       .map((r) => r.tablename)
       .filter((t) => !TENANT_LESS_ALLOWLIST.has(t));
 

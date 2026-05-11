@@ -45,6 +45,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import * as schema from "../schema/index.js";
 import { TENANT_SCOPED_TABLES } from "../schema/index.js";
 import { withTenant } from "../tenant-context.js";
+import { provisionPgPartman } from "./helpers.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const MIGRATIONS_FOLDER = resolve(__dirname, "..", "..", "migrations");
@@ -77,7 +78,9 @@ interface Harness {
 async function bootHarness(): Promise<Harness> {
   const network = await new Network().start();
 
-  const pg = await new PostgreSqlContainer("postgres:17-alpine")
+  // Phase 6 / Plan 02 — migration 0014 requires pg_partman; use the
+  // custom image and provision the extension before running migrations.
+  const pg = await new PostgreSqlContainer("openwhispr/postgres:17.5-pgpartman")
     .withNetwork(network)
     .withNetworkAliases("postgres")
     .withDatabase("openwhispr")
@@ -97,6 +100,8 @@ async function bootHarness(): Promise<Harness> {
   await superPool.query(`GRANT SET, ALTER SYSTEM ON PARAMETER "app.tenant_id" TO openwhispr_owner`);
   await superPool.query(`ALTER DATABASE openwhispr OWNER TO openwhispr_owner`);
   await superPool.query(`ALTER SCHEMA public OWNER TO openwhispr_owner`);
+  // Phase 6 / Plan 02 — provision pg_partman + GRANT chain.
+  await provisionPgPartman(superPool);
   await superPool.end();
 
   const ownerUri = `postgres://openwhispr_owner:owner-pw@${pg.getHost()}:${pg.getMappedPort(5432)}/openwhispr`;
@@ -345,10 +350,23 @@ SUITE("TEST-RLS-01: 100+ random tenant pairs through PgBouncer", () => {
     {
       tenantA: fc.uuid({ version: 4 }),
       tenantB: fc.uuid({ version: 4 }),
-      actions: fc.array(fc.string({ minLength: 1, maxLength: 20 }), {
-        minLength: 1,
-        maxLength: 5,
-      }),
+      // Phase 6 / Plan 02 — `action` is now CHECK-constrained to the 18
+      // canonical D-A6 values. Generator picks from the canonical set so
+      // INSERTs survive the CHECK; the RLS isolation property remains
+      // the test's subject.
+      actions: fc.array(
+        fc.constantFrom(
+          "auth.signin",
+          "auth.signin_failed",
+          "auth.signout",
+          "auth.password_change",
+          "key.issued",
+          "key.revoked",
+          "settings.tenant_changed",
+          "security.cross_tenant_attempt",
+        ),
+        { minLength: 1, maxLength: 5 },
+      ),
     },
     { numRuns: 30 },
   )(
@@ -508,7 +526,9 @@ SUITE("TEST-RLS-01: 100+ random tenant pairs through PgBouncer", () => {
       for (const r of seen.rows ?? []) expect(r.tenant_id).toBe(tenantB);
 
       const upd = (await withTenant(db, tenantB, async (tx) =>
-        tx.execute(sql`UPDATE tenant_settings SET stt_config = '{"x":1}'::jsonb WHERE tenant_id = ${tenantA}::uuid`),
+        tx.execute(
+          sql`UPDATE tenant_settings SET stt_config = '{"x":1}'::jsonb WHERE tenant_id = ${tenantA}::uuid`,
+        ),
       )) as { rowCount: number | null };
       expect(upd.rowCount ?? 0).toBe(0);
 
