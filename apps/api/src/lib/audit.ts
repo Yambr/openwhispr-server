@@ -82,7 +82,12 @@ export interface AuditCtx {
 const ctxSchema = z.object({
   tenant_id: z.string().uuid(),
   actor_user_id: z.string().uuid().nullable().optional(),
-  request_id: z.string().uuid(),
+  // Fastify's default `genReqId` emits an incrementing counter
+  // (`req-N`), not a UUID. We require a non-empty correlator string;
+  // operators wiring a UUID-shaped request-id middleware (Phase 6 /
+  // Plan 03 pino correlation) get UUID values, but the helper does
+  // not refuse non-UUID correlators.
+  request_id: z.string().min(1),
   ip: z.union([z.ipv4(), z.ipv6(), z.null()]),
   user_agent: z.string(),
 });

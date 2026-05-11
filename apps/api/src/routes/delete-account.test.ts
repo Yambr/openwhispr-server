@@ -8,19 +8,21 @@
 // 401 because the session row is gone) lives in Plan 06.
 import "@fastify/cookie";
 import fastifyCookie from "@fastify/cookie";
+import { ErrorEnvelope } from "@openwhispr/contract-tests/schemas";
 import Fastify, { type FastifyInstance } from "fastify";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { ErrorEnvelope } from "@openwhispr/contract-tests/schemas";
 import { registerErrorHandler } from "../error-handler.js";
-import { zodTypeProvider } from "../plugins/zod-type-provider.js";
 import { _resetDefaultTenantCacheForTesting } from "../lib/default-tenant.js";
 import type { AuthLike } from "../middleware/dual-auth.js";
-import {
-  buildDeleteAccountRoutes,
-  SESSION_COOKIE_NAME,
-} from "./delete-account.js";
+import { zodTypeProvider } from "../plugins/zod-type-provider.js";
+import { buildDeleteAccountRoutes, SESSION_COOKIE_NAME } from "./delete-account.js";
 
-const TENANT_A = "11111111-1111-1111-1111-111111111111";
+// Phase 6 / Plan 05 — recordAudit() validates ctx via Zod and requires
+// RFC-4122 v4-shaped UUIDs (version nibble 4, variant 8/9/a/b). The
+// pre-Plan-05 test fixtures used `1111…/2222…` literals which fail
+// strict UUID validation; update to v4-shaped equivalents.
+const TENANT_A = "11111111-1111-4111-8111-111111111111";
+const USER_ID = "22222222-2222-4222-8222-222222222222";
 
 interface RecordedQuery {
   sql: string;
@@ -90,7 +92,7 @@ describe("DELETE /api/auth/delete-account (cookie-only, cascade)", () => {
   it("returns 200 + {} on the happy path and clears the session cookie", async () => {
     const { db, recorded } = makeFakeDb();
     const auth = makeAuth(async () => ({
-      user: { id: "u-1", email: "del@b.test", tenantId: TENANT_A },
+      user: { id: USER_ID, email: "del@b.test", tenantId: TENANT_A },
     }));
     const app = await buildApp({ db, auth });
     const res = await app.inject({
@@ -114,7 +116,7 @@ describe("DELETE /api/auth/delete-account (cookie-only, cascade)", () => {
 
     // Set-Cookie cleared the session cookie (Max-Age=0 or Expires=past).
     const setCookie = res.headers["set-cookie"];
-    const cookieStr = Array.isArray(setCookie) ? setCookie.join("; ") : setCookie ?? "";
+    const cookieStr = Array.isArray(setCookie) ? setCookie.join("; ") : (setCookie ?? "");
     expect(cookieStr).toContain(SESSION_COOKIE_NAME);
     await app.close();
   });
@@ -163,7 +165,7 @@ describe("DELETE /api/auth/delete-account (cookie-only, cascade)", () => {
       // leg of the OR short-circuit is truthy. Production sessions
       // should never carry an empty tenantId; this is a defense-in-depth
       // pin that re-asserts the canonical 401 envelope.
-      user: { id: "u-1", email: "x@b.test", tenantId: "" },
+      user: { id: USER_ID, email: "x@b.test", tenantId: "" },
     }));
     const app = await buildApp({ db, auth });
     const res = await app.inject({
@@ -179,16 +181,18 @@ describe("DELETE /api/auth/delete-account (cookie-only, cascade)", () => {
     await app.close();
   });
 
-  // Phase-2 debt back-fill — exercises the `req.user?.email ?? null`
-  // fallback branch at delete-account.ts:107. Session is valid but the
-  // user record carries no `email` field (defensive: legacy rows /
-  // anonymised sessions).
-  it("audit log records email=null when the session user has no email field", async () => {
+  // Phase 6 / Plan 05 — the canonical `account.delete` payload is
+  // `{}` per D-A7 (no per-action keys; ctx-attached request_id, ip,
+  // user_agent cover correlation). The pre-Plan-05 test asserted an
+  // `email` payload field that is no longer emitted; the assertion
+  // is now that the helper-emitted INSERT lands at all even when the
+  // session user record is missing optional fields like `email`.
+  it("audit log INSERT runs even when the session user has no email field", async () => {
     const { db, recorded } = makeFakeDb();
     const auth = makeAuth(async () => ({
       // No `email` key on the user object — the optional chaining branch
       // must fall back to `null`.
-      user: { id: "u-no-email", tenantId: TENANT_A } as unknown as {
+      user: { id: USER_ID, tenantId: TENANT_A } as unknown as {
         id: string;
         email: string;
         tenantId: string;

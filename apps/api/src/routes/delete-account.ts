@@ -54,6 +54,7 @@ import { DeleteAccountResponse } from "@openwhispr/contract-tests/schemas";
 import { type ExecutableTx, type TransactionalDb, withTenant } from "@openwhispr/data";
 import { sql } from "drizzle-orm";
 import { AuthError } from "../errors.js";
+import { auditCtxFromRequest, recordAudit } from "../lib/audit.js";
 import type { AuthLike } from "../middleware/dual-auth.js";
 import { buildRequireCookieOnly } from "../middleware/require-cookie-only.js";
 
@@ -98,14 +99,19 @@ export const buildDeleteAccountRoutes = (deps: DeleteAccountDeps) =>
         }
         const userId = req.user.id;
         const tenantId = req.tenant;
+        // Phase 6 / Plan 05 / Task 2 — emit the canonical `account.delete`
+        // D-A6 action via the shared recordAudit helper. Replaces the
+        // legacy `account_deleted` (non-canonical) string from Phase 2 /
+        // Plan 03; the new value is enforced by the audit_log_action_check
+        // CHECK constraint added in Plan 06-02.
+        const auditCtx = auditCtxFromRequest(req, tenantId, userId);
         await withTenant(db, tenantId, async (tx) => {
           // Single transaction — the SET LOCAL app.tenant_id GUC is in
-          // effect for all three statements.
+          // effect for all three statements. Sync audit INSERT inside
+          // the tx (D-A1) — the audit row exists iff the cascade
+          // commits.
           await tx.execute(sql`DELETE FROM sessions WHERE user_id = ${userId}`);
-          await tx.execute(
-            sql`INSERT INTO audit_log (tenant_id, actor_user_id, action, payload)
-                VALUES (${tenantId}, ${userId}, 'account_deleted', ${{ email: req.user?.email ?? null }})`,
-          );
+          await recordAudit(tx, auditCtx, "account.delete", {});
           await tx.execute(sql`DELETE FROM users WHERE id = ${userId}`);
         });
         // Phase 02.21 / Residual B — `__Secure-` prefixed cookies REQUIRE
