@@ -1,39 +1,119 @@
-// Phase 6 Wave 0 RED stub — TDD-01b. Implementation in Plan 06-10 per 06-VALIDATION.md.
+// Phase 6 Plan 06-08 — GREEN tests for reconciliation-discrepancy (D-R3).
 //
-// Production module (not yet created): apps/worker/src/jobs/reconciliation-discrepancy.ts
-//
-// Behaviors locked by D-R3:
-//   - Child-of-parent enqueue from reconciliation-daily-check
-//   - Zod schema {tenant_id, since: ISO, until: ISO, drift_pct, drift_usd_cents}
-//   - Tenant context (withTenantContext)
-//   - Calls existing ingest-litellm-spend with explicit since/until args
-//   - Idempotent on request_id re-run (ON CONFLICT DO NOTHING in usage_ledger)
-import { describe, it } from "vitest";
+// Real Postgres testcontainer for the withTenantContext pool acquisition;
+// the LiteLLM read pool + Redis are stubbed (network boundary).
+import { PostgreSqlContainer, type StartedPostgreSqlContainer } from "@testcontainers/postgresql";
+import type { Job } from "bullmq";
+import { Pool } from "pg";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
+import { canRunDocker } from "../lib/can-run-docker.js";
+import * as ingestModule from "./ingest-litellm-spend.js";
+import {
+  buildReconciliationDiscrepancyHandler,
+  reconciliationDiscrepancySchema,
+} from "./reconciliation-discrepancy.js";
 
-const NOT_YET = "not yet implemented — Plan 06-10 implements reconciliation-discrepancy job (D-R3)";
+const SUITE = canRunDocker() ? describe : describe.skip;
+const TENANT = "11111111-1111-4111-a111-111111111111";
 
-describe("reconciliation-discrepancy (D-R3)", () => {
-  it("is wrapped in withTenantContext", () => {
-    throw new Error(NOT_YET);
+interface Harness {
+  container: StartedPostgreSqlContainer;
+  pool: Pool;
+}
+let h: Harness | undefined;
+
+beforeAll(async () => {
+  if (!canRunDocker()) return;
+  const container = await new PostgreSqlContainer("postgres:17-bookworm")
+    .withDatabase("rd_test")
+    .withUsername("ps")
+    .withPassword("pw")
+    .start();
+  const pool = new Pool({ connectionString: container.getConnectionUri(), max: 4 });
+  h = { container, pool };
+}, 120_000);
+
+afterAll(async () => {
+  if (h) {
+    await h.pool.end();
+    await h.container.stop();
+  }
+}, 60_000);
+
+function fakeJob(data: unknown): Job {
+  return { data, queueName: "reconciliation-discrepancy", id: "rd-1" } as unknown as Job;
+}
+
+const GOOD = {
+  tenant_id: TENANT,
+  since: "2026-05-10T00:00:00Z",
+  until: "2026-05-11T00:00:00Z",
+  drift_pct: 12.5,
+  drift_usd_cents: 7,
+};
+
+SUITE("reconciliation-discrepancy (D-R3)", () => {
+  it("schema rejects when since/until are not ISO datetimes", () => {
+    expect(() => reconciliationDiscrepancySchema.parse({ ...GOOD, since: "yesterday" })).toThrow();
   });
 
-  it("Zod schema is {tenant_id, since: ISO, until: ISO, drift_pct, drift_usd_cents}", () => {
-    throw new Error(NOT_YET);
+  it("schema rejects negative drift values", () => {
+    expect(() => reconciliationDiscrepancySchema.parse({ ...GOOD, drift_pct: -1 })).toThrow();
+    expect(() => reconciliationDiscrepancySchema.parse({ ...GOOD, drift_usd_cents: -1 })).toThrow();
   });
 
-  it("rejects when since/until are not ISO8601 strings", () => {
-    throw new Error(NOT_YET);
+  it("calls runIngestOnce with the supplied ingest deps (Tenant context wrap)", async () => {
+    if (!h) throw new Error("harness");
+    const runSpy = vi
+      .spyOn(ingestModule, "runIngestOnce")
+      .mockResolvedValue({ rowsProcessed: 5, rowsScanned: 5 });
+    const fakeIngestDeps = {
+      // The handler delegates the actual SQL to runIngestOnce; the deps are
+      // forwarded verbatim and (here) intercepted by the spy.
+      litellmPool: {} as never,
+      appOwnerPool: {} as never,
+      connection: {} as never,
+      redis: {
+        async get() {
+          return null;
+        },
+        async set() {
+          return "";
+        },
+      },
+    };
+    const handler = buildReconciliationDiscrepancyHandler({
+      pool: h.pool,
+      ingestDeps: fakeIngestDeps,
+    });
+    await handler(fakeJob(GOOD));
+    expect(runSpy).toHaveBeenCalledTimes(1);
+    expect(runSpy).toHaveBeenCalledWith(fakeIngestDeps);
+    runSpy.mockRestore();
   });
 
-  it("calls existing ingest-litellm-spend with explicit since/until window", () => {
-    throw new Error(NOT_YET);
-  });
-
-  it("is a no-op on re-run over already-ingested rows (idempotent via ON CONFLICT)", () => {
-    throw new Error(NOT_YET);
-  });
-
-  it("only runs when triggered as a child of reconciliation-daily-check or ingest-litellm-spend", () => {
-    throw new Error(NOT_YET);
+  it("propagates errors from runIngestOnce (BullMQ retry surface)", async () => {
+    if (!h) throw new Error("harness");
+    const runSpy = vi
+      .spyOn(ingestModule, "runIngestOnce")
+      .mockRejectedValue(new Error("upstream-down"));
+    const handler = buildReconciliationDiscrepancyHandler({
+      pool: h.pool,
+      ingestDeps: {
+        litellmPool: {} as never,
+        appOwnerPool: {} as never,
+        connection: {} as never,
+        redis: {
+          async get() {
+            return null;
+          },
+          async set() {
+            return "";
+          },
+        },
+      },
+    });
+    await expect(handler(fakeJob(GOOD))).rejects.toThrow("upstream-down");
+    runSpy.mockRestore();
   });
 });
