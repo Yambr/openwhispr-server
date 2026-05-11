@@ -41,6 +41,14 @@ COPY packages/contract-tests/package.json packages/contract-tests/
 # workspace dependency of apps/api but never copied into the build context;
 # tsup's noExternal pattern needs the source tree to inline the package.
 COPY packages/litellm-client/package.json packages/litellm-client/
+# Phase 06 / Plan 06-12a fix — packages/observability + packages/wire-schemas
+# (Phase 5/6 additions) are workspace deps of apps/api but were never wired
+# into the Dockerfile. Their absence causes esbuild's noExternal pattern in
+# tsup.config.ts to fail with "Could not resolve @openwhispr/observability"
+# / "Could not resolve @openwhispr/wire-schemas" and the whole api build to
+# exit non-zero. Add the manifests + source trees so tsup can inline them.
+COPY packages/observability/package.json packages/observability/
+COPY packages/wire-schemas/package.json packages/wire-schemas/
 
 # Full install (dev included — needed for tsup/typescript).
 # --ignore-scripts skips lefthook prepare which has no purpose in the image.
@@ -52,6 +60,8 @@ COPY apps/api apps/api
 COPY packages/data packages/data
 COPY packages/contract-tests packages/contract-tests
 COPY packages/litellm-client packages/litellm-client
+COPY packages/observability packages/observability
+COPY packages/wire-schemas packages/wire-schemas
 COPY tools tools
 
 # Build api (which now inlines @openwhispr/* via noExternal in tsup config).
@@ -74,6 +84,12 @@ COPY pnpm-lock.yaml pnpm-workspace.yaml package.json ./
 COPY apps/api/package.json apps/api/
 COPY packages/data/package.json packages/data/
 COPY packages/contract-tests/package.json packages/contract-tests/
+# Phase 06 / Plan 06-12a fix — manifests for the workspace deps added in
+# Phase 5/6 (see builder stage comment for context). Required for pnpm's
+# `--filter @openwhispr/api...` walk to resolve transitively.
+COPY packages/litellm-client/package.json packages/litellm-client/
+COPY packages/observability/package.json packages/observability/
+COPY packages/wire-schemas/package.json packages/wire-schemas/
 
 # Production-only install with hoisted linker. --filter @openwhispr/api...
 # walks api's transitive prod deps but excludes its devDeps (e.g. tsup, tsx).

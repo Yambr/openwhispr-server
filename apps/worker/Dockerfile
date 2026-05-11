@@ -22,11 +22,17 @@ RUN corepack enable && corepack prepare pnpm@11.0.8 --activate
 
 COPY pnpm-lock.yaml pnpm-workspace.yaml package.json ./
 COPY apps/worker/package.json apps/worker/
+# Phase 06 / Plan 06-12a fix — @openwhispr/observability is a workspace
+# dep of @openwhispr/worker (Phase 6 OTel wiring) but was never wired
+# into this Dockerfile. tsup's noExternal pattern fails to resolve it
+# at build time without the package present in the build context.
+COPY packages/observability/package.json packages/observability/
 
 RUN pnpm install --frozen-lockfile --ignore-scripts
 
 COPY tsconfig.base.json ./
 COPY apps/worker apps/worker
+COPY packages/observability packages/observability
 
 RUN pnpm --filter @openwhispr/worker build
 
@@ -38,6 +44,7 @@ RUN corepack enable && corepack prepare pnpm@11.0.8 --activate
 
 COPY pnpm-lock.yaml pnpm-workspace.yaml package.json ./
 COPY apps/worker/package.json apps/worker/
+COPY packages/observability/package.json packages/observability/
 
 RUN pnpm install --frozen-lockfile --prod --ignore-scripts \
       --node-linker=hoisted \
