@@ -767,37 +767,37 @@ ON CONFLICT DO NOTHING;
 
 **Mitigation for A1-A3, A7 (Yandex):** Plan 04 BLOCKS on the user moving `/Users/dev/Downloads/server.py` → `tools/reference/yandex-search-server.py`. The planner MUST raise this as an OPEN-QUESTION-FOR-USER before generating Plan 04. Once the file is readable, all four assumptions resolve to VERIFIED or get corrected in a Plan 04 amendment.
 
-## Open Questions
+## Open Questions (RESOLVED)
 
 1. **Yandex Search API v2 wire shape (BLOCKING for Plan 04)**
    - What we know: v1 deprecated 2025-09-30, v2 exists with sync + async modes; auth via Yandex Cloud Api-Key + folder-id; response in JSON or XML depending on endpoint.
    - What's unclear: which endpoint URL, which auth header format, response field name for snippet.
-   - Recommendation: **User must move `/Users/dev/Downloads/server.py` into the repo (e.g. `tools/reference/yandex-search-server.py`; gitignored if it contains live keys) before Plan 04 execution.** Without it, the Yandex adapter ships at LOW confidence and may need a rewrite at integration time.
+   - **RESOLVED:** User must move `/Users/dev/Downloads/server.py` into the repo (e.g. `tools/reference/yandex-search-server.py`; gitignored if it contains live keys) before Plan 04 execution. Without it, the Yandex adapter ships at LOW confidence and may need a rewrite at integration time.
 
 2. **Conversations `array_agg` for include=messages — performance at scale**
    - What we know: D-27 favors single-round-trip JSON aggregation.
    - What's unclear: at N messages per conversation × M conversations, the array_agg memory footprint may exceed PG's `work_mem` default.
-   - Recommendation: cap conversation message-include count at 100 messages per conversation; if more, return a separate paginated `/api/conversations/messages` call hint. Document in `docs/wire-contract.md`. Verify with k6 load probe in Phase 8.
+   - **RESOLVED:** cap conversation message-include count at 100 messages per conversation; if more, return a separate paginated `/api/conversations/messages` call hint. Document in `docs/wire-contract.md`. Verify with k6 load probe in Phase 8.
 
 3. **`pak_*` API key middleware — Phase 5 or Phase 6?**
    - What we know: D-29 says CRUD ships in Phase 5; the `Authorization: Bearer pak_*` lookup middleware MAY defer to Phase 6.
    - What's unclear: whether shipping CRUD without auth enablement strands users (they create keys that don't authenticate yet).
-   - **Recommendation: ship CRUD only in Phase 5. Document keys as "prepared but inert until Phase 6 enablement" in the create response and operator docs.** Justification: Phase 5 is already large; the middleware is small but its threat model + scope-check logic + rate-limit-per-key + revocation lookup require their own design pass that belongs with Phase 6's anti-abuse work.
+   - **RESOLVED:** ship CRUD only in Phase 5. Document keys as "prepared but inert until Phase 6 enablement" in the create response and operator docs. Justification: Phase 5 is already large; the middleware is small but its threat model + scope-check logic + rate-limit-per-key + revocation lookup require their own design pass that belongs with Phase 6's anti-abuse work.
 
 4. **Settings JSONB schema evolution**
    - What we know: D-17 stores `stt_config` and `note_recording_config` as JSONB.
    - What's unclear: how Phase 7 UI will validate / migrate the JSONB shape when adding/removing keys.
-   - Recommendation: ADR in Phase 7. For Phase 5, ship a Zod schema for each JSONB blob and validate on read (server-side defaults override invalid fields). Permissive on write would be Phase 7's call.
+   - **RESOLVED:** deferred to Phase 7 ADR. For Phase 5, ship a Zod schema for each JSONB blob and validate on read (server-side defaults override invalid fields). Permissive on write would be Phase 7's call.
 
 5. **`POST /api/v1/keys/:id/revoke` — included in Phase 5?**
    - What we know: `ApiKeysService.ts` exports `revokeApiKey` (POST). CONTEXT.md D-29 lists only list+create; the service file includes revoke.
    - What's unclear: whether revoke is in scope.
-   - **Recommendation: include revoke in WIRE-27 scope.** A `revoked_at` column already exists per D-29 schema; the route is trivial; clients use it. Excluding it strands users with keys they cannot revoke until Phase 6.
+   - **RESOLVED:** include revoke in WIRE-27 scope. A `revoked_at` column already exists per D-29 schema; the route is trivial; clients use it. Excluding it strands users with keys they cannot revoke until Phase 6.
 
 6. **`notes/delete-all` inline vs queued**
    - What we know: D-30 / Claude's Discretion — cap inline at 1000 rows before queueing via BullMQ.
    - What's unclear: how to communicate "your delete is in progress" to the client.
-   - Recommendation: Phase 5 ships INLINE-only with a 1000-row cap. >1000 → 400 with envelope `{error: "delete-all exceeds 1000 rows; please delete in batches"}`. BullMQ-driven async delete defers to Phase 6 with its workers infra.
+   - **RESOLVED:** Phase 5 ships INLINE-only with a 1000-row cap. >1000 → 400 with envelope `{error: "delete-all exceeds 1000 rows; please delete in batches"}`. BullMQ-driven async delete defers to Phase 6 with its workers infra.
 
 ## Environment Availability
 
