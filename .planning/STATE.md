@@ -147,6 +147,7 @@ progress:
 - `packages/data/src/seed/conformance.ts` at 0/0/0/0 — decision pending (delete vs back-fill); flagged in 03-COVERAGE.md.
 - 4 DATA-06 deny-list test failures still pre-existing (unrelated to debt back-fill scope) — separate ticket.
 - Design tenant-scoped provider resolver shape revisited for Phase 4 (anticipate v1.5 multi-provider needs but do NOT build them in v1).
+- **Phase 6.x cleanup: remove virtual-key-rotation dead code** (2026-05-12). Prod-flow uses single `LITELLM_MASTER_KEY` + `?user=<id>` query/header rewrite for identity propagation (see `apps/api/src/routes/realtime.ts:164`). Per-user virtual key minting/rotation never wired — `apps/worker/src/jobs/virtual-key-rotation.ts` is a sentinel-payload stub; scheduler entry, queue registration, and any plan-doc references around it are artifacts of original tech-stack research. Delete: worker job + test + scheduler entry + queues entry + index.ts importer. Keep PAK (`/api/v1/keys`) — that's separate, real, programmatic-access keys for our own API (Argon2id `pak_*`). Recovery point if multi-tenant SaaS ever lands: re-introduce per-tenant LiteLLM virtual keys with budget caps.
 
 ### Blockers
 
