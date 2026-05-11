@@ -43,6 +43,11 @@
 //      populated by the time it fires.
 //   9. Register Plan 03's routes via `allRoutes` from routes/index.ts.
 
+// Phase 6 / Plan 03 / Task 1 (D-T3 load order) — OTel SDK must start
+// BEFORE any other import resolves so `@opentelemetry/instrumentation-pino`
+// patches the `pino` module at require time. This import is intentionally
+// a side-effect-only module (no symbols consumed here).
+import "./otel-bootstrap.js";
 import fastifyCookie from "@fastify/cookie";
 import fastifyMultipart from "@fastify/multipart";
 import type { ExecutableTx, TransactionalDb } from "@openwhispr/data";
@@ -288,9 +293,7 @@ export const buildApp = async (opts: BuildAppOptions = {}): Promise<FastifyInsta
       // buildAllRoutes (which gates the route on `deps.redis`) silently
       // dropped the route in every prod boot.
       ...(opts.redis ? { redis: opts.redis } : {}),
-      ...(opts.mockDiarization !== undefined
-        ? { mockDiarization: opts.mockDiarization }
-        : {}),
+      ...(opts.mockDiarization !== undefined ? { mockDiarization: opts.mockDiarization } : {}),
     });
     for (const plugin of routes) {
       await app.register(plugin);

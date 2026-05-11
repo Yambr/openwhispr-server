@@ -1,0 +1,112 @@
+// Phase 6 / Plan 03 / Task 1 — GREEN.
+//
+// OTel SDK bootstrap module unit tests per 06-03-PLAN.md acceptance
+// criteria + 06-CONTEXT.md decisions D-T1, D-T3, D-T6 + 06-RESEARCH.md §3.
+//
+// Test surface (load-bearing assertions):
+//   1. Importing the bootstrap module starts a NodeSDK (side-effect
+//      module: no default export, the SDK is started at top level).
+//   2. PinoInstrumentation is in the registered list with logKeys
+//      mapping traceId→trace_id, spanId→span_id, traceFlags→trace_flags
+//      (D-T3 — pino<->OTel correlation).
+//   3. @opentelemetry/instrumentation-fs is disabled (D-T1).
+//   4. @opentelemetry/instrumentation-dns is disabled (D-T1).
+//   5. The SDK exposes a `shutdown()` method (SIGTERM hook target).
+//   6. apps/api/src/index.ts imports "./otel-bootstrap.js" as the
+//      first executable statement — this guarantees the SDK starts
+//      before any other import (pino, fastify, …) so
+//      PinoInstrumentation can patch pino at require time (D-T3).
+//   7. No `/metrics` route is registered in the API (D-T6 — single
+//      metrics path; OTel SDK pushes to Mimir via Collector).
+import fs from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+import { describe, expect, it } from "vitest";
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+describe("otel-bootstrap (Phase 6 / Plan 03 / Task 1)", () => {
+  it("exposes a started NodeSDK with PinoInstrumentation registered (D-T3)", async () => {
+    const mod = await import("./otel-bootstrap.js");
+    expect(mod.sdk).toBeDefined();
+    expect(typeof mod.sdk.shutdown).toBe("function");
+    expect(Array.isArray(mod.registeredInstrumentations)).toBe(true);
+    const pino = mod.registeredInstrumentations.find(
+      (e: { name: string }) => e.name === "@opentelemetry/instrumentation-pino",
+    );
+    expect(pino).toBeDefined();
+    expect(pino?.logKeys).toEqual({
+      traceId: "trace_id",
+      spanId: "span_id",
+      traceFlags: "trace_flags",
+    });
+  });
+
+  it("disables fs auto-instrumentation (D-T1)", async () => {
+    const mod = await import("./otel-bootstrap.js");
+    expect(mod.disabledInstrumentations).toContain("@opentelemetry/instrumentation-fs");
+  });
+
+  it("disables dns auto-instrumentation (D-T1)", async () => {
+    const mod = await import("./otel-bootstrap.js");
+    expect(mod.disabledInstrumentations).toContain("@opentelemetry/instrumentation-dns");
+  });
+
+  it("apps/api/src/index.ts imports ./otel-bootstrap.js as the FIRST executable line (D-T3 load order)", () => {
+    const indexPath = path.join(__dirname, "index.ts");
+    const src = fs.readFileSync(indexPath, "utf8");
+    const lines = src.split(/\r?\n/);
+    let firstCodeLine: string | undefined;
+    let inBlockComment = false;
+    for (const raw of lines) {
+      const line = raw.trim();
+      if (!line) continue;
+      if (inBlockComment) {
+        if (line.includes("*/")) inBlockComment = false;
+        continue;
+      }
+      if (line.startsWith("/*")) {
+        if (!line.includes("*/")) inBlockComment = true;
+        continue;
+      }
+      if (line.startsWith("//")) continue;
+      firstCodeLine = line;
+      break;
+    }
+    expect(firstCodeLine).toBeDefined();
+    expect(firstCodeLine).toMatch(/^import\s+["']\.\/otel-bootstrap\.js["'];?$/);
+  });
+
+  it("shutdown() resolves cleanly (SIGTERM hook target)", async () => {
+    const mod = await import("./otel-bootstrap.js");
+    await expect(mod.sdk.shutdown()).resolves.not.toThrow();
+  });
+
+  it("does NOT expose a /metrics Prometheus-pull endpoint (D-T6)", () => {
+    // Grep the route source tree for any /metrics registration. A
+    // single metrics path through OTel SDK → Collector → Mimir is the
+    // locked architecture (D-T6); a /metrics scrape endpoint would
+    // duplicate signal.
+    const apiRoot = path.resolve(__dirname);
+    const routesDir = path.join(apiRoot, "routes");
+    const stack: string[] = [routesDir, apiRoot];
+    const hits: string[] = [];
+    while (stack.length) {
+      const cur = stack.pop();
+      if (!cur || !fs.existsSync(cur)) continue;
+      const stat = fs.statSync(cur);
+      if (stat.isDirectory()) {
+        for (const entry of fs.readdirSync(cur)) {
+          if (entry === "node_modules" || entry.startsWith(".")) continue;
+          stack.push(path.join(cur, entry));
+        }
+        continue;
+      }
+      if (!cur.endsWith(".ts") || cur.endsWith(".test.ts")) continue;
+      const src = fs.readFileSync(cur, "utf8");
+      if (/['"`]\/metrics['"`]/.test(src)) hits.push(cur);
+    }
+    expect(hits).toEqual([]);
+  });
+});
