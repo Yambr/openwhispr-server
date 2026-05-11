@@ -99,4 +99,28 @@ describe("withSystemContext (D-W2)", () => {
     });
     await expect(wrapped(fakeJob({}))).rejects.toBe(boom);
   });
+
+  it("falls back to 'unknown' job_id when job.id is undefined", async () => {
+    let seenJobId: string | undefined;
+    const wrapped = withSystemContext(null, async () => {
+      const store = getTenantContext();
+      seenJobId = store?.jobId;
+    });
+    await wrapped({ data: {}, queueName: "q" } as unknown as Job);
+    expect(seenJobId).toBe("unknown");
+  });
+
+  it("returns the handler's return value (generic R)", async () => {
+    const wrapped = withSystemContext(null, async () => 42 as const);
+    const r = await wrapped(fakeJob({}));
+    expect(r).toBe(42);
+  });
+
+  it("substitutes {} when job.data is undefined and the schema is provided", async () => {
+    const schema = z.object({}).strict();
+    const wrapped = withSystemContext(schema, async (data) => {
+      expect(data).toEqual({});
+    });
+    await wrapped({ queueName: "q", id: "j" } as unknown as Job);
+  });
 });
