@@ -31,10 +31,15 @@ export default defineConfig({
     "pg-native",
     "pino",
     "@opentelemetry/api",
-    "@opentelemetry/auto-instrumentations-node",
     "@opentelemetry/exporter-metrics-otlp-grpc",
     "@opentelemetry/instrumentation-pino",
     "@opentelemetry/sdk-metrics",
     "@opentelemetry/sdk-node",
   ],
+  // Workspace packages (@openwhispr/observability) must be INLINED so
+  // they don't become `require('@openwhispr/observability')` at runtime
+  // (the prod-deps node_modules layout doesn't include the workspace
+  // package as a top-level entry). Same pattern as the api bundle's
+  // noExternal config.
+  noExternal: [/^@openwhispr\//],
 });

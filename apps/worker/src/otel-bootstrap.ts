@@ -24,11 +24,16 @@
 // Tempo / Mimir / Loki.
 
 import { DiagConsoleLogger, DiagLogLevel, diag } from "@opentelemetry/api";
-import { getNodeAutoInstrumentations } from "@opentelemetry/auto-instrumentations-node";
 import { OTLPMetricExporter } from "@opentelemetry/exporter-metrics-otlp-grpc";
 import { PinoInstrumentation } from "@opentelemetry/instrumentation-pino";
-import { PeriodicExportingMetricReader } from "@opentelemetry/sdk-metrics";
-import { NodeSDK } from "@opentelemetry/sdk-node";
+// sdk-node bundles its own copy of @opentelemetry/sdk-metrics — we must
+// import PeriodicExportingMetricReader through the same bundled copy or
+// the aggregation classes won't match (`aggregation.createAggregator is
+// not a function` runtime crash from a sdk-metrics dual-realm bug).
+// `sdk-node` re-exports it under the `metrics` namespace.
+import { NodeSDK, metrics as sdkMetrics } from "@opentelemetry/sdk-node";
+
+const { PeriodicExportingMetricReader } = sdkMetrics;
 
 diag.setLogger(
   new DiagConsoleLogger(),
@@ -45,10 +50,15 @@ const pinoLogKeys = {
 
 const pinoInstrumentation = new PinoInstrumentation({ logKeys: pinoLogKeys });
 
-const autoInstrumentations = getNodeAutoInstrumentations({
-  "@opentelemetry/instrumentation-fs": { enabled: false },
-  "@opentelemetry/instrumentation-dns": { enabled: false },
-});
+// NOTE: We intentionally DO NOT use `getNodeAutoInstrumentations()` here
+// (the api side does). The auto bundle loads ~50 instrumentations
+// including `@opentelemetry/instrumentation-aws-sdk` which calls
+// `meter.createHistogram(...)` at sdk.start() time — and that runs
+// against a sdk-metrics build pinned to an older API (`createAggregator`
+// shape) that has been removed in newer sdk-metrics. The worker has no
+// AWS / express / koa / etc surface; we only need pino instrumentation
+// for trace_id correlation in log records. Keeping the instrumentation
+// set narrow also reduces span volume on the BullMQ tick loop.
 
 // Periodic metric reader so observable gauges fire on a schedule (worker has
 // no HTTP /metrics endpoint per D-T6; everything flows OTLP -> Collector ->
@@ -62,7 +72,7 @@ const metricReader = new PeriodicExportingMetricReader({
 
 export const sdk = new NodeSDK({
   serviceName: process.env.OTEL_SERVICE_NAME ?? "openwhispr-worker",
-  instrumentations: [autoInstrumentations, pinoInstrumentation],
+  instrumentations: [pinoInstrumentation],
   metricReader,
 });
 

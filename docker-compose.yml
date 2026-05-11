@@ -475,6 +475,7 @@ services:
       # NO spans, NO metrics, NO logs reach Tempo/Mimir/Loki.
       # OBS-01 trace-propagation e2e is the test that catches this gap.
       OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-http://otel-collector:4317}
+      OTEL_EXPORTER_OTLP_PROTOCOL: ${OTEL_EXPORTER_OTLP_PROTOCOL:-grpc}
       OTEL_SERVICE_NAME: ${OTEL_SERVICE_NAME:-openwhispr-api}
     depends_on:
       migrate:
@@ -535,6 +536,7 @@ services:
       # PeriodicExportingMetricReader so those gauges actually export to
       # the otel-collector and reach Mimir.
       OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-http://otel-collector:4317}
+      OTEL_EXPORTER_OTLP_PROTOCOL: ${OTEL_EXPORTER_OTLP_PROTOCOL:-grpc}
       OTEL_SERVICE_NAME: ${OTEL_SERVICE_NAME_WORKER:-openwhispr-worker}
     depends_on:
       litellm:
