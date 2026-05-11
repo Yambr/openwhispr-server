@@ -281,7 +281,10 @@ e2e-test-phase6:
 	  NODE_TLS_REJECT_UNAUTHORIZED=0 \
 	  pnpm exec vitest run --config tests/e2e/vitest.e2e.config.ts \
 	    tests/e2e/probes-dependency.test.ts \
-	    tests/e2e/audit-log-write.test.ts
+	    tests/e2e/audit-log-write.test.ts \
+	    tests/e2e/reconciliation-drift.test.ts \
+	    tests/e2e/log-scrub-sentinel.test.ts \
+	    tests/e2e/otel-trace-propagation.test.ts
 
 # Run the conformance suite against an arbitrary deployed backend.
 # `make contract-test-deployed BACKEND_URL=https://api.customer.com AUTH_URL=...`

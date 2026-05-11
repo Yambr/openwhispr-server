@@ -467,6 +467,15 @@ services:
       # registered (operator-actionable 404). Wire to the bundled valkey
       # service so default `docker compose up` boots with diarization on.
       VALKEY_URL: ${VALKEY_URL:-redis://:${VALKEY_PASSWORD}@valkey:6379/0}
+      # Phase 6 / Plan 06-12c — OTel SDK exporter endpoint. The api's
+      # otel-bootstrap.ts (Plan 06-03) constructs NodeSDK without an
+      # explicit exporter URL, so it inherits the OTEL spec default of
+      # http://localhost:4317 — which resolves to the api container
+      # itself, not the otel-collector sidecar. Without this env var
+      # NO spans, NO metrics, NO logs reach Tempo/Mimir/Loki.
+      # OBS-01 trace-propagation e2e is the test that catches this gap.
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-http://otel-collector:4317}
+      OTEL_SERVICE_NAME: ${OTEL_SERVICE_NAME:-openwhispr-api}
     depends_on:
       migrate:
         condition: service_completed_successfully
@@ -476,6 +485,8 @@ services:
         condition: service_healthy
       valkey:
         condition: service_healthy
+      otel-collector:
+        condition: service_started
     healthcheck:
       test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:3000/api/health"]
       interval: 10s
@@ -517,6 +528,14 @@ services:
       # cluster.
       LITELLM_READ_DATABASE_URL: ${LITELLM_READ_DATABASE_URL:-postgres://${POSTGRES_OWNER_USER}:${POSTGRES_OWNER_PASSWORD}@postgres:5432/litellm}
       # DATABASE_URL_OWNER is already in .env (Phase 1).
+      # Phase 6 / Plan 06-12c — OTel SDK exporter endpoint + service name.
+      # reconciliation-daily-check (Plan 06-08) registers observable gauges
+      # `litellm_reconciliation_drift_pct` / `*_usd_cents`; the worker SDK
+      # bootstrap (apps/worker/src/otel-bootstrap.ts) installs a
+      # PeriodicExportingMetricReader so those gauges actually export to
+      # the otel-collector and reach Mimir.
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-http://otel-collector:4317}
+      OTEL_SERVICE_NAME: ${OTEL_SERVICE_NAME_WORKER:-openwhispr-worker}
     depends_on:
       litellm:
         condition: service_healthy
@@ -524,6 +543,8 @@ services:
         condition: service_healthy
       migrate:
         condition: service_completed_successfully
+      otel-collector:
+        condition: service_started
     restart: unless-stopped
 
   # Phase 2 Plan 02 — Mailpit dev SMTP catch-all. ONLY in the `dev`

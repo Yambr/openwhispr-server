@@ -102,6 +102,10 @@ export interface Phase6Stack {
   valkey: StartedTestContainer;
   /** Resolve the `api` service container. */
   api: StartedTestContainer;
+  /** Resolve the `worker` service container. */
+  worker: StartedTestContainer;
+  /** Resolve the `grafana` service container (has wget; LGTM gateway). */
+  grafana: StartedTestContainer;
   /** Tear the stack down + drop named volumes. */
   down: () => Promise<void>;
 }
@@ -210,6 +214,20 @@ export async function phase6BringStackUp(
      * reuse pre-built `openwhispr-{api,worker,migrate}:latest` images.
      */
     projectName?: string;
+    /**
+     * Phase 6 / Plan 06-12b — extra compose files layered on top of
+     * `docker-compose.yml`. Each entry MUST be a path relative to
+     * REPO_ROOT.  testcontainers' DockerComposeEnvironment accepts the
+     * second constructor arg as `string | string[]`; we surface the
+     * array form so suites can add per-test env overrides (e.g.
+     * NODE_ENV=test + OUTBOUND_ALLOWED_HOSTS for the ssrf-block
+     * suite, or RATE_LIMIT_* env knobs for rate-limit-layered).
+     *
+     * Override files MUST live under `tests/e2e/helpers/` and SHOULD
+     * be named `phase6-<scenario>-override.yml` so the conventions are
+     * obvious to the next test author.
+     */
+    overrideComposeFiles?: string[];
   } = {},
 ): Promise<Phase6Stack> {
   // Self-signed Traefik dev cert — scope to this process only.
@@ -232,7 +250,11 @@ export async function phase6BringStackUp(
   // resetting projectName to "testcontainers-node", which defeats our
   // image-cache reuse. We drop it and accept the per-suite container
   // recreation cost (~10-20s extra per boot).
-  const env = await new DockerComposeEnvironment(REPO_ROOT, COMPOSE_FILE)
+  const composeFiles: string | string[] =
+    opts.overrideComposeFiles && opts.overrideComposeFiles.length > 0
+      ? [COMPOSE_FILE, ...opts.overrideComposeFiles]
+      : COMPOSE_FILE;
+  const env = await new DockerComposeEnvironment(REPO_ROOT, composeFiles)
     .withProjectName(projectName)
     .withProfiles("default")
     .withEnvironment(HERMETIC_ENV)
@@ -267,6 +289,8 @@ export async function phase6BringStackUp(
   const postgres = getServiceContainer(env, "postgres");
   const valkey = getServiceContainer(env, "valkey");
   const api = getServiceContainer(env, "api");
+  const worker = getServiceContainer(env, "worker");
+  const grafana = getServiceContainer(env, "grafana");
 
   // Belt-and-suspenders: poll Traefik → /livez until 200 so the api
   // is actually serving (the docker HEALTHCHECK guarantees the
@@ -310,7 +334,7 @@ export async function phase6BringStackUp(
     await env.down({ removeVolumes: true, timeout: 30_000 });
   };
 
-  return { env, projectName, postgres, valkey, api, down };
+  return { env, projectName, postgres, valkey, api, worker, grafana, down };
 }
 
 /**
@@ -368,6 +392,186 @@ export async function psqlOwner(
     );
   }
   return result.output;
+}
+
+/**
+ * Phase 6 / Plan 06-12c — enqueue a BullMQ job from outside the worker.
+ *
+ * Shells out via `docker compose -p <project> exec worker node -e <script>`
+ * because (a) valkey has no host port (internal network only) and (b) the
+ * worker image is the only container that already has bullmq + ioredis in
+ * /app/node_modules. We avoid adding a debug `/__test/enqueue` route per
+ * Plan 06-12c's "no scope creep" guidance — direct enqueue keeps the test
+ * isolated from API changes.
+ *
+ * Returns the job id assigned by BullMQ.
+ */
+export async function enqueueBullMQJob(
+  projectName: string,
+  queueName: string,
+  jobName: string,
+  data: Record<string, unknown>,
+): Promise<string> {
+  const env = readDotenv();
+  const valkeyPassword = env.VALKEY_PASSWORD ?? "";
+  const script = `
+    const { Queue } = require('bullmq');
+    const connection = { host: 'valkey', port: 6379, password: ${JSON.stringify(valkeyPassword)} };
+    const q = new Queue(${JSON.stringify(queueName)}, { connection });
+    q.add(${JSON.stringify(jobName)}, ${JSON.stringify(data)})
+      .then(job => { console.log(job.id); return q.close(); })
+      .then(() => process.exit(0))
+      .catch(err => { console.error(err); process.exit(1); });
+  `.replace(/\s+/g, " ");
+  return await new Promise<string>((res, rej) => {
+    const child = spawn(
+      "docker",
+      ["compose", "-p", projectName, "exec", "-T", "worker", "node", "-e", script],
+      { cwd: REPO_ROOT },
+    );
+    let out = "";
+    let err = "";
+    child.stdout.on("data", (d) => (out += d.toString()));
+    child.stderr.on("data", (d) => (err += d.toString()));
+    child.on("close", (code) => {
+      if (code === 0) res(out.trim().split("\n").pop()!.trim());
+      else rej(new Error(`enqueueBullMQJob exit=${code} stderr=${err} stdout=${out}`));
+    });
+  });
+}
+
+/**
+ * Phase 6 / Plan 06-12c — poll a BullMQ job until it reaches the
+ * `completed` or `failed` state. Returns `{state, returnValue?, failedReason?}`.
+ * Uses the same docker-compose-exec channel as enqueueBullMQJob.
+ */
+export async function waitForBullMQJob(
+  projectName: string,
+  queueName: string,
+  jobId: string,
+  opts: { deadlineMs: number; intervalMs?: number } = { deadlineMs: 60_000 },
+): Promise<{ state: string; returnValue?: unknown; failedReason?: string }> {
+  const env = readDotenv();
+  const valkeyPassword = env.VALKEY_PASSWORD ?? "";
+  const start = Date.now();
+  const interval = opts.intervalMs ?? 1000;
+  let last: { state: string; returnValue?: unknown; failedReason?: string } = {
+    state: "unknown",
+  };
+  while (Date.now() - start < opts.deadlineMs) {
+    const script = `
+      const { Queue } = require('bullmq');
+      const connection = { host: 'valkey', port: 6379, password: ${JSON.stringify(valkeyPassword)} };
+      const q = new Queue(${JSON.stringify(queueName)}, { connection });
+      (async () => {
+        const job = await q.getJob(${JSON.stringify(jobId)});
+        if (!job) { console.log(JSON.stringify({ state: 'missing' })); }
+        else {
+          const state = await job.getState();
+          console.log(JSON.stringify({
+            state,
+            returnValue: job.returnvalue,
+            failedReason: job.failedReason,
+          }));
+        }
+        await q.close();
+      })().catch(err => { console.error(err); process.exit(1); });
+    `.replace(/\s+/g, " ");
+    last = await new Promise((res, rej) => {
+      const child = spawn(
+        "docker",
+        ["compose", "-p", projectName, "exec", "-T", "worker", "node", "-e", script],
+        { cwd: REPO_ROOT },
+      );
+      let out = "";
+      let err = "";
+      child.stdout.on("data", (d) => (out += d.toString()));
+      child.stderr.on("data", (d) => (err += d.toString()));
+      child.on("close", (code) => {
+        if (code !== 0) return rej(new Error(`waitForBullMQJob exit=${code} stderr=${err}`));
+        try {
+          const lines = out.trim().split("\n").filter(Boolean);
+          res(JSON.parse(lines[lines.length - 1] ?? "{}"));
+        } catch (e) {
+          rej(new Error(`parse failed: ${out} ${String(e)}`));
+        }
+      });
+    });
+    if (last.state === "completed" || last.state === "failed") return last;
+    await new Promise((r) => setTimeout(r, interval));
+  }
+  throw new Error(
+    `waitForBullMQJob: ${queueName}/${jobId} never finished in ${opts.deadlineMs}ms; last=${JSON.stringify(last)}`,
+  );
+}
+
+/**
+ * Phase 6 / Plan 06-12c — count jobs in a BullMQ queue across the given
+ * states. Useful for asserting a child job was enqueued by a parent.
+ */
+export async function getBullMQJobsByName(
+  projectName: string,
+  queueName: string,
+  jobName: string,
+  opts: { types?: string[] } = {},
+): Promise<Array<{ id: string; data: unknown; state: string }>> {
+  const env = readDotenv();
+  const valkeyPassword = env.VALKEY_PASSWORD ?? "";
+  const types = opts.types ?? ["completed", "active", "waiting", "delayed", "failed"];
+  const script = `
+    const { Queue } = require('bullmq');
+    const connection = { host: 'valkey', port: 6379, password: ${JSON.stringify(valkeyPassword)} };
+    const q = new Queue(${JSON.stringify(queueName)}, { connection });
+    (async () => {
+      const jobs = await q.getJobs(${JSON.stringify(types)}, 0, 200);
+      const out = [];
+      for (const j of jobs) {
+        if (j.name === ${JSON.stringify(jobName)}) {
+          out.push({ id: j.id, data: j.data, state: await j.getState() });
+        }
+      }
+      console.log(JSON.stringify(out));
+      await q.close();
+    })().catch(err => { console.error(err); process.exit(1); });
+  `.replace(/\s+/g, " ");
+  return await new Promise((res, rej) => {
+    const child = spawn(
+      "docker",
+      ["compose", "-p", projectName, "exec", "-T", "worker", "node", "-e", script],
+      { cwd: REPO_ROOT },
+    );
+    let out = "";
+    let err = "";
+    child.stdout.on("data", (d) => (out += d.toString()));
+    child.stderr.on("data", (d) => (err += d.toString()));
+    child.on("close", (code) => {
+      if (code !== 0) return rej(new Error(`getBullMQJobsByName exit=${code} stderr=${err}`));
+      try {
+        const lines = out.trim().split("\n").filter(Boolean);
+        res(JSON.parse(lines[lines.length - 1] ?? "[]"));
+      } catch (e) {
+        rej(new Error(`parse failed: ${out} ${String(e)}`));
+      }
+    });
+  });
+}
+
+/**
+ * Phase 6 / Plan 06-12c — fetch a URL from inside the grafana container
+ * (which has wget). Used to query Tempo, Loki, Mimir which only expose
+ * HTTP on the internal docker network.
+ */
+export async function curlInContainer(
+  container: StartedTestContainer,
+  url: string,
+  opts: { headers?: Record<string, string>; bodyOnly?: boolean } = {},
+): Promise<{ exitCode: number; body: string }> {
+  const headerArgs: string[] = [];
+  for (const [k, v] of Object.entries(opts.headers ?? {})) {
+    headerArgs.push("--header", `${k}: ${v}`);
+  }
+  const result = await container.exec(["wget", "-qO-", ...headerArgs, url]);
+  return { exitCode: result.exitCode, body: result.output };
 }
 
 /** Read .env file into a Record. Lightweight — no dotenv dep. */
