@@ -108,6 +108,10 @@ import {
   type KeysListDeps,
 } from "./v1/keys/list.js";
 import {
+  buildKeysRevokeRoutes,
+  type KeysRevokeDeps,
+} from "./v1/keys/revoke.js";
+import {
   type AuthCallbackDeps,
   buildAuthCallbackRoutes,
   type MintBearer,
@@ -355,6 +359,12 @@ export function buildAllRoutes(deps: AllRoutesDeps): readonly RoutePlugin[] {
     // but are inert until Phase 6 wires the bearer auth chain.
     buildKeysListRoutes({ db: deps.db } satisfies KeysListDeps),
     buildKeysCreateRoutes({ db: deps.db } satisfies KeysCreateDeps),
+    // Phase 05 / Plan 09 / Task 3 — POST /api/v1/keys/:id/revoke
+    // (WIRE-27 per Open Q#5 — revoke included in WIRE-27 scope).
+    // Idempotent soft-revoke: sets revoked_at = COALESCE(revoked_at,
+    // NOW()); the Argon2id hash is unchanged. Phase 6 bearer-auth
+    // middleware will gate on revoked_at IS NULL before verifyKey().
+    buildKeysRevokeRoutes({ db: deps.db } satisfies KeysRevokeDeps),
   ];
   // Phase 03 / Plan 04: conditionally register the transcribe route only
   // when a LiteLLM client was constructed (LITELLM_MASTER_KEY present).
