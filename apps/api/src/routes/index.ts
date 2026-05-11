@@ -23,6 +23,26 @@ import {
 } from "./agent/stream.js";
 import { buildWebSearchRoutes, type WebSearchDeps } from "./agent/web-search.js";
 import {
+  buildConversationsCreateRoutes,
+  type ConversationsCreateDeps,
+} from "./conversations/create.js";
+import {
+  buildConversationsDeleteRoutes,
+  type ConversationsDeleteDeps,
+} from "./conversations/delete.js";
+import {
+  buildConversationsListRoutes,
+  type ConversationsListDeps,
+} from "./conversations/list.js";
+import {
+  buildConversationsSearchRoutes,
+  type ConversationsSearchDeps,
+} from "./conversations/search.js";
+import {
+  buildConversationsUpdateRoutes,
+  type ConversationsUpdateDeps,
+} from "./conversations/update.js";
+import {
   buildFoldersBatchCreateRoutes,
   type FoldersBatchCreateDeps,
 } from "./folders/batch-create.js";
@@ -242,6 +262,27 @@ export function buildAllRoutes(deps: AllRoutesDeps): readonly RoutePlugin[] {
     buildFoldersUpdateRoutes({ db: deps.db } satisfies FoldersUpdateDeps),
     buildFoldersDeleteRoutes({ db: deps.db } satisfies FoldersDeleteDeps),
     buildFoldersListRoutes({ db: deps.db } satisfies FoldersListDeps),
+    // Phase 05 / Plan 07 — WIRE-24 conversations CRUD (5 routes here +
+    // /messages dual-method registered in Task 3). Registered
+    // UNCONDITIONALLY — DB-only. Mirrors the canonical CRUD pattern
+    // established by Plan 05 (Notes): reuses keyset-pagination +
+    // soft-delete + client-id-upsert helpers with
+    // table=conversations, clientIdColumn=client_conversation_id.
+    buildConversationsCreateRoutes({
+      db: deps.db,
+    } satisfies ConversationsCreateDeps),
+    buildConversationsUpdateRoutes({
+      db: deps.db,
+    } satisfies ConversationsUpdateDeps),
+    buildConversationsDeleteRoutes({
+      db: deps.db,
+    } satisfies ConversationsDeleteDeps),
+    buildConversationsListRoutes({
+      db: deps.db,
+    } satisfies ConversationsListDeps),
+    buildConversationsSearchRoutes({
+      db: deps.db,
+    } satisfies ConversationsSearchDeps),
   ];
   // Phase 03 / Plan 04: conditionally register the transcribe route only
   // when a LiteLLM client was constructed (LITELLM_MASTER_KEY present).
@@ -333,6 +374,11 @@ export {
   buildAuthCallbackRoutes,
   buildBetterAuthHandlerRoutes,
   buildCheckUserRoutes,
+  buildConversationsCreateRoutes,
+  buildConversationsDeleteRoutes,
+  buildConversationsListRoutes,
+  buildConversationsSearchRoutes,
+  buildConversationsUpdateRoutes,
   buildDeepgramTokenRoutes,
   buildDeleteAccountRoutes,
   buildDesktopSigninRoutes,
