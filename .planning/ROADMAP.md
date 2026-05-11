@@ -419,9 +419,9 @@ Plans:
   6. Anti-abuse rate limiting (per-user, per-IP, Redis token-bucket) is enforced with the polling carve-out for `/api/auth/verification-status`; SSRF defense (private-IP block + DNS-rebinding defense) gates every server-side outbound HTTP call.
   7. Tests written first (TDD); all CI checks green.
 **Plans**: 12 plans (4 waves)
-- [ ] 06-01-PLAN.md — Wave 0: Materialize 31 RED test stubs (apps/api + apps/worker + packages/data + tools + integration)
+- [x] 06-01-PLAN.md — Wave 0: Materialize 31 RED test stubs (apps/api + apps/worker + packages/data + tools + integration)
 - [ ] 06-02-PLAN.md — Wave 0: pg_partman custom postgres image + migration 0011 (audit_log → monthly RANGE partition) + [BLOCKING] db:push
-- [ ] 06-03-PLAN.md — Wave 0: OTel SDK bootstrap + pino redact + Loki↔Tempo derivedFields + 8 e2e RED stubs
+- [x] 06-03-PLAN.md — Wave 0: OTel SDK bootstrap + pino redact + Loki↔Tempo derivedFields + 8 e2e RED stubs
 - [ ] 06-04-PLAN.md — Wave 1: /livez /readyz /startupz probes + dep-check lru-cache + x-served-by hook (OBS-05, SCALE-01 prep)
 - [ ] 06-05-PLAN.md — Wave 1: recordAudit helper + 18-action const-union + 15 emission sites wired (DATA-04, OBS-03)
 - [ ] 06-06-PLAN.md — Wave 1: undici SSRF Dispatcher (12 CIDRs + single-resolve + 502 + security.ssrf_blocked audit row) (SCALE-04 security half)
@@ -438,7 +438,7 @@ Plans:
 **Goal:** [Urgent work - to be planned]
 **Requirements**: TBD
 **Depends on:** Phase 6
-**Plans:** 0 plans
+**Plans:** 2/12 plans executed
 
 Plans:
 - [ ] TBD (run /gsd-plan-phase 06.1 to break down)
