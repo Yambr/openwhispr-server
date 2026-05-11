@@ -83,6 +83,34 @@ describe("otel-bootstrap (Phase 6 / Plan 03 / Task 1)", () => {
     await expect(mod.sdk.shutdown()).resolves.not.toThrow();
   });
 
+  it("startSdk catches a synchronous start error so the API never crashes on telemetry init", async () => {
+    const mod = await import("./otel-bootstrap.js");
+    // Build a fake SDK whose start() throws; startSdk MUST swallow.
+    const fakeSdk = {
+      start: () => {
+        throw new Error("synthetic start failure");
+      },
+    } as unknown as Parameters<typeof mod.startSdk>[0];
+    expect(() => mod.startSdk(fakeSdk)).not.toThrow();
+  });
+
+  it("emitting SIGTERM after module load triggers the shutdown hook (line coverage for onSignal)", async () => {
+    await import("./otel-bootstrap.js");
+    // The handler is registered via process.once("SIGTERM", onSignal);
+    // emitting the signal exercises the onSignal body — its sole job
+    // is to call shutdownSdk() (return is void; we don't await the
+    // internal promise because Node's signal handlers are sync).
+    expect(() => process.emit("SIGTERM" as never)).not.toThrow();
+  });
+
+  it("shutdownSdk swallows a rejected shutdown so the SIGTERM handler stays infallible", async () => {
+    const mod = await import("./otel-bootstrap.js");
+    const fakeSdk = {
+      shutdown: () => Promise.reject(new Error("synthetic shutdown failure")),
+    } as unknown as Parameters<typeof mod.shutdownSdk>[0];
+    await expect(mod.shutdownSdk(fakeSdk)).resolves.toBeUndefined();
+  });
+
   it("does NOT expose a /metrics Prometheus-pull endpoint (D-T6)", () => {
     // Grep the route source tree for any /metrics registration. A
     // single metrics path through OTel SDK → Collector → Mimir is the

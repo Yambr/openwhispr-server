@@ -76,6 +76,12 @@ describe("request-log pino redact paths (D-T4)", () => {
     expect(chunks.join("")).toContain("[REDACTED]");
   });
 
+  it("buildLogger() without a destination returns a default-stdout pino logger (production path)", () => {
+    const log = buildLogger();
+    expect(typeof log.info).toBe("function");
+    expect(typeof log.error).toBe("function");
+  });
+
   it("emits English-ASCII-only output (English-only constitutional)", () => {
     const chunks: string[] = [];
     const log = buildLogger({
