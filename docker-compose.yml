@@ -27,7 +27,17 @@ volumes:
 
 services:
   postgres:
-    image: postgres:17.5-alpine
+    # Phase 6 / Plan 02 — custom image with pg_partman 5.2.4 built from
+    # source on top of postgres:17.5-alpine. Required by migration 0014
+    # (audit_log monthly RANGE partitioning, D-A2). The `image:` tag is
+    # the local name used by `docker compose pull` / scans; `build:` runs
+    # locally otherwise. Multi-arch (amd64+arm64) buildable.
+    build:
+      context: ./compose/postgres
+      dockerfile: Dockerfile
+      args:
+        PG_PARTMAN_VERSION: "5.2.4"
+    image: openwhispr/postgres:17.5-pgpartman
     profiles: [default, db-only]
     networks: [openwhispr_internal]
     environment:
