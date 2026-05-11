@@ -40,6 +40,38 @@ import { SSRFBlockedError } from "./lib/ssrf-dispatcher.js";
 
 const JSON_CT = "application/json; charset=utf-8";
 
+/**
+ * Phase 6 / Plan 06-12e — walk `err.cause` chain to find an
+ * `SSRFBlockedError`.
+ *
+ * Node 24's `globalThis.fetch` (built on undici) wraps any error raised
+ * from the `connect.lookup` hook as
+ * `new TypeError('fetch failed', { cause: <original> })`.  Our SSRF
+ * dispatcher raises `SSRFBlockedError` from that hook, so the typed
+ * error surfaces at the route's catch-chain as the `.cause` of a
+ * TypeError, NOT as the top-level error.  Without unwrapping, the
+ * setErrorHandler's `err instanceof SSRFBlockedError` check never
+ * matches and SSRF-blocked outbound calls return 500 instead of the
+ * canonical 502 envelope (D-S5).
+ *
+ * Defense in depth: in some edge paths undici can wrap twice (connect
+ * error → AbortError → TypeError) so the walker handles arbitrary
+ * depth, bounded by `MAX_CAUSE_DEPTH` to defend against pathological
+ * cycles.
+ */
+const MAX_CAUSE_DEPTH = 8;
+export function findSSRFBlockedError(err: unknown): SSRFBlockedError | null {
+  let current: unknown = err;
+  for (let depth = 0; depth < MAX_CAUSE_DEPTH; depth++) {
+    if (current instanceof SSRFBlockedError) return current;
+    if (current === null || typeof current !== "object") return null;
+    const next = (current as { cause?: unknown }).cause;
+    if (next === current || next === undefined) return null;
+    current = next;
+  }
+  return null;
+}
+
 interface FastifyValidationLike {
   validation?: unknown;
   statusCode?: number;
@@ -90,10 +122,14 @@ export function registerErrorHandler(app: FastifyInstance): void {
     } else if (err instanceof ServerError) {
       status = 500;
       message = err.message || "Internal server error";
-    } else if (err instanceof SSRFBlockedError) {
+    } else if (findSSRFBlockedError(err) !== null) {
       // Phase 6 / Plan 06 (SCALE-04, D-S5) — outbound blocked by SSRF
       // gate. 502 envelope; audit_log row already written by the
       // dispatcher's onBlock callback (action='security.ssrf_blocked').
+      // Plan 06-12e — walk err.cause chain because Node 24's
+      // `globalThis.fetch` wraps connect-lookup errors as
+      // `TypeError('fetch failed', { cause: <original> })`.  Direct
+      // throws still match because the helper short-circuits at depth=0.
       status = 502;
       message = "Upstream blocked by SSRF policy";
     } else if (err instanceof APIError) {

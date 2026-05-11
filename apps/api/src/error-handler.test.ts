@@ -10,10 +10,12 @@
 // We do NOT include the zod type provider here — that's a different
 // failure mode (Fastify validation hooks) and is exercised at the route
 // level. This file pins the SET-ERROR-HANDLER contract only.
+
+import { ErrorEnvelope } from "@openwhispr/contract-tests/schemas";
 import Fastify, { type FastifyInstance } from "fastify";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { z } from "zod";
-import { ErrorEnvelope } from "@openwhispr/contract-tests/schemas";
+import { registerErrorHandler } from "./error-handler.js";
 import {
   AuthError,
   NotFoundError,
@@ -22,7 +24,7 @@ import {
   ServiceUnavailable,
   ValidationError,
 } from "./errors.js";
-import { registerErrorHandler } from "./error-handler.js";
+import { SSRFBlockedError } from "./lib/ssrf-dispatcher.js";
 
 describe("registerErrorHandler — global envelope (D-13)", () => {
   let app: FastifyInstance;
@@ -91,6 +93,26 @@ describe("registerErrorHandler — global envelope (D-13)", () => {
     });
     app.get("/throw-server-empty", async () => {
       throw new ServerError("");
+    });
+    // Phase 6 / Plan 06-12e — SSRF: direct throw AND undici-wrapped via
+    // err.cause.  Node 24's globalThis.fetch wraps connect.lookup errors
+    // as `new TypeError('fetch failed', { cause: <original> })`, so the
+    // SSRFBlockedError raised by the dispatcher surfaces at the route's
+    // catch-chain as the `.cause` of a TypeError.  The error-handler MUST
+    // unwrap the cause chain to map it to 502.
+    app.get("/throw-ssrf-direct", async () => {
+      throw new SSRFBlockedError("link_local_v4", "169.254.169.254", "169.254.169.254");
+    });
+    app.get("/throw-ssrf-wrapped", async () => {
+      const inner = new SSRFBlockedError("link_local_v4", "169.254.169.254", "169.254.169.254");
+      throw new TypeError("fetch failed", { cause: inner });
+    });
+    app.get("/throw-ssrf-nested", async () => {
+      // Defense-in-depth: undici can wrap twice in some edge paths
+      // (connect error → AbortError → TypeError).  Walk the whole chain.
+      const inner = new SSRFBlockedError("host_not_allowed", "metadata.internal");
+      const mid = Object.assign(new Error("connect failed"), { cause: inner });
+      throw new TypeError("fetch failed", { cause: mid });
     });
     // Fastify-style err.statusCode === 429 with empty message — exercises
     // the `errMessage || "Too many requests"` default on the same branch.
@@ -174,6 +196,26 @@ describe("registerErrorHandler — global envelope (D-13)", () => {
     const res = await app.inject({ method: "GET", url: "/throw-fastify-503" });
     expect(res.statusCode).toBe(503);
     expect(res.json().error).toBe("db went away");
+  });
+
+  it("maps SSRFBlockedError thrown directly -> 502 with canonical message (D-S5)", async () => {
+    const res = await app.inject({ method: "GET", url: "/throw-ssrf-direct" });
+    expect(res.statusCode).toBe(502);
+    const body = res.json();
+    expect(() => ErrorEnvelope.parse(body)).not.toThrow();
+    expect(body.error).toBe("Upstream blocked by SSRF policy");
+  });
+
+  it("maps SSRFBlockedError wrapped in TypeError('fetch failed') via err.cause -> 502 (Node 24 undici fetch contract, Phase 6 / Plan 06-12e)", async () => {
+    const res = await app.inject({ method: "GET", url: "/throw-ssrf-wrapped" });
+    expect(res.statusCode).toBe(502);
+    expect(res.json().error).toBe("Upstream blocked by SSRF policy");
+  });
+
+  it("walks the entire cause chain to find SSRFBlockedError (defense in depth — Phase 6 / Plan 06-12e)", async () => {
+    const res = await app.inject({ method: "GET", url: "/throw-ssrf-nested" });
+    expect(res.statusCode).toBe(502);
+    expect(res.json().error).toBe("Upstream blocked by SSRF policy");
   });
 
   it("default path: plain Error -> 500 with GENERIC message (no stack leak)", async () => {

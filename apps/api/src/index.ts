@@ -65,7 +65,6 @@ import { registerErrorHandler } from "./error-handler.js";
 import { type DepCheck, makeDepCheck } from "./lib/dep-check.js";
 import type { RedisLike } from "./lib/idempotency-cache.js";
 import { buildMintBearer } from "./lib/mint-bearer.js";
-import { SSRFBlockedError } from "./lib/ssrf-dispatcher.js";
 import {
   recordPreviousToken as recordPreviousTokenLib,
   tryPreviousToken as tryPreviousTokenLib,
@@ -276,9 +275,34 @@ export const buildApp = async (opts: BuildAppOptions = {}): Promise<FastifyInsta
   if (opts.db) {
     const dbForSsrf = opts.db as unknown as TransactionalDb<ExecutableTx>;
     app.addHook("onError", async (req, _reply, err) => {
-      if (!(err instanceof SSRFBlockedError)) return;
-      const tenantId = (req as { tenant?: string }).tenant;
-      if (!tenantId) return;
+      // Plan 06-12e — same cause-chain walk as the error handler.
+      // Node 24 `globalThis.fetch` wraps SSRFBlockedError as
+      // `TypeError('fetch failed', { cause: <original> })`; without
+      // unwrapping the hook silently drops the audit row.
+      const { findSSRFBlockedError } = await import("./error-handler.js");
+      const ssrfErr = findSSRFBlockedError(err);
+      if (!ssrfErr) return;
+      // Plan 06-12e — fall back to the default tenant when the request
+      // has no authenticated tenant binding.  SSRF blocks are emitted
+      // from BOTH authenticated routes (rare — most internal calls
+      // target allow-listed hosts) AND unauthenticated/auth-bypass
+      // paths (the /__test/fetch debug surface in NODE_ENV=test, plus
+      // any pre-auth route that resolves a user-supplied URL).  We
+      // refuse to silently drop the audit row when the dispatcher
+      // refused egress; an unauthenticated SSRF attempt is exactly the
+      // signal an operator needs to surface.  D-A1 still holds — the
+      // row commits inside a real DB tx; only the tenant attribution
+      // degrades to "default" when no session is present.
+      const { resolveDefaultTenantId } = await import("./lib/default-tenant.js");
+      let tenantId: string | undefined = (req as { tenant?: string }).tenant;
+      if (!tenantId) {
+        try {
+          tenantId = await resolveDefaultTenantId();
+        } catch {
+          // No tenant context AND default tenant unresolvable — drop.
+          return;
+        }
+      }
       const user = (req as { user?: { id?: string } }).user;
       try {
         const { recordAudit, auditCtxFromRequest } = await import("./lib/audit.js");
@@ -289,13 +313,13 @@ export const buildApp = async (opts: BuildAppOptions = {}): Promise<FastifyInsta
             user?.id ?? null,
           );
           await recordAudit(tx, ctx, "security.ssrf_blocked", {
-            target_url_host: err.host,
-            rule: err.rule,
+            target_url_host: ssrfErr.host,
+            rule: ssrfErr.rule,
           });
         });
       } catch (auditErr) {
         req.log.warn(
-          { err: auditErr, ssrf_rule: err.rule, ssrf_host: err.host },
+          { err: auditErr, ssrf_rule: ssrfErr.rule, ssrf_host: ssrfErr.host },
           "ssrf audit emission failed",
         );
       }

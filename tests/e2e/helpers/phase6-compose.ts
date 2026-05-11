@@ -203,6 +203,23 @@ export async function pollUrl(
  * a handle with the started env + named-service shortcuts + a teardown
  * thunk.
  */
+/**
+ * Phase 6 / Plan 06-12e — disable testcontainers' ryuk reaper for this
+ * harness.  Ryuk's `addComposeProject('openwhispr')` instructs the
+ * reaper to delete EVERYTHING with the
+ * `com.docker.compose.project=openwhispr` label on test-process exit —
+ * including the locally-built `openwhispr-{api,worker,migrate}:latest`
+ * images that compose tags with that label.  The next test run then
+ * fails its `--no-build --pull never` boot with `No such image:
+ * openwhispr-migrate:latest`.  We own teardown explicitly via the
+ * `down()` thunk on each Phase6Stack, so ryuk's "best-effort cleanup
+ * on process exit" is strictly counterproductive here.  Set the env
+ * BEFORE any DockerComposeEnvironment is constructed.
+ */
+if (process.env.TESTCONTAINERS_RYUK_DISABLED === undefined) {
+  process.env.TESTCONTAINERS_RYUK_DISABLED = "true";
+}
+
 export async function phase6BringStackUp(
   opts: {
     /** Override the 240s default boot timeout. */
@@ -307,12 +324,29 @@ export async function phase6BringStackUp(
     // the compose CLI directly, targeting the SAME project name
     // testcontainers created so the seed container lands on the
     // same network and sees the same postgres/api.
+    //
+    // Plan 06-12e — CRITICAL: pass the SAME override files (`-f
+    // docker-compose.yml -f <override>`) that the `up` step used.
+    // Without this, `compose run` invoked with only the base compose
+    // file detects a service-config divergence vs. the running stack
+    // (api's `environment:` block contains `NODE_ENV=production` in
+    // base but `NODE_ENV=test` after override) and recreates the api
+    // container under the BASE config — silently dropping the
+    // override env block and de-registering the NODE_ENV='test'-gated
+    // `/__test/fetch` debug route.  This caused the 12d-deferred
+    // ssrf-block test to 404 on the test surface despite the api
+    // healthcheck passing.
+    const seedFileArgs: string[] = ["-f", COMPOSE_FILE];
+    for (const f of opts.overrideComposeFiles ?? []) {
+      seedFileArgs.push("-f", f);
+    }
     const code = await runCmd(
       "docker",
       [
         "compose",
         "-p",
         projectName,
+        ...seedFileArgs,
         "--profile",
         "default",
         "--profile",

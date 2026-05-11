@@ -21,6 +21,7 @@ import {
   BLOCKED_RANGES,
   checkBlocklist,
   hostMatches,
+  makeSSRFConnectGuard,
   makeSSRFDispatcher,
   makeSSRFLookup,
   SSRFBlockedError,
@@ -532,6 +533,151 @@ describe("ssrf-dispatcher edge-case parsing", () => {
     });
     expect(result.err).toBeInstanceOf(SSRFBlockedError);
     expect((result.err as SSRFBlockedError).rule).toBe("host_not_allowed");
+  });
+
+  // Phase 6 / Plan 06-12e — IP-literal bypass guard (D-S3 enforcement
+  // gap). Node's `net.connect({ host, lookup })` SKIPS the `lookup`
+  // callback entirely when `host` is already an IP literal (verified in
+  // Node 24 via direct probe). That bypasses the SSRF dispatcher's
+  // lookup-installed allow/block-list and lets `fetch('http://10.0.0.1')`
+  // hit RFC1918 unfettered. The fix: a connect-level guard that runs
+  // the allow-list + block-list against the literal hostname BEFORE
+  // delegating to undici's default connector. The lookup hook still
+  // covers hostname resolution; the guard covers the literal path.
+  describe("ssrf-dispatcher IP-literal connect guard (D-S3, Plan 06-12e)", () => {
+    it("rejects literal RFC1918 10.0.0.1 even though Node's net.connect skips lookup for IP literals", async () => {
+      const onBlock = vi.fn();
+      const guard = makeSSRFConnectGuard({
+        allowedHosts: ["10.0.0.1"], // even with the literal allow-listed,
+        privateHostAllowlist: [],
+        allowLoopback: false,
+        mode: "enforce",
+        onBlock,
+      });
+      const err = guard({ hostname: "10.0.0.1" } as never);
+      expect(err).toBeInstanceOf(SSRFBlockedError);
+      expect((err as SSRFBlockedError).rule).toBe("rfc1918_10");
+      expect(onBlock).toHaveBeenCalled();
+    });
+
+    it("rejects literal AWS IMDS 169.254.169.254 via link_local_v4 (the canonical exploit)", async () => {
+      const onBlock = vi.fn();
+      const guard = makeSSRFConnectGuard({
+        allowedHosts: ["169.254.169.254"], // listed by mistake; literal must STILL block
+        privateHostAllowlist: [],
+        allowLoopback: false,
+        mode: "enforce",
+        onBlock,
+      });
+      const err = guard({ hostname: "169.254.169.254" } as never);
+      expect(err).toBeInstanceOf(SSRFBlockedError);
+      expect((err as SSRFBlockedError).rule).toBe("link_local_v4");
+    });
+
+    it("rejects literal IPv6 ULA fd00::1 via ula_v6", async () => {
+      const onBlock = vi.fn();
+      const guard = makeSSRFConnectGuard({
+        allowedHosts: ["fd00::1"],
+        privateHostAllowlist: [],
+        allowLoopback: false,
+        mode: "enforce",
+        onBlock,
+      });
+      const err = guard({ hostname: "fd00::1" } as never);
+      expect(err).toBeInstanceOf(SSRFBlockedError);
+      expect((err as SSRFBlockedError).rule).toBe("ula_v6");
+    });
+
+    it("rejects literal IP when hostname is not in allow-list (host_not_allowed before block-list)", async () => {
+      const onBlock = vi.fn();
+      const guard = makeSSRFConnectGuard({
+        allowedHosts: ["openrouter.ai"],
+        privateHostAllowlist: [],
+        allowLoopback: false,
+        mode: "enforce",
+        onBlock,
+      });
+      const err = guard({ hostname: "10.0.0.1" } as never);
+      expect(err).toBeInstanceOf(SSRFBlockedError);
+      // host_not_allowed fires first (default-deny); block-list is the
+      // fallback when allow-list passes.  Order matches makeSSRFLookup.
+      expect((err as SSRFBlockedError).rule).toBe("host_not_allowed");
+    });
+
+    it("permits literal IP when host is in privateHostAllowlist (e.g. docker bridge)", async () => {
+      const onBlock = vi.fn();
+      const guard = makeSSRFConnectGuard({
+        allowedHosts: ["10.0.0.5"],
+        privateHostAllowlist: ["10.0.0.5"],
+        allowLoopback: false,
+        mode: "enforce",
+        onBlock,
+      });
+      const err = guard({ hostname: "10.0.0.5" } as never);
+      expect(err).toBeNull();
+      expect(onBlock).not.toHaveBeenCalled();
+    });
+
+    it("passes through non-IP-literal hostnames untouched (lookup handles them)", async () => {
+      const guard = makeSSRFConnectGuard({
+        allowedHosts: ["openrouter.ai"],
+        privateHostAllowlist: [],
+        allowLoopback: false,
+        mode: "enforce",
+        onBlock: vi.fn(),
+      });
+      // Hostname is not an IP literal — guard MUST return null and
+      // defer to the lookup-installed path for the SSRF check.
+      const err = guard({ hostname: "openrouter.ai" } as never);
+      expect(err).toBeNull();
+    });
+
+    it("warn-mode emits onBlock for a literal RFC1918 but does NOT reject", async () => {
+      const onBlock = vi.fn();
+      const guard = makeSSRFConnectGuard({
+        allowedHosts: ["10.0.0.1"],
+        privateHostAllowlist: [],
+        allowLoopback: false,
+        mode: "warn",
+        onBlock,
+      });
+      const err = guard({ hostname: "10.0.0.1" } as never);
+      // warn-mode: observed but allowed through (matches lookup posture D-S5).
+      expect(err).toBeNull();
+      expect(onBlock).toHaveBeenCalled();
+      const ctx = onBlock.mock.calls[0]?.[0];
+      expect(ctx.rule).toBe("rfc1918_10");
+      expect(ctx.mode).toBe("warn");
+    });
+
+    it("D-S6 — loopback literal 127.0.0.1 honoured by allowLoopback + non-production NODE_ENV", async () => {
+      const onBlock = vi.fn();
+      const guard = makeSSRFConnectGuard({
+        allowedHosts: ["127.0.0.1"],
+        privateHostAllowlist: [],
+        allowLoopback: true,
+        mode: "enforce",
+        nodeEnv: "test",
+        onBlock,
+      });
+      const err = guard({ hostname: "127.0.0.1" } as never);
+      expect(err).toBeNull();
+    });
+
+    it("D-S6 — loopback literal 127.0.0.1 STILL blocked when NODE_ENV=production even with allowLoopback", async () => {
+      const onBlock = vi.fn();
+      const guard = makeSSRFConnectGuard({
+        allowedHosts: ["127.0.0.1"],
+        privateHostAllowlist: [],
+        allowLoopback: true,
+        mode: "enforce",
+        nodeEnv: "production",
+        onBlock,
+      });
+      const err = guard({ hostname: "127.0.0.1" } as never);
+      expect(err).toBeInstanceOf(SSRFBlockedError);
+      expect((err as SSRFBlockedError).rule).toBe("loopback_v4");
+    });
   });
 
   it("makeSSRFDispatcher returns a Dispatcher with the SSRF lookup installed", () => {
