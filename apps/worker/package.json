@@ -11,14 +11,18 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
+    "@opentelemetry/api": "^1.9.0",
     "bullmq": "^5.16.0",
     "ioredis": "^5.4.1",
     "pg": "8.20.0",
-    "pino": "^9.4.0"
+    "pino": "^9.4.0",
+    "zod": "4.4.3"
   },
   "devDependencies": {
+    "@fast-check/vitest": "0.4.1",
     "@testcontainers/postgresql": "^11.14.0",
     "@types/pg": "^8.20.0",
+    "fast-check": "4.7.0",
     "testcontainers": "^11.14.0",
     "tsup": "^8.3.0",
     "tsx": "^4.19.0",
