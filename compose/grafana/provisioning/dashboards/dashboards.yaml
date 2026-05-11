@@ -1,0 +1,18 @@
+# Grafana dashboard provisioning manifest (Plan 06-11).
+# Auto-loads every JSON file in this directory into the "OpenWhispr"
+# folder on Grafana startup. `disableDeletion: true` prevents an operator
+# accidentally removing a shipped dashboard via the UI -- they remain
+# read-only artifacts of the OSS distribution. To customise, operators
+# copy a dashboard JSON into a separate provisioning directory or mount
+# their own provider with a different folder.
+apiVersion: 1
+providers:
+  - name: OpenWhispr
+    folder: OpenWhispr
+    type: file
+    disableDeletion: true
+    updateIntervalSeconds: 30
+    allowUiUpdates: false
+    options:
+      path: /etc/grafana/provisioning/dashboards
+      foldersFromFilesStructure: false

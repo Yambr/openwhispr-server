@@ -1,0 +1,102 @@
+{
+  "uid": "openwhispr-per-tenant-usage",
+  "title": "OpenWhispr — Per-Tenant Usage",
+  "description": "Per-tenant usage rollups from the `usage_ledger` table. Operators see the same numbers `/api/usage` returns to the desktop client, aggregated across the tenant. Read-only Postgres datasource via the `grafana_reader` role.",
+  "tags": ["openwhispr", "usage", "tenant"],
+  "schemaVersion": 38,
+  "version": 1,
+  "timezone": "utc",
+  "refresh": "1m",
+  "time": { "from": "now-24h", "to": "now" },
+  "panels": [
+    {
+      "id": 1,
+      "type": "table",
+      "title": "Top 20 tenants by total spend (24h)",
+      "gridPos": { "h": 10, "w": 24, "x": 0, "y": 0 },
+      "datasource": { "type": "postgres", "uid": "postgres-readonly" },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "postgres", "uid": "postgres-readonly" },
+          "format": "table",
+          "rawSql": "SELECT tenant_id::text AS tenant_id, SUM(spend_cents) / 100.0 AS spend_usd, COUNT(*) AS request_count FROM usage_ledger WHERE created_at > now() - interval '24 hours' GROUP BY tenant_id ORDER BY spend_usd DESC LIMIT 20"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": [
+          {
+            "matcher": { "id": "byName", "options": "spend_usd" },
+            "properties": [{ "id": "unit", "value": "currencyUSD" }]
+          }
+        ]
+      }
+    },
+    {
+      "id": 2,
+      "type": "timeseries",
+      "title": "Transcribe minutes per tenant (hourly)",
+      "gridPos": { "h": 9, "w": 12, "x": 0, "y": 10 },
+      "datasource": { "type": "postgres", "uid": "postgres-readonly" },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "postgres", "uid": "postgres-readonly" },
+          "format": "time_series",
+          "rawSql": "SELECT date_trunc('hour', created_at) AS time, tenant_id::text AS metric, SUM(transcribe_minutes)::float AS value FROM usage_ledger WHERE $__timeFilter(created_at) GROUP BY 1, 2 ORDER BY 1"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "m" }, "overrides": [] }
+    },
+    {
+      "id": 3,
+      "type": "timeseries",
+      "title": "Reason tokens per tenant (hourly)",
+      "gridPos": { "h": 9, "w": 12, "x": 12, "y": 10 },
+      "datasource": { "type": "postgres", "uid": "postgres-readonly" },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "postgres", "uid": "postgres-readonly" },
+          "format": "time_series",
+          "rawSql": "SELECT date_trunc('hour', created_at) AS time, tenant_id::text AS metric, SUM(reason_tokens)::float AS value FROM usage_ledger WHERE $__timeFilter(created_at) GROUP BY 1, 2 ORDER BY 1"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] }
+    },
+    {
+      "id": 4,
+      "type": "timeseries",
+      "title": "Streaming minutes per tenant (hourly)",
+      "gridPos": { "h": 9, "w": 12, "x": 0, "y": 19 },
+      "datasource": { "type": "postgres", "uid": "postgres-readonly" },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "postgres", "uid": "postgres-readonly" },
+          "format": "time_series",
+          "rawSql": "SELECT date_trunc('hour', created_at) AS time, tenant_id::text AS metric, SUM(streaming_minutes)::float AS value FROM usage_ledger WHERE $__timeFilter(created_at) GROUP BY 1, 2 ORDER BY 1"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "m" }, "overrides": [] }
+    },
+    {
+      "id": 5,
+      "type": "stat",
+      "title": "Active tenants (24h)",
+      "description": "Distinct tenant_id values present in usage_ledger over the last 24h.",
+      "gridPos": { "h": 9, "w": 12, "x": 12, "y": 19 },
+      "datasource": { "type": "postgres", "uid": "postgres-readonly" },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "postgres", "uid": "postgres-readonly" },
+          "format": "table",
+          "rawSql": "SELECT COUNT(DISTINCT tenant_id) AS active_tenants FROM usage_ledger WHERE created_at > now() - interval '24 hours'"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] }
+    }
+  ]
+}

@@ -1,0 +1,137 @@
+# Grafana unified-alerting provisioning -- LiteLLM reconciliation drift
+# (Plan 06-11, D-R3).
+#
+# Two rules in the "reconciliation" group fire when either drift axis
+# exceeds the threshold for at least one hour:
+#
+#   reconciliation_drift_pct_high  -- row drift > 0.5 %
+#   reconciliation_drift_usd_high  -- spend drift > 1 cent ($0.01)
+#
+# Thresholds are env-overridable at deploy time via Grafana's $__env()
+# expansion in the values below; the literal numbers here are the
+# Phase 6 D-R3 defaults. Both rules query the Mimir gauges emitted by
+# the `reconciliation-daily-check` BullMQ job (Plan 06-08, D-R2).
+#
+# Alert routing -- the Grafana contact-point / notification policy is
+# operator-supplied (Slack / PagerDuty / SNS / email). Default install
+# leaves the rules firing into Grafana's UI and the embedded
+# alertmanager only; operators wire external notifications via the
+# Grafana admin UI or a separate provisioning file under
+# compose/grafana/provisioning/alerting/contactpoints.yaml.
+apiVersion: 1
+groups:
+  - orgId: 1
+    name: reconciliation
+    folder: OpenWhispr
+    interval: 1h
+    rules:
+      - uid: reconciliation_drift_pct_high
+        title: LiteLLM reconciliation -- row drift above threshold
+        condition: B
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 86400
+              to: 0
+            datasourceUid: mimir
+            model:
+              refId: A
+              datasource:
+                type: prometheus
+                uid: mimir
+              expr: max(litellm_reconciliation_drift_pct)
+              instant: true
+              intervalMs: 1000
+              maxDataPoints: 43200
+          - refId: B
+            relativeTimeRange:
+              from: 0
+              to: 0
+            datasourceUid: __expr__
+            model:
+              refId: B
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator:
+                    type: gt
+                    params: [0.5]
+                  operator:
+                    type: and
+                  query:
+                    params: [A]
+                  reducer:
+                    type: last
+                    params: []
+                  type: query
+        for: 1h
+        noDataState: NoData
+        execErrState: Error
+        labels:
+          severity: warning
+          owner: openwhispr
+          subsystem: reconciliation
+        annotations:
+          summary: LiteLLM reconciliation row drift exceeds threshold
+          description: >-
+            litellm_reconciliation_drift_pct > 0.5 % over 24 h.
+            Default threshold from D-R3; override with
+            RECONCILIATION_DRIFT_PCT_THRESHOLD. Investigate by
+            running the reconciliation-discrepancy BullMQ job for
+            the affected tenant.
+          runbook_url: /docs/observability.md#litellm-reconciliation
+      - uid: reconciliation_drift_usd_high
+        title: LiteLLM reconciliation -- USD spend drift above threshold
+        condition: B
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 86400
+              to: 0
+            datasourceUid: mimir
+            model:
+              refId: A
+              datasource:
+                type: prometheus
+                uid: mimir
+              expr: max(litellm_reconciliation_drift_usd_cents)
+              instant: true
+              intervalMs: 1000
+              maxDataPoints: 43200
+          - refId: B
+            relativeTimeRange:
+              from: 0
+              to: 0
+            datasourceUid: __expr__
+            model:
+              refId: B
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator:
+                    type: gt
+                    params: [1]
+                  operator:
+                    type: and
+                  query:
+                    params: [A]
+                  reducer:
+                    type: last
+                    params: []
+                  type: query
+        for: 1h
+        noDataState: NoData
+        execErrState: Error
+        labels:
+          severity: warning
+          owner: openwhispr
+          subsystem: reconciliation
+        annotations:
+          summary: LiteLLM reconciliation USD-cents drift exceeds threshold
+          description: >-
+            litellm_reconciliation_drift_usd_cents > 1 cent ($0.01)
+            over 24 h. Default threshold from D-R3; override with
+            RECONCILIATION_DRIFT_USD_CENTS_THRESHOLD. Investigate by
+            running the reconciliation-discrepancy BullMQ job for
+            the affected tenant.
+          runbook_url: /docs/observability.md#litellm-reconciliation

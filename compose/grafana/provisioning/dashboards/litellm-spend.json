@@ -1,0 +1,112 @@
+{
+  "uid": "openwhispr-litellm-spend",
+  "title": "OpenWhispr — LiteLLM Spend",
+  "description": "USD spend attributed to LiteLLM upstream calls, sourced from `usage_ledger.spend_cents` (which Layer 1 sync + Layer 2 ingest hydrate from LiteLLM's `LiteLLM_SpendLogs` table per D-R1). Drift between this view and LiteLLM's own ledger is visualised on the Reconciliation Drift dashboard.",
+  "tags": ["openwhispr", "spend", "litellm", "cost"],
+  "schemaVersion": 38,
+  "version": 1,
+  "timezone": "utc",
+  "refresh": "5m",
+  "time": { "from": "now-7d", "to": "now" },
+  "panels": [
+    {
+      "id": 1,
+      "type": "stat",
+      "title": "Total spend (USD, 24h)",
+      "gridPos": { "h": 6, "w": 6, "x": 0, "y": 0 },
+      "datasource": { "type": "postgres", "uid": "postgres-readonly" },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "postgres", "uid": "postgres-readonly" },
+          "format": "table",
+          "rawSql": "SELECT COALESCE(SUM(spend_cents), 0) / 100.0 AS total_usd FROM usage_ledger WHERE created_at > now() - interval '24 hours'"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": { "unit": "currencyUSD" },
+        "overrides": []
+      }
+    },
+    {
+      "id": 2,
+      "type": "stat",
+      "title": "Total spend (USD, 7d)",
+      "gridPos": { "h": 6, "w": 6, "x": 6, "y": 0 },
+      "datasource": { "type": "postgres", "uid": "postgres-readonly" },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "postgres", "uid": "postgres-readonly" },
+          "format": "table",
+          "rawSql": "SELECT COALESCE(SUM(spend_cents), 0) / 100.0 AS total_usd FROM usage_ledger WHERE created_at > now() - interval '7 days'"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "currencyUSD" }, "overrides": [] }
+    },
+    {
+      "id": 3,
+      "type": "timeseries",
+      "title": "Hourly spend (USD)",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
+      "datasource": { "type": "postgres", "uid": "postgres-readonly" },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "postgres", "uid": "postgres-readonly" },
+          "format": "time_series",
+          "rawSql": "SELECT date_trunc('hour', created_at) AS time, 'spend_usd' AS metric, SUM(spend_cents)::float / 100.0 AS value FROM usage_ledger WHERE $__timeFilter(created_at) GROUP BY 1 ORDER BY 1"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "currencyUSD" }, "overrides": [] }
+    },
+    {
+      "id": 4,
+      "type": "table",
+      "title": "Spend by model (24h)",
+      "gridPos": { "h": 10, "w": 12, "x": 0, "y": 8 },
+      "datasource": { "type": "postgres", "uid": "postgres-readonly" },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "postgres", "uid": "postgres-readonly" },
+          "format": "table",
+          "rawSql": "SELECT model, SUM(spend_cents) / 100.0 AS spend_usd, COUNT(*) AS request_count FROM usage_ledger WHERE created_at > now() - interval '24 hours' AND model IS NOT NULL GROUP BY model ORDER BY spend_usd DESC LIMIT 50"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": [
+          {
+            "matcher": { "id": "byName", "options": "spend_usd" },
+            "properties": [{ "id": "unit", "value": "currencyUSD" }]
+          }
+        ]
+      }
+    },
+    {
+      "id": 5,
+      "type": "table",
+      "title": "Spend by tenant + model (24h)",
+      "gridPos": { "h": 10, "w": 12, "x": 12, "y": 8 },
+      "datasource": { "type": "postgres", "uid": "postgres-readonly" },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "postgres", "uid": "postgres-readonly" },
+          "format": "table",
+          "rawSql": "SELECT tenant_id::text AS tenant_id, model, SUM(spend_cents) / 100.0 AS spend_usd FROM usage_ledger WHERE created_at > now() - interval '24 hours' AND model IS NOT NULL GROUP BY tenant_id, model ORDER BY spend_usd DESC LIMIT 100"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": [
+          {
+            "matcher": { "id": "byName", "options": "spend_usd" },
+            "properties": [{ "id": "unit", "value": "currencyUSD" }]
+          }
+        ]
+      }
+    }
+  ]
+}
