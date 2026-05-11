@@ -124,7 +124,7 @@ remediation phase.
 
 Notes and conversations search uses the `'simple'` tsvector
 configuration (Pitfall #9, accepted). Queries match exact word forms
-only — Russian inflection (e.g. "встреча" ↔ "встречи") and English
+only — Russian inflection (e.g. "vstrecha" (RU "meeting") ↔ "vstrechi" (RU plural)) and English
 plurals (e.g. "note" ↔ "notes") are NOT matched.
 
 **Remediation:** revisit at v1.x when per-tenant locale config lands;
@@ -183,8 +183,8 @@ No wire-surface change.
 `tenant_settings` and `user_settings` ship in Phase 5 (Plans 01 + 04)
 with FORCE RLS + JSONB columns, but the v1 wire surface only exposes
 **read** paths (`GET /api/stt-config`, `GET /api/note-recording-config`).
-Mutation (`PUT` / `PATCH`) is deferred per D-17 — "UI будет ...
-делаем все по спеке" — Phase 7 UI builds the mutation endpoints
+Mutation (`PUT` / `PATCH`) is deferred per D-17 — "UI will come later"
+spec-driven UI" — Phase 7 UI builds the mutation endpoints
 against the same schema.
 
 **Remediation:** Phase 7 adds:
