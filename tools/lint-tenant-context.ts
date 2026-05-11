@@ -3,7 +3,7 @@
  * lint-tenant-context.ts — Phase 6 / Plan 06-09 / D-W4 layer 1.
  *
  * Static lint asserting that every BullMQ job handler file under
- * `apps/worker/src/jobs/{glob}.ts` exports a `Worker` instance whose handler
+ * `apps/worker/src/jobs (recursive glob)` exports a `Worker` instance whose handler
  * is wrapped in `withTenantContext(...)` or `withSystemContext(...)`. The
  * 3-layer tenant-context defense (D-W4) is:
  *
@@ -16,7 +16,7 @@
  *
  * Scope:
  *
- *   * Pattern walked: every `apps/worker/src/jobs/{glob}.ts` file that is
+ *   * Pattern walked: every `apps/worker/src/jobs (recursive glob)` file that is
  *     NOT a *.test.ts and NOT a *.d.ts.
  *   * Acceptance criterion: the source file must reference at least one
  *     CallExpression where the callee identifier is `withTenantContext`
