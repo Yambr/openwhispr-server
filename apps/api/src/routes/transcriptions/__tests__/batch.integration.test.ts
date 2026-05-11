@@ -121,7 +121,7 @@ describe("integration — transcriptions batch-delete (real Postgres + RLS)", ()
   it("batch-delete — 501 ids → 400 envelope (D-30)", async () => {
     const ids = Array.from(
       { length: 501 },
-      (_, i) => `${String(i).padStart(8, "0")}-1111-2222-3333-444455556666`,
+      (_, i) => `${String(i).padStart(8, "0")}-1111-4222-8333-444455556666`,
     );
     const res = await appA.inject({
       method: "POST",
@@ -141,7 +141,7 @@ describe("integration — transcriptions batch-delete (real Postgres + RLS)", ()
     const id3 = await createTx(appA, "bd500-3");
     const fakes = Array.from(
       { length: 497 },
-      (_, i) => `${String(i + 1).padStart(8, "0")}-9999-9999-9999-999999999999`,
+      (_, i) => `${String(i + 1).padStart(8, "0")}-9999-4999-8999-999999999999`,
     );
     const ids = [id1, id2, id3, ...fakes];
     expect(ids).toHaveLength(500);

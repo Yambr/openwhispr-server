@@ -139,7 +139,8 @@ describe("integration — POST /api/v1/keys/:id/revoke (real Postgres + RLS)", (
   it("revoke — unknown id → 404", async () => {
     const res = await appA.inject({
       method: "POST",
-      url: "/api/v1/keys/11111111-2222-3333-4444-555555555555/revoke",
+      // Valid v4 UUID (third group starts with 4, fourth with 8-b)
+      url: "/api/v1/keys/11111111-1111-4111-8111-111111111111/revoke",
     });
     expect(res.statusCode).toBe(404);
   });

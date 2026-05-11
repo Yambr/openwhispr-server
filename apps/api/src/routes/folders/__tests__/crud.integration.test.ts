@@ -225,7 +225,7 @@ describe("integration — folders CRUD (real Postgres + RLS)", () => {
       url: "/api/folders/update",
       headers: { "content-type": "application/json" },
       payload: JSON.stringify({
-        id: "11111111-2222-3333-4444-555555555555",
+        id: "11111111-1111-4111-8111-111111111111",
         name: "ghost",
       }),
     });
@@ -265,7 +265,7 @@ describe("integration — folders CRUD (real Postgres + RLS)", () => {
       method: "DELETE",
       url: "/api/folders/delete",
       headers: { "content-type": "application/json" },
-      payload: JSON.stringify({ id: "11111111-2222-3333-4444-555555555555" }),
+      payload: JSON.stringify({ id: "11111111-1111-4111-8111-111111111111" }),
     });
     expect(res.statusCode).toBe(404);
   });

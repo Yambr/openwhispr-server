@@ -153,7 +153,7 @@ describe("integration — conversations CRUD (real Postgres + RLS)", () => {
       url: "/api/conversations/update",
       headers: { "content-type": "application/json" },
       payload: JSON.stringify({
-        id: "11111111-1111-1111-1111-111111111111",
+        id: "11111111-1111-4111-8111-111111111111",
         title: "nope",
       }),
     });
@@ -194,7 +194,7 @@ describe("integration — conversations CRUD (real Postgres + RLS)", () => {
       url: "/api/conversations/delete",
       headers: { "content-type": "application/json" },
       payload: JSON.stringify({
-        id: "22222222-2222-2222-2222-222222222222",
+        id: "22222222-2222-4222-8222-222222222222",
       }),
     });
     expect(res.statusCode).toBe(404);

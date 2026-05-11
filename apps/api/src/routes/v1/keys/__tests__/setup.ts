@@ -112,7 +112,7 @@ export async function buildTestApp(opts: {
 }): Promise<FastifyInstance> {
   const tenantId = opts.tenantId ?? DEFAULT_TENANT_ID;
   const db = drizzle(opts.pool);
-  const app = Fastify({ logger: false });
+  const app = Fastify({ logger: process.env.DEBUG_TEST ? { level: "debug" } : false });
   registerErrorHandler(app);
   await app.register(zodTypeProvider);
   if (opts.withRateLimit) {

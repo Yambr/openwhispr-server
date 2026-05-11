@@ -38,8 +38,7 @@ function makeFakeDb(): {
       const parts: string[] = [];
       const params: unknown[] = [];
       for (const c of chunks) {
-        if (typeof c === "string") parts.push(c);
-        else if (c && typeof c === "object" && "value" in c) {
+        if (c && typeof c === "object" && "value" in c) {
           const v = (c as { value: unknown }).value;
           if (Array.isArray(v) && v.every((x) => typeof x === "string"))
             parts.push((v as string[]).join(""));
@@ -47,6 +46,9 @@ function makeFakeDb(): {
             parts.push("?");
             params.push(v);
           }
+        } else {
+          parts.push("?");
+          params.push(c);
         }
       }
       const sqlText = parts.join("");

@@ -305,7 +305,8 @@ describe("YandexAdapter.search() — happy path (mocked HTTP)", () => {
     expect(parsed.folderId).toBe("b1gtestfolder");
     // int64 fields MUST be strings per the wire contract
     expect(parsed.query.page).toBe("0");
-    expect(parsed.groupSpec.groupsOnPage).toBe("10");
+    // numResults=5 → groupsOnPage = min(5, 10) = "5" (capped at 10)
+    expect(parsed.groupSpec.groupsOnPage).toBe("5");
     expect(parsed.maxPassages).toBe("4");
     expect(parsed.responseFormat).toBe("FORMAT_XML");
   });
