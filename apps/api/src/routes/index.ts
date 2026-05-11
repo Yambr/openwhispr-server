@@ -17,11 +17,15 @@ import type { LitellmClient } from "@openwhispr/litellm-client";
 import type { FastifyInstance } from "fastify";
 import type { RedisLike } from "../lib/idempotency-cache.js";
 import type { AuthLike } from "../middleware/dual-auth.js";
-import {
-  type AgentStreamDeps,
-  buildAgentStreamRoutes,
-} from "./agent/stream.js";
+import { type AgentStreamDeps, buildAgentStreamRoutes } from "./agent/stream.js";
 import { buildWebSearchRoutes, type WebSearchDeps } from "./agent/web-search.js";
+import {
+  type AuthCallbackDeps,
+  buildAuthCallbackRoutes,
+  type MintBearer,
+} from "./auth-callback.js";
+import { type BetterAuthHandlerDeps, buildBetterAuthHandlerRoutes } from "./better-auth-handler.js";
+import { buildCheckUserRoutes, type CheckUserDeps } from "./check-user.js";
 import {
   buildConversationsCreateRoutes,
   type ConversationsCreateDeps,
@@ -30,10 +34,7 @@ import {
   buildConversationsDeleteRoutes,
   type ConversationsDeleteDeps,
 } from "./conversations/delete.js";
-import {
-  buildConversationsListRoutes,
-  type ConversationsListDeps,
-} from "./conversations/list.js";
+import { buildConversationsListRoutes, type ConversationsListDeps } from "./conversations/list.js";
 import {
   buildConversationsMessagesRoutes,
   type ConversationsMessagesDeps,
@@ -46,39 +47,38 @@ import {
   buildConversationsUpdateRoutes,
   type ConversationsUpdateDeps,
 } from "./conversations/update.js";
+import { buildDeleteAccountRoutes, type DeleteAccountDeps } from "./delete-account.js";
+import { buildDesktopSigninRoutes, type DesktopSigninDeps } from "./desktop-signin.js";
+import { buildDiarizationRoutes, type DiarizationDeps } from "./diarization.js";
 import {
   buildFoldersBatchCreateRoutes,
   type FoldersBatchCreateDeps,
 } from "./folders/batch-create.js";
+import { buildFoldersCreateRoutes, type FoldersCreateDeps } from "./folders/create.js";
+import { buildFoldersDeleteRoutes, type FoldersDeleteDeps } from "./folders/delete.js";
+import { buildFoldersListRoutes, type FoldersListDeps } from "./folders/list.js";
+import { buildFoldersUpdateRoutes, type FoldersUpdateDeps } from "./folders/update.js";
+import healthRoutes from "./health.js";
 import {
-  buildFoldersCreateRoutes,
-  type FoldersCreateDeps,
-} from "./folders/create.js";
-import {
-  buildFoldersDeleteRoutes,
-  type FoldersDeleteDeps,
-} from "./folders/delete.js";
-import {
-  buildFoldersListRoutes,
-  type FoldersListDeps,
-} from "./folders/list.js";
-import {
-  buildFoldersUpdateRoutes,
-  type FoldersUpdateDeps,
-} from "./folders/update.js";
-import {
-  buildNotesBatchCreateRoutes,
-  type NotesBatchCreateDeps,
-} from "./notes/batch-create.js";
+  buildNoteRecordingConfigRoutes,
+  type NoteRecordingConfigDeps,
+} from "./note-recording-config.js";
+import { buildNotesBatchCreateRoutes, type NotesBatchCreateDeps } from "./notes/batch-create.js";
 import { buildNotesCreateRoutes, type NotesCreateDeps } from "./notes/create.js";
-import {
-  buildNotesDeleteAllRoutes,
-  type NotesDeleteAllDeps,
-} from "./notes/delete-all.js";
 import { buildNotesDeleteRoutes, type NotesDeleteDeps } from "./notes/delete.js";
+import { buildNotesDeleteAllRoutes, type NotesDeleteAllDeps } from "./notes/delete-all.js";
 import { buildNotesListRoutes, type NotesListDeps } from "./notes/list.js";
 import { buildNotesSearchRoutes, type NotesSearchDeps } from "./notes/search.js";
 import { buildNotesUpdateRoutes, type NotesUpdateDeps } from "./notes/update.js";
+import { buildRealtimeRoutes, type RealtimeDeps } from "./realtime.js";
+import { buildReasonRoutes, type ReasonDeps } from "./reason.js";
+import { buildStreamingUsageRoutes, type StreamingUsageDeps } from "./streaming-usage.js";
+import { buildSttConfigRoutes, type SttConfigDeps } from "./stt-config.js";
+import { buildTestOnlyRoutes } from "./test-only.js";
+import { buildAssemblyAITokenRoutes } from "./tokens/assemblyai.js";
+import { buildDeepgramTokenRoutes } from "./tokens/deepgram.js";
+import { buildOpenAIRealtimeTokenRoutes } from "./tokens/openai-realtime.js";
+import { buildTranscribeRoutes, type TranscribeDeps } from "./transcribe.js";
 import {
   buildTranscriptionsBatchCreateRoutes,
   type TranscriptionsBatchCreateDeps,
@@ -99,46 +99,10 @@ import {
   buildTranscriptionsListRoutes,
   type TranscriptionsListDeps,
 } from "./transcriptions/list.js";
-import {
-  buildKeysCreateRoutes,
-  type KeysCreateDeps,
-} from "./v1/keys/create.js";
-import {
-  buildKeysListRoutes,
-  type KeysListDeps,
-} from "./v1/keys/list.js";
-import {
-  buildKeysRevokeRoutes,
-  type KeysRevokeDeps,
-} from "./v1/keys/revoke.js";
-import {
-  type AuthCallbackDeps,
-  buildAuthCallbackRoutes,
-  type MintBearer,
-} from "./auth-callback.js";
-import { type BetterAuthHandlerDeps, buildBetterAuthHandlerRoutes } from "./better-auth-handler.js";
-import { buildCheckUserRoutes, type CheckUserDeps } from "./check-user.js";
-import { buildDeleteAccountRoutes, type DeleteAccountDeps } from "./delete-account.js";
-import { buildDesktopSigninRoutes, type DesktopSigninDeps } from "./desktop-signin.js";
-import { buildDiarizationRoutes, type DiarizationDeps } from "./diarization.js";
-import healthRoutes from "./health.js";
-import { buildReasonRoutes, type ReasonDeps } from "./reason.js";
-import { buildRealtimeRoutes, type RealtimeDeps } from "./realtime.js";
-import {
-  buildNoteRecordingConfigRoutes,
-  type NoteRecordingConfigDeps,
-} from "./note-recording-config.js";
-import { buildSttConfigRoutes, type SttConfigDeps } from "./stt-config.js";
-import {
-  buildStreamingUsageRoutes,
-  type StreamingUsageDeps,
-} from "./streaming-usage.js";
 import { buildUsageRoutes, type UsageDeps } from "./usage.js";
-import { buildTestOnlyRoutes } from "./test-only.js";
-import { buildAssemblyAITokenRoutes } from "./tokens/assemblyai.js";
-import { buildDeepgramTokenRoutes } from "./tokens/deepgram.js";
-import { buildOpenAIRealtimeTokenRoutes } from "./tokens/openai-realtime.js";
-import { buildTranscribeRoutes, type TranscribeDeps } from "./transcribe.js";
+import { buildKeysCreateRoutes, type KeysCreateDeps } from "./v1/keys/create.js";
+import { buildKeysListRoutes, type KeysListDeps } from "./v1/keys/list.js";
+import { buildKeysRevokeRoutes, type KeysRevokeDeps } from "./v1/keys/revoke.js";
 import {
   buildVerificationStatusRoutes,
   type VerificationStatusDeps,
@@ -225,7 +189,13 @@ export function buildAllRoutes(deps: AllRoutesDeps): readonly RoutePlugin[] {
   // dualAuthHook (no session) and 401'd before Better Auth sees them.
   const betterAuthHandlerDeps: BetterAuthHandlerDeps = { auth: deps.auth };
   const plugins: RoutePlugin[] = [
-    healthRoutes,
+    // Phase 6 / Plan 06-04 (D-P1): /api/health is now registered by
+    // `registerProbes` at buildApp scope (alongside /livez, /readyz,
+    // /startupz) — dropped from this list to avoid the duplicate
+    // route-registration that would crash Fastify on boot. The new
+    // /api/health emits Deprecation + Link successor-version headers
+    // pointing at /livez per RFC 8594; the back-compat body shape
+    // `{status:"ok"}` is unchanged so existing contract tests still pass.
     buildBetterAuthHandlerRoutes(betterAuthHandlerDeps),
     buildCheckUserRoutes(checkUserDeps),
     buildVerificationStatusRoutes(verificationDeps),
@@ -418,9 +388,7 @@ export function buildAllRoutes(deps: AllRoutesDeps): readonly RoutePlugin[] {
   if (deps.redis) {
     const diarizationDeps: DiarizationDeps = {
       redis: deps.redis,
-      mockMode:
-        deps.mockDiarization === true ||
-        process.env.MOCK_DIARIZATION === "true",
+      mockMode: deps.mockDiarization === true || process.env.MOCK_DIARIZATION === "true",
     };
     plugins.push(buildDiarizationRoutes(diarizationDeps));
   }
@@ -483,10 +451,10 @@ export {
   buildNotesSearchRoutes,
   buildNotesUpdateRoutes,
   buildOpenAIRealtimeTokenRoutes,
-  buildReasonRoutes,
   buildRealtimeRoutes,
-  buildSttConfigRoutes,
+  buildReasonRoutes,
   buildStreamingUsageRoutes,
+  buildSttConfigRoutes,
   buildTestOnlyRoutes,
   buildTranscribeRoutes,
   buildTranscriptionsBatchCreateRoutes,

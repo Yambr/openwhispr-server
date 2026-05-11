@@ -48,12 +48,21 @@
 // patches the `pino` module at require time. This import is intentionally
 // a side-effect-only module (no symbols consumed here).
 import "./otel-bootstrap.js";
+// Phase 6 / Plan 06 (SCALE-04) — install the SSRF dispatcher as the
+// global undici dispatcher BEFORE any outbound fetch can fire. Must run
+// AFTER otel-bootstrap (so OTel undici-instrumentation sees the SSRF
+// agent as the upstream) and BEFORE buildApp() and any route registers.
+import { installGlobalSSRF } from "./bootstrap.js";
+
+installGlobalSSRF();
+
 import fastifyCookie from "@fastify/cookie";
 import fastifyMultipart from "@fastify/multipart";
 import type { ExecutableTx, TransactionalDb } from "@openwhispr/data";
 import type { LitellmClient } from "@openwhispr/litellm-client";
 import Fastify, { type FastifyInstance } from "fastify";
 import { registerErrorHandler } from "./error-handler.js";
+import { type DepCheck, makeDepCheck } from "./lib/dep-check.js";
 import type { RedisLike } from "./lib/idempotency-cache.js";
 import { buildMintBearer } from "./lib/mint-bearer.js";
 import {
@@ -69,9 +78,11 @@ import {
 import { tenantPlugin } from "./middleware/tenant.js";
 import { rateLimitPlugin } from "./plugins/rate-limit.js";
 import { requestLog } from "./plugins/request-log.js";
+import { servedByPlugin } from "./plugins/served-by.js";
 import { zodTypeProvider } from "./plugins/zod-type-provider.js";
 import type { MintBearer } from "./routes/auth-callback.js";
 import { buildAllRoutes } from "./routes/index.js";
+import { markStartupComplete, registerProbes } from "./routes/probes.js";
 
 /** Signature of the recordPreviousToken library function (for tests). */
 type RecordPreviousToken = typeof recordPreviousTokenLib;
@@ -160,6 +171,17 @@ export interface BuildAppOptions {
    * values in real deploys).
    */
   mockDiarization?: boolean;
+  /**
+   * Phase 6 / Plan 06-04 (OBS-05, D-P2): dep-check function for the
+   * /readyz + /startupz probes. Production wires
+   * `makeDepCheck({pg, valkey, litellmUrl})` from the same pg.Pool /
+   * ioredis client / LiteLLM URL the rest of the app uses; tests inject
+   * deterministic fakes (see routes/probes.test.ts).
+   *
+   * When omitted, /readyz returns 503 with `error:"depCheck not wired"`
+   * — an operator-actionable signal distinct from a runtime dep outage.
+   */
+  depCheck?: DepCheck;
 }
 
 export const buildApp = async (opts: BuildAppOptions = {}): Promise<FastifyInstance> => {
@@ -169,6 +191,14 @@ export const buildApp = async (opts: BuildAppOptions = {}): Promise<FastifyInsta
   // 2. Centralized error handler FIRST so plugin errors during
   //    register get the envelope.
   registerErrorHandler(app);
+
+  // 2b. Phase 6 / Plan 06-04 (D-P3, SCALE-01) — `x-served-by` onSend hook.
+  //     Registered EARLY so every response (including error envelopes
+  //     emitted by registerErrorHandler) carries the replica tag. The
+  //     horizontal-scale e2e (tests/e2e/horizontal-scale.test.ts, Plan
+  //     06-12) asserts Traefik round-robin actually distributes across
+  //     `--scale api=N` by reading this header.
+  await app.register(servedByPlugin);
 
   // 3. Cookie support (delete-account.clearCookie + Better Auth cookies).
   await app.register(fastifyCookie);
@@ -298,13 +328,26 @@ export const buildApp = async (opts: BuildAppOptions = {}): Promise<FastifyInsta
     for (const plugin of routes) {
       await app.register(plugin);
     }
-  } else {
-    // Minimal mode: only health route (no DB / auth dependency).
-    const { default: healthRoutes } = await import("./routes/health.js");
-    await app.register(healthRoutes);
   }
 
+  // Phase 6 / Plan 06-04 (D-P1, OBS-05) — register the three kubelet-
+  // canonical probe routes (/livez, /readyz, /startupz) + the back-compat
+  // /api/health alias. Registered LAST so they exist in BOTH full-mode
+  // (auth+db wired) AND minimal-mode (no auth/db) — minimal mode used to
+  // mount `./routes/health.js`; that registration has been folded into
+  // `registerProbes` so there's a single source-of-truth for the health
+  // surface across the app's lifecycle.
+  await registerProbes(app, opts.depCheck ? { depCheck: opts.depCheck } : {});
+
   await app.ready();
+
+  // Phase 6 / Plan 06-04 (D-P1) — flip the /startupz response from 503
+  // to 200 once Fastify has registered every plugin/route and (in
+  // production) the entrypoint has run its first PG SELECT 1. The flag
+  // is module-scope in routes/probes.ts; resetStartupComplete() is
+  // available for test isolation.
+  markStartupComplete();
+
   return app;
 };
 
@@ -322,7 +365,7 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   // not a function` inside @better-auth/drizzle-adapter findOne). The
   // prior `as never` casts hid the type mismatch from tsc; they are
   // removed here so a future wrapper-leak fails typecheck immediately.
-  const { db } = makeAppDb();
+  const { db, pool: appPool } = makeAppDb();
   const auth = buildAuth({ db }) as unknown as AuthLike;
   // Phase 03 / Plan 04: construct the shared LiteLLM client when
   // LITELLM_MASTER_KEY is configured. Missing key -> log a one-line
@@ -392,6 +435,21 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   if (litellmMasterKey) buildOpts.litellmMasterKey = litellmMasterKey;
   if (redis) buildOpts.redis = redis;
   if (mockDiarization) buildOpts.mockDiarization = true;
+  // Phase 6 / Plan 06-04 (OBS-05, D-P2) — wire the /readyz dep-check.
+  // Reuses the same pg.Pool returned by makeAppDb and the ioredis client
+  // already constructed for rate-limit/diarization. When either is
+  // absent, /readyz returns 503 with `error:"depCheck not wired"` so
+  // operators get an actionable signal.
+  const litellmBaseUrl = process.env.LITELLM_BASE_URL ?? "http://litellm:4000";
+  if (redis) {
+    buildOpts.depCheck = makeDepCheck({
+      pg: appPool,
+      // The ioredis instance constructed above satisfies the dep-check
+      // surface (ping()) — narrow the cast to the structural minimum.
+      valkey: redis as unknown as import("ioredis").Redis,
+      litellmUrl: litellmBaseUrl,
+    });
+  }
   const app = await buildApp(buildOpts);
   const port = Number(process.env.PORT ?? 3000);
   app.listen({ port, host: "0.0.0.0" }).catch((err) => {

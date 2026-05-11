@@ -115,6 +115,20 @@ vi.mock("../lib/token-rotation.js", () => ({
 }));
 vi.mock("../error-handler.js", () => ({ registerErrorHandler: () => {} }));
 vi.mock("../routes/health.js", () => ({ default: async () => {} }));
+// Phase 6 / Plan 06-04 — probes + served-by + dep-check are wired into
+// buildApp; stub them so the entrypoint-db-shape test stays narrowly
+// scoped to the Phase 02.6 D-01 invariant (no incidental coupling to
+// the Phase 6 health-probe surface).
+vi.mock("../routes/probes.js", () => ({
+  registerProbes: async () => {},
+  markStartupComplete: () => {},
+  resetStartupComplete: () => {},
+  isStartupComplete: () => true,
+}));
+vi.mock("../plugins/served-by.js", () => ({ servedByPlugin: async () => {} }));
+vi.mock("../lib/dep-check.js", () => ({
+  makeDepCheck: () => async () => ({ ok: true, latency_ms: 0 }),
+}));
 
 // Resolve the absolute path the entrypoint's `import.meta.url ===
 // file://${process.argv[1]}` check expects. Point process.argv[1] at the
