@@ -1,0 +1,51 @@
+# tests/e2e/helpers/phase6-ssrf-override.yml
+#
+# Phase 6 / Plan 06-12b — docker-compose override for the SSRF block e2e
+# (tests/e2e/ssrf-block.test.ts).  Layered on top of the project's
+# docker-compose.yml via `docker compose -f docker-compose.yml -f
+# phase6-ssrf-override.yml up`.  testcontainers' DockerComposeEnvironment
+# accepts the second constructor argument as a string array — see
+# tests/e2e/helpers/phase6-compose.ts (`overrideComposeFiles`).
+#
+# Adjustments to the api service:
+#
+#   1. NODE_ENV=test  — the apps/api/src/routes/__test/fetch.ts plugin
+#      ONLY registers its route when this is set; production / dev /
+#      staging deployments must NOT see the debug route.  The base
+#      compose file pins NODE_ENV=production for deploy-posture parity;
+#      this override flips it for the test stack.
+#
+#   2. OPENWHISPR_TEST_ROUTES=true  — Phase 02.21 / Residual C opt-in
+#      for the /api/_test/force-rotate + /api/_test/health-authed
+#      plugin (apps/api/src/routes/test-only.ts).  The SSRF e2e doesn't
+#      itself drive those routes, but flipping it on keeps the test
+#      stack consistent with the contract-test stack so audit-log
+#      coverage stays comparable.
+#
+#   3. OUTBOUND_ALLOWED_HOSTS=…,169.254.169.254  — Plan 06's SSRF
+#      dispatcher is default-deny on the allow-list.  Without
+#      169.254.169.254 in the list, the dispatcher would reject the
+#      e2e's POST /__test/fetch at the allow-list gate (rule=
+#      host_not_allowed) BEFORE the per-IP block-list gets a chance.
+#      We want to prove the CIDR matrix entry `link_local_v4` fires,
+#      so we surface 169.254.169.254 as an allowed host and let the
+#      per-IP block-list reject it instead.  The remaining bare
+#      hostnames mirror the .env.example default so prod fetch paths
+#      (litellm, speaches, openrouter.ai, etc.) still work in the
+#      test stack.
+#
+# Production safety: this file lives under tests/e2e/helpers and is
+# never copied into a production image.  Operators MUST NOT layer this
+# override into a real `docker compose up`.
+
+services:
+  api:
+    environment:
+      NODE_ENV: test
+      OPENWHISPR_TEST_ROUTES: "true"
+      # Allow-list the AWS IMDS link-local literal so the per-IP block
+      # path is what fires (rule=link_local_v4), not the allow-list
+      # gate (rule=host_not_allowed).  Other entries mirror the
+      # .env.example default so the rest of the stack stays functional.
+      OUTBOUND_ALLOWED_HOSTS: "openrouter.ai,api.tavily.com,search-api.aistudio.yandex.ru,api.pyannote.ai,litellm,speaches,mailpit,169.254.169.254"
+      OUTBOUND_SSRF_MODE: enforce
