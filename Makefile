@@ -146,7 +146,14 @@ contract-test-missing-keys:
 #
 # Tear-down is unconditional (regardless of vitest exit code) so a
 # failing test never leaves the stack live.
-e2e-test:
+#
+# Phase 6 / Plan 06-12d — global e2e-test gate now includes the
+# Phase 6 suite (e2e-test-phase6) so the project-wide gate exercises
+# observability + ops hardening + workers end-to-end. The Phase 6
+# suite owns its own testcontainers lifecycle (independent from the
+# Phase 04 hermetic stack); each runs sequentially so tear-down
+# leaves no stale state for the next.
+e2e-test: e2e-test-phase6
 	@if [ "$$E2E" != "1" ]; then \
 	  echo "Refusing to run: E2E=1 required (CLAUDE.md mandatory-e2e gate)." ; \
 	  echo "Usage: E2E=1 make e2e-test" ; \
