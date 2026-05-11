@@ -8,9 +8,9 @@
 //   * Cross-tenant RLS invisibility (T-05-07)
 //   * Duplicate active name → 409 (D-30 via partial UNIQUE)
 
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import type { FastifyInstance } from "fastify";
 import type { Pool } from "pg";
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { bootMigratedPostgres, buildTestApp, seedUser } from "./setup.js";
 
 const TENANT_A = "00000000-0000-0000-0000-000000000000";
@@ -87,9 +87,7 @@ describe("integration — /api/v1/keys CRUD (real Postgres + RLS)", () => {
       key_prefix: string;
     }>(`SELECT key_hash, key_prefix FROM api_keys WHERE id = $1`, [body.id]);
     // @node-rs/argon2 emits PHC string with comma-separated params per RFC 9106
-    expect(rows[0]?.key_hash.startsWith("$argon2id$v=19$m=65536,t=3,p=1$")).toBe(
-      true,
-    );
+    expect(rows[0]?.key_hash.startsWith("$argon2id$v=19$m=65536,t=3,p=1$")).toBe(true);
     expect(rows[0]?.key_prefix).toBe(body.key_prefix);
     // Clear-text key never appears in storage (audit DB columns).
     const leakCheck = await pool.query(
@@ -241,15 +239,99 @@ describe("integration — /api/v1/keys CRUD (real Postgres + RLS)", () => {
     expect(tooLong.statusCode).toBe(400);
   });
 
+  it("audit — emits canonical `key.issued` row with key_id only (no clear-text leak)", async () => {
+    await pool.query(`DELETE FROM audit_log`);
+    const res = await appA.inject({
+      method: "POST",
+      url: "/api/v1/keys/create",
+      headers: { "content-type": "application/json" },
+      payload: JSON.stringify({ name: "audit-issued-key" }),
+    });
+    expect(res.statusCode).toBe(200);
+    const wire = res.json() as { data: { id: string; key: string } };
+    const clearText = wire.data.key;
+    const keyId = wire.data.id;
+
+    // The audit row exists, action is the canonical D-A6 #8 string,
+    // payload carries the key_id (NOT the secret), and no forbidden
+    // raw-secret value reaches the JSONB column.
+    const rows = (
+      await pool.query<{ action: string; payload: Record<string, unknown> }>(
+        `SELECT action, payload FROM audit_log WHERE action = 'key.issued' ORDER BY created_at DESC LIMIT 1`,
+      )
+    ).rows;
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.action).toBe("key.issued");
+    expect(rows[0]!.payload.key_id).toBe(keyId);
+    // T-bearer-leak sentinel — the clear-text PAK MUST NOT appear
+    // anywhere in the serialised payload (D-A7 forbidden-keys + the
+    // recordAudit Zod schema only declares `key_id`).
+    expect(JSON.stringify(rows[0]!.payload)).not.toContain(clearText);
+  });
+
+  it("audit — emits canonical `key.revoked` row with key_id + reason on successful revoke", async () => {
+    await pool.query(`DELETE FROM audit_log`);
+    const create = await appA.inject({
+      method: "POST",
+      url: "/api/v1/keys/create",
+      headers: { "content-type": "application/json" },
+      payload: JSON.stringify({ name: "audit-revoked-key" }),
+    });
+    expect(create.statusCode).toBe(200);
+    const { id: keyId } = (create.json() as { data: { id: string } }).data;
+
+    const revoke = await appA.inject({
+      method: "POST",
+      url: `/api/v1/keys/${keyId}/revoke`,
+    });
+    expect(revoke.statusCode).toBe(200);
+
+    const rows = (
+      await pool.query<{ action: string; payload: Record<string, unknown> }>(
+        `SELECT action, payload FROM audit_log WHERE action = 'key.revoked' ORDER BY created_at DESC LIMIT 1`,
+      )
+    ).rows;
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.payload.key_id).toBe(keyId);
+    expect(rows[0]!.payload.reason).toBe("manual");
+  });
+
+  it("audit — 404 cross-tenant revoke does NOT emit `key.revoked` (RLS invisibility preserved)", async () => {
+    await pool.query(`DELETE FROM audit_log`);
+    const create = await appA.inject({
+      method: "POST",
+      url: "/api/v1/keys/create",
+      headers: { "content-type": "application/json" },
+      payload: JSON.stringify({ name: "a-cross-tenant-revoke" }),
+    });
+    expect(create.statusCode).toBe(200);
+    const { id: keyId } = (create.json() as { data: { id: string } }).data;
+
+    const bRevoke = await appB.inject({
+      method: "POST",
+      url: `/api/v1/keys/${keyId}/revoke`,
+    });
+    // Tenant-B caller cannot see tenant-A's key (RLS); the route
+    // returns 404 (CLAUDE.md: never confirm existence across tenants).
+    expect(bRevoke.statusCode).toBe(404);
+
+    // CRITICAL — emitting a `key.revoked` audit row here would leak
+    // the existence of tenant-A's key id into a row that tenant-A
+    // might later read; the route guards against this by emitting
+    // the audit row only when the UPDATE actually targeted a row.
+    const rows = (
+      await pool.query<{ c: string }>(
+        `SELECT count(*)::text AS c FROM audit_log WHERE action = 'key.revoked'`,
+      )
+    ).rows;
+    expect(Number(rows[0]!.c)).toBe(0);
+  });
+
   it("401 — missing req.user defensive guard on /list and /create", async () => {
     const Fastify = (await import("fastify")).default;
     const app = Fastify({ logger: false });
-    const { registerErrorHandler } = await import(
-      "../../../../error-handler.js"
-    );
-    const { zodTypeProvider } = await import(
-      "../../../../plugins/zod-type-provider.js"
-    );
+    const { registerErrorHandler } = await import("../../../../error-handler.js");
+    const { zodTypeProvider } = await import("../../../../plugins/zod-type-provider.js");
     registerErrorHandler(app);
     await app.register(zodTypeProvider);
     const { drizzle } = await import("drizzle-orm/node-postgres");

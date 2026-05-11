@@ -21,14 +21,11 @@
 // bearer auth will gate on `revoked_at IS NULL` before the verify step;
 // until then the endpoint surfaces lifecycle correctly but does NOT
 // invalidate live bearer auth (which doesn't exist yet).
-import {
-  type ExecutableTx,
-  type TransactionalDb,
-  withTenant,
-} from "@openwhispr/data";
+import { type ExecutableTx, type TransactionalDb, withTenant } from "@openwhispr/data";
 import { sql } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
+import { auditCtxFromRequest, recordAudit } from "../../../lib/audit.js";
 import { type ApiKeyRow, rowToApiKey } from "./list.js";
 
 export interface KeysRevokeDeps {
@@ -52,7 +49,7 @@ export const buildKeysRevokeRoutes = (deps: KeysRevokeDeps) =>
         const tenantId = req.tenant;
         const userId = req.user.id;
 
-        let params;
+        let params: z.infer<typeof ParamsSchema>;
         try {
           params = ParamsSchema.parse(req.params);
         } catch {
@@ -71,7 +68,22 @@ export const buildKeysRevokeRoutes = (deps: KeysRevokeDeps) =>
             RETURNING "id", "name", "key_prefix", "scopes",
                       "last_used_at", "expires_at", "created_at", "revoked_at"
           `)) as { rows?: ApiKeyRow[] };
-          return result.rows?.[0];
+          const updated = result.rows?.[0];
+          // Phase 6 / Plan 05 / Task 2 — emit canonical D-A6 #9
+          // `key.revoked` ONLY when the UPDATE actually targeted a
+          // visible row owned by this user. Cross-tenant attempts and
+          // unknown ids surface as 404 below; emitting an audit row
+          // for those would create a tenant-A-visible record of a
+          // tenant-B key id, which violates the RLS invisibility
+          // contract (Plan 05 D-31 mirror). Audit emission inside the
+          // same tx so the row exists iff the revoke commits.
+          if (updated) {
+            await recordAudit(tx, auditCtxFromRequest(req, tenantId, userId), "key.revoked", {
+              key_id: updated.id,
+              reason: "manual",
+            });
+          }
+          return updated;
         });
 
         if (!row) {

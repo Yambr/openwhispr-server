@@ -21,15 +21,12 @@
 // D-30 — same-tenant duplicate active name → 409 envelope (relies on
 //        the partial UNIQUE INDEX api_keys_active_name_idx from Plan 01
 //        on (tenant_id, name) WHERE revoked_at IS NULL).
-import {
-  type ExecutableTx,
-  type TransactionalDb,
-  withTenant,
-} from "@openwhispr/data";
+import { type ExecutableTx, type TransactionalDb, withTenant } from "@openwhispr/data";
 import { sql } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { generatePak, hashKey } from "../../../lib/argon2-keys.js";
+import { auditCtxFromRequest, recordAudit } from "../../../lib/audit.js";
 import { type ApiKeyRow, rowToApiKey } from "./list.js";
 
 export interface KeysCreateDeps {
@@ -82,7 +79,10 @@ export const buildKeysCreateRoutes = (deps: KeysCreateDeps) =>
         // doesn't compose with ::text[] cast. Use sql.join() to interpolate
         // each element as its own parameter inside an explicit ARRAY[] form.
         const scopesSql = scopesArr.length
-          ? sql`ARRAY[${sql.join(scopesArr.map((s) => sql`${s}`), sql`, `)}]::text[]`
+          ? sql`ARRAY[${sql.join(
+              scopesArr.map((s) => sql`${s}`),
+              sql`, `,
+            )}]::text[]`
           : sql`ARRAY[]::text[]`;
         const expiresAt = computeExpiresAt(body.expiresInDays);
 
@@ -112,6 +112,15 @@ export const buildKeysCreateRoutes = (deps: KeysCreateDeps) =>
             if (!inserted) {
               throw new Error("api_keys insert returned no row");
             }
+            // Phase 6 / Plan 05 / Task 2 — emit canonical D-A6 #8
+            // `key.issued` audit row inside the same tx so the audit
+            // log exists iff the api_keys INSERT commits. D-A7 forbids
+            // raw key material — we emit only the `key_id` (the
+            // api_keys.id UUID) which is non-secret. The clear-text
+            // PAK + key_hash never reach the audit payload.
+            await recordAudit(tx, auditCtxFromRequest(req, tenantId, userId), "key.issued", {
+              key_id: inserted.id,
+            });
             return inserted;
           });
         } catch (err) {
@@ -123,9 +132,7 @@ export const buildKeysCreateRoutes = (deps: KeysCreateDeps) =>
           const raw = err as { code?: string; cause?: { code?: string } } | null;
           const sqlState = raw?.code ?? raw?.cause?.code;
           if (sqlState === "23505") {
-            return reply
-              .code(409)
-              .send({ error: "api key with that name already exists" });
+            return reply.code(409).send({ error: "api key with that name already exists" });
           }
           throw err;
         }

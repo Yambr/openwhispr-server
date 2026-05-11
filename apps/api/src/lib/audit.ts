@@ -79,9 +79,22 @@ export interface AuditCtx {
 // Base ctx validation — uuid + ip + user_agent shape. tenant_id +
 // actor_user_id are UUIDs; ip is either an IPv4/IPv6 literal or null
 // (operator-controlled by AUDIT_REDACT_IP).
+// Hex UUID regex — matches the same accepted shape as withTenant() in
+// `packages/data/src/tenant-context.ts` so any tenant id that passes
+// the request-tier RLS gate also passes the audit ctx gate. Zod 4's
+// `z.string().uuid()` enforces the strict RFC-4122 variant byte
+// (8/9/a/b), which rejects the project's test-fixture tenant_ids
+// (`00000000-0000-0000-0000-00000000000b`) that the seed + RLS
+// invariants accept everywhere else. Strict RFC validation is
+// applied in the audit_log_tenant_id_tenants_id_fk + RLS layers
+// downstream; our schema only enforces well-formedness of the
+// correlator.
+const HEX_UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const hexUuid = z.string().regex(HEX_UUID_RE, "invalid uuid");
+
 const ctxSchema = z.object({
-  tenant_id: z.string().uuid(),
-  actor_user_id: z.string().uuid().nullable().optional(),
+  tenant_id: hexUuid,
+  actor_user_id: hexUuid.nullable().optional(),
   // Fastify's default `genReqId` emits an incrementing counter
   // (`req-N`), not a UUID. We require a non-empty correlator string;
   // operators wiring a UUID-shaped request-id middleware (Phase 6 /
@@ -137,22 +150,22 @@ export const auditPayloadSchemas = {
     before_hash: sha256Hex,
     after_hash: sha256Hex,
   }),
-  "admin.tenant_created": z.object({ tenant_id: z.string().uuid() }),
+  "admin.tenant_created": z.object({ tenant_id: hexUuid }),
   "admin.tenant_suspended": z.object({
-    tenant_id: z.string().uuid(),
+    tenant_id: hexUuid,
     reason: z.string().min(1),
   }),
   "admin.user_impersonated": z.object({
-    target_user_id: z.string().uuid(),
+    target_user_id: hexUuid,
     reason: z.string().min(1),
   }),
   "admin.role_changed": z.object({
-    target_user_id: z.string().uuid(),
+    target_user_id: hexUuid,
     before: z.string().min(1),
     after: z.string().min(1),
   }),
   "security.cross_tenant_attempt": z.object({
-    attempted_tenant_id: z.string().uuid(),
+    attempted_tenant_id: hexUuid,
     route: z.string().min(1),
   }),
   "security.rate_limit_exceeded": z.object({

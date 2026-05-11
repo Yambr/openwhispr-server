@@ -4,16 +4,13 @@
 // Real Postgres 17-alpine testcontainer + production migrations 0000..0010
 // (api_keys table + RLS policy from Plan 01).
 
-import {
-  PostgreSqlContainer,
-  type StartedPostgreSqlContainer,
-} from "@testcontainers/postgresql";
+import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
+import rateLimit from "@fastify/rate-limit";
+import { PostgreSqlContainer, type StartedPostgreSqlContainer } from "@testcontainers/postgresql";
 import { drizzle } from "drizzle-orm/node-postgres";
 import { migrate } from "drizzle-orm/node-postgres/migrator";
 import Fastify, { type FastifyInstance } from "fastify";
-import rateLimit from "@fastify/rate-limit";
-import { resolve, dirname } from "node:path";
-import { fileURLToPath } from "node:url";
 import { Pool } from "pg";
 import { registerErrorHandler } from "../../../../error-handler.js";
 import { zodTypeProvider } from "../../../../plugins/zod-type-provider.js";
@@ -46,28 +43,43 @@ export interface BootedPostgres {
   shutdown(): Promise<void>;
 }
 
+// Phase 6 / Plan 02 — migration 0014 converts audit_log to a monthly
+// RANGE-partitioned parent managed by pg_partman 5.2.4. The custom
+// `openwhispr/postgres:17.5-pgpartman` image ships the extension files
+// (built by compose/postgres/Dockerfile); tests that apply the full
+// migration set MUST use this image and CREATE EXTENSION pg_partman
+// before running migrate(). Without the switch, migration 0014 fails
+// with `schema "partman" does not exist`.
+const PARTMAN_IMAGE = "openwhispr/postgres:17.5-pgpartman";
+
 export async function bootMigratedPostgres(): Promise<BootedPostgres> {
   const ownerPw = "owner-pw-test";
   const appPw = "app-pw-test";
-  const container = await new PostgreSqlContainer("postgres:17-alpine")
+  const container = await new PostgreSqlContainer(PARTMAN_IMAGE)
     .withDatabase("openwhispr")
     .withUsername("postgres_super")
     .withPassword("super-pw")
     .start();
 
   const superPool = new Pool({ connectionString: container.getConnectionUri() });
+  // Provision pg_partman 5.2.4 (required by migration 0014).
+  await superPool.query("CREATE SCHEMA IF NOT EXISTS partman");
+  await superPool.query("CREATE EXTENSION IF NOT EXISTS pg_partman SCHEMA partman");
   await superPool.query(
     `CREATE ROLE openwhispr_owner WITH LOGIN BYPASSRLS CREATEROLE PASSWORD '${ownerPw}'`,
   );
-  await superPool.query(
-    `CREATE ROLE openwhispr_app   WITH LOGIN          PASSWORD '${appPw}'`,
-  );
+  await superPool.query(`CREATE ROLE openwhispr_app   WITH LOGIN          PASSWORD '${appPw}'`);
   await superPool.query(`GRANT openwhispr_app TO openwhispr_owner WITH ADMIN OPTION`);
-  await superPool.query(
-    `GRANT SET, ALTER SYSTEM ON PARAMETER "app.tenant_id" TO openwhispr_owner`,
-  );
+  await superPool.query(`GRANT SET, ALTER SYSTEM ON PARAMETER "app.tenant_id" TO openwhispr_owner`);
   await superPool.query(`ALTER DATABASE openwhispr OWNER TO openwhispr_owner`);
   await superPool.query(`ALTER SCHEMA public OWNER TO openwhispr_owner`);
+  // pg_partman grants required by migration 0014 (mirrors
+  // packages/data/migrations/init/02-pg-partman.sql).
+  await superPool.query(`GRANT ALL ON SCHEMA partman TO openwhispr_owner`);
+  await superPool.query(`GRANT ALL ON ALL TABLES IN SCHEMA partman TO openwhispr_owner`);
+  await superPool.query(`GRANT ALL ON ALL SEQUENCES IN SCHEMA partman TO openwhispr_owner`);
+  await superPool.query(`GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA partman TO openwhispr_owner`);
+  await superPool.query(`GRANT EXECUTE ON ALL PROCEDURES IN SCHEMA partman TO openwhispr_owner`);
   await superPool.end();
 
   const ownerUri = `postgres://openwhispr_owner:${ownerPw}@${container.getHost()}:${container.getMappedPort(5432)}/openwhispr`;
