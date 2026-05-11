@@ -378,18 +378,21 @@ Plans:
 - [x] 04-10-PLAN.md — Wave 4: nightly-realtime-soak GHA workflow (65-min live OpenAI) + operator docs for :8443 and new env vars
 **UI hint**: no
 
-### Phase 5: Operational Endpoints
-**Goal**: The desktop client can fetch its STT/note-recording configuration, observe its (unlimited-plan) usage stats, record streaming-session usage, invoke the agent's web-search tool, and proxy any other documented `/api/<path>` through the generic passthrough channel — completing the v1 wire surface.
-**Depends on**: Phase 3
-**Requirements**: WIRE-08, WIRE-09, WIRE-10, WIRE-11, WIRE-12, WIRE-16
+### Phase 5: Operational Endpoints + CRUD Resource Families
+**Goal**: The OpenWhispr desktop client (authoritative reference: `~/openwhispr/src/services/*.ts`) operates end-to-end against this server. Phase 5 ships the six operational endpoints (web-search, streaming-usage, usage, stt-config, note-recording-config, cloud-api-request envelope) AND the five CRUD resource families the client invokes through `cloud-api-request` (notes / folders / conversations+messages / transcriptions / api-keys) — completing the v1 wire surface byte-for-byte against the client. Stripe and referrals are explicitly OUT OF SCOPE in v1.
+**Depends on**: Phase 3, Phase 4
+**Requirements**: WIRE-08, WIRE-09, WIRE-10, WIRE-11, WIRE-12, WIRE-16, WIRE-22, WIRE-23, WIRE-24, WIRE-25, WIRE-26, WIRE-27, WIRE-28, WIRE-29
 **Success Criteria** (what must be TRUE):
-  1. `GET /api/usage` returns observed usage stats with `plan: "unlimited"` always (v1 has no enforcement); `POST /api/streaming-usage` accepts and records streaming-session usage idempotently into the ledger.
-  2. `GET /api/stt-config` returns server-side STT provider/model selection per tenant/user; `GET /api/note-recording-config` returns note-recording configuration — both honor the tenant context.
-  3. `POST /api/agent/web-search` provides the server-side search tool for the agent.
-  4. The generic passthrough channel `cloud-api-request` proxies any `/api/<path>` with the global error envelope preserved on every non-2xx.
-  5. CONTRACT-01 extended for all six operational endpoints; tests written first (TDD); all CI checks green.
-**Plans**: TBD
-**UI hint**: no
+  1. `GET /api/usage` returns observed usage stats with `plan: "unlimited"` always (v1 has no enforcement); `POST /api/streaming-usage` accepts and records streaming-session usage idempotently into the ledger keyed on client-supplied `sessionId` (duplicate → 200 OK, not 409).
+  2. `GET /api/stt-config` returns server-side STT provider/model selection per tenant/user; `GET /api/note-recording-config` returns note-recording configuration — both honor the tenant context. Both back onto new `tenant_settings` + `user_settings` tables (JSONB, RLS) with env fallback; mutations deferred to Phase 7 UI.
+  3. `POST /api/agent/web-search` provides the server-side search tool with a registry-based multi-provider adapter; v1 ships Tavily + Yandex AI Studio Search; missing-key → 503 envelope; future providers added as additional adapter files without route changes.
+  4. The `cloud-api-request` passthrough invariant is proved end-to-end via a CONTRACT-01 negative matrix: every implemented `/api/*` route AND synthetic unknown paths emit a compliant `{error: string}` envelope on every non-2xx response.
+  5. The five CRUD resource families (notes / folders / conversations+messages / transcriptions / api-keys) are fully implemented per the client TypeScript interfaces at `~/openwhispr/src/services/*.ts`: create / update / delete (soft-delete via `deleted_at`) / list (keyset pagination on `created_at + id`) / search (Postgres `tsvector + GIN`) / batch-create / batch-delete as the client requires. Every resource has `client_<resource>_id` for offline-first idempotent retry. Every new table has RLS + FORCE RLS + TEST-RLS-01 coverage.
+  6. API keys (`/api/v1/keys/{list,create}`) issue Argon2id-hashed programmatic-access keys with the unique `{data: T}` envelope wrapper per client contract; the `Bearer pak_*` auth middleware integration MAY defer to Phase 6 (Phase 5 minimum is CRUD).
+  7. CONTRACT-01 extended for every Phase 5 endpoint (6 operational + ~20+ CRUD routes); REQUIREMENTS.md WIRE-traceability updated; tests written first (TDD); all CI checks green.
+  8. Stripe (`/api/stripe/*`) and referrals (`/api/referrals/*`) endpoints — present in upstream `BACKEND_SPEC.md` — are NOT implemented; they 404 via Phase 2's not-found handler with envelope.
+**Plans**: TBD (researcher/planner expected to break down into ~6-8 plans: 1 for settings + 1 each per CRUD family + 1 for web-search + 1 for streaming-usage/usage + 1 for CONTRACT-01 negative matrix + 1 for docs/integration).
+**UI hint**: no (Phase 5 lays UI groundwork via settings tables; actual UI is Phase 7)
 
 ### Phase 6: Observability + Ops Hardening + Workers
 **Goal**: An operator opens the shipped Grafana dashboards and sees end-to-end traces (API → LiteLLM → models), per-tenant usage, LiteLLM spend, RED + saturation, and audit-log activity; bearer tokens never appear in logs; background jobs always run with full tenant context; anti-abuse rate limiting is live; SSRF-safe HTTP client gates all server-side outbound calls.

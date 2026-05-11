@@ -247,6 +247,8 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
+*Last updated: 2026-05-11 after Phase 5 discuss-phase (Operational Endpoints + CRUD Resource Families) — scope EXPANDED from 6 endpoints (WIRE-08..16) to 14 requirements: original 6 + 8 new (WIRE-22..29) covering five CRUD resource families (notes / folders / conversations+messages / transcriptions / api-keys) the OpenWhispr desktop client at `~/openwhispr/` invokes via `cloud-api-request` passthrough. Authoritative wire shapes pinned by client TS interfaces at `~/openwhispr/src/services/*.ts`. Stripe + referrals explicitly OUT in v1 (user direction 2026-05-11: "никакого Stripe / прочая муть выпилены"). Web-search adapter ships Tavily + Yandex AI Studio Search via registry-based provider pattern — extensible for future providers without route changes. v1 requirements total 89 → 97; Phase 5 coverage 6 → 14.*
+
 *Last updated: 2026-05-11 after Phase 4 (Streaming + Realtime) — WIRE-07/13/14/15, SCALE-05 validated. NDJSON first-line via e2e: 8.27ms (budget 500ms). Hermetic Traefik :8443 5-min soak: 0 ingress closes, p95 14ms (budget 1000ms). 65-min live OpenAI Realtime soak gated to nightly cron + tag (never on PR) — surfaced via 04-HUMAN-UAT.md.*
 
 *Last updated: 2026-05-10 after Phase 3 (LiteLLM Integration + Bundled OSS Models) — WIRE-05/06, LITELLM-01..07, PROVIDER-01, DATA-03 validated. Two user-ratified overrides: LITELLM-02 cloud-provider pivot (memory `feedback_no_bundled_local_models`); LITELLM-04 per-user attribution via OpenAI `user` body parameter (D-03) instead of `/key/generate`.*
