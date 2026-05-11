@@ -151,7 +151,7 @@ progress:
 
 (— no current blockers; Phase 3 closed end-to-end; live e2e green against real providers; operational debt fully retired. Phase 4 ready to begin.)
 
-- 06-12c reconciliation-drift e2e: LiteLLM_SpendLogs prisma NOT NULL column iteration outstanding; tests authored + infra GREEN; pending final seed-shape iteration
+- 06-12c LGTM-trio wall-time GREEN (3/3 tests, commit `6e19330`): reconciliation-drift 185s, log-scrub-sentinel 105s, otel-trace-propagation 117s. Round-2 fix landed five rule-1/rule-3 issues (testcontainers follow-mode hang, Ryuk image purge, api-Fastify-logger-disabled premise mismatch, traceparent rewrite, two-step Tempo verification).
 
 ### Risk Register (Top 3)
 
