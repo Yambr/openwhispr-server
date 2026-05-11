@@ -36,6 +36,11 @@ import healthRoutes from "./health.js";
 import { buildReasonRoutes, type ReasonDeps } from "./reason.js";
 import { buildRealtimeRoutes, type RealtimeDeps } from "./realtime.js";
 import {
+  buildNoteRecordingConfigRoutes,
+  type NoteRecordingConfigDeps,
+} from "./note-recording-config.js";
+import { buildSttConfigRoutes, type SttConfigDeps } from "./stt-config.js";
+import {
   buildStreamingUsageRoutes,
   type StreamingUsageDeps,
 } from "./streaming-usage.js";
@@ -156,6 +161,17 @@ export function buildAllRoutes(deps: AllRoutesDeps): readonly RoutePlugin[] {
     // wire shape for operators who deploy without LITELLM_MASTER_KEY.
     buildStreamingUsageRoutes({ db: deps.db } satisfies StreamingUsageDeps),
     buildUsageRoutes({ db: deps.db } satisfies UsageDeps),
+    // Phase 05 / Plan 04 — WIRE-11 GET /api/stt-config + WIRE-12 GET
+    // /api/note-recording-config. Both register UNCONDITIONALLY (Pitfall
+    // #6) because they are DB-only: read tenant_settings + user_settings
+    // (FORCE-RLS), fall through to env defaults per D-18. Resolution
+    // chain is user_settings -> tenant_settings -> process.env.
+    // availableProviders on /api/stt-config is computed at request time
+    // from per-provider env keys (D-19), NEVER read from JSONB.
+    buildSttConfigRoutes({ db: deps.db } satisfies SttConfigDeps),
+    buildNoteRecordingConfigRoutes({
+      db: deps.db,
+    } satisfies NoteRecordingConfigDeps),
     // Phase 05 / Plan 03 — WIRE-08 POST /api/agent/web-search. Registers
     // UNCONDITIONALLY (Pitfall #6): even when no provider key is wired,
     // the route exists and surfaces a 503 missing-key envelope so the
@@ -258,9 +274,11 @@ export {
   buildDeleteAccountRoutes,
   buildDesktopSigninRoutes,
   buildDiarizationRoutes,
+  buildNoteRecordingConfigRoutes,
   buildOpenAIRealtimeTokenRoutes,
   buildReasonRoutes,
   buildRealtimeRoutes,
+  buildSttConfigRoutes,
   buildStreamingUsageRoutes,
   buildTestOnlyRoutes,
   buildTranscribeRoutes,
