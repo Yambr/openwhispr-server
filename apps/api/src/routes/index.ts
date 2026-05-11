@@ -348,12 +348,15 @@ export function buildAllRoutes(deps: AllRoutesDeps): readonly RoutePlugin[] {
     buildTranscriptionsBatchDeleteRoutes({
       db: deps.db,
     } satisfies TranscriptionsBatchDeleteDeps),
-    // Phase 05 / Plan 09 — WIRE-27 API keys CRUD family (3 routes: list,
-    // create, revoke). Registered UNCONDITIONALLY — DB-only, no LiteLLM
-    // dependency. D-28 — unique `{ data: T }` V1Response envelope on
-    // every keys route (distinct from rest of Phase 5 which returns
-    // resource directly). D-29 — Argon2id (m=64MiB, t=3, p=1) at rest;
-    // clear-text PAK surfaced exactly once on POST /create response.
+    // Phase 05 / Plan 09 — WIRE-27 API keys CRUD family (3 routes):
+    //   GET    /api/v1/keys/list
+    //   POST   /api/v1/keys/create
+    //   POST   /api/v1/keys/:id/revoke
+    // Registered UNCONDITIONALLY — DB-only, no LiteLLM dependency.
+    // D-28 — unique `{ data: T }` V1Response envelope on every keys
+    // route (distinct from rest of Phase 5 which returns resource
+    // directly). D-29 — Argon2id (m=64MiB, t=3, p=1) at rest; clear-
+    // text PAK surfaced exactly once on POST /create response.
     // Auth-middleware integration via `Bearer pak_*` is DEFERRED to
     // Phase 6 per Open Q#3 — these endpoints prepare issuance/lifecycle
     // but are inert until Phase 6 wires the bearer auth chain.
