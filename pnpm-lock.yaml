@@ -343,6 +343,9 @@ importers:
 
   tests/e2e:
     dependencies:
+      testcontainers:
+        specifier: ^11.14.0
+        version: 11.14.0
       tough-cookie:
         specifier: 5.1.2
         version: 5.1.2

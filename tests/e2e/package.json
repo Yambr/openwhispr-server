@@ -9,6 +9,7 @@
     "test:hermetic": "E2E=1 vitest run --config vitest.config.ts"
   },
   "dependencies": {
+    "testcontainers": "^11.14.0",
     "tough-cookie": "5.1.2",
     "ws": "^8.20.0",
     "zod": "4.4.3"

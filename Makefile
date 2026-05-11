@@ -4,7 +4,7 @@
 
 .PHONY: dev test lint lint-rls format typecheck up down clean clean-stack help \
         contract-test contract-test-deployed contract-test-missing-keys e2e-test e2e-test-live \
-        e2e-hermetic \
+        e2e-hermetic e2e-test-phase6 \
         load-test seed backup restore migrate migrate-rollback logs ps restart \
         verify-images
 
@@ -244,6 +244,44 @@ e2e-hermetic:
 	  OPENWHISPR_TEST_ROUTES=true \
 	  MOCK_DIARIZATION=true \
 	  node_modules/.bin/vitest run --config vitest.config.ts
+
+# Phase 6 / Plan 06-12a — verification-gate sub-target (initial 2-test subset).
+#
+# Wave 3 of Phase 6 lands eight e2e tests under tests/e2e/ behind a
+# real docker-compose stack via testcontainers DockerComposeEnvironment.
+# Plan 06-12a is the FIRST sub-plan (lowest-blast-radius pair —
+# probes-dependency + audit-log-write) and seeds this Makefile entry.
+# Plan 06-12b / 06-12c add more tests via their own commits; Plan
+# 06-12d folds the full suite back into the global `e2e-test`
+# target.
+#
+# Unlike `e2e-test` (which uses a host-side compose-helper with the
+# e2e profile + mock-realtime overlay), the Phase 6 gate boots the
+# DEFAULT profile via testcontainers and uses `docker pause` /
+# direct postgres `psql` exec for its assertions. The vitest config
+# (tests/e2e/vitest.e2e.config.ts) carries NO globalSetup so each
+# test file owns its compose lifecycle (beforeAll boots, afterAll
+# tears down with removeVolumes:true).
+#
+# Hermetic — NO real provider keys required. The compose stack runs
+# with LITELLM_CONFIG_FILE=litellm_config.contract.yaml + MOCK_DIARIZATION=true
+# so a fresh clone with empty provider env vars boots the stack
+# successfully.
+#
+# Refuses to run unless E2E=1 per CLAUDE.md mandatory-e2e gate.
+e2e-test-phase6:
+	@if [ "$$E2E" != "1" ]; then \
+	  echo "Refusing to run: E2E=1 required (CLAUDE.md mandatory-e2e gate)." ; \
+	  echo "Usage: E2E=1 make e2e-test-phase6" ; \
+	  exit 1 ; \
+	fi
+	@test -f .env || (echo "Refusing to run: .env not found at repo root. Run tools/bootstrap.sh first." && exit 1)
+	E2E=1 LITELLM_CONFIG_FILE=litellm_config.contract.yaml \
+	  OPENWHISPR_TEST_ROUTES=true MOCK_DIARIZATION=true \
+	  NODE_TLS_REJECT_UNAUTHORIZED=0 \
+	  pnpm exec vitest run --config tests/e2e/vitest.e2e.config.ts \
+	    tests/e2e/probes-dependency.test.ts \
+	    tests/e2e/audit-log-write.test.ts
 
 # Run the conformance suite against an arbitrary deployed backend.
 # `make contract-test-deployed BACKEND_URL=https://api.customer.com AUTH_URL=...`
