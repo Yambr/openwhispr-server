@@ -1,6 +1,13 @@
 # Grafana datasource provisioning — Loki (logs).
 # Anonymous read mode (auth_enabled: false on the Loki side) is the dev
 # default; Phase 9 hardening flips this and adds X-Scope-OrgID propagation.
+#
+# Phase 6 / Plan 03 / Task 1 — derivedFields wires Loki log lines to
+# Tempo traces via the `trace_id` JSON field injected by
+# @opentelemetry/instrumentation-pino (D-T3). Grafana renders the
+# captured trace_id as a clickable button that opens the matching span
+# in Tempo (datasourceUid: tempo — see compose/grafana/provisioning/
+# datasources/tempo.yaml).
 apiVersion: 1
 datasources:
   - name: Loki
@@ -10,3 +17,8 @@ datasources:
     url: http://loki:3100
     jsonData:
       maxLines: 1000
+      derivedFields:
+        - name: TraceID
+          matcherRegex: '"trace_id":"([a-f0-9]+)"'
+          url: '${__value.raw}'
+          datasourceUid: tempo
