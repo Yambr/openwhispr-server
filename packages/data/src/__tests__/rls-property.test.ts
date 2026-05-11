@@ -940,6 +940,7 @@ SUITE("TEST-RLS-01: 100+ random tenant pairs through PgBouncer", () => {
         "tenant_settings",
         "transcriptions",
         "usage_ledger",
+        "usage_rollup_daily",
         "user_settings",
         "users",
         "verification",
