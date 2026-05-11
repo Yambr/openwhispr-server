@@ -24,9 +24,9 @@ A drop-in OpenWhispr backend any organization can self-host — open-source out 
 - [x] **Phase 1: Core Infra & Multi-Tenant Data** — Compose stack scaffolding (Postgres+PgBouncer+Redis+observability+Traefik+MinIO), RLS DDL, tenant-context middleware, no-default-secrets gate
 - [x] **Phase 2: Auth + Wire-API Skeleton + Conformance Harness** — Better Auth (email+pwd + OIDC pluggable), OAuth shim with channel-scheme echo, token rotation, CONTRACT-01 harness, all 3 auth-lifecycle endpoints + `/api/health` (closed via Phases 02.1 → 02.22 cascade)
 - [x] **Phase 3: LiteLLM Integration + Bundled OSS Models** — Bundle LiteLLM ≥1.83.7 with faster-whisper / pyannote / Speaches-compatible image; env-override path documented; sync `/api/transcribe` + `/api/reason` end-to-end with usage ledger (observability only). Live e2e green against real OpenRouter / Groq / OpenAI / pyannote.ai (2026-05-11).
-- [ ] **Phase 4: Streaming + Realtime** — `/api/agent/stream` NDJSON line-flush + WSS realtime 3600s + 3 realtime token endpoints **← NEXT**
-- [ ] **Phase 5: Operational Endpoints** — `/api/usage`, `/api/stt-config`, `/api/note-recording-config`, `/api/streaming-usage`, `/api/agent/web-search`, generic `cloud-api-request` passthrough
-- [ ] **Phase 6: Observability + Ops Hardening + Workers** — OTel/Prom/Loki end-to-end + audit log + BullMQ workers + tenant-context job middleware + anti-abuse rate limit + SSRF defense
+- [x] **Phase 4: Streaming + Realtime** — `/api/agent/stream` NDJSON line-flush + WSS realtime 3600s + 3 realtime token endpoints (verification: human_needed)
+- [x] **Phase 5: Operational Endpoints** — `/api/usage`, `/api/stt-config`, `/api/note-recording-config`, `/api/streaming-usage`, `/api/agent/web-search`, generic `cloud-api-request` passthrough (closed 2026-05-11, 828/830 tests green)
+- [ ] **Phase 6: Observability + Ops Hardening + Workers** — OTel/Prom/Loki end-to-end + audit log + BullMQ workers + tenant-context job middleware + anti-abuse rate limit + SSRF defense **← NEXT**
 - [ ] **Phase 7: Frontend UI-SPEC** — Admin console + end-user self-service specs targeting Next.js 15 + shadcn/ui v2; design tokens; component inventory
 - [ ] **Phase 8: Load Test, Tuning & SLO Publication** — k6 1000-concurrent nightly; PgBouncer/FD/sizing-matrix tuning; SLOs published only after this passes
 - [ ] **Phase 9: Helm Chart & Cloud Deploy** — CNPG + Traefik 3 + online-migration discipline + upgrade-matrix CI + first-launch SLO test
