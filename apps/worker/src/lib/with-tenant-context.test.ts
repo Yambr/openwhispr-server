@@ -251,6 +251,60 @@ SUITE("withTenantContext (D-W1)", () => {
     expect(queries).not.toContain("COMMIT");
   });
 
+  it("omits request_id from MDC when payload has no request_id field", async () => {
+    if (!harness) throw new Error("harness");
+    const lines: Array<Record<string, unknown>> = [];
+    const captureLogger = pino(
+      { level: "trace" },
+      {
+        write: (chunk: string) => {
+          for (const ln of chunk.split("\n").filter(Boolean)) {
+            try {
+              lines.push(JSON.parse(ln));
+            } catch {
+              /* ignore */
+            }
+          }
+        },
+      },
+    );
+    const wrapped = withTenantContext(
+      SCHEMA,
+      harness.pool,
+      async () => {
+        throw new Error("no-rid");
+      },
+      { logger: captureLogger },
+    );
+    await expect(wrapped(fakeJob({ tenant_id: TENANT_A }))).rejects.toThrow();
+    const errLine = lines.find((l) => l["msg"] === "tenant job failed");
+    expect(errLine).toBeTruthy();
+    expect(errLine?.["request_id"]).toBeUndefined();
+  });
+
+  it("falls back to 'unknown' job_id when job.id is undefined", async () => {
+    if (!harness) throw new Error("harness");
+    let seenJobId: string | undefined;
+    const wrapped = withTenantContext(SCHEMA, harness.pool, async () => {
+      seenJobId = getTenantContext()?.jobId;
+    });
+    await wrapped({
+      data: { tenant_id: TENANT_A },
+      queueName: "q",
+    } as never);
+    expect(seenJobId).toBe("unknown");
+  });
+
+  it("uses the default pino logger when no options.logger is supplied", async () => {
+    if (!harness) throw new Error("harness");
+    // Just verify the default path doesn't crash. Success means the
+    // `options.logger ?? baseLog` branch covered the right-hand side.
+    const wrapped = withTenantContext(SCHEMA, harness.pool, async () => {
+      throw new Error("default-logger");
+    });
+    await expect(wrapped(fakeJob({ tenant_id: TENANT_A }))).rejects.toThrow();
+  });
+
   it("releases the pg client on both success and failure paths", async () => {
     if (!harness) throw new Error("harness");
     let releaseCount = 0;

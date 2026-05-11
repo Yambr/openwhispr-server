@@ -44,19 +44,22 @@ export interface WithSystemContextOptions {
  * @param handler Async function invoked with the parsed payload (or `{}`
  *                when schema is null).
  */
-export function withSystemContext<S extends z.ZodTypeAny | null>(
+export function withSystemContext<S extends z.ZodTypeAny | null, R = void>(
   schema: S,
-  handler: (data: S extends z.ZodTypeAny ? z.infer<S> : Record<string, never>) => Promise<void>,
+  handler: (data: S extends z.ZodTypeAny ? z.infer<S> : Record<string, never>) => Promise<R>,
   options: WithSystemContextOptions = {},
-): (job: Job) => Promise<void> {
+): (job: Job) => Promise<R> {
   const log = options.logger ?? baseLog;
-  return async (job: Job): Promise<void> => {
+  return async (job: Job): Promise<R> => {
     // Parse the payload first so schema violations surface before any span
     // or ALS setup. System jobs with `schema=null` skip parsing entirely.
+    // When `job.data` is `undefined` (test stubs or BullMQ no-payload jobs)
+    // we substitute `{}` so a schema with an empty-object branch validates.
+    const rawData = (job.data ?? {}) as unknown;
     const data =
       schema === null
         ? ({} as S extends z.ZodTypeAny ? z.infer<S> : Record<string, never>)
-        : (schema.parse(job.data) as S extends z.ZodTypeAny ? z.infer<S> : Record<string, never>);
+        : (schema.parse(rawData) as S extends z.ZodTypeAny ? z.infer<S> : Record<string, never>);
 
     const jobId = job.id ?? "unknown";
     const span = tracer.startSpan(`bullmq.job.${job.queueName}`, {
@@ -68,9 +71,11 @@ export function withSystemContext<S extends z.ZodTypeAny | null>(
     const childLog = log.child({ mode: "system", job_id: jobId });
 
     try {
+      let result!: R;
       await tenantAls.run({ tenantId: SYSTEM_TENANT_SENTINEL, mode: "system", jobId }, async () => {
-        await handler(data);
+        result = await handler(data);
       });
+      return result;
     } catch (err) {
       span.recordException(err as Error);
       childLog.error({ err }, "system job failed");

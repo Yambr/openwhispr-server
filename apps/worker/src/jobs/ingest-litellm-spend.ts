@@ -26,11 +26,14 @@
 // integration test can call `runIngestOnce(deps)` directly without
 // orchestrating the full Worker/Queue lifecycle. The Worker class itself
 // is a thin shim that delegates to runIngestOnce on every job invocation.
-import { Queue, Worker } from "bullmq";
+
 import type { ConnectionOptions } from "bullmq";
+import { Queue, Worker } from "bullmq";
 import type { Pool } from "pg";
 import pino from "pino";
+import { z } from "zod";
 import { inferKind } from "../lib/infer-kind.js";
+import { withSystemContext } from "../lib/with-system-context.js";
 
 const log = pino({ name: "ingest-litellm-spend" });
 
@@ -79,11 +82,7 @@ export function createQueue(connection: ConnectionOptions): Queue {
  * API; `repeat:{ every }` was deprecated in BullMQ 5.x (Pitfall #4).
  */
 export async function ensureScheduler(queue: Queue): Promise<void> {
-  await queue.upsertJobScheduler(
-    SCHEDULER_KEY,
-    { every: TICK_MS },
-    { name: "ingest", data: {} },
-  );
+  await queue.upsertJobScheduler(SCHEDULER_KEY, { every: TICK_MS }, { name: "ingest", data: {} });
 }
 
 /**
@@ -135,17 +134,14 @@ export async function runIngestOnce(
     );
     const tenantId = tenantRes.rows[0]?.tenant_id;
     if (!tenantId) {
-      log.warn(
-        { rid: ourRid, userId },
-        "no tenant for user — skipping spend row",
-      );
+      log.warn({ rid: ourRid, userId }, "no tenant for user — skipping spend row");
       continue;
     }
 
     const kind = inferKind(r.model);
     const units =
       kind === "reason_tokens"
-        ? r.total_tokens ?? 0
+        ? (r.total_tokens ?? 0)
         : Math.ceil(extractDuration(r.metadata) / 60);
 
     const insertRes = await deps.appOwnerPool.query(
@@ -165,9 +161,7 @@ export async function runIngestOnce(
     const last = rows[rows.length - 1];
     if (last) {
       const ts =
-        last.startTime instanceof Date
-          ? last.startTime.toISOString()
-          : String(last.startTime);
+        last.startTime instanceof Date ? last.startTime.toISOString() : String(last.startTime);
       await deps.redis.set(WATERMARK_KEY, ts);
     }
   }
@@ -176,28 +170,44 @@ export async function runIngestOnce(
 }
 
 /**
+ * Phase 6 Plan 06-07 / D-W2 — schema for the ingest-litellm-spend payload.
+ * The recurring scheduler enqueues an empty `{}` payload today; the schema
+ * is permissive so the System escape hatch documents intent without
+ * breaking the existing scheduler wire shape. Future callers (the
+ * reconciliation-discrepancy backfill, Plan 06-10) will pass
+ * `{ since, until }`.
+ */
+export const ingestLitellmSpendSchema = z
+  .object({
+    since: z.string().datetime().optional(),
+    until: z.string().datetime().optional(),
+  })
+  .strict()
+  .or(z.object({}).strict());
+
+/**
  * Construct the BullMQ Worker that runs `runIngestOnce` on every job tick.
  * Lifecycle ownership is the caller's — the entry point in `index.ts`
  * wires SIGTERM to `worker.close()`.
+ *
+ * Phase 6 Plan 06-07 / D-W2 — the handler is wrapped in `withSystemContext`
+ * because this is a cross-tenant reconciliation job: it reads
+ * LiteLLM_SpendLogs for all tenants and writes usage_ledger rows for the
+ * resolved tenant_id of each row. RLS is intentionally bypassed via the
+ * `openwhispr_owner` pool (BYPASSRLS). The System opt-in is explicit so
+ * the static lint (D-W4 layer 1, Plan 06-09) treats this as an authorized
+ * cross-tenant job.
  */
 export function createWorker(deps: JobDeps): Worker {
-  return new Worker(
-    QUEUE_NAME,
-    async () => {
-      const result = await runIngestOnce(deps);
-      log.info(
-        { ...result },
-        "ingest tick complete",
-      );
-      return result;
-    },
-    { connection: deps.connection },
-  );
+  const handler = withSystemContext(ingestLitellmSpendSchema, async () => {
+    const result = await runIngestOnce(deps);
+    log.info({ ...result }, "ingest tick complete");
+    return result;
+  });
+  return new Worker(QUEUE_NAME, handler, { connection: deps.connection });
 }
 
-function extractDuration(
-  metadata: Record<string, unknown> | null | undefined,
-): number {
+function extractDuration(metadata: Record<string, unknown> | null | undefined): number {
   if (!metadata) return 0;
   const d = metadata["duration"];
   if (typeof d === "number" && Number.isFinite(d) && d > 0) return d;
