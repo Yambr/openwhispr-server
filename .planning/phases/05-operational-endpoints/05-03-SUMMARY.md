@@ -215,21 +215,19 @@ grep -E "resolveWebSearchProvider"        apps/api/src/routes/agent/web-search.t
 
 ## Deferred Work
 
-### Yandex live adapter — pending reference file
+### Yandex live adapter — RESOLVED (2026-05-11 follow-up)
 
-The Yandex Search adapter currently ships as a stub:
+The Yandex Search adapter previously deferred from this plan is **now LIVE**. A follow-up commit on Plan 05-03 replaced the wire-shape stub with a real HTTP adapter against the Yandex Search API v2:
 
-- **Adapter location:** `apps/api/src/lib/web-search/yandex-adapter.ts` (carries a `TODO(phase-5.x)` comment).
-- **Wire effect:** Setting `WEB_SEARCH_PROVIDER=yandex` returns HTTP 503 with `{error: "yandex provider pending"}` on every authenticated call, even with `YANDEX_SEARCH_API_KEY` + `YANDEX_FOLDER_ID` set and `YANDEX_SEARCH_ENABLED=true`.
-- **Replacement plan:** A follow-up gap-closure phase will:
-  1. Land `tools/reference/yandex-search-server.py` (operator-supplied; the `tools/reference/.gitignore` is already in place to protect against leaking the live API keys typically embedded in such references).
-  2. Re-implement `yandex-adapter.ts` with the live HTTP wire shape extracted from the reference (endpoint, auth header format, snippet field name).
-  3. Replace the stub tests in `yandex.test.ts` with the happy-path + upstream-error + timeout matrix mirroring `tavily.test.ts`.
-- **Risk if undone:** Operators expecting Yandex Search availability will see 503s indefinitely. The 503 wording is operator-actionable (mentions `YANDEX_SEARCH_ENABLED` and points at the missing reference file), and the OSS default (`WEB_SEARCH_PROVIDER=tavily`) is unaffected — fresh deployments work out of the box with `TAVILY_API_KEY` set.
-
-## Known Stubs
-
-**1. YandexAdapter.search() (apps/api/src/lib/web-search/yandex-adapter.ts:65)** — always throws `YandexSearchPendingError`. Intentional: the adapter exists in the registry for wire-shape stability (D-01: future providers should be a pure adapter+entry replacement, not a route change), but the live HTTP call cannot be implemented without the user's reference Python file. Replacement tracked in "Deferred Work" above. The plan's `<output>` requirement to document the Yandex reference outcome is satisfied: this section explicitly captures the skip-yandex decision and the path to live wiring.
+- **Endpoint:** `POST https://searchapi.api.cloud.yandex.net/v2/web/search`
+- **Auth:** `Authorization: Api-Key <YANDEX_SEARCH_API_KEY>` + body `folderId`
+- **Enablement:** Setting BOTH `YANDEX_SEARCH_API_KEY` and `YANDEX_SEARCH_FOLDER_ID` enables the adapter. The previous `YANDEX_SEARCH_ENABLED` feature flag was removed — having credentials IS the enablement signal. `YANDEX_FOLDER_ID` is kept as a legacy fallback.
+- **Region support:** Per-request `{region: 'ru' | 'tr' | 'en'}` maps to Yandex `{searchType, region, l10n}` tuples (default `ru`).
+- **Response parsing:** Base64-decoded XML walked via a focused inline parser with priority `extended-text > passages > title > headline` and `<hlword>` open/close stripping.
+- **Error mapping:** gRPC code 16/7 → `MissingProviderKeyError` (503); 8/3/13/other → `UpstreamError` (502). `YandexSearchPendingError` was removed from `types.ts`; the route handler now routes Yandex errors through the same `MissingProviderKey` / `UpstreamError` arms as Tavily.
+- **Tests:** `yandex.test.ts` was rewritten with the live-adapter matrix (region mapping × 4, XML parser × 7, happy-path HTTP × 2, error-mapping HTTP × 7) using `undici.MockAgent` at the network boundary (no internal-logic mocks).
+- **.env.example:** Updated Yandex section — removed `YANDEX_SEARCH_ENABLED`, documented the live wire contract and the legacy folder-id alias.
+- **Commits:** `feat(05-03): replace Yandex stub with live Search API v2 adapter` and `docs(05-03): mark Yandex adapter live (no longer deferred)`.
 
 ## Out-of-scope Issues (logged, not fixed)
 
