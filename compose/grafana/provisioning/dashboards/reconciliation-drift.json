@@ -1,0 +1,143 @@
+{
+  "uid": "openwhispr-reconciliation-drift",
+  "title": "OpenWhispr — LiteLLM Reconciliation Drift",
+  "description": "Daily reconciliation between LiteLLM_SpendLogs (authoritative upstream) and usage_ledger (our materialised view). Two Mimir gauges (D-R2) — litellm_reconciliation_drift_pct{tenant_id} and litellm_reconciliation_drift_usd_cents{tenant_id} — plus threshold lines at the D-R3 default thresholds (0.5 % row drift, $0.01 USD spend drift). Alerts in compose/grafana/provisioning/alerting/reconciliation-alerts.yaml fire on threshold breach.",
+  "tags": ["openwhispr", "reconciliation", "litellm", "drift"],
+  "schemaVersion": 38,
+  "version": 1,
+  "timezone": "utc",
+  "refresh": "5m",
+  "time": { "from": "now-7d", "to": "now" },
+  "panels": [
+    {
+      "id": 1,
+      "type": "timeseries",
+      "title": "Row drift % per tenant (litellm_reconciliation_drift_pct)",
+      "description": "Row-count divergence between LiteLLM_SpendLogs and usage_ledger over the 24h window. Default alert threshold: 0.5 %. Configurable via RECONCILIATION_DRIFT_PCT_THRESHOLD env.",
+      "gridPos": { "h": 10, "w": 24, "x": 0, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "mimir" },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "prometheus", "uid": "mimir" },
+          "expr": "litellm_reconciliation_drift_pct",
+          "legendFormat": "{{tenant_id}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "orange", "value": 0.5 },
+              { "color": "red", "value": 1 }
+            ]
+          },
+          "custom": {
+            "thresholdsStyle": { "mode": "line" }
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": { "displayMode": "list", "placement": "bottom" },
+        "tooltip": { "mode": "multi" }
+      }
+    },
+    {
+      "id": 2,
+      "type": "timeseries",
+      "title": "USD-cents drift per tenant (litellm_reconciliation_drift_usd_cents)",
+      "description": "Spend divergence in USD cents. Default alert threshold: 1 cent ($0.01). Configurable via RECONCILIATION_DRIFT_USD_CENTS_THRESHOLD env.",
+      "gridPos": { "h": 10, "w": 24, "x": 0, "y": 10 },
+      "datasource": { "type": "prometheus", "uid": "mimir" },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "prometheus", "uid": "mimir" },
+          "expr": "litellm_reconciliation_drift_usd_cents",
+          "legendFormat": "{{tenant_id}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "orange", "value": 1 },
+              { "color": "red", "value": 10 }
+            ]
+          },
+          "custom": {
+            "thresholdsStyle": { "mode": "line" }
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": { "displayMode": "list", "placement": "bottom" },
+        "tooltip": { "mode": "multi" }
+      }
+    },
+    {
+      "id": 3,
+      "type": "stat",
+      "title": "Max row drift % across all tenants",
+      "gridPos": { "h": 6, "w": 12, "x": 0, "y": 20 },
+      "datasource": { "type": "prometheus", "uid": "mimir" },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "prometheus", "uid": "mimir" },
+          "expr": "max(litellm_reconciliation_drift_pct)"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "orange", "value": 0.5 },
+              { "color": "red", "value": 1 }
+            ]
+          }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 4,
+      "type": "stat",
+      "title": "Max USD-cents drift across all tenants",
+      "gridPos": { "h": 6, "w": 12, "x": 12, "y": 20 },
+      "datasource": { "type": "prometheus", "uid": "mimir" },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "prometheus", "uid": "mimir" },
+          "expr": "max(litellm_reconciliation_drift_usd_cents)"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "orange", "value": 1 },
+              { "color": "red", "value": 10 }
+            ]
+          }
+        },
+        "overrides": []
+      }
+    }
+  ]
+}

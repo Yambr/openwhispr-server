@@ -1,0 +1,43 @@
+# Grafana datasource provisioning -- Postgres (per-tenant usage + LiteLLM
+# spend dashboards).
+#
+# Used by the `per-tenant-usage` and `litellm-spend` dashboards (Plan 06-11)
+# to query the `usage_ledger` table for read-only operator reporting.
+#
+# Connection is established as the dedicated `grafana_reader` role (Phase 1
+# era operator-tier read-only role; SECURITY DEFINER bypasses RLS by design
+# for the operator console -- see threat register T-06-20 in 06-11-PLAN.md).
+# Operators on a fresh `git clone` MUST create this role manually until the
+# follow-up migration lands (flagged in 06-11-SUMMARY.md / Deferred Issues):
+#
+#   CREATE ROLE grafana_reader LOGIN PASSWORD :'pw';
+#   GRANT CONNECT ON DATABASE openwhispr TO grafana_reader;
+#   GRANT USAGE ON SCHEMA public TO grafana_reader;
+#   GRANT SELECT ON ALL TABLES IN SCHEMA public TO grafana_reader;
+#   ALTER DEFAULT PRIVILEGES IN SCHEMA public
+#     GRANT SELECT ON TABLES TO grafana_reader;
+#
+# The password is sourced from the GRAFANA_POSTGRES_READER_PASSWORD env var
+# referenced by Grafana's standard $__env() expansion; operators set the
+# secret in .env before `docker compose up`. Connection goes through
+# PgBouncer in transaction-pool mode (port 6432) to share the existing
+# session-pool budget; Grafana issues short read-only queries that fit the
+# transaction-pool model.
+apiVersion: 1
+datasources:
+  - name: Postgres (read-only)
+    type: postgres
+    access: proxy
+    uid: postgres-readonly
+    url: pgbouncer:6432
+    user: grafana_reader
+    jsonData:
+      database: openwhispr
+      sslmode: disable
+      postgresVersion: 1700
+      timescaledb: false
+      # Drives query-time filter widgets in the dashboards; matches the
+      # column types in `usage_ledger` (created_at timestamptz).
+      timeInterval: '1m'
+    secureJsonData:
+      password: ${GRAFANA_POSTGRES_READER_PASSWORD}
