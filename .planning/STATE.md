@@ -3,12 +3,12 @@ gsd_state_version: 1.0
 milestone: v1.6.9
 milestone_name: expects plain session.token text; advisor research recommends Option C
 status: Executing Phase 6
-last_updated: "2026-05-11T16:30:00.000Z"
+last_updated: "2026-05-11T16:58:10.209Z"
 progress:
   total_phases: 34
   completed_phases: 9
   total_plans: 81
-  completed_plans: 86
+  completed_plans: 87
   percent: 26
 ---
 
@@ -28,10 +28,10 @@ progress:
 |-------|-------|
 | Milestone | v1 |
 | Phase | 6 — Observability + Ops Hardening + Workers (EXECUTING, wave-by-wave) |
-| Plan | 06-01 → 06-12 dispatching; Wave 0 (01/02/03) → Wave 1 (04/05/06/07) → Wave 2 (08/09/10/11) → Wave 3 (12) |
-| Status | EXECUTING — gsd-execute-phase wave dispatch initiated 2026-05-11 |
-| Phase progress | Phases 0/1/2/3/4/5 closed; 02.x cascade fully closed; 03.x + 02.22 debt closed; Phase 6 in flight |
-| Next action | Wave 0 dispatch — gsd-executor agents for 06-01 (RED test stubs), 06-02 (pg_partman + audit_log partitioning), 06-03 (OTel pre-pino bootstrap + 8 e2e RED stubs) |
+| Plan | 06-01 closed (RED stubs, 23 files, 4 commits); 06-02 + 06-03 GREEN-landed in parallel; 06-04..12 remaining |
+| Status | EXECUTING — Wave 0 progressing (3/3 plans landed) |
+| Phase progress | Phases 0/1/2/3/4/5 closed; 02.x cascade fully closed; 03.x + 02.22 debt closed; Phase 6 Wave 0 in flight |
+| Next action | Wave 1 dispatch — 06-04 (request-log integration), 06-05 (audit_log sync writer), 06-06 (probes + dep-check), 06-07 (worker tenant-context HOFs + 3-layer CI gate) |
 
 ```
 [X][X][X][X][X][X][~][ ][ ][ ][ ]
@@ -79,6 +79,7 @@ progress:
 | Phase 02.17 Pinline | 18m | 1 tasks | 4 files |
 | Phase 02.18 Pinline | 15m | 1 tasks | 5 files |
 | Phase 02.21 Pinline | 75m | 3 tasks | 9 files |
+| Phase 06 P01 | 70m | 2 tasks | 27 files |
 
 ## Accumulated Context
 
