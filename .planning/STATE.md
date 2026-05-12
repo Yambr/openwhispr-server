@@ -14,27 +14,27 @@ progress:
 
 # Project State: OpenWhispr Server
 
-**Last updated:** 2026-05-12 (Phase 8 plans 01–07 closed; 08-07 mock run produced invalid baseline due to 3 deferrals → Phase 08.1 inserted to close them before 08-08 SLO publication)
+**Last updated:** 2026-05-12 (Phase 08.1-01 closed: 2/3 anomalies LIVE-validated, 1 CODE-closed; agent-stream api-side undici issue + 30-min plateau escalated as out-of-scope follow-up for plan 08-08)
 
 ## Project Reference
 
 **Core value:** A drop-in OpenWhispr backend any organization can self-host — open-source out of the box, corporate-LiteLLM-ready by env override.
 
-**Current focus:** Phase 8 (Load Test, Tuning & SLO Publication) in progress. Plans 08-01..08-07 closed; 08-07 mock 1000-VU run on Mac surfaced 3 deferrals that invalidated the baseline: (1) 99.93% HTTP error rate from request-layer mismatch between k6 flows and api routes / mock-litellm envelopes; (2) realtime-ws p95 reported as 0 because k6/websockets `addEventListener` does not block the iteration timer; (3) `pgbouncer_admin` SCRAM hash absent from `compose/pgbouncer/userlist.txt` forcing log-scrape fallback for pool stats. Stack itself proved sound under 1000 VU (0 container restarts, `wait_time=0us` per pgbouncer instance, 0 prepared-statement errors, 0 rate-limit hits). Phase 08.1 (gap-closure sub-phase, 1 plan, Wave 1) inserted 2026-05-12 to fix all three and re-run mock baseline; plan 08-08 (operations.md + SLO publication) blocked until 08.1 exit gates pass. Realistic profile remains DEFERRED per RESEARCH.md §Pitfall 2 (Apple Silicon CPU saturates Speaches under 1000 VU). Phases 0/1/2/3/4/5/6/7/07.1 closed. Plan files canonicalized in this commit: 08-NN-PLAN.md naming + 08.1 sub-phase directory.
+**Current focus:** Phase 08.1 (gap-closure of plan 08-07's 3 anomalies) CLOSED 2026-05-12T18:00:00Z. Plan 08.1-01 landed 7 atomic commits (forensic probe + 3 schema-fix commits + 1 realtime-ws Trend commit + 1 pgbouncer bootstrap commit + 1 partial-mock-baseline commit). Live-validated: transcribe + reason return 200 against the running stack (Tasks 2.a, 2.b closed); pgbouncer_admin SHOW POOLS returns rows (Task 4 closed). Code-validated: realtime-ws custom Trend (Task 3 closed via 8 unit tests; live deferred — mock-litellm doesn't implement /v1/realtime). Escalated: agent-stream's api-side undici.fetch integration emits `upstream_error` despite Fastify accepting the k6 body — outside Plan 08.1-01 scope (the load-test code is correct). Coverage 96.94/94/100/96.85 on `tools/load-test/`. The canonical 30-min 1000-VU plateau is the operator's hand-off via `make load-test PROFILE=mock` (compose envs + image tag now pinned in the load-test overlay for reproducibility). Plan 08-08 still gated on the operator's plateau + the agent-stream api-side fix. Realistic profile remains DEFERRED per RESEARCH.md §Pitfall 2. Phases 0/1/2/3/4/5/6/7/07.1 closed; Phase 8 partially done; Phase 08.1 closed.
 
 ## Current Position
 
 | Field | Value |
 |-------|-------|
 | Milestone | v1 |
-| Phase | 8 — Load Test, Tuning & SLO Publication (in progress); 08.1 — Deferral Fixes + Mock Re-run (gap-closure, INSERTED 2026-05-12) |
-| Plan | Phase 8: 08-01..08-07 closed, 08-08 blocked. Phase 08.1: 08.1-01 incomplete (gap-closure of 08-07 anomalies). |
-| Status | Ready to execute 08.1-01 (strict TDD per CLAUDE.md TDD-01b; gap_closure: true). 08-08 awaits 08.1 exit gates. |
-| Phase progress | Phases 0/1/2/3/4/5/6/7/07.1 closed. Phase 8 partially done. Phase 08.1 inserted. |
-| Next action | `/gsd-execute-phase 08.1` (gap-closure: forensic capture → 3 deferral fixes → mock re-run → exit gates). |
+| Phase | 8 — Load Test, Tuning & SLO Publication (in progress); 08.1 — Deferral Fixes + Mock Re-run (CLOSED 2026-05-12) |
+| Plan | Phase 8: 08-01..08-07 closed, 08-08 still blocked on operator plateau + api-side agent-stream fix. Phase 08.1: 08.1-01 CLOSED (partial-live-validation per the plan's wall-clock cap protocol). |
+| Status | 08.1 closed. 08-08 next, requires (a) operator runs full 30-min mock plateau, (b) follow-on api-side fix for agent-stream's undici.fetch dispatcher integration. |
+| Phase progress | Phases 0/1/2/3/4/5/6/7/07.1/08.1 closed. Phase 8 partially done (08-01..08-07 closed; 08-08 blocked). |
+| Next action | Operator runs `make load-test PROFILE=mock` to produce SLO-grade summary; in parallel a new plan addresses `apps/api/src/routes/agent/stream.ts` undici dispatcher integration. |
 
 ```
-[X][X][X][X][X][X][X][X][X][~][ ][ ][ ]
+[X][X][X][X][X][X][X][X][X][~][X][ ][ ]
  0  1  2  3  4  5  6  7 7.1 8 8.1 9  10
 ```
 
