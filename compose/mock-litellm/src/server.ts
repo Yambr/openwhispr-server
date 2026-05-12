@@ -34,6 +34,7 @@
 import multipart from "@fastify/multipart";
 import Fastify, { type FastifyInstance } from "fastify";
 import { jitter, sleep } from "./latency.js";
+import { realtimePlugin } from "./realtime.js";
 
 export interface AppConfig {
   port: number;
@@ -195,6 +196,9 @@ export function buildApp(cfg: Partial<AppConfig> = {}): FastifyInstance {
     raw.write("data: [DONE]\n\n");
     raw.end();
   });
+
+  // Phase 08.3 — /v1/realtime echo handler for k6 realtime-ws flow.
+  void app.register(realtimePlugin);
 
   return app;
 }
