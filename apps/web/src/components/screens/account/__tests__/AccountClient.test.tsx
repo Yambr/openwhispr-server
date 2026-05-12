@@ -109,7 +109,9 @@ describe("AccountClient (Phase 07.1 / Plan 08)", () => {
       currentSessionToken: "tok-1",
     });
     expect(screen.getByText(/^Profile$/)).toBeInTheDocument();
-    expect(screen.getByText(/Active sessions/i)).toBeInTheDocument();
+    // SessionsTable always renders an "Active sessions" h2 (both in skeleton
+    // and loaded states) — assert ≥1 occurrence.
+    expect(screen.getAllByText(/Active sessions/i).length).toBeGreaterThanOrEqual(1);
     expect(screen.getByText(/Danger zone/i)).toBeInTheDocument();
   });
 
@@ -139,5 +141,47 @@ describe("AccountClient (Phase 07.1 / Plan 08)", () => {
       currentSessionToken: "tok-1",
     });
     expect(screen.getByTestId("profile-created-value")).toHaveTextContent("—");
+  });
+
+  it("renders em-dash for missing name", () => {
+    renderClient({
+      user: {
+        id: "u1",
+        name: null,
+        email: "alice@example.com",
+        emailVerified: true,
+        createdAt: "2025-08-12T10:00:00.000Z",
+      },
+      currentSessionToken: "tok-1",
+    });
+    expect(screen.getAllByText("—").length).toBeGreaterThanOrEqual(1);
+  });
+
+  it("renders em-dash for invalid createdAt string (NaN branch)", () => {
+    renderClient({
+      user: {
+        id: "u1",
+        name: "Alice",
+        email: "alice@example.com",
+        emailVerified: true,
+        createdAt: "not-a-real-date",
+      },
+      currentSessionToken: "tok-1",
+    });
+    expect(screen.getByTestId("profile-created-value")).toHaveTextContent("—");
+  });
+
+  it("accepts Date object createdAt", () => {
+    renderClient({
+      user: {
+        id: "u1",
+        name: "Alice",
+        email: "alice@example.com",
+        emailVerified: true,
+        createdAt: new Date("2025-08-12T10:00:00.000Z"),
+      },
+      currentSessionToken: "tok-1",
+    });
+    expect(screen.getByTestId("profile-created-value")).toHaveTextContent("2025-08-12");
   });
 });

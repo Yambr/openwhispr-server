@@ -111,6 +111,21 @@ describe("DeleteAccountDialog (Phase 07.1 / Plan 08)", () => {
     });
   });
 
+  it("still redirects when defensive signOut() rejects", async () => {
+    const userEvent = (await import("@testing-library/user-event")).default;
+    const user = userEvent.setup();
+    deleteAccountMock.mockResolvedValue({ data: { success: true }, error: null });
+    signOutMock.mockRejectedValue(new Error("signOut blew up"));
+    wrap(<DeleteAccountDialog userEmail="alice@example.com" />);
+    await user.click(screen.getByRole("button", { name: /Delete account/i }));
+    const input = await screen.findByLabelText(/Type your email to confirm/i);
+    await user.type(input, "alice@example.com");
+    await user.click(screen.getByTestId("delete-account-confirm"));
+    await waitFor(() => {
+      expect(pushMock).toHaveBeenCalledWith("/sign-in");
+    });
+  });
+
   it("on deleteAccount error envelope, does NOT redirect", async () => {
     const userEvent = (await import("@testing-library/user-event")).default;
     const user = userEvent.setup();
