@@ -12,15 +12,19 @@ import { createMockAdapter } from "../utils/http-client.js";
 import { realtimeWs } from "./realtime-ws.js";
 
 /** Tiny synthetic WS that records events and lets the test drive them. */
-function makeSocket(): {
+interface SocketHarness {
   socket: WsSocket;
   events: Record<string, ((p?: unknown) => void)[]>;
   sent: string[];
-  closed: boolean;
-  closeCode?: number;
-} {
+  readonly closed: boolean;
+  readonly closeCode: number | undefined;
+  timeouts: Array<{ cb: () => void; ms: number }>;
+}
+
+function makeSocket(): SocketHarness {
   const events: Record<string, ((p?: unknown) => void)[]> = {};
   const sent: string[] = [];
+  const timeouts: Array<{ cb: () => void; ms: number }> = [];
   const state = { closed: false, closeCode: undefined as number | undefined };
   const socket: WsSocket = {
     send(data: string) {
@@ -35,14 +39,15 @@ function makeSocket(): {
       state.closed = true;
       state.closeCode = code;
     },
-    setTimeout() {
-      /* noop in tests */
+    setTimeout(cb, ms) {
+      timeouts.push({ cb, ms });
     },
   };
   return {
     socket,
     events,
     sent,
+    timeouts,
     get closed() {
       return state.closed;
     },
@@ -108,6 +113,37 @@ describe("realtime-ws flow", () => {
     });
     realtimeWs({ email: "u@x", token: "tok" }, client);
     expect(captured?.tags?.endpoint).toBe("realtime-ws");
+  });
+
+  it("closes with code 1011 when the socket reports an error", () => {
+    let envRef: SocketHarness | undefined;
+    const client = wsClient((_url, _params, handler) => {
+      const env = makeSocket();
+      envRef = env;
+      handler(env.socket);
+      for (const cb of env.events.error ?? []) {
+        cb(new Error("boom"));
+      }
+    });
+    realtimeWs({ email: "u@x", token: "tok" }, client);
+    expect(envRef?.closed).toBe(true);
+    expect(envRef?.closeCode).toBe(1011);
+  });
+
+  it("registers a 2-second setTimeout fallback that closes the socket on stall", () => {
+    let envRef: SocketHarness | undefined;
+    const client = wsClient((_url, _params, handler) => {
+      const env = makeSocket();
+      envRef = env;
+      handler(env.socket);
+    });
+    realtimeWs({ email: "u@x", token: "tok" }, client);
+    expect(envRef?.timeouts.length).toBe(1);
+    expect(envRef?.timeouts[0]?.ms).toBe(2000);
+    // Simulate the stall — invoke the registered callback directly.
+    envRef?.timeouts[0]?.cb();
+    expect(envRef?.closed).toBe(true);
+    expect(envRef?.closeCode).toBe(1000);
   });
 
   it("flow completes synchronously under the mock (no real network)", () => {

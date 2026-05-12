@@ -60,6 +60,16 @@ describe("reason flow", () => {
     expect(opts?.tags?.endpoint).toBe("reason");
   });
 
+  it("falls back to an empty prompt when the prompts array is empty", () => {
+    const request = vi.fn().mockReturnValue(ok());
+    reason({ email: "u@x", token: "t" }, clientWith(request), {
+      prompts: [],
+      iteration: 0,
+    });
+    const body = request.mock.calls[0]?.[2] as { messages: Array<{ content: string }> };
+    expect(body.messages[0]?.content).toBe("");
+  });
+
   it("sends the bearer token in the Authorization header", () => {
     const request = vi.fn().mockReturnValue(ok());
     reason({ email: "u@x", token: "tok-r" }, clientWith(request), {
