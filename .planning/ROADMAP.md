@@ -510,7 +510,7 @@ Plans:
 **Plans**: 8 plans (5 waves)
 - [x] 08-01 — rate-limit env switch (Wave 0)
 - [x] 08-02 — load-test workspace scaffold (Wave 0)
-- [ ] 08-03 — mock-litellm Fastify scaffold (Wave 0)
+- [x] 08-03 — mock-litellm Fastify scaffold (Wave 0)
 - [ ] 08-04 — FD probe scripts (Wave 0)
 - [ ] 08-05 — docker-compose load-test profiles (Wave 1)
 - [ ] 08-06 — k6 flows + Makefile (Wave 2)
