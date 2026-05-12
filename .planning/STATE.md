@@ -2,8 +2,8 @@
 gsd_state_version: 1.0
 milestone: v1
 milestone_name: OpenWhispr Server v1
-status: Phase 8 plans 01–07 closed; 08-07 mock run invalidated by 3 deferrals → Phase 08.1 inserted for gap-closure before 08-08 SLO publication
-last_updated: "2026-05-12T17:00:00.000Z"
+status: Phase 8 plans 01–07 closed; 08.1/08.2/08.3 closed; Run 4 yielded a valid 3-of-4 baseline (transcribe / reason / agent-stream PASS, realtime-ws p95 still 0 — api-routing follow-on); Plan 08-08 unblocked for the 3 measurable endpoints
+last_updated: "2026-05-13T00:25:00.000Z"
 progress:
   total_phases: 35
   completed_phases: 12
@@ -14,7 +14,7 @@ progress:
 
 # Project State: OpenWhispr Server
 
-**Last updated:** 2026-05-12 (Phase 08.2 CLOSED: 3 atomic commits across 2 plans landed Option A — agent-stream now calls shared litellm-client's chatCompletionsStream via undici.request; live forensic-probe returns content-bearing NDJSON ending in finishReason:"stop"; new architectural finding documented re. undici 7.25 signal + custom-wrapped Agent)
+**Last updated:** 2026-05-13 (Phase 08.3 CLOSED: 3 atomic commits — mock-litellm `/v1/realtime` echo handler landed under strict TDD, full 30-min Run 4 plateau completed with 1000 VU sustained at 530 rps / 88 GB sent, 3/4 exit gates PASS (transcribe 2469 / reason 1177 / agent-stream TTFB 595 ms, error rate 0.10%), realtime_ws_roundtrip_ms p95 still 0 — different bug than Run 3, traced to a likely api-side routing issue (`/v1/realtime` reverse-proxy registration, dualAuth on WS upgrade, or @fastify/http-proxy frame forwarding); operator probe instructions recorded in RUN-LOG.md; Plan 08-08 unblocked for 3 measurable endpoints, realtime-ws baseline deferred). Phase 08.2 CLOSED: 3 atomic commits across 2 plans landed Option A — agent-stream now calls shared litellm-client's chatCompletionsStream via undici.request; live forensic-probe returns content-bearing NDJSON ending in finishReason:"stop"; new architectural finding documented re. undici 7.25 signal + custom-wrapped Agent)
 
 ## Project Reference
 
@@ -34,8 +34,8 @@ progress:
 | Next action | Operator runs `make load-test PROFILE=mock` to produce SLO-grade summary; agent-stream is now content-bearing in the same stack. |
 
 ```
-[X][X][X][X][X][X][X][X][X][~][X][X][ ][ ]
- 0  1  2  3  4  5  6  7 7.1 8 8.1 8.2 9 10
+[X][X][X][X][X][X][X][X][X][~][X][X][X][ ][ ]
+ 0  1  2  3  4  5  6  7 7.1 8 8.1 8.2 8.3 9 10
 ```
 
 ## Performance Metrics
