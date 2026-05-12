@@ -24,7 +24,7 @@ function clientWith(request: HttpClient["request"]): HttpClient {
 }
 
 describe("agent-stream flow", () => {
-  it("POSTs to /api/agent/stream with {messages, stream:true}", () => {
+  it("POSTs to /api/agent/stream with JSON-stringified {messages, stream:true}", () => {
     const request = vi.fn().mockReturnValue(ok());
     const ttfb = vi.fn();
     const total = vi.fn();
@@ -37,9 +37,21 @@ describe("agent-stream flow", () => {
     const [method, url, body] = call;
     expect(method).toBe("POST");
     expect(url).toBe("https://api.localhost/api/agent/stream");
-    const json = body as { messages: unknown; stream: boolean };
+    expect(typeof body).toBe("string");
+    const json = JSON.parse(body as string) as { messages: unknown; stream: boolean };
     expect(json.stream).toBe(true);
     expect(Array.isArray(json.messages)).toBe(true);
+  });
+
+  it("sets content-type: application/json so Fastify's body parser fires (08.1-01 Task 2)", () => {
+    const request = vi.fn().mockReturnValue(ok());
+    agentStream({ email: "u@x", token: "t" }, clientWith(request), {
+      messages: [{ role: "user", content: "hi" }],
+      metrics: { ttfb: { add: vi.fn() }, total: { add: vi.fn() } },
+    });
+    const opts = request.mock.calls[0]?.[3] as { headers?: Record<string, string> };
+    expect(opts?.headers?.["content-type"]).toBe("application/json");
+    expect(opts?.headers?.accept).toBe("application/x-ndjson");
   });
 
   it("records TTFB and total duration separately", () => {
