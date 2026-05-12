@@ -6,7 +6,6 @@
 //     user (clearAllData ensures wordsUsed=0 — the "empty-as-N/A" branch per
 //     UI-SPEC; success path uses seedUsage to push the wordsUsed sum above 0).
 
-import { fixtureEmail, provisionTestUser, signInAs } from "./fixtures/auth.js";
 import { runAxe } from "./fixtures/axe.js";
 import { bindToContext } from "./fixtures/seed.js";
 import { expect, test } from "./fixtures/states.js";
@@ -14,9 +13,10 @@ import { expect, test } from "./fixtures/states.js";
 const ROUTE = "**/api/usage";
 
 test.describe("U4 — usage dashboard (Phase 07.1 / Plan 08)", () => {
-  test.beforeEach(async ({ page, context }) => {
-    await provisionTestUser(page.request, 0);
-    await signInAs(page, fixtureEmail(0));
+  // Plan 13.1 — auth is provisioned by global-setup.ts and applied via the
+  // per-worker `storageState` override on the auth-extended `test`. Each
+  // test starts already signed in; only data state needs resetting here.
+  test.beforeEach(async ({ context }) => {
     const seed = bindToContext(context);
     await seed.clearAllData();
   });

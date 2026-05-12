@@ -16,6 +16,11 @@ import { defineConfig, devices } from "@playwright/test";
 
 export default defineConfig({
   testDir: "./tests/e2e",
+  // Plan 13.1 — provisions ONE Better Auth user per worker up front so
+  // spec `beforeEach` no longer hits /api/auth/sign-up/email (which was
+  // tripping the anti-abuse rate limiter at 57/85 e2e specs in Plan 13).
+  // See tests/e2e/global-setup.ts.
+  globalSetup: "./tests/e2e/global-setup.ts",
   // Real services per D-TEST-3 share state across tests; default to serial.
   // Per-worker fixtures (auth.ts, seed.ts) are responsible for isolating
   // their own test users. Plans 07+ flip fullyParallel back on per-screen

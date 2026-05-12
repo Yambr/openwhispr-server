@@ -4,7 +4,6 @@
 //   - loading + error states use page.route() (network-boundary intercept).
 //   - empty + success states use real seeded data via fixtures/seed.ts.
 
-import { fixtureEmail, provisionTestUser, signInAs } from "./fixtures/auth.js";
 import { runAxe } from "./fixtures/axe.js";
 import { bindToContext } from "./fixtures/seed.js";
 import { expect, test } from "./fixtures/states.js";
@@ -12,9 +11,9 @@ import { expect, test } from "./fixtures/states.js";
 const ROUTE = "**/api/transcriptions/list**";
 
 test.describe("U6 — transcriptions list (Phase 07.1 / Plan 09)", () => {
-  test.beforeEach(async ({ page, context }) => {
-    await provisionTestUser(page.request, 0);
-    await signInAs(page, fixtureEmail(0));
+  // Plan 13.1 — auth provisioned by global-setup.ts; storageState is
+  // applied per worker via the auth-extended `test`. Reset data state only.
+  test.beforeEach(async ({ context }) => {
     const seed = bindToContext(context);
     await seed.clearAllData();
   });

@@ -4,7 +4,6 @@
 // (Branch B). U7 uses list-then-filter with bounded pagination; this spec
 // intercepts the SAME list endpoint as U6.
 
-import { fixtureEmail, provisionTestUser, signInAs } from "./fixtures/auth.js";
 import { runAxe } from "./fixtures/axe.js";
 import { bindToContext } from "./fixtures/seed.js";
 import { expect, test } from "./fixtures/states.js";
@@ -14,9 +13,9 @@ const TRANSCRIPT_TEXT =
   "First paragraph of seeded content for U7 detail.\n\nSecond paragraph contains different words.\n\nThird paragraph closes the test fixture.";
 
 test.describe("U7 — transcription detail (Phase 07.1 / Plan 09)", () => {
-  test.beforeEach(async ({ page, context }) => {
-    await provisionTestUser(page.request, 0);
-    await signInAs(page, fixtureEmail(0));
+  // Plan 13.1 — auth provisioned by global-setup.ts; storageState is
+  // applied per worker via the auth-extended `test`. Reset data state only.
+  test.beforeEach(async ({ context }) => {
     const seed = bindToContext(context);
     await seed.clearAllData();
   });

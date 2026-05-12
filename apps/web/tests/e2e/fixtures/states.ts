@@ -13,7 +13,10 @@
 //                                 state for the entire assertion window.
 //   - errorFor(urlPattern, status) — replies with a JSON error envelope at the
 //                                 requested status (default 500).
-import { test as base, expect } from "@playwright/test";
+// Plan 13.1 — chain the auth-fixture's `test` so specs importing from
+// states.ts inherit the worker-scoped `storageState` override. Specs that
+// need to start signed-out import from `@playwright/test` directly.
+import { test as base, expect } from "./auth.js";
 
 type StateFixture = {
   loadingFor: (urlPattern: string) => Promise<void>;

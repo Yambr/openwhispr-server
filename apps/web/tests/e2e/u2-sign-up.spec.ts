@@ -1,6 +1,6 @@
 // Phase 07.1 / Plan 07 — U2 Sign-up Playwright spec.
 import { expect, test } from "@playwright/test";
-import { FIXTURE_PASSWORD, provisionTestUser } from "./fixtures/auth.js";
+import { FIXTURE_PASSWORD, fixtureEmail } from "./fixtures/auth.js";
 import { runAxe } from "./fixtures/axe.js";
 
 test.describe("U2 Sign-up (Phase 07.1 / Plan 07)", () => {
@@ -29,12 +29,14 @@ test.describe("U2 Sign-up (Phase 07.1 / Plan 07)", () => {
     });
   });
 
-  test("error state — duplicate email shows duplicate Alert", async ({ page, request }, info) => {
-    // Provision an existing user so a sign-up with the same email triggers
-    // USER_ALREADY_EXISTS from real Better Auth (no route() needed, but we
-    // still confirm by reading the rendered error copy).
-    await provisionTestUser(request, info.workerIndex);
-    const existingEmail = `alice+${info.workerIndex}@test.local`;
+  test("error state — duplicate email shows duplicate Alert", async ({ page }, info) => {
+    // Plan 13.1 — the global-setup hook (tests/e2e/global-setup.ts) has
+    // already provisioned `alice+<workerIndex>@test.local` via the real
+    // Better Auth sign-up + Postgres email-verified flip. Submitting the
+    // sign-up form with that same email triggers USER_ALREADY_EXISTS from
+    // real Better Auth — no internal mock, no extra /api/auth/sign-up
+    // request beyond the form submit itself.
+    const existingEmail = fixtureEmail(info.parallelIndex);
     await page.goto("/sign-up");
     await page.getByLabel(/name/i).fill("Alice");
     await page.getByLabel(/email/i).fill(existingEmail);
