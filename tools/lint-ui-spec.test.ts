@@ -8,11 +8,12 @@
  * The import below resolves to a module that does NOT YET EXIST. That import
  * failure is the canonical RED signal per CLAUDE.md's constitutional TDD rule.
  */
+import { mkdtempSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
-// Intentional RED: tools/lint-ui-spec.ts is implemented in Plan 03.
-// @ts-expect-error — module is created in Plan 03 (TDD GREEN phase).
-import { lint } from "./lint-ui-spec";
+// Plan 03 has implemented the linter — the GREEN phase commit.
+import { findProjectRoot, lint, listFastifyRoutes, main } from "./lint-ui-spec";
 import {
   BETTER_AUTH_PATHS,
   COPY_KEY_REGEX,
@@ -163,5 +164,209 @@ describe("lint-ui-spec / config sanity", () => {
     expect(m).not.toBeNull();
     expect(m?.[1]).toBe("POST");
     expect(m?.[2]).toBe("/api/notes/search");
+  });
+});
+
+describe("lint-ui-spec / coverage supplements", () => {
+  it("listFastifyRoutes detects BOTH shorthand and app.route() registrations", () => {
+    const dir = mkdtempSync(resolve(tmpdir(), "lint-ui-spec-routes-"));
+    writeFileSync(
+      resolve(dir, "shorthand.ts"),
+      'app.get<{Params:{}}>("/api/shorthand", async () => {})\napp.all("/api/auth/*", h)\n',
+    );
+    writeFileSync(
+      resolve(dir, "object-method-first.ts"),
+      'app.route({\n  method: "POST",\n  url: "/api/object-mf",\n  handler: async () => {}\n})\n',
+    );
+    writeFileSync(
+      resolve(dir, "object-url-first.ts"),
+      'app.route({\n  url: "/api/object-uf",\n  method: "PATCH",\n  handler: async () => {}\n})\n',
+    );
+    writeFileSync(resolve(dir, "x.test.ts"), 'app.get("/api/should-not-be-detected", ()=>{})');
+    const routes = listFastifyRoutes(dir);
+    expect(routes.has("GET /api/shorthand")).toBe(true);
+    expect(routes.has("POST /api/object-mf")).toBe(true);
+    expect(routes.has("PATCH /api/object-uf")).toBe(true);
+    // app.all catch-all is NOT added — relies on BETTER_AUTH_PATHS.
+    expect([...routes].some((r) => r.includes("/api/auth/*"))).toBe(false);
+    // *.test.ts is excluded.
+    expect(routes.has("GET /api/should-not-be-detected")).toBe(false);
+  });
+
+  it("listFastifyRoutes returns empty set for non-existent directory", () => {
+    expect(listFastifyRoutes("/nonexistent/path/does-not-exist").size).toBe(0);
+  });
+
+  it("findProjectRoot walks up to repo root from a nested path", () => {
+    const root = findProjectRoot(__dirname);
+    expect(root).toMatch(/openwhispr-server$/);
+  });
+
+  it("findProjectRoot falls back to cwd when no package.json found", () => {
+    const root = findProjectRoot("/");
+    expect(typeof root).toBe("string");
+  });
+
+  it("accepts a screen using h3 ### subsection headings (instead of bold lead-ins)", async () => {
+    const tmp = mkdtempSync(resolve(tmpdir(), "lint-ui-spec-h3-"));
+    const file = resolve(tmp, "h3.md");
+    writeFileSync(
+      file,
+      `# H3 fixture\n\n## U4 — Usage dashboard\n\nSee visual: design/screens-user.jsx#ScreenUsage\n\n### Purpose\nText.\n\n### Roles\nText.\n\n### Route\nText.\n\n### Data\nText.\n\n### Actions\nText.\n\n### States\nText.\n\n### User journey\nText.\n\n### Copy keys\n\n| Key | Description |\n| --- | --- |\n| \`end-user.usage.kpi.h3.label\` | Label |\n\n### Wireframe\n\n\`\`\`text\n+---+\n| A |\n+---+\n\`\`\`\n\n### shadcn primitives\nCard.\n`,
+    );
+    const routes = resolve(__dirname, "../apps/api/src/routes");
+    const diags = await lint([file], routes);
+    expect(diags.filter((d: { rule: string }) => d.rule === "required-subsections")).toEqual([]);
+  });
+
+  it("skips non-screen ## headings (no Rule-1 fire on 'API Reference')", async () => {
+    const tmp = mkdtempSync(resolve(tmpdir(), "lint-ui-spec-noscreen-"));
+    const file = resolve(tmp, "x.md");
+    writeFileSync(
+      file,
+      "# Spec\n\n## API Reference (verified)\n\nNo screen sections.\n\n## Assumptions resolved\n\nNothing.\n",
+    );
+    const diags = await lint([file], resolve(__dirname, "../apps/api/src/routes"));
+    expect(diags).toEqual([]);
+  });
+
+  it("flags a visual-ref pointing to a non-existent JSX file", async () => {
+    const tmp = mkdtempSync(resolve(tmpdir(), "lint-ui-spec-badfile-"));
+    const file = resolve(tmp, "x.md");
+    writeFileSync(
+      file,
+      "# spec\n\nSome paragraph. See visual: design/does-not-exist.jsx#Foo here.\n",
+    );
+    const diags = await lint([file], resolve(__dirname, "../apps/api/src/routes"));
+    expect(
+      diags.some(
+        (d: { rule: string; message: string }) =>
+          d.rule === "visual-ref-resolves" && /does-not-exist/.test(d.message),
+      ),
+    ).toBe(true);
+  });
+
+  it("matches Better Auth wildcard segments (e.g., /sign-in/social/:provider style)", async () => {
+    // Reference an endpoint whose path component matches a `:provider`
+    // style entry. The pass fixture already covers literal matches; this
+    // test exercises the segmentsMatch fallback.
+    const tmp = mkdtempSync(resolve(tmpdir(), "lint-ui-spec-ba-"));
+    const file = resolve(tmp, "x.md");
+    writeFileSync(
+      file,
+      "# spec\n\nParagraph cites `GET /api/auth/sign-in/social/google` which is on the literal allowlist.\n",
+    );
+    const diags = await lint([file], resolve(__dirname, "../apps/api/src/routes"));
+    expect(diags.filter((d: { rule: string }) => d.rule === "endpoint-exists")).toEqual([]);
+  });
+
+  it("rejects unknown /api/auth/... endpoint not on allowlist", async () => {
+    const tmp = mkdtempSync(resolve(tmpdir(), "lint-ui-spec-baunk-"));
+    const file = resolve(tmp, "x.md");
+    writeFileSync(file, "# spec\n\nCites `POST /api/auth/does-not-exist`.\n");
+    const diags = await lint([file], resolve(__dirname, "../apps/api/src/routes"));
+    expect(
+      diags.some(
+        (d: { rule: string; message: string }) =>
+          d.rule === "endpoint-exists" && /\/api\/auth\/does-not-exist/.test(d.message),
+      ),
+    ).toBe(true);
+  });
+
+  it("flags duplicate copy keys within a single file (same file uniqueness)", async () => {
+    const tmp = mkdtempSync(resolve(tmpdir(), "lint-ui-spec-dup1-"));
+    const file = resolve(tmp, "x.md");
+    writeFileSync(
+      file,
+      `# spec\n\n## U1 — A\n\nSee visual: design/screens-user.jsx#ScreenUsage\n\n**Purpose.** x.\n\n**Roles.** x.\n\n**Route.** x.\n\n**Data.** x.\n\n**Actions.** x.\n\n**States.** x.\n\n**User journey.** x.\n\n**Copy keys.**\n\n| Key | Desc |\n| --- | --- |\n| \`end-user.dup.key.label.text\` | one |\n\n**Wireframe.**\n\n\`\`\`text\n+--+\n| x|\n+--+\n\`\`\`\n\n**shadcn primitives.** Card.\n\n## U2 — B\n\nSee visual: design/screens-user.jsx#ScreenUsage\n\n**Purpose.** x.\n\n**Roles.** x.\n\n**Route.** x.\n\n**Data.** x.\n\n**Actions.** x.\n\n**States.** x.\n\n**User journey.** x.\n\n**Copy keys.**\n\n| Key | Desc |\n| --- | --- |\n| \`end-user.dup.key.label.text\` | two |\n\n**Wireframe.**\n\n\`\`\`text\n+--+\n| x|\n+--+\n\`\`\`\n\n**shadcn primitives.** Card.\n`,
+    );
+    const diags = await lint([file], resolve(__dirname, "../apps/api/src/routes"));
+    expect(diags.some((d: { rule: string }) => d.rule === "copy-key-uniqueness")).toBe(true);
+  });
+
+  it("ignores wireframe rule when screen lacks a Wireframe subsection", async () => {
+    const tmp = mkdtempSync(resolve(tmpdir(), "lint-ui-spec-nowire-"));
+    const file = resolve(tmp, "x.md");
+    writeFileSync(
+      file,
+      "# spec\n\n## U9 — No wireframe screen\n\nSee visual: design/screens-user.jsx#ScreenUsage\n\n**Purpose.** x.\n",
+    );
+    const diags = await lint([file], resolve(__dirname, "../apps/api/src/routes"));
+    expect(diags.some((d: { rule: string }) => d.rule === "wireframe-monospace")).toBe(false);
+  });
+
+  it("CLI main() returns 0 against project Plan-01 stubs", async () => {
+    const code = await main([]);
+    expect(code).toBe(0);
+  });
+
+  it("CLI main() returns 1 when given a failing fixture file as argv", async () => {
+    const code = await main([
+      resolve(__dirname, "lint-ui-spec/fixtures/fail-missing-subsection/screen-no-purpose.md"),
+    ]);
+    expect(code).toBe(1);
+  });
+
+  it("accepts visual-only sentinel in wireframe block", async () => {
+    const diags = await lint(
+      [resolve(__dirname, "lint-ui-spec/fixtures/pass/screen-visual-only.md")],
+      resolve(__dirname, "../apps/api/src/routes"),
+    );
+    expect(diags.filter((d: { rule: string }) => d.rule === "wireframe-monospace")).toEqual([]);
+  });
+
+  it("handles wireframe subsection with no code block (no diagnostic)", async () => {
+    const tmp = mkdtempSync(resolve(tmpdir(), "lint-ui-spec-nocode-"));
+    const file = resolve(tmp, "x.md");
+    writeFileSync(
+      file,
+      "# spec\n\n## U1 — Screen\n\nSee visual: design/screens-user.jsx#ScreenUsage\n\n**Wireframe.**\n\nNo fenced block here, only prose.\n\n**shadcn primitives.** Card.\n",
+    );
+    const diags = await lint([file], resolve(__dirname, "../apps/api/src/routes"));
+    expect(diags.some((d: { rule: string }) => d.rule === "wireframe-monospace")).toBe(false);
+  });
+
+  it("handles wireframe with multiple code blocks (uses first)", async () => {
+    const tmp = mkdtempSync(resolve(tmpdir(), "lint-ui-spec-multi-"));
+    const file = resolve(tmp, "x.md");
+    writeFileSync(
+      file,
+      `# spec\n\n## U1 — Screen\n\nSee visual: design/screens-user.jsx#ScreenUsage\n\n**Wireframe.**\n\n\`\`\`text\n+--+\n|x |\n+--+\n\`\`\`\n\n\`\`\`text\nsecond block ignored\n\`\`\`\n`,
+    );
+    const diags = await lint([file], resolve(__dirname, "../apps/api/src/routes"));
+    expect(diags.some((d: { rule: string }) => d.rule === "wireframe-monospace")).toBe(false);
+  });
+
+  it("handles a screen with duplicate subsection markers (only first counts)", async () => {
+    const tmp = mkdtempSync(resolve(tmpdir(), "lint-ui-spec-dupsub-"));
+    const file = resolve(tmp, "x.md");
+    writeFileSync(
+      file,
+      "# spec\n\n## U1 — Screen\n\nSee visual: design/screens-user.jsx#ScreenUsage\n\n**Purpose.** first.\n\n**Purpose.** repeated — should be tolerated.\n",
+    );
+    const diags = await lint([file], resolve(__dirname, "../apps/api/src/routes"));
+    // Purpose IS found, so it should not be in the missing list.
+    expect(
+      diags.some(
+        (d: { rule: string; message: string }) =>
+          d.rule === "required-subsections" && /Purpose/.test(d.message),
+      ),
+    ).toBe(false);
+  });
+
+  it("accepts subsection bold-lead-in with trailing text after the period", async () => {
+    const tmp = mkdtempSync(resolve(tmpdir(), "lint-ui-spec-trailing-"));
+    const file = resolve(tmp, "x.md");
+    writeFileSync(
+      file,
+      "# spec\n\n## U1 — Screen\n\nSee visual: design/screens-user.jsx#ScreenUsage\n\n### Purpose extras text\n\nbody\n",
+    );
+    const diags = await lint([file], resolve(__dirname, "../apps/api/src/routes"));
+    expect(
+      diags.some(
+        (d: { rule: string; message: string }) =>
+          d.rule === "required-subsections" && /missing subsection: Purpose/.test(d.message),
+      ),
+    ).toBe(false);
   });
 });
