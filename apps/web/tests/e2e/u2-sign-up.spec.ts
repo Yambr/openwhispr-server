@@ -42,7 +42,11 @@ test.describe("U2 Sign-up (Phase 07.1 / Plan 07)", () => {
     await page.getByLabel(/email/i).fill(existingEmail);
     await page.getByLabel(/^password$/i).fill(FIXTURE_PASSWORD);
     await page.getByRole("button", { name: /^sign up$/i }).click();
-    await expect(page.getByText(/already registered/i)).toBeVisible({ timeout: 15_000 });
+    // Plan 13.2 — the Alert renders the same copy in both AlertTitle and
+    // AlertDescription, so `getByText` resolves to two nodes. `.first()`
+    // picks the title; the duplicate-email Alert is considered visible
+    // either way.
+    await expect(page.getByText(/already registered/i).first()).toBeVisible({ timeout: 15_000 });
   });
 
   test("success state — new email shows verification message", async ({ page }) => {

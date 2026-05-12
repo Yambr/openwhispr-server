@@ -20,6 +20,11 @@ function internalApiUrl(): string {
   return raw && raw.length > 0 ? raw : DEFAULT_INTERNAL_API_URL;
 }
 
+// Phase 07.1 / Plan 13.2 — see (auth)/app/page.tsx for the rationale.
+function ssrPrefetchDisabled(): boolean {
+  return process.env.PLAYWRIGHT_DISABLE_SSR_PREFETCH === "1";
+}
+
 export default async function ConversationDetailPage({
   params,
 }: {
@@ -30,21 +35,23 @@ export default async function ConversationDetailPage({
   const queryClient = makeServerQueryClient();
   const cursor = { limit: 50 } as const;
 
-  await queryClient.prefetchQuery({
-    queryKey: queryKeys.conversations.messages(id, cursor),
-    queryFn: async () => {
-      const params = new URLSearchParams({
-        conversation_id: id,
-        limit: String(cursor.limit),
-      });
-      const res = await fetch(
-        `${internalApiUrl()}/api/conversations/messages?${params.toString()}`,
-        { headers: { cookie: cookieHeader }, cache: "no-store" },
-      );
-      if (!res.ok) return { messages: [] };
-      return (await res.json()) as { messages: unknown[] };
-    },
-  });
+  if (!ssrPrefetchDisabled()) {
+    await queryClient.prefetchQuery({
+      queryKey: queryKeys.conversations.messages(id, cursor),
+      queryFn: async () => {
+        const qp = new URLSearchParams({
+          conversation_id: id,
+          limit: String(cursor.limit),
+        });
+        const res = await fetch(`${internalApiUrl()}/api/conversations/messages?${qp.toString()}`, {
+          headers: { cookie: cookieHeader },
+          cache: "no-store",
+        });
+        if (!res.ok) return { messages: [] };
+        return (await res.json()) as { messages: unknown[] };
+      },
+    });
+  }
 
   return (
     <HydrationBoundary state={dehydrate(queryClient)}>

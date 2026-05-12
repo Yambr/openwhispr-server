@@ -204,6 +204,14 @@ export function buildAuth(opts: BuildAuthOptions): AuthInstance {
           html: `<p>Click to verify: <a href="${url}">${url}</a></p>`,
         });
       },
+      // Phase 07.1 / Plan 13.2 — Better Auth's `onExistingUserSignUp` cannot
+      // surface a USER_ALREADY_EXISTS error: the internal context wrapper
+      // `runInBackgroundOrAwait` (create-context.mjs:211) swallows any throw
+      // inside the hook and logs `Failed to run background task`, then the
+      // request continues to return the synthetic anti-enumeration response.
+      // The duplicate-email opt-out therefore lives one layer above as a
+      // Fastify preHandler — see apps/api/src/routes/better-auth-handler.ts
+      // (the `OPENWHISPR_DISABLE_EMAIL_ENUMERATION_PROTECTION` env-gate).
     },
     session: {
       // D-03: ≥30-day TTL.

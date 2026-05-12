@@ -17,35 +17,42 @@ function internalApiUrl(): string {
   return raw && raw.length > 0 ? raw : DEFAULT_INTERNAL_API_URL;
 }
 
+// Phase 07.1 / Plan 13.2 — see (auth)/app/page.tsx for the rationale.
+function ssrPrefetchDisabled(): boolean {
+  return process.env.PLAYWRIGHT_DISABLE_SSR_PREFETCH === "1";
+}
+
 export default async function NotesPage(): Promise<React.JSX.Element> {
   const cookieHeader = (await headers()).get("cookie") ?? "";
   const queryClient = makeServerQueryClient();
   const cursor = { limit: 20 } as const;
 
-  await Promise.all([
-    queryClient.prefetchQuery({
-      queryKey: queryKeys.notes.list(cursor),
-      queryFn: async () => {
-        const res = await fetch(`${internalApiUrl()}/api/notes/list?limit=${cursor.limit}`, {
-          headers: { cookie: cookieHeader },
-          cache: "no-store",
-        });
-        if (!res.ok) return { notes: [] };
-        return (await res.json()) as { notes: unknown[] };
-      },
-    }),
-    queryClient.prefetchQuery({
-      queryKey: queryKeys.folders(),
-      queryFn: async () => {
-        const res = await fetch(`${internalApiUrl()}/api/folders/list?limit=200`, {
-          headers: { cookie: cookieHeader },
-          cache: "no-store",
-        });
-        if (!res.ok) return { folders: [] };
-        return (await res.json()) as { folders: unknown[] };
-      },
-    }),
-  ]);
+  if (!ssrPrefetchDisabled()) {
+    await Promise.all([
+      queryClient.prefetchQuery({
+        queryKey: queryKeys.notes.list(cursor),
+        queryFn: async () => {
+          const res = await fetch(`${internalApiUrl()}/api/notes/list?limit=${cursor.limit}`, {
+            headers: { cookie: cookieHeader },
+            cache: "no-store",
+          });
+          if (!res.ok) return { notes: [] };
+          return (await res.json()) as { notes: unknown[] };
+        },
+      }),
+      queryClient.prefetchQuery({
+        queryKey: queryKeys.folders(),
+        queryFn: async () => {
+          const res = await fetch(`${internalApiUrl()}/api/folders/list?limit=200`, {
+            headers: { cookie: cookieHeader },
+            cache: "no-store",
+          });
+          if (!res.ok) return { folders: [] };
+          return (await res.json()) as { folders: unknown[] };
+        },
+      }),
+    ]);
+  }
 
   return (
     <HydrationBoundary state={dehydrate(queryClient)}>

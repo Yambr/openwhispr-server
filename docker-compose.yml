@@ -439,6 +439,15 @@ services:
       # "true" in their .env — it exposes a session-rotation shortcut
       # intended only for the contract-test stack inside openwhispr_internal.
       OPENWHISPR_TEST_ROUTES: ${OPENWHISPR_TEST_ROUTES:-false}
+      # Phase 07.1 / Plan 13.2 — opt-out of Better Auth's email-enumeration
+      # protection. With requireEmailVerification:true, BA 1.6.9 normally
+      # returns a synthetic success response on dup sign-up to hide account
+      # existence from unauthenticated callers. Setting this var to "1"
+      # makes the apps/api `onExistingUserSignUp` hook throw a real
+      # USER_ALREADY_EXISTS so the desktop client and the U2 Playwright
+      # spec can surface the duplicate-email Alert. Production operators
+      # leave this unset to retain the canonical anti-enumeration behaviour.
+      OPENWHISPR_DISABLE_EMAIL_ENUMERATION_PROTECTION: ${OPENWHISPR_DISABLE_EMAIL_ENUMERATION_PROTECTION:-}
       # Phase 02.13 — OIDC env defaults pointing at the contract-test
       # `fixture-idp` service (D-01). Default-profile boot is unaffected:
       # Better Auth's genericOAuth uses LAZY discovery (it only fetches
@@ -591,6 +600,12 @@ services:
       # apps/api on the internal bridge (no Traefik hop). The browser-side
       # fetches go through Traefik via relative `/api/*` paths.
       INTERNAL_API_URL: http://api:3000
+      # Phase 07.1 / Plan 13.2 — Playwright SSR-prefetch escape hatch.
+      # When set to "1", every RSC page that would otherwise call
+      # `queryClient.prefetchQuery` skips the prefetch so the Client subtree
+      # issues the same useQuery against /api/* in the browser, where
+      # `page.route()` can intercept. Production deploys leave this unset.
+      PLAYWRIGHT_DISABLE_SSR_PREFETCH: ${PLAYWRIGHT_DISABLE_SSR_PREFETCH:-}
       # /admin/observability deep-links (Phase 07.1 A2). Empty defaults hide
       # the links gracefully; operators populate per environment.
       NEXT_PUBLIC_GRAFANA_BASE_URL: ${NEXT_PUBLIC_GRAFANA_BASE_URL:-}
