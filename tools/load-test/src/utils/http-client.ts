@@ -34,12 +34,18 @@ export interface WsParams {
   tags?: Record<string, string>;
 }
 
-/** The minimal websocket surface our flows use. */
+/**
+ * The minimal websocket surface our flows use. k6's `k6/websockets`
+ * module exposes browser-style `addEventListener`; we type only the
+ * shape we need.
+ */
 export interface WsSocket {
   send(data: string): void;
-  on(event: "open" | "message" | "error" | "close", cb: (payload?: unknown) => void): void;
+  addEventListener(
+    event: "open" | "message" | "error" | "close",
+    cb: (payload?: unknown) => void,
+  ): void;
   close(code?: number, reason?: string): void;
-  setTimeout(cb: () => void, ms: number): void;
 }
 
 /** ws() return shape — k6's experimental websockets reports status. */
