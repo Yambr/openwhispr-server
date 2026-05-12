@@ -55,6 +55,21 @@ export interface ChatCompletionRequest {
   extras?: Record<string, unknown>;
 }
 
+/**
+ * Phase 08.2 Plan 01 — streaming chat-completions variant.
+ *
+ * Returns the raw `Dispatcher.ResponseData` so the caller can consume the
+ * Node `Readable` body directly (typically bridged to a Web `ReadableStream`
+ * via `Readable.toWeb(...)` for SSE → NDJSON translation). MUST be used
+ * with the process-wide SSRF dispatcher only — the per-call dispatcher
+ * option is intentionally absent from the method surface (T-08.2-01).
+ */
+export interface ChatCompletionsStreamRequest extends ChatCompletionRequest {
+  signal?: AbortSignal;
+  /** Optional override; defaults to 0 (no body timeout — long-lived SSE). */
+  bodyTimeout?: number;
+}
+
 export interface AudioTranscriptionRequest {
   body: Readable;
   contentType: string;
@@ -72,6 +87,7 @@ export interface PassthroughRequest {
 
 export interface LitellmClient {
   chatCompletions(req: ChatCompletionRequest): Promise<Dispatcher.ResponseData>;
+  chatCompletionsStream(req: ChatCompletionsStreamRequest): Promise<Dispatcher.ResponseData>;
   audioTranscriptions(args: AudioTranscriptionRequest): Promise<Dispatcher.ResponseData>;
   passthrough(path: string, args: PassthroughRequest): Promise<Dispatcher.ResponseData>;
   /** Test seam: lets routes derive ws:// URLs from baseUrl for Plan 06 wsUpstream. */
@@ -151,6 +167,52 @@ export function buildLitellmClient(
       return ensureOk(res);
     },
 
+    async chatCompletionsStream(req) {
+      // Phase 08.2 Plan 01: streaming variant for /api/agent/stream.
+      // Returns raw Dispatcher.ResponseData (Node Readable body) — caller
+      // must NOT see this method pre-consume the body on 2xx.
+      const model = req.model ?? config.defaultChatModel;
+      checkProviderKey(model);
+      const callerStreamOptions =
+        (req.extras as { stream_options?: Record<string, unknown> } | undefined)?.stream_options ??
+        {};
+      const body = JSON.stringify({
+        ...req.extras,
+        model,
+        messages: req.messages,
+        user: req.userId, // D-03
+        stream: true,
+        stream_options: { include_usage: true, ...callerStreamOptions },
+      });
+      // T-08.2-01: NO per-call dispatcher option — rely on the process-wide
+      // SSRF agent set via setGlobalDispatcher. Forward signal + bodyTimeout.
+      // Default bodyTimeout: 0 (no body-read timeout — long-lived SSE).
+      const requestOpts: Record<string, unknown> = {
+        method: "POST",
+        headers: {
+          ...authHeaders(req.userId, req.requestId),
+          "content-type": "application/json",
+        },
+        body,
+        bodyTimeout: req.bodyTimeout ?? 0,
+      };
+      if (req.signal) requestOpts.signal = req.signal;
+      const res = await doRequest(
+        `${config.baseUrl}/v1/chat/completions`,
+        requestOpts as Parameters<typeof doRequest>[1],
+      );
+      // Inline non-2xx → LitellmUpstreamError mapping. We do NOT call
+      // ensureOk because we MUST NOT touch res.body on the 2xx path (the
+      // caller streams it). On non-2xx we drain body.text() once to
+      // populate the error, mirroring ensureOk's behaviour for parity
+      // with the other client methods.
+      if (res.statusCode >= 400) {
+        const bodyText = await res.body.text();
+        throw new LitellmUpstreamError(res.statusCode, bodyText);
+      }
+      return res;
+    },
+
     async audioTranscriptions(args) {
       checkProviderKey("whisper-large-v3");
       const res = await doRequest(`${config.baseUrl}/v1/audio/transcriptions`, {
@@ -186,5 +248,9 @@ export type {
   LitellmClientConfig,
   LitellmProviderKeys,
 } from "./config.js";
-export { DEFAULT_CHAT_MODEL, DEFAULT_LITELLM_BASE_URL, loadLitellmConfigFromEnv } from "./config.js";
+export {
+  DEFAULT_CHAT_MODEL,
+  DEFAULT_LITELLM_BASE_URL,
+  loadLitellmConfigFromEnv,
+} from "./config.js";
 export { LitellmUpstreamError, MissingProviderKeyError } from "./errors.js";

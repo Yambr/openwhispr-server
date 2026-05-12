@@ -5,11 +5,12 @@
 // the wire shape that downstream Plans 04/05/06 depend on.
 
 import { Readable } from "node:stream";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { MockAgent, setGlobalDispatcher } from "undici";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   BUNDLED_MODEL_PROVIDER,
   buildLitellmClient,
+  type ChatCompletionsStreamRequest,
   type LitellmClientConfig,
   LitellmUpstreamError,
   MissingProviderKeyError,
@@ -99,10 +100,9 @@ describe("buildLitellmClient — chatCompletions", () => {
         return { statusCode: 200, data: { ok: true }, responseOptions: {} };
       });
 
-    const client = buildLitellmClient(
-      baseConfig({ defaultChatModel: "gemini-3-flash" }),
-      { isOverride: false },
-    );
+    const client = buildLitellmClient(baseConfig({ defaultChatModel: "gemini-3-flash" }), {
+      isOverride: false,
+    });
     await client.chatCompletions({
       messages: [{ role: "user", content: "hi" }],
       userId: "u1",
@@ -449,5 +449,213 @@ describe("buildLitellmClient — surface", () => {
       if (prev === undefined) delete process.env.LITELLM_BASE_URL;
       else process.env.LITELLM_BASE_URL = prev;
     }
+  });
+});
+
+// Phase 08.2 Plan 01 — chatCompletionsStream contract.
+//
+// Strategy: continue to use MockAgent + setGlobalDispatcher for happy/error
+// paths (Tests A, B, E, F) so the call shape against undici.request is real.
+// For options-shape assertions (Tests C, D, G) we use the `opts.request`
+// injection seam to capture the second argument passed to doRequest and make
+// strict equality assertions impossible to satisfy through MockAgent
+// (MockAgent does not expose bodyTimeout / dispatcher / signal on the
+// intercepted call descriptor).
+describe("buildLitellmClient — chatCompletionsStream", () => {
+  it("Test A — forwards stream:true and stream_options.include_usage:true (merging caller extras.stream_options)", async () => {
+    let capturedBody: string | undefined;
+    agent
+      .get(BASE)
+      .intercept({ path: "/v1/chat/completions", method: "POST" })
+      .reply((opts) => {
+        capturedBody = String(opts.body);
+        return {
+          statusCode: 200,
+          data: 'data: {"id":"chat-1"}\n\ndata: [DONE]\n\n',
+          responseOptions: { headers: { "content-type": "text/event-stream" } },
+        };
+      });
+
+    const client = buildLitellmClient(baseConfig(), { isOverride: false });
+    await client.chatCompletionsStream({
+      model: "qwen3.6-plus",
+      messages: [{ role: "user", content: "hi" }],
+      userId: "u1",
+      requestId: "r1",
+      extras: { temperature: 0.2, stream_options: { custom_flag: true } },
+    });
+
+    const body = JSON.parse(capturedBody ?? "{}");
+    expect(body.stream).toBe(true);
+    expect(body.stream_options).toEqual({ include_usage: true, custom_flag: true });
+    expect(body.temperature).toBe(0.2);
+    expect(body.user).toBe("u1");
+    expect(body.model).toBe("qwen3.6-plus");
+  });
+
+  it("Test B — applies canonical authHeaders + spend-logs metadata (no extra keys)", async () => {
+    let capturedHeaders: Record<string, string> = {};
+    agent
+      .get(BASE)
+      .intercept({ path: "/v1/chat/completions", method: "POST" })
+      .reply((opts) => {
+        capturedHeaders = opts.headers as Record<string, string>;
+        return {
+          statusCode: 200,
+          data: "data: [DONE]\n\n",
+          responseOptions: { headers: { "content-type": "text/event-stream" } },
+        };
+      });
+
+    const client = buildLitellmClient(baseConfig(), { isOverride: false });
+    await client.chatCompletionsStream({
+      model: "qwen3.6-plus",
+      messages: [{ role: "user", content: "hi" }],
+      userId: "u1",
+      requestId: "r1",
+    });
+
+    expect(capturedHeaders.authorization).toBe("Bearer sk-master-test");
+    expect(capturedHeaders["x-litellm-end-user-id"]).toBe("u1");
+    expect(capturedHeaders["content-type"]).toBe("application/json");
+    const metadata = JSON.parse(capturedHeaders["x-litellm-spend-logs-metadata"] ?? "{}");
+    // T-08.2-05: canonical shape is {openwhispr_request_id} ONLY — no
+    // openwhispr_user_id (user attribution is already in body.user).
+    expect(metadata).toEqual({ openwhispr_request_id: "r1" });
+  });
+
+  it("Test C — sets bodyTimeout: 0 on the undici.request call", async () => {
+    const spy = vi.fn(async () => ({
+      statusCode: 200,
+      headers: {},
+      body: {
+        text: async () => "",
+      },
+    }));
+    const client = buildLitellmClient(baseConfig(), {
+      isOverride: false,
+      // biome-ignore lint: spy stand-in matches doRequest shape sufficiently for option assertions.
+      request: spy as unknown as typeof import("undici").request,
+    });
+    await client.chatCompletionsStream({
+      model: "qwen3.6-plus",
+      messages: [{ role: "user", content: "hi" }],
+      userId: "u1",
+      requestId: "r1",
+    });
+    expect(spy).toHaveBeenCalledTimes(1);
+    const callArgs = spy.mock.calls[0];
+    const opts = callArgs[1] as Record<string, unknown>;
+    expect(opts.bodyTimeout).toBe(0);
+  });
+
+  it("Test D — forwards AbortSignal to undici.request when provided", async () => {
+    const spy = vi.fn(async () => ({
+      statusCode: 200,
+      headers: {},
+      body: { text: async () => "" },
+    }));
+    const ac = new AbortController();
+    const client = buildLitellmClient(baseConfig(), {
+      isOverride: false,
+      request: spy as unknown as typeof import("undici").request,
+    });
+    const stream: ChatCompletionsStreamRequest = {
+      model: "qwen3.6-plus",
+      messages: [{ role: "user", content: "hi" }],
+      userId: "u1",
+      requestId: "r1",
+      signal: ac.signal,
+    };
+    await client.chatCompletionsStream(stream);
+    const opts = spy.mock.calls[0][1] as Record<string, unknown>;
+    expect(opts.signal).toBe(ac.signal);
+    // Aborting flips the signal flag on the SAME reference doRequest received.
+    ac.abort();
+    expect((opts.signal as AbortSignal).aborted).toBe(true);
+  });
+
+  it("Test E — non-2xx upstream throws LitellmUpstreamError with statusCode + bodyText", async () => {
+    agent
+      .get(BASE)
+      .intercept({ path: "/v1/chat/completions", method: "POST" })
+      .reply(502, "upstream timed out");
+
+    const client = buildLitellmClient(baseConfig(), { isOverride: false });
+    try {
+      await client.chatCompletionsStream({
+        model: "qwen3.6-plus",
+        messages: [{ role: "user", content: "hi" }],
+        userId: "u1",
+        requestId: "r1",
+      });
+      throw new Error("should not reach");
+    } catch (err) {
+      expect(err).toBeInstanceOf(LitellmUpstreamError);
+      const e = err as LitellmUpstreamError;
+      expect(e.status).toBe(502);
+      expect(e.bodyText).toContain("upstream timed out");
+      expect(e.message).toContain("502");
+    }
+  });
+
+  it("Test F — 2xx upstream returns ResponseData with a Readable body NOT pre-consumed", async () => {
+    let bodyTextCalled = false;
+    let bodyJsonCalled = false;
+    const ssePayload =
+      'data: {"id":"chat-1","choices":[{"delta":{"content":"hi"}}]}\n\ndata: [DONE]\n\n';
+    const fakeBody = {
+      text: async () => {
+        bodyTextCalled = true;
+        return ssePayload;
+      },
+      json: async () => {
+        bodyJsonCalled = true;
+        return {};
+      },
+      // Minimal Readable surface for type compat.
+      on: () => undefined,
+      pipe: () => undefined,
+    };
+    const spy = vi.fn(async () => ({
+      statusCode: 200,
+      headers: { "content-type": "text/event-stream" },
+      body: fakeBody,
+    }));
+    const client = buildLitellmClient(baseConfig(), {
+      isOverride: false,
+      request: spy as unknown as typeof import("undici").request,
+    });
+    const res = await client.chatCompletionsStream({
+      model: "qwen3.6-plus",
+      messages: [{ role: "user", content: "hi" }],
+      userId: "u1",
+      requestId: "r1",
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.body).toBe(fakeBody);
+    // Critical: 2xx path MUST NOT pre-consume the body — caller streams it.
+    expect(bodyTextCalled).toBe(false);
+    expect(bodyJsonCalled).toBe(false);
+  });
+
+  it("Test G — does NOT pass a `dispatcher` key to undici.request (T-08.2-01 mitigation)", async () => {
+    const spy = vi.fn(async () => ({
+      statusCode: 200,
+      headers: {},
+      body: { text: async () => "" },
+    }));
+    const client = buildLitellmClient(baseConfig(), {
+      isOverride: false,
+      request: spy as unknown as typeof import("undici").request,
+    });
+    await client.chatCompletionsStream({
+      model: "qwen3.6-plus",
+      messages: [{ role: "user", content: "hi" }],
+      userId: "u1",
+      requestId: "r1",
+    });
+    const opts = spy.mock.calls[0][1] as Record<string, unknown>;
+    expect(Object.hasOwn(opts, "dispatcher")).toBe(false);
   });
 });
