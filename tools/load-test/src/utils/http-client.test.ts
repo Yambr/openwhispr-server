@@ -22,10 +22,11 @@ const HERE = dirname(fileURLToPath(import.meta.url));
 const FIXTURES_DIR = resolve(HERE, "..", "fixtures");
 
 describe("createK6Adapter()", () => {
-  it("returns an object satisfying the HttpClient interface (request + ws functions)", () => {
+  it("returns an object satisfying the HttpClient interface (request + ws + httpFile functions)", () => {
     const adapter = createK6Adapter();
     expect(typeof adapter.request).toBe("function");
     expect(typeof adapter.ws).toBe("function");
+    expect(typeof adapter.httpFile).toBe("function");
   });
 });
 
@@ -74,6 +75,29 @@ describe("createMockAdapter()", () => {
     const adapter = createMockAdapter({});
     expect(() => adapter.request("GET", "https://x", undefined)).toThrow(/not mocked/i);
     expect(() => adapter.ws("wss://x", { headers: {} }, () => undefined)).toThrow(/not mocked/i);
+  });
+
+  it("provides a default httpFile() that returns the __k6_http_file descriptor (no mocking required)", () => {
+    const adapter = createMockAdapter({});
+    const bytes = new Uint8Array([1, 2, 3, 4]);
+    const fd = adapter.httpFile(bytes, "x.wav", "audio/wav");
+    expect(fd.__k6_http_file).toBe(true);
+    expect(fd.bytes).toBe(bytes);
+    expect(fd.filename).toBe("x.wav");
+    expect(fd.contentType).toBe("audio/wav");
+  });
+
+  it("forwards httpFile() to the injected impl when one is provided", () => {
+    const httpFile = vi.fn().mockReturnValue({
+      __k6_http_file: true as const,
+      bytes: new Uint8Array(),
+      filename: "f",
+      contentType: "ct",
+    });
+    const adapter = createMockAdapter({ httpFile });
+    const bytes = new Uint8Array([9, 9]);
+    adapter.httpFile(bytes, "z.wav", "audio/wav");
+    expect(httpFile).toHaveBeenCalledWith(bytes, "z.wav", "audio/wav");
   });
 });
 
