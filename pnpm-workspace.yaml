@@ -9,4 +9,5 @@ allowBuilds:
   lefthook: true
   msgpackr-extract: false
   protobufjs: true
+  sharp: true
   ssh2: true

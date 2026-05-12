@@ -1,0 +1,118 @@
+/*
+ * Design tokens — transcribed verbatim from
+ *   .planning/phases/07-frontend-ui-spec/UI-SPEC-admin.md  Appendix A
+ *   .planning/phases/07-frontend-ui-spec/UI-SPEC-end-user.md Appendix A
+ *
+ * Tailwind 4 reads `@theme` to generate utility classes
+ * (`bg-accent`, `text-text-muted`, `border-border-strong`, etc.) and
+ * exposes every token as a CSS custom property at `:root`.
+ *
+ * Theme-invariant tokens (`--color-accent`, danger/warn/ok/info) live in the
+ * `@theme` block. Theme-variant tokens (background, panel, text) declare a
+ * light value in `@theme` and a dark override under `[data-theme="dark"]`.
+ *
+ * `--color-accent-soft` cannot be expressed inside `@theme` because
+ * Tailwind 4 does not template-resolve `color-mix()` there; it is declared
+ * in the `@layer base` block instead per RESEARCH § Pattern 8.
+ */
+
+@import "tailwindcss";
+
+@theme {
+  /* Color roles — light theme (default) */
+  --color-accent: #2563eb;
+  --color-accent-fg: #ffffff;
+  --color-bg: #fafafa;
+  --color-panel: #ffffff;
+  --color-panel-2: #f4f4f5;
+  --color-border: #e4e4e7;
+  --color-border-strong: #d4d4d8;
+  --color-text: #18181b;
+  --color-text-muted: #71717a;
+  --color-text-dim: #a1a1aa;
+
+  /* Status colors (theme-invariant) */
+  --color-danger: #dc2626;
+  --color-warn: #d97706;
+  --color-ok: #059669;
+  --color-info: #0284c7;
+
+  /* Spacing & sizing */
+  --spacing-pad: 14px;
+  --radius: 8px;
+  --radius-card: 10px;
+  --radius-button: 7px;
+  --radius-input: 7px;
+  --radius-dialog: 12px;
+
+  /* Row heights — density variants */
+  --row-h-compact: 32px;
+  --row-h-default: 40px;
+  --row-h-comfortable: 44px;
+
+  /* Typography */
+  --font-ui: "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+
+  /* Font sizes */
+  --text-body: 14px;
+  --text-help: 12px;
+  --text-label: 12.5px;
+  --text-badge: 11px;
+  --text-stat-key: 11px;
+  --text-card-title: 13.5px;
+  --text-page-title: 22px;
+  --text-auth-headline: 24px;
+  --text-stat-value: 26px;
+  --text-side-headline: 28px;
+
+  /* Line heights */
+  --leading-body: 1.45;
+  --leading-side-headline: 1.15;
+
+  /* Font weights */
+  --font-weight-regular: 400;
+  --font-weight-medium: 500;
+  --font-weight-semibold: 600;
+  --font-weight-bold: 700;
+
+  /* Letter spacing */
+  --tracking-page-title: -0.02em;
+  --tracking-auth-headline: -0.02em;
+  --tracking-side-headline: -0.025em;
+  --tracking-stat-key: 0.04em;
+
+  /* Motion */
+  --duration-progress: 0.3s;
+  --duration-skeleton: 1.4s;
+}
+
+[data-theme="dark"] {
+  --color-bg: #09090b;
+  --color-panel: #111114;
+  --color-panel-2: #18181b;
+  --color-border: #26262a;
+  --color-border-strong: #3f3f46;
+  --color-text: #fafafa;
+  --color-text-muted: #a1a1aa;
+  --color-text-dim: #71717a;
+}
+
+/*
+ * `color-mix()` cannot be evaluated by Tailwind 4 inside `@theme`, so the
+ * derived `--color-accent-soft` token lives in @layer base. Picked up by
+ * arbitrary-value utilities like `bg-[color:var(--color-accent-soft)]`.
+ */
+@layer base {
+  :root {
+    --color-accent-soft: color-mix(in oklab, var(--color-accent) 14%, transparent);
+  }
+
+  body {
+    background-color: var(--color-bg);
+    color: var(--color-text);
+    font-family: var(--font-ui);
+    font-size: var(--text-body);
+    line-height: var(--leading-body);
+  }
+}
