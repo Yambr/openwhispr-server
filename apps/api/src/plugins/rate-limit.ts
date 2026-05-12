@@ -121,10 +121,32 @@ function getRouteName(req: FastifyRequest): string {
   return ro?.url ?? req.url;
 }
 
+// ── Phase 8 / Plan 01 ───────────────────────────────────────────────────
+// `OPENWHISPR_DISABLE_RATE_LIMIT` LOAD-TEST-ONLY env switch. When set to
+// "1" or "true", the plugin skips BOTH the IP-tier preHandler AND the
+// `@fastify/rate-limit` registration so synthetic load traffic (1000 VUs
+// from one Mac IP under docker-compose `load-test-*` profiles) bypasses
+// the anti-abuse limiter that would otherwise throttle them within the
+// first second. Default is OFF (unset OR "0"). The Better Auth limiter
+// honours the same switch in `apps/api/src/auth.ts`. A WARN banner fires
+// at plugin registration so an operator who fat-fingers this in
+// production sees the failure mode in their logs (D-RL safety, anti-leak).
+function rateLimitDisabled(): boolean {
+  const raw = process.env.OPENWHISPR_DISABLE_RATE_LIMIT;
+  return raw === "1" || raw === "true";
+}
+
 async function rateLimitPluginInner(
   fastify: FastifyInstance,
   opts: RateLimitPluginOptions,
 ): Promise<void> {
+  if (rateLimitDisabled()) {
+    fastify.log.warn(
+      { env: "OPENWHISPR_DISABLE_RATE_LIMIT" },
+      "[security] Rate limit DISABLED via OPENWHISPR_DISABLE_RATE_LIMIT — load-test only, MUST NOT be set in production",
+    );
+    return;
+  }
   // biome-ignore lint/suspicious/noExplicitAny: opaque redis client surface
   let redis: any | undefined = opts.redis;
 
