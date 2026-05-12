@@ -84,7 +84,7 @@ Downstream agents MUST read `07-SPEC.md` before planning or implementing. Requir
 ### Spec linter
 
 - **D-ART7 — `tools/lint-ui-spec.ts` (planner picks up).** Validates:
-  - Each screen section has all 9 required subsections (Purpose / Roles / Route / Data / Actions / States / User journey / Copy keys / Wireframe / shadcn primitives).
+  - Each screen section has all 10 required subsections (Purpose / Roles / Route / Data / Actions / States / User journey / Copy keys / Wireframe / shadcn primitives).
   - Every API endpoint referenced exists in `apps/api/src/routes/` (greps the routes directory).
   - Every copy key is unique across both UI-SPEC files.
   - Every `See visual: design/...` reference points to a real function in a real file.

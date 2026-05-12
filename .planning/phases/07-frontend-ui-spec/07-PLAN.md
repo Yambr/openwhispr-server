@@ -10,7 +10,7 @@ requirements: [UI-SPEC-01, UI-SPEC-02, UI-SPEC-03]
 must_haves:
   truths:
     - "Both UI-SPEC-*.md files exist on disk and lint clean"
-    - "Every screen enumerated in 07-SPEC.md (2 admin + 13 end-user) has a corresponding section in the relevant UI-SPEC file with all 9 required subsections"
+    - "Every screen enumerated in 07-SPEC.md (2 admin + 13 end-user) has a corresponding section in the relevant UI-SPEC file with all 10 required subsections (Purpose, Roles, Route, Data, Actions, States, User journey, Copy keys, Wireframe, shadcn primitives)"
     - "Every API endpoint referenced by UI-SPEC exists in apps/api/src/routes/ (or matches the BETTER_AUTH_PATHS allowlist)"
     - "Every copy key is unique across both UI-SPEC files and follows the 5-level dotted schema"
     - "Every `See visual:` reference resolves to a real JSX function in design/"
@@ -101,6 +101,8 @@ Wave 3 (serial after Wave 2) — Verifier-friendly close
       goal-backward must-have proof
 ```
 
+**Lint gate location:** The cross-file `pnpm lint:ui-spec` gate runs in **Wave 2 (Plan 06)**, not Wave 1. Plans 04 and 05 author UI-SPEC content in parallel but do NOT invoke the linter (the `tools/lint-ui-spec.ts` binary is created by Plan 03 in the same wave). Acceptance for Plans 04/05 is content-inspection only; Plan 06 runs the full linter after Wave 1 completes.
+
 | Plan | Wave | Depends on | Files modified | Autonomous |
 |------|------|------------|----------------|------------|
 | 01 — API shape verification | 0 | — | adds `## API Reference (verified)` to both UI-SPEC stubs (creates the stubs if absent) | yes |
@@ -149,7 +151,7 @@ A verifier confirms Phase 7 done when all checks below pass against the live tre
 3. ✅ `pnpm lint:ui-spec` exits 0
 4. ✅ `grep -c "^## A[23] " UI-SPEC-admin.md` returns ≥ 2
 5. ✅ `grep -cE "^## U([1-9]|1[0-3]) " UI-SPEC-end-user.md` returns ≥ 13
-6. ✅ Each screen section contains all 9 required subsections (linter rule 1)
+6. ✅ Each screen section contains all 10 required subsections (linter rule 1)
 7. ✅ Every `(GET|POST|PATCH|DELETE) /api/...` inline-code endpoint resolves to either
       a Fastify route file under `apps/api/src/routes/` or the `BETTER_AUTH_PATHS` allowlist (linter rule 2)
 8. ✅ Every copy key is globally unique across both UI-SPEC files and matches the

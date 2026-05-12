@@ -174,13 +174,31 @@ d. **Rule 2: endpoint-exists.** Walk all `inlineCode` nodes; match
    - Else, emit `endpoint-exists` error.
 
 e. **`listFastifyRoutes`.** Recursively scan `routesDir` for `.ts` files
-   excluding `*.test.ts`. For each, read the source and regex-match:
+   excluding `*.test.ts`. For each, read the source and regex-match **both**
+   route-registration patterns Fastify supports in this codebase:
+
+   **Pattern A — shorthand `app.<verb>(path, ...)`:**
    ```ts
    /app\.(get|post|patch|delete|put|all)\s*\(\s*['"`]([^'"`]+)['"`]/g
    ```
-   For each match, push `"<METHOD> <PATH>"` (method uppercased). Also detect
-   the catch-all: if path is `/api/auth/*`, do NOT add the literal star but
-   trust the BETTER_AUTH_PATHS allowlist for `/api/auth/` namespace.
+
+   **Pattern B — object form `app.route({ method, url, ... })`** — used by
+   every route file under `apps/api/src/routes/{transcriptions,notes,conversations,folders}/`.
+   BOTH key orderings must be supported (method-then-url and url-then-method):
+   ```ts
+   /app\.route\s*\(\s*\{[^}]*method\s*:\s*['"`](\w+)['"`][^}]*url\s*:\s*['"`]([^'"`]+)['"`]/gs
+   /app\.route\s*\(\s*\{[^}]*url\s*:\s*['"`]([^'"`]+)['"`][^}]*method\s*:\s*['"`](\w+)['"`]/gs
+   ```
+   Note the `s` flag (dotall) so the regex spans the multiline object literal.
+
+   For each match across A and B, push `"<METHOD> <PATH>"` (method uppercased).
+   Also detect the catch-all: if path is `/api/auth/*`, do NOT add the literal
+   star but trust the BETTER_AUTH_PATHS allowlist for `/api/auth/` namespace.
+
+   **Regression guard:** the four route subdirectories above use Pattern B
+   exclusively (e.g., `apps/api/src/routes/notes/search.ts:50` registers
+   `POST /api/notes/search` via `app.route({ method: "POST", url: "/api/notes/search", ... })`).
+   Shorthand-only detection misses these and breaks Rule 2.
 
 f. **Rule 3: copy-key-uniqueness + copy-key-schema.**
    - Collect every backtick-wrapped token from "Copy keys" subsections
@@ -231,6 +249,14 @@ It should exit 0 because Plan 01 stubs do not yet contain any screen sections
 (no `## A` or `## U` headings — only `# Title` H1, `## API Reference (verified)`,
 `## Assumptions resolved`, `## WIP endpoints` which are NOT screen sections).
 
+**Timing-independence vs Plan 04/05 (Wave 1 parallel writes):**
+The Plan-03 self-check linter run uses only the Plan-01 scaffold state (no
+`## A\d+` or `## U\d+` screen headings present). The screen-subsection rule
+(Rule 1) only fires when those headings exist, so this check is
+timing-independent of Plan 04/05's content writes happening in parallel. Plans
+04 and 05 do NOT invoke the linter themselves (their acceptance is content-
+inspection only); the cross-file lint gate runs in Wave 2 (Plan 06).
+
 To make the linter ignore non-screen `##` sections: treat a `##` heading as a
 "screen section" only if its text matches the regex `/^(A\d+|U\d+)( |—)/`
 (e.g., "A2 Observability hub", "U4 — Usage dashboard"). Any other `##` heading
@@ -239,6 +265,10 @@ is skipped. Document this in a code comment.
 ## Acceptance criteria
 
 - `pnpm test tools/lint-ui-spec.test.ts` GREEN (all assertions pass).
+- Linter MUST detect routes registered via BOTH `app.<verb>(path, ...)` shorthand
+  AND `app.route({ method, url })` object form (Pattern A and Pattern B above).
+  Manually verify: `pnpm exec tsx tools/lint-ui-spec.ts` against a fixture
+  citing `POST /api/notes/search` (registered via `app.route`) exits 0.
 - `pnpm test --coverage tools/lint-ui-spec.test.ts` reports ≥90/90/90/90 on
   `tools/lint-ui-spec.ts`.
 - `pnpm lint:ui-spec` against Plan-01 stubs exits 0 (no screen sections yet).

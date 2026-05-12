@@ -173,18 +173,18 @@ screen(s) that consume it.
 | DELETE | /api/auth/delete-account | session | BETTER_AUTH_HANDLER | U5 |
 | GET | /api/auth/sign-in/social/:provider | public | BETTER_AUTH_HANDLER | U1, U2 |
 | GET | /api/usage | session | apps/api/src/routes/usage.ts:LL | U4 |
-| GET | /api/streaming-usage | session | apps/api/src/routes/streaming-usage.ts:LL | U4 |
+| POST | /api/streaming-usage | session | apps/api/src/routes/streaming-usage.ts:57 | U4 |
 | GET | /api/stt-config | session+admin | apps/api/src/routes/stt-config.ts:LL | A3 |
 | GET | /api/note-recording-config | session+admin | apps/api/src/routes/note-recording-config.ts:LL | A3 |
 | GET | /api/transcriptions/list | session | apps/api/src/routes/transcriptions/list.ts:LL | U6, U7 |
 | DELETE | /api/transcriptions/delete | session | apps/api/src/routes/transcriptions/delete.ts:LL | U6, U7 |
 | GET | /api/notes/list | session | apps/api/src/routes/notes/list.ts:LL | U8, U9 |
-| GET | /api/notes/search | session | apps/api/src/routes/notes/search.ts:LL | U10 |
+| POST | /api/notes/search | session | apps/api/src/routes/notes/search.ts:50 | U10 |
 | DELETE | /api/notes/delete | session | apps/api/src/routes/notes/delete.ts:LL | U8, U9 |
 | GET | /api/folders/list | session | apps/api/src/routes/folders/list.ts:LL | U8 |
 | GET | /api/conversations/list | session | apps/api/src/routes/conversations/list.ts:LL | U11 |
 | GET | /api/conversations/messages | session | apps/api/src/routes/conversations/messages.ts:LL | U12 |
-| GET | /api/conversations/search | session | apps/api/src/routes/conversations/search.ts:LL | U13 |
+| POST | /api/conversations/search | session | apps/api/src/routes/conversations/search.ts:48 | U13 |
 | DELETE | /api/conversations/delete | session | apps/api/src/routes/conversations/delete.ts:LL | U11, U12 |
 
 (Update the `:LL` line numbers to the actual line where each `app.get/post/...`

@@ -119,6 +119,7 @@ Export the constants the linter consumes:
 
 ```ts
 // tools/lint-ui-spec.config.ts
+// Historical SPEC text said "9" before shadcn primitives became a required subsection; canonical count is 10.
 export const REQUIRED_SUBSECTIONS = [
   "Purpose",
   "Roles",
@@ -297,8 +298,13 @@ Each fixture is a minimal markdown snippet under
 `tools/lint-ui-spec/fixtures/<case>/<file>.md`.
 
 - `pass/screen-ok.md`: one screen section with all 10 required subsections,
-  one endpoint that resolves (use a real route from apps/api/src/routes/,
-  e.g., `GET /api/usage` — Plan 01 verified this), one valid 5-level copy key,
+  **at least two endpoints that resolve — one from the `app.<method>(...)`
+  shorthand form (e.g., `GET /api/usage` from apps/api/src/routes/usage.ts) and
+  one from the `app.route({ method, url })` object form (e.g.,
+  `POST /api/notes/search` from apps/api/src/routes/notes/search.ts, or
+  `GET /api/transcriptions/list`)**. This ensures the Plan-03 linter detects
+  both registration patterns (regression guard against the `app.route` blind
+  spot). One valid 5-level copy key,
   one `See visual: design/screens-user.jsx#UsageDashboard` line (must match a
   real function exported from screens-user.jsx — read the file to choose a
   real export name), and a wireframe block whose lines are within tolerance.

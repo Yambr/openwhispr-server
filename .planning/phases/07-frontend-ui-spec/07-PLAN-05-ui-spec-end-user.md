@@ -19,7 +19,7 @@ must_haves:
     - "U8 (D-UX5) folders sidebar is read-only — no create/rename/delete affordances documented"
     - "Every endpoint referenced is verified by Plan 01 or matches BETTER_AUTH_PATHS"
     - "Every copy key is `end-user.<screen>.<section>.<element>.<prop>` (5-level)"
-    - "`pnpm lint:ui-spec` exits 0 with this file plus Plan 04's admin file"
+    - "All 10 required subsections present under each `## U1`..`## U13` heading (Purpose, Roles, Route, Data, Actions, States, User journey, Copy keys, Wireframe, shadcn primitives) — verified by content inspection. Linter gate runs in Wave 2 (Plan 06), not here."
   artifacts:
     - path: ".planning/phases/07-frontend-ui-spec/UI-SPEC-end-user.md"
       provides: "Full end-user UI-SPEC: header + 13 screen sections + API Reference (verified) + Assumptions resolved. Shared appendix appended by Plan 06."
@@ -32,7 +32,7 @@ must_haves:
     - from: "U4 / U6 / U7 / U8 / U9 / U10 / U11 / U12 / U13 endpoint refs"
       to: "apps/api/src/routes/{usage,streaming-usage,transcriptions,notes,folders,conversations}/*"
       via: "linter endpoint-exists rule"
-      pattern: "GET /api/(usage|streaming-usage|transcriptions|notes|folders|conversations)"
+      pattern: "(GET|POST) /api/(usage|streaming-usage|transcriptions|notes|folders|conversations)"
     - from: "Each screen `See visual:` line"
       to: "design/screens-user.jsx function exports"
       via: "linter visual-ref-resolves rule"
@@ -132,7 +132,7 @@ block, and be consistent.)
 ### U4 — Usage dashboard
 - 4 KPI cards (D-API6: NO Latest-activity feed).
 - Charts: Requests/day line + Audio-minutes/day bar + By-provider breakdown.
-- Endpoints: `GET /api/usage`, `GET /api/streaming-usage`.
+- Endpoints: `GET /api/usage`, `POST /api/streaming-usage` (verified in Plan 01 — `apps/api/src/routes/streaming-usage.ts:57` registers this as POST, NOT GET).
 - TanStack Query keys: `queryKeys.usage()`, `queryKeys.streamingUsage()`.
 - **Design-gap marker:**
   ```
@@ -184,7 +184,7 @@ block, and be consistent.)
 - Endpoint: `GET /api/notes/list?id=...`.
 
 ### U10 — Notes search
-- `GET /api/notes/search?q=...`.
+- `POST /api/notes/search` (verified in Plan 01 — `apps/api/src/routes/notes/search.ts:50` registers this as POST via `app.route({ method: "POST", url: "/api/notes/search", ... })`, NOT GET). Query string `q=...` becomes a JSON body field.
 - Result rows link to U9.
 
 ### U11 — Conversations list
@@ -197,7 +197,7 @@ block, and be consistent.)
 - Actions: Copy entire transcript / Export .json / Delete conversation.
 
 ### U13 — Conversations search
-- `GET /api/conversations/search?q=...`.
+- `POST /api/conversations/search` (verified in Plan 01 — `apps/api/src/routes/conversations/search.ts:48` registers this as POST via `app.route({ method: "POST", url: "/api/conversations/search", ... })`, NOT GET). Query string `q=...` becomes a JSON body field.
 - Result rows link to U12.
 
 ## Cross-screen conventions (document once at top of the file body)
@@ -239,7 +239,10 @@ Same as Plan 04. See `tools/lint-ui-spec.config.ts` for the exact patterns.
   - Exists in `apps/api/src/routes/` (verified Plan 01), or
   - Matches the BETTER_AUTH_PATHS allowlist.
 - Every copy key follows the 5-level schema.
-- `pnpm lint:ui-spec` exits 0 (in concert with Plan 04's admin file).
+- All 10 required subsections present under each U1..U13 heading by manual
+  content inspection. The cross-file `pnpm lint:ui-spec` gate runs in Wave 2
+  (Plan 06) — the linter binary is authored in parallel by Plan 03 and may
+  not exist when Plan 05 runs.
 - Markdown style consistent with Plan 04 (LF, ATX headings, no trailing ws).
 - English only. No emojis.
 
@@ -253,7 +256,7 @@ Same as Plan 04. See `tools/lint-ui-spec.config.ts` for the exact patterns.
 </task>
 
 <tests>
-- `pnpm lint:ui-spec` exits 0 (combined with Plan 04).
+- Content inspection (NOT `pnpm lint:ui-spec` — that runs in Plan 06):
 - `grep -cE "^## U([1-9]|1[0-3]) — " UI-SPEC-end-user.md` returns 13.
 - `grep -c "Design gap (tracked):" UI-SPEC-end-user.md` returns ≥ 2 (U1 + U4 markers).
 - `grep -c "See visual: design/screens-user.jsx#" UI-SPEC-end-user.md` returns 13.
