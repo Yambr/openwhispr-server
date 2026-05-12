@@ -268,3 +268,96 @@ p95 × 1.20 headroom per Phase 8 SC5:
 
 VALID baseline. Plan 08-08 (operations.md + SLO publication) is unblocked for transcribe / reason / agent-stream. realtime-ws is the only outstanding item — to be addressed either by extending mock-litellm (new sub-phase 08.3) or documented as out-of-scope for mock-profile baseline.
 
+---
+
+## Run 4: load-test-mock — POST-08.3 plateau (mock-litellm /v1/realtime echo landed)
+
+**Date:** 2026-05-12T20:46:32Z → 21:17:32Z (~31 min k6 main; ~34 min wall clock incl. ramps)
+**Operator:** Claude (autonomous executor, Phase 08.3 Plan 01 Task 3)
+**Git commit at start:** `5e2c32d` (`feat(08.3-01): add /v1/realtime echo handler to mock-litellm`)
+**Profile:** load-test-mock (mock-litellm with 1500ms/300ms artificial delays + new `/v1/realtime` echo route)
+**Artefacts:** `runs/2026-05-12T20-46-32Z-mock-summary.json` (164 KB, committed); `runs/2026-05-12T20-46-32Z-mock.json` (raw, gitignored)
+**Smoke gate:** PASS pre-plateau
+
+### Throughput
+
+- HTTP requests: **982,829** at **530.4 req/s** sustained
+- Iterations: **1,089,813** (588.1/s) — 1000 VU × 30 min sustained + ramps
+- WebSocket sessions: **108,984** (58.8/s)
+- Network: **88 GB sent / 803 MB received**
+- VUs: 1000 / 1000 (no degradation)
+
+### Per-endpoint latency
+
+| Endpoint | p50 (ms) | p90 (ms) | p95 (ms) | max (ms) | avg (ms) |
+|---|---|---|---|---|---|
+| transcribe | 1809.2 | 2320.1 | 2468.7 | 6736.3 | 1832.1 |
+| reason | 518.8 | 1022.5 | 1177.2 | 5637.1 | 611.6 |
+| agent-stream (total) | 649.3 | 996.3 | 1114.1 | 5003.4 | 714.7 |
+| agent-stream TTFB | 134.9 | 479.2 | 594.7 | 4468.4 | 203.3 |
+| realtime-ws roundtrip | 0 | 0 | 0 | 0 | 0 (see Anomaly below) |
+| ws_connecting | 3.0 | 4.7 | 5.7 | 1003.1 | 3.6 |
+
+### Exit-gate scoreboard (per Plan 08-07.1)
+
+| Gate | Target | Measured | Verdict |
+|---|---|---|---|
+| Error rate | < 1% | **0.102%** (1000 / 982,829) | PASS |
+| transcribe p95 plausibility | [1500, 8000] ms | **2469 ms** | PASS |
+| reason p95 plausibility | [300, 3000] ms | **1177 ms** | PASS |
+| agent-stream TTFB plausibility | [200, 2000] ms | **595 ms** | PASS |
+| realtime-ws p95 plausibility | [50, 1000] ms | **0** | **FAIL — different bug than Run 3** |
+| 0 prepared statement errors | yes | none observed | PASS |
+| 0× 429 | yes | OPENWHISPR_DISABLE_RATE_LIMIT=1 honoured | PASS |
+| 0 container restarts | yes | all healthy for full runtime | PASS |
+| pgbouncer wait_time ≈ 0 | yes | stable 530 rps without backpressure | PASS (inferred) |
+
+**k6 thresholds:** all PASS with healthy headroom (p95s well below configured budgets).
+
+### Anomaly: realtime-ws p95 still = 0 despite mock-litellm echo route landing
+
+The mock-litellm route is verified working in unit tests (22/22 GREEN, `realtime.ts` coverage 100/100/100/100); the built image (`openwhispr-mock-litellm:dev` sha256 `63b6b05`) contains `dist/realtime.js`. Under load:
+
+- ws_sessions: 108,984 (k6 dialed `wss://api.localhost/v1/realtime`)
+- ws_connecting p95: 5.7 ms (handshake completed quickly)
+- `realtime_ws_roundtrip_ms{endpoint:realtime-ws}`: p95 = 0, avg = 0, max = 0 (custom Trend never `add()`-ed)
+
+This means the k6 `message` listener never fired — the upstream `session.created` frame never reached the client. Three plausible root causes (in priority order):
+
+1. **The api's `/v1/realtime` reverse-proxy route is NOT registered under the load-test-mock profile.** `apps/api/src/routes/index.test.ts:107`: "With litellm but no master key the route is NOT pushed — operators get a 404 on /v1/realtime". The load-test compose overlay may not set `LITELLM_MASTER_KEY`, so the api never mounts the route. But then ws_sessions should be 0, not 108k — Traefik would not have anywhere to terminate the WS upgrade. Unless Traefik or some 404-on-upgrade path returns 101 spuriously (unlikely).
+2. **The api's preHandler rejects every WS upgrade with AuthError(401).** k6 sends `authorization: Bearer ${user.token}` but the `dualAuthHook` may not populate `req.user` on WS upgrade requests (e.g. cookie-based auth path doesn't apply, Bearer token path requires the session lookup which may not run for upgrades). However, a 401 also wouldn't return 101 — the client would see a refused connection.
+3. **`@fastify/http-proxy` WebSocket pass-through is forwarding the upgrade but NOT forwarding client→upstream message frames** (config quirk, version mismatch, or `wsClientOptions` rewriting headers in a way that confuses the upstream). The mock receives no `message` event so it never emits `session.created`.
+
+**Live diagnostics deferred:** the stack was torn down at run.sh exit (OPENWHISPR_LOADTEST_KEEP_STACK=0). To distinguish (1)/(2)/(3), an operator probe is needed:
+
+```sh
+OPENWHISPR_LOADTEST_KEEP_STACK=1 docker compose -f docker-compose.yml -f docker-compose.load-test.yml --profile load-test-mock up -d --wait
+# 1. From host: probe /v1/realtime via Traefik with a real Bearer token
+TOKEN=$(curl -fsS https://api.localhost/api/auth/sign-up/email -d '{"email":"probe@test","password":"Pass123!"}' -H 'content-type: application/json' --insecure | jq -r .token)
+node -e 'const W=require("ws"); const w=new W("wss://api.localhost/v1/realtime",{headers:{authorization:"Bearer '$TOKEN'"},rejectUnauthorized:false}); w.on("open",()=>{console.log("OPEN"); w.send(JSON.stringify({type:"session.update"}))}); w.on("message",d=>console.log("MSG",d.toString())); w.on("close",(c,r)=>console.log("CLOSE",c,r.toString())); w.on("error",e=>console.log("ERR",e.message));'
+# 2. From mock-litellm container: tail logs to see if any /v1/realtime hits arrived
+docker logs $(docker ps -qf name=litellm) 2>&1 | grep -i realtime
+# 3. From api: check whether /v1/realtime route is registered
+docker exec $(docker ps -qf name=api) wget -qO- http://localhost:3000/__routes 2>/dev/null || true
+```
+
+**Decision:** Run 4 captures a VALID 4-endpoint plateau for 3 of 4 endpoints; realtime-ws baseline remains BLOCKED on this still-unresolved upstream-routing issue. Per the Plan 08.3-01 escalation trigger ("if realtime_ws_roundtrip_ms p95 is still 0 after a successful plateau, that's a different bug — do not silently rerun"), no second plateau attempted. Phase 08.3 closes with mock-litellm route landed (its narrow scope); the api-side routing investigation is a new Phase (08.4 candidate) or folded into Plan 08-08 operator-runbook follow-up.
+
+### Baseline → SLO budgets (for Plan 08-08, refresh of Run 3 table)
+
+p95 × 1.20 headroom per Phase 8 SC5:
+
+| Endpoint | Run 3 p95 (ms) | Run 4 p95 (ms) | Run 4 SLO budget (ms) |
+|---|---|---|---|
+| transcribe | 2611 | **2469** | **2963** |
+| reason | 1358 | **1177** | **1413** |
+| agent-stream (total) | 1228 | **1114** | **1337** |
+| agent-stream TTFB | 713 | **595** | **714** |
+| realtime-ws | DEFERRED | **STILL DEFERRED** (upstream routing bug) | DEFERRED |
+
+Run 4 p95s are uniformly ≤ Run 3 p95s — the new `/v1/realtime` route did not regress any other endpoint. Plan 08-08 can publish the 3-endpoint SLO table now and defer realtime-ws to the api-routing follow-on.
+
+### Verdict
+
+**3/4 endpoints VALID baseline.** realtime-ws still has p95 = 0 — different root cause than Run 3. Plan 08-08 unblocked for the 3 measurable endpoints; realtime-ws baseline blocked pending api-side routing diagnosis.
+
