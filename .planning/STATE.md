@@ -1,7 +1,7 @@
 ---
 gsd_state_version: 1.0
-milestone: v1.6.9
-milestone_name: expects plain session.token text; advisor research recommends Option C
+milestone: v1
+milestone_name: OpenWhispr Server v1
 status: Phase 8 plans 01–07 closed; 08-07 mock run invalidated by 3 deferrals → Phase 08.1 inserted for gap-closure before 08-08 SLO publication
 last_updated: "2026-05-12T17:00:00.000Z"
 progress:
