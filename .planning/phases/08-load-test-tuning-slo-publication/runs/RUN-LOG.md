@@ -196,3 +196,75 @@ To close the full exit-gate matrix, the operator runs:
 - **Gateway+pooler overhead (mock p95 transcribe = 1280 ms, mock-litellm artificial delay = 1500 ms):** the median 849 ms vs. p95 1280 ms spread suggests the mock-litellm 1500 ms delay is the dominant signal at p95; the actual api+pooler+postgres overhead per request is ≤ ~280 ms even under the 99.93% error path. This is a noisy signal pending the rerun.
 - **End-to-end overhead (realistic):** UNKNOWN — deferred.
 - **Speaches-attributable delta:** UNKNOWN — deferred.
+
+---
+
+## Run 3: load-test-mock — VALID 30-min plateau, post-08.2 + 08.1-followup
+
+**Date:** 2026-05-12T19:57:42Z → 20:28:30Z (30m48s wall clock)
+**Operator:** Claude (autonomous executor, post-08.2 closure)
+**Git commit at start:** `f3a17a9` (08.1-followup k6 smoke gate landed)
+**Profile:** load-test-mock (mock-litellm with 1500ms/300ms artificial delays)
+**Artefacts:** `runs/2026-05-12T19-57-42Z-mock-summary.json` (164 KB, committed); `runs/2026-05-12T19-57-42Z-mock.json` (3.7 GB raw, gitignored)
+**Smoke gate:** PASS pre-plateau (139 iterations / 5 VUs / 30s / 0 TypeError; logged at `runs/2026-05-12T19-57-10Z-smoke.log`)
+
+### Throughput
+
+- HTTP requests: **923,394** at **498.4 req/s** sustained
+- Iterations: **1,023,556** (552.5/s) — 1000 VU × 30 min sustained + ramps
+- WebSocket sessions: **102,162**
+- Network: **83 GB sent / 755 MB received**
+- VUs: 1000 / 1000 (no degradation)
+
+### Per-endpoint latency
+
+| Endpoint | p50 (ms) | p90 (ms) | p95 (ms) | max (ms) | avg (ms) |
+|---|---|---|---|---|---|
+| transcribe | 1913.9 | 2450.4 | 2610.6 | 3585.8 | 1937.0 |
+| reason | 678.7 | 1181.0 | 1357.6 | 2131.9 | 718.2 |
+| agent-stream (total) | 754.7 | 1096.6 | 1228.0 | 1895.1 | 784.6 |
+| agent-stream TTFB | 242.9 | 577.4 | 712.8 | 1361.1 | 272.4 |
+| realtime-ws roundtrip | 0 | 0 | 0 | 0 | 0 (see caveat) |
+| ws_connecting | — | 5.0 | 6.2 | 1000 | 3.75 |
+
+### Exit-gate scoreboard (per Plan 08-07.1)
+
+| Gate | Target | Measured | Verdict |
+|---|---|---|---|
+| Error rate | < 1% | **0.108%** (1000 / 923,394) | PASS |
+| transcribe p95 plausibility | [1500, 8000] ms | **2611 ms** | PASS |
+| reason p95 plausibility | [300, 3000] ms | **1358 ms** | PASS |
+| agent-stream TTFB plausibility | [200, 2000] ms | **713 ms** | PASS |
+| realtime-ws p95 plausibility | [50, 1000] ms | **0** | FAIL (mock-litellm has no `/v1/realtime`; see caveat) |
+| 0 prepared statement errors | yes | none observed | PASS |
+| 0× 429 | yes | OPENWHISPR_DISABLE_RATE_LIMIT=1 honoured | PASS |
+| 0 container restarts | yes | 15/15 healthy for full 32-min runtime | PASS |
+| pgbouncer wait_time ≈ 0 | yes | stable 498 rps without backpressure spikes | PASS (inferred) |
+| `SHOW POOLS` works | yes | live-validated in 08.1; inherited | PASS |
+
+**k6 thresholds (configured in `src/k6.config.ts`):** 6/6 PASS — all production SLO budgets respected with comfortable headroom (e.g. transcribe p95=2611ms vs threshold p(95)<10000ms; agent-stream TTFB p95=713ms vs threshold p(95)<3000ms).
+
+### Caveat: realtime-ws p95 = 0
+
+`compose/mock-litellm/src/server.ts` does not implement `/v1/realtime` — the WebSocket handshake succeeds (ws_connecting p95=6.2ms across 102,162 sessions), but no upstream peer sends `message` frames, so the custom `realtime_ws_roundtrip_ms` Trend (introduced by 08.1 commit `2e91227`) is never `add()`-ed. Plan 08-08 must publish realtime-ws as "p95 deferred to realistic profile" rather than fabricate a number. Three options for closing this honestly:
+
+1. Add `/v1/realtime` echo handler to `compose/mock-litellm` (small Fastify route; new sub-phase 08.3).
+2. Document the metric as inherently mock-unmeasurable in `docs/operations.md`.
+3. Run the realistic profile on appropriate hardware (M-class CPU saturates per RESEARCH.md §Pitfall 2 — not this Mac).
+
+### Baseline → SLO budgets (for Plan 08-08)
+
+p95 × 1.20 headroom per Phase 8 SC5:
+
+| Endpoint | p95 (ms) | SLO budget (ms) |
+|---|---|---|
+| transcribe | 2611 | **3133** |
+| reason | 1358 | **1630** |
+| agent-stream (total) | 1228 | **1474** |
+| agent-stream TTFB | 713 | **856** |
+| realtime-ws | DEFERRED | DEFERRED |
+
+### Verdict
+
+VALID baseline. Plan 08-08 (operations.md + SLO publication) is unblocked for transcribe / reason / agent-stream. realtime-ws is the only outstanding item — to be addressed either by extending mock-litellm (new sub-phase 08.3) or documented as out-of-scope for mock-profile baseline.
+
