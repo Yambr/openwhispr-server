@@ -1,0 +1,32 @@
+# Keep secrets, dev junk, and build cruft out of the web image.
+# Path semantics: docker-compose `build.context: .` is the MONOREPO ROOT,
+# but the .dockerignore is resolved relative to the Dockerfile under
+# BuildKit when no top-level .dockerignore exists. To stay safe we mirror
+# patterns under apps/web and rely on the api/.dockerignore for global
+# exclusions when building from root.
+node_modules
+**/node_modules
+.next
+**/.next
+*.test.ts
+*.test.tsx
+*.spec.ts
+*.spec.tsx
+**/__tests__/**
+tests
+tests/e2e
+playwright-report
+test-results
+coverage
+.nyc_output
+.env
+.env.*
+!.env.example
+.git
+.gitignore
+.planning
+.vscode
+.idea
+.DS_Store
+*.log
+*.md
