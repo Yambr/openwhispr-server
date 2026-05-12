@@ -133,13 +133,15 @@ else
 fi
 
 # ---- Check 4: required load-test ports are free ----
-# `lsof -i :PORT` exits 0 with output if a listener exists; exit !=0 means
-# free. We treat exit 0 + non-empty stdout as occupied. nc -z is the linux
-# fallback (macOS lsof is BSD-ish; Alpine images lack lsof entirely but
-# this is a HOST script, not a container script, so lsof is the right tool).
+# Probe for LISTEN sockets only — `lsof -i :PORT` without `-sTCP:LISTEN` also
+# returns outbound ESTABLISHED rows (e.g. Telegram client -> remote:443) which
+# do not occupy the local port for a server to bind. The `-nP` flags skip DNS +
+# service-name resolution to keep the probe fast and deterministic.
+# nc -z is the fallback when lsof is unavailable; nc only probes connectivity
+# to localhost so it implicitly only triggers on LISTEN sockets.
 for port in "${REQUIRED_PORTS_TCP[@]}"; do
   if command -v lsof >/dev/null 2>&1; then
-    out=$(lsof -i :"$port" 2>/dev/null || true)
+    out=$(lsof -nP -iTCP:"$port" -sTCP:LISTEN 2>/dev/null || true)
     if [ -n "$out" ]; then
       fail "port $port is already in use on the host (lsof output: $(echo "$out" | head -1))"
     else
