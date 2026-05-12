@@ -289,9 +289,14 @@ services:
         # tolerates a not-yet-ready upstream and retries on each query.
         condition: service_started
     healthcheck:
+      # Phase 08-07 fix — grafana 11.6 emits the /api/health JSON with a
+      # space after every colon (`"database": "ok"`). The previous grep
+      # pattern `"database":"ok"` had no space and never matched, so the
+      # healthcheck stayed `starting` until retries exhausted. Use a
+      # tolerant pattern with `grep -E` and an optional whitespace.
       test:
         - CMD-SHELL
-        - wget -qO- http://127.0.0.1:3000/api/health | grep -q '"database":"ok"'
+        - wget -qO- http://127.0.0.1:3000/api/health | grep -Eq '"database":[[:space:]]*"ok"'
       interval: 5s
       timeout: 3s
       retries: 12
