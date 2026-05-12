@@ -219,3 +219,129 @@ describe("Unknown routes", () => {
     await app.close();
   });
 });
+
+describe("POST /v1/chat/completions defaults branch coverage", () => {
+  it("honours an explicit model field on the sync path", async () => {
+    const app = buildApp({ chatMeanMs: 50, chatSdMs: 0 });
+    const res = await app.inject({
+      method: "POST",
+      url: "/v1/chat/completions",
+      headers: { "content-type": "application/json" },
+      payload: { model: "claude-haiku", stream: false },
+    });
+    expect(res.statusCode).toBe(200);
+    const json = res.json() as { model: string };
+    expect(json.model).toBe("claude-haiku");
+    await app.close();
+  });
+
+  it("honours an explicit model field on the streaming path", async () => {
+    const app = buildApp({
+      streamFirstTokenMs: 20,
+      streamFirstTokenSdMs: 0,
+    });
+    const res = await app.inject({
+      method: "POST",
+      url: "/v1/chat/completions",
+      headers: { "content-type": "application/json" },
+      payload: { model: "claude-haiku", stream: true },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.body).toContain('"model":"claude-haiku"');
+    await app.close();
+  });
+});
+
+describe("POST /v1/audio/transcriptions edge cases", () => {
+  it("handles a non-multipart POST without crashing", async () => {
+    const app = buildApp({ transcribeMeanMs: 50, transcribeSdMs: 0 });
+    const res = await app.inject({
+      method: "POST",
+      url: "/v1/audio/transcriptions",
+      headers: { "content-type": "application/json" },
+      payload: { hello: "world" },
+    });
+    // Multipart short-circuit branch — handler still resolves.
+    expect(res.statusCode).toBe(200);
+    await app.close();
+  });
+
+  it("drains a multipart body that contains a non-file field", async () => {
+    const app = buildApp({ transcribeMeanMs: 50, transcribeSdMs: 0 });
+    const boundary = "----WhisprMockBoundary";
+    const body = [
+      `--${boundary}`,
+      'Content-Disposition: form-data; name="language"',
+      "",
+      "en",
+      `--${boundary}`,
+      'Content-Disposition: form-data; name="file"; filename="audio.wav"',
+      "Content-Type: audio/wav",
+      "",
+      "RIFFmock",
+      `--${boundary}--`,
+      "",
+    ].join("\r\n");
+    const res = await app.inject({
+      method: "POST",
+      url: "/v1/audio/transcriptions",
+      headers: {
+        "content-type": `multipart/form-data; boundary=${boundary}`,
+      },
+      payload: body,
+    });
+    expect(res.statusCode).toBe(200);
+    await app.close();
+  });
+});
+
+describe("POST /v1/chat/completions default model branch", () => {
+  it("falls back to gpt-4 when no model field is supplied (sync)", async () => {
+    const app = buildApp({ chatMeanMs: 30, chatSdMs: 0 });
+    const res = await app.inject({
+      method: "POST",
+      url: "/v1/chat/completions",
+      headers: { "content-type": "application/json" },
+      payload: { stream: false },
+    });
+    expect(res.statusCode).toBe(200);
+    const json = res.json() as { model: string };
+    expect(json.model).toBe("gpt-4");
+    await app.close();
+  });
+
+  it("falls back to gpt-4 when no model field is supplied (stream)", async () => {
+    const app = buildApp({
+      streamFirstTokenMs: 20,
+      streamFirstTokenSdMs: 0,
+    });
+    const res = await app.inject({
+      method: "POST",
+      url: "/v1/chat/completions",
+      headers: { "content-type": "application/json" },
+      payload: { stream: true },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.body).toContain('"model":"gpt-4"');
+    await app.close();
+  });
+});
+
+describe("startServer", () => {
+  it("binds an ephemeral port and answers /health/liveliness", async () => {
+    // Port 0 → OS-assigned ephemeral port.
+    const { startServer } = await import("./server.js");
+    const app = await startServer({ port: 0, host: "127.0.0.1" });
+    try {
+      const addr = app.server.address();
+      if (!addr || typeof addr === "string") {
+        throw new Error("expected address object");
+      }
+      const res = await fetch(`http://127.0.0.1:${addr.port}/health/liveliness`);
+      expect(res.status).toBe(200);
+      expect(await res.json()).toEqual({ status: "ok" });
+    } finally {
+      await app.close();
+    }
+  });
+});
