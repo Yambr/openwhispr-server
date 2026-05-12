@@ -6,7 +6,7 @@
   "description": "k6 load-test workspace for OpenWhispr Server (Phase 08).",
   "main": "./src/main.ts",
   "scripts": {
-    "build": "tsup && cp -R src/fixtures dist/fixtures",
+    "build": "tsup && rm -rf dist/fixtures && cp -R src/fixtures dist/fixtures",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
