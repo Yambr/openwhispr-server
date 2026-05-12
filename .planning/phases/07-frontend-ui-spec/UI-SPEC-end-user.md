@@ -131,7 +131,7 @@ TanStack Query keys: none (form is imperative, not query-driven).
 | `end-user.signin.oidc.github.label`                                | Continue with GitHub                                         |
 | `end-user.signin.oidc.sso.label`                                   | Continue with SSO                                            |
 | `end-user.signin.action.forgotPassword.link.disabled`              | Forgot password? — coming soon, contact your operator.       |
-| `end-user.signin.action.signup.link.label`                         | Don't have an account? Sign up                               |
+| `end-user.signin.action.signup-link.label`                         | Don't have an account? Sign up                               |
 | `end-user.signin.error.title.text`                                 | Sign-in failed                                               |
 | `end-user.signin.error.body.text`                                  | Check your email and password, then try again.               |
 
@@ -248,7 +248,7 @@ TanStack Query keys: none.
 | `end-user.signup.oidc.google.label`                                | Continue with Google                                         |
 | `end-user.signup.oidc.github.label`                                | Continue with GitHub                                         |
 | `end-user.signup.oidc.sso.label`                                   | Continue with SSO                                            |
-| `end-user.signup.action.signin.link.label`                         | Already have an account? Sign in                             |
+| `end-user.signup.action.signin-link.label`                         | Already have an account? Sign in                             |
 | `end-user.signup.success.title.text`                               | Check your email                                             |
 | `end-user.signup.success.body.text`                                | We sent a verification link to your address. Open it to continue. |
 | `end-user.signup.error.duplicate.text`                             | This email is already registered. Sign in instead.           |
@@ -594,10 +594,10 @@ PAK management (D-UX3) is intentionally absent from this screen.
 | `end-user.account.sessions.action-revoke-others.label`         | Revoke all other sessions                                           |
 | `end-user.account.danger.title.label`                          | Danger zone                                                         |
 | `end-user.account.danger.delete.label`                         | Delete account                                                      |
-| `end-user.account.danger.delete-dialog.title.text`             | Delete your OpenWhispr account                                      |
-| `end-user.account.danger.delete-dialog.body.text`              | This deletes your transcriptions, notes, conversations, and sessions. Type your email to confirm. |
-| `end-user.account.danger.delete-dialog.input.label`            | Type your email to confirm                                          |
-| `end-user.account.danger.delete-dialog.confirm.label`          | Delete account                                                      |
+| `end-user.account.danger.dialog-title.text`             | Delete your OpenWhispr account                                      |
+| `end-user.account.danger.dialog-body.text`              | This deletes your transcriptions, notes, conversations, and sessions. Type your email to confirm. |
+| `end-user.account.danger.dialog-input.label`            | Type your email to confirm                                          |
+| `end-user.account.danger.dialog-confirm.label`          | Delete account                                                      |
 | `end-user.account.error.title.text`                            | Could not load account                                              |
 | `end-user.account.error.retry.label`                           | Retry                                                               |
 
@@ -616,9 +616,9 @@ PAK management (D-UX3) is intentionally absent from this screen.
 |             | +--------------------------------------------+ |
 |             | +--------------------------------------------+ |
 |             | | Active sessions      [Revoke all others]   | |
-|             | | Device         IP         Started Expires  | |
-|             | | Chrome / mac   1.2.3.4    Today   30d     [Revoke] |
-|             | | Firefox / lin  5.6.7.8    Yest.   29d     [Revoke] |
+|             | | Device         IP        Started  [Revoke] | |
+|             | | Chrome / mac   1.2.3.4   Today    [Revoke] | |
+|             | | Firefox / lin  5.6.7.8   Yest.    [Revoke] | |
 |             | +--------------------------------------------+ |
 |             | +--------------------------------------------+ |
 |             | | Danger zone                                | |
@@ -695,16 +695,16 @@ TanStack Query keys:
 | `end-user.trx-list.nav.sidebar.label`                          | Transcriptions                                                      |
 | `end-user.trx-list.title.heading.text`                         | Transcriptions                                                      |
 | `end-user.trx-list.subtitle.body.text`                         | All audio you have transcribed with the desktop client.             |
-| `end-user.trx-list.col-created.label`                          | Created                                                             |
-| `end-user.trx-list.col-preview.label`                          | Preview                                                             |
-| `end-user.trx-list.col-words.label`                            | Words                                                               |
-| `end-user.trx-list.col-duration.label`                         | Duration                                                            |
-| `end-user.trx-list.col-provider.label`                         | Provider                                                            |
-| `end-user.trx-list.col-model.label`                            | Model                                                               |
-| `end-user.trx-list.col-language.label`                         | Language                                                            |
-| `end-user.trx-list.col-status.label`                           | Status                                                              |
-| `end-user.trx-list.row-action-delete.label`                    | Delete                                                              |
-| `end-user.trx-list.action-loadmore.label`                      | Load more                                                           |
+| `end-user.trx-list.table.col-created.label`                          | Created                                                             |
+| `end-user.trx-list.table.col-preview.label`                          | Preview                                                             |
+| `end-user.trx-list.table.col-words.label`                            | Words                                                               |
+| `end-user.trx-list.table.col-duration.label`                         | Duration                                                            |
+| `end-user.trx-list.table.col-provider.label`                         | Provider                                                            |
+| `end-user.trx-list.table.col-model.label`                            | Model                                                               |
+| `end-user.trx-list.table.col-language.label`                         | Language                                                            |
+| `end-user.trx-list.table.col-status.label`                           | Status                                                              |
+| `end-user.trx-list.row.action-delete.label`                    | Delete                                                              |
+| `end-user.trx-list.action.loadmore.label`                      | Load more                                                           |
 | `end-user.trx-list.empty.title.text`                           | No transcriptions yet                                               |
 | `end-user.trx-list.empty.body.text`                            | Record audio in the desktop client and your transcriptions show up here. |
 | `end-user.trx-list.error.title.text`                           | Could not load transcriptions                                       |
@@ -758,7 +758,7 @@ Authenticated end-user surface. The API filters by `user_id` server-side.
 
 | Field             | Source                                                | Notes                                                |
 |-------------------|-------------------------------------------------------|------------------------------------------------------|
-| Transcript        | `GET /api/transcriptions/list` filtered client-side   | The list endpoint accepts keyset cursors but not `?id=`. Client fetches the latest page and locates the row by id; if not found, refetches with `before=<id-created_at>` until found. Documented fallback because no `GET /api/transcriptions/:id` endpoint exists |
+| Transcript        | `GET /api/transcriptions/list` filtered client-side   | The list endpoint accepts keyset cursors but not `?id=`. Client fetches the latest page and locates the row by id; if not found, refetches with `before=<id-created_at>` until found. Documented fallback because no `/api/transcriptions/:id` endpoint exists (the list endpoint is the only read path in v1) |
 | `text`            | Row field                                             | Rendered as flat paragraphs (D-API1: no timecodes)   |
 | Metadata sidebar  | Row fields: `word_count`, `audio_duration_ms`, `provider`, `model`, `language`, `status`, `created_at` | Right-side panel |
 
@@ -797,11 +797,11 @@ TanStack Query keys:
 | Key                                                       | English value                                                       |
 |-----------------------------------------------------------|---------------------------------------------------------------------|
 | `end-user.trx-detail.title.heading.text`                  | Transcription                                                       |
-| `end-user.trx-detail.action-back.label`                   | Back to list                                                        |
-| `end-user.trx-detail.action-copy.label`                   | Copy                                                                |
-| `end-user.trx-detail.action-export-md.label`              | Export as Markdown                                                  |
-| `end-user.trx-detail.action-export-json.label`            | Export as JSON                                                      |
-| `end-user.trx-detail.action-delete.label`                 | Delete                                                              |
+| `end-user.trx-detail.action.back.label`                   | Back to list                                                        |
+| `end-user.trx-detail.action.copy.label`                   | Copy                                                                |
+| `end-user.trx-detail.action.export-md.label`              | Export as Markdown                                                  |
+| `end-user.trx-detail.action.export-json.label`            | Export as JSON                                                      |
+| `end-user.trx-detail.action.delete.label`                 | Delete                                                              |
 | `end-user.trx-detail.metadata.title.label`                | Details                                                             |
 | `end-user.trx-detail.metadata.words.label`                | Word count                                                          |
 | `end-user.trx-detail.metadata.duration.label`             | Audio duration                                                      |
@@ -914,14 +914,14 @@ Folder create/rename/delete affordances are intentionally absent (D-UX5).
 | `end-user.notes-list.title.heading.text`                       | Notes                                                               |
 | `end-user.notes-list.subtitle.body.text`                       | Notes recorded with the desktop client.                             |
 | `end-user.notes-list.folders.title.label`                      | Folders                                                             |
-| `end-user.notes-list.folders.readonly.body.text`               | Folder management is in the desktop client.                         |
-| `end-user.notes-list.col-created.label`                        | Created                                                             |
-| `end-user.notes-list.col-title.label`                          | Title                                                               |
-| `end-user.notes-list.col-folder.label`                         | Folder                                                              |
-| `end-user.notes-list.col-words.label`                          | Words                                                               |
-| `end-user.notes-list.row-action-delete.label`                  | Delete                                                              |
-| `end-user.notes-list.action-search.label`                      | Search notes                                                        |
-| `end-user.notes-list.action-loadmore.label`                    | Load more                                                           |
+| `end-user.notes-list.folders.readonly-body.text`               | Folder management is in the desktop client.                         |
+| `end-user.notes-list.table.col-created.label`                        | Created                                                             |
+| `end-user.notes-list.table.col-title.label`                          | Title                                                               |
+| `end-user.notes-list.table.col-folder.label`                         | Folder                                                              |
+| `end-user.notes-list.table.col-words.label`                          | Words                                                               |
+| `end-user.notes-list.row.action-delete.label`                  | Delete                                                              |
+| `end-user.notes-list.action.search.label`                      | Search notes                                                        |
+| `end-user.notes-list.action.loadmore.label`                    | Load more                                                           |
 | `end-user.notes-list.empty.title.text`                         | No notes yet                                                        |
 | `end-user.notes-list.empty.body.text`                          | Record a note in the desktop client to see it here.                 |
 | `end-user.notes-list.error.title.text`                         | Could not load notes                                                |
@@ -1010,11 +1010,11 @@ TanStack Query keys:
 | Key                                                            | English value                                                       |
 |----------------------------------------------------------------|---------------------------------------------------------------------|
 | `end-user.note-detail.title.heading.text`                      | Note                                                                |
-| `end-user.note-detail.action-back.label`                       | Back to notes                                                       |
-| `end-user.note-detail.action-copy.label`                       | Copy                                                                |
-| `end-user.note-detail.action-export-md.label`                  | Export as Markdown                                                  |
-| `end-user.note-detail.action-export-json.label`                | Export as JSON                                                      |
-| `end-user.note-detail.action-delete.label`                     | Delete                                                              |
+| `end-user.note-detail.action.back.label`                       | Back to notes                                                       |
+| `end-user.note-detail.action.copy.label`                       | Copy                                                                |
+| `end-user.note-detail.action.export-md.label`                  | Export as Markdown                                                  |
+| `end-user.note-detail.action.export-json.label`                | Export as JSON                                                      |
+| `end-user.note-detail.action.delete.label`                     | Delete                                                              |
 | `end-user.note-detail.tabs.content.label`                      | Content                                                             |
 | `end-user.note-detail.tabs.transcript.label`                   | Transcript                                                          |
 | `end-user.note-detail.tabs.enhanced.label`                     | Enhanced                                                            |
@@ -1115,9 +1115,9 @@ TanStack Query keys:
 |-----------------------------------------------------------|---------------------------------------------------------------------|
 | `end-user.notes-search.title.heading.text`                | Search notes                                                        |
 | `end-user.notes-search.input.placeholder.text`            | Search your notes                                                   |
-| `end-user.notes-search.action-submit.label`               | Search                                                              |
-| `end-user.notes-search.action-clear.label`                | Clear                                                               |
-| `end-user.notes-search.result-score.label`                | Score                                                               |
+| `end-user.notes-search.action.submit.label`               | Search                                                              |
+| `end-user.notes-search.action.clear.label`                | Clear                                                               |
+| `end-user.notes-search.result.score.label`                | Score                                                               |
 | `end-user.notes-search.empty.type.text`                   | Type a query to search your notes.                                  |
 | `end-user.notes-search.empty.none.text`                   | No notes match this query.                                          |
 | `end-user.notes-search.error.title.text`                  | Search failed                                                       |
@@ -1206,12 +1206,12 @@ TanStack Query keys:
 | `end-user.conv-list.nav.sidebar.label`                         | Conversations                                                       |
 | `end-user.conv-list.title.heading.text`                        | Conversations                                                       |
 | `end-user.conv-list.subtitle.body.text`                        | LLM chats started from the desktop client.                          |
-| `end-user.conv-list.col-created.label`                         | Created                                                             |
-| `end-user.conv-list.col-title.label`                           | Title                                                               |
-| `end-user.conv-list.col-updated.label`                         | Updated                                                             |
-| `end-user.conv-list.row-action-delete.label`                   | Delete                                                              |
-| `end-user.conv-list.action-search.label`                       | Search conversations                                                |
-| `end-user.conv-list.action-loadmore.label`                     | Load more                                                           |
+| `end-user.conv-list.table.col-created.label`                         | Created                                                             |
+| `end-user.conv-list.table.col-title.label`                           | Title                                                               |
+| `end-user.conv-list.table.col-updated.label`                         | Updated                                                             |
+| `end-user.conv-list.row.action-delete.label`                   | Delete                                                              |
+| `end-user.conv-list.action.search.label`                       | Search conversations                                                |
+| `end-user.conv-list.action.loadmore.label`                     | Load more                                                           |
 | `end-user.conv-list.empty.title.text`                          | No conversations yet                                                |
 | `end-user.conv-list.empty.body.text`                           | Start a chat in the desktop client to see it here.                  |
 | `end-user.conv-list.error.title.text`                          | Could not load conversations                                        |
@@ -1303,11 +1303,11 @@ TanStack Query keys:
 | Key                                                            | English value                                                       |
 |----------------------------------------------------------------|---------------------------------------------------------------------|
 | `end-user.conv-detail.title.heading.text`                      | Conversation                                                        |
-| `end-user.conv-detail.action-back.label`                       | Back to conversations                                               |
-| `end-user.conv-detail.action-copy.label`                       | Copy transcript                                                     |
-| `end-user.conv-detail.action-export-json.label`                | Export as JSON                                                      |
-| `end-user.conv-detail.action-delete.label`                     | Delete conversation                                                 |
-| `end-user.conv-detail.action-loadearlier.label`                | Load earlier messages                                               |
+| `end-user.conv-detail.action.back.label`                       | Back to conversations                                               |
+| `end-user.conv-detail.action.copy.label`                       | Copy transcript                                                     |
+| `end-user.conv-detail.action.export-json.label`                | Export as JSON                                                      |
+| `end-user.conv-detail.action.delete.label`                     | Delete conversation                                                 |
+| `end-user.conv-detail.action.loadearlier.label`                | Load earlier messages                                               |
 | `end-user.conv-detail.role.user.label`                         | You                                                                 |
 | `end-user.conv-detail.role.assistant.label`                    | Assistant                                                           |
 | `end-user.conv-detail.role.system.label`                       | System                                                              |
@@ -1398,9 +1398,9 @@ TanStack Query keys:
 |----------------------------------------------------------------|---------------------------------------------------------------------|
 | `end-user.conv-search.title.heading.text`                      | Search conversations                                                |
 | `end-user.conv-search.input.placeholder.text`                  | Search your conversations                                           |
-| `end-user.conv-search.action-submit.label`                     | Search                                                              |
-| `end-user.conv-search.action-clear.label`                      | Clear                                                               |
-| `end-user.conv-search.result-score.label`                      | Score                                                               |
+| `end-user.conv-search.action.submit.label`                     | Search                                                              |
+| `end-user.conv-search.action.clear.label`                      | Clear                                                               |
+| `end-user.conv-search.result.score.label`                      | Score                                                               |
 | `end-user.conv-search.empty.type.text`                         | Type a query to search your conversations.                          |
 | `end-user.conv-search.empty.none.text`                         | No conversations match this query.                                  |
 | `end-user.conv-search.error.title.text`                        | Search failed                                                       |
@@ -1499,3 +1499,417 @@ Closes RESEARCH § Assumptions Log A1–A8.
 
 _(none for the end-user surface — every endpoint U1..U13 references is verified
 above. The admin-side A4 role-gate WIP is tracked in UI-SPEC-admin.md.)_
+
+# Appendix
+
+> The five sub-appendices below are duplicated verbatim in both UI-SPEC files
+> (D-ART6) so each artifact is self-contained for downstream readers.
+> Source of truth for design tokens is `design/index.html` (CSS custom
+> properties in `<style id="__tokens">`) consumed by `design/ui.jsx`.
+
+## Appendix A — Design tokens
+
+Tailwind 4 places these under the `@theme` directive in `app/globals.css`,
+NOT in `tailwind.config.js` (RESEARCH § Pitfall 4). The values below are
+transcribed verbatim from `design/index.html` and `design/ui.jsx`.
+
+### Color roles (light theme)
+
+| Role | Value | Notes |
+|------|-------|-------|
+| `--accent` | `#2563eb` | Primary action; brand blue |
+| `--accent-soft` | `color-mix(in oklab, var(--accent) 14%, transparent)` | Focus rings, soft highlights |
+| `--accent-fg` | `#ffffff` | Foreground on accent surfaces |
+| `--bg` | `#fafafa` | App background |
+| `--panel` | `#ffffff` | Card / panel surface |
+| `--panel-2` | `#f4f4f5` | Subtle inset / hover surface |
+| `--border` | `#e4e4e7` | Default border |
+| `--border-strong` | `#d4d4d8` | Input borders, separators |
+| `--text` | `#18181b` | Primary foreground |
+| `--text-muted` | `#71717a` | Secondary foreground |
+| `--text-dim` | `#a1a1aa` | Tertiary / disabled foreground |
+| `--danger` | `#dc2626` | Destructive action |
+| `--warn` | `#d97706` | Warning state |
+| `--ok` | `#059669` | Success state |
+| `--info` | `#0284c7` | Informational state |
+
+### Color roles (dark theme — overrides applied by `[data-theme="dark"]`)
+
+| Role | Value |
+|------|-------|
+| `--bg` | `#09090b` |
+| `--panel` | `#111114` |
+| `--panel-2` | `#18181b` |
+| `--border` | `#26262a` |
+| `--border-strong` | `#3f3f46` |
+| `--text` | `#fafafa` |
+| `--text-muted` | `#a1a1aa` |
+| `--text-dim` | `#71717a` |
+
+(`--accent`, `--danger`, `--warn`, `--ok`, `--info` are theme-invariant.)
+
+### Spacing & sizing
+
+| Token | Value | Notes |
+|-------|-------|-------|
+| `--row-h` (compact) | `32px` | Table row height under `[data-density="compact"]` |
+| `--row-h` (default) | `40px` | Default density |
+| `--row-h` (comfortable) | `44px` | Under `[data-density="comfortable"]` |
+| `--pad` | `14px` | Default cell / container inset |
+| `--radius` | `8px` | Default corner radius (cards, buttons, inputs) |
+
+Card radius is `10px`, button radius is `7px`, input radius is `7px`,
+dialog radius is `12px` — derived per primitive from `design/index.html`.
+
+### Typography ramp
+
+| Token | Value |
+|-------|-------|
+| `--font-ui` | `'Inter', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif` |
+| `--font-mono` | `'JetBrains Mono', ui-monospace, 'SF Mono', Menlo, Consolas, monospace` |
+| Body size | `14px` / line-height `1.45` |
+| Page title (`page-head h1`) | `22px` / weight `600` / letter-spacing `-.02em` |
+| Card title (`card-h h3`) | `13.5px` / weight `600` |
+| Auth headline (`auth-form h2`) | `24px` / weight `600` / letter-spacing `-.02em` |
+| Side-panel headline | `28px` / weight `600` / letter-spacing `-.025em` / line-height `1.15` |
+| Stat value (`stat .v`) | `26px` / weight `600` / tabular-nums |
+| Stat key (`stat .k`) | `11px` / weight `600` / uppercase / letter-spacing `.04em` |
+| Label (`label`) | `12.5px` / weight `500` |
+| Help / muted (`help`) | `12px` |
+| Mono badges (`badge`) | `11px` / mono |
+
+Weight scale used: `400`, `500`, `600`, `700` (Inter); `400`, `500`, `600`
+(JetBrains Mono).
+
+### Motion
+
+| Token | Value | Notes |
+|-------|-------|-------|
+| Progress bar width | `transition: width .3s` | `.progress .bar` |
+| Skeleton shimmer | `animation: sk 1.4s ease-in-out infinite` | `.sk` keyframes `0%→200% 0`, `100%→-200% 0` |
+
+No additional motion primitives are declared in `design/index.html`; component-
+level transitions (hover, focus) inherit the browser default.
+
+## Appendix B — Breakpoint matrix
+
+| Name | Min width | Tailwind alias | Pattern |
+|------|-----------|----------------|---------|
+| mobile | 0 | (default, mobile-first) | single column; sidebar collapsed to drawer (Sheet) |
+| tablet | 640px | `sm:` | two-column where applicable; sidebar slide-over |
+| desktop | 1024px | `lg:` | full layout; sidebar persistent (≥240px) |
+
+Tailwind 4 default breakpoints. Per 07-RESEARCH § Pattern 1 and 07-SPEC.md
+constraints. Wide-only optimizations (≥1280px) follow Tailwind's `xl:` alias.
+
+## Appendix C — i18n key index
+
+Every copy key declared in this UI-SPEC suite, alphabetized. The linter
+(`pnpm lint:ui-spec`) validates the 5-level dotted schema and global
+uniqueness across both files; this index is the human audit trail. Russian
+translation is deferred to Phase 10.
+
+| Key | English |
+|-----|---------|
+| `admin.config.action.refresh.label` | Refresh |
+| `admin.config.alert-readonly.body.label` | Edits require restarting the api container with updated env. |
+| `admin.config.error-fetch-failed.body.label` | Retry, or check the api container logs in Grafana. |
+| `admin.config.error-fetch-failed.retry.label` | Retry |
+| `admin.config.error-fetch-failed.title.label` | Could not load configuration |
+| `admin.config.link.override-docs.label` | Docs: how to override |
+| `admin.config.nav.sidebar.label` | Configuration |
+| `admin.config.note.endpoint.label` | GET /api/note-recording-config |
+| `admin.config.note.row-allowed-formats.label` | Allowed formats |
+| `admin.config.note.row-diarization.label` | Diarization enabled |
+| `admin.config.note.row-max-duration.label` | Max duration (seconds) |
+| `admin.config.note.row-sample-rate.label` | Sample rate (Hz) |
+| `admin.config.note.title.label` | Note recording |
+| `admin.config.stt.endpoint.label` | GET /api/stt-config |
+| `admin.config.stt.row-default-language.label` | Default language |
+| `admin.config.stt.row-default-model.label` | Default model |
+| `admin.config.stt.row-providers.label` | Available providers |
+| `admin.config.stt.title.label` | STT config |
+| `admin.config.subtitle.body.text` | Server-side STT and note-recording defaults. Read-only. |
+| `admin.config.title.heading.text` | Configuration |
+| `admin.observability.action.open-grafana.label` | Open Grafana |
+| `admin.observability.card-api-latency.body.label` | p50, p95, p99 from Fastify hooks |
+| `admin.observability.card-api-latency.title.label` | API tier — request latency |
+| `admin.observability.card-litellm.title.label` | LiteLLM — provider routing |
+| `admin.observability.card-postgres.title.label` | Postgres — partitions and vacuum |
+| `admin.observability.card-security.title.label` | Security — rate limits and auth failures |
+| `admin.observability.card-system.title.label` | System — CPU, RAM, disk, network |
+| `admin.observability.card-worker-queue.body.label` | BullMQ depth, retries, throughput |
+| `admin.observability.card-worker-queue.title.label` | Worker — STT job queue |
+| `admin.observability.error-env-missing.body.label` | Set NEXT_PUBLIC_GRAFANA_BASE_URL and redeploy the web container. |
+| `admin.observability.error-env-missing.title.label` | Grafana endpoint not configured |
+| `admin.observability.nav.sidebar.label` | Observability |
+| `admin.observability.quicklinks.alertmanager.label` | Alertmanager — routing and silences |
+| `admin.observability.quicklinks.loki.label` | Loki — application logs |
+| `admin.observability.quicklinks.mimir.label` | Mimir — Prometheus metrics |
+| `admin.observability.quicklinks.tempo.label` | Tempo — distributed tracing |
+| `admin.observability.quicklinks.title.label` | Quick links |
+| `admin.observability.subtitle.body.text` | Deep-links to Grafana dashboards for this installation. |
+| `admin.observability.title.heading.text` | Observability |
+| `end-user.account.danger.delete.label` | Delete account |
+| `end-user.account.danger.dialog-body.text` | This deletes your transcriptions, notes, conversations, and sessions. Type your email to confirm. |
+| `end-user.account.danger.dialog-confirm.label` | Delete account |
+| `end-user.account.danger.dialog-input.label` | Type your email to confirm |
+| `end-user.account.danger.dialog-title.text` | Delete your OpenWhispr account |
+| `end-user.account.danger.title.label` | Danger zone |
+| `end-user.account.error.retry.label` | Retry |
+| `end-user.account.error.title.text` | Could not load account |
+| `end-user.account.nav.sidebar.label` | Account |
+| `end-user.account.profile.created.label` | Member since |
+| `end-user.account.profile.email.label` | Email |
+| `end-user.account.profile.name.label` | Name |
+| `end-user.account.profile.title.label` | Profile |
+| `end-user.account.profile.verified.label` | Verified |
+| `end-user.account.sessions.action-revoke-others.label` | Revoke all other sessions |
+| `end-user.account.sessions.action-revoke.label` | Revoke |
+| `end-user.account.sessions.col-created.label` | Started |
+| `end-user.account.sessions.col-device.label` | Device |
+| `end-user.account.sessions.col-expires.label` | Expires |
+| `end-user.account.sessions.col-ip.label` | IP address |
+| `end-user.account.sessions.title.label` | Active sessions |
+| `end-user.account.subtitle.body.text` | Manage your profile, active sessions, and account deletion. |
+| `end-user.account.title.heading.text` | Account |
+| `end-user.conv-detail.action.back.label` | Back to conversations |
+| `end-user.conv-detail.action.copy.label` | Copy transcript |
+| `end-user.conv-detail.action.delete.label` | Delete conversation |
+| `end-user.conv-detail.action.export-json.label` | Export as JSON |
+| `end-user.conv-detail.action.loadearlier.label` | Load earlier messages |
+| `end-user.conv-detail.empty.body.text` | This conversation does not contain any messages yet. |
+| `end-user.conv-detail.empty.title.text` | No messages |
+| `end-user.conv-detail.error.retry.label` | Retry |
+| `end-user.conv-detail.error.title.text` | Could not load conversation |
+| `end-user.conv-detail.role.assistant.label` | Assistant |
+| `end-user.conv-detail.role.system.label` | System |
+| `end-user.conv-detail.role.tool.label` | Tool |
+| `end-user.conv-detail.role.user.label` | You |
+| `end-user.conv-detail.title.heading.text` | Conversation |
+| `end-user.conv-list.action.loadmore.label` | Load more |
+| `end-user.conv-list.action.search.label` | Search conversations |
+| `end-user.conv-list.empty.body.text` | Start a chat in the desktop client to see it here. |
+| `end-user.conv-list.empty.title.text` | No conversations yet |
+| `end-user.conv-list.error.retry.label` | Retry |
+| `end-user.conv-list.error.title.text` | Could not load conversations |
+| `end-user.conv-list.nav.sidebar.label` | Conversations |
+| `end-user.conv-list.row.action-delete.label` | Delete |
+| `end-user.conv-list.subtitle.body.text` | LLM chats started from the desktop client. |
+| `end-user.conv-list.table.col-created.label` | Created |
+| `end-user.conv-list.table.col-title.label` | Title |
+| `end-user.conv-list.table.col-updated.label` | Updated |
+| `end-user.conv-list.title.heading.text` | Conversations |
+| `end-user.conv-search.action.clear.label` | Clear |
+| `end-user.conv-search.action.submit.label` | Search |
+| `end-user.conv-search.empty.none.text` | No conversations match this query. |
+| `end-user.conv-search.empty.type.text` | Type a query to search your conversations. |
+| `end-user.conv-search.error.retry.label` | Retry |
+| `end-user.conv-search.error.title.text` | Search failed |
+| `end-user.conv-search.input.placeholder.text` | Search your conversations |
+| `end-user.conv-search.result.score.label` | Score |
+| `end-user.conv-search.title.heading.text` | Search conversations |
+| `end-user.note-detail.action.back.label` | Back to notes |
+| `end-user.note-detail.action.copy.label` | Copy |
+| `end-user.note-detail.action.delete.label` | Delete |
+| `end-user.note-detail.action.export-json.label` | Export as JSON |
+| `end-user.note-detail.action.export-md.label` | Export as Markdown |
+| `end-user.note-detail.empty.body.text` | This note does not exist or was deleted. |
+| `end-user.note-detail.empty.title.text` | Note not found |
+| `end-user.note-detail.error.retry.label` | Retry |
+| `end-user.note-detail.error.title.text` | Could not load note |
+| `end-user.note-detail.metadata.created.label` | Created |
+| `end-user.note-detail.metadata.duration.label` | Audio duration |
+| `end-user.note-detail.metadata.folder.label` | Folder |
+| `end-user.note-detail.metadata.participants.label` | Participants |
+| `end-user.note-detail.metadata.title.label` | Details |
+| `end-user.note-detail.metadata.type.label` | Note type |
+| `end-user.note-detail.tabs.content.label` | Content |
+| `end-user.note-detail.tabs.enhanced.label` | Enhanced |
+| `end-user.note-detail.tabs.transcript.label` | Transcript |
+| `end-user.note-detail.title.heading.text` | Note |
+| `end-user.notes-list.action.loadmore.label` | Load more |
+| `end-user.notes-list.action.search.label` | Search notes |
+| `end-user.notes-list.empty.body.text` | Record a note in the desktop client to see it here. |
+| `end-user.notes-list.empty.title.text` | No notes yet |
+| `end-user.notes-list.error.retry.label` | Retry |
+| `end-user.notes-list.error.title.text` | Could not load notes |
+| `end-user.notes-list.folders.readonly-body.text` | Folder management is in the desktop client. |
+| `end-user.notes-list.folders.title.label` | Folders |
+| `end-user.notes-list.nav.sidebar.label` | Notes |
+| `end-user.notes-list.row.action-delete.label` | Delete |
+| `end-user.notes-list.subtitle.body.text` | Notes recorded with the desktop client. |
+| `end-user.notes-list.table.col-created.label` | Created |
+| `end-user.notes-list.table.col-folder.label` | Folder |
+| `end-user.notes-list.table.col-title.label` | Title |
+| `end-user.notes-list.table.col-words.label` | Words |
+| `end-user.notes-list.title.heading.text` | Notes |
+| `end-user.notes-search.action.clear.label` | Clear |
+| `end-user.notes-search.action.submit.label` | Search |
+| `end-user.notes-search.empty.none.text` | No notes match this query. |
+| `end-user.notes-search.empty.type.text` | Type a query to search your notes. |
+| `end-user.notes-search.error.retry.label` | Retry |
+| `end-user.notes-search.error.title.text` | Search failed |
+| `end-user.notes-search.input.placeholder.text` | Search your notes |
+| `end-user.notes-search.result.score.label` | Score |
+| `end-user.notes-search.title.heading.text` | Search notes |
+| `end-user.signin.action.signup-link.label` | Don't have an account? Sign up |
+| `end-user.signin.error.body.text` | Check your email and password, then try again. |
+| `end-user.signin.error.title.text` | Sign-in failed |
+| `end-user.signin.form.email.label` | Email |
+| `end-user.signin.form.password.label` | Password |
+| `end-user.signin.form.submit.label` | Sign in |
+| `end-user.signin.oidc.github.label` | Continue with GitHub |
+| `end-user.signin.oidc.google.label` | Continue with Google |
+| `end-user.signin.oidc.sso.label` | Continue with SSO |
+| `end-user.signin.subtitle.body.text` | Use your email or your organization SSO. |
+| `end-user.signin.title.heading.text` | Sign in to OpenWhispr |
+| `end-user.signup.action.signin-link.label` | Already have an account? Sign in |
+| `end-user.signup.error.duplicate.text` | This email is already registered. Sign in instead. |
+| `end-user.signup.error.generic.text` | Sign-up failed. Please review the form and try again. |
+| `end-user.signup.form.email.label` | Email |
+| `end-user.signup.form.name.label` | Name |
+| `end-user.signup.form.password.label` | Password |
+| `end-user.signup.form.submit.label` | Sign up |
+| `end-user.signup.oidc.github.label` | Continue with GitHub |
+| `end-user.signup.oidc.google.label` | Continue with Google |
+| `end-user.signup.oidc.sso.label` | Continue with SSO |
+| `end-user.signup.subtitle.body.text` | A confirmation email is sent to verify your address. |
+| `end-user.signup.success.body.text` | We sent a verification link to your address. Open it to continue. |
+| `end-user.signup.success.title.text` | Check your email |
+| `end-user.signup.title.heading.text` | Create your OpenWhispr account |
+| `end-user.trx-detail.action.back.label` | Back to list |
+| `end-user.trx-detail.action.copy.label` | Copy |
+| `end-user.trx-detail.action.delete.label` | Delete |
+| `end-user.trx-detail.action.export-json.label` | Export as JSON |
+| `end-user.trx-detail.action.export-md.label` | Export as Markdown |
+| `end-user.trx-detail.empty.body.text` | This transcription does not exist or was deleted. |
+| `end-user.trx-detail.empty.title.text` | Transcription not found |
+| `end-user.trx-detail.error.retry.label` | Retry |
+| `end-user.trx-detail.error.title.text` | Could not load transcription |
+| `end-user.trx-detail.metadata.created.label` | Created |
+| `end-user.trx-detail.metadata.duration.label` | Audio duration |
+| `end-user.trx-detail.metadata.language.label` | Language |
+| `end-user.trx-detail.metadata.model.label` | Model |
+| `end-user.trx-detail.metadata.provider.label` | Provider |
+| `end-user.trx-detail.metadata.status.label` | Status |
+| `end-user.trx-detail.metadata.title.label` | Details |
+| `end-user.trx-detail.metadata.words.label` | Word count |
+| `end-user.trx-detail.title.heading.text` | Transcription |
+| `end-user.trx-list.action.loadmore.label` | Load more |
+| `end-user.trx-list.empty.body.text` | Record audio in the desktop client and your transcriptions show up here. |
+| `end-user.trx-list.empty.title.text` | No transcriptions yet |
+| `end-user.trx-list.error.retry.label` | Retry |
+| `end-user.trx-list.error.title.text` | Could not load transcriptions |
+| `end-user.trx-list.nav.sidebar.label` | Transcriptions |
+| `end-user.trx-list.row.action-delete.label` | Delete |
+| `end-user.trx-list.subtitle.body.text` | All audio you have transcribed with the desktop client. |
+| `end-user.trx-list.table.col-created.label` | Created |
+| `end-user.trx-list.table.col-duration.label` | Duration |
+| `end-user.trx-list.table.col-language.label` | Language |
+| `end-user.trx-list.table.col-model.label` | Model |
+| `end-user.trx-list.table.col-preview.label` | Preview |
+| `end-user.trx-list.table.col-provider.label` | Provider |
+| `end-user.trx-list.table.col-status.label` | Status |
+| `end-user.trx-list.table.col-words.label` | Words |
+| `end-user.trx-list.title.heading.text` | Transcriptions |
+| `end-user.usage.action.refresh.label` | Refresh |
+| `end-user.usage.error.body.text` | Retry, or check the api container logs in Grafana. |
+| `end-user.usage.error.retry.label` | Retry |
+| `end-user.usage.error.title.text` | Could not load usage |
+| `end-user.usage.kpi-limit-reached.body.text` | Whether you are currently throttled. |
+| `end-user.usage.kpi-limit-reached.title.label` | Limit reached |
+| `end-user.usage.kpi-plan.body.text` | Active subscription plan. |
+| `end-user.usage.kpi-plan.title.label` | Plan |
+| `end-user.usage.kpi-words-remaining.body.text` | Quota left on your current plan. |
+| `end-user.usage.kpi-words-remaining.title.label` | Words remaining |
+| `end-user.usage.kpi-words-used.body.text` | Across all transcriptions and notes. |
+| `end-user.usage.kpi-words-used.title.label` | Words used |
+| `end-user.usage.nav.sidebar.label` | Dashboard |
+| `end-user.usage.subtitle.body.text` | Your current consumption against the active plan. |
+| `end-user.usage.title.heading.text` | Usage |
+| `end-user.verify.error.body.text` | This verification link is invalid or has expired. Sign up again. |
+| `end-user.verify.error.cta.label` | Back to sign up |
+| `end-user.verify.error.title.text` | Verification failed |
+| `end-user.verify.loading.body.text` | Verifying your email... |
+| `end-user.verify.success.body.text` | Your email is confirmed. You can now sign in. |
+| `end-user.verify.success.cta.label` | Sign in |
+| `end-user.verify.success.title.text` | Email verified |
+| `end-user.verify.title.heading.text` | Verify your email |
+
+## Appendix D — API endpoint index
+
+Every endpoint either UI-SPEC file references, with HTTP method, auth
+requirement, source citation (route `file:line` or BETTER_AUTH_HANDLER for
+the `app.all("/api/auth/*", ...)` catch-all mounted at
+`apps/api/src/routes/better-auth-handler.ts:61`), and the screen(s) that
+consume it. Cross-checked against Plan 01 § API Reference (verified).
+
+| Method | Path | Auth | Source | Screens |
+|--------|------|------|--------|---------|
+| POST | `/api/auth/sign-in/email` | public | BETTER_AUTH_HANDLER | U1 |
+| POST | `/api/auth/sign-up/email` | public | BETTER_AUTH_HANDLER | U2 |
+| POST | `/api/auth/sign-out` | session | BETTER_AUTH_HANDLER | shared header logout (all `/app/**`) |
+| POST | `/api/auth/verify-email` | public (token) | BETTER_AUTH_HANDLER | U3 |
+| POST | `/api/auth/send-verification-email` | public | BETTER_AUTH_HANDLER | U3 |
+| GET | `/api/auth/get-session` | session cookie | BETTER_AUTH_HANDLER | U5, layout guards |
+| GET | `/api/auth/list-sessions` | session | BETTER_AUTH_HANDLER | U5 |
+| POST | `/api/auth/revoke-session` | session | BETTER_AUTH_HANDLER | U5 |
+| POST | `/api/auth/revoke-other-sessions` | session | BETTER_AUTH_HANDLER | U5 |
+| DELETE | `/api/auth/delete-account` | session | BETTER_AUTH_HANDLER | U5 |
+| GET | `/api/auth/sign-in/social/google` | public | BETTER_AUTH_HANDLER | U1, U2 |
+| GET | `/api/auth/sign-in/social/github` | public | BETTER_AUTH_HANDLER | U1, U2 |
+| GET | `/api/auth/sign-in/social/oidc` | public | BETTER_AUTH_HANDLER | U1, U2 |
+| GET | `/api/usage` | session (dual-auth) | `apps/api/src/routes/usage.ts:40` | U4 |
+| POST | `/api/streaming-usage` | session (dual-auth) | `apps/api/src/routes/streaming-usage.ts:58` | U4 (write-side; read uses GET above) |
+| GET | `/api/stt-config` | session (dual-auth) | `apps/api/src/routes/stt-config.ts:45` | A3 |
+| GET | `/api/note-recording-config` | session (dual-auth) | `apps/api/src/routes/note-recording-config.ts:34` | A3 |
+| GET | `/api/transcriptions/list` | session | `apps/api/src/routes/transcriptions/list.ts:39` | U6, U7 |
+| DELETE | `/api/transcriptions/delete` | session | `apps/api/src/routes/transcriptions/delete.ts:37` | U6, U7 |
+| GET | `/api/notes/list` | session | `apps/api/src/routes/notes/list.ts:42` | U8, U9 |
+| POST | `/api/notes/search` | session | `apps/api/src/routes/notes/search.ts:51` | U10 |
+| DELETE | `/api/notes/delete` | session | `apps/api/src/routes/notes/delete.ts:34` | U8, U9 |
+| GET | `/api/folders/list` | session | `apps/api/src/routes/folders/list.ts:43` | U8 |
+| GET | `/api/conversations/list` | session | `apps/api/src/routes/conversations/list.ts:56` | U11 |
+| GET | `/api/conversations/messages` | session | `apps/api/src/routes/conversations/messages.ts:80` | U12 |
+| POST | `/api/conversations/search` | session | `apps/api/src/routes/conversations/search.ts:49` | U13 |
+| DELETE | `/api/conversations/delete` | session | `apps/api/src/routes/conversations/delete.ts:35` | U11, U12 |
+
+Zero new endpoints are introduced by Phase 7 (D-S1). The admin surface (A2)
+calls no endpoints on this server — its links target the operator's external
+Grafana / Tempo / Mimir / Loki dashboards.
+
+## Appendix E — shadcn/ui v2 primitive inventory
+
+Union of every primitive named in any screen's "shadcn primitives"
+subsection across both UI-SPEC files. After `apps/web/` scaffolds (Phase 8),
+run the block below once to prime the project. Primitive names follow
+shadcn/ui v2 canonical kebab-case identifiers (RESEARCH § Standard Stack).
+
+```bash
+pnpm dlx shadcn@latest init
+pnpm dlx shadcn@latest add \
+  alert \
+  alert-dialog \
+  badge \
+  button \
+  card \
+  dropdown-menu \
+  form \
+  input \
+  label \
+  scroll-area \
+  separator \
+  sheet \
+  skeleton \
+  table \
+  tabs \
+  tooltip
+```
+
+Primitives in the union (alphabetized): `alert`, `alert-dialog`, `badge`,
+`button`, `card`, `dropdown-menu`, `form`, `input`, `label`, `scroll-area`,
+`separator`, `sheet`, `skeleton`, `table`, `tabs`, `tooltip`. `sonner`
+(toast) is recommended by shadcn/ui v2 but is not declared as required by
+any v1 screen; add at scaffold time if global toast notifications are
+desired for Copy / Export confirmations.
