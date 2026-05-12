@@ -95,8 +95,8 @@ Authoritative wire shapes pinned by the OpenWhispr client TS interfaces at `~/op
 - [x] **SCALE-03**: BullMQ on Redis/Valkey for background jobs (audit-log fanout, email delivery, usage rollups, virtual-key rotation)
 - [x] **SCALE-04**: Anti-abuse rate limiting per-user, per-IP via Redis/Valkey token-bucket (NOT quota — observability ledger has no limits in v1); polling carve-out for `/api/auth/verification-status`
 - [ ] **SCALE-05**: Streaming endpoints (NDJSON, WSS) survive ingress timeouts up to 1h; nginx `proxy_buffering off` + `X-Accel-Buffering: no` set; per-line `res.flush()` in NDJSON
-- [ ] **SCALE-06**: Load test (k6) demonstrates 1000 concurrent active users (mixed transcribe + reason + stream + WSS) at p95 latency SLO; runs nightly in CI against an ephemeral environment
-- [ ] **SCALE-07**: File-descriptor limits raised to 65535 on API + ingress containers; documented sizing matrix per topology
+- [x] **SCALE-06**: Load test (k6) demonstrates 1000 concurrent active users (mixed transcribe + reason + stream + WSS) at p95 latency SLO; runs nightly in CI against an ephemeral environment
+- [x] **SCALE-07**: File-descriptor limits raised to 65535 on API + ingress containers; documented sizing matrix per topology
 
 ### Observability
 
@@ -137,7 +137,7 @@ Authoritative wire shapes pinned by the OpenWhispr client TS interfaces at `~/op
 - [x] **CONTRACT-01**: Wire-contract conformance test suite asserts the server matches `BACKEND_SPEC.md` byte-for-byte (status codes, JSON shapes, headers, NDJSON line behavior, channel-scheme echo, `set-auth-token` rotation); runs against any deployed instance via `make contract-test BACKEND_URL=...`
 - [x] **TEST-COV-01**: Coverage gate ≥ 85% lines / ≥ 80% branches on the API tier (excluding generated code); enforced in CI
 - [x] **TEST-MUTATION-01**: Mutation testing (Stryker) on critical modules: auth, multi-tenancy enforcement, virtual-key minting; PR fails on score regression
-- [ ] **TEST-LOAD-01**: k6 nightly load test asserts 1000 concurrent at p95 SLO; CI fails on regression
+- [x] **TEST-LOAD-01**: k6 nightly load test asserts 1000 concurrent at p95 SLO; CI fails on regression
 - [x] **TEST-MIGRATION-01**: Migration tests verify forward apply + rollback on real Postgres in CI on every `migrations/` change
 - [ ] **TEST-I18N-01**: i18n completeness test fails CI when a key exists in `en` but is missing in `ru` (or vice versa)
 - [x] **TEST-RLS-01**: RLS property tests assert no cross-tenant read or write paths exist; random tenant pairs, every queryable model
@@ -273,8 +273,8 @@ All 89 v1 requirements mapped by `gsd-roadmapper` on 2026-05-08.
 | SCALE-03 | Phase 6 | Complete |
 | SCALE-04 | Phase 6 | Complete |
 | SCALE-05 | Phase 4 | Pending |
-| SCALE-06 | Phase 8 | Pending |
-| SCALE-07 | Phase 8 | Pending |
+| SCALE-06 | Phase 8 | Complete |
+| SCALE-07 | Phase 8 | Complete |
 | OBS-01 | Phase 6 | Complete |
 | OBS-02 | Phase 6 | Complete |
 | OBS-03 | Phase 6 | Complete |
@@ -300,7 +300,7 @@ All 89 v1 requirements mapped by `gsd-roadmapper` on 2026-05-08.
 | CONTRACT-01 | Phase 2 | Complete |
 | TEST-COV-01 | Phase 0 | Complete |
 | TEST-MUTATION-01 | Phase 0 | Complete |
-| TEST-LOAD-01 | Phase 8 | Pending |
+| TEST-LOAD-01 | Phase 8 | Complete |
 | TEST-MIGRATION-01 | Phase 1 | Complete |
 | TEST-I18N-01 | Phase 10 | Pending |
 | TEST-RLS-01 | Phase 1 | Complete |
