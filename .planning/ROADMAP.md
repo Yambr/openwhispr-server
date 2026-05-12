@@ -462,6 +462,22 @@ Plans:
 - [x] 07-PLAN-07-finalize.md — Wave 3: full verification sweep + SUMMARY + STATE/ROADMAP (this commit)
 **UI hint**: yes (spec only; `apps/web/` scaffold + implementation are Phase 8)
 
+### Phase 07.1: Web App Implementation — apps/web/ Next.js 15 + 15 screens (INSERTED)
+
+**Goal**: A working `apps/web/` Next.js 15 application implementing every screen enumerated in `UI-SPEC-admin.md` (A2, A3) and `UI-SPEC-end-user.md` (U1–U13), deployed same-origin behind Traefik alongside `apps/api`, with Playwright e2e covering all four UI states (loading/empty/error/success) on each screen plus axe-core WCAG 2.2 AA assertions, ≥90/90/90/90 coverage on diff per CLAUDE.md.
+**Depends on**: Phase 7
+**Requirements**: WEB-IMPL-01, WEB-IMPL-02, WEB-IMPL-03, WEB-IMPL-04
+**Success Criteria** (what must be TRUE):
+  1. `apps/web/` exists as a Next.js 15 (App Router) + React 19 + TypeScript strict + Tailwind 4 + shadcn/ui v2 project; `pnpm --filter web build` exits 0.
+  2. Every screen from both UI-SPEC files is implemented under `apps/web/src/app/` with the exact route paths from the spec; A2/A3 admin screens + U1–U13 end-user screens reachable.
+  3. Web sits same-origin behind Traefik (docker-compose service `web`; Traefik routes `/` → web and `/api/*` → api); `/admin/*` gated by Traefik basic-auth middleware reading `ADMIN_BASIC_AUTH_USERS` env.
+  4. Playwright e2e covers each screen × 4 UI states (loading/empty/error/success) + 1 axe-core WCAG 2.2 AA scan per screen; full suite green against the real docker-compose stack (api + Postgres + Valkey + Better Auth).
+  5. Bundle budget gate green (`size-limit` ≤200KB gzipped per route); CSP/HSTS/X-Frame-Options DENY headers set in `next.config.ts` and verified by e2e.
+  6. Tests precede production code (TDD RED→GREEN evidence per task); coverage ≥90/90/90/90 (lines/branches/functions/statements) on diff.
+  7. CI green: typecheck + vitest + Playwright + size-limit + axe.
+**Mode:** mvp
+**Plans:** TBD (run /gsd-plan-phase 07.1 to break down)
+
 ### Phase 8: Load Test, Tuning & SLO Publication
 **Goal**: The k6 load test demonstrates 1000 concurrent active users (mixed transcribe + reason + stream + WSS) at validated p95 SLOs, runs nightly in CI against an ephemeral environment, and the per-endpoint p95 budgets are published to operators only after this phase passes.
 **Depends on**: Phase 6
