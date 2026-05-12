@@ -74,6 +74,17 @@ fi
 # from the package dir is synchronous and predictable.
 (cd tools/load-test && pnpm run build)
 
+# 5a. Plan 08.1-followup — smoke gate. Runs a 30-second low-VU sanity
+#     check before the 30-minute plateau so host-object mutation,
+#     module-resolution breakage, or schema regressions abort within
+#     seconds instead of after a 5-minute ramp-up. Set SMOKE_SKIP=1 to
+#     bypass when iterating on the harness itself.
+if [ "${SMOKE_SKIP:-0}" = "1" ]; then
+  echo "run.sh: SMOKE_SKIP=1 — bypassing k6 smoke gate" >&2
+else
+  sh tools/load-test/scripts/k6-smoke.sh
+fi
+
 # 6. Capture run outputs under the phase runs/ directory.
 RUN_DIR=.planning/phases/08-load-test-tuning-slo-publication/runs
 mkdir -p "$RUN_DIR"
