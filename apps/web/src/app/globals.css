@@ -121,7 +121,11 @@
   --color-muted-foreground: #71717a;
   /* --color-accent already declared in the Appendix A block (line 23) */
   --color-accent-foreground: #ffffff;
-  --color-destructive: #dc2626;
+  /* Phase 07.1 / Plan 13.2 — WCAG 2.2 AA contrast on `text-destructive`.
+   * Previous #dc2626 against #ffffff card gives 4.37:1 (sub-4.5:1 AA), and
+   * 90% opacity used by AlertDescription drops it further. red-700 #b91c1c
+   * yields ≥6:1 at 100% and stays ≥5:1 at 90%. */
+  --color-destructive: #b91c1c;
   --color-destructive-foreground: #ffffff;
   /* --color-border already declared in the Appendix A block (line 28) */
   --color-input: #e4e4e7;
@@ -165,7 +169,9 @@
   --color-muted: #18181b;
   --color-muted-foreground: #a1a1aa;
   --color-accent-foreground: #ffffff;
-  --color-destructive: #dc2626;
+  /* Dark-mode destructive: against #111114 card, #dc2626 gives 3.93:1 (fails AA).
+   * red-400 #f87171 yields ≥6.5:1 contrast (light text on dark surface). */
+  --color-destructive: #f87171;
   --color-destructive-foreground: #ffffff;
   --color-input: #26262a;
   --color-ring: #2563eb;

@@ -187,7 +187,15 @@ export function buildAllRoutes(deps: AllRoutesDeps): readonly RoutePlugin[] {
   // Phase 02 Plan 04 left this wiring undone; without it sign-up,
   // sign-in, /verify-email, /sign-out, etc. are all caught by
   // dualAuthHook (no session) and 401'd before Better Auth sees them.
-  const betterAuthHandlerDeps: BetterAuthHandlerDeps = { auth: deps.auth };
+  // Phase 07.1 / Plan 13.2 — pass `db` so the better-auth-handler can
+  // optionally run the duplicate-email preHandler (env-gated via
+  // OPENWHISPR_DISABLE_EMAIL_ENUMERATION_PROTECTION). With the env var
+  // unset, the preHandler is not registered and Better Auth's
+  // anti-enumeration synthetic response is preserved.
+  const betterAuthHandlerDeps: BetterAuthHandlerDeps = {
+    auth: deps.auth,
+    db: deps.db,
+  };
   const plugins: RoutePlugin[] = [
     // Phase 6 / Plan 06-04 (D-P1): /api/health is now registered by
     // `registerProbes` at buildApp scope (alongside /livez, /readyz,

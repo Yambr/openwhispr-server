@@ -19,35 +19,53 @@ function internalApiUrl(): string {
   return raw && raw.length > 0 ? raw : DEFAULT_INTERNAL_API_URL;
 }
 
+// Phase 07.1 / Plan 13.2 — Playwright SSR-prefetch escape hatch.
+//
+// Playwright's `page.route()` only intercepts requests issued from the
+// browser context. RSC-side `prefetchQuery` runs inside the Next.js
+// container so its fetch traffic to apps/api is invisible to the test's
+// network mocks, and the hydrated cache lands in the client before
+// useQuery would otherwise fire — turning loading / error state tests
+// into races that always saw the real seeded data. Setting
+// `PLAYWRIGHT_DISABLE_SSR_PREFETCH=1` on the `web` container at compose
+// time turns the prefetch off; the Client subtree still issues the same
+// `useQuery` against /api/usage on mount, which `page.route()` happily
+// intercepts. Production deploys leave the var unset.
+function ssrPrefetchDisabled(): boolean {
+  return process.env.PLAYWRIGHT_DISABLE_SSR_PREFETCH === "1";
+}
+
 export default async function UsagePage(): Promise<React.JSX.Element> {
   const cookieHeader = (await headers()).get("cookie") ?? "";
   const queryClient = makeServerQueryClient();
 
-  await queryClient.prefetchQuery({
-    queryKey: queryKeys.usage(),
-    queryFn: async () => {
-      const res = await fetch(`${internalApiUrl()}/api/usage`, {
-        headers: { cookie: cookieHeader },
-        cache: "no-store",
-      });
-      if (!res.ok) {
-        // Surface as empty defaults — the Client component still renders
-        // the KPI grid (UI-SPEC: empty is N/A).
-        return {
-          wordsUsed: 0,
-          wordsRemaining: 0,
-          plan: "unlimited",
-          limitReached: false,
+  if (!ssrPrefetchDisabled()) {
+    await queryClient.prefetchQuery({
+      queryKey: queryKeys.usage(),
+      queryFn: async () => {
+        const res = await fetch(`${internalApiUrl()}/api/usage`, {
+          headers: { cookie: cookieHeader },
+          cache: "no-store",
+        });
+        if (!res.ok) {
+          // Surface as empty defaults — the Client component still renders
+          // the KPI grid (UI-SPEC: empty is N/A).
+          return {
+            wordsUsed: 0,
+            wordsRemaining: 0,
+            plan: "unlimited",
+            limitReached: false,
+          };
+        }
+        return (await res.json()) as {
+          wordsUsed: number;
+          wordsRemaining: number;
+          plan: string;
+          limitReached: boolean;
         };
-      }
-      return (await res.json()) as {
-        wordsUsed: number;
-        wordsRemaining: number;
-        plan: string;
-        limitReached: boolean;
-      };
-    },
-  });
+      },
+    });
+  }
 
   return (
     <HydrationBoundary state={dehydrate(queryClient)}>

@@ -49,9 +49,20 @@ export interface SeedConversationArgs {
   withMessages?: number;
 }
 export interface SeedUsageArgs {
+  /**
+   * `audioDurationSeconds` per `StreamingUsageBodySchema`
+   * (packages/wire-schemas/src/streaming-usage.ts). Maps 1:1 to ledger
+   * `units` (rounded). Legacy aliases `inputTokens` / `outputTokens`
+   * are accepted for backward compat with existing spec callers — they
+   * sum into `audioDurationSeconds` so the resulting wordsUsed > 0.
+   */
+  audioDurationSeconds?: number;
   inputTokens?: number;
   outputTokens?: number;
+  sttModel?: string;
+  /** @deprecated alias for sttModel. */
   model?: string;
+  sessionId?: string;
 }
 
 async function originPost(
@@ -189,17 +200,28 @@ export async function seedConversations(
 
 /**
  * Seed a streaming-usage ledger row. Phase 05 wire shape: POST (not GET).
- * Caller supplies token counts; tenant_id + user_id are resolved server-side
- * from the session cookie.
+ * Required body fields per StreamingUsageBodySchema:
+ *   - sessionId          (string, idempotency key — ON CONFLICT DO NOTHING)
+ *   - audioDurationSeconds (number, → ledger `units` after Math.round)
+ * Optional sttModel / sttProvider / etc. are accepted but not required.
+ *
+ * Legacy spec callers pass {inputTokens, outputTokens} — we collapse the
+ * pair into audioDurationSeconds so the ledger sum surfaces as wordsUsed > 0.
+ * tenant_id + user_id are resolved server-side from the session cookie.
  */
 export async function seedUsage(
   ctx: APIRequestContext,
   args: SeedUsageArgs = {},
 ): Promise<unknown> {
+  const legacy = (args.inputTokens ?? 0) + (args.outputTokens ?? 0);
+  const audioDurationSeconds = args.audioDurationSeconds ?? (legacy > 0 ? legacy : 60);
+  // Unique sessionId per call ensures repeated seed calls accumulate
+  // (the route's ON CONFLICT(request_id) DO NOTHING coalesces duplicates).
+  const sessionId = args.sessionId ?? `seed-${Date.now()}-${Math.floor(Math.random() * 1e9)}`;
   return originPost(ctx, "/api/streaming-usage", {
-    input_tokens: args.inputTokens ?? 100,
-    output_tokens: args.outputTokens ?? 50,
-    model: args.model ?? "openrouter/test-model",
+    sessionId,
+    audioDurationSeconds,
+    sttModel: args.sttModel ?? args.model ?? "openrouter/test-model",
   });
 }
 

@@ -15,6 +15,10 @@ export function makeServerQueryClient(): QueryClient {
       queries: {
         staleTime: 60_000,
         refetchOnWindowFocus: false,
+        // Mirror the Client provider — see apps/web/src/lib/query-client.tsx
+        // for the Phase 07.1 / Plan 13.2 retry-disable rationale. Keeps the
+        // RSC + client default surface byte-identical (Pitfall 4 — hydration).
+        retry: false,
       },
     },
   });
