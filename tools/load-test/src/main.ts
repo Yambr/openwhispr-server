@@ -90,17 +90,20 @@ function k6Adapter(): HttpClient {
       handler(sock);
       return { status: 101 };
     },
-    // Plan 08.1-01 Task 2 — k6's http.file marker so http.request switches
-    // to multipart/form-data encoding when this descriptor is present in
-    // the body object.
+    // Plan 08.1-followup — k6 detects multipart/form-data encoding by
+    // runtime type identity of *FileData instances inside the body
+    // object. The FileData returned by http.file(...) is a goja-backed
+    // host object whose properties are non-configurable; the previous
+    // Object.assign(fd, {__k6_http_file: true, ...}) threw
+    // `TypeError: Cannot assign to property __k6_http_file of a host
+    // object` on every VU iteration (the vitest path used a plain
+    // object so the bug never surfaced in CI). Return the FileData
+    // verbatim — k6's http.request will switch encoding on type
+    // identity alone.
     httpFile(bytes: Uint8Array, filename: string, contentType: string) {
-      const fd = http.file(bytes, filename, contentType) as Record<string, unknown>;
-      return Object.assign(fd, {
-        __k6_http_file: true as const,
-        bytes,
-        filename,
-        contentType,
-      });
+      return http.file(bytes, filename, contentType) as unknown as ReturnType<
+        HttpClient["httpFile"]
+      >;
     },
   };
 }

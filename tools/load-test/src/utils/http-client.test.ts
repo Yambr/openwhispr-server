@@ -16,7 +16,7 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it, vi } from "vitest";
 
-import { createK6Adapter, createMockAdapter } from "./http-client.js";
+import { createK6Adapter, createMockAdapter, k6HttpFile } from "./http-client.js";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const FIXTURES_DIR = resolve(HERE, "..", "fixtures");
@@ -27,6 +27,68 @@ describe("createK6Adapter()", () => {
     expect(typeof adapter.request).toBe("function");
     expect(typeof adapter.ws).toBe("function");
     expect(typeof adapter.httpFile).toBe("function");
+  });
+});
+
+/**
+ * Plan 08.1-followup regression — k6's `http.file()` returns a goja-backed
+ * host object whose property descriptors are non-configurable. The
+ * previous implementation called `Object.assign(fd, {__k6_http_file:
+ * true, ...})` on it, which threw `TypeError: Cannot assign to property
+ * __k6_http_file of a host object` at every VU iteration.
+ *
+ * These tests simulate the host-object surface with `Object.freeze` and
+ * a stubbed `globalThis.__k6_http.file` — if any code path attempts to
+ * mutate the returned descriptor, the test fails synchronously instead
+ * of waiting for a live k6 run to blow up.
+ */
+describe("k6HttpFile() host-object safety (regression)", () => {
+  it("throws when invoked outside the k6 runtime (no __k6_http global)", () => {
+    const g = globalThis as { __k6_http?: unknown };
+    const saved = g.__k6_http;
+    delete g.__k6_http;
+    try {
+      expect(() => k6HttpFile(new Uint8Array([1]), "x.wav", "audio/wav")).toThrow(
+        /outside the k6 runtime/,
+      );
+    } finally {
+      if (saved !== undefined) g.__k6_http = saved;
+    }
+  });
+
+  it("does NOT mutate the FileData returned by http.file (frozen-object guarantee)", () => {
+    const bytes = new Uint8Array([1, 2, 3]);
+    // Faux FileData: a frozen object mimicking the goja host object's
+    // non-configurable surface. Any Object.assign / direct assignment
+    // would throw in strict mode (vitest/Node ESM is strict by default).
+    const fauxFileData = Object.freeze({
+      data: bytes,
+      filename: "x.wav",
+      content_type: "audio/wav",
+    });
+    const fileFn = vi.fn().mockReturnValue(fauxFileData);
+    const g = globalThis as { __k6_http?: unknown };
+    const saved = g.__k6_http;
+    g.__k6_http = { file: fileFn };
+    try {
+      // The fix MUST return the frozen object verbatim — same reference,
+      // no new properties added.
+      const result = k6HttpFile(bytes, "x.wav", "audio/wav");
+      expect(fileFn).toHaveBeenCalledWith(bytes, "x.wav", "audio/wav");
+      // Identity: the adapter returned the EXACT host object reference.
+      expect(result).toBe(fauxFileData);
+      // Frozen-ness: no marker was glued on (Object.assign on a frozen
+      // object throws under strict mode, which would have surfaced as a
+      // TypeError thrown from k6HttpFile itself).
+      expect(Object.isFrozen(result)).toBe(true);
+      expect((result as Record<string, unknown>).__k6_http_file).toBeUndefined();
+    } finally {
+      if (saved === undefined) {
+        delete g.__k6_http;
+      } else {
+        g.__k6_http = saved;
+      }
+    }
   });
 });
 

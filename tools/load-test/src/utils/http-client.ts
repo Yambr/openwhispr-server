@@ -54,19 +54,41 @@ export interface WsResponse {
 }
 
 /**
- * Sentinel returned by `httpFile()` — flows wrap binary multipart fields
- * with this so k6's `http.request` detects a multipart upload (k6 switches
- * the request encoding to multipart/form-data only when at least one body
- * field is an `http.file()` value). In vitest the helper just returns the
- * shape verbatim; the k6 adapter unwraps it at runtime to a real
- * `http.file(bytes, filename, contentType)` call. Plan 08.1-01 Task 2 fix.
+ * Logical type for the value returned by `httpFile()`.
+ *
+ * Two concrete shapes flow through this type at runtime:
+ *
+ *  1. **k6 path** — the k6 adapter returns the opaque `FileData` produced
+ *     by `http.file(bytes, filename, contentType)`. k6 detects multipart
+ *     encoding by **runtime type identity** of `FileData` instances in the
+ *     body object — NOT by any custom marker. Therefore the k6 adapter
+ *     MUST return that host object verbatim and MUST NOT mutate it
+ *     (the underlying goja-backed object has non-configurable property
+ *     descriptors; `Object.assign` rejects with
+ *     `TypeError: Cannot assign to property X of a host object`).
+ *     Plan 08.1-followup root-cause fix.
+ *
+ *  2. **vitest path** — the mock adapter returns a plain JS object
+ *     carrying `__k6_http_file: true` plus echo fields so tests can
+ *     assert on the descriptor shape without booting k6.
+ *
+ * Tests should assert via the optional `__k6_http_file` marker only in
+ * mock-path code; runtime k6 code must NOT depend on the marker.
+ *
+ * Plan 08.1-01 Task 2 originally pinned the marker on both paths via
+ * `Object.assign`; that was the bug. Plan 08.1-followup separates the
+ * two paths cleanly.
  */
 export interface HttpFile {
-  /** Discriminator — the k6 adapter checks for this to swap in `http.file()`. */
-  readonly __k6_http_file: true;
-  bytes: Uint8Array;
-  filename: string;
-  contentType: string;
+  /**
+   * Discriminator present ONLY on the vitest-mock path. The k6-runtime
+   * `FileData` object does NOT carry this property; tests that hit the
+   * k6 adapter must not require it.
+   */
+  readonly __k6_http_file?: true;
+  bytes?: Uint8Array;
+  filename?: string;
+  contentType?: string;
 }
 
 /** The interface every flow function consumes. */
@@ -134,27 +156,38 @@ function k6Ws(url: string, params: WsParams, handler: (socket: WsSocket) => void
 }
 /* c8 ignore stop */
 
-/* c8 ignore start */
-function k6HttpFile(bytes: Uint8Array, filename: string, contentType: string): HttpFile {
+/**
+ * k6-runtime FileData factory. Returns the opaque host object produced by
+ * `http.file(...)` UNCHANGED — k6 detects multipart encoding by type
+ * identity, and the goja-backed FileData has non-configurable property
+ * descriptors. Any `Object.assign` on it throws
+ * `TypeError: Cannot assign to property X of a host object` at every VU
+ * iteration. Plan 08.1-followup root-cause fix (regression of plan
+ * 08.1-01 Task 2).
+ *
+ * This function is exported so its non-k6 fail-path is unit-testable.
+ * The k6-happy-path branch (where `globalThis.__k6_http` IS defined) is
+ * covered by `__tests__` that stub the global with a faux FileData
+ * factory returning a frozen object — proving we never mutate it.
+ */
+export function k6HttpFile(bytes: Uint8Array, filename: string, contentType: string): HttpFile {
   const http = (globalThis as unknown as { __k6_http?: unknown }).__k6_http;
   if (!http) {
     throw new Error("createK6Adapter().httpFile invoked outside the k6 runtime");
   }
-  // k6's http.file(data, filename, contentType) returns the FileData
-  // descriptor k6 recognises to switch the request to multipart encoding.
-  // We tag the returned object with __k6_http_file so test adapters can
-  // detect wrapped fields without depending on the k6 runtime.
-  const fd = (
-    http as { file: (b: Uint8Array, f: string, ct: string) => Record<string, unknown> }
-  ).file(bytes, filename, contentType);
-  return Object.assign(fd, {
-    __k6_http_file: true as const,
+  // Return the FileData verbatim. k6's http.request detects multipart by
+  // runtime type identity of *FileData instances in the body object — it
+  // does not need any custom marker. Mutating the host object via
+  // Object.assign throws under goja because its properties are
+  // non-configurable. The TypeScript HttpFile type is intentionally
+  // structural; the FileData is type-asserted at this boundary.
+  const fd = (http as { file: (b: Uint8Array, f: string, ct: string) => unknown }).file(
     bytes,
     filename,
     contentType,
-  });
+  );
+  return fd as HttpFile;
 }
-/* c8 ignore stop */
 
 export function createK6Adapter(): HttpClient {
   return {
