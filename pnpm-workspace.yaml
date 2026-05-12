@@ -11,3 +11,10 @@ allowBuilds:
   protobufjs: true
   sharp: true
   ssh2: true
+# DEF-07.1-01 — force every transitive lru-cache to v11 so apps/api's
+# `import { LRUCache } from "lru-cache"` (named export added in v10) is
+# satisfied at runtime. Without this, pnpm --node-linker=hoisted in the
+# api Dockerfile resolves the top-level node_modules/lru-cache to v5.1.1
+# (default-export only) and the api container crashes on boot.
+overrides:
+  lru-cache: ^11.3.6
