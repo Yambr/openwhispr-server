@@ -1,0 +1,25 @@
+# Phase 08 / Plan 06 — k6 dashboard provisioning.
+#
+# This provider loads the Grafana k6 Prometheus dashboard (ID 19665)
+# into a dedicated "Load Test" folder so it stays visually distinct
+# from the always-on observability dashboards. The dashboard JSON is
+# mounted from compose/grafana/dashboards/ via the load-test compose
+# overlay (docker-compose.load-test.yml) so production grafana never
+# carries it.
+#
+# `disableDeletion: false` (vs the OpenWhispr provider's `true`) is
+# deliberate — operators may want to dispose of the dashboard after
+# a run without rolling the whole stack.
+apiVersion: 1
+providers:
+  - name: k6
+    orgId: 1
+    folder: Load Test
+    folderUid: k6-load-test
+    type: file
+    disableDeletion: false
+    updateIntervalSeconds: 30
+    allowUiUpdates: false
+    options:
+      path: /etc/grafana/dashboards/k6
+      foldersFromFilesStructure: false
