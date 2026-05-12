@@ -1,0 +1,9 @@
+node_modules
+dist
+coverage
+*.test.ts
+src/**/*.test.ts
+vitest.config.ts
+.git
+.gitignore
+README.md
