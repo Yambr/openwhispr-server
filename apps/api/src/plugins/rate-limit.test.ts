@@ -706,3 +706,131 @@ describe("rate-limit config helper", () => {
     expect(cfg).toMatchObject({ max: 20, timeWindow: "1 minute" });
   });
 });
+
+// ── Phase 8 / Plan 01 ─────────────────────────────────────────────────
+// `OPENWHISPR_DISABLE_RATE_LIMIT` load-test switch.
+//
+// CONTEXT.md (Phase 8) and Phase 07.1 docs reference this switch as if it
+// already exists, but Phase 8 Plan 01 RESEARCH.md (Pitfall 5, Assumption
+// A5) proved otherwise. These tests pin the env-gate behavior for the
+// Fastify @fastify/rate-limit registration path:
+//   - unset / "0" → default-secure (limiter active, both IP-tier and
+//     user-tier counters fire as before).
+//   - "1" / "true" → both limiter surfaces in this plugin are skipped,
+//     traffic flows freely. The boot logger receives a WARN banner so
+//     operators see a loud signal if it's ever set in production.
+describe("rate-limit OPENWHISPR_DISABLE_RATE_LIMIT env switch (Phase 8 Plan 01)", () => {
+  const originalSwitch = process.env.OPENWHISPR_DISABLE_RATE_LIMIT;
+
+  beforeEach(() => {
+    delete process.env.OPENWHISPR_DISABLE_RATE_LIMIT;
+  });
+
+  afterEach(async () => {
+    if (originalSwitch === undefined) delete process.env.OPENWHISPR_DISABLE_RATE_LIMIT;
+    else process.env.OPENWHISPR_DISABLE_RATE_LIMIT = originalSwitch;
+  });
+
+  async function buildSwitchApp(): Promise<FastifyInstance> {
+    const a = Fastify({ logger: false, trustProxy: true });
+    registerErrorHandler(a);
+    await a.register(rateLimitPlugin, {});
+    a.route({
+      method: "GET",
+      url: "/api/notes/list",
+      config: { rateLimit: { max: 10, timeWindow: "1 minute" } },
+      handler: async () => ({ ok: true }),
+    });
+    await a.ready();
+    return a;
+  }
+
+  it("unset → at least one 429 after 11 bursts to a max=10 route", async () => {
+    app = await buildSwitchApp();
+    let saw429 = false;
+    for (let i = 0; i < 11; i++) {
+      const r = await app.inject({
+        method: "GET",
+        url: "/api/notes/list",
+        headers: { "x-forwarded-for": "10.91.0.1" },
+      });
+      if (r.statusCode === 429) saw429 = true;
+    }
+    expect(saw429).toBe(true);
+  });
+
+  it("=0 → behavior matches unset (default-secure)", async () => {
+    process.env.OPENWHISPR_DISABLE_RATE_LIMIT = "0";
+    app = await buildSwitchApp();
+    let saw429 = false;
+    for (let i = 0; i < 11; i++) {
+      const r = await app.inject({
+        method: "GET",
+        url: "/api/notes/list",
+        headers: { "x-forwarded-for": "10.91.0.2" },
+      });
+      if (r.statusCode === 429) saw429 = true;
+    }
+    expect(saw429).toBe(true);
+  });
+
+  it("=1 → 100 bursts all return 200 (limiter fully disabled)", async () => {
+    process.env.OPENWHISPR_DISABLE_RATE_LIMIT = "1";
+    app = await buildSwitchApp();
+    let twoHundreds = 0;
+    for (let i = 0; i < 100; i++) {
+      const r = await app.inject({
+        method: "GET",
+        url: "/api/notes/list",
+        headers: { "x-forwarded-for": "10.91.0.3" },
+      });
+      if (r.statusCode === 200) twoHundreds++;
+    }
+    expect(twoHundreds).toBe(100);
+  });
+
+  it('="true" → same as "1" (accept common truthy form)', async () => {
+    process.env.OPENWHISPR_DISABLE_RATE_LIMIT = "true";
+    app = await buildSwitchApp();
+    let twoHundreds = 0;
+    for (let i = 0; i < 100; i++) {
+      const r = await app.inject({
+        method: "GET",
+        url: "/api/notes/list",
+        headers: { "x-forwarded-for": "10.91.0.4" },
+      });
+      if (r.statusCode === 200) twoHundreds++;
+    }
+    expect(twoHundreds).toBe(100);
+  });
+
+  it("=1 → boot logger emits a WARN containing 'Rate limit DISABLED'", async () => {
+    process.env.OPENWHISPR_DISABLE_RATE_LIMIT = "1";
+    const warnSpy = vi.fn();
+    const a = Fastify({
+      logger: {
+        level: "warn",
+        // Pino-compatible stream that captures emitted log objects.
+        stream: {
+          write(chunk: string) {
+            try {
+              warnSpy(JSON.parse(chunk));
+            } catch {
+              warnSpy({ raw: chunk });
+            }
+          },
+        },
+      },
+      trustProxy: true,
+    });
+    registerErrorHandler(a);
+    await a.register(rateLimitPlugin, {});
+    await a.ready();
+    app = a;
+    const lines = warnSpy.mock.calls.map((c) => c[0]);
+    const hit = lines.find(
+      (line) => typeof line?.msg === "string" && line.msg.includes("Rate limit DISABLED"),
+    );
+    expect(hit).toBeDefined();
+  });
+});
