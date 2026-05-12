@@ -124,4 +124,23 @@ PATH="$STUB_DIR:$PATH" \
   || fail "default trap branch did not invoke 'docker compose down' (T-keepstack-1 inverse)"
 rm -rf "$STUB_DIR"
 
-echo "PASS: run.sh + pre-warm-speaches.sh smoke checks (8/8)"
+# ---------------------------------------------------------------
+# Phase 08.5-02 Task 1 — RED cases for run.sh realistic extensions.
+# These fail until Wave 2 Task 4 wires the realistic branch.
+# ---------------------------------------------------------------
+
+# 9. Realistic branch layers docker-compose.load-test.realistic.yml.
+grep -F "docker-compose.load-test.realistic.yml" "$SCRIPT" >/dev/null \
+  || fail "run.sh missing 08.5 third compose overlay (docker-compose.load-test.realistic.yml)"
+
+# 10. Realistic branch exports LOADTEST_PROFILE=realistic so pre-warm
+# auto-enters strict mode (Wave 1 Task 4 contract).
+grep -E "LOADTEST_PROFILE.*realistic" "$SCRIPT" >/dev/null \
+  || fail "run.sh realistic branch does not export LOADTEST_PROFILE=realistic"
+
+# 11. Realistic branch defaults SMOKE_DURATION=60s (per ROADMAP success
+# criterion 2 — smoke at 5 VU × 60 s). Allow operator override via env.
+grep -E "SMOKE_DURATION.*60s" "$SCRIPT" >/dev/null \
+  || fail "run.sh realistic branch does not default SMOKE_DURATION=60s"
+
+echo "PASS: run.sh + pre-warm-speaches.sh smoke checks (11/11)"
