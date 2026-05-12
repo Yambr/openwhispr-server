@@ -1,0 +1,58 @@
+// Phase 07.1 / Plan 11 — U11 conversations list (state matrix + axe).
+//
+// D-TEST-3 boundary rule:
+//   - loading + error states use page.route() (network-boundary intercept).
+//   - empty + success states use real seeded data via fixtures/seed.ts.
+
+import { fixtureEmail, provisionTestUser, signInAs } from "./fixtures/auth.js";
+import { runAxe } from "./fixtures/axe.js";
+import { bindToContext } from "./fixtures/seed.js";
+import { expect, test } from "./fixtures/states.js";
+
+const ROUTE = "**/api/conversations/list**";
+
+test.describe("U11 — conversations list (Phase 07.1 / Plan 11)", () => {
+  test.beforeEach(async ({ page, context }) => {
+    await provisionTestUser(page.request, 0);
+    await signInAs(page, fixtureEmail(0));
+    const seed = bindToContext(context);
+    await seed.clearAllData();
+  });
+
+  test("loading state — Skeleton rows while list endpoint is stalled", async ({
+    page,
+    loadingFor,
+  }) => {
+    await loadingFor(ROUTE);
+    await page.goto("/app/conversations");
+    await expect(page.locator('[data-testid="conv-list-skeleton-row"]').first()).toBeVisible();
+  });
+
+  test("empty state — friendly empty card after clearAllData", async ({ page }) => {
+    await page.goto("/app/conversations");
+    await expect(page.getByText(/No conversations yet/i)).toBeVisible();
+  });
+
+  test("error state — Alert when list endpoint returns 500", async ({ page, errorFor }) => {
+    await errorFor(ROUTE, 500);
+    await page.goto("/app/conversations");
+    await expect(page.getByText(/Could not load conversations/i)).toBeVisible();
+  });
+
+  test("success state — N seeded rows render", async ({ page, context }) => {
+    const seed = bindToContext(context);
+    await seed.seedConversations({ count: 3 });
+    await page.goto("/app/conversations");
+    await expect(page.getByText(/Seed Conversation 0/)).toBeVisible();
+    await expect(page.getByText(/Seed Conversation 1/)).toBeVisible();
+    await expect(page.getByText(/Seed Conversation 2/)).toBeVisible();
+  });
+
+  test("axe — WCAG 2.2 AA clean on populated list", async ({ page, context }) => {
+    const seed = bindToContext(context);
+    await seed.seedConversations({ count: 1 });
+    await page.goto("/app/conversations");
+    await expect(page.getByText(/Seed Conversation 0/)).toBeVisible();
+    await runAxe(page);
+  });
+});
