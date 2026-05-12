@@ -194,7 +194,7 @@ services:
 
   otel-collector:
     image: otel/opentelemetry-collector-contrib:0.151.0
-    profiles: [default, obs-only]
+    profiles: [default, obs-only, load-test-mock, load-test-realistic]
     networks: [openwhispr_internal]
     command: ["--config=/etc/otelcol-contrib/config.yaml"]
     volumes:
@@ -217,7 +217,7 @@ services:
 
   loki:
     image: grafana/loki:3.5.0
-    profiles: [default, obs-only]
+    profiles: [default, obs-only, load-test-mock, load-test-realistic]
     networks: [openwhispr_internal]
     volumes:
       - loki_data:/loki
@@ -230,7 +230,7 @@ services:
 
   tempo:
     image: grafana/tempo:2.8.0
-    profiles: [default, obs-only]
+    profiles: [default, obs-only, load-test-mock, load-test-realistic]
     networks: [openwhispr_internal]
     # Phase 06.1 — explicit config file. The grafana/tempo image has no
     # usable default backend; without -config.file the binary aborts
@@ -315,7 +315,7 @@ services:
     build:
       context: .
       dockerfile: apps/api/Dockerfile
-    profiles: [default, db-only]
+    profiles: [default, db-only, load-test-mock, load-test-realistic]
     networks: [openwhispr_internal]
     restart: "no"
     depends_on:
@@ -686,7 +686,7 @@ services:
   # via `||` so the healthcheck stays green regardless (CONTAINER-A2).
   mailpit:
     image: axllent/mailpit:v1.29
-    profiles: [default, dev]
+    profiles: [default, dev, load-test-mock, load-test-realistic]
     networks: [openwhispr_internal]
     environment:
       MP_MAX_MESSAGES: "5000"
