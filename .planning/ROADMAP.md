@@ -32,7 +32,9 @@ A drop-in OpenWhispr backend any organization can self-host — open-source out 
 - [ ] **Phase 8: Load Test, Tuning & SLO Publication** — k6 1000-concurrent nightly; PgBouncer/FD/sizing-matrix tuning; SLOs published only after this passes
 - [x] **Phase 08.1: Deferral Fixes + Mock Re-run** — gap-closure of 08-07 CLOSED 2026-05-12 with partial-live-validation: anomaly #1 (99.93% error rate) → transcribe + reason 200 LIVE, agent-stream api-side issue escalated; anomaly #2 (realtime-ws p95=0) → code-closed via custom Trend; anomaly #3 (pgbouncer_admin SCRAM) → LIVE SHOW POOLS returns rows. 30-min plateau is operator hand-off via `make load-test PROFILE=mock`.
 - [x] **Phase 08.2: agent-stream undici dispatcher fix** — CLOSED 2026-05-12: Option A landed in two atomic commits (08.2-01 `feat(08.2-01): add chatCompletionsStream to @openwhispr/litellm-client`; 08.2-02 `fix(08.2-02): replace undici.fetch in agent/stream with shared litellm-client streaming method` + `fix(08.2-02): stop forwarding signal to litellm client in agent/stream (live-probe finding)`). Live forensic-probe against `compose/mock-litellm` returns content-bearing NDJSON ending in `finishReason:"stop"` (12 text-deltas + finish chunk). New architectural finding from live probe: undici 7.25 `signal:AbortSignal` + custom-wrapped SSRF Agent fails at connect/dispatch — fix omits signal at the route call site; client interface preserves `signal?` for non-SSRF callers (deferred follow-up item). Coverage: litellm-client 100/98/100/100; stream.ts 100/90.47/100/100. Unblocks 08-08.
-- [ ] **Phase 08.3: mock-litellm `/v1/realtime` echo for measurable WS roundtrip** — final blocker for Plan 08-08 SLO publication: Run 3 plateau showed transcribe/reason/agent-stream PASS but realtime-ws p95=0 because mock-litellm has no `/v1/realtime` route (102k healthy WS handshakes, zero message frames). Tiny Fastify echo handler + Run 4 plateau. INSERTED 2026-05-12 after Run 3 (commit `fa799fa`).
+- [~] **Phase 08.3: mock-litellm `/v1/realtime` echo for measurable WS roundtrip** — CLOSED 2026-05-13 partial: echo handler shipped (commits `b43c610` + `5e2c32d`, 22/22 vitest GREEN, coverage 100/100/100/100); Run 4 plateau (commit `1510a23`) PASSED transcribe/reason/agent-stream exit gates but realtime-ws p95 still = 0 — root cause moved api-side. Diagnosis 2026-05-13: handshake succeeds (108k WS sessions, ws_connecting p95 5.7ms) so route IS registered (LITELLM_MASTER_KEY present in .env); echo handler ships in image (verified `dist/realtime.js` inside `openwhispr-mock-litellm:dev`); failure is upstream-message-frame-forwarding through `@fastify/http-proxy` v11. Tracked as Phase 08.4.
+- [ ] **Phase 08.4: realtime ws proxy frame-forwarding fix** — escalated from 08.3: `apps/api/src/routes/realtime.ts` wires `@fastify/http-proxy` v11 wsUpstream against mock-litellm but message frames from upstream never reach the k6 client despite a successful 101 upgrade. Research `@fastify/http-proxy` v11 WS forwarding semantics, identify whether the bug is in our config (wsClientOptions, prefix rewrite, host-header rewrite) or upstream library, fix or document workaround. Unblocks complete 4-endpoint baseline. INSERTED 2026-05-13.
+- [ ] **Phase 08.5: realistic profile boot + smoke + short Mac baseline** — per user directive 2026-05-13: realistic profile (Speaches + Whisper-large-v3 + pyannote per `speaches-audio.md` / `docs/litellm-target-spec.md`) must boot end-to-end locally, run k6 smoke (5 VU × 60s per endpoint) and a short Mac baseline (5+5+2 min) so the wiring is proven and operator can re-run on H100 by swapping numbers, not wiring. All tests preserved for operator re-run. INSERTED 2026-05-13.
 - [ ] **Phase 9: Helm Chart & Cloud Deploy** — CNPG + Traefik 3 + online-migration discipline + upgrade-matrix CI + first-launch SLO test
 - [ ] **Phase 10: i18n + Docs + OSS Housekeeping** — en+ru ICU plurals + DOCS-01..08 + ADRs + CONTRIBUTING/SECURITY/COC
 
@@ -566,6 +568,35 @@ Plans:
   6. Tests written first (TDD); all CI checks green; Plan 08-08 receives the complete 4-endpoint SLO baseline.
 **Plans**: 1 plan (Wave 1)
 - [ ] 08.3-01 — mock-litellm realtime echo + Run 4 (Wave 1)
+**UI hint**: no
+
+### Phase 08.4: realtime ws proxy frame-forwarding fix
+**Goal**: `apps/api/src/routes/realtime.ts` proxies upstream `/v1/realtime` WebSocket frames to the desktop client. Currently 101 upgrade succeeds and the mock-litellm echo handler ships in the image, but message frames from upstream never reach the k6 client across 108k WS sessions — `realtime_ws_roundtrip_ms` p95 stays 0. Diagnose `@fastify/http-proxy` v11 WS forwarding behaviour, identify whether bug is in our config (`wsClientOptions`, `prefix` / `rewritePrefix` mismatch, host-header rewrite, `wsReconnect: false` interaction with upstream-initiated frames) or in the library itself, fix or document architectural workaround.
+**Depends on**: Phase 08.3
+**Requirements**: SCALE-02, TEST-LOAD-01
+**Success Criteria** (what must be TRUE):
+  1. A short-form k6 probe (5 VU × 60s realtime-ws-only flow) against the running load-test-mock stack records `realtime_ws_roundtrip_ms` p95 in [50, 1000] ms — the same plausibility window from Plan 08-07.1.
+  2. The fix is documented at the `realtime.ts` code site with the root-cause one-liner so a future regression is immediately diagnosable.
+  3. Existing realtime route tests stay GREEN (the route is referenced by Phase 03/04 contracts).
+  4. SSRF gate behaviour preserved.
+  5. Strict TDD: RED test reproduces the missing-frame symptom under a controlled http-proxy harness (vitest with a stub upstream WS); GREEN after the fix.
+  6. Coverage ≥ 90/90/90/90 on `apps/api/src/routes/realtime.ts`.
+  7. If the root cause is in `@fastify/http-proxy` v11 itself (not our config), the workaround is documented in the SUMMARY with a link to an upstream issue/PR; the workaround MUST NOT degrade auth, host-header rewriting, or the 10s handshake timeout.
+**Plans**: TBD (1–2 plans expected — research+fix, or research+fix+regression-coverage)
+**UI hint**: no
+
+### Phase 08.5: realistic profile boot + smoke + short Mac baseline
+**Goal**: The `load-test-realistic` compose profile boots end-to-end with Speaches + Whisper-large-v3 + pyannote behind LiteLLM (per `speaches-audio.md` and `docs/litellm-target-spec.md`), passes a k6 smoke (5 VU × 60s per endpoint asserting zero TypeErrors / handshake failures), and produces a short Mac baseline summary JSON (5 min ramp-up + 5 min sustained + 2 min ramp-down at 100 VU — NOT 1000, because Apple Silicon CTranslate2-CPU saturates per RESEARCH.md §Pitfall 2 and 1000 VU would just timeout). The result: working compose+LiteLLM-config wiring that an operator can re-run on H100 to substitute production numbers without re-engineering the integration.
+**Depends on**: Phase 08.3
+**Requirements**: SCALE-02, TEST-LOAD-01
+**Success Criteria** (what must be TRUE):
+  1. `make load-test PROFILE=realistic` boots the realistic stack — Speaches container + LiteLLM config wired per `docs/litellm-target-spec.md` (faster-whisper-large-v3 model alias, pyannote diarization pass-through, `/v1/realtime` route to Speaches WS). All containers reach healthy.
+  2. The k6 smoke gate (already in place from 08.1-followup, commit `f3a17a9`) extended to cover all 4 realistic flows at 5 VU × 60s with ZERO iteration errors.
+  3. A short Mac baseline runs at 100 VU for 12 min total (5 + 5 + 2) and produces a summary JSON committed under `runs/<timestamp>-realistic-mac.json`. All p95 numbers recorded.
+  4. Mac baseline numbers documented in `runs/RUN-LOG.md` and `docs/operations.md` with explicit `OPERATOR_RERUN_ON_GPU` markers — the wiring is the deliverable, the numbers are advisory until H100 re-run.
+  5. All existing vitest + k6 tests preserved unchanged (operator re-runs with same suite, only numbers change).
+  6. Documentation in `docs/operations.md` distinguishes Mac-bound vs architecture-bound metrics so a reader on H100 knows which to trust as-is and which to re-measure.
+**Plans**: TBD (1 plan likely — boot + smoke + baseline are tightly coupled)
 **UI hint**: no
 
 ### Phase 9: Helm Chart & Cloud Deploy
