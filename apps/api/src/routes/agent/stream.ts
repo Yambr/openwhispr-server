@@ -1,4 +1,11 @@
 // Phase 04 / Plan 06 / Task 2 — POST /api/agent/stream.
+// Phase 08.2 / Plan 02 — upstream call swapped from the inline WHATWG-fetch
+// path to the shared @openwhispr/litellm-client's new chatCompletionsStream
+// method. Returns Dispatcher.ResponseData (Node Readable body) which we
+// bridge to a Web ReadableStream<Uint8Array> via Readable.toWeb for the
+// existing sseToNdjson consumer. The client method inherits the
+// process-wide SSRF dispatcher (T-08.2-01) and forwards bodyTimeout:0 +
+// AbortSignal.
 //
 // NDJSON streaming chat handler that composes the Wave-1 utilities:
 //   * sseToNdjson (apps/api/src/lib/sse-parser.ts)
@@ -17,14 +24,15 @@
 //      reply.hijack() + reply.raw.flushHeaders() + setNoDelay(true) per
 //      D-02 (Node 24 has no flush() — kernel sends each write).
 //   3. AbortController wired via req.raw.on('close') — client disconnects
-//      abort the upstream fetch (T-04-DISCONNECT mitigation).
-//   4. Build upstream POST: model defaulted via D-10 chain, tools translated
-//      via D-07, systemPrompt prepended additively via D-11, stream:true +
-//      stream_options.include_usage:true forwarded (D-12).
+//      abort the upstream request (T-04-DISCONNECT mitigation).
+//   4. Build upstream via deps.litellm.chatCompletionsStream(...). Model
+//      defaulted via D-10 chain, tools translated via D-07, systemPrompt
+//      prepended additively via D-11, stream:true + stream_options.
+//      include_usage:true forced inside the client (D-12).
 //   5. Capture x-litellm-call-id into req.log.info ONLY (T-04-LEAK
-//      mitigation — never written to wire).
-//   6. Drain via for-await over sseToNdjson({body, acc}) — one
-//      reply.raw.write per chunk. JSON.stringify(chunk) + '\n'.
+//      mitigation — never written to wire). Dispatcher.ResponseData.headers
+//      is a Record, not a Headers Map.
+//   6. Drain via for-await over sseToNdjson({body: Readable.toWeb(upstream.body), acc}).
 //   7. try/catch around the drain: on mid-stream error, emit a
 //      finish(stream_error) chunk if writable. finally: end the response.
 //
@@ -33,13 +41,13 @@
 // as synthetic finish chunks; errors BEFORE hijack (auth re-check) still
 // flow through setErrorHandler as canonical envelopes.
 
+import { Readable } from "node:stream";
 import type { ExecutableTx, TransactionalDb } from "@openwhispr/data";
-import type { LitellmClient } from "@openwhispr/litellm-client";
+import { type LitellmClient, LitellmUpstreamError } from "@openwhispr/litellm-client";
 import type { FastifyInstance } from "fastify";
-import { fetch as undiciFetch } from "undici";
 import { AuthError } from "../../errors.js";
+import { type StreamChunk, sseToNdjson } from "../../lib/sse-parser.js";
 import { createToolCallAccumulator } from "../../lib/tool-call-accumulator.js";
-import { sseToNdjson, type StreamChunk } from "../../lib/sse-parser.js";
 import {
   type ChatMessage,
   type LegacyTool,
@@ -50,12 +58,12 @@ import {
 export interface AgentStreamDeps {
   db: TransactionalDb<ExecutableTx>;
   /**
-   * The shared LiteLLM client (Phase 3 D-03). We only consume `baseUrl`
-   * and `masterKey` for the request — the hand-rolled async generator
-   * needs raw stream access that LitellmClient.chatCompletions doesn't
-   * expose, so we issue the upstream POST via undici directly.
+   * The shared LiteLLM client (Phase 3 D-03). Phase 08.2 — we now consume
+   * `chatCompletionsStream` which returns Dispatcher.ResponseData; we bridge
+   * the Node Readable body to a Web ReadableStream via Readable.toWeb for
+   * the existing sseToNdjson consumer.
    */
-  litellm: LitellmClient & { masterKey?: string };
+  litellm: LitellmClient;
 }
 
 interface RequestBody {
@@ -73,10 +81,7 @@ function resolveModel(bodyModel: string | undefined): string {
 }
 
 /** Emit a single finish chunk + end the response, if still writable. */
-function endWithFinish(
-  raw: import("node:http").ServerResponse,
-  finishReason: string,
-): void {
+function endWithFinish(raw: import("node:http").ServerResponse, finishReason: string): void {
   /* v8 ignore next */
   if (raw.writableEnded) return;
   const chunk: StreamChunk = {
@@ -142,53 +147,50 @@ export const buildAgentStreamRoutes = (deps: AgentStreamDeps) =>
           abort.abort();
         });
 
-        // (4) Build the upstream request body.
-        const upstreamBody = {
-          model: resolveModel(body.model),
-          messages: prependSystemPrompt(body.messages ?? [], body.systemPrompt),
-          ...(body.tools !== undefined
-            ? { tools: translateLegacyTools(body.tools) }
-            : {}),
-          stream: true,
-          stream_options: { include_usage: true },
-          user: userId,
-        };
+        // (4) Issue the upstream POST via the shared litellm-client. The
+        //     client owns: model fallback (we still re-derive here to honor
+        //     the env DEFAULT_AGENT_MODEL chain), stream:true + include_usage,
+        //     authHeaders, spend-logs metadata, bodyTimeout:0, signal
+        //     forwarding, and non-2xx → LitellmUpstreamError mapping.
+        const messages = prependSystemPrompt(body.messages ?? [], body.systemPrompt);
+        const extras: Record<string, unknown> = {};
+        if (body.tools !== undefined) {
+          extras.tools = translateLegacyTools(body.tools);
+        }
 
-        const upstreamUrl = `${deps.litellm.baseUrl}/v1/chat/completions`;
-        const masterKey =
-          (deps.litellm as { masterKey?: string }).masterKey ?? "";
-        const headers: Record<string, string> = {
-          "content-type": "application/json",
-          authorization: `Bearer ${masterKey}`,
-          "x-litellm-spend-logs-metadata": JSON.stringify({
-            openwhispr_request_id: req.id,
-            openwhispr_user_id: userId,
-          }),
-        };
-
-        let upstream: Awaited<ReturnType<typeof undiciFetch>>;
+        let upstream: Awaited<ReturnType<typeof deps.litellm.chatCompletionsStream>>;
         try {
-          upstream = await undiciFetch(upstreamUrl, {
-            method: "POST",
-            headers,
-            body: JSON.stringify(upstreamBody),
+          upstream = await deps.litellm.chatCompletionsStream({
+            model: resolveModel(body.model),
+            messages,
+            userId,
+            requestId: req.id,
             signal: abort.signal,
+            extras,
           });
-          /* v8 ignore next 8 -- network connect failure path; exercised in
-             integration tests against a torn-down upstream. The unit-level
-             non-2xx path covered by Test 9 already exercises the same
-             upstream_error finish-chunk emission below. */
         } catch (err) {
-          // Network failure / abort during the upstream connect — emit a
-          // single upstream_error finish chunk and end. The client side
-          // sees a clean stream-end with the reason in-band.
-          req.log.warn({ err: (err as Error).message }, "agent.stream upstream connect failed");
+          // Upstream connect failure (network/abort thrown by the HTTP
+          // client) OR LitellmUpstreamError (non-2xx) — both map to a
+          // single upstream_error finish chunk under HTTP 200 because the
+          // reply has already been hijacked.
+          if (err instanceof LitellmUpstreamError) {
+            req.log.warn({ status: err.status }, "agent.stream upstream non-2xx");
+          } else {
+            req.log.warn({ err: (err as Error).message }, "agent.stream upstream connect failed");
+          }
           endWithFinish(raw, "upstream_error");
           return reply;
         }
 
         // (5) Capture x-litellm-call-id server-side ONLY (T-04-LEAK).
-        const litellmCallId = upstream.headers.get("x-litellm-call-id");
+        //     Dispatcher.ResponseData.headers is a Record<string, string |
+        //     string[] | undefined>, not a Headers Map.
+        const rawCallId = upstream.headers["x-litellm-call-id"];
+        // x-litellm-call-id is always single-valued; undici exposes
+        // single-valued headers as a string. We intentionally do NOT
+        // attempt array-form coercion (defense in depth handled by
+        // `typeof === "string"` discriminant).
+        const litellmCallId = typeof rawCallId === "string" ? rawCallId : undefined;
         if (litellmCallId) {
           req.log.info(
             { litellmCallId, requestId: req.id },
@@ -196,19 +198,14 @@ export const buildAgentStreamRoutes = (deps: AgentStreamDeps) =>
           );
         }
 
-        if (!upstream.ok || !upstream.body) {
-          req.log.warn(
-            { status: upstream.status },
-            "agent.stream upstream non-2xx",
-          );
-          endWithFinish(raw, "upstream_error");
-          return reply;
-        }
-
-        // (6) Drain via the SSE→NDJSON async generator. One write per chunk.
+        // (6) Drain via the SSE→NDJSON async generator. Bridge the Node
+        //     Readable body → Web ReadableStream<Uint8Array> via the Node
+        //     stdlib Readable.toWeb helper (zero-copy; cancel propagation
+        //     destroys the source Readable on consumer break).
+        const webBody = Readable.toWeb(upstream.body as Readable) as ReadableStream<Uint8Array>;
         const acc = createToolCallAccumulator();
         try {
-          for await (const chunk of sseToNdjson({ body: upstream.body, acc })) {
+          for await (const chunk of sseToNdjson({ body: webBody, acc })) {
             /* v8 ignore next -- writableEnded mid-drain race; raced-only */
             if (raw.writableEnded) break;
             raw.write(`${JSON.stringify(chunk)}\n`);
@@ -217,10 +214,7 @@ export const buildAgentStreamRoutes = (deps: AgentStreamDeps) =>
           // (7) Mid-stream error — synthesize a stream_error finish chunk
           //     so the desktop NDJSON consumer never hangs on a half-open
           //     stream. Then fall through to the finally to end the response.
-          req.log.warn(
-            { err: (err as Error).message },
-            "agent.stream drain error",
-          );
+          req.log.warn({ err: (err as Error).message }, "agent.stream drain error");
           if (!raw.writableEnded) {
             const finish: StreamChunk = {
               type: "finish",
