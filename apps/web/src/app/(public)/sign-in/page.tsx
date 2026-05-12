@@ -1,15 +1,11 @@
-/**
- * Sign-in stub.
- *
- * This stub exists only so the Plan 01 validation step can probe the
- * stricter CSP variant against `/sign-in`. Plan 07 (U1) overwrites this
- * file with the real react-hook-form + zod sign-in surface.
- */
-export default function SignInStubPage(): React.JSX.Element {
-  return (
-    <main>
-      <h1>Sign in</h1>
-      <p>Plan 07 will replace this stub with the real sign-in form.</p>
-    </main>
-  );
+// Phase 07.1 / Plan 07 — U1 Sign-in route.
+//
+// Pure RSC entry that hands off to the Client SignInForm. The form
+// hardcodes its post-signin destination to "/app" — we do NOT honor a
+// `?next=` query parameter (open-redirect mitigation per
+// 07.1-RESEARCH.md § Security Domain).
+import { SignInForm } from "@/components/screens/auth/SignInForm";
+
+export default function SignInPage(): React.JSX.Element {
+  return <SignInForm />;
 }

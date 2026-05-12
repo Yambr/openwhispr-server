@@ -188,6 +188,47 @@ describe("SignInForm (Phase 07.1 / Plan 07 — U1)", () => {
     });
   });
 
+  it("renders no OIDC buttons when env enumerates an empty / unknown list", async () => {
+    process.env.NEXT_PUBLIC_OIDC_PROVIDERS = "unknown-provider";
+    vi.resetModules();
+    const { SignInForm } = await import("../SignInForm");
+    render(
+      <Wrap>
+        <SignInForm />
+      </Wrap>,
+    );
+    expect(screen.queryByRole("button", { name: /continue with/i })).not.toBeInTheDocument();
+  });
+
+  it("uses default provider list when env is unset", async () => {
+    delete process.env.NEXT_PUBLIC_OIDC_PROVIDERS;
+    vi.resetModules();
+    const { SignInForm } = await import("../SignInForm");
+    render(
+      <Wrap>
+        <SignInForm />
+      </Wrap>,
+    );
+    expect(screen.getByRole("button", { name: /continue with google/i })).toBeInTheDocument();
+  });
+
+  it("shows the error alert when authClient.signIn.email throws", async () => {
+    signInEmail.mockRejectedValueOnce(new Error("network"));
+    const { SignInForm } = await import("../SignInForm");
+    const user = userEvent.setup();
+    render(
+      <Wrap>
+        <SignInForm />
+      </Wrap>,
+    );
+    await user.type(screen.getByLabelText(/email/i), "alice@test.local");
+    await user.type(screen.getByLabelText(/password/i), "Pwa9!testStrong");
+    await user.click(screen.getByRole("button", { name: /sign in/i }));
+    await waitFor(() => {
+      expect(screen.getByText(/sign-in failed/i)).toBeInTheDocument();
+    });
+  });
+
   it("OIDC button click calls authClient.signIn.social with provider id", async () => {
     signInSocial.mockResolvedValueOnce({ data: {}, error: null });
     const { SignInForm } = await import("../SignInForm");
