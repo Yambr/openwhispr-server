@@ -40,9 +40,12 @@ export const THRESHOLDS = {
   "http_req_duration{endpoint:reason}": ["p(95)<10000"],
   "http_req_duration{endpoint:agent-stream}": ["p(95)<15000"],
   agent_stream_ttfb: ["p(95)<3000"],
-  // realtime-ws does not emit http_req_duration; its iteration_duration
-  // is the right surface to gate on.
-  "iteration_duration{endpoint:realtime-ws}": ["p(95)<5000"],
+  // realtime-ws does not emit http_req_duration; we publish a custom Trend
+  // `realtime_ws_roundtrip_ms` from the flow because the auto-emitted
+  // iteration_duration captures the callback-return moment, not the
+  // round-trip (k6/websockets addEventListener is async — plan 08-07
+  // recorded p95=0 for this metric). Plan 08.1-01 Task 3 fix.
+  "realtime_ws_roundtrip_ms{endpoint:realtime-ws}": ["p(95)<5000"],
   // Global error-rate guard rail.
   http_req_failed: ["rate<0.05"],
 };
@@ -51,4 +54,5 @@ export const THRESHOLDS = {
 export const METRIC_NAMES = {
   agentStreamTtfb: "agent_stream_ttfb",
   agentStreamTotal: "agent_stream_total",
+  realtimeWsRoundtripMs: "realtime_ws_roundtrip_ms",
 } as const;
