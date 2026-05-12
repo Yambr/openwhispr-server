@@ -243,6 +243,22 @@ describe("ConfigClient — success state", () => {
     expect(diarization.textContent ?? "").toMatch(/yes|true|on/i);
   });
 
+  it("Refresh button invalidates both query keys (re-fetch)", async () => {
+    mockFetchOk(sttResponse, noteResponse);
+    const client = makeClient();
+    const Wrap = makeWrap(client);
+    render(
+      <Wrap>
+        <ConfigClient />
+      </Wrap>,
+    );
+    await waitFor(() => expect(screen.getByText(/whisper-1/i)).toBeInTheDocument());
+    const fetchSpy = globalThis.fetch as unknown as ReturnType<typeof vi.fn>;
+    const before = fetchSpy.mock.calls.length;
+    await userEvent.click(screen.getByRole("button", { name: /refresh/i }));
+    await waitFor(() => expect(fetchSpy.mock.calls.length).toBeGreaterThan(before));
+  });
+
   it("fires both queries in parallel on mount", async () => {
     mockFetchOk(sttResponse, noteResponse);
     const client = makeClient();
