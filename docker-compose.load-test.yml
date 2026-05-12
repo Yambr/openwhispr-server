@@ -319,7 +319,14 @@ services:
   # extended profile arrays in docker-compose.yml).
   # ---------------------------------------------------------------------
   litellm:
-    profiles: [default, load-test-mock, load-test-realistic]
+    # Phase 08.5-01 Task 2: narrowed from [default, load-test-mock,
+    # load-test-realistic] to [default, load-test-mock] so the realistic
+    # profile's third overlay (docker-compose.load-test.realistic.yml)
+    # can cleanly re-state the real LiteLLM image without colliding with
+    # this mock override. Without the narrowing both overrides apply to
+    # realistic and the merge order ends up mixing fields from each
+    # (08.5-RESEARCH §P10).
+    profiles: [default, load-test-mock]
     build:
       context: ./compose/mock-litellm
     image: openwhispr-mock-litellm:dev
@@ -362,8 +369,16 @@ services:
     profiles: [load-test-realistic]
     networks: [openwhispr_internal]
     environment:
-      WHISPER_MODEL: Systran/faster-whisper-large-v3
-      WHISPER__MODEL: Systran/faster-whisper-large-v3
+      # Phase 08.5-01 Task 2: WHISPER_MODEL / WHISPER__MODEL are not
+      # canonical Speaches env vars (verified against
+      # github.com/speaches-ai/speaches/src/speaches/config.py per
+      # 08.5-RESEARCH §G3 / §P1). The canonical mechanism is
+      # PRELOAD_MODELS (comma-separated HF repo IDs) which causes
+      # Speaches to download + warm the listed models AT BOOT instead
+      # of lazily on the first request. Without this, the first
+      # transcribe request blocks 30–120 s while Whisper loads, and the
+      # smoke gate's iter-0 latency pollutes the entire run.
+      PRELOAD_MODELS: "Systran/faster-whisper-large-v3,pyannote/speaker-diarization-community-1"
       HF_TOKEN: ${HF_TOKEN:-}
       ENABLE_UI: "false"
     healthcheck:
@@ -371,9 +386,19 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
-      start_period: 180s
+      # Phase 08.5-01 Task 2: 600s start buffer for the first-ever boot
+      # (~3 GB HF model download — Whisper-large-v3 + pyannote weights).
+      # Subsequent boots find the weights cached in the named volume
+      # and report healthy within the normal interval (08.5-RESEARCH §P8).
+      start_period: 600s
     volumes:
-      - speaches_models:/root/.cache/huggingface
+      # Phase 08.5-01 Task 2: `latest-cpu` runs as the `ubuntu` user
+      # (verified against the upstream compose.cpu.yaml — 08.5-RESEARCH
+      # §G6 / §P2 / A5). Mounting `:/root/.cache/...` left the HF cache
+      # unwritable by the in-container process, forcing a 3 GB
+      # re-download on every `down + up`. The correct target is
+      # `/home/ubuntu/.cache/huggingface`.
+      - speaches_models:/home/ubuntu/.cache/huggingface
     restart: unless-stopped
 
 volumes:

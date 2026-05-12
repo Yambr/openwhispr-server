@@ -1,0 +1,73 @@
+# Phase 08.5-01 / Task 2 — Third compose overlay for the realistic profile.
+#
+# Layered ON TOP of docker-compose.yml + docker-compose.load-test.yml ONLY
+# when invoked under the realistic profile:
+#
+#   docker compose \
+#     -f docker-compose.yml \
+#     -f docker-compose.load-test.yml \
+#     -f docker-compose.load-test.realistic.yml \
+#     --profile load-test-realistic up -d --wait
+#
+# This file's sole job is to un-mock the `litellm` service that
+# docker-compose.load-test.yml overrides to `openwhispr-mock-litellm:dev`.
+# When the second file's mock override targets BOTH load-test-mock AND
+# load-test-realistic profiles, the realistic profile silently runs the
+# mock — Speaches is dead code and the entire "realistic" run is fiction.
+#
+# Compose merge semantics (08.5-RESEARCH §P10):
+#   * `profiles:` arrays are CONCAT across files.
+#   * Per-key scalars like `image`, `command`, `build` REPLACE (last file
+#     wins).
+#   * Maps like `environment`, `depends_on`, `healthcheck` MERGE per-key.
+#   * Lists like `volumes` REPLACE wholesale (last file wins).
+#
+# Therefore this file:
+#   1. Re-states `image:` to the real LiteLLM (last-file-wins replace).
+#   2. Re-states `command:` verbatim from docker-compose.yml (mock set it
+#      to `[]`; we need `--config /etc/litellm/config.yaml ...`).
+#   3. Re-states `volumes:` to mount litellm_config.realistic.yaml at the
+#      same target path the base service expects (/etc/litellm/config.yaml).
+#   4. Re-states `environment:` keys the mock blanked (LITELLM_MASTER_KEY,
+#      LITELLM_DATABASE_URL, DATABASE_URL, provider keys).
+#   5. Re-states `healthcheck:` so the python3 urllib probe used by the
+#      base service is restored (the mock uses a wget probe).
+#   6. Sets `build:` to an empty object to neutralise the mock's
+#      `build.context: ./compose/mock-litellm` (compose treats {} as
+#      "no build" once `image:` is set explicitly).
+#   7. `profiles: [load-test-realistic]` so this override only activates
+#      under realistic.
+
+services:
+  litellm:
+    profiles: [load-test-realistic]
+    image: ghcr.io/berriai/litellm:main-v1.83.14-stable
+    # Override mock's `build.context: ./compose/mock-litellm`. An empty
+    # object disables the build step entirely; the `image:` above is
+    # pulled from the registry.
+    build: {}
+    command: ["--config", "/etc/litellm/config.yaml", "--port", "4000", "--num_workers", "2"]
+    volumes:
+      - ./compose/litellm/litellm_config.realistic.yaml:/etc/litellm/config.yaml:ro
+    environment:
+      LITELLM_MASTER_KEY: ${LITELLM_MASTER_KEY}
+      LITELLM_DATABASE_URL: ${LITELLM_DATABASE_URL:-postgres://${POSTGRES_OWNER_USER}:${POSTGRES_OWNER_PASSWORD}@postgres:5432/litellm}
+      DATABASE_URL: ${LITELLM_DATABASE_URL:-postgres://${POSTGRES_OWNER_USER}:${POSTGRES_OWNER_PASSWORD}@postgres:5432/litellm}
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
+      GROQ_API_KEY: ${GROQ_API_KEY:-}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    healthcheck:
+      # Real LiteLLM image has python3 but not wget/curl (08.5 base
+      # compose comment, line ~394). Restore the urllib probe so the
+      # realistic container reports healthy.
+      test: ["CMD", "python3", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:4000/health/liveliness',timeout=2).status==200 else 1)"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 30s
+    restart: unless-stopped
