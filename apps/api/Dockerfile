@@ -134,6 +134,12 @@ COPY --from=builder --chown=node:node /app/tools/bootstrap/default-secrets.txt \
 # an explicit RUN chmod that would create another layer.
 COPY --chown=node:node --chmod=0755 apps/api/entrypoint.sh /app/entrypoint.sh
 
+# Phase 08 / Plan 04 — file-descriptor startup probe (D-TUNE-2).
+# Prepended to the ENTRYPOINT chain so a container that boots without the
+# ulimits: nofile 65535 block (regression guard) refuses to start LOUDLY
+# instead of silently degrading under load.
+COPY --chown=node:node --chmod=0755 apps/api/scripts/fd-probe.sh /app/scripts/fd-probe.sh
+
 USER node
 EXPOSE 3000
 
@@ -143,5 +149,7 @@ EXPOSE 3000
 HEALTHCHECK --interval=10s --timeout=3s --retries=3 --start-period=30s \
   CMD wget --quiet --tries=1 --spider http://localhost:3000/api/health || exit 1
 
-ENTRYPOINT ["/app/entrypoint.sh"]
+# Chain: fd-probe.sh (fd-limit gate) -> entrypoint.sh (default-secrets gate)
+# -> node (CMD). Probe runs BEFORE the secrets check per plan 08-04 must_haves.
+ENTRYPOINT ["/app/scripts/fd-probe.sh", "/app/entrypoint.sh"]
 CMD ["node", "/app/dist/index.js"]
