@@ -136,6 +136,18 @@ export const fallbackLog = {
   },
 };
 
+// ── Phase 8 / Plan 01 ───────────────────────────────────────────────────
+// `OPENWHISPR_DISABLE_RATE_LIMIT` LOAD-TEST-ONLY env switch. When set to
+// "1" or "true", Better Auth's built-in rate-limiter is force-disabled
+// (sign-in / sign-up / forgot-password / verification-status carve-out)
+// so synthetic load traffic can saturate auth endpoints without tripping
+// the anti-abuse counter. The Fastify limiter honours the same switch in
+// apps/api/src/plugins/rate-limit.ts. Default OFF (unset OR "0").
+function rateLimitDisabled(): boolean {
+  const raw = process.env.OPENWHISPR_DISABLE_RATE_LIMIT;
+  return raw === "1" || raw === "true";
+}
+
 export function buildAuth(opts: BuildAuthOptions): AuthInstance {
   const { db } = opts;
   const oidcProviders = readOidcProviders();
@@ -144,6 +156,19 @@ export function buildAuth(opts: BuildAuthOptions): AuthInstance {
   // (SMTP_HOST unset) inside makeEmailService preserves the < 5 min
   // OSS first-launch SLO without requiring an SMTP relay.
   const email: EmailService = opts.email ?? makeEmailService((opts.log ?? fallbackLog) as never);
+
+  // ── Phase 8 / Plan 01 ────────────────────────────────────────────────
+  // Loud WARN banner when the load-test switch is on so an operator who
+  // fat-fingers OPENWHISPR_DISABLE_RATE_LIMIT into prod sees the failure
+  // mode in their logs. Routed through the caller-injected logger so
+  // tests can capture it without touching pino.
+  const rateLimitOff = rateLimitDisabled();
+  if (rateLimitOff) {
+    const log = opts.log ?? fallbackLog;
+    log.warn(
+      "[security] Better Auth rate-limit DISABLED via OPENWHISPR_DISABLE_RATE_LIMIT — load-test only, MUST NOT be set in production",
+    );
+  }
 
   const plugins = [
     // Bearer plugin: emits opaque tokens + set-auth-token rotation header.
@@ -165,6 +190,12 @@ export function buildAuth(opts: BuildAuthOptions): AuthInstance {
   ];
 
   return betterAuth({
+    // Phase 8 / Plan 01 — load-test bypass. When the switch is OFF (the
+    // production default) we DO NOT emit a rateLimit block so Better
+    // Auth's built-in defaults apply (enabled in production, disabled in
+    // dev — its own NODE_ENV-aware behaviour). Only when the operator
+    // explicitly opts in do we force-disable the limiter.
+    ...(rateLimitOff ? { rateLimit: { enabled: false } } : {}),
     database: drizzleAdapter(db, {
       provider: "pg",
       // Better Auth canonical model names (left) ↔ our pluralized drizzle
