@@ -158,6 +158,34 @@ export const buildAgentStreamRoutes = (deps: AgentStreamDeps) =>
           extras.tools = translateLegacyTools(body.tools);
         }
 
+        // NOTE (Phase 08.2 deviation — empirical live finding):
+        // We intentionally DO NOT pass `signal: abort.signal` to the client
+        // here. Live forensic probing against the load-test-mock stack
+        // (2026-05-12) showed that on `undici.request`, an AbortSignal
+        // combined with the process-wide SSRF-wrapped Agent (production
+        // dispatcher) causes the request to fail at the connect/dispatch
+        // boundary BEFORE reaching the upstream — reproducing the exact
+        // `upstream_error` finish-chunk symptom this phase was opened to
+        // eliminate. Removing the signal restored content-bearing SSE.
+        // Both candidate causes #1 and #4 in 08.2-RESEARCH.md predicted
+        // this class of failure but attributed it to undici.fetch; the
+        // live evidence now extends the same class to undici.request +
+        // signal under the wrapped Agent.
+        //
+        // Client-disconnect abort still works correctly via two paths
+        // (T-08.2-03 preserved):
+        //   1. The `req.raw.once("close", ...)` callback flips
+        //      `abort.signal.aborted` so any in-route consumers observe
+        //      the abort. The drain loop below checks
+        //      `raw.writableEnded` on every iteration and breaks on
+        //      client disconnect.
+        //   2. `Readable.toWeb(upstream.body)` propagates `cancel()` to
+        //      `destroy()` on the source Readable when the consumer
+        //      breaks — this closes the underlying undici socket.
+        //
+        // Deferred follow-up: investigate undici 7.25 `signal:` + custom
+        // wrapped `Agent` interaction (research candidate cause #4 — likely
+        // related to openclaw/openclaw#19147 / #46685 / #61448).
         let upstream: Awaited<ReturnType<typeof deps.litellm.chatCompletionsStream>>;
         try {
           upstream = await deps.litellm.chatCompletionsStream({
@@ -165,7 +193,6 @@ export const buildAgentStreamRoutes = (deps: AgentStreamDeps) =>
             messages,
             userId,
             requestId: req.id,
-            signal: abort.signal,
             extras,
           });
         } catch (err) {
