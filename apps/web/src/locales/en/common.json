@@ -1,1 +1,30 @@
-{}
+{
+  "common": {
+    "action": {
+      "cancel": { "label": "Cancel" },
+      "confirm": { "label": "Confirm" },
+      "copy": { "label": "Copy" }
+    },
+    "error": {
+      "boundary": {
+        "title": { "text": "Something went wrong" },
+        "body": { "text": "An unexpected error occurred while rendering this page." },
+        "retry": { "label": "Retry" }
+      },
+      "network": {
+        "title": { "text": "Network error" },
+        "body": {
+          "text": "Could not reach the OpenWhispr server. Check your connection and retry."
+        }
+      }
+    },
+    "loading": { "label": "Loading…" },
+    "signout": { "label": "Sign out" },
+    "theme": {
+      "toggle": { "label": "Toggle theme" },
+      "light": { "label": "Light" },
+      "dark": { "label": "Dark" },
+      "system": { "label": "System" }
+    }
+  }
+}

@@ -1,1 +1,167 @@
-{}
+{
+  "admin": {
+    "config": {
+      "action": {
+        "refresh": {
+          "label": "Refresh"
+        }
+      },
+      "alert-readonly": {
+        "body": {
+          "label": "Edits require restarting the api container with updated env."
+        }
+      },
+      "error-fetch-failed": {
+        "body": {
+          "label": "Retry, or check the api container logs in Grafana."
+        },
+        "retry": {
+          "label": "Retry"
+        },
+        "title": {
+          "label": "Could not load configuration"
+        }
+      },
+      "link": {
+        "override-docs": {
+          "label": "Docs: how to override"
+        }
+      },
+      "nav": {
+        "sidebar": {
+          "label": "Configuration"
+        }
+      },
+      "note": {
+        "endpoint": {
+          "label": "GET /api/note-recording-config"
+        },
+        "row-allowed-formats": {
+          "label": "Allowed formats"
+        },
+        "row-diarization": {
+          "label": "Diarization enabled"
+        },
+        "row-max-duration": {
+          "label": "Max duration (seconds)"
+        },
+        "row-sample-rate": {
+          "label": "Sample rate (Hz)"
+        },
+        "title": {
+          "label": "Note recording"
+        }
+      },
+      "stt": {
+        "endpoint": {
+          "label": "GET /api/stt-config"
+        },
+        "row-default-language": {
+          "label": "Default language"
+        },
+        "row-default-model": {
+          "label": "Default model"
+        },
+        "row-providers": {
+          "label": "Available providers"
+        },
+        "title": {
+          "label": "STT config"
+        }
+      },
+      "subtitle": {
+        "body": {
+          "text": "Server-side STT and note-recording defaults. Read-only."
+        }
+      },
+      "title": {
+        "heading": {
+          "text": "Configuration"
+        }
+      }
+    },
+    "observability": {
+      "action": {
+        "open-grafana": {
+          "label": "Open Grafana"
+        }
+      },
+      "card-api-latency": {
+        "body": {
+          "label": "p50, p95, p99 from Fastify hooks"
+        },
+        "title": {
+          "label": "API tier — request latency"
+        }
+      },
+      "card-litellm": {
+        "title": {
+          "label": "LiteLLM — provider routing"
+        }
+      },
+      "card-postgres": {
+        "title": {
+          "label": "Postgres — partitions and vacuum"
+        }
+      },
+      "card-security": {
+        "title": {
+          "label": "Security — rate limits and auth failures"
+        }
+      },
+      "card-system": {
+        "title": {
+          "label": "System — CPU, RAM, disk, network"
+        }
+      },
+      "card-worker-queue": {
+        "body": {
+          "label": "BullMQ depth, retries, throughput"
+        },
+        "title": {
+          "label": "Worker — STT job queue"
+        }
+      },
+      "error-env-missing": {
+        "body": {
+          "label": "Set NEXT_PUBLIC_GRAFANA_BASE_URL and redeploy the web container."
+        },
+        "title": {
+          "label": "Grafana endpoint not configured"
+        }
+      },
+      "nav": {
+        "sidebar": {
+          "label": "Observability"
+        }
+      },
+      "quicklinks": {
+        "alertmanager": {
+          "label": "Alertmanager — routing and silences"
+        },
+        "loki": {
+          "label": "Loki — application logs"
+        },
+        "mimir": {
+          "label": "Mimir — Prometheus metrics"
+        },
+        "tempo": {
+          "label": "Tempo — distributed tracing"
+        },
+        "title": {
+          "label": "Quick links"
+        }
+      },
+      "subtitle": {
+        "body": {
+          "text": "Deep-links to Grafana dashboards for this installation."
+        }
+      },
+      "title": {
+        "heading": {
+          "text": "Observability"
+        }
+      }
+    }
+  }
+}

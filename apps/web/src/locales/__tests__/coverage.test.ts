@@ -17,7 +17,8 @@ import endUserBundle from "../en/end-user.json";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
-const REPO_ROOT = resolve(__dirname, "../../../../../..");
+// __dirname = <repo>/apps/web/src/locales/__tests__ → five `..` steps to repo root.
+const REPO_ROOT = resolve(__dirname, "../../../../..");
 const ADMIN_SPEC = resolve(REPO_ROOT, ".planning/phases/07-frontend-ui-spec/UI-SPEC-admin.md");
 const END_USER_SPEC = resolve(
   REPO_ROOT,

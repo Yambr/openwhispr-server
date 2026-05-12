@@ -5,9 +5,12 @@
 // `/api/auth/get-session` over HTTP with the forwarded Cookie header
 // (RESEARCH § Pattern 2). On null we redirect to /sign-in.
 //
-// AppShell (sidebar + nav + i18n + query provider) lands in Plan 06; for
-// now the layout is the bare auth gate around `{children}`.
+// Plan 06 wraps the authenticated subtree in the end-user AppShell after
+// the session gate passes. The shell consumes i18n + theme contexts from
+// the root layout, so all that's needed here is the import and one JSX
+// element.
 import { redirect } from "next/navigation";
+import { AppShell } from "@/components/screens/AppShell";
 import { getServerSession } from "@/lib/auth-server";
 
 export default async function AuthLayout({
@@ -17,6 +20,5 @@ export default async function AuthLayout({
 }): Promise<React.JSX.Element> {
   const session = await getServerSession();
   if (!session) redirect("/sign-in");
-  // TODO(plan-06): wrap children with <AppShell user={session.user}>.
-  return <>{children}</>;
+  return <AppShell>{children}</AppShell>;
 }
