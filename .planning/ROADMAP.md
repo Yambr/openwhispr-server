@@ -507,7 +507,15 @@ Plans:
   5. Per-endpoint p95 SLO budgets (baseline + 20% headroom) published in `docs/operations.md` only after this phase passes (constitutional rule). On-demand re-runs after architectural changes are operator-initiated; regression discipline is documented but not auto-enforced in Phase 8.
   6. The first live `make load-test` run actually executes on the developer's Mac (48GB RAM) and produces both mock and realistic baselines; raw k6 output + summary embedded in `08-SUMMARY.md`.
   7. Tests written first (TDD); all CI checks green.
-**Plans**: TBD
+**Plans**: 8 plans (5 waves)
+- [ ] 08-01 — rate-limit env switch (Wave 0)
+- [ ] 08-02 — load-test workspace scaffold (Wave 0)
+- [ ] 08-03 — mock-litellm Fastify scaffold (Wave 0)
+- [ ] 08-04 — FD probe scripts (Wave 0)
+- [ ] 08-05 — docker-compose load-test profiles (Wave 1)
+- [ ] 08-06 — k6 flows + Makefile (Wave 2)
+- [ ] 08-07 — live baseline run on Mac (Wave 3)
+- [ ] 08-08 — operations.md + SLO publication + closure (Wave 4)
 **UI hint**: no
 
 ### Phase 9: Helm Chart & Cloud Deploy
