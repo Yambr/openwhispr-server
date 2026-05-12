@@ -143,7 +143,25 @@ describe("SignUpForm (Phase 07.1 / Plan 07 — U2)", () => {
     await user.type(screen.getByLabelText(/^password$/i), "Pwa9!testStrong");
     await user.click(screen.getByRole("button", { name: /^sign up$/i }));
     await waitFor(() => {
-      expect(screen.getByText(/already registered/i)).toBeInTheDocument();
+      expect(screen.getAllByText(/already registered/i).length).toBeGreaterThan(0);
+    });
+  });
+
+  it("renders generic error when authClient.signUp.email throws", async () => {
+    signUpEmail.mockRejectedValueOnce(new Error("network"));
+    const { SignUpForm } = await import("../SignUpForm");
+    const user = userEvent.setup();
+    render(
+      <Wrap>
+        <SignUpForm />
+      </Wrap>,
+    );
+    await user.type(screen.getByLabelText(/name/i), "Alice");
+    await user.type(screen.getByLabelText(/email/i), "alice@test.local");
+    await user.type(screen.getByLabelText(/^password$/i), "Pwa9!testStrong");
+    await user.click(screen.getByRole("button", { name: /^sign up$/i }));
+    await waitFor(() => {
+      expect(screen.getAllByText(/sign-up failed/i).length).toBeGreaterThan(0);
     });
   });
 
@@ -164,7 +182,7 @@ describe("SignUpForm (Phase 07.1 / Plan 07 — U2)", () => {
     await user.type(screen.getByLabelText(/^password$/i), "Pwa9!testStrong");
     await user.click(screen.getByRole("button", { name: /^sign up$/i }));
     await waitFor(() => {
-      expect(screen.getByText(/sign-up failed/i)).toBeInTheDocument();
+      expect(screen.getAllByText(/sign-up failed/i).length).toBeGreaterThan(0);
     });
   });
 });

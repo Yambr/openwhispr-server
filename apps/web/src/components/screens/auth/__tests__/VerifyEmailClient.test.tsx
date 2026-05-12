@@ -111,6 +111,19 @@ describe("VerifyEmailClient (Phase 07.1 / Plan 07 — U3)", () => {
     );
   });
 
+  it("renders error state when verifyEmail returns null/undefined result", async () => {
+    verifyEmail.mockResolvedValueOnce(undefined);
+    const { VerifyEmailClient } = await import("../VerifyEmailClient");
+    render(
+      <Wrap>
+        <VerifyEmailClient token="abc" />
+      </Wrap>,
+    );
+    await waitFor(() => {
+      expect(screen.getByText(/verification failed/i)).toBeInTheDocument();
+    });
+  });
+
   it("renders error state when verifyEmail throws", async () => {
     verifyEmail.mockRejectedValueOnce(new Error("network"));
     const { VerifyEmailClient } = await import("../VerifyEmailClient");
