@@ -30,6 +30,11 @@ export default defineConfig({
         "**/*.spec.ts",
         "src/main.ts",
         "src/smoke.ts",
+        // Phase 08.5-02: baseline.ts is the k6 entrypoint for the
+        // realistic Mac baseline / operator H100 re-run. Same exclusion
+        // rationale as main.ts — it imports k6/* runtime globals.
+        // baseline-options.ts (the pure helper) IS covered.
+        "src/baseline.ts",
         "src/k6.config.ts",
         "src/fixtures/**",
         // scripts/*.mjs are Node CLI helpers, not import-graph reachable.
