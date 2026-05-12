@@ -25,4 +25,11 @@ export default defineConfig({
     // bundle keeps `import http from "k6/http"` as a bare specifier.
     options.external = ["k6", "k6/http", "k6/websockets", "k6/metrics", "k6/encoding"];
   },
+  // k6's `open()` is the only mechanism for static fixture loading and
+  // it resolves paths RELATIVE TO THE BUNDLE FILE at runtime (not the
+  // source). Without copying src/fixtures/ next to dist/main.js, every
+  // k6 run aborts with `stat .../dist/fixtures/sample-5s-16k.wav: no
+  // such file or directory`. tsup's onSuccess fires after every build
+  // (initial + watch), so the copy stays in sync. Plan 08-07 fix.
+  onSuccess: "cp -R src/fixtures dist/fixtures",
 });
