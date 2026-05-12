@@ -17,7 +17,7 @@
     "lint:rls": "tsx tools/lint-rls.ts",
     "lint:tenant-context": "tsx tools/lint-tenant-context.ts",
     "lint:ui-spec": "tsx tools/lint-ui-spec.ts",
-    "test:lint-ui-spec": "vitest run tools/lint-ui-spec.test.ts --coverage",
+    "test:lint-ui-spec": "vitest run tools/lint-ui-spec.test.ts --coverage --coverage.include=tools/lint-ui-spec.ts --coverage.exclude= --coverage.all=false --coverage.thresholds.lines=90 --coverage.thresholds.branches=90 --coverage.thresholds.functions=90 --coverage.thresholds.statements=90",
     "typecheck": "pnpm -r exec tsc --noEmit",
     "test": "vitest run --coverage",
     "test:watch": "vitest",
