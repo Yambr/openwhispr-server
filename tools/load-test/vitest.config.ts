@@ -2,9 +2,11 @@
 //
 // Mirrors apps/api/vitest.config.ts: V8 coverage provider with the
 // constitutional 90/90/90/90 thresholds (per CLAUDE.md). Scoped to
-// src/**/*.ts; the k6 entry (src/main.ts) and flow files are excluded
-// because their runtime context is k6, not vitest. Fixtures and tests
-// are excluded from coverage targets as well.
+// src/**/*.ts. Only the k6 entry (src/main.ts) is excluded, because
+// its runtime context is the k6 VM and cannot be loaded into vitest.
+// Fixtures and tests are excluded from coverage targets as well.
+// Plan 06 added the flows under coverage — they are pure functions
+// taking an injectable HttpClient, so they ARE unit-testable.
 //
 // CRITICAL (Vitest 4 silent-breakage trap): thresholds MUST be NESTED
 // under `coverage.thresholds.*`. The flat shape is silently ignored.
@@ -19,7 +21,7 @@ export default defineConfig({
       reportsDirectory: "./coverage",
       all: false,
       include: ["src/**/*.ts"],
-      exclude: ["**/*.test.ts", "**/*.spec.ts", "src/main.ts", "src/flows/**", "src/fixtures/**"],
+      exclude: ["**/*.test.ts", "**/*.spec.ts", "src/main.ts", "src/fixtures/**"],
       thresholds: {
         lines: 90,
         branches: 90,
