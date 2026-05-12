@@ -10,7 +10,7 @@
 // real /api/notes, /api/transcriptions, /api/conversations endpoints, real
 // Postgres state. Seeded resources are torn down before the spec runs.
 
-import { expect, fixtureEmail, test } from "./fixtures/auth.js";
+import { expect, FIXTURE_PASSWORD, fixtureEmail, test } from "./fixtures/auth.js";
 import { bindToContext } from "./fixtures/seed.js";
 
 test.describe("99 — cross-screen smoke (Phase 07.1 / Plan 13)", () => {
@@ -70,5 +70,33 @@ test.describe("99 — cross-screen smoke (Phase 07.1 / Plan 13)", () => {
     //    307 → /sign-in?from=/app/account per Phase 07.1 / Plan 05).
     await page.goto("/app/account");
     await expect(page).toHaveURL(/\/sign-in(\?|$)/);
+
+    // Phase 07.1 / Plan 13.3 — Refresh the per-worker storageState so the
+    // shared cookie jar on disk (tests/e2e/.auth/alice-<i>.json) is no
+    // longer pointing at the session row just revoked by step 6's
+    // sign-out. With `session.cookieCache.enabled: true` (apps/api auth.ts),
+    // the revoked session keeps validating for `cookieCache.maxAge`
+    // (5 min) via the signed session_data JWT — but any spec that runs
+    // beyond that window hits the DB fallback, sees a deleted session,
+    // and redirects to /sign-in. Re-signing-in and persisting the fresh
+    // cookies back to the same path keeps the shared fixture user state
+    // valid for downstream specs (u4, u13, etc.). Step 6's sign-out
+    // assertion above remains the canonical proof that sign-out works.
+    const freshContext = await page.context().browser()!.newContext({
+      baseURL: baseUrl,
+      ignoreHTTPSErrors: true,
+    });
+    try {
+      const signInRes = await freshContext.request.post(`${baseUrl}/api/auth/sign-in/email`, {
+        headers: { "content-type": "application/json", origin: baseUrl },
+        data: { email: fixtureEmail(info.parallelIndex), password: FIXTURE_PASSWORD },
+        ignoreHTTPSErrors: true,
+      });
+      expect(signInRes.ok()).toBe(true);
+      const { storageStatePath } = await import("./fixtures/auth.js");
+      await freshContext.storageState({ path: storageStatePath(info.parallelIndex) });
+    } finally {
+      await freshContext.close();
+    }
   });
 });

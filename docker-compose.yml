@@ -503,6 +503,14 @@ services:
         condition: service_healthy
       otel-collector:
         condition: service_started
+      # Phase 07.1 / Plan 13.3 — Mailpit promoted to the default profile so
+      # the apps/api SMTP transport (SMTP_HOST=mailpit in .env) has a live
+      # SMTP catch-all out of the box. U2 sign-up's "check your email"
+      # success state needs the verification-email send to succeed; without
+      # mailpit reachable the nodemailer transport throws and Better Auth
+      # surfaces a generic Sign-up failed alert.
+      mailpit:
+        condition: service_healthy
     healthcheck:
       test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:3000/api/health"]
       interval: 10s
@@ -591,6 +599,18 @@ services:
     build:
       context: .
       dockerfile: apps/web/Dockerfile
+      # Phase 07.1 / Plan 13.3 — NEXT_PUBLIC_* envs must be baked at BUILD
+      # time (Next.js statically replaces process.env.NEXT_PUBLIC_* in the
+      # client bundle). Compose passes these from the host `.env` into the
+      # Dockerfile's `ARG`s so the resulting image carries the operator's
+      # external observability deep-links. Empty defaults preserve the
+      # graceful Alert path in ObservabilityClient when grafana is unset.
+      args:
+        NEXT_PUBLIC_GRAFANA_BASE_URL: ${NEXT_PUBLIC_GRAFANA_BASE_URL:-}
+        NEXT_PUBLIC_TEMPO_BASE_URL: ${NEXT_PUBLIC_TEMPO_BASE_URL:-}
+        NEXT_PUBLIC_MIMIR_BASE_URL: ${NEXT_PUBLIC_MIMIR_BASE_URL:-}
+        NEXT_PUBLIC_LOKI_BASE_URL: ${NEXT_PUBLIC_LOKI_BASE_URL:-}
+        NEXT_PUBLIC_OIDC_PROVIDERS: ${NEXT_PUBLIC_OIDC_PROVIDERS:-google,github,oidc}
     profiles: [default]
     networks: [openwhispr_internal]
     env_file: .env
@@ -651,9 +671,14 @@ services:
       # Traefik receives the un-escaped htpasswd line.
       - "traefik.http.middlewares.admin-basicauth.basicauth.users=${ADMIN_BASIC_AUTH_USERS}"
 
-  # Phase 2 Plan 02 — Mailpit dev SMTP catch-all. ONLY in the `dev`
-  # profile (Pitfall: never instantiate in production via plain
-  # `docker compose up`). Image pinned to a minor tag (NOT `:latest`).
+  # Phase 2 Plan 02 — Mailpit dev SMTP catch-all.
+  # Phase 07.1 / Plan 13.3 — promoted to `default` profile so the bundled
+  # OSS quickstart (`docker compose up`) and the e2e test stack both
+  # capture verification emails out of the box. Production operators who
+  # want a real SMTP relay set `SMTP_HOST=` to their relay hostname in
+  # `.env`; that override silently bypasses mailpit (the api never
+  # references the mailpit service name unless `SMTP_HOST=mailpit`).
+  # Image pinned to a minor tag (NOT `:latest`).
   #
   # Healthcheck: /livez was added in v1.20+ but is documented to
   # respond with 200 in v1.29. We use `--spider` which only checks
@@ -661,7 +686,7 @@ services:
   # via `||` so the healthcheck stays green regardless (CONTAINER-A2).
   mailpit:
     image: axllent/mailpit:v1.29
-    profiles: [dev]
+    profiles: [default, dev]
     networks: [openwhispr_internal]
     environment:
       MP_MAX_MESSAGES: "5000"

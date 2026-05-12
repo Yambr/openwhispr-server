@@ -193,9 +193,23 @@ async function rateLimitPluginInner(
     }
   });
 
+  // Phase 07.1 / Plan 13.3 — `RATE_LIMIT_GLOBAL_USER_MAX` overrides the
+  // default global user-tier ceiling (60/min). Used by the e2e test stack
+  // where a single Playwright worker drives every signed-in request from
+  // one fixture user, blowing past 60/min on shared routes (notes/list,
+  // conversations/list, …) within the suite's ~1-min runtime. Production
+  // deployments leave this UNSET to retain the documented anti-abuse
+  // posture; the matrix in `config/rate-limits.ts` still applies the
+  // per-route stricter values.
+  const globalUserMax = (() => {
+    const raw = process.env.RATE_LIMIT_GLOBAL_USER_MAX;
+    if (!raw) return undefined;
+    const n = Number(raw);
+    return Number.isFinite(n) && n > 0 ? n : undefined;
+  })();
   await fastify.register(rateLimit, {
     global: true,
-    max: opts.max ?? 60,
+    max: opts.max ?? globalUserMax ?? 60,
     timeWindow: opts.timeWindow ?? "1 minute",
     redis,
     skipOnError: true,

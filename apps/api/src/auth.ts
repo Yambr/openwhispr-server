@@ -217,7 +217,19 @@ export function buildAuth(opts: BuildAuthOptions): AuthInstance {
       // D-03: ≥30-day TTL.
       expiresIn: 60 * 60 * 24 * 30,
       updateAge: 60 * 60 * 24,
-      cookieCache: { enabled: true, maxAge: 5 * 60 },
+      // Phase 07.1 / Plan 13.3 — `OPENWHISPR_DISABLE_SESSION_COOKIE_CACHE=1`
+      // disables Better Auth's signed-JWT session_data cookie cache so every
+      // get-session call validates against the live DB session row. The
+      // production default (cache enabled, 5-min maxAge) is the recommended
+      // posture for low-latency RSC; the test stack flips it OFF so a
+      // sign-out (e.g. 99-cross-screen-smoke step 6) revokes the session
+      // immediately for the per-worker fixture user instead of leaving a
+      // 5-minute grace window during which subsequent specs still see a
+      // valid signed cookie pointing at a deleted DB row.
+      cookieCache:
+        process.env.OPENWHISPR_DISABLE_SESSION_COOKIE_CACHE === "1"
+          ? { enabled: false }
+          : { enabled: true, maxAge: 5 * 60 },
     },
     advanced: {
       cookiePrefix: "openwhispr",

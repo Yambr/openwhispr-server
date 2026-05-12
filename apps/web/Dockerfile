@@ -81,6 +81,23 @@ ENV NEXT_TELEMETRY_DISABLED=1
 # a `--frozen-lockfile` install in the `deps` stage and copy that tree
 # forward; running `next build` does not require another install pass.
 ENV PNPM_CONFIG_VERIFY_DEPS_BEFORE_RUN=false
+# Phase 07.1 / Plan 13.3 — Next.js inlines NEXT_PUBLIC_* envs at BUILD time
+# (statically replaced in the client bundle). Runtime-only env vars on the
+# `web` service do NOT reach the browser. Accept these as build args so
+# `docker compose build` (with build.args sourced from .env) bakes the
+# operator's external observability deep-links into the image. Empty
+# defaults preserve the graceful error-state path (ObservabilityClient
+# renders a destructive Alert when grafana is unset).
+ARG NEXT_PUBLIC_GRAFANA_BASE_URL=""
+ARG NEXT_PUBLIC_TEMPO_BASE_URL=""
+ARG NEXT_PUBLIC_MIMIR_BASE_URL=""
+ARG NEXT_PUBLIC_LOKI_BASE_URL=""
+ARG NEXT_PUBLIC_OIDC_PROVIDERS=""
+ENV NEXT_PUBLIC_GRAFANA_BASE_URL=${NEXT_PUBLIC_GRAFANA_BASE_URL}
+ENV NEXT_PUBLIC_TEMPO_BASE_URL=${NEXT_PUBLIC_TEMPO_BASE_URL}
+ENV NEXT_PUBLIC_MIMIR_BASE_URL=${NEXT_PUBLIC_MIMIR_BASE_URL}
+ENV NEXT_PUBLIC_LOKI_BASE_URL=${NEXT_PUBLIC_LOKI_BASE_URL}
+ENV NEXT_PUBLIC_OIDC_PROVIDERS=${NEXT_PUBLIC_OIDC_PROVIDERS}
 RUN pnpm --filter @openwhispr/web build
 
 # ----- runner: minimal image, non-root, healthcheck -----
