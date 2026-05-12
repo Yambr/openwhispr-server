@@ -3,12 +3,12 @@ gsd_state_version: 1.0
 milestone: v1.6.9
 milestone_name: expects plain session.token text; advisor research recommends Option C
 status: Phase 07.1 complete — ready for /gsd-plan-phase 8
-last_updated: "2026-05-12T14:53:08.563Z"
+last_updated: "2026-05-12T16:39:23.214Z"
 progress:
   total_phases: 35
   completed_phases: 12
   total_plans: 88
-  completed_plans: 111
+  completed_plans: 112
   percent: 34
 ---
 
@@ -99,6 +99,7 @@ progress:
 | Phase 08 P04 | 23min | 2 tasks | 5 files |
 | Phase 08 P05 | 10m | 3 tasks | 7 files |
 | Phase 08 P06 | ~45 min | 5 tasks | 20 files |
+| Phase 08 P07 | 32m03s wall clock | 4 tasks | 11 files |
 
 ## Accumulated Context
 
@@ -159,6 +160,7 @@ progress:
 (— no current blockers; Phase 3 closed end-to-end; live e2e green against real providers; operational debt fully retired. Phase 4 ready to begin.)
 
 - 06-12c LGTM-trio wall-time GREEN (3/3 tests, commit `6e19330`): reconciliation-drift 185s, log-scrub-sentinel 105s, otel-trace-propagation 117s. Round-2 fix landed five rule-1/rule-3 issues (testcontainers follow-mode hang, Ryuk image purge, api-Fastify-logger-disabled premise mismatch, traceparent rewrite, two-step Tempo verification).
+- Plan 08-07 mock baseline FAILS error-rate gate (99.93%) and realtime-ws p95 tag bug; pgbouncer admin SCRAM hash missing — follow-on needed before operations.md SLO publication
 
 ### Risk Register (Top 3)
 
@@ -234,3 +236,4 @@ progress:
 - [Phase 08]: Use overlay file docker-compose.load-test.yml (not single-file profiles) so default profile stays byte-identical; profile-additive merge brings api/traefik/postgres/mimir/valkey into load-test profiles
 - [Phase 08]: Plan 06: agent-stream records TTFB and total Trends separately to keep per-axis SLO regressions visible
 - [Phase 08]: Plan 06: Grafana dashboard 19665 rewritten with DS_PROMETHEUS->mimir + stable uid for provisioning
+- [Phase 08]: Plan 07 live mock run: D-LOAD-EV env-gate for email verification; mock-litellm overrides base litellm under load-test; pgbouncer rename + 4-replica scale-out; realistic profile DEFERRED with Apple-Silicon CPU-saturation root cause
