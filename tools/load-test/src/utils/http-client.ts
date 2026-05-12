@@ -53,10 +53,32 @@ export interface WsResponse {
   status: number;
 }
 
+/**
+ * Sentinel returned by `httpFile()` — flows wrap binary multipart fields
+ * with this so k6's `http.request` detects a multipart upload (k6 switches
+ * the request encoding to multipart/form-data only when at least one body
+ * field is an `http.file()` value). In vitest the helper just returns the
+ * shape verbatim; the k6 adapter unwraps it at runtime to a real
+ * `http.file(bytes, filename, contentType)` call. Plan 08.1-01 Task 2 fix.
+ */
+export interface HttpFile {
+  /** Discriminator — the k6 adapter checks for this to swap in `http.file()`. */
+  readonly __k6_http_file: true;
+  bytes: Uint8Array;
+  filename: string;
+  contentType: string;
+}
+
 /** The interface every flow function consumes. */
 export interface HttpClient {
   request(method: string, url: string, body?: unknown, opts?: RequestOptions): HttpResponse;
   ws(url: string, params: WsParams, handler: (socket: WsSocket) => void): WsResponse;
+  /**
+   * Wrap raw bytes as a multipart file part. The returned value MUST be
+   * placed in the body object passed to `request()` — its presence triggers
+   * k6's multipart-encoding code path at runtime.
+   */
+  httpFile(bytes: Uint8Array, filename: string, contentType: string): HttpFile;
 }
 
 /**
@@ -112,10 +134,33 @@ function k6Ws(url: string, params: WsParams, handler: (socket: WsSocket) => void
 }
 /* c8 ignore stop */
 
+/* c8 ignore start */
+function k6HttpFile(bytes: Uint8Array, filename: string, contentType: string): HttpFile {
+  const http = (globalThis as unknown as { __k6_http?: unknown }).__k6_http;
+  if (!http) {
+    throw new Error("createK6Adapter().httpFile invoked outside the k6 runtime");
+  }
+  // k6's http.file(data, filename, contentType) returns the FileData
+  // descriptor k6 recognises to switch the request to multipart encoding.
+  // We tag the returned object with __k6_http_file so test adapters can
+  // detect wrapped fields without depending on the k6 runtime.
+  const fd = (
+    http as { file: (b: Uint8Array, f: string, ct: string) => Record<string, unknown> }
+  ).file(bytes, filename, contentType);
+  return Object.assign(fd, {
+    __k6_http_file: true as const,
+    bytes,
+    filename,
+    contentType,
+  });
+}
+/* c8 ignore stop */
+
 export function createK6Adapter(): HttpClient {
   return {
     request: k6Request,
     ws: k6Ws,
+    httpFile: k6HttpFile,
   };
 }
 
@@ -137,5 +182,16 @@ export function createMockAdapter(impl: Partial<HttpClient>): HttpClient {
       }
       return impl.ws(url, params, handler);
     },
+    // Default httpFile implementation — tests that don't override get a
+    // hermetic, type-safe wrapper. Tests that want to inspect the call
+    // pattern can override with a vi.fn() in `impl`.
+    httpFile: impl.httpFile
+      ? impl.httpFile
+      : (bytes, filename, contentType) => ({
+          __k6_http_file: true as const,
+          bytes,
+          filename,
+          contentType,
+        }),
   };
 }

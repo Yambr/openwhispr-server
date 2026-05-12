@@ -37,13 +37,17 @@ export interface TranscribeDeps {
 const DEFAULT_MODEL = "Systran/faster-whisper-large-v3";
 
 export function transcribe(user: User, client: HttpClient, deps: TranscribeDeps): void {
-  // k6's http.request accepts an object body where binary fields are
-  // wrapped in `http.file(bytes, filename, contentType)`. We pass the
-  // raw bytes here because the k6 adapter (in production) wraps them
-  // with http.file before forwarding. In tests the mock asserts the
-  // shape verbatim.
+  // k6's http.request switches to multipart/form-data encoding ONLY when
+  // at least one body field is an `http.file(bytes, filename, contentType)`
+  // value. Without that wrapping, k6 form-urlencodes the entire body and
+  // the api rejects with `400 expected multipart/form-data audio upload`
+  // (transcribe.ts:88). Plan 08.1-01 Task 2 root-cause fix.
+  //
+  // `client.httpFile` lives on the HttpClient surface: in vitest the mock
+  // adapter returns the descriptor verbatim, in the k6 adapter it calls
+  // `http.file()` and forwards the runtime FileData.
   const body = {
-    file: deps.wavBytes,
+    file: client.httpFile(deps.wavBytes, "audio.wav", "audio/wav"),
     model: deps.model ?? DEFAULT_MODEL,
     language: "en",
   };

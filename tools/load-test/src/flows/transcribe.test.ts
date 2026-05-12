@@ -55,6 +55,25 @@ describe("transcribe flow", () => {
     expect(body.language).toBe("en");
   });
 
+  it("wraps the WAV bytes via client.httpFile() so k6 switches to multipart encoding (08.1-01 Task 2)", () => {
+    const request = vi.fn().mockReturnValue(ok());
+    const httpFile = vi.fn().mockReturnValue({
+      __k6_http_file: true,
+      bytes: WAV_BYTES,
+      filename: "audio.wav",
+      contentType: "audio/wav",
+    });
+    const client = createMockAdapter({ request, httpFile });
+    transcribe({ email: "u@x", token: "tok" }, client, { wavBytes: WAV_BYTES });
+    // The helper was invoked with the raw bytes, the audio/wav mime, and a
+    // .wav filename — k6 needs these for the Content-Disposition header.
+    expect(httpFile).toHaveBeenCalledTimes(1);
+    expect(httpFile).toHaveBeenCalledWith(WAV_BYTES, "audio.wav", "audio/wav");
+    // The body MUST carry the wrapped descriptor (not the raw Uint8Array).
+    const body = request.mock.calls[0]?.[2] as { file: { __k6_http_file: boolean } };
+    expect(body.file.__k6_http_file).toBe(true);
+  });
+
   it("tags the request with endpoint:'transcribe'", () => {
     const request = vi.fn().mockReturnValue(ok());
     transcribe({ email: "u@x", token: "tok" }, clientWith(request), { wavBytes: WAV_BYTES });
