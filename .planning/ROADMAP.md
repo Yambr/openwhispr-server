@@ -514,7 +514,7 @@ Plans:
 - [x] 08-04 — FD probe scripts (Wave 0)
 - [x] 08-05 — docker-compose load-test profiles (Wave 1)
 - [x] 08-06 — k6 flows + Makefile (Wave 2)
-- [ ] 08-07 — live baseline run on Mac (Wave 3)
+- [x] 08-07 — live baseline run on Mac (Wave 3)
 - [ ] 08-08 — operations.md + SLO publication + closure (Wave 4)
 **UI hint**: no
 
