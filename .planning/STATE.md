@@ -3,12 +3,12 @@ gsd_state_version: 1.0
 milestone: v1.6.9
 milestone_name: expects plain session.token text; advisor research recommends Option C
 status: Phase 07.1 complete — ready for /gsd-plan-phase 8
-last_updated: "2026-05-12T14:25:21.019Z"
+last_updated: "2026-05-12T14:30:19.920Z"
 progress:
   total_phases: 35
   completed_phases: 12
   total_plans: 88
-  completed_plans: 108
+  completed_plans: 109
   percent: 34
 ---
 
@@ -96,6 +96,7 @@ progress:
 | Phase 06 P12d | 75min | 2 tasks | 6 files |
 | Phase 08 P01 | 6m | 2 tasks | 5 files |
 | Phase 08 P03 | 11m | 3 tasks | 14 files |
+| Phase 08 P04 | 23min | 2 tasks | 5 files |
 
 ## Accumulated Context
 
@@ -227,3 +228,4 @@ progress:
 - [Phase 06]: Plan 12d: Phase 6 close-out — CI wiring (PR-gate quick + nightly full) + Makefile global gate + per-file COVERAGE.md audit (28 green / 24 rationalised / 0 follow-up). Transcribe rate-limit Rule-2 wire-up fix landed inline. 5/8 e2e wall-time GREEN; 2 wire-up gaps documented as Phase 6.x follow-up (SSRF NODE_ENV propagation; verification-status auth-vs-rate-limit hook order).
 - [Phase 06]: Plan 12e (post-12d follow-up): all 3 remaining e2e gaps CLOSED → `make e2e-test-phase6` reports 8/8 GREEN, 14 tests, 853s wall-time. Two REAL production-code SSRF defenses landed: (a) `makeSSRFConnectGuard` closes the IP-literal connect-bypass where Node's `net.connect` skips the dispatcher's `lookup` callback entirely for IP literals (rfc1918, link_local, ula, loopback, etc.); (b) `findSSRFBlockedError` walks `err.cause` chain to map Node 24's `TypeError('fetch failed', { cause })` wrapping back to the canonical 502 envelope. Plus 3 test-harness wiring fixes in `tests/e2e/helpers/phase6-compose.ts`: `compose run --no-deps` (avoid recreate-under-stale-config), `TESTCONTAINERS_RYUK_DISABLED=true` (avoid ryuk reaping locally-built images via `addComposeProject` label match), drop `compose --wait` for scaled path (grafana healthcheck false-negative blocks). Commits af6a3c8 + 949f1d7.
 - [Phase 08]: OPENWHISPR_DISABLE_RATE_LIMIT switch wired into both Fastify @fastify/rate-limit AND Better Auth's built-in limiter via per-module process.env reads (matches existing OPENWHISPR_DISABLE_* convention); two WARN banners at boot for safety; .env.example documents the LOAD-TEST-ONLY use case
+- [Phase 08]: Plan 08-04: ENTRYPOINT chain via existing entrypoint.sh ([fd-probe.sh, entrypoint.sh]) preserves the default-secrets gate; traefik probe duplicated (not symlinked) with diff -q drift detector — symlinks do not survive per-service Docker build contexts.
