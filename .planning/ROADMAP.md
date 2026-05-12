@@ -508,8 +508,8 @@ Plans:
   6. The first live `make load-test` run actually executes on the developer's Mac (48GB RAM) and produces both mock and realistic baselines; raw k6 output + summary embedded in `08-SUMMARY.md`.
   7. Tests written first (TDD); all CI checks green.
 **Plans**: 8 plans (5 waves)
-- [ ] 08-01 — rate-limit env switch (Wave 0)
-- [ ] 08-02 — load-test workspace scaffold (Wave 0)
+- [x] 08-01 — rate-limit env switch (Wave 0)
+- [x] 08-02 — load-test workspace scaffold (Wave 0)
 - [ ] 08-03 — mock-litellm Fastify scaffold (Wave 0)
 - [ ] 08-04 — FD probe scripts (Wave 0)
 - [ ] 08-05 — docker-compose load-test profiles (Wave 1)
