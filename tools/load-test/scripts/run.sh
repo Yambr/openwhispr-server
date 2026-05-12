@@ -38,8 +38,19 @@ cd "$ROOT"
 
 # Tear-down trap — runs regardless of how the script exits so a failed
 # k6 run does not leak a 1000-VU stack onto the developer Mac.
+#
+# Plan 08.1-01 / Task 1: when OPENWHISPR_LOADTEST_KEEP_STACK=1 is set, the
+# trap is a no-op. This is the forensic-capture escape hatch — if k6 exits
+# non-zero (threshold failure, error spike, etc.) the stack survives so
+# the operator can `docker compose logs api > runs/forensics/api-logs.txt`
+# before tearing it down by hand. LOAD-TEST-ONLY env var; documented in
+# .env.example. Never set in production / CI.
 COMPOSE_BASE="docker compose -f docker-compose.yml -f docker-compose.load-test.yml --profile $COMPOSE_PROFILE"
-trap '$COMPOSE_BASE down >/dev/null 2>&1 || true' EXIT INT TERM
+if [ "${OPENWHISPR_LOADTEST_KEEP_STACK:-0}" = "1" ]; then
+  trap 'printf "OPENWHISPR_LOADTEST_KEEP_STACK=1 — stack left running for forensic capture. Tear down with: %s down\n" "$COMPOSE_BASE" >&2' EXIT INT TERM
+else
+  trap '$COMPOSE_BASE down >/dev/null 2>&1 || true' EXIT INT TERM
+fi
 
 # 1. Preflight (docker resources, ports, git tree).
 sh tools/load-test/scripts/preflight.sh --yes

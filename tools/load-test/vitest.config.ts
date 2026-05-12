@@ -14,13 +14,13 @@ import { defineConfig } from "vitest/config";
 
 export default defineConfig({
   test: {
-    include: ["src/**/*.test.ts"],
+    include: ["src/**/*.test.ts", "scripts/**/*.test.ts"],
     coverage: {
       provider: "v8",
       reporter: ["text", "json-summary", "json", "lcov"],
       reportsDirectory: "./coverage",
       all: false,
-      include: ["src/**/*.ts"],
+      include: ["src/**/*.ts", "scripts/**/*.ts"],
       // k6.config.ts is pure constants consumed only by src/main.ts (the
       // k6 entrypoint). It cannot be unit-tested in isolation — the values
       // are static and their correctness is asserted by the plan-07 live
@@ -31,6 +31,8 @@ export default defineConfig({
         "src/main.ts",
         "src/k6.config.ts",
         "src/fixtures/**",
+        // scripts/*.mjs are Node CLI helpers, not import-graph reachable.
+        "scripts/**/*.mjs",
       ],
       thresholds: {
         lines: 90,
