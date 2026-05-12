@@ -22,7 +22,7 @@ function clientWith(request: HttpClient["request"]): HttpClient {
 const PROMPTS = ["prompt-one", "prompt-two", "prompt-three"];
 
 describe("reason flow", () => {
-  it("POSTs to /api/reason with a JSON {model, messages} body", () => {
+  it("POSTs to /api/reason with a JSON {text} body matching ReasonRequest schema (08.1-01 Task 2)", () => {
     const request = vi.fn().mockReturnValue(ok());
     reason({ email: "u@x", token: "tok-r" }, clientWith(request), {
       prompts: PROMPTS,
@@ -33,11 +33,30 @@ describe("reason flow", () => {
     const [method, url, body] = call;
     expect(method).toBe("POST");
     expect(url).toBe("https://api.localhost/api/reason");
-    const json = body as { model: string; messages: Array<{ role: string; content: string }> };
-    expect(typeof json.model).toBe("string");
-    expect(Array.isArray(json.messages)).toBe(true);
-    expect(json.messages[0]?.role).toBe("user");
-    expect(PROMPTS).toContain(json.messages[0]?.content);
+    // Body is a JSON STRING (k6 won't form-urlencode a string body even
+    // without an explicit content-type header) so the api receives the
+    // exact bytes expected.
+    expect(typeof body).toBe("string");
+    const parsed = JSON.parse(body as string) as {
+      text: string;
+      model?: unknown;
+      messages?: unknown;
+    };
+    expect(typeof parsed.text).toBe("string");
+    expect(PROMPTS).toContain(parsed.text);
+    // ReasonRequest is .strict() — must NOT carry messages / model.
+    expect(parsed.messages).toBeUndefined();
+    expect(parsed.model).toBeUndefined();
+  });
+
+  it("sets content-type: application/json so Fastify's JSON parser fires (08.1-01 Task 2)", () => {
+    const request = vi.fn().mockReturnValue(ok());
+    reason({ email: "u@x", token: "t" }, clientWith(request), {
+      prompts: PROMPTS,
+      iteration: 0,
+    });
+    const opts = request.mock.calls[0]?.[3] as { headers?: Record<string, string> };
+    expect(opts?.headers?.["content-type"]).toBe("application/json");
   });
 
   it("picks prompts deterministically by iteration index", () => {
@@ -46,8 +65,8 @@ describe("reason flow", () => {
       prompts: PROMPTS,
       iteration: 1,
     });
-    const body = request.mock.calls[0]?.[2] as { messages: Array<{ content: string }> };
-    expect(body.messages[0]?.content).toBe(PROMPTS[1]);
+    const parsed = JSON.parse(request.mock.calls[0]?.[2] as string) as { text: string };
+    expect(parsed.text).toBe(PROMPTS[1]);
   });
 
   it("tags the request with endpoint:'reason'", () => {
@@ -66,8 +85,8 @@ describe("reason flow", () => {
       prompts: [],
       iteration: 0,
     });
-    const body = request.mock.calls[0]?.[2] as { messages: Array<{ content: string }> };
-    expect(body.messages[0]?.content).toBe("");
+    const parsed = JSON.parse(request.mock.calls[0]?.[2] as string) as { text: string };
+    expect(parsed.text).toBe("");
   });
 
   it("sends the bearer token in the Authorization header", () => {
