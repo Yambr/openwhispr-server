@@ -114,10 +114,10 @@ Authoritative wire shapes pinned by the OpenWhispr client TS interfaces at `~/op
 
 ### Frontend Implementation (Phase 07.1)
 
-- [ ] **WEB-IMPL-01**: `apps/web/` exists as Next.js 15 App Router + React 19 + TypeScript strict + Tailwind 4 + shadcn/ui v2 project; `pnpm --filter web build` exits 0; bundle ≤200KB gzipped per route enforced by `size-limit` CI gate
-- [ ] **WEB-IMPL-02**: Every screen from `UI-SPEC-admin.md` (A2, A3) and `UI-SPEC-end-user.md` (U1–U13) is implemented at the exact route paths the spec names; all 4 UI states (loading/empty/error/success) rendered per UI-SPEC; copy keys consumed from `apps/web/src/locales/en/{admin,end-user,common}.json`
-- [ ] **WEB-IMPL-03**: Same-origin deploy: docker-compose service `web` (Next.js production server), Traefik routes `/` → web and `/api/*` → api; `/admin/*` gated by Traefik basic-auth middleware reading `ADMIN_BASIC_AUTH_USERS` env; CSP/HSTS/X-Frame-Options=DENY headers in `next.config.ts`
-- [ ] **WEB-IMPL-04**: Playwright e2e covers each of 15 screens × 4 UI states + 1 axe-core WCAG 2.2 AA scan per screen (≈75 tests) against real docker-compose stack (api + Postgres + Valkey + Better Auth); CI green; coverage ≥90/90/90/90 on diff
+- [x] **WEB-IMPL-01**: `apps/web/` exists as Next.js 15 App Router + React 19 + TypeScript strict + Tailwind 4 + shadcn/ui v2 project; `pnpm --filter web build` exits 0; bundle ≤200KB gzipped per route enforced by `size-limit` CI gate
+- [x] **WEB-IMPL-02**: Every screen from `UI-SPEC-admin.md` (A2, A3) and `UI-SPEC-end-user.md` (U1–U13) is implemented at the exact route paths the spec names; all 4 UI states (loading/empty/error/success) rendered per UI-SPEC; copy keys consumed from `apps/web/src/locales/en/{admin,end-user,common}.json`
+- [x] **WEB-IMPL-03**: Same-origin deploy: docker-compose service `web` (Next.js production server), Traefik routes `/` → web and `/api/*` → api; `/admin/*` gated by Traefik basic-auth middleware reading `ADMIN_BASIC_AUTH_USERS` env; CSP/HSTS/X-Frame-Options=DENY headers in `next.config.ts`
+- [x] **WEB-IMPL-04**: Playwright e2e covers each of 15 screens × 4 UI states + 1 axe-core WCAG 2.2 AA scan per screen (≈75 tests) against real docker-compose stack (api + Postgres + Valkey + Better Auth); CI green; coverage ≥90/90/90/90 on diff
 
 ### Deployment
 
@@ -280,9 +280,13 @@ All 89 v1 requirements mapped by `gsd-roadmapper` on 2026-05-08.
 | OBS-03 | Phase 6 | Complete |
 | OBS-04 | Phase 6 | Complete |
 | OBS-05 | Phase 6 | Complete |
-| UI-SPEC-01 | Phase 7 | Pending |
-| UI-SPEC-02 | Phase 7 | Pending |
-| UI-SPEC-03 | Phase 7 | Pending |
+| UI-SPEC-01 | Phase 7 | Complete |
+| UI-SPEC-02 | Phase 7 | Complete |
+| UI-SPEC-03 | Phase 7 | Complete |
+| WEB-IMPL-01 | Phase 07.1 | Complete |
+| WEB-IMPL-02 | Phase 07.1 | Complete |
+| WEB-IMPL-03 | Phase 07.1 | Complete |
+| WEB-IMPL-04 | Phase 07.1 | Complete |
 | DEPLOY-01 | Phase 9 | Pending |
 | DEPLOY-02 | Phase 9 | Pending |
 | DEPLOY-03 | Phase 9 | Pending |
@@ -314,10 +318,10 @@ All 89 v1 requirements mapped by `gsd-roadmapper` on 2026-05-08.
 | DOCS-09 | Phase 0 | Complete |
 
 **Coverage:**
-- v1 requirements: 97 total (89 baseline + 8 added 2026-05-11 for Phase 5 CRUD scope-expansion: WIRE-22..29)
-- Mapped to phases: 97 ✓
+- v1 requirements: 101 total (89 baseline + 8 added 2026-05-11 for Phase 5 CRUD scope-expansion: WIRE-22..29 + 4 added 2026-05-12 for Phase 07.1 web implementation: WEB-IMPL-01..04)
+- Mapped to phases: 101 ✓
 - Unmapped: 0
-- Phase distribution: 0=9, 1=8, 2=18, 3=11, 4=5, 5=14, 6=9, 7=3, 8=4, 9=5, 10=11
+- Phase distribution: 0=9, 1=8, 2=18, 3=11, 4=5, 5=14, 6=9, 7=3, 07.1=4, 8=4, 9=5, 10=11
 
 ## Phase-Level Plan Traceability
 
@@ -398,5 +402,24 @@ Wave structure:
 
 ---
 
+### Phase 07.1 — Web App Implementation (planned + executed 2026-05-12)
+
+| Requirement | Plan(s) | Primary Artifacts |
+|-------------|---------|-------------------|
+| WEB-IMPL-01 | 01, 02, 04, 13 | `apps/web/` Next.js 15 + React 19 + Tailwind 4 + shadcn/ui v2; `apps/web/next.config.ts` (standalone); `apps/web/.size-limit.json`; bundle gate enforced — max 168.84 kB gz across 15 routes |
+| WEB-IMPL-02 | 07, 08, 09, 10, 11, 12 | A2 + A3 + U1–U13 at exact UI-SPEC route paths; 4 UI states per screen; 241 copy keys in `apps/web/src/locales/en/{admin,end-user,common}.json` |
+| WEB-IMPL-03 | 01, 03 | `docker-compose.yml` `web` service + Traefik labels (`/` → web, `/api/*` → api, `/admin/*` basic-auth); CSP/HSTS/X-Frame-Options DENY/Referrer-Policy/Permissions-Policy in `next.config.ts` |
+| WEB-IMPL-04 | 04, 07–12, 13, 14 | `apps/web/playwright.config.ts` + `apps/web/tests/e2e/*.spec.ts`; 85/85 PASS (15 screens × 4 states + 15 axe + cross-screen smoke + auth flows); vitest 510 PASS; coverage 98.53/92.99/97.79/97.62 |
+
+Wave structure:
+- Wave 0 (sequential): 01 (scaffold) → 02 (shadcn) → 03 (compose+traefik) → 04 (vitest+playwright)
+- Wave 1 (sequential after 0): 05 (Better Auth) → 06 (providers/i18n/RHF)
+- Wave 2 (parallel after 1): 07 (auth slice U1/U2/U3, gating) ⊥ 12 (admin A2/A3)
+- Wave 3 (parallel after 07): 08 (U4/U5) ⊥ 09 (U6/U7) ⊥ 10 (U8/U9/U10) ⊥ 11 (U11/U12/U13)
+- Wave 4 (sequential): 13 (integration + size-limit + GHA + lefthook + cross-screen smoke)
+- Wave 5 (sequential): 14 (finalize — full sweep + SUMMARY + STATE/ROADMAP/REQUIREMENTS)
+
+---
+
 *Requirements defined: 2026-05-08*
-*Last updated: 2026-05-11 — Phase 5 WIRE-08..29 flipped to Complete + plan-level traceability added (Plans 05-01..05-10).*
+*Last updated: 2026-05-12 — Phase 07.1 WEB-IMPL-01..04 flipped to Complete; UI-SPEC-01..03 also flipped to Complete (Phase 7 closed); plan-level traceability added (Plans 07.1-01..07.1-14).*
