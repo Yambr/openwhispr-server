@@ -50,25 +50,24 @@ services:
       - ./compose/postgres/load-test.conf:/etc/postgresql/postgresql.conf:ro
 
   # ---------------------------------------------------------------------
-  # Disable the single-instance PgBouncer under load-test. The base
-  # service has `profiles: [default, db-only]` so neither load-test-mock
-  # nor load-test-realistic match it — it naturally drops out. We re-state
-  # the same gating here for clarity; no behaviour change.
-  # ---------------------------------------------------------------------
-  pgbouncer:
-    profiles: [default, db-only]
-
-  # ---------------------------------------------------------------------
   # PgBouncer scale-out (D-TUNE-1 / RESEARCH §Pattern 3). Four identical
   # instances, each with DEFAULT_POOL_SIZE=100. All share the network alias
   # `pgbouncer` on openwhispr_internal so api/worker keep using the
   # canonical hostname; Docker DNS round-robins across the 4 container
   # IPs. Inline duplication is intentional — YAML anchor merge across
   # docker-compose versions is fragile (plan 08-05 known-pitfall A6).
+  #
+  # NOTE: The base `pgbouncer` service is OVERRIDDEN here (not a new
+  # service) so api.depends_on.pgbouncer continues to resolve under
+  # load-test profiles. We extend profiles to include both load-test
+  # variants; the base service's [default, db-only] profiles are
+  # preserved by compose merge concat. The other three replicas
+  # (pgbouncer-2..4) are new services that share the `pgbouncer` DNS
+  # alias for Docker's round-robin resolver.
   # ---------------------------------------------------------------------
-  pgbouncer-1:
+  pgbouncer:
     image: edoburu/pgbouncer:v1.25.1-p0
-    profiles: [load-test-mock, load-test-realistic]
+    profiles: [default, db-only, load-test-mock, load-test-realistic]
     networks:
       openwhispr_internal:
         aliases:
@@ -259,21 +258,42 @@ services:
       - ./compose/grafana/dashboards:/etc/grafana/dashboards/k6:ro
 
   # ---------------------------------------------------------------------
-  # mock-litellm: Fastify app from plan 08-03 (compose/mock-litellm/).
-  # Stands in for the real LiteLLM upstream under load-test-mock so we
-  # can isolate api+pooler+postgres latency from external LLM latency.
-  # Network alias `litellm` on openwhispr_internal so api's existing
-  # LITELLM_BASE_URL=http://litellm:4000 resolves transparently.
+  # litellm OVERRIDE: under load-test profiles, the real LiteLLM service
+  # is replaced with the mock-litellm Fastify app from plan 08-03
+  # (compose/mock-litellm/). This isolates api+pooler+postgres latency
+  # from external LLM latency (D-PROF-1).
+  #
+  # We extend the base `litellm` service's profiles to include both
+  # load-test profiles AND swap the image/build/command/env/depends_on
+  # so the same DNS name `litellm` resolves to the mock app on the
+  # openwhispr_internal network. api's existing
+  # LITELLM_BASE_URL=http://litellm:4000 keeps working transparently.
+  #
+  # Compose merge note: profiles arrays concat (overlay adds), image
+  # field replaces, build field replaces, command replaces, environment
+  # merges per-key, depends_on merges per-key. We set environment values
+  # to empty so they no-op (LiteLLM-specific provider keys irrelevant to
+  # the mock) and accept that the merged depends_on still references
+  # postgres+migrate (both available under load-test profiles per the
+  # extended profile arrays in docker-compose.yml).
   # ---------------------------------------------------------------------
-  mock-litellm:
+  litellm:
+    profiles: [default, load-test-mock, load-test-realistic]
     build:
       context: ./compose/mock-litellm
     image: openwhispr-mock-litellm:dev
-    profiles: [load-test-mock]
-    networks:
-      openwhispr_internal:
-        aliases:
-          - litellm
+    # Drop the LiteLLM upstream command/volume — mock-litellm has its own
+    # node entrypoint baked into the image.
+    command: []
+    volumes: []
+    environment:
+      # Unset LiteLLM-specific env (no-op for the mock).
+      LITELLM_MASTER_KEY: ""
+      LITELLM_DATABASE_URL: ""
+      DATABASE_URL: ""
+      OPENROUTER_API_KEY: ""
+      GROQ_API_KEY: ""
+      OPENAI_API_KEY: ""
     healthcheck:
       test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:4000/health/liveliness"]
       interval: 5s
