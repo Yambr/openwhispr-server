@@ -15,6 +15,14 @@ pre-commit:
     tenant-context:
       glob: "apps/worker/src/jobs/*.ts"
       run: pnpm exec tsx tools/lint-tenant-context.ts
+    # Phase 7 / Plan 06 — fail-fast when UI-SPEC artifacts or the linter
+    # itself drift. The lint scan is ~300 ms against the two SPEC files;
+    # fast enough for pre-commit. Glob covers SPEC files, linter source +
+    # tests + config + fixtures, and the routes directory the linter scans
+    # for endpoint-exists validation.
+    ui-spec:
+      glob: "{.planning/phases/07-frontend-ui-spec/UI-SPEC-*.md,tools/lint-ui-spec.ts,tools/lint-ui-spec.test.ts,tools/lint-ui-spec.config.ts,tools/lint-ui-spec/fixtures/**,apps/api/src/routes/**}"
+      run: pnpm lint:ui-spec
 commit-msg:
   commands:
     commitlint:

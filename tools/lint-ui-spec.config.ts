@@ -51,6 +51,12 @@ export const BETTER_AUTH_PATHS: ReadonlyArray<string> = [
   "DELETE /api/auth/delete-account",
   "GET /api/auth/sign-in/social/google",
   "GET /api/auth/sign-in/social/github",
+  // Generic OIDC provider (operator-configured upstream IdP — Better Auth
+  // genericOAuth plugin). Identified by literal `oidc` in the catch-all URL.
+  "GET /api/auth/sign-in/social/oidc",
+  // Dynamic placeholder used in UI-SPEC prose when the provider is parametric
+  // (`sign-in/social/[provider]`). Resolves through the same catch-all mount.
+  "GET /api/auth/sign-in/social/:provider",
   "GET /api/auth/callback/google",
   "GET /api/auth/callback/github",
   "GET /api/auth/callback/oidc",
