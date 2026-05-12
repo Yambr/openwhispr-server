@@ -66,7 +66,9 @@ services:
   # alias for Docker's round-robin resolver.
   # ---------------------------------------------------------------------
   pgbouncer:
-    image: edoburu/pgbouncer:v1.25.1-p0
+    build:
+      context: ./compose/pgbouncer
+      dockerfile: Dockerfile
     profiles: [default, db-only, load-test-mock, load-test-realistic]
     networks:
       openwhispr_internal:
@@ -78,6 +80,8 @@ services:
       DB_USER: ${POSTGRES_APP_USER}
       DB_PASSWORD: ${POSTGRES_APP_PASSWORD}
       DB_NAME: openwhispr
+      # Plan 08.1-01 Task 4 — pgbouncer admin (SHOW POOLS) credentials.
+      PGBOUNCER_ADMIN_PASSWORD: ${PGBOUNCER_ADMIN_PASSWORD}
       POOL_MODE: transaction
       AUTH_TYPE: scram-sha-256
       MAX_CLIENT_CONN: "2000"
@@ -98,7 +102,9 @@ services:
       start_period: 5s
 
   pgbouncer-2:
-    image: edoburu/pgbouncer:v1.25.1-p0
+    build:
+      context: ./compose/pgbouncer
+      dockerfile: Dockerfile
     profiles: [load-test-mock, load-test-realistic]
     networks:
       openwhispr_internal:
@@ -110,6 +116,8 @@ services:
       DB_USER: ${POSTGRES_APP_USER}
       DB_PASSWORD: ${POSTGRES_APP_PASSWORD}
       DB_NAME: openwhispr
+      # Plan 08.1-01 Task 4 — pgbouncer admin (SHOW POOLS) credentials.
+      PGBOUNCER_ADMIN_PASSWORD: ${PGBOUNCER_ADMIN_PASSWORD}
       POOL_MODE: transaction
       AUTH_TYPE: scram-sha-256
       MAX_CLIENT_CONN: "2000"
@@ -130,7 +138,9 @@ services:
       start_period: 5s
 
   pgbouncer-3:
-    image: edoburu/pgbouncer:v1.25.1-p0
+    build:
+      context: ./compose/pgbouncer
+      dockerfile: Dockerfile
     profiles: [load-test-mock, load-test-realistic]
     networks:
       openwhispr_internal:
@@ -142,6 +152,8 @@ services:
       DB_USER: ${POSTGRES_APP_USER}
       DB_PASSWORD: ${POSTGRES_APP_PASSWORD}
       DB_NAME: openwhispr
+      # Plan 08.1-01 Task 4 — pgbouncer admin (SHOW POOLS) credentials.
+      PGBOUNCER_ADMIN_PASSWORD: ${PGBOUNCER_ADMIN_PASSWORD}
       POOL_MODE: transaction
       AUTH_TYPE: scram-sha-256
       MAX_CLIENT_CONN: "2000"
@@ -162,7 +174,9 @@ services:
       start_period: 5s
 
   pgbouncer-4:
-    image: edoburu/pgbouncer:v1.25.1-p0
+    build:
+      context: ./compose/pgbouncer
+      dockerfile: Dockerfile
     profiles: [load-test-mock, load-test-realistic]
     networks:
       openwhispr_internal:
@@ -174,6 +188,8 @@ services:
       DB_USER: ${POSTGRES_APP_USER}
       DB_PASSWORD: ${POSTGRES_APP_PASSWORD}
       DB_NAME: openwhispr
+      # Plan 08.1-01 Task 4 — pgbouncer admin (SHOW POOLS) credentials.
+      PGBOUNCER_ADMIN_PASSWORD: ${PGBOUNCER_ADMIN_PASSWORD}
       POOL_MODE: transaction
       AUTH_TYPE: scram-sha-256
       MAX_CLIENT_CONN: "2000"
