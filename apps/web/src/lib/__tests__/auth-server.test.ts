@@ -5,6 +5,15 @@
 // `next/headers` and `fetch` at the network boundary only (CLAUDE.md).
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+// Vitest mock call accessor that narrows the tuple shape so
+// noUncheckedIndexedAccess is satisfied.
+function firstCall(mock: unknown): [string, RequestInit] {
+  const calls = (mock as { mock: { calls: unknown[][] } }).mock.calls;
+  const call = calls[0];
+  if (!call) throw new Error("expected fetch mock to be called at least once");
+  return [call[0] as string, (call[1] ?? {}) as RequestInit];
+}
+
 const headersMock = vi.fn();
 vi.mock("next/headers", () => ({
   headers: () => headersMock(),
@@ -48,9 +57,8 @@ describe("auth-server.getServerSession (Phase 07.1 / Plan 05)", () => {
 
     // Cookie forwarding (Pitfall 2): cookie header from next/headers() MUST
     // be propagated on the upstream fetch.
-    const call = fetchMock.mock.calls[0]!;
-    expect(call[0]).toBe("http://api:3000/api/auth/get-session");
-    const init = call[1] as RequestInit;
+    const [url, init] = firstCall(fetchMock);
+    expect(url).toBe("http://api:3000/api/auth/get-session");
     expect((init.headers as Record<string, string>).cookie).toBe(
       "openwhispr.session_token=abc",
     );
@@ -67,7 +75,7 @@ describe("auth-server.getServerSession (Phase 07.1 / Plan 05)", () => {
     const session = await getServerSession();
 
     expect(session).toBeNull();
-    const init = fetchMock.mock.calls[0]![1] as RequestInit;
+    const [, init] = firstCall(fetchMock);
     expect((init.headers as Record<string, string>).cookie).toBe("");
   });
 
@@ -102,6 +110,30 @@ describe("auth-server.getServerSession (Phase 07.1 / Plan 05)", () => {
     expect(session).toBeNull();
   });
 
+  it("returns null when the body is JSON-parseable but missing session/user fields", async () => {
+    headersMock.mockResolvedValue(new Headers({ cookie: "openwhispr.session_token=abc" }));
+    globalThis.fetch = vi.fn(async () =>
+      new Response(JSON.stringify({ session: { id: "s1" } }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      }),
+    ) as typeof fetch;
+
+    const { getServerSession } = await import("../auth-server");
+    const session = await getServerSession();
+    expect(session).toBeNull();
+  });
+
+  it("returns null when the body parses to `null`", async () => {
+    headersMock.mockResolvedValue(new Headers({ cookie: "openwhispr.session_token=abc" }));
+    globalThis.fetch = vi.fn(async () =>
+      new Response("null", { status: 200, headers: { "content-type": "application/json" } }),
+    ) as typeof fetch;
+
+    const { getServerSession } = await import("../auth-server");
+    expect(await getServerSession()).toBeNull();
+  });
+
   it("falls back to http://api:3000 when INTERNAL_API_URL is unset", async () => {
     process.env.INTERNAL_API_URL = "";
     headersMock.mockResolvedValue(new Headers({ cookie: "x=1" }));
@@ -115,6 +147,6 @@ describe("auth-server.getServerSession (Phase 07.1 / Plan 05)", () => {
 
     const { getServerSession } = await import("../auth-server");
     await getServerSession();
-    expect(fetchMock.mock.calls[0]![0]).toBe("http://api:3000/api/auth/get-session");
+    expect(firstCall(fetchMock)[0]).toBe("http://api:3000/api/auth/get-session");
   });
 });
