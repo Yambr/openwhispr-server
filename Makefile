@@ -305,8 +305,16 @@ contract-test-deployed:
 	BACKEND_URL=$(BACKEND_URL) AUTH_URL=$(AUTH_URL) \
 	  pnpm -F @openwhispr/contract-tests test --run
 
+# Phase 08 / Plan 06 — k6 load-test entrypoint.
+#
+# `make load-test PROFILE=mock` (default) runs against mock-litellm —
+# isolates api+pooler+postgres+valkey latency from external LLM upstream.
+# `make load-test PROFILE=realistic` boots Speaches + Whisper-large-v3
+# and pre-warms the model before k6 starts so cold-start is invisible.
+# The orchestrator (tools/load-test/scripts/run.sh) handles preflight,
+# stack-up, k6 invocation, run-output capture, and teardown.
 load-test:
-	@echo "load-test target lands in Phase 8"; exit 1
+	@bash tools/load-test/scripts/run.sh $(or $(PROFILE),mock)
 
 seed:
 	@echo "seed target lands in Phase 1"; exit 1
