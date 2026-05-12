@@ -56,7 +56,12 @@ if [ "$PROFILE" = "realistic" ]; then
 fi
 
 # 5. Build the k6 bundle.
-pnpm --filter @openwhispr/load-test build
+# Use `pnpm run` from inside the workspace dir (not --filter) to avoid
+# a pnpm 11 issue where filtered scripts running compound commands
+# (`tsup && cp`) return to the caller before the trailing command flushes
+# under stdin-redirected child shells (run.sh's case). Direct invocation
+# from the package dir is synchronous and predictable.
+(cd tools/load-test && pnpm run build)
 
 # 6. Capture run outputs under the phase runs/ directory.
 RUN_DIR=.planning/phases/08-load-test-tuning-slo-publication/runs
