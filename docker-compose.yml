@@ -178,6 +178,12 @@ services:
       - ./compose/traefik/traefik.yml:/etc/traefik/traefik.yml:ro
       - ./compose/traefik/dynamic.yml:/etc/traefik/dynamic.yml:ro
       - ./compose/traefik/certs:/certs:ro
+      # Phase 07.1 Plan 03 — read-only docker socket mount so the docker
+      # provider declared in traefik.yml can discover label-tagged
+      # containers (the `web` service). RO is the documented secure
+      # pattern: Traefik only LISTS containers; it never invokes
+      # docker exec / start / stop via this socket.
+      - /var/run/docker.sock:/var/run/docker.sock:ro
     command:
       - --ping=true
     healthcheck:
@@ -548,6 +554,87 @@ services:
       otel-collector:
         condition: service_started
     restart: unless-stopped
+
+  # Phase 07.1 Plan 03 — Next.js 15 web app (WEB-IMPL-03 / D-DEPLOY-1 /
+  # D-DEPLOY-2 / D-ADMIN-1 / D-ADMIN-2). Same-origin deploy behind Traefik:
+  # router `web` (priority 1, PathPrefix `/`) handles every non-/api/* path;
+  # router `web-admin` (priority 100, PathPrefix `/admin`) attaches the
+  # `admin-basicauth` Traefik middleware so /admin/* is gated at the edge
+  # without an application-level role check (Phase 7 A4 refutation: Better
+  # Auth v1.6.9 has no `role` column).
+  #
+  # Routing precedence: the existing `api` router (Host(api.localhost), file
+  # provider) ranks above `web` for /api/* because Traefik scores rules
+  # primarily by specificity, and we explicitly set `web.priority=1` to keep
+  # web the absolute fallback. `web-admin.priority=100` outranks `web` so
+  # /admin/* always engages basic-auth first.
+  #
+  # Network: openwhispr_internal only — no host port. Traefik discovers the
+  # service via the docker provider added in compose/traefik/traefik.yml
+  # (read-only socket mount above on the traefik service).
+  #
+  # ADMIN_BASIC_AUTH_USERS: htpasswd-format `user:hash` entries, comma-
+  # separated. Bcrypt hashes contain `$` which docker-compose interpolates;
+  # operators MUST escape each `$` as `$$` in their `.env` (documented in
+  # .env.example). The label below interpolates the value at compose-up
+  # time; Traefik then sees the un-escaped htpasswd line.
+  web:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+    profiles: [default]
+    networks: [openwhispr_internal]
+    env_file: .env
+    environment:
+      NODE_ENV: production
+      # Same-origin: server-side fetches from RSC / route handlers reach
+      # apps/api on the internal bridge (no Traefik hop). The browser-side
+      # fetches go through Traefik via relative `/api/*` paths.
+      INTERNAL_API_URL: http://api:3000
+      # /admin/observability deep-links (Phase 07.1 A2). Empty defaults hide
+      # the links gracefully; operators populate per environment.
+      NEXT_PUBLIC_GRAFANA_BASE_URL: ${NEXT_PUBLIC_GRAFANA_BASE_URL:-}
+      NEXT_PUBLIC_TEMPO_BASE_URL: ${NEXT_PUBLIC_TEMPO_BASE_URL:-}
+      NEXT_PUBLIC_MIMIR_BASE_URL: ${NEXT_PUBLIC_MIMIR_BASE_URL:-}
+      NEXT_PUBLIC_LOKI_BASE_URL: ${NEXT_PUBLIC_LOKI_BASE_URL:-}
+      # OIDC provider button slugs surfaced on /sign-in (U1). Server-side
+      # OIDC config lives in apps/api per Phase 2 PROVIDER-03; this var
+      # controls UI visibility only.
+      NEXT_PUBLIC_OIDC_PROVIDERS: ${NEXT_PUBLIC_OIDC_PROVIDERS:-google,github,oidc}
+    depends_on:
+      api:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:3000/api/health"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 30s
+    restart: unless-stopped
+    labels:
+      - "traefik.enable=true"
+      # Catch-all router: every request to Host(api.localhost) not consumed
+      # by the more-specific api router falls through here. priority=1 keeps
+      # it the absolute last-resort match.
+      - "traefik.http.routers.web.rule=Host(`api.localhost`)"
+      - "traefik.http.routers.web.priority=1"
+      - "traefik.http.routers.web.entrypoints=websecure"
+      - "traefik.http.routers.web.tls=true"
+      - "traefik.http.routers.web.service=web-svc"
+      # Admin router: PathPrefix(/admin) + basic-auth middleware. priority=100
+      # outranks `web` so /admin/* engages the gate before falling through.
+      - "traefik.http.routers.web-admin.rule=Host(`api.localhost`) && PathPrefix(`/admin`)"
+      - "traefik.http.routers.web-admin.priority=100"
+      - "traefik.http.routers.web-admin.entrypoints=websecure"
+      - "traefik.http.routers.web-admin.tls=true"
+      - "traefik.http.routers.web-admin.service=web-svc"
+      - "traefik.http.routers.web-admin.middlewares=admin-basicauth@docker"
+      # Backend service: Next.js standalone listens on 3000.
+      - "traefik.http.services.web-svc.loadbalancer.server.port=3000"
+      # admin-basicauth middleware definition. ADMIN_BASIC_AUTH_USERS in
+      # .env MUST escape each bcrypt `$` as `$$` (compose interpolation);
+      # Traefik receives the un-escaped htpasswd line.
+      - "traefik.http.middlewares.admin-basicauth.basicauth.users=${ADMIN_BASIC_AUTH_USERS}"
 
   # Phase 2 Plan 02 — Mailpit dev SMTP catch-all. ONLY in the `dev`
   # profile (Pitfall: never instantiate in production via plain

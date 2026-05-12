@@ -5,8 +5,17 @@
 
 http:
   routers:
+    # Phase 07.1 Plan 03 — restricted to PathPrefix(/api). The api service
+    # only ever serves /api/* (and /v1/realtime, which has its own router
+    # `api-realtime` bound to the dedicated :8443 websecure-realtime
+    # entrypoint). Adding the path constraint keeps the api router from
+    # capturing every Host(api.localhost) request, which would otherwise
+    # shadow the new `web@docker` router (priority=1) — the api router's
+    # length-based score (~21) would always win on a pure Host(...) match.
+    # All known api endpoints live under /api/* (verified by enumerating
+    # apps/api/src/routes/**/*.ts route declarations during Plan 03).
     api:
-      rule: "Host(`api.localhost`)"
+      rule: "Host(`api.localhost`) && PathPrefix(`/api`)"
       service: api-svc
       entryPoints: [websecure]
       tls: {}

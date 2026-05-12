@@ -102,6 +102,24 @@ providers:
   file:
     filename: /etc/traefik/dynamic.yml
     watch: true
+  # Phase 07.1 Plan 03 (WEB-IMPL-03 / D-DEPLOY-1) — docker provider added
+  # alongside the file provider so the `web` compose service can declare
+  # its routers and the `admin-basicauth` middleware via labels. Both
+  # providers coexist: file remains primary for api / grafana / minio /
+  # mailpit / api-realtime; docker carries only the web service's
+  # router+middleware set. `exposedByDefault: false` means containers
+  # MUST opt in with `traefik.enable=true`. `network` pins which docker
+  # network Traefik routes traffic on for label-resolved backends — must
+  # match the internal bridge the web container attaches to.
+  docker:
+    exposedByDefault: false
+    # Docker Compose v2 prefixes user-defined networks with the project name
+    # (set via `name: openwhispr` at the top of docker-compose.yml), so the
+    # internal bridge is `openwhispr_openwhispr_internal` at the daemon level
+    # even though the compose key is `openwhispr_internal`. Traefik resolves
+    # backend container IPs through this network — must match exactly or
+    # Traefik logs a noisy warning and defaults to the first available net.
+    network: openwhispr_openwhispr_internal
 
 log:
   level: INFO
