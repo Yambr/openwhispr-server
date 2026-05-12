@@ -217,6 +217,14 @@ services:
       # Default profile MUST NOT carry this — the load-test overlay scopes
       # it to load-test-mock + load-test-realistic only.
       OPENWHISPR_DISABLE_RATE_LIMIT: "1"
+      # Phase 08-07 / D-LOAD-EV — load-test sign-up flow pre-provisions
+      # 1000 users via Better Auth /api/auth/sign-up/email and reads the
+      # session token directly off the response. With strict email
+      # verification (production default), sign-up returns a synthetic
+      # 200 with no token and provisionUsers() throws. Disable the
+      # verification gate ONLY inside the load-test profile envelope —
+      # production .env continues to use the production default.
+      OPENWHISPR_DISABLE_EMAIL_VERIFICATION: "1"
 
   # ---------------------------------------------------------------------
   # traefik: D-TUNE-2 ulimits + fd-probe entrypoint shim (plan 08-04).
