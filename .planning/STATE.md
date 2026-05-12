@@ -14,28 +14,28 @@ progress:
 
 # Project State: OpenWhispr Server
 
-**Last updated:** 2026-05-12 (Phase 08.1-01 closed: 2/3 anomalies LIVE-validated, 1 CODE-closed; agent-stream api-side undici issue + 30-min plateau escalated as out-of-scope follow-up for plan 08-08)
+**Last updated:** 2026-05-12 (Phase 08.2 CLOSED: 3 atomic commits across 2 plans landed Option A — agent-stream now calls shared litellm-client's chatCompletionsStream via undici.request; live forensic-probe returns content-bearing NDJSON ending in finishReason:"stop"; new architectural finding documented re. undici 7.25 signal + custom-wrapped Agent)
 
 ## Project Reference
 
 **Core value:** A drop-in OpenWhispr backend any organization can self-host — open-source out of the box, corporate-LiteLLM-ready by env override.
 
-**Current focus:** Phase 08.1 (gap-closure of plan 08-07's 3 anomalies) CLOSED 2026-05-12T18:00:00Z. Plan 08.1-01 landed 7 atomic commits (forensic probe + 3 schema-fix commits + 1 realtime-ws Trend commit + 1 pgbouncer bootstrap commit + 1 partial-mock-baseline commit). Live-validated: transcribe + reason return 200 against the running stack (Tasks 2.a, 2.b closed); pgbouncer_admin SHOW POOLS returns rows (Task 4 closed). Code-validated: realtime-ws custom Trend (Task 3 closed via 8 unit tests; live deferred — mock-litellm doesn't implement /v1/realtime). Escalated: agent-stream's api-side undici.fetch integration emits `upstream_error` despite Fastify accepting the k6 body — outside Plan 08.1-01 scope (the load-test code is correct). Coverage 96.94/94/100/96.85 on `tools/load-test/`. The canonical 30-min 1000-VU plateau is the operator's hand-off via `make load-test PROFILE=mock` (compose envs + image tag now pinned in the load-test overlay for reproducibility). Plan 08-08 still gated on the operator's plateau + the agent-stream api-side fix. Realistic profile remains DEFERRED per RESEARCH.md §Pitfall 2. Phases 0/1/2/3/4/5/6/7/07.1 closed; Phase 8 partially done; Phase 08.1 closed.
+**Current focus:** Phase 08.2 (agent-stream undici dispatcher fix) CLOSED 2026-05-12. Three atomic commits across two plans landed Option A from 08.2-RESEARCH.md scorecard. Plan 08.2-01 (`feat(08.2-01): add chatCompletionsStream to @openwhispr/litellm-client`, commit `6040ed5`) extended the shared client with a streaming method returning Dispatcher.ResponseData (Node Readable body NOT pre-consumed on 2xx); 7 RED→GREEN tests against MockAgent + doRequest spy; coverage 100/98/100/100; T-08.2-01 mitigation verified (no per-call dispatcher option). Plan 08.2-02 (`fix(08.2-02): replace undici.fetch in agent/stream with shared litellm-client streaming method`, commit `741a009`; `fix(08.2-02): stop forwarding signal to litellm client in agent/stream (live-probe finding)`, commit `ae0dcc3`) refactored the route + delivered a deviation-after-live-probe: empirical evidence showed `undici 7.25` + `signal:AbortSignal` + the process-wide SSRF-wrapped Agent fails at connect/dispatch even on `undici.request`; removing the signal at the route call site restored content-bearing SSE. 17/17 unit tests GREEN; coverage 100/90.47/100/100 on stream.ts; SSRF dispatcher untouched, 54/54 SSRF tests GREEN. Live forensic-probe artifact at `.planning/phases/08.2-agent-stream-undici-dispatcher-fix/forensics/forensic-probe-output-post-fix.json` shows 12 text-delta chunks then a `{"type":"finish","finishReason":"stop"}` chunk — original upstream_error symptom eliminated. Plan 08-08 unblocked. Realistic profile remains DEFERRED per RESEARCH.md §Pitfall 2. Phases 0/1/2/3/4/5/6/7/07.1/08.1/08.2 closed; Phase 8 partially done (08-01..08-07 closed; 08-08 next).
 
 ## Current Position
 
 | Field | Value |
 |-------|-------|
 | Milestone | v1 |
-| Phase | 8 — Load Test, Tuning & SLO Publication (in progress); 08.1 — Deferral Fixes + Mock Re-run (CLOSED 2026-05-12) |
-| Plan | Phase 8: 08-01..08-07 closed, 08-08 still blocked on operator plateau + api-side agent-stream fix. Phase 08.1: 08.1-01 CLOSED (partial-live-validation per the plan's wall-clock cap protocol). |
-| Status | 08.1 closed. 08-08 next, requires (a) operator runs full 30-min mock plateau, (b) follow-on api-side fix for agent-stream's undici.fetch dispatcher integration. |
-| Phase progress | Phases 0/1/2/3/4/5/6/7/07.1/08.1 closed. Phase 8 partially done (08-01..08-07 closed; 08-08 blocked). |
-| Next action | Operator runs `make load-test PROFILE=mock` to produce SLO-grade summary; in parallel a new plan addresses `apps/api/src/routes/agent/stream.ts` undici dispatcher integration. |
+| Phase | 8 — Load Test, Tuning & SLO Publication (in progress); 08.1 — CLOSED 2026-05-12; 08.2 — CLOSED 2026-05-12 |
+| Plan | Phase 8: 08-01..08-07 closed, 08-08 unblocked (awaiting operator 30-min plateau). Phase 08.1: 08.1-01 CLOSED. Phase 08.2: 08.2-01 + 08.2-02 CLOSED. |
+| Status | 08.2 closed. 08-08 next, requires the operator to run the full 30-min `make load-test PROFILE=mock` plateau — the api-side agent-stream blocker is now resolved (live forensic-probe GREEN). |
+| Phase progress | Phases 0/1/2/3/4/5/6/7/07.1/08.1/08.2 closed. Phase 8 partially done (08-01..08-07 closed; 08-08 unblocked, awaiting operator plateau). |
+| Next action | Operator runs `make load-test PROFILE=mock` to produce SLO-grade summary; agent-stream is now content-bearing in the same stack. |
 
 ```
-[X][X][X][X][X][X][X][X][X][~][X][ ][ ]
- 0  1  2  3  4  5  6  7 7.1 8 8.1 9  10
+[X][X][X][X][X][X][X][X][X][~][X][X][ ][ ]
+ 0  1  2  3  4  5  6  7 7.1 8 8.1 8.2 9 10
 ```
 
 ## Performance Metrics
