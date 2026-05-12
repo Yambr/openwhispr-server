@@ -27,7 +27,7 @@ A drop-in OpenWhispr backend any organization can self-host — open-source out 
 - [x] **Phase 4: Streaming + Realtime** — `/api/agent/stream` NDJSON line-flush + WSS realtime 3600s + 3 realtime token endpoints (verification: human_needed)
 - [x] **Phase 5: Operational Endpoints** — `/api/usage`, `/api/stt-config`, `/api/note-recording-config`, `/api/streaming-usage`, `/api/agent/web-search`, generic `cloud-api-request` passthrough (closed 2026-05-11, 828/830 tests green)
 - [ ] **Phase 6: Observability + Ops Hardening + Workers** — OTel/Prom/Loki end-to-end + audit log + BullMQ workers + tenant-context job middleware + anti-abuse rate limit + SSRF defense **← NEXT**
-- [ ] **Phase 7: Frontend UI-SPEC** — Admin console + end-user self-service specs targeting Next.js 15 + shadcn/ui v2; design tokens; component inventory
+- [x] **Phase 7: Frontend UI-SPEC** — Admin console + end-user self-service specs targeting Next.js 15 + shadcn/ui v2; design tokens; component inventory. CLOSED 2026-05-12 (15/15 verifier must-haves PASS; tools/lint-ui-spec.ts coverage 96.81/92.24/94.59/96.77; three design-gap markers encoded for Claude Design re-engagement; apps/web/ scaffold deferred to Phase 8).
 - [ ] **Phase 8: Load Test, Tuning & SLO Publication** — k6 1000-concurrent nightly; PgBouncer/FD/sizing-matrix tuning; SLOs published only after this passes
 - [ ] **Phase 9: Helm Chart & Cloud Deploy** — CNPG + Traefik 3 + online-migration discipline + upgrade-matrix CI + first-launch SLO test
 - [ ] **Phase 10: i18n + Docs + OSS Housekeeping** — en+ru ICU plurals + DOCS-01..08 + ADRs + CONTRIBUTING/SECURITY/COC
@@ -452,8 +452,15 @@ Plans:
   2. `UI-SPEC-end-user.md` enumerates end-user self-service: profile, observed usage breakdown, account deletion (mirroring the desktop-client surface) — same component-level decomposition.
   3. Both specs target Next.js 15 + React 19 + Tailwind 4 + shadcn/ui v2 + TanStack Query 5; document WCAG 2.2 AA conformance, responsive breakpoints (mobile + tablet + desktop), light + dark theme, design tokens, locale-negotiation chain, and a complete component inventory.
   4. Tests written first (TDD — spec linter validates structure); all CI checks green.
-**Plans**: TBD
-**UI hint**: yes
+**Plans**: 7 plans (3 waves)
+- [x] 07-PLAN-01-api-shape-verification.md — Wave 0: verify upstream `/api/usage`, sessions, settings shapes; scaffold UI-SPEC stubs (b72882f)
+- [x] 07-PLAN-02-linter-tests-red.md — Wave 0: RED linter tests + fixtures + config (TDD foundation) (0a240cd)
+- [x] 07-PLAN-03-linter-implementation.md — Wave 1: GREEN linter implementation `tools/lint-ui-spec.ts` (ce72448)
+- [x] 07-PLAN-04-ui-spec-admin.md — Wave 1: author UI-SPEC-admin.md (A2 + A3) (70aed25)
+- [x] 07-PLAN-05-ui-spec-end-user.md — Wave 1: author UI-SPEC-end-user.md (U1–U13) (cd9bf30)
+- [x] 07-PLAN-06-ci-and-appendix.md — Wave 2: shared appendix + GHA workflow + lefthook + cross-file lint gate (65824b7)
+- [x] 07-PLAN-07-finalize.md — Wave 3: full verification sweep + SUMMARY + STATE/ROADMAP (this commit)
+**UI hint**: yes (spec only; `apps/web/` scaffold + implementation are Phase 8)
 
 ### Phase 8: Load Test, Tuning & SLO Publication
 **Goal**: The k6 load test demonstrates 1000 concurrent active users (mixed transcribe + reason + stream + WSS) at validated p95 SLOs, runs nightly in CI against an ephemeral environment, and the per-endpoint p95 budgets are published to operators only after this phase passes.
@@ -506,7 +513,7 @@ Plans:
 | 4. Streaming + Realtime | 0/0 | Not started | - |
 | 5. Operational Endpoints | 0/0 | Not started | - |
 | 6. Observability + Ops Hardening + Workers | 0/0 | Not started | - |
-| 7. Frontend UI-SPEC | 0/0 | Not started | - |
+| 7. Frontend UI-SPEC | 7/7 | Complete | 2026-05-12 |
 | 8. Load Test, Tuning & SLO Publication | 0/0 | Not started | - |
 | 9. Helm Chart & Cloud Deploy | 0/0 | Not started | - |
 | 10. i18n + Docs + OSS Housekeeping | 0/0 | Not started | - |
