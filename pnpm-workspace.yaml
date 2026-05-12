@@ -3,6 +3,10 @@ packages:
   - 'packages/*'
   - 'tests/e2e'
   - 'tests/e2e/mock-realtime'
+  # Phase 08 / Plan 02 — k6 load-test workspace.
+  - 'tools/load-test'
+  # Phase 08 / Plan 03 — Fastify mock-litellm for load-test-mock profile.
+  - 'compose/mock-litellm'
 allowBuilds:
   cpu-features: true
   esbuild: true
