@@ -45,7 +45,14 @@ cd "$ROOT"
 # the operator can `docker compose logs api > runs/forensics/api-logs.txt`
 # before tearing it down by hand. LOAD-TEST-ONLY env var; documented in
 # .env.example. Never set in production / CI.
-COMPOSE_BASE="docker compose -f docker-compose.yml -f docker-compose.load-test.yml --profile $COMPOSE_PROFILE"
+# Phase 08.5-02 Task 4: under PROFILE=realistic, layer the third compose
+# overlay (08.5-01) so the real LiteLLM container wins over the mock.
+# Mock profile path is unchanged — byte-identical to Phase 08.
+if [ "$PROFILE" = "realistic" ]; then
+  COMPOSE_BASE="docker compose -f docker-compose.yml -f docker-compose.load-test.yml -f docker-compose.load-test.realistic.yml --profile $COMPOSE_PROFILE"
+else
+  COMPOSE_BASE="docker compose -f docker-compose.yml -f docker-compose.load-test.yml --profile $COMPOSE_PROFILE"
+fi
 if [ "${OPENWHISPR_LOADTEST_KEEP_STACK:-0}" = "1" ]; then
   trap 'printf "OPENWHISPR_LOADTEST_KEEP_STACK=1 — stack left running for forensic capture. Tear down with: %s down\n" "$COMPOSE_BASE" >&2' EXIT INT TERM
 else
@@ -62,8 +69,11 @@ $COMPOSE_BASE build
 $COMPOSE_BASE up -d --wait
 
 # 4. Realistic profile only — pre-warm Speaches (RESEARCH.md §Pitfall 10).
+# Phase 08.5-02 Task 4: export LOADTEST_PROFILE=realistic so pre-warm
+# auto-enters --strict mode (08.5-01 Task 4 contract). Iter-0 cold-start
+# pollution becomes a fail-fast surface instead of a smoke gate p95 mystery.
 if [ "$PROFILE" = "realistic" ]; then
-  sh tools/load-test/scripts/pre-warm-speaches.sh
+  LOADTEST_PROFILE=realistic sh tools/load-test/scripts/pre-warm-speaches.sh
 fi
 
 # 5. Build the k6 bundle.
@@ -82,7 +92,15 @@ fi
 if [ "${SMOKE_SKIP:-0}" = "1" ]; then
   echo "run.sh: SMOKE_SKIP=1 — bypassing k6 smoke gate" >&2
 else
-  sh tools/load-test/scripts/k6-smoke.sh
+  # Phase 08.5-02 Task 4: ROADMAP success criterion 2 — under the
+  # realistic profile run the smoke gate at 5 VU × 60s (default 30s is
+  # too short for real Whisper-large-v3 even when pre-warmed). Operator
+  # override preserved when SMOKE_DURATION is explicitly set.
+  if [ "$PROFILE" = "realistic" ]; then
+    SMOKE_DURATION="${SMOKE_DURATION:-60s}" sh tools/load-test/scripts/k6-smoke.sh
+  else
+    sh tools/load-test/scripts/k6-smoke.sh
+  fi
 fi
 
 # 6. Capture run outputs under the phase runs/ directory.

@@ -277,43 +277,54 @@ else
   fail "mock-litellm missing alias 'litellm' (got: $mock_aliases)"
 fi
 
-# ---------- T13: speaches present under realistic with WHISPER_MODEL + start_period>=180s ----------
-heading "T13: load-test-realistic has speaches with WHISPER_MODEL + start_period>=180s"
+# ---------- T13: speaches present under realistic with PRELOAD_MODELS + start_period>=180s ----------
+heading "T13: load-test-realistic has speaches with PRELOAD_MODELS + start_period>=180s"
 if grep -qE "^  speaches:" "$REAL_OUT"; then
   pass "load-test-realistic has 'speaches' service"
 else
   fail "load-test-realistic MISSING 'speaches' service"
 fi
-whisper=$(yq_py "$REAL_OUT" "services.speaches.environment.WHISPER_MODEL")
-if [ "$whisper" != "__MISSING__" ] && [ -n "$whisper" ]; then
-  pass "speaches.WHISPER_MODEL=$whisper"
+# Phase 08.5-01 Task 2: WHISPER_MODEL/WHISPER__MODEL replaced with the
+# canonical PRELOAD_MODELS env (08.5-RESEARCH §G3 / §P1). Assertion shifts.
+preload=$(yq_py "$REAL_OUT" "services.speaches.environment.PRELOAD_MODELS")
+if [ "$preload" != "__MISSING__" ] \
+  && echo "$preload" | grep -q "Systran/faster-whisper-large-v3" \
+  && echo "$preload" | grep -q "pyannote/speaker-diarization-community-1"; then
+  pass "speaches.PRELOAD_MODELS=$preload"
 else
-  fail "speaches.WHISPER_MODEL missing"
+  fail "speaches.PRELOAD_MODELS missing or incomplete (got: $preload)"
 fi
 start_period=$(yq_py "$REAL_OUT" "services.speaches.healthcheck.start_period")
-# Compose normalises durations to nanoseconds (int) — 180s == 180000000000.
+# Compose normalises durations to either nanoseconds (int) or compound
+# forms like "10m0s" (Phase 08.5-01 bumped start_period from 180s to
+# 600s for the first-boot HF model download buffer per RESEARCH §P8).
 case "$start_period" in
-  180000000000|180s|3m|3m0s)
+  180000000000|180s|3m|3m0s|600000000000|600s|10m|10m0s)
     pass "speaches.healthcheck.start_period=$start_period (>=180s)"
     ;;
   *)
-    # Allow any value that, when interpreted as a duration, is >= 180s.
+    # Generic normaliser: handle nanoseconds, single-unit, AND compound
+    # forms ("1h30m", "10m0s") that go.ParseDuration accepts.
     norm=$(python3 -c "
 v = '''$start_period'''.strip()
 if not v or v == '__MISSING__':
     print('-1')
 elif v.isdigit():
-    # nanoseconds
     print(int(v) // 1_000_000_000)
 else:
     import re
-    m = re.match(r'^(\d+)(ns|us|ms|s|m|h)?$', v)
-    if not m:
+    units = {'ns':1e-9,'us':1e-6,'ms':1e-3,'s':1,'m':60,'h':3600}
+    total = 0.0
+    matches = re.findall(r'(\d+(?:\.\d+)?)([a-z]+)', v)
+    if not matches:
         print('-1')
     else:
-        n = int(m.group(1)); u = m.group(2) or 's'
-        mul = {'ns':1e-9,'us':1e-6,'ms':1e-3,'s':1,'m':60,'h':3600}[u]
-        print(int(n*mul))
+        ok = True
+        for n, u in matches:
+            if u not in units:
+                ok = False; break
+            total += float(n) * units[u]
+        print(int(total) if ok else '-1')
 " 2>/dev/null)
     if [ -n "$norm" ] && [ "$norm" -ge 180 ] 2>/dev/null; then
       pass "speaches.healthcheck.start_period=$start_period (~${norm}s >=180s)"
