@@ -170,6 +170,21 @@ describe("UsageDashboardClient (Phase 07.1 / Plan 08)", () => {
     });
   });
 
+  it("renders em-dash when wordsUsed is not finite (formatNumber fallback)", async () => {
+    clientFetchMock.mockResolvedValue({
+      wordsUsed: Number.NaN,
+      wordsRemaining: Number.POSITIVE_INFINITY,
+      plan: "unlimited",
+      limitReached: false,
+    });
+    renderWithProviders(<UsageDashboardClient />);
+    await waitFor(() => {
+      expect(screen.getByTestId("kpi-words-used")).toBeInTheDocument();
+    });
+    // Two non-finite values → two em-dashes
+    expect(screen.getAllByText("—").length).toBeGreaterThanOrEqual(2);
+  });
+
   it("clicking Refresh invalidates usage query", async () => {
     const userEvent = (await import("@testing-library/user-event")).default;
     const user = userEvent.setup();

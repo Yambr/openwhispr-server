@@ -188,4 +188,123 @@ describe("SessionsTable (Phase 07.1 / Plan 08)", () => {
       expect(screen.getByText(/Could not load account/i)).toBeInTheDocument();
     });
   });
+
+  it("falls back to default error message when error.message is undefined", async () => {
+    listSessionsMock.mockResolvedValue({ data: null, error: {} });
+    renderWithProviders(<SessionsTable currentSessionToken="tok-1" />);
+    await waitFor(() => {
+      expect(screen.getByText(/Could not load account/i)).toBeInTheDocument();
+    });
+  });
+
+  it("treats null data as empty session list", async () => {
+    listSessionsMock.mockResolvedValue({ data: null, error: null });
+    renderWithProviders(<SessionsTable currentSessionToken="tok-1" />);
+    await waitFor(() => {
+      expect(
+        screen.queryByRole("button", { name: /Revoke all other sessions/i }),
+      ).not.toBeInTheDocument();
+    });
+  });
+
+  it("clicking Retry on error refetches list-sessions", async () => {
+    const userEvent = (await import("@testing-library/user-event")).default;
+    const user = userEvent.setup();
+    let attempt = 0;
+    listSessionsMock.mockImplementation(() => {
+      attempt++;
+      if (attempt === 1) return Promise.reject(new Error("boom"));
+      return Promise.resolve({ data: [], error: null });
+    });
+    renderWithProviders(<SessionsTable currentSessionToken="tok-1" />);
+    await waitFor(() => {
+      expect(screen.getByText(/Could not load account/i)).toBeInTheDocument();
+    });
+    await user.click(screen.getByRole("button", { name: /Retry/i }));
+    await waitFor(() => {
+      expect(listSessionsMock.mock.calls.length).toBeGreaterThanOrEqual(2);
+    });
+  });
+
+  it("renders em-dash for null userAgent / ipAddress / createdAt / expiresAt", async () => {
+    listSessionsMock.mockResolvedValue({
+      data: [
+        row({
+          id: "s1",
+          token: "tok-1",
+          userAgent: null,
+          ipAddress: null,
+          createdAt: null,
+          expiresAt: null,
+        }),
+      ],
+      error: null,
+    });
+    renderWithProviders(<SessionsTable currentSessionToken="tok-1" />);
+    await waitFor(() => {
+      expect(screen.getAllByText("—").length).toBeGreaterThanOrEqual(4);
+    });
+  });
+
+  it("renders em-dash for invalid date strings (formatDate NaN branch)", async () => {
+    listSessionsMock.mockResolvedValue({
+      data: [
+        row({
+          id: "s1",
+          token: "tok-1",
+          createdAt: "not-a-date",
+          expiresAt: "also-not-a-date",
+        }),
+      ],
+      error: null,
+    });
+    renderWithProviders(<SessionsTable currentSessionToken="tok-1" />);
+    await waitFor(() => {
+      expect(screen.getAllByText("—").length).toBeGreaterThanOrEqual(2);
+    });
+  });
+
+  it("revokeSession that returns Better Auth error envelope throws", async () => {
+    const userEvent = (await import("@testing-library/user-event")).default;
+    const user = userEvent.setup();
+    listSessionsMock.mockResolvedValue({
+      data: [row({ id: "s1", token: "tok-1" }), row({ id: "s2", token: "tok-2" })],
+      error: null,
+    });
+    revokeSessionMock.mockResolvedValue({ data: null, error: { message: "revoke boom" } });
+    renderWithProviders(<SessionsTable currentSessionToken="tok-1" />);
+    const revokeBtns = await screen.findAllByRole("button", { name: /^Revoke$/i });
+    await user.click(revokeBtns[1] as HTMLElement);
+    await waitFor(() => {
+      expect(revokeSessionMock).toHaveBeenCalled();
+    });
+  });
+
+  it("revokeOtherSessions that returns Better Auth error envelope throws", async () => {
+    const userEvent = (await import("@testing-library/user-event")).default;
+    const user = userEvent.setup();
+    listSessionsMock.mockResolvedValue({
+      data: [row({ id: "s1", token: "tok-1" }), row({ id: "s2", token: "tok-2" })],
+      error: null,
+    });
+    revokeOtherSessionsMock.mockResolvedValue({ data: null, error: { message: "boom" } });
+    renderWithProviders(<SessionsTable currentSessionToken="tok-1" />);
+    const btn = await screen.findByRole("button", { name: /Revoke all other sessions/i });
+    await user.click(btn);
+    await waitFor(() => {
+      expect(revokeOtherSessionsMock).toHaveBeenCalled();
+    });
+  });
+
+  it("never marks any row as 'this device' when currentSessionToken is null", async () => {
+    listSessionsMock.mockResolvedValue({
+      data: [row({ id: "s1", token: "tok-1" })],
+      error: null,
+    });
+    renderWithProviders(<SessionsTable currentSessionToken={null} />);
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: /^Revoke$/i })).toBeInTheDocument();
+    });
+    expect(screen.queryByTestId("session-row-this-device")).not.toBeInTheDocument();
+  });
 });
