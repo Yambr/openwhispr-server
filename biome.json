@@ -10,7 +10,8 @@
       "!.stryker-tmp",
       "!reports",
       "!**/*.gen.ts",
-      "!packages/i18n/locales"
+      "!packages/i18n/locales",
+      "!.planning/phases/07-frontend-ui-spec/design"
     ]
   },
   "formatter": {

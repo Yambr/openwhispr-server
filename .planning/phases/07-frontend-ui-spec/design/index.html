@@ -1,0 +1,416 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>OpenWhispr Server · UI Mockups</title>
+<meta name="viewport" content="width=1280" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+<style id="__tokens">
+  :root{
+    --accent: #2563eb;
+    --accent-soft: color-mix(in oklab, var(--accent) 14%, transparent);
+    --accent-fg: #ffffff;
+    --bg: #fafafa; --panel: #ffffff; --panel-2: #f4f4f5;
+    --border: #e4e4e7; --border-strong: #d4d4d8;
+    --text: #18181b; --text-muted: #71717a; --text-dim: #a1a1aa;
+    --danger:#dc2626; --warn:#d97706; --ok:#059669; --info:#0284c7;
+    --row-h: 40px; --pad: 14px; --radius: 8px;
+    --font-ui:'Inter',ui-sans-serif,system-ui,-apple-system,'Segoe UI',sans-serif;
+    --font-mono:'JetBrains Mono',ui-monospace,'SF Mono',Menlo,Consolas,monospace;
+  }
+  [data-theme="dark"]{
+    --bg:#09090b; --panel:#111114; --panel-2:#18181b;
+    --border:#26262a; --border-strong:#3f3f46;
+    --text:#fafafa; --text-muted:#a1a1aa; --text-dim:#71717a;
+  }
+  [data-density="comfortable"]{--row-h:44px}
+  [data-density="compact"]{--row-h:32px}
+
+  *{box-sizing:border-box}
+  html,body{margin:0;background:#f0eee9;color:var(--text);font-family:var(--font-ui);
+    font-size:14px;line-height:1.45;-webkit-font-smoothing:antialiased}
+  button{font-family:inherit;font-size:inherit;cursor:pointer}
+  input,textarea,select{font-family:inherit;font-size:inherit;color:inherit}
+  a{color:inherit;text-decoration:none}
+  ::selection{background:var(--accent-soft)}
+  .mono{font-family:var(--font-mono);font-variant-numeric:tabular-nums}
+
+  /* These primitives style inside theme-scoped artboards */
+  [data-theme]{background:var(--bg);color:var(--text)}
+  [data-theme] .sb{width:240px;flex-shrink:0;border-right:1px solid var(--border);background:var(--panel);
+    display:flex;flex-direction:column;height:100%;overflow:hidden}
+  .sb-brand{display:flex;align-items:center;gap:10px;padding:18px 16px 14px;border-bottom:1px solid var(--border)}
+  .sb-brand .logo{width:26px;height:26px;border-radius:7px;background:var(--text);color:var(--bg);
+    display:grid;place-items:center;font-weight:700;font-size:13px;letter-spacing:-.04em;flex-shrink:0}
+  .sb-brand .title{font-weight:600;letter-spacing:-.01em;font-size:13.5px}
+  .sb-brand .sub{font-size:10.5px;color:var(--text-muted);letter-spacing:.04em;text-transform:uppercase}
+  .sb-section{padding:14px 14px 6px;font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;
+    color:var(--text-dim);font-weight:600}
+  .sb-nav{display:flex;flex-direction:column;gap:1px;padding:0 8px;flex:1;overflow-y:auto}
+  .sb-link{display:flex;align-items:center;gap:10px;padding:7px 10px;border-radius:6px;
+    color:var(--text-muted);font-size:13px;font-weight:500;border:0;background:transparent;text-align:left;
+    width:100%;cursor:pointer}
+  .sb-link:hover{background:var(--panel-2);color:var(--text)}
+  .sb-link.active{background:var(--accent-soft);color:var(--text)}
+  .sb-link.active .sb-ico{color:var(--accent)}
+  .sb-ico{width:15px;height:15px;color:var(--text-dim);flex-shrink:0;display:inline-flex}
+  .sb-foot{border-top:1px solid var(--border);padding:10px 12px;display:flex;align-items:center;gap:10px}
+  .sb-foot .avatar{width:28px;height:28px;border-radius:50%;background:var(--accent);color:#fff;
+    display:grid;place-items:center;font-weight:600;font-size:11.5px}
+  .sb-foot .who{flex:1;min-width:0}
+  .sb-foot .who b{display:block;font-size:12.5px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .sb-foot .who span{display:block;font-size:11px;color:var(--text-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+
+  .topbar{display:flex;align-items:center;gap:12px;padding:12px 22px;
+    background:var(--bg);border-bottom:1px solid var(--border);flex-shrink:0}
+  .crumbs{display:flex;align-items:center;gap:6px;font-size:13px;color:var(--text-muted)}
+  .crumbs .sep{opacity:.4}.crumbs .cur{color:var(--text);font-weight:500}
+  .topbar .spacer{flex:1}
+  .iconbtn{width:30px;height:30px;display:grid;place-items:center;background:transparent;
+    border:1px solid var(--border);border-radius:7px;color:var(--text-muted);cursor:pointer}
+
+  .content{padding:22px 28px 60px;max-width:1280px}
+  .content.wide{max-width:none}
+  .page-head{display:flex;align-items:flex-start;justify-content:space-between;gap:24px;margin-bottom:18px}
+  .page-head h1{margin:0 0 4px;font-size:22px;font-weight:600;letter-spacing:-.02em}
+  .page-head .lede{color:var(--text-muted);font-size:13.5px;max-width:64ch}
+  .page-actions{display:flex;gap:8px;flex-shrink:0;align-items:center}
+
+  .btn{display:inline-flex;align-items:center;gap:7px;padding:0 12px;height:32px;border-radius:7px;
+    border:1px solid var(--border-strong);background:var(--panel);color:var(--text);
+    font-weight:500;font-size:13px;cursor:pointer;white-space:nowrap}
+  .btn:hover{background:var(--panel-2)}
+  .btn.primary{background:var(--text);color:var(--bg);border-color:var(--text)}
+  .btn.accent{background:var(--accent);color:var(--accent-fg);border-color:var(--accent)}
+  .btn.ghost{border-color:transparent;background:transparent;color:var(--text-muted)}
+  .btn.ghost:hover{background:var(--panel-2);color:var(--text)}
+  .btn.danger{background:var(--danger);color:#fff;border-color:var(--danger)}
+  .btn.sm{height:26px;padding:0 9px;font-size:12px;border-radius:6px}
+  .btn.lg{height:40px;padding:0 16px;font-size:14px;border-radius:8px}
+  .btn[disabled]{opacity:.5;cursor:not-allowed}
+
+  .input{width:100%;height:34px;padding:0 11px;background:var(--panel);border:1px solid var(--border-strong);
+    border-radius:7px;color:var(--text);font-size:13px;outline:none}
+  .input:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft)}
+  .input.lg{height:40px;font-size:14px;border-radius:8px}
+  .label{display:block;font-size:12.5px;font-weight:500;color:var(--text);margin-bottom:6px}
+  .help{font-size:12px;color:var(--text-muted);margin-top:6px}
+  .field{margin-bottom:14px}
+  .field .err{color:var(--danger);font-size:12px;margin-top:6px;display:flex;align-items:center;gap:5px}
+
+  .card{background:var(--panel);border:1px solid var(--border);border-radius:10px;overflow:hidden}
+  .card-h{padding:13px 16px 11px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:10px}
+  .card-h h3{margin:0;font-size:13.5px;font-weight:600}
+  .card-h .sub{color:var(--text-muted);font-size:12px}
+  .card-b{padding:16px}
+
+  .badge{display:inline-flex;align-items:center;gap:5px;padding:1px 7px;border-radius:5px;font-size:11px;
+    font-weight:500;border:1px solid var(--border);background:var(--panel-2);color:var(--text-muted);
+    font-family:var(--font-mono);line-height:18px;white-space:nowrap}
+  .badge.dot::before{content:"";width:5px;height:5px;border-radius:50%;background:currentColor}
+  .badge.ok{color:var(--ok);border-color:color-mix(in oklab, var(--ok) 30%, transparent);background:color-mix(in oklab, var(--ok) 10%, transparent)}
+  .badge.warn{color:var(--warn);border-color:color-mix(in oklab, var(--warn) 30%, transparent);background:color-mix(in oklab, var(--warn) 10%, transparent)}
+  .badge.danger{color:var(--danger);border-color:color-mix(in oklab, var(--danger) 30%, transparent);background:color-mix(in oklab, var(--danger) 10%, transparent)}
+  .badge.info{color:var(--info);border-color:color-mix(in oklab, var(--info) 30%, transparent);background:color-mix(in oklab, var(--info) 10%, transparent)}
+  .badge.accent{color:var(--accent);border-color:color-mix(in oklab, var(--accent) 30%, transparent);background:var(--accent-soft)}
+
+  .tbl{width:100%;border-collapse:collapse;font-size:13px}
+  .tbl thead th{position:sticky;top:0;background:var(--panel);text-align:left;padding:0 14px;height:34px;
+    font-weight:600;font-size:11px;letter-spacing:.04em;text-transform:uppercase;color:var(--text-muted);
+    border-bottom:1px solid var(--border);white-space:nowrap}
+  .tbl tbody td{padding:0 14px;height:var(--row-h);border-bottom:1px solid var(--border);
+    color:var(--text);vertical-align:middle;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:300px}
+  .tbl tbody tr:hover{background:var(--panel-2)}
+  .tbl tbody tr.selected{background:var(--accent-soft)}
+  .tbl tbody tr:last-child td{border-bottom:0}
+  .tbl td.num,.tbl th.num{text-align:right;font-variant-numeric:tabular-nums}
+
+  .filterbar{display:flex;align-items:center;gap:8px;padding:10px 14px;border-bottom:1px solid var(--border);background:var(--panel)}
+  .filterbar .input{height:30px;font-size:12.5px;border-radius:6px}
+  .seg{display:inline-flex;background:var(--panel-2);border:1px solid var(--border);border-radius:7px;padding:2px;gap:1px}
+  .seg button{height:24px;padding:0 9px;border:0;background:transparent;border-radius:5px;font-size:12px;
+    color:var(--text-muted);font-weight:500;cursor:pointer}
+  .seg button.on{background:var(--panel);color:var(--text);box-shadow:0 1px 2px rgba(0,0,0,.06)}
+
+  .sk{background:linear-gradient(90deg,var(--panel-2) 0%,var(--border) 50%,var(--panel-2) 100%);
+    background-size:200% 100%;animation:sk 1.4s ease-in-out infinite;border-radius:4px;height:12px;display:inline-block}
+  @keyframes sk{0%{background-position:200% 0}100%{background-position:-200% 0}}
+
+  .empty{padding:60px 24px;text-align:center;color:var(--text-muted);display:flex;flex-direction:column;
+    align-items:center;gap:10px}
+  .empty .icon{width:48px;height:48px;border-radius:12px;background:var(--panel-2);border:1px solid var(--border);
+    display:grid;place-items:center;color:var(--text-dim);margin-bottom:4px}
+  .empty h4{margin:0;color:var(--text);font-size:14.5px;font-weight:600}
+  .empty p{margin:0;max-width:46ch}
+
+  .grid{display:grid;gap:16px}
+  .stat{padding:16px}
+  .stat .k{font-size:11px;color:var(--text-muted);letter-spacing:.04em;text-transform:uppercase;font-weight:600}
+  .stat .v{font-size:26px;font-weight:600;letter-spacing:-.02em;margin-top:6px;font-variant-numeric:tabular-nums}
+  .stat .d{font-size:12px;color:var(--text-muted);margin-top:2px}
+
+  .auth-wrap{display:grid;grid-template-columns:1fr 1fr;background:var(--bg);width:100%;height:100%}
+  .auth-wrap .side{background:var(--panel-2);border-right:1px solid var(--border);
+    padding:40px;display:flex;flex-direction:column;justify-content:space-between}
+  .auth-wrap .form{padding:40px;display:flex;flex-direction:column;justify-content:center}
+  .auth-form{max-width:380px;width:100%;margin:0 auto}
+  .auth-form h2{margin:0 0 6px;font-size:24px;letter-spacing:-.02em;font-weight:600}
+  .auth-form .lede{color:var(--text-muted);margin-bottom:22px;font-size:13.5px}
+  .oidc-row{display:flex;flex-direction:column;gap:8px;margin-bottom:14px}
+  .or-sep{display:flex;align-items:center;gap:10px;color:var(--text-dim);font-size:11px;
+    text-transform:uppercase;letter-spacing:.1em;margin:14px 0}
+  .or-sep::before,.or-sep::after{content:"";flex:1;height:1px;background:var(--border)}
+
+  .chart{width:100%;height:240px;display:block}
+  .chart .grid line{stroke:var(--border);stroke-dasharray:2 4}
+  .chart .axis text{fill:var(--text-muted);font-size:10.5px;font-family:var(--font-mono)}
+  .chart .area{fill:var(--accent);opacity:.12}
+  .chart .line{fill:none;stroke:var(--accent);stroke-width:2}
+  .chart .dot{fill:var(--accent)}
+  .chart .bar{fill:var(--accent);opacity:.85}
+
+  .scrim{position:absolute;inset:0;background:rgba(0,0,0,.4);z-index:5;display:grid;place-items:center;backdrop-filter:blur(3px)}
+  .dialog{background:var(--panel);border:1px solid var(--border);border-radius:12px;width:440px;
+    box-shadow:0 24px 60px -20px rgba(0,0,0,.4)}
+  .dialog h3{margin:0;padding:18px 20px 6px;font-size:15px}
+  .dialog p{margin:0;padding:0 20px 16px;color:var(--text-muted);font-size:13px}
+  .dialog .actions{padding:12px 16px;border-top:1px solid var(--border);display:flex;justify-content:flex-end;gap:8px;background:var(--panel-2)}
+
+  .alert{display:flex;gap:10px;padding:11px 14px;border:1px solid var(--border);border-radius:8px;
+    background:var(--panel-2);font-size:13px;align-items:flex-start}
+  .alert .ico{flex-shrink:0;color:var(--text-muted);margin-top:1px}
+  .alert.info{border-color:color-mix(in oklab, var(--info) 30%, transparent);background:color-mix(in oklab, var(--info) 7%, transparent)}
+  .alert.info .ico{color:var(--info)}
+
+  .list .row{display:flex;align-items:center;gap:12px;padding:12px 16px;border-bottom:1px solid var(--border)}
+  .list .row:last-child{border-bottom:0}
+  .list .row:hover{background:var(--panel-2)}
+  .list .row .icon{width:30px;height:30px;border-radius:7px;background:var(--panel-2);
+    display:grid;place-items:center;flex-shrink:0;color:var(--text-muted)}
+  .list .row .body{flex:1;min-width:0}
+  .list .row .body b{font-weight:500;font-size:13.5px;display:flex;align-items:center;gap:8px}
+  .list .row .body span{font-size:12px;color:var(--text-muted);display:block}
+
+  .progress{width:100%;height:6px;border-radius:999px;background:var(--panel-2);overflow:hidden}
+  .progress .bar{height:100%;background:var(--accent);transition:width .3s}
+
+  .jsonp{font-family:var(--font-mono);font-size:12.5px;line-height:1.6;
+    background:var(--panel-2);border:1px solid var(--border);border-radius:8px;padding:14px 16px;
+    color:var(--text);white-space:pre-wrap;word-break:break-word;overflow-x:auto}
+  .jsonp .k{color:var(--accent)}
+  .jsonp .s{color:var(--ok)}
+  .jsonp .n{color:var(--warn)}
+  .jsonp .c{color:var(--text-dim)}
+
+  .msg{display:flex;gap:12px;padding:14px 0;border-bottom:1px solid var(--border)}
+  .msg:last-child{border-bottom:0}
+  .msg .who{width:80px;flex-shrink:0;font-size:11px;color:var(--text-muted);
+    font-family:var(--font-mono);text-transform:uppercase;letter-spacing:.04em;padding-top:2px}
+  .msg .content{flex:1;min-width:0;font-size:13.5px;line-height:1.6;white-space:pre-wrap}
+  .msg.user .who{color:var(--accent)}
+  .msg.assistant .who{color:var(--info)}
+
+  .dim{color:var(--text-muted)}
+  .v-col{display:flex;flex-direction:column;gap:8px}
+</style>
+</head>
+<body>
+<div id="root"></div>
+
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+
+<script type="text/babel" src="tweaks-panel.jsx"></script>
+<script type="text/babel" src="design-canvas.jsx"></script>
+<script type="text/babel" src="data.js"></script>
+<script type="text/babel" src="ui.jsx"></script>
+<script type="text/babel" src="screens-admin.jsx"></script>
+<script type="text/babel" src="screens-user.jsx"></script>
+
+<script type="text/babel">
+const TWEAK_DEFAULTS = /*EDITMODE-BEGIN*/{
+  "theme": "dark",
+  "accent": "#2563eb",
+  "density": "compact",
+  "lang": "en"
+}/*EDITMODE-END*/;
+
+const SCREEN_W = 1280, SCREEN_H = 800;
+
+function Frame({ theme = 'dark', density = 'comfortable', scope = 'Admin', accent = '#2563eb', h = SCREEN_H, w = SCREEN_W, children }) {
+  // root-level accent override hop: each artboard injects its own scoped style
+  // so accent is consistent with the global tweak choice.
+  const accentSoft = `color-mix(in oklab, ${accent} 14%, transparent)`;
+  return (
+    <div data-theme={theme} data-density={density}
+      style={{ width: w, height: h, '--accent': accent, '--accent-soft': accentSoft }}>
+      <BrowserFrame theme={theme} scope={scope} width={w} height={h}>
+        {children}
+      </BrowserFrame>
+    </div>
+  );
+}
+
+function App() {
+  const [t, setTweak] = useTweaks(TWEAK_DEFAULTS);
+  const theme = t.theme === 'system' ? (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light') : t.theme;
+
+  // re-apply tokens at document level for tweaks panel
+  React.useEffect(() => {
+    document.documentElement.setAttribute('data-theme', theme);
+    document.documentElement.setAttribute('data-density', t.density);
+    document.documentElement.style.setProperty('--accent', t.accent);
+  }, [theme, t.density, t.accent]);
+
+  const F = (props) => <Frame theme={props.theme || theme} density={t.density} accent={t.accent} scope={props.scope || 'End-user'} h={props.h}>{props.children}</Frame>;
+
+  return (
+    <>
+      <DesignCanvas>
+        <DCSection id="primary" title="Polish · primary screens" subtitle="Sign-in · Usage dashboard · Audit log — shown in both themes">
+          <DCArtboard id="u1-dark"  label="U1 · Sign-in · Dark"  width={SCREEN_W} height={SCREEN_H}>
+            <F theme="dark"  scope="End-user"><ScreenSignIn /></F>
+          </DCArtboard>
+          <DCArtboard id="u1-light" label="U1 · Sign-in · Light" width={SCREEN_W} height={SCREEN_H}>
+            <F theme="light" scope="End-user"><ScreenSignIn /></F>
+          </DCArtboard>
+          <DCArtboard id="u4-dark"  label="U4 · Usage · Dark"    width={SCREEN_W} height={SCREEN_H+120}>
+            <F theme="dark"  scope="End-user" h={SCREEN_H+120}><ScreenUsage /></F>
+          </DCArtboard>
+          <DCArtboard id="u4-light" label="U4 · Usage · Light"   width={SCREEN_W} height={SCREEN_H+120}>
+            <F theme="light" scope="End-user" h={SCREEN_H+120}><ScreenUsage /></F>
+          </DCArtboard>
+          <DCArtboard id="a1-dark"  label="A1 · Audit · Dark + drilldown" width={SCREEN_W} height={SCREEN_H+360}>
+            <F theme="dark"  scope="Admin" h={SCREEN_H+360}><ScreenAudit withDrawer /></F>
+          </DCArtboard>
+          <DCArtboard id="a1-light" label="A1 · Audit · Light"  width={SCREEN_W} height={SCREEN_H+360}>
+            <F theme="light" scope="Admin" h={SCREEN_H+360}><ScreenAudit withDrawer /></F>
+          </DCArtboard>
+        </DCSection>
+
+        <DCSection id="admin" title="Admin console (3 screens)" subtitle="A1 Audit · A2 Observability · A3 Config — own-scope, read-only">
+          <DCArtboard id="a1-loading" label="A1 · Loading" width={SCREEN_W} height={SCREEN_H}>
+            <F scope="Admin"><ScreenAudit state="loading" /></F>
+          </DCArtboard>
+          <DCArtboard id="a1-empty"   label="A1 · Empty (filtered)" width={SCREEN_W} height={SCREEN_H}>
+            <F scope="Admin"><ScreenAudit state="empty" /></F>
+          </DCArtboard>
+          <DCArtboard id="a1-error"   label="A1 · Error" width={SCREEN_W} height={SCREEN_H}>
+            <F scope="Admin"><ScreenAudit state="error" /></F>
+          </DCArtboard>
+          <DCArtboard id="a2" label="A2 · Observability hub" width={SCREEN_W} height={SCREEN_H+220}>
+            <F scope="Admin" h={SCREEN_H+220}><ScreenObservability /></F>
+          </DCArtboard>
+          <DCArtboard id="a3" label="A3 · Config view" width={SCREEN_W} height={SCREEN_H+180}>
+            <F scope="Admin" h={SCREEN_H+180}><ScreenConfig /></F>
+          </DCArtboard>
+        </DCSection>
+
+        <DCSection id="auth" title="End-user · Authentication (U1–U3)" subtitle="Sign-in error · Sign-up · Verify email (pending / verifying / success / expired)">
+          <DCArtboard id="u1-err" label="U1 · Sign-in · Error" width={SCREEN_W} height={SCREEN_H}>
+            <F><ScreenSignIn variant="error" /></F>
+          </DCArtboard>
+          <DCArtboard id="u2" label="U2 · Sign-up" width={SCREEN_W} height={SCREEN_H}>
+            <F><ScreenSignUp /></F>
+          </DCArtboard>
+          <DCArtboard id="u3-pending"   label="U3 · Verify · Pending"   width={640} height={SCREEN_H}>
+            <Frame theme={theme} density={t.density} accent={t.accent} scope="End-user" w={640}><ScreenVerify variant="pending" /></Frame>
+          </DCArtboard>
+          <DCArtboard id="u3-verifying" label="U3 · Verify · Verifying" width={640} height={SCREEN_H}>
+            <Frame theme={theme} density={t.density} accent={t.accent} scope="End-user" w={640}><ScreenVerify variant="verifying" /></Frame>
+          </DCArtboard>
+          <DCArtboard id="u3-success"   label="U3 · Verify · Success"   width={640} height={SCREEN_H}>
+            <Frame theme={theme} density={t.density} accent={t.accent} scope="End-user" w={640}><ScreenVerify variant="success" /></Frame>
+          </DCArtboard>
+          <DCArtboard id="u3-error"     label="U3 · Verify · Expired"   width={640} height={SCREEN_H}>
+            <Frame theme={theme} density={t.density} accent={t.accent} scope="End-user" w={640}><ScreenVerify variant="error" /></Frame>
+          </DCArtboard>
+        </DCSection>
+
+        <DCSection id="usage" title="End-user · Usage states (U4)" subtitle="Loading skeleton · Empty (no activity) · Error">
+          <DCArtboard id="u4-loading" label="U4 · Loading" width={SCREEN_W} height={SCREEN_H+120}>
+            <F h={SCREEN_H+120}><ScreenUsage state="loading" /></F>
+          </DCArtboard>
+          <DCArtboard id="u4-empty"   label="U4 · Empty"   width={SCREEN_W} height={SCREEN_H}>
+            <F><ScreenUsage state="empty" /></F>
+          </DCArtboard>
+          <DCArtboard id="u4-error"   label="U4 · Error"   width={SCREEN_W} height={SCREEN_H}>
+            <F><ScreenUsage state="error" /></F>
+          </DCArtboard>
+        </DCSection>
+
+        <DCSection id="account" title="End-user · Account (U5)" subtitle="Profile + sessions + delete-account modal">
+          <DCArtboard id="u5"        label="U5 · Account" width={SCREEN_W} height={SCREEN_H+120}>
+            <F h={SCREEN_H+120}><ScreenAccount /></F>
+          </DCArtboard>
+          <DCArtboard id="u5-modal"  label="U5 · Delete-account modal" width={SCREEN_W} height={SCREEN_H+120}>
+            <F h={SCREEN_H+120}><ScreenAccount withModal /></F>
+          </DCArtboard>
+        </DCSection>
+
+        <DCSection id="trx" title="End-user · Transcriptions (U6 + U7)" subtitle="List · all 4 states · detail">
+          <DCArtboard id="u6"         label="U6 · Transcriptions"         width={SCREEN_W} height={SCREEN_H}>
+            <F><ScreenTrxList /></F>
+          </DCArtboard>
+          <DCArtboard id="u6-loading" label="U6 · Loading" width={SCREEN_W} height={SCREEN_H}>
+            <F><ScreenTrxList state="loading" /></F>
+          </DCArtboard>
+          <DCArtboard id="u6-empty"   label="U6 · Empty"   width={SCREEN_W} height={SCREEN_H}>
+            <F><ScreenTrxList state="empty" /></F>
+          </DCArtboard>
+          <DCArtboard id="u6-error"   label="U6 · Error"   width={SCREEN_W} height={SCREEN_H}>
+            <F><ScreenTrxList state="error" /></F>
+          </DCArtboard>
+          <DCArtboard id="u7"         label="U7 · Detail"  width={SCREEN_W} height={SCREEN_H+120}>
+            <F h={SCREEN_H+120}><ScreenTrxDetail /></F>
+          </DCArtboard>
+        </DCSection>
+
+        <DCSection id="notes" title="End-user · Notes (U8–U10)" subtitle="List w/ folders · detail · search-empty">
+          <DCArtboard id="u8"  label="U8 · Notes list" width={SCREEN_W} height={SCREEN_H+120}>
+            <F h={SCREEN_H+120}><ScreenNotesList /></F>
+          </DCArtboard>
+          <DCArtboard id="u9"  label="U9 · Note detail" width={SCREEN_W} height={SCREEN_H+120}>
+            <F h={SCREEN_H+120}><ScreenNoteDetail /></F>
+          </DCArtboard>
+          <DCArtboard id="u10" label="U10 · Notes search · No results" width={SCREEN_W} height={SCREEN_H}>
+            <F><ScreenNotesSearch /></F>
+          </DCArtboard>
+        </DCSection>
+
+        <DCSection id="conv" title="End-user · Conversations (U11–U13)" subtitle="List · message-thread detail · search-empty">
+          <DCArtboard id="u11" label="U11 · Conversations list" width={SCREEN_W} height={SCREEN_H}>
+            <F><ScreenConvList /></F>
+          </DCArtboard>
+          <DCArtboard id="u12" label="U12 · Conversation detail" width={SCREEN_W} height={SCREEN_H+160}>
+            <F h={SCREEN_H+160}><ScreenConvDetail /></F>
+          </DCArtboard>
+          <DCArtboard id="u13" label="U13 · Conversation search · No results" width={SCREEN_W} height={SCREEN_H}>
+            <F><ScreenConvSearch /></F>
+          </DCArtboard>
+        </DCSection>
+      </DesignCanvas>
+
+      <TweaksPanel title="Tweaks">
+        <TweakSection label="Theme">
+          <TweakRadio  label="Mode"    value={t.theme}   options={['light','dark','system']} onChange={v=>setTweak('theme',v)} />
+          <TweakColor  label="Accent"  value={t.accent}  options={['#2563eb','#7c3aed','#10b981','#f97316']} onChange={v=>setTweak('accent',v)} />
+        </TweakSection>
+        <TweakSection label="Layout">
+          <TweakRadio  label="Density" value={t.density} options={['compact','comfortable']} onChange={v=>setTweak('density',v)} />
+        </TweakSection>
+        <TweakSection label="i18n">
+          <TweakRadio  label="Language" value={t.lang}   options={[{value:'en',label:'EN'},{value:'ru',label:'RU (placeholder)'}]} onChange={v=>setTweak('lang',v)} />
+        </TweakSection>
+      </TweaksPanel>
+    </>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+</script>
+</body>
+</html>
