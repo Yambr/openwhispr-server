@@ -298,64 +298,7 @@ export function bindToContext(ctx: BrowserContext) {
   };
 }
 
-// ============================================================================
-// CLI selftest entry point.
-// Verifies the full seed→clear loop against the live docker-compose stack.
-// Exits 0 on success, prints diagnostic + exits 1 on any seed/clear failure.
-// ============================================================================
-async function selftest(): Promise<void> {
-  /* eslint-disable no-console */
-  console.log("seed-selftest: provisioning worker-0 fixture user...");
-  const provisionCtx = await playwrightRequest.newContext({
-    baseURL: BASE_URL,
-    ignoreHTTPSErrors: true,
-  });
-  await provisionTestUser(provisionCtx, 0);
-  await provisionCtx.dispose();
-  const email = fixtureEmail(0);
-  console.log(`seed-selftest: signing in as ${email}...`);
-  const ctx = await buildSignedInRequestContext(email);
-  try {
-    console.log("seed-selftest: clearing pre-existing data...");
-    await clearAllData(ctx);
-    console.log("seed-selftest: seeding folder...");
-    const folders = await seedFolders(ctx, { count: 1 });
-    const folder = folders[0];
-    if (!folder) {
-      throw new Error("seed-selftest: seedFolders returned no rows");
-    }
-    console.log(`  folder.id=${folder.id}`);
-    console.log("seed-selftest: seeding note...");
-    const notes = await seedNotes(ctx, { count: 1, folderId: folder.id });
-    console.log(`  note.id=${notes[0]?.id}`);
-    console.log("seed-selftest: seeding transcription...");
-    const ts = await seedTranscriptions(ctx, { count: 1 });
-    console.log(`  transcription.id=${ts[0]?.id}`);
-    console.log("seed-selftest: seeding conversation with 2 messages...");
-    const convs = await seedConversations(ctx, { count: 1, withMessages: 2 });
-    console.log(`  conversation.id=${convs[0]?.id}`);
-    console.log("seed-selftest: clearing all data...");
-    await clearAllData(ctx);
-    console.log("seed-selftest: OK");
-  } finally {
-    await ctx.dispose();
-  }
-  /* eslint-enable no-console */
-}
-
-const isEsmEntry =
-  typeof import.meta !== "undefined" &&
-  // biome-ignore lint/suspicious/noExplicitAny: import.meta typing differs across module systems
-  (import.meta as any).url === `file://${process.argv[1]}`;
-
-/* v8 ignore start */
-if (isEsmEntry) {
-  selftest()
-    .then(() => process.exit(0))
-    .catch((err) => {
-      // eslint-disable-next-line no-console
-      console.error("seed-selftest FAILED:", err);
-      process.exit(1);
-    });
-}
-/* v8 ignore stop */
+// Selftest CLI entry has been moved to `seed-selftest.ts` (sibling file) so
+// this module remains import.meta-free — Playwright's CommonJS transformer
+// bails out on top-level `import.meta` references inside a fixture imported
+// by spec files. See Plan 13 deviation report (07.1-PLAN-13).

@@ -1,0 +1,148 @@
+name: Web
+
+# Phase 07.1 / Plan 13 — CI gate for apps/web (D-CI-1).
+# Chains typecheck → vitest+coverage → build → size-limit → playwright,
+# each constituent command verified locally before the first push.
+on:
+  pull_request:
+    paths:
+      - 'apps/web/**'
+      - 'packages/wire-schemas/**'
+      - 'apps/api/src/routes/**'
+      - 'docker-compose.yml'
+      - 'compose/**'
+      - '.github/workflows/web.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'apps/web/**'
+      - 'packages/wire-schemas/**'
+      - 'apps/api/src/routes/**'
+      - 'docker-compose.yml'
+      - 'compose/**'
+      - '.github/workflows/web.yml'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  typecheck:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: step-security/harden-runner@a5ad31d6a139d249332a2605b85202e8c0b78450  # v2.19.1
+        with: { egress-policy: audit }
+      - uses: actions/checkout@v5
+      - uses: pnpm/action-setup@v4
+        with: { version: 11.0.8 }
+      - uses: actions/setup-node@v5
+        with: { node-version: '24', cache: 'pnpm' }
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @openwhispr/web typecheck
+
+  lint:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: step-security/harden-runner@a5ad31d6a139d249332a2605b85202e8c0b78450  # v2.19.1
+        with: { egress-policy: audit }
+      - uses: actions/checkout@v5
+      - uses: pnpm/action-setup@v4
+        with: { version: 11.0.8 }
+      - uses: actions/setup-node@v5
+        with: { node-version: '24', cache: 'pnpm' }
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @openwhispr/web lint
+
+  vitest:
+    runs-on: ubuntu-24.04
+    needs: [typecheck]
+    steps:
+      - uses: step-security/harden-runner@a5ad31d6a139d249332a2605b85202e8c0b78450  # v2.19.1
+        with: { egress-policy: audit }
+      - uses: actions/checkout@v5
+      - uses: pnpm/action-setup@v4
+        with: { version: 11.0.8 }
+      - uses: actions/setup-node@v5
+        with: { node-version: '24', cache: 'pnpm' }
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @openwhispr/web test:unit
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: web-coverage
+          path: apps/web/coverage/
+
+  build-and-size:
+    runs-on: ubuntu-24.04
+    needs: [typecheck, vitest]
+    steps:
+      - uses: step-security/harden-runner@a5ad31d6a139d249332a2605b85202e8c0b78450  # v2.19.1
+        with: { egress-policy: audit }
+      - uses: actions/checkout@v5
+      - uses: pnpm/action-setup@v4
+        with: { version: 11.0.8 }
+      - uses: actions/setup-node@v5
+        with: { node-version: '24', cache: 'pnpm' }
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @openwhispr/web build
+      - run: pnpm --filter @openwhispr/web exec size-limit
+
+  playwright:
+    runs-on: ubuntu-24.04
+    needs: [typecheck, vitest, build-and-size]
+    timeout-minutes: 30
+    env:
+      BASE_URL: https://api.localhost
+      NODE_EXTRA_CA_CERTS: ${{ github.workspace }}/compose/traefik/certs/root-ca.crt
+      CI: '1'
+    steps:
+      - uses: step-security/harden-runner@a5ad31d6a139d249332a2605b85202e8c0b78450  # v2.19.1
+        with: { egress-policy: audit }
+      - uses: actions/checkout@v5
+      - uses: pnpm/action-setup@v4
+        with: { version: 11.0.8 }
+      - uses: actions/setup-node@v5
+        with: { node-version: '24', cache: 'pnpm' }
+      - run: pnpm install --frozen-lockfile
+      - name: Bootstrap fixture .env
+        run: |
+          cp .env.example .env
+          if [ -x tools/bootstrap.sh ]; then
+            tools/bootstrap.sh --ci || true
+          fi
+      - name: Add /etc/hosts entry for api.localhost
+        run: |
+          echo "127.0.0.1 api.localhost auth.localhost" | sudo tee -a /etc/hosts
+      - name: Cache Playwright browsers
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('apps/web/package.json') }}
+      - name: Install Playwright Chromium
+        run: pnpm --filter @openwhispr/web exec playwright install --with-deps chromium
+      - name: Build docker images
+        run: docker compose build
+      - name: Bring up stack (default profile)
+        run: docker compose --profile default up -d --wait
+      - name: Run Playwright e2e
+        run: pnpm --filter @openwhispr/web exec playwright test
+      - name: Upload Playwright report on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: apps/web/playwright-report/
+      - name: Capture compose logs on failure
+        if: failure()
+        run: docker compose logs --no-color > compose-logs-web.txt || true
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: compose-logs-web
+          path: compose-logs-web.txt
+      - name: Tear down
+        if: always()
+        run: docker compose --profile default down -v --remove-orphans || true
