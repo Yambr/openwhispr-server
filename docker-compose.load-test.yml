@@ -66,6 +66,7 @@ services:
   # alias for Docker's round-robin resolver.
   # ---------------------------------------------------------------------
   pgbouncer:
+    image: openwhispr/pgbouncer:1.25.1-p0-admin
     build:
       context: ./compose/pgbouncer
       dockerfile: Dockerfile
@@ -102,6 +103,7 @@ services:
       start_period: 5s
 
   pgbouncer-2:
+    image: openwhispr/pgbouncer:1.25.1-p0-admin
     build:
       context: ./compose/pgbouncer
       dockerfile: Dockerfile
@@ -138,6 +140,7 @@ services:
       start_period: 5s
 
   pgbouncer-3:
+    image: openwhispr/pgbouncer:1.25.1-p0-admin
     build:
       context: ./compose/pgbouncer
       dockerfile: Dockerfile
@@ -174,6 +177,7 @@ services:
       start_period: 5s
 
   pgbouncer-4:
+    image: openwhispr/pgbouncer:1.25.1-p0-admin
     build:
       context: ./compose/pgbouncer
       dockerfile: Dockerfile
@@ -241,6 +245,19 @@ services:
       # verification gate ONLY inside the load-test profile envelope —
       # production .env continues to use the production default.
       OPENWHISPR_DISABLE_EMAIL_VERIFICATION: "1"
+      # Plan 08.1-01 Task 5 — SSRF allow-list for the bundled load-test
+      # upstreams. The api's outbound dispatcher is default-deny; without
+      # this, every /api/transcribe / /api/reason / /api/agent/stream call
+      # is rejected with `Upstream blocked by SSRF policy` (502).
+      # Mirrors the value documented in .env.example for normal dev usage,
+      # but pinned in-compose so the load-test profile is reproducible
+      # regardless of operator .env content.
+      OUTBOUND_ALLOWED_HOSTS: "litellm,speaches,mailpit,openrouter.ai,api.tavily.com,search-api.aistudio.yandex.ru,api.pyannote.ai"
+      # Plan 08.1-01 Task 5 — bypass the rfc1918/loopback IP block-list
+      # for internal compose-DNS hostnames. Without this, the api's SSRF
+      # dispatcher rejects every call to litellm/mock-litellm because
+      # the bridge IP (e.g. 172.19.0.x) falls in RFC 1918 ranges.
+      OUTBOUND_PRIVATE_HOST_ALLOWLIST: "litellm,speaches,mailpit,valkey,postgres,pgbouncer"
 
   # ---------------------------------------------------------------------
   # traefik: D-TUNE-2 ulimits + fd-probe entrypoint shim (plan 08-04).

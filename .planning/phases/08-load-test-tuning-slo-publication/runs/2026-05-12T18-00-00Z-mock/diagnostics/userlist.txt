@@ -1,0 +1,2 @@
+"pgbouncer_admin" "kFPm-br5fXs-7_JhQyEK1izQYmcEm7lD5intweQKVOI"
+"openwhispr_app" "MAHL2k41cFuu8D9P61xtRxbAOlPmcV5S9mNLk31nbJM"

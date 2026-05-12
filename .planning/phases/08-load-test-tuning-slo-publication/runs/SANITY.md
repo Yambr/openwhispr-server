@@ -42,3 +42,22 @@
 2. **Fix `flows/realtime-ws.ts` tag mapping** — `iteration_duration{endpoint:realtime-ws}` Trend never received a non-zero value despite 168,836 WS sessions completing. The flow's async callback returns before the iteration's recorded duration captures the round-trip.
 3. **Add `pgbouncer_admin` to `compose/pgbouncer/userlist.txt`** so future runs can execute `SHOW POOLS` directly.
 4. Re-run mock until error rate < 1%. THEN run realistic.
+
+---
+
+## Update — Plan 08.1-01 Run 2 single-shot forensic validation (2026-05-12T18:00:00Z)
+
+Plan 08.1-01 closed Anomalies #1–#3 at the **code level** with passing TDD tests (67 unit tests + 5 hermetic shell tests) and partially validated live via the forensic-probe.ts harness. A full 30-min plateau under 1000 VU was OUTSIDE this session's wall-clock budget; the operator runs the canonical `make load-test PROFILE=mock` to produce the SLO-grade baseline. See `RUN-LOG.md` "Run 2" section for the per-anomaly disposition table.
+
+### Strike-through prior FAIL rows (closed by Plan 08.1-01)
+
+| Check (Run 1) | Closed by | Evidence (Run 2) |
+|---|---|---|
+| ~~Error rate < 1% (FAIL 99.93%)~~ | k6 flow request-shape fixes (Tasks 2.a/2.b) | transcribe + reason return 200 LIVE; agent-stream still has api-side `upstream_error` outside Plan 08.1-01 scope (Fastify accepts the body — parser fires) |
+| ~~realtime-ws endpoint p95 reported (FAIL =0)~~ | custom Trend metric `realtime_ws_roundtrip_ms` (Task 3) | 8 unit tests + clock-stub regression guard |
+| ~~Mid-run SHOW POOLS snapshot (PARTIAL)~~ | `compose/pgbouncer/bootstrap.sh` (Task 4) | `runs/2026-05-12T18-00-00Z-mock/diagnostics/show-pools.txt` returns rows under `pgbouncer_admin` |
+
+### Residual gaps to close in a follow-up
+
+- agent-stream upstream_error — api-side issue with `undici.fetch` in `apps/api/src/routes/agent/stream.ts`. The k6 envelope is correct (Fastify accepts it, body parser fires). NOT a load-test fix. Likely SSRF-dispatcher / undici-dispatcher integration mismatch specific to that route's `fetch` import (other routes use the shared litellm-client which uses `undici.request` and works fine).
+- 30-min mock plateau under operator-controlled wall clock — not attempted in this session per the plan's hard cap protocol.

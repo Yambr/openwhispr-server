@@ -1,0 +1,15 @@
+openwhispr-pgbouncer-3-1 Up 21 seconds (healthy)
+openwhispr-pgbouncer-2-1 Up 21 seconds (healthy)
+openwhispr-pgbouncer-1 Up 21 seconds (healthy)
+openwhispr-pgbouncer-4-1 Up 21 seconds (healthy)
+openwhispr-api-1 Up 4 minutes (healthy)
+openwhispr-litellm-1 Up 8 minutes (healthy)
+openwhispr-grafana-1 Up 8 minutes (healthy)
+openwhispr-otel-collector-1 Up 8 minutes
+openwhispr-mimir-1 Up 9 minutes
+openwhispr-traefik-1 Up 9 minutes (healthy)
+openwhispr-tempo-1 Up 9 minutes (healthy)
+openwhispr-postgres-1 Up 9 minutes (healthy)
+openwhispr-mailpit-1 Up 9 minutes (healthy)
+openwhispr-valkey-1 Up 9 minutes (healthy)
+openwhispr-loki-1 Up 9 minutes (healthy)
