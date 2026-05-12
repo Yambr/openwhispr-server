@@ -31,6 +31,7 @@ A drop-in OpenWhispr backend any organization can self-host — open-source out 
 - [x] **Phase 07.1: Web App Implementation** — `apps/web/` Next.js 15 + React 19 + Tailwind 4 + shadcn/ui v2 implementing every UI-SPEC screen (A2, A3, U1–U13) same-origin behind Traefik. CLOSED 2026-05-12 (27 atomic commits; 510 unit + 85 e2e tests; coverage 98.53/92.99/97.79/97.62; size-limit 168.84 kB max gz across 15 routes; Traefik basic-auth admin gate verified; Better Auth wired end-to-end; WEB-IMPL-01..04 Complete).
 - [ ] **Phase 8: Load Test, Tuning & SLO Publication** — k6 1000-concurrent nightly; PgBouncer/FD/sizing-matrix tuning; SLOs published only after this passes
 - [x] **Phase 08.1: Deferral Fixes + Mock Re-run** — gap-closure of 08-07 CLOSED 2026-05-12 with partial-live-validation: anomaly #1 (99.93% error rate) → transcribe + reason 200 LIVE, agent-stream api-side issue escalated; anomaly #2 (realtime-ws p95=0) → code-closed via custom Trend; anomaly #3 (pgbouncer_admin SCRAM) → LIVE SHOW POOLS returns rows. 30-min plateau is operator hand-off via `make load-test PROFILE=mock`.
+- [ ] **Phase 08.2: agent-stream undici dispatcher fix** — escalation from 08.1: `apps/api/src/routes/agent/stream.ts` uses `undici.fetch` which throws `upstream_error` despite SSRF gate passing and Fastify body parser accepting; sibling routes using shared litellm-client (`undici.request`) work. Two candidate fixes documented in 08.1 RUN-LOG: (a) replace fetch with shared client, (b) explicit dispatcher injection. Unblocks 08-08 (INSERTED 2026-05-12)
 - [ ] **Phase 9: Helm Chart & Cloud Deploy** — CNPG + Traefik 3 + online-migration discipline + upgrade-matrix CI + first-launch SLO test
 - [ ] **Phase 10: i18n + Docs + OSS Housekeeping** — en+ru ICU plurals + DOCS-01..08 + ADRs + CONTRIBUTING/SECURITY/COC
 
@@ -532,6 +533,21 @@ Plans:
   6. Tests written first (TDD); all CI checks green; plan 08-08 (SLO publication) is unblocked.
 **Plans**: 1 plan (Wave 1)
 - [x] 08.1-01 — deferral fixes + mock re-run (Wave 1) — CLOSED 2026-05-12 (partial: anomalies #1/#2/#3 closed at code level with 67 unit tests + 5 hermetic shell tests GREEN; anomaly #1 LIVE-validated for transcribe + reason; anomaly #3 LIVE-validated for SHOW POOLS; full 30-min plateau is operator hand-off per the plan's wall-clock cap; agent-stream undici.fetch issue escalated as api-side, outside Plan 08.1-01 scope)
+**UI hint**: no
+
+### Phase 08.2: agent-stream undici dispatcher fix
+**Goal**: `apps/api/src/routes/agent/stream.ts` upstream call to LiteLLM completes end-to-end under load-test-mock profile (no `upstream_error` from `undici.fetch`), matching the working behaviour of sibling routes (`/api/transcribe`, `/api/reason`) that use the shared litellm-client built on `undici.request`. After this lands, all four k6 flows (transcribe, reason, agent-stream, realtime-ws) can satisfy 08-07.1 exit gates and the operator's 30-min mock plateau produces a valid SLO-grade summary.
+**Depends on**: Phase 08.1
+**Requirements**: SCALE-02, TEST-LOAD-01
+**Success Criteria** (what must be TRUE):
+  1. The chosen architectural option (replace `undici.fetch` with shared litellm-client OR inject the SSRF dispatcher explicitly into the fetch call) is selected based on documented analysis of which approach is consistent with the rest of `apps/api/` and the SSRF-gate contract.
+  2. `apps/api/src/routes/agent/stream.ts` no longer emits `upstream_error` against `compose/mock-litellm` under the `load-test-mock` profile; first SSE chunk reaches the k6 client within the api's normal upstream-fetch budget; the full streamed response terminates with `[DONE]` per the contract `BACKEND_SPEC.md` specifies.
+  3. Existing SSRF gate behaviour preserved: requests to denied hosts continue to be blocked; existing SSRF unit tests stay GREEN.
+  4. RED tests for the bug land first: at least one new vitest in `apps/api/src/routes/agent/stream.test.ts` (or sibling) reproduces the upstream_error against a fixture that mimics the mock-litellm envelope, then goes GREEN after the fix.
+  5. `tools/load-test/scripts/forensic-probe.ts` (from 08.1) re-run against the running stack returns HTTP 200 + SSE body for agent-stream — no `upstream_error` in api logs.
+  6. Coverage on modified files ≥ 90/90/90/90 lines/branches/functions/statements.
+  7. Tests written first (TDD); all CI checks green; plan 08-08 unblocked for the operator's mock plateau.
+**Plans**: TBD (1–2 plans expected — fix + retroactive coverage if needed)
 **UI hint**: no
 
 ### Phase 9: Helm Chart & Cloud Deploy
