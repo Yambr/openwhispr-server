@@ -2,39 +2,39 @@
 gsd_state_version: 1.0
 milestone: v1.6.9
 milestone_name: expects plain session.token text; advisor research recommends Option C
-status: Executing Phase 6
-last_updated: "2026-05-12T00:21:53.376Z"
+status: Phase 7 complete — ready for /gsd-plan-phase 8
+last_updated: "2026-05-12T05:00:00.000Z"
 progress:
   total_phases: 34
-  completed_phases: 9
-  total_plans: 85
-  completed_plans: 101
-  percent: 26
+  completed_phases: 10
+  total_plans: 92
+  completed_plans: 108
+  percent: 29
 ---
 
 # Project State: OpenWhispr Server
 
-**Last updated:** 2026-05-11 (Phase 6 dispatch — observability + ops hardening + workers)
+**Last updated:** 2026-05-12 (Phase 7 CLOSED — Frontend UI-SPEC: 2 UI-SPEC files + linter + GHA + lefthook; 15/15 verifier items PASS)
 
 ## Project Reference
 
 **Core value:** A drop-in OpenWhispr backend any organization can self-host — open-source out of the box, corporate-LiteLLM-ready by env override.
 
-**Current focus:** Phase 6 (Observability + Ops Hardening + Workers) — 12 plans across 4 waves. OTel/Prom/Loki end-to-end, audit log + pg_partman partitioning, 7 BullMQ queues with tenant-context middleware, anti-abuse rate limit, SSRF defense, Grafana dashboards. Phases 4 (Streaming + Realtime) and 5 (Operational Endpoints + CRUD) closed; both ship summaries on disk. Push to origin still deferred.
+**Current focus:** Phase 7 CLOSED 2026-05-12. Two UI-SPEC artifacts (`UI-SPEC-admin.md` 2 screens, `UI-SPEC-end-user.md` 13 screens) + `tools/lint-ui-spec.ts` (5 rules, coverage 96.81/92.24/94.59/96.77 on the linter module) + `.github/workflows/ui-spec.yml` + `lefthook.yml` pre-commit hook. Three design-gap markers (D-UX2, D-API4, A2/A3+D-API6) encoded for Claude Design re-engagement. No new API endpoints introduced (D-S1 honored). `apps/web/` scaffold deferred to Phase 8. Phases 0/1/2/3/4/5/6/7 closed; push to origin still deferred.
 
 ## Current Position
 
 | Field | Value |
 |-------|-------|
 | Milestone | v1 |
-| Phase | 7 — Frontend UI-SPEC (DISCUSS complete; ready for /gsd-plan-phase 7) |
-| Plan | n/a — SPEC.md + CONTEXT.md + design/ assets vendored. Plans not yet created. |
-| Status | Context gathered 2026-05-12. Scope revised: Admin 3→2 screens (A1 dropped), End-User 13 kept. Backend-spec-driven steering rule locked (no new APIs in Phase 7). |
-| Phase progress | Phases 0/1/2/3/4/5/6 closed; Phase 6 verifier signed off; Phase 7 spec+context done. |
-| Next action | /gsd-plan-phase 7 — produce per-plan task breakdown for the two UI-SPEC artifacts + lint tool |
+| Phase | 7 — Frontend UI-SPEC (CLOSED 2026-05-12) → next: 8 — Load Test, Tuning & SLO Publication (or apps/web/ scaffold per Phase 7 backlog) |
+| Plan | Phase 7 all 7 plans executed; 07-SUMMARY.md on disk; 15/15 verifier items PASS. |
+| Status | Phase 7 done; ready for `/gsd-verify-phase 7` then `/gsd-plan-phase 8`. |
+| Phase progress | Phases 0/1/2/3/4/5/6/7 closed. |
+| Next action | `/gsd-verify-phase 7` then `/gsd-plan-phase 8` (Load Test, Tuning & SLO Publication) |
 
 ```
-[X][X][X][X][X][X][X][~][ ][ ][ ]
+[X][X][X][X][X][X][X][X][ ][ ][ ]
  0  1  2  3  4  5  6  7  8  9  10
 ```
 
@@ -166,10 +166,13 @@ progress:
 **Next session entry point:**
 
 ```
-/gsd-plan-phase 4     # Phase 4: Streaming + Realtime (NDJSON line-flush + WSS realtime 3600s + 3 realtime token endpoints)
+/gsd-verify-phase 7   # Verify Phase 7 (Frontend UI-SPEC) — 15/15 must-haves expected PASS
+/gsd-plan-phase 8     # Phase 8: Load Test, Tuning & SLO Publication (k6 1000-concurrent nightly)
 ```
 
-**Last session stopped at:** 2026-05-11 — Phase 3 closed end-to-end. Operational debt closure trio (TLS bootstrap two-tier CA chain via Phase 02.22, Phase-2 coverage debt back-fill across 6 files, lefthook prepare-hook idempotent wrapper) all landed in parallel agents. Final live e2e validation: `make e2e-test` against real providers (OpenRouter / Groq Whisper-large-v3 / OpenAI Realtime / pyannote.ai) → 25 passed | 1 conditional skip | 0 failed. apps/api coverage on every touched file ≥90/90/90/90. 320 commits ahead of origin/main, push deferred per user direction. Phase 4 (Streaming + Realtime) unblocked.
+**Last session stopped at:** 2026-05-12 — Phase 7 (Frontend UI-SPEC) CLOSED. 7 atomic commits (b72882f / 0a240cd / ce72448 / 70aed25 / cd9bf30 / 65824b7 + finalize). `pnpm lint:ui-spec` exits 0; vitest on `tools/lint-ui-spec.ts` reports 96.81 lines / 92.24 branches / 94.59 functions / 96.77 statements. Three design-gap markers (D-UX2, D-API4, A2/A3+D-API6) encoded for Claude Design re-engagement; Phase 7.x backlog (U14/U15 password reset, U16 PAK web UI, A1 audit-log viewer) deferred. `apps/web/` scaffold deferred to Phase 8.
+
+**Earlier session stopped at:** 2026-05-11 — Phase 3 closed end-to-end. Operational debt closure trio (TLS bootstrap two-tier CA chain via Phase 02.22, Phase-2 coverage debt back-fill across 6 files, lefthook prepare-hook idempotent wrapper) all landed in parallel agents. Final live e2e validation: `make e2e-test` against real providers (OpenRouter / Groq Whisper-large-v3 / OpenAI Realtime / pyannote.ai) → 25 passed | 1 conditional skip | 0 failed. apps/api coverage on every touched file ≥90/90/90/90. 320 commits ahead of origin/main, push deferred per user direction. Phase 4 (Streaming + Realtime) unblocked.
 
 **Files of record:**
 
@@ -181,6 +184,7 @@ progress:
 
 **Recent transitions:**
 
+- 2026-05-12: Phase 7 CLOSED — Frontend UI-SPEC. 7 atomic commits across 3 waves: Plan 01 verify API + scaffold stubs (b72882f), Plan 02 RED linter tests + fixtures (0a240cd), Plan 03 GREEN linter implementation (ce72448), Plan 04 UI-SPEC-admin.md A2+A3 (70aed25), Plan 05 UI-SPEC-end-user.md U1–U13 (cd9bf30), Plan 06 shared appendix + GHA + lefthook + cross-file lint gate green (65824b7), Plan 07 finalize + SUMMARY + STATE/ROADMAP (this commit). Total ~4096 lines added. Coverage on `tools/lint-ui-spec.ts`: 96.81/92.24/94.59/96.77 — all ≥90. Notable refutations: A2/A3 collapsed U4 to KPI-only after `/api/usage` API verification proved dailySeries / providerBreakdown / activity feed absent (D-API6 design-gap); A4 moved admin role gate to deployment level (no per-user role column on Better Auth v1.6.9 schema). Three encoded design-gap markers queued for Claude Design re-engagement. `apps/web/` scaffold deferred to Phase 8.
 - 2026-05-11: Phase 3 CLOSED end-to-end — 10 plans + parallel debt closure (Phase 02.22 TLS bootstrap, Phase-2 coverage back-fill across 6 files, lefthook prepare-hook fix, delete-account test design fix). Live `make e2e-test` against real OpenRouter / Groq / OpenAI / pyannote.ai → 25 passed | 1 conditional skip | 0 failed. apps/api coverage L=98.92 / B=94.52 / F=100 / S=98.38. 18 atomic commits across the closure (344f4dd / 546096c / 97da5c1 / 382ebfc / f09ee84 / f02a183 / 2991f54 / f4927fc / 264064f / 7a8e0b1 / 1206a9e / e1372a9 / a73c70a + Phase-3 verification commits). Phase 4 unblocked.
 - 2026-05-10: Phase 02.7 CLOSED — 7 plans + cascade tail (Phases 02.8 → 02.21, 9 numbered decimal phases) collectively closed all original 13/26 contract failures + every additional defect surfaced by the D-03A loud-fail discipline (Better Auth uuid id-mode, fixture email RFC, signInFixture Origin/XFF, session.token plain, OIDC env+discovery, runner-in-network, traefik aliases+trustedIPs, mycorp scheme comma-list, unverified-fixture helper, Group C residuals — 404 envelope + cookie cascade + suite isolation). `make contract-test` 25 passed | 1 deliberate skipped (26). 02-HUMAN-UAT.md Item 1 flipped without qualifier. 30+ atomic commits across the cascade. Phase 03 unblocked.
 - 2026-05-08: Rebaseline pivot — defer Stripe/referrals/quotas to v2; bundle LiteLLM with OSS models; UI-SPEC only in v1; English-only source / en+ru runtime; constitutional TDD/GHA. Roadmap rewritten from scratch.
@@ -190,6 +194,11 @@ progress:
 
 ## Decisions
 
+- [Phase 07]: No new API endpoints introduced (D-S1) — every UI-SPEC endpoint resolves to live `apps/api/src/routes/` or `BETTER_AUTH_PATHS` allowlist, enforced by `tools/lint-ui-spec.ts` rule `endpoint-exists`.
+- [Phase 07]: Admin role gate moved to deployment-level (Traefik / IdP claim filter), not per-user UI check (A4 refutation — Better Auth v1.6.9 has no `role` column on user/session schema).
+- [Phase 07]: U4 Usage dashboard collapsed to KPI-only (A2/A3 refutation + D-API6) — `/api/usage` API verified to not expose dailySeries / providerBreakdown / activity feed; full grid rebalancing tracked as design-gap for Claude Design.
+- [Phase 07]: Three design-gap markers encoded as HTML comments (`<!-- DESIGN-GAP ... -->`) — D-UX2 (forgot-password visual), D-API4 (A3 layout after Effective-env removal), A2/A3+D-API6 (U4 grid). These are queued for Claude Design re-engagement, not phase failures.
+- [Phase 07]: `apps/web/` scaffold deferred to Phase 8 per RESEARCH § Open Q 1 — Phase 7 ships UI-SPEC artifacts + linter only, keeping verifier surface small.
 - [Phase 06]: OTel SDK initialized as the literal first import of apps/api/src/index.ts so PinoInstrumentation patches pino at require time; tests assert load order by source-file inspection (Phase 6 D-T3).
 - [Phase 06]: audit_log converted to pg_partman monthly RANGE partitions (Plan 06-02)
 - [Phase 06]: SSRF dispatcher uses single-resolve-then-connect-by-IP via undici Agent connect.lookup; D-S3 13-entry CIDR block-list (8 IPv4 + 5 IPv6 incl. AWS IMDS v4+v6); default-deny allow-list with *.wildcard; enforce/warn modes; loopback opt-in dev/test only (Plan 06-06)
