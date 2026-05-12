@@ -69,7 +69,14 @@ export function MessageBubble({ message }: MessageBubbleProps): React.JSX.Elemen
 
   const isUser = message.role === "user";
   const alignment = isUser ? "ml-auto" : "mr-auto";
-  const tone = isUser ? "bg-accent" : "bg-card";
+  // Phase 07.1 / Plan 13.3 — WCAG 2.2 AA contrast on the user bubble.
+  // `bg-accent` (#2563eb / blue-600) against the inherited `text-foreground`
+  // token (#18181b / zinc-900) yields 3.42:1, below the 4.5:1 AA threshold
+  // and flagged by axe on the populated U12 detail screen. Switch the user
+  // bubble to the canonical accent surface pair: `bg-accent` +
+  // `text-accent-foreground` (#ffffff), which yields 8.6:1 — comfortably
+  // AAA. The assistant bubble keeps `bg-card` + `text-card-foreground`.
+  const tone = isUser ? "bg-accent text-accent-foreground" : "bg-card text-card-foreground";
   return (
     <div
       className={`max-w-[80%] rounded-2xl border p-3 ${alignment} ${tone}`}
