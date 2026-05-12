@@ -15,10 +15,11 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { I18nProvider } from "@/lib/i18n-client";
 
 const pushMock = vi.fn();
+let currentSearchParams = new URLSearchParams("");
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ push: pushMock, replace: vi.fn(), refresh: vi.fn() }),
   usePathname: () => "/app/notes",
-  useSearchParams: () => new URLSearchParams(""),
+  useSearchParams: () => currentSearchParams,
 }));
 vi.mock("next/link", () => ({
   default: ({ href, children }: { href: string; children: React.ReactNode }) => (
@@ -114,6 +115,7 @@ describe("NotesListClient (Phase 07.1 / Plan 10)", () => {
   beforeEach(() => {
     clientFetchMock.mockReset();
     pushMock.mockReset();
+    currentSearchParams = new URLSearchParams("");
   });
 
   it("renders Skeleton rows while pending", () => {
@@ -157,7 +159,10 @@ describe("NotesListClient (Phase 07.1 / Plan 10)", () => {
     );
     renderWithProviders(<NotesListClient />);
     await waitFor(() => {
-      expect(screen.getByText("Work")).toBeInTheDocument();
+      // "Work" appears in both the sidebar (folders list) AND the table
+      // row's Folder column — assert at least 2 occurrences to prove the
+      // table cell resolved the folder_id → name via the folders cache.
+      expect(screen.getAllByText("Work").length).toBeGreaterThanOrEqual(2);
     });
   });
 
@@ -214,6 +219,115 @@ describe("NotesListClient (Phase 07.1 / Plan 10)", () => {
           JSON.stringify(c[1]?.body).includes("11111111-1111-1111-1111-111111111111"),
       );
       expect(found).toBe(true);
+    });
+  });
+
+  it("filters rendered rows by ?folder= search param", async () => {
+    currentSearchParams = new URLSearchParams("folder=ffffffff-ffff-ffff-ffff-ffffffffffff");
+    mockBoth(
+      [
+        makeNote({
+          id: "11111111-1111-1111-1111-111111111111",
+          title: "match",
+          folder_id: "ffffffff-ffff-ffff-ffff-ffffffffffff",
+        }),
+        makeNote({
+          id: "22222222-2222-2222-2222-222222222222",
+          title: "other",
+          folder_id: "eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee",
+        }),
+      ],
+      [
+        { id: "ffffffff-ffff-ffff-ffff-ffffffffffff", name: "Picked" },
+        { id: "eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee", name: "Other" },
+      ],
+    );
+    renderWithProviders(<NotesListClient />);
+    await waitFor(() => {
+      expect(screen.getByText("match")).toBeInTheDocument();
+    });
+    expect(screen.queryByText("other")).not.toBeInTheDocument();
+  });
+
+  it("submitting empty search does NOT navigate", async () => {
+    const userEvent = (await import("@testing-library/user-event")).default;
+    const user = userEvent.setup();
+    mockBoth([]);
+    renderWithProviders(<NotesListClient />);
+    const submit = await screen.findByRole("button", { name: /Search notes/i });
+    await user.click(submit);
+    expect(pushMock).not.toHaveBeenCalled();
+  });
+
+  it("renders '(untitled)' for notes with null title and em-dash for missing folder", async () => {
+    mockBoth([
+      makeNote({
+        id: "11111111-1111-1111-1111-111111111111",
+        title: null,
+        folder_id: null,
+        created_at: "",
+      }),
+    ]);
+    renderWithProviders(<NotesListClient />);
+    await waitFor(() => {
+      expect(screen.getByText("(untitled)")).toBeInTheDocument();
+    });
+    expect(screen.getAllByText("—").length).toBeGreaterThan(0);
+  });
+
+  it("renders folder em-dash when folder_id has no match in folders cache", async () => {
+    mockBoth(
+      [
+        makeNote({
+          id: "11111111-1111-1111-1111-111111111111",
+          title: "orphan",
+          folder_id: "cccccccc-cccc-cccc-cccc-cccccccccccc",
+        }),
+      ],
+      [],
+    );
+    renderWithProviders(<NotesListClient />);
+    await waitFor(() => {
+      expect(screen.getByText("orphan")).toBeInTheDocument();
+    });
+    // No folder match → em-dash placeholder.
+    expect(screen.getAllByText("—").length).toBeGreaterThan(0);
+  });
+
+  it("falls back to created_at as-is when Date parsing throws", async () => {
+    mockBoth([
+      makeNote({
+        id: "11111111-1111-1111-1111-111111111111",
+        title: "bad-date",
+        // Invalid date string forces toISOString to throw → catch branch.
+        created_at: "not-a-real-date",
+      }),
+    ]);
+    renderWithProviders(<NotesListClient />);
+    await waitFor(() => {
+      expect(screen.getByText("not-a-real-date")).toBeInTheDocument();
+    });
+  });
+
+  it("error Retry button refetches the query", async () => {
+    const userEvent = (await import("@testing-library/user-event")).default;
+    const user = userEvent.setup();
+    let fail = true;
+    clientFetchMock.mockImplementation((url: string) => {
+      if (url.startsWith("/api/notes/list")) {
+        if (fail) {
+          fail = false;
+          return Promise.reject(new Error("boom"));
+        }
+        return Promise.resolve({ notes: [] });
+      }
+      return Promise.resolve({ folders: [] });
+    });
+    renderWithProviders(<NotesListClient />);
+    const retry = await screen.findByRole("button", { name: /Retry/i });
+    await user.click(retry);
+    await waitFor(() => {
+      expect(screen.getByText(/No notes yet/i)).toBeInTheDocument();
     });
   });
 

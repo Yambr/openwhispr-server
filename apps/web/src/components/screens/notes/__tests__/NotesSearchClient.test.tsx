@@ -160,6 +160,83 @@ describe("NotesSearchClient (Phase 07.1 / Plan 10)", () => {
     });
   });
 
+  it("submitting the form pushes /app/notes/search?q=<encoded>", async () => {
+    const userEvent = (await import("@testing-library/user-event")).default;
+    const user = userEvent.setup();
+    const pushMock = vi.fn();
+    const navMod = await import("next/navigation");
+    vi.spyOn(navMod, "useRouter").mockReturnValue({
+      push: pushMock,
+      replace: vi.fn(),
+      refresh: vi.fn(),
+      back: vi.fn(),
+      forward: vi.fn(),
+      prefetch: vi.fn(),
+    } as unknown as ReturnType<typeof navMod.useRouter>);
+    renderWithProviders(<NotesSearchClient />);
+    const input = screen.getByRole("searchbox");
+    await user.type(input, "tea time");
+    const submit = screen.getByRole("button", { name: /^Search$/i });
+    await user.click(submit);
+    await waitFor(() => {
+      const urls = pushMock.mock.calls.map((c) => String(c[0]));
+      expect(urls.some((u) => u.includes("q=tea%20time"))).toBe(true);
+    });
+  });
+
+  it("Clear button resets the input and pushes /app/notes/search", async () => {
+    const userEvent = (await import("@testing-library/user-event")).default;
+    const user = userEvent.setup();
+    currentSearchParams = new URLSearchParams("q=preset");
+    clientFetchMock.mockResolvedValue({ notes: [] });
+    const pushMock = vi.fn();
+    const navMod = await import("next/navigation");
+    vi.spyOn(navMod, "useRouter").mockReturnValue({
+      push: pushMock,
+      replace: vi.fn(),
+      refresh: vi.fn(),
+      back: vi.fn(),
+      forward: vi.fn(),
+      prefetch: vi.fn(),
+    } as unknown as ReturnType<typeof navMod.useRouter>);
+    renderWithProviders(<NotesSearchClient />);
+    const clear = screen.getByRole("button", { name: /^Clear$/i });
+    await user.click(clear);
+    await waitFor(() => {
+      expect(pushMock).toHaveBeenCalledWith("/app/notes/search");
+    });
+  });
+
+  it("submitting an empty input pushes /app/notes/search (no q param)", async () => {
+    const userEvent = (await import("@testing-library/user-event")).default;
+    const user = userEvent.setup();
+    const pushMock = vi.fn();
+    const navMod = await import("next/navigation");
+    vi.spyOn(navMod, "useRouter").mockReturnValue({
+      push: pushMock,
+      replace: vi.fn(),
+      refresh: vi.fn(),
+      back: vi.fn(),
+      forward: vi.fn(),
+      prefetch: vi.fn(),
+    } as unknown as ReturnType<typeof navMod.useRouter>);
+    renderWithProviders(<NotesSearchClient />);
+    const submit = screen.getByRole("button", { name: /^Search$/i });
+    await user.click(submit);
+    await waitFor(() => {
+      expect(pushMock).toHaveBeenCalledWith("/app/notes/search");
+    });
+  });
+
+  it("renders Skeleton while query is pending", async () => {
+    currentSearchParams = new URLSearchParams("q=roadmap");
+    clientFetchMock.mockImplementation(() => new Promise(() => {}));
+    const { container } = renderWithProviders(<NotesSearchClient />);
+    await waitFor(() => {
+      expect(container.querySelector('[data-testid="notes-search-skeleton"]')).not.toBeNull();
+    });
+  });
+
   it("seeds the input from useSearchParams q", () => {
     currentSearchParams = new URLSearchParams("q=preset");
     clientFetchMock.mockResolvedValue({ notes: [] });

@@ -44,6 +44,7 @@ const resources = {
           title: { label: "Folders" },
           "readonly-body": { text: "Folder management is in the desktop client." },
         },
+        error: { title: { text: "Could not load notes" }, retry: { label: "Retry" } },
       },
     },
   },
@@ -136,6 +137,31 @@ describe("FoldersSidebar (Phase 07.1 / Plan 10 — D-UX5 read-only)", () => {
       expect(screen.getByText(/Folder management is in the desktop client/i)).toBeInTheDocument();
     });
     assertNoMutationUi(container);
+  });
+
+  it("clicking 'All notes' pushes back to pathname without ?folder= param", async () => {
+    const userEvent = (await import("@testing-library/user-event")).default;
+    const user = userEvent.setup();
+    currentSearchParams = new URLSearchParams("folder=ffffffff-ffff-ffff-ffff-ffffffffffff");
+    clientFetchMock.mockResolvedValue({
+      folders: [{ id: "ffffffff-ffff-ffff-ffff-ffffffffffff", name: "Work" }],
+    });
+    renderWithProviders(<FoldersSidebar />);
+    const allNotes = await screen.findByText(/All notes/i);
+    await user.click(allNotes);
+    await waitFor(() => {
+      const urls = pushMock.mock.calls.map((c) => String(c[0]));
+      // Should push base pathname only — no ?folder= param.
+      expect(urls.some((u) => u === "/app/notes")).toBe(true);
+    });
+  });
+
+  it("renders error placeholder when folders fetch rejects", async () => {
+    clientFetchMock.mockRejectedValue(new Error("boom"));
+    renderWithProviders(<FoldersSidebar />);
+    await waitFor(() => {
+      expect(screen.getByText(/Could not load notes/i)).toBeInTheDocument();
+    });
   });
 
   it("D-UX5: zero folder mutation UI rendered in populated state", async () => {

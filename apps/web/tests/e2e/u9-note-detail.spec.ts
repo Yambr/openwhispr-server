@@ -39,7 +39,9 @@ test.describe("U9 — note detail (Phase 07.1 / Plan 10)", () => {
   test("success state — Content tab renders for seeded note", async ({ page, context }) => {
     const seed = bindToContext(context);
     const seeded = await seed.seedNotes({ count: 1, content: "detail-body-content" });
-    const id = seeded[0]!.id;
+    const first = seeded[0];
+    if (!first) throw new Error("seedNotes returned no rows");
+    const id = first.id;
     await page.goto(`/app/notes/${id}`);
     await expect(page.getByRole("tab", { name: /Content/i })).toBeVisible();
     await expect(page.getByText(/detail-body-content/i)).toBeVisible();
@@ -48,7 +50,9 @@ test.describe("U9 — note detail (Phase 07.1 / Plan 10)", () => {
   test("axe — WCAG 2.2 AA clean on populated detail", async ({ page, context }) => {
     const seed = bindToContext(context);
     const seeded = await seed.seedNotes({ count: 1, content: "axe-body" });
-    const id = seeded[0]!.id;
+    const first = seeded[0];
+    if (!first) throw new Error("seedNotes returned no rows");
+    const id = first.id;
     await page.goto(`/app/notes/${id}`);
     await expect(page.getByRole("tab", { name: /Content/i })).toBeVisible();
     await runAxe(page);

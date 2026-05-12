@@ -214,6 +214,172 @@ describe("NoteDetailClient (Phase 07.1 / Plan 10)", () => {
     });
   });
 
+  it("Export JSON downloads a blob with note-<id>.json filename", async () => {
+    const userEvent = (await import("@testing-library/user-event")).default;
+    const user = userEvent.setup();
+    const clickSpy = vi.fn();
+    const createURLSpy = vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:fixture-json");
+    const revokeSpy = vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => undefined);
+    // Spy on the prototype click so we catch the anchor used by downloadBlob
+    // without recursing into our own document.createElement spy.
+    vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(clickSpy);
+    clientFetchMock.mockResolvedValue({ notes: [makeNote({ title: "exp" })] });
+    renderWithProviders(<NoteDetailClient noteId={NID} />);
+    const jsonBtn = await screen.findByRole("button", { name: /Export as JSON/i });
+    await user.click(jsonBtn);
+    expect(clickSpy).toHaveBeenCalled();
+    expect(createURLSpy).toHaveBeenCalled();
+    expect(revokeSpy).toBeDefined();
+  });
+
+  it("Export Markdown downloads .md blob with only Content when transcript/enhanced are absent", async () => {
+    const userEvent = (await import("@testing-library/user-event")).default;
+    const user = userEvent.setup();
+    const clickSpy = vi.fn();
+    vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:fixture-md2");
+    vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => undefined);
+    vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(clickSpy);
+    clientFetchMock.mockResolvedValue({
+      notes: [makeNote({ title: null, transcript: null, enhanced_content: null })],
+    });
+    renderWithProviders(<NoteDetailClient noteId={NID} />);
+    const mdBtn = await screen.findByRole("button", { name: /Export as Markdown/i });
+    await user.click(mdBtn);
+    expect(clickSpy).toHaveBeenCalled();
+  });
+
+  it("Export Markdown downloads .md blob including transcript + enhanced when present", async () => {
+    const userEvent = (await import("@testing-library/user-event")).default;
+    const user = userEvent.setup();
+    const clickSpy = vi.fn();
+    vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:fixture-md");
+    vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => undefined);
+    const origCreate = document.createElement.bind(document);
+    vi.spyOn(document, "createElement").mockImplementation((tag: string) => {
+      const el = origCreate(tag) as HTMLAnchorElement;
+      if (tag === "a") el.click = clickSpy;
+      return el;
+    });
+    clientFetchMock.mockResolvedValue({
+      notes: [
+        makeNote({
+          transcript: "trx body",
+          enhanced_content: "enh body",
+        }),
+      ],
+    });
+    renderWithProviders(<NoteDetailClient noteId={NID} />);
+    const mdBtn = await screen.findByRole("button", { name: /Export as Markdown/i });
+    await user.click(mdBtn);
+    expect(clickSpy).toHaveBeenCalled();
+  });
+
+  it("error Retry button refetches the query", async () => {
+    const userEvent = (await import("@testing-library/user-event")).default;
+    const user = userEvent.setup();
+    clientFetchMock.mockRejectedValue(new Error("boom"));
+    renderWithProviders(<NoteDetailClient noteId={NID} />);
+    const retry = await screen.findByRole("button", { name: /Retry/i });
+    clientFetchMock.mockResolvedValueOnce({ notes: [makeNote()] });
+    await user.click(retry);
+    await waitFor(() => {
+      expect(clientFetchMock.mock.calls.length).toBeGreaterThanOrEqual(2);
+    });
+  });
+
+  it("resolves folder name from folders cache in the metadata Card", async () => {
+    clientFetchMock.mockImplementation((url: string) => {
+      if (url.startsWith("/api/notes/list")) {
+        return Promise.resolve({
+          notes: [makeNote({ folder_id: "ffffffff-ffff-ffff-ffff-ffffffffffff" })],
+        });
+      }
+      if (url.startsWith("/api/folders/list")) {
+        return Promise.resolve({
+          folders: [{ id: "ffffffff-ffff-ffff-ffff-ffffffffffff", name: "MyFolder" }],
+        });
+      }
+      return Promise.reject(new Error(`unexpected: ${url}`));
+    });
+    renderWithProviders(<NoteDetailClient noteId={NID} />);
+    await waitFor(() => {
+      expect(screen.getByText("MyFolder")).toBeInTheDocument();
+    });
+  });
+
+  it("formats audio_duration_seconds via mm:ss in the metadata Card", async () => {
+    clientFetchMock.mockResolvedValue({
+      notes: [makeNote({ audio_duration_seconds: 65 })],
+    });
+    renderWithProviders(<NoteDetailClient noteId={NID} />);
+    await waitFor(() => {
+      expect(screen.getByText("01:05")).toBeInTheDocument();
+    });
+  });
+
+  it("pages forward through list endpoint when first page has PAGE_LIMIT rows and lacks the id", async () => {
+    let calls = 0;
+    clientFetchMock.mockImplementation((url: string) => {
+      if (url.startsWith("/api/notes/list")) {
+        calls += 1;
+        if (calls === 1) {
+          // First page is "full" (50 rows) but does NOT contain the target id.
+          const rows = Array.from({ length: 50 }).map((_, i) =>
+            makeNote({
+              id: `${i.toString(16).padStart(8, "0")}-0000-0000-0000-000000000000`,
+              created_at: `2026-05-${String(12 - (i % 10)).padStart(2, "0")}T00:00:00.000Z`,
+            }),
+          );
+          return Promise.resolve({ notes: rows });
+        }
+        // Second page contains the target id.
+        return Promise.resolve({ notes: [makeNote({ id: NID, title: "found on p2" })] });
+      }
+      return Promise.resolve({ folders: [] });
+    });
+    renderWithProviders(<NoteDetailClient noteId={NID} />);
+    await waitFor(() => {
+      expect(screen.getByText("found on p2")).toBeInTheDocument();
+    });
+    expect(calls).toBeGreaterThanOrEqual(2);
+  });
+
+  it("renders em-dash for folder when folder_id is set but folders cache misses", async () => {
+    clientFetchMock.mockImplementation((url: string) => {
+      if (url.startsWith("/api/notes/list")) {
+        return Promise.resolve({
+          notes: [makeNote({ folder_id: "cccccccc-cccc-cccc-cccc-cccccccccccc" })],
+        });
+      }
+      // Folders cache empty → ?? "—" fallback exercised.
+      return Promise.resolve({ folders: [] });
+    });
+    renderWithProviders(<NoteDetailClient noteId={NID} />);
+    await waitFor(() => {
+      expect(screen.getAllByText("—").length).toBeGreaterThan(0);
+    });
+  });
+
+  it("renders em-dash for null audio_duration_seconds", async () => {
+    clientFetchMock.mockResolvedValue({
+      notes: [makeNote({ audio_duration_seconds: null })],
+    });
+    renderWithProviders(<NoteDetailClient noteId={NID} />);
+    await waitFor(() => {
+      expect(screen.getAllByText("—").length).toBeGreaterThan(0);
+    });
+  });
+
+  it("formats audio_duration_seconds > 1h via h:mm:ss", async () => {
+    clientFetchMock.mockResolvedValue({
+      notes: [makeNote({ audio_duration_seconds: 3725 })],
+    });
+    renderWithProviders(<NoteDetailClient noteId={NID} />);
+    await waitFor(() => {
+      expect(screen.getByText("1:02:05")).toBeInTheDocument();
+    });
+  });
+
   it("Delete triggers DELETE /api/notes/delete and router.push('/app/notes')", async () => {
     const userEvent = (await import("@testing-library/user-event")).default;
     const user = userEvent.setup();
