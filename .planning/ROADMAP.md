@@ -32,6 +32,7 @@ A drop-in OpenWhispr backend any organization can self-host — open-source out 
 - [ ] **Phase 8: Load Test, Tuning & SLO Publication** — k6 1000-concurrent nightly; PgBouncer/FD/sizing-matrix tuning; SLOs published only after this passes
 - [x] **Phase 08.1: Deferral Fixes + Mock Re-run** — gap-closure of 08-07 CLOSED 2026-05-12 with partial-live-validation: anomaly #1 (99.93% error rate) → transcribe + reason 200 LIVE, agent-stream api-side issue escalated; anomaly #2 (realtime-ws p95=0) → code-closed via custom Trend; anomaly #3 (pgbouncer_admin SCRAM) → LIVE SHOW POOLS returns rows. 30-min plateau is operator hand-off via `make load-test PROFILE=mock`.
 - [x] **Phase 08.2: agent-stream undici dispatcher fix** — CLOSED 2026-05-12: Option A landed in two atomic commits (08.2-01 `feat(08.2-01): add chatCompletionsStream to @openwhispr/litellm-client`; 08.2-02 `fix(08.2-02): replace undici.fetch in agent/stream with shared litellm-client streaming method` + `fix(08.2-02): stop forwarding signal to litellm client in agent/stream (live-probe finding)`). Live forensic-probe against `compose/mock-litellm` returns content-bearing NDJSON ending in `finishReason:"stop"` (12 text-deltas + finish chunk). New architectural finding from live probe: undici 7.25 `signal:AbortSignal` + custom-wrapped SSRF Agent fails at connect/dispatch — fix omits signal at the route call site; client interface preserves `signal?` for non-SSRF callers (deferred follow-up item). Coverage: litellm-client 100/98/100/100; stream.ts 100/90.47/100/100. Unblocks 08-08.
+- [ ] **Phase 08.3: mock-litellm `/v1/realtime` echo for measurable WS roundtrip** — final blocker for Plan 08-08 SLO publication: Run 3 plateau showed transcribe/reason/agent-stream PASS but realtime-ws p95=0 because mock-litellm has no `/v1/realtime` route (102k healthy WS handshakes, zero message frames). Tiny Fastify echo handler + Run 4 plateau. INSERTED 2026-05-12 after Run 3 (commit `fa799fa`).
 - [ ] **Phase 9: Helm Chart & Cloud Deploy** — CNPG + Traefik 3 + online-migration discipline + upgrade-matrix CI + first-launch SLO test
 - [ ] **Phase 10: i18n + Docs + OSS Housekeeping** — en+ru ICU plurals + DOCS-01..08 + ADRs + CONTRIBUTING/SECURITY/COC
 
@@ -550,6 +551,21 @@ Plans:
 **Plans**:
   - [x] 08.2-01 — Add `chatCompletionsStream` to shared litellm-client (Wave 0) — CLOSED 2026-05-12 (commit `6040ed5`; 7 new RED→GREEN tests; coverage 100/98/100/100; T-08.2-01 mitigation verified — no per-call dispatcher option exposed).
   - [x] 08.2-02 — Swap `undici.fetch` for `chatCompletionsStream` in `agent/stream.ts` (Wave 1) — CLOSED 2026-05-12 (commits `741a009` + `ae0dcc3`; 17/17 tests GREEN; coverage 100/90.47/100/100 on stream.ts; live forensic-probe returns content-bearing NDJSON ending in finishReason:"stop"; deviation: signal not forwarded at route call site due to live-isolated undici 7.25 + SSRF-wrapped-Agent incompatibility — client interface preserves `signal?` for non-SSRF callers; SSRF gate untouched, 54/54 SSRF tests GREEN; sibling routes transcribe + reason 23/23 GREEN).
+**UI hint**: no
+
+### Phase 08.3: mock-litellm `/v1/realtime` echo for measurable WS roundtrip
+**Goal**: `compose/mock-litellm` exposes a `WSS /v1/realtime` endpoint that accepts the k6 realtime-ws flow's handshake + echoes back at least one message frame per request, so the realtime-ws custom Trend `realtime_ws_roundtrip_ms` populates a non-zero p95 in the 30-min mock plateau. This is the final gap blocking Plan 08-08 from publishing a complete 4-endpoint SLO table. Inserted 2026-05-12 after Run 3 (commit `fa799fa`) showed transcribe/reason/agent-stream all PASS exit-gates but realtime-ws p95=0 because mock-litellm has no `/v1/realtime` route (102k WS sessions handshook but no message frames emitted).
+**Depends on**: Phase 08.1 (k6 flow Trend correctness), Phase 08.2 (no api-side blockers)
+**Requirements**: SCALE-02, TEST-LOAD-01
+**Success Criteria** (what must be TRUE):
+  1. `compose/mock-litellm/src/server.ts` registers a `WSS /v1/realtime` handler that completes the upstream WS handshake (101 Switching Protocols) and emits at least one binary or text message frame in response to the first inbound client message, mirroring the OpenAI Realtime API frame envelope just enough for the k6 flow to record a roundtrip (no full session.state machine required).
+  2. Strict TDD: unit test in `compose/mock-litellm/src/realtime.test.ts` asserts handshake + echo behaviour against a fake WS client BEFORE the handler is implemented.
+  3. `tools/load-test/src/flows/realtime-ws.ts` continues to call `realtime_ws_roundtrip_ms.add(...)` inside the message listener (08.1 fix unchanged) and now records non-zero values; existing vitest assertions adapted only if the mock-litellm frame shape requires a new client-side parse.
+  4. `make load-test PROFILE=mock` Run 4 produces a summary JSON where `realtime_ws_roundtrip_ms` p95 ∈ [50, 1000] ms (Plan 08-07.1 plausibility window).
+  5. Coverage on new mock-litellm code ≥ 90/90/90/90.
+  6. Tests written first (TDD); all CI checks green; Plan 08-08 receives the complete 4-endpoint SLO baseline.
+**Plans**: 1 plan (Wave 1)
+- [ ] 08.3-01 — mock-litellm realtime echo + Run 4 (Wave 1)
 **UI hint**: no
 
 ### Phase 9: Helm Chart & Cloud Deploy
