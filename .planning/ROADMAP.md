@@ -496,15 +496,17 @@ Plans:
 **UI hint**: yes (working app)
 
 ### Phase 8: Load Test, Tuning & SLO Publication
-**Goal**: The k6 load test demonstrates 1000 concurrent active users (mixed transcribe + reason + stream + WSS) at validated p95 SLOs, runs nightly in CI against an ephemeral environment, and the per-endpoint p95 budgets are published to operators only after this phase passes.
+**Goal**: An on-demand k6 load test (`make load-test`) demonstrates 1000 concurrent active users (mixed transcribe + reason + agent stream + WSS realtime) against a real docker-compose stack at validated p95 baselines, and per-endpoint p95 SLO budgets (baseline + 20% headroom) are published to operators in `docs/operations.md` only after this phase passes.
 **Depends on**: Phase 6
 **Requirements**: SCALE-02, SCALE-06, SCALE-07, TEST-LOAD-01
 **Success Criteria** (what must be TRUE):
-  1. The k6 nightly test simulates 1000 concurrent active users at the documented mix ratios (transcribe + reason + agent stream + WSS realtime per ARCHITECTURE.md § 10) and asserts p95 latency budgets per endpoint; CI fails on regression.
-  2. PgBouncer is sized for 1000 concurrent (server-pool 100 × 4 instances) in transaction-mode and verified under load; file-descriptor limits are raised to 65535 on API + ingress containers and a startup probe verifies (default 1024 must NOT silently regress).
-  3. A documented sizing matrix per topology (compose / Helm / GPU pool) is published to `docs/operations.md` with measured numbers — not extrapolated estimates.
-  4. Per-endpoint p95 SLO budgets are published in operator-facing documentation **only after** this phase passes (constitutional rule); discrepancy alerts trigger on any nightly regression beyond budget.
-  5. Tests written first (TDD); all CI checks green.
+  1. `make load-test` runs the k6 scenario on the local docker-compose stack with 1000 concurrent active users (5m ramp-up → 20m sustained → 5m ramp-down = 30m total) at the documented v1 assumed mix ratios (50% transcribe, 25% reason, 15% agent/stream, 10% WSS realtime) and records per-endpoint p95 latencies. Nightly CI cadence is explicitly deferred (manual on-demand only; document in operations.md).
+  2. Two compose profiles support the load test: (a) `load-test-mock` — LiteLLM returns static responses with simulated latency (sleep(1500ms) for /v1/audio/transcriptions, sleep(300ms) for /v1/chat/completions) → measures gateway/auth/DB/Valkey p95 in isolation; (b) `load-test-realistic` — real Speaches (Whisper-large-v3 + pyannote) inside compose → measures end-to-end p95. Both baselines published.
+  3. PgBouncer is sized for 1000 concurrent (server-pool 100 × 4 instances) in transaction-mode and verified under load; file-descriptor limits raised to 65535 on api + traefik containers and a startup probe verifies (default 1024 must NOT silently regress).
+  4. A documented sizing matrix per topology (compose / Helm / GPU pool) published to `docs/operations.md` with measured numbers from the on-Mac live run — not extrapolated estimates.
+  5. Per-endpoint p95 SLO budgets (baseline + 20% headroom) published in `docs/operations.md` only after this phase passes (constitutional rule). On-demand re-runs after architectural changes are operator-initiated; regression discipline is documented but not auto-enforced in Phase 8.
+  6. The first live `make load-test` run actually executes on the developer's Mac (48GB RAM) and produces both mock and realistic baselines; raw k6 output + summary embedded in `08-SUMMARY.md`.
+  7. Tests written first (TDD); all CI checks green.
 **Plans**: TBD
 **UI hint**: no
 
