@@ -84,5 +84,81 @@ else
   _fail "verify-compose.sh missing 'set -euo pipefail'"
 fi
 
+# ---------------------------------------------------------------
+# Phase 08.5-01 Task 1 — RED cases for the third compose overlay
+# (docker-compose.load-test.realistic.yml). These run real
+# `docker compose config` (no daemon required) and grep the rendered
+# output. Until Task 2/3 land, the overlay file does not exist and the
+# rendered config shows the mock-litellm image under realistic.
+# ---------------------------------------------------------------
+ROOT="$(cd "$(dirname "$0")/../../.." && pwd)"
+if command -v docker >/dev/null 2>&1; then
+  cd "$ROOT"
+  RENDER_LOG="$TMP/render.yaml"
+  set +e
+  docker compose \
+    -f docker-compose.yml \
+    -f docker-compose.load-test.yml \
+    -f docker-compose.load-test.realistic.yml \
+    --profile load-test-realistic config >"$RENDER_LOG" 2>&1
+  render_rc=$?
+  set -e
+
+  # T5: third-overlay file must exist and render must succeed.
+  if [ $render_rc -eq 0 ]; then
+    _pass "realistic 3-file overlay renders successfully"
+  else
+    _fail "realistic 3-file overlay render failed (rc=$render_rc): $(head -3 "$RENDER_LOG")"
+  fi
+
+  # T6: real LiteLLM image under realistic — not the mock.
+  if grep -E "image: ghcr\.io/berriai/litellm:main-v1\.83\.14-stable" "$RENDER_LOG" >/dev/null 2>&1; then
+    _pass "realistic overlay selects real LiteLLM image"
+  else
+    _fail "realistic overlay missing real LiteLLM image (saw: $(grep -E 'image:.*litellm' "$RENDER_LOG" | head -3))"
+  fi
+
+  # T7: mock image MUST NOT appear in the realistic-only render.
+  if ! grep -F "openwhispr-mock-litellm" "$RENDER_LOG" >/dev/null 2>&1; then
+    _pass "realistic overlay excludes the mock-litellm image"
+  else
+    _fail "realistic overlay still selects mock-litellm: $(grep -F 'mock-litellm' "$RENDER_LOG" | head -2)"
+  fi
+
+  # T8: realistic config file is mounted into the litellm container.
+  if grep -F "litellm_config.realistic.yaml" "$RENDER_LOG" >/dev/null 2>&1; then
+    _pass "realistic overlay mounts litellm_config.realistic.yaml"
+  else
+    _fail "realistic overlay missing litellm_config.realistic.yaml mount"
+  fi
+
+  # T9: Speaches PRELOAD_MODELS env contains both expected model ids.
+  if grep -E "PRELOAD_MODELS.*Systran/faster-whisper-large-v3" "$RENDER_LOG" >/dev/null 2>&1 \
+    && grep -E "PRELOAD_MODELS.*pyannote/speaker-diarization-community-1" "$RENDER_LOG" >/dev/null 2>&1; then
+    _pass "speaches.PRELOAD_MODELS includes whisper + pyannote ids"
+  else
+    _fail "speaches.PRELOAD_MODELS missing one or both model ids"
+  fi
+
+  # T10: Speaches HF cache mount targets /home/ubuntu/.cache/huggingface
+  # (NOT /root/.cache/huggingface — latest-cpu runs as ubuntu).
+  if grep -E "target:\s*/home/ubuntu/\.cache/huggingface" "$RENDER_LOG" >/dev/null 2>&1 \
+    || grep -E ":/home/ubuntu/\.cache/huggingface" "$RENDER_LOG" >/dev/null 2>&1; then
+    _pass "speaches HF cache mount targets /home/ubuntu/.cache/huggingface"
+  else
+    _fail "speaches HF cache mount NOT at /home/ubuntu/.cache/huggingface"
+  fi
+
+  # T11: legacy /root/.cache/huggingface mount must be gone.
+  if ! grep -E ":/root/\.cache/huggingface" "$RENDER_LOG" >/dev/null 2>&1 \
+    && ! grep -E "target:\s*/root/\.cache/huggingface" "$RENDER_LOG" >/dev/null 2>&1; then
+    _pass "speaches no longer mounts to /root/.cache/huggingface"
+  else
+    _fail "speaches still mounts the wrong /root/.cache/huggingface path"
+  fi
+else
+  echo "  SKIP — docker CLI not available, skipping realistic-overlay render cases"
+fi
+
 echo "verify-compose: ${PASS} pass / ${FAIL} fail"
 [[ $FAIL -eq 0 ]]
