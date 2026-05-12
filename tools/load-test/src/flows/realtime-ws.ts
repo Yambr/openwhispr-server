@@ -31,21 +31,26 @@ export function realtimeWs(user: User, client: HttpClient): void {
       tags: { endpoint: "realtime-ws" },
     },
     (socket: WsSocket) => {
-      socket.on("open", () => {
+      // k6's `k6/websockets` module uses browser-style addEventListener
+      // semantics, NOT the node-style `.on()` event-emitter API used by
+      // the older `k6/ws` module. Plan 08-07 fix.
+      socket.addEventListener("open", () => {
         socket.send(PING_PAYLOAD);
       });
-      socket.on("message", () => {
+      socket.addEventListener("message", () => {
         // Close after the first inbound frame — the load test cares
         // about establish+roundtrip latency, not steady-state streaming.
         socket.close(1000, "load-test-complete");
       });
-      socket.on("error", () => {
+      socket.addEventListener("error", () => {
         // Errors fail the iteration metric in k6 but must not throw —
         // closing here keeps fd counts clean on the worst case.
         socket.close(1011, "load-test-error");
       });
       // Hard ceiling so a stuck connection cannot pin the VU forever.
-      socket.setTimeout(() => {
+      // setTimeout is a k6 global in main.ts but not on the socket
+      // surface; use a top-level setTimeout instead.
+      setTimeout(() => {
         socket.close(1000, "load-test-timeout");
       }, 2000);
     },
