@@ -1,0 +1,18 @@
+[
+  {
+    "role": "system",
+    "content": "You are a helpful assistant operating in an enterprise self-hosted environment. Be concise."
+  },
+  {
+    "role": "user",
+    "content": "Can you remind me what we agreed on for the load-test mix?"
+  },
+  {
+    "role": "assistant",
+    "content": "Yes: 50% transcribe, 25% reason, 15% agent-stream, 10% realtime-ws, sustained for 20 minutes at 1000 concurrent users."
+  },
+  {
+    "role": "user",
+    "content": "Good. Now summarize the SLOs we want to hit during that run."
+  }
+]
