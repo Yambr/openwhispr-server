@@ -15,9 +15,21 @@
 import path from "node:path";
 import type { NextConfig } from "next";
 
+// Next.js 15 App Router emits inline <script> tags for RSC payload hydration
+// (the `self.__next_f.push(...)` bootstrap). A `script-src 'self'` policy
+// blocks every one of these, leaving the hydrated DOM empty even though the
+// initial HTML rendered. We therefore allow 'unsafe-inline' for scripts in
+// both CSP buckets. Long-term we should switch to per-request nonces via
+// middleware (Next 15 supports this), but that requires a middleware-level
+// rewrite that is outside Plan 13's scope (Phase 07.1 / Plan 13 deviation —
+// Rule 1 fix: unblock hydration so e2e + cross-screen smoke can run).
+//
+// 'unsafe-eval' is NOT added — Next.js production builds do not use eval.
+// 'unsafe-inline' for style-src remains (required for Tailwind/shadcn
+// runtime style injection).
 const STRICT_AUTH_CSP =
   "default-src 'self'; " +
-  "script-src 'self'; " +
+  "script-src 'self' 'unsafe-inline'; " +
   "style-src 'self' 'unsafe-inline'; " +
   "img-src 'self' data:; " +
   "font-src 'self'; " +
@@ -28,7 +40,7 @@ const STRICT_AUTH_CSP =
 
 const APP_CSP =
   "default-src 'self'; " +
-  "script-src 'self'; " +
+  "script-src 'self' 'unsafe-inline'; " +
   "style-src 'self' 'unsafe-inline'; " +
   "img-src 'self' data: blob:; " +
   "font-src 'self'; " +

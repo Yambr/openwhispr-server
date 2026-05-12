@@ -23,6 +23,21 @@ pre-commit:
     ui-spec:
       glob: "{.planning/phases/07-frontend-ui-spec/UI-SPEC-*.md,tools/lint-ui-spec.ts,tools/lint-ui-spec.test.ts,tools/lint-ui-spec.config.ts,tools/lint-ui-spec/fixtures/**,apps/api/src/routes/**}"
       run: pnpm lint:ui-spec
+    # Phase 07.1 / Plan 13 — fail-fast when apps/web TypeScript breaks. tsc
+    # over the web project takes ~3s; cheap enough for pre-commit. Biome
+    # check is already covered by the global biome entry above.
+    web-typecheck:
+      glob: "apps/web/**/*.{ts,tsx}"
+      run: pnpm --filter @openwhispr/web typecheck
+pre-push:
+  parallel: true
+  commands:
+    # Phase 07.1 / Plan 13 — run the apps/web vitest suite before pushing
+    # any change that touches apps/web. Coverage takes ~3s on a hot run;
+    # acceptable pre-push cost.
+    web-test:
+      glob: "apps/web/**"
+      run: pnpm --filter @openwhispr/web test:unit
 commit-msg:
   commands:
     commitlint:
