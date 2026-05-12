@@ -1,8 +1,8 @@
 ---
 phase: 08-load-test-tuning-slo-publication
 type: orchestration-index
-plans: 8
-waves: 5
+plans: 9
+waves: 6
 autonomous: true
 requirements:
   - SCALE-02
@@ -25,7 +25,8 @@ requirements:
 | 1 | 05 | sequential | 01 + 02 + 03 + 04 |
 | 2 | 06 | sequential | 02 + 05 |
 | 3 | 07 | sequential (live run, ~75 min wall clock) | 06 |
-| 4 | 08 | sequential | 07 |
+| 3.5 | 07.1 (gap) | sequential (deferral fixes + valid mock re-run, ~2–3 h) | 07 |
+| 4 | 08 | sequential | 07.1 |
 
 ## Plans
 
@@ -78,12 +79,21 @@ requirements:
   - Depends on: 06
   - Requirements: SCALE-02, SCALE-06, SCALE-07, TEST-LOAD-01
 
+### Wave 3.5 — Deferral fixes (gap closure from Wave 3)
+
+- [ ] **07.1 — deferral fixes + mock re-run** (`08-load-test-tuning-slo-publication-07_1-deferral-fixes-and-rerun.md`) — **gap_closure**
+  - Closes three deferrals from plan 07's mock run: 99.93% HTTP error rate (request-schema mismatch between k6 flows ↔ api routes ↔ mock-litellm envelopes), realtime-ws p95=0 (k6/websockets addEventListener does not block iteration timer), missing pgbouncer_admin SCRAM hash in userlist.txt. TDD RED→GREEN per fix. Forensic capture first (Task 1), schema alignment (Task 2), realtime-ws custom Trend (Task 3), pgbouncer bootstrap regen (Task 4), live mock re-run with all exit gates GREEN (Task 5), SUMMARY + STATE + ROADMAP (Task 6). Hard cap: 3 live-run attempts.
+  - Realistic profile remains DEFERRED (Apple Silicon CPU inference saturation per RESEARCH §Pitfall 2) — to be documented as a known limitation in plan 08's operations.md, not re-attempted on this hardware.
+  - Files: `tools/load-test/scripts/run.sh`, `tools/load-test/scripts/forensic-probe.ts`, `tools/load-test/src/flows/{transcribe,reason,agent-stream,realtime-ws}.ts` + tests, `compose/mock-litellm/src/server.ts` + tests, `compose/pgbouncer/bootstrap.sh` + test, `runs/<timestamp>-mock-*`, `runs/forensics/*`, `runs/RUN-LOG.md`, `runs/SANITY.md`, `08-07_1-SUMMARY.md`
+  - Depends on: 07
+  - Requirements: SCALE-02, SCALE-06, SCALE-07, TEST-LOAD-01
+
 ### Wave 4 — Documentation closure
 
 - [ ] **08 — operations.md + SUMMARY + REQUIREMENTS amendment + ROADMAP closure** (`08-load-test-tuning-slo-publication-08-docs-and-slo-publication.md`)
   - `docs/operations.md` gets the full Load Testing section: how-to-run, two SLO budget tables (baseline × 1.20), sizing matrix, PgBouncer/FD tuning rationale, limitations. Numbers SOURCED from `runs/*-summary.json` via jq — not extrapolated. `08-SUMMARY.md` embeds tables + verifier truth table per plan 01-07. `REQUIREMENTS.md` TEST-LOAD-01 amendment notes the manual-not-nightly deviation. `ROADMAP.md` Phase 8 marked closed with evidence pointers.
   - Files: `docs/operations.md`, `08-SUMMARY.md`, `REQUIREMENTS.md`, `ROADMAP.md`
-  - Depends on: 07
+  - Depends on: 07.1 (valid mock baseline required as input)
   - Requirements: SCALE-02, SCALE-06, SCALE-07, TEST-LOAD-01
 
 ## Requirement Coverage
