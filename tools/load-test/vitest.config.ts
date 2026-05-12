@@ -29,6 +29,7 @@ export default defineConfig({
         "**/*.test.ts",
         "**/*.spec.ts",
         "src/main.ts",
+        "src/smoke.ts",
         "src/k6.config.ts",
         "src/fixtures/**",
         // scripts/*.mjs are Node CLI helpers, not import-graph reachable.
