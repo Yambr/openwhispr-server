@@ -112,6 +112,13 @@ Authoritative wire shapes pinned by the OpenWhispr client TS interfaces at `~/op
 - [ ] **UI-SPEC-02**: `UI-SPEC.md` for **End-User Self-Service**: profile, observed usage breakdown, account deletion (mirroring desktop-client surface)
 - [ ] **UI-SPEC-03**: UI-SPEC targets Next.js 15 + React 19 + Tailwind 4 + shadcn/ui v2 + TanStack Query 5; follows accessibility (WCAG 2.2 AA), responsive (mobile + tablet + desktop), light + dark theme; component inventory enumerated; design tokens documented
 
+### Frontend Implementation (Phase 07.1)
+
+- [ ] **WEB-IMPL-01**: `apps/web/` exists as Next.js 15 App Router + React 19 + TypeScript strict + Tailwind 4 + shadcn/ui v2 project; `pnpm --filter web build` exits 0; bundle ≤200KB gzipped per route enforced by `size-limit` CI gate
+- [ ] **WEB-IMPL-02**: Every screen from `UI-SPEC-admin.md` (A2, A3) and `UI-SPEC-end-user.md` (U1–U13) is implemented at the exact route paths the spec names; all 4 UI states (loading/empty/error/success) rendered per UI-SPEC; copy keys consumed from `apps/web/src/locales/en/{admin,end-user,common}.json`
+- [ ] **WEB-IMPL-03**: Same-origin deploy: docker-compose service `web` (Next.js production server), Traefik routes `/` → web and `/api/*` → api; `/admin/*` gated by Traefik basic-auth middleware reading `ADMIN_BASIC_AUTH_USERS` env; CSP/HSTS/X-Frame-Options=DENY headers in `next.config.ts`
+- [ ] **WEB-IMPL-04**: Playwright e2e covers each of 15 screens × 4 UI states + 1 axe-core WCAG 2.2 AA scan per screen (≈75 tests) against real docker-compose stack (api + Postgres + Valkey + Better Auth); CI green; coverage ≥90/90/90/90 on diff
+
 ### Deployment
 
 - [ ] **DEPLOY-01**: `docker-compose.yml` for single-host self-host: API + Postgres 17 + PgBouncer + Redis/Valkey + bundled LiteLLM v1.83.7+ + bundled open-source AI models (Whisper / pyannote / faster-whisper) + MinIO + Traefik + OTel Collector + Grafana + Loki + Tempo + Mimir; compose profile to disable bundled LiteLLM when overriding to corporate
