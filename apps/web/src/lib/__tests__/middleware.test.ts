@@ -12,10 +12,17 @@ import { describe, expect, it } from "vitest";
 // depends on.
 import { config, middleware } from "../../middleware";
 
-function makeReq(pathname: string, cookieHeader?: string): NextRequest {
-  const headers = new Headers();
-  if (cookieHeader) headers.set("cookie", cookieHeader);
-  return new NextRequest(new URL(`https://api.localhost${pathname}`), { headers });
+// NextRequest under happy-dom enforces fetch's forbidden-header rules
+// (the `cookie` header cannot be set directly via the Headers init in a
+// browser-like environment). We therefore set the cookie via the
+// `req.cookies` API, which is what middleware code reads through
+// `getSessionCookie(req)` anyway (Better Auth's helper inspects
+// `request.headers.get('cookie')`, and NextRequest synthesizes that
+// header from the cookies jar).
+function makeReq(pathname: string, cookie?: { name: string; value: string }): NextRequest {
+  const req = new NextRequest(new URL(`https://api.localhost${pathname}`));
+  if (cookie) req.cookies.set(cookie.name, cookie.value);
+  return req;
 }
 
 describe("middleware.ts (Phase 07.1 / Plan 05)", () => {
@@ -36,7 +43,7 @@ describe("middleware.ts (Phase 07.1 / Plan 05)", () => {
 
   it("passes through (NextResponse.next) when a Better Auth session cookie is present", () => {
     const res = middleware(
-      makeReq("/app/usage", "openwhispr.session_token=abc.signature"),
+      makeReq("/app/usage", { name: "openwhispr.session_token", value: "abc.signature" }),
     );
     // NextResponse.next() returns a 200 sentinel response with the
     // `x-middleware-next` header set; status is 200.

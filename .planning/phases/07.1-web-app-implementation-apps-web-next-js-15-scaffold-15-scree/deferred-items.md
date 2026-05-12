@@ -132,3 +132,5 @@ e2e plan (07+) unblocked.
    statement to fail under RLS.
 
 ---
+- **2026-05-12 — Plan 05 — apps/api typecheck pre-existing error**: `apps/api/src/routes/transcriptions/create.ts(63,56)` — `CloudTranscriptionRow` missing index signature for `Record<string,unknown>` constraint. Predates Plan 05 (confirmed via `git stash` baseline test). Out of scope for web auth wiring; flag for the api-side phase that owns transcriptions/create.
+- **2026-05-12 — Plan 05 — apps/api/src/auth.ts cookieCache enabled (RESEARCH § Pattern 2 contradiction)**: RESEARCH § Pattern 2 says cookie cache is "not enabled today — verified in apps/api/src/auth.ts:80-95" but inspection at line 212 shows `session.cookieCache: { enabled: true, maxAge: 5 * 60 }`. RESEARCH note is stale. Our web `getServerSession()` hits apps/api over HTTP (out-of-process) so better-auth#7008 (in-process RSC cookie cache returning null) does not apply to our path; however the api itself could be affected when the apps/api Better Auth handler reads its own cache. Recommend Plan 07 e2e on /sign-in confirms session round-trip; if it fails, disable cookie cache on api side.

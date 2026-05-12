@@ -9,6 +9,13 @@
 // error by design — we assert that throw signature.
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+function firstCall(mock: unknown): [string, RequestInit] {
+  const calls = (mock as { mock: { calls: unknown[][] } }).mock.calls;
+  const call = calls[0];
+  if (!call) throw new Error("expected fetch mock to be called at least once");
+  return [call[0] as string, (call[1] ?? {}) as RequestInit];
+}
+
 const headersMock = vi.fn();
 const redirectMock = vi.fn((path: string) => {
   const err = new Error(`NEXT_REDIRECT:${path}`);
@@ -44,15 +51,28 @@ describe("auth-actions.signOutAction (Phase 07.1 / Plan 05)", () => {
     await expect(signOutAction()).rejects.toThrow(/NEXT_REDIRECT/);
 
     expect(fetchMock).toHaveBeenCalledOnce();
-    const call = fetchMock.mock.calls[0]!;
-    expect(call[0]).toBe("http://api:3000/api/auth/sign-out");
-    const init = call[1] as RequestInit;
+    const [url, init] = firstCall(fetchMock);
+    expect(url).toBe("http://api:3000/api/auth/sign-out");
     expect(init.method).toBe("POST");
     expect((init.headers as Record<string, string>).cookie).toBe(
       "openwhispr.session_token=abc",
     );
 
     expect(redirectMock).toHaveBeenCalledWith("/sign-in");
+  });
+
+  it("uses the http://api:3000 default when INTERNAL_API_URL is unset", async () => {
+    process.env.INTERNAL_API_URL = "";
+    headersMock.mockResolvedValue(new Headers());
+    const fetchMock = vi.fn(async () => new Response("{}", { status: 200 }));
+    globalThis.fetch = fetchMock as typeof fetch;
+
+    const { signOutAction } = await import("../auth-actions");
+    await expect(signOutAction()).rejects.toThrow(/NEXT_REDIRECT/);
+    const [url, init] = firstCall(fetchMock);
+    expect(url).toBe("http://api:3000/api/auth/sign-out");
+    // Cookie header forwarded as empty string when no incoming cookies.
+    expect((init.headers as Record<string, string>).cookie).toBe("");
   });
 
   it("still redirects to /sign-in when the upstream sign-out fetch fails", async () => {
