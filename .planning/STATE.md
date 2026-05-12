@@ -3,7 +3,7 @@ gsd_state_version: 1.0
 milestone: v1.6.9
 milestone_name: expects plain session.token text; advisor research recommends Option C
 status: Executing Phase 6
-last_updated: "2026-05-12T01:30:00.000Z"
+last_updated: "2026-05-12T00:21:53.376Z"
 progress:
   total_phases: 34
   completed_phases: 9
@@ -27,14 +27,14 @@ progress:
 | Field | Value |
 |-------|-------|
 | Milestone | v1 |
-| Phase | 6 — Observability + Ops Hardening + Workers (EXECUTING, wave-by-wave) |
-| Plan | 06-01..12 all closed (12 plans + 12a/b/c/d splits). 06-12e post-12d follow-up: 3 e2e gaps closed (SSRF IP-literal bypass + fetch cause-chain + harness wiring). |
-| Status | READY FOR VERIFIER — all 12 plans landed, `make e2e-test-phase6` reports 8/8 GREEN (14 tests / 853s wall-time) |
-| Phase progress | Phases 0/1/2/3/4/5/6 closed; 02.x cascade fully closed; 03.x + 02.22 debt closed; Phase 6 complete pending verifier sign-off |
-| Next action | gsd-verifier adjudication of Phase 6 |
+| Phase | 7 — Frontend UI-SPEC (DISCUSS complete; ready for /gsd-plan-phase 7) |
+| Plan | n/a — SPEC.md + CONTEXT.md + design/ assets vendored. Plans not yet created. |
+| Status | Context gathered 2026-05-12. Scope revised: Admin 3→2 screens (A1 dropped), End-User 13 kept. Backend-spec-driven steering rule locked (no new APIs in Phase 7). |
+| Phase progress | Phases 0/1/2/3/4/5/6 closed; Phase 6 verifier signed off; Phase 7 spec+context done. |
+| Next action | /gsd-plan-phase 7 — produce per-plan task breakdown for the two UI-SPEC artifacts + lint tool |
 
 ```
-[X][X][X][X][X][X][X][ ][ ][ ][ ]
+[X][X][X][X][X][X][X][~][ ][ ][ ]
  0  1  2  3  4  5  6  7  8  9  10
 ```
 
