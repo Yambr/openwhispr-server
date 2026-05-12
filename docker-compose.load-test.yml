@@ -248,6 +248,17 @@ services:
       - "127.0.0.1:9009:9009"
 
   # ---------------------------------------------------------------------
+  # grafana: mount the k6 Prometheus dashboard (ID 19665) read-only into
+  # /etc/grafana/dashboards/k6/, picked up by the `k6` provisioner in
+  # compose/grafana/provisioning/dashboards/k6.yaml. Scoped to load-test
+  # profiles so production grafana never carries it.
+  # ---------------------------------------------------------------------
+  grafana:
+    profiles: [default, obs-only, load-test-mock, load-test-realistic]
+    volumes:
+      - ./compose/grafana/dashboards:/etc/grafana/dashboards/k6:ro
+
+  # ---------------------------------------------------------------------
   # mock-litellm: Fastify app from plan 08-03 (compose/mock-litellm/).
   # Stands in for the real LiteLLM upstream under load-test-mock so we
   # can isolate api+pooler+postgres latency from external LLM latency.
