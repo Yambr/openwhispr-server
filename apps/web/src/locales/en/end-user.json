@@ -1,1 +1,768 @@
-{}
+{
+  "end-user": {
+    "account": {
+      "danger": {
+        "delete": {
+          "label": "Delete account"
+        },
+        "dialog-body": {
+          "text": "This deletes your transcriptions, notes, conversations, and sessions. Type your email to confirm."
+        },
+        "dialog-confirm": {
+          "label": "Delete account"
+        },
+        "dialog-input": {
+          "label": "Type your email to confirm"
+        },
+        "dialog-title": {
+          "text": "Delete your OpenWhispr account"
+        },
+        "title": {
+          "label": "Danger zone"
+        }
+      },
+      "error": {
+        "retry": {
+          "label": "Retry"
+        },
+        "title": {
+          "text": "Could not load account"
+        }
+      },
+      "nav": {
+        "sidebar": {
+          "label": "Account"
+        }
+      },
+      "profile": {
+        "created": {
+          "label": "Member since"
+        },
+        "email": {
+          "label": "Email"
+        },
+        "name": {
+          "label": "Name"
+        },
+        "title": {
+          "label": "Profile"
+        },
+        "verified": {
+          "label": "Verified"
+        }
+      },
+      "sessions": {
+        "action-revoke": {
+          "label": "Revoke"
+        },
+        "action-revoke-others": {
+          "label": "Revoke all other sessions"
+        },
+        "col-created": {
+          "label": "Started"
+        },
+        "col-device": {
+          "label": "Device"
+        },
+        "col-expires": {
+          "label": "Expires"
+        },
+        "col-ip": {
+          "label": "IP address"
+        },
+        "title": {
+          "label": "Active sessions"
+        }
+      },
+      "subtitle": {
+        "body": {
+          "text": "Manage your profile, active sessions, and account deletion."
+        }
+      },
+      "title": {
+        "heading": {
+          "text": "Account"
+        }
+      }
+    },
+    "conv-detail": {
+      "action": {
+        "back": {
+          "label": "Back to conversations"
+        },
+        "copy": {
+          "label": "Copy transcript"
+        },
+        "delete": {
+          "label": "Delete conversation"
+        },
+        "export-json": {
+          "label": "Export as JSON"
+        },
+        "loadearlier": {
+          "label": "Load earlier messages"
+        }
+      },
+      "empty": {
+        "body": {
+          "text": "This conversation does not contain any messages yet."
+        },
+        "title": {
+          "text": "No messages"
+        }
+      },
+      "error": {
+        "retry": {
+          "label": "Retry"
+        },
+        "title": {
+          "text": "Could not load conversation"
+        }
+      },
+      "role": {
+        "assistant": {
+          "label": "Assistant"
+        },
+        "system": {
+          "label": "System"
+        },
+        "tool": {
+          "label": "Tool"
+        },
+        "user": {
+          "label": "You"
+        }
+      },
+      "title": {
+        "heading": {
+          "text": "Conversation"
+        }
+      }
+    },
+    "conv-list": {
+      "action": {
+        "loadmore": {
+          "label": "Load more"
+        },
+        "search": {
+          "label": "Search conversations"
+        }
+      },
+      "empty": {
+        "body": {
+          "text": "Start a chat in the desktop client to see it here."
+        },
+        "title": {
+          "text": "No conversations yet"
+        }
+      },
+      "error": {
+        "retry": {
+          "label": "Retry"
+        },
+        "title": {
+          "text": "Could not load conversations"
+        }
+      },
+      "nav": {
+        "sidebar": {
+          "label": "Conversations"
+        }
+      },
+      "row": {
+        "action-delete": {
+          "label": "Delete"
+        }
+      },
+      "subtitle": {
+        "body": {
+          "text": "LLM chats started from the desktop client."
+        }
+      },
+      "table": {
+        "col-created": {
+          "label": "Created"
+        },
+        "col-title": {
+          "label": "Title"
+        },
+        "col-updated": {
+          "label": "Updated"
+        }
+      },
+      "title": {
+        "heading": {
+          "text": "Conversations"
+        }
+      }
+    },
+    "conv-search": {
+      "action": {
+        "clear": {
+          "label": "Clear"
+        },
+        "submit": {
+          "label": "Search"
+        }
+      },
+      "empty": {
+        "none": {
+          "text": "No conversations match this query."
+        },
+        "type": {
+          "text": "Type a query to search your conversations."
+        }
+      },
+      "error": {
+        "retry": {
+          "label": "Retry"
+        },
+        "title": {
+          "text": "Search failed"
+        }
+      },
+      "input": {
+        "placeholder": {
+          "text": "Search your conversations"
+        }
+      },
+      "result": {
+        "score": {
+          "label": "Score"
+        }
+      },
+      "title": {
+        "heading": {
+          "text": "Search conversations"
+        }
+      }
+    },
+    "note-detail": {
+      "action": {
+        "back": {
+          "label": "Back to notes"
+        },
+        "copy": {
+          "label": "Copy"
+        },
+        "delete": {
+          "label": "Delete"
+        },
+        "export-json": {
+          "label": "Export as JSON"
+        },
+        "export-md": {
+          "label": "Export as Markdown"
+        }
+      },
+      "empty": {
+        "body": {
+          "text": "This note does not exist or was deleted."
+        },
+        "title": {
+          "text": "Note not found"
+        }
+      },
+      "error": {
+        "retry": {
+          "label": "Retry"
+        },
+        "title": {
+          "text": "Could not load note"
+        }
+      },
+      "metadata": {
+        "created": {
+          "label": "Created"
+        },
+        "duration": {
+          "label": "Audio duration"
+        },
+        "folder": {
+          "label": "Folder"
+        },
+        "participants": {
+          "label": "Participants"
+        },
+        "title": {
+          "label": "Details"
+        },
+        "type": {
+          "label": "Note type"
+        }
+      },
+      "tabs": {
+        "content": {
+          "label": "Content"
+        },
+        "enhanced": {
+          "label": "Enhanced"
+        },
+        "transcript": {
+          "label": "Transcript"
+        }
+      },
+      "title": {
+        "heading": {
+          "text": "Note"
+        }
+      }
+    },
+    "notes-list": {
+      "action": {
+        "loadmore": {
+          "label": "Load more"
+        },
+        "search": {
+          "label": "Search notes"
+        }
+      },
+      "empty": {
+        "body": {
+          "text": "Record a note in the desktop client to see it here."
+        },
+        "title": {
+          "text": "No notes yet"
+        }
+      },
+      "error": {
+        "retry": {
+          "label": "Retry"
+        },
+        "title": {
+          "text": "Could not load notes"
+        }
+      },
+      "folders": {
+        "readonly-body": {
+          "text": "Folder management is in the desktop client."
+        },
+        "title": {
+          "label": "Folders"
+        }
+      },
+      "nav": {
+        "sidebar": {
+          "label": "Notes"
+        }
+      },
+      "row": {
+        "action-delete": {
+          "label": "Delete"
+        }
+      },
+      "subtitle": {
+        "body": {
+          "text": "Notes recorded with the desktop client."
+        }
+      },
+      "table": {
+        "col-created": {
+          "label": "Created"
+        },
+        "col-folder": {
+          "label": "Folder"
+        },
+        "col-title": {
+          "label": "Title"
+        },
+        "col-words": {
+          "label": "Words"
+        }
+      },
+      "title": {
+        "heading": {
+          "text": "Notes"
+        }
+      }
+    },
+    "notes-search": {
+      "action": {
+        "clear": {
+          "label": "Clear"
+        },
+        "submit": {
+          "label": "Search"
+        }
+      },
+      "empty": {
+        "none": {
+          "text": "No notes match this query."
+        },
+        "type": {
+          "text": "Type a query to search your notes."
+        }
+      },
+      "error": {
+        "retry": {
+          "label": "Retry"
+        },
+        "title": {
+          "text": "Search failed"
+        }
+      },
+      "input": {
+        "placeholder": {
+          "text": "Search your notes"
+        }
+      },
+      "result": {
+        "score": {
+          "label": "Score"
+        }
+      },
+      "title": {
+        "heading": {
+          "text": "Search notes"
+        }
+      }
+    },
+    "signin": {
+      "action": {
+        "forgotPassword": {
+          "link": {
+            "disabled": "Forgot password? — coming soon, contact your operator."
+          }
+        },
+        "signup-link": {
+          "label": "Don't have an account? Sign up"
+        }
+      },
+      "error": {
+        "body": {
+          "text": "Check your email and password, then try again."
+        },
+        "title": {
+          "text": "Sign-in failed"
+        }
+      },
+      "form": {
+        "email": {
+          "label": "Email"
+        },
+        "password": {
+          "label": "Password"
+        },
+        "submit": {
+          "label": "Sign in"
+        }
+      },
+      "oidc": {
+        "github": {
+          "label": "Continue with GitHub"
+        },
+        "google": {
+          "label": "Continue with Google"
+        },
+        "sso": {
+          "label": "Continue with SSO"
+        }
+      },
+      "subtitle": {
+        "body": {
+          "text": "Use your email or your organization SSO."
+        }
+      },
+      "title": {
+        "heading": {
+          "text": "Sign in to OpenWhispr"
+        }
+      }
+    },
+    "signup": {
+      "action": {
+        "signin-link": {
+          "label": "Already have an account? Sign in"
+        }
+      },
+      "error": {
+        "duplicate": {
+          "text": "This email is already registered. Sign in instead."
+        },
+        "generic": {
+          "text": "Sign-up failed. Please review the form and try again."
+        }
+      },
+      "form": {
+        "confirmPassword": {
+          "label": "Confirm password"
+        },
+        "email": {
+          "label": "Email"
+        },
+        "name": {
+          "label": "Name"
+        },
+        "password": {
+          "label": "Password"
+        },
+        "submit": {
+          "label": "Sign up"
+        }
+      },
+      "oidc": {
+        "github": {
+          "label": "Continue with GitHub"
+        },
+        "google": {
+          "label": "Continue with Google"
+        },
+        "sso": {
+          "label": "Continue with SSO"
+        }
+      },
+      "subtitle": {
+        "body": {
+          "text": "A confirmation email is sent to verify your address."
+        }
+      },
+      "success": {
+        "body": {
+          "text": "We sent a verification link to your address. Open it to continue."
+        },
+        "title": {
+          "text": "Check your email"
+        }
+      },
+      "title": {
+        "heading": {
+          "text": "Create your OpenWhispr account"
+        }
+      }
+    },
+    "trx-detail": {
+      "action": {
+        "back": {
+          "label": "Back to list"
+        },
+        "copy": {
+          "label": "Copy"
+        },
+        "delete": {
+          "label": "Delete"
+        },
+        "export-json": {
+          "label": "Export as JSON"
+        },
+        "export-md": {
+          "label": "Export as Markdown"
+        }
+      },
+      "empty": {
+        "body": {
+          "text": "This transcription does not exist or was deleted."
+        },
+        "title": {
+          "text": "Transcription not found"
+        }
+      },
+      "error": {
+        "retry": {
+          "label": "Retry"
+        },
+        "title": {
+          "text": "Could not load transcription"
+        }
+      },
+      "metadata": {
+        "created": {
+          "label": "Created"
+        },
+        "duration": {
+          "label": "Audio duration"
+        },
+        "language": {
+          "label": "Language"
+        },
+        "model": {
+          "label": "Model"
+        },
+        "provider": {
+          "label": "Provider"
+        },
+        "status": {
+          "label": "Status"
+        },
+        "title": {
+          "label": "Details"
+        },
+        "words": {
+          "label": "Word count"
+        }
+      },
+      "title": {
+        "heading": {
+          "text": "Transcription"
+        }
+      }
+    },
+    "trx-list": {
+      "action": {
+        "loadmore": {
+          "label": "Load more"
+        }
+      },
+      "empty": {
+        "body": {
+          "text": "Record audio in the desktop client and your transcriptions show up here."
+        },
+        "title": {
+          "text": "No transcriptions yet"
+        }
+      },
+      "error": {
+        "retry": {
+          "label": "Retry"
+        },
+        "title": {
+          "text": "Could not load transcriptions"
+        }
+      },
+      "nav": {
+        "sidebar": {
+          "label": "Transcriptions"
+        }
+      },
+      "row": {
+        "action-delete": {
+          "label": "Delete"
+        }
+      },
+      "subtitle": {
+        "body": {
+          "text": "All audio you have transcribed with the desktop client."
+        }
+      },
+      "table": {
+        "col-created": {
+          "label": "Created"
+        },
+        "col-duration": {
+          "label": "Duration"
+        },
+        "col-language": {
+          "label": "Language"
+        },
+        "col-model": {
+          "label": "Model"
+        },
+        "col-preview": {
+          "label": "Preview"
+        },
+        "col-provider": {
+          "label": "Provider"
+        },
+        "col-status": {
+          "label": "Status"
+        },
+        "col-words": {
+          "label": "Words"
+        }
+      },
+      "title": {
+        "heading": {
+          "text": "Transcriptions"
+        }
+      }
+    },
+    "usage": {
+      "action": {
+        "refresh": {
+          "label": "Refresh"
+        }
+      },
+      "error": {
+        "body": {
+          "text": "Retry, or check the api container logs in Grafana."
+        },
+        "retry": {
+          "label": "Retry"
+        },
+        "title": {
+          "text": "Could not load usage"
+        }
+      },
+      "kpi-limit-reached": {
+        "body": {
+          "text": "Whether you are currently throttled."
+        },
+        "title": {
+          "label": "Limit reached"
+        }
+      },
+      "kpi-plan": {
+        "body": {
+          "text": "Active subscription plan."
+        },
+        "title": {
+          "label": "Plan"
+        }
+      },
+      "kpi-words-remaining": {
+        "body": {
+          "text": "Quota left on your current plan."
+        },
+        "title": {
+          "label": "Words remaining"
+        }
+      },
+      "kpi-words-used": {
+        "body": {
+          "text": "Across all transcriptions and notes."
+        },
+        "title": {
+          "label": "Words used"
+        }
+      },
+      "nav": {
+        "sidebar": {
+          "label": "Dashboard"
+        }
+      },
+      "subtitle": {
+        "body": {
+          "text": "Your current consumption against the active plan."
+        }
+      },
+      "title": {
+        "heading": {
+          "text": "Usage"
+        }
+      }
+    },
+    "verify": {
+      "error": {
+        "body": {
+          "text": "This verification link is invalid or has expired. Sign up again."
+        },
+        "cta": {
+          "label": "Back to sign up"
+        },
+        "title": {
+          "text": "Verification failed"
+        }
+      },
+      "loading": {
+        "body": {
+          "text": "Verifying your email..."
+        }
+      },
+      "success": {
+        "body": {
+          "text": "Your email is confirmed. You can now sign in."
+        },
+        "cta": {
+          "label": "Sign in"
+        },
+        "title": {
+          "text": "Email verified"
+        }
+      },
+      "title": {
+        "heading": {
+          "text": "Verify your email"
+        }
+      }
+    }
+  }
+}

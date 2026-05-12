@@ -11,8 +11,9 @@
 //
 // Redirect target carries the original path in `?from=` so Plan 07's
 // sign-in form can route the user back after successful auth.
-import { type NextRequest, NextResponse } from "next/server";
+
 import { getSessionCookie } from "better-auth/cookies";
+import { type NextRequest, NextResponse } from "next/server";
 
 // MUST mirror `apps/api/src/auth.ts` advanced.cookiePrefix. If these drift,
 // the middleware silently fails open (treats every request as

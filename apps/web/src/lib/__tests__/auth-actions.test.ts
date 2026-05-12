@@ -54,9 +54,7 @@ describe("auth-actions.signOutAction (Phase 07.1 / Plan 05)", () => {
     const [url, init] = firstCall(fetchMock);
     expect(url).toBe("http://api:3000/api/auth/sign-out");
     expect(init.method).toBe("POST");
-    expect((init.headers as Record<string, string>).cookie).toBe(
-      "openwhispr.session_token=abc",
-    );
+    expect((init.headers as Record<string, string>).cookie).toBe("openwhispr.session_token=abc");
 
     expect(redirectMock).toHaveBeenCalledWith("/sign-in");
   });

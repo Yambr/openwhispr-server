@@ -1,4 +1,21 @@
-// Phase 07.1 / Plan 06 — STUB for RED commit. GREEN exposes makeServerQueryClient.
-export function makeServerQueryClient(): never {
-  throw new Error("Plan 06 GREEN not landed yet");
+// Phase 07.1 / Plan 06 — TanStack Query 5 server factory (D-STACK-3).
+//
+// RESEARCH § Pattern 5 + Pitfall 4: every RSC render that prefetches data
+// MUST construct a fresh QueryClient — sharing one across requests would
+// leak hydrated state between users (one user's session data could be
+// dehydrated into another user's HTML payload).
+//
+// Defaults match the Client provider exactly so the dehydrated state on
+// the wire matches the first client-side getQuery() lookup.
+import { QueryClient } from "@tanstack/react-query";
+
+export function makeServerQueryClient(): QueryClient {
+  return new QueryClient({
+    defaultOptions: {
+      queries: {
+        staleTime: 60_000,
+        refetchOnWindowFocus: false,
+      },
+    },
+  });
 }

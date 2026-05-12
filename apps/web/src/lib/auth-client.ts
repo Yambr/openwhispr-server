@@ -29,9 +29,10 @@ const baseClient = createAuthClient({
 // These aren't in the inferred plugin-keyed type but ARE in the 1.6.9
 // surface — verified by the OQ4 smoke test in this plan's commit body.
 // We extend the type minimally so TypeScript matches the runtime reality.
-type AccountDeletion = (
-  data?: { password?: string; callbackURL?: string },
-) => Promise<{ data: unknown; error: unknown }>;
+type AccountDeletion = (data?: {
+  password?: string;
+  callbackURL?: string;
+}) => Promise<{ data: unknown; error: unknown }>;
 
 type ExtendedAuthClient = typeof baseClient & {
   deleteAccount: AccountDeletion;

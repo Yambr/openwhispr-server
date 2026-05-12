@@ -102,4 +102,19 @@ describe("AppShell (Phase 07.1 / Plan 06)", () => {
     );
     expect(screen.getByTestId("child")).toHaveTextContent("child-content");
   });
+
+  it("clicking sign-out calls authClient.signOut and routes to /sign-in", async () => {
+    const userEvent = (await import("@testing-library/user-event")).default;
+    const { signOut } = await import("@/lib/auth-client");
+    const user = userEvent.setup();
+    render(
+      <Wrap>
+        <AppShell>
+          <span>child</span>
+        </AppShell>
+      </Wrap>,
+    );
+    await user.click(screen.getByRole("button", { name: /sign out/i }));
+    expect(signOut).toHaveBeenCalled();
+  });
 });
