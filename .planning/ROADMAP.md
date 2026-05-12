@@ -512,7 +512,7 @@ Plans:
 - [x] 08-02 — load-test workspace scaffold (Wave 0)
 - [x] 08-03 — mock-litellm Fastify scaffold (Wave 0)
 - [x] 08-04 — FD probe scripts (Wave 0)
-- [ ] 08-05 — docker-compose load-test profiles (Wave 1)
+- [x] 08-05 — docker-compose load-test profiles (Wave 1)
 - [ ] 08-06 — k6 flows + Makefile (Wave 2)
 - [ ] 08-07 — live baseline run on Mac (Wave 3)
 - [ ] 08-08 — operations.md + SLO publication + closure (Wave 4)
