@@ -30,7 +30,7 @@ A drop-in OpenWhispr backend any organization can self-host — open-source out 
 - [x] **Phase 7: Frontend UI-SPEC** — Admin console + end-user self-service specs targeting Next.js 15 + shadcn/ui v2; design tokens; component inventory. CLOSED 2026-05-12 (15/15 verifier must-haves PASS; tools/lint-ui-spec.ts coverage 96.81/92.24/94.59/96.77; three design-gap markers encoded for Claude Design re-engagement; apps/web/ scaffold deferred to Phase 8).
 - [x] **Phase 07.1: Web App Implementation** — `apps/web/` Next.js 15 + React 19 + Tailwind 4 + shadcn/ui v2 implementing every UI-SPEC screen (A2, A3, U1–U13) same-origin behind Traefik. CLOSED 2026-05-12 (27 atomic commits; 510 unit + 85 e2e tests; coverage 98.53/92.99/97.79/97.62; size-limit 168.84 kB max gz across 15 routes; Traefik basic-auth admin gate verified; Better Auth wired end-to-end; WEB-IMPL-01..04 Complete).
 - [ ] **Phase 8: Load Test, Tuning & SLO Publication** — k6 1000-concurrent nightly; PgBouncer/FD/sizing-matrix tuning; SLOs published only after this passes
-- [ ] **Phase 08.1: Deferral Fixes + Mock Re-run** — gap-closure of 08-07: fix 99.93% HTTP error rate, realtime-ws p95=0, pgbouncer_admin SCRAM missing; produce valid mock baseline before 08-08 SLO publication (INSERTED 2026-05-12)
+- [x] **Phase 08.1: Deferral Fixes + Mock Re-run** — gap-closure of 08-07 CLOSED 2026-05-12 with partial-live-validation: anomaly #1 (99.93% error rate) → transcribe + reason 200 LIVE, agent-stream api-side issue escalated; anomaly #2 (realtime-ws p95=0) → code-closed via custom Trend; anomaly #3 (pgbouncer_admin SCRAM) → LIVE SHOW POOLS returns rows. 30-min plateau is operator hand-off via `make load-test PROFILE=mock`.
 - [ ] **Phase 9: Helm Chart & Cloud Deploy** — CNPG + Traefik 3 + online-migration discipline + upgrade-matrix CI + first-launch SLO test
 - [ ] **Phase 10: i18n + Docs + OSS Housekeeping** — en+ru ICU plurals + DOCS-01..08 + ADRs + CONTRIBUTING/SECURITY/COC
 
@@ -531,7 +531,7 @@ Plans:
   5. Coverage on modified k6 flow files + compose/pgbouncer/userlist.txt generator ≥ 90% lines/branches/functions/statements.
   6. Tests written first (TDD); all CI checks green; plan 08-08 (SLO publication) is unblocked.
 **Plans**: 1 plan (Wave 1)
-- [ ] 08.1-01 — deferral fixes + mock re-run (Wave 1)
+- [x] 08.1-01 — deferral fixes + mock re-run (Wave 1) — CLOSED 2026-05-12 (partial: anomalies #1/#2/#3 closed at code level with 67 unit tests + 5 hermetic shell tests GREEN; anomaly #1 LIVE-validated for transcribe + reason; anomaly #3 LIVE-validated for SHOW POOLS; full 30-min plateau is operator hand-off per the plan's wall-clock cap; agent-stream undici.fetch issue escalated as api-side, outside Plan 08.1-01 scope)
 **UI hint**: no
 
 ### Phase 9: Helm Chart & Cloud Deploy
