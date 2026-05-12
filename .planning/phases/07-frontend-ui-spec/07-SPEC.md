@@ -168,7 +168,7 @@ Both UIs run as a single Next.js 15 App Router application served from the same 
    - **Wireframe (ASCII)** — block-level layout indicating content hierarchy (sidebar / main / panels).
    - **shadcn/ui v2 component inventory** — list of shadcn primitives used (`Table`, `Dialog`, `Form`, `Skeleton`, `Toast`, etc.) so Claude Design knows the component vocabulary.
 3. Both artefacts cross-link a shared appendix: **design tokens** (colour roles, spacing scale, typography ramp, motion durations), **breakpoint matrix**, **i18n key index**, and **API endpoint index** (table of every endpoint the UI calls, with method + path + auth requirement).
-4. Spec linter (TBD in `tools/lint-ui-spec.ts`) validates structure: every screen has all 9 required subsections; every API endpoint referenced exists in `apps/api/src/routes/`; every copy key is unique; ASCII wireframes parse as monospace.
+4. Spec linter (TBD in `tools/lint-ui-spec.ts`) validates structure: every screen has all 10 required subsections (Purpose, Roles, Route, Data, Actions, States, User journey, Copy keys, Wireframe, shadcn primitives); every API endpoint referenced exists in `apps/api/src/routes/`; every copy key is unique; ASCII wireframes parse as monospace.
 5. CI green.
 
 ## Verification Mode

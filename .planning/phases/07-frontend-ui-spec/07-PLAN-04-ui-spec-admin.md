@@ -15,7 +15,7 @@ must_haves:
     - "Each screen has a `See visual: design/screens-admin.jsx#<FunctionName>` line pointing to a real export"
     - "All endpoints referenced are limited to: GET /api/stt-config, GET /api/note-recording-config (A3) — and zero endpoints for A2 (deep-links only). No other endpoints introduced. D-API4 (no Effective env block) and D-API5 (A1 dropped) honored."
     - "Every copy key follows `admin.<screen>.<section>.<element>.<prop>` (5-level schema). English values only. Russian deferred to Phase 10."
-    - "`pnpm lint:ui-spec` exits 0 with this file in place (plus the empty end-user.md stub from Plan 01)"
+    - "All 10 required subsections present under each `## A2` and `## A3` heading (Purpose, Roles, Route, Data, Actions, States, User journey, Copy keys, Wireframe, shadcn primitives) — verified by content inspection. Linter gate runs in Wave 2 (Plan 06), not here."
   artifacts:
     - path: ".planning/phases/07-frontend-ui-spec/UI-SPEC-admin.md"
       provides: "Full admin UI-SPEC: header + 2 screen sections + API Reference (verified) + Assumptions resolved (carried from Plan 01). Shared appendix appended by Plan 06."
@@ -165,9 +165,12 @@ required subsections in the fixed order.
 - Each has all 10 required subsections.
 - Plan 01's header + API Reference (verified) + Assumptions resolved + WIP
   endpoints sections are preserved untouched.
-- `pnpm lint:ui-spec` exits 0 (assuming Plan 05 also lands the end-user file
-  cleanly — coordinate with that plan; lint failures must be in this file
-  only).
+- All 10 required subsections present under each screen heading by manual
+  content inspection (Purpose, Roles, Route, Data, Actions, States, User
+  journey, Copy keys, Wireframe, shadcn primitives). The cross-file
+  `pnpm lint:ui-spec` gate runs in Wave 2 (Plan 06) — the linter binary
+  (`tools/lint-ui-spec.ts`) is being authored in parallel by Plan 03 and may
+  not exist when Plan 04 runs.
 - All copy keys are 5-level dotted, lowercase, English. Russian deferred.
 - No new API endpoint referenced anywhere in this file (only GET /api/stt-config
   and GET /api/note-recording-config — both verified in Plan 01).
@@ -186,7 +189,7 @@ required subsections in the fixed order.
 </task>
 
 <tests>
-- `pnpm lint:ui-spec` exits 0 (in concert with Plan 05's output).
+- Content inspection (NOT `pnpm lint:ui-spec` — that runs in Plan 06):
 - `grep -c "^## A[23] " UI-SPEC-admin.md` returns ≥ 2.
 - `grep -cE "^### (Purpose|Roles|Route|Data|Actions|States|User journey|Copy keys|Wireframe|shadcn primitives)\$" UI-SPEC-admin.md` returns ≥ 20 (10 subsections × 2 screens).
 - `grep -c "See visual: design/screens-admin.jsx#" UI-SPEC-admin.md` returns ≥ 2.

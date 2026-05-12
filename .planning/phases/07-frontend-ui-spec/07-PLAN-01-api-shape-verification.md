@@ -176,8 +176,13 @@ Plans 04 and 05 will append the actual screen sections on top of this scaffold.
    `/api/conversations/messages`, `/api/conversations/search`,
    `/api/conversations/delete`.
 
-5. **Self-check.** Run `rg "app\.(get|post|patch|delete|all|put)\(" apps/api/src/routes/`
-   and cross-check the resulting endpoint set against your tables. Any endpoint
+5. **Self-check.** Run both:
+   `rg "app\.(get|post|patch|delete|all|put)\(" apps/api/src/routes/`
+   AND
+   `rg "app\.route\(" apps/api/src/routes/`
+   (the second form is widely used in `transcriptions/`, `notes/`, `conversations/`,
+   and `folders/` subdirectories — see `app.route({ method: "POST", url: "..." })`).
+   Cross-check the resulting endpoint set against your tables. Any endpoint
    named in your table but NOT in the rg output must be either (a) a BA catch-all
    path (move to BETTER_AUTH_PATHS appendix entry) or (b) a WIP entry flagged for
    Plan 07 follow-up. Do not invent endpoints.
@@ -190,6 +195,13 @@ Plans 04 and 05 will append the actual screen sections on top of this scaffold.
   per endpoint named in the relevant 07-SPEC.md "In Scope" table.
 - Every row carries a `file:line` citation (or the literal string
   `BETTER_AUTH_HANDLER` for catch-all paths).
+- **HTTP method MUST be read from the route file source** (literal string passed
+  to `app.<method>(...)` or the `method:` key inside `app.route({...})`). Do NOT
+  assume `GET` for read-shaped endpoints. In particular, the verified table
+  MUST list the following as `POST` (confirmed by reading the route file):
+  - `POST /api/streaming-usage` (apps/api/src/routes/streaming-usage.ts:57)
+  - `POST /api/notes/search` (apps/api/src/routes/notes/search.ts:50)
+  - `POST /api/conversations/search` (apps/api/src/routes/conversations/search.ts:48)
 - The `## Assumptions resolved` table closes all of RESEARCH § A1–A8.
 - The `## WIP endpoints` section is either empty or contains items that Plan 07
   can drain before phase close.
