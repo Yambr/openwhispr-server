@@ -85,3 +85,50 @@ Option 3 is the smallest patch and the recommended starting point.
   router) is preserved.
 
 ---
+
+## DEF-07.1-NOTES-DELETE-ALL — `DELETE /api/notes/delete-all` returns HTTP 500 on live stack
+
+**Status:** OPEN
+**Discovered:** Plan 04 execution (test tooling — seed.ts selftest)
+**Scope:** apps/api route handler `apps/api/src/routes/notes/delete-all.ts`
+**Severity:** MEDIUM (blocks the bulk-purge wire endpoint; per-row delete
+fallback works)
+**Reproducer:**
+```bash
+docker compose --profile default up -d --wait
+# (assumes a signed-in session cookie for any verified user; the test
+#  fixture `apps/web/tests/e2e/fixtures/auth.ts.provisionTestUser` is
+#  sufficient.)
+curl -sk -b "<session>" -X DELETE https://api.localhost/api/notes/delete-all
+# → HTTP 500 {"error":"Internal server error"}
+```
+Reproduces regardless of whether the user has 0, 1, or more notes; reproduces
+on a fresh user; the corresponding `notes/list` and `notes/delete` (per-row)
+endpoints both work normally. The 500 is emitted by Fastify's default error
+handler — the underlying exception is not surfaced in `docker logs` from
+host (Docker Desktop log-stream quirk in this environment) and was not
+investigated further in Plan 04 (out of scope; pre-existing code from
+Phase 05 Plan 05 Task 2).
+
+**Pre-existing:** YES — apps/api `notes/delete-all.ts` last changed in
+Phase 05 (commit predates Phase 07.1). Plan 04 did not touch apps/api.
+
+**Mitigation (Plan 04 seed fixture):** `apps/web/tests/e2e/fixtures/seed.ts.clearAllData()`
+uses the per-row `DELETE /api/notes/delete?id=<id>` path against the result
+of `GET /api/notes/list` (Plan 04 Step 0 alternative #2). This keeps every
+e2e plan (07+) unblocked.
+
+**Recommended next step (Phase 6.x or as part of Plan 14 final-verify):**
+1. Run `apps/api`'s existing integration test
+   `apps/api/src/routes/notes/__tests__/delete-all.integration.test.ts`
+   inside the running compose stack (the test passes in CI per the latest
+   green pipeline — so the runtime regression is environmental: container
+   image vs. testcontainer DB, or a migration drift between the test DB
+   and the live `openwhispr` DB).
+2. Compare `\d notes` in the live container vs. the test DB; the most
+   likely cause is a column addition (e.g. `tenant_id`/`organization_id`)
+   in a later migration that the SQL in `delete-all.ts` does not yet
+   reference, causing the `DELETE ... WHERE user_id=$1 RETURNING id`
+   statement to fail under RLS.
+
+---
