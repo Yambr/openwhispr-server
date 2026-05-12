@@ -10,14 +10,13 @@
 // real /api/notes, /api/transcriptions, /api/conversations endpoints, real
 // Postgres state. Seeded resources are torn down before the spec runs.
 
-import { expect, test } from "@playwright/test";
-import { fixtureEmail, provisionTestUser, signInAs } from "./fixtures/auth.js";
+import { expect, fixtureEmail, test } from "./fixtures/auth.js";
 import { bindToContext } from "./fixtures/seed.js";
 
 test.describe("99 — cross-screen smoke (Phase 07.1 / Plan 13)", () => {
-  test.beforeEach(async ({ page, context }) => {
-    await provisionTestUser(page.request, 0);
-    await signInAs(page, fixtureEmail(0));
+  // Plan 13.1 — auth provisioned by global-setup.ts; per-worker storageState
+  // applied via the auth-extended `test`. Only data state is reset here.
+  test.beforeEach(async ({ context }) => {
     const seed = bindToContext(context);
     await seed.clearAllData();
   });
@@ -25,7 +24,7 @@ test.describe("99 — cross-screen smoke (Phase 07.1 / Plan 13)", () => {
   test("sign-in → /app → notes → transcriptions → conversations → account → sign-out", async ({
     page,
     context,
-  }) => {
+  }, info) => {
     const seed = bindToContext(context);
 
     // Seed one resource per list so the success cards don't collapse to empty.
@@ -56,7 +55,7 @@ test.describe("99 — cross-screen smoke (Phase 07.1 / Plan 13)", () => {
     // 5) /app/account — profile card shows the fixture email.
     await page.goto("/app/account");
     await expect(page).toHaveURL(/\/app\/account$/);
-    await expect(page.getByText(fixtureEmail(0))).toBeVisible();
+    await expect(page.getByText(fixtureEmail(info.parallelIndex))).toBeVisible();
 
     // 6) Sign out — Better Auth /api/auth/sign-out clears the session cookie.
     const baseUrl = process.env.BASE_URL ?? "https://api.localhost";

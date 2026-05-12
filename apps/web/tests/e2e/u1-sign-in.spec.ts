@@ -4,7 +4,7 @@
 // D-TEST-3: route() ONLY for loading + error; success + empty hit real
 // Better Auth via the seeded fixture user (apps/web/tests/e2e/fixtures/auth.ts).
 import { expect, test } from "@playwright/test";
-import { FIXTURE_PASSWORD, fixtureEmail, provisionTestUser } from "./fixtures/auth.js";
+import { FIXTURE_PASSWORD, fixtureEmail } from "./fixtures/auth.js";
 import { runAxe } from "./fixtures/axe.js";
 
 test.describe("U1 Sign-in (Phase 07.1 / Plan 07)", () => {
@@ -51,9 +51,9 @@ test.describe("U1 Sign-in (Phase 07.1 / Plan 07)", () => {
     await expect(page.getByText(/sign-in failed/i)).toBeVisible();
   });
 
-  test("success state — valid credentials redirect to /app", async ({ page, request }, info) => {
-    await provisionTestUser(request, info.workerIndex);
-    const email = fixtureEmail(info.workerIndex);
+  test("success state — valid credentials redirect to /app", async ({ page }, info) => {
+    // Plan 13.1 — user is provisioned by global-setup.ts; we just consume it.
+    const email = fixtureEmail(info.parallelIndex);
     await page.goto("/sign-in");
     await page.getByLabel(/email/i).fill(email);
     await page.getByLabel(/password/i).fill(FIXTURE_PASSWORD);
