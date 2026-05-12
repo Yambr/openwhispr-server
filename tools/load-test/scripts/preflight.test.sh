@@ -107,6 +107,27 @@ else
   fail "preflight.sh did NOT refuse occupied port (rc=$rc, out=$out)"
 fi
 
+# T5b: lsof reports only outbound ESTABLISHED connections on the port (no LISTEN)
+# -> preflight must treat the port as FREE. Regression guard for the case where
+# e.g. Telegram has an outbound TCP -> remote:443 (ESTABLISHED) but nothing is
+# bound to local :443. Real lsof on macOS returns such rows for `lsof -i :443`.
+stubdir=$(make_stubdir)
+stub_set "$stubdir" docker 'if [ "$1" = "info" ]; then echo "MemTotal: 34359738368"; fi; exit 0'
+# Stub responds to both query forms:
+#   - bare `lsof -i :PORT` (legacy): returns ESTABLISHED outbound row, exit 0
+#   - `lsof -nP -iTCP:PORT -sTCP:LISTEN` (fixed): returns nothing, exit 1
+stub_set "$stubdir" lsof 'for a in "$@"; do case "$a" in -sTCP:LISTEN) exit 1;; esac; done; echo "Telegram 11626 nick 23u IPv4 0xdead 0t0 TCP 198.18.0.1:61108->149.154.167.41:443 (ESTABLISHED)"; exit 0'
+stub_set "$stubdir" sysctl 'echo "kern.maxfilesperproc: 65535"'
+stub_set "$stubdir" k6 'echo "k6 v0.50.0"'
+stub_set "$stubdir" git 'echo "" '
+out=$(env -i PATH="$stubdir:/usr/bin:/bin" HOME="$HOME" "$PREFLIGHT" --yes 2>&1)
+rc=$?
+if [ "$rc" -eq 0 ]; then
+  pass "preflight.sh treats outbound-only ESTABLISHED rows as port-free"
+else
+  fail "preflight.sh wrongly refused on outbound-only ESTABLISHED rows (rc=$rc, out=$out)"
+fi
+
 # T6: dirty git tree -> refuse
 stubdir=$(make_stubdir)
 stub_set "$stubdir" docker 'if [ "$1" = "info" ]; then echo "MemTotal: 34359738368"; fi; exit 0'
