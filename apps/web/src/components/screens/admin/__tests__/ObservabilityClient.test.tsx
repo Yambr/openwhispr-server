@@ -155,6 +155,16 @@ describe("ObservabilityClient — success state (env configured)", () => {
     expect(screen.getByRole("link", { name: /tempo/i })).toHaveAttribute("href", envs.grafana);
   });
 
+  it("trims a trailing slash on the GRAFANA env value when composing hrefs", () => {
+    render(
+      <Wrap>
+        <ObservabilityClient env={{ grafana: "https://grafana.example.com/" }} />
+      </Wrap>,
+    );
+    const link = screen.getByRole("link", { name: /api tier — request latency/i });
+    expect(link).toHaveAttribute("href", "https://grafana.example.com/d/api-latency");
+  });
+
   it("does NOT render the env-missing Alert when GRAFANA is set", () => {
     render(
       <Wrap>
