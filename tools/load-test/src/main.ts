@@ -98,8 +98,21 @@ export function setup(): { users: ProvisionedUser[] } {
     url: string,
     body: unknown,
   ): { status: number; body: unknown; headers: Record<string, string> } {
+    // Per-request fresh cookie jar. Without this, k6's default VU jar
+    // persists Better Auth's `__Secure-openwhispr.session_token` cookie
+    // from user 0's sign-up into user 1's request. BA sees an active
+    // session on the second call and rejects subsequent sign-up
+    // attempts with 403 (`User already authenticated`). Construct a
+    // fresh empty jar per call so each sign-up is anonymous.
+    // Plan 08-07 fix.
+    // biome-ignore lint/suspicious/noExplicitAny: k6 CookieJar
+    //   constructor is not in @types/k6 1.3
+    const HttpAny = http as unknown as { CookieJar: new () => unknown };
+    const jar = new HttpAny.CookieJar();
     const r = http.post(url, JSON.stringify(body), {
       headers: { "content-type": "application/json" },
+      // biome-ignore lint/suspicious/noExplicitAny: jar type loose
+      jar: jar as any,
     });
     let parsed: unknown = r.body;
     try {
