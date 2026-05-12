@@ -30,6 +30,7 @@ A drop-in OpenWhispr backend any organization can self-host — open-source out 
 - [x] **Phase 7: Frontend UI-SPEC** — Admin console + end-user self-service specs targeting Next.js 15 + shadcn/ui v2; design tokens; component inventory. CLOSED 2026-05-12 (15/15 verifier must-haves PASS; tools/lint-ui-spec.ts coverage 96.81/92.24/94.59/96.77; three design-gap markers encoded for Claude Design re-engagement; apps/web/ scaffold deferred to Phase 8).
 - [x] **Phase 07.1: Web App Implementation** — `apps/web/` Next.js 15 + React 19 + Tailwind 4 + shadcn/ui v2 implementing every UI-SPEC screen (A2, A3, U1–U13) same-origin behind Traefik. CLOSED 2026-05-12 (27 atomic commits; 510 unit + 85 e2e tests; coverage 98.53/92.99/97.79/97.62; size-limit 168.84 kB max gz across 15 routes; Traefik basic-auth admin gate verified; Better Auth wired end-to-end; WEB-IMPL-01..04 Complete).
 - [ ] **Phase 8: Load Test, Tuning & SLO Publication** — k6 1000-concurrent nightly; PgBouncer/FD/sizing-matrix tuning; SLOs published only after this passes
+- [ ] **Phase 08.1: Deferral Fixes + Mock Re-run** — gap-closure of 08-07: fix 99.93% HTTP error rate, realtime-ws p95=0, pgbouncer_admin SCRAM missing; produce valid mock baseline before 08-08 SLO publication (INSERTED 2026-05-12)
 - [ ] **Phase 9: Helm Chart & Cloud Deploy** — CNPG + Traefik 3 + online-migration discipline + upgrade-matrix CI + first-launch SLO test
 - [ ] **Phase 10: i18n + Docs + OSS Housekeeping** — en+ru ICU plurals + DOCS-01..08 + ADRs + CONTRIBUTING/SECURITY/COC
 
@@ -516,6 +517,21 @@ Plans:
 - [x] 08-06 — k6 flows + Makefile (Wave 2)
 - [x] 08-07 — live baseline run on Mac (Wave 3)
 - [ ] 08-08 — operations.md + SLO publication + closure (Wave 4)
+**UI hint**: no
+
+### Phase 08.1: Deferral Fixes + Mock Re-run
+**Goal**: Mock load-test baseline run satisfies all exit gates (error rate < 1%, all 4 endpoints non-zero p95, no container restarts, no prepared-statement errors, no 429s, pool-exhaustion < 5%) — producing artifact set consumable by plan 08-08 for SLO table publication. Realistic profile remains DEFERRED per RESEARCH.md §Pitfall 2 (Apple Silicon CPU saturates Speaches under 1000 VU). Inserted 2026-05-12 after 08-07 mock run produced invalidated baseline (99.93% HTTP error rate, realtime-ws p95=0 from k6/websockets addEventListener tag-mapping bug, pgbouncer_admin SCRAM hash absent from userlist.txt forcing log-scrape fallback).
+**Depends on**: Phase 8 plans 01–07
+**Requirements**: SCALE-02, SCALE-06, SCALE-07, TEST-LOAD-01
+**Success Criteria** (what must be TRUE):
+  1. Three deferrals from 08-07 are closed: (a) request-layer mismatch between k6 flows and api routes / mock-litellm envelopes resolved → HTTP error rate < 1%; (b) k6 realtime-ws flow uses `addEventListener` correctly so per-iteration p95 > 0; (c) `compose/pgbouncer/userlist.txt` contains pgbouncer_admin SCRAM hash so `SHOW POOLS` works without log-scrape fallback.
+  2. Strict TDD per deferral: forensic capture script + bug-reproducing test land RED before each fix; fix commits land GREEN with their tests in the SAME atomic commit.
+  3. `make load-test PROFILE=mock` re-run produces valid 30-minute baseline at 1000 VU on the developer Mac; raw k6 output + summary embedded under `.planning/phases/08.1-deferral-fixes-and-rerun/runs/`.
+  4. All exit gates pass: error rate < 1%, all 4 endpoints (transcribe, reason, agent-stream, realtime-ws) report non-zero p95, zero container restarts, zero prepared-statement errors, zero 429s, pool-exhaustion < 5%.
+  5. Coverage on modified k6 flow files + compose/pgbouncer/userlist.txt generator ≥ 90% lines/branches/functions/statements.
+  6. Tests written first (TDD); all CI checks green; plan 08-08 (SLO publication) is unblocked.
+**Plans**: 1 plan (Wave 1)
+- [ ] 08.1-01 — deferral fixes + mock re-run (Wave 1)
 **UI hint**: no
 
 ### Phase 9: Helm Chart & Cloud Deploy

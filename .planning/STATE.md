@@ -2,8 +2,8 @@
 gsd_state_version: 1.0
 milestone: v1.6.9
 milestone_name: expects plain session.token text; advisor research recommends Option C
-status: Phase 07.1 complete — ready for /gsd-plan-phase 8
-last_updated: "2026-05-12T16:39:23.214Z"
+status: Phase 8 plans 01–07 closed; 08-07 mock run invalidated by 3 deferrals → Phase 08.1 inserted for gap-closure before 08-08 SLO publication
+last_updated: "2026-05-12T17:00:00.000Z"
 progress:
   total_phases: 35
   completed_phases: 12
@@ -14,28 +14,28 @@ progress:
 
 # Project State: OpenWhispr Server
 
-**Last updated:** 2026-05-12 (Phase 07.1 CLOSED — apps/web Next.js 15 + 15 UI-SPEC screens; 27 atomic commits; 510 unit + 85 e2e PASS; coverage 98.53/92.99/97.79/97.62; size-limit 168.84 kB max gz)
+**Last updated:** 2026-05-12 (Phase 8 plans 01–07 closed; 08-07 mock run produced invalid baseline due to 3 deferrals → Phase 08.1 inserted to close them before 08-08 SLO publication)
 
 ## Project Reference
 
 **Core value:** A drop-in OpenWhispr backend any organization can self-host — open-source out of the box, corporate-LiteLLM-ready by env override.
 
-**Current focus:** Phase 07.1 CLOSED 2026-05-12. `apps/web/` Next.js 15 + React 19 + Tailwind 4 + shadcn/ui v2 application implementing every UI-SPEC screen (A2, A3, U1–U13) at the spec route paths, deployed same-origin behind Traefik alongside `apps/api`. 27 atomic commits (554b54c → 14-finalize), ~22.5K LoC added across 178 files. Full local sweep green: 510 unit tests (36 files), 85/85 Playwright e2e (15 screens × 4 states + 15 axe + cross-screen smoke), coverage 98.53/92.99/97.79/97.62 (all ≥90), size-limit max 168.84 kB gz across 15 routes (budget 200 kB), 4-probe smoke verifying Traefik routing + admin basic-auth gate. WEB-IMPL-01..04 Complete. Phases 0/1/2/3/4/5/6/7/07.1 closed; push to origin still deferred. Next: Phase 8 (Load Test, Tuning & SLO Publication) — now has a real frontend to load-test.
+**Current focus:** Phase 8 (Load Test, Tuning & SLO Publication) in progress. Plans 08-01..08-07 closed; 08-07 mock 1000-VU run on Mac surfaced 3 deferrals that invalidated the baseline: (1) 99.93% HTTP error rate from request-layer mismatch between k6 flows and api routes / mock-litellm envelopes; (2) realtime-ws p95 reported as 0 because k6/websockets `addEventListener` does not block the iteration timer; (3) `pgbouncer_admin` SCRAM hash absent from `compose/pgbouncer/userlist.txt` forcing log-scrape fallback for pool stats. Stack itself proved sound under 1000 VU (0 container restarts, `wait_time=0us` per pgbouncer instance, 0 prepared-statement errors, 0 rate-limit hits). Phase 08.1 (gap-closure sub-phase, 1 plan, Wave 1) inserted 2026-05-12 to fix all three and re-run mock baseline; plan 08-08 (operations.md + SLO publication) blocked until 08.1 exit gates pass. Realistic profile remains DEFERRED per RESEARCH.md §Pitfall 2 (Apple Silicon CPU saturates Speaches under 1000 VU). Phases 0/1/2/3/4/5/6/7/07.1 closed. Plan files canonicalized in this commit: 08-NN-PLAN.md naming + 08.1 sub-phase directory.
 
 ## Current Position
 
 | Field | Value |
 |-------|-------|
 | Milestone | v1 |
-| Phase | 07.1 — Web App Implementation (CLOSED 2026-05-12) → next: 8 — Load Test, Tuning & SLO Publication |
-| Plan | Phase 07.1 all 14 plans executed; 07.1-SUMMARY.md on disk; 28/28 verifier items PASS. |
-| Status | Phase 07.1 done; ready for `/gsd-verify-phase 07.1` then `/gsd-plan-phase 8`. |
-| Phase progress | Phases 0/1/2/3/4/5/6/7/07.1 closed. |
-| Next action | `/gsd-verify-phase 07.1` then `/gsd-plan-phase 8` (Load Test, Tuning & SLO Publication) |
+| Phase | 8 — Load Test, Tuning & SLO Publication (in progress); 08.1 — Deferral Fixes + Mock Re-run (gap-closure, INSERTED 2026-05-12) |
+| Plan | Phase 8: 08-01..08-07 closed, 08-08 blocked. Phase 08.1: 08.1-01 incomplete (gap-closure of 08-07 anomalies). |
+| Status | Ready to execute 08.1-01 (strict TDD per CLAUDE.md TDD-01b; gap_closure: true). 08-08 awaits 08.1 exit gates. |
+| Phase progress | Phases 0/1/2/3/4/5/6/7/07.1 closed. Phase 8 partially done. Phase 08.1 inserted. |
+| Next action | `/gsd-execute-phase 08.1` (gap-closure: forensic capture → 3 deferral fixes → mock re-run → exit gates). |
 
 ```
-[X][X][X][X][X][X][X][X][X][ ][ ][ ]
- 0  1  2  3  4  5  6  7 7.1 8  9  10
+[X][X][X][X][X][X][X][X][X][~][ ][ ][ ]
+ 0  1  2  3  4  5  6  7 7.1 8 8.1 9  10
 ```
 
 ## Performance Metrics
