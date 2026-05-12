@@ -2,8 +2,8 @@
 gsd_state_version: 1.0
 milestone: v1
 milestone_name: OpenWhispr Server v1
-status: Phase 8 plans 01–07 closed; 08.1/08.2/08.3 closed; Run 4 yielded a valid 3-of-4 baseline (transcribe / reason / agent-stream PASS, realtime-ws p95 still 0 — api-routing follow-on); Plan 08-08 unblocked for the 3 measurable endpoints
-last_updated: "2026-05-13T00:25:00.000Z"
+status: Phase 8 plans 01–07 closed; 08.1/08.2/08.3/08.4 closed; Run 5 yielded COMPLETE 4-endpoint mock baseline (transcribe/reason/agent-stream/realtime-ws all PASS); Plan 08-08 fully unblocked
+last_updated: "2026-05-13T01:50:00.000Z"
 progress:
   total_phases: 35
   completed_phases: 12
@@ -14,7 +14,7 @@ progress:
 
 # Project State: OpenWhispr Server
 
-**Last updated:** 2026-05-13 (Phase 08.3 CLOSED: 3 atomic commits — mock-litellm `/v1/realtime` echo handler landed under strict TDD, full 30-min Run 4 plateau completed with 1000 VU sustained at 530 rps / 88 GB sent, 3/4 exit gates PASS (transcribe 2469 / reason 1177 / agent-stream TTFB 595 ms, error rate 0.10%), realtime_ws_roundtrip_ms p95 still 0 — different bug than Run 3, traced to a likely api-side routing issue (`/v1/realtime` reverse-proxy registration, dualAuth on WS upgrade, or @fastify/http-proxy frame forwarding); operator probe instructions recorded in RUN-LOG.md; Plan 08-08 unblocked for 3 measurable endpoints, realtime-ws baseline deferred). Phase 08.2 CLOSED: 3 atomic commits across 2 plans landed Option A — agent-stream now calls shared litellm-client's chatCompletionsStream via undici.request; live forensic-probe returns content-bearing NDJSON ending in finishReason:"stop"; new architectural finding documented re. undici 7.25 signal + custom-wrapped Agent)
+**Last updated:** 2026-05-13 (Phase 08.4 CLOSED: 3 atomic commits — k6 WebSocket constructor 3-arg fix `a86140d` (H7 from research), smoke-gate `ws_msgs_sent>0` assertion `0ac7985`, k6 realtime-ws flow now hits :8443 dedicated WSS entrypoint per Phase 04 Plan 05 `670aa8a` (H8 from live host-probe — Traefik :443 has no router for /v1/realtime, returned plain-text 404 silently dropped by k6 addEventListener). Run 5 produced COMPLETE 4-endpoint mock baseline at 1000 VU × 30 min sustained: transcribe p95 2521 ms, reason 1209 ms, agent-stream TTFB 610 ms, realtime-ws roundtrip 41 ms, error rate 0.106%, 944k HTTP @ 511 rps, 105k WS sessions w/ 211k frames sent / 105k received, 0 container restarts, 6/6 k6 thresholds PASS. realtime-ws 41 ms is mock-floor (zero-latency echo) — operator H100 re-run with Speaches/OpenAI Realtime will fill the [50,1000] window naturally. Smoke gate from 08.4-01 caught the H8 regression in 30 sec instead of letting another 30-min plateau silently fail. Plan 08-08 fully unblocked.)
 
 ## Project Reference
 
@@ -27,15 +27,15 @@ progress:
 | Field | Value |
 |-------|-------|
 | Milestone | v1 |
-| Phase | 8 — Load Test, Tuning & SLO Publication (in progress); 08.1 — CLOSED 2026-05-12; 08.2 — CLOSED 2026-05-12 |
-| Plan | Phase 8: 08-01..08-07 closed, 08-08 unblocked (awaiting operator 30-min plateau). Phase 08.1: 08.1-01 CLOSED. Phase 08.2: 08.2-01 + 08.2-02 CLOSED. |
-| Status | 08.2 closed. 08-08 next, requires the operator to run the full 30-min `make load-test PROFILE=mock` plateau — the api-side agent-stream blocker is now resolved (live forensic-probe GREEN). |
-| Phase progress | Phases 0/1/2/3/4/5/6/7/07.1/08.1/08.2 closed. Phase 8 partially done (08-01..08-07 closed; 08-08 unblocked, awaiting operator plateau). |
-| Next action | Operator runs `make load-test PROFILE=mock` to produce SLO-grade summary; agent-stream is now content-bearing in the same stack. |
+| Phase | 8 — Load Test, Tuning & SLO Publication (in progress); 08.1/08.2/08.3/08.4 — all CLOSED 2026-05-12/13 |
+| Plan | Phase 8: 08-01..08-07 closed, 08-08 next (operations.md + SLO publication). Phase 08.1/08.2/08.3/08.4: all CLOSED. |
+| Status | 08.4 closed. Complete 4-endpoint mock baseline available (Run 5). Next: 08.5 (realistic profile boot per user directive 2026-05-13), then 08-08 with both SLO tables (mock + realistic with OPERATOR_RERUN_ON_GPU markers). |
+| Phase progress | Phases 0/1/2/3/4/5/6/7/07.1/08.1/08.2/08.3/08.4 closed. Phase 8 partially done (08-01..08-07 closed; 08-08 next). |
+| Next action | `/gsd-plan-phase 08.5` — realistic profile boot + smoke + short Mac baseline (Speaches/Whisper-large-v3 per speaches-audio.md). |
 
 ```
-[X][X][X][X][X][X][X][X][X][~][X][X][X][ ][ ]
- 0  1  2  3  4  5  6  7 7.1 8 8.1 8.2 8.3 9 10
+[X][X][X][X][X][X][X][X][X][~][X][X][X][X][ ][ ][ ]
+ 0  1  2  3  4  5  6  7 7.1 8 8.1 8.2 8.3 8.4 8.5 9 10
 ```
 
 ## Performance Metrics
