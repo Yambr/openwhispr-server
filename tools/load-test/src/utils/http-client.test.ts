@@ -28,6 +28,57 @@ describe("createK6Adapter()", () => {
     expect(typeof adapter.ws).toBe("function");
     expect(typeof adapter.httpFile).toBe("function");
   });
+
+  /**
+   * Phase 08.4 / H7 regression — `k6/websockets` constructor is
+   * `new WebSocket(url, protocols, params)` (THREE positional args).
+   * The pre-08.4 adapter constructed `new W(url, params)` with TWO args,
+   * silently binding the params object (carrying `headers.authorization`)
+   * to the `protocols` slot. The Bearer header never reached the upgrade
+   * handshake, the api's `dualAuthHook` 401-rejected every upgrade, and
+   * `ws_msgs_sent` / `ws_msgs_received` / `realtime_ws_roundtrip_ms` were
+   * all zero in the Run 4 plateau.
+   *
+   * This test stubs `globalThis.__k6_ws` with a constructor spy and
+   * asserts the adapter calls it with the canonical 3-arg shape:
+   *   spy(url, null, params)  // arg 1 is the protocols slot.
+   */
+  it("k6Ws constructor — passes params to 3rd positional arg with null protocols (regression: Phase 08.4 / H7)", () => {
+    const spy = vi.fn();
+    class FauxWebSocket {
+      constructor(...args: unknown[]) {
+        spy(...args);
+      }
+    }
+    const g = globalThis as { __k6_ws?: unknown };
+    const saved = g.__k6_ws;
+    g.__k6_ws = { WebSocket: FauxWebSocket };
+    try {
+      const params = {
+        headers: { authorization: "Bearer rt-fixture-token-abc" },
+        tags: { endpoint: "realtime-ws" },
+      };
+      const adapter = createK6Adapter();
+      adapter.ws("wss://example/test", params, () => undefined);
+      expect(spy).toHaveBeenCalledTimes(1);
+      const call = spy.mock.calls[0];
+      expect(call[0]).toBe("wss://example/test");
+      // The protocols slot MUST be null — not the params object.
+      expect(call[1]).toBeNull();
+      // The params object MUST land at index 2 with headers preserved.
+      expect(call[2]).toBe(params);
+      expect((call[2] as { headers: { authorization: string } }).headers.authorization).toBe(
+        "Bearer rt-fixture-token-abc",
+      );
+      expect((call[2] as { tags: { endpoint: string } }).tags.endpoint).toBe("realtime-ws");
+    } finally {
+      if (saved === undefined) {
+        delete g.__k6_ws;
+      } else {
+        g.__k6_ws = saved;
+      }
+    }
+  });
 });
 
 /**
