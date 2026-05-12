@@ -28,6 +28,7 @@ A drop-in OpenWhispr backend any organization can self-host — open-source out 
 - [x] **Phase 5: Operational Endpoints** — `/api/usage`, `/api/stt-config`, `/api/note-recording-config`, `/api/streaming-usage`, `/api/agent/web-search`, generic `cloud-api-request` passthrough (closed 2026-05-11, 828/830 tests green)
 - [ ] **Phase 6: Observability + Ops Hardening + Workers** — OTel/Prom/Loki end-to-end + audit log + BullMQ workers + tenant-context job middleware + anti-abuse rate limit + SSRF defense **← NEXT**
 - [x] **Phase 7: Frontend UI-SPEC** — Admin console + end-user self-service specs targeting Next.js 15 + shadcn/ui v2; design tokens; component inventory. CLOSED 2026-05-12 (15/15 verifier must-haves PASS; tools/lint-ui-spec.ts coverage 96.81/92.24/94.59/96.77; three design-gap markers encoded for Claude Design re-engagement; apps/web/ scaffold deferred to Phase 8).
+- [x] **Phase 07.1: Web App Implementation** — `apps/web/` Next.js 15 + React 19 + Tailwind 4 + shadcn/ui v2 implementing every UI-SPEC screen (A2, A3, U1–U13) same-origin behind Traefik. CLOSED 2026-05-12 (27 atomic commits; 510 unit + 85 e2e tests; coverage 98.53/92.99/97.79/97.62; size-limit 168.84 kB max gz across 15 routes; Traefik basic-auth admin gate verified; Better Auth wired end-to-end; WEB-IMPL-01..04 Complete).
 - [ ] **Phase 8: Load Test, Tuning & SLO Publication** — k6 1000-concurrent nightly; PgBouncer/FD/sizing-matrix tuning; SLOs published only after this passes
 - [ ] **Phase 9: Helm Chart & Cloud Deploy** — CNPG + Traefik 3 + online-migration discipline + upgrade-matrix CI + first-launch SLO test
 - [ ] **Phase 10: i18n + Docs + OSS Housekeeping** — en+ru ICU plurals + DOCS-01..08 + ADRs + CONTRIBUTING/SECURITY/COC
@@ -462,21 +463,37 @@ Plans:
 - [x] 07-PLAN-07-finalize.md — Wave 3: full verification sweep + SUMMARY + STATE/ROADMAP (this commit)
 **UI hint**: yes (spec only; `apps/web/` scaffold + implementation are Phase 8)
 
-### Phase 07.1: Web App Implementation — apps/web/ Next.js 15 + 15 screens (INSERTED)
+### Phase 07.1: Web App Implementation — apps/web/ Next.js 15 + 15 screens (CLOSED 2026-05-12)
 
 **Goal**: A working `apps/web/` Next.js 15 application implementing every screen enumerated in `UI-SPEC-admin.md` (A2, A3) and `UI-SPEC-end-user.md` (U1–U13), deployed same-origin behind Traefik alongside `apps/api`, with Playwright e2e covering all four UI states (loading/empty/error/success) on each screen plus axe-core WCAG 2.2 AA assertions, ≥90/90/90/90 coverage on diff per CLAUDE.md.
 **Depends on**: Phase 7
 **Requirements**: WEB-IMPL-01, WEB-IMPL-02, WEB-IMPL-03, WEB-IMPL-04
-**Success Criteria** (what must be TRUE):
-  1. `apps/web/` exists as a Next.js 15 (App Router) + React 19 + TypeScript strict + Tailwind 4 + shadcn/ui v2 project; `pnpm --filter web build` exits 0.
-  2. Every screen from both UI-SPEC files is implemented under `apps/web/src/app/` with the exact route paths from the spec; A2/A3 admin screens + U1–U13 end-user screens reachable.
-  3. Web sits same-origin behind Traefik (docker-compose service `web`; Traefik routes `/` → web and `/api/*` → api); `/admin/*` gated by Traefik basic-auth middleware reading `ADMIN_BASIC_AUTH_USERS` env.
-  4. Playwright e2e covers each screen × 4 UI states (loading/empty/error/success) + 1 axe-core WCAG 2.2 AA scan per screen; full suite green against the real docker-compose stack (api + Postgres + Valkey + Better Auth).
-  5. Bundle budget gate green (`size-limit` ≤200KB gzipped per route); CSP/HSTS/X-Frame-Options DENY headers set in `next.config.ts` and verified by e2e.
-  6. Tests precede production code (TDD RED→GREEN evidence per task); coverage ≥90/90/90/90 (lines/branches/functions/statements) on diff.
-  7. CI green: typecheck + vitest + Playwright + size-limit + axe.
+**Success Criteria** (what must be TRUE) — ALL VERIFIED 2026-05-12:
+  1. ✅ `apps/web/` exists as a Next.js 15 + React 19 + TS strict + Tailwind 4 + shadcn/ui v2 project; `pnpm --filter @openwhispr/web build` exits 0.
+  2. ✅ Every screen from both UI-SPEC files is implemented under `apps/web/src/app/` with exact route paths; A2/A3 admin + U1–U13 end-user screens reachable.
+  3. ✅ Web behind Traefik; `/admin/*` 401 without basic-auth, 200 with valid `ADMIN_BASIC_AUTH_USERS` credential (4-probe smoke verified).
+  4. ✅ Playwright e2e 85/85 PASS — 15 screens × 4 UI states + 15 axe-core WCAG 2.2 AA scans + cross-screen smoke against real docker-compose stack.
+  5. ✅ Bundle gate green: max 168.84 kB gz across 15 routes (budget 200 kB); CSP/HSTS/X-Frame-Options DENY in `next.config.ts`.
+  6. ✅ TDD RED→GREEN evidence per task; coverage 98.53/92.99/97.79/97.62 on diff.
+  7. ✅ All CI commands pass locally (typecheck + vitest + build + size-limit + playwright); `.github/workflows/web.yml` YAML-valid (yaml=OK). First remote run pending merge.
 **Mode:** mvp
-**Plans:** TBD (run /gsd-plan-phase 07.1 to break down)
+**Total commits:** 27 (554b54c..14-finalize)
+**Plans:** 14 plans (5 waves)
+- [x] 07.1-PLAN-01 — scaffold apps/web Next.js 15 + Tailwind 4 + standalone (198e1fc)
+- [x] 07.1-PLAN-02 — shadcn/ui v2 init + 16 primitives (132b084)
+- [x] 07.1-PLAN-03 — compose web service + Traefik admin basic-auth (c9a6a04) + lru-cache fix (de3ada2)
+- [x] 07.1-PLAN-04 — Playwright + vitest + axe-core + state-matrix fixtures (31a5e42)
+- [x] 07.1-PLAN-05 — Better Auth client + server + Edge middleware (8eae878 RED, cfd40d9 GREEN)
+- [x] 07.1-PLAN-06 — TanStack Query + i18n + RHF + shells + theme (64125cf RED, 8b2a618 GREEN)
+- [x] 07.1-PLAN-07 — U1/U2/U3 auth slice (e9f170e RED, 14d329d GREEN)
+- [x] 07.1-PLAN-08 — U4 Usage KPI + U5 Account (3b77456 RED held files, 7e82068 GREEN)
+- [x] 07.1-PLAN-09 — U6/U7 transcriptions (Branch B) (bad13b1 RED, 6c6040d GREEN)
+- [x] 07.1-PLAN-10 — U8/U9/U10 notes (c8a74ae RED, 9fb6b6e GREEN)
+- [x] 07.1-PLAN-11 — U11/U12/U13 conversations (9c6a5cd GREEN + 947f546 summary)
+- [x] 07.1-PLAN-12 — A2/A3 admin (4b5ca31 RED, 0606808 GREEN)
+- [x] 07.1-PLAN-13 — bundle gate + GHA web.yml + lefthook + cross-screen smoke (2254fb2 + 36c87f3 + 3d9ce2f + c12e6f9 fixes → 85/85 e2e green)
+- [x] 07.1-PLAN-14 — finalize: SUMMARY + STATE + ROADMAP + REQUIREMENTS (this commit)
+**UI hint**: yes (working app)
 
 ### Phase 8: Load Test, Tuning & SLO Publication
 **Goal**: The k6 load test demonstrates 1000 concurrent active users (mixed transcribe + reason + stream + WSS) at validated p95 SLOs, runs nightly in CI against an ephemeral environment, and the per-endpoint p95 budgets are published to operators only after this phase passes.

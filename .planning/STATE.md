@@ -2,40 +2,40 @@
 gsd_state_version: 1.0
 milestone: v1.6.9
 milestone_name: expects plain session.token text; advisor research recommends Option C
-status: Phase 7 complete — ready for /gsd-plan-phase 8
-last_updated: "2026-05-12T05:00:00.000Z"
+status: Phase 07.1 complete — ready for /gsd-plan-phase 8
+last_updated: "2026-05-12T18:00:00.000Z"
 progress:
-  total_phases: 34
-  completed_phases: 10
-  total_plans: 92
-  completed_plans: 108
-  percent: 29
+  total_phases: 35
+  completed_phases: 11
+  total_plans: 106
+  completed_plans: 122
+  percent: 31
 ---
 
 # Project State: OpenWhispr Server
 
-**Last updated:** 2026-05-12 (Phase 7 CLOSED — Frontend UI-SPEC: 2 UI-SPEC files + linter + GHA + lefthook; 15/15 verifier items PASS)
+**Last updated:** 2026-05-12 (Phase 07.1 CLOSED — apps/web Next.js 15 + 15 UI-SPEC screens; 27 atomic commits; 510 unit + 85 e2e PASS; coverage 98.53/92.99/97.79/97.62; size-limit 168.84 kB max gz)
 
 ## Project Reference
 
 **Core value:** A drop-in OpenWhispr backend any organization can self-host — open-source out of the box, corporate-LiteLLM-ready by env override.
 
-**Current focus:** Phase 7 CLOSED 2026-05-12. Two UI-SPEC artifacts (`UI-SPEC-admin.md` 2 screens, `UI-SPEC-end-user.md` 13 screens) + `tools/lint-ui-spec.ts` (5 rules, coverage 96.81/92.24/94.59/96.77 on the linter module) + `.github/workflows/ui-spec.yml` + `lefthook.yml` pre-commit hook. Three design-gap markers (D-UX2, D-API4, A2/A3+D-API6) encoded for Claude Design re-engagement. No new API endpoints introduced (D-S1 honored). `apps/web/` scaffold deferred to Phase 8. Phases 0/1/2/3/4/5/6/7 closed; push to origin still deferred.
+**Current focus:** Phase 07.1 CLOSED 2026-05-12. `apps/web/` Next.js 15 + React 19 + Tailwind 4 + shadcn/ui v2 application implementing every UI-SPEC screen (A2, A3, U1–U13) at the spec route paths, deployed same-origin behind Traefik alongside `apps/api`. 27 atomic commits (554b54c → 14-finalize), ~22.5K LoC added across 178 files. Full local sweep green: 510 unit tests (36 files), 85/85 Playwright e2e (15 screens × 4 states + 15 axe + cross-screen smoke), coverage 98.53/92.99/97.79/97.62 (all ≥90), size-limit max 168.84 kB gz across 15 routes (budget 200 kB), 4-probe smoke verifying Traefik routing + admin basic-auth gate. WEB-IMPL-01..04 Complete. Phases 0/1/2/3/4/5/6/7/07.1 closed; push to origin still deferred. Next: Phase 8 (Load Test, Tuning & SLO Publication) — now has a real frontend to load-test.
 
 ## Current Position
 
 | Field | Value |
 |-------|-------|
 | Milestone | v1 |
-| Phase | 7 — Frontend UI-SPEC (CLOSED 2026-05-12) → next: 8 — Load Test, Tuning & SLO Publication (or apps/web/ scaffold per Phase 7 backlog) |
-| Plan | Phase 7 all 7 plans executed; 07-SUMMARY.md on disk; 15/15 verifier items PASS. |
-| Status | Phase 7 done; ready for `/gsd-verify-phase 7` then `/gsd-plan-phase 8`. |
-| Phase progress | Phases 0/1/2/3/4/5/6/7 closed. |
-| Next action | `/gsd-verify-phase 7` then `/gsd-plan-phase 8` (Load Test, Tuning & SLO Publication) |
+| Phase | 07.1 — Web App Implementation (CLOSED 2026-05-12) → next: 8 — Load Test, Tuning & SLO Publication |
+| Plan | Phase 07.1 all 14 plans executed; 07.1-SUMMARY.md on disk; 28/28 verifier items PASS. |
+| Status | Phase 07.1 done; ready for `/gsd-verify-phase 07.1` then `/gsd-plan-phase 8`. |
+| Phase progress | Phases 0/1/2/3/4/5/6/7/07.1 closed. |
+| Next action | `/gsd-verify-phase 07.1` then `/gsd-plan-phase 8` (Load Test, Tuning & SLO Publication) |
 
 ```
-[X][X][X][X][X][X][X][X][ ][ ][ ]
- 0  1  2  3  4  5  6  7  8  9  10
+[X][X][X][X][X][X][X][X][X][ ][ ][ ]
+ 0  1  2  3  4  5  6  7 7.1 8  9  10
 ```
 
 ## Performance Metrics
@@ -166,11 +166,13 @@ progress:
 **Next session entry point:**
 
 ```
-/gsd-verify-phase 7   # Verify Phase 7 (Frontend UI-SPEC) — 15/15 must-haves expected PASS
-/gsd-plan-phase 8     # Phase 8: Load Test, Tuning & SLO Publication (k6 1000-concurrent nightly)
+/gsd-verify-phase 07.1   # Verify Phase 07.1 (Web App Implementation) — 28/28 must-haves expected PASS
+/gsd-plan-phase 8        # Phase 8: Load Test, Tuning & SLO Publication (k6 1000-concurrent nightly)
 ```
 
-**Last session stopped at:** 2026-05-12 — Phase 7 (Frontend UI-SPEC) CLOSED. 7 atomic commits (b72882f / 0a240cd / ce72448 / 70aed25 / cd9bf30 / 65824b7 + finalize). `pnpm lint:ui-spec` exits 0; vitest on `tools/lint-ui-spec.ts` reports 96.81 lines / 92.24 branches / 94.59 functions / 96.77 statements. Three design-gap markers (D-UX2, D-API4, A2/A3+D-API6) encoded for Claude Design re-engagement; Phase 7.x backlog (U14/U15 password reset, U16 PAK web UI, A1 audit-log viewer) deferred. `apps/web/` scaffold deferred to Phase 8.
+**Last session stopped at:** 2026-05-12 — Phase 07.1 (Web App Implementation) CLOSED. 27 atomic commits (554b54c → Plan 14). Full local sweep green: vitest 510/510 PASS in 36 files; coverage 98.53/92.99/97.79/97.62 (lines/branches/functions/statements) — all ≥90. Playwright 85/85 PASS (15 screens × 4 states + 15 axe-core + cross-screen smoke). size-limit ≤200 kB gz across 15 routes (max 168.84 kB on /sign-in /sign-up). 4-probe smoke against live compose stack verified: `/api/health` 200, `/` 307, `/admin/observability` 401 unauth + 200 with basic-auth. `.github/workflows/web.yml` YAML-valid; first remote run pending merge (recorded as Known follow-up). Negative-constraint audit clean: no emojis, no localStorage tokens, no next-i18next, no ESLint, no Recharts in src, no app-level admin role check. WEB-IMPL-01..04 flipped to Complete. Open follow-ups: DEF-07.1-NOTES-DELETE-ALL (apps/api pre-existing bug), Phase 7.x detail-endpoints backlog (transcriptions/notes/conversations single-resource GETs), Phase 10 Russian i18n, CSP nonce hardening.
+
+**Earlier session stopped at:** 2026-05-12 — Phase 7 (Frontend UI-SPEC) CLOSED. 7 atomic commits. `tools/lint-ui-spec.ts` coverage 96.81/92.24/94.59/96.77.
 
 **Earlier session stopped at:** 2026-05-11 — Phase 3 closed end-to-end. Operational debt closure trio (TLS bootstrap two-tier CA chain via Phase 02.22, Phase-2 coverage debt back-fill across 6 files, lefthook prepare-hook idempotent wrapper) all landed in parallel agents. Final live e2e validation: `make e2e-test` against real providers (OpenRouter / Groq Whisper-large-v3 / OpenAI Realtime / pyannote.ai) → 25 passed | 1 conditional skip | 0 failed. apps/api coverage on every touched file ≥90/90/90/90. 320 commits ahead of origin/main, push deferred per user direction. Phase 4 (Streaming + Realtime) unblocked.
 
@@ -184,6 +186,7 @@ progress:
 
 **Recent transitions:**
 
+- 2026-05-12: Phase 07.1 CLOSED — Web App Implementation. 27 atomic commits across 5 waves (Plan 01 scaffold 198e1fc, Plan 02 shadcn 132b084, Plan 03 compose+traefik c9a6a04 + DEF-07.1-01 lru-cache fix de3ada2, Plan 04 playwright+vitest 31a5e42, Plan 05 better-auth 8eae878+cfd40d9, Plan 06 providers 64125cf+8b2a618, Plan 07 U1/U2/U3 e9f170e+14d329d, Plan 08 U4/U5 7e82068, Plan 09 U6/U7 bad13b1+6c6040d Branch B, Plan 10 U8/U9/U10 c8a74ae+9fb6b6e, Plan 11 U11/U12/U13 9c6a5cd+947f546, Plan 12 A2/A3 4b5ca31+0606808, Plan 13 integration+CI+lefthook 2254fb2 + 3 fix commits 36c87f3/3d9ce2f/c12e6f9 → 85/85 e2e PASS, Plan 14 finalize). Final sweep: 510 unit + 85 e2e + 15 axe; coverage 98.53/92.99/97.79/97.62; bundle max 168.84 kB gz across 15 routes. Key learnings preserved as decisions: (a) env-switch pattern for prod-safe test-mode overrides (PLAYWRIGHT_DISABLE_SSR_PREFETCH / OPENWHISPR_DISABLE_EMAIL_ENUMERATION_PROTECTION / OPENWHISPR_DISABLE_SESSION_COOKIE_CACHE — all default-OFF in prod); (b) worker-scoped Playwright fixtures (one provisioned user per worker, not per test) to avoid Better Auth rate-limit thrashing in full e2e suites; (c) Branch B list-then-filter access pattern documented when single-resource API endpoints absent; (d) apps/api preHandler for Better Auth route as config (not new endpoint, honors D-S1).
 - 2026-05-12: Phase 7 CLOSED — Frontend UI-SPEC. 7 atomic commits across 3 waves: Plan 01 verify API + scaffold stubs (b72882f), Plan 02 RED linter tests + fixtures (0a240cd), Plan 03 GREEN linter implementation (ce72448), Plan 04 UI-SPEC-admin.md A2+A3 (70aed25), Plan 05 UI-SPEC-end-user.md U1–U13 (cd9bf30), Plan 06 shared appendix + GHA + lefthook + cross-file lint gate green (65824b7), Plan 07 finalize + SUMMARY + STATE/ROADMAP (this commit). Total ~4096 lines added. Coverage on `tools/lint-ui-spec.ts`: 96.81/92.24/94.59/96.77 — all ≥90. Notable refutations: A2/A3 collapsed U4 to KPI-only after `/api/usage` API verification proved dailySeries / providerBreakdown / activity feed absent (D-API6 design-gap); A4 moved admin role gate to deployment level (no per-user role column on Better Auth v1.6.9 schema). Three encoded design-gap markers queued for Claude Design re-engagement. `apps/web/` scaffold deferred to Phase 8.
 - 2026-05-11: Phase 3 CLOSED end-to-end — 10 plans + parallel debt closure (Phase 02.22 TLS bootstrap, Phase-2 coverage back-fill across 6 files, lefthook prepare-hook fix, delete-account test design fix). Live `make e2e-test` against real OpenRouter / Groq / OpenAI / pyannote.ai → 25 passed | 1 conditional skip | 0 failed. apps/api coverage L=98.92 / B=94.52 / F=100 / S=98.38. 18 atomic commits across the closure (344f4dd / 546096c / 97da5c1 / 382ebfc / f09ee84 / f02a183 / 2991f54 / f4927fc / 264064f / 7a8e0b1 / 1206a9e / e1372a9 / a73c70a + Phase-3 verification commits). Phase 4 unblocked.
 - 2026-05-10: Phase 02.7 CLOSED — 7 plans + cascade tail (Phases 02.8 → 02.21, 9 numbered decimal phases) collectively closed all original 13/26 contract failures + every additional defect surfaced by the D-03A loud-fail discipline (Better Auth uuid id-mode, fixture email RFC, signInFixture Origin/XFF, session.token plain, OIDC env+discovery, runner-in-network, traefik aliases+trustedIPs, mycorp scheme comma-list, unverified-fixture helper, Group C residuals — 404 envelope + cookie cascade + suite isolation). `make contract-test` 25 passed | 1 deliberate skipped (26). 02-HUMAN-UAT.md Item 1 flipped without qualifier. 30+ atomic commits across the cascade. Phase 03 unblocked.
@@ -194,6 +197,12 @@ progress:
 
 ## Decisions
 
+- [Phase 07.1]: Env-switch escape hatch pattern for test mode — `PLAYWRIGHT_DISABLE_SSR_PREFETCH`, `OPENWHISPR_DISABLE_EMAIL_ENUMERATION_PROTECTION`, `OPENWHISPR_DISABLE_SESSION_COOKIE_CACHE` all default-OFF in prod; enable only in e2e to dodge non-deterministic flake without weakening production posture. Preferred over a mock layer.
+- [Phase 07.1]: Worker-scoped Playwright fixtures — provision one Better Auth user per Playwright worker (not per test) to avoid per-IP rate-limit thrashing on full e2e runs. Pattern repeats: `auth.beforeAll(workerInfo => provisionTestUser(workerInfo.workerIndex))`.
+- [Phase 07.1]: Branch B list-then-filter pattern for missing single-resource endpoints — when `GET /api/<resource>/:id` is absent, paginate `<resource>/list` with `limit=50` × `MAX_PAGES=5` (250-row cap) and render "not found" past cap. Use this until the api-side endpoint materializes; record backlog TODO.
+- [Phase 07.1]: Admin gate at Traefik (basic-auth label middleware) NOT at app-level — Better Auth v1.6.9 has no `role` column; A4 refutation honored. Operator provisions `ADMIN_BASIC_AUTH_USERS` env. No `role === 'admin'` check anywhere in middleware.ts or `(admin)/` pages.
+- [Phase 07.1]: CSP ships with `'unsafe-inline'` for Next.js RSC hydration in v1 — nonce-based hardening deferred to a future pass; recorded as Known follow-up.
+- [Phase 07.1]: WEB-IMPL-01..04 → Complete; UI-SPEC-01..03 also flipped Complete (Phase 7 closed UI-SPEC artifacts; Phase 07.1 closed the implementation that consumed them).
 - [Phase 07]: No new API endpoints introduced (D-S1) — every UI-SPEC endpoint resolves to live `apps/api/src/routes/` or `BETTER_AUTH_PATHS` allowlist, enforced by `tools/lint-ui-spec.ts` rule `endpoint-exists`.
 - [Phase 07]: Admin role gate moved to deployment-level (Traefik / IdP claim filter), not per-user UI check (A4 refutation — Better Auth v1.6.9 has no `role` column on user/session schema).
 - [Phase 07]: U4 Usage dashboard collapsed to KPI-only (A2/A3 refutation + D-API6) — `/api/usage` API verified to not expose dailySeries / providerBreakdown / activity feed; full grid rebalancing tracked as design-gap for Claude Design.
