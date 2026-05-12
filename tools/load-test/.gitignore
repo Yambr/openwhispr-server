@@ -1,0 +1,3 @@
+# Forensic-probe writes to a workspace-relative path
+# (process.cwd()-derived). Treat as runtime artifact only.
+.planning/
