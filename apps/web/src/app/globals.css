@@ -85,6 +85,60 @@
   /* Motion */
   --duration-progress: 0.3s;
   --duration-skeleton: 1.4s;
+
+  /*
+   * shadcn/ui v2 token aliases — vendored primitives in
+   * `src/components/ui/*.tsx` reference these names (bg-background,
+   * text-foreground, border-input, ring-ring, bg-primary, bg-destructive,
+   * bg-accent, bg-muted, bg-card, bg-popover, bg-secondary, etc.). They map
+   * to the Appendix A tokens above so the primitives consume the canonical
+   * design system instead of redefining colors. Dark-theme overrides live
+   * in the [data-theme="dark"] block below.
+   *
+   * Mapping rationale (light defaults):
+   *   background / foreground   -> bg / text
+   *   card / popover            -> panel
+   *   muted                     -> panel-2 (subtle surfaces)
+   *   muted-foreground          -> text-muted
+   *   border / input            -> border
+   *   ring                      -> accent (focus rings use brand colour)
+   *   primary / accent          -> accent
+   *   destructive               -> danger
+   *   secondary                 -> panel-2
+   *   sidebar*                  -> reuse panel/border/accent surfaces
+   */
+  --color-background: #fafafa;
+  --color-foreground: #18181b;
+  --color-card: #ffffff;
+  --color-card-foreground: #18181b;
+  --color-popover: #ffffff;
+  --color-popover-foreground: #18181b;
+  --color-primary: #2563eb;
+  --color-primary-foreground: #ffffff;
+  --color-secondary: #f4f4f5;
+  --color-secondary-foreground: #18181b;
+  --color-muted: #f4f4f5;
+  --color-muted-foreground: #71717a;
+  /* --color-accent already declared in the Appendix A block (line 23) */
+  --color-accent-foreground: #ffffff;
+  --color-destructive: #dc2626;
+  --color-destructive-foreground: #ffffff;
+  /* --color-border already declared in the Appendix A block (line 28) */
+  --color-input: #e4e4e7;
+  --color-ring: #2563eb;
+  --color-chart-1: #2563eb;
+  --color-chart-2: #059669;
+  --color-chart-3: #d97706;
+  --color-chart-4: #dc2626;
+  --color-chart-5: #0284c7;
+  --color-sidebar: #ffffff;
+  --color-sidebar-foreground: #18181b;
+  --color-sidebar-primary: #2563eb;
+  --color-sidebar-primary-foreground: #ffffff;
+  --color-sidebar-accent: #f4f4f5;
+  --color-sidebar-accent-foreground: #18181b;
+  --color-sidebar-border: #e4e4e7;
+  --color-sidebar-ring: #2563eb;
 }
 
 [data-theme="dark"] {
@@ -96,6 +150,33 @@
   --color-text: #fafafa;
   --color-text-muted: #a1a1aa;
   --color-text-dim: #71717a;
+
+  /* shadcn alias dark overrides (mirror Appendix A dark palette) */
+  --color-background: #09090b;
+  --color-foreground: #fafafa;
+  --color-card: #111114;
+  --color-card-foreground: #fafafa;
+  --color-popover: #111114;
+  --color-popover-foreground: #fafafa;
+  --color-primary: #2563eb;
+  --color-primary-foreground: #ffffff;
+  --color-secondary: #18181b;
+  --color-secondary-foreground: #fafafa;
+  --color-muted: #18181b;
+  --color-muted-foreground: #a1a1aa;
+  --color-accent-foreground: #ffffff;
+  --color-destructive: #dc2626;
+  --color-destructive-foreground: #ffffff;
+  --color-input: #26262a;
+  --color-ring: #2563eb;
+  --color-sidebar: #111114;
+  --color-sidebar-foreground: #fafafa;
+  --color-sidebar-primary: #2563eb;
+  --color-sidebar-primary-foreground: #ffffff;
+  --color-sidebar-accent: #18181b;
+  --color-sidebar-accent-foreground: #fafafa;
+  --color-sidebar-border: #26262a;
+  --color-sidebar-ring: #2563eb;
 }
 
 /*
