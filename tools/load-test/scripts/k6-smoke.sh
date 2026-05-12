@@ -14,6 +14,12 @@
 #   2. stderr/stdout contains `TypeError` or `panic:`.
 #   3. stderr/stdout contains `Cannot assign to property` (the literal
 #      goja host-object-mutation TypeError).
+#   4. ws_msgs_sent == 0 or ws_msgs_received == 0 for realtime-ws
+#      (Phase 08.4 regression class — k6 client dropped the auth header
+#      so the upgrade was 401-rejected and `open` never fired, leaving
+#      ws_sessions populated but zero frames round-tripped). Catches
+#      the next instance of this class in 30 seconds instead of after
+#      a 30-minute plateau.
 #
 # Usage: tools/load-test/scripts/k6-smoke.sh [BASE_URL]
 #   BASE_URL defaults to https://api.localhost
@@ -69,6 +75,30 @@ elif grep -F "panic:" "$SMOKE_LOG" >/dev/null 2>&1; then
   FAIL_REASON="goja/k6 panic"
 elif [ "$K6_EXIT" -ne 0 ]; then
   FAIL_REASON="k6 exit=$K6_EXIT (threshold breach or runtime error)"
+else
+  # Phase 08.4 regression gate — only checked when k6 itself exited 0
+  # (otherwise the prior branches own the failure classification).
+  #
+  # Trigger only when the smoke run actually exercised the realtime-ws
+  # path: presence of `ws_sessions` or `realtime-ws` in the log. If the
+  # smoke profile didn't include WS at all (future variant), do not
+  # require ws_msgs lines.
+  if grep -E "ws_sessions|realtime-ws" "$SMOKE_LOG" >/dev/null 2>&1; then
+    # (a) ws_msgs_sent absent entirely → upgrade failed at handshake,
+    # `open` never fired, no send() ever ran. Run 4 footprint.
+    if ! grep -E "ws_msgs_sent" "$SMOKE_LOG" >/dev/null 2>&1; then
+      FAIL_REASON="ws_msgs_sent line missing — no WS frames sent (Phase 08.4 regression: realtime-ws upgrade likely auth-rejected)"
+    # (b) ws_msgs_sent present but explicit zero (e.g. `ws_msgs_sent: 0 0/s`).
+    elif grep -E "ws_msgs_sent[^:]*:[[:space:]]+0[[:space:]]" "$SMOKE_LOG" >/dev/null 2>&1; then
+      FAIL_REASON="ws_msgs_sent == 0 — no WS frames sent (Phase 08.4 regression: realtime-ws upgrade likely auth-rejected)"
+    # (c) ws_msgs_received absent → upstream echo never reached client.
+    elif ! grep -E "ws_msgs_received" "$SMOKE_LOG" >/dev/null 2>&1; then
+      FAIL_REASON="ws_msgs_received line missing — no WS frames received (Phase 08.4 regression class)"
+    # (d) ws_msgs_received present but explicit zero.
+    elif grep -E "ws_msgs_received[^:]*:[[:space:]]+0[[:space:]]" "$SMOKE_LOG" >/dev/null 2>&1; then
+      FAIL_REASON="ws_msgs_received == 0 — no WS frames received (Phase 08.4 regression class)"
+    fi
+  fi
 fi
 
 if [ -n "$FAIL_REASON" ]; then

@@ -150,9 +150,85 @@ plateau_line=$(grep -n "^k6 run" "$RUN_SH" | head -1 | cut -d: -f1)
 grep -F "SMOKE_SKIP" "$RUN_SH" >/dev/null \
   || fail "run.sh: missing SMOKE_SKIP bypass branch"
 
+# 9. Phase 08.4 regression — ws_sessions present but NO ws_msgs_sent
+#    line at all (Run 4 failure mode: 168k handshakes, zero frames).
+#    Wrapper MUST classify as the ws_msgs zero-frame regression and
+#    exit non-zero even though k6 returned 0.
+cat >"$STUB_DIR/k6" <<'EOF'
+#!/bin/sh
+cat <<'OUT'
+running (10s/10s), 5/5 VUs, 12 iterations
+checks........................: 100.00%
+ws_sessions...................: 100 10/s
+ws_connecting.................: avg=5.5ms p(95)=6.2ms
+OUT
+exit 0
+EOF
+chmod +x "$STUB_DIR/k6"
+
+set +e
+PATH="$STUB_DIR:$PATH" SMOKE_LOG="$STUB_DIR/wsmissing.log" \
+  "$SCRIPT" >"$STUB_DIR/wsmissing.out" 2>&1
+RC=$?
+set -e
+[ "$RC" -eq 1 ] || fail "ws_msgs-missing regression should exit 1, got $RC (out: $(cat "$STUB_DIR/wsmissing.out"))"
+grep -E "ws_msgs|no WS frames" "$STUB_DIR/wsmissing.out" >/dev/null \
+  || fail "ws_msgs-missing should mention ws_msgs / no WS frames (out: $(cat "$STUB_DIR/wsmissing.out"))"
+grep -F "08.4" "$STUB_DIR/wsmissing.out" >/dev/null \
+  || fail "ws_msgs-missing should reference Phase 08.4 regression class"
+
+# 10. Phase 08.4 regression — explicit zero ws_msgs_sent / ws_msgs_received.
+cat >"$STUB_DIR/k6" <<'EOF'
+#!/bin/sh
+cat <<'OUT'
+running (10s/10s), 5/5 VUs, 12 iterations
+checks........................: 100.00%
+ws_sessions...................: 100 10/s
+ws_msgs_sent..................: 0   0/s
+ws_msgs_received..............: 0   0/s
+ws_connecting.................: avg=5.5ms p(95)=6.2ms
+OUT
+exit 0
+EOF
+chmod +x "$STUB_DIR/k6"
+
+set +e
+PATH="$STUB_DIR:$PATH" SMOKE_LOG="$STUB_DIR/wszero.log" \
+  "$SCRIPT" >"$STUB_DIR/wszero.out" 2>&1
+RC=$?
+set -e
+[ "$RC" -eq 1 ] || fail "ws_msgs==0 regression should exit 1, got $RC (out: $(cat "$STUB_DIR/wszero.out"))"
+grep -E "ws_msgs|no WS frames" "$STUB_DIR/wszero.out" >/dev/null \
+  || fail "ws_msgs==0 should mention ws_msgs (out: $(cat "$STUB_DIR/wszero.out"))"
+
+# 11. Phase 08.4 happy path — non-zero ws_msgs_sent AND ws_msgs_received.
+#     Wrapper must PASS (exit 0).
+cat >"$STUB_DIR/k6" <<'EOF'
+#!/bin/sh
+cat <<'OUT'
+running (10s/10s), 5/5 VUs, 12 iterations
+checks........................: 100.00%
+ws_sessions...................: 100 10/s
+ws_msgs_sent..................: 12  1.2/s
+ws_msgs_received..............: 12  1.2/s
+ws_connecting.................: avg=5.5ms p(95)=6.2ms
+OUT
+exit 0
+EOF
+chmod +x "$STUB_DIR/k6"
+
+set +e
+PATH="$STUB_DIR:$PATH" SMOKE_LOG="$STUB_DIR/wsok.log" \
+  "$SCRIPT" >"$STUB_DIR/wsok.out" 2>&1
+RC=$?
+set -e
+[ "$RC" -eq 0 ] || fail "non-zero ws_msgs should PASS (exit 0), got $RC (out: $(cat "$STUB_DIR/wsok.out"))"
+grep -F "PASS" "$STUB_DIR/wsok.out" >/dev/null \
+  || fail "non-zero ws_msgs should print PASS"
+
 # Cleanup placeholder bundle if we created one.
 if [ "${PLACEHOLDER_BUNDLE:-0}" = "1" ]; then
   rm -f "$BUNDLE"
 fi
 
-echo "PASS: k6-smoke.sh + run.sh integration (8/8)"
+echo "PASS: k6-smoke.sh + run.sh integration (11/11)"
