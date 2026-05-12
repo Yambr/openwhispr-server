@@ -48,6 +48,11 @@ export const options = {
 // Per-iteration metrics for the streaming flow (RESEARCH.md §Pitfall 6).
 const ttfb = new Trend(METRIC_NAMES.agentStreamTtfb);
 const total = new Trend(METRIC_NAMES.agentStreamTotal);
+// Plan 08.1-01 Task 3 — custom Trend for the realtime WS roundtrip so the
+// p95 reflects the actual round-trip rather than k6's auto-emitted
+// iteration_duration (which captures the addEventListener-callback-return
+// moment under k6/websockets and reported p95=0 in plan 07's run 1).
+const realtimeWsRoundtripMs = new Trend(METRIC_NAMES.realtimeWsRoundtripMs);
 
 // WAV fixture loaded once at script init. k6's `open()` is a build-time
 // API — the file is embedded into the bundle's runtime closure. The
@@ -84,6 +89,18 @@ function k6Adapter(): HttpClient {
       const sock = new WebSocket(url, undefined, params) as unknown as WsSocket;
       handler(sock);
       return { status: 101 };
+    },
+    // Plan 08.1-01 Task 2 — k6's http.file marker so http.request switches
+    // to multipart/form-data encoding when this descriptor is present in
+    // the body object.
+    httpFile(bytes: Uint8Array, filename: string, contentType: string) {
+      const fd = http.file(bytes, filename, contentType) as Record<string, unknown>;
+      return Object.assign(fd, {
+        __k6_http_file: true as const,
+        bytes,
+        filename,
+        contentType,
+      });
     },
   };
 }
@@ -177,7 +194,7 @@ export default function (data: { users: ProvisionedUser[] }): void {
       });
       return;
     case "realtime-ws":
-      realtimeWs(user, adapter);
+      realtimeWs(user, adapter, { roundtripMs: realtimeWsRoundtripMs });
       return;
   }
 }
