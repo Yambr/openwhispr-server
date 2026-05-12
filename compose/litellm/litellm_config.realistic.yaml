@@ -1,0 +1,96 @@
+# Phase 08.5-01 / Task 3 — LiteLLM proxy config for the load-test-realistic
+# profile.
+#
+# Mounted into the real LiteLLM container ONLY by
+# docker-compose.load-test.realistic.yml (third overlay). The bundled
+# litellm_config.yaml is untouched — corporate operators who override
+# LITELLM_BASE_URL keep the existing behaviour byte-identical.
+#
+# Provenance: mirrors compose/litellm/litellm_config.yaml verbatim EXCEPT
+# the `whisper-large-v3` entry which is swapped from the bundled-default
+# upstream STT provider to
+# `openai/Systran/faster-whisper-large-v3 @ http://speaches:8000/v1`.
+# See 08.5-RESEARCH.md §G2 + speaches-audio.md Section 1 for the
+# canonical wiring shape.
+#
+# LLM aliases (OpenRouter — D-10) carry over unchanged: the audio plane
+# is what this profile demonstrates; LLM/realtime stays on public
+# providers because we don't host a local LLM container in OSS default.
+# Operators with on-prem LLM gateways override LITELLM_BASE_URL.
+#
+# Diarization (pass_through_endpoints) is wired here matching
+# speaches-audio.md Section 2 — even though the Mac smoke skips
+# diarization (08.5-RESEARCH §G7 / §3), having the pass-through in
+# the config is correct topology and free of cost (no warm hit unless
+# k6 invokes it).
+
+model_list:
+  # ---- LLMs (OpenRouter — unchanged from bundled litellm_config.yaml) ----
+  - model_name: qwen3.6-plus
+    litellm_params:
+      model: openrouter/qwen/qwen3.6-plus
+      api_key: os.environ/OPENROUTER_API_KEY
+
+  - model_name: gemini-3-flash
+    litellm_params:
+      model: openrouter/google/gemini-3.1-flash-lite
+      api_key: os.environ/OPENROUTER_API_KEY
+
+  - model_name: gpt-4o-mini
+    litellm_params:
+      model: openrouter/openai/gpt-4o-mini
+      api_key: os.environ/OPENROUTER_API_KEY
+
+  # ---- STT (Speaches via OpenAI-compatible STT — swap from bundled Groq) ----
+  # 08.5-RESEARCH §G2: api code at apps/api/src/routes/transcribe.ts
+  # POSTs to ${LITELLM_BASE_URL}/v1/audio/transcriptions with
+  # model=whisper-large-v3 (k6 flow uses the same alias). LiteLLM
+  # resolves this alias to the Speaches OpenAI-compatible STT endpoint
+  # below. `api_key: speaches-dummy` because Speaches accepts any
+  # bearer (speaches-audio.md Section 1).
+  - model_name: whisper-large-v3
+    litellm_params:
+      model: openai/Systran/faster-whisper-large-v3
+      api_base: http://speaches:8000/v1
+      api_key: "speaches-dummy"
+
+  # ---- Realtime (OpenAI direct — unchanged from bundled config) ----
+  # Speaches realtime on Mac CPU is slow (08.5-RESEARCH §P9); Mac
+  # baseline routes /v1/realtime to OpenAI direct (same as bundled).
+  # Corporate operators with self-hosted realtime override
+  # LITELLM_BASE_URL.
+  - model_name: gpt-realtime
+    litellm_params:
+      model: openai/gpt-realtime
+      api_key: os.environ/OPENAI_API_KEY
+      mode: realtime
+
+  - model_name: gpt-realtime-mini
+    litellm_params:
+      model: openai/gpt-realtime-mini
+      api_key: os.environ/OPENAI_API_KEY
+      mode: realtime
+
+  - model_name: gpt-4o-realtime-preview
+    litellm_params:
+      model: openai/gpt-4o-realtime-preview
+      api_key: os.environ/OPENAI_API_KEY
+      mode: realtime
+
+general_settings:
+  master_key: os.environ/LITELLM_MASTER_KEY
+  database_url: os.environ/LITELLM_DATABASE_URL
+  store_model_in_db: True
+  # 08.5-RESEARCH §G2 + speaches-audio.md Section 2: pass-through for
+  # Speaches diarization. Mac smoke does NOT exercise this path
+  # (08.5-RESEARCH §G7), but the topology is correct for the operator
+  # H100 re-run path that adds diarization warm to pre-warm-speaches.sh.
+  pass_through_endpoints:
+    - path: /v1/audio/diarization
+      target: http://speaches:8000/v1/audio/diarization
+      auth: true
+      forward_headers: true
+
+litellm_settings:
+  drop_params: True
+  set_verbose: False
