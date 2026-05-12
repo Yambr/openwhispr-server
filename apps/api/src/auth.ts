@@ -222,7 +222,15 @@ export function buildAuth(opts: BuildAuthOptions): AuthInstance {
     ].filter((s): s is string => typeof s === "string" && s.length > 0),
     emailAndPassword: {
       enabled: true,
-      requireEmailVerification: true,
+      // Phase 08-07 / D-LOAD-EV — load-test profiles set
+      // OPENWHISPR_DISABLE_EMAIL_VERIFICATION=1 so the synthetic k6 setup
+      // can pre-provision 1000 users via /api/auth/sign-up/email and read
+      // session.token directly off the response (matching plan-02
+      // `provisionUsers()` contract). Production .env NEVER sets this —
+      // omitting / setting to anything other than "1" preserves the
+      // production default of strict verification. Pattern matches
+      // OPENWHISPR_DISABLE_RATE_LIMIT (plan 08-01).
+      requireEmailVerification: process.env.OPENWHISPR_DISABLE_EMAIL_VERIFICATION !== "1",
       // Plan 04 wiring: route verification emails through `email.send()`.
       // If the transport throws (Pitfall #4), Better Auth keeps the
       // account unverified — operator sees the error and the desktop's
