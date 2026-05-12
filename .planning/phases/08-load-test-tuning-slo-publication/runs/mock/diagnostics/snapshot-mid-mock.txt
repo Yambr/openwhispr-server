@@ -1,0 +1,9 @@
+=== T+~15 SHOW POOLS retry @ 2026-05-12T16:15:38Z ===
+--- openwhispr-pgbouncer-1 ---
+psql: error: connection to server at "127.0.0.1", port 5432 failed: FATAL:  SASL authentication failed
+--- openwhispr-pgbouncer-2-1 ---
+psql: error: connection to server at "127.0.0.1", port 5432 failed: FATAL:  SASL authentication failed
+--- openwhispr-pgbouncer-3-1 ---
+psql: error: connection to server at "127.0.0.1", port 5432 failed: FATAL:  SASL authentication failed
+--- openwhispr-pgbouncer-4-1 ---
+psql: error: connection to server at "127.0.0.1", port 5432 failed: FATAL:  SASL authentication failed

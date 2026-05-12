@@ -1,0 +1,22 @@
+# Raw k6 JSON outputs grow to multiple GB for a 30-minute 1000-VU run
+# (each iteration logs every HTTP request to the stream). Gzipped they
+# still exceed GitHub's 100 MB single-file limit. The plan's D-EXEC-2
+# mandate is satisfied by committing the human-readable summary JSON
+# (~164 KB) + RUN-LOG.md per-endpoint p95 table. Raw outputs stay
+# locally for forensic re-analysis.
+#
+# Operators who need to ship raw outputs for cross-team review should
+# enable git-lfs and rebind these patterns to `lfs filter=lfs diff=lfs merge=lfs -text`
+# in .gitattributes.
+#
+# Patterns target ONLY the timestamp-prefixed top-level k6 raw outputs.
+# Per-run diagnostics (containers-mid-mock.json, migrate-failure.log,
+# etc.) live under {mock,realistic}/diagnostics/ and ARE committed.
+20*-mock.json
+20*-mock.json.gz
+20*-realistic.json
+20*-realistic.json.gz
+mock/run.log
+mock/.start
+realistic/run.log
+realistic/.start
