@@ -5,7 +5,23 @@ current plan and must be addressed by a follow-up plan or phase.
 
 ---
 
-## DEF-07.1-01 — api runtime fails to boot: lru-cache CJS/ESM mismatch
+## DEF-07.1-01 — api runtime fails to boot: lru-cache CJS/ESM mismatch — RESOLVED
+
+**Status:** RESOLVED 2026-05-12 (commit recorded below) via Fix Option 3
+(`pnpm-workspace.yaml` `overrides.lru-cache: ^11.3.6`). The `pnpm`-field in
+root `package.json` did not invalidate the lockfile under pnpm 11.0.8;
+moving the override to `pnpm-workspace.yaml` (the pnpm v10+ canonical
+location for monorepo overrides) forced re-resolution and dropped the
+v5.1.1 + v10.4.3 transitives. Verified:
+- `pnpm-lock.yaml` now contains only `lru-cache@11.3.6` (was: 5.1.1 + 10.4.3 + 11.3.6).
+- `docker compose --profile default build api` succeeds.
+- `docker compose --profile default up -d api` reaches `Up (healthy)` in ~11s.
+- `GET /api/health` → `200 OK {"status":"ok"}`.
+- Runtime image: `require('lru-cache/package.json').version === '11.3.6'`
+  and `typeof require('lru-cache').LRUCache === 'function'`.
+No transitive package required v5 with a peer-dep enforcement, so
+Option 1 (.npmrc public-hoist-pattern) and Option 2 (pnpm deploy) were
+unnecessary.
 
 **Discovered:** Plan 03 execution (docker-compose web service + Traefik basic-auth)
 **Scope:** apps/api Dockerfile + pnpm hoisted-linker resolution
