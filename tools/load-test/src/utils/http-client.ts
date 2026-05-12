@@ -146,11 +146,20 @@ function k6Ws(url: string, params: WsParams, handler: (socket: WsSocket) => void
   if (!ws) {
     throw new Error("createK6Adapter().ws invoked outside the k6 runtime");
   }
-  // k6/websockets exports WebSocket; we use the experimental API where
-  // the constructor takes (url, params) and event handlers are attached
-  // before the open event fires.
-  const W = (ws as { WebSocket: new (u: string, p: WsParams) => WsSocket }).WebSocket;
-  const socket = new W(url, params);
+  // k6/websockets exports WebSocket; the constructor signature is
+  // `new WebSocket(url, protocols, params)` — THREE positional args.
+  //
+  // Phase 08.4 — H7 fix: previously called as `new W(url, params)` which
+  // silently bound the params object to the `protocols` slot and dropped
+  // `headers.authorization`, causing dualAuthHook to reject the upgrade
+  // with 401 and ws_msgs_sent/received to stay zero across the entire
+  // Run 4 plateau. The protocols slot is null (no subprotocol requested).
+  const W = (
+    ws as {
+      WebSocket: new (u: string, p: string[] | null, opts: WsParams) => WsSocket;
+    }
+  ).WebSocket;
+  const socket = new W(url, null, params);
   handler(socket);
   return { status: 101 };
 }
