@@ -26,10 +26,17 @@
 // 11. Unauthenticated → 401 BEFORE the handler hijacks the reply
 // 12. X-Accel-Buffering: no on response (forward-compat for nginx)
 
-import type { LitellmClient } from "@openwhispr/litellm-client";
+import { readFileSync } from "node:fs";
+import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
+import {
+  buildLitellmClient,
+  type LitellmClient,
+  LitellmUpstreamError,
+} from "@openwhispr/litellm-client";
 import Fastify, { type FastifyInstance } from "fastify";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { Agent, MockAgent, setGlobalDispatcher } from "undici";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { registerErrorHandler } from "../../error-handler.js";
 import { AuthError } from "../../errors.js";
 import { buildAgentStreamRoutes } from "./stream.js";
@@ -39,20 +46,44 @@ const LITELLM_PATH = "/v1/chat/completions";
 
 let agent: MockAgent;
 
-function fakeLitellm(): LitellmClient {
-  return {
-    baseUrl: LITELLM_BASE,
-    masterKey: "sk-master-test",
-    chatCompletions: () => Promise.reject(new Error("not used")),
-    audioTranscriptions: () => Promise.reject(new Error("not used")),
-    passthrough: () => Promise.reject(new Error("not used")),
-  } as unknown as LitellmClient;
+/**
+ * Phase 08.2 Plan 02 — the route now consumes
+ * `deps.litellm.chatCompletionsStream`. We build a REAL client (with the
+ * test-bound baseUrl) so MockAgent intercepts the undici.request the
+ * client issues. Tests that need to simulate the client throwing
+ * (Tests 14 / 15) override `chatCompletionsStream` on the returned client
+ * with a custom rejection.
+ */
+function fakeLitellm(overrides?: Partial<LitellmClient>): LitellmClient {
+  const client = buildLitellmClient(
+    {
+      baseUrl: LITELLM_BASE,
+      masterKey: "sk-master-test",
+      providerKeys: {
+        openrouter: "sk-or-test",
+        groq: "gsk-test",
+        pyannote: "hf-test",
+      },
+      defaultChatModel: "qwen3.6-plus",
+    },
+    { isOverride: true }, // skip provider-key precheck (test uses arbitrary models)
+  );
+  if (overrides) {
+    return Object.assign(Object.create(Object.getPrototypeOf(client)), client, overrides);
+  }
+  return client;
 }
 
-function fakeDb(): { transaction<T>(cb: (tx: { execute(q: unknown): Promise<unknown> }) => Promise<T>): Promise<T> } {
+function fakeDb(): {
+  transaction<T>(cb: (tx: { execute(q: unknown): Promise<unknown> }) => Promise<T>): Promise<T>;
+} {
   return {
     async transaction(cb) {
-      return cb({ async execute() { return { rows: [] }; } });
+      return cb({
+        async execute() {
+          return { rows: [] };
+        },
+      });
     },
   };
 }
@@ -132,9 +163,7 @@ function buildMultiToolCallSse(): string {
       choices: [
         {
           delta: {
-            tool_calls: [
-              { index: 0, function: { arguments: '"foo"}' } },
-            ],
+            tool_calls: [{ index: 0, function: { arguments: '"foo"}' } }],
           },
           finish_reason: null,
         },
@@ -247,7 +276,11 @@ describe("POST /api/agent/stream", () => {
         toolName: "search",
         args: { x: 1 },
       });
-      const finish = chunks.at(-1) as { type: string; finishReason: string; usage: { promptTokens: number; completionTokens: number } };
+      const finish = chunks.at(-1) as {
+        type: string;
+        finishReason: string;
+        usage: { promptTokens: number; completionTokens: number };
+      };
       expect(finish.type).toBe("finish");
       expect(finish.finishReason).toBe("tool_calls");
       expect(finish.usage).toEqual({ promptTokens: 10, completionTokens: 5 });
@@ -565,7 +598,9 @@ describe("POST /api/agent/stream", () => {
       expect(routeAc.signal.aborted).toBe(true);
       try {
         await injectPromise;
-      } catch { /* expected post-abort */ }
+      } catch {
+        /* expected post-abort */
+      }
     } finally {
       globalThis.AbortController = OriginalAC;
       await app.close();
@@ -573,10 +608,7 @@ describe("POST /api/agent/stream", () => {
   });
 
   it("Test 9 — upstream non-2xx → ONE finish chunk with finishReason 'upstream_error' (status 200 already sent)", async () => {
-    agent
-      .get(LITELLM_BASE)
-      .intercept({ path: LITELLM_PATH, method: "POST" })
-      .reply(503, "boom");
+    agent.get(LITELLM_BASE).intercept({ path: LITELLM_PATH, method: "POST" }).reply(503, "boom");
 
     const app = await buildTestApp({ bearerMap: { "Bearer ok-u1": "u1" } });
     try {
@@ -759,55 +791,6 @@ describe("POST /api/agent/stream", () => {
     }
   });
 
-  it("Test 15 (branch coverage) — masterKey absent on litellm dep does not throw; route still completes", async () => {
-    // We only need to exercise the `?? ""` branch — no need to capture the
-    // actual header (intercept matchers see headers in different shapes
-    // depending on undici internals).
-    agent
-      .get(LITELLM_BASE)
-      .intercept({ path: LITELLM_PATH, method: "POST" })
-      .reply(200, buildTextOnlySse(), {
-        headers: { "content-type": "text/event-stream" },
-      });
-
-    const app = Fastify({ logger: false, trustProxy: true });
-    registerErrorHandler(app);
-    app.addHook("onRequest", async (req) => {
-      const auth = req.headers["authorization"];
-      const value = Array.isArray(auth) ? auth[0] : auth;
-      if (value !== "Bearer ok-u1") throw new AuthError("unauthorized");
-      (req as unknown as { user: { id: string; email: string } }).user = {
-        id: "u1",
-        email: "u1@test.local",
-      };
-    });
-    // Provide a litellm without masterKey — exercises the `?? ""` fallback.
-    const litellmNoKey = {
-      baseUrl: LITELLM_BASE,
-      chatCompletions: () => Promise.reject(new Error("not used")),
-      audioTranscriptions: () => Promise.reject(new Error("not used")),
-      passthrough: () => Promise.reject(new Error("not used")),
-    } as unknown as LitellmClient;
-    await app.register(
-      buildAgentStreamRoutes({
-        db: fakeDb() as never,
-        litellm: litellmNoKey,
-      }),
-    );
-    await app.ready();
-    try {
-      const r = await app.inject({
-        method: "POST",
-        url: "/api/agent/stream",
-        headers: { authorization: "Bearer ok-u1", "content-type": "application/json" },
-        payload: { messages: [{ role: "user", content: "hi" }] },
-      });
-      expect(r.statusCode).toBe(200);
-    } finally {
-      await app.close();
-    }
-  });
-
   it("Test 12 — response includes X-Accel-Buffering: no header (forward-compat for nginx-fronting operators)", async () => {
     agent
       .get(LITELLM_BASE)
@@ -826,6 +809,121 @@ describe("POST /api/agent/stream", () => {
       });
       expect(r.statusCode).toBe(200);
       expect(r.headers["x-accel-buffering"]).toBe("no");
+    } finally {
+      await app.close();
+    }
+  });
+
+  // ---- Phase 08.2 Plan 02 — regression + new failure-path tests ----
+
+  it("Test 16 (08.2 regression) — route source no longer imports undici.fetch", async () => {
+    // File-level guard: re-importing undici.fetch would reintroduce the
+    // production failure class this phase was opened to eliminate. We read
+    // the route source from disk and assert zero occurrences of the import
+    // alias and call site.
+    const here = dirname(fileURLToPath(import.meta.url));
+    const routePath = resolve(here, "stream.ts");
+    const source = readFileSync(routePath, "utf8");
+    expect(source).not.toMatch(/fetch\s+as\s+undiciFetch/);
+    expect(source).not.toMatch(/\bundiciFetch\s*\(/);
+    // Positive guard: the route MUST call chatCompletionsStream and bridge
+    // via Readable.toWeb.
+    expect(source).toMatch(/chatCompletionsStream/);
+    expect(source).toMatch(/Readable\.toWeb/);
+  });
+
+  it("Test 17 (08.2 RED→GREEN) — upstream connect throw (fetch failed analogue) maps to ONE upstream_error finish chunk under HTTP 200", async () => {
+    // Stub chatCompletionsStream on the deps to throw with the same error
+    // shape undici emits at the connect/dispatch boundary. Reproduces the
+    // live production-mode failure observed in the 08.1 forensic-probe run.
+    const litellm = fakeLitellm({
+      chatCompletionsStream: () => Promise.reject(new Error("fetch failed")),
+    });
+
+    const app = Fastify({ logger: false, trustProxy: true });
+    registerErrorHandler(app);
+    app.addHook("onRequest", async (req) => {
+      const auth = req.headers["authorization"];
+      const value = Array.isArray(auth) ? auth[0] : auth;
+      if (value !== "Bearer ok-u1") throw new AuthError("unauthorized");
+      (req as unknown as { user: { id: string; email: string } }).user = {
+        id: "u1",
+        email: "u1@test.local",
+      };
+    });
+    await app.register(
+      buildAgentStreamRoutes({
+        db: fakeDb() as never,
+        litellm,
+      }),
+    );
+    await app.ready();
+    try {
+      const r = await app.inject({
+        method: "POST",
+        url: "/api/agent/stream",
+        headers: { authorization: "Bearer ok-u1", "content-type": "application/json" },
+        payload: { messages: [{ role: "user", content: "hi" }] },
+      });
+      expect(r.statusCode).toBe(200);
+      expect(r.headers["content-type"]).toBe("application/x-ndjson");
+      const lines = r.body.split("\n").filter((l) => l.length > 0);
+      expect(lines).toHaveLength(1);
+      const finish = JSON.parse(lines[0]) as {
+        type: string;
+        finishReason: string;
+        usage: { promptTokens: number; completionTokens: number };
+      };
+      expect(finish).toEqual({
+        type: "finish",
+        finishReason: "upstream_error",
+        usage: { promptTokens: 0, completionTokens: 0 },
+      });
+      // hijack-before-await: no JSON error envelope competes with the
+      // finish chunk on the wire.
+      expect(r.body).not.toContain('"error"');
+    } finally {
+      await app.close();
+    }
+  });
+
+  it("Test 18 (08.2 RED→GREEN) — LitellmUpstreamError (non-2xx via client) maps to ONE upstream_error finish chunk under HTTP 200", async () => {
+    const litellm = fakeLitellm({
+      chatCompletionsStream: () =>
+        Promise.reject(new LitellmUpstreamError(502, "upstream timed out")),
+    });
+
+    const app = Fastify({ logger: false, trustProxy: true });
+    registerErrorHandler(app);
+    app.addHook("onRequest", async (req) => {
+      const auth = req.headers["authorization"];
+      const value = Array.isArray(auth) ? auth[0] : auth;
+      if (value !== "Bearer ok-u1") throw new AuthError("unauthorized");
+      (req as unknown as { user: { id: string; email: string } }).user = {
+        id: "u1",
+        email: "u1@test.local",
+      };
+    });
+    await app.register(
+      buildAgentStreamRoutes({
+        db: fakeDb() as never,
+        litellm,
+      }),
+    );
+    await app.ready();
+    try {
+      const r = await app.inject({
+        method: "POST",
+        url: "/api/agent/stream",
+        headers: { authorization: "Bearer ok-u1", "content-type": "application/json" },
+        payload: { messages: [{ role: "user", content: "hi" }] },
+      });
+      expect(r.statusCode).toBe(200);
+      const lines = r.body.split("\n").filter((l) => l.length > 0);
+      expect(lines).toHaveLength(1);
+      const finish = JSON.parse(lines[0]) as { type: string; finishReason: string };
+      expect(finish.type).toBe("finish");
+      expect(finish.finishReason).toBe("upstream_error");
     } finally {
       await app.close();
     }
