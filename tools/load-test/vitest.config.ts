@@ -21,7 +21,17 @@ export default defineConfig({
       reportsDirectory: "./coverage",
       all: false,
       include: ["src/**/*.ts"],
-      exclude: ["**/*.test.ts", "**/*.spec.ts", "src/main.ts", "src/fixtures/**"],
+      // k6.config.ts is pure constants consumed only by src/main.ts (the
+      // k6 entrypoint). It cannot be unit-tested in isolation — the values
+      // are static and their correctness is asserted by the plan-07 live
+      // run, not vitest.
+      exclude: [
+        "**/*.test.ts",
+        "**/*.spec.ts",
+        "src/main.ts",
+        "src/k6.config.ts",
+        "src/fixtures/**",
+      ],
       thresholds: {
         lines: 90,
         branches: 90,
