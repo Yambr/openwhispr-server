@@ -1,7 +1,7 @@
 // Phase 08 / Plan 06 — Task 2 GREEN: realtime-ws flow.
 // Phase 08.1 / Plan 01 / Task 3 — custom Trend metric (RED→GREEN).
 //
-// Opens a wss://api.localhost/v1/realtime connection, sends a single
+// Opens a wss://api.localhost:8443/v1/realtime connection, sends a single
 // ping frame, awaits one response message, then closes with code 1000
 // (normal closure). The flow is engineered to fit inside an iteration
 // budget of ~2 seconds under healthy conditions; an upstream stall
@@ -39,10 +39,19 @@ export interface RealtimeWsDeps {
 }
 
 function wsUrl(): string {
-  // BASE_URL is `https://api.localhost`; swap scheme to wss to land
-  // on the same Traefik vhost. We avoid URL() because k6 lacks the
-  // global; manual string ops are byte-safe.
-  return `${BASE_URL.replace(/^https:/, "wss:")}${REALTIME_PATH}`;
+  // BASE_URL is `https://api.localhost`; swap scheme to wss AND switch to
+  // the dedicated :8443 websecure-realtime entrypoint where Traefik routes
+  // /v1/realtime (Phase 04 Plan 05 — long-running WSS sessions are isolated
+  // from short-JSON :443 to avoid head-of-line blocking and to allow a 1h
+  // ingress timeout). The :443 vhost has NO router for /v1/realtime, so
+  // hitting it directly returns Traefik's plain-text 404 — which the
+  // browser-style addEventListener in k6/experimental/websockets silently
+  // drops (no `error` event for a non-101 upstream response on upgrade).
+  //
+  // Phase 08.4 — H8 fix (Phase 04 Plan 05 awareness): without this, every
+  // VU in Run 5 produced ws_sessions=1/ws_msgs_sent=0 because the upgrade
+  // 404'd at Traefik and the `open` event never fired.
+  return `${BASE_URL.replace(/^https:/, "wss:")}:8443${REALTIME_PATH}`;
 }
 
 export function realtimeWs(user: User, client: HttpClient, deps: RealtimeWsDeps): void {

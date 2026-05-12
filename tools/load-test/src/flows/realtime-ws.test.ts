@@ -75,7 +75,7 @@ function makeTrend() {
 }
 
 describe("realtime-ws flow", () => {
-  it("opens wss://api.localhost/v1/realtime with Authorization Bearer header", () => {
+  it("opens wss://api.localhost:8443/v1/realtime with Authorization Bearer header", () => {
     const captured: { url?: string; params?: WsParams } = {};
     const client = wsClient((url, params, handler) => {
       captured.url = url;
@@ -85,7 +85,11 @@ describe("realtime-ws flow", () => {
     });
     const { trend } = makeTrend();
     realtimeWs({ email: "u@x", token: "tok-ws" }, client, { roundtripMs: trend });
-    expect(captured.url).toMatch(/^wss:\/\/api\.localhost\/v1\/realtime/);
+    // Phase 08.4 — H8: realtime lives on the dedicated :8443 entrypoint
+    // (Phase 04 Plan 05). The :443 vhost has no router for /v1/realtime
+    // and returns Traefik plain-text 404 on upgrade, which k6's
+    // addEventListener silently drops.
+    expect(captured.url).toMatch(/^wss:\/\/api\.localhost:8443\/v1\/realtime/);
     expect(captured.params?.headers?.authorization).toBe("Bearer tok-ws");
   });
 
