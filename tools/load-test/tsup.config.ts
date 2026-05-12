@@ -10,7 +10,7 @@
 import { defineConfig } from "tsup";
 
 export default defineConfig({
-  entry: ["src/main.ts", "src/smoke.ts"],
+  entry: ["src/main.ts", "src/smoke.ts", "src/baseline.ts"],
   format: ["esm"],
   target: "es2022",
   outDir: "dist",
