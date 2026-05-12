@@ -3,6 +3,11 @@ dist/
 build/
 *.tsbuildinfo
 
+# Next.js (apps/web)
+.next/
+apps/web/.next/
+apps/web/out/
+
 # Dependencies
 node_modules/
 .pnpm-store/
@@ -55,3 +60,7 @@ reports/
 compose/traefik/certs/*.crt
 compose/traefik/certs/*.srl
 !compose/traefik/certs/.gitkeep
+
+# Local-only reference doc (content migrated to docs/litellm-target-spec.md)
+/speaches-audio.md
+Open wispr server.zip
