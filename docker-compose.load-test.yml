@@ -1,0 +1,308 @@
+# Phase 08 / Plan 05 — load-test overlay.
+#
+# Layered ON TOP of docker-compose.yml when invoked as:
+#   docker compose -f docker-compose.yml -f docker-compose.load-test.yml \
+#       --profile load-test-mock     up -d   # mock-litellm flow (D-PROF-1)
+#   docker compose -f docker-compose.yml -f docker-compose.load-test.yml \
+#       --profile load-test-realistic up -d  # Speaches + Whisper flow (D-PROF-1)
+#
+# Default `docker compose up` NEVER loads this file, so the OSS quickstart
+# profile is byte-identical to Phase 07.1 (D-PROF-2). The profile-lint
+# integration test (tools/load-test/scripts/profile-lint.test.sh) verifies
+# every must_have truth from plan 08-05.
+#
+# Wave 0 deliverables wired here:
+#   * OPENWHISPR_DISABLE_RATE_LIMIT=1 (plan 08-01)         -> api.environment
+#   * mock-litellm Fastify app (plan 08-03)                -> mock-litellm svc
+#   * fd-probe.sh entrypoint shim (plan 08-04)             -> traefik image
+#
+# Wave 1 net-new tuning surface (this plan):
+#   * 4 x PgBouncer scale-out, shared network alias `pgbouncer` (D-TUNE-1)
+#   * Postgres max_connections=500 + load-test.conf overlay
+#   * api/traefik ulimits.nofile soft=hard=65535 (D-TUNE-2)
+#   * Mimir host port 9009 publication so k6 prometheus-rw can reach it
+#   * Speaches CPU ASR/diarization (load-test-realistic only)
+#
+# NOTE on profile gating: docker-compose profiles are additive across files.
+# Re-declaring an existing service WITHOUT a `profiles:` list inherits the
+# base service's profiles unchanged. We EXTEND the profile list on services
+# that need to appear under load-test profiles (api, traefik, postgres,
+# mimir, valkey) by re-stating their profiles array (compose merges by
+# concat). New services (mock-litellm, speaches, pgbouncer-1..4) declare
+# their own profiles inline.
+
+services:
+  # ---------------------------------------------------------------------
+  # Postgres: tuning overlay (max_connections=500 + load-test.conf).
+  # ---------------------------------------------------------------------
+  postgres:
+    profiles: [default, db-only, load-test-mock, load-test-realistic]
+    # Boot with the load-test conf overlay. The conf file is mounted RO
+    # below; postgres `-c config_file` makes the daemon load it as the
+    # active configuration (instead of the default in /var/lib/postgresql/data).
+    command:
+      - postgres
+      - -c
+      - config_file=/etc/postgresql/postgresql.conf
+      - -c
+      - max_connections=500
+    volumes:
+      - ./compose/postgres/load-test.conf:/etc/postgresql/postgresql.conf:ro
+
+  # ---------------------------------------------------------------------
+  # Disable the single-instance PgBouncer under load-test. The base
+  # service has `profiles: [default, db-only]` so neither load-test-mock
+  # nor load-test-realistic match it — it naturally drops out. We re-state
+  # the same gating here for clarity; no behaviour change.
+  # ---------------------------------------------------------------------
+  pgbouncer:
+    profiles: [default, db-only]
+
+  # ---------------------------------------------------------------------
+  # PgBouncer scale-out (D-TUNE-1 / RESEARCH §Pattern 3). Four identical
+  # instances, each with DEFAULT_POOL_SIZE=100. All share the network alias
+  # `pgbouncer` on openwhispr_internal so api/worker keep using the
+  # canonical hostname; Docker DNS round-robins across the 4 container
+  # IPs. Inline duplication is intentional — YAML anchor merge across
+  # docker-compose versions is fragile (plan 08-05 known-pitfall A6).
+  # ---------------------------------------------------------------------
+  pgbouncer-1:
+    image: edoburu/pgbouncer:v1.25.1-p0
+    profiles: [load-test-mock, load-test-realistic]
+    networks:
+      openwhispr_internal:
+        aliases:
+          - pgbouncer
+    environment:
+      DB_HOST: postgres
+      DB_PORT: "5432"
+      DB_USER: ${POSTGRES_APP_USER}
+      DB_PASSWORD: ${POSTGRES_APP_PASSWORD}
+      DB_NAME: openwhispr
+      POOL_MODE: transaction
+      AUTH_TYPE: scram-sha-256
+      MAX_CLIENT_CONN: "2000"
+      DEFAULT_POOL_SIZE: "100"
+      RESERVE_POOL_SIZE: "5"
+      MAX_PREPARED_STATEMENTS: "200"
+      IGNORE_STARTUP_PARAMETERS: extra_float_digits,search_path
+    volumes:
+      - ./compose/pgbouncer/pgbouncer.ini:/etc/pgbouncer/pgbouncer.ini:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -p 5432 || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
+
+  pgbouncer-2:
+    image: edoburu/pgbouncer:v1.25.1-p0
+    profiles: [load-test-mock, load-test-realistic]
+    networks:
+      openwhispr_internal:
+        aliases:
+          - pgbouncer
+    environment:
+      DB_HOST: postgres
+      DB_PORT: "5432"
+      DB_USER: ${POSTGRES_APP_USER}
+      DB_PASSWORD: ${POSTGRES_APP_PASSWORD}
+      DB_NAME: openwhispr
+      POOL_MODE: transaction
+      AUTH_TYPE: scram-sha-256
+      MAX_CLIENT_CONN: "2000"
+      DEFAULT_POOL_SIZE: "100"
+      RESERVE_POOL_SIZE: "5"
+      MAX_PREPARED_STATEMENTS: "200"
+      IGNORE_STARTUP_PARAMETERS: extra_float_digits,search_path
+    volumes:
+      - ./compose/pgbouncer/pgbouncer.ini:/etc/pgbouncer/pgbouncer.ini:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -p 5432 || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
+
+  pgbouncer-3:
+    image: edoburu/pgbouncer:v1.25.1-p0
+    profiles: [load-test-mock, load-test-realistic]
+    networks:
+      openwhispr_internal:
+        aliases:
+          - pgbouncer
+    environment:
+      DB_HOST: postgres
+      DB_PORT: "5432"
+      DB_USER: ${POSTGRES_APP_USER}
+      DB_PASSWORD: ${POSTGRES_APP_PASSWORD}
+      DB_NAME: openwhispr
+      POOL_MODE: transaction
+      AUTH_TYPE: scram-sha-256
+      MAX_CLIENT_CONN: "2000"
+      DEFAULT_POOL_SIZE: "100"
+      RESERVE_POOL_SIZE: "5"
+      MAX_PREPARED_STATEMENTS: "200"
+      IGNORE_STARTUP_PARAMETERS: extra_float_digits,search_path
+    volumes:
+      - ./compose/pgbouncer/pgbouncer.ini:/etc/pgbouncer/pgbouncer.ini:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -p 5432 || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
+
+  pgbouncer-4:
+    image: edoburu/pgbouncer:v1.25.1-p0
+    profiles: [load-test-mock, load-test-realistic]
+    networks:
+      openwhispr_internal:
+        aliases:
+          - pgbouncer
+    environment:
+      DB_HOST: postgres
+      DB_PORT: "5432"
+      DB_USER: ${POSTGRES_APP_USER}
+      DB_PASSWORD: ${POSTGRES_APP_PASSWORD}
+      DB_NAME: openwhispr
+      POOL_MODE: transaction
+      AUTH_TYPE: scram-sha-256
+      MAX_CLIENT_CONN: "2000"
+      DEFAULT_POOL_SIZE: "100"
+      RESERVE_POOL_SIZE: "5"
+      MAX_PREPARED_STATEMENTS: "200"
+      IGNORE_STARTUP_PARAMETERS: extra_float_digits,search_path
+    volumes:
+      - ./compose/pgbouncer/pgbouncer.ini:/etc/pgbouncer/pgbouncer.ini:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -p 5432 || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
+
+  # ---------------------------------------------------------------------
+  # Valkey: keep available under load-test profiles (api/worker depend on
+  # it for rate-limit + idempotency caches; rate-limit is bypassed but the
+  # client still pings on startup). Re-state profiles so the service
+  # appears under load-test profiles.
+  # ---------------------------------------------------------------------
+  valkey:
+    profiles: [default, load-test-mock, load-test-realistic]
+
+  # ---------------------------------------------------------------------
+  # api: D-TUNE-2 ulimits + OPENWHISPR_DISABLE_RATE_LIMIT=1 wiring.
+  # ---------------------------------------------------------------------
+  api:
+    profiles: [default, load-test-mock, load-test-realistic]
+    ulimits:
+      nofile:
+        soft: 65535
+        hard: 65535
+    environment:
+      # OPENWHISPR_DISABLE_RATE_LIMIT=1 unblocks the synthetic 1000-VU k6
+      # ramp; plan 08-01 installs the bypass with explicit boot-log warning.
+      # Default profile MUST NOT carry this — the load-test overlay scopes
+      # it to load-test-mock + load-test-realistic only.
+      OPENWHISPR_DISABLE_RATE_LIMIT: "1"
+
+  # ---------------------------------------------------------------------
+  # traefik: D-TUNE-2 ulimits + fd-probe entrypoint shim (plan 08-04).
+  # Replaces `image: traefik:v3.6` with a thin Dockerfile that COPYs
+  # fd-probe.sh next to the upstream `/entrypoint.sh`. The compose-level
+  # entrypoint override wedges fd-probe.sh in front of `/entrypoint.sh`
+  # so the container refuses to start if the soft fd limit < 65535.
+  # ---------------------------------------------------------------------
+  traefik:
+    profiles: [default, load-test-mock, load-test-realistic]
+    build:
+      context: ./compose/traefik
+      dockerfile: Dockerfile
+    image: openwhispr-traefik-loadtest:dev
+    ulimits:
+      nofile:
+        soft: 65535
+        hard: 65535
+    entrypoint: ["/usr/local/bin/fd-probe.sh", "/entrypoint.sh"]
+
+  # ---------------------------------------------------------------------
+  # mimir: publish 9009 on host so k6 `--out experimental-prometheus-rw`
+  # can push run metrics. Localhost-bound to avoid accidental WAN exposure.
+  # ---------------------------------------------------------------------
+  mimir:
+    profiles: [default, obs-only, load-test-mock, load-test-realistic]
+    ports:
+      - "127.0.0.1:9009:9009"
+
+  # ---------------------------------------------------------------------
+  # mock-litellm: Fastify app from plan 08-03 (compose/mock-litellm/).
+  # Stands in for the real LiteLLM upstream under load-test-mock so we
+  # can isolate api+pooler+postgres latency from external LLM latency.
+  # Network alias `litellm` on openwhispr_internal so api's existing
+  # LITELLM_BASE_URL=http://litellm:4000 resolves transparently.
+  # ---------------------------------------------------------------------
+  mock-litellm:
+    build:
+      context: ./compose/mock-litellm
+    image: openwhispr-mock-litellm:dev
+    profiles: [load-test-mock]
+    networks:
+      openwhispr_internal:
+        aliases:
+          - litellm
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:4000/health/liveliness"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
+    restart: unless-stopped
+
+  # ---------------------------------------------------------------------
+  # speaches: CPU-mode ASR + diarization for load-test-realistic. CPU
+  # inference is slow (Whisper-large-v3 ~ 0.5 RTF on M-class CPU); the
+  # 180s start_period buys time for model weights to be downloaded and
+  # warmed at first boot. Pinned to a Speaches release that ships a
+  # CPU-only image — the master-cuda-12.6.3 tag is GPU-only and will not
+  # start on Docker Desktop without nvidia-container-runtime.
+  #
+  # WHISPER_MODEL is the canonical Systran/faster-whisper-large-v3 from
+  # the Speaches default catalog. pyannote diarization runs in-process;
+  # operators set HF_TOKEN in .env to authorise the pyannote-3.1 model
+  # download (gated weights). Without HF_TOKEN, the realistic profile
+  # still boots but diarization endpoints surface a 503 envelope.
+  # ---------------------------------------------------------------------
+  speaches:
+    image: ghcr.io/speaches-ai/speaches:latest-cpu
+    profiles: [load-test-realistic]
+    networks: [openwhispr_internal]
+    environment:
+      WHISPER_MODEL: Systran/faster-whisper-large-v3
+      WHISPER__MODEL: Systran/faster-whisper-large-v3
+      HF_TOKEN: ${HF_TOKEN:-}
+      ENABLE_UI: "false"
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:8000/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 180s
+    volumes:
+      - speaches_models:/root/.cache/huggingface
+    restart: unless-stopped
+
+volumes:
+  speaches_models:

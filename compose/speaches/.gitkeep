@@ -1,0 +1,4 @@
+# Placeholder so the compose/speaches/ directory is tracked even when the
+# load-test-realistic profile is the only consumer of the Speaches CPU image.
+# Future plan 08-06 (k6 flows) may seed audio fixtures or pyannote config
+# overrides into this directory.
