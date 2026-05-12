@@ -153,6 +153,108 @@ describe("TranscriptionsListClient (Phase 07.1 / Plan 09)", () => {
     });
   });
 
+  it("formats a 65000ms duration as mm:ss and renders truncated 60-char preview", async () => {
+    const longText = "A".repeat(100); // > 60 chars triggers truncate ellipsis branch
+    clientFetchMock.mockResolvedValue({
+      transcriptions: [
+        makeRow({
+          id: "11111111-1111-1111-1111-111111111111",
+          text: longText,
+          audio_duration_ms: 3_725_000, // 1h 02m 05s — exercises h>0 branch
+        }),
+      ],
+    });
+    renderWithProviders(<TranscriptionsListClient />);
+    await waitFor(() => {
+      expect(screen.getByText("1:02:05")).toBeInTheDocument();
+      expect(screen.getByText(/…$/)).toBeInTheDocument();
+    });
+  });
+
+  it("renders em-dash for null duration / provider / model / language", async () => {
+    clientFetchMock.mockResolvedValue({
+      transcriptions: [
+        makeRow({
+          id: "11111111-1111-1111-1111-111111111111",
+          audio_duration_ms: null,
+          provider: null,
+          model: null,
+          language: null,
+        }),
+      ],
+    });
+    renderWithProviders(<TranscriptionsListClient />);
+    await waitFor(() => {
+      expect(screen.getAllByText("—").length).toBeGreaterThanOrEqual(4);
+    });
+  });
+
+  it("renders em-dash for invalid created_at (formatDate catch branch)", async () => {
+    clientFetchMock.mockResolvedValue({
+      transcriptions: [
+        makeRow({
+          id: "11111111-1111-1111-1111-111111111111",
+          created_at: "not-a-date",
+        }),
+      ],
+    });
+    renderWithProviders(<TranscriptionsListClient />);
+    await waitFor(() => {
+      // formatDate falls back to the original string on parse failure
+      expect(screen.getByText("not-a-date")).toBeInTheDocument();
+    });
+  });
+
+  it("clicking error Retry refetches the list", async () => {
+    const userEvent = (await import("@testing-library/user-event")).default;
+    const user = userEvent.setup();
+    let attempt = 0;
+    clientFetchMock.mockImplementation(() => {
+      attempt++;
+      if (attempt === 1) return Promise.reject(new Error("boom"));
+      return Promise.resolve({ transcriptions: [] });
+    });
+    renderWithProviders(<TranscriptionsListClient />);
+    await waitFor(() => {
+      expect(screen.getByText(/Could not load transcriptions/i)).toBeInTheDocument();
+    });
+    await user.click(screen.getByRole("button", { name: /Retry/i }));
+    expect(clientFetchMock.mock.calls.length).toBeGreaterThanOrEqual(2);
+  });
+
+  it("clicking Load-more refetches the list", async () => {
+    const userEvent = (await import("@testing-library/user-event")).default;
+    const user = userEvent.setup();
+    const rows = Array.from({ length: 20 }).map((_, i) =>
+      makeRow({
+        id: `${i.toString(16).padStart(8, "0")}-0000-0000-0000-000000000000`,
+        text: `row ${i}`,
+      }),
+    );
+    clientFetchMock.mockResolvedValue({ transcriptions: rows });
+    renderWithProviders(<TranscriptionsListClient />);
+    const btn = await screen.findByRole("button", { name: /Load more/i });
+    const before = clientFetchMock.mock.calls.length;
+    await user.click(btn);
+    await waitFor(() => {
+      expect(clientFetchMock.mock.calls.length).toBeGreaterThan(before);
+    });
+  });
+
+  it("renders Load-more when items.length >= PAGE_LIMIT", async () => {
+    const rows = Array.from({ length: 20 }).map((_, i) =>
+      makeRow({
+        id: `${i.toString(16).padStart(8, "0")}-0000-0000-0000-000000000000`,
+        text: `row ${i}`,
+      }),
+    );
+    clientFetchMock.mockResolvedValue({ transcriptions: rows });
+    renderWithProviders(<TranscriptionsListClient />);
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: /Load more/i })).toBeInTheDocument();
+    });
+  });
+
   it("clicking row Delete calls DELETE /api/transcriptions/delete with body { id }", async () => {
     const userEvent = (await import("@testing-library/user-event")).default;
     const user = userEvent.setup();

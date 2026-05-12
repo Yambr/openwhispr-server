@@ -169,7 +169,10 @@ describe("TranscriptionDetailClient (Phase 07.1 / Plan 09)", () => {
     const userEvent = (await import("@testing-library/user-event")).default;
     const user = userEvent.setup();
     const writeText = vi.fn().mockResolvedValue(undefined);
-    Object.assign(navigator, { clipboard: { writeText } });
+    Object.defineProperty(navigator, "clipboard", {
+      value: { writeText },
+      configurable: true,
+    });
 
     clientFetchMock.mockResolvedValue({ transcriptions: [makeRow()] });
     renderWithProviders(<TranscriptionDetailClient transcriptionId={TID} />);
@@ -212,6 +215,33 @@ describe("TranscriptionDetailClient (Phase 07.1 / Plan 09)", () => {
     URL.revokeObjectURL = originalRevoke;
   });
 
+  it("Export Markdown handles null provider/model/language gracefully", async () => {
+    const userEvent = (await import("@testing-library/user-event")).default;
+    const user = userEvent.setup();
+    clientFetchMock.mockResolvedValue({
+      transcriptions: [makeRow({ provider: null, model: null, language: null })],
+    });
+
+    const createObjectURL = vi.fn().mockReturnValue("blob:md-null");
+    const revokeObjectURL = vi.fn();
+    const originalCreate = URL.createObjectURL;
+    const originalRevoke = URL.revokeObjectURL;
+    URL.createObjectURL = createObjectURL as unknown as typeof URL.createObjectURL;
+    URL.revokeObjectURL = revokeObjectURL as unknown as typeof URL.revokeObjectURL;
+
+    renderWithProviders(<TranscriptionDetailClient transcriptionId={TID} />);
+    await waitFor(() => {
+      expect(screen.getByText(/First paragraph/i)).toBeInTheDocument();
+    });
+    await user.click(screen.getByRole("button", { name: /Export as Markdown/i }));
+    await waitFor(() => {
+      expect(createObjectURL).toHaveBeenCalled();
+    });
+
+    URL.createObjectURL = originalCreate;
+    URL.revokeObjectURL = originalRevoke;
+  });
+
   it("Export Markdown triggers a Blob download with text/markdown mime", async () => {
     const userEvent = (await import("@testing-library/user-event")).default;
     const user = userEvent.setup();
@@ -239,6 +269,105 @@ describe("TranscriptionDetailClient (Phase 07.1 / Plan 09)", () => {
     URL.revokeObjectURL = originalRevoke;
   });
 
+  it("clicking error Retry refetches the detail", async () => {
+    const userEvent = (await import("@testing-library/user-event")).default;
+    const user = userEvent.setup();
+    let attempt = 0;
+    clientFetchMock.mockImplementation(() => {
+      attempt++;
+      if (attempt === 1) return Promise.reject(new Error("boom"));
+      return Promise.resolve({ transcriptions: [makeRow()] });
+    });
+    renderWithProviders(<TranscriptionDetailClient transcriptionId={TID} />);
+    await waitFor(() => {
+      expect(screen.getByText(/Could not load transcription/i)).toBeInTheDocument();
+    });
+    await user.click(screen.getByRole("button", { name: /Retry/i }));
+    await waitFor(() => {
+      expect(clientFetchMock.mock.calls.length).toBeGreaterThanOrEqual(2);
+    });
+  });
+
+  it("paginates through multiple list pages until target id is found (Branch B)", async () => {
+    // Page 1 returns 50 rows (PAGE_LIMIT) without target → paginator must fetch page 2.
+    // Page 2 contains the target.
+    const fullPage = Array.from({ length: 50 }).map((_, i) =>
+      makeRow({
+        id: `aaaaaaaa-0000-0000-0000-${i.toString(16).padStart(12, "0")}`,
+        text: `decoy ${i}`,
+        created_at: `2026-05-12T09:${String(i).padStart(2, "0")}:00.000Z`,
+      }),
+    );
+    clientFetchMock.mockImplementation((url: string) => {
+      const u = new URL(url, "http://x");
+      const before = u.searchParams.get("before");
+      if (!before) {
+        return Promise.resolve({ transcriptions: fullPage });
+      }
+      // second page: contains target
+      return Promise.resolve({ transcriptions: [makeRow()] });
+    });
+    renderWithProviders(<TranscriptionDetailClient transcriptionId={TID} />);
+    await waitFor(
+      () => {
+        expect(screen.getByText(/First paragraph/i)).toBeInTheDocument();
+      },
+      { timeout: 5000 },
+    );
+    // confirm two pages fetched
+    expect(clientFetchMock.mock.calls.length).toBe(2);
+  });
+
+  it("formats duration with hour component when audio_duration_ms exceeds 1h", async () => {
+    clientFetchMock.mockResolvedValue({
+      transcriptions: [makeRow({ audio_duration_ms: 3_725_000 })], // 1:02:05
+    });
+    renderWithProviders(<TranscriptionDetailClient transcriptionId={TID} />);
+    await waitFor(() => {
+      expect(screen.getByText("1:02:05")).toBeInTheDocument();
+    });
+  });
+
+  it("renders em-dash for null/missing metadata", async () => {
+    clientFetchMock.mockResolvedValue({
+      transcriptions: [
+        makeRow({
+          audio_duration_ms: null,
+          provider: null,
+          model: null,
+          language: null,
+        }),
+      ],
+    });
+    renderWithProviders(<TranscriptionDetailClient transcriptionId={TID} />);
+    await waitFor(() => {
+      expect(screen.getAllByText("—").length).toBeGreaterThanOrEqual(4);
+    });
+  });
+
+  it("renders zero paragraphs when both text and raw_text are empty", async () => {
+    clientFetchMock.mockResolvedValue({
+      transcriptions: [makeRow({ text: "", raw_text: null })],
+    });
+    const { container } = renderWithProviders(<TranscriptionDetailClient transcriptionId={TID} />);
+    await waitFor(() => {
+      // Metadata still renders so the row is loaded
+      expect(screen.getByText(/whisper-1/i)).toBeInTheDocument();
+    });
+    expect(container.querySelectorAll('[data-testid="trx-paragraph"]').length).toBe(0);
+  });
+
+  it("falls back to raw_text when text is empty", async () => {
+    clientFetchMock.mockResolvedValue({
+      transcriptions: [makeRow({ text: "", raw_text: "Alpha paragraph.\n\nBeta paragraph." })],
+    });
+    renderWithProviders(<TranscriptionDetailClient transcriptionId={TID} />);
+    await waitFor(() => {
+      expect(screen.getByText(/Alpha paragraph/i)).toBeInTheDocument();
+      expect(screen.getByText(/Beta paragraph/i)).toBeInTheDocument();
+    });
+  });
+
   it("Delete confirm fires DELETE and routes to /app/transcriptions", async () => {
     const userEvent = (await import("@testing-library/user-event")).default;
     const user = userEvent.setup();
@@ -256,10 +385,12 @@ describe("TranscriptionDetailClient (Phase 07.1 / Plan 09)", () => {
       expect(screen.getByText(/First paragraph/i)).toBeInTheDocument();
     });
     await user.click(screen.getByRole("button", { name: /^Delete$/i }));
-    const confirm = await screen.findByRole("button", { name: /Confirm|Delete$/i });
     // The confirm dialog has its own "Delete" button — pick the LAST one (in the dialog).
+    await screen.findByRole("button", { name: /Confirm|Delete$/i });
     const confirms = screen.getAllByRole("button", { name: /^Delete$|^Confirm$/i });
-    await user.click(confirms[confirms.length - 1]!);
+    const last = confirms[confirms.length - 1];
+    if (!last) throw new Error("no confirm button found");
+    await user.click(last);
     await waitFor(() => {
       const calls = clientFetchMock.mock.calls;
       const found = calls.some(
