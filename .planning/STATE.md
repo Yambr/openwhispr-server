@@ -34,7 +34,7 @@ progress:
 | Next action | Phase 9 — Helm Chart & Cloud Deploy: `/gsd-plan-phase 9` to begin scoping CloudNativePG + Traefik 3 + HPA + cert-manager work per ROADMAP §Phase 9. |
 
 ```
-[X][X][X][X][X][X][X][X][X][~][X][X][X][X][X][X][X][X][~][ ]
+[X][X][X][X][X][X][X][X][X][~][X][X][X][X][X][X][X][X][X][ ]
  0  1  2  3  4  5  6  7 7.1 8 8.1 8.2 8.3 8.4 8.5 8.6 8-8 9 9.1 10
 ```
 

@@ -137,3 +137,9 @@ testProbe:
     tag: "0.9.0-rc1"
     pullPolicy: IfNotPresent
   sloDeadlineMs: 300000
+  # Finding 09.1-F34 — probe runs inside the cluster; host.api
+  # (api.localtest.me) resolves to 127.0.0.1 which is the probe Pod's
+  # own loopback, not the api Service. Override to the in-cluster
+  # service name. Production operators on a real cluster keep the
+  # default (https://api.<host.api>) for full ingress path validation.
+  target: "http://openwhispr-api:3000"
