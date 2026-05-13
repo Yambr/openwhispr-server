@@ -64,3 +64,4 @@ compose/traefik/certs/*.srl
 # Local-only reference doc (content migrated to docs/litellm-target-spec.md)
 /speaches-audio.md
 Open wispr server.zip
+.debug/

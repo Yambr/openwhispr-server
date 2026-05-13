@@ -67,6 +67,16 @@ spec:
       postInitApplicationSQL:
         - CREATE SCHEMA IF NOT EXISTS partman;
         - CREATE EXTENSION IF NOT EXISTS pg_partman SCHEMA partman;
+        # Finding 09.1-F18 — pg_partman extension functions are owned by
+        # the superuser that ran CREATE EXTENSION (CNPG superuser, not
+        # the application owner). Without explicit GRANT, migration
+        # 0011_audit_log_partition.sql's `SELECT partman.create_parent(...)`
+        # fails with "permission denied for schema partman" even though
+        # the owner has BYPASSRLS (F15). Grant USAGE + EXECUTE on every
+        # function in the schema.
+        - GRANT USAGE ON SCHEMA partman TO openwhispr_owner;
+        - GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA partman TO openwhispr_owner;
+        - GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA partman TO openwhispr_owner;
 
   storage:
     size: {{ .Values.postgres.storageSize }}
