@@ -25,6 +25,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
   AUDIT_ACTIONS,
   type AuditCtx,
+  AuditCyrillicError,
   auditCtxFromRequest,
   auditPayloadSchemas,
   FORBIDDEN_AUDIT_KEYS,
@@ -330,6 +331,122 @@ describe("recordAudit — IP redaction + UA truncation", () => {
     });
     const stored = await getPayload("auth.signout");
     expect((stored.user_agent as string).length).toBe(512);
+  });
+});
+
+describe("recordAudit — Cyrillic guard (Phase 10-01d / T-10-01 mitigation)", () => {
+  // Constitutional rule: audit_log payload values MUST stay English-only.
+  // The Cyrillic guard fails LOUD on any Cyrillic codepoint in payload
+  // values (programmer-error, not user-facing). No log, no INSERT.
+  //
+  // NOTE: this test FILE stays English-only — Cyrillic test fixtures are
+  // constructed via \u escapes so tools/lint-english.ts does not flag the
+  // source. The escapes below decode to short Russian phrases.
+  // Cyrillic fixtures constructed via String.fromCharCode so this file
+  // stays ASCII-clean for tools/lint-english.ts. Codepoints are within
+  // the Cyrillic block U+0400..U+04FF that the runtime guard scans for.
+  const CYR_PHRASE = String.fromCharCode(
+    0x043d,
+    0x0430,
+    0x0440,
+    0x0443,
+    0x0448,
+    0x0435,
+    0x043d,
+    0x0438,
+    0x0435,
+  ); // narushenie
+  const CYR_GREETING = String.fromCharCode(0x041f, 0x0440, 0x0438, 0x0432, 0x0435, 0x0442); // Privet
+  const CYR_UA = `${String.fromCharCode(
+    0x0431,
+    0x0440,
+    0x0430,
+    0x0443,
+    0x0437,
+    0x0435,
+    0x0440,
+  )}/1.0`; // brauzer/1.0
+
+  it("AuditCyrillicError is an Error subclass with stable name", () => {
+    const e = new AuditCyrillicError("test");
+    expect(e).toBeInstanceOf(Error);
+    expect(e.name).toBe("AuditCyrillicError");
+  });
+
+  it("accepts pure-English payload (INSERT succeeds)", async () => {
+    const before = await countRows("admin.tenant_suspended");
+    await withTenant(db, tenantA, async (tx) => {
+      await recordAudit(tx, baseCtx(), "admin.tenant_suspended", {
+        tenant_id: "77777777-7777-4777-8777-777777777777",
+        reason: "abuse policy violation",
+      });
+    });
+    const after = await countRows("admin.tenant_suspended");
+    expect(after).toBe(before + 1);
+  });
+
+  it("rejects payload with Cyrillic value (top-level)", async () => {
+    await expect(
+      withTenant(db, tenantA, async (tx) => {
+        await recordAudit(tx, baseCtx(), "admin.tenant_suspended", {
+          tenant_id: "77777777-7777-4777-8777-777777777777",
+          reason: CYR_PHRASE,
+        });
+      }),
+    ).rejects.toBeInstanceOf(AuditCyrillicError);
+  });
+
+  it("rejects payload with Cyrillic value in nested object", async () => {
+    // Nested-object path: a programmer accidentally serializing a
+    // localized string into a deep JSONB tree must also fail loud.
+    await expect(
+      withTenant(db, tenantA, async (tx) => {
+        await recordAudit(tx, baseCtx(), "auth.oauth_link", {
+          // Cast through unknown — schema would strip unknown nested keys
+          // BUT the guard runs on the raw caller input before schema parse.
+          provider: "google",
+          nested: { deep: { value: CYR_GREETING } },
+        } as never);
+      }),
+    ).rejects.toBeInstanceOf(AuditCyrillicError);
+  });
+
+  it("rejects payload with Cyrillic value in ctx user_agent", async () => {
+    // ctx fields are payload-adjacent (merged into the JSONB row), so
+    // the guard sweeps them too — a Cyrillic UA from a misbehaving
+    // client header is a programmer-error if it reaches recordAudit.
+    await expect(
+      withTenant(db, tenantA, async (tx) => {
+        await recordAudit(tx, { ...baseCtx(), user_agent: CYR_UA }, "auth.signout", {});
+      }),
+    ).rejects.toBeInstanceOf(AuditCyrillicError);
+  });
+
+  it("accepts numeric and boolean values without scanning them", async () => {
+    // Guard only scans string values; numbers/booleans pass through.
+    await withTenant(db, tenantA, async (tx) => {
+      await recordAudit(tx, baseCtx(), "account.delete_requested", {
+        grace_window_seconds: 86400,
+      });
+    });
+    // No throw => success.
+    expect(true).toBe(true);
+  });
+
+  it("throws BEFORE the DB INSERT (no row written on Cyrillic hit)", async () => {
+    const before = await countRows("admin.tenant_suspended");
+    try {
+      await withTenant(db, tenantA, async (tx) => {
+        await recordAudit(tx, baseCtx(), "admin.tenant_suspended", {
+          tenant_id: "77777777-7777-4777-8777-777777777777",
+          reason: CYR_PHRASE,
+        });
+      });
+    } catch {
+      // expected
+    }
+    const after = await countRows("admin.tenant_suspended");
+    expect(after).toBe(before);
   });
 });
 
