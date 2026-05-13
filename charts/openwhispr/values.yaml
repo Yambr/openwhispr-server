@@ -102,17 +102,30 @@ postgres:
     accessKeyId: ""
     secretAccessKey: ""
 
-# Bitnami Valkey sub-chart values (Wave 1 declares the dependency).
+# Bitnami Valkey sub-chart values (A5 — pinned to chart 5.6.5 in Chart.yaml).
+# Top-level `enabled` gates the dependency render via `condition: valkey.enabled`.
 valkey:
+  enabled: true
   architecture: standalone
   auth:
     enabled: false
+  primary:
+    persistence:
+      enabled: true
+      size: 8Gi
+  replica:
+    # Replication mode (cloud-ha overlay flips architecture=replication) uses
+    # this; ignored in standalone.
+    replicaCount: 2
 
-# Bitnami MinIO sub-chart values (Wave 1).
+# Bitnami MinIO sub-chart values (A5 — pinned to chart 17.0.21 in Chart.yaml).
 minio:
+  enabled: true
   mode: standalone
   persistence:
+    enabled: true
     size: 20Gi
+  # Cloud-ha overlay flips mode=distributed and bumps replicas to 4.
 
 # CNPG Pooler CRD (A6: replaces first-party PgBouncer Deployment).
 pooler:
