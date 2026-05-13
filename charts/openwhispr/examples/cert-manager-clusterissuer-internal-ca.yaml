@@ -1,0 +1,31 @@
+# cert-manager ClusterIssuer — internal corporate CA pattern.
+#
+# Apply BEFORE installing the openwhispr chart, AFTER creating the CA
+# trust Secret out-of-band:
+#
+#   1. Operator obtains the corporate CA cert+key (PEM):
+#        ca.crt  — base64-encoded cert in tls.crt
+#        ca.key  — base64-encoded private key in tls.key
+#
+#   2. Create the Secret in cert-manager's namespace:
+#        kubectl create secret tls corp-ca-key-pair \
+#          --namespace cert-manager \
+#          --cert=ca.crt --key=ca.key
+#
+#   3. Apply this ClusterIssuer.
+#
+#   4. Install the openwhispr chart with:
+#        --set certManager.clusterIssuer=internal-corp-ca
+#
+# Corporate self-host pattern (STACK.md "Corporate self-host" variant) —
+# replaces Let's Encrypt with the operator's internal PKI. cert-manager
+# signs Certificate CRs using the CA Secret. Operators rotating the root
+# CA bump the corp-ca-key-pair Secret + force reconciliation.
+
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: internal-corp-ca
+spec:
+  ca:
+    secretName: corp-ca-key-pair

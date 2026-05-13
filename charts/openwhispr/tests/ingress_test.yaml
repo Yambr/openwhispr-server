@@ -5,6 +5,8 @@ templates:
   - ingressroute-web.yaml
   - middleware-forwarded-headers.yaml
   - serverstransport-realtime.yaml
+  - certificate-api.yaml
+  - certificate-web.yaml
 tests:
   - it: renders api IngressRoute bound to the websecure entrypoint
     template: ingressroute-api.yaml
@@ -148,4 +150,66 @@ tests:
       - contains:
           path: spec.ipAllowList.sourceRange
           content: 192.168.0.0/16
+
+  - it: certificate-api references the cluster issuer (default certManager.enabled=true)
+    template: certificate-api.yaml
+    set:
+      secrets:
+        mode: eso
+        external:
+          storeRef: vault-clusterstore
+      host:
+        api: api.example.com
+    asserts:
+      - hasDocuments:
+          count: 1
+      - isKind:
+          of: Certificate
+      - equal:
+          path: apiVersion
+          value: cert-manager.io/v1
+      - equal:
+          path: spec.secretName
+          value: openwhispr-api-tls
+      - contains:
+          path: spec.dnsNames
+          content: api.example.com
+      - equal:
+          path: spec.issuerRef.name
+          value: letsencrypt-prod
+      - equal:
+          path: spec.issuerRef.kind
+          value: ClusterIssuer
+
+  - it: certificate-api omitted when certManager.enabled=false
+    template: certificate-api.yaml
+    set:
+      secrets:
+        mode: eso
+        external:
+          storeRef: vault-clusterstore
+      certManager:
+        enabled: false
+    asserts:
+      - hasDocuments:
+          count: 0
+
+  - it: certificate-web renders with web hostname
+    template: certificate-web.yaml
+    set:
+      secrets:
+        mode: eso
+        external:
+          storeRef: vault-clusterstore
+      host:
+        web: web.example.com
+    asserts:
+      - isKind:
+          of: Certificate
+      - equal:
+          path: spec.secretName
+          value: openwhispr-web-tls
+      - contains:
+          path: spec.dnsNames
+          content: web.example.com
 

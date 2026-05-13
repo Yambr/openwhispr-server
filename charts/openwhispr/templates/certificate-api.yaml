@@ -1,0 +1,30 @@
+{{/*
+cert-manager Certificate — api hostname.
+
+Renders only when certManager.enabled=true (default). Populates the TLS
+Secret referenced by templates/ingressroute-api.yaml +
+templates/ingressroute-api-realtime.yaml (D-21 cert-reuse pattern — one
+cert covers both :443 short-JSON + :8443 WSS realtime entrypoints).
+
+ClusterIssuer (not namespaced Issuer) so a single cluster-wide ACME
+account / internal CA can issue for any release namespace. Operators
+install the ClusterIssuer out-of-band — see examples/cert-manager-*.yaml.
+*/}}
+{{- if .Values.certManager.enabled -}}
+{{- $fullname := include "openwhispr.fullname" . -}}
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: {{ $fullname }}-api
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "openwhispr.labels" . | nindent 4 }}
+    app.kubernetes.io/component: api
+spec:
+  secretName: {{ .Values.tls.apiSecretName }}
+  dnsNames:
+    - {{ .Values.host.api }}
+  issuerRef:
+    kind: ClusterIssuer
+    name: {{ .Values.certManager.clusterIssuer }}
+{{- end }}

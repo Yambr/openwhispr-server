@@ -1,0 +1,74 @@
+# Traefik install overlay reference for OpenWhispr Phase 09 Plan 09-09.
+#
+# Pass to the Traefik chart at install time, e.g.:
+#   helm repo add traefik https://traefik.github.io/charts
+#   helm upgrade --install traefik traefik/traefik \
+#     -n traefik --create-namespace \
+#     -f charts/openwhispr/examples/traefik-values.yaml
+#
+# What this overlay declares
+# --------------------------
+# - websecure  (:443)               — Traefik 3 defaults; short-JSON routes
+#                                     (api PathPrefix(/api,/v1/audio), web
+#                                     catch-all).
+# - websecure-realtime (:8443)      — long-running WSS /v1/realtime ONLY.
+#                                     respondingTimeouts.idleTimeout=3600s
+#                                     covers the 1h ceiling demanded by
+#                                     BACKEND_SPEC.md L788-L791.
+#
+# Both entrypoints are HTTPS with shared `tls: {}` defaults — cert-manager
+# Certificate CRs (chart-rendered) populate the TLS Secrets that the
+# OpenWhispr IngressRoute CRs reference. No per-entrypoint ACME issuance.
+#
+# Pitfall #4 — the api Deployment ships a `traefik-preflight` initContainer
+# that probes `:9000/api/entrypoints` and fails fast if `websecure-realtime`
+# is missing. Toggle off only for split-Traefik-install topologies via
+# `--set ingress.preflightCheck=false`.
+
+ports:
+  websecure:
+    port: 8443
+    expose:
+      default: true
+    exposedPort: 443
+    protocol: TCP
+    tls:
+      enabled: true
+  websecure-realtime:
+    port: 8444
+    expose:
+      default: true
+    exposedPort: 8443
+    protocol: TCP
+    tls:
+      enabled: true
+    transport:
+      respondingTimeouts:
+        readTimeout: 0
+        writeTimeout: 0
+        idleTimeout: 3600s
+
+# Provider configuration — Kubernetes CRD (Traefik 3 native). Out-of-cluster
+# external CRDs (cert-manager, OpenWhispr IngressRoute) are discovered via
+# the CRD provider by default.
+providers:
+  kubernetesCRD:
+    enabled: true
+    allowCrossNamespace: true
+  kubernetesIngress:
+    # Disabled — OpenWhispr renders zero `kind: Ingress` (pitfall #3).
+    # Re-enable only if other charts in the cluster need it.
+    enabled: false
+
+# Admin API on :9000 (cluster-internal only — NOT exposed externally).
+# api-deployment's traefik-preflight initContainer probes this endpoint.
+api:
+  dashboard: true
+  insecure: false
+
+# Trust X-Forwarded-For from RFC 1918 only (defense-in-depth alongside
+# the chart-rendered forwarded-headers Middleware).
+# Traefik 3 helm chart maps this via `additionalArguments`.
+additionalArguments:
+  - --entryPoints.websecure.forwardedHeaders.trustedIPs=10.0.0.0/8,172.16.0.0/12,192.168.0.0/16
+  - --entryPoints.websecure-realtime.forwardedHeaders.trustedIPs=10.0.0.0/8,172.16.0.0/12,192.168.0.0/16

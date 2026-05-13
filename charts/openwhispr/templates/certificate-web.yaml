@@ -1,0 +1,29 @@
+{{/*
+cert-manager Certificate — web hostname.
+
+Renders only when certManager.enabled=true (default). Populates the TLS
+Secret referenced by templates/ingressroute-web.yaml.
+
+If values.host.api == values.host.web (single-host topology), operators
+may set tls.webSecretName == tls.apiSecretName so this Certificate is
+redundant — cert-manager will reconcile two Certificate CRs targeting
+the same Secret without conflict (last-writer wins on identical SANs).
+*/}}
+{{- if .Values.certManager.enabled -}}
+{{- $fullname := include "openwhispr.fullname" . -}}
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: {{ $fullname }}-web
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "openwhispr.labels" . | nindent 4 }}
+    app.kubernetes.io/component: web
+spec:
+  secretName: {{ .Values.tls.webSecretName }}
+  dnsNames:
+    - {{ .Values.host.web }}
+  issuerRef:
+    kind: ClusterIssuer
+    name: {{ .Values.certManager.clusterIssuer }}
+{{- end }}
