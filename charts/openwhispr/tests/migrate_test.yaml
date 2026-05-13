@@ -1,0 +1,152 @@
+suite: migrate — pre-install/pre-upgrade Helm hook Job
+templates:
+  - migrate-job.yaml
+  - migrate-serviceaccount.yaml
+tests:
+  - it: migrate Job carries 4 Helm hook annotations
+    template: migrate-job.yaml
+    set:
+      secrets:
+        mode: eso
+        external:
+          storeRef: vault-clusterstore
+    asserts:
+      - isKind:
+          of: Job
+      - equal:
+          path: metadata.annotations["helm.sh/hook"]
+          value: pre-install,pre-upgrade
+      - equal:
+          path: metadata.annotations["helm.sh/hook-weight"]
+          value: "-5"
+      - equal:
+          path: metadata.annotations["helm.sh/hook-delete-policy"]
+          value: before-hook-creation
+
+  - it: migrate Job has backoffLimit 0 (one-shot) + activeDeadlineSeconds 300
+    template: migrate-job.yaml
+    set:
+      secrets:
+        mode: eso
+        external:
+          storeRef: vault-clusterstore
+    asserts:
+      - equal:
+          path: spec.backoffLimit
+          value: 0
+      - equal:
+          path: spec.activeDeadlineSeconds
+          value: 300
+
+  - it: migrate Job initContainer waits on pg_isready against -pg-rw
+    template: migrate-job.yaml
+    set:
+      secrets:
+        mode: eso
+        external:
+          storeRef: vault-clusterstore
+    asserts:
+      - equal:
+          path: spec.template.spec.initContainers[0].name
+          value: wait-for-postgres
+      - matchRegex:
+          path: spec.template.spec.initContainers[0].image
+          pattern: "^postgres:17"
+      - matchRegex:
+          path: spec.template.spec.initContainers[0].command[2]
+          pattern: "pg_isready.*-pg-rw"
+
+  - it: migrate Job container image pin uses Chart.AppVersion default (NOT latest)
+    template: migrate-job.yaml
+    set:
+      secrets:
+        mode: eso
+        external:
+          storeRef: vault-clusterstore
+    asserts:
+      - notMatchRegex:
+          path: spec.template.spec.containers[0].image
+          pattern: ":latest$"
+      - notMatchRegex:
+          path: spec.template.spec.containers[0].image
+          pattern: ":$"
+
+  - it: migrate Job command runs node migrate.cjs (compose parity)
+    template: migrate-job.yaml
+    set:
+      secrets:
+        mode: eso
+        external:
+          storeRef: vault-clusterstore
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].command
+          content: node
+      - matchRegex:
+          path: spec.template.spec.containers[0].command[1]
+          pattern: "migrate\\.cjs$"
+
+  - it: migrate Job DATABASE_URL points at -pg-rw (NOT pooler — transaction-mode breaks DDL)
+    template: migrate-job.yaml
+    set:
+      secrets:
+        mode: eso
+        external:
+          storeRef: vault-clusterstore
+    asserts:
+      - matchRegex:
+          path: spec.template.spec.containers[0].env[?(@.name=="DATABASE_URL")].value
+          pattern: "RELEASE-NAME-openwhispr-pg-rw:5432"
+      - notMatchRegex:
+          path: spec.template.spec.containers[0].env[?(@.name=="DATABASE_URL")].value
+          pattern: "pg-pooler"
+
+  - it: migrate Job envFrom secret reference for DATABASE password
+    template: migrate-job.yaml
+    set:
+      secrets:
+        mode: eso
+        external:
+          storeRef: vault-clusterstore
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].envFrom[0].secretRef.name
+          value: RELEASE-NAME-openwhispr-secrets
+
+  - it: migrate ServiceAccount renders
+    template: migrate-serviceaccount.yaml
+    set:
+      secrets:
+        mode: eso
+        external:
+          storeRef: vault-clusterstore
+    asserts:
+      - isKind:
+          of: ServiceAccount
+      - equal:
+          path: metadata.name
+          value: RELEASE-NAME-openwhispr-migrate
+
+  - it: migrate Job uses dedicated ServiceAccount
+    template: migrate-job.yaml
+    set:
+      secrets:
+        mode: eso
+        external:
+          storeRef: vault-clusterstore
+    asserts:
+      - equal:
+          path: spec.template.spec.serviceAccountName
+          value: RELEASE-NAME-openwhispr-migrate
+
+  - it: migrate Job restartPolicy Never (one-shot semantics)
+    template: migrate-job.yaml
+    set:
+      secrets:
+        mode: eso
+        external:
+          storeRef: vault-clusterstore
+    asserts:
+      - equal:
+          path: spec.template.spec.restartPolicy
+          value: Never
