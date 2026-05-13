@@ -1,20 +1,20 @@
 ---
 gsd_state_version: 1.0
 milestone: v1
-milestone_name: OpenWhispr Server v1
+milestone_name: milestone
 status: Phase 8 + 08.1/08.2/08.3/08.4/08.5/08.6/08-08 all closed; realistic wiring LIVE-proven on Mac across 5 endpoints incl. local Speaches diarization (built from master); Phase 9 (Helm) next
-last_updated: "2026-05-13T01:50:00.000Z"
+last_updated: "2026-05-13T08:45:00.000Z"
 progress:
-  total_phases: 35
-  completed_phases: 12
-  total_plans: 88
-  completed_plans: 112
-  percent: 34
+  total_phases: 42
+  completed_phases: 14
+  total_plans: 125
+  completed_plans: 123
+  percent: 33
 ---
 
 # Project State: OpenWhispr Server
 
-**Last updated:** 2026-05-13 (Phase 08.5 Waves 1+2 CLOSED — 8 atomic commits land realistic compose overlay, litellm_config.realistic.yaml, Speaches env+cache fixes, pre-warm strict mode, k6 baseline scenario+runner, run.sh realistic extensions. Wave 3 (live boot + smoke + 12-min baseline) BLOCKED on operator `.env` provider keys; operator unblock recipe in `.planning/phases/08.5-realistic-profile-boot-and-baseline/08.5-03-STATUS.md`. Earlier same-day: Phase 08.4 CLOSED: 3 atomic commits — k6 WebSocket constructor 3-arg fix `a86140d` (H7 from research), smoke-gate `ws_msgs_sent>0` assertion `0ac7985`, k6 realtime-ws flow now hits :8443 dedicated WSS entrypoint per Phase 04 Plan 05 `670aa8a` (H8 from live host-probe — Traefik :443 has no router for /v1/realtime, returned plain-text 404 silently dropped by k6 addEventListener). Run 5 produced COMPLETE 4-endpoint mock baseline at 1000 VU × 30 min sustained: transcribe p95 2521 ms, reason 1209 ms, agent-stream TTFB 610 ms, realtime-ws roundtrip 41 ms, error rate 0.106%, 944k HTTP @ 511 rps, 105k WS sessions w/ 211k frames sent / 105k received, 0 container restarts, 6/6 k6 thresholds PASS. realtime-ws 41 ms is mock-floor (zero-latency echo) — operator H100 re-run with Speaches/OpenAI Realtime will fill the [50,1000] window naturally. Smoke gate from 08.4-01 caught the H8 regression in 30 sec instead of letting another 30-min plateau silently fail. Plan 08-08 fully unblocked.)
+**Last updated:** 2026-05-13 (Phase 09 Wave 0 CLOSED — 7 atomic commits across plans 09-01/02/03: chart skeleton + dual secrets path with helm-values fail gates + ESO ExternalSecret + values.schema.json with `:17.<minor>` + `not/enum CHANGE_ME` rules + helm-unittest scaffold + helm-lint workflow + 3 example overlays + cnpg/lgtm install scripts; squawk PR gate via `tools/lint-migrations.ts` with 16-rule BLOCKING allowlist + 5 fixtures + 35 vitest tests at 100/97.82/100/100 coverage; compose-chart parity gate via `tools/lint-compose-chart-parity.ts` + categorized allowlist + 23 tests at 97.33/96.15/90.9/96.92. All 16 stack containers still healthy — Wave 0 added pure-new files. Commits: 4e22d77, 83b6e11, 097311e, 1363bd2, 1bbd1ed, 028cc4a, caa5f13. Wave 1 (09-04 CNPG Cluster + custom pg_partman image, 09-05 Pooler + Valkey/MinIO sub-charts) next. Earlier same-day: Phase 08.5 Waves 1+2 CLOSED — 8 atomic commits land realistic compose overlay, litellm_config.realistic.yaml, Speaches env+cache fixes, pre-warm strict mode, k6 baseline scenario+runner, run.sh realistic extensions. Wave 3 (live boot + smoke + 12-min baseline) BLOCKED on operator `.env` provider keys; operator unblock recipe in `.planning/phases/08.5-realistic-profile-boot-and-baseline/08.5-03-STATUS.md`. Earlier same-day: Phase 08.4 CLOSED: 3 atomic commits — k6 WebSocket constructor 3-arg fix `a86140d` (H7 from research), smoke-gate `ws_msgs_sent>0` assertion `0ac7985`, k6 realtime-ws flow now hits :8443 dedicated WSS entrypoint per Phase 04 Plan 05 `670aa8a` (H8 from live host-probe — Traefik :443 has no router for /v1/realtime, returned plain-text 404 silently dropped by k6 addEventListener). Run 5 produced COMPLETE 4-endpoint mock baseline at 1000 VU × 30 min sustained: transcribe p95 2521 ms, reason 1209 ms, agent-stream TTFB 610 ms, realtime-ws roundtrip 41 ms, error rate 0.106%, 944k HTTP @ 511 rps, 105k WS sessions w/ 211k frames sent / 105k received, 0 container restarts, 6/6 k6 thresholds PASS. realtime-ws 41 ms is mock-floor (zero-latency echo) — operator H100 re-run with Speaches/OpenAI Realtime will fill the [50,1000] window naturally. Smoke gate from 08.4-01 caught the H8 regression in 30 sec instead of letting another 30-min plateau silently fail. Plan 08-08 fully unblocked.)
 
 ## Project Reference
 
