@@ -67,16 +67,20 @@ spec:
       postInitApplicationSQL:
         - CREATE SCHEMA IF NOT EXISTS partman;
         - CREATE EXTENSION IF NOT EXISTS pg_partman SCHEMA partman;
-        # Finding 09.1-F18 — pg_partman extension functions are owned by
-        # the superuser that ran CREATE EXTENSION (CNPG superuser, not
-        # the application owner). Without explicit GRANT, migration
-        # 0011_audit_log_partition.sql's `SELECT partman.create_parent(...)`
-        # fails with "permission denied for schema partman" even though
-        # the owner has BYPASSRLS (F15). Grant USAGE + EXECUTE on every
-        # function in the schema.
-        - GRANT USAGE ON SCHEMA partman TO openwhispr_owner;
-        - GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA partman TO openwhispr_owner;
-        - GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA partman TO openwhispr_owner;
+        # Finding 09.1-F18 / F20 — pg_partman's create_parent() executes
+        # internal DDL (CREATE child partition tables, ALTER attach) which
+        # checks CREATE-on-schema, not just EXECUTE-on-function. Naive
+        # GRANT USAGE/EXECUTE/SELECT was insufficient. The pg_partman
+        # canonical operator-setup is to make the application owner the
+        # OWNER of the partman schema (full DDL rights inside it) and
+        # grant CREATE on `public` (where parent tables live).
+        - ALTER SCHEMA partman OWNER TO openwhispr_owner;
+        - GRANT ALL ON SCHEMA partman TO openwhispr_owner;
+        - GRANT ALL ON ALL TABLES IN SCHEMA partman TO openwhispr_owner;
+        - GRANT ALL ON ALL SEQUENCES IN SCHEMA partman TO openwhispr_owner;
+        - GRANT ALL ON ALL FUNCTIONS IN SCHEMA partman TO openwhispr_owner;
+        - ALTER DEFAULT PRIVILEGES IN SCHEMA partman GRANT ALL ON TABLES TO openwhispr_owner;
+        - ALTER DEFAULT PRIVILEGES IN SCHEMA partman GRANT ALL ON SEQUENCES TO openwhispr_owner;
 
   storage:
     size: {{ .Values.postgres.storageSize }}
