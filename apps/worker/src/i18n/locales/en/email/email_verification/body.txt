@@ -1,0 +1,10 @@
+Hello {name},
+
+Please confirm your email address to finish setting up your OpenWhispr account by opening the following link:
+
+{verification_url}
+
+If you did not create this account, you can safely ignore this message.
+
+Regards,
+The OpenWhispr team
