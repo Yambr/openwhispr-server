@@ -18,6 +18,11 @@
         }
       }
     },
+    "language": {
+      "label": { "label": "Language" },
+      "english": { "label": "English" },
+      "russian": { "label": "Russian" }
+    },
     "loading": { "label": "Loading…" },
     "signout": { "label": "Sign out" },
     "theme": {
@@ -25,6 +30,11 @@
       "light": { "label": "Light" },
       "dark": { "label": "Dark" },
       "system": { "label": "System" }
+    },
+    "test": {
+      "plural": {
+        "unread": "{count, plural, one{# unread message} other{# unread messages}}"
+      }
     }
   }
 }

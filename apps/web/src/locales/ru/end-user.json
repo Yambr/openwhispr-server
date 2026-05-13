@@ -1,1 +1,768 @@
-{}
+{
+  "end-user": {
+    "account": {
+      "danger": {
+        "delete": {
+          "label": "Удалить аккаунт"
+        },
+        "dialog-body": {
+          "text": "Это удалит ваши транскрипции, заметки, диалоги и сессии. Введите ваш email для подтверждения."
+        },
+        "dialog-confirm": {
+          "label": "Удалить аккаунт"
+        },
+        "dialog-input": {
+          "label": "Введите ваш email для подтверждения"
+        },
+        "dialog-title": {
+          "text": "Удалить ваш аккаунт OpenWhispr"
+        },
+        "title": {
+          "label": "Опасная зона"
+        }
+      },
+      "error": {
+        "retry": {
+          "label": "Повторить"
+        },
+        "title": {
+          "text": "Не удалось загрузить аккаунт"
+        }
+      },
+      "nav": {
+        "sidebar": {
+          "label": "Аккаунт"
+        }
+      },
+      "profile": {
+        "created": {
+          "label": "Участник с"
+        },
+        "email": {
+          "label": "Email"
+        },
+        "name": {
+          "label": "Имя"
+        },
+        "title": {
+          "label": "Профиль"
+        },
+        "verified": {
+          "label": "Подтверждён"
+        }
+      },
+      "sessions": {
+        "action-revoke": {
+          "label": "Отозвать"
+        },
+        "action-revoke-others": {
+          "label": "Отозвать все остальные сессии"
+        },
+        "col-created": {
+          "label": "Начало"
+        },
+        "col-device": {
+          "label": "Устройство"
+        },
+        "col-expires": {
+          "label": "Истекает"
+        },
+        "col-ip": {
+          "label": "IP-адрес"
+        },
+        "title": {
+          "label": "Активные сессии"
+        }
+      },
+      "subtitle": {
+        "body": {
+          "text": "Управление профилем, активными сессиями и удалением аккаунта."
+        }
+      },
+      "title": {
+        "heading": {
+          "text": "Аккаунт"
+        }
+      }
+    },
+    "conv-detail": {
+      "action": {
+        "back": {
+          "label": "Назад к диалогам"
+        },
+        "copy": {
+          "label": "Копировать стенограмму"
+        },
+        "delete": {
+          "label": "Удалить диалог"
+        },
+        "export-json": {
+          "label": "Экспорт в JSON"
+        },
+        "loadearlier": {
+          "label": "Загрузить более ранние сообщения"
+        }
+      },
+      "empty": {
+        "body": {
+          "text": "В этом диалоге пока нет сообщений."
+        },
+        "title": {
+          "text": "Нет сообщений"
+        }
+      },
+      "error": {
+        "retry": {
+          "label": "Повторить"
+        },
+        "title": {
+          "text": "Не удалось загрузить диалог"
+        }
+      },
+      "role": {
+        "assistant": {
+          "label": "Ассистент"
+        },
+        "system": {
+          "label": "Система"
+        },
+        "tool": {
+          "label": "Инструмент"
+        },
+        "user": {
+          "label": "Вы"
+        }
+      },
+      "title": {
+        "heading": {
+          "text": "Диалог"
+        }
+      }
+    },
+    "conv-list": {
+      "action": {
+        "loadmore": {
+          "label": "Загрузить ещё"
+        },
+        "search": {
+          "label": "Поиск диалогов"
+        }
+      },
+      "empty": {
+        "body": {
+          "text": "Начните чат в десктоп-клиенте, чтобы увидеть его здесь."
+        },
+        "title": {
+          "text": "Пока нет диалогов"
+        }
+      },
+      "error": {
+        "retry": {
+          "label": "Повторить"
+        },
+        "title": {
+          "text": "Не удалось загрузить диалоги"
+        }
+      },
+      "nav": {
+        "sidebar": {
+          "label": "Диалоги"
+        }
+      },
+      "row": {
+        "action-delete": {
+          "label": "Удалить"
+        }
+      },
+      "subtitle": {
+        "body": {
+          "text": "Чаты с LLM, начатые из десктоп-клиента."
+        }
+      },
+      "table": {
+        "col-created": {
+          "label": "Создан"
+        },
+        "col-title": {
+          "label": "Название"
+        },
+        "col-updated": {
+          "label": "Обновлён"
+        }
+      },
+      "title": {
+        "heading": {
+          "text": "Диалоги"
+        }
+      }
+    },
+    "conv-search": {
+      "action": {
+        "clear": {
+          "label": "Очистить"
+        },
+        "submit": {
+          "label": "Найти"
+        }
+      },
+      "empty": {
+        "none": {
+          "text": "Нет диалогов, соответствующих запросу."
+        },
+        "type": {
+          "text": "Введите запрос, чтобы найти ваши диалоги."
+        }
+      },
+      "error": {
+        "retry": {
+          "label": "Повторить"
+        },
+        "title": {
+          "text": "Поиск не удался"
+        }
+      },
+      "input": {
+        "placeholder": {
+          "text": "Поиск по вашим диалогам"
+        }
+      },
+      "result": {
+        "score": {
+          "label": "Релевантность"
+        }
+      },
+      "title": {
+        "heading": {
+          "text": "Поиск диалогов"
+        }
+      }
+    },
+    "note-detail": {
+      "action": {
+        "back": {
+          "label": "Назад к заметкам"
+        },
+        "copy": {
+          "label": "Копировать"
+        },
+        "delete": {
+          "label": "Удалить"
+        },
+        "export-json": {
+          "label": "Экспорт в JSON"
+        },
+        "export-md": {
+          "label": "Экспорт в Markdown"
+        }
+      },
+      "empty": {
+        "body": {
+          "text": "Эта заметка не существует или была удалена."
+        },
+        "title": {
+          "text": "Заметка не найдена"
+        }
+      },
+      "error": {
+        "retry": {
+          "label": "Повторить"
+        },
+        "title": {
+          "text": "Не удалось загрузить заметку"
+        }
+      },
+      "metadata": {
+        "created": {
+          "label": "Создана"
+        },
+        "duration": {
+          "label": "Длительность аудио"
+        },
+        "folder": {
+          "label": "Папка"
+        },
+        "participants": {
+          "label": "Участники"
+        },
+        "title": {
+          "label": "Детали"
+        },
+        "type": {
+          "label": "Тип заметки"
+        }
+      },
+      "tabs": {
+        "content": {
+          "label": "Содержимое"
+        },
+        "enhanced": {
+          "label": "Расширенное"
+        },
+        "transcript": {
+          "label": "Стенограмма"
+        }
+      },
+      "title": {
+        "heading": {
+          "text": "Заметка"
+        }
+      }
+    },
+    "notes-list": {
+      "action": {
+        "loadmore": {
+          "label": "Загрузить ещё"
+        },
+        "search": {
+          "label": "Поиск заметок"
+        }
+      },
+      "empty": {
+        "body": {
+          "text": "Запишите заметку в десктоп-клиенте, чтобы увидеть её здесь."
+        },
+        "title": {
+          "text": "Пока нет заметок"
+        }
+      },
+      "error": {
+        "retry": {
+          "label": "Повторить"
+        },
+        "title": {
+          "text": "Не удалось загрузить заметки"
+        }
+      },
+      "folders": {
+        "readonly-body": {
+          "text": "Управление папками доступно в десктоп-клиенте."
+        },
+        "title": {
+          "label": "Папки"
+        }
+      },
+      "nav": {
+        "sidebar": {
+          "label": "Заметки"
+        }
+      },
+      "row": {
+        "action-delete": {
+          "label": "Удалить"
+        }
+      },
+      "subtitle": {
+        "body": {
+          "text": "Заметки, записанные через десктоп-клиент."
+        }
+      },
+      "table": {
+        "col-created": {
+          "label": "Создана"
+        },
+        "col-folder": {
+          "label": "Папка"
+        },
+        "col-title": {
+          "label": "Название"
+        },
+        "col-words": {
+          "label": "Слов"
+        }
+      },
+      "title": {
+        "heading": {
+          "text": "Заметки"
+        }
+      }
+    },
+    "notes-search": {
+      "action": {
+        "clear": {
+          "label": "Очистить"
+        },
+        "submit": {
+          "label": "Найти"
+        }
+      },
+      "empty": {
+        "none": {
+          "text": "Нет заметок, соответствующих запросу."
+        },
+        "type": {
+          "text": "Введите запрос, чтобы найти ваши заметки."
+        }
+      },
+      "error": {
+        "retry": {
+          "label": "Повторить"
+        },
+        "title": {
+          "text": "Поиск не удался"
+        }
+      },
+      "input": {
+        "placeholder": {
+          "text": "Поиск по вашим заметкам"
+        }
+      },
+      "result": {
+        "score": {
+          "label": "Релевантность"
+        }
+      },
+      "title": {
+        "heading": {
+          "text": "Поиск заметок"
+        }
+      }
+    },
+    "signin": {
+      "action": {
+        "forgotPassword": {
+          "link": {
+            "disabled": "Забыли пароль? — скоро будет, обратитесь к вашему оператору."
+          }
+        },
+        "signup-link": {
+          "label": "Нет аккаунта? Зарегистрируйтесь"
+        }
+      },
+      "error": {
+        "body": {
+          "text": "Проверьте email и пароль и повторите попытку."
+        },
+        "title": {
+          "text": "Не удалось войти"
+        }
+      },
+      "form": {
+        "email": {
+          "label": "Email"
+        },
+        "password": {
+          "label": "Пароль"
+        },
+        "submit": {
+          "label": "Войти"
+        }
+      },
+      "oidc": {
+        "github": {
+          "label": "Продолжить с GitHub"
+        },
+        "google": {
+          "label": "Продолжить с Google"
+        },
+        "sso": {
+          "label": "Продолжить с SSO"
+        }
+      },
+      "subtitle": {
+        "body": {
+          "text": "Используйте ваш email или SSO вашей организации."
+        }
+      },
+      "title": {
+        "heading": {
+          "text": "Вход в OpenWhispr"
+        }
+      }
+    },
+    "signup": {
+      "action": {
+        "signin-link": {
+          "label": "Уже есть аккаунт? Войдите"
+        }
+      },
+      "error": {
+        "duplicate": {
+          "text": "Этот email уже зарегистрирован. Войдите вместо регистрации."
+        },
+        "generic": {
+          "text": "Регистрация не удалась. Проверьте форму и попробуйте снова."
+        }
+      },
+      "form": {
+        "confirmPassword": {
+          "label": "Подтвердите пароль"
+        },
+        "email": {
+          "label": "Email"
+        },
+        "name": {
+          "label": "Имя"
+        },
+        "password": {
+          "label": "Пароль"
+        },
+        "submit": {
+          "label": "Зарегистрироваться"
+        }
+      },
+      "oidc": {
+        "github": {
+          "label": "Продолжить с GitHub"
+        },
+        "google": {
+          "label": "Продолжить с Google"
+        },
+        "sso": {
+          "label": "Продолжить с SSO"
+        }
+      },
+      "subtitle": {
+        "body": {
+          "text": "На указанный адрес отправляется письмо для подтверждения."
+        }
+      },
+      "success": {
+        "body": {
+          "text": "Мы отправили ссылку подтверждения на ваш адрес. Откройте её, чтобы продолжить."
+        },
+        "title": {
+          "text": "Проверьте почту"
+        }
+      },
+      "title": {
+        "heading": {
+          "text": "Создайте аккаунт OpenWhispr"
+        }
+      }
+    },
+    "trx-detail": {
+      "action": {
+        "back": {
+          "label": "Назад к списку"
+        },
+        "copy": {
+          "label": "Копировать"
+        },
+        "delete": {
+          "label": "Удалить"
+        },
+        "export-json": {
+          "label": "Экспорт в JSON"
+        },
+        "export-md": {
+          "label": "Экспорт в Markdown"
+        }
+      },
+      "empty": {
+        "body": {
+          "text": "Эта транскрипция не существует или была удалена."
+        },
+        "title": {
+          "text": "Транскрипция не найдена"
+        }
+      },
+      "error": {
+        "retry": {
+          "label": "Повторить"
+        },
+        "title": {
+          "text": "Не удалось загрузить транскрипцию"
+        }
+      },
+      "metadata": {
+        "created": {
+          "label": "Создана"
+        },
+        "duration": {
+          "label": "Длительность аудио"
+        },
+        "language": {
+          "label": "Язык"
+        },
+        "model": {
+          "label": "Модель"
+        },
+        "provider": {
+          "label": "Провайдер"
+        },
+        "status": {
+          "label": "Статус"
+        },
+        "title": {
+          "label": "Детали"
+        },
+        "words": {
+          "label": "Количество слов"
+        }
+      },
+      "title": {
+        "heading": {
+          "text": "Транскрипция"
+        }
+      }
+    },
+    "trx-list": {
+      "action": {
+        "loadmore": {
+          "label": "Загрузить ещё"
+        }
+      },
+      "empty": {
+        "body": {
+          "text": "Запишите аудио в десктоп-клиенте, и ваши транскрипции появятся здесь."
+        },
+        "title": {
+          "text": "Пока нет транскрипций"
+        }
+      },
+      "error": {
+        "retry": {
+          "label": "Повторить"
+        },
+        "title": {
+          "text": "Не удалось загрузить транскрипции"
+        }
+      },
+      "nav": {
+        "sidebar": {
+          "label": "Транскрипции"
+        }
+      },
+      "row": {
+        "action-delete": {
+          "label": "Удалить"
+        }
+      },
+      "subtitle": {
+        "body": {
+          "text": "Все аудио, которые вы транскрибировали в десктоп-клиенте."
+        }
+      },
+      "table": {
+        "col-created": {
+          "label": "Создана"
+        },
+        "col-duration": {
+          "label": "Длительность"
+        },
+        "col-language": {
+          "label": "Язык"
+        },
+        "col-model": {
+          "label": "Модель"
+        },
+        "col-preview": {
+          "label": "Предпросмотр"
+        },
+        "col-provider": {
+          "label": "Провайдер"
+        },
+        "col-status": {
+          "label": "Статус"
+        },
+        "col-words": {
+          "label": "Слов"
+        }
+      },
+      "title": {
+        "heading": {
+          "text": "Транскрипции"
+        }
+      }
+    },
+    "usage": {
+      "action": {
+        "refresh": {
+          "label": "Обновить"
+        }
+      },
+      "error": {
+        "body": {
+          "text": "Повторите попытку или проверьте журналы контейнера api в Grafana."
+        },
+        "retry": {
+          "label": "Повторить"
+        },
+        "title": {
+          "text": "Не удалось загрузить статистику"
+        }
+      },
+      "kpi-limit-reached": {
+        "body": {
+          "text": "Достигнут ли сейчас лимит."
+        },
+        "title": {
+          "label": "Лимит достигнут"
+        }
+      },
+      "kpi-plan": {
+        "body": {
+          "text": "Активный тарифный план."
+        },
+        "title": {
+          "label": "Тариф"
+        }
+      },
+      "kpi-words-remaining": {
+        "body": {
+          "text": "Оставшаяся квота на текущем тарифе."
+        },
+        "title": {
+          "label": "Слов осталось"
+        }
+      },
+      "kpi-words-used": {
+        "body": {
+          "text": "По всем транскрипциям и заметкам."
+        },
+        "title": {
+          "label": "Слов использовано"
+        }
+      },
+      "nav": {
+        "sidebar": {
+          "label": "Дашборд"
+        }
+      },
+      "subtitle": {
+        "body": {
+          "text": "Ваше текущее потребление в рамках активного тарифа."
+        }
+      },
+      "title": {
+        "heading": {
+          "text": "Использование"
+        }
+      }
+    },
+    "verify": {
+      "error": {
+        "body": {
+          "text": "Эта ссылка подтверждения недействительна или истекла. Зарегистрируйтесь снова."
+        },
+        "cta": {
+          "label": "Назад к регистрации"
+        },
+        "title": {
+          "text": "Подтверждение не удалось"
+        }
+      },
+      "loading": {
+        "body": {
+          "text": "Подтверждаем ваш email…"
+        }
+      },
+      "success": {
+        "body": {
+          "text": "Ваш email подтверждён. Теперь вы можете войти."
+        },
+        "cta": {
+          "label": "Войти"
+        },
+        "title": {
+          "text": "Email подтверждён"
+        }
+      },
+      "title": {
+        "heading": {
+          "text": "Подтвердите ваш email"
+        }
+      }
+    }
+  }
+}
