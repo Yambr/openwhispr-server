@@ -1,4 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
+
+import { existsSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import {
   type Allowlist,
@@ -10,8 +12,10 @@ import {
   extractComposeServices,
   flattenAllowlist,
   formatReport,
+  isVariantCOnlyKey,
   main,
   renderChart,
+  VARIANT_C_ONLY_KEYS,
 } from "./lint-compose-chart-parity.js";
 
 describe("CHART_KINDS", () => {
@@ -311,4 +315,61 @@ metadata:
     const code = main();
     expect(code).toBe(0);
   }, 60_000);
+
+  // Plan 11-01 — Variant A parity: the new docker-compose.embedded-litellm.yml
+  // must agree with values-embedded-litellm.yaml without drift. Service-level
+  // chart resource names are values-independent (Deployment / StatefulSet
+  // names are derived from .Release.Name + chart resource), so swapping the
+  // compose file is the meaningful axis. We re-use the canonical DEFAULT_HELM_ARGS
+  // template render but point composeFiles at the new Variant A file.
+  it("variant A parity: docker-compose.embedded-litellm.yml has no drift against chart", () => {
+    const code = main({
+      composeFiles: ["docker-compose.embedded-litellm.yml"],
+    });
+    expect(code).toBe(0);
+  }, 60_000);
+
+  // Plan 11-01 — Variant C scope guard. The variant-C overlay
+  // `examples/docker-compose.local-speaches.yml` is owned by Plan 11-03;
+  // skip the assertion when the file is not yet present so this case
+  // green-passes during the 11-01 wave and starts asserting once 11-03
+  // lands the overlay.
+  it("variant C scope: local-speaches overlay parity (skip if 11-03 has not landed)", () => {
+    const variantCFile = "examples/docker-compose.local-speaches.yml";
+    if (!existsSync(variantCFile)) {
+      expect(true).toBe(true);
+      return;
+    }
+    const code = main({
+      composeFiles: [variantCFile],
+    });
+    expect(code).toBe(0);
+  }, 60_000);
+});
+
+describe("VARIANT_C_ONLY_KEYS (Plan 11-01)", () => {
+  it("contains HF_TOKEN", () => {
+    expect(VARIANT_C_ONLY_KEYS.has("HF_TOKEN")).toBe(true);
+  });
+
+  it("does not contain any non-Variant-C key", () => {
+    expect(VARIANT_C_ONLY_KEYS.has("LITELLM_MASTER_KEY")).toBe(false);
+    expect(VARIANT_C_ONLY_KEYS.has("OPENROUTER_API_KEY")).toBe(false);
+    expect(VARIANT_C_ONLY_KEYS.has("POSTGRES_OWNER_PASSWORD")).toBe(false);
+  });
+});
+
+describe("isVariantCOnlyKey", () => {
+  it("returns true for HF_TOKEN", () => {
+    expect(isVariantCOnlyKey("HF_TOKEN")).toBe(true);
+  });
+
+  it("returns false for keys present in every variant", () => {
+    expect(isVariantCOnlyKey("LITELLM_MASTER_KEY")).toBe(false);
+    expect(isVariantCOnlyKey("BETTER_AUTH_SECRET")).toBe(false);
+  });
+
+  it("returns false for an arbitrary unrelated key", () => {
+    expect(isVariantCOnlyKey("FOO_BAR")).toBe(false);
+  });
 });
