@@ -85,7 +85,10 @@ observability:
 # Postgres via CloudNativePG operator (A2: prerequisite). Wave 1 ships the
 # Cluster CR and the custom image build.
 postgres:
-  imageName: ghcr.io/openwhispr/openwhispr-cnpg-postgres-17-pgpartman:0.9.0-rc1
+  # Tag must contain `:17.<minor>` segment per values.schema.json (T-09-02).
+  # Wave 1 (09-04) publishes the real `openwhispr/cnpg-postgres-17-pgpartman`
+  # image; this default tag pre-encodes the PG 17.6 minor.
+  imageName: ghcr.io/openwhispr/openwhispr-cnpg-postgres-17-pgpartman:17.6-0.9.0-rc1
   replicas: 3
   storageSize: 20Gi
   storageClass: ""
