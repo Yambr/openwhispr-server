@@ -8,7 +8,22 @@
 //
 // Native modules (pg) stay external so the runtime image's flat
 // node_modules supplies them — same pattern as the api bundle (Phase 02.2).
+//
+// Phase 10 / Plan 10-01d — copy the worker's email-template locale tree
+// (src/i18n/locales/{en,ru}/email/**) into dist/i18n/locales/** so the
+// bundled runtime resolves subjects/bodies through the same relative path
+// the dev server uses. Operators can override the directory at runtime via
+// the LOCALES_DIR env var (see docker-compose worker.volumes) without a
+// rebuild.
+import { cp } from "node:fs/promises";
+import { resolve } from "node:path";
 import { defineConfig } from "tsup";
+
+async function copyLocalesToDist(): Promise<void> {
+  const srcDir = resolve(__dirname, "src/i18n/locales");
+  const dstDir = resolve(__dirname, "dist/i18n/locales");
+  await cp(srcDir, dstDir, { recursive: true });
+}
 
 export default defineConfig({
   entry: { index: "src/index.ts" },
@@ -19,6 +34,9 @@ export default defineConfig({
   sourcemap: false,
   splitting: false,
   bundle: true,
+  onSuccess: async () => {
+    await copyLocalesToDist();
+  },
   // Phase 6 / Plan 06-12c — OTel SDK + pino kept external so the
   // PinoInstrumentation patches the same pino module instance the
   // worker imports (same pattern the api side has been running with

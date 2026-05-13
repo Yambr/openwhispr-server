@@ -497,6 +497,18 @@ services:
       OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-http://otel-collector:4317}
       OTEL_EXPORTER_OTLP_PROTOCOL: ${OTEL_EXPORTER_OTLP_PROTOCOL:-grpc}
       OTEL_SERVICE_NAME: ${OTEL_SERVICE_NAME:-openwhispr-api}
+      # Phase 10 / Plan 10-01d — operator-overridable locale directory.
+      # The image bakes `apps/api/dist/i18n/locales/{en,ru}.json` via the
+      # tsup onSuccess hook (see apps/api/tsup.config.ts), and i18n/init.ts
+      # honors LOCALES_DIR before falling back to the bundled path. The
+      # bind mount below points LOCALES_DIR at the source-tree JSON so
+      # operators can re-translate strings without rebuilding the image —
+      # `docker compose restart api` is enough to pick up edits. Read-only
+      # so the container cannot mutate the host tree.
+      LOCALES_DIR: /app/locales
+    volumes:
+      # Phase 10 / Plan 10-01d — see LOCALES_DIR comment above.
+      - ./apps/api/src/i18n/locales:/app/locales:ro
     depends_on:
       migrate:
         condition: service_completed_successfully
@@ -566,6 +578,16 @@ services:
       OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-http://otel-collector:4317}
       OTEL_EXPORTER_OTLP_PROTOCOL: ${OTEL_EXPORTER_OTLP_PROTOCOL:-grpc}
       OTEL_SERVICE_NAME: ${OTEL_SERVICE_NAME_WORKER:-openwhispr-worker}
+      # Phase 10 / Plan 10-01d — operator-overridable locale directory for
+      # the email-template renderer. apps/worker/src/i18n/template-renderer.ts
+      # honors LOCALES_DIR before falling back to the bundled dist path.
+      # The bind mount below points LOCALES_DIR at the source-tree files so
+      # operators can re-translate subjects/bodies without rebuilding the
+      # image — `docker compose restart worker` picks up edits.
+      LOCALES_DIR: /app/locales
+    volumes:
+      # Phase 10 / Plan 10-01d — see LOCALES_DIR comment above.
+      - ./apps/worker/src/i18n/locales:/app/locales:ro
     depends_on:
       litellm:
         condition: service_healthy
