@@ -81,6 +81,13 @@ spec:
               value: {{ .Values.web.env.internalApiUrl | default (printf "http://%s-api:3000" $fullname) | quote }}
             - name: NEXT_PUBLIC_API_BASE_URL
               value: "https://{{ .Values.host.api }}"
+            # Finding 09.1-F27 — Next.js SSR calls makeAppDb() at module
+            # init for server-side data fetching (Better Auth session
+            # introspection, etc.). Without DATABASE_URL the bundle
+            # throws at startup before the listener binds. Same role
+            # (openwhispr_app) + Pooler as api/worker.
+            - name: DATABASE_URL
+              value: "postgres://openwhispr_app:$(POSTGRES_APP_PASSWORD)@{{ include "openwhispr.poolerHost" . }}:5432/openwhispr"
           readinessProbe:
             httpGet:
               path: /

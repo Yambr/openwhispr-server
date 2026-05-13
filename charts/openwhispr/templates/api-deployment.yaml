@@ -112,6 +112,11 @@ spec:
               value: "postgres://openwhispr_app:$(POSTGRES_APP_PASSWORD)@{{ include "openwhispr.poolerHost" . }}:5432/openwhispr"
             - name: REDIS_URL
               value: "redis://{{ include "openwhispr.valkeyHost" . }}:6379"
+            # Finding 09.1-F28 — app code reads VALKEY_URL (alias for
+            # REDIS_URL but the codebase grew to use both names). Without
+            # it, /v1/audio/diarization is silently disabled at boot.
+            - name: VALKEY_URL
+              value: "redis://{{ include "openwhispr.valkeyHost" . }}:6379"
             - name: MINIO_ENDPOINT
               value: "http://{{ include "openwhispr.minioHost" . }}:9000"
             - name: LITELLM_BASE_URL
