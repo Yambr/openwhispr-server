@@ -1,0 +1,203 @@
+suite: postgres-cluster — CNPG Cluster CR + backup Secret (A2 + A4)
+templates:
+  - postgres-cluster.yaml
+  - postgres-backup-secret.yaml
+tests:
+  - it: renders Cluster CR with PG 17 imageName, partman extension, 3 replicas
+    template: postgres-cluster.yaml
+    set:
+      secrets:
+        mode: eso
+        external:
+          storeRef: vault-clusterstore
+      postgres:
+        imageName: ghcr.io/openwhispr/openwhispr-cnpg-postgres-17-pgpartman:17.6-0.9.0-rc1
+        replicas: 3
+        storageSize: 20Gi
+        backup:
+          enabled: false
+    asserts:
+      - hasDocuments:
+          count: 1
+      - isKind:
+          of: Cluster
+      - equal:
+          path: apiVersion
+          value: postgresql.cnpg.io/v1
+      - matchRegex:
+          path: spec.imageName
+          pattern: "^.+:17\\.[0-9]+.*$"
+      - equal:
+          path: spec.instances
+          value: 3
+      - equal:
+          path: spec.postgresql.parameters.shared_preload_libraries
+          value: pg_partman_bgw
+      - equal:
+          path: spec.bootstrap.initdb.database
+          value: openwhispr
+      - equal:
+          path: spec.bootstrap.initdb.owner
+          value: openwhispr_owner
+      - equal:
+          path: spec.bootstrap.initdb.secret.name
+          value: RELEASE-NAME-openwhispr-pg-owner
+      - contains:
+          path: spec.bootstrap.initdb.postInitApplicationSQL
+          content: CREATE EXTENSION IF NOT EXISTS pg_partman SCHEMA partman;
+      - equal:
+          path: spec.storage.size
+          value: 20Gi
+      - equal:
+          path: spec.primaryUpdateStrategy
+          value: unsupervised
+
+  - it: omits barmanObjectStore when backup.enabled=false
+    template: postgres-cluster.yaml
+    set:
+      secrets:
+        mode: eso
+        external:
+          storeRef: vault-clusterstore
+      postgres:
+        backup:
+          enabled: false
+    asserts:
+      - notExists:
+          path: spec.backup
+
+  - it: renders barmanObjectStore + retention when backup.enabled=true
+    template: postgres-cluster.yaml
+    set:
+      secrets:
+        mode: eso
+        external:
+          storeRef: vault-clusterstore
+      postgres:
+        backup:
+          enabled: true
+          bucket: ow-cnpg-wal
+          s3Endpoint: https://s3.us-east-1.amazonaws.com
+    asserts:
+      - equal:
+          path: spec.backup.barmanObjectStore.destinationPath
+          value: s3://ow-cnpg-wal/cnpg
+      - equal:
+          path: spec.backup.barmanObjectStore.endpointURL
+          value: https://s3.us-east-1.amazonaws.com
+      - equal:
+          path: spec.backup.barmanObjectStore.s3Credentials.accessKeyId.name
+          value: RELEASE-NAME-openwhispr-pg-backup
+      - equal:
+          path: spec.backup.barmanObjectStore.wal.compression
+          value: gzip
+      - equal:
+          path: spec.backup.retentionPolicy
+          value: 30d
+
+  - it: fails render when backup.enabled=true and bucket is empty
+    template: postgres-cluster.yaml
+    set:
+      secrets:
+        mode: eso
+        external:
+          storeRef: vault-clusterstore
+      postgres:
+        backup:
+          enabled: true
+          bucket: ""
+    asserts:
+      - failedTemplate:
+          errorMessage: "postgres.backup.bucket is required when postgres.backup.enabled=true"
+
+  - it: backup Secret renders only when backup.enabled=true AND secrets.mode=helm-values
+    template: postgres-backup-secret.yaml
+    set:
+      secrets:
+        mode: helm-values
+        litellmMasterKey: "valid-litellm-1234567890abcdefghij12345"
+        openrouterApiKey: "valid-openrouter-key-1234567890abcdefghij"
+        openaiApiKey: "valid-openai-key-1234567890abcdefghij1234"
+        pyannoteApiKey: "valid-pyannote-key-1234567890abcdefghij"
+        hfToken: "valid-hf-token-1234567890abcdefghij12345"
+        postgresOwnerPassword: "valid-pg-pass-1234567890abcdefghij1234"
+        pgbouncerAdminPassword: "valid-pgb-pass-1234567890abcdefghij123"
+        betterAuthSecret: "valid-better-auth-1234567890abcdefghij12"
+      postgres:
+        backup:
+          enabled: true
+          bucket: ow-cnpg-wal
+          accessKeyId: AKIATEST
+          secretAccessKey: secret-value-1234567890
+    asserts:
+      - hasDocuments:
+          count: 1
+      - isKind:
+          of: Secret
+      - equal:
+          path: stringData.ACCESS_KEY_ID
+          value: AKIATEST
+      - equal:
+          path: stringData.SECRET_ACCESS_KEY
+          value: secret-value-1234567890
+      - equal:
+          path: metadata.annotations["helm.sh/resource-policy"]
+          value: keep
+
+  - it: backup Secret is omitted when backup.enabled=false
+    template: postgres-backup-secret.yaml
+    set:
+      secrets:
+        mode: helm-values
+        litellmMasterKey: "valid-litellm-1234567890abcdefghij12345"
+        openrouterApiKey: "valid-openrouter-key-1234567890abcdefghij"
+        openaiApiKey: "valid-openai-key-1234567890abcdefghij1234"
+        pyannoteApiKey: "valid-pyannote-key-1234567890abcdefghij"
+        hfToken: "valid-hf-token-1234567890abcdefghij12345"
+        postgresOwnerPassword: "valid-pg-pass-1234567890abcdefghij1234"
+        pgbouncerAdminPassword: "valid-pgb-pass-1234567890abcdefghij123"
+        betterAuthSecret: "valid-better-auth-1234567890abcdefghij12"
+      postgres:
+        backup:
+          enabled: false
+    asserts:
+      - hasDocuments:
+          count: 0
+
+  - it: backup Secret is omitted when secrets.mode=eso even with backup.enabled=true
+    template: postgres-backup-secret.yaml
+    set:
+      secrets:
+        mode: eso
+        external:
+          storeRef: vault-clusterstore
+      postgres:
+        backup:
+          enabled: true
+          bucket: ow-cnpg-wal
+    asserts:
+      - hasDocuments:
+          count: 0
+
+  - it: backup Secret fails when helm-values mode + enabled but accessKeyId empty
+    template: postgres-backup-secret.yaml
+    set:
+      secrets:
+        mode: helm-values
+        litellmMasterKey: "valid-litellm-1234567890abcdefghij12345"
+        openrouterApiKey: "valid-openrouter-key-1234567890abcdefghij"
+        openaiApiKey: "valid-openai-key-1234567890abcdefghij1234"
+        pyannoteApiKey: "valid-pyannote-key-1234567890abcdefghij"
+        hfToken: "valid-hf-token-1234567890abcdefghij12345"
+        postgresOwnerPassword: "valid-pg-pass-1234567890abcdefghij1234"
+        pgbouncerAdminPassword: "valid-pgb-pass-1234567890abcdefghij123"
+        betterAuthSecret: "valid-better-auth-1234567890abcdefghij12"
+      postgres:
+        backup:
+          enabled: true
+          bucket: ow-cnpg-wal
+          accessKeyId: ""
+          secretAccessKey: "something"
+    asserts:
+      - failedTemplate:
+          errorMessage: "values.postgres.backup.accessKeyId is required when postgres.backup.enabled=true and secrets.mode=helm-values"
