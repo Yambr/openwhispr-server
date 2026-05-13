@@ -111,12 +111,12 @@ tests:
       - equal:
           path: spec.template.spec.initContainers[0].name
           value: wait-for-migrate
-      # Finding 09.1-F5: bitnami/kubectl pinned point-version tags 404 on
-      # Docker Hub (Bitnami Secure Images migration). Using upstream
-      # registry.k8s.io/kubectl as authoritative source.
+      # Finding 09.1-F19: registry.k8s.io/kubectl is distroless (no /bin/sh)
+      # so the wait-for-migrate `sh -c` poll loop fails to exec. alpine/kubectl
+      # ships busybox + kubectl with semver-pinned tags.
       - matchRegex:
           path: spec.template.spec.initContainers[0].image
-          pattern: "^registry\\.k8s\\.io/kubectl:v"
+          pattern: "^alpine/kubectl:[0-9]+\\.[0-9]+"
       # Finding 09.1-F10 — query is now by label selector (not name), so
       # the wait-for-migrate init picks the latest revision's Job.
       - matchRegex:

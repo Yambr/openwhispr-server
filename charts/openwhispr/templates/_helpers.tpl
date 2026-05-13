@@ -88,11 +88,12 @@ container is auditable + reproducible.
 */}}
 {{- define "openwhispr.waitForMigrateInitContainer" -}}
 - name: wait-for-migrate
-  # Finding 09.1-F5 — bitnami/kubectl:1.30.4 returns 404 from Docker Hub
-  # (Bitnami Secure Images migration deprecated point-version tags). The
-  # upstream registry.k8s.io/kubectl image is authoritative and pinned by
-  # k8s release branch.
-  image: registry.k8s.io/kubectl:v1.30.4
+  # Finding 09.1-F5 → 09.1-F19 — bitnami/kubectl:1.30.4 returns 404 from
+  # Docker Hub (Bitnami Secure Images migration); the upstream
+  # registry.k8s.io/kubectl image is DISTROLESS (no /bin/sh), so the
+  # `sh -c` poll loop below cannot exec. alpine/kubectl ships a full
+  # busybox shell + kubectl binary; semver-pinned tags are published.
+  image: alpine/kubectl:1.34.2
   imagePullPolicy: IfNotPresent
   command:
     - sh

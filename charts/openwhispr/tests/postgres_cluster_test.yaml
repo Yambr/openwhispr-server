@@ -108,6 +108,12 @@ tests:
       - contains:
           path: spec.bootstrap.initdb.postInitSQL
           content: ALTER ROLE openwhispr_owner BYPASSRLS;
+      # Finding 09.1-F20: pg_partman's create_parent() needs CREATE on
+      # the schema (DDL for child partitions), not just EXECUTE. Make
+      # the application owner the schema OWNER.
+      - contains:
+          path: spec.bootstrap.initdb.postInitApplicationSQL
+          content: ALTER SCHEMA partman OWNER TO openwhispr_owner;
       - equal:
           path: spec.storage.size
           value: 20Gi
