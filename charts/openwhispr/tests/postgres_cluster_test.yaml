@@ -2,7 +2,47 @@ suite: postgres-cluster — CNPG Cluster CR + backup Secret (A2 + A4)
 templates:
   - postgres-cluster.yaml
   - postgres-backup-secret.yaml
+  - postgres-owner-secret.yaml
 tests:
+  # Finding 09.1-F13 — explicit pg-owner Secret prevents CNPG from
+  # auto-generating a random password that silently drifts from
+  # POSTGRES_OWNER_PASSWORD. Only rendered in helm-values mode; the eso
+  # path requires the operator to manage the secret out-of-band.
+  - it: pg-owner Secret rendered with kubernetes.io/basic-auth type (helm-values mode)
+    template: postgres-owner-secret.yaml
+    set:
+      secrets:
+        mode: helm-values
+        postgresOwnerPassword: example-owner-pass
+    asserts:
+      - hasDocuments:
+          count: 1
+      - isKind:
+          of: Secret
+      - equal:
+          path: type
+          value: kubernetes.io/basic-auth
+      - equal:
+          path: metadata.name
+          value: RELEASE-NAME-openwhispr-pg-owner
+      - equal:
+          path: stringData.username
+          value: openwhispr_owner
+      - equal:
+          path: stringData.password
+          value: example-owner-pass
+
+  - it: pg-owner Secret skipped in eso mode (operator manages out-of-band)
+    template: postgres-owner-secret.yaml
+    set:
+      secrets:
+        mode: eso
+        external:
+          storeRef: vault-clusterstore
+    asserts:
+      - hasDocuments:
+          count: 0
+
   - it: renders Cluster CR with PG 17 imageName, partman extension, 3 replicas
     template: postgres-cluster.yaml
     set:
