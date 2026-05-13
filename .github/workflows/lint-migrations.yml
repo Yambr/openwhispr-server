@@ -1,0 +1,63 @@
+name: lint-migrations
+
+on:
+  pull_request:
+    paths:
+      - "drizzle/**/*.sql"
+      - "tools/lint-migrations.ts"
+      - "tools/lint-migrations.test.ts"
+      - "tools/fixtures/migrations/**"
+      - ".github/workflows/lint-migrations.yml"
+  push:
+    branches: [main]
+    paths:
+      - "drizzle/**/*.sql"
+      - "tools/lint-migrations.ts"
+      - ".github/workflows/lint-migrations.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: lint-migrations-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  squawk-gate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # fetch-depth: 0 needed so the diff against origin/${{ github.base_ref }}
+          # has a common ancestor available (squawk driver enumerates new SQL).
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v3
+        with:
+          version: 11
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Squawk lint (new migrations vs PR base)
+        if: github.event_name == 'pull_request'
+        run: |
+          pnpm exec tsx tools/lint-migrations.ts \
+            --since "origin/${{ github.base_ref }}"
+
+      - name: Squawk lint (push to main — no diff target, no-op)
+        if: github.event_name == 'push'
+        run: |
+          # On push events, base ref is implicit; the gate is purely
+          # a PR-time check. Re-running on main keeps the workflow green
+          # via the no-op "No new migrations to lint." path.
+          pnpm exec tsx tools/lint-migrations.ts --since "HEAD~1"
+
+      - name: Vitest — squawk driver coverage gate (>=90/90/90/90)
+        run: pnpm test:lint-migrations
