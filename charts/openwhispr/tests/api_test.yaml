@@ -255,6 +255,58 @@ tests:
       - hasDocuments:
           count: 0
 
+  - it: api Deployment carries traefik-preflight initContainer by default (Plan 09-09 pitfall #4)
+    template: api-deployment.yaml
+    set:
+      secrets:
+        mode: eso
+        external:
+          storeRef: vault-clusterstore
+    asserts:
+      - equal:
+          path: spec.template.spec.initContainers[1].name
+          value: traefik-preflight
+      - matchRegex:
+          path: spec.template.spec.initContainers[1].image
+          pattern: "^curlimages/curl:"
+      - matchRegex:
+          path: spec.template.spec.initContainers[1].command[2]
+          pattern: "websecure-realtime"
+      - matchRegex:
+          path: spec.template.spec.initContainers[1].command[2]
+          pattern: "/api/entrypoints"
+
+  - it: api Deployment omits traefik-preflight when ingress.preflightCheck=false
+    template: api-deployment.yaml
+    set:
+      secrets:
+        mode: eso
+        external:
+          storeRef: vault-clusterstore
+      ingress:
+        preflightCheck: false
+    asserts:
+      - lengthEqual:
+          path: spec.template.spec.initContainers
+          count: 1
+      - equal:
+          path: spec.template.spec.initContainers[0].name
+          value: secret-presence-probe
+
+  - it: api Deployment traefik-preflight uses configurable admin URL
+    template: api-deployment.yaml
+    set:
+      secrets:
+        mode: eso
+        external:
+          storeRef: vault-clusterstore
+      ingress:
+        preflightTraefikAdminUrl: http://my-traefik.custom-ns.svc.cluster.local:9000
+    asserts:
+      - matchRegex:
+          path: spec.template.spec.initContainers[1].command[2]
+          pattern: "my-traefik\\.custom-ns\\.svc\\.cluster\\.local:9000"
+
   - it: configmap-api renders NODE_ENV + LOG_LEVEL non-secret env
     template: configmap-api.yaml
     set:

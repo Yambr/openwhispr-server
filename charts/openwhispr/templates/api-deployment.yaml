@@ -65,6 +65,29 @@ spec:
           envFrom:
             - secretRef:
                 name: {{ $fullname }}-secrets
+        {{- if .Values.ingress.preflightCheck }}
+        - name: traefik-preflight
+          image: curlimages/curl:8.10.1
+          imagePullPolicy: IfNotPresent
+          # Pitfall #4 mitigation — operator's Traefik install might omit
+          # the websecure-realtime entrypoint (long WSS for /v1/realtime).
+          # Fail fast here rather than serving 60-min realtime sessions
+          # to an entrypoint that silently capped them at 60s.
+          # See charts/openwhispr/examples/traefik-values.yaml for the
+          # correct Traefik install overlay.
+          command:
+            - sh
+            - -c
+            - |
+              set -eu
+              echo "traefik-preflight: probing {{ .Values.ingress.preflightTraefikAdminUrl }}/api/entrypoints"
+              if ! curl -fsS --max-time 10 "{{ .Values.ingress.preflightTraefikAdminUrl }}/api/entrypoints" | grep -q websecure-realtime; then
+                echo "FATAL: Traefik missing websecure-realtime entrypoint" 1>&2
+                echo "       see charts/openwhispr/examples/traefik-values.yaml" 1>&2
+                exit 1
+              fi
+              echo "traefik-preflight OK"
+        {{- end }}
       containers:
         - name: api
           image: "{{ .Values.image.api.repository }}:{{ $apiTag }}"
