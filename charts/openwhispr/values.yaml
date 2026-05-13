@@ -241,6 +241,24 @@ host:
   api: openwhispr.local
   web: openwhispr.local
 
+# Test-probe configuration — Phase 09 Plan 11. Used by the helm test hook
+# pod (templates/tests/first-launch-slo.yaml) which times a sign-up + first
+# /api/transcribe round-trip and asserts elapsedMs <= deadlineMs. The image
+# is built by .github/workflows/release.yml and pinned to .Chart.AppVersion
+# unless the operator overrides testProbe.image.tag.
+testProbe:
+  enabled: true
+  image:
+    repository: ghcr.io/openwhispr/openwhispr-test-probe
+    tag: "" # defaults to .Chart.AppVersion
+    pullPolicy: IfNotPresent
+  sloDeadlineMs: 300000
+  # Operator override knob if the probe needs to hit something other than
+  # https://{{ host.api }} — useful for clusters where api ingress lives
+  # behind an internal LB. When empty, helper computes
+  # `https://{{ .Values.host.api }}`.
+  target: ""
+
 tls:
   # cert-manager Certificate (templates/certificate-api.yaml) writes its
   # TLS material into this Secret. Both IngressRoutes (api on :443 + api

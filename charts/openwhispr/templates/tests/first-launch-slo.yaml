@@ -1,0 +1,48 @@
+{{/*
+First-launch SLO probe — Phase 09 Plan 11.
+
+DEPLOY-05 mitigation. Renders only when `testProbe.enabled` is true (default).
+Triggered by `helm test <release>` after install/upgrade; the Pod runs the
+openwhispr-test-probe image which:
+  1. POSTs /api/auth/sign-up/email against TARGET
+  2. Captures the opaque bearer (header or body)
+  3. POSTs a 5s WAV to /api/transcribe with Authorization: Bearer …
+  4. Asserts response.status == 200 and elapsedMs <= SLO_DEADLINE_MS
+  5. Exits nonzero if any step fails
+
+Pod-level posture:
+  - restartPolicy: Never (helm test semantics)
+  - helm.sh/hook: test            — Helm executes only on `helm test`
+  - helm.sh/hook-delete-policy: hook-succeeded — keep failed pods for kubectl logs
+  - imagePullPolicy: IfNotPresent — let the cluster's image GC handle pinned tags
+
+T-09-04 mitigation: the probe never logs the bearer; this template never
+echoes secrets into env vars. Bearer flows only through HTTPS to the api.
+*/}}
+{{- if .Values.testProbe.enabled }}
+{{- $fullname := include "openwhispr.fullname" . -}}
+{{- $probeTag := default .Chart.AppVersion .Values.testProbe.image.tag -}}
+{{- $target := default (printf "https://%s" .Values.host.api) .Values.testProbe.target -}}
+apiVersion: v1
+kind: Pod
+metadata:
+  name: {{ $fullname }}-test-first-launch-slo
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "openwhispr.labels" . | nindent 4 }}
+    app.kubernetes.io/component: test-probe
+  annotations:
+    helm.sh/hook: test
+    helm.sh/hook-delete-policy: hook-succeeded
+spec:
+  restartPolicy: Never
+  containers:
+    - name: probe
+      image: "{{ .Values.testProbe.image.repository }}:{{ $probeTag }}"
+      imagePullPolicy: {{ .Values.testProbe.image.pullPolicy }}
+      env:
+        - name: TARGET
+          value: {{ $target | quote }}
+        - name: SLO_DEADLINE_MS
+          value: {{ .Values.testProbe.sloDeadlineMs | quote }}
+{{- end }}

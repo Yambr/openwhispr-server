@@ -1,0 +1,79 @@
+suite: helm test hook — first-launch SLO probe (Plan 09-11)
+templates:
+  - templates/tests/first-launch-slo.yaml
+tests:
+  - it: "renders a Pod with helm.sh/hook=test and hook-delete-policy=hook-succeeded"
+    asserts:
+      - hasDocuments:
+          count: 1
+      - isKind:
+          of: Pod
+      - equal:
+          path: metadata.annotations["helm.sh/hook"]
+          value: test
+      - equal:
+          path: metadata.annotations["helm.sh/hook-delete-policy"]
+          value: hook-succeeded
+      - equal:
+          path: spec.restartPolicy
+          value: Never
+
+  - it: probe container references the test-probe image pinned to .Chart.AppVersion
+    asserts:
+      - matchRegex:
+          path: spec.containers[0].image
+          pattern: "^ghcr\\.io/openwhispr/openwhispr-test-probe:[0-9].*$"
+      - equal:
+          path: spec.containers[0].name
+          value: probe
+      - equal:
+          path: spec.containers[0].imagePullPolicy
+          value: IfNotPresent
+
+  - it: "TARGET env defaults to https://<host.api>"
+    set:
+      host:
+        api: openwhispr.example.com
+    asserts:
+      - equal:
+          path: spec.containers[0].env[0].name
+          value: TARGET
+      - equal:
+          path: spec.containers[0].env[0].value
+          value: https://openwhispr.example.com
+
+  - it: SLO_DEADLINE_MS env defaults to 300000 (DEPLOY-05 5-minute budget)
+    asserts:
+      - equal:
+          path: spec.containers[0].env[1].name
+          value: SLO_DEADLINE_MS
+      - equal:
+          path: spec.containers[0].env[1].value
+          value: "300000"
+
+  - it: TARGET respects testProbe.target override
+    set:
+      testProbe:
+        target: https://api.internal.example
+    asserts:
+      - equal:
+          path: spec.containers[0].env[0].value
+          value: https://api.internal.example
+
+  - it: image tag respects testProbe.image.tag override
+    set:
+      testProbe:
+        image:
+          tag: "0.9.1-rc2"
+    asserts:
+      - equal:
+          path: spec.containers[0].image
+          value: "ghcr.io/openwhispr/openwhispr-test-probe:0.9.1-rc2"
+
+  - it: renders nothing when testProbe.enabled=false
+    set:
+      testProbe:
+        enabled: false
+    asserts:
+      - hasDocuments:
+          count: 0
