@@ -121,6 +121,13 @@ spec:
               value: "http://{{ include "openwhispr.minioHost" . }}:9000"
             - name: LITELLM_BASE_URL
               value: {{ include "openwhispr.litellmBaseUrl" . | quote }}
+            # Finding 09.1-F30 — OTel collector sidecar not present in
+            # kind smoke profile. Disabling exporter silences
+            # PeriodicExportingMetricReader connect ECONNREFUSED logspam.
+            # Production operators install otel-collector DaemonSet and
+            # remove this env override.
+            - name: OTEL_SDK_DISABLED
+              value: "true"
           readinessProbe:
             httpGet:
               path: /api/health
