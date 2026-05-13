@@ -78,6 +78,39 @@ Pattern: <fullname>-pg-rw (CNPG operator default).
 {{- end }}
 
 {{/*
+wait-for-migrate initContainer — used by api/web/worker Deployments so the
+container only starts after the migrate Job's Complete condition is true.
+Finding 09.1-F3: on `helm install` migrate is a regular Job (not a hook)
+applied alongside the Cluster CR, so the application Deployments need to
+poll for its completion before serving traffic / processing jobs.
+The kubectl image is pinned by digest in values.yaml so the polling
+container is auditable + reproducible.
+*/}}
+{{- define "openwhispr.waitForMigrateInitContainer" -}}
+- name: wait-for-migrate
+  image: bitnami/kubectl:1.30.4
+  imagePullPolicy: IfNotPresent
+  command:
+    - sh
+    - -c
+    - |
+      # Poll the migrate Job until status.succeeded==1.
+      # 300 iterations × 2s = 600s wall-time ceiling — matches the
+      # migrate Job's wait-for-postgres + actual migration budget.
+      i=0
+      until [ "$(kubectl get job/{{ include "openwhispr.fullname" . }}-migrate -n {{ .Release.Namespace }} -o jsonpath='{.status.succeeded}' 2>/dev/null)" = "1" ]; do
+        i=$((i+1))
+        if [ $i -gt 300 ]; then
+          echo "FATAL: migrate Job not Complete after 600s" 1>&2
+          exit 1
+        fi
+        echo "waiting for migrate Job ... ($i/300)"
+        sleep 2
+      done
+      echo "migrate Job Complete"
+{{- end }}
+
+{{/*
 Bitnami Valkey sub-chart primary service hostname.
 Sub-charts render as <Release.Name>-<chart-name>-<role>, so the primary is
 <release>-valkey-primary.

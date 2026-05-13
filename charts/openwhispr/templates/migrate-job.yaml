@@ -34,12 +34,24 @@ metadata:
     {{- include "openwhispr.labels" . | nindent 4 }}
     app.kubernetes.io/component: migrate
   annotations:
-    "helm.sh/hook": pre-install,pre-upgrade
+    # Finding 09.1-F3 — pre-install hook caused a deadlock: Helm runs
+    # pre-install hooks BEFORE applying the main release manifest, so the
+    # CNPG `Cluster` CR (a regular resource) had not been applied yet, and
+    # the wait-for-postgres initContainer kept polling a nonexistent
+    # -pg-rw Service until it timed out. On `helm install` the migrate Job
+    # is now a regular resource applied together with the Cluster CR and
+    # the wait-for-postgres init waits for CNPG to bootstrap. On
+    # `helm upgrade` the hook remains so migration runs before api/web
+    # rollout.
+    "helm.sh/hook": pre-upgrade
     "helm.sh/hook-weight": "-5"
     "helm.sh/hook-delete-policy": before-hook-creation
 spec:
   backoffLimit: 0
-  activeDeadlineSeconds: 300
+  # Finding 09.1-F3 — bumped from 300s → 900s so the regular-Job install
+  # path can absorb CNPG bootstrap (90-180s) + wait-for-postgres polling
+  # (up to 600s) + the actual migration (~30s).
+  activeDeadlineSeconds: 900
   template:
     metadata:
       labels:
@@ -60,14 +72,18 @@ spec:
             - sh
             - -c
             - |
+              # Finding 09.1-F3 — loop tolerates a fresh CNPG bootstrap on
+              # `helm install` (no pre-existing Cluster, takes 90-180s) plus
+              # any additional WAL replay on `helm upgrade` (rare but
+              # bounded). 300 iterations × 2s = 600s wall-time ceiling.
               i=0
               until pg_isready -h {{ include "openwhispr.postgresRwHost" . }} -p 5432 -U openwhispr_owner -d openwhispr; do
                 i=$((i+1))
-                if [ $i -gt 30 ]; then
-                  echo "FATAL: pg_isready timed out after 60s against {{ include "openwhispr.postgresRwHost" . }}:5432" 1>&2
+                if [ $i -gt 300 ]; then
+                  echo "FATAL: pg_isready timed out after 600s against {{ include "openwhispr.postgresRwHost" . }}:5432" 1>&2
                   exit 1
                 fi
-                echo "waiting for {{ include "openwhispr.postgresRwHost" . }}:5432 ... ($i/30)"
+                echo "waiting for {{ include "openwhispr.postgresRwHost" . }}:5432 ... ($i/300)"
                 sleep 2
               done
               echo "postgres ready"

@@ -39,7 +39,7 @@ tests:
           path: spec.template.spec.containers[0].env[?(@.name=="DATABASE_URL")].value
           pattern: "RELEASE-NAME-openwhispr-pg-pooler-rw:5432"
 
-  - it: worker Deployment carries secret-presence-probe initContainer
+  - it: worker Deployment carries wait-for-migrate then secret-presence-probe initContainers (Finding 09.1-F3)
     template: worker-deployment.yaml
     set:
       secrets:
@@ -49,6 +49,9 @@ tests:
     asserts:
       - equal:
           path: spec.template.spec.initContainers[0].name
+          value: wait-for-migrate
+      - equal:
+          path: spec.template.spec.initContainers[1].name
           value: secret-presence-probe
 
   - it: worker Deployment readiness/liveness probes on /healthz port 3002

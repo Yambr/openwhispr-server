@@ -52,7 +52,7 @@ tests:
           path: spec.template.spec.containers[0].env[?(@.name=="NEXT_PUBLIC_API_BASE_URL")].value
           value: https://openwhispr.example.com
 
-  - it: web Deployment carries secret-presence-probe initContainer
+  - it: web Deployment carries wait-for-migrate then secret-presence-probe initContainers (Finding 09.1-F3)
     template: web-deployment.yaml
     set:
       secrets:
@@ -62,6 +62,9 @@ tests:
     asserts:
       - equal:
           path: spec.template.spec.initContainers[0].name
+          value: wait-for-migrate
+      - equal:
+          path: spec.template.spec.initContainers[1].name
           value: secret-presence-probe
 
   - it: web Service ClusterIP port 3001

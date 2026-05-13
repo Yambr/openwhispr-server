@@ -3,7 +3,17 @@ templates:
   - migrate-job.yaml
   - migrate-serviceaccount.yaml
 tests:
-  - it: migrate Job carries 4 Helm hook annotations
+  # Finding 09.1-F3: pre-install hook caused install deadlock. CNPG `Cluster`
+  # CR (postgres-cluster.yaml) is a regular resource that applies AFTER
+  # pre-install hooks complete, so `openwhispr-pg-rw` Service did not exist
+  # during the wait-for-postgres init container, which timed out and failed
+  # the whole release. Resolution: hook narrowed to `pre-upgrade` only (the
+  # upgrade case where the Cluster already exists and migration MUST run
+  # before api/web rollout). On `helm install` the Job is a regular resource
+  # applied together with the Cluster — wait-for-postgres polls until CNPG
+  # bootstraps Postgres, then migrate runs, then api/web initContainers
+  # gate on the migrate Job's Complete condition.
+  - it: migrate Job is a pre-upgrade hook only (install path is a regular Job)
     template: migrate-job.yaml
     set:
       secrets:
@@ -15,7 +25,7 @@ tests:
           of: Job
       - equal:
           path: metadata.annotations["helm.sh/hook"]
-          value: pre-install,pre-upgrade
+          value: pre-upgrade
       - equal:
           path: metadata.annotations["helm.sh/hook-weight"]
           value: "-5"
@@ -23,7 +33,7 @@ tests:
           path: metadata.annotations["helm.sh/hook-delete-policy"]
           value: before-hook-creation
 
-  - it: migrate Job has backoffLimit 0 (one-shot) + activeDeadlineSeconds 300
+  - it: migrate Job has backoffLimit 0 (one-shot) + activeDeadlineSeconds 900 (bootstrap budget)
     template: migrate-job.yaml
     set:
       secrets:
@@ -34,9 +44,12 @@ tests:
       - equal:
           path: spec.backoffLimit
           value: 0
+      # Finding 09.1-F3: bumped from 300s → 900s so the regular-Job install
+      # path can absorb a slow CNPG bootstrap (90-180s) + wait-for-postgres
+      # (up to 600s polling loop) + the actual migration (~30s).
       - equal:
           path: spec.activeDeadlineSeconds
-          value: 300
+          value: 900
 
   - it: migrate Job initContainer waits on pg_isready against -pg-rw
     template: migrate-job.yaml
@@ -55,6 +68,13 @@ tests:
       - matchRegex:
           path: spec.template.spec.initContainers[0].command[2]
           pattern: "pg_isready.*-pg-rw"
+      # Finding 09.1-F3: wait loop must tolerate slow CNPG bootstrap. The
+      # original 30-iteration cap (60s wall-time) failed against a real kind
+      # CNPG install where the Cluster takes 90-180s to expose the -rw
+      # Service. Raised to 300 iterations × 2s sleep = 600s.
+      - matchRegex:
+          path: spec.template.spec.initContainers[0].command[2]
+          pattern: "i -gt 300"
 
   - it: migrate Job container image pin uses Chart.AppVersion default (NOT latest)
     template: migrate-job.yaml
@@ -113,7 +133,7 @@ tests:
           path: spec.template.spec.containers[0].envFrom[0].secretRef.name
           value: RELEASE-NAME-openwhispr-secrets
 
-  - it: migrate ServiceAccount renders
+  - it: migrate ServiceAccount + Role + RoleBinding render (3 docs)
     template: migrate-serviceaccount.yaml
     set:
       secrets:
@@ -121,11 +141,45 @@ tests:
         external:
           storeRef: vault-clusterstore
     asserts:
+      # Doc 0 — ServiceAccount.
+      - hasDocuments:
+          count: 3
       - isKind:
           of: ServiceAccount
+        documentIndex: 0
       - equal:
           path: metadata.name
           value: RELEASE-NAME-openwhispr-migrate
+        documentIndex: 0
+      # Doc 1 — Role granting api/web/worker SA the ability to poll the
+      # migrate Job's status (Finding 09.1-F3 wait-for-migrate init).
+      - isKind:
+          of: Role
+        documentIndex: 1
+      - equal:
+          path: metadata.name
+          value: RELEASE-NAME-openwhispr-migrate-reader
+        documentIndex: 1
+      - equal:
+          path: rules[0].resources[0]
+          value: jobs
+        documentIndex: 1
+      - equal:
+          path: rules[0].verbs
+          value: ["get", "watch", "list"]
+        documentIndex: 1
+      # Doc 2 — RoleBinding wiring the app SA to the Role.
+      - isKind:
+          of: RoleBinding
+        documentIndex: 2
+      - equal:
+          path: subjects[0].kind
+          value: ServiceAccount
+        documentIndex: 2
+      - equal:
+          path: subjects[0].name
+          value: RELEASE-NAME-openwhispr
+        documentIndex: 2
 
   - it: migrate Job uses dedicated ServiceAccount
     template: migrate-job.yaml
