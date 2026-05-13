@@ -44,11 +44,12 @@ spec:
         - name: secret-presence-probe
           image: busybox:1.36
           imagePullPolicy: IfNotPresent
+          # Plan 11-01 — see api-deployment.yaml for full rationale.
           command:
             - sh
             - -c
             - |
-              for k in LITELLM_MASTER_KEY OPENROUTER_API_KEY OPENAI_API_KEY PYANNOTE_API_KEY HF_TOKEN POSTGRES_OWNER_PASSWORD POSTGRES_APP_PASSWORD PGBOUNCER_ADMIN_PASSWORD BETTER_AUTH_SECRET VALKEY_PASSWORD MINIO_ROOT_PASSWORD TRAEFIK_ADMIN_PASSWORD GRAFANA_ADMIN_PASSWORD MASTER_KEK BACKUP_AGE_IDENTITY; do
+              for k in {{ include "openwhispr.requiredSecretKeys" . | trim }}; do
                 eval v=\$$k
                 if [ -z "$v" ]; then
                   echo "FATAL: $k empty — refusing to start (ESO not synced?)" 1>&2
