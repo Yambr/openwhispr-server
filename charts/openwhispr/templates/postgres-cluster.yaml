@@ -63,6 +63,12 @@ spec:
         # it. ALTER restores parity.
         - ALTER ROLE openwhispr_owner BYPASSRLS;
         - ALTER ROLE openwhispr_owner CREATEDB;
+        # Finding 09.1-F25 — Postgres 17 tightened ALTER ROLE: a non-
+        # superuser needs BOTH the CREATEROLE attribute AND the ADMIN
+        # OPTION on the target role. F23's bare `GRANT openwhispr_app
+        # TO openwhispr_owner` gave membership but not admin option →
+        # 42501 "Only roles with CREATEROLE attribute and ADMIN option".
+        - ALTER ROLE openwhispr_owner CREATEROLE;
         - CREATE DATABASE litellm OWNER openwhispr_owner;
         # Finding 09.1-F23 — migrations execute ALTER ROLE
         # openwhispr_app (e.g. SET app.tenant_id) under the owner
@@ -84,7 +90,12 @@ spec:
               CREATE ROLE openwhispr_app WITH LOGIN NOBYPASSRLS;
             END IF;
           END $$$$;
-        - GRANT openwhispr_app TO openwhispr_owner;
+        # Finding 09.1-F25 — WITH ADMIN OPTION is required in PG 17 for
+        # the owner to ALTER openwhispr_app. CNPG's managed.roles.inRoles
+        # below preserves the membership; the admin option is reapplied
+        # idempotently here on every restart (postInitSQL only runs once
+        # at initdb time, but the GRANT is idempotent).
+        - GRANT openwhispr_app TO openwhispr_owner WITH ADMIN OPTION;
       postInitApplicationSQL:
         - CREATE SCHEMA IF NOT EXISTS partman;
         - CREATE EXTENSION IF NOT EXISTS pg_partman SCHEMA partman;
