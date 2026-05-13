@@ -52,7 +52,33 @@ export const DEFAULT_HELM_ARGS = [
   "secrets.betterAuthSecret=parity-fake-1234567890abcdef1234567890",
 ];
 
-export const CHART_KINDS = new Set(["Deployment", "StatefulSet", "Job", "DaemonSet", "CronJob"]);
+export const CHART_KINDS = new Set([
+  "Deployment",
+  "StatefulSet",
+  "Job",
+  "DaemonSet",
+  "CronJob",
+  // CloudNativePG CRDs that materialize as workload-equivalent resources
+  // (the operator turns these into StatefulSets / Deployments at runtime).
+  // Added in Plan 09-05 so the parity gate "sees" postgres + pgbouncer
+  // as covered by chart resources rather than allowlisted forever.
+  "Cluster",
+  "Pooler",
+]);
+
+/**
+ * Map a compose service name to the chart resource suffix it should match.
+ * Used when the chart resource is a CRD whose naming convention differs from
+ * the compose service name (Plan 09-05 A6: pgbouncer compose service maps to
+ * a CNPG Pooler CR named `<fullname>-pg-pooler`, suffix `pg-pooler`).
+ *
+ * Right-hand side is the resource suffix AFTER the `<release>-openwhispr-`
+ * prefix has been stripped by extractChartResources().
+ */
+export const COMPOSE_SERVICE_ALIASES: Record<string, string> = {
+  postgres: "pg",
+  pgbouncer: "pg-pooler",
+};
 
 export interface Allowlist {
   [category: string]: { _comment?: string; services?: string[] };
@@ -141,6 +167,8 @@ export function computeParity(
   const missing: string[] = [];
   for (const svc of composeServices) {
     if (chartResources.has(svc)) continue;
+    const alias = COMPOSE_SERVICE_ALIASES[svc];
+    if (alias && chartResources.has(alias)) continue;
     if (allowlist.has(svc)) {
       allowlisted.push(svc);
       continue;

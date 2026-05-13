@@ -1,0 +1,81 @@
+suite: pooler — CNPG Pooler CR (A6)
+templates:
+  - pooler.yaml
+tests:
+  - it: renders Pooler bound to {fullname}-pg with transaction mode
+    set:
+      secrets:
+        mode: eso
+        external:
+          storeRef: vault-clusterstore
+    asserts:
+      - hasDocuments:
+          count: 1
+      - isKind:
+          of: Pooler
+      - equal:
+          path: apiVersion
+          value: postgresql.cnpg.io/v1
+      - equal:
+          path: metadata.name
+          value: RELEASE-NAME-openwhispr-pg-pooler
+      - equal:
+          path: spec.cluster.name
+          value: RELEASE-NAME-openwhispr-pg
+      - equal:
+          path: spec.instances
+          value: 2
+      - equal:
+          path: spec.type
+          value: rw
+      - equal:
+          path: spec.pgbouncer.poolMode
+          value: transaction
+      - equal:
+          path: spec.pgbouncer.parameters.default_pool_size
+          value: "100"
+      - equal:
+          path: spec.pgbouncer.parameters.max_client_conn
+          value: "1000"
+      - equal:
+          path: spec.pgbouncer.parameters.reserve_pool_size
+          value: "20"
+
+  - it: enables PodMonitor when observability.serviceMonitor.enabled=true
+    set:
+      secrets:
+        mode: eso
+        external:
+          storeRef: vault-clusterstore
+      observability:
+        serviceMonitor:
+          enabled: true
+    asserts:
+      - equal:
+          path: spec.monitoring.enablePodMonitor
+          value: true
+
+  - it: emits nothing when pooler.enabled=false
+    set:
+      secrets:
+        mode: eso
+        external:
+          storeRef: vault-clusterstore
+      pooler:
+        enabled: false
+    asserts:
+      - hasDocuments:
+          count: 0
+
+  - it: cloud-ha overlay bumps max_client_conn to 2000
+    set:
+      secrets:
+        mode: eso
+        external:
+          storeRef: vault-clusterstore
+      pooler:
+        maxClientConn: "2000"
+    asserts:
+      - equal:
+          path: spec.pgbouncer.parameters.max_client_conn
+          value: "2000"

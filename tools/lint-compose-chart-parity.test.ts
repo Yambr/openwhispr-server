@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   type Allowlist,
   CHART_KINDS,
+  COMPOSE_SERVICE_ALIASES,
   collectComposeServices,
   computeParity,
   extractChartResources,
@@ -19,6 +20,20 @@ describe("CHART_KINDS", () => {
     expect(CHART_KINDS.has("Job")).toBe(true);
     expect(CHART_KINDS.has("DaemonSet")).toBe(true);
     expect(CHART_KINDS.has("CronJob")).toBe(true);
+  });
+
+  it("includes CNPG CRDs (Cluster + Pooler) per Plan 09-05 A6", () => {
+    expect(CHART_KINDS.has("Cluster")).toBe(true);
+    expect(CHART_KINDS.has("Pooler")).toBe(true);
+  });
+});
+
+describe("COMPOSE_SERVICE_ALIASES", () => {
+  it("maps postgres compose service to CNPG Cluster resource suffix", () => {
+    expect(COMPOSE_SERVICE_ALIASES.postgres).toBe("pg");
+  });
+  it("maps pgbouncer compose service to CNPG Pooler resource suffix", () => {
+    expect(COMPOSE_SERVICE_ALIASES.pgbouncer).toBe("pg-pooler");
   });
 });
 
@@ -166,6 +181,33 @@ describe("computeParity", () => {
     expect(r.composeServices).toEqual(["a", "m", "z"]);
     expect(r.allowlisted).toEqual(["a", "z"]);
     expect(r.missing).toEqual(["m"]);
+  });
+
+  it("resolves postgres -> pg via COMPOSE_SERVICE_ALIASES without allowlisting", () => {
+    const compose = new Set(["postgres"]);
+    const chart = new Set(["pg"]); // CNPG Cluster name suffix
+    const allow = new Set<string>();
+    const r = computeParity(compose, chart, allow);
+    expect(r.missing).toEqual([]);
+    expect(r.allowlisted).toEqual([]);
+  });
+
+  it("resolves pgbouncer -> pg-pooler via COMPOSE_SERVICE_ALIASES", () => {
+    const compose = new Set(["pgbouncer"]);
+    const chart = new Set(["pg-pooler"]);
+    const allow = new Set<string>();
+    const r = computeParity(compose, chart, allow);
+    expect(r.missing).toEqual([]);
+    expect(r.allowlisted).toEqual([]);
+  });
+
+  it("falls back to allowlist when no alias mapping exists for compose service", () => {
+    const compose = new Set(["traefik"]);
+    const chart = new Set<string>();
+    const allow = new Set(["traefik"]);
+    const r = computeParity(compose, chart, allow);
+    expect(r.allowlisted).toEqual(["traefik"]);
+    expect(r.missing).toEqual([]);
   });
 });
 

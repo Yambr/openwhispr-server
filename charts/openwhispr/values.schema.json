@@ -73,6 +73,37 @@
         }
       }
     },
+    "pooler": {
+      "type": "object",
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "instances": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 10
+        },
+        "type": {
+          "type": "string",
+          "enum": ["rw", "ro"]
+        },
+        "poolMode": {
+          "type": "string",
+          "enum": ["session", "transaction", "statement"]
+        },
+        "maxClientConn": {
+          "type": "string",
+          "pattern": "^[0-9]+$"
+        },
+        "defaultPoolSize": {
+          "type": "string",
+          "pattern": "^[0-9]+$"
+        },
+        "reservePoolSize": {
+          "type": "string",
+          "pattern": "^[0-9]+$"
+        }
+      }
+    },
     "bundledAi": {
       "type": "object",
       "properties": {

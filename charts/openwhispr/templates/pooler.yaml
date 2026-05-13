@@ -1,0 +1,33 @@
+{{/*
+CloudNativePG Pooler CR (postgresql.cnpg.io/v1, kind: Pooler).
+Phase 09 Plan 05 (A6 decision): replaces the compose-level 4-instance PgBouncer
+Deployment with CNPG's native Pooler CRD. Native HA + automatic SCRAM credential
+rotation; the Phase 01.2 userlist.txt regeneration pattern is no longer needed
+(pitfall #10 of 09-RESEARCH.md: CNPG Pooler handles credentials natively).
+
+Consumers (api / worker in plans 09-06, 09-08) connect via:
+  postgres://openwhispr_owner@{fullname}-pg-pooler-rw:5432/openwhispr
+*/}}
+{{- if .Values.pooler.enabled -}}
+{{- $fullname := include "openwhispr.fullname" . -}}
+apiVersion: postgresql.cnpg.io/v1
+kind: Pooler
+metadata:
+  name: {{ $fullname }}-pg-pooler
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "openwhispr.labels" . | nindent 4 }}
+spec:
+  cluster:
+    name: {{ $fullname }}-pg
+  instances: {{ .Values.pooler.instances }}
+  type: {{ .Values.pooler.type }}
+  pgbouncer:
+    poolMode: {{ .Values.pooler.poolMode }}
+    parameters:
+      max_client_conn: {{ .Values.pooler.maxClientConn | quote }}
+      default_pool_size: {{ .Values.pooler.defaultPoolSize | quote }}
+      reserve_pool_size: {{ .Values.pooler.reservePoolSize | quote }}
+  monitoring:
+    enablePodMonitor: {{ .Values.observability.serviceMonitor.enabled }}
+{{- end }}
