@@ -1,0 +1,187 @@
+suite: otel-collector — DaemonSet + ConfigMap + RBAC (Plan 09-10)
+templates:
+  - otel-collector-daemonset.yaml
+  - otel-collector-configmap.yaml
+  - otel-collector-serviceaccount.yaml
+  - otel-collector-clusterrole.yaml
+  - otel-collector-clusterrolebinding.yaml
+tests:
+  - it: collector group omitted when observability.collector.enabled=false (default)
+    template: otel-collector-daemonset.yaml
+    set:
+      secrets:
+        mode: eso
+        external:
+          storeRef: vault-clusterstore
+    asserts:
+      - hasDocuments:
+          count: 0
+
+  - it: ConfigMap also omitted when collector disabled
+    template: otel-collector-configmap.yaml
+    set:
+      secrets:
+        mode: eso
+        external:
+          storeRef: vault-clusterstore
+    asserts:
+      - hasDocuments:
+          count: 0
+
+  - it: DaemonSet renders with hostNetwork=true + ClusterFirstWithHostNet (pitfall #12)
+    template: otel-collector-daemonset.yaml
+    set:
+      secrets:
+        mode: eso
+        external:
+          storeRef: vault-clusterstore
+      observability:
+        collector:
+          enabled: true
+        lgtm:
+          endpoint: https://otlp.example.com
+    asserts:
+      - hasDocuments:
+          count: 1
+      - isKind:
+          of: DaemonSet
+      - equal:
+          path: spec.template.spec.hostNetwork
+          value: true
+      - equal:
+          path: spec.template.spec.dnsPolicy
+          value: ClusterFirstWithHostNet
+      - equal:
+          path: spec.template.spec.serviceAccountName
+          value: RELEASE-NAME-openwhispr-otel-collector
+      - matchRegex:
+          path: spec.template.spec.containers[0].image
+          pattern: "^otel/opentelemetry-collector-contrib:"
+      - equal:
+          path: spec.template.spec.tolerations[0].operator
+          value: Exists
+
+  - it: DaemonSet mounts /proc + /sys + /var/log + config via hostPath/configMap
+    template: otel-collector-daemonset.yaml
+    set:
+      secrets:
+        mode: eso
+        external:
+          storeRef: vault-clusterstore
+      observability:
+        collector:
+          enabled: true
+        lgtm:
+          endpoint: https://otlp.example.com
+    asserts:
+      - equal:
+          path: spec.template.spec.volumes[1].hostPath.path
+          value: /proc
+      - equal:
+          path: spec.template.spec.volumes[2].hostPath.path
+          value: /sys
+      - equal:
+          path: spec.template.spec.volumes[3].hostPath.path
+          value: /var/log
+      - equal:
+          path: spec.template.spec.volumes[0].configMap.name
+          value: RELEASE-NAME-openwhispr-otel-collector
+      - equal:
+          path: spec.template.spec.containers[0].env[0].name
+          value: K8S_NODE_NAME
+
+  - it: ConfigMap config.yaml references hostmetrics + kubeletstats receivers
+    template: otel-collector-configmap.yaml
+    set:
+      secrets:
+        mode: eso
+        external:
+          storeRef: vault-clusterstore
+      observability:
+        collector:
+          enabled: true
+        lgtm:
+          endpoint: https://otlp.example.com
+    asserts:
+      - isKind:
+          of: ConfigMap
+      - matchRegex:
+          path: data["config.yaml"]
+          pattern: "hostmetrics:"
+      - matchRegex:
+          path: data["config.yaml"]
+          pattern: "kubeletstats:"
+      - matchRegex:
+          path: data["config.yaml"]
+          pattern: "otlphttp:"
+      - matchRegex:
+          path: data["config.yaml"]
+          pattern: "https://otlp.example.com"
+      - matchRegex:
+          path: data["config.yaml"]
+          pattern: "k8sattributes:"
+
+  - it: ClusterRole grants get/list/watch only (least privilege)
+    template: otel-collector-clusterrole.yaml
+    set:
+      secrets:
+        mode: eso
+        external:
+          storeRef: vault-clusterstore
+      observability:
+        collector:
+          enabled: true
+        lgtm:
+          endpoint: https://otlp.example.com
+    asserts:
+      - isKind:
+          of: ClusterRole
+      - contains:
+          path: rules[0].verbs
+          content: get
+      - contains:
+          path: rules[0].verbs
+          content: list
+      - contains:
+          path: rules[0].verbs
+          content: watch
+      - notContains:
+          path: rules[0].verbs
+          content: create
+      - notContains:
+          path: rules[0].verbs
+          content: delete
+      - notContains:
+          path: rules[0].verbs
+          content: patch
+      - contains:
+          path: rules[0].resources
+          content: nodes/stats
+      - contains:
+          path: rules[0].resources
+          content: pods
+
+  - it: ClusterRoleBinding binds the SA in release namespace
+    template: otel-collector-clusterrolebinding.yaml
+    set:
+      secrets:
+        mode: eso
+        external:
+          storeRef: vault-clusterstore
+      observability:
+        collector:
+          enabled: true
+        lgtm:
+          endpoint: https://otlp.example.com
+    asserts:
+      - isKind:
+          of: ClusterRoleBinding
+      - equal:
+          path: subjects[0].kind
+          value: ServiceAccount
+      - equal:
+          path: subjects[0].name
+          value: RELEASE-NAME-openwhispr-otel-collector
+      - equal:
+          path: roleRef.kind
+          value: ClusterRole

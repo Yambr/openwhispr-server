@@ -5,8 +5,8 @@
     "services": ["fixture-idp", "seed", "contract-test-runner", "mailpit", "speaches_models"]
   },
   "cluster-prereq": {
-    "_comment": "Cluster-scoped operator / addon prerequisites. Operator installs out-of-band (see charts/openwhispr/examples/*.sh).",
-    "services": ["traefik", "loki", "tempo", "mimir", "grafana", "prometheus", "otel-collector"]
+    "_comment": "Cluster-scoped operator / addon prerequisites. Operator installs out-of-band (see charts/openwhispr/examples/*.sh). Plan 09-10 (Wave 3) landed otel-collector as a chart-rendered DaemonSet (gated on observability.collector.enabled). Plan 09-09 (Wave 3) ships Traefik IngressRoute/Middleware/ServersTransport CRDs, but operator installs the Traefik chart out-of-band — see examples/traefik-values.yaml. LGTM ingest (loki/tempo/mimir/grafana/prometheus) remains a prerequisite per A3.",
+    "services": ["traefik", "loki", "tempo", "mimir", "grafana", "prometheus"]
   },
   "bundled-ai-conditional": {
     "_comment": "Chart renders only when bundledAi.enabled=true; OFF in values-ci.yaml (T-09-08).",
