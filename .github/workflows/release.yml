@@ -4,10 +4,11 @@ name: Release
 #   - manual dispatch for one-off rebuilds
 #   - tag push `v*` for canonical releases (chart appVersion bump)
 #
-# Builds and pushes the custom Postgres-with-pg_partman image to GHCR for
-# multi-arch (amd64 + arm64). Other release artifacts (api / web / worker /
-# migrate / pgbouncer-removed / test-probe / chart oci push) land in Plan
-# 09-11; this matrix grows there.
+# Builds and pushes the application images to GHCR for multi-arch
+# (amd64 + arm64). The matrix grew in Plan 09-11 to include api / web /
+# worker / migrate / test-probe; the chart OCI push lives in
+# .github/workflows/helm-release.yml. Each matrix entry needs a stable
+# `name` (used in the image tag) and a Dockerfile relative to `context`.
 on:
   workflow_dispatch:
     inputs:
@@ -36,9 +37,26 @@ jobs:
         include:
           - name: cnpg-postgres-17-pgpartman
             context: images/cnpg-postgres-17-pgpartman
+            dockerfile: Dockerfile
             # Convenience tag includes PG minor so the chart's values.schema.json
             # regex (`^.+:17\.[0-9]+.*$`) is always satisfied without manual edits.
             pg_minor: "17.6"
+          - name: api
+            context: .
+            dockerfile: apps/api/Dockerfile
+            pg_minor: ""
+          - name: web
+            context: .
+            dockerfile: apps/web/Dockerfile
+            pg_minor: ""
+          - name: worker
+            context: .
+            dockerfile: apps/worker/Dockerfile
+            pg_minor: ""
+          - name: test-probe
+            context: .
+            dockerfile: tools/test-probe/Dockerfile
+            pg_minor: ""
     steps:
       - uses: actions/checkout@v4
 
@@ -66,15 +84,29 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Compute tag list
+        id: taglist
+        run: |
+          base="ghcr.io/${{ github.repository_owner }}/openwhispr-${{ matrix.name }}"
+          tag="${{ steps.tag.outputs.value }}"
+          pg="${{ matrix.pg_minor }}"
+          {
+            echo "tags<<EOF"
+            echo "${base}:${tag}"
+            if [ -n "${pg}" ]; then
+              echo "${base}:${pg}-${tag}"
+            fi
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+
       - name: Build and push (multi-arch)
         uses: docker/build-push-action@v6
         with:
           context: ${{ matrix.context }}
+          file: ${{ matrix.context }}/${{ matrix.dockerfile }}
           platforms: linux/amd64,linux/arm64
           push: true
-          tags: |
-            ghcr.io/${{ github.repository_owner }}/openwhispr-${{ matrix.name }}:${{ steps.tag.outputs.value }}
-            ghcr.io/${{ github.repository_owner }}/openwhispr-${{ matrix.name }}:${{ matrix.pg_minor }}-${{ steps.tag.outputs.value }}
+          tags: ${{ steps.taglist.outputs.tags }}
           provenance: true
           sbom: true
           cache-from: type=gha,scope=${{ matrix.name }}
