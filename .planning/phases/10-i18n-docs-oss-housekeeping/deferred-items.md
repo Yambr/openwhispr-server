@@ -32,3 +32,14 @@ These should be fixed in a dedicated tech-debt plan; out of scope for 10-01a.
    in scheduler shim; `unknown` -> `string` widening in AsyncLocalStorage
    store). Baseline-confirmed via `git stash` on 2026-05-13. Worker test
    suite is green; only `tsc --noEmit` flags these.
+
+6. **apps/api integration tests using `bootMigratedPostgres`** (17 test
+   files) — fail with `code: '3F000'` (`namespace.c` schema missing)
+   when the `openwhispr/postgres:17.5-pgpartman` testcontainer image is
+   not present locally OR has not yet been rebuilt against migration
+   0014's pg_partman dependency. Baseline-confirmed via `git stash` on
+   2026-05-13 at HEAD edfaa53 — identical failure surface. Affected
+   suites: streaming-usage, usage, conversations/{crud,list-include-
+   messages,messages,search}, folders/{crud,list}, notes/{batch-create,
+   crud,list,...}, transcriptions, rate-limit-isolation, etc.
+   Out of scope for 10-01c (data-layer + auth wiring plan).
