@@ -1,1065 +1,343 @@
-# Architecture Research
+# Architecture: v2 Production Readiness Integration
 
-**Domain:** Multi-tenant, wire-compatible cloud backend for OpenWhispr desktop client
-**Researched:** 2026-05-08
-**Confidence:** HIGH (wire contract is fully reverse-engineered; LiteLLM/Speaches deployment is production-proven; 1000-concurrent sizing is standard math)
+**Milestone:** v2 (Phases 12–18)
+**Base:** v1 stack already shipped (Phases 0–11 closed; Phase 11 IN PROGRESS)
+**Researched:** 2026-05-14
+**Confidence:** HIGH (codebase walked file-by-file; no claims rely on training data)
 
-> **Source confidence note.** Component decomposition and data-path shapes are HIGH confidence — derived directly from `BACKEND_SPEC.md`, `OAUTH_SPEC.md`, `speaches-audio.md`, and the desktop client's `ARCHITECTURE.md`. Numerical sizing (FD limits, p95 budgets, sidecar vs separate-deployment) is MEDIUM confidence — based on standard nginx / Linux defaults and load patterns in similar streaming-LLM stacks; **must be validated under load test (SCALE-06)** before being committed as SLO.
-
----
-
-## 1. System Overview
-
-The system is a layered cloud backend with explicit failure domains. Each box is one container in compose / one Deployment+Service in Helm.
-
-```
-                          ┌──────────────────────────┐
-                          │  Desktop Client (BYOC)   │
-                          │  Electron, opaque bearer │
-                          └────────────┬─────────────┘
-                                       │ HTTPS (TLS 1.3)
-                                       │ + WSS upgrade
-                                       │ + multipart/form-data
-                                       │ + application/x-ndjson
-                                       v
-┌────────────────────────────────────────────────────────────────────┐
-│                       EDGE / INGRESS                                │
-│  nginx (compose) / ingress-nginx (k8s)                              │
-│  - TLS termination (cert-manager)                                   │
-│  - WebSocket Upgrade                                                │
-│  - proxy_read_timeout / send_timeout = 3600s (1h)                   │
-│  - proxy_request_buffering off (multipart streaming)                │
-│  - proxy_buffering off on /api/agent/stream and /v1/realtime        │
-│  - client_max_body_size = 100M (audio uploads)                      │
-│  - rate-limit zones (per-IP, fail-open if redis dead)               │
-└─────────────────┬──────────────────────────────────────┬────────────┘
-                  │                                      │
-                  │ /api/*                               │ /api/desktop-signin/*
-                  v                                      │ + /auth/desktop-callback
-┌─────────────────────────────────────────┐              │
-│            API TIER (stateless)         │              │
-│  3-N replicas, horizontal autoscale     │              │
-│  - Wire endpoints (BACKEND_SPEC.md)     │              │
-│  - Better-Auth-compatible cookie+bearer │              │
-│  - Tenant resolution + RLS GUC          │              │
-│  - Quota check BEFORE provider forward  │              │
-│  - NDJSON line-flush for /agent/stream  │              │
-│  - WSS upstream-proxy to Speaches       │              │
-│  - Provider abstraction (LLM/STT/...)   │              │
-└──┬──────────┬───────────┬─────────┬─────┘              │
-   │          │           │         │                    v
-   │          │           │         │       ┌─────────────────────────┐
-   │          │           │         │       │      AUTH SHIM          │
-   │          │           │         │       │  (subset of API tier or │
-   │          │           │         │       │   sibling deployment)   │
-   │          │           │         │       │  - /api/desktop-signin/ │
-   │          │           │         │       │  - IdP round-trip       │
-   │          │           │         │       │  - channel-scheme echo  │
-   │          │           │         │       │  - bearer token issue   │
-   │          │           │         │       │  - set-auth-token rotation
-   │          │           │         │       └────────┬────────────────┘
-   │          │           │         │                │
-   │          │           │         │                v
-   │          │           │         │       ┌─────────────────────────┐
-   │          │           │         │       │  IdP (Google / MS /     │
-   │          │           │         │       │  Apple / OIDC / SAML /  │
-   │          │           │         │       │  email-password)        │
-   │          │           │         │       └─────────────────────────┘
-   │          │           │         │
-   │          │           │         │       ┌─────────────────────────┐
-   │          │           │         └──────>│   OBJECT STORAGE        │
-   │          │           │                 │   S3 / MinIO / GCS      │
-   │          │           │                 │   (transcripts, audit)  │
-   │          │           │                 └─────────────────────────┘
-   │          │           v
-   │          │   ┌───────────────────────┐
-   │          │   │     POSTGRES 16       │
-   │          │   │   - RLS by tenant     │
-   │          │   │   - app.tenant_id GUC │
-   │          │   │   - usage ledger      │
-   │          │   │   - PgBouncer pool    │
-   │          │   │   - HA: streaming     │
-   │          │   │     repl, patroni / CNPG
-   │          │   └───────────────────────┘
-   │          v
-   │   ┌──────────────────────┐
-   │   │       REDIS 7        │
-   │   │   - rate-limit       │
-   │   │   - job queue (BullMQ│
-   │   │     or asynq)        │
-   │   │   - ephemeral session│
-   │   │     pieces, idempot. │
-   │   └──────────┬───────────┘
-   │              │
-   │              v
-   │   ┌──────────────────────┐
-   │   │    WORKER TIER       │
-   │   │  (same image as API, │
-   │   │  different entrypoint│
-   │   │  - webhook fanout    │
-   │   │  - email send        │
-   │   │  - usage rollups     │
-   │   │  - tenant cleanup    │
-   │   │  - LiteLLM spend log │
-   │   │    ingest            │
-   │   └──────────────────────┘
-   │
-   v
-┌─────────────────────────────────────────────────────────────────────┐
-│             PROVIDER PLANE (default backend)                         │
-│                                                                       │
-│  ┌──────────────────────┐         ┌─────────────────────────────┐    │
-│  │  LiteLLM Proxy       │ ──────> │  Speaches (audio backend)   │    │
-│  │  - virtual-key auth  │  HTTPS  │  - Whisper transcription    │    │
-│  │  - model routing     │  +WSS   │  - pyannote diarization     │    │
-│  │  - spend logs        │         │  - OpenAI Realtime spec WSS │    │
-│  │  - multipart pass-   │         │    GPU node pool            │    │
-│  │    through (patched) │         └─────────────────────────────┘    │
-│  │  - realtime mode     │                                            │
-│  │  - alternate LLMs    │ ──────> External: OpenAI, Anthropic,      │
-│  │    routed here       │         Gemini, Bedrock, Vertex, Azure    │
-│  └──────────────────────┘                                            │
-└─────────────────────────────────────────────────────────────────────┘
-                  │
-                  v
-┌─────────────────────────────────────────────────────────────────────┐
-│             OBSERVABILITY PLANE                                      │
-│  otel-collector ──> Prometheus / Grafana / Loki / Tempo              │
-│  All tiers emit OTel spans; LiteLLM spend logs sink via webhook      │
-└─────────────────────────────────────────────────────────────────────┘
-```
-
-### Component Responsibilities
-
-| Component | Responsibility | Typical Implementation |
-|-----------|----------------|------------------------|
-| **Edge / ingress** | TLS, HTTP/2, WSS upgrade, multipart-streaming passthrough, 1h timeouts, per-IP rate-limit | nginx (compose) or ingress-nginx (Helm); cert-manager for TLS |
-| **API tier** | All `/api/*` wire endpoints, tenant resolution, RLS GUC injection, quota pre-check, NDJSON line-flush, WSS proxy to Speaches Realtime, provider dispatch | Stateless app instances (Node/Fastify, Go/Fiber, or Python/FastAPI — TBD by STACK research). 3-N replicas. |
-| **Auth shim** | `/api/desktop-signin/{provider}` initiation, IdP round-trip, **channel-scheme echo**, bearer issue, `set-auth-token` rotation, `withSessionRefresh()` 401 contract | Same binary as API tier with route subset, OR sibling deployment if cookie-jar isolation requires distinct host. Better-Auth-server-compatible token shape. |
-| **LiteLLM Proxy** | Virtual-key auth, LLM/STT/realtime routing, spend logs, multipart pass-through (patched), model alias map | Stateful container (own DB optional, but spend logs piped to platform). 2+ replicas behind ClusterIP. |
-| **Speaches** | Whisper transcription, pyannote diarization, OpenAI-Realtime-spec WSS | GPU-equipped pod (CUDA 12.6+); separate node pool in k8s. 1+ replica per audio capacity unit. |
-| **Worker tier** | Webhook fanout, email send, usage rollups, tenant cleanup, LiteLLM spend log ingestion, retention deletes | Same image as API, queue consumer entrypoint. BullMQ (Node), asynq (Go), or arq (Python). 2-N replicas. |
-| **Postgres** | Source of truth: tenants, users, sessions, virtual-key bindings, usage ledger, audit log, ledger of consent / deletions | PG16+ with row-level security, `app.tenant_id` GUC, PgBouncer pool, streaming replication. CloudNativePG (CNPG) operator in k8s. |
-| **Redis** | Rate-limit token buckets, queue, ephemeral idempotency keys, OAuth-state nonces, session cache | Redis 7 with persistence (AOF). Cluster mode optional past 1k users. |
-| **Object storage** | Transcript blobs (if persisted), audio retention (opt-in), audit log archives | MinIO (compose) / S3-GCS-Azure-Blob (cloud). S3-compatible API. |
-| **Observability** | Traces, metrics, logs, LiteLLM spend ingestion | otel-collector + Prometheus + Grafana + Loki/Vector + Tempo. Pre-built dashboards shipped. |
+> Supersedes the prior v1 ARCHITECTURE.md (preserved in git history). v1 architecture is referenced inline where v2 integrates.
 
 ---
 
-## 2. Request Lifecycle: The Three Hot Paths
+## 1. Baseline (v1) — what is already in place
 
-### 2.1 `POST /api/transcribe` (multipart upload → Speaches Whisper)
+The v2 work layers onto a concrete, finished topology. Quick map of touchpoints v2 will modify, with exact paths:
 
-```
-Desktop                Ingress              API tier            LiteLLM           Speaches
-   │                      │                    │                   │                 │
-   │  POST /api/transcribe│                    │                   │                 │
-   │  Content-Type:       │                    │                   │                 │
-   │   multipart/form-data│                    │                   │                 │
-   │  Authorization:      │                    │                   │                 │
-   │   Bearer <opaque>    │                    │                   │                 │
-   ├─────────────────────>│                    │                   │                 │
-   │                      │                    │                   │                 │
-   │                      │ proxy_request_     │                   │                 │
-   │                      │ buffering OFF      │                   │                 │
-   │                      │ (stream upload)    │                   │                 │
-   │                      ├───────────────────>│                   │                 │
-   │                      │                    │                   │                 │
-   │                      │                    │ 1. Resolve token  │                 │
-   │                      │                    │    -> user_id, tenant_id            │
-   │                      │                    │ 2. SET LOCAL app.tenant_id = $1     │
-   │                      │                    │    (RLS active)   │                 │
-   │                      │                    │ 3. Quota pre-check: SELECT          │
-   │                      │                    │    words_remaining FROM usage_ledger
-   │                      │                    │    WHERE tenant_id = current_setting('app.tenant_id')
-   │                      │                    │                   │                 │
-   │                      │                    │ IF limitReached:  │                 │
-   │                      │                    │    return 200 +   │                 │
-   │                      │                    │    {limitReached:true,              │
-   │                      │                    │     wordsUsed,wordsRemaining,plan}  │
-   │                      │                    │    (NO upstream call — saves cost)  │
-   │                      │                    │                   │                 │
-   │                      │                    │ 4. Stream multipart upstream:       │
-   │                      │                    │    POST /v1/audio/transcriptions    │
-   │                      │                    │    Authorization: Bearer <virtual_key_for_tenant>
-   │                      │                    │    model=<tenant.stt_model>         │
-   │                      │                    ├──────────────────>│                 │
-   │                      │                    │                   │ Pass-through    │
-   │                      │                    │                   │ (patched        │
-   │                      │                    │                   │  multipart)     │
-   │                      │                    │                   ├────────────────>│
-   │                      │                    │                   │                 │ Whisper
-   │                      │                    │                   │                 │ inference
-   │                      │                    │                   │<────────────────┤
-   │                      │                    │                   │ {text, language,│
-   │                      │                    │                   │  segments,...}  │
-   │                      │                    │<──────────────────┤                 │
-   │                      │                    │                   │                 │
-   │                      │                    │ 5. Compute words = wordCount(text)  │
-   │                      │                    │ 6. UPDATE usage_ledger              │
-   │                      │                    │    SET words_used += $1             │
-   │                      │                    │    (RLS-scoped)                     │
-   │                      │                    │ 7. Build response per BACKEND_SPEC: │
-   │                      │                    │    {text, wordsUsed, wordsRemaining,│
-   │                      │                    │     plan, limitReached:false,       │
-   │                      │                    │     sttProvider, sttModel,          │
-   │                      │                    │     sttProcessingMs, ...}           │
-   │                      │<───────────────────┤                   │                 │
-   │<─────────────────────┤ 200 OK             │                   │                 │
-```
-
-**Critical invariants:**
-- Quota exhaustion returns `200 + limitReached:true` (NEVER 4xx). Wire contract.
-- Quota check happens **before** upstream forward — saves money + protects providers.
-- `proxy_request_buffering off` at ingress prevents large-audio bursts hitting disk.
-- Multipart streaming through LiteLLM requires the v1.83.7 backport patch (see PITFALLS.md).
-- Word counting is server-side authoritative; client trusts what we return.
-
-### 2.2 `POST /api/agent/stream` (NDJSON line-flushed)
-
-```
-Desktop                Ingress              API tier            LiteLLM           LLM (any)
-   │                      │                    │                   │                 │
-   │  POST /api/agent/stream                   │                   │                 │
-   │  Authorization: Bearer                    │                   │                 │
-   │  body: {messages, tools, sessionId}       │                   │                 │
-   ├─────────────────────>│                    │                   │                 │
-   │                      │ proxy_buffering OFF                    │                 │
-   │                      │ (must not buffer 1MB before client reads)               │
-   │                      │ X-Accel-Buffering: no                  │                 │
-   │                      ├───────────────────>│                   │                 │
-   │                      │                    │ 1. Auth + tenant resolve            │
-   │                      │                    │ 2. Quota pre-check (token-based)    │
-   │                      │                    │ 3. Set Content-Type:                │
-   │                      │                    │    application/x-ndjson             │
-   │                      │                    │ 4. Open agent loop                  │
-   │                      │                    │                   │                 │
-   │                      │                    │ Loop iter 1:      │                 │
-   │                      │                    │   POST /v1/chat/completions         │
-   │                      │                    │   stream=true     │                 │
-   │                      │                    ├──────────────────>├────────────────>│
-   │                      │                    │                   │ SSE deltas      │
-   │                      │                    │<──────────────────┤<────────────────┤
-   │                      │                    │                   │                 │
-   │                      │                    │ For each delta:   │                 │
-   │                      │                    │   line = JSON({type:"text-delta",   │
-   │                      │                    │                 delta: "..."})      │
-   │                      │                    │   write(line + "\n")                │
-   │                      │                    │   flush() <-- CRITICAL              │
-   │                      │<───────────────────┤                   │                 │
-   │<─────────────────────┤ chunked: line\n    │                   │                 │
-   │                      │                    │                   │                 │
-   │                      │                    │ If tool-call:     │                 │
-   │                      │                    │   emit {type:"tool-call",...}\n     │
-   │                      │                    │   execute tool (web-search,         │
-   │                      │                    │     search_notes, ...)              │
-   │                      │                    │   emit {type:"tool-result",...}\n   │
-   │                      │                    │   re-enter loop with tool result    │
-   │                      │                    │                   │                 │
-   │                      │                    │ Final chunk:      │                 │
-   │                      │                    │   {type:"finish",                   │
-   │                      │                    │    usage:{promptTokens,             │
-   │                      │                    │           completionTokens}}\n      │
-   │                      │                    │   flush()         │                 │
-   │                      │                    │   close stream    │                 │
-   │<─────────────────────┤────────────────────┤                   │                 │
-   │                      │                    │ 5. UPDATE usage_ledger (tokens)     │
-```
-
-**Critical invariants:**
-- Each line MUST be flushed immediately. nginx `proxy_buffering off` + framework auto-flush + explicit `Transfer-Encoding: chunked`.
-- nginx default 4k buffer **kills** real-time streaming if not disabled — single biggest pitfall.
-- Connection lives for tens of seconds to several minutes. Sized in §11.
-
-### 2.3 `WSS /v1/realtime` (desktop ↔ API tier ↔ Speaches)
-
-The wire contract calls for `POST /api/openai-realtime-token` to mint a short-lived secret, then the desktop opens WSS **directly** to wherever the token says. For self-host with Speaches default, two architectures are valid:
-
-**Option A — Direct Speaches (recommended for self-host).** The token endpoint returns `{ clientSecret, wsUrl: "wss://<our-domain>/v1/realtime?model=..." }` pointing at LiteLLM-fronted Speaches. The desktop opens WSS straight there. API tier is not on the data path.
-
-**Option B — API-tier proxy (for tenancy + quota).** API tier is a WSS proxy: desktop → API → LiteLLM → Speaches. Per-frame quota & audit; required if tenant must not see provider URL.
-
-```
-Desktop                Ingress              API tier            LiteLLM         Speaches
-   │ POST /api/openai-realtime-token            │                   │                │
-   │ {model, language, streams:1}               │                   │                │
-   ├─────────────────────────────────────────>──┤                   │                │
-   │                                            │ Auth + tenant     │                │
-   │                                            │ Mint LiteLLM      │                │
-   │                                            │  virtual-key      │                │
-   │                                            │  (key/generate    │                │
-   │                                            │  with TTL=2h,     │                │
-   │                                            │  budget per call) │                │
-   │                                            ├──────────────────>│                │
-   │                                            │<──────────────────┤                │
-   │                                            │ {clientSecret:    │                │
-   │                                            │  <vkey>,          │                │
-   │                                            │  wsUrl: "wss://   │                │
-   │                                            │   <us>/v1/realtime"│               │
-   │<───────────────────────────────────────────┤                   │                │
-   │                                            │                   │                │
-   │ WSS /v1/realtime  (Authorization: Bearer <vkey>)               │                │
-   ├─────────────────────>│                     │                   │                │
-   │                      │ Upgrade: websocket  │                   │                │
-   │                      │ proxy_read_timeout 3600                 │                │
-   │                      │ (Option A: directly to LiteLLM ─────────────>│           │
-   │                      │  Option B: through API tier first)      │   │            │
-   │                                                                │   │ realtime   │
-   │                                                                │   │ mode forwards
-   │                                                                │   ├───────────>│
-   │ session.created                                                 │   │           │
-   │<───────────────────────────────────────────────────────────────┤<──┤<──────────┤
-   │                                                                │   │           │
-   │ session.update {input_audio_format:"pcm16",...}                │   │           │
-   ├───────────────────────────────────────────────────────────────>│   │           │
-   │ input_audio_buffer.append (binary frames)                      │   │           │
-   ├───────────────────────────────────────────────────────────────>│   │           │
-   │ conversation.item.created.input_audio_transcription.completed  │   │           │
-   │<───────────────────────────────────────────────────────────────┤<──┤<──────────┤
-```
-
-**Critical invariants:**
-- Ingress `proxy_read_timeout` and `proxy_send_timeout` MUST be ≥ 3600s. Default 60s tears realtime sessions down.
-- WebSocket Upgrade headers preserved end-to-end.
-- Virtual key TTL'd; each session is single-use; max-budget caps runaway usage.
-- Choose Option A unless audit/tenancy law forbids leaking provider host.
+| Concern | File / dir | What it does today |
+|---|---|---|
+| API bootstrap | `apps/api/src/index.ts` (617 lines) | `buildApp()` registers cookie → multipart → zod-type-provider → request-log → i18n → rate-limit → tenant → dual-auth → routes → probes. Entrypoint (lines 473-616) constructs `auth`, `db`, `litellm`, `redis`, `depCheck`. |
+| Better Auth wiring | `apps/api/src/auth.ts` + `packages/auth/src/` | `buildAuth({db, enqueueEmail?})` returns Better Auth instance with Drizzle adapter, email/pwd, locale field. **No `role` field on users yet** (verified `packages/data/src/schema/users.ts` has no role column). **No OIDC provider plugins active** (TD-12.c — UI renders SSO buttons unconditionally). |
+| Worker bootstrap | `apps/worker/src/index.ts` (238 lines) | 9 BullMQ Worker instances. **Line 68 `noopSender` and line 130 `sender: noopSender`** — the email-delivery Worker never calls SMTP. This is TD-mailpit. |
+| Web app | `apps/web/src/app/` | Three route groups: `(public)/sign-in`, `(public)/sign-up`, `(public)/verify-email`; `(auth)/app`; `(admin)/admin/config`, `(admin)/admin/observability`. **No `/admin` index page (TD-12.a 404).** **No `/setup` route (TD-12.b unrecoverable bcrypt).** |
+| Auth screens (drifted from spec) | `apps/web/src/components/screens/auth/{SignInForm,SignUpForm,OidcButtons,VerifyEmailClient}.tsx` | UI-SPEC conformance failures live here (TD-13.a duplicate banner, TD-13.b "Invalid input", TD-12.c always-on SSO buttons, TD-12.e no resend CTA). |
+| Web API routes | `apps/web/src/app/api/{health,locale}/route.ts` | TD-15.g: shadowed by Traefik `Host(api.localhost) && PathPrefix(/api)` → Fastify (which has no `/api/locale`). Web is on `Host(api.localhost)` too and ONLY gets routes that don't match the api PathPrefix. |
+| Compose | Repo root: `docker-compose.yml` (864 LOC), `docker-compose.embedded-litellm.yml` (750 LOC), `docker-compose.load-test.yml`, `docker-compose.load-test.realistic.yml` | Embedded compose has 18 services, all tagged `profiles: [default, …]` (TD-14.f — `compose up` without `--profile default` selects 0 services). Services: postgres, pgbouncer, valkey, minio, traefik, otel-collector, loki, tempo, mimir, grafana, litellm, migrate, api, worker, web, mailpit. |
+| Helm | `charts/openwhispr/{Chart.yaml, values.yaml (351 LOC), templates/ (39 templates)}` | Sub-chart `dependencies` already use `condition:` (`valkey.enabled`, `minio.enabled`). Top-level toggles already present: `speaches.enabled`, `observability.collector.enabled`, `observability.lgtm.enabled`, `pooler.enabled`, `litellm.embedded`, `tls.enabled`, `certManager.enabled`, `backup.enabled`. **Helm gating is much further along than compose gating.** |
+| Traefik dev TLS | `compose/traefik/{traefik.yml, dynamic.yml, certs/{local.crt,local.key,root-ca.crt,root-ca.key}}` | Two TLS entrypoints (`:443 websecure`, `:8443 websecure-realtime`). Self-signed certs already present (TD-17.a — browser warns). Root CA exists at `compose/traefik/certs/root-ca.crt` — currently NOT installed in OS trust store by bootstrap. |
+| E2E suite (today) | `tests/e2e/` (vitest-based; ~25 tests) | Uses **vitest + supertest + dockerized stack via `compose-helper.ts`**. **No Cucumber. No Playwright UI tests** (despite `@playwright/test 1.59.1` being in repo-root `package.json:45`). All e2e are HTTP wire-level. TD-13.e: zero Playwright/Cucumber UI journey coverage. |
+| Test layout | Co-located `*.test.ts` next to `*.ts` everywhere (e.g. `apps/api/src/email.ts` + `apps/api/src/email.test.ts`) + some `__tests__/` dirs. Inconsistent (TD-15.a). |
+| Tools | `tools/` — `lint-english.ts`, `lint-tdd.ts`, `lint-rls.ts`, `lint-ui-spec.ts`, `lint-compose-chart-parity.ts`, `spdx-header.ts`, `bootstrap.sh`. **No `ts-morph` codemod tooling yet** (only the SPDX writer uses ts-morph). |
+| License | `LICENSE` (Apache-2.0); 675 SPDX headers across source; `licenses: Apache-2.0` in Chart.yaml; `license` field per package.json. Phase 10-04 already standardized this — Phase 15 is a re-codemod. |
+| Phase comments | **771 `// Phase XX / Plan YY / D-ZZ` comments** verified by `grep -rn "// Phase\|/\* Phase" apps packages` (NOT 1642 — TECH_DEBT.md count includes tests/tools; sweep scope must be defined). |
+| Mock fixtures | `compose/mock-litellm/`, `tests/e2e/mock-realtime/`, `compose/fixture-idp` (referenced) | Hermetic load-test path. Phase 13 inherits these. |
 
 ---
 
-## 3. Auth Flow Data Path (channel-scheme echo)
+## 2. Phase-by-phase integration
 
-```
-Desktop (Electron)            Browser                  Auth shim          IdP             Postgres
-       │                         │                         │                │                 │
-   1. signInWithSocial("google") │                         │                │                 │
-       │ getOAuthProtocol() ─> "openwhispr-dev"            │                │                 │
-       │                         │                         │                │                 │
-   2. shell.openExternal(        │                         │                │                 │
-        ${AUTH_URL}/api/desktop-signin/google              │                │                 │
-        ?callbackURL=https://openwhispr.com/auth/desktop-callback?protocol=openwhispr-dev)    │
-       ├────────────────────────>│                         │                │                 │
-       │                         │ HTTPS                   │                │                 │
-       │                         ├────────────────────────>│                │                 │
-       │                         │                         │ 3. Validate provider, parse      │
-       │                         │                         │    callbackURL → extract        │
-       │                         │                         │    `protocol` query param       │
-       │                         │                         │    "openwhispr-dev"             │
-       │                         │                         │ 4. INSERT oauth_state           │
-       │                         │                         │    (state_token, tenant_id,     │
-       │                         │                         │     channel_scheme)             │
-       │                         │                         ├────────────────────────────────>│
-       │                         │                         │ 5. 302 IdP authorize URL,       │
-       │                         │                         │    state=<token>                │
-       │                         │<────────────────────────┤                │                 │
-       │                         │ 6. browser nav          │                │                 │
-       │                         ├────────────────────────────────────────>│                 │
-       │                         │ user authorizes         │                │                 │
-       │                         │<────────────────────────────────────────┤                 │
-       │                         │ 7. 302 ${AUTH_URL}/api/auth/callback/google?code=..&state=..
-       │                         ├────────────────────────>│                │                 │
-       │                         │                         │ 8. SELECT oauth_state           │
-       │                         │                         │    WHERE state = $1             │
-       │                         │                         │    -> tenant_id, channel_scheme │
-       │                         │                         │<────────────────────────────────┤
-       │                         │                         │ 9. Exchange code -> id_token,   │
-       │                         │                         │    user_email                   │
-       │                         │                         │ 10. UPSERT user (email,         │
-       │                         │                         │     tenant_id, idp_subject)     │
-       │                         │                         │ 11. INSERT session, mint        │
-       │                         │                         │     opaque bearer token         │
-       │                         │                         │     (token + token_hash row,    │
-       │                         │                         │      tenant_id, expires_at)     │
-       │                         │                         ├────────────────────────────────>│
-       │                         │                         │ 12. Build redirect URL using    │
-       │                         │                         │     channel_scheme from step 8: │
-       │                         │                         │     "openwhispr-dev://?bearer_token=<opaque>"
-       │                         │                         │     (CRITICAL: echo scheme,     │
-       │                         │                         │      do NOT hardcode)           │
-       │                         │ 13. 302 https://openwhispr.com/auth/desktop-callback      │
-       │                         │     ?protocol=openwhispr-dev&bearer_token=<opaque>        │
-       │                         │<────────────────────────┤                │                 │
-       │                         │ 14. callback page JS:   │                │                 │
-       │                         │     window.location =   │                │                 │
-       │                         │     "openwhispr-dev://?bearer_token=<opaque>"             │
-       │                         │ 15. OS dispatches       │                │                 │
-       │                         │     openwhispr-dev://   │                │                 │
-       │                         │     to Electron app     │                │                 │
-       │<────────────────────────┤                         │                │                 │
-       │ 16. handleOAuthDeepLink()                         │                │                 │
-       │     extract bearer_token, tokenStore.set()        │                │                 │
-       │ 17. Subsequent /api/* calls:                      │                │                 │
-       │     Authorization: Bearer <opaque>                │                │                 │
-```
+### Phase 13 — Cucumber+Playwright E2E + CJM (the harness everything else writes against)
 
-**Critical invariants:**
-- The channel scheme (`openwhispr` / `-dev` / `-staging` / arbitrary override) MUST round-trip from `callbackURL` query param through `oauth_state` storage to the final 302. Hardcoding `openwhispr://` breaks dev/staging and arbitrary-override builds.
-- Self-host MAY collapse step 13 (drop the `openwhispr.com` callback page) and emit `<scheme>://?bearer_token=...` directly. Desktop only inspects the **last** redirect.
-- HTTP `401` triggers `withSessionRefresh()`. Returning `200 + {error:"unauth"}` breaks the retry contract.
-- `set-auth-token` response header rotates tokens transparently — emit on any auth-client response when the token's age exceeds threshold.
+**New components:**
+- **`tests/e2e-cjm/` (NEW DIR)** — separate from existing `tests/e2e/` (vitest wire tests) to avoid runner collision. Layout:
+  - `tests/e2e-cjm/features/*.feature` — Gherkin files, one per CJM flow (`signup-verify.feature`, `signin.feature`, `password-reset.feature`, `transcribe.feature`, `admin-onboarding.feature`, `locale-switch.feature`, `oidc-providers.feature`, `error-paths.feature`). Each feature's top-of-file comment block references the CJM document path (e.g. `# CJM: docs/customer-journeys.md §3.2`).
+  - `tests/e2e-cjm/steps/*.ts` — Playwright-driven step definitions using `@cucumber/cucumber` + `@playwright/test`. One step file per domain (`auth.steps.ts`, `transcribe.steps.ts`, `admin.steps.ts`).
+  - `tests/e2e-cjm/support/world.ts` — Cucumber World object holds Playwright `Browser`/`Page` per scenario, plus a shared `ComposeHarness` handle.
+  - `tests/e2e-cjm/support/compose-harness.ts` — wraps `tests/e2e/compose-helper.ts` and adds `bootStack()` / `teardownStack()` lifecycle. Boots `docker-compose.embedded-litellm.yml --profile default` locally; in CI re-uses the dockerized stack from the `e2e` GHA job.
+  - `tests/e2e-cjm/cucumber.cjs` — Cucumber config, parallel = 4, retries = 1.
+  - `tests/e2e-cjm/playwright.config.ts` — `baseURL: https://app.localhost`, `ignoreHTTPSErrors: true` (until Phase 17 lands trusted certs — then drops to false in CI).
+- **`docs/customer-journeys.md` (NEW)** — the CJM document itself. Markdown with one `## Journey: …` heading per Gherkin feature; feature files use `@cjm-3.2` style tags to ID-link back. This is what the roadmapper considers the "CJM artifact."
+- **`Makefile` targets** — `make e2e-cjm` runs Cucumber locally; `make e2e-cjm-ci` runs against an already-booted stack.
+- **`tools/global-vitest-teardown.ts` (NEW) + `vitest.config.ts` edit** — addresses `.planning/deferred-items.md` item 1 (testcontainers leak). `globalSetup` registers a `process.on('exit')` hook that calls `docker container prune --filter label=org.testcontainers=true` and forces `Ryuk` reaper sync. Owned by Phase 13 because the new Cucumber harness will produce 10× the testcontainer churn.
+
+**Modified components:**
+- **`apps/worker/src/index.ts:68-72, 130`** — `noopSender` replaced with a real nodemailer-backed `EmailSender` shared with `apps/api/src/email.ts`. The fix MUST land here because the first Phase 13 test (signup → verify) will fail until the worker sends. Refactor: extract `EmailService` from `apps/api/src/email.ts` into `packages/email/src/index.ts` (NEW small package), depend from both api and worker. **This is the single most impactful Phase 13 atomic commit.**
+- **`apps/web/src/components/screens/auth/__tests__/*.test.tsx`** — sweep `getAllByText(...).length.toBeGreaterThan(0)` → `toHaveLength(1)` (TD-13.d).
+- **`.github/workflows/ci.yml`** — new job `e2e-cjm` after `e2e` job, gated on `E2E_CJM=1` env, runs `make e2e-cjm-ci`.
+
+**Data flow:** Cucumber scenario → Playwright `Page` → HTTPS → Traefik `:443` → web (Next.js) or api (Fastify) → BullMQ enqueue (email-delivery / virtual-key-rotation) → Worker → Mailpit SMTP → Playwright fetches Mailpit `/api/v1/messages` to assert the verification email arrived → Playwright clicks the verification link → assert account verified.
+
+**Phase scope: L** (largest in v2 — it's the harness; 7 features × 5 scenarios × full step coverage + the worker email fix + the testcontainers teardown fix + Mailpit API integration).
 
 ---
 
-## 4. Multi-Tenancy Model
+### Phase 12 — Admin onboarding wizard + UI-SPEC conformance
 
-### 4.1 Tenant resolution (priority order)
+**New components:**
+- **`apps/web/src/app/(public)/setup/page.tsx` (NEW)** — first-run wizard. Lives in `(public)` route group because the user is not yet authenticated. Three steps: (1) admin email + password + confirm; (2) optional SMTP override (or skip → mailpit); (3) optional OIDC provider config (skip allowed). On submit, calls `POST /api/setup/admin`.
+- **`apps/api/src/routes/setup.ts` (NEW)** — gated route surface:
+  - `GET /api/setup/status` — returns `{firstRun: bool, providersConfigured: string[]}`. Public, no auth.
+  - `POST /api/setup/admin` — body `{email, password, smtpOverride?, oidcProviders?}`. Refuses (409 `setup_already_complete`) if any user with `role='admin'` already exists. On success: creates Better Auth user, sets `role='admin'`, writes optional SMTP env to `tenant_settings`, persists OIDC config, returns 201 + session cookie.
+  - `GET /api/auth/providers` — returns `{providers: ['google'?, 'github'?, 'oidc-generic'?]}` derived from runtime config. **Used by web to conditionally render SSO buttons (TD-12.c fix).**
+- **`apps/api/src/lib/first-run.ts` (NEW)** — `isFirstRun(db)`: `SELECT count(*) WHERE role='admin'`. Single-statement, no transaction. Wired into the setup-status route and into a new Fastify pre-handler hook that 307-redirects every non-`/api/setup/*` request to `/setup` when `firstRun = true`. The redirect hook is mounted ONLY when `OPENWHISPR_FIRST_RUN_GATE=auto` (default); operators can disable with `=off` if they prefer the htpasswd break-glass path.
+- **`packages/data/migrations/00XX-users-role.sql` (NEW migration)** — `ALTER TABLE users ADD COLUMN role text NOT NULL DEFAULT 'user' CHECK (role IN ('user','admin'))`. Backfills nothing (greenfield deploys; existing v1 corp installs run the migration with zero admin rows → first sign-in becomes the admin via the wizard).
+- **`apps/web/src/app/(admin)/admin/page.tsx` (NEW INDEX)** — fixes TD-12.a (`/admin` 404). Server component, redirects to `/admin/config`.
+- **`tests/conformance/ui-spec/` (NEW)** — per-screen conformance tests under `tests/conformance/ui-spec/{sign-in,sign-up,verify-email,setup}.test.tsx`. Each test loads the component and asserts: (a) every field from `UI-SPEC-end-user.md` is rendered with correct `aria-label`; (b) error states match the spec's copy; (c) tab order matches `design-canvas.jsx`. Runs in vitest under `apps/web` not co-located, so the conformance suite can be invoked independently of unit tests. Reuses `tools/lint-ui-spec.ts` from Phase 07.
 
-| Method | When | Notes |
-|--------|------|-------|
-| **Token claim** (preferred) | Authenticated calls | Bearer token row `sessions.tenant_id` resolved at session lookup. Single source of truth. |
-| **Subdomain** (`{tenant}.openwhispr.example.com`) | Pre-auth + multi-domain installs | Parsed at edge or API tier; sets initial tenant context for `/api/check-user` and OAuth init. Falls back to `default` tenant if missing. |
-| **Header** (`X-OpenWhispr-Tenant: <slug>`) | Programmatic / admin / testing | Lowest trust — must be paired with admin-scoped token. |
-| **Default tenant** | Single-org installs | Bootstrap creates one row `tenants(slug='default')`. Every user belongs to it unless otherwise routed. |
+**Modified components:**
+- **`apps/api/src/index.ts`** — register the new `setup.ts` route plugin, register the first-run pre-handler hook AFTER the dual-auth hook so authenticated admins are exempt from the redirect.
+- **`apps/api/src/auth.ts`** — Better Auth `additionalFields.role` (mirrors existing `additionalFields.locale` pattern from Phase 10-01). Set on user creation.
+- **`apps/web/src/components/screens/auth/OidcButtons.tsx`** — mount-time fetch `/api/auth/providers`; render only configured buttons. Falls back to spinner during fetch (no flash of all-buttons).
+- **`apps/web/src/components/screens/auth/SignUpForm.tsx`** — deduplicate "already registered" banner (TD-13.a); render Zod field-level errors (TD-13.b) using existing `useForm` + `errors[fieldName]`. Reference `UI-SPEC-end-user.md` §sign-up and `design-canvas.jsx`.
+- **`apps/web/src/components/screens/auth/SignInForm.tsx`** — add "resend verification email" CTA on 403 response (TD-12.e). Better Auth's `POST /api/auth/send-verification-email` already exists; UI just needs to surface it.
+- **`docker-compose.embedded-litellm.yml`** — remove the bcrypt-hash `ADMIN_BASIC_AUTH_USERS` from default `.env.embedded.example`; document basicauth as break-glass only (TD-12.f). The Traefik basicauth middleware on `/admin` becomes a SECOND defense layer; the first is the wizard-issued admin user.
 
-Resolution rule: token-claim ALWAYS wins for authenticated calls. Cross-tenant requests (token claim ≠ resolved tenant from subdomain/header) → `403 Forbidden` + audit-log entry.
-
-### 4.2 Postgres isolation: row-level security
-
-**Recommendation: RLS with `app.tenant_id` GUC.** Schema-per-tenant doesn't scale to 1000 orgs (PG handles it but vacuum/migrations get painful). DB-per-tenant is operator nightmare.
-
-#### DDL sketch
-
-```sql
--- Every tenant-scoped table gets a tenant_id column + RLS
-CREATE TABLE tenants (
-  id          uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  slug        text UNIQUE NOT NULL,
-  display_name text NOT NULL,
-  plan        text NOT NULL DEFAULT 'free',
-  created_at  timestamptz NOT NULL DEFAULT now(),
-  deleted_at  timestamptz
-);
-
-CREATE TABLE users (
-  id          uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  tenant_id   uuid NOT NULL REFERENCES tenants(id),
-  email       citext NOT NULL,
-  idp_subject text,
-  created_at  timestamptz NOT NULL DEFAULT now(),
-  UNIQUE (tenant_id, email)
-);
-ALTER TABLE users ENABLE ROW LEVEL SECURITY;
-CREATE POLICY tenant_isolation_users ON users
-  USING (tenant_id = current_setting('app.tenant_id')::uuid);
-
-CREATE TABLE sessions (
-  id          uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  tenant_id   uuid NOT NULL REFERENCES tenants(id),
-  user_id     uuid NOT NULL REFERENCES users(id),
-  token_hash  bytea NOT NULL UNIQUE,        -- store SHA-256 of opaque bearer
-  expires_at  timestamptz NOT NULL,
-  rotated_at  timestamptz,
-  created_at  timestamptz NOT NULL DEFAULT now()
-);
-ALTER TABLE sessions ENABLE ROW LEVEL SECURITY;
-CREATE POLICY tenant_isolation_sessions ON sessions
-  USING (tenant_id = current_setting('app.tenant_id')::uuid);
-
-CREATE TABLE usage_ledger (
-  id           bigserial PRIMARY KEY,
-  tenant_id    uuid NOT NULL REFERENCES tenants(id),
-  user_id      uuid NOT NULL REFERENCES users(id),
-  metric       text NOT NULL,                -- 'transcribe_words' | 'reason_tokens' | 'streaming_minutes'
-  delta        bigint NOT NULL,
-  occurred_at  timestamptz NOT NULL DEFAULT now(),
-  request_id   text NOT NULL,                -- idempotency
-  UNIQUE (request_id, metric)
-);
-ALTER TABLE usage_ledger ENABLE ROW LEVEL SECURITY;
-CREATE POLICY tenant_isolation_usage ON usage_ledger
-  USING (tenant_id = current_setting('app.tenant_id')::uuid);
-
--- Application role MUST NOT bypass RLS. NO SUPERUSER, NO BYPASSRLS.
-CREATE ROLE openwhispr_app NOINHERIT NOLOGIN;
-GRANT USAGE ON SCHEMA public TO openwhispr_app;
-GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO openwhispr_app;
-```
-
-#### Per-request GUC injection (every connection checkout)
-
-```sql
--- Pseudocode in API tier middleware after auth resolve:
-BEGIN;
-SET LOCAL app.tenant_id = '<uuid-from-token>';
--- ... do the work ...
-COMMIT;
-```
-
-**Pitfall:** `SET` (no LOCAL) leaks across pooled connections — would cause cross-tenant data leak. ALWAYS `SET LOCAL`. Wrap in transaction even for single-statement reads.
-
-**Migration runner** uses a separate `openwhispr_migrator` role with `BYPASSRLS` — only ever runs DDL/data backfills. Audit-logged.
-
-### 4.3 Cross-tenant audit
-
-Every API tier middleware MUST:
-1. Resolve `claimed_tenant_id` from token.
-2. Resolve `target_tenant_id` from subdomain/header (if any).
-3. If both present and not equal → 403 + `audit_log(event='cross_tenant_attempt', user_id, claimed, target)`.
-4. Set `app.tenant_id` GUC to **claimed** (never target).
+**Phase scope: L** (wizard + 5 new endpoints + role column migration + UI conformance suite + 4 component remediations; one of the larger phases).
 
 ---
 
-## 5. Provider Abstraction Architecture
+### Phase 14 — Slim core + BYOK profiles
 
-### Interface signatures (TypeScript shape; language-agnostic)
+**Critical context from v1:** the existing `docker-compose.embedded-litellm.yml` ALREADY has Compose profiles (`default`, `obs-only`, `db-only`, `dev`, `load-test-*`). Helm already has `*.enabled` flags. **Phase 14 is not green-field; it is a re-segmentation of an already-profiled stack.** Prefer **overlay-based** approach (separate compose files merged via `-f`) over more profile multiplexing; matches the existing Helm `condition:` pattern and avoids the `--profile default` trap (TD-14.f / deferred-items 3a).
 
-```typescript
-// All providers resolve from tenant config. Hot-reload-safe via versioned config snapshot.
+**New components:**
+- **`docker-compose.slim.yml` (NEW)** — minimal 6-service core: api + web + worker + postgres + valkey + litellm. No Traefik (services expose host ports), no observability, no MinIO, no PgBouncer, no Mailpit. **Why a separate file, not a profile:** the v1 default file's services all carry `profiles: [default, …]` and renaming `default` to mean "slim" silently breaks every documented `--profile default` invocation. Cheaper to ship a new file. Loads 6 of 18 services.
+- **`docker-compose.dev-tools.yml` (NEW OVERLAY)** — overlay that adds mailpit, MinIO console UI for `make dev`. Mailpit moves here from production profile (TD-14.a).
+- **`docker-compose.observability.yml` (NEW OVERLAY)** — otel-collector, loki, tempo, mimir, grafana — for operators who want bundled obs (TD-14.b).
+- **`docker-compose.storage.yml` (NEW OVERLAY)** — minio + minio-console. When omitted, api reads `S3_ENDPOINT`/`S3_BUCKET` from env (BYOK; TD-14.c).
+- **`docker-compose.ingress.yml` (NEW OVERLAY)** — Traefik. When omitted, api exposes `:3000`, web `:3001`, litellm `:4000` on the host (TD-14.e).
+- **`docker-compose.pooler.yml` (NEW OVERLAY)** — pgbouncer. When omitted, api connects directly to postgres (TD-14.d).
+- **`.env.slim.example` (NEW)** — 5 keys: `POSTGRES_OWNER_PASSWORD`, `BETTER_AUTH_SECRET`, `LITELLM_MASTER_KEY`, `MASTER_KEK`, `OPENROUTER_API_KEY` (or other LLM provider) (TD-14.g).
+- **`Makefile` targets** — `make up-slim` (slim only), `make up-dev` (slim + dev-tools), `make up-full` (slim + every overlay).
+- **`apps/api/src/lib/storage-resolver.ts` (NEW)** — at boot, if `MINIO_ENDPOINT` unset and `S3_ENDPOINT` set → use AWS SDK with BYOK creds. If neither set, disable storage features (return 503 from storage routes with operator-actionable envelope).
+- **`apps/api/src/lib/smtp-resolver.ts` (NEW)** — if `SMTP_HOST` unset → fall back to mailpit (if reachable on `mailpit:1025`) else log warning and refuse to send. Wires into the Phase 13 email-service extraction.
 
-interface LLMProvider {
-  readonly id: string;                              // 'litellm' | 'openai' | 'anthropic' | ...
-  generate(request: LLMRequest, ctx: TenantCtx): Promise<LLMResult>;
-  stream(request: LLMRequest, ctx: TenantCtx): AsyncIterable<LLMStreamEvent>;
-}
+**Modified components:**
+- **`docker-compose.embedded-litellm.yml`** — drop `profiles:` from universal services (TD-14.f / `.planning/deferred-items.md` 3a). Now `compose up -f docker-compose.embedded-litellm.yml` (no `--profile`) selects all 18 services. This single edit unblocks documented quickstart copy-paste.
+- **`charts/openwhispr/values.yaml`** — already has `observability.collector.enabled`, `minio.enabled`, `pooler.enabled`. New: `mailpit.enabled` (default `false`); `ingress.enabled` already exists; document BYOK pattern. **Helm side is small — most flags already present.**
+- **`charts/openwhispr/Chart.yaml`** — `dependencies` already condition-gated. No structural change.
 
-interface STTProvider {
-  readonly id: string;                              // 'litellm-speaches' | 'assemblyai' | 'deepgram' | 'openai-whisper' | 'groq'
-  transcribe(audio: ReadableStream, opts: STTOpts, ctx: TenantCtx): Promise<STTResult>;
-}
-
-interface RealtimeProvider {
-  readonly id: string;                              // 'speaches-realtime' | 'openai-realtime' | 'assemblyai-streaming' | 'deepgram-streaming'
-  mintToken(opts: RealtimeOpts, ctx: TenantCtx): Promise<RealtimeToken>;
-  // The ws upgrade itself happens in API tier ingress, not here — provider only mints credentials.
-}
-
-interface StorageProvider {
-  readonly id: string;                              // 's3' | 'minio' | 'gcs' | 'azure-blob'
-  put(key: string, body: ReadableStream, ctx: TenantCtx): Promise<{ url: string; etag: string }>;
-  get(key: string, ctx: TenantCtx): Promise<ReadableStream>;
-  delete(key: string, ctx: TenantCtx): Promise<void>;
-  presign(key: string, op: 'GET'|'PUT', ttl: number, ctx: TenantCtx): Promise<string>;
-}
-
-interface EmailProvider {
-  readonly id: string;                              // 'smtp' | 'sendgrid' | 'ses' | 'postmark'
-  send(msg: EmailMessage, ctx: TenantCtx): Promise<{ messageId: string }>;
-}
-
-interface BillingProvider {
-  readonly id: string;                              // 'stripe' | 'null'
-  createCheckout(plan: PlanId, ctx: TenantCtx): Promise<{ url: string }>;
-  createPortal(ctx: TenantCtx): Promise<{ url: string }>;
-  switchPlan(plan: PlanId, ctx: TenantCtx): Promise<{ ok: boolean }>;
-  previewSwitch(plan: PlanId, ctx: TenantCtx): Promise<ProrationPreview>;
-}
-
-interface IdPProvider {
-  readonly id: string;                              // 'oidc' | 'saml' | 'google' | 'microsoft' | 'apple' | 'github' | 'email-password' | 'magic-link'
-  buildAuthorizeURL(state: string, ctx: TenantCtx): string;
-  exchangeCode(code: string, state: string, ctx: TenantCtx): Promise<IdPClaims>;
-}
-
-interface TenantCtx {
-  tenantId: string;
-  userId?: string;
-  requestId: string;
-  traceId: string;
-  config: ResolvedTenantConfig;                     // snapshot at request-start
-}
-```
-
-### Runtime selection
-
-```
-Request arrives
-   │
-   v
-Auth middleware: token -> tenant_id, user_id, requestId
-   │
-   v
-ConfigResolver.resolve(tenantId)        // versioned cache, refreshed on config-change pubsub
-   │
-   v
-TenantCtx { config: { llm: 'litellm', stt: 'litellm-speaches', realtime: 'speaches-realtime', ... } }
-   │
-   v
-Endpoint handler:
-   const llm = providerRegistry.llm(ctx.config.llm);
-   const result = await llm.generate(req, ctx);
-```
-
-- **Hot-reload-safe:** config changes go to Postgres → notify channel → API tier invalidates cached snapshot. In-flight requests keep their existing snapshot (no swap mid-request).
-- **Per-tenant override:** any provider can be overridden in `tenant_config` table. `default` tenant uses operator-level defaults from env/YAML.
-- **Fail-loud on missing:** unknown provider id → 500 + audit log. No silent fallback.
+**Phase scope: M** (5 new compose overlay files + 2 resolver libs + Makefile + values doc; Helm side is essentially documentation since gating exists). Compose is the heavy lift; Helm is light.
 
 ---
 
-## 6. Data Flow for Usage / Quota
+### Phase 15 — Repo refactor + FSL + history scrub
 
-```
-Request: POST /api/transcribe
-   │
-   v
-[API tier handler]
-   │
-   ├── 1. Quota pre-check (synchronous, BEFORE upstream)
-   │      SELECT (plan_limit - words_used) AS remaining
-   │      FROM usage_summary_view
-   │      WHERE tenant_id = current_setting('app.tenant_id')
-   │
-   │      IF remaining <= 0 → return 200 + {limitReached:true}
-   │      (NO upstream call — this is the contract)
-   │
-   ├── 2. Forward to LiteLLM (multipart pass-through)
-   │      LiteLLM emits spend log → spend_logs table OR webhook
-   │
-   ├── 3. On response: word_count = countWords(text)
-   │
-   ├── 4. INSERT INTO usage_ledger (tenant_id, user_id, metric='transcribe_words',
-   │                                delta=word_count, request_id=<idempotent>)
-   │      RETURNING id;                  -- ledger is append-only, idempotent on request_id
-   │
-   ├── 5. usage_summary_view (materialized) refreshed by worker job
-   │      every 30s OR after each ledger insert (trigger-based incremental update)
-   │
-   └── 6. Response: {text, wordsUsed, wordsRemaining, plan, limitReached:false, ...}
+**New components:**
+- **`tools/codemod/rewrite-test-layout.ts` (NEW)** — ts-morph-driven codemod. Moves `apps/{api,web,worker}/src/**/*.test.ts` to `apps/{api,web,worker}/tests/unit/{mirror of src tree}`. Updates `vitest.config.ts` `include` patterns. **Recommended convention (option (c) per the question):** full split into `apps/<app>/tests/{unit,integration}/`. Rationale: (1) co-location is the current pain point (TD-15.a); (2) Phase 13's `tests/e2e-cjm/` already establishes the "tests at root" pattern at the repo level; (3) `apps/<app>/tests/` matches the existing `tests/e2e/` and `packages/contract-tests/` posture.
+- **`compose/` reorganization** — move root `docker-compose.*.yml` into `compose/` (so the new slim/overlay files from Phase 14 land there): `compose/embedded-litellm.yml`, `compose/slim.yml`, etc. Update `Makefile` and every doc `docker-compose -f compose/…` invocation.
+- **`tools/codemod/license-fsl.ts` (NEW)** — ts-morph script: replace `// SPDX-License-Identifier: Apache-2.0` with `// SPDX-License-Identifier: FSL-1.1-Apache-2.0` (or the FSL-defined identifier — verify at the FSL project before sweep) across 675+ files. Update root `LICENSE` (FSL text), `NOTICE`, every workspace `package.json:"license"`, `charts/openwhispr/Chart.yaml:annotations.licenses`. **Note:** FSL is Fair Source License — verify exact SPDX identifier with the FSL project; if no SPDX entry exists, ship a custom identifier and an explicit `LICENSE-FSL.md`.
+- **`scripts/scrub-history.sh` (NEW)** — wraps `git filter-repo --path speaches-audio.md --invert-paths`. Documents the force-push protocol: notify branch-trackers, force-push `main` + every active feature branch in a coordinated window, regenerate any signed tags.
 
-[Worker tier — async]
-   │
-   ├── LiteLLM webhook ingest:
-   │      Receives spend_log → INSERT INTO usage_ledger (metric='dollars', delta=...)
-   │      Reconciles word-count vs token-count for billing audit
-   │
-   ├── Daily rollup job:
-   │      INSERT INTO usage_daily_rollup (tenant_id, date, words, tokens, dollars)
-   │      FROM usage_ledger WHERE occurred_at::date = $1
-   │
-   └── Plan-reset job (at billing cycle):
-          UPDATE tenants SET cycle_started_at = now()
-          (Aggregate views key off cycle_started_at)
-```
+**Modified components:**
+- **`(admin)` / `(public)` / `(auth)` route groups** (TD-15.b) — DECISION: keep parens (idiomatic Next.js 15 App Router for layout segmentation) but add a one-line comment in each `layout.tsx` explaining the grouping rationale. Rename is churn for low gain.
+- **`apps/web/public/.gitkeep`** — commit it (resolves `.planning/deferred-items.md` item 2).
+- **Traefik host split (TD-15.g)** — DECISION: split `web.localhost` from `api.localhost`. Modify `compose/traefik/dynamic.yml`: web router on `Host(\`web.localhost\`)`, api router on `Host(\`api.localhost\`)`. Web `/api/locale` then lives at `https://web.localhost/api/locale` (Next.js handles it). API routes stay at `https://api.localhost/api/*`. Update web client's `NEXT_PUBLIC_API_BASE_URL` and Better Auth's `trustedOrigins`. **This is structural — must coordinate with Phase 17 cert generation (mkcert needs both hostnames).**
 
-**Contract pieces:**
-- `wordsUsed` = sum(delta) for current cycle.
-- `wordsRemaining` = `plan_limit - wordsUsed` (clamped at 0).
-- `limitReached` = `wordsRemaining <= 0`.
-- `plan` = tenant.plan or user.plan (which one is plan-tier-dependent — design now says **tenant** is canonical, user inherits).
-
-**Idempotency:** every request gets a `request_id` (from `clientTranscriptionId` if present, else server-generated). Ledger has `UNIQUE(request_id, metric)` so retries don't double-count.
+**Phase scope: L** (test layout codemod touches ~600 files; license codemod touches 675 files; history scrub is irreversible; Traefik host split touches Better Auth `trustedOrigins`, env, web client). Highest blast radius of any v2 phase.
 
 ---
 
-## 7. Build Order / Phase Implications
+### Phase 16 — Phase-tag comment audit
 
-### Suggested phase ordering
+**New components:**
+- **`tools/codemod/audit-phase-comments.ts` (NEW)** — ts-morph script. For each `// Phase XX` comment: (a) if the comment is ONLY `// Phase XX / Plan YY / D-ZZ` with no additional WHY → delete; (b) if comment continues with substantive prose explaining a non-obvious choice → strip only the leading `Phase XX / Plan YY / D-ZZ` tag, keep the WHY. Heuristic: regex `^// (Phase \d+(\.\d+)? \/ Plan \d+(\.\d+)? \/ D-\w+(\s+\([^)]+\))?)$` matches kill-only lines.
+- **`tools/lint-phase-comments.ts` (NEW)** — CI lint forbidding the comment pattern in new code. Biome doesn't natively support arbitrary regex comment rules; mirrors the existing `tools/lint-english.ts` pattern.
 
-```
-Phase 0: Repo bootstrap                       (1-2 days)
-  - Monorepo layout, lint/test/CI, license headers, .editorconfig
-  - DOCS-09 (English-only) policy enforced via lint rule
+**Modified components:**
+- ~771 verified comments across `apps/` + `packages/` (NOT 1642 — that count includes tests, tools, and `.planning/`). Codemod runs in-place; atomic commit with full diff for review.
 
-Phase 1: Core infra (compose-only)            (3-5 days)
-  - docker-compose.yml: nginx + Postgres + Redis + MinIO + LiteLLM + Speaches
-  - Postgres init: tenants/users/sessions/usage_ledger schema + RLS DDL
-  - Bootstrap "default" tenant
-  - Healthchecks, otel-collector + Prometheus + Grafana minimum
-  - Validates: SCALE-01 footprint, observability scaffolding
-
-Phase 2: Auth + wire-API skeleton             (5-7 days)
-  - /api/check-user, /api/auth/verification-status, /api/auth/delete-account
-  - /api/desktop-signin/{provider} shim, channel-scheme echo
-  - Better-Auth-compatible bearer issue + cookie fallback
-  - withSessionRefresh-compatible 401 handling
-  - set-auth-token rotation header
-  - VALIDATES: WIRE-01, AUTH-01-05; desktop client can sign in
-
-Phase 3: LiteLLM + Speaches default backend   (4-6 days)
-  - LiteLLM config spec (DOCS-05)
-  - Multipart pass-through patch deployment
-  - Virtual-key generation per user
-  - /api/transcribe → LiteLLM → Speaches Whisper end-to-end
-  - /api/reason → LiteLLM → routed LLM (default openai/gpt-4o-mini or local)
-  - VALIDATES: LITELLM-01..05, WIRE-02 partial
-
-Phase 4: Streaming + realtime                 (5-7 days)
-  - /api/agent/stream NDJSON line-flush (verified at p99 < 50ms ttfb)
-  - WSS /v1/realtime proxy (Option A direct)
-  - /api/openai-realtime-token virtual-key minting
-  - Ingress 1h timeouts + buffering off rules
-  - VALIDATES: SCALE-05, WIRE-02 streaming subset
-
-Phase 5: Multi-provider abstraction           (5-8 days)
-  - Provider interface implementations beyond LiteLLM
-  - AssemblyAI, Deepgram, OpenAI Whisper, Groq STT
-  - Direct OpenAI/Anthropic/Gemini/Bedrock/Azure/Vertex LLM
-  - Per-tenant config resolver
-  - /api/streaming-token, /api/deepgram-streaming-token (token mints)
-  - VALIDATES: PROVIDER-01..04
-
-Phase 6: Quotas + billing + referrals         (4-6 days)
-  - usage_ledger writes, usage_summary_view, daily rollup worker
-  - LiteLLM spend-log ingestion
-  - Stripe provider implementation (checkout/portal/switch/preview)
-  - /api/referrals/{stats,invite,invites} + email send
-  - VALIDATES: PROVIDER-05, DATA-03, OBS-04
-
-Phase 7: Observability + ops hardening        (3-5 days)
-  - End-to-end tracing across API → LiteLLM → Speaches
-  - Grafana dashboards (RED + saturation)
-  - Structured logging w/ correlation IDs
-  - Audit log + PII redaction
-  - VALIDATES: OBS-01..04, DATA-04..05
-
-Phase 8: Frontend UI-SPEC                     (3-5 days)
-  - Admin console UI-SPEC (UI-01)
-  - End-user self-service UI-SPEC (UI-02)
-  - Component inventory + WCAG 2.2 AA
-  - VALIDATES: UI-01..03
-
-Phase 9: Load test + tuning                   (5-8 days)
-  - 1000-concurrent simulation: transcribe + reason + stream + WSS
-  - Identify and fix bottlenecks (FD limits, PgBouncer pool, Redis ops/sec)
-  - Confirm p95 SLO budgets
-  - VALIDATES: SCALE-06
-
-Phase 10: Helm chart + cloud deploy           (5-8 days)
-  - HA Postgres operator (CNPG), autoscaling, ingress, cert-manager
-  - One-command bootstrap, one-command upgrade, migration safety
-  - VALIDATES: DEPLOY-01..04
-
-Phase 11: i18n + docs + OSS housekeeping      (3-5 days)
-  - en + ru locale files, locale negotiation
-  - All DOCS-* deliverables
-  - CONTRIBUTING/SECURITY/CoC, ADRs
-  - VALIDATES: I18N-01..02, DOCS-01..09
-```
-
-### Dependency rationale
-
-- Phase 1 before everything: nothing works without infra.
-- **Auth (Phase 2) before LiteLLM (Phase 3):** desktop can't call `/api/transcribe` without a valid bearer; smoke-testing transcribe needs auth.
-- **Streaming (Phase 4) after sync endpoints (Phase 3):** sync paths flush out provider/quota plumbing without time pressure of buffering bugs.
-- **Multi-provider (Phase 5) after LiteLLM happy-path (Phase 3+4):** abstraction is shaped by real-world LiteLLM/Speaches needs; building abstractions first risks over-engineering.
-- **Quotas (Phase 6) after providers stable:** ledger needs real upstream calls to validate counts.
-- **Load test (Phase 9) before Helm (Phase 10):** k8s amplifies bugs (per-pod FD limits, HPA flapping). Compose tuned first → port to Helm.
-- **i18n (Phase 11) at end:** stable copy is harder to translate twice. But locale framework wiring should exist from Phase 2 onward (string keys, not literals).
+**Phase scope: S** (single codemod + lint rule + one big sweep commit; mechanical).
 
 ---
 
-## 8. Failure Domains and Graceful Degradation
+### Phase 17 — Trusted local TLS + prod ACME
 
-| Component down | Affected endpoints | Behavior | Recovery |
-|----------------|--------------------|----------|----------|
-| **LiteLLM** | `/api/transcribe`, `/api/reason`, `/api/agent/stream`, `/v1/realtime` | All return `503 + {error:"upstream unavailable"}`. Cannot degrade — these are core. Health endpoints surface red. | LiteLLM restart; circuit-breaker on API tier reopens after 3 successful health probes. |
-| **Speaches** | `/api/transcribe`, `/v1/realtime` | LiteLLM proxies to Speaches; if Speaches is the configured STT model, returns 503. Operator with multi-STT can route to fallback (Deepgram/AssemblyAI). | Speaches restart. GPU OOM is the typical failure — pre-set memory limits + restart on OOM. |
-| **Postgres primary** | All authenticated endpoints | Patroni/CNPG promotes replica (~10-30s). API tier middleware uses bounded retries with backoff (max 3 attempts, 100ms-1s); after exhaust → 503 SERVER_ERROR. **Pre-auth /api/check-user falls through to "user does not exist"** per wire contract — desktop routes to sign-up; not a regression. | Failover automatic. PgBouncer reconnects. |
-| **Postgres all replicas** | All endpoints | 503 across the board. /api/health returns 5xx. Desktop sees "offline" UI. | Restore from backup; data path is unrecoverable without Postgres. |
-| **Redis** | Rate limit + quota cache + queue | **Fail-OPEN on rate limit** (better UX than blocking everyone), **fail-CLOSED on idempotency keys** (avoid duplicate ledger inserts). Queue jobs back up — workers idle. Email/webhook delays. | Redis restart. Sentinel/Cluster makes this rare. |
-| **Worker tier** | Background jobs only | Synchronous endpoints unaffected. Webhooks delayed; usage rollups stale (current-cycle counts still served from ledger directly, but daily aggregates lag). | HPA brings workers back. Backlog drains. |
-| **Object storage** | Transcript persist (if enabled), audit-log archive | Optional path — if disabled, no impact. If enabled and down, writes go to local disk fallback queue + retry by worker. Reads of historical blobs return 503. | Storage restart. |
-| **Ingress single replica** | Everything | Site down. → 2+ replicas required. | k8s rescheduling; compose: single point — accept or use external LB. |
-| **Email provider** | Verification emails, referral invites | `/api/auth/verification-status` keeps polling — verified flips false until email lands; UX delay only. Referrals queued + retried. | Email retry with backoff. After N failures, alert operator. |
-| **IdP (Google/MS/Apple)** | New sign-ins via that provider | Existing sessions unaffected. New sign-ins through other providers OK. Email-password works always. | IdP recovery. |
-| **Stripe** | `/api/stripe/*` | Return 503; desktop UI shows error. Existing subscriptions/quotas keep working (quota in our DB, not Stripe's). | Stripe SLA; retries via worker. |
+**New components:**
+- **`scripts/mkcert-setup.sh` (NEW)** — wraps `mkcert -install` + generates `*.localhost` cert into `compose/traefik/certs/local.crt` (replacing the openssl-self-signed one). Reads hostname list from a single source-of-truth file (post-Phase 15 split: api.localhost, web.localhost, app.localhost, grafana.localhost, mailpit.localhost).
+- **`Makefile` target** — `make tls-trust` → runs `mkcert-setup.sh`; idempotent.
 
-**Cross-cutting pattern:** every external call is wrapped in:
-1. Timeout (per-provider; 3s for /health, 30s for sync STT/LLM, 60min for streaming).
-2. Retries with jittered backoff (idempotent only).
-3. Circuit breaker (open after N failures within window; half-open probe; close on success).
-4. Audit/metric for each state transition.
+**Modified components:**
+- **`compose/traefik/traefik.yml`** — no change to TLS config; certs swap is via file mount, transparent to Traefik.
+- **`compose/traefik/dynamic.{dev,prod}.yml` SPLIT** — ship two dynamic files. `dynamic.dev.yml` (current; mkcert certs) and `dynamic.prod.yml` (ACME resolver `letsencrypt`). Compose env (`TRAEFIK_DYNAMIC_FILE`) selects which file is mounted. Helm path (`certManager.enabled=true`) already correct from Phase 9.
+- **`README.md` quickstart** — add `make tls-trust` as a one-time step after `cp .env.embedded.example .env` (TD-17.a).
+
+**Phase scope: S** (one script + Makefile target + doc update + Traefik config split; ~3 files modified).
 
 ---
 
-## 9. Container Topology
+### Phase 18 — LDAP / Keycloak (SPEC only — NO implementation)
 
-### Compose (single-host self-host)
+**Deliverables are docs and ADRs, not code.**
 
-```
-docker-compose.yml services:
-  nginx           (reverse proxy + TLS)
-  api             (3 replicas via deploy.replicas)
-  worker          (2 replicas)
-  auth            (option A: subset of api, no separate service)
-  postgres        (single, with backups via pg_basebackup volume)
-  pgbouncer       (in front of postgres)
-  redis           (single, AOF persistence)
-  litellm         (1 replica; multipart-patched image)
-  speaches        (1 replica; needs GPU, --gpus all on host with CUDA)
-  minio           (S3-compatible)
-  otel-collector
-  prometheus
-  grafana
-  loki
-```
+**New components (artifacts):**
+- **`.planning/phases/18-…/SPEC-ldap-keycloak.md` (NEW)** — the SPEC document. Sections:
+  1. Architecture diagrams (mermaid) for both options:
+     - **Option (a) — Keycloak/Authentik in front of LDAP.** Compose: new `keycloak` service on `:8080`, joined to `openwhispr_internal` network. Helm: new sub-chart dependency on `bitnami/keycloak` (or `codecentric/keycloak`), `condition: keycloak.enabled`. Better Auth wires Keycloak as a generic OIDC provider (existing `@better-auth/sso` plugin path, no code surgery). LDAP details stay inside Keycloak's federation config.
+     - **Option (b) — Custom Better Auth LDAP plugin.** New package `packages/auth-ldap/` exporting `ldapPlugin({url, baseDN, bindDN, bindPw})`. Uses `ldapjs`. Injects into Better Auth's `socialProviders` or as a custom credential provider. Tight coupling; no extra container.
+  2. Recommendation (per TECH_DEBT.md TD-18.a): **option (a)**. Justification: zero Better Auth surgery; Keycloak's LDAP federation is battle-tested; corp standard.
+  3. v3 implementation phase plan (sketch only; not roadmapped here).
+- **`docs/adrs/0012-ldap-via-keycloak.md` (NEW ADR)** — captures the decision, alternatives, consequences.
 
-- **Sidecar-style for LiteLLM/Speaches?** No — separate deployments. They have different lifecycles, different scale axes, and Speaches needs GPU. Sidecars (one-per-API-pod) would 10x GPU cost.
+**No code, no compose, no Helm changes in v2.**
 
-### Helm (k8s cloud)
-
-```
-Deployments:
-  ingress-nginx        (DaemonSet or Deployment, 2+)
-  api                  (HPA 3-30 replicas, CPU+RPS-based)
-  worker               (HPA 2-20)
-  auth                 (HPA 2-10) — optional split if cookie isolation needs it
-  litellm              (Deployment, 2-4 replicas, ClusterIP)
-  speaches             (StatefulSet, 1-N replicas, **node-selector: gpu**)
-
-Operators / managed:
-  cnpg-cluster         (3 nodes Postgres, automated backups, pooler)
-  redis-sentinel       (3 nodes) or Redis Cluster
-
-Networking:
-  Ingress (cert-manager) → api Service
-  api → litellm.ClusterIP
-  litellm → speaches.ClusterIP (svc-headless if statefulset for sticky sessions during realtime)
-  All pods → otel-collector DaemonSet
-
-Helm values surface:
-  - replicas per tier (overridable)
-  - postgres connection (CNPG cluster name)
-  - litellm config (mounted as Secret)
-  - tenant defaults (ConfigMap)
-  - GPU node selector for Speaches
-```
-
-**Sticky sessions for WSS realtime:** at ingress, hash by `Authorization` token (or `sec-websocket-key`) to keep a session pinned to one Speaches pod for its lifetime. Otherwise, mid-session pod restart drops audio.
+**Phase scope: S** (research + 1 SPEC doc + 1 ADR; no production code).
 
 ---
 
-## 10. Streaming / Long-Lived Connection Sizing (1000 concurrent)
+## 3. Dependency graph
 
-### Connection inventory at peak
-
-Assume worst-case mix at 1000 concurrent users:
-- 200 holding `/api/agent/stream` (NDJSON, ~30s-3min each)
-- 100 on WSS `/v1/realtime` (~5min average)
-- 700 in idle / sync request mix (50 RPS for transcribe + reason etc., 200ms p50)
-
-**Sockets held simultaneously (steady-state peak):**
-
-| Path | Sockets ingress→api | Sockets api→litellm | Sockets litellm→speaches |
-|------|---------------------|---------------------|--------------------------|
-| Sync RPS (50/s × 200ms p50) | ~10-20 in-flight | ~10-20 | ~10-20 |
-| Agent stream (200 concurrent) | 200 | 200 | n/a (LLM is upstream) |
-| Realtime WSS (100 concurrent) | 100 | 100 (Option B) or 0 (A) | 100 |
-| **Subtotal** | **~310 ingress** | **~310** | **~110-130 GPU** |
-| Plus client→ingress double-direction socket fan-out |    | |  |
-
-### nginx / ingress sizing
-
-- `worker_connections 8192;` (default 1024 is too low).
-- `worker_rlimit_nofile 65535;` (raise FD limit).
-- `keepalive_requests 1000; keepalive_timeout 75s;` for connection reuse.
-- 2 ingress replicas → 16k worker connections headroom; 4x safety margin over 310 simultaneous.
-- Per-replica RAM: ~256MB base + ~100MB for buffers; **2GB request, 4GB limit** is safe.
-
-### API tier sizing
-
-Stateless tier; concurrency model matters:
-- **Node/Fastify (event loop):** 1 process per CPU core; 200-500 concurrent open requests per process is fine because most are I/O-bound waiting on LiteLLM. **3 pods × 4 vCPU × ~500 = 6000-capable**, well over 1000.
-- **Go/Fiber (goroutines):** essentially unlimited per pod within RAM. 3 pods × 2 vCPU is plenty.
-- **Python/FastAPI (asyncio):** similar to Node. 4 workers × 3 pods.
-- Memory: streaming = no payload buffered server-side; ~10-30MB per connection (TLS state + small internal buffers). 310 × 30MB = ~9GB across cluster — **3 pods × 4GB request, 6GB limit**.
-- **CRITICAL:** disable any framework body-buffering on `/api/transcribe` and `/api/agent/stream`. Default Fastify has `bodyLimit: 1MB` → must increase or switch to streaming `multipart` plugin. FastAPI with `UploadFile` is fine.
-
-### Postgres sizing
-
-- 1000 users × ~2 RPS during active use = 2000 RPS. Auth lookup + tenant resolve + GUC set + endpoint query = 3-5 queries. **6k-10k QPS peak.**
-- PgBouncer transaction-mode pool: 100 server connections is enough; 1000 client-side waiters fan in.
-- Postgres max_connections: 200 (pgbouncer multiplexes).
-- 1 primary + 2 replicas (read-heavy quota lookups go to replicas via routing layer).
-- Disk: ledger inserts heavy; SSD with WAL on separate volume; 50GB initial.
-
-### Redis sizing
-
-- Rate-limit ops: ~3 ops per HTTP call → 6k-10k ops/s. Single Redis 7 instance does 100k+ ops/s. 1 instance fine; 2 for HA.
-
-### Speaches GPU sizing
-
-- Whisper-large-v3 transcription: ~real-time × 5 on a single GPU lane. 50 concurrent transcriptions per A10/L4-class GPU.
-- Realtime sessions: heavier; ~20 concurrent per GPU.
-- 1000 users does NOT mean 1000 concurrent transcribes — peak ~100-200. **2-4 GPU pods** sized at A10G or L4.
-- This is the most expensive tier — tune actively post-load-test.
-
-### File-descriptor math (single API pod)
-
-- 310 client sockets + 310 upstream sockets + 100 DB pool conns + 50 Redis conns + 20 file/log = ~800.
-- Default `ulimit -n` on Linux: 1024 (TIGHT) or 65535. **Set explicitly to 65535.**
-- k8s: `securityContext.sysctls` or set in container entrypoint.
-
----
-
-## 11. Architectural Patterns
-
-### Pattern 1: Tenant context middleware
-
-**What:** Every authenticated request resolves tenant once, sets DB GUC, passes immutable `TenantCtx` to handlers.
-**When:** Every authenticated path. No exceptions.
-**Trade-offs:** Adds 1ms overhead per request. Buys safety: handlers can't accidentally bypass RLS.
-
-```pseudo
-async function tenantMiddleware(req, res, next) {
-  const token = parseAuthHeader(req);
-  const session = await sessionStore.find(hash(token));
-  if (!session) return res.status(401).json({error: "Unauthorized"});
-
-  // Cross-tenant guard
-  const subdomainTenant = parseSubdomain(req.host);
-  if (subdomainTenant && subdomainTenant !== session.tenantId) {
-    auditLog.crossTenantAttempt(session, subdomainTenant);
-    return res.status(403).json({error: "Forbidden"});
-  }
-
-  const ctx = {
-    tenantId: session.tenantId,
-    userId: session.userId,
-    requestId: req.headers['x-request-id'] ?? uuid(),
-    traceId: getTraceId(req),
-    config: await configResolver.resolve(session.tenantId),
-  };
-
-  // Acquire DB connection + set GUC
-  await db.transaction(async (tx) => {
-    await tx.exec(`SET LOCAL app.tenant_id = $1`, [ctx.tenantId]);
-    req.ctx = { ...ctx, tx };
-    await next();
-  });
-}
+```
+       ┌──────────────────────────────────────────────────────────┐
+       │                                                          │
+       v                                                          │
+   ┌────────┐    ┌────────┐    ┌────────┐                         │
+   │   13   │───>│   12   │───>│   14   │──┐                      │
+   │ E2E    │    │ Admin  │    │ Slim   │  │                      │
+   │ harness│    │ wizard │    │ +BYOK  │  │                      │
+   └────────┘    └────────┘    └────────┘  │                      │
+       │            │              │       │                      │
+       │            │              v       │                      │
+       │            │          ┌────────┐  │                      │
+       │            │          │   17   │  │                      │
+       │            │          │ TLS    │  │                      │
+       │            │          └────────┘  │                      │
+       │            │              ^       │                      │
+       │            │              │       v                      │
+       │            │           ┌────────────┐                    │
+       │            └──────────>│     15     │  (repo refactor    │
+       │                        │ repo+FSL   │   may rename       │
+       │                        │ +scrub     │   web/api hosts    │
+       │                        └────────────┘   → ripples to 17) │
+       │                              │                           │
+       │                              v                           │
+       │                          ┌────────┐                      │
+       └─────────────────────────>│   16   │                      │
+                                  │comments│                      │
+                                  └────────┘                      │
+                                                                  │
+                                  ┌────────┐                      │
+                                  │   18   │ (independent;        │
+                                  │SPEC only│  no code deps)      │
+                                  └────────┘                      │
 ```
 
-### Pattern 2: Provider registry with hot-reload-safe snapshots
+**Hard deps:**
+- **13 → everything** — without the Cucumber harness, every other v2 phase ships untested user-facing changes (the project's strict-TDD rule promotes this from "preference" to "blocker").
+- **13 → 12 (worker email fix)** — 13 lands the `noopSender` removal; 12's signup-with-verification flow needs the worker to actually send.
+- **15 → 17 (host split)** — Phase 15's `web.localhost` / `api.localhost` split changes the hostname list mkcert provisions in Phase 17. **Land 15 before 17, OR land 17 with both hostname sets and let 15 drop the unused one.**
+- **14 ↔ 17** — Phase 14's `docker-compose.ingress.yml` overlay is where Phase 17's dev-vs-prod cert config switches live. Either order works; if 14 lands first, 17 modifies its overlay; if 17 lands first, 14 splits the overlay.
+- **18 ⊥ all** — pure docs phase, schedulable anywhere.
 
-**What:** Tenant config is resolved once per request into an immutable snapshot. Changes to config don't affect in-flight requests.
-**When:** All provider dispatches.
-**Trade-offs:** Slightly stale config for inflight requests (acceptable). Simple correctness.
-
-```pseudo
-class ConfigResolver {
-  constructor(db, redis) {
-    this.cache = new Map(); // tenantId -> { version, config }
-    redis.subscribe('tenant_config_changed', (tenantId) => this.cache.delete(tenantId));
-  }
-  async resolve(tenantId) {
-    if (this.cache.has(tenantId)) return this.cache.get(tenantId).config;
-    const row = await db.queryOne(`SELECT config, version FROM tenant_config WHERE tenant_id = $1`, [tenantId]);
-    this.cache.set(tenantId, row);
-    return row.config;
-  }
-}
-```
-
-### Pattern 3: Streaming with explicit flush
-
-**What:** NDJSON endpoints write each line and explicitly flush before returning to the I/O loop.
-**When:** `/api/agent/stream` only.
-**Trade-offs:** Requires framework support; some HTTP libraries don't expose `flush`. Audit choice in STACK research.
-
-```pseudo
-async function agentStream(req, res, ctx) {
-  res.setHeader('Content-Type', 'application/x-ndjson');
-  res.setHeader('X-Accel-Buffering', 'no'); // nginx hint
-  res.setHeader('Cache-Control', 'no-store');
-
-  for await (const event of agentLoop(req.body, ctx)) {
-    res.write(JSON.stringify(event) + '\n');
-    res.flush?.();   // explicit; framework-dependent
-  }
-  res.end();
-}
-```
-
-### Pattern 4: Quota pre-check + ledger insert (write-through)
-
-**What:** Read-then-call-then-write. Quota check before upstream; ledger insert after upstream returns.
-**When:** Every metered endpoint.
-**Trade-offs:** Two DB roundtrips per request. Race condition: two simultaneous requests at exactly limit can both pass pre-check. Acceptable — ledger is canonical, slight overage tolerated, audit log catches it.
-
-### Pattern 5: Circuit-breaker per upstream
-
-**What:** Wrap every external call in a per-target breaker.
-**When:** All provider calls (LLM, STT, Realtime, Email, Stripe, IdP).
-**Trade-offs:** Adds complexity. Mandatory at scale.
+**Soft deps:**
+- **12 → 16 (comments)** — Phase 12 adds new code; running the comment audit after 12 catches new phase-tag comments before they ossify.
+- **15 → 16** — repo refactor moves files; comment audit is easier on a stable file layout.
 
 ---
 
-## 12. Anti-Patterns
+## 4. Recommended build order — VALIDATION of user-proposed 13→12→14→15→16→17→18
 
-### Anti-Pattern 1: Buffering the NDJSON response
+The user-imposed order is **13 → 12 → 14 → 15 → 16 → 17 → 18**.
 
-**What people do:** Return NDJSON from a handler that builds a full `string[]` then JSON-stringifies and sends once.
-**Why it's wrong:** Defeats the streaming wire contract; client UI waits for full response → terrible UX. Memory blows up on long agent runs.
-**Do this instead:** Generator/async-iterable + `res.write(line + '\n')` + `res.flush()` per line.
+**Verdict: MOSTLY CORRECT — one swap recommended.**
 
-### Anti-Pattern 2: Hardcoding `openwhispr://` in OAuth redirect
+### Confirmations
+- **13 first** is non-negotiable per `.planning/TECH_DEBT.md` line 23 ("THIS IS THE GATE"). Strict-TDD rule + zero existing Playwright/Cucumber coverage means every subsequent phase ships test-first against the new harness.
+- **12 after 13** is correct because the admin wizard + UI conformance work needs the harness to write tests against. Also the Phase 13 worker `noopSender` fix unblocks 12's signup-verify flow.
+- **18 last** is correct — SPEC-only, no code dependencies, no urgency.
 
-**What people do:** Final 302 emits `openwhispr://?bearer_token=...` regardless of input.
-**Why it's wrong:** Dev/staging builds (`openwhispr-dev`, `openwhispr-staging`) get the URL dispatched to wrong app or ignored. Breaks all non-prod testing. **Will break arbitrary-channel overrides too.**
-**Do this instead:** Persist `channel_scheme` from `callbackURL` in `oauth_state` table; echo it in the final redirect verbatim.
+### Proposed change: SWAP 14 and 15 → 13 → 12 → **15 → 14** → 17 → 16 → 18
+Reasoning:
+- **Phase 15 does the Traefik host split (TD-15.g).** Phase 14 ships `docker-compose.ingress.yml` as a new overlay. If 14 lands first, the overlay's Traefik routing reflects the (broken) `Host(api.localhost) && PathPrefix(/api)` shadowing. 14 then has to be re-touched in 15. Doing 15 first means 14's overlay is born with the correct host split.
+- **Phase 15 reorganizes `compose/` directory.** Phase 14 creates 5 new compose overlay files. If they're created in repo root in 14, they get moved in 15 — pointless churn. Doing 15 first means 14's new files land directly in `compose/`.
+- **Phase 14 depends on the test layout being stable** for the slim-vs-full e2e variants. If tests get reorganized in 15 after 14 ships, Phase 14's e2e wiring needs revisiting.
 
-### Anti-Pattern 3: Setting `app.tenant_id` GUC without `LOCAL`
+### Optional: swap 16 ↔ 17 → … → **17 → 16** → 18
+17 lands TLS-config comments. 16 then sweeps them. Slight preference; not a blocker.
 
-**What people do:** `SET app.tenant_id = $1` (no LOCAL) at request start.
-**Why it's wrong:** Pooled connection retains the GUC after the request returns → next request on same connection runs as wrong tenant → cross-tenant data leak.
-**Do this instead:** Always `SET LOCAL app.tenant_id = $1` inside an explicit transaction. Audit-test by running concurrent requests on a known-pooled connection.
+### Final recommendation
+**13 → 12 → 15 → 14 → 17 → 16 → 18.**
 
-### Anti-Pattern 4: Returning 4xx for quota exhaustion on `/api/transcribe`
-
-**What people do:** Return `429 Quota exceeded` to be "RESTful."
-**Why it's wrong:** Wire contract says `200 + limitReached:true`. Returning 4xx triggers `withSessionRefresh()` retry-on-401 logic on adjacent endpoints; surfaces as generic API error UI; quota-exhaustion UX never appears.
-**Do this instead:** `200 + {limitReached:true, wordsUsed, wordsRemaining:0, plan, ...}`.
-
-### Anti-Pattern 5: Sidecar-deploying Speaches per API pod
-
-**What people do:** Make Speaches a sidecar container in the API Deployment.
-**Why it's wrong:** Each API pod replica needs its own GPU. Cost: 10x. Scaling axes are different (audio sessions vs HTTP requests).
-**Do this instead:** Separate Deployment, dedicated GPU node pool. Scale independently.
-
-### Anti-Pattern 6: Relying on LiteLLM's spend log for primary quota
-
-**What people do:** Skip our own usage_ledger; just query LiteLLM `/spend/logs` for usage UI.
-**Why it's wrong:** LiteLLM spend is async and lossy under load; doesn't model words (only tokens/dollars); pass-through endpoints (diarization) don't show in spend at all.
-**Do this instead:** Our `usage_ledger` is canonical. LiteLLM spend = audit/reconciliation only.
-
-### Anti-Pattern 7: Default nginx `proxy_buffering on`
-
-**What people do:** Use default nginx config.
-**Why it's wrong:** Default 4-8k buffer kills realtime streaming; client sees nothing for seconds. Default 60s `proxy_read_timeout` kills WSS realtime sessions.
-**Do this instead:** Per-location overrides for `/api/agent/stream` (`proxy_buffering off`) and `/v1/realtime` (`proxy_read_timeout 3600s`). `client_max_body_size 100M` for `/api/transcribe`.
+The user's order is also acceptable; the swap saves a moderate amount of churn but isn't a hard blocker. Either way works; this analysis is the input the roadmapper should weigh.
 
 ---
 
-## 13. Integration Points
+## 5. Patterns to Follow
 
-### External Services
+### Pattern 1: Overlay files mirror Helm's `*.enabled` flag taxonomy
+Helm already gates everything (verified `charts/openwhispr/values.yaml`). Compose lags. Phase 14's overlay files should mirror Helm's flag taxonomy so operators can mentally map `make up-slim` (compose, no observability) ↔ `observability.collector.enabled=false` (helm). 1:1 mapping between an overlay file and a Helm flag.
 
-| Service | Integration Pattern | Notes |
-|---------|---------------------|-------|
-| LiteLLM Proxy | HTTPS REST + WSS | Same-cluster ClusterIP; bearer = per-tenant virtual key minted via key/generate API. Master key never leaves operator's secret store. Multipart pass-through requires v1.83.7 backport. |
-| Speaches | Behind LiteLLM only | Never exposed directly — LiteLLM is the trust boundary for audio routes. |
-| OpenAI/Anthropic/etc. (alternate providers) | Via LiteLLM model alias OR direct provider class | Direct only when LiteLLM lacks a feature (unlikely in v1). |
-| IdP (Google/MS/Apple/OIDC) | Server-side OAuth at auth shim; Authorization Code flow | Per `OAUTH_SPEC.md`. Channel-scheme echo is the contract. |
-| Stripe | API + webhooks | Webhook ingestion at worker tier; sign-verify; idempotency-key on subscription events. |
-| Email (SMTP/SendGrid/SES/Postmark) | Provider abstraction; queued send via worker | Templates per locale (en/ru). |
-| S3-compatible storage | Presigned URLs for large blob upload | MinIO in compose; S3/GCS/Azure-Blob in cloud. |
+### Pattern 2: Codemods through ts-morph, never sed
+The repo already has `tools/spdx-header.ts` (Phase 10-04) demonstrating the ts-morph codemod pattern. Phases 15 and 16 should follow it. Output: deterministic, type-safe AST rewrites with a `--check` mode for CI.
 
-### Internal Boundaries
+### Pattern 3: New routes register as plugins via `apps/api/src/routes/index.ts`
+`buildAllRoutes` is the central plugin registry. Phase 12's `setup.ts` follows this pattern (verified at `apps/api/src/index.ts:420-441`).
 
-| Boundary | Communication | Notes |
-|----------|---------------|-------|
-| API tier ↔ Postgres | TCP via PgBouncer (transaction pool) | RLS GUC injection per request. SSL required if PG not on same host. |
-| API tier ↔ Redis | TCP | TLS optional in same-cluster; required across zones. |
-| API tier ↔ LiteLLM | HTTPS internal | Mutual TLS optional; bearer auth required. |
-| LiteLLM ↔ Speaches | HTTPS + WSS internal | Same-cluster; behind LiteLLM trust boundary. |
-| API ↔ Worker | Redis queue (BullMQ/asynq) | Job payload includes `tenantId` for RLS scoping. |
-| API ↔ Worker (sync notify) | Redis pub/sub | Config invalidation, cache busts. |
+### Pattern 4: Tests under `apps/<app>/tests/` after Phase 15
+Post-15 layout target. New tests in Phases 16/17/18 land directly in the new layout.
+
+### Pattern 5: Better Auth `additionalFields` extension pattern
+Phase 10-01 added `additionalFields.locale`. Phase 12 follows by adding `additionalFields.role`. Both append a single field; no schema rewrite. Migration ALTER-TABLE is independent.
 
 ---
 
-## 14. Sources
+## 6. Anti-Patterns to Avoid
 
-- `/Users/nick/openwhispr-server/.planning/PROJECT.md` — Project context and constraints (HIGH).
-- `/Users/nick/openwhispr/docs/SELF_HOSTING.md` — Wire walkthrough, custom-protocol channel-scheme contract (HIGH).
-- `/Users/nick/openwhispr/docs/BACKEND_SPEC.md` — Per-endpoint contract for all 19 endpoints + Conventions + Global Error Envelope (HIGH).
-- `/Users/nick/openwhispr/docs/OAUTH_SPEC.md` — Auth-flow trace; channel-scheme echo source-of-truth (HIGH).
-- `/Users/nick/openwhispr-server/speaches-audio.md` — LiteLLM v1.82.3 multipart bug, Speaches three-route deployment shape, ingress 3600s realtime timeouts, virtual-key auth (HIGH; production-validated at Alfaleasing).
-- `/Users/nick/openwhispr/docs/ARCHITECTURE.md` — Desktop client process model and IPC surface (HIGH; informs auth-token attachment paths).
-- nginx ingress streaming configuration patterns (`proxy_buffering off`, `proxy_request_buffering off`, `X-Accel-Buffering: no`) — well-known nginx idioms (MEDIUM, requires verification under load).
-- PostgreSQL row-level security + `current_setting()` GUC pattern — PostgreSQL official docs and well-established multi-tenant-SaaS practice (HIGH).
-- LiteLLM realtime mode (`mode: realtime`) per `speaches-audio.md` reference (HIGH).
-- 1000-concurrent sizing math derived from standard nginx/Linux defaults; **MUST be validated under SCALE-06 load test** before being committed as SLO (MEDIUM).
+### Anti-Pattern 1: Re-architecting profiles that Helm already solved
+Helm's `condition:` + `*.enabled` flags work today. Don't ship a parallel taxonomy in compose — mirror Helm.
+
+### Anti-Pattern 2: Force-pushing the history scrub (Phase 15) without coordination
+`git filter-repo --path speaches-audio.md --invert-paths` rewrites every commit hash. Any in-flight feature branch needs a coordinated rebase. **Block all parallel work for the scrub window; recommend a dedicated 1-hour maintenance window.**
+
+### Anti-Pattern 3: Implementing LDAP in v2
+TECH_DEBT.md TD-18.b is explicit: "Decision needed before plan." Phase 18 is SPEC-only. Implementing in v2 risks shipping the wrong option.
+
+### Anti-Pattern 4: Adding Playwright tests under `tests/e2e/` (vitest dir)
+The existing dir is a vitest runner. Cucumber needs its own runner. Keep `tests/e2e-cjm/` separate.
+
+### Anti-Pattern 5: Treating Phase 16's comment audit as cosmetic
+771 (verified in apps+packages) comments include load-bearing WHYs (e.g. `apps/api/src/index.ts:191-192` — the `trustProxy:true` pitfall comment). The codemod MUST keep WHY-bearing comments; pure tag-only comments are kill targets.
+
+### Anti-Pattern 6: Modifying `compose/traefik/dynamic.yml` in-place for prod
+Phase 17 must SPLIT into `dynamic.dev.yml` and `dynamic.prod.yml`. Single-file env-templating creates a runtime trap where a misconfigured env var produces a half-valid file.
 
 ---
 
-*Architecture research for: OpenWhispr Server (multi-tenant, wire-compatible cloud backend)*
-*Researched: 2026-05-08*
+## 7. Scalability Considerations (carried forward from v1)
+
+Phase 14's slim core MUST preserve the SCALE-* invariants from v1:
+- `--with-pgbouncer` off is a smaller-deployment knob; document the concurrency ceiling (without PgBouncer, Node 24 + Fastify direct-to-PG tops out ~250 concurrent active users before connection exhaustion; with PgBouncer 4×100, ~1000 per the Phase 8 load test).
+- `--with-observability` off does NOT disable OTel SDK in the api/worker — SDK keeps emitting, but with no Collector configured it no-ops cheaply. Document this.
+- Slim core's resource floor: 2 vCPU, 4 GB RAM single host (vs v1 full: 4 vCPU, 12 GB).
+
+---
+
+## 8. Per-phase scope summary (for roadmapper sizing)
+
+| Phase | Scope | Files touched (est) | New code (LOC est) | Risk |
+|---|---|---|---|---|
+| 13 — E2E+CJM | **L** | 30+ new in `tests/e2e-cjm/`; 1 worker fix; new `packages/email/` | 2000–3000 | HIGH (harness + email-service refactor + testcontainers teardown all in one) |
+| 12 — Admin wizard | **L** | 6 new (setup route + page + lib + migration + admin index); 4 modified components | 1500–2200 | MEDIUM (touches Better Auth, route gate hook is load-bearing) |
+| 14 — Slim+BYOK | **M** | 5 new compose files + 2 resolver libs + Makefile | 600–900 | LOW (no app-logic change; mostly orchestration) |
+| 15 — Refactor+FSL+scrub | **L** | ~600 file moves + 675 license headers + Traefik host split + history rewrite | mostly mechanical | HIGH (history rewrite is irreversible; blast radius is the whole repo) |
+| 16 — Comment audit | **S** | ~771 comments, mostly deletions; 2 tool files | small | LOW (codemod with --check mode + diff review) |
+| 17 — Trusted TLS | **S** | 1 script + Makefile + Traefik split | small | LOW |
+| 18 — LDAP SPEC | **S** | 1 SPEC doc + 1 ADR | 0 code | NONE (docs only) |
+
+**Phases the roadmapper should flag as candidates for splitting:**
+- **Phase 13** — consider splitting into 13.a (Cucumber harness + worker email fix + testcontainers teardown) and 13.b (8 feature files + CJM doc). 13.a is the minimum that unblocks Phase 12.
+- **Phase 15** — consider splitting into 15.a (test layout + compose/ reorg + Traefik host split) and 15.b (FSL codemod + history scrub). 15.b's history rewrite is risky enough to warrant its own atomic window.
+
+---
+
+## 9. Sources
+
+All findings sourced from direct codebase inspection on 2026-05-14:
+- `.planning/PROJECT.md` (273 lines read)
+- `.planning/TECH_DEBT.md` (111 lines read)
+- `.planning/deferred-items.md` (full)
+- `.planning/ROADMAP.md` (phases 0–11 summary)
+- `apps/api/src/index.ts` (617 lines, full)
+- `apps/worker/src/index.ts` (238 lines, full)
+- `docker-compose.embedded-litellm.yml` (750 LOC, header + profile map)
+- `charts/openwhispr/values.yaml` (351 LOC, top-level keys + condition flags)
+- `charts/openwhispr/Chart.yaml` (50 lines, full)
+- `compose/traefik/{dynamic.yml,traefik.yml,certs/}` directory walk
+- `apps/web/src/app/` route group walk + `apps/web/src/components/screens/auth/` listing
+- `apps/web/src/app/api/` Next.js route shadow analysis
+- `packages/data/src/schema/users.ts` (no role column confirmed)
+- `tools/` listing + codemod tooling inventory
+- `tests/e2e/` listing (vitest, no Playwright/Cucumber confirmed)
+- `package.json` (`@playwright/test 1.59.1` installed but unused for UI tests)
+- `grep -rn "// Phase\|/\* Phase" apps packages` → 771 (NOT 1642; sweep scope must be defined for Phase 16)
+
+**Confidence: HIGH** — every claim traces to a specific file or line. No web-search findings, no training-data assumptions.
