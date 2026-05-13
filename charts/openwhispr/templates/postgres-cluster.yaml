@@ -64,6 +64,27 @@ spec:
         - ALTER ROLE openwhispr_owner BYPASSRLS;
         - ALTER ROLE openwhispr_owner CREATEDB;
         - CREATE DATABASE litellm OWNER openwhispr_owner;
+        # Finding 09.1-F23 — migrations execute ALTER ROLE
+        # openwhispr_app (e.g. SET app.tenant_id) under the owner
+        # connection. The owner is not superuser, so ALTER ROLE
+        # requires either CREATEROLE OR membership in the target role.
+        # We create openwhispr_app here (raw CREATE ROLE, password set
+        # by CNPG managed.roles below from the pg-app Secret on next
+        # reconcile) so we can GRANT it TO openwhispr_owner immediately.
+        # The DO-block is idempotent on subsequent recoveries.
+        # Finding 09.1-F24 — CNPG renders postInitSQL items into a shell
+        # `psql -c "..."` invocation. Bare `$$` inside the double-quoted
+        # shell string is consumed as `$$` = current shell PID, leaving
+        # `$` in the SQL stream → 42601 syntax error. Doubling to `$$$$`
+        # so the shell collapses it back to `$$` before psql sees it.
+        - |
+          DO $$$$
+          BEGIN
+            IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'openwhispr_app') THEN
+              CREATE ROLE openwhispr_app WITH LOGIN NOBYPASSRLS;
+            END IF;
+          END $$$$;
+        - GRANT openwhispr_app TO openwhispr_owner;
       postInitApplicationSQL:
         - CREATE SCHEMA IF NOT EXISTS partman;
         - CREATE EXTENSION IF NOT EXISTS pg_partman SCHEMA partman;
@@ -127,3 +148,13 @@ spec:
         passwordSecret:
           name: {{ $fullname }}-pg-app
         connectionLimit: 200
+        # Finding 09.1-F23 advisor follow-up: CNPG's declarative reconciler
+        # treats `inRoles` as authoritative; an empty list would silently
+        # REVOKE the `GRANT openwhispr_app TO openwhispr_owner` set in
+        # postInitSQL on next reconcile, re-breaking migrations days
+        # later. Declare the membership so CNPG owns + preserves it.
+        # Phase 09.2 strategic plan: drop the per-role GUC in favour of
+        # SET LOCAL app.tenant_id per-transaction (eliminates this
+        # cross-role privilege coupling entirely).
+        inRoles:
+          - openwhispr_owner
