@@ -1,0 +1,151 @@
+suite: ingress — IngressRoutes + Middleware + ServersTransport + Certificate (Plan 09-09)
+templates:
+  - ingressroute-api.yaml
+  - ingressroute-api-realtime.yaml
+  - ingressroute-web.yaml
+  - middleware-forwarded-headers.yaml
+  - serverstransport-realtime.yaml
+tests:
+  - it: renders api IngressRoute bound to the websecure entrypoint
+    template: ingressroute-api.yaml
+    set:
+      secrets:
+        mode: eso
+        external:
+          storeRef: vault-clusterstore
+    asserts:
+      - hasDocuments:
+          count: 1
+      - isKind:
+          of: IngressRoute
+      - equal:
+          path: apiVersion
+          value: traefik.io/v1alpha1
+      - equal:
+          path: spec.entryPoints[0]
+          value: websecure
+      - matchRegex:
+          path: spec.routes[0].match
+          pattern: "Host\\(`openwhispr.local`\\) && PathPrefix\\(`/api`\\)"
+      - equal:
+          path: spec.routes[0].services[0].name
+          value: RELEASE-NAME-openwhispr-api
+      - equal:
+          path: spec.routes[0].services[0].port
+          value: 3000
+      - matchRegex:
+          path: spec.routes[1].match
+          pattern: "PathPrefix\\(`/v1/audio`\\)"
+      - equal:
+          path: spec.routes[1].priority
+          value: 100
+      - equal:
+          path: spec.tls.secretName
+          value: openwhispr-api-tls
+
+  - it: renders api realtime IngressRoute bound to websecure-realtime with ServersTransport
+    template: ingressroute-api-realtime.yaml
+    set:
+      secrets:
+        mode: eso
+        external:
+          storeRef: vault-clusterstore
+    asserts:
+      - hasDocuments:
+          count: 1
+      - isKind:
+          of: IngressRoute
+      - equal:
+          path: spec.entryPoints[0]
+          value: websecure-realtime
+      - matchRegex:
+          path: spec.routes[0].match
+          pattern: "PathPrefix\\(`/v1/realtime`\\)"
+      - equal:
+          path: spec.routes[0].priority
+          value: 100
+      - equal:
+          path: spec.routes[0].services[0].serversTransport
+          value: RELEASE-NAME-openwhispr-realtime-transport
+      - equal:
+          path: spec.tls.secretName
+          value: openwhispr-api-tls
+
+  - it: renders web IngressRoute with Host catch-all on websecure
+    template: ingressroute-web.yaml
+    set:
+      secrets:
+        mode: eso
+        external:
+          storeRef: vault-clusterstore
+      host:
+        web: web.example.com
+      tls:
+        webSecretName: my-web-tls
+    asserts:
+      - hasDocuments:
+          count: 1
+      - isKind:
+          of: IngressRoute
+      - equal:
+          path: spec.entryPoints[0]
+          value: websecure
+      - matchRegex:
+          path: spec.routes[0].match
+          pattern: "Host\\(`web.example.com`\\)"
+      - equal:
+          path: spec.routes[0].priority
+          value: 1
+      - equal:
+          path: spec.routes[0].services[0].name
+          value: RELEASE-NAME-openwhispr-web
+      - equal:
+          path: spec.tls.secretName
+          value: my-web-tls
+
+  - it: ServersTransport ships 3600s idleConnTimeout (BACKEND_SPEC L788-L791)
+    template: serverstransport-realtime.yaml
+    set:
+      secrets:
+        mode: eso
+        external:
+          storeRef: vault-clusterstore
+    asserts:
+      - isKind:
+          of: ServersTransport
+      - equal:
+          path: apiVersion
+          value: traefik.io/v1alpha1
+      - equal:
+          path: spec.forwardingTimeouts.idleConnTimeout
+          value: "3600s"
+      - equal:
+          path: spec.forwardingTimeouts.responseHeaderTimeout
+          value: "60s"
+      - equal:
+          path: spec.forwardingTimeouts.dialTimeout
+          value: "30s"
+
+  - it: forwarded-headers Middleware carries RFC 1918 trustedIPs
+    template: middleware-forwarded-headers.yaml
+    set:
+      secrets:
+        mode: eso
+        external:
+          storeRef: vault-clusterstore
+    asserts:
+      - isKind:
+          of: Middleware
+      - equal:
+          path: apiVersion
+          value: traefik.io/v1alpha1
+      - contains:
+          path: spec.ipAllowList.sourceRange
+          content: 10.0.0.0/8
+      - contains:
+          path: spec.ipAllowList.sourceRange
+          content: 172.16.0.0/12
+      - contains:
+          path: spec.ipAllowList.sourceRange
+          content: 192.168.0.0/16
+

@@ -1,0 +1,36 @@
+{{/*
+Traefik IngressRoute — Next.js web SSR catch-all on :443 (websecure).
+
+Mirrors the compose-side `web@docker` router (priority=1 catch-all on
+Host(api.localhost) / web hostname). Here we use a dedicated Host match
+(values.host.web) so :443 cleanly splits api.<domain> -> api Service and
+web.<domain> -> web Service. Operators can collapse both to a single host
+by setting values.host.api == values.host.web (Traefik's path-priority
+scoring picks the more specific /api PathPrefix first).
+
+No PathPrefix constraint — this route is the catch-all for Host(web).
+*/}}
+{{- $fullname := include "openwhispr.fullname" . -}}
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: {{ $fullname }}-web
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "openwhispr.labels" . | nindent 4 }}
+    app.kubernetes.io/component: web
+spec:
+  entryPoints:
+    - websecure
+  routes:
+    - match: Host(`{{ .Values.host.web }}`)
+      kind: Rule
+      priority: 1
+      services:
+        - name: {{ $fullname }}-web
+          port: 3001
+      middlewares:
+        - name: {{ $fullname }}-forwarded-headers
+          namespace: {{ .Release.Namespace }}
+  tls:
+    secretName: {{ .Values.tls.webSecretName }}
