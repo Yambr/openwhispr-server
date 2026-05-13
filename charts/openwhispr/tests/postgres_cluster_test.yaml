@@ -92,6 +92,16 @@ tests:
       - contains:
           path: spec.bootstrap.initdb.postInitApplicationSQL
           content: CREATE EXTENSION IF NOT EXISTS pg_partman SCHEMA partman;
+      # Finding 09.1-F14: postInitSQL runs as superuser in `postgres` DB
+      # BEFORE the app DB exists. Grants CREATEDB to openwhispr_owner
+      # and pre-creates the litellm database so migrate.ts (which uses
+      # the owner role, not a superuser) succeeds.
+      - contains:
+          path: spec.bootstrap.initdb.postInitSQL
+          content: ALTER ROLE openwhispr_owner CREATEDB;
+      - contains:
+          path: spec.bootstrap.initdb.postInitSQL
+          content: CREATE DATABASE litellm OWNER openwhispr_owner;
       - equal:
           path: spec.storage.size
           value: 20Gi
