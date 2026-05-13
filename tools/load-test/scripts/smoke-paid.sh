@@ -152,7 +152,7 @@ else
   probe "api-transcribe-speaches" "200" \
     -X POST "${BASE_URL}/api/transcribe" \
     -H "authorization: Bearer ${TOKEN}" \
-    -F "audio=@${FIXTURE};type=audio/wav" \
+    -F "file=@${FIXTURE};type=audio/wav" \
     -F 'model=whisper-large-v3' || true
 fi
 
