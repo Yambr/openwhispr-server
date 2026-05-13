@@ -54,7 +54,10 @@ tests:
           path: spec.template.spec.initContainers[1].name
           value: secret-presence-probe
 
-  - it: worker Deployment readiness/liveness probes on /healthz port 3002
+  # Finding 09.1-F32 — worker is a pure BullMQ consumer with no HTTP
+  # server. The original /healthz probe was fiction (connection refused).
+  # Switched to exec probe that confirms the node entrypoint is alive.
+  - it: worker Deployment readiness/liveness use exec probe (no HTTP server)
     template: worker-deployment.yaml
     set:
       secrets:
@@ -62,12 +65,15 @@ tests:
         external:
           storeRef: vault-clusterstore
     asserts:
-      - equal:
-          path: spec.template.spec.containers[0].readinessProbe.httpGet.path
-          value: /healthz
-      - equal:
-          path: spec.template.spec.containers[0].readinessProbe.httpGet.port
-          value: 3002
+      - exists:
+          path: spec.template.spec.containers[0].readinessProbe.exec.command
+      - exists:
+          path: spec.template.spec.containers[0].livenessProbe.exec.command
+      - notExists:
+          path: spec.template.spec.containers[0].readinessProbe.httpGet
+      - matchRegex:
+          path: spec.template.spec.containers[0].readinessProbe.exec.command[2]
+          pattern: "pgrep.*node /app/dist/index.js"
 
   - it: worker Service is headless (clusterIP None) for per-pod scrape
     template: worker-service.yaml
