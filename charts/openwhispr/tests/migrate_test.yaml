@@ -3,17 +3,13 @@ templates:
   - migrate-job.yaml
   - migrate-serviceaccount.yaml
 tests:
-  # Finding 09.1-F3: pre-install hook caused install deadlock. CNPG `Cluster`
-  # CR (postgres-cluster.yaml) is a regular resource that applies AFTER
-  # pre-install hooks complete, so `openwhispr-pg-rw` Service did not exist
-  # during the wait-for-postgres init container, which timed out and failed
-  # the whole release. Resolution: hook narrowed to `pre-upgrade` only (the
-  # upgrade case where the Cluster already exists and migration MUST run
-  # before api/web rollout). On `helm install` the Job is a regular resource
-  # applied together with the Cluster — wait-for-postgres polls until CNPG
-  # bootstraps Postgres, then migrate runs, then api/web initContainers
-  # gate on the migrate Job's Complete condition.
-  - it: migrate Job is a pre-upgrade hook only (install path is a regular Job)
+  # Finding 09.1-F10: Helm hook annotations are exclusive — a hook
+  # annotated `pre-upgrade` is invisible to `helm install` and the Job
+  # never renders. Resolution: no hook at all. Job is a regular release
+  # resource with `.Release.Revision` suffix in metadata.name (avoids
+  # k8s immutable Job spec on upgrade) + ttlSecondsAfterFinished for GC.
+  # wait-for-migrate initContainers query by LABEL not name.
+  - it: migrate Job is a regular release resource (no Helm hook, revision-suffixed name, TTL'd)
     template: migrate-job.yaml
     set:
       secrets:
@@ -23,15 +19,21 @@ tests:
     asserts:
       - isKind:
           of: Job
-      - equal:
+      - matchRegex:
+          path: metadata.name
+          # `-migrate-<revision>` — revision is always a positive int.
+          pattern: "-migrate-[0-9]+$"
+      - notExists:
           path: metadata.annotations["helm.sh/hook"]
-          value: pre-upgrade
       - equal:
-          path: metadata.annotations["helm.sh/hook-weight"]
-          value: "-5"
+          path: metadata.labels["app.kubernetes.io/component"]
+          value: migrate
+      - matchRegex:
+          path: metadata.labels["openwhispr.dev/migrate-revision"]
+          pattern: "^[0-9]+$"
       - equal:
-          path: metadata.annotations["helm.sh/hook-delete-policy"]
-          value: before-hook-creation
+          path: spec.ttlSecondsAfterFinished
+          value: 3600
 
   - it: migrate Job has backoffLimit 0 (one-shot) + activeDeadlineSeconds 900 (bootstrap budget)
     template: migrate-job.yaml

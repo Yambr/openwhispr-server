@@ -179,6 +179,16 @@ litellm:
     repository: ghcr.io/berriai/litellm
     tag: main-v1.83.14-stable
   replicas: 1
+  # Finding 09.1-F11 — args is overridable so the kind smoke can swap in
+  # the mock-litellm image which has no `--config` flag (it's a plain
+  # node process). Default value matches the upstream LiteLLM CLI surface.
+  args:
+    - --config
+    - /app/config.yaml
+    - --port
+    - "4000"
+    - --num_workers
+    - "2"
   # Passthrough into configmap-litellm at /app/config.yaml.
   config:
     model_list: []

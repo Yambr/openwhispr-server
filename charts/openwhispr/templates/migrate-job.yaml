@@ -23,30 +23,36 @@ Hard pins (pitfall #9 + T-09-07 mitigation):
 apiVersion: batch/v1
 kind: Job
 metadata:
-  # NOTE: Job name is stable (no revision suffix). `before-hook-creation`
-  # deletes the previous Job before re-running on helm upgrade, so a stable
-  # name suffices and keeps compose-chart parity simple (resource matches
-  # the compose service `migrate` 1:1). Per-upgrade visibility comes from
-  # `kubectl describe job ...` showing the pod's startTime + completionTime.
-  name: {{ $fullname }}-migrate
+  # Finding 09.1-F10 — migrate Job is a regular release resource (NO Helm
+  # hook annotation). Helm hook semantics are EXCLUSIVE: a `pre-upgrade`
+  # hook (the F3 attempt) does not render on `helm install`, leaving the
+  # Job absent from the install manifest and the wait-for-migrate
+  # initContainers (in api/web/worker) polling a nonexistent target.
+  #
+  # As a regular resource:
+  #   * Job applies in the same `helm install`/`upgrade` pass as the CNPG
+  #     Cluster CR. wait-for-postgres init polls -pg-rw:5432 until CNPG
+  #     promotes the primary (30-180s).
+  #   * Name carries `.Release.Revision` to avoid Kubernetes' immutable
+  #     Job spec restriction on upgrade — each release produces a NEW Job
+  #     with a unique name.
+  #   * wait-for-migrate initContainers query by LABEL selector
+  #     (`app.kubernetes.io/component=migrate, app.kubernetes.io/instance=<release>`)
+  #     + sort by creationTimestamp + slice [-1:] so they always watch
+  #     the latest revision's Job.
+  #   * ttlSecondsAfterFinished=3600 (k8s ≥1.23 TTL controller) GCs old
+  #     per-revision Jobs after one hour to avoid namespace pollution.
+  #
+  # Bitnami precedent: postgresql-ha / kafka / mariadb-galera all suffix
+  # upgrade-time Jobs with a release-derived identifier.
+  name: {{ $fullname }}-migrate-{{ .Release.Revision }}
   namespace: {{ .Release.Namespace }}
   labels:
     {{- include "openwhispr.labels" . | nindent 4 }}
     app.kubernetes.io/component: migrate
-  annotations:
-    # Finding 09.1-F3 — pre-install hook caused a deadlock: Helm runs
-    # pre-install hooks BEFORE applying the main release manifest, so the
-    # CNPG `Cluster` CR (a regular resource) had not been applied yet, and
-    # the wait-for-postgres initContainer kept polling a nonexistent
-    # -pg-rw Service until it timed out. On `helm install` the migrate Job
-    # is now a regular resource applied together with the Cluster CR and
-    # the wait-for-postgres init waits for CNPG to bootstrap. On
-    # `helm upgrade` the hook remains so migration runs before api/web
-    # rollout.
-    "helm.sh/hook": pre-upgrade
-    "helm.sh/hook-weight": "-5"
-    "helm.sh/hook-delete-policy": before-hook-creation
+    openwhispr.dev/migrate-revision: "{{ .Release.Revision }}"
 spec:
+  ttlSecondsAfterFinished: 3600
   backoffLimit: 0
   # Finding 09.1-F3 — bumped from 300s → 900s so the regular-Job install
   # path can absorb CNPG bootstrap (90-180s) + wait-for-postgres polling

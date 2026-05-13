@@ -117,9 +117,14 @@ tests:
       - matchRegex:
           path: spec.template.spec.initContainers[0].image
           pattern: "^registry\\.k8s\\.io/kubectl:v"
+      # Finding 09.1-F10 — query is now by label selector (not name), so
+      # the wait-for-migrate init picks the latest revision's Job.
       - matchRegex:
           path: spec.template.spec.initContainers[0].command[2]
-          pattern: "kubectl get job/RELEASE-NAME-openwhispr-migrate"
+          pattern: "kubectl get jobs"
+      - matchRegex:
+          path: spec.template.spec.initContainers[0].command[2]
+          pattern: "app\\.kubernetes\\.io/component=migrate"
       - equal:
           path: spec.template.spec.initContainers[1].name
           value: secret-presence-probe

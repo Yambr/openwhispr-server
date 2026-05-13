@@ -98,14 +98,18 @@ container is auditable + reproducible.
     - sh
     - -c
     - |
-      # Poll the migrate Job until status.succeeded==1.
+      # Finding 09.1-F10 — migrate Job is a regular release resource with
+      # `.Release.Revision`-suffixed name. Query by label selector + sort
+      # by creationTimestamp + slice [-1:] so we always watch THIS
+      # release's Job, not a stale prior-revision one.
       # 300 iterations × 2s = 600s wall-time ceiling — matches the
       # migrate Job's wait-for-postgres + actual migration budget.
+      SELECTOR='app.kubernetes.io/component=migrate,app.kubernetes.io/instance={{ .Release.Name }}'
       i=0
-      until [ "$(kubectl get job/{{ include "openwhispr.fullname" . }}-migrate -n {{ .Release.Namespace }} -o jsonpath='{.status.succeeded}' 2>/dev/null)" = "1" ]; do
+      until [ "$(kubectl get jobs -n {{ .Release.Namespace }} -l "$SELECTOR" --sort-by=.metadata.creationTimestamp -o jsonpath='{.items[-1:].status.succeeded}' 2>/dev/null)" = "1" ]; do
         i=$((i+1))
         if [ $i -gt 300 ]; then
-          echo "FATAL: migrate Job not Complete after 600s" 1>&2
+          echo "FATAL: migrate Job (selector $SELECTOR) not Complete after 600s" 1>&2
           exit 1
         fi
         echo "waiting for migrate Job ... ($i/300)"
