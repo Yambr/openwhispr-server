@@ -1,0 +1,45 @@
+# Variant A — canonical OSS quickstart overlay (Plan 11-01).
+# Minimal placeholder authored during Task 1 RED so the examples_render_test
+# can locate it; Task 4 fleshes this file out with the full operator-facing
+# comments and key provenance pointers.
+secrets:
+  mode: helm-values
+
+bundledAi:
+  enabled: false
+
+litellm:
+  embedded: true
+
+postgres:
+  replicas: 1
+  storageSize: 10Gi
+
+valkey:
+  architecture: standalone
+  auth:
+    enabled: false
+
+minio:
+  mode: standalone
+  persistence:
+    size: 10Gi
+
+observability:
+  embedded: false
+  serviceMonitor:
+    enabled: false
+  collector:
+    enabled: false
+
+api:
+  replicas: 1
+  autoscaling:
+    enabled: false
+
+web:
+  replicas: 1
+
+worker:
+  autoscaling:
+    enabled: false

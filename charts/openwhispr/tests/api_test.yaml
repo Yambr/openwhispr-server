@@ -336,6 +336,45 @@ tests:
           path: spec.template.spec.initContainers[2].command[2]
           pattern: "my-traefik\\.custom-ns\\.svc\\.cluster\\.local:9000"
 
+  # Plan 11-01 — secret-presence-probe initContainer must source its env-name
+  # list from the openwhispr.requiredSecretKeys helper. When bundledAi.enabled
+  # is false (Variant A default) the probe MUST NOT mention HF_TOKEN; when
+  # enabled=true (Variant C) it MUST mention HF_TOKEN. RED until Task 3
+  # refactors api-deployment.yaml to consume the helper.
+  - it: api secret-presence-probe omits HF_TOKEN when bundledAi.enabled=false (Variant A)
+    template: api-deployment.yaml
+    set:
+      bundledAi:
+        enabled: false
+      secrets:
+        mode: eso
+        external:
+          storeRef: vault-clusterstore
+    asserts:
+      - equal:
+          path: spec.template.spec.initContainers[1].name
+          value: secret-presence-probe
+      - notMatchRegex:
+          path: spec.template.spec.initContainers[1].command[2]
+          pattern: "HF_TOKEN"
+
+  - it: api secret-presence-probe includes HF_TOKEN when bundledAi.enabled=true (Variant C)
+    template: api-deployment.yaml
+    set:
+      bundledAi:
+        enabled: true
+      secrets:
+        mode: eso
+        external:
+          storeRef: vault-clusterstore
+    asserts:
+      - equal:
+          path: spec.template.spec.initContainers[1].name
+          value: secret-presence-probe
+      - matchRegex:
+          path: spec.template.spec.initContainers[1].command[2]
+          pattern: "HF_TOKEN"
+
   - it: configmap-api renders NODE_ENV + LOG_LEVEL non-secret env
     template: configmap-api.yaml
     set:
