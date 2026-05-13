@@ -1,7 +1,15 @@
 ---
 phase: 09
-status: discuss-phase-pending
+status: resolved
 created: 2026-05-13
+resolved: 2026-05-13
+resolutions:
+  A1: both — helm-values default + ESO gated by values.yaml secrets.mode
+  A2: cluster prerequisite (CNPG installed first; examples/cnpg-install.sh)
+  A3: prerequisite + ServiceMonitor only (chart ships SM/PM/OTel ConfigMap, no embedded LGTM)
+  A4: custom openwhispr/cnpg-postgres-17-pgpartman image published to GHCR
+  A5: Bitnami sub-charts for Valkey + MinIO (verify 2024 licensing acceptable)
+  A6: CNPG Pooler CRD (replaces 4-instance pattern A from compose)
 ---
 
 # Phase 9 Discuss-Phase Blockers
