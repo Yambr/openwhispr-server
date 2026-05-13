@@ -10,6 +10,7 @@ import {
   HEADER,
   hasHeader,
   isBinary,
+  main,
   shouldSkip,
 } from "../spdx-header.js";
 
@@ -86,6 +87,16 @@ describe("applyHeader", () => {
     expect(out.endsWith("\n")).toBe(true);
   });
 
+  it("handles shebang without trailing newline", () => {
+    const out = applyHeader("#!/usr/bin/env node");
+    expect(out).toBe("#!/usr/bin/env node\n// SPDX-License-Identifier: Apache-2.0\n");
+  });
+
+  it("handles empty input", () => {
+    const out = applyHeader("");
+    expect(out).toBe("// SPDX-License-Identifier: Apache-2.0\n");
+  });
+
   it("does not introduce stray blank line after header", () => {
     const out = applyHeader("export {};\n");
     const lines = out.split("\n");
@@ -131,6 +142,26 @@ describe("shouldSkip", () => {
   it("does NOT skip ordinary .tsx files", () => {
     expect(shouldSkip("apps/web/src/page.tsx")).toBe(false);
   });
+
+  it("skips locales at top-level prefix", () => {
+    expect(shouldSkip("locales/en/common.ts")).toBe(true);
+  });
+
+  it("skips files with no extension", () => {
+    expect(shouldSkip("apps/api/Makefile")).toBe(true);
+  });
+
+  it("skips files with unsupported extension", () => {
+    expect(shouldSkip("apps/api/README.txt")).toBe(true);
+  });
+
+  it("skips skip-dirs at top-level prefix", () => {
+    expect(shouldSkip("dist/app.js")).toBe(true);
+  });
+
+  it("normalizes windows-style backslashes", () => {
+    expect(shouldSkip("apps\\api\\node_modules\\foo.ts")).toBe(true);
+  });
 });
 
 describe("isBinary", () => {
@@ -157,6 +188,13 @@ describe("auditDir", () => {
     write("node_modules/foo.ts", "junk\n");
     write("dist/x.ts", "junk\n");
     write("coverage/x.ts", "junk\n");
+    const missing = await auditDir(workDir);
+    expect(missing).toEqual([]);
+  });
+
+  it("ignores binary files when auditing", async () => {
+    const p = join(workDir, "blob.ts");
+    writeFileSync(p, Buffer.from([0x00, 0x01, 0x02]));
     const missing = await auditDir(workDir);
     expect(missing).toEqual([]);
   });
@@ -197,5 +235,41 @@ describe("fixDir", () => {
     expect(count).toBe(1);
     expect(readFileSync(join(workDir, "node_modules/foo.ts"), "utf8")).toBe("junk\n");
     expect(readFileSync(join(workDir, "dist/x.ts"), "utf8")).toBe("junk\n");
+  });
+
+  it("throws on binary file", async () => {
+    const p = join(workDir, "blob.ts");
+    writeFileSync(p, Buffer.from([0x00, 0x01, 0x02]));
+    await expect(fixDir(workDir)).rejects.toThrow(/binary/);
+  });
+});
+
+describe("main CLI", () => {
+  it("audit returns 0 when clean", async () => {
+    write("a.ts", "// SPDX-License-Identifier: Apache-2.0\nexport {};\n");
+    const code = await main(["node", "spdx-header.ts", "audit", workDir]);
+    expect(code).toBe(0);
+  });
+
+  it("audit returns 1 when files are missing the header", async () => {
+    write("a.ts", "export {};\n");
+    const code = await main(["node", "spdx-header.ts", "audit", workDir]);
+    expect(code).toBe(1);
+  });
+
+  it("fix returns 0 and modifies files", async () => {
+    write("a.ts", "export {};\n");
+    const code = await main(["node", "spdx-header.ts", "fix", workDir]);
+    expect(code).toBe(0);
+  });
+
+  it("returns 2 for unknown subcommand", async () => {
+    const code = await main(["node", "spdx-header.ts", "nope", workDir]);
+    expect(code).toBe(2);
+  });
+
+  it("returns 2 when no subcommand provided", async () => {
+    const code = await main(["node", "spdx-header.ts"]);
+    expect(code).toBe(2);
   });
 });
