@@ -1,0 +1,38 @@
+{{/*
+ClusterRole for the OTel Collector DaemonSet.
+
+Least-privilege: get/list/watch only, on the resources kubeletstats
++ k8sattributes processors need. No write verbs, no secrets access.
+
+Cluster-scoped (not namespaced Role) because the DaemonSet runs in a
+single namespace but observes pods/nodes across the whole cluster.
+*/}}
+{{- if .Values.observability.collector.enabled -}}
+{{- $fullname := include "openwhispr.fullname" . -}}
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ $fullname }}-otel-collector
+  labels:
+    {{- include "openwhispr.labels" . | nindent 4 }}
+    app.kubernetes.io/component: otel-collector
+rules:
+  - apiGroups: [""]
+    resources:
+      - nodes
+      - nodes/metrics
+      - nodes/proxy
+      - nodes/stats
+      - pods
+      - services
+      - endpoints
+      - namespaces
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["apps"]
+    resources:
+      - deployments
+      - daemonsets
+      - statefulsets
+      - replicasets
+    verbs: ["get", "list", "watch"]
+{{- end }}

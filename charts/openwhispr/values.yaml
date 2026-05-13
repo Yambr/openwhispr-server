@@ -72,15 +72,39 @@ bundledAi:
       effect: NoSchedule
 
 # Observability. Per A3 the LGTM stack is a cluster prerequisite. Chart ships
-# ServiceMonitor / PodMonitor / OTel Collector ConfigMap only.
+# ServiceMonitor / PodMonitor / OTel Collector DaemonSet+RBAC+ConfigMap only.
 observability:
   embedded: false
   serviceMonitor:
     enabled: false
     namespace: ""
     labels: {}
-  otelCollector:
+  # Plan 09-10 — DaemonSet runs one OTel Collector per node so the
+  # hostmetrics receiver (cpu/mem/network/disk) and kubeletstats receiver
+  # (pod/container metrics) can collect from /proc and /sys. Requires
+  # hostNetwork=true (pitfall #12). Disabled in OSS quickstart + kind CI
+  # (no LGTM endpoint, no privileged-PSA namespace).
+  collector:
     enabled: false
+    # OTel Collector contrib image pin. 0.115.0 is the verified-good tag
+    # as of 2026-05 (research §"OTel Collector pinning").
+    image:
+      repository: otel/opentelemetry-collector-contrib
+      tag: "0.115.0"
+      pullPolicy: IfNotPresent
+    resources:
+      requests:
+        cpu: 100m
+        memory: 192Mi
+      limits:
+        cpu: 500m
+        memory: 512Mi
+  # OTLP/HTTP endpoint of the operator-installed LGTM ingest (Tempo + Mimir
+  # + Loki — typically a single OTel gateway in front, e.g. grafana-agent
+  # or an upstream collector). Required when collector.enabled=true; schema
+  # if/then enforces non-empty + URL shape.
+  lgtm:
+    endpoint: ""
 
 # Postgres via CloudNativePG operator (A2: prerequisite). Wave 1 ships the
 # Cluster CR and the custom image build.

@@ -1,0 +1,115 @@
+{{/*
+OTel Collector config — K8s port of compose/otel-collector/config.yaml.
+
+Receivers
+  otlp           — OTLP/gRPC :4317 + OTLP/HTTP :4318 (api/worker push)
+  hostmetrics    — node CPU/mem/disk/network from /proc + /sys (DaemonSet
+                   hostNetwork=true is required — pitfall #12)
+  kubeletstats   — pod/container metrics from the local kubelet
+                   (replaces compose's docker_stats receiver)
+  prometheus     — local /metrics scrape (optional; off by default)
+
+Processors
+  memory_limiter — backpressure when collector RSS > 80%% of limit
+  batch          — 5s window, 512 max batch — parity with compose config
+  k8sattributes  — enriches signals with pod/namespace/node metadata
+
+Exporters
+  otlphttp       — single endpoint (values.observability.lgtm.endpoint).
+                   The cluster's LGTM ingest (operator-installed)
+                   demultiplexes by signal type. Replaces the compose
+                   per-signal exporters (otlp/tempo, otlphttp/loki,
+                   prometheusremotewrite).
+*/}}
+{{- if .Values.observability.collector.enabled -}}
+{{- $fullname := include "openwhispr.fullname" . -}}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ $fullname }}-otel-collector
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "openwhispr.labels" . | nindent 4 }}
+    app.kubernetes.io/component: otel-collector
+data:
+  config.yaml: |
+    receivers:
+      otlp:
+        protocols:
+          grpc:
+            endpoint: 0.0.0.0:4317
+          http:
+            endpoint: 0.0.0.0:4318
+      hostmetrics:
+        collection_interval: 30s
+        root_path: /hostfs
+        scrapers:
+          cpu: {}
+          memory: {}
+          disk: {}
+          filesystem: {}
+          network: {}
+          load: {}
+      kubeletstats:
+        collection_interval: 30s
+        auth_type: serviceAccount
+        endpoint: ${env:K8S_NODE_NAME}:10250
+        insecure_skip_verify: true
+        metric_groups:
+          - node
+          - pod
+          - container
+      prometheus:
+        config:
+          scrape_configs:
+            - job_name: otel-collector-self
+              scrape_interval: 30s
+              static_configs:
+                - targets: ["127.0.0.1:8888"]
+
+    processors:
+      memory_limiter:
+        check_interval: 5s
+        limit_percentage: 80
+        spike_limit_percentage: 25
+      batch:
+        timeout: 5s
+        send_batch_size: 512
+      k8sattributes:
+        auth_type: serviceAccount
+        passthrough: false
+        extract:
+          metadata:
+            - k8s.namespace.name
+            - k8s.pod.name
+            - k8s.pod.uid
+            - k8s.node.name
+            - k8s.deployment.name
+
+    exporters:
+      otlphttp:
+        endpoint: {{ .Values.observability.lgtm.endpoint | quote }}
+
+    extensions:
+      health_check:
+        endpoint: 0.0.0.0:13133
+
+    service:
+      extensions: [health_check]
+      telemetry:
+        metrics:
+          address: 0.0.0.0:8888
+      pipelines:
+        traces:
+          receivers: [otlp]
+          processors: [memory_limiter, k8sattributes, batch]
+          exporters: [otlphttp]
+        logs:
+          receivers: [otlp]
+          processors: [memory_limiter, k8sattributes, batch]
+          exporters: [otlphttp]
+        metrics:
+          receivers: [otlp, hostmetrics, kubeletstats, prometheus]
+          processors: [memory_limiter, k8sattributes, batch]
+          exporters: [otlphttp]
+{{- end }}
