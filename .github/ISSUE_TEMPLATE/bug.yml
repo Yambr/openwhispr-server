@@ -1,0 +1,82 @@
+name: Bug report
+description: Report a defect in OpenWhispr Server
+title: "bug: <short summary>"
+labels: ["bug", "triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting. Please fill the fields below so the maintainers
+        can reproduce. **Security-relevant reports must NOT go here** — use
+        the security disclosure channel listed in SECURITY.md.
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: Describe the observed behaviour. Include exact error messages and logs (redact secrets).
+      placeholder: "When I called POST /v1/auth/login the server returned 500 instead of 401..."
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behaviour
+      description: What did you expect to happen? Reference BACKEND_SPEC.md / UI-SPEC where relevant.
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Reproduction steps
+      description: Minimal sequence of commands / API calls / clicks to reproduce.
+      placeholder: |
+        1. docker compose up -d
+        2. curl -X POST http://localhost:3000/v1/auth/login -d '...'
+        3. Observe 500 response
+    validations:
+      required: true
+
+  - type: dropdown
+    id: deployment
+    attributes:
+      label: Deployment variant
+      description: Which deployment topology surfaces the bug?
+      options:
+        - "self-host single-VM (docker-compose)"
+        - "cloud K8s (Helm chart)"
+        - "corporate self-host (Helm + internal CA + corp LiteLLM)"
+        - "dev (pnpm dev, no containers)"
+        - "other / unsure"
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: Version / commit SHA
+      description: "Tag (e.g. v1.0.0) or git rev-parse --short HEAD of the running build."
+      placeholder: "v1.0.0 or e.g. c57554c"
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs (redacted)
+      description: Relevant log lines from server / worker / web. Remove secrets, tokens, PII.
+      render: shell
+
+  - type: checkboxes
+    id: checklist
+    attributes:
+      label: Pre-submission checklist
+      options:
+        - label: "I have searched existing issues and this is not a duplicate."
+          required: true
+        - label: "I have redacted secrets, JWTs, and PII from logs."
+          required: true
+        - label: "This is NOT a security vulnerability (those go via SECURITY.md)."
+          required: true
