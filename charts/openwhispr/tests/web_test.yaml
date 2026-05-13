@@ -1,0 +1,99 @@
+suite: web — Deployment + Service (Next.js 15 SSR)
+templates:
+  - web-deployment.yaml
+  - web-service.yaml
+tests:
+  - it: renders web Deployment with container name web, port 3001
+    template: web-deployment.yaml
+    set:
+      secrets:
+        mode: eso
+        external:
+          storeRef: vault-clusterstore
+    asserts:
+      - isKind:
+          of: Deployment
+      - equal:
+          path: spec.template.spec.containers[0].name
+          value: web
+      - equal:
+          path: spec.template.spec.containers[0].ports[0].containerPort
+          value: 3001
+
+  - it: web Deployment env carries HOSTNAME=0.0.0.0 + PORT=3001 + INTERNAL_API_URL
+    template: web-deployment.yaml
+    set:
+      secrets:
+        mode: eso
+        external:
+          storeRef: vault-clusterstore
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].env[?(@.name=="HOSTNAME")].value
+          value: 0.0.0.0
+      - equal:
+          path: spec.template.spec.containers[0].env[?(@.name=="PORT")].value
+          value: "3001"
+      - matchRegex:
+          path: spec.template.spec.containers[0].env[?(@.name=="INTERNAL_API_URL")].value
+          pattern: "RELEASE-NAME-openwhispr-api:3000"
+
+  - it: web Deployment NEXT_PUBLIC_API_BASE_URL uses host.api value
+    template: web-deployment.yaml
+    set:
+      secrets:
+        mode: eso
+        external:
+          storeRef: vault-clusterstore
+      host:
+        api: openwhispr.example.com
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].env[?(@.name=="NEXT_PUBLIC_API_BASE_URL")].value
+          value: https://openwhispr.example.com
+
+  - it: web Deployment carries secret-presence-probe initContainer
+    template: web-deployment.yaml
+    set:
+      secrets:
+        mode: eso
+        external:
+          storeRef: vault-clusterstore
+    asserts:
+      - equal:
+          path: spec.template.spec.initContainers[0].name
+          value: secret-presence-probe
+
+  - it: web Service ClusterIP port 3001
+    template: web-service.yaml
+    set:
+      secrets:
+        mode: eso
+        external:
+          storeRef: vault-clusterstore
+    asserts:
+      - isKind:
+          of: Service
+      - equal:
+          path: spec.type
+          value: ClusterIP
+      - equal:
+          path: spec.ports[0].port
+          value: 3001
+      - equal:
+          path: spec.ports[0].name
+          value: http
+
+  - it: web Deployment honors web.replicas override
+    template: web-deployment.yaml
+    set:
+      secrets:
+        mode: eso
+        external:
+          storeRef: vault-clusterstore
+      web:
+        replicas: 2
+    asserts:
+      - equal:
+          path: spec.replicas
+          value: 2
