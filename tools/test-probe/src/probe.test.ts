@@ -22,9 +22,9 @@ interface FakeBackendOptions {
 async function startFakeBackend(opts: FakeBackendOptions = {}): Promise<{
   app: FastifyInstance;
   url: string;
-  observed: { bearer?: string };
+  observed: { bearer?: string; signupOrigin?: string };
 }> {
-  const observed: { bearer?: string } = {};
+  const observed: { bearer?: string; signupOrigin?: string } = {};
   const app = Fastify({ logger: false });
 
   // Drain multipart bodies as raw bytes so the request stream completes.
@@ -34,7 +34,8 @@ async function startFakeBackend(opts: FakeBackendOptions = {}): Promise<{
     done(null, body);
   });
 
-  app.post("/api/auth/sign-up/email", async (_req, reply) => {
+  app.post("/api/auth/sign-up/email", async (req, reply) => {
+    observed.signupOrigin = req.headers.origin as string | undefined;
     const status = opts.signupStatus ?? 200;
     if (opts.signupTokenHeader) {
       reply.header("set-auth-token", opts.signupTokenHeader);
@@ -101,6 +102,16 @@ describe("runProbe", () => {
     const result = await runProbe({ target: be.url, deadlineMs: 30_000 });
     expect(result.ok).toBe(true);
     expect(be.observed.bearer).toBe("Bearer test-bearer-token-XYZ");
+  });
+
+  // Phase 09.2 F35: probe must send Origin header on signup so Better
+  // Auth's trustedOrigins/CSRF gate admits the in-cluster request. The
+  // first kind helm test returned 403 because Origin was absent.
+  it("sends Origin header on signup matching the target URL (Phase 09.2 F35)", async () => {
+    const be = await startFakeBackend({ signupTokenInBody: true });
+    active = be;
+    await runProbe({ target: be.url, deadlineMs: 30_000 });
+    expect(be.observed.signupOrigin).toBe(be.url);
   });
 
   it("returns ok=false / step=transcribe-too-slow when deadline exceeded", async () => {

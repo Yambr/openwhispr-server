@@ -225,6 +225,25 @@ api:
     logLevel: info
     otelProtocol: grpc
     otelServiceName: openwhispr-api
+    # Phase 09.2 F35 — extra origins appended to Better Auth's
+    # trustedOrigins (after the in-cluster <fullname>-api:3000 + public
+    # https://<host.api> baked in by api-deployment.yaml). Comma-separated.
+    # Production operators add IdP / SSO / customer custom-domain origins
+    # here. Default empty.
+    authTrustedOriginsExtra: ""
+    # Phase 09.2 F35 — true only for kind smoke / dev profiles where the
+    # helm test probe synthetic signup has no inbox. Production overlays
+    # NEVER set this to true.
+    disableEmailVerification: false
+    # Phase 09.2 F37 — extra hosts appended to OUTBOUND_ALLOWED_HOSTS
+    # SSRF allow-list (in-cluster LiteLLM service is always added by
+    # api-deployment.yaml). Comma-separated. Production operators add
+    # vault, internal HTTPS APIs, etc.
+    outboundAllowedHosts: ""
+    # Phase 09.2 F38 — extra hostnames permitted to resolve to RFC1918
+    # (k8s Service IPs are 10.x.x.x). LiteLLM in-cluster service always
+    # added by api-deployment.yaml. Comma-separated.
+    outboundPrivateHostAllowlist: ""
 
 web:
   replicas: 1
