@@ -1,0 +1,42 @@
+# Corporate overlay — chart points the api at an external LiteLLM Proxy
+# (operator's internal gateway, e.g. Bedrock proxy, vLLM, in-house LiteLLM).
+#
+# Defaults:
+#   - secrets.mode=eso (External Secrets Operator pulls from Vault/AWS/etc.)
+#   - litellm.embedded=false (chart does NOT deploy LiteLLM; uses external)
+#   - bundledAi.enabled=false (corporate runs models elsewhere)
+#   - cert-manager.clusterIssuer points at internal CA (override per env)
+
+secrets:
+  mode: eso
+  external:
+    storeRef: vault-clusterstore
+    storeKind: ClusterSecretStore
+    path: openwhispr
+    refreshInterval: 1h
+
+litellm:
+  embedded: false
+
+api:
+  env:
+    LITELLM_BASE_URL: https://litellm.internal/
+    # Operator may also set LITELLM_VIRTUAL_KEY via ESO if their internal
+    # LiteLLM requires it (see docs/litellm-target-spec.md).
+
+bundledAi:
+  enabled: false
+
+observability:
+  embedded: false
+  serviceMonitor:
+    enabled: true
+
+certManager:
+  # Operator overrides to their internal-CA Issuer name.
+  clusterIssuer: internal-ca-issuer
+
+postgres:
+  replicas: 3
+  backup:
+    enabled: true

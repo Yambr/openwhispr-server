@@ -1,0 +1,63 @@
+# Cloud HA overlay — defaults tuned for multi-AZ production K8s.
+#
+# Assumes:
+#   - CNPG operator + Traefik 3 + cert-manager + LGTM stack already
+#     installed at cluster scope.
+#   - prometheus-adapter installed (for optional queueDepthMetric HPA).
+#   - StorageClass with RWO across AZs (e.g. AWS gp3, GCP pd-balanced).
+#   - GPU node pool with nvidia.com/gpu.present=true label (only if you
+#     flip bundledAi.enabled=true; default is false).
+
+secrets:
+  mode: helm-values
+
+postgres:
+  replicas: 3
+  storageSize: 100Gi
+  backup:
+    enabled: true
+
+valkey:
+  architecture: replication
+  replica:
+    replicaCount: 2
+  auth:
+    enabled: true
+
+minio:
+  mode: distributed
+  replicas: 4
+  persistence:
+    size: 100Gi
+
+observability:
+  embedded: false
+  serviceMonitor:
+    enabled: true
+  otelCollector:
+    enabled: true
+
+api:
+  replicas: 2
+  autoscaling:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 20
+    targetCPUUtilizationPercentage: 70
+
+web:
+  replicas: 2
+
+worker:
+  autoscaling:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 30
+    targetCPUUtilizationPercentage: 70
+    queueDepthMetric: true
+
+bundledAi:
+  enabled: false
+
+certManager:
+  clusterIssuer: letsencrypt-prod

@@ -1,0 +1,62 @@
+suite: examples — overlay render snapshots
+templates:
+  - serviceaccount.yaml
+  - secrets.yaml
+  - externalsecret.yaml
+tests:
+  - it: oss-quickstart overlay renders ServiceAccount + Secret (no fail)
+    values:
+      - ../examples/values-oss-quickstart.yaml
+    set:
+      secrets:
+        litellmMasterKey: "valid-litellm-1234567890abcdefghij12345"
+        openrouterApiKey: "valid-openrouter-key-1234567890abcdefghij"
+        openaiApiKey: "valid-openai-key-1234567890abcdefghij1234"
+        pyannoteApiKey: "valid-pyannote-key-1234567890abcdefghij"
+        hfToken: "valid-hf-token-1234567890abcdefghij12345"
+        postgresOwnerPassword: "valid-pg-pass-1234567890abcdefghij1234"
+        pgbouncerAdminPassword: "valid-pgb-pass-1234567890abcdefghij123"
+        betterAuthSecret: "valid-better-auth-1234567890abcdefghij12"
+    template: secrets.yaml
+    asserts:
+      - isKind:
+          of: Secret
+      - exists:
+          path: stringData.LITELLM_MASTER_KEY
+
+  - it: cloud-ha overlay renders Secret with helm-values mode
+    values:
+      - ../examples/values-cloud-ha.yaml
+    set:
+      secrets:
+        litellmMasterKey: "valid-litellm-1234567890abcdefghij12345"
+        openrouterApiKey: "valid-openrouter-key-1234567890abcdefghij"
+        openaiApiKey: "valid-openai-key-1234567890abcdefghij1234"
+        pyannoteApiKey: "valid-pyannote-key-1234567890abcdefghij"
+        hfToken: "valid-hf-token-1234567890abcdefghij12345"
+        postgresOwnerPassword: "valid-pg-pass-1234567890abcdefghij1234"
+        pgbouncerAdminPassword: "valid-pgb-pass-1234567890abcdefghij123"
+        betterAuthSecret: "valid-better-auth-1234567890abcdefghij12"
+    template: secrets.yaml
+    asserts:
+      - isKind:
+          of: Secret
+
+  - it: corporate-litellm overlay renders ExternalSecret (eso mode) and skips inline Secret
+    values:
+      - ../examples/values-corporate-litellm.yaml
+    template: externalsecret.yaml
+    asserts:
+      - isKind:
+          of: ExternalSecret
+      - equal:
+          path: spec.secretStoreRef.name
+          value: vault-clusterstore
+
+  - it: corporate-litellm overlay omits the inline Secret entirely
+    values:
+      - ../examples/values-corporate-litellm.yaml
+    template: secrets.yaml
+    asserts:
+      - hasDocuments:
+          count: 0

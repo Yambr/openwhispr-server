@@ -1,0 +1,48 @@
+# OSS single-node quickstart overlay. Minimizes everything for a fresh kind
+# / single-VM install. Pair with --set-string secrets.* on the CLI.
+#
+# Hard rules baked in:
+#   - bundledAi.enabled=false (no GPU expected)
+#   - observability.embedded=false (LGTM stack out-of-band per A3)
+#   - postgres.replicas=1 (no HA quorum)
+#   - valkey/minio single-replica
+#   - secrets.mode=helm-values (no ESO dependency)
+
+secrets:
+  mode: helm-values
+
+postgres:
+  replicas: 1
+  storageSize: 10Gi
+
+valkey:
+  architecture: standalone
+  auth:
+    enabled: false
+
+minio:
+  mode: standalone
+  persistence:
+    size: 10Gi
+
+bundledAi:
+  enabled: false
+
+observability:
+  embedded: false
+  serviceMonitor:
+    enabled: false
+  otelCollector:
+    enabled: false
+
+api:
+  replicas: 1
+  autoscaling:
+    enabled: false
+
+web:
+  replicas: 1
+
+worker:
+  autoscaling:
+    enabled: false
