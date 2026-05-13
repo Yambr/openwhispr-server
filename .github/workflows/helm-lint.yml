@@ -114,3 +114,6 @@ jobs:
 
       - name: Compose ↔ chart parity lint
         run: pnpm exec tsx tools/lint-compose-chart-parity.ts
+
+      - name: Vitest — compose-chart parity coverage gate (>=90/90/90/90)
+        run: pnpm test:lint-compose-chart-parity
