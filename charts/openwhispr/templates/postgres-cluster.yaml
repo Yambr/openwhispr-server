@@ -47,6 +47,15 @@ spec:
       owner: openwhispr_owner
       secret:
         name: {{ $fullname }}-pg-owner
+      # Finding 09.1-F14 — `postInitSQL` runs as superuser in the
+      # `postgres` database BEFORE the application database is created.
+      # Used to grant CREATEDB to openwhispr_owner (needed because the
+      # migrate Job creates the `litellm` database too, per Phase 3 Plan
+      # 01 — HIGH-1 LiteLLM-DB auto-create) AND to pre-create the
+      # litellm database so the migrate Job can run as a non-superuser.
+      postInitSQL:
+        - ALTER ROLE openwhispr_owner CREATEDB;
+        - CREATE DATABASE litellm OWNER openwhispr_owner;
       postInitApplicationSQL:
         - CREATE SCHEMA IF NOT EXISTS partman;
         - CREATE EXTENSION IF NOT EXISTS pg_partman SCHEMA partman;
