@@ -21,7 +21,7 @@ import { type ExecutableTx, type TransactionalDb, withTenant } from "@openwhispr
 import { NoteInputSchema } from "@openwhispr/wire-schemas";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
-import { AuthError } from "../../errors.js";
+import { AuthError, ValidationError } from "../../errors.js";
 import { createOrReturnExisting } from "../../lib/client-id-upsert.js";
 import type { CloudNoteRow } from "./shape.js";
 
@@ -59,7 +59,10 @@ export const buildNotesBatchCreateRoutes = (deps: NotesBatchCreateDeps) =>
 
         // D-30 — batch size exceeds 500 → 400 envelope.
         if (notesInput.length > MAX_BATCH_SIZE) {
-          return reply.code(400).send({ error: `batch size exceeds ${MAX_BATCH_SIZE} items` });
+          throw new ValidationError(
+            "BATCH_TOO_LARGE",
+            `batch size exceeds ${MAX_BATCH_SIZE} items`,
+          );
         }
 
         const tenantId = req.tenant;

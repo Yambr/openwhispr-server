@@ -25,7 +25,7 @@ import { type ExecutableTx, type TransactionalDb, withTenant } from "@openwhispr
 import { sql } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
-import { AuthError } from "../../../errors.js";
+import { AuthError, NotFoundError, ValidationError } from "../../../errors.js";
 import { auditCtxFromRequest, recordAudit } from "../../../lib/audit.js";
 import { type ApiKeyRow, rowToApiKey } from "./list.js";
 
@@ -54,7 +54,7 @@ export const buildKeysRevokeRoutes = (deps: KeysRevokeDeps) =>
         try {
           params = ParamsSchema.parse(req.params);
         } catch {
-          return reply.code(400).send({ error: "invalid id" });
+          throw new ValidationError("INVALID_ID", "invalid id");
         }
 
         const row = await withTenant(deps.db, tenantId, async (tx) => {
@@ -88,7 +88,7 @@ export const buildKeysRevokeRoutes = (deps: KeysRevokeDeps) =>
         });
 
         if (!row) {
-          return reply.code(404).send({ error: "api key not found" });
+          throw new NotFoundError("API_KEY_NOT_FOUND", "api key not found");
         }
         // V1Response envelope per D-28: { data: ApiKey }.
         return reply.code(200).send({ data: rowToApiKey(row) });

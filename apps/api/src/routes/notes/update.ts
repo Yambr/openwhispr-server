@@ -17,7 +17,7 @@ import { type ExecutableTx, type TransactionalDb, withTenant } from "@openwhispr
 import { sql } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
-import { AuthError } from "../../errors.js";
+import { AuthError, NotFoundError } from "../../errors.js";
 import { type CloudNoteRow, rowToCloudNote } from "./shape.js";
 
 // Allowed mutable columns. STRICT allowlist — defends against
@@ -130,7 +130,7 @@ export const buildNotesUpdateRoutes = (deps: NotesUpdateDeps) =>
         if (!row) {
           // 0 rows affected — either not found, cross-tenant (RLS
           // invisible), cross-user, or soft-deleted. Surface as 404.
-          return reply.code(404).send({ error: "note not found" });
+          throw new NotFoundError("NOTE_NOT_FOUND", "note not found");
         }
         return reply.code(200).send(rowToCloudNote(row));
       },

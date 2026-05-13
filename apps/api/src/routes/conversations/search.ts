@@ -18,7 +18,7 @@ import { type ExecutableTx, type TransactionalDb, withTenant } from "@openwhispr
 import { sql } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
-import { AuthError } from "../../errors.js";
+import { AuthError, ValidationError } from "../../errors.js";
 import { type CloudConversationRow, rowToCloudConversation } from "./shape.js";
 
 const SearchRequestSchema = z
@@ -49,7 +49,7 @@ export const buildConversationsSearchRoutes = (deps: ConversationsSearchDeps) =>
         // Pitfall #3 — trim-blank pre-check.
         const rawBody = (req.body ?? {}) as { query?: unknown };
         if (typeof rawBody.query === "string" && rawBody.query.trim().length < 1) {
-          return reply.code(400).send({ error: "query must be non-empty" });
+          throw new ValidationError("QUERY_REQUIRED", "query must be non-empty");
         }
         const body = SearchRequestSchema.parse(req.body);
         const limit = Math.min(Math.max(body.limit ?? 50, 1), 200);

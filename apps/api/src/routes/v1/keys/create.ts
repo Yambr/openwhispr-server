@@ -25,7 +25,7 @@ import { type ExecutableTx, type TransactionalDb, withTenant } from "@openwhispr
 import { sql } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
-import { AuthError } from "../../../errors.js";
+import { AuthError, ConflictError } from "../../../errors.js";
 import { generatePak, hashKey } from "../../../lib/argon2-keys.js";
 import { auditCtxFromRequest, recordAudit } from "../../../lib/audit.js";
 import { type ApiKeyRow, rowToApiKey } from "./list.js";
@@ -133,7 +133,7 @@ export const buildKeysCreateRoutes = (deps: KeysCreateDeps) =>
           const raw = err as { code?: string; cause?: { code?: string } } | null;
           const sqlState = raw?.code ?? raw?.cause?.code;
           if (sqlState === "23505") {
-            return reply.code(409).send({ error: "api key with that name already exists" });
+            throw new ConflictError("API_KEY_NAME_TAKEN", "api key with that name already exists");
           }
           throw err;
         }

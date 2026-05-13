@@ -10,7 +10,7 @@ import { type ExecutableTx, type TransactionalDb, withTenant } from "@openwhispr
 import { sql } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
-import { AuthError } from "../../errors.js";
+import { AuthError, NotFoundError } from "../../errors.js";
 import { type CloudConversationRow, rowToCloudConversation } from "./shape.js";
 
 const MUTABLE_COLS = ["title", "archived_at"] as const;
@@ -72,7 +72,7 @@ export const buildConversationsUpdateRoutes = (deps: ConversationsUpdateDeps) =>
         });
 
         if (!row) {
-          return reply.code(404).send({ error: "conversation not found" });
+          throw new NotFoundError("CONVERSATION_NOT_FOUND", "conversation not found");
         }
         return reply.code(200).send(rowToCloudConversation(row));
       },
