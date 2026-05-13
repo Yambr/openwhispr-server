@@ -1,0 +1,36 @@
+# CODEOWNERS — default ownership map.
+#
+# Until additional maintainers are recruited, the sole maintainer (@nick)
+# owns the entire tree. Per-area lines below exist so future delegation
+# stays a one-line edit (replace the handle on the relevant row, do NOT
+# remove the catch-all default line).
+#
+# Syntax reference: https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/about-code-owners
+
+# Catch-all default — must remain last-matching for paths not covered below.
+* @nick
+
+# Server / API surface (BACKEND_SPEC.md wire compatibility).
+/apps/api/                   @nick
+/apps/worker/                @nick
+/packages/data/              @nick
+/packages/contract-tests/    @nick
+/packages/i18n/              @nick
+
+# Web (UI-SPEC target).
+/apps/web/                   @nick
+
+# Infrastructure (compose, Helm chart, CI).
+/charts/                     @nick
+/docker-compose.yml          @nick
+/.github/                    @nick
+
+# Documentation + planning + ADRs.
+/docs/                       @nick
+/.planning/                  @nick
+/CLAUDE.md                   @nick
+/CONTRIBUTING.md             @nick
+/SECURITY.md                 @nick
+/CODE_OF_CONDUCT.md          @nick
+/LICENSE                     @nick
+/NOTICE                      @nick

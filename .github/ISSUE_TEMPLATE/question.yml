@@ -1,0 +1,44 @@
+name: Question
+description: Ask a question about deploying, configuring, or developing OpenWhispr Server
+title: "question: <short summary>"
+labels: ["question", "triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Please check the documentation first — most operational questions
+        are answered in `docs/operations.md`, `docs/auth.md`, `docs/i18n.md`,
+        or `SELF_HOSTING.md`.
+
+  - type: textarea
+    id: question
+    attributes:
+      label: Your question
+      description: What are you trying to do, and where are you stuck?
+    validations:
+      required: true
+
+  - type: textarea
+    id: tried
+    attributes:
+      label: What have you tried?
+      description: Commands run, configs attempted, error messages observed.
+
+  - type: input
+    id: doc-checked
+    attributes:
+      label: Documentation consulted
+      description: Which doc page(s) did you read? Paste relative paths or links.
+      placeholder: "docs/operations.md, docs/i18n.md"
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: checklist
+    attributes:
+      label: Pre-submission checklist
+      options:
+        - label: "I have read the relevant documentation and it did not resolve the question."
+          required: true
+        - label: "This is NOT a bug report or feature request."
+          required: true

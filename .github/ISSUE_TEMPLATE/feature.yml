@@ -1,0 +1,65 @@
+name: Feature request
+description: Propose a new capability or enhancement
+title: "feat: <short summary>"
+labels: ["enhancement", "triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Feature proposals are weighed against `.planning/REQUIREMENTS.md`
+        and the phase roadmap. New requirements may need to wait for a
+        future phase — that is fine and expected.
+
+  - type: textarea
+    id: motivation
+    attributes:
+      label: Motivation
+      description: What user / operator problem does this solve? Why now?
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      description: How would the feature look? API shape, UI surface, config surface, etc.
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: What other approaches did you weigh? Why were they not chosen?
+
+  - type: input
+    id: requirement-id
+    attributes:
+      label: Requirement ID (optional)
+      description: "If this maps to an existing requirement in .planning/REQUIREMENTS.md, paste the ID (e.g. AUTH-07, OBS-03)."
+      placeholder: "AUTH-07"
+
+  - type: dropdown
+    id: scope
+    attributes:
+      label: Scope
+      description: Which surface does the feature target?
+      options:
+        - "server / API (BACKEND_SPEC.md wire surface)"
+        - "web (UI-SPEC target)"
+        - "infrastructure (docker-compose, Helm, CI)"
+        - "documentation / OSS housekeeping"
+        - "i18n / localization"
+        - "other / unsure"
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: checklist
+    attributes:
+      label: Pre-submission checklist
+      options:
+        - label: "I have searched existing issues and this is not a duplicate."
+          required: true
+        - label: "I understand this may be scheduled for a future phase, not v1."
+          required: true
