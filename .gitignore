@@ -17,6 +17,7 @@ node_modules/
 .env.*
 !.env.example
 !.env.e2e.example
+!.env.embedded.example
 *.key
 *.pem
 

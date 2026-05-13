@@ -7,6 +7,22 @@
 > the Phase 4 operator-facing surface; deploy / upgrade / scale topics
 > live in [`operations.md`](./operations.md).
 
+## Variant A — Embedded LiteLLM (default OSS quickstart)
+
+Plan 11-01 promoted the embedded-LiteLLM compose + chart bundle to the
+canonical OSS entrypoint. Fresh operators should start there:
+
+- **Compose:** `docker-compose.embedded-litellm.yml`
+- **Chart values:** `charts/openwhispr/examples/values-embedded-litellm.yaml`
+- **Env scaffold:** `.env.embedded.example`
+- **Variant matrix + quickstart commands:** [`examples/README.md`](../examples/README.md)
+
+Variant A does NOT require `HF_TOKEN`. The chart's
+`openwhispr.requiredSecretKeys` helper only appends that key when
+`bundledAi.enabled=true` (Variant C — local Speaches with gated pyannote
+weights). The relocated `HF_TOKEN` block in `.env.example` lives under a
+`# Variant C only` banner; ignore it for Variant A.
+
 ## Realtime ingress (`:8443`)
 
 Phase 4 (Plan 05) split the Traefik ingress into two TLS entrypoints

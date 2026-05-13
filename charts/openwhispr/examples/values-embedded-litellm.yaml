@@ -1,17 +1,72 @@
 # Variant A — canonical OSS quickstart overlay (Plan 11-01).
-# Minimal placeholder authored during Task 1 RED so the examples_render_test
-# can locate it; Task 4 fleshes this file out with the full operator-facing
-# comments and key provenance pointers.
+#
+# This is the recommended Helm overlay for self-hosting OpenWhispr with the
+# embedded LiteLLM Proxy and hosted AI providers via .env API keys.
+#
+#   helm install openwhispr ./charts/openwhispr \
+#     -f ./charts/openwhispr/examples/values-embedded-litellm.yaml \
+#     --set-string secrets.litellmMasterKey=$LITELLM_MASTER_KEY \
+#     --set-string secrets.openrouterApiKey=$OPENROUTER_API_KEY \
+#     ...  # see the full required-key list below
+#
+# Variant A NEVER renders HF_TOKEN in the Secret or ExternalSecret because
+# bundledAi.enabled=false → openwhispr.requiredSecretKeys omits it. Operators
+# wanting local Speaches with gated pyannote weights should use Variant C
+# (values-corporate-litellm.yaml or a Variant C overlay shipped by 11-03).
+#
+# Hard defaults baked in:
+#   - bundledAi.enabled=false (no GPU expected; HF_TOKEN not required)
+#   - litellm.embedded=true   (chart renders the bundled LiteLLM Deployment)
+#   - secrets.mode=helm-values (no ESO dependency; operator may flip to eso)
+#   - postgres.replicas=1     (no HA quorum; flip to 3+ for cloud-ha)
+#   - valkey/minio standalone (single-replica for OSS quickstart)
+#   - observability.* disabled (LGTM stack is a cluster prerequisite)
+
 secrets:
   mode: helm-values
+  # Required keys — populate via --set-string on the helm install / upgrade
+  # command line, or via a sealed-Secret / SOPS-encrypted values overlay.
+  # Empty values trigger render-time fail gates (see templates/secrets.yaml).
+  #
+  # Provenance pointers for fresh operators:
+  #   LITELLM_MASTER_KEY     — generate any 32+ char hex (openssl rand -hex 32)
+  #   OPENROUTER_API_KEY     — https://openrouter.ai/keys
+  #   OPENAI_API_KEY         — https://platform.openai.com/api-keys
+  #   POSTGRES_OWNER_PASSWORD — generate (openssl rand -base64 32 | tr -d /=+)
+  #   POSTGRES_APP_PASSWORD   — generate (separate from owner password)
+  #   PGBOUNCER_ADMIN_PASSWORD — generate
+  #   BETTER_AUTH_SECRET     — generate 32+ char hex (openssl rand -hex 32)
+  #   VALKEY_PASSWORD        — generate
+  #   MINIO_ROOT_PASSWORD    — generate
+  #   TRAEFIK_ADMIN_PASSWORD — htpasswd format / generate
+  #   GRAFANA_ADMIN_PASSWORD — generate
+  #   MASTER_KEK             — base64url 32 bytes (openssl rand 32 | basenc --base64url -w0 | tr -d =)
+  #   BACKUP_AGE_IDENTITY    — age-keygen -o - (AGE-SECRET-KEY-1...)
+  #
+  # Soft-warned (best-effort, /v1/audio/diarization gracefully 503s if absent):
+  #   PYANNOTE_API_KEY       — https://pyannote.ai (Audience-7 / community-1)
+  #
+  # NOT required for Variant A (would be required for Variant C only):
+  #   HF_TOKEN               — https://huggingface.co/settings/tokens
 
 bundledAi:
+  # Variant A canonical lock: local Speaches with gated HF weights is OFF.
+  # Flipping this to true switches the chart into Variant C territory: the
+  # openwhispr.requiredSecretKeys helper appends HF_TOKEN, and a Speaches
+  # Deployment is rendered (Wave 2 + Plan 11-03). For Variant A leave this
+  # at its baked-in default.
   enabled: false
 
 litellm:
+  # Embedded LiteLLM Proxy reads compose/litellm/litellm_config.yaml (the
+  # default OpenRouter+Groq+OpenAI provider catalog). Corporate operators
+  # flip to false and set externalBaseUrl to point api/worker at their
+  # internal LiteLLM (Bedrock proxy, vLLM, etc.).
   embedded: true
 
 postgres:
+  # OSS quickstart — single-replica. Cloud-HA operators bump to 3+ via
+  # values-cloud-ha.yaml.
   replicas: 1
   storageSize: 10Gi
 
@@ -26,6 +81,8 @@ minio:
     size: 10Gi
 
 observability:
+  # LGTM stack is a cluster prerequisite per A3 — chart only ships ServiceMonitor
+  # + DaemonSet, never the actual Grafana / Loki / Tempo / Mimir Deployments.
   embedded: false
   serviceMonitor:
     enabled: false
@@ -33,6 +90,8 @@ observability:
     enabled: false
 
 api:
+  # OSS quickstart sizes — single replica + autoscaling off. Cloud-HA flips
+  # both for the 1000-concurrent-user target.
   replicas: 1
   autoscaling:
     enabled: false

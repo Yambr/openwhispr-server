@@ -53,7 +53,7 @@ spec:
           imagePullPolicy: IfNotPresent
           # Plan 11-01 — env-name list rendered from the single-source
           # helper openwhispr.requiredSecretKeys (templates/_helpers.tpl).
-          # HF_TOKEN is appended only when bundledAi.enabled=true.
+          # The list grows when bundledAi.enabled=true (Variant C).
           command:
             - sh
             - -c
