@@ -185,12 +185,65 @@ app.kubernetes.io/component: litellm
 {{- end }}
 
 {{/*
-The 8 secret env keys carried by <fullname>-secrets. Used by the
-secret-presence-probe initContainer to fail-fast at pod start if ESO has
-not synced yet (pitfall #5).
+Required secret env keys for the in-cluster <fullname>-secrets resource.
+Plan 11-01 — single source of truth consumed by:
+  - templates/secrets.yaml (helm-values mode renders these as stringData)
+  - templates/externalsecret.yaml (eso mode renders one data: ref per key)
+  - templates/{api,web,worker,litellm}-deployment.yaml
+      (secret-presence-probe initContainer iterates this list to fail-fast
+       at pod start when ESO has not synced yet — pitfall #5)
+
+The list is the 13 core keys required by every variant. HF_TOKEN is
+appended ONLY when .Values.bundledAi.enabled is true (Variant C — local
+Speaches container needing the gated pyannote weights).
+
+PYANNOTE_API_KEY is deliberately NOT in the required list: per Plan 11-01
+<interfaces>, /v1/audio/diarization gracefully degrades to 503 when the
+key is absent, so it is soft-warned only (compose-side bootstrap.sh) and
+must not block pod startup.
+
+Output is a single-space-joined string so templates can `splitList " "`.
+*/}}
+{{- define "openwhispr.requiredSecretKeys" -}}
+LITELLM_MASTER_KEY OPENROUTER_API_KEY OPENAI_API_KEY POSTGRES_OWNER_PASSWORD POSTGRES_APP_PASSWORD PGBOUNCER_ADMIN_PASSWORD BETTER_AUTH_SECRET VALKEY_PASSWORD MINIO_ROOT_PASSWORD TRAEFIK_ADMIN_PASSWORD GRAFANA_ADMIN_PASSWORD MASTER_KEK BACKUP_AGE_IDENTITY
+{{- if .Values.bundledAi.enabled }} HF_TOKEN{{- end }}
+{{- end }}
+
+{{/*
+Map an upper-snake env-var name (the output of openwhispr.requiredSecretKeys)
+to the lower-camelCase values key under .Values.secrets. Plan 11-01 — used
+by secrets.yaml + externalsecret.yaml to derive both their fail-gate loop
+and their data block from the same helper.
+*/}}
+{{- define "openwhispr.secretValuesKey" -}}
+{{- $envName := . -}}
+{{- $map := dict
+    "LITELLM_MASTER_KEY" "litellmMasterKey"
+    "OPENROUTER_API_KEY" "openrouterApiKey"
+    "OPENAI_API_KEY" "openaiApiKey"
+    "POSTGRES_OWNER_PASSWORD" "postgresOwnerPassword"
+    "POSTGRES_APP_PASSWORD" "postgresAppPassword"
+    "PGBOUNCER_ADMIN_PASSWORD" "pgbouncerAdminPassword"
+    "BETTER_AUTH_SECRET" "betterAuthSecret"
+    "VALKEY_PASSWORD" "valkeyPassword"
+    "MINIO_ROOT_PASSWORD" "minioRootPassword"
+    "TRAEFIK_ADMIN_PASSWORD" "traefikAdminPassword"
+    "GRAFANA_ADMIN_PASSWORD" "grafanaAdminPassword"
+    "MASTER_KEK" "masterKek"
+    "BACKUP_AGE_IDENTITY" "backupAgeIdentity"
+    "HF_TOKEN" "hfToken"
+-}}
+{{- index $map $envName -}}
+{{- end }}
+
+{{/*
+DEPRECATED — preserved for any external dependents during the 11-01
+transition. New consumers should iterate openwhispr.requiredSecretKeys
+directly. The old name remains a no-op alias rendering an empty `sh -c`
+command (no Deployment template references it post-Plan 11-01).
 */}}
 {{- define "openwhispr.secretPresenceProbeCmd" -}}
-sh -c 'for k in LITELLM_MASTER_KEY OPENROUTER_API_KEY OPENAI_API_KEY PYANNOTE_API_KEY HF_TOKEN POSTGRES_OWNER_PASSWORD PGBOUNCER_ADMIN_PASSWORD BETTER_AUTH_SECRET; do eval v=\$$k; if [ -z "$v" ]; then echo "FATAL: $k empty — refusing to start (ESO not synced?)"; exit 1; fi; done; echo "secret-presence-probe OK"'
+sh -c 'echo "openwhispr.secretPresenceProbeCmd is deprecated — see openwhispr.requiredSecretKeys"'
 {{- end }}
 
 {{/*
