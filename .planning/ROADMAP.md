@@ -40,7 +40,7 @@ A drop-in OpenWhispr backend any organization can self-host — open-source out 
 - [x] **Phase 9: Helm Chart & Cloud Deploy** — CLOSED 2026-05-13. 11 sub-plans across 4 waves landed the production-grade `charts/openwhispr/` Helm chart wrapping the 18-service compose stack: CNPG HA Postgres (custom `cnpg-postgres-17-pgpartman` image, A4), CNPG Pooler CRD (A6), Bitnami Valkey + MinIO OCI sub-charts (A5), api/web/worker Deployments + HPAs + PDBs + ServiceMonitors, LiteLLM Deployment (embedded + external-mode helper), migrate Helm-hook Job, Traefik dual IngressRoutes (`:443` short-JSON + `:8443` websecure-realtime), cert-manager Certificate templates, OTel Collector DaemonSet, helm test SLO probe (DEPLOY-05; `tools/test-probe/` image + Helm-test hook pod), helm-upgrade-matrix.yml (DEPLOY-04; kind cluster + N-1 → N + seed/integrity), helm-release.yml (chart OCI push to GHCR + follow-up PR for `.chart-versions/previous`), and `docs/operations.md` Helm chart section. 32 atomic commits; 106/106 helm-unittest PASS; 95 new vitest tests for tooling. All 5 DEPLOY-* success criteria PASS. See `.planning/phases/09-helm-chart-and-cloud-deploy/09-SUMMARY.md`.
 - [x] **Phase 09.1: Real kind Apply (Live Chart Validation)** — CLOSED 2026-05-13. First live `helm install` of `charts/openwhispr/` against kind v0.31. 33 of 34 findings fixed inline (F35 deferred to 09.2). 17 atomic commits, helm-unittest 109/109. All 9 application pods reach `1/1 Running` + migrate Job Complete in 59 seconds: api, web, worker, litellm, postgres (CNPG), pg-pooler ×2, valkey, minio + minio-console. helm test partial — SLO probe reaches api Service in <40ms but Better Auth signup 403 (Origin/IP forwarding gap, recorded as F35 in 09.2 backlog). Architectural validations beyond helm-unittest scope: CNPG admission webhook (F4 shared_preload_libraries, F24 dollar-quote shell escape), PG 17 privilege chain (F25 CREATEROLE + ADMIN OPTION, F26 GRANT SET ON PARAMETER), Bitnami Secure Images migration to bitnamilegacy/* (F6), Helm hook exclusivity trap (F10 → revision-suffixed regular Job), 15-key secret schema gap between chart and app ENTRYPOINT validator (F22), distroless kubectl shell missing (F19 → alpine/kubectl). See `.planning/phases/09.1-helm-real-kind-apply/09.1-SUMMARY.md`.
 - [x] **Phase 09.2: helm test SLO probe GREEN** — CLOSED 2026-05-13. helm test exit 0 in 1.365 s (deadline 300 s). DEPLOY-05 SLO criterion fully PASS. F35 + 3 unmasked follow-ons (F36 CNPG Pooler hostname `-pg-pooler` not `-pg-pooler-rw`; F37 SSRF allow-list missing in-cluster litellm; F38 SSRF rfc1918_10 block on k8s Service IP). 4 chart env additions: AUTH_TRUSTED_ORIGINS_EXTRA + OPENWHISPR_DISABLE_EMAIL_VERIFICATION (kind only) + OUTBOUND_ALLOWED_HOSTS + OUTBOUND_PRIVATE_HOST_ALLOWLIST. probe.ts sends Origin header (RED→GREEN vitest +1 = 22/22). helm-unittest 109/109. See `.planning/phases/09.2-helm-test-slo-probe-green/09.2-SUMMARY.md`.
-- [ ] **Phase 10: i18n + Docs + OSS Housekeeping** — en+ru ICU plurals + DOCS-01..08 + ADRs + CONTRIBUTING/SECURITY/COC
+- [x] **Phase 10: i18n + Docs + OSS Housekeeping** — en+ru ICU plurals + DOCS-01..08 + ADRs + CONTRIBUTING/SECURITY/COC (completed 2026-05-13)
 
 ## Phase Details
 
@@ -672,9 +672,9 @@ Plans:
   5. Tests written first (TDD); all CI checks green.
 **Plans**: 4 plans
 Plans:
-- [ ] 10-01-PLAN.md — Server i18n (API + Worker): i18next + ICU + http-middleware, error-envelope translation at setErrorHandler, worker TemplateRenderer (3 templates), users.locale column, TEST-I18N-01 gate
-- [ ] 10-02-PLAN.md — Web Russian translations + locale negotiation: NEXT_LOCALE cookie + Edge middleware + RSC layout, 200+ key ru bundles, language switcher, /api/locale route
-- [ ] 10-03-PLAN.md — Docs suite: docs/architecture.md, docs/i18n.md, docs/security.md (new); README + operations.md + auth.md + wire-contract.md + litellm-target-spec.md extensions
+- [x] 10-01-PLAN.md — Server i18n (API + Worker): i18next + ICU + http-middleware, error-envelope translation at setErrorHandler, worker TemplateRenderer (3 templates), users.locale column, TEST-I18N-01 gate
+- [x] 10-02-PLAN.md — Web Russian translations + locale negotiation: NEXT_LOCALE cookie + Edge middleware + RSC layout, 200+ key ru bundles, language switcher, /api/locale route
+- [x] 10-03-PLAN.md — Docs suite: docs/architecture.md, docs/i18n.md, docs/security.md (new); README + operations.md + auth.md + wire-contract.md + litellm-target-spec.md extensions
 - [ ] 10-04-PLAN.md — OSS housekeeping: SPDX header codemod + CI gate, CODEOWNERS, ISSUE_TEMPLATE, CoC 2.1 audit, CONTRIBUTING/SECURITY extension, ADRs 0004-0011 (LICENSE/NOTICE already shipped in bd81d82)
 **UI hint**: no
 
@@ -692,7 +692,7 @@ Plans:
 | 7. Frontend UI-SPEC | 7/7 | Complete | 2026-05-12 |
 | 8. Load Test, Tuning & SLO Publication | 8/8 | Complete | 2026-05-13 |
 | 9. Helm Chart & Cloud Deploy | 11/11 | Complete | 2026-05-13 |
-| 10. i18n + Docs + OSS Housekeeping | 0/4 | Planned | - |
+| 10. i18n + Docs + OSS Housekeeping | 7/5 | Complete   | 2026-05-13 |
 
 ## Coverage Map
 
