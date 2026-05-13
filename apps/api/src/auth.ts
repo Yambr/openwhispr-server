@@ -56,6 +56,26 @@ export interface AuthInstance {
   };
 }
 
+/**
+ * Phase 10 / Plan 10-01c — email-delivery queue DI payload.
+ *
+ * Mirrors the Zod schema `emailDeliverySchema` in
+ * `apps/worker/src/jobs/email-delivery.ts` (D-A7 payload conventions).
+ * Re-declared here as a structural type rather than imported from the
+ * worker package to keep the API → worker dependency direction clean:
+ * the API enqueues jobs but does not consume worker-internal types.
+ * When the worker processes the queue entry it re-parses through Zod,
+ * so any drift is caught at job pickup.
+ */
+export interface EmailDeliveryPayload {
+  tenant_id: string;
+  to: string;
+  template_id: string;
+  locale: "en" | "ru";
+  variables: Record<string, unknown>;
+  request_id: string;
+}
+
 export interface BuildAuthOptions {
   db: AppDb;
   /** Optional logger; not consumed by Better Auth itself but available for hooks. */
@@ -69,6 +89,19 @@ export interface BuildAuthOptions {
    * Auth then leaves the account unverified.
    */
   email?: EmailService;
+  /**
+   * Phase 10 / Plan 10-01c — optional BullMQ email-delivery enqueuer.
+   *
+   * When provided, the Better Auth `sendVerificationEmail` hook routes
+   * through the worker-side queue (template_id="email_verification") so
+   * the worker process renders the locale-aware template (Plan 10-01b)
+   * and dispatches via SMTP. When omitted (every existing call site that
+   * predates Plan 10-01c — `auth.test.ts`, the schema-mapping tests,
+   * the IP-headers test, etc.) the legacy inline `email.send` path runs.
+   * Production wires this from the BullMQ Queue in
+   * `apps/api/src/index.ts`; tests pass a mock or leave it unset.
+   */
+  enqueueEmail?: (payload: EmailDeliveryPayload) => Promise<void>;
 }
 
 interface OidcProviderConfig {
@@ -220,6 +253,24 @@ export function buildAuth(opts: BuildAuthOptions): AuthInstance {
       process.env.AUTH_URL,
       ...(process.env.AUTH_TRUSTED_ORIGINS_EXTRA ?? "").split(",").map((s) => s.trim()),
     ].filter((s): s is string => typeof s === "string" && s.length > 0),
+    // Phase 10 / Plan 10-01c — declare the `locale` additionalField on the
+    // user model so Better Auth's sign-up endpoint accepts it from the
+    // request body (input:true) and the Drizzle adapter round-trips it
+    // through get-session. The DB column is added in migration 0016
+    // (NOT NULL DEFAULT 'en' CHECK locale IN ('en','ru')); the
+    // additionalField defaultValue matches the column default so a
+    // sign-up that omits `locale` (no Accept-Language → no negotiated
+    // value) lands as 'en' end-to-end.
+    user: {
+      additionalFields: {
+        locale: {
+          type: "string",
+          required: false,
+          defaultValue: "en",
+          input: true,
+        },
+      },
+    },
     emailAndPassword: {
       enabled: true,
       // Phase 08-07 / D-LOAD-EV — load-test profiles set
@@ -235,7 +286,37 @@ export function buildAuth(opts: BuildAuthOptions): AuthInstance {
       // If the transport throws (Pitfall #4), Better Auth keeps the
       // account unverified — operator sees the error and the desktop's
       // verification-status poll keeps returning false.
-      sendVerificationEmail: async ({ user, url }: { user: { email: string }; url: string }) => {
+      //
+      // Phase 10 / Plan 10-01c — when `opts.enqueueEmail` is wired by the
+      // production entrypoint, route through the BullMQ email-delivery
+      // queue so the worker renders the locale-aware template (Plan
+      // 10-01b). Backward-compat: every existing call site that omits
+      // `enqueueEmail` continues to hit the inline `email.send` path.
+      sendVerificationEmail: async ({
+        user,
+        url,
+      }: {
+        user: { email: string; locale?: string; tenantId?: string };
+        url: string;
+      }) => {
+        if (opts.enqueueEmail) {
+          const locale: "en" | "ru" = user.locale === "ru" ? "ru" : "en";
+          await opts.enqueueEmail({
+            // Better Auth surfaces additionalFields on the user object; the
+            // Drizzle adapter populates tenantId from the row. When the hook
+            // is invoked outside a tenant context (shouldn't happen in
+            // production but we don't want to crash here), fall through to
+            // the zero UUID so the Zod schema on the worker side still
+            // parses; the worker logs a per-tenant warning.
+            tenant_id: user.tenantId ?? "00000000-0000-0000-0000-000000000000",
+            to: user.email,
+            template_id: "email_verification",
+            locale,
+            variables: { url },
+            request_id: crypto.randomUUID(),
+          });
+          return;
+        }
         await email.send({
           to: user.email,
           subject: "Verify your OpenWhispr account",
