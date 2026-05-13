@@ -1,361 +1,498 @@
-# Feature Research
+# Feature Research — v2 Production Readiness
 
-**Domain:** Open-source, enterprise self-hosted AI backend (wire-compatible OpenWhispr cloud — auth + transcription + reasoning + agent streaming + billing) targeting 1000 concurrent users with LiteLLM Proxy + Speaches as the default AI plane.
-**Researched:** 2026-05-08
-**Confidence:** HIGH for wire-required features (sourced directly from `BACKEND_SPEC.md` / `OAUTH_SPEC.md` / `SELF_HOSTING.md` / `speaches-audio.md`); MEDIUM for OSS-self-host ecosystem norms (cross-referenced against widely-deployed projects in adjacent space — LiteLLM Proxy, Authentik, Zitadel, Keycloak, Supabase Self-Hosted, OpenWebUI, Langfuse, n8n, Plausible).
+**Domain:** Enterprise self-hosted backend (OSS) — production-readiness milestone
+**Researched:** 2026-05-14
+**Confidence:** MEDIUM-HIGH (Phases 13/12/14/17 backed by official docs and well-known self-hosted product playbooks — Supabase, Plausible, Mattermost, Discourse, Outline, Sentry. Phase 18 LOWER because corp-SSO patterns vary by buyer; we lean on the dominant Keycloak-as-OIDC-frontend pattern.)
 
----
-
-## Reading Conventions
-
-Two orthogonal classifications attach to every feature row:
-
-- **Wire-required vs Platform-level.** *Wire-required* means the upstream desktop client at `/Users/dev/openwhispr` will misbehave (or fail outright) without it; the contract is in `BACKEND_SPEC.md` / `OAUTH_SPEC.md` / `SELF_HOSTING.md`. *Platform-level* means the desktop client never observes it, but no operator will deploy a multi-tenant production server that lacks it (multi-tenancy, audit, observability, backups, admin console, etc.).
-- **Complexity (XS / S / M / L / XL).** XS = ≤ 1 dev-day. S = 2-5 dev-days. M = 1-3 dev-weeks. L = 1-2 dev-months. XL = a quarter or more. Calibrated for a small (1-3 person) team building on top of an off-the-shelf web framework + Postgres.
+**Scope guard.** This document only addresses v2 production-readiness gaps. v1 features (BACKEND_SPEC wire surface, Better Auth email+pw, OIDC adapter, RLS multi-tenancy, BullMQ, LiteLLM bundle, Helm, LGTM, i18n en+ru, k6 load test, Speaches profile) are **already shipped** and are not re-researched. The "table stakes" lists below are scoped per v2 phase, not for a greenfield product. This file supersedes the v1 FEATURES.md (v1 history preserved in git).
 
 ---
 
-## Feature Landscape
+## Phase 13 — Cucumber + Playwright E2E + CJM Discovery
 
-### Table Stakes (Operators Won't Deploy Without These)
+### Framing — What is a "Customer Journey Map" in BDD practice
 
-These split into four sub-bands by where the requirement comes from. Anything labeled **wire** is non-negotiable to satisfy `BACKEND_SPEC.md`. Anything labeled **platform** is non-negotiable to satisfy enterprise self-host expectations as established by adjacent OSS projects (Supabase, Authentik, Langfuse, LiteLLM Proxy itself).
+A CJM in BDD is the **catalog of end-to-end user journeys** the product promises to support, written as Gherkin `Feature` files where each `Scenario` is one user-visible outcome (signup→verify→sign-in→transcribe, OIDC sign-in, locale switch, password reset, etc.). The CJM is the document; the `.feature` files are its executable form. The discipline: **every user-visible route ships at least one scenario; every CTA on every state ships at least one step.** This is the "harness every subsequent phase writes test-first against" framing the milestone takes (PROJECT.md core value).
 
-#### A. Wire-required (desktop client breaks without these)
+The dominant industry pattern for enterprise SaaS, validated in the dev.to/akdevcraft writeup and the makerkit.dev SaaS guide, is **10–20 critical-path scenarios** covering "the flows that, if broken, would prevent users from using or paying for your service." For OpenWhispr v2 we have a richer surface (transcribe, reason, streaming, admin) so the floor is higher — ~20 features × 2-3 scenarios each.
 
-| # | Feature | Why Required | Complexity | Source |
-|---|---------|--------------|------------|--------|
-| TS-W-01 | `POST /api/check-user` (pre-auth email existence probe) | Onboarding decides sign-in vs. sign-up branch from this; missing → all new users routed to sign-up incorrectly | XS | `BACKEND_SPEC.md` § `POST /api/check-user`; `SELF_HOSTING.md` § Auth lifecycle |
-| TS-W-02 | `GET /api/auth/verification-status` (5s polling, cookie-auth) | Sign-up flow blocks on email-verification poll; client polls every 5000 ms — server MUST tolerate cadence and MUST return 401/400 (not 200-with-error) on session loss | XS | `BACKEND_SPEC.md` § `GET /api/auth/verification-status` |
-| TS-W-03 | `DELETE /api/auth/delete-account` (cookie-auth, 2xx body ignored) | GDPR/CCPA + settings panel delete; client only checks `res.ok` | XS | `BACKEND_SPEC.md` § `DELETE /api/auth/delete-account` |
-| TS-W-04 | OAuth shim `GET /api/desktop-signin/{provider}` initiating IdP round-trip | Whole social-sign-in flow funnels through this; desktop never embeds upstream client IDs | M | `OAUTH_SPEC.md` § OpenWhispr Cloud Sign-In (steps 3-6); `SELF_HOSTING.md` § OAuth Flow Walkthrough |
-| TS-W-05 | Final redirect to `${PROTOCOL}://?bearer_token=<token>` echoing the **exact** scheme from `callbackURL` (production / `-dev` / `-staging` / arbitrary override) | Wrong scheme → OS dispatches the URL to the wrong app or nothing; this is the #1 integration trap for self-hosters | S | `OAUTH_SPEC.md` § Custom Protocol Reference; `BACKEND_SPEC.md` § Custom Protocol Redirect |
-| TS-W-06 | Opaque bearer token long-lived OR rotation via `set-auth-token` response header | Token written to disk, reused across launches; no client-initiated `POST /token` refresh exists | S | `SELF_HOSTING.md` § Token storage / refresh; `OAUTH_SPEC.md` § Refresh trigger |
-| TS-W-07 | HTTP 401 (not 200-with-error) on auth failure to trigger `withSessionRefresh()` retry-once-with-backoff | Renderer silently downgrades 200-with-error to "success with empty body" → infinite "verifying…" UX bug | XS | `BACKEND_SPEC.md` § Global Error Envelope row 401 |
-| TS-W-08 | Global error envelope `{ "error": "<string>" }` (and `{ "error": { "message": ..., "code": ... } }` tolerated for `cloud-api-request`) | Client surfaces the string verbatim to the user; absent → user sees "API error: 502" instead of a localized message | XS | `BACKEND_SPEC.md` § Global Error Envelope |
-| TS-W-09 | Accept `Authorization: Bearer <opaque>` AND session cookies interchangeably on every authenticated endpoint | Main process attaches both; renderer-direct calls send only cookies; rejecting either path breaks one or the other | S | `BACKEND_SPEC.md` § Conventions § Auth header |
-| TS-W-10 | `POST /api/transcribe` multipart upload returning `{text, wordsUsed, wordsRemaining, plan, limitReached, sttProvider, sttModel, …}` with quota exhaustion at HTTP 200 + `limitReached: true` (NOT 4xx) | The single most common deviation that breaks integrators; client surfaces quota UI only on `limitReached: true`, never on 4xx | M | `BACKEND_SPEC.md` § `POST /api/transcribe`; `SELF_HOSTING.md` § Edge Cases |
-| TS-W-11 | `POST /api/reason` returning `{text, model, provider, promptMode, matchType}` | Cloud LLM cleanup; the `openwhispr` inference provider in the desktop client | M | `BACKEND_SPEC.md` § `POST /api/reason` |
-| TS-W-12 | `POST /api/agent/stream` NDJSON streaming, **flush per line**, no buffering | Agent overlay; buffered responses freeze the UI until stream end | M | `BACKEND_SPEC.md` § `POST /api/agent/stream`; `SELF_HOSTING.md` § Edge Cases (NDJSON) |
-| TS-W-13 | `POST /api/agent/web-search` returning `{results: [{title, url, snippet}]}` | Agent web-search tool | S | `BACKEND_SPEC.md` § `POST /api/agent/web-search` |
-| TS-W-14 | `POST /api/streaming-usage`, `GET /api/usage`, `GET /api/stt-config`, `GET /api/note-recording-config` | Settings UI quota display + STT config bootstrap | S | `BACKEND_SPEC.md` corresponding cards |
-| TS-W-15 | `POST /api/streaming-token`, `POST /api/deepgram-streaming-token`, `POST /api/openai-realtime-token` (mints short-lived realtime tokens — server holds master keys) | Realtime streaming providers; `streams=2` for OpenAI realtime returns `clientSecrets[]` | M | `BACKEND_SPEC.md` § realtime token cards |
-| TS-W-16 | Stripe lifecycle: `POST /api/stripe/{checkout,portal,switch-plan,preview-switch}` | Plan upgrade flow; if the platform supports billing at all, client expects all four | M | `BACKEND_SPEC.md` § Stripe cards |
-| TS-W-17 | Referrals: `GET /api/referrals/stats`, `POST /api/referrals/invite`, `GET /api/referrals/invites` | Referral panel; throws on non-2xx (pre-`success`-envelope handler) | S | `BACKEND_SPEC.md` § referrals cards |
-| TS-W-18 | `GET /api/health` 3-second timeout, body unread, only `res.ok` / `res.status` inspected | Pre-WebSocket fail-fast; missing → streaming code paths hang on connect | XS | `BACKEND_SPEC.md` § `GET /api/health` |
-| TS-W-19 | Generic passthrough channel — any `/api/<path>` returns the `{error}` envelope correctly | `cloud-api-request` IPC proxies arbitrary endpoints; new endpoints can be exercised without dedicated handlers | XS | `BACKEND_SPEC.md` § Generic passthrough |
-| TS-W-20 | HTTPS-only on every externally reachable port | Client never strips/rewrites scheme; plaintext HTTP unsupported | XS (config) | `SELF_HOSTING.md` § Transport |
-| TS-W-21 | Email-verification-status NOT rate-limited under 5s/user cadence | 5000 ms `setInterval` while screen mounted; aggressive limiter → false-negative "session expired" | XS | `SELF_HOSTING.md` § Edge Cases |
-| TS-W-22 | Streaming endpoints survive ingress timeouts up to 1 hour (NDJSON `/api/agent/stream`, WSS `/v1/realtime` upstream) | Speaches realtime ingress at ExampleCorp uses 3600s read/send timeouts | S (config) | `speaches-audio.md` § Realtime; `PROJECT.md` SCALE-05 |
+### Table Stakes (must-have for v2 Phase 13)
 
-#### B. Platform-level multi-tenancy & data (no operator deploys without these)
+| Feature | Why Expected | Complexity | Notes |
+|---------|--------------|------------|-------|
+| Cucumber.js + Playwright wired into `apps/web` and a top-level `tests/e2e/` | v1 has only k6 perf + Playwright DOM tests; no Gherkin BDD layer; this IS the harness | M | Use `@cucumber/cucumber` 11.x + `playwright-bdd` (or hand-rolled `World` class); colocate step defs under `tests/e2e/steps/`; gated by `E2E=1` env (CLAUDE.md rule); `make e2e-test` target |
+| CJM document at `.planning/research/CJM.md` enumerating ~20 journeys | Without enumeration, "coverage" is unmeasurable; gate criterion = "every CJM journey has a green scenario" | S | Format: ID + persona + preconditions + steps + success criteria; map 1:1 to `.feature` files; cross-reference with `apps/web/src/app/**/page.tsx` routes |
+| 8 mandatory auth-flow scenarios (signup, email-verify, sign-in success, sign-in 403 unverified, password reset, sign-out, OIDC success, OIDC mis-config) | TD-13.a/b/c/d/e all live here; dominant bug surface from 2026-05-14 walkthrough | M-L | Each scenario boots the full `docker-compose.embedded-litellm.yml` stack + mailpit; uses mailpit HTTP API (`http://mailpit:8025/api/v1/messages`) to read verification emails — no real SMTP, no flaky email provider; cf. Plausible's mailpit-in-tests pattern |
+| Transcribe round-trip scenario (multipart audio → text response) | WIRE-05 is the product's hot path; if it doesn't work end-to-end, nothing else matters | M | Use a fixture WAV; assert against the BACKEND_SPEC envelope shape; cf. existing CONTRACT-01 wire-shape tests for the schema source of truth |
+| Admin sign-in + landing scenario | TD-12.a `/admin` 404 only surfaces in E2E — unit tests don't render routes; this scenario IS the regression net for Phase 12 | S | Visit `/admin` → assert redirect to `/admin/config` or `/setup`; assert basicauth still functions as break-glass |
+| Locale switch scenario (en ↔ ru) | I18N-01 / I18N-02 are v1 requirements but have no E2E proof | S | Toggle locale, assert page content changes, assert `Accept-Language` round-trips to API |
+| Mailpit dockerized in test compose | Real SMTP in CI is flaky and slow; mailpit is OSS standard (~30MB, used by Plausible, Outline, Mattermost CI suites) | S | Already in compose as dev profile per TD-14.a; Phase 13 cements its place in `compose/test/` profile |
+| Per-scenario teardown (DB reset / tenant scrub) | Without isolation, scenario N+1 sees N's state; flake city | M | Use testcontainers Postgres-per-scenario OR truncate-and-reseed via `make test-reset`; same pattern packages/data RLS property tests already use |
+| Scenarios consumable as test-first input for Phase 12/14/15/17/18 | The reason Phase 13 ships FIRST — subsequent phases write `.feature` red, then make green | — | Documented in Phase 13 PLAN.md as "harness contract" |
 
-| # | Feature | Why Required | Complexity | Notes |
-|---|---------|--------------|------------|-------|
-| TS-P-01 | Multi-tenancy with row-level tenant isolation | Every enterprise self-host install eventually adds a second org; retrofitting tenant_id is an L-sized rewrite | M | Even single-org installs use a `default` tenant; uniform data model |
-| TS-P-02 | Pluggable identity: OIDC, SAML (basic), Google, Microsoft, Apple, GitHub, email/password, magic link — at least 2 in v1, others extensible | OAUTH_SPEC.md only documents Google/Microsoft/Apple, but enterprise self-host operators require either (a) bring-your-own OIDC for org SSO, or (b) bundled IdP (Authentik / Zitadel / Keycloak) | L | Recommend: defer SSO portal to bundled IdP; expose generic OIDC connector as the platform primitive |
-| TS-P-03 | Pluggable LLM provider: LiteLLM-routed default + direct OpenAI / Anthropic / Gemini / Mistral / Bedrock / Azure OpenAI / Vertex | Operators with existing LLM gateway contracts (e.g., ExampleCorp's LiteLLM at `llm.internal.example.com`) won't double-pay through a re-wrap | M | Per-tenant override critical (see DIFF-01) |
-| TS-P-04 | Pluggable STT provider: LiteLLM/Speaches default + AssemblyAI / Deepgram / OpenAI Whisper / Groq | Whisper hosting is the most contentious cost-center decision; operators self-select | M | Realtime providers split: Speaches Realtime (default), OpenAI Realtime, AssemblyAI streaming, Deepgram streaming |
-| TS-P-05 | Pluggable storage: S3-compatible (MinIO default for self-host; S3 / GCS / Azure Blob for cloud) | Audio files, exports, backups; cloud-vendor diversity requires abstraction | S | Single S3-compatible client + bucket-prefix tenancy |
-| TS-P-06 | Pluggable email: SMTP default + SES / SendGrid / Postmark | Verification emails + referral invites; on-prem installs need SMTP-only; SaaS-style installs prefer transactional API | S | |
-| TS-P-07 | Pluggable billing: Stripe (default, optional) + null/disabled | Licensed enterprise installs have site licenses, no Stripe; SaaS-flavored installs need full Stripe | S | Null adapter must implement all 4 Stripe endpoints with deterministic 200/`{disabled: true}` responses so wire-contract still holds |
-| TS-P-08 | Per-tenant quotas, rate-limits, plans (transcribe minutes, reason tokens, streaming minutes) | Without this an abusive user takes down the install for everyone | M | Token bucket via Redis; tied to LiteLLM virtual-key budgets so the AI plane and the platform agree |
-| TS-P-09 | Usage ledger tied to LiteLLM spend logs | Required to bill Stripe and to surface `wordsUsed/wordsRemaining` in `/api/usage` | M | LiteLLM's spend logs are the single source of truth on the AI plane; the platform mirrors+aggregates per tenant |
-| TS-P-10 | Audit log: auth events, account deletion, key issuance, quota changes, provider config changes | Compliance review is the first question every enterprise security team asks before deploy | S | Append-only Postgres table; SIEM export deferred to v2 |
-| TS-P-11 | Backup / restore tooling (Postgres + MinIO + LiteLLM config) | First disaster makes this a P0 retroactively; ship from day 1 | S | `pg_dump` / `pg_basebackup` + `mc mirror` recipes documented in `docs/operations.md` |
-| TS-P-12 | Health / readiness / liveness probes (separate endpoints for K8s) | `/api/health` is wire-required for the desktop, but K8s wants `/healthz`, `/readyz`, `/livez` distinguishable; readiness MUST gate on Postgres + Redis + LiteLLM reachability | XS | |
-| TS-P-13 | OpenTelemetry tracing (API → LiteLLM → Speaches), Prometheus metrics (RED + saturation), structured JSON logs with correlation IDs | "Why is it slow?" is unanswerable without traces in a multi-hop AI stack | M | LiteLLM's spend log piping into the platform's usage ledger satisfies OBS-04 |
-| TS-P-14 | i18n: `en` + `ru` minimum for UI copy, email templates, notification text, end-user-visible error messages; `Accept-Language` negotiation on API responses | Hard project rule from PROJECT.md (I18N-01); source artifacts stay English-only (DOCS-09) | S | Provider-pluggable: built-in resources in repo, operator overlays without forking |
-| TS-P-15 | Database migrations safe under rolling deploy (forward-only, two-phase: expand-then-contract) | One downtime upgrade and the operator's confidence in OSS self-host is gone | M | |
-| TS-P-16 | Secrets management: env, file, Vault, Kubernetes secrets | Defaults of `OPENAI_API_KEY` env var are fine for compose; K8s deploys MUST integrate `Secret` mounts; high-end deploys MUST Vault | S | Single secret-resolver abstraction with backends |
-| TS-P-17 | Connection pooling (PgBouncer or equivalent) sized for 1000 concurrent | Postgres can't take 1000 raw connections; PgBouncer transaction-mode standard | XS (config) | |
-| TS-P-18 | Background job queue (transcription orchestration, webhook fanout, email delivery, usage roll-up) | NDJSON streams + multipart uploads need durable retry; SMTP must not block API; email-verification mail can't lose | M | Redis-backed (BullMQ / Celery / River / Asynq depending on stack) |
-| TS-P-19 | Stateless API tier (no in-memory session state) | Required for horizontal autoscale to 1000 concurrent | S | Bearer tokens validated server-side; sessions in Postgres or Redis |
-| TS-P-20 | Per-key, per-tenant, per-IP rate limiting (Redis token bucket) | Wire 401s aren't enough — abusive clients need 429s; verification-status cadence carve-out (TS-W-21) overrides | S | |
+### Differentiators
 
-#### C. Operator-experience (admin / docs / deploy)
+| Feature | Value Proposition | Complexity | Notes |
+|---------|-------------------|------------|-------|
+| Per-CTA coverage rule (every button on every UI-SPEC state has a step) | Catches "duplicate banner" / "Invalid input" classes of bug that unit tests miss; rule enforced by a lint that grep-counts `data-testid` vs step files | M | Non-blocking CI report in Phase 13, blocking in Phase 13.x if false-positive rate is acceptable |
+| Visual regression diffing per scenario (Playwright `toHaveScreenshot()`) | Phase 12 needs this for UI-SPEC conformance enforcement anyway; sharing the harness across phases halves implementation cost | M | Snapshots at `tests/e2e/__screenshots__/`; diff threshold 0.2% pixel ratio; cf. shadcn/ui's own e2e suite |
+| axe-core a11y check piggyback per scenario | WEB-IMPL-04 already shipped ~75 axe scans; v2 keeps the regression bar | S | Wired in `apps/web/tests/e2e/`; v2 adopts in Cucumber harness |
+| `make e2e-test SCENARIO=<id>` selective runs | One-test reruns during phase work; default run-everything kills DX | S | `cucumber-js --tags "@<id>"`; document in `docs/operations.md` |
 
-| # | Feature | Why Required | Complexity | Notes |
-|---|---------|--------------|------------|-------|
-| TS-O-01 | Admin console: manage tenants / users / API keys / quotas / providers / view audit log + observability links + billing | Every operator who deploys this asks "where do I click to add a tenant" within 10 minutes; if the answer is "edit YAML and restart" they leave | L (UI-SPEC only in v1; downstream user implements) | UI-SPEC.md is the v1 deliverable per PROJECT.md UI-01 |
-| TS-O-02 | End-user self-service: profile / plan / usage / referrals / account-deletion mirroring desktop surfaces | Mirrors the desktop client's settings panel; users expect to manage their account in a browser | L (UI-SPEC only in v1) | UI-SPEC.md per UI-02 |
-| TS-O-03 | One-command `docker-compose up` bootstrap → first authenticated `/api/transcribe` in < 5 minutes | Quickstart-time is the OSS-adoption metric; > 15 min and the project dies in obscurity | M | Bundles API + Postgres + Redis + LiteLLM + Speaches + MinIO + nginx + observability stack |
-| TS-O-04 | Helm chart for Kubernetes (HA Postgres operator, autoscaling, ingress, cert-manager hooks) | Compose path is for evaluators; production self-host is K8s | L | |
-| TS-O-05 | One-command upgrade (`docker compose pull && up -d` / `helm upgrade`) with safe rollback | Upgrade fear is the #1 reason OSS self-hosts go stale | M | Pairs with TS-P-15 (rolling-deploy-safe migrations) |
-| TS-O-06 | Documentation suite: README quickstart, architecture, operations, providers, wire contract, ADRs (DOCS-01..09 from PROJECT.md) | Every requirement ships with docs — hard project rule | M | All docs/code in English only |
+### Anti-Features (Phase 13 will NOT ship)
+
+| Feature | Why Requested | Why Problematic | Alternative |
+|---------|---------------|-----------------|-------------|
+| Real SMTP integration in CI | "More realistic" | Flaky, network-dependent, leaks emails to real inboxes, requires secrets | Mailpit HTTP API — works the same as Plausible/Outline CI |
+| Cross-browser matrix (Firefox + WebKit + Chromium) | "Defensible browser coverage" | 3× CI time, ~95% of bugs reproduce in one browser; we already ship Playwright with Chromium default | Chromium-only baseline; nightly Firefox/WebKit is a Phase 13.x decision |
+| Full BACKEND_SPEC wire surface in `.feature` files | Sounds comprehensive | Duplicates CONTRACT-01 which is canonical wire-shape proof; Cucumber overhead per assertion is high | E2E is **user-journey** layer; CONTRACT-01 is **wire-shape** layer; keep separation per Mattermost / Discourse split |
+| Mobile viewport scenarios | "Responsive coverage" | UI-SPEC scopes desktop + tablet as primary; mobile is not a Phase 13 promise | Deferred; per-screen `@mobile` tag later if demand surfaces |
+| Load / chaos / fuzz inside Cucumber | "More resilience" | k6 already owns load; chaos is v3; fuzz is contract suite | One tool per concern |
 
 ---
 
-### Differentiators (Compete on These — v1 if Cheap, v1.5 Otherwise)
+## Phase 12 — Admin Onboarding Wizard + UI-SPEC Conformance
 
-These are the features that distinguish a credible enterprise OSS AI backend from a hobby project. Most are cheap-but-thoughtful, not technically hard. They cluster around (1) flexibility per-tenant, (2) safety-by-default, and (3) operator-trust amplifiers.
+### Framing — First-run wizard patterns in similar products
 
-| # | Feature | Value Proposition | Complexity | v1 / v1.5 | Notes |
-|---|---------|-------------------|------------|-----------|-------|
-| DIFF-01 | **Per-tenant provider override** — Tenant A uses LiteLLM, Tenant B uses Bedrock-direct, Tenant C uses Azure OpenAI; same wire surface, different upstream routes | Lets enterprise operators sell "your data stays in your AWS account" while running OpenWhispr Server centrally — table-stakes for multi-region MSPs but rarely shipped in OSS AI backends | M | v1 | Builds on TS-P-03/04; the abstraction has to exist for table stakes — the differentiator is making it tenant-scoped, not just install-scoped |
-| DIFF-02 | **Org-key tenancy mode** — server holds the AI keys, end-users don't BYOK; vs. user-BYOK passthrough mode where users supply their own keys and the server only meters | The OpenWhispr desktop's BYOK model is user-friendly but org-hostile (every user pays a separate OpenAI bill); org-key mode flips it. Few OSS AI backends ship both modes | M | v1 | Surfaces as a tenant-config flag; routing logic differs only at the LiteLLM virtual-key issuance step |
-| DIFF-03 | **Sandbox / test tenant** for operators — pre-seeded tenant with synthetic users, fixture audio, deterministic LLM responses (mock provider), so operators can exercise the wire surface without burning quota on a real AI provider | Cuts evaluation time from "set up an OpenAI key" (15 min, requires credit card) to "open the included tenant" (10 sec) — direct lever on adoption | S | v1 | Mock provider sits behind the same provider abstraction; just another adapter |
-| DIFF-04 | **Cost dashboards per-tenant / per-user** (transcribe minutes × $/min, reason tokens × $/Mtoken, broken down by provider, plotted weekly) | LiteLLM has spend logs; the platform aggregates them into operator-readable numbers. The thing every Finance team asks for on day 2 of a deploy | M | v1.5 | Builds on TS-P-09 (usage ledger); admin-console UI work is the bulk |
-| DIFF-05 | **PII redaction in transcripts** (configurable per tenant: phone numbers, emails, credit cards, SSNs, custom regex) — applied at ingress before persistence and before LLM forward | Healthcare / finance / EU operators can't deploy without it. Whisper transcripts contain everything the user said. | M | v1.5 | Pluggable redaction layer; default presets per locale (en + ru) |
-| DIFF-06 | **Encrypted-at-rest tokens** (KEK / DEK envelope encryption — tenant-scoped DEKs wrapped by an install-scoped KEK held in Vault / KMS / file) | Standard in enterprise products; rare in OSS AI backends. Bearer tokens (TS-W-06), Stripe customer IDs, AI provider keys, OAuth refresh tokens — all want envelope encryption | M | v1 | The KEK abstraction also satisfies the secrets-management story (TS-P-16) |
-| DIFF-07 | **Built-in dev mode** — runs without external IdPs, single-binary or `docker compose up`, email+password only, mock email provider that prints verification links to stdout | "I just want to see this work in 60 seconds without configuring Google OAuth" — the path that makes contributors actually try the code | S | v1 | Auto-disabled when `NODE_ENV=production` (or equivalent); blocks signup of any non-`@example.com` email when on |
-| DIFF-08 | **Reproducible local dev environment** — `compose up` exits successfully (all healthchecks green) → first authenticated `/api/transcribe` succeeds in < 5 min on a stock laptop, no manual edits to .env required | The README quickstart promise (TS-O-03) — but elevated to a CI-tested invariant. Differentiator because most OSS AI backends silently regress quickstart | S | v1 | E2E test in CI: spin compose, hit `/api/transcribe`, assert 200 |
-| DIFF-09 | **Per-tenant locale overrides** for emails / notifications / error strings — operator can ship a custom Russian welcome email without forking the repo | Builds on TS-P-14 (i18n); the differentiator is the override layer (per `I18N-02`) | S | v1 | Locale resource overrides via mounted file or DB row |
-| DIFF-10 | **Bundled observability stack** — Grafana dashboards (RED + saturation + LiteLLM spend) shipped in-tree, auto-provisioned by compose / Helm | Operators don't have to build dashboards from scratch; first-week-after-deploy productivity multiplier | S | v1.5 | Pairs with TS-P-13 |
-| DIFF-11 | **Gradual-rollout hooks for migrations** — long migrations (backfill tenant_id, recompute usage ledger) ship with `pg_repack`-style chunked-with-progress runners and resume-on-restart | Cuts upgrade fear (TS-O-05) by an order of magnitude on multi-million-row tables | M | v1.5 | Optional; only kicks in for large datasets |
-| DIFF-12 | **Wire-contract conformance test suite** — runnable against any deployment, uses the actual desktop client's expected payloads and asserts the global error envelope, NDJSON flushing, `limitReached` quota signaling, custom-protocol scheme echo | Eliminates "does this self-host actually work with the desktop?" guesswork; lets contributors PR backend changes with confidence | M | v1 | Replaces the "live runtime trace validation" deferred from upstream |
-| DIFF-13 | **Realtime token brokering for multi-stream** (`POST /api/openai-realtime-token` with `streams=2` returning `clientSecrets[]`) and parallel WSS-passthrough for Speaches Realtime | Wire-required (TS-W-15) but most reference backends only ship `streams=1`. Meeting feature breaks without it | S | v1 | Already in `BACKEND_SPEC.md`; explicit because it's commonly missed |
-| DIFF-14 | **Multi-arch images (amd64 + arm64)** for every container in compose / Helm | Apple Silicon developers, AWS Graviton operators — without this you cut your dev audience in half | XS (CI matrix) | v1 | |
-| DIFF-15 | **No-GPU API tier** — only Speaches needs CUDA; the API container runs on plain CPU, even at 1000 concurrent | Massive win for self-hosters who want to scale the API stateless tier without GPU cost | XS (architectural — already a constraint in PROJECT.md) | v1 | API tier never invokes a model directly; always proxies to LiteLLM |
+Surveyed: Supabase (no wizard; `.env` only — gap acknowledged in community discussions), GitLab Omnibus (HTML wizard at `/users/sign_up` on first run, becomes a normal sign-up page after), Mattermost (System Console wizard with admin email + workspace + site URL), Discourse (5-step wizard: contact email + site title + language + invite + theme), Outline (single-screen wizard: admin email + team name + auth choice). **Dominant pattern: single-page or 3–5 step wizard, gated by a DB flag (`first_run_complete` bool or `count(users) > 0`), with break-glass via env var.** Supabase being the gap is the cautionary tale: 30+ open issues asking for an onboarding wizard.
+
+### Table Stakes (must-have for v2 Phase 12)
+
+| Feature | Why Expected | Complexity | Notes |
+|---------|--------------|------------|-------|
+| `/setup` route gated by `count(users WHERE role='admin') == 0` | TD-12.b — bcrypt-in-`.env` is unrecoverable | M | Server-side check in Next.js middleware OR `GET /api/setup/required` endpoint returning `{required: bool}`; render `/setup` only when required, else redirect to `/sign-in` |
+| Wizard collects: admin email, password (min 12 chars per Better Auth rules), display name, workspace/tenant name (defaults "default"), timezone (defaults system) | Discourse / Outline / Mattermost convergent minimum | M | RHF + zod; persist to Better Auth users table with `role='admin'` + tenant_settings row for workspace name + timezone |
+| Wizard is single-page or max 3 steps | Linear/Clerk/Supabase Studio sign-in pattern; 5+ steps drops completion to ~60% per Discourse onboarding telemetry | S | One screen, 5 fields, one CTA |
+| `htpasswd` basicauth coexists as break-glass | Removing it forces a Docker restart on every operator lockout; corp ops will not accept | S | Document explicitly in `docs/operations.md` as "lost-key recovery only"; basicauth has lower role precedence than DB admin user |
+| `/admin` index page (resolves TD-12.a) | Operator typing bare `/admin` URL must not 404 | S | `redirect('/admin/config')` server component at `apps/web/src/app/(admin)/admin/page.tsx` |
+| OIDC provider visibility gated by `GET /api/auth/providers` (resolves TD-12.c) | Currently 3 buttons render unconditionally → 404 → 429 ratelimit lockout | M | API returns `[{id: 'google', enabled: true|false}, ...]` based on env; web checks at mount; cf. Outline's `/api/auth.config` |
+| Resend-verification CTA on the 403 unverified-email screen (resolves TD-12.e) | Better Auth has the endpoint (`POST /api/auth/send-verification-email`); UI doesn't call it | S | CTA + 60s rate-limit display per UI-SPEC patterns |
+| Per-field Zod error messages (resolves TD-13.b) | "Invalid input" is the worst UX failure mode in current build | S | RHF `resolver: zodResolver(schema)` + `<FormMessage>` per field; needs i18n key per error class |
+| Visual regression diff against `design-canvas.jsx` for all 5 auth screens | Phase 07 shipped 1437-line design contract; conformance can't be eyeballed | M | Playwright `toHaveScreenshot()` baseline from design-canvas render; fail PR on > 0.2% pixel diff; uses Phase 13 harness |
+| axe a11y scan on the setup wizard | WCAG 2.2 AA already a v1 promise (UI-SPEC-03) | S | One scan in Cucumber harness; piggyback Phase 13 pattern |
+
+### Differentiators
+
+| Feature | Value Proposition | Complexity | Notes |
+|---------|-------------------|------------|-------|
+| Setup wizard pre-validates SMTP before persisting admin user | Catches "verification email never arrives" (TD-mailpit) at wizard time, not at first user signup | M | Send a test verification email to admin's own address; only commit on click-through |
+| Setup wizard offers "load OIDC config" upload | Ops with pre-existing Keycloak realms save 20 min of env-editing | M | Accept `.json` or `.env` snippet, validate discovery URL, persist to env via Better Auth's `social-providers` config |
+| `make setup-status` Makefile target | Ops CI integration — "is the box bootstrapped?" check for terraform/ansible | S | Calls `GET /api/setup/required`, exits 0/1 |
+| Onboarding tour after first login | Discourse / Mattermost ship this; nudges admin toward "configure OIDC" / "import users" | M | Tooltip-driven, dismissible; can defer to v3 |
+
+### Anti-Features (Phase 12 will NOT ship)
+
+| Feature | Why Requested | Why Problematic | Alternative |
+|---------|---------------|-----------------|-------------|
+| Multi-tenant tenant-creation in the wizard | "Power admins want multiple orgs" | v1 is single-default-tenant by design (DATA-06); multi-tenant management is a v3 admin-console feature | Wizard creates only the default tenant; renaming exposed in admin console |
+| User invite emails in the wizard | "Discourse does this" | Implies SMTP is configured at wizard time; chicken-and-egg with the SMTP validation step | Defer to admin console post-setup |
+| Skip-button → "set up later" | "Don't force users to configure right now" | Defeats the purpose; leaves the box in the broken `.env` bcrypt state we are fixing | No skip; setup is mandatory at first run |
+| Custom themes / branding in wizard | Outline does it | Out of scope for an OSS backend; UI-SPEC has no theming surface | Defer to v3 / never |
+| Wizard redesign deviating from `design-canvas.jsx` | "We can do better" | Phase 12 is CONFORMANCE, not redesign — explicit milestone framing | If `design-canvas` is wrong, file a separate Phase 07.x ticket |
+| SCIM endpoint configuration in wizard | "Enterprise polish" | SCIM is explicit v2 anti-feature (deferred per REQUIREMENTS.md COMPL-02) | Wait for v3 SCIM phase |
 
 ---
 
-### Anti-Features (Deliberately NOT Building)
+## Phase 14 — Slim Core + BYOK Profiles
 
-These are the features that look like good ideas, are commonly requested by would-be contributors, and would corrupt the project's scope without delivering proportional value. Each row includes the alternative we *do* support so the rejection is constructive.
+### Framing — Minimal vs full compose patterns in similar products
 
-| # | Anti-Feature | Why Requested | Why Problematic | Alternative |
-|---|--------------|---------------|-----------------|-------------|
-| ANTI-01 | **Modifying the desktop client** to suit the server | "Just add an endpoint" / "just change the polling cadence" requests | Fragments the ecosystem — every server fork ends up needing a client fork. The desktop client is the canonical user; server adapts | Wire-compatible only; if the contract is wrong, fix it upstream in `/Users/dev/openwhispr` first, then mirror here |
-| ANTI-02 | **Reimplementing third-party AI vendor SDKs** (OpenAI / Anthropic / Gemini / Mistral / Groq / AssemblyAI / Deepgram) inside the server | "Wouldn't it be cleaner to call OpenAI directly from Go?" | LiteLLM Proxy already does this. Maintaining N vendor SDK adapters is a full-time job; LiteLLM has 100+ contributors | LiteLLM Proxy is the AI-plane abstraction; we hold the wire contract + tenancy, LiteLLM holds the providers |
-| ANTI-03 | **Google Calendar OAuth proxying** | "We have a server, we should handle GCal too" | Desktop talks to Google directly with embedded Desktop OAuth client (`OAUTH_SPEC.md` § Google Calendar). Tokens live client-side in SQLite; server has zero role in the wire contract | Document explicitly in `docs/wire-contract.md`: GCal is out-of-band |
-| ANTI-04 | **Hidden / undocumented endpoints** (admin webhooks, internal APIs, Better Auth's full surface) | "Better Auth has 30 endpoints, shouldn't we expose them all?" | Only what the desktop client sends is contract; everything else is an attack surface and a maintenance burden. Wire surface is **client-driven** | Generic passthrough channel (TS-W-19) handles experimental endpoints; promotion to a dedicated handler requires a `BACKEND_SPEC.md` entry first |
-| ANTI-05 | **Locales beyond `en` + `ru` in v1** | "We're an OSS project, we should support Spanish / Mandarin / etc." | Locale debt compounds: every new locale forks every email template, every error string, every UI copy block. Two locales is enough to validate the i18n architecture; everything else is community PRs in v1.x | i18n architecture (TS-P-14) supports operator overlays (DIFF-09) — operators can ship private locales without fork |
-| ANTI-06 | **Frontend implementation in v1** (admin console, end-user portal) | "It's incomplete without a UI" | UI velocity dwarfs backend velocity; a half-baked UI in v1 freezes the design and consumes the team's bandwidth. UI-SPEC is the v1 deliverable per PROJECT.md UI-01/02 | UI-SPEC.md (component inventory, accessibility, design system) — the user generates the frontend code from it. Concrete UI ships v2 |
-| ANTI-07 | **SAML / SCIM provisioning, audit-log SIEM exports, FedRAMP-grade isolation, customer-managed encryption keys (CMEK)** in v1 | Enterprise-plus checklist features | Each one is a quarter of work and only valuable to a small operator slice; better delivered in v2 once core deploys exist to inform the design | Document as v2 in `docs/roadmap.md`; the audit log table (TS-P-10) and KEK abstraction (DIFF-06) are the hooks we leave in place for them |
-| ANTI-08 | **Custom IdP UI / self-hosted SSO portal** | "We need a login page!" | Authentik / Zitadel / Keycloak / Ory Kratos do this *much* better than we ever will. Building a custom one is a year of work to be 30% as good | Bundle one in compose (recommend Authentik); generic OIDC connector (TS-P-02) means any IdP works |
-| ANTI-09 | **Live runtime trace validation tooling** (capture-and-diff a deployed cloud against the spec) | "How do I know this matches the real OpenWhispr cloud?" | Source is the contract per upstream `BACKEND_SPEC.md` § How to read this doc; runtime trace validation is a v2 workstream | Wire-contract conformance test suite (DIFF-12) — exercises the contract against your deployment, not against the OpenWhispr cloud |
-| ANTI-10 | **OpenAPI / JSON-Schema generation** in v1 | "Spec should be machine-readable" | Markdown tables + JSON examples are the v1 deliverable per upstream `BACKEND_SPEC.md` § Out of Scope; OpenAPI generation is a v2 enhancement | Markdown wire spec is canonical; v2 may generate OpenAPI from the existing endpoint cards |
-| ANTI-11 | **Reference desktop client modifications (build-time provider gates) on the server side** | "Could the server gate which OAuth providers are visible?" | Per upstream `OAUTH_SPEC.md` § Other Providers Found, the desktop already gates providers via `OPENWHISPR_OAUTH_<P>` build flags; server-side gating is duplicate truth | Server lists which providers it has configured; desktop respects its own build flags. Each side independent |
-| ANTI-12 | **Global plaintext-HTTP development mode** | "HTTPS in dev is annoying" | Every plaintext-HTTP code path is a foot-gun that escapes into production. Desktop client never strips the URL scheme — it just won't talk to plaintext | mkcert-based local CA in compose for dev (in `docs/operations.md` quickstart); HTTPS everywhere is a hard rule |
-| ANTI-13 | **Real-time admin metrics WebSocket push** | "It would be cool to see usage live in admin" | NDJSON / WSS adds infrastructure complexity (sticky sessions, ingress timeouts) for negligible operator value over a 30-second poll | Admin UI polls `/api/admin/metrics` at 30 s; Grafana dashboards (DIFF-10) handle real-time observation |
-| ANTI-14 | **Custom server-side TTS / voice agents** | "We have audio infra already, why not?" | The desktop client doesn't ask for it; adding it is scope creep into a product we're not building | Out of scope; if it ever ships it's a separate companion service, not a wire-contract endpoint |
-| ANTI-15 | **Webhook subscriptions for usage / billing events** in v1 | "Standard SaaS feature" | Every webhook system needs delivery retry, signing, dead-lettering, replay UI — easily a quarter of work; not a wire-contract requirement | Stripe webhooks are forwarded for billing only (subset of TS-W-16); generic platform webhooks deferred to v2 |
+Surveyed: Mattermost (single-binary + Postgres core; Elasticsearch, Calls, Playbooks as separate optional services), GitLab Omnibus (env-driven subsystem toggles), Plausible (core = web+postgres+clickhouse; mail/SMTP BYOK), Outline (core = web+postgres+redis; S3 BYOK + SMTP BYOK + Slack/Google BYOK), Sentry self-hosted (canonical `--with-X` profile flags via `install.sh`). **Dominant pattern: docker-compose profiles + env-driven service toggles + a documented "BYOK matrix" describing which env vars to set to point at external services.**
+
+### Table Stakes (must-have for v2 Phase 14)
+
+| Feature | Why Expected | Complexity | Notes |
+|---------|--------------|------------|-------|
+| Default slim profile = `api + web + worker + postgres + valkey + litellm` (6 services) | Currently default ships 12+ services incl. Grafana stack; 1.3GB+ image cost | M | Drop `profiles:` markers from these 6; everything else gated by `--profile observability` etc. (TD-14.f) |
+| `--with-observability` profile (Grafana + Loki + Tempo + Mimir + OTel Collector) | Most corp ops have their own observability (Datadog / Elastic / company Grafana) | M | `OTEL_EXPORTER_OTLP_ENDPOINT` env points to BYOK collector; profile only ships local LGTM stack |
+| `--with-storage` profile (MinIO) | TD-14.c; AWS S3 / R2 / GCS via env are common BYOK paths | M | `S3_ENDPOINT` + `S3_REGION` + `S3_ACCESS_KEY_ID` + `S3_SECRET_ACCESS_KEY` env contract; any S3-compat |
+| `--with-ingress` profile (Traefik) | K8s deploys have their own ingress; bare-metal ops have nginx/Caddy | M | If disabled, `api` and `web` expose ports directly; document cert handoff |
+| `--with-pgbouncer` profile (off by default) | TD-14.d; useful at scale, overkill for first deploy | S | Default = direct Postgres via `pg` driver; PgBouncer wired only when profile active |
+| `--profile dev` for mailpit (TD-14.a) | Dev tool in prod = security smell + image bloat | S | Move mailpit out of default; document SMTP BYOK env vars |
+| `.env.slim.example` with ~5 keys vs current 12 (TD-14.g) | Cognitive load for first-run | S | Required: `POSTGRES_PASSWORD`, `BETTER_AUTH_SECRET`, `LITELLM_MASTER_KEY`, `OPENROUTER_API_KEY` (or equivalent), `BASE_URL` |
+| Documented BYOK matrix in `docs/operations.md` | Without it, ops will misconfigure and blame the project | S | Table: subsystem → env vars → external service → smoke test command |
+| `docker compose up` without `--profile X` runs the slim default (resolves TD-14.f) | Current state: zero services start without `--profile default` | S | Strip `profiles: [default, ...]` from universally-on services |
+
+### Differentiators
+
+| Feature | Value Proposition | Complexity | Notes |
+|---------|-------------------|------------|-------|
+| `--with-all` mega-profile for one-flag full demo | Demo-friendly; helps OSS evaluation | S | Trivial composition of all profiles |
+| Helm parity: each profile maps to a Helm `values.yaml` toggle | Ops use compose for dev, Helm for prod; symmetry reduces surprise | M | `observability.enabled: true`, `storage.minio.enabled: true`, etc. |
+| Smoke target per profile (`make smoke-slim`, `make smoke-with-obs`) | CI proves each combination boots; corp ops can run before deploy | M | k6 minimal flow against each profile in nightly CI |
+| Cost-of-ownership table (RAM/CPU/disk per profile) | Helps capacity planning; published in `docs/operations.md` | S | Snapshot from `docker stats` on a baseline; refresh on each release |
+
+### Anti-Features (Phase 14 will NOT ship)
+
+| Feature | Why Requested | Why Problematic | Alternative |
+|---------|---------------|-----------------|-------------|
+| Profile-of-profiles inheritance / composition DSL | "More expressive" | Compose profiles flat-list is enough; nesting drives no real use case | Stay flat; document combinations |
+| `.env` UI editor / web admin for env vars | "Match Coolify / Dokploy" | Out of scope for an OSS backend; surface area for security bugs | Edit `.env`, run `docker compose up` |
+| Auto-detect cloud vendor and pre-fill BYOK | "Magic" | Brittle; vendor APIs change; bad failure mode | Documented per-vendor BYOK guide |
+| Built-in S3 implementation (replacing MinIO) | "Drop a dependency" | MinIO IS the OSS S3; reinventing is yak-shaving | Keep MinIO; allow BYOK swap |
+| Multi-region failover wiring | "Enterprise readiness" | v2 is single-installation 1000-user; multi-region is v4+ | Out of scope, full stop |
+| Blue/green deployment automation | "Zero-downtime" | Compose rolling-deploy is enough for the target; blue/green needs an orchestrator | Helm + K8s native rolling = handles this in cloud topology |
+
+---
+
+## Phase 15 — Repo Refactor + FSL + History Scrub
+
+### Framing — Monorepo and license-switch playbooks
+
+Surveyed: Nx monorepos (Mattermost, Sentry), Turborepo (Vercel, Trigger.dev), plain pnpm workspaces (Better Auth itself, Plausible, Outline). For test colocation, the modern convergence is **`*.test.ts` next to source for unit/integration, top-level `tests/e2e/` for cross-package e2e** (Better Auth, Plausible, Outline). For compose/helm separation, the dominant pattern is **`compose/` for compose files, `charts/` for Helm in the same repo** (Outline, Mattermost) — splitting Helm to a separate repo (TD-15.d) is the minority pattern and adds release-coordination cost. FSL adoption playbook is mature: Sentry's `getsentry/fsl.software` is the reference (templates for FSL-1.1-Apache-2.0 and FSL-1.1-MIT); Liquibase's blog post is the most-cited migration writeup.
+
+### Table Stakes (must-have for v2 Phase 15)
+
+| Feature | Why Expected | Complexity | Notes |
+|---------|--------------|------------|-------|
+| Test colocation convention codified: `*.test.ts` next to source for unit, `*.integration.test.ts` for testcontainer-backed, `tests/e2e/` for Cucumber | TD-15.a; current state is mixed (`__tests__/` in some packages, sibling files in others) | M | Lint rule via `eslint-plugin-vitest` enforcing pattern; codemod sweep to align existing files |
+| `compose/` directory for all docker-compose YAML (TD-15.c) | Repo root currently has 4+ `docker-compose.*.yml` | S | `git mv docker-compose.*.yml compose/`; update Makefile + docs |
+| Apache 2.0 → FSL-1.1-Apache-2.0 license switch (TD-15.e) | User-requested; aligns with Sentry / Liquibase / PowerSync precedent | M | LICENSE from `fsl.software/FSL-1.1-Apache-2.0.template.md`; update `package.json` `license` in every workspace; SPDX header sweep (codemod); CLA gate via DCO (`Signed-off-by:` line per Liquibase pattern); **per CLAUDE.md, English-only artifacts** |
+| `git filter-repo --path speaches-audio.md --invert-paths` history scrub (TD-15.f) | User asked multiple times; sensitive corp config | S | Run on a fresh clone, force-push, document for any contributors with active branches; coordinate timing |
+| `(admin)` route-group audit (TD-15.b) | Next.js parenthesized groups are valid but unreadable to new contributors | S | Either rename to plain `admin/` if no shared layout collision, OR add `apps/web/docs/routing.md` documenting the convention |
+| Resolve Traefik `/api/*` shadowing of Next.js API routes (TD-15.g) | `apps/web/src/app/api/locale/route.ts` currently unreachable | M | Preferred: separate hosts (`api.localhost` for Fastify, `app.localhost` for Next.js incl. its API routes); fallback: delete Next.js API routes, port to Fastify |
+| `apps/web/public/` either committed with `.gitkeep` or Dockerfile COPY conditional | Currently causes Docker build failure on fresh clones | S | Cheapest fix is `.gitkeep` |
+
+### Differentiators
+
+| Feature | Value Proposition | Complexity | Notes |
+|---------|-------------------|------------|-------|
+| Turborepo task graph + remote cache | 3-5× faster CI on hot caches; Better Auth and Outline both use it | M | `turbo.json` with `build`, `test`, `lint`, `e2e` pipelines; remote cache via GHA's built-in artifact cache (no Vercel signup) |
+| `CONTRIBUTING.md` with FSL CLA flow documented | Removes ambiguity for OSS PRs | S | Cite Sentry's playbook |
+| ADR for the license switch | DOCS-08 already promises ADRs for key decisions | S | Number sequentially after existing ADRs (0012+) |
+| Codeowners file mapping directories → reviewers | Helps PR routing when contributors arrive | S | `.github/CODEOWNERS` |
+
+### Anti-Features (Phase 15 will NOT ship)
+
+| Feature | Why Requested | Why Problematic | Alternative |
+|---------|---------------|-----------------|-------------|
+| Helm split to a separate repo (TD-15.d as written) | "Less confusion" | Increases release-coordination cost; Outline / Mattermost both keep Helm in monorepo with no observed confusion | Keep `charts/openwhispr/` in monorepo; document clearly in README |
+| Full Nx migration | "More powerful than Turborepo" | Massive learning curve; team uses pnpm; Better Auth is on pnpm | Turborepo is the differentiator path; Nx is overkill |
+| BSL / SSPL / AGPL / proprietary license | "Stronger protection" | FSL is what the user asked for; alternatives are too restrictive (SSPL/AGPL) or aggressive (BSL) for OSS adoption | FSL-1.1-Apache-2.0; precedent set |
+| Rewriting commit history beyond `speaches-audio.md` scrub | "Cleaner log" | Risk of orphaning contributor branches; high blast radius | Only one file scrubbed |
+| Per-package versioning (changesets) | "More precise releases" | Repo ships as one product; per-package versioning is for library publishers | Single `version` field, single release |
+
+---
+
+## Phase 16 — Phase-Tag Comment Audit
+
+### Framing — Comment policies in similar codebases
+
+Better Auth, Tanstack Query, shadcn/ui, Plausible all converge on "**no comment unless WHY is non-obvious**" — same rule as `CLAUDE.md`. Phase-tag comments (e.g. `// Phase 5 / Plan 03 / D-12`) are a GSD-workflow artifact specific to this project and have **no value in production code** once the phase is shipped. The codemod tooling consensus for TS is `ts-morph` (AST-level safe sweeps), with `jscodeshift` as the React-focused alternative. For TS, `ts-morph`'s `Node.getLeadingCommentRanges()` + `removeComment()` is canonical.
+
+### Table Stakes (must-have for v2 Phase 16)
+
+| Feature | Why Expected | Complexity | Notes |
+|---------|--------------|------------|-------|
+| Codemod scanning all `.ts`/`.tsx` for `// Phase XX` / `// Plan YY` / `// D-ZZ` patterns | 1642 such comments identified (TD-16.a); manual sweep infeasible | M | `ts-morph` walks every source file; pattern: `/^\s*\/\/\s*(Phase|Plan|D-)/` plus block-comment variant; outputs `phase-tag-audit-report.json` |
+| Two-bucket classification: REMOVE (re-states phase number with no WHY) vs KEEP (annotated WHY that survives without phase context) | Some phase-tags happen to be useful; bulk-delete is destructive | M | Heuristic: a comment KEEPs if removing it leaves surrounding code unintelligible; default REMOVE unless flagged; dry-run first |
+| CI lint rule preventing new phase-tag comments | Stops regression; without it, every GSD phase re-introduces them | S | Custom ESLint rule `no-phase-tag-comments` rejecting the regex; `eslint --fix` strips on commit via lefthook |
+| Phase 16 ships with full diff review (1642 → ~N kept) | Audit trail per constitutional rule 10 | S | Commit message + COVERAGE.md show before/after count |
+
+### Differentiators
+
+| Feature | Value Proposition | Complexity | Notes |
+|---------|-------------------|------------|-------|
+| Comment-density metric in CI reports | Trend monitoring; surfaces creep | S | `cloc --by-file --report-file` baseline; track over time |
+| Doc-comment vs code-comment split (JSDoc preserved, line-comments scrubbed) | JSDoc has tool support (TS LSP); raw `//` comments rarely add value | S | Codemod skips `/** ... */` blocks |
+
+### Anti-Features (Phase 16 will NOT ship)
+
+| Feature | Why Requested | Why Problematic | Alternative |
+|---------|---------------|-----------------|-------------|
+| Auto-generate JSDoc from code | "Better docs" | Auto-generated JSDoc is mostly noise (`@param x The x` etc.) | Hand-write only what adds value |
+| Block-comment all `// TODO` removal | "Cleanup" | TODOs are valuable signal — they ARE the WHY for "this is incomplete" | Keep `// TODO:`; track in issue tracker if accumulating |
+| Lint rule banning all `//` comments | "Maximum purity" | CLAUDE.md rule allows comments where WHY is non-obvious; banning entirely violates the rule | Only ban phase-tag pattern |
+| Manual code-by-code review of all 1642 lines | "Be thorough" | Infeasible; codemod + sample audit is the right tradeoff | Codemod dry-run + 100-sample human spot-check before merge |
+
+---
+
+## Phase 17 — Trusted Local TLS + Production ACME
+
+### Framing — Trusted TLS in dev stacks
+
+mkcert (Filippo Valsorda) is the dominant pattern — installs a local CA into the system root store, generates locally-trusted certs, used by Symfony Docker, Laravel Sail, dunglas/symfony-docker, and most OSS docker-compose templates. Caddy has built-in `tls internal` directive doing the same with no separate tool. **Both produce certs trusted by the browser without warnings; both require a one-time install step** (`mkcert -install` or Caddy's first-run). Production ACME for Traefik is well-documented; cert-manager + Let's Encrypt is the K8s standard. **No major OSS product ships `https://localhost` with warnings — they either bundle a local CA or use Caddy/mkcert in compose.**
+
+### Table Stakes (must-have for v2 Phase 17)
+
+| Feature | Why Expected | Complexity | Notes |
+|---------|--------------|------------|-------|
+| `make tls-trust` target running `mkcert -install` + generating cert chain for `*.localhost` | Operator does `cp .env.example .env && make tls-trust && docker compose up` → no browser warning | M | mkcert script in `tools/tls/`; generates certs in `compose/traefik/certs/`; idempotent (skips if cert valid > 30 days remaining); cf. dunglas/symfony-docker pattern |
+| Wildcard cert for `*.localhost` covering `api.localhost`, `app.localhost`, `grafana.localhost`, `mailpit.localhost` | Multi-host setup per TD-15.g resolution; one cert beats four | S | mkcert supports SAN list trivially |
+| Traefik configured to serve mkcert certs by default in dev profile | Currently self-signed cert is default (TD-17.a) | S | `compose/traefik/dynamic.yml` pinning `certificates:` to mkcert paths |
+| Production ACME via Traefik in `--with-ingress` profile (TD-17.b) | When ingress is enabled, Let's Encrypt should be wired by env (domain + email) | M | `TRAEFIK_LETSENCRYPT_EMAIL` env + `TRAEFIK_DOMAIN`; certs stored in named volume |
+| cert-manager + Let's Encrypt Issuer in Helm chart values | K8s deploys need this; currently `DEPLOY-02` notes cert-manager hooks but no end-to-end story | M | Helm `values.yaml` `ingress.tls.acme.enabled: true` + email; templated `Issuer` + `Certificate` resources |
+| Documented internal-CA path for corporate environments | Corp ops can't use Let's Encrypt; need to point cert-manager at internal Vault PKI / step-ca / EJBCA | S | `docs/operations.md` § "Corporate TLS"; document `ClusterIssuer` template |
+| README quickstart updated to `make tls-trust` as step 2 | First-run UX is the whole point of Phase 17 | S | Step 1 `cp .env.example .env`; 2 `make tls-trust`; 3 `docker compose up`; 4 browse `https://api.localhost` |
+
+### Differentiators
+
+| Feature | Value Proposition | Complexity | Notes |
+|---------|-------------------|------------|-------|
+| Caddy as alternative to mkcert via env flag | Caddy `tls internal` removes the mkcert install step entirely; some operators prefer | M | `COMPOSE_TLS_PROVIDER=caddy` swaps Traefik for Caddy in dev profile |
+| Renewal warning in `make status` | Catches expired mkcert certs before browser warning surprises | S | Check cert expiry < 14 days, print warning |
+| Documented offline-CA path for air-gapped enterprises | True air-gap corps can't use public ACME at all | M | `docs/operations.md` § "Air-gapped TLS"; bring-your-own-CA with cert-manager + internal-CA Issuer |
+
+### Anti-Features (Phase 17 will NOT ship)
+
+| Feature | Why Requested | Why Problematic | Alternative |
+|---------|---------------|-----------------|-------------|
+| Ship a real CA root in the repo | "No setup needed" | **Security catastrophe** — anyone with the repo can MITM users; multiple OSS projects have shipped CVEs this way | Each operator runs `mkcert -install` locally |
+| Auto-install mkcert via container startup | "More magical" | Containers can't modify host root store; sudo elevation impossible from inside Docker | Makefile target runs on host |
+| Custom CA implementation (instead of mkcert / Caddy) | "Don't depend on a tool" | mkcert IS the standard; reimplementing is yak-shaving and a CVE pipeline | Use mkcert |
+| HTTP fallback when TLS setup fails | "Convenience" | Violates WIRE-20 (HTTPS only); silent insecurity is worse than loud failure | Fail loudly; surface mkcert install instructions |
+| Multi-domain ACME (LE rate-limit dance, DNS-01 wildcard) in v2 | "Production-grade" | Phase 17 is single-domain operator deploys; wildcard ACME is enterprise multi-tenant which is v3+ | Single-domain HTTP-01 only in v2 |
+
+---
+
+## Phase 18 — LDAP / Keycloak Integration (Research + SPEC Only)
+
+### Framing — Corporate SSO patterns
+
+Surveyed (Zluri 2026 alternatives report, Authentik/Keycloak comparisons, Better Auth docs, Auth0 enterprise guide): **the dominant corporate-SSO pattern is "deploy Keycloak (or Authentik) as your OIDC server, federate LDAP/AD/Azure-AD into Keycloak, and have your downstream apps speak only OIDC."** This is option (a) from TD-18.a. Direct LDAP plugins in app frameworks are the minority — they tightly couple the app to enterprise directory operations (group sync, password policies, locked accounts, kerberos) that are properly Keycloak's job. SCIM provisioning is **separate from SSO** — SSO is authentication, SCIM is user/group lifecycle. Keycloak notably **does NOT include native SCIM 2.0 endpoints** (community extensions only); Authentik does. JIT provisioning (user created on first OIDC sign-in) is the lighter-weight alternative most products choose first; SCIM is added later when audit requirements force it.
+
+### Table Stakes (Phase 18 SPEC must document)
+
+| Feature | Why Expected | Complexity | Notes |
+|---------|--------------|------------|-------|
+| SPEC documenting Keycloak-as-OIDC-frontend as the RECOMMENDED path | Industry-dominant pattern; Better Auth OIDC adapter already works with it (AUTH-05); zero code changes for this path | S | Decision recorded as ADR; `docs/auth-corporate.md` shows Keycloak realm config, LDAP federation, OIDC discovery URL |
+| SPEC documenting direct LDAP plugin as the ALTERNATE path | Some corp ops cannot deploy Keycloak (air-gap, no infra budget, regulatory) | M | `ldapjs` + custom Better Auth plugin; SPEC enumerates: bind-DN auth, group→role mapping, password-change passthrough, account-lockout sync, kerberos **explicitly OUT of scope** |
+| Decision matrix: when to recommend which | Without it, ops will pick the wrong path | S | Table: existing LDAP+Keycloak → (a); air-gap with AD only → (b); neither yet → (a) with Authentik/Zitadel suggestion |
+| JIT user-provisioning spec (on first OIDC sign-in, create user with default tenant + role) | MVP for "corporate user shows up, has account" | S | Builds on existing AUTH-07 "open IdP scope" |
+| Group/role-mapping spec | OIDC claims (`groups`, `roles`) → Better Auth `role` field | M | SPEC only; implementation deferred to v3 |
+| Test plan for the SPEC (Cucumber scenarios using a dockerized Keycloak in test profile) | When v3 implements, scenarios are ready | M | `tests/e2e/keycloak-oidc.feature` red-only in v2; `compose/test/keycloak.yml` defined |
+
+### Differentiators (still in SPEC scope, NOT implementation)
+
+| Feature | Value Proposition | Complexity | Notes |
+|---------|-------------------|------------|-------|
+| Authentik as the recommended OSS Keycloak alternative | Authentik ships SCIM out of the box; lighter ops footprint; modern UI | S | Document side-by-side in `docs/auth-corporate.md` |
+| Zitadel mention as third option | Multi-tenant from day one; useful reference | S | One-paragraph callout |
+| Documented Better Auth plugin extension points the LDAP path would touch | Reduces v3 surprise | M | List the Better Auth hooks the plugin would implement |
+
+### Anti-Features (Phase 18 SPEC will NOT cover, v2 will NOT implement)
+
+| Feature | Why Requested | Why Problematic | Alternative |
+|---------|---------------|-----------------|-------------|
+| SAML 2.0 IdP connector | Some enterprise buyers ask | Better Auth has no native SAML; would require separate plugin; **explicit v2 anti-feature per REQUIREMENTS.md COMPL-01** | OIDC covers Google Workspace / Azure AD / Okta which is 95% of buyers |
+| SCIM provisioning endpoints | "Enterprise checkbox" | COMPL-02 deferred to v2/v3 explicitly; Supabase Pro tier defers it; even Keycloak doesn't ship native SCIM | JIT provisioning is enough for v2 SPEC; SCIM is v3 if demand surfaces |
+| Implementing the LDAP plugin in v2 | "Why wait" | TD-18.b explicitly says SPEC-only in v2; needs `/gsd-discuss-phase` outcome first | Ship SPEC; implementation = v3 |
+| Kerberos / SPNEGO support | "Internal Windows shops want it" | Massive surface area; works inside Keycloak natively — let Keycloak handle it | Document the Keycloak Kerberos federation path |
+| Self-hosted IdP-portal UI built into OpenWhispr | "Be a one-stop shop" | **Explicit out-of-scope per PROJECT.md** — defer to bundled Keycloak/Authentik/Zitadel | Document the bundled path |
+| Custom group-to-tenant mapping logic | "Multi-tenant per OIDC group" | v1 is single-default-tenant by design (DATA-06); group-to-tenant is v4+ | Single tenant; document for future |
+| Built-in MFA (TOTP / WebAuthn) on top of LDAP | "Defense in depth" | Keycloak handles this natively; duplicative | Push to Keycloak; document |
 
 ---
 
 ## Feature Dependencies
 
-The dependency graph drives roadmap phase ordering. Anything below a feature must be built first or in the same phase.
-
 ```
-TS-W-04 OAuth shim
-  └── requires ── TS-P-02 Pluggable identity (OIDC / IdP abstraction)
-                       └── requires ── TS-P-01 Multi-tenancy (tenant scope on user records)
-                                              └── requires ── TS-P-15 Migrations infra
+Phase 13 (E2E + CJM harness)
+    ├──gates──> Phase 12 (admin onboarding)        — scenarios written test-first against 13's harness
+    ├──gates──> Phase 14 (slim + BYOK)             — each profile gets a Phase 13 smoke scenario
+    ├──gates──> Phase 17 (trusted TLS)             — "no browser warning on first run" IS a Cucumber scenario
+    └──gates──> Phase 18 (Keycloak SPEC)           — scenarios authored red-only against dockerized Keycloak
 
-TS-W-05 Custom-protocol redirect (scheme echo)
-  └── requires ── TS-W-04 OAuth shim
-        └── requires ── TS-W-08 Global error envelope (consistent error path even pre-auth)
+Phase 12 (admin onboarding)
+    ├──requires──> Phase 13 (test harness exists)
+    └──enhances──> Phase 17 (setup wizard surfaces TLS health)
 
-TS-W-06 Bearer token rotation (set-auth-token header)
-  └── requires ── DIFF-06 Encrypted-at-rest tokens (or platform regrets retrofitting later)
+Phase 14 (slim + BYOK)
+    ├──conflicts──> Phase 17 (must decide together: ingress + ACME profile coupling)
+    └──enhances──> Phase 15 (compose/ tree refactor lands the profile YAMLs cleanly)
 
-TS-W-10 /api/transcribe
-  ├── requires ── TS-P-04 Pluggable STT provider
-  │       └── requires ── DIFF-01 Per-tenant provider override (or tenants share STT, painfully)
-  ├── requires ── TS-P-08 Per-tenant quotas (limitReached signaling)
-  │       └── requires ── TS-P-09 Usage ledger
-  │               └── requires ── TS-P-13 Observability (LiteLLM spend log piping = OBS-04)
-  ├── requires ── TS-P-05 Pluggable storage (audio chunks for retry / replay)
-  └── requires ── TS-P-18 Background job queue (chunked uploads, retries)
+Phase 15 (refactor + FSL + scrub)
+    └──independent──> Phase 16 (comment audit — both touch wide swaths of source; sequence to avoid merge hell)
 
-TS-W-11 /api/reason
-  └── requires ── TS-P-03 Pluggable LLM provider
-        └── requires ── DIFF-01 Per-tenant provider override
+Phase 16 (comment audit)
+    └──independent──> Run AFTER Phase 15 so codemod operates on already-restructured tree
 
-TS-W-12 /api/agent/stream (NDJSON, flush per line)
-  └── requires ── TS-W-11 /api/reason (LLM plumbing)
-        └── requires ── TS-P-19 Stateless API tier (sticky / non-buffering ingress)
-                └── requires ── TS-W-21 Streaming-survives-1h-ingress-timeout
+Phase 17 (trusted TLS)
+    └──requires──> Phase 14 (`--with-ingress` profile decision determines whether ACME is wired)
 
-TS-W-15 Realtime token endpoints
-  ├── requires ── TS-P-16 Secrets management (master AssemblyAI / Deepgram / OpenAI keys)
-  └── requires ── TS-P-08 Per-tenant quotas (mint policy)
-
-TS-W-16 Stripe lifecycle (4 endpoints)
-  └── requires ── TS-P-07 Pluggable billing (null adapter for license-only deploys)
-        └── requires ── TS-P-09 Usage ledger (proration math)
-
-TS-W-17 Referrals
-  └── requires ── TS-P-06 Pluggable email (invite delivery)
-        └── requires ── TS-P-18 Background job queue (delivery retry)
-
-TS-O-01 Admin console (UI-SPEC v1)
-  ├── requires ── TS-P-10 Audit log
-  ├── requires ── TS-P-13 Observability (links to Grafana)
-  ├── requires ── DIFF-04 Cost dashboards (lights up the most-asked screen)
-  └── requires ── TS-W-04 OAuth shim (admin authn — recommend separate IdP role)
-
-TS-O-02 End-user self-service (UI-SPEC v1)
-  ├── requires ── TS-W-03 /api/auth/delete-account
-  ├── requires ── TS-W-14 /api/usage
-  ├── requires ── TS-W-16 Stripe lifecycle
-  └── requires ── TS-W-17 Referrals
-
-TS-O-03 Compose quickstart < 5 min
-  ├── requires ── DIFF-07 Built-in dev mode
-  ├── requires ── DIFF-08 Reproducible local dev (CI-enforced)
-  └── requires ── TS-W-20 HTTPS-only (mkcert in dev)
-
-TS-O-04 Helm chart
-  ├── requires ── TS-P-12 Health/readiness/liveness (separate endpoints)
-  ├── requires ── TS-P-15 Rolling-deploy-safe migrations
-  └── requires ── TS-O-05 One-command upgrade
-
-DIFF-12 Wire-contract conformance suite
-  └── requires ── all of TS-W-01..TS-W-21 (it tests them)
+Phase 18 (Keycloak SPEC)
+    └──independent──> Can ship any time after Phase 13; pure documentation
 ```
 
 ### Dependency Notes
 
-- **DIFF-01 (per-tenant provider override) is the load-bearing feature.** It pulls TS-P-03 + TS-P-04 + TS-P-05 + TS-P-07 forward as table-stakes-with-tenant-scope rather than install-scope. Building TS-P-* without per-tenant scope creates an L-sized rewrite when DIFF-01 lands later. Recommendation: design the abstraction tenant-scoped from day 1.
-- **DIFF-06 (encrypted-at-rest tokens) and TS-P-16 (secrets management)** share an abstraction (KEK / KMS resolver). Build them together.
-- **TS-W-09 (Bearer + cookie interchangeable)** has no upstream dependency but failing to design auth middleware to accept both up-front leads to a per-endpoint sprinkle of try-bearer-then-cookie that gets out of sync.
-- **TS-P-18 (background job queue) is in the critical path of three wire-required endpoints** (TS-W-10 transcribe chunking, TS-W-12 agent stream cleanup, TS-W-17 referrals). Treat as P0 platform infra, not a "later" item.
-- **DIFF-12 (conformance suite) inverts the dependency direction:** it is the test for everything else. Recommend writing it incrementally as each TS-W-* is implemented — turns conformance into a regression net rather than a final-phase milestone.
-- **ANTI-08 (no custom IdP UI) eliminates a large subtree** that would otherwise hang off TS-P-02. Decision should be locked early; if relaxed, +XL of UI/UX work appears.
+- **Phase 13 gates everything because it's the harness.** Without it, every other phase ships blind and the milestone re-introduces the original "unit tests pass and lie" failure mode (TD-13.a/d).
+- **Phase 12 requires Phase 13** specifically because the admin onboarding wizard is the most UX-sensitive surface in v2; visual regression + a11y scans + journey scenarios are how we prove conformance.
+- **Phase 17 requires Phase 14** because the `--with-ingress` profile decision determines whether Traefik (and thus ACME) is in the default compose at all.
+- **Phase 15 + Phase 16 are sequencing-sensitive.** Both touch wide swaths of source. Run 15 first (license headers + structural moves + history scrub), then 16 (comment sweep). Doing 16 first means Phase 15's mass-mv re-introduces phase-tag noise that 16 missed.
 
 ---
 
 ## MVP Definition
 
-### Launch With (v1)
+### Phase 13 — Launch With
 
-The minimum that lets a self-hoster (a) sign in via the desktop client end-to-end, (b) transcribe, (c) reason, (d) bill, and (e) operate the install over time. Anything outside this list is v1.5+.
+- [ ] Cucumber.js + Playwright wired, gated by `E2E=1`, `make e2e-test` target
+- [ ] `.planning/research/CJM.md` enumerating ~20 user journeys
+- [ ] 8 mandatory auth scenarios + transcribe round-trip + admin landing + locale switch (11 minimum green at phase close)
+- [ ] Mailpit in test compose; HTTP API used for verification-email assertions
+- [ ] Per-scenario DB teardown via testcontainers or `make test-reset`
 
-#### Wire (mandatory — desktop breaks otherwise)
-- [ ] TS-W-01..03 — Auth lifecycle (check-user, verification-status, delete-account)
-- [ ] TS-W-04..06 — OAuth shim, custom-protocol redirect (all 3 channel variants), bearer rotation
-- [ ] TS-W-07..09 — 401 semantics, error envelope, dual-auth (Bearer + cookie)
-- [ ] TS-W-10..14 — Transcribe (with limitReached@200), reason, agent stream (NDJSON flushed), web-search, streaming-usage / usage / stt-config / note-recording-config
-- [ ] TS-W-15 — Realtime tokens (3 providers, including streams=2)
-- [ ] TS-W-16 — Stripe (4 endpoints; null adapter acceptable for non-billed installs)
-- [ ] TS-W-17 — Referrals (3 endpoints)
-- [ ] TS-W-18 — `/api/health` (3s timeout, body unread)
-- [ ] TS-W-19 — Generic passthrough (`cloud-api-request` envelope)
-- [ ] TS-W-20..21 — HTTPS-only, verification-cadence carve-out, 1h-ingress streaming
+### Phase 12 — Launch With
 
-#### Platform (mandatory — no operator deploys without)
-- [ ] TS-P-01 — Multi-tenancy (RLS or app-enforced; tenant_id everywhere from day 1)
-- [ ] TS-P-02 — Pluggable identity (generic OIDC + email/password; bundled IdP recommended via compose)
-- [ ] TS-P-03..07 — Pluggable LLM / STT / storage / email / billing
-- [ ] TS-P-08..09 — Per-tenant quotas + usage ledger (LiteLLM spend log piping)
-- [ ] TS-P-10..11 — Audit log + backup/restore tooling
-- [ ] TS-P-12..13 — Probes + observability (OTel + Prom + JSON logs)
-- [ ] TS-P-14 — i18n with en + ru
-- [ ] TS-P-15..16 — Rolling-deploy-safe migrations + secrets management
-- [ ] TS-P-17..20 — PgBouncer, job queue, stateless API, rate limiting
+- [ ] `/setup` route gated by admin-user count
+- [ ] Wizard: email + password + display name + workspace name + timezone, single page
+- [ ] `/admin` index page redirecting to `/admin/config`
+- [ ] `GET /api/auth/providers` capability endpoint; UI gates buttons on it
+- [ ] Resend-verification CTA on unverified-email screen
+- [ ] Per-field Zod error messages
+- [ ] Visual regression diff against `design-canvas.jsx` for 5 auth screens
+- [ ] All flows above ship green Phase 13 Cucumber scenarios
 
-#### Operator experience (mandatory)
-- [ ] TS-O-01..02 — Admin + end-user UI-SPECs (NOT implementations)
-- [ ] TS-O-03..04 — Compose quickstart + Helm chart
-- [ ] TS-O-05..06 — One-command upgrade + full docs suite
+### Phase 14 — Launch With
 
-#### Differentiators that are cheap-now (v1)
-- [ ] DIFF-01 — Per-tenant provider override
-- [ ] DIFF-02 — Org-key tenancy mode (vs user-BYOK)
-- [ ] DIFF-03 — Sandbox / test tenant with mock provider
-- [ ] DIFF-06 — Encrypted-at-rest tokens (KEK/DEK)
-- [ ] DIFF-07 — Built-in dev mode
-- [ ] DIFF-08 — Reproducible local dev (CI-enforced)
-- [ ] DIFF-09 — Per-tenant locale overrides
-- [ ] DIFF-12 — Wire-contract conformance test suite
-- [ ] DIFF-13 — Realtime multi-stream (already in TS-W-15)
-- [ ] DIFF-14..15 — Multi-arch + no-GPU API tier
+- [ ] Slim default profile (6 services); strip `profiles:` from universally-on services
+- [ ] `--with-observability` / `--with-storage` / `--with-ingress` / `--with-pgbouncer` profiles
+- [ ] `--profile dev` for mailpit
+- [ ] `.env.slim.example` with ~5 keys + BYOK matrix in `docs/operations.md`
+- [ ] Per-profile Cucumber smoke scenario
 
-### Add After Validation (v1.5)
+### Phase 15 — Launch With
 
-Triggered by first 3-5 real deployments — the gaps emerge from operator feedback.
+- [ ] Test colocation convention + lint rule + codemod sweep
+- [ ] `compose/` tree; root cleared of compose YAMLs
+- [ ] Apache 2.0 → FSL-1.1-Apache-2.0; SPDX header sweep; CLA via DCO
+- [ ] `speaches-audio.md` scrubbed from git history via `git filter-repo`
+- [ ] `(admin)` route-group decision applied
+- [ ] Traefik/Next.js API route shadowing resolved (separate hosts preferred)
+- [ ] `apps/web/public/.gitkeep`
 
-- [ ] DIFF-04 — Cost dashboards per-tenant/per-user (operators ask within week 2)
-- [ ] DIFF-05 — PII redaction in transcripts (healthcare/finance verticals demand it)
-- [ ] DIFF-10 — Bundled Grafana dashboards (operators ship their own otherwise — duplicate work)
-- [ ] DIFF-11 — Gradual-rollout migration runners (only matters at scale)
-- [ ] Frontend implementation of admin console + end-user portal (graduating UI-SPEC → code)
+### Phase 16 — Launch With
 
-### Future Consideration (v2+)
+- [ ] `ts-morph` codemod scanning all 1642 phase-tag comments
+- [ ] Two-bucket classification with dry-run report
+- [ ] ESLint rule preventing regression
+- [ ] 100-sample human spot-check; full sweep committed
 
-Defer until product-market fit and operator feedback inform the design.
+### Phase 17 — Launch With
 
-- [ ] SAML / SCIM provisioning (ANTI-07 → graduates here)
-- [ ] Audit-log SIEM exports
-- [ ] CMEK / FedRAMP isolation
-- [ ] OpenAPI / JSON-Schema generation
-- [ ] Live runtime trace validation against the OpenWhispr cloud
-- [ ] Webhook subscriptions for usage / billing events
-- [ ] Locales beyond en + ru (community-PR-driven)
+- [ ] `make tls-trust` running `mkcert -install` + wildcard cert generation
+- [ ] Traefik dev profile serves mkcert certs by default
+- [ ] Production ACME wiring in `--with-ingress` profile (Let's Encrypt + email)
+- [ ] cert-manager Issuer template in Helm chart
+- [ ] README quickstart updated
+- [ ] Cucumber scenario: "first run → browse `https://api.localhost` → no browser warning"
+
+### Phase 18 — Launch With (SPEC only)
+
+- [ ] `docs/auth-corporate.md` covering Keycloak-as-OIDC-frontend (RECOMMENDED) + LDAP-direct (ALTERNATE)
+- [ ] Decision matrix
+- [ ] JIT provisioning spec
+- [ ] Group/role-mapping spec
+- [ ] Red Cucumber scenarios in `tests/e2e/keycloak-oidc.feature` + `compose/test/keycloak.yml`
+- [ ] ADR for Keycloak-as-OIDC-frontend recommendation
+
+### Add After Validation (v2.x, post-milestone)
+
+- [ ] Turborepo migration + remote cache (Phase 15.x)
+- [ ] Cross-browser matrix in nightly E2E (Phase 13.x)
+- [ ] Visual regression coverage extended to all UI-SPEC screens (Phase 12.x → 13.x)
+- [ ] Onboarding tour after first login (Phase 12.x)
+- [ ] `make setup-status` Makefile target (Phase 12.x)
+- [ ] Caddy alternative to mkcert via env flag (Phase 17.x)
+- [ ] Authentik / Zitadel side-by-side docs (Phase 18.x)
+
+### Future Consideration (v3+)
+
+- [ ] LDAP-direct Better Auth plugin implementation (Phase 18 implementation; gated by `/gsd-discuss-phase` outcome)
+- [ ] SCIM 2.0 provisioning endpoints (REQUIREMENTS COMPL-02)
+- [ ] SAML 2.0 connector (REQUIREMENTS COMPL-01)
+- [ ] Multi-region / blue-green deployment automation
+- [ ] Per-tenant admin console (currently single-default-tenant)
+- [ ] Onboarding wizard redesign with theming / branding
 
 ---
 
 ## Feature Prioritization Matrix
 
-(Top 20 features by priority — not exhaustive; the full table-stakes list is implicitly P1.)
-
 | Feature | User Value | Implementation Cost | Priority |
 |---------|------------|---------------------|----------|
-| TS-W-04 OAuth shim with channel-aware scheme echo | HIGH (gates all sign-in) | M | P1 |
-| TS-W-10 `/api/transcribe` with `limitReached@200` | HIGH (core product) | M | P1 |
-| TS-W-12 NDJSON streaming flushed-per-line | HIGH (agent UX) | M | P1 |
-| TS-P-01 Multi-tenancy with row-level isolation | HIGH (every operator) | M | P1 |
-| TS-P-08+09 Quotas + usage ledger tied to LiteLLM spend | HIGH (billing + abuse defense) | M | P1 |
-| TS-P-13 OTel + Prom + structured logs | HIGH (debuggability at 1000-concurrent) | M | P1 |
-| TS-O-03 Compose quickstart < 5 min | HIGH (adoption multiplier) | M | P1 |
-| TS-O-04 Helm chart | HIGH (production deploy) | L | P1 |
-| TS-W-15 Realtime token brokering (3 providers, streams=2) | HIGH (meeting feature) | M | P1 |
-| DIFF-01 Per-tenant provider override | HIGH (enterprise sale) | M | P1 |
-| DIFF-12 Wire-contract conformance test suite | HIGH (regression net) | M | P1 |
-| TS-P-15 Rolling-deploy-safe migrations | MEDIUM (zero-downtime upgrade) | M | P1 |
-| TS-P-18 Background job queue | MEDIUM (transcribe retry, email) | M | P1 |
-| TS-P-14 i18n en + ru | MEDIUM (project rule) | S | P1 |
-| DIFF-07 Built-in dev mode | HIGH (contributor adoption) | S | P1 |
-| DIFF-06 Encrypted-at-rest tokens (KEK/DEK) | MEDIUM (enterprise checkbox) | M | P1 |
-| DIFF-04 Cost dashboards | HIGH (operator week 2) | M | P2 |
-| DIFF-05 PII redaction | HIGH (vertical-specific) | M | P2 |
-| TS-O-01+02 Admin + end-user frontend implementations | MEDIUM (UI-SPEC suffices for v1) | XL | P2 |
-| ANTI-07 SAML/SCIM/FedRAMP/SIEM | MEDIUM (enterprise-plus) | XL | P3 |
-
-**Priority key:**
-- P1: Must have for v1 launch
-- P2: v1.5 — add after first deployments
-- P3: v2+ — defer until validated
+| Phase 13 Cucumber harness | HIGH | MEDIUM | P1 |
+| Phase 13 mailpit-API for email verification scenarios | HIGH | LOW | P1 |
+| Phase 12 setup wizard | HIGH | MEDIUM | P1 |
+| Phase 12 `/admin` index page | HIGH | LOW | P1 |
+| Phase 12 OIDC button gating | HIGH | MEDIUM | P1 |
+| Phase 14 slim profile default | HIGH | MEDIUM | P1 |
+| Phase 14 BYOK env matrix doc | HIGH | LOW | P1 |
+| Phase 15 FSL switch + SPDX sweep | MEDIUM | MEDIUM | P1 |
+| Phase 15 `speaches-audio.md` scrub | MEDIUM | LOW | P1 |
+| Phase 16 comment codemod | LOW | MEDIUM | P2 |
+| Phase 17 mkcert/`make tls-trust` | HIGH | MEDIUM | P1 |
+| Phase 17 production ACME wiring | HIGH | MEDIUM | P1 |
+| Phase 18 Keycloak-as-OIDC-frontend SPEC | HIGH | LOW | P1 |
+| Phase 18 LDAP-direct SPEC | MEDIUM | MEDIUM | P1 |
+| Visual regression for all UI-SPEC | MEDIUM | HIGH | P2 |
+| Turborepo migration | MEDIUM | MEDIUM | P2 |
+| Cross-browser E2E matrix | LOW | HIGH | P3 |
+| LDAP plugin implementation | MEDIUM | HIGH | P3 (v3) |
+| SCIM endpoints | LOW (v2 buyer) | HIGH | P3 (v3) |
 
 ---
 
-## Competitor / Adjacent-Project Feature Analysis
+## Competitor Feature Analysis
 
-The OSS self-hosted AI backend space is small but instructive. None of these are direct competitors (each picks a different slice), but their feature decisions calibrate ours.
-
-| Feature | LiteLLM Proxy | Langfuse | OpenWebUI | Supabase Self-Hosted | Authentik | **Our Approach** |
-|---------|---------------|----------|-----------|----------------------|-----------|------------------|
-| Multi-tenancy | Per-key budgets (key = tenant proxy) | First-class projects | Per-user only | First-class organizations | Tenants | First-class tenants with row-level isolation (TS-P-01) |
-| Pluggable LLM | YES — 100+ providers | Provider-agnostic (records all) | Native + LiteLLM | N/A | N/A | Use LiteLLM as default; keep direct-provider escape hatch (TS-P-03) |
-| Pluggable STT | Limited (pass-through) | N/A | Whisper local | N/A | N/A | First-class abstraction (TS-P-04) |
-| Pluggable storage | N/A | S3-compatible | Local | First-class | N/A | S3-compatible default = MinIO (TS-P-05) |
-| Pluggable identity | API keys + master key | OAuth + email | Email + LDAP + OAuth | OAuth + magic link + email | The product | Generic OIDC + bundled Authentik recommendation (TS-P-02 + ANTI-08) |
-| Per-tenant provider override | No (per-key model whitelist) | N/A | No | No | N/A | YES (DIFF-01) — primary differentiator |
-| Cost dashboards | Built-in spend logs | Per-trace cost | No | No | N/A | v1.5 (DIFF-04) using LiteLLM as source |
-| PII redaction | Guardrails (post-call) | Optional | No | No | N/A | v1.5 (DIFF-05) — at ingress |
-| Audit log | Spend logs only | Full trace | Limited | YES | YES | First-class table (TS-P-10) |
-| Compose quickstart | < 2 min | < 3 min | < 5 min | ~ 10 min | ~ 5 min | < 5 min target (TS-O-03 + DIFF-08) |
-| Helm chart | YES | YES | YES | YES | YES | YES (TS-O-04) |
-| i18n | No | English only | YES (many) | English only | YES (many) | en + ru in v1 (TS-P-14); operator overlays (DIFF-09) |
-| Custom IdP UI | No | No | YES (basic) | YES (full) | The product | NO — defer to bundled Authentik (ANTI-08) |
-| Webhooks for usage events | YES | YES | No | YES | YES | Stripe-only in v1; general v2 (ANTI-15) |
-| OpenAPI spec | YES (auto-gen) | YES | Limited | YES | YES | Markdown wire spec only in v1 (ANTI-10) |
-| Wire-compatibility test suite | N/A | N/A | N/A | N/A | N/A | YES (DIFF-12) — unique to our context |
+| Feature | Supabase self-host | Plausible | Outline | Mattermost | Discourse | Sentry self-host | Our Approach |
+|---------|-------------------|-----------|---------|------------|-----------|------------------|--------------|
+| First-run admin wizard | NO (gap) | NO | YES (1 screen) | YES (System Console) | YES (5-step) | partial | YES — single-page, 5 fields (Outline-style) |
+| BYOK profile system | partial (env) | YES (mail) | YES (S3/SMTP/social) | YES (modular plugins) | partial | YES (`install.sh --with-X`) | YES — `--with-*` compose profiles |
+| Mailpit in dev/test | YES | YES | YES | YES | YES | YES | YES — already in repo; v2 moves to dev profile only |
+| Trusted local TLS via mkcert | NO | NO | NO | NO | NO | NO | YES — `make tls-trust`; differentiator |
+| FSL license | NO (Apache 2.0) | AGPL | BUSL | AGPL → MIT | GPL | FSL-1.1-Apache-2.0 | YES — FSL-1.1-Apache-2.0 (Sentry / Liquibase precedent) |
+| Cucumber BDD + CJM | NO (Vitest/Playwright) | Elixir ExUnit | partial | YES (Cypress) | YES (RSpec system specs) | partial | YES — Cucumber + Playwright, full CJM |
+| Visual regression per screen | NO | NO | NO | partial | NO | NO | YES — `design-canvas.jsx` baseline diff |
+| Keycloak-as-OIDC SPEC | YES (GoTrue native OIDC) | YES | YES | YES | YES | YES | YES — Phase 18 SPEC documents both Keycloak + LDAP-direct |
+| Native LDAP | NO (community plugin) | NO | NO | YES (enterprise) | NO (plugin) | NO | NO in v2; SPEC-only |
+| Native SCIM | NO | NO | NO | YES (enterprise) | NO | NO | NO — explicit anti-feature for v2/v3 |
+| Native SAML | NO | NO | YES | YES (enterprise) | YES (plugin) | YES | NO — explicit anti-feature; OIDC covers Azure AD / Okta |
+| Phase-tag comment policy | n/a | n/a | n/a | n/a | n/a | n/a | YES — ESLint rule + codemod sweep (project-specific) |
 
 ---
 
 ## Sources
 
-- Upstream wire spec: `/Users/dev/openwhispr/docs/SELF_HOSTING.md` (sections: Required Endpoints, Authentication Contract, OAuth Flow Walkthrough, Custom Protocol Channel Variants, Edge Cases and Quirks, Minimum Viable Backend Checklist) — HIGH confidence
-- Upstream wire spec: `/Users/dev/openwhispr/docs/BACKEND_SPEC.md` (every endpoint card cited inline; Global Error Envelope; Custom Protocol Redirect) — HIGH confidence
-- Upstream OAuth spec: `/Users/dev/openwhispr/docs/OAUTH_SPEC.md` (sections: OpenWhispr Cloud Sign-In, Google Calendar, Other Providers Found, Custom Protocol Reference, Out of Scope) — HIGH confidence
-- Real-deployment audio surface: `/Users/dev/openwhispr-server/speaches-audio.md` (ExampleCorp prod LiteLLM v1.82.3 + Speaches `master-cuda-12.6.3`; multipart-passthrough patch; 3600s ingress timeouts for realtime) — HIGH confidence
-- Project brief: `/Users/dev/openwhispr-server/.planning/PROJECT.md` (requirement IDs WIRE-01..06, AUTH-01..06, LITELLM-01..05, PROVIDER-01..07, DATA-01..05, SCALE-01..06, OBS-01..04, UI-01..03, DEPLOY-01..04, DOCS-01..09, I18N-01..02; Out of Scope; Constraints) — HIGH confidence
-- Adjacent OSS projects (LiteLLM Proxy, Langfuse, OpenWebUI, Supabase Self-Hosted, Authentik) — MEDIUM confidence (cross-referenced from public docs and prior deployment knowledge; not independently re-verified for this research)
+- **Phase 13 — Cucumber + Playwright + CJM**
+  - [Playwright BDD: Setup, Gherkin & E2E Testing Guide — TestDino](https://testdino.com/blog/playwright-bdd)
+  - [E2E Automation Testing Done Right: Playwright + Cucumber — dev.to / akdevcraft](https://dev.to/akdevcraft/playwright-and-cucumber-are-the-best-tools-for-end-to-end-testing-a28)
+  - [End-to-End Testing Your SaaS with Playwright — Makerkit](https://makerkit.dev/blog/tutorials/playwright-testing)
+  - [E2E Testing Signup and Login Workflows with Playwright — Better Stack](https://betterstack.com/community/guides/testing/playwright-signup-login/)
+  - [Mailpit project — axllent/mailpit](https://github.com/axllent/mailpit)
+- **Phase 12 — Admin onboarding wizard**
+  - [Supabase self-hosting community discussions (no built-in wizard)](https://github.com/orgs/supabase/discussions/35568)
+  - [The ultimate Supabase self-hosting guide — David Lorenz](https://activeno.de/blog/2023-08/the-ultimate-supabase-self-hosting-guide/)
+  - [Supabase self-hosting: what's working — Discussion #39820](https://github.com/orgs/supabase/discussions/39820)
+- **Phase 14 — Slim + BYOK**
+  - Sentry self-hosted install.sh `--with-X` flag pattern (`getsentry/self-hosted`)
+  - Outline ENV docs (S3/SMTP/Slack/Google BYOK)
+- **Phase 15 — FSL + repo refactor**
+  - [Functional Source License — fsl.software](https://fsl.software/)
+  - [Sentry: Introducing the Functional Source License](https://blog.sentry.io/introducing-the-functional-source-license-freedom-without-free-riding/)
+  - [Liquibase blog: Strengthening Community via FSL](https://www.liquibase.com/blog/liquibase-community-for-the-future-fsl)
+  - [SPDX: FSL-1.1-ALv2](https://spdx.org/licenses/FSL-1.1-ALv2.html)
+  - [TLDRLegal: FSL in plain English](https://www.tldrlegal.com/license/functional-source-license-fsl)
+- **Phase 16 — Comment audit**
+  - `ts-morph` README (AST manipulation; canonical TS codemod tool)
+- **Phase 17 — Trusted TLS**
+  - [Docker Compose Local HTTPS with mkcert — Code with Hugo](https://codewithhugo.com/docker-compose-local-https/)
+  - [mkcert + Caddy + Docker Compose — dev.to / moofoo](https://dev.to/moofoo/docker-basics-using-mkcert-and-caddy-with-docker-compose-to-host-web-services-over-https-for-local-2a3d)
+  - [symfony-docker TLS docs](https://github.com/dunglas/symfony-docker/blob/main/docs/tls.md)
+  - [My setup for local HTTPS with mkcert and Caddy — horus.dev](https://horus.dev/blog/local-https-setup-mkcert-caddy)
+  - Traefik ACME docs + cert-manager Issuer guide
+- **Phase 18 — Keycloak / LDAP**
+  - [Keycloak Server Administration Guide](https://www.keycloak.org/docs/latest/server_admin/index.html)
+  - [Zluri: Top 7 Keycloak alternatives 2026](https://www.zluri.com/blog/keycloak-alternatives)
+  - [Self-host Authentik or Keycloak 2026 — DanubeData](https://danubedata.ro/blog/self-host-authentik-keycloak-auth0-alternative-2026)
+  - [Top 10 self-hosted IAM platforms — New2026 / Medium](https://new2026.medium.com/top-10-full-stack-self-hosted-iam-platforms-keycloak-peers-5b92a3a3426b)
+  - [Top 5 OSS IAM providers 2025 — Logto](https://blog.logto.io/top-oss-iam-providers-2025)
+  - [Best Keycloak alternatives — Oso](https://www.osohq.com/learn/best-keycloak-alternatives-2025)
 
 ---
-*Feature research for: enterprise self-hosted AI backend (wire-compatible OpenWhispr cloud)*
-*Researched: 2026-05-08*
+
+*Feature research for: OpenWhispr Server v2 production readiness*
+*Researched: 2026-05-14*
+*Supersedes v1 FEATURES.md (preserved in git history)*
