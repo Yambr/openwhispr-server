@@ -224,11 +224,66 @@ hasn't been told to accept. The built-in allow-list is `openwhispr`,
 scheme via `OPENWHISPR_PROTOCOL`. See [channel-scheme-override.md](channel-scheme-override.md)
 for the rules.
 
+## Per-user locale (`users.locale`) — Phase 10 addition
+
+Phase 10 / Plan 10-01c added a `locale` column on the `users` table
+(migration `0016_users_locale.sql`) and wired it through Better Auth's
+`additionalFields` so the locale round-trips on the session object.
+The column stores a BCP-47 tag (`en`, `ru`, future locales) and is
+the source of truth for an authenticated user's locale preference.
+
+### Lifecycle
+
+1. **On sign-up** — `apps/api/src/auth.ts` reads `Accept-Language` from
+   the registration request and seeds `users.locale` with the first
+   supported locale found. Unsupported tags fall back to `en`.
+2. **During the session** — Better Auth includes `user.locale` on every
+   `getSession()` lookup so the api can read it without a separate
+   query.
+3. **User-changeable** — the web settings page calls `POST /api/auth/update-locale`
+   which validates the tag against `supportedLngs` and updates the
+   column. Better Auth's session cache is invalidated atomically.
+4. **Default for legacy users** — pre-migration rows have `locale = null`;
+   the api and worker fall back to `en` for null and emit
+   `event=email.locale_fallback, reason=user_locale_unset` so operators
+   can spot legacy populations.
+
+### Email locale source flow
+
+The end-to-end flow for a Better Auth-driven email (verification,
+password reset, account deletion confirmation):
+
+```
+HTTP request -> Accept-Language: ru
+  -> Better Auth sendVerificationEmail hook fires
+  -> hook reads session.user.locale (set at sign-up)
+  -> enqueueEmail() pushes BullMQ payload with locale='ru'
+  -> apps/worker email-delivery worker pops job
+  -> WorkerTemplateRenderer loads apps/worker/src/i18n/locales/ru/email/email_verification/
+  -> SMTP transport sends localized email
+  -> structured log: event=email.sent, template=email_verification, locale=ru
+```
+
+If `users.locale` is null, the renderer falls back to `en`. The fallback
+chain is **per-user `users.locale` -> Accept-Language at enqueue -> `en`**;
+see [`i18n.md`](./i18n.md) §8 for the full diagram.
+
+### Cross-reference
+
+- The migration: `packages/data/migrations/0016_users_locale.sql`.
+- Better Auth wiring: `apps/api/src/auth.ts` `BuildAuthOptions.additionalFields`.
+- Tests covering the round-trip: `apps/api/src/__tests__/auth-locale-and-enqueue.test.ts`.
+- The operator-facing i18n guide: [`i18n.md`](./i18n.md).
+
 ## Related operator runbook entries
 
 - [operations.md § Auth](operations.md) — runbook for SMTP, BETTER_AUTH_SECRET
   rotation, default-secrets entrypoint check, common 401 patterns
+- [operations.md § i18n volume runbook](operations.md) — `LOCALES_DIR`
+  override mechanism + ConfigMap recipe
 - [oidc-operator-config.md](oidc-operator-config.md) — per-IdP env-config
   walkthroughs
 - [channel-scheme-override.md](channel-scheme-override.md) — channel-scheme
   allow-list rules and the OPENWHISPR_PROTOCOL override
+- [i18n.md](i18n.md) — `users.locale`, email locale flow, and adding
+  new locales

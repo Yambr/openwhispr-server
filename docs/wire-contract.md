@@ -198,6 +198,64 @@ wire level.
 
 ---
 
+## v2-deferred endpoints — rationale
+
+The two v2-deferred families (Stripe + Referrals) above are intentionally
+**not** present in the Phase 5 wire surface. They surface as **HTTP 404
+with the canonical `{error: "Not Found"}` envelope** (D-35) for two
+reasons:
+
+1. **Operator semantics.** A self-hosted OpenWhispr installation runs
+   on infrastructure the operator already pays for. Billing flows are
+   conceptually external; routing them through this backend would
+   add a Stripe dependency for installations that have no use for it.
+2. **Wire-contract honesty.** The 404 + canonical envelope is the
+   right answer from the desktop client's perspective — the upstream
+   `cloud-api-request` passthrough already feature-flags these
+   surfaces as "self-hosted-without-billing", so the client expects
+   404 in this mode. Returning a 501 or 503 would mis-signal to the
+   client that the route is temporarily unavailable.
+
+The CONTRACT-01 negative matrix
+(`packages/contract-tests/src/negative-matrix.test.ts`) asserts the
+404 + envelope shape for every deferred route, so the deferral is
+load-bearing on the contract test rather than relying on documentation
+alone.
+
+## Error envelope and locale (Phase 10 cross-reference)
+
+The error envelope shape `{ error: "<message>" }` (D-35) is **English
+bytes by default**. When the request carries `Accept-Language: ru` (or
+the authenticated user has `users.locale = 'ru'`), the centralized
+`setErrorHandler` resolves `errors.<code>` against the user's locale
+via `req.i18n.t()` and serializes the localized string into the same
+envelope. The envelope **shape** is wire-stable; the envelope
+**string** is locale-driven.
+
+Concretely:
+
+```bash
+# English (default)
+$ curl -s -X POST http://api.example.com/api/transcribe -H 'Authorization: Bearer xxx'
+{"error":"Validation failed"}
+
+# Russian (Accept-Language)
+$ curl -s -X POST http://api.example.com/api/transcribe \
+    -H 'Authorization: Bearer xxx' \
+    -H 'Accept-Language: ru'
+{"error":"<localized Russian text from apps/api/src/i18n/locales/ru/errors.json>"}
+```
+
+This does not change the HTTP status code, the envelope key (`error`),
+or the absence of an `error_code` field. Clients that need a stable
+machine-readable code should pull it from the structured log
+(`event=request.error, code=validation_failed`) — the wire envelope is
+human-readable by design (D-35).
+
+See [`i18n.md`](./i18n.md) for the full locale negotiation chain and
+[`security.md`](./security.md) §6 for the audit-log English-only rule
+(the audit log is NEVER localized, even when the envelope is).
+
 ## Wire contract change policy
 
 Every wire-surface change MUST:
