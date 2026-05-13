@@ -398,6 +398,14 @@ export function buildAllRoutes(deps: AllRoutesDeps): readonly RoutePlugin[] {
       redis: deps.redis,
       mockMode: deps.mockDiarization === true || process.env.MOCK_DIARIZATION === "true",
     };
+    // Phase 08.6-02: SPEACHES_DIARIZATION_URL switches the route to a
+    // local Speaches branch (sync multipart POST → /v1/audio/diarization).
+    // Used by the load-test-realistic profile. When unset, the pyannote.ai
+    // async branch is used (production default).
+    const speachesUrl = process.env.SPEACHES_DIARIZATION_URL;
+    if (speachesUrl && speachesUrl.length > 0) {
+      diarizationDeps.speachesDiarizationUrl = speachesUrl;
+    }
     plugins.push(buildDiarizationRoutes(diarizationDeps));
   }
   // Plan 08: register the /api/_test/* surface when explicitly enabled
