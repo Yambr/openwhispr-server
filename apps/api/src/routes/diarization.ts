@@ -53,6 +53,7 @@ import {
   PyannoteAuthError,
   PyannoteBadRequestError,
   type PyannoteClient,
+  type PyannoteJob,
   PyannoteUnavailableError,
   PyannoteUpstreamError,
 } from "../lib/pyannote-client.js";
@@ -95,23 +96,59 @@ export interface DiarizationDeps {
    * route's 503 surface includes the operator-actionable message.
    */
   pyannoteFactory?: () => PyannoteClient;
+  /**
+   * Phase 08.6-02 — Speaches local diarization base URL (e.g.
+   * `http://speaches:8000`). When SET, the route bypasses the
+   * pyannote.ai async orchestration entirely and POSTs the multipart
+   * `file` + `model` form synchronously to
+   * `${speachesDiarizationUrl}/v1/audio/diarization`. Speaches returns
+   * the canonical `{duration, segments[]}` JSON in a single response —
+   * no presigned upload, no jobId, no polling, no idempotency cache.
+   *
+   * Wired from process.env.SPEACHES_DIARIZATION_URL in apps/api/src/index.ts
+   * for the load-test-realistic profile. When UNSET, the legacy pyannote.ai
+   * branch is used unchanged (production default in v1).
+   */
+  speachesDiarizationUrl?: string;
+  /**
+   * Test seam — inject a custom `fetch` implementation for the Speaches
+   * branch. Production omits this and the route uses the global `fetch`
+   * (Node 24 LTS ships undici as the global). Tests mock the network
+   * boundary by supplying a stub returning a synthesised Response.
+   */
+  speachesFetch?: typeof fetch;
 }
+
+/**
+ * Speaches local-diarization model. Hard-coded so api callers don't need
+ * to know it; matches the realistic-profile PRELOAD_MODELS entry in
+ * docker-compose.load-test.yml.
+ */
+export const SPEACHES_DIARIZATION_MODEL = "pyannote/speaker-diarization-community-1";
 
 export const buildDiarizationRoutes = (deps: DiarizationDeps) =>
   async function diarizationRoutes(app: FastifyInstance): Promise<void> {
     const idem = createIdempotencyCache(deps.redis);
+    // Phase 08.6-02: pick the handler branch ONCE at registration time.
+    // - speachesDiarizationUrl set → local Speaches direct (sync multipart)
+    // - unset → pyannote.ai async orchestration (production default)
+    const handler = deps.speachesDiarizationUrl
+      ? handleSpeachesDiarization(deps)
+      : handleDiarization(deps, idem);
     app.route({
       method: "POST",
       url: DIARIZATION_MOUNT_PATH,
       // Diarization is heavier on pyannote billing than transcription;
       // 30/min/user (vs transcribe's 60/min) keeps abuse cost-bounded.
+      // The local-Speaches branch shares the same per-user budget — it
+      // bounds local GPU/CPU contention, not cost.
       config: { rateLimit: { max: 30, timeWindow: "1 minute" } },
-      handler: handleDiarization(deps, idem),
+      handler,
     });
   };
 
 function handleDiarization(deps: DiarizationDeps, idem: IdempotencyCache) {
-  return async function (req: FastifyRequest, reply: FastifyReply) {
+  return async (req: FastifyRequest, reply: FastifyReply) => {
     if (!req.user || !req.tenant) {
       // Defensive — dualAuthHook should have thrown.
       return reply.code(401).send({ error: "unauthorized" });
@@ -125,13 +162,9 @@ function handleDiarization(deps: DiarizationDeps, idem: IdempotencyCache) {
     }
 
     const contentTypeHeader = req.headers["content-type"];
-    const contentType = Array.isArray(contentTypeHeader)
-      ? contentTypeHeader[0]
-      : contentTypeHeader;
+    const contentType = Array.isArray(contentTypeHeader) ? contentTypeHeader[0] : contentTypeHeader;
     if (!contentType || !contentType.toLowerCase().startsWith("multipart/")) {
-      return reply
-        .code(400)
-        .send({ error: "expected multipart/form-data with `file` field" });
+      return reply.code(400).send({ error: "expected multipart/form-data with `file` field" });
     }
 
     // Fast-fail when PYANNOTE_API_KEY is unset — emit 503 with operator-
@@ -139,9 +172,7 @@ function handleDiarization(deps: DiarizationDeps, idem: IdempotencyCache) {
     // the body just to throw it away wastes the desktop's upload.)
     let pyannote: PyannoteClient;
     try {
-      pyannote = deps.pyannoteFactory
-        ? deps.pyannoteFactory()
-        : createPyannoteClient();
+      pyannote = deps.pyannoteFactory ? deps.pyannoteFactory() : createPyannoteClient();
     } catch (err) {
       if (err instanceof MissingPyannoteKeyError) {
         // Pitfall #8: 503 (NOT 401) — the desktop's tokenStore treats
@@ -168,9 +199,7 @@ function handleDiarization(deps: DiarizationDeps, idem: IdempotencyCache) {
       throw err;
     }
     if (!filePart) {
-      return reply
-        .code(400)
-        .send({ error: "expected `file` multipart field" });
+      return reply.code(400).send({ error: "expected `file` multipart field" });
     }
 
     // Buffer the file (bounded by @fastify/multipart's 100MB limits.fileSize
@@ -210,15 +239,13 @@ function handleDiarization(deps: DiarizationDeps, idem: IdempotencyCache) {
     // when the desktop forgets to set the header.
     const headerKeyRaw = req.headers["idempotency-key"];
     const headerKey = Array.isArray(headerKeyRaw) ? headerKeyRaw[0] : headerKeyRaw;
-    const idemKey =
-      typeof headerKey === "string" && headerKey.length > 0 ? headerKey : bodyHash;
+    const idemKey = typeof headerKey === "string" && headerKey.length > 0 ? headerKey : bodyHash;
 
     let jobId: string | null = null;
     const lookup = await idem.lookupOrReserve(idemKey, bodyHash);
     if (lookup.state === "conflict") {
       return reply.code(409).send({
-        error:
-          "Idempotency-Key conflict: same key used with different request body",
+        error: "Idempotency-Key conflict: same key used with different request body",
       });
     }
     if (lookup.state === "hit") {
@@ -250,8 +277,7 @@ function handleDiarization(deps: DiarizationDeps, idem: IdempotencyCache) {
     // Steps 1-3: when no cached jobId, orchestrate upload + submit.
     if (!jobId) {
       try {
-        const { url: presignedUrl, mediaUri } =
-          await pyannote.createMediaInput();
+        const { url: presignedUrl, mediaUri } = await pyannote.createMediaInput();
         await pyannote.uploadToPresignedUrl(presignedUrl, fileBuffer, fileMime);
         jobId = await pyannote.submitDiarize(mediaUri);
         // WR-01: pass bodyHash so the rescue path (expired/corrupt cache)
@@ -280,7 +306,7 @@ function handleDiarization(deps: DiarizationDeps, idem: IdempotencyCache) {
           );
           return;
         }
-        let job;
+        let job: PyannoteJob;
         try {
           job = await pyannote.pollJob(jobId, abortController.signal);
         } catch (err) {
@@ -291,9 +317,7 @@ function handleDiarization(deps: DiarizationDeps, idem: IdempotencyCache) {
           return reply.code(200).send(DiarizationResponse.parse(job.output));
         }
         if (job.status === "failed" || job.status === "cancelled") {
-          return reply
-            .code(502)
-            .send({ error: `diarization job ${job.status}`, jobId });
+          return reply.code(502).send({ error: `diarization job ${job.status}`, jobId });
         }
         // status === 'created' | 'running' — wait then poll again.
         try {
@@ -316,11 +340,7 @@ function handleDiarization(deps: DiarizationDeps, idem: IdempotencyCache) {
   };
 }
 
-function mapPyannoteError(
-  err: unknown,
-  reply: FastifyReply,
-  req: FastifyRequest,
-) {
+function mapPyannoteError(err: unknown, reply: FastifyReply, req: FastifyRequest) {
   if (err instanceof PyannoteUnavailableError) {
     req.log.warn({ status: err.status }, "pyannote upstream unavailable");
     reply.header("retry-after", "30");
@@ -338,9 +358,7 @@ function mapPyannoteError(
   }
   if (err instanceof PyannoteBadRequestError) {
     req.log.warn({ status: err.status }, "pyannote rejected request");
-    return reply
-      .code(502)
-      .send({ error: `pyannote rejected request (${err.status})` });
+    return reply.code(502).send({ error: `pyannote rejected request (${err.status})` });
   }
   if (err instanceof PyannoteUpstreamError) {
     req.log.warn({ status: err.status }, "pyannote upstream error");
@@ -348,6 +366,153 @@ function mapPyannoteError(
   }
   // Unknown — let the centralized error handler emit the canonical 500.
   throw err;
+}
+
+/**
+ * Phase 08.6-02 — Speaches local diarization branch.
+ *
+ * Buffers the multipart `file` part (bounded by @fastify/multipart's 100MB
+ * limits.fileSize), re-wraps it in a fresh multipart envelope with the
+ * canonical `file` + `model` form fields, and POSTs synchronously to
+ * `${speachesDiarizationUrl}/v1/audio/diarization`. Speaches returns
+ * the {duration, segments[]} JSON in a single response — same shape as
+ * our DiarizationResponse contract.
+ *
+ * Error mapping:
+ *   200 + valid JSON          → 200 reply
+ *   200 + malformed JSON      → 502 (upstream broke contract)
+ *   4xx upstream              → 502 (upstream rejected payload)
+ *   5xx upstream              → 503 (upstream unavailable, retry-after: 30s)
+ *   fetch network error       → 503 (ECONNREFUSED / DNS / TLS / etc)
+ *
+ * No idempotency cache, no jobId, no polling — Speaches is sync.
+ */
+function handleSpeachesDiarization(deps: DiarizationDeps) {
+  const baseUrl = deps.speachesDiarizationUrl as string; // guarded at registration
+  const fetchImpl: typeof fetch = deps.speachesFetch ?? globalThis.fetch;
+  return async (req: FastifyRequest, reply: FastifyReply) => {
+    if (!req.user || !req.tenant) {
+      return reply.code(401).send({ error: "unauthorized" });
+    }
+
+    const contentTypeHeader = req.headers["content-type"];
+    const contentType = Array.isArray(contentTypeHeader) ? contentTypeHeader[0] : contentTypeHeader;
+    if (!contentType || !contentType.toLowerCase().startsWith("multipart/")) {
+      return reply.code(400).send({ error: "expected multipart/form-data with `file` field" });
+    }
+
+    // Read the multipart `file` part. @fastify/multipart is registered
+    // ONCE at buildApp; calling req.file() pulls just the `file` part.
+    let filePart: Awaited<ReturnType<FastifyRequest["file"]>>;
+    try {
+      filePart = await req.file();
+    } catch (err) {
+      const fastifyErr = err as { code?: string };
+      if (fastifyErr.code === "FST_REQ_FILE_TOO_LARGE") {
+        return reply.code(400).send({ error: "file exceeds size limit" });
+      }
+      throw err;
+    }
+    if (!filePart) {
+      return reply.code(400).send({ error: "expected `file` multipart field" });
+    }
+
+    const chunks: Buffer[] = [];
+    let truncated = false;
+    try {
+      for await (const chunk of filePart.file) {
+        chunks.push(chunk);
+      }
+      truncated = filePart.file.truncated === true;
+    } catch (err) {
+      const fastifyErr = err as { code?: string };
+      if (fastifyErr.code === "FST_REQ_FILE_TOO_LARGE") {
+        return reply.code(400).send({ error: "file exceeds size limit" });
+      }
+      throw err;
+    }
+    if (truncated) {
+      return reply.code(400).send({ error: "file exceeds size limit" });
+    }
+    const fileBuffer = Buffer.concat(chunks);
+    const fileMime = filePart.mimetype || "application/octet-stream";
+    const fileName = filePart.filename || "audio.wav";
+
+    // Build the outgoing multipart envelope. We construct the body
+    // explicitly (rather than via FormData) so the body type stays as
+    // a Node Buffer — predictable for the test seam and the undici
+    // dispatcher both. Boundary is unique-per-request.
+    const boundary = `----owsp-speaches-${Date.now().toString(36)}-${Math.random()
+      .toString(36)
+      .slice(2, 10)}`;
+    const CRLF = "\r\n";
+    const head = Buffer.from(
+      `--${boundary}${CRLF}` +
+        `Content-Disposition: form-data; name="model"${CRLF}${CRLF}` +
+        `${SPEACHES_DIARIZATION_MODEL}${CRLF}` +
+        `--${boundary}${CRLF}` +
+        `Content-Disposition: form-data; name="file"; filename="${fileName}"${CRLF}` +
+        `Content-Type: ${fileMime}${CRLF}${CRLF}`,
+      "utf8",
+    );
+    const tail = Buffer.from(`${CRLF}--${boundary}--${CRLF}`, "utf8");
+    const outBody = Buffer.concat([head, fileBuffer, tail]);
+
+    let upstream: Response;
+    try {
+      upstream = await fetchImpl(`${baseUrl}/v1/audio/diarization`, {
+        method: "POST",
+        headers: {
+          "content-type": `multipart/form-data; boundary=${boundary}`,
+        },
+        body: outBody,
+      });
+    } catch (err) {
+      // Network-level failure (ECONNREFUSED, DNS, TLS handshake, etc).
+      // Pitfall #8: 503 with operator-actionable message, NEVER 401.
+      req.log.warn({ err: (err as Error).message }, "speaches diarization unreachable");
+      reply.header("retry-after", "30");
+      return reply.code(503).send({
+        error: "speaches diarization unavailable — verify SPEACHES_DIARIZATION_URL",
+      });
+    }
+
+    if (upstream.status >= 500) {
+      req.log.warn({ status: upstream.status }, "speaches diarization upstream 5xx");
+      reply.header("retry-after", "30");
+      return reply.code(503).send({
+        error: "speaches diarization upstream unavailable",
+      });
+    }
+    if (upstream.status >= 400) {
+      req.log.warn({ status: upstream.status }, "speaches diarization rejected payload");
+      return reply.code(502).send({
+        error: `speaches diarization rejected request (${upstream.status})`,
+      });
+    }
+
+    let parsed: unknown;
+    try {
+      parsed = await upstream.json();
+    } catch (err) {
+      req.log.warn({ err: (err as Error).message }, "speaches diarization returned non-JSON body");
+      return reply.code(502).send({
+        error: "speaches diarization returned malformed body",
+      });
+    }
+
+    try {
+      return reply.code(200).send(DiarizationResponse.parse(parsed));
+    } catch (err) {
+      req.log.warn(
+        { err: (err as Error).message },
+        "speaches diarization body failed schema validation",
+      );
+      return reply.code(502).send({
+        error: "speaches diarization response failed schema validation",
+      });
+    }
+  };
 }
 
 export default buildDiarizationRoutes;

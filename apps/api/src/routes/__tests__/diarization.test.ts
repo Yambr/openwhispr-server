@@ -1349,10 +1349,10 @@ describe("POST /v1/audio/diarization", () => {
         contentType?: string | null;
         bodyBytes?: number;
       } = {};
-      const speachesFetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const speachesFetch = vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
         const url = typeof input === "string" ? input : input.toString();
         captured.url = url;
-        captured.method = init?.method;
+        if (init?.method !== undefined) captured.method = init.method;
         captured.contentType =
           (init?.headers as Record<string, string> | undefined)?.["content-type"] ??
           (init?.headers as Record<string, string> | undefined)?.["Content-Type"] ??
@@ -1401,7 +1401,7 @@ describe("POST /v1/audio/diarization", () => {
     it("sends form fields `file` (audio bytes) and `model` (pyannote/speaker-diarization-community-1)", async () => {
       let capturedBody: Buffer | null = null;
       let capturedCT: string | null = null;
-      const speachesFetch = async (_input: RequestInfo | URL, init?: RequestInit) => {
+      const speachesFetch = async (_input: string | URL | Request, init?: RequestInit) => {
         capturedBody = init?.body as Buffer;
         capturedCT =
           (init?.headers as Record<string, string> | undefined)?.["content-type"] ?? null;
@@ -1603,6 +1603,121 @@ describe("POST /v1/audio/diarization", () => {
         expect(res.statusCode).toBe(502);
       } finally {
         await app9.close();
+      }
+    });
+
+    it("returns 400 when the multipart stream throws FST_REQ_FILE_TOO_LARGE mid-chunk (Speaches branch)", async () => {
+      const speachesFetch = vi.fn(async () => new Response("", { status: 200 }));
+      const localApp = Fastify({ logger: false });
+      registerErrorHandler(localApp);
+      localApp.register(fastifyMultipart, {
+        attachFieldsToBody: false as const,
+        limits: { fileSize: 100 * 1024 * 1024 },
+      });
+      localApp.register(zodTypeProvider);
+      localApp.addHook("preHandler", async (req) => {
+        req.user = { id: TEST_USER, email: "fixture@conformance.test" };
+        req.tenant = TEST_TENANT;
+        (req as unknown as { file: () => Promise<unknown> }).file = async () => ({
+          mimetype: "audio/wav",
+          file: {
+            // eslint-disable-next-line require-yield
+            // biome-ignore lint/correctness/useYield: throwing-only async generator simulates upstream error.
+            async *[Symbol.asyncIterator]() {
+              throw Object.assign(new Error("too big"), {
+                code: "FST_REQ_FILE_TOO_LARGE",
+              });
+            },
+            truncated: false,
+          },
+        });
+      });
+      localApp.register(
+        buildDiarizationRoutes({
+          redis: makeFakeRedis(),
+          speachesDiarizationUrl: "http://speaches.internal.test:8000",
+          speachesFetch: speachesFetch as unknown as typeof fetch,
+        }),
+      );
+      try {
+        const { body, contentType } = multipartBody("audio");
+        const res = await localApp.inject({
+          method: "POST",
+          url: "/v1/audio/diarization",
+          headers: { "content-type": contentType },
+          payload: body,
+        });
+        expect(res.statusCode).toBe(400);
+        expect(speachesFetch).not.toHaveBeenCalled();
+      } finally {
+        await localApp.close();
+      }
+    });
+
+    it("returns 400 when filePart.file.truncated === true (Speaches branch)", async () => {
+      const speachesFetch = vi.fn(async () => new Response("", { status: 200 }));
+      const localApp = Fastify({ logger: false });
+      registerErrorHandler(localApp);
+      localApp.register(fastifyMultipart, {
+        attachFieldsToBody: false as const,
+        limits: { fileSize: 100 * 1024 * 1024 },
+      });
+      localApp.register(zodTypeProvider);
+      localApp.addHook("preHandler", async (req) => {
+        req.user = { id: TEST_USER, email: "fixture@conformance.test" };
+        req.tenant = TEST_TENANT;
+        (req as unknown as { file: () => Promise<unknown> }).file = async () => ({
+          mimetype: "audio/wav",
+          file: {
+            async *[Symbol.asyncIterator]() {
+              yield Buffer.from("partial");
+            },
+            truncated: true,
+          },
+        });
+      });
+      localApp.register(
+        buildDiarizationRoutes({
+          redis: makeFakeRedis(),
+          speachesDiarizationUrl: "http://speaches.internal.test:8000",
+          speachesFetch: speachesFetch as unknown as typeof fetch,
+        }),
+      );
+      try {
+        const { body, contentType } = multipartBody("audio");
+        const res = await localApp.inject({
+          method: "POST",
+          url: "/v1/audio/diarization",
+          headers: { "content-type": contentType },
+          payload: body,
+        });
+        expect(res.statusCode).toBe(400);
+        expect(speachesFetch).not.toHaveBeenCalled();
+      } finally {
+        await localApp.close();
+      }
+    });
+
+    it("maps a 200 response that fails DiarizationResponse schema to 502 envelope", async () => {
+      const speachesFetch = async () =>
+        new Response(
+          // Valid JSON but missing the required `segments` field.
+          JSON.stringify({ duration: 3.0 }),
+          { status: 200, headers: { "content-type": "application/json" } },
+        );
+      const appB = buildSpeachesApp({ speachesFetch: speachesFetch as unknown as typeof fetch });
+      try {
+        const { body, contentType } = multipartBody("audio");
+        const res = await appB.inject({
+          method: "POST",
+          url: "/v1/audio/diarization",
+          headers: { "content-type": contentType },
+          payload: body,
+        });
+        expect(res.statusCode).toBe(502);
+        expect(() => ErrorEnvelope.parse(res.json())).not.toThrow();
+      } finally {
+        await appB.close();
       }
     });
 
