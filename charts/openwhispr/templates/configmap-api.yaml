@@ -1,0 +1,19 @@
+{{/*
+api ConfigMap — non-secret env mirroring docker-compose.yml api.environment
+(NODE_ENV, LOG_LEVEL, OTel endpoints). Secret env stays in the Secret;
+this ConfigMap holds only operator-tweakable plaintext keys.
+*/}}
+{{- $fullname := include "openwhispr.fullname" . -}}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ $fullname }}-api-config
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "openwhispr.labels" . | nindent 4 }}
+    app.kubernetes.io/component: api
+data:
+  NODE_ENV: {{ .Values.api.env.nodeEnv | default "production" | quote }}
+  LOG_LEVEL: {{ .Values.api.env.logLevel | default "info" | quote }}
+  OTEL_EXPORTER_OTLP_PROTOCOL: {{ .Values.api.env.otelProtocol | default "grpc" | quote }}
+  OTEL_SERVICE_NAME: {{ .Values.api.env.otelServiceName | default "openwhispr-api" | quote }}

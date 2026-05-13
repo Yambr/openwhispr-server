@@ -1,0 +1,31 @@
+{{/*
+api HorizontalPodAutoscaler (autoscaling/v2).
+Renders only when api.autoscaling.enabled. CPU 70% baseline per research
+§"HPA Specs". Custom-metric upgrade (request-rate / latency) deferred to a
+future plan once prometheus-adapter is documented as a cluster prerequisite.
+*/}}
+{{- if .Values.api.autoscaling.enabled -}}
+{{- $fullname := include "openwhispr.fullname" . -}}
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: {{ $fullname }}-api
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "openwhispr.labels" . | nindent 4 }}
+    app.kubernetes.io/component: api
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: {{ $fullname }}-api
+  minReplicas: {{ .Values.api.autoscaling.minReplicas }}
+  maxReplicas: {{ .Values.api.autoscaling.maxReplicas }}
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: {{ .Values.api.autoscaling.targetCPUUtilizationPercentage }}
+{{- end }}

@@ -1,0 +1,270 @@
+suite: api — Deployment + Service + HPA + PDB + ServiceMonitor + ConfigMap
+templates:
+  - api-deployment.yaml
+  - api-service.yaml
+  - api-hpa.yaml
+  - api-pdb.yaml
+  - api-servicemonitor.yaml
+  - configmap-api.yaml
+tests:
+  - it: renders api Deployment with container name api, port 3000, envFrom secrets
+    template: api-deployment.yaml
+    set:
+      secrets:
+        mode: eso
+        external:
+          storeRef: vault-clusterstore
+    asserts:
+      - hasDocuments:
+          count: 1
+      - isKind:
+          of: Deployment
+      - equal:
+          path: spec.template.spec.containers[0].name
+          value: api
+      - equal:
+          path: spec.template.spec.containers[0].ports[0].containerPort
+          value: 3000
+      - equal:
+          path: spec.template.spec.containers[0].envFrom[0].secretRef.name
+          value: RELEASE-NAME-openwhispr-secrets
+
+  - it: api Deployment wires DATABASE_URL through the Pooler RW service
+    template: api-deployment.yaml
+    set:
+      secrets:
+        mode: eso
+        external:
+          storeRef: vault-clusterstore
+    asserts:
+      - matchRegex:
+          path: spec.template.spec.containers[0].env[?(@.name=="DATABASE_URL")].value
+          pattern: "RELEASE-NAME-openwhispr-pg-pooler-rw:5432"
+
+  - it: api Deployment wires REDIS_URL at the valkey primary service
+    template: api-deployment.yaml
+    set:
+      secrets:
+        mode: eso
+        external:
+          storeRef: vault-clusterstore
+    asserts:
+      - matchRegex:
+          path: spec.template.spec.containers[0].env[?(@.name=="REDIS_URL")].value
+          pattern: "RELEASE-NAME-valkey-primary:6379"
+
+  - it: api Deployment wires LITELLM_BASE_URL via embedded LiteLLM service
+    template: api-deployment.yaml
+    set:
+      secrets:
+        mode: eso
+        external:
+          storeRef: vault-clusterstore
+    asserts:
+      - matchRegex:
+          path: spec.template.spec.containers[0].env[?(@.name=="LITELLM_BASE_URL")].value
+          pattern: "RELEASE-NAME-openwhispr-litellm:4000"
+
+  - it: api Deployment uses values.litellm.externalBaseUrl when embedded=false
+    template: api-deployment.yaml
+    set:
+      secrets:
+        mode: eso
+        external:
+          storeRef: vault-clusterstore
+      litellm:
+        embedded: false
+        externalBaseUrl: https://corp-litellm.example.com
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].env[?(@.name=="LITELLM_BASE_URL")].value
+          value: https://corp-litellm.example.com
+
+  - it: api Deployment has readiness and liveness probes on /api/health + /api/live
+    template: api-deployment.yaml
+    set:
+      secrets:
+        mode: eso
+        external:
+          storeRef: vault-clusterstore
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].readinessProbe.httpGet.path
+          value: /api/health
+      - equal:
+          path: spec.template.spec.containers[0].readinessProbe.httpGet.port
+          value: 3000
+      - equal:
+          path: spec.template.spec.containers[0].livenessProbe.httpGet.path
+          value: /api/live
+
+  - it: api Deployment carries the secret-presence-probe initContainer (pitfall #5)
+    template: api-deployment.yaml
+    set:
+      secrets:
+        mode: eso
+        external:
+          storeRef: vault-clusterstore
+    asserts:
+      - equal:
+          path: spec.template.spec.initContainers[0].name
+          value: secret-presence-probe
+      - matchRegex:
+          path: spec.template.spec.initContainers[0].image
+          pattern: "^busybox:"
+      - equal:
+          path: spec.template.spec.initContainers[0].envFrom[0].secretRef.name
+          value: RELEASE-NAME-openwhispr-secrets
+
+  - it: api Service renders ClusterIP port 3000
+    template: api-service.yaml
+    set:
+      secrets:
+        mode: eso
+        external:
+          storeRef: vault-clusterstore
+    asserts:
+      - isKind:
+          of: Service
+      - equal:
+          path: spec.type
+          value: ClusterIP
+      - equal:
+          path: spec.ports[0].port
+          value: 3000
+      - equal:
+          path: spec.ports[0].targetPort
+          value: 3000
+      - equal:
+          path: spec.ports[0].name
+          value: http
+
+  - it: api HPA renders with CPU 70% targeting api Deployment
+    template: api-hpa.yaml
+    set:
+      secrets:
+        mode: eso
+        external:
+          storeRef: vault-clusterstore
+      api:
+        autoscaling:
+          enabled: true
+          minReplicas: 2
+          maxReplicas: 20
+          targetCPUUtilizationPercentage: 70
+    asserts:
+      - isKind:
+          of: HorizontalPodAutoscaler
+      - equal:
+          path: spec.scaleTargetRef.name
+          value: RELEASE-NAME-openwhispr-api
+      - equal:
+          path: spec.minReplicas
+          value: 2
+      - equal:
+          path: spec.maxReplicas
+          value: 20
+      - equal:
+          path: spec.metrics[0].resource.target.averageUtilization
+          value: 70
+
+  - it: api HPA omits render when autoscaling.enabled=false
+    template: api-hpa.yaml
+    set:
+      secrets:
+        mode: eso
+        external:
+          storeRef: vault-clusterstore
+      api:
+        autoscaling:
+          enabled: false
+    asserts:
+      - hasDocuments:
+          count: 0
+
+  - it: api PDB renders minAvailable 1 when minReplicas >= 2
+    template: api-pdb.yaml
+    set:
+      secrets:
+        mode: eso
+        external:
+          storeRef: vault-clusterstore
+      api:
+        autoscaling:
+          enabled: true
+          minReplicas: 2
+    asserts:
+      - isKind:
+          of: PodDisruptionBudget
+      - equal:
+          path: apiVersion
+          value: policy/v1
+      - equal:
+          path: spec.minAvailable
+          value: 1
+
+  - it: api PDB skips render when minReplicas == 1 (OSS single-node)
+    template: api-pdb.yaml
+    set:
+      secrets:
+        mode: eso
+        external:
+          storeRef: vault-clusterstore
+      api:
+        autoscaling:
+          enabled: true
+          minReplicas: 1
+    asserts:
+      - hasDocuments:
+          count: 0
+
+  - it: api ServiceMonitor renders only when observability.serviceMonitor.enabled=true
+    template: api-servicemonitor.yaml
+    set:
+      secrets:
+        mode: eso
+        external:
+          storeRef: vault-clusterstore
+      observability:
+        serviceMonitor:
+          enabled: true
+    asserts:
+      - isKind:
+          of: ServiceMonitor
+      - equal:
+          path: apiVersion
+          value: monitoring.coreos.com/v1
+      - equal:
+          path: spec.endpoints[0].path
+          value: /api/metrics
+      - equal:
+          path: spec.endpoints[0].port
+          value: http
+
+  - it: api ServiceMonitor omits render when observability.serviceMonitor.enabled=false
+    template: api-servicemonitor.yaml
+    set:
+      secrets:
+        mode: eso
+        external:
+          storeRef: vault-clusterstore
+      observability:
+        serviceMonitor:
+          enabled: false
+    asserts:
+      - hasDocuments:
+          count: 0
+
+  - it: configmap-api renders NODE_ENV + LOG_LEVEL non-secret env
+    template: configmap-api.yaml
+    set:
+      secrets:
+        mode: eso
+        external:
+          storeRef: vault-clusterstore
+    asserts:
+      - isKind:
+          of: ConfigMap
+      - equal:
+          path: data.NODE_ENV
+          value: production

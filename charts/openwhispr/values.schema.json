@@ -141,6 +141,31 @@
     },
     "worker": {
       "type": "object"
+    },
+    "litellm": {
+      "type": "object",
+      "properties": {
+        "embedded": { "type": "boolean" },
+        "externalBaseUrl": { "type": "string" }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": { "embedded": { "const": false } },
+            "required": ["embedded"]
+          },
+          "then": {
+            "properties": {
+              "externalBaseUrl": {
+                "type": "string",
+                "minLength": 8,
+                "pattern": "^https://"
+              }
+            },
+            "required": ["externalBaseUrl"]
+          }
+        }
+      ]
     }
   }
 }
