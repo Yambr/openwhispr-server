@@ -113,6 +113,13 @@
       "when": 1778577000000,
       "tag": "0015_usage_rollup_daily",
       "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "7",
+      "when": 1779033600000,
+      "tag": "0016_users_locale",
+      "breakpoints": true
     }
   ]
 }
