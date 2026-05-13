@@ -304,6 +304,13 @@ testProbe:
   # `https://{{ .Values.host.api }}`.
   target: ""
 
+# Plan 11-01 D2 — helper-output probe ConfigMap. Distinct from testProbe
+# (helm-test SLO Pod) by design: helperProbe is helm-unittest-only and must
+# stay false in production overlays. _probe-helpers.yaml renders only when
+# this flag is true. Operators have no reason to flip this on.
+helperProbe:
+  enabled: false
+
 tls:
   # cert-manager Certificate (templates/certificate-api.yaml) writes its
   # TLS material into this Secret. Both IngressRoutes (api on :443 + api

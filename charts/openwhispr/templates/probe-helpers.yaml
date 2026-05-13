@@ -1,0 +1,28 @@
+{{/*
+Probe template — renders the output of openwhispr.requiredSecretKeys
+into a ConfigMap so helm-unittest can assert helper behavior directly
+without parsing the body of every Deployment template.
+
+Plan 11-01 D2 — gated behind .Values.helperProbe.enabled (default false
+in values.yaml) so production installs never see this ConfigMap. Only
+tests/helpers_required_secret_keys_test.yaml flips it on. The helperProbe
+namespace is deliberately distinct from .Values.testProbe (helm-test hook
+for first-launch SLO) to avoid silently disabling the SLO probe in
+production overlays.
+
+Filename has no leading `_` because helm-unittest filters files
+starting with `_` (treats them as partials and skips selection). The
+helperProbe.enabled guard is the sole mechanism keeping this ConfigMap
+out of production renders — never flip it on in production overlays.
+*/}}
+{{- if .Values.helperProbe.enabled -}}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "openwhispr.fullname" . }}-probe-helpers
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "openwhispr.labels" . | nindent 4 }}
+data:
+  requiredSecretKeys: {{ include "openwhispr.requiredSecretKeys" . | trim | quote }}
+{{- end -}}
