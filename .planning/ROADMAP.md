@@ -643,7 +643,12 @@ Plans:
   4. Online-migration discipline is enforced (CONCURRENTLY indexes, NOT VALID then VALIDATE constraints, batched column adds) by a `squawk`/`pgroll` lint that blocks PRs with blocking patterns.
   5. The DEPLOY-05 first-launch SLO test gates CI: from `git clone` to first authenticated `/api/transcribe` against the bundled LiteLLM in **< 5 minutes**.
   6. Tests written first (TDD); all CI checks green.
-**Plans**: TBD
+**Plans**: 4 plans
+Plans:
+- [ ] 10-01-PLAN.md — Server i18n (API + Worker): i18next + ICU + http-middleware, error-envelope translation at setErrorHandler, worker TemplateRenderer (3 templates), users.locale column, TEST-I18N-01 gate
+- [ ] 10-02-PLAN.md — Web Russian translations + locale negotiation: NEXT_LOCALE cookie + Edge middleware + RSC layout, 200+ key ru bundles, language switcher, /api/locale route
+- [ ] 10-03-PLAN.md — Docs suite: docs/architecture.md, docs/i18n.md, docs/security.md (new); README + operations.md + auth.md + wire-contract.md + litellm-target-spec.md extensions
+- [ ] 10-04-PLAN.md — OSS housekeeping: SPDX header codemod + CI gate, CODEOWNERS, ISSUE_TEMPLATE, CoC 2.1 audit, CONTRIBUTING/SECURITY extension, ADRs 0004-0011 (LICENSE/NOTICE already shipped in bd81d82)
 **UI hint**: no
 
 ### Phase 10: i18n + Docs + OSS Housekeeping
@@ -656,7 +661,12 @@ Plans:
   3. The full documentation suite is shipped: `README.md` with < 5min quickstart, `docs/architecture.md` with mermaid diagrams of the three hot paths, `docs/operations.md` (deploy / upgrade / scale / backup / restore / troubleshoot), `docs/litellm-target-spec.md` (already created in Phase 3), `docs/wire-contract.md` referencing upstream specs and listing v2-deferred endpoints (Stripe / referrals), `docs/auth.md` covering OIDC plug-in + email+password + channel-scheme handling.
   4. `CONTRIBUTING.md`, `SECURITY.md`, `CODE_OF_CONDUCT.md`, Apache-2.0 LICENSE with license headers are present; ADRs exist for every Key Decision listed in PROJECT.md.
   5. Tests written first (TDD); all CI checks green.
-**Plans**: TBD
+**Plans**: 4 plans
+Plans:
+- [ ] 10-01-PLAN.md — Server i18n (API + Worker): i18next + ICU + http-middleware, error-envelope translation at setErrorHandler, worker TemplateRenderer (3 templates), users.locale column, TEST-I18N-01 gate
+- [ ] 10-02-PLAN.md — Web Russian translations + locale negotiation: NEXT_LOCALE cookie + Edge middleware + RSC layout, 200+ key ru bundles, language switcher, /api/locale route
+- [ ] 10-03-PLAN.md — Docs suite: docs/architecture.md, docs/i18n.md, docs/security.md (new); README + operations.md + auth.md + wire-contract.md + litellm-target-spec.md extensions
+- [ ] 10-04-PLAN.md — OSS housekeeping: SPDX header codemod + CI gate, CODEOWNERS, ISSUE_TEMPLATE, CoC 2.1 audit, CONTRIBUTING/SECURITY extension, ADRs 0004-0011 (LICENSE/NOTICE already shipped in bd81d82)
 **UI hint**: no
 
 ## Progress Table
@@ -673,7 +683,7 @@ Plans:
 | 7. Frontend UI-SPEC | 7/7 | Complete | 2026-05-12 |
 | 8. Load Test, Tuning & SLO Publication | 8/8 | Complete | 2026-05-13 |
 | 9. Helm Chart & Cloud Deploy | 0/0 | Not started | - |
-| 10. i18n + Docs + OSS Housekeeping | 0/0 | Not started | - |
+| 10. i18n + Docs + OSS Housekeeping | 0/4 | Planned | - |
 
 ## Coverage Map
 
