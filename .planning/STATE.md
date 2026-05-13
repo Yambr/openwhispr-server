@@ -2,7 +2,7 @@
 gsd_state_version: 1.0
 milestone: v1
 milestone_name: OpenWhispr Server v1
-status: Phase 8 plans 01–07 closed; 08.1/08.2/08.3/08.4 closed; Run 5 yielded COMPLETE 4-endpoint mock baseline (transcribe/reason/agent-stream/realtime-ws all PASS); Plan 08-08 fully unblocked
+status: Phase 8 + 08.1/08.2/08.3/08.4/08.5 closed; realistic wiring LIVE-proven on Mac (Speaches/Whisper/Realtime/OpenRouter); 08.6 (diarization via main-branch Speaches build) + 08-08 (SLO publication) next
 last_updated: "2026-05-13T01:50:00.000Z"
 progress:
   total_phases: 35
@@ -34,8 +34,8 @@ progress:
 | Next action | Operator: populate `.env` with `HF_TOKEN`, `OPENROUTER_API_KEY`, `OPENAI_API_KEY`, then per `08.5-03-STATUS.md` operator unblock recipe. After live run lands, `/gsd-plan-phase 08-08` for SLO publication with both mock + realistic data. |
 
 ```
-[X][X][X][X][X][X][X][X][X][~][X][X][X][X][ ][ ][ ]
- 0  1  2  3  4  5  6  7 7.1 8 8.1 8.2 8.3 8.4 8.5 9 10
+[X][X][X][X][X][X][X][X][X][~][X][X][X][X][X][ ][ ][ ][ ]
+ 0  1  2  3  4  5  6  7 7.1 8 8.1 8.2 8.3 8.4 8.5 8.6 8-8 9 10
 ```
 
 ## Performance Metrics
