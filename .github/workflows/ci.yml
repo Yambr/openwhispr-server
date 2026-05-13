@@ -56,6 +56,22 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm typecheck
 
+  # Phase 10 / Plan 10-01d — i18n key-completeness gate.
+  # Fails CI if ANY typed-error class thrown in apps/api/src/**/*.ts is
+  # missing a translation under errors.<code> in BOTH en.json AND ru.json,
+  # OR if the en/ru key sets diverge, OR if a ru translation is silently
+  # left as Latin script. Scanner: apps/api/src/i18n/__tests__/i18n-completeness.test.ts.
+  i18n-completeness:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+      - uses: pnpm/action-setup@v4
+        with: { version: 11.0.8 }
+      - uses: actions/setup-node@v5
+        with: { node-version: '24', cache: 'pnpm' }
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm test:i18n-completeness
+
   test:
     runs-on: ubuntu-24.04
     permissions:
