@@ -118,6 +118,7 @@ describe("buildAuth — sendVerificationEmail enqueueEmail DI path", () => {
     const email: EmailService = {
       async send(msg) {
         inlineSends.push(msg);
+        return { delivered: true };
       },
     };
     const auth = buildAuth({ db: stubDb, email, enqueueEmail });
@@ -174,6 +175,7 @@ describe("buildAuth — sendVerificationEmail enqueueEmail DI path", () => {
     const email: EmailService = {
       async send(msg) {
         sent.push({ to: msg.to, subject: msg.subject });
+        return { delivered: true };
       },
     };
     const auth = buildAuth({ db: stubDb, email });
