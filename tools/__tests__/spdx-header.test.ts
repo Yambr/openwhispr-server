@@ -1,0 +1,201 @@
+// SPDX-License-Identifier: Apache-2.0
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import {
+  applyHeader,
+  auditDir,
+  fixDir,
+  HEADER,
+  hasHeader,
+  isBinary,
+  shouldSkip,
+} from "../spdx-header.js";
+
+let workDir: string;
+
+beforeEach(() => {
+  workDir = mkdtempSync(join(tmpdir(), "spdx-header-test-"));
+});
+
+afterEach(() => {
+  rmSync(workDir, { recursive: true, force: true });
+});
+
+function write(rel: string, content: string): string {
+  const full = join(workDir, rel);
+  mkdirSync(join(full, ".."), { recursive: true });
+  writeFileSync(full, content, "utf8");
+  return full;
+}
+
+describe("HEADER constant", () => {
+  it("is the SPDX short-form line", () => {
+    expect(HEADER).toBe("// SPDX-License-Identifier: Apache-2.0");
+  });
+});
+
+describe("hasHeader", () => {
+  it("returns true when first non-shebang line is the SPDX header", () => {
+    expect(hasHeader("// SPDX-License-Identifier: Apache-2.0\nexport {};\n")).toBe(true);
+  });
+
+  it("returns true when shebang precedes header on line 2", () => {
+    expect(
+      hasHeader("#!/usr/bin/env node\n// SPDX-License-Identifier: Apache-2.0\nexport {};\n"),
+    ).toBe(true);
+  });
+
+  it("returns false when no header present", () => {
+    expect(hasHeader("export const x = 1;\n")).toBe(false);
+  });
+
+  it("returns false when shebang present but no header on line 2", () => {
+    expect(hasHeader("#!/usr/bin/env node\nexport {};\n")).toBe(false);
+  });
+});
+
+describe("applyHeader", () => {
+  it("inserts header on line 1 for plain file", () => {
+    const out = applyHeader("export const x = 1;\n");
+    expect(out).toBe("// SPDX-License-Identifier: Apache-2.0\nexport const x = 1;\n");
+  });
+
+  it("inserts header on line 2 when shebang on line 1", () => {
+    const out = applyHeader("#!/usr/bin/env node\nconsole.log(1);\n");
+    expect(out).toBe(
+      "#!/usr/bin/env node\n// SPDX-License-Identifier: Apache-2.0\nconsole.log(1);\n",
+    );
+  });
+
+  it("is idempotent — second application is a no-op", () => {
+    const once = applyHeader("export const x = 1;\n");
+    const twice = applyHeader(once);
+    expect(twice).toBe(once);
+  });
+
+  it("idempotent with shebang", () => {
+    const once = applyHeader("#!/usr/bin/env node\nx;\n");
+    const twice = applyHeader(once);
+    expect(twice).toBe(once);
+  });
+
+  it("preserves trailing newline", () => {
+    const out = applyHeader("a\nb\n");
+    expect(out.endsWith("\n")).toBe(true);
+  });
+
+  it("does not introduce stray blank line after header", () => {
+    const out = applyHeader("export {};\n");
+    const lines = out.split("\n");
+    expect(lines[0]).toBe(HEADER);
+    expect(lines[1]).toBe("export {};");
+    expect(lines[1]).not.toBe("");
+  });
+});
+
+describe("shouldSkip", () => {
+  it("skips node_modules", () => {
+    expect(shouldSkip("apps/api/node_modules/foo.ts")).toBe(true);
+  });
+
+  it("skips dist", () => {
+    expect(shouldSkip("apps/api/dist/index.js")).toBe(true);
+  });
+
+  it("skips .next", () => {
+    expect(shouldSkip("apps/web/.next/server/x.js")).toBe(true);
+  });
+
+  it("skips generated migrations", () => {
+    expect(shouldSkip("packages/data/src/migrations/0001_init.generated.ts")).toBe(true);
+  });
+
+  it("skips JSON", () => {
+    expect(shouldSkip("packages/foo/package.json")).toBe(true);
+  });
+
+  it("skips packages/i18n/locales", () => {
+    expect(shouldSkip("packages/i18n/locales/en/common.json")).toBe(true);
+  });
+
+  it("skips coverage directories", () => {
+    expect(shouldSkip("apps/api/coverage/lcov.info")).toBe(true);
+  });
+
+  it("does NOT skip ordinary .ts files", () => {
+    expect(shouldSkip("apps/api/src/index.ts")).toBe(false);
+  });
+
+  it("does NOT skip ordinary .tsx files", () => {
+    expect(shouldSkip("apps/web/src/page.tsx")).toBe(false);
+  });
+});
+
+describe("isBinary", () => {
+  it("returns true for buffers containing NUL bytes", () => {
+    expect(isBinary(Buffer.from([0x00, 0x01, 0x02]))).toBe(true);
+  });
+
+  it("returns false for utf8 text", () => {
+    expect(isBinary(Buffer.from("export const x = 1;\n", "utf8"))).toBe(false);
+  });
+});
+
+describe("auditDir", () => {
+  it("reports files missing header", async () => {
+    write("a.ts", "// SPDX-License-Identifier: Apache-2.0\nexport {};\n");
+    write("b.ts", "export const x = 1;\n");
+    write("c.ts", "#!/usr/bin/env node\nconsole.log(1);\n");
+    const missing = await auditDir(workDir);
+    expect(missing.sort()).toEqual(["b.ts", "c.ts"]);
+  });
+
+  it("ignores JSON, node_modules, dist, coverage", async () => {
+    write("pkg.json", "{}");
+    write("node_modules/foo.ts", "junk\n");
+    write("dist/x.ts", "junk\n");
+    write("coverage/x.ts", "junk\n");
+    const missing = await auditDir(workDir);
+    expect(missing).toEqual([]);
+  });
+
+  it("returns empty array when all files have headers", async () => {
+    write("a.ts", "// SPDX-License-Identifier: Apache-2.0\nexport {};\n");
+    write("b.tsx", "// SPDX-License-Identifier: Apache-2.0\nexport const x = 1;\n");
+    const missing = await auditDir(workDir);
+    expect(missing).toEqual([]);
+  });
+});
+
+describe("fixDir", () => {
+  it("inserts headers and is idempotent", async () => {
+    const p1 = write("a.ts", "export const x = 1;\n");
+    const p2 = write("b.ts", "#!/usr/bin/env node\nconsole.log(1);\n");
+    const count1 = await fixDir(workDir);
+    expect(count1).toBe(2);
+    expect(readFileSync(p1, "utf8")).toBe(
+      "// SPDX-License-Identifier: Apache-2.0\nexport const x = 1;\n",
+    );
+    expect(readFileSync(p2, "utf8")).toBe(
+      "#!/usr/bin/env node\n// SPDX-License-Identifier: Apache-2.0\nconsole.log(1);\n",
+    );
+    const count2 = await fixDir(workDir);
+    expect(count2).toBe(0);
+    const snap1 = readFileSync(p1, "utf8");
+    const count3 = await fixDir(workDir);
+    expect(count3).toBe(0);
+    expect(readFileSync(p1, "utf8")).toBe(snap1);
+  });
+
+  it("skips files under excluded directories", async () => {
+    write("node_modules/foo.ts", "junk\n");
+    write("dist/x.ts", "junk\n");
+    write("apps/api/src/index.ts", "export {};\n");
+    const count = await fixDir(workDir);
+    expect(count).toBe(1);
+    expect(readFileSync(join(workDir, "node_modules/foo.ts"), "utf8")).toBe("junk\n");
+    expect(readFileSync(join(workDir, "dist/x.ts"), "utf8")).toBe("junk\n");
+  });
+});
