@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // Phase 2 / Plan 01 / Task 3 — Better Auth instance factory.
 //
 // Source of truth: 02-RESEARCH-AUTH.md § Pattern: Better Auth instance.

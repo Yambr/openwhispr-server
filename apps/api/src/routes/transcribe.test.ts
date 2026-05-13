@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // Phase 03 / Plan 04 / Task 1 — POST /api/transcribe plugin tests.
 //
 // Strategy: register the plugin against a hand-rolled fake LitellmClient

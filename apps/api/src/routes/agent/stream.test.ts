@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // Phase 04 / Plan 06 / Task 2 — POST /api/agent/stream tests.
 //
 // Strategy: hermetic Fastify app with the centralized error handler + a

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // Phase 07.1 / Plan 09 — U6 RSC entry for /app/transcriptions.
 //
 // Prefetches `GET /api/transcriptions/list?limit=20` server-side and hydrates

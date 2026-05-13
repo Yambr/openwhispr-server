@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // Phase 08 / Plan 02 — Task 1 RED: scenario-picker distribution tests.
 //
 // The k6 load test mixes four endpoints in a locked 50/25/15/10 ratio

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // Phase 04 / Plan 08 / Task 1b — POST /api/agent/stream contract test
 // (CONTRACT-01 extension for WIRE-07).
 //

@@ -1,4 +1,5 @@
 #!/usr/bin/env -S pnpm exec tsx
+// SPDX-License-Identifier: Apache-2.0
 import { exit } from "node:process";
 /**
  * lint-rls.ts — Standalone RLS-introspection lint.

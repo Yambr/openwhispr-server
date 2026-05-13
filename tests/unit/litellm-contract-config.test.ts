@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // Phase 3 / Plan 02 / Task 1 — guard the contract-test LiteLLM config.
 //
 // CRITICAL CORRECTNESS: every chat/audio model in litellm_config.contract.yaml

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // Phase 05 / Plan 04 / Task 1 — settings-resolver helper tests.
 //
 // Pure unit coverage with a recording fake tx — no Postgres needed for

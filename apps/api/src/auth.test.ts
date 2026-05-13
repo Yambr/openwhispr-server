@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // Phase 2 / Plan 01 / Task 3 — smoke test for buildAuth().
 //
 // Purpose: pin the env-permutation behaviour for OIDC plugin registration

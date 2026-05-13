@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // Phase 07.1 / Plan 11 — U11 Conversations list (Client Component).
 //
 // Reads `queryKeys.conversations.list({ limit: 20 })` hydrated from the

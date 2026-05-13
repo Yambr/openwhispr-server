@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // Phase 04 / Plan 06 / Task 2 — POST /api/agent/stream.
 // Phase 08.2 / Plan 02 — upstream call swapped from the inline WHATWG-fetch
 // path to the shared @openwhispr/litellm-client's new chatCompletionsStream

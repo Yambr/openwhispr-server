@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // Phase 2 Plan 02 — Build the migrate runner as a standalone CJS bundle.
 // Phase 01.2 — restore default .cjs extension to disambiguate from the
 // api container's `type: module` package.json which would otherwise force

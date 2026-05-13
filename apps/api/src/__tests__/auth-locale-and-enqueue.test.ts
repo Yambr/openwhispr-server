@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // Phase 10 / Plan 10-01c — RED→GREEN coverage for:
 //   1. additionalFields.locale on the Better Auth `user` model (sign-up
 //      accepts a `locale` input, get-session round-trips it, defaultValue

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // Phase 03 Plan 08 — pg.Pool factory for the openwhispr application database
 // connecting as `openwhispr_owner` (BYPASSRLS).
 //

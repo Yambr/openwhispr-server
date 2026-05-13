@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // Phase 03 / Plan 05 / Task 1 — POST /api/reason.
 //
 // Wire shape: docs/wire-contracts-phase-3.md "POST /api/reason".

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // Phase 08 / Plan 02 — vitest config for @openwhispr/load-test.
 //
 // Mirrors apps/api/vitest.config.ts: V8 coverage provider with the

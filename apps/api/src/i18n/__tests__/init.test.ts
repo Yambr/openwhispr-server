@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // Phase 10 / Plan 10-01a / Step 2 — i18next + ICU bootstrap tests.
 //
 // Asserts:

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // Phase 03 Plan 08 — map a LiteLLM model alias to the matching usage_ledger
 // `kind` value. Mirrors the per-route kind constants used by the api:
 //   * /api/transcribe -> 'transcribe_minutes' (Plan 04)

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // Phase 2 / Plan 05 / Task 2 — `/api/auth/desktop-callback/:provider` tests.
 //
 // Coverage matrix (per 02-05-PLAN.md Task 2 done criteria):

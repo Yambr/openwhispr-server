@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // Phase 07.1 / Plan 06 — Root layout wires every cross-cutting provider.
 //
 // Order matters (outermost → innermost):

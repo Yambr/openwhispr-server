@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // Phase 2 / Plan 04 / Task 2 — `@fastify/rate-limit` plugin (D-28).
 // Phase 6 / Plan 06-09 — layered IP + user keying (D-RL1), per-route
 // matrix (D-RL2), standard headers + audit-on-429 (D-RL3).

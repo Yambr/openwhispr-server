@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // Drizzle Kit configuration for @openwhispr/data.
 //
 // Per RESEARCH-DB Pitfall 8: the drizzle migrations bookkeeping table lives

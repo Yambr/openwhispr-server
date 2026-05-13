@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // Phase 03 / Plan 01 / Task 2 — HIGH-1 fix: migrate runner must auto-create
 // the `litellm` database from EVERY `docker compose up` so existing-volume
 // upgrades from Phase 2 do NOT need a destructive `make clean-stack`.

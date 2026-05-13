@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // Phase 03 / Plan 06 / Task 3 — POST /v1/audio/diarization contract test
 // (LITELLM-03, D-07 REVISED).
 //

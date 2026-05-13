@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // Phase 02.7 / Plan 02.7-02 / D-01 — end-to-end channel-scheme test
 // covering the real mintBearer adapter wired into the auth-callback route.
 //

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // Phase 04 / Plan 03 / Task 3 — POST /api/deepgram-streaming-token.
 //
 // Source of truth: 04-RESEARCH.md §2.5 (Deepgram block lines 505–524)

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // Phase 05 / Plan 02 / Task 1 — streaming-usage observability tests.
 //
 // D-11/D-13 — assert the structured log emission shape:

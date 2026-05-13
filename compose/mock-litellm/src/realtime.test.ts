@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // Phase 08.3 / Plan 01 / Task 1 — RED for the /v1/realtime echo handler.
 //
 // Drives the contract laid out in 08.3-PLAN.md:

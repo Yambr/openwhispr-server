@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // Phase 07.1 / Plan 05 — Server Actions for auth-related mutations.
 //
 // `signOutAction()` is the canonical sign-out path for U5 (account screen)

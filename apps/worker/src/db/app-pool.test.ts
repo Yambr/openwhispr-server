@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // Phase 6 Plan 06-07 — GREEN tests for the D-W4 layer 2 runtime guard,
 // plus the pre-existing Phase 3 env-validation tests for makeAppOwnerPool.
 import { PostgreSqlContainer, type StartedPostgreSqlContainer } from "@testcontainers/postgresql";

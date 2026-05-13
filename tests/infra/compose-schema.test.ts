@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // Phase 1 Plan 01 — compose-schema unit tests.
 //
 // Structural lint of the repo-root docker-compose.yml. Does NOT boot Docker;

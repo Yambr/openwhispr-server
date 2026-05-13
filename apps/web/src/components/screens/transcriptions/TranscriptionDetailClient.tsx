@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // Phase 07.1 / Plan 09 — U7 Transcription detail (Client Component).
 //
 // === U7 access-pattern decision: Branch B (list-then-filter) ===

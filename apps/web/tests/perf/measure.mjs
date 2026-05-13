@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+// SPDX-License-Identifier: Apache-2.0
 // Phase 07.1 / Plan 13 — perf measurement (D-PERF-2, informational only).
 //
 // Boots a Playwright Chromium browser, navigates each declared route against

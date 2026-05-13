@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // Phase 6 / Plan 06-08 — usage_rollup_daily table.
 //
 // Per-tenant per-date aggregate of usage_ledger rows, written by the

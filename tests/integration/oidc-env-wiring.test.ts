@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 /**
  * Phase 02.13 — OIDC env provisioning for contract-test fixture-idp.
  *

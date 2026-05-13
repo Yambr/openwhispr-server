@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // Phase 07.1 / Plan 06 — Theme provider (D-SEC-2 — UI preference only).
 //
 // Thin wrapper around `next-themes` that:

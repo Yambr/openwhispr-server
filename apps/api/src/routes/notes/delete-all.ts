@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // Phase 05 / Plan 05 / Task 2 — DELETE /api/notes/delete-all (WIRE-22).
 //
 // Wire shape (matches ~/openwhispr/src/services/NotesService.ts.deleteAll):

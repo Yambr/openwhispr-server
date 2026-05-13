@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // Phase 2 / Plan 03 / Task 3 — `GET /api/auth/verification-status`.
 //
 // Cookie-only per BACKEND_SPEC.md (NON-NEGOTIABLE wire contract — see

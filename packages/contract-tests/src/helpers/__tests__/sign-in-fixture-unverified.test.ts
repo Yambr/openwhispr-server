@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // Phase 02.20 — TDD-RED test for D-01 (Group I closure).
 //
 // Asserts that signInFixture(email, { verified: false }) wraps the

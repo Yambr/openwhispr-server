@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // tests/e2e/phase-05-web-search — host-side e2e for
 // WIRE-08 (POST /api/agent/web-search).
 //

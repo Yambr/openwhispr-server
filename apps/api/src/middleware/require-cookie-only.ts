@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // Phase 2 / Plan 03 / Task 2 — `requireCookieOnly` (BACKEND_SPEC.md
 // §verification-status, §delete-account).
 //

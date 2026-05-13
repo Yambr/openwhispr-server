@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // Phase 2 / Plan 01 / Task 1 — cookie-domain resolver (PITFALLS #5 / AUTH-07).
 //
 // Source of truth: 02-RESEARCH-AUTH.md § Cookie Host Scoping.

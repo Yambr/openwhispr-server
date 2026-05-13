@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // Phase 07.1 / Plan 06 — react-hook-form + zod helper (D-STACK-4).
 //
 // `useZodForm` is a single-line ergonomic wrapper that combines

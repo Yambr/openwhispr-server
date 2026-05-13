@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 /**
  * Phase 02.4 / G5b — AUTH_TRUSTED_ORIGINS_EXTRA env parsing.
  *

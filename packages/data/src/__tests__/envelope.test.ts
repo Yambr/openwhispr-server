@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // KEK/DEK envelope-encryption tests — Phase 1 Plan 04 / D-11, D-12.
 //
 // What we're proving:

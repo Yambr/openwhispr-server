@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // Phase 07.1 / Plan 07 — Zod schemas for auth forms (D-STACK-4).
 //
 // Mirrors Better Auth's default `emailAndPassword` constraints

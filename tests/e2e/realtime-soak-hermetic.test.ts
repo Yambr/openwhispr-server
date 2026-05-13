@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // tests/e2e/realtime-soak-hermetic.test.ts
 //
 // Phase 04 / Plan 09 / Task 3 — 5-minute hermetic WSS soak through the

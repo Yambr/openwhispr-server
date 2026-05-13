@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // Phase 03 Plan 08 — apps/worker bundle.
 //
 // Single CJS bundle for the long-running worker container. CJS chosen for

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // Phase 07.1 / Plan 11 — U12 RSC entry for /app/conversations/[id].
 //
 // Prefetches `GET /api/conversations/messages?conversation_id=<id>&limit=50`

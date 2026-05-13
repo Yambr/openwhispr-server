@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // Phase 05 / Plan 04 / Task 2 — GET /api/note-recording-config (WIRE-12).
 //
 // Wire shape: BACKEND_SPEC.md:460.

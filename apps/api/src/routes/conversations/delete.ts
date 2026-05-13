@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // Phase 05 / Plan 07 / Task 1 — DELETE /api/conversations/delete (WIRE-24).
 //
 // Wire shape:

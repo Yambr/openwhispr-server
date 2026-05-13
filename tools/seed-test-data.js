@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // Phase 09 / Plan 11 — upgrade-matrix data seeder.
 //
 // Inserts N=10 deterministic rows into the `transcriptions` table so the

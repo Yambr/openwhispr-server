@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // Phase 02.16 — Group H closure.
 //
 // mintBearer must derive token_endpoint / userinfo_endpoint from the

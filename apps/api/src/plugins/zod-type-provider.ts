@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // Phase 2 / Plan 03 / Task 1 — wires the Fastify zod type provider.
 //
 // `@fastify/type-provider-zod` ships two compilers (validator + serializer)

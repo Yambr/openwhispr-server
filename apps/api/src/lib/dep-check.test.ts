@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // Phase 6 / Plan 06-04 — GREEN (D-P2).
 //
 // Verifies `makeDepCheck()` against REAL services per CLAUDE.md

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // Phase 07.1 / Plan 05 — middleware unit tests (RED before GREEN).
 //
 // We exercise the Edge middleware function directly against a synthetic

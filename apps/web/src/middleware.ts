@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // Phase 07.1 / Plan 05 + Phase 10 / Plan 02 — Edge middleware.
 //
 // Two concerns share this entry point:

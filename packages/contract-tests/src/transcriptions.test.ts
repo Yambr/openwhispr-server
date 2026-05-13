@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // Phase 05 / Plan 08 / Task 2 — WIRE-26 contract conformance tests for
 // /api/transcriptions/* (5 routes — no search, no update per upstream
 // TranscriptionsService.ts).

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // Phase 02.18 — TDD-RED test for D-01.
 //
 // Asserts that buildAuth() configures `advanced.ipAddress.ipAddressHeaders`

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 /**
  * Phase 02.19 — Traefik forwardedHeaders.trustedIPs on websecure entrypoint.
  *

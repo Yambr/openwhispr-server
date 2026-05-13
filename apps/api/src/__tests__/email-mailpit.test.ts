@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // Phase 2 / Plan 04 / Task 1 — mailpit integration test.
 //
 // Wire-real-SMTP coverage of `makeEmailService`. Skips cleanly when

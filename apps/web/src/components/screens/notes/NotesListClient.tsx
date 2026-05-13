@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // Phase 07.1 / Plan 10 — U8 Notes list (Client Component).
 //
 // Reads `queryKeys.notes.list({ limit: 20 })` and `queryKeys.folders()` in

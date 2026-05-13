@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 /**
  * Phase 03 / Plan 01 / Task 2 — LiteLLM smoke test (LITELLM-01).
  *

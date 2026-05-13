@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // Phase 05 / Plan 07 / Task 1 — conversations CRUD integration tests
 // against real Postgres + RLS. Mirrors notes & folders CRUD tests.
 //

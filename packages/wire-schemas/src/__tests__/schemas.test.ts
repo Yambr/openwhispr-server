@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 /**
  * Phase 5 / Plan 01 — RED-then-GREEN test suite for @openwhispr/wire-schemas.
  *

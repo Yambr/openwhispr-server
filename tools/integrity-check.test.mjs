@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // Unit tests for tools/integrity-check.js.
 //
 // Exercised E2E in helm-upgrade-matrix.yml against a real CNPG cluster.

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // KeyProvider interface + selectProvider() dispatcher.
 //
 // Phase 1 Plan 04 / D-12, PROVIDER-02.

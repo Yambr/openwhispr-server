@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // Phase 6 Plan 06-08 — typed BullMQ queue registry.
 //
 // One place to construct the wrapped Queue instances for every Phase 6

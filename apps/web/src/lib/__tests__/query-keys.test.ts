@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // Phase 07.1 / Plan 06 — query-keys factory unit tests (RED before GREEN).
 //
 // Mirrors RESEARCH § Pattern 5 query-keys block byte-for-byte. Each factory

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // Phase 07.1 / Plan 04 — Vitest sentinel.
 //
 // Reason for existence: vitest exits with code 1 if no test files match.

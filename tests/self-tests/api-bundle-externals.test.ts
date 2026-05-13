@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 /**
  * Phase 02.4 / G3 — api bundle externals + Dockerfile no-pnpm-deploy.
  *

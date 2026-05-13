@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // Phase 2 / Plan 01 / Task 1 — channel-scheme allow-list (D-06).
 //
 // Source of truth: 02-RESEARCH-AUTH.md § Channel-Scheme Allow-List.

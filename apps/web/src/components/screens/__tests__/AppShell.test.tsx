@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // Phase 07.1 / Plan 06 — AppShell component tests (RED before GREEN).
 //
 // AppShell wraps the (auth) route group. Verified surface:

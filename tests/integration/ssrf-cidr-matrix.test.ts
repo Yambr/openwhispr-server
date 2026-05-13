@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 /**
  * Phase 6 / Plan 06 / SCALE-04 — SSRF CIDR matrix integration test.
  *

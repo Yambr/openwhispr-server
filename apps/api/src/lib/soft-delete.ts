@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // Phase 05 / Plan 05 / Task 1 — Soft-delete helper (D-23).
 //
 // Single SQL fragment shared by every read path (list, search, get) on

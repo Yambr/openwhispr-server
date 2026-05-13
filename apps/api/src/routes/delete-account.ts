@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // Phase 2 / Plan 03 / Task 3 — `DELETE /api/auth/delete-account`.
 //
 // Cookie-only per BACKEND_SPEC.md (NON-NEGOTIABLE wire contract — bearer

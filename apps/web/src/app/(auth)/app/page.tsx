@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // Phase 07.1 / Plan 08 — U4 Usage dashboard RSC entry.
 //
 // Prefetches `GET /api/usage` server-side and dehydrates the TanStack Query

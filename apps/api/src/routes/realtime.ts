@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // Phase 03 / Plan 07 / Task 1 — WSS /v1/realtime reverse-proxy mount
 // (LITELLM-03, D-04).
 //

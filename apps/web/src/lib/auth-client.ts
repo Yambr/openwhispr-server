@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // Phase 07.1 / Plan 05 — Better Auth React client (D-STACK-5, RESEARCH § Pattern 3).
 //
 // Same-origin deploy (D-DEPLOY-1): web and api both ride behind Traefik on

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // Phase 05 / Plan 10 / Task 1 — WIRE-29 enumeration sanity test
 // (Pitfall #6 mitigation).
 //

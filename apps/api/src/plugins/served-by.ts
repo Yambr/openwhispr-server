@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // Phase 6 / Plan 06-04 / Task 1 — `x-served-by` response header plugin (D-P3).
 //
 // Tiny Fastify `onSend` hook that attaches `x-served-by: ${os.hostname()}`

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 import { defineConfig } from "vitest/config";
 
 // Vitest 4 root config for the pnpm monorepo. Discovers tests across all

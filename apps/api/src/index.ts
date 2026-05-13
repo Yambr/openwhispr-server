@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // Phase 2 / Plan 04 / Task 2 — `buildApp()`: the sole authoritative
 // wiring point for the OpenWhispr API.
 //

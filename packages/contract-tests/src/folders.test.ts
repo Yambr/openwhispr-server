@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // Phase 05 / Plan 06 / Task 2 — WIRE-23 contract conformance tests for
 // /api/folders/* (5 routes — no search, no delete-all per upstream
 // FoldersService.ts).

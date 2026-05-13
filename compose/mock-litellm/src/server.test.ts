@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // Phase 08 / Plan 03 / Task 2 — RED tests for the Fastify mock-litellm
 // server. Drives buildApp() + the three endpoint contracts in
 // PLAN.md `<behavior>` block.

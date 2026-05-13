@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // Phase 6 Plan 06-08 — usage-rollup-daily BullMQ job (dispatcher + child).
 //
 // D-W5 (queue inventory):

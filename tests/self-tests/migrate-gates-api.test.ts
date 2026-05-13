@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // Phase 2 Plan 02 — migrate-gates-api self-test: verifies the
 // `depends_on: { migrate: { condition: service_completed_successfully } }`
 // link by inspecting container timestamps after `compose up --wait`.

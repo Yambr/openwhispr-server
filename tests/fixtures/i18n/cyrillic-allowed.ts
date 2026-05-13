@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // This file is in the i18n fixture allowlist; Cyrillic is permitted here.
 // Used by lint-english.test.ts to verify the allowlist is honored.
 //

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 import { cva, type VariantProps } from "class-variance-authority";
 import { Slot } from "radix-ui";
 import type * as React from "react";

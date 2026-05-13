@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // Phase 07.1 / Plan 06 — Admin route group layout (D-ADMIN-1).
 //
 // NO session check here. Admin gating is performed at the Traefik edge via

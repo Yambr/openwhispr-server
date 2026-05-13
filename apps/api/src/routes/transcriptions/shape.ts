@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // Phase 05 / Plan 08 — shared row→wire shape helper for transcriptions.
 //
 // Mirrors apps/api/src/routes/notes/shape.ts and folders/shape.ts.

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // Phase 02.7 / Plan 02.7-02 / D-01 — production `MintBearer` adapter.
 //
 // Closes AUTH-A1 (deferred from Phase 02 Plan 05). Replaces the previous

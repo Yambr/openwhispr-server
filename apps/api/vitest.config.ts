@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // Phase 3 / Plan 02 / Task 4 (HIGH-3 fix) — per-package coverage floor.
 //
 // CLAUDE.md mandates a per-phase ≥90% coverage floor on all new/modified

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // Phase 03 Plan 03 Task 1 — LiteLLM client config loader.
 //
 // Single source of truth for the LITELLM_BASE_URL / LITELLM_MASTER_KEY

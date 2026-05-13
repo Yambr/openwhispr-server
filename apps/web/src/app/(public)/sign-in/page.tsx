@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // Phase 07.1 / Plan 07 — U1 Sign-in route.
 //
 // Pure RSC entry that hands off to the Client SignInForm. The form

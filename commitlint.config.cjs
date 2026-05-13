@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // commitlint config for openwhispr-server
 // Extends Conventional Commits and adds custom Cyrillic-ban rules (DOCS-09).
 // Cyrillic ranges:

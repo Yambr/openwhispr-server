@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // Phase 2 / Plan 04 / Task 3 — WIRE-20 self-test: HTTP -> HTTPS
 // permanent (308) redirect at the Traefik :80 entrypoint.
 //

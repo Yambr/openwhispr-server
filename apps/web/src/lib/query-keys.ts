@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // Phase 07.1 / Plan 06 — TanStack Query 5 key factory (D-STACK-3).
 //
 // Mirrors RESEARCH § Pattern 5 byte-for-byte. Every screen-level hook (Plans

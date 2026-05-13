@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 /**
  * Phase 04 Plan 05 — Traefik realtime-entrypoint split (SCALE-05, T-04-02).
  *

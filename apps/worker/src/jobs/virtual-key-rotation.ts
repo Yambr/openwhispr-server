@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // Phase 6 Plan 06-08 — virtual-key-rotation BullMQ job.
 //
 // D-W5 (queue inventory): Tenant context, cron weekly + on-demand from

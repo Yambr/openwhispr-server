@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // Phase 03 Plan 03 Task 1 — config loader tests.
 import { describe, expect, it } from "vitest";
 import {

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // Phase 05 / Plan 07 / Task 1 — POST /api/conversations/create (WIRE-24).
 //
 // Wire shape (matches ~/openwhispr/src/services/ConversationsService.ts):

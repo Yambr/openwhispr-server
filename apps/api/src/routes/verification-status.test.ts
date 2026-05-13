@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // Phase 2 / Plan 03 / Task 3 — `/api/auth/verification-status` plugin tests.
 //
 // In-process: hand-rolled fake `AuthLike` (cookie-only contract) + fake

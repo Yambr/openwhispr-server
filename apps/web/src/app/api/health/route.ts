@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 /**
  * Healthcheck endpoint for docker-compose (D-DEPLOY-2).
  *

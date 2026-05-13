@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // tests/e2e/phase-05-api-keys — host-side e2e for WIRE-27.
 //
 // Round-trips the API-keys lifecycle through Traefik (TLS) → api →

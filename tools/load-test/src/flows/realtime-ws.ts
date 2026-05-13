@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // Phase 08 / Plan 06 — Task 2 GREEN: realtime-ws flow.
 // Phase 08.1 / Plan 01 / Task 3 — custom Trend metric (RED→GREEN).
 //

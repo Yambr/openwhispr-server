@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // Phase 04 / Plan 06 / Task 1 — pure helpers consumed by /api/agent/stream.
 //
 // Two pure functions, no I/O, no Fastify dependencies — composable in the

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // tests/e2e/helpers/phase6-compose.ts
 //
 // Phase 6 Wave 3 — shared docker-compose harness for the 06-12a/b/c/d

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // Phase 2 / Plan 03 / Task 1 — centralized `setErrorHandler` (D-13).
 //
 // This is the SINGLE emission point for the global `{error:<string>}`

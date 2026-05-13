@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // Phase 05 / Plan 05 / Task 1 — Client-id upsert helper (D-24, Pattern 1).
 //
 // Centralizes the "INSERT OR RETURN EXISTING" semantics for every CRUD

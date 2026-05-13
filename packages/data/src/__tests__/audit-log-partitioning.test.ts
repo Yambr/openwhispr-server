@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // Phase 6 / Plan 02 — DATA-04 D-A2 verification (RLS inheritance, partition routing).
 //
 // Originally a RED stub from Wave 0 (TDD-01b). Flipped GREEN here against

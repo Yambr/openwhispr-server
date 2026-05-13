@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // Phase 05 / Plan 07 / Tasks 1 + 2 — GET /api/conversations/list (WIRE-24).
 //
 // Wire shape (matches ConversationsService.list):

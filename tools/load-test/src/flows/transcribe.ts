@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // Phase 08 / Plan 06 — Task 2 GREEN: transcribe flow.
 //
 // Submits a 5-second 16 kHz mono WAV to POST /api/transcribe as a

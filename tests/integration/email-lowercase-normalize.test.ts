@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 /**
  * Phase 02.7 / Plan 05 — D-03 Layer B: case-insensitive email uniqueness.
  *

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // Phase 05 / Plan 04 / Task 2 — GET /api/note-recording-config plugin tests.
 //
 // Symmetric to stt-config.test.ts. The full chain semantics live in

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // Phase 08 / Plan 02 — Task 2 RED: HTTP utility constants.
 //
 // The k6 flow files (Wave 2) consume these constants; pinning them here

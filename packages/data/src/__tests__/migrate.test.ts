@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // Programmatic migration runner unit test — Phase 1 Plan 03 / DATA-02 +
 // Phase 2 Plan 02 (CONTAINER-A1): also asserts that a connection string
 // pointing at PgBouncer (transaction-mode pooler) is rejected at start

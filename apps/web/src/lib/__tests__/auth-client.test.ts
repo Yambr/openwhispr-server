@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // Phase 07.1 / Plan 05 — auth-client unit tests (RED before GREEN).
 //
 // Verifies that better-auth/react 1.6.9 surface, wrapped by our

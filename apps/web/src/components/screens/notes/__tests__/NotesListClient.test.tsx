@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // Phase 07.1 / Plan 10 — U8 NotesListClient unit tests (RED→GREEN).
 //
 // Surface verified:

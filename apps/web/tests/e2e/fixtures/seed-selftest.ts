@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // Phase 07.1 / Plan 13 — Selftest CLI entry for the seed fixture.
 //
 // Lives in its own file (not seed.ts) because Playwright's CommonJS

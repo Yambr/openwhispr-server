@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // Phase 08 / Plan 02 — Task 2 GREEN: HTTP base constants.
 //
 // Pinned here so the k6 flow files (Wave 2 / Plan 06) all agree on

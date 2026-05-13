@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // Phase 6 Plan 06-08 — reconciliation-daily-check BullMQ job.
 //
 // D-R2 (daily reconciliation): System mode. For each tenant with non-zero

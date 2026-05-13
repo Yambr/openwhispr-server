@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // Phase 10 / Plan 02 — Locale-switching route handler.
 //
 // Accepts POST `{ locale: 'en' | 'ru' }`, validates with zod, and persists

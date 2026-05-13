@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // Phase 07.1 / Plan 04 — axe-core/playwright wrapper.
 //
 // D-TEST-1: every screen runs `await runAxe(page)` and asserts zero

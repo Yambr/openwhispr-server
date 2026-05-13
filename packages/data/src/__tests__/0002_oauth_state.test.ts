@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // Phase 2 / Plan 01 / Task 2 — RED tests for migration 0002_oauth_state.sql.
 //
 // Asserts that the oauth_state table exists with FORCE RLS + tenant

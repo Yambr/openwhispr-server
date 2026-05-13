@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 /**
  * Phase 5 / Plan 01 — Wire schemas for /api/conversations/* family.
  * Mirrors ~/openwhispr/src/services/ConversationsService.ts byte-for-byte (D-22).

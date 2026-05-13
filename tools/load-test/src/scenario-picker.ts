@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // Phase 08 / Plan 02 — Task 1 GREEN: scenario picker.
 //
 // Weighted RNG over the 4-endpoint load-test mix locked by D-LOAD-3.

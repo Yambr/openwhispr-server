@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // Phase 6 Plan 06-07 / D-W2 — withSystemContext escape hatch for cross-tenant
 // BullMQ jobs (ingest-litellm-spend, reconciliation-daily-check, audit-archive,
 // partman-maintenance, usage-rollup-daily dispatcher).

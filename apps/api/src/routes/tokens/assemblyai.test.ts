@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // Phase 04 / Plan 03 / Task 2 — POST /api/streaming-token (AssemblyAI v3) tests.
 //
 // Strategy: hermetic Fastify app with the centralized error handler +

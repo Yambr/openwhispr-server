@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 /**
  * Phase 04 / Plan 08 / Task 3 — Per-user rate-limit isolation integration
  * test (T-04-04 mitigation evidence).

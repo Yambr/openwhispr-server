@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // Phase 6 / Plan 06-12c — OTel SDK bootstrap MUST be the first executable
 // import so PinoInstrumentation patches `pino` before any worker code
 // imports it (D-T3). Without this, `metrics.getMeter()` returns a no-op

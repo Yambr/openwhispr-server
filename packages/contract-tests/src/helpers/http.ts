@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // Phase 2 / Plan 06 — envelope-asserting fetch wrapper.
 //
 // Every non-2xx response body MUST parse as ErrorEnvelope (D-13 / WIRE-17).

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // Phase 6 / Plan 05 / Task 1 — canonical audit-log emission helper.
 //
 // Source of truth:

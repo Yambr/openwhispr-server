@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // Phase 10 / Plan 10-01a / Step 7 — i18n key-completeness scanner.
 //
 // Walks every `apps/api/src/**/*.ts` file via ts-morph, locates every

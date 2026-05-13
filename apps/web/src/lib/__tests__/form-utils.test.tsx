@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // Phase 07.1 / Plan 06 — form-utils unit tests (RED before GREEN).
 //
 // `useZodForm()` composes react-hook-form's `useForm` with the zod resolver

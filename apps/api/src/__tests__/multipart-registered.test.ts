@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // Phase 03 Plan 03 Task 2 — @fastify/multipart registered at buildApp
 // level (HIGH-4 fix). Both Plan 04 (/api/transcribe) and Plan 06
 // (/api/diarization) need multipart streaming; registering ONCE here in

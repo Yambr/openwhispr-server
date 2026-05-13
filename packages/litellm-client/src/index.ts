@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // Phase 03 Plan 03 Task 1 — shared LiteLLM client factory.
 //
 // Centralizes the three things every Phase 3 route otherwise has to

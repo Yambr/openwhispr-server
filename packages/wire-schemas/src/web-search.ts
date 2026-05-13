@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 /**
  * Phase 5 / Plan 01 — Wire schema for POST /api/agent/web-search.
  *

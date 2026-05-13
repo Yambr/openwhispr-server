@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // Phase 07.1 / Plan 08 — U5 SessionsTable (Client Component).
 //
 // D-API2: every session-management call is a Better Auth catch-all:

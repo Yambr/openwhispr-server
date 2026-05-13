@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // Phase 6 Plan 06-08 — recurring-job scheduler bootstrap.
 //
 // Registers cron-shaped repeatable jobs via BullMQ's `upsertJobScheduler`

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // Phase 05 / Plan 07 — shared test boot helper for conversations
 // integration tests. Mirrors apps/api/src/routes/folders/__tests__/setup.ts.
 

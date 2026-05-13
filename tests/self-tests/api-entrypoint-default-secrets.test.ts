@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // Phase 2 Plan 02 — D-25 self-test: closes Phase 1 D-08 / SC#1 partial.
 //
 // Spins up the api container with MASTER_KEK=changeme (every other

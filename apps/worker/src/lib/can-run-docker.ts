@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // Phase 03 / Plan 08 back-fill (Stage B) — Docker socket detection helper.
 //
 // Used as a `describe.skipIf(!canRunDocker())` gate by the testcontainer

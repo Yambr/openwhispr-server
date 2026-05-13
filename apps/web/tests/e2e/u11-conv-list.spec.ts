@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // Phase 07.1 / Plan 11 — U11 conversations list (state matrix + axe).
 //
 // D-TEST-3 boundary rule:

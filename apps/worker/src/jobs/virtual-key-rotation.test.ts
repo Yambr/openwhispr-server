@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // Phase 6 Plan 06-08 — GREEN tests for virtual-key-rotation (D-W5, D-A6 #8/#9).
 //
 // Real Postgres testcontainer; LiteLLM client + user-key lookup are

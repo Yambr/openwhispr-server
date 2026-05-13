@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // Phase 02.7 / Plan 03 / Task 2 — D-02 Layer 1 (RED → GREEN).
 //
 // Source-of-record commit: <filled at commit time>

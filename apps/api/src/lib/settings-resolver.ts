@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // Phase 05 / Plan 04 / Task 1 — Settings resolution chain (D-18, D-19, D-20).
 //
 // Both `/api/stt-config` (WIRE-11) and `/api/note-recording-config`

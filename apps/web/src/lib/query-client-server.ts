@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // Phase 07.1 / Plan 06 — TanStack Query 5 server factory (D-STACK-3).
 //
 // RESEARCH § Pattern 5 + Pitfall 4: every RSC render that prefetches data

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // Phase-2 debt back-fill — coverage closure for lib/default-tenant.ts.
 //
 // The module is a memoised constant resolver (Phase 2 / Plan 01 / Task 3).

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // Phase 05 / Plan 03 / Task 3 — POST /api/agent/web-search contract test
 // (WIRE-08).
 //

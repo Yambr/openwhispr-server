@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // Phase 05 / Plan 03 / Task 2 (follow-up: Yandex live adapter) — tests.
 //
 // The Yandex adapter is a LIVE HTTP adapter against

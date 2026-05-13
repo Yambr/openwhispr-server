@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // Phase 07.1 / Plan 08 — U5 Account RSC entry.
 //
 // Resolves the Better Auth session server-side (cookie-forwarded HTTP call

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // Phase 03 Plan 08 — BullMQ Job Scheduler that ingests LiteLLM_SpendLogs
 // rows into our usage_ledger every 30 seconds (LITELLM-07).
 //

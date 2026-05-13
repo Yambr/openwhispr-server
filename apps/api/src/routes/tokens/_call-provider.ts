@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // Phase 04 / Plan 03 / Task 1 — shared undici provider-mint helper.
 //
 // Source of truth: 04-RESEARCH.md §2.5 (lines 441–484) + 04-CONTEXT.md

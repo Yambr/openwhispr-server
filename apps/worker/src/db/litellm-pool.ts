@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // Phase 03 Plan 08 — pg.Pool factory for the LiteLLM co-tenant database.
 //
 // MUST connect DIRECT to postgres:5432 (NOT pgbouncer). Cross-database reads

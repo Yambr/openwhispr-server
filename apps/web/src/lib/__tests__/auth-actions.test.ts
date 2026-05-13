@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // Phase 07.1 / Plan 05 — auth-actions unit tests (RED before GREEN).
 //
 // Server Action `signOutAction()` must:

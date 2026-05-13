@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // Phase 07.1 / Plan 11 — U11 RSC entry for /app/conversations.
 //
 // Prefetches `GET /api/conversations/list?limit=20` server-side and hydrates

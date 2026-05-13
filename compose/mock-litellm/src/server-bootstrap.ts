@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // Phase 08 / Plan 03 / Task 2 — process entry point for the
 // mock-litellm Docker image. Excluded from coverage (see
 // vitest.config.ts) because there is no meaningful way to test the

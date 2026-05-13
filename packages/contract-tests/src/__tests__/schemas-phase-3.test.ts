@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // Phase 3 / Plan 02 / Task 3 — guard the Phase-3 zod schemas.
 //
 // These schemas are the single source of truth wired into both the

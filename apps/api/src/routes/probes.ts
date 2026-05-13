@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // Phase 6 / Plan 06-04 / Task 1 — three kubelet-canonical health probes (D-P1).
 //
 // Routes:

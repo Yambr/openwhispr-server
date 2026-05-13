@@ -1,4 +1,5 @@
 #!/usr/bin/env -S pnpm exec tsx
+// SPDX-License-Identifier: Apache-2.0
 /**
  * lint-ui-spec.ts — Phase 07 / Plan 03 (D-ART7).
  *

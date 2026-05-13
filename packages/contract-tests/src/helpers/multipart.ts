@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // Phase 03 / Plan 04 / Task 2 — multipart body helper for contract tests.
 //
 // Reads a fixture audio file (default: tests/fixtures/audio/sample-1s.wav)

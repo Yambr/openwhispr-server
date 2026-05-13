@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // Phase 07.1 / Plan 07 — U3 Verify-email client.
 //
 // Mounted by app/(public)/verify-email/page.tsx after the RSC validates

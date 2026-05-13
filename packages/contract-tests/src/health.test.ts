@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // Phase 2 / Plan 06 — GET /api/health contract test (WIRE-04).
 //
 // Desktop client polls /api/health with a 3s timeout and inspects only

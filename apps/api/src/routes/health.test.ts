@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // Phase 2 / Plan 03 / Task 3 — `/api/health` plugin tests.
 //
 // Build a minimal Fastify app, register the plugin, exercise via

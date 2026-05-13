@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+// SPDX-License-Identifier: Apache-2.0
 /**
  * apps/api/scripts/check-default-secrets.ts — defense-in-depth check
  * invoked by the API container ENTRYPOINT before `node dist/index.js`.

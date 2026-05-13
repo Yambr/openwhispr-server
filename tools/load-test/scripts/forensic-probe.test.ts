@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // Phase 08.1 / Plan 01 / Task 1 RED→GREEN — forensic-probe unit tests.
 //
 // Drives `runProbe()` with a fake HTTP adapter; asserts every endpoint is

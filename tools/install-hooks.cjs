@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+// SPDX-License-Identifier: Apache-2.0
 /**
  * install-hooks.cjs — idempotent git-hook installer for `pnpm install` prepare.
  *

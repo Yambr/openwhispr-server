@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // Phase 05 / Plan 09 / Task 3 — POST /api/v1/keys/:id/revoke (WIRE-27).
 //
 // Wire shape (matches ~/openwhispr/src/services/ApiKeysService.ts.revoke):

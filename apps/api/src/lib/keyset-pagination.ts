@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // Phase 05 / Plan 05 / Task 1 — Keyset pagination helper (D-25).
 //
 // Shared by every CRUD list route (notes, folders, conversations,

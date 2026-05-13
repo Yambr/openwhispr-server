@@ -1,4 +1,5 @@
 #!/usr/bin/env -S pnpm exec tsx
+// SPDX-License-Identifier: Apache-2.0
 /**
  * lint-english.ts — Standalone Cyrillic-codepoint scanner.
  *

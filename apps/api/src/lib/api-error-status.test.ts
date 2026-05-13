@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // Phase 02.7 / Plan 03 — D-02 helper unit tests.
 //
 // Covers all branches of resolveApiErrorStatus for the Assumption A1

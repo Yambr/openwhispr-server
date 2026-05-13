@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // Phase 10 / Plan 02 — Russian bundle parity gate (RED before GREEN).
 //
 // Asserts every key present in `apps/web/src/locales/en/{common,admin,end-user}.json`

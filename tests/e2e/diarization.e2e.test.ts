@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // tests/e2e/diarization — host-side e2e for POST /v1/audio/diarization.
 //
 // Diarization talks to pyannote.ai directly (NOT via LiteLLM) per

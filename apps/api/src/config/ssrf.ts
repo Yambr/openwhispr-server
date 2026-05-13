@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // Phase 6 / Plan 06 / SCALE-04 — SSRF config (D-S1..S6).
 //
 // Env-driven configuration for the process-wide SSRF dispatcher. Parsed

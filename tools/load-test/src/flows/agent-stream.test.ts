@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // Phase 08 / Plan 06 — Task 2 RED: agent-stream flow tests.
 //
 // Critical: agent-stream MUST record TWO separate metrics so the SLO

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // Phase 07.1 / Plan 09 — U6 transcriptions-list Client component tests (RED→GREEN).
 //
 // Surface verified:

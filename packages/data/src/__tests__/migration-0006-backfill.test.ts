@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // Phase 5 / Plan 01 — verifies migration 0006 backfills tenant_settings
 // for every existing tenant. The default tenant from 0000_initial.sql
 // (id = 00000000-0000-0000-0000-000000000000) MUST have a tenant_settings
