@@ -1,0 +1,154 @@
+# Default values for openwhispr.
+#
+# Per Phase 9 architectural locks (A1..A6 from 09-DISCUSS-BLOCKERS.md):
+#   - secrets.mode default = "helm-values" (OSS quickstart). Set to "eso"
+#     for corporate External Secrets Operator integration.
+#   - bundledAi.enabled = false. Only flip on GPU nodes with nvidia.com/gpu.
+#   - observability.embedded = false. LGTM stack is a cluster prerequisite.
+#   - postgres.imageName pinned to a :17.* tag (CNPG default catalog is PG 18;
+#     refusing to install on non-17 image is enforced by values.schema.json).
+#   - postgres.replicas = 3 (HA default); override to 1 for OSS single-node.
+#   - valkey + minio use Bitnami sub-charts (Wave 1 declares dependencies).
+#   - pgbouncer uses CNPG Pooler CRD (A6); first-party Deployment removed.
+
+# Image registry/tag defaults. Per Plan 09-04+ the api/web/worker tags
+# default to .Chart.AppVersion when empty.
+image:
+  registry: ghcr.io/openwhispr
+  pullPolicy: IfNotPresent
+  pullSecrets: []
+  api:
+    repository: ghcr.io/openwhispr/openwhispr-api
+    tag: ""
+  web:
+    repository: ghcr.io/openwhispr/openwhispr-web
+    tag: ""
+  worker:
+    repository: ghcr.io/openwhispr/openwhispr-worker
+    tag: ""
+  migrate:
+    repository: ghcr.io/openwhispr/openwhispr-migrate
+    tag: ""
+
+# Service account configuration.
+serviceAccount:
+  create: true
+  name: ""
+  annotations: {}
+
+# Secrets configuration. See templates/secrets.yaml for the 8 required keys.
+# Mode "helm-values": chart renders inline Secret with `helm.sh/resource-policy: keep`.
+# Mode "eso": chart renders ExternalSecret instead; SecretStore must exist out-of-band.
+secrets:
+  mode: helm-values
+  # When mode == "eso", chart skips inline Secret and fail gates.
+  external:
+    storeRef: ""
+    storeKind: ClusterSecretStore
+    path: openwhispr
+    refreshInterval: 1h
+  # All 8 keys must be supplied via --set / values overlay / ESO. Empty values
+  # trigger render-time `fail` (helm-values mode) or pod-start initContainer
+  # probe (eso mode, Plan 09-06).
+  litellmMasterKey: ""
+  openrouterApiKey: ""
+  openaiApiKey: ""
+  pyannoteApiKey: ""
+  hfToken: ""
+  postgresOwnerPassword: ""
+  pgbouncerAdminPassword: ""
+  betterAuthSecret: ""
+
+# Bundled-AI Speaches Deployment (GPU-only). Wave 2 implements the Deployment.
+bundledAi:
+  enabled: false
+  image: ghcr.io/speaches-ai/speaches:master-cuda-12.6.3
+  replicas: 1
+  nodeSelector:
+    nvidia.com/gpu.present: "true"
+  tolerations:
+    - key: nvidia.com/gpu
+      operator: Exists
+      effect: NoSchedule
+
+# Observability. Per A3 the LGTM stack is a cluster prerequisite. Chart ships
+# ServiceMonitor / PodMonitor / OTel Collector ConfigMap only.
+observability:
+  embedded: false
+  serviceMonitor:
+    enabled: false
+    namespace: ""
+    labels: {}
+  otelCollector:
+    enabled: false
+
+# Postgres via CloudNativePG operator (A2: prerequisite). Wave 1 ships the
+# Cluster CR and the custom image build.
+postgres:
+  imageName: ghcr.io/openwhispr/openwhispr-cnpg-postgres-17-pgpartman:0.9.0-rc1
+  replicas: 3
+  storageSize: 20Gi
+  storageClass: ""
+  backup:
+    enabled: false
+    bucket: ""
+    s3Endpoint: ""
+
+# Bitnami Valkey sub-chart values (Wave 1 declares the dependency).
+valkey:
+  architecture: standalone
+  auth:
+    enabled: false
+
+# Bitnami MinIO sub-chart values (Wave 1).
+minio:
+  mode: standalone
+  persistence:
+    size: 20Gi
+
+# CNPG Pooler CRD (A6: replaces first-party PgBouncer Deployment).
+pooler:
+  instances: 2
+  type: rw
+
+# LiteLLM Proxy. Wave 2 implements the Deployment.
+litellm:
+  embedded: true
+  image: ghcr.io/berriai/litellm:v1.83.7-stable
+
+# api / web / worker — Wave 2 implements Deployments + HPAs.
+api:
+  replicas: 2
+  autoscaling:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 20
+    targetCPUUtilizationPercentage: 70
+  env: {}
+
+web:
+  replicas: 1
+
+worker:
+  autoscaling:
+    enabled: true
+    minReplicas: 1
+    maxReplicas: 30
+    targetCPUUtilizationPercentage: 70
+    # Set to true to add an external-metric (bullmq_queue_waiting_total).
+    queueDepthMetric: false
+
+# Ingress / cert-manager — Wave 3 ships IngressRoutes + Certificate CR.
+host:
+  api: openwhispr.local
+  web: openwhispr.local
+
+tls:
+  apiSecretName: openwhispr-api-tls
+
+certManager:
+  clusterIssuer: letsencrypt-prod
+
+# Network policy — opt-in.
+networkPolicy:
+  enabled: false

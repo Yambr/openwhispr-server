@@ -1,0 +1,116 @@
+name: helm-lint
+
+on:
+  pull_request:
+    paths:
+      - "charts/**"
+      - "tools/lint-compose-chart-parity.ts"
+      - ".github/workflows/helm-lint.yml"
+      - ".github/ci/values-ci.yaml"
+  push:
+    branches: [main]
+    paths:
+      - "charts/**"
+      - "tools/lint-compose-chart-parity.ts"
+      - ".github/workflows/helm-lint.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: helm-lint-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  helm-lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Helm
+        uses: azure/setup-helm@v4
+        with:
+          version: v3.16.4
+
+      - name: Install helm-unittest plugin
+        run: |
+          helm plugin install https://github.com/helm-unittest/helm-unittest --version 0.7.2 || true
+
+      - name: Install shellcheck
+        run: sudo apt-get update && sudo apt-get install -y shellcheck
+
+      - name: Install actionlint
+        run: |
+          bash <(curl -sSf https://raw.githubusercontent.com/rhysd/actionlint/main/scripts/download-actionlint.bash) latest /usr/local/bin
+          sudo mv /usr/local/bin/actionlint /usr/local/bin/actionlint || true
+
+      - name: Generate ephemeral CI secrets
+        id: secrets
+        run: |
+          for k in litellmMasterKey openrouterApiKey openaiApiKey pyannoteApiKey hfToken postgresOwnerPassword pgbouncerAdminPassword betterAuthSecret; do
+            v=$(openssl rand -base64 32 | tr -d '\n=' | cut -c1-40)
+            echo "${k}=${v}" >> "$GITHUB_OUTPUT"
+          done
+
+      - name: helm lint
+        run: |
+          helm lint charts/openwhispr \
+            --set-string secrets.litellmMasterKey=${{ steps.secrets.outputs.litellmMasterKey }} \
+            --set-string secrets.openrouterApiKey=${{ steps.secrets.outputs.openrouterApiKey }} \
+            --set-string secrets.openaiApiKey=${{ steps.secrets.outputs.openaiApiKey }} \
+            --set-string secrets.pyannoteApiKey=${{ steps.secrets.outputs.pyannoteApiKey }} \
+            --set-string secrets.hfToken=${{ steps.secrets.outputs.hfToken }} \
+            --set-string secrets.postgresOwnerPassword=${{ steps.secrets.outputs.postgresOwnerPassword }} \
+            --set-string secrets.pgbouncerAdminPassword=${{ steps.secrets.outputs.pgbouncerAdminPassword }} \
+            --set-string secrets.betterAuthSecret=${{ steps.secrets.outputs.betterAuthSecret }}
+
+      - name: helm template (validate render with valid secrets)
+        run: |
+          helm template ow charts/openwhispr \
+            -f .github/ci/values-ci.yaml \
+            --set-string secrets.litellmMasterKey=${{ steps.secrets.outputs.litellmMasterKey }} \
+            --set-string secrets.openrouterApiKey=${{ steps.secrets.outputs.openrouterApiKey }} \
+            --set-string secrets.openaiApiKey=${{ steps.secrets.outputs.openaiApiKey }} \
+            --set-string secrets.pyannoteApiKey=${{ steps.secrets.outputs.pyannoteApiKey }} \
+            --set-string secrets.hfToken=${{ steps.secrets.outputs.hfToken }} \
+            --set-string secrets.postgresOwnerPassword=${{ steps.secrets.outputs.postgresOwnerPassword }} \
+            --set-string secrets.pgbouncerAdminPassword=${{ steps.secrets.outputs.pgbouncerAdminPassword }} \
+            --set-string secrets.betterAuthSecret=${{ steps.secrets.outputs.betterAuthSecret }} \
+            > /tmp/rendered.yaml
+          test -s /tmp/rendered.yaml
+
+      - name: helm template (negative — bad secret fixture, expect failure)
+        run: |
+          if helm template ow charts/openwhispr \
+            -f charts/openwhispr/tests/values-bad-secret.yaml > /tmp/badrender.yaml 2>/tmp/badrender.err; then
+            echo "helm template should have failed on placeholder secret" >&2
+            exit 1
+          fi
+          grep -q "values.secrets" /tmp/badrender.err
+
+      - name: helm unittest
+        run: helm unittest charts/openwhispr
+
+      - name: shellcheck examples
+        run: shellcheck charts/openwhispr/examples/*.sh
+
+      - name: actionlint
+        run: actionlint .github/workflows/helm-lint.yml
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v3
+        with:
+          version: 11
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Compose ↔ chart parity lint
+        run: pnpm exec tsx tools/lint-compose-chart-parity.ts

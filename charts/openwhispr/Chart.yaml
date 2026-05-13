@@ -1,0 +1,32 @@
+apiVersion: v2
+name: openwhispr
+description: |
+  OpenWhispr Server — open-source, enterprise-grade, self-hosted backend for the
+  OpenWhispr Electron desktop client. Wraps the 18-service compose stack
+  (CNPG HA Postgres, Traefik 3, cert-manager, OTel Collector, LiteLLM, optional
+  bundled-AI on GPU nodes) into a single Helm chart.
+type: application
+# Chart version moves together with appVersion per STACK.md convention.
+version: 0.9.0-rc1
+# Locked to the release tag; release workflow (Plan 09-11) bumps both keys.
+appVersion: "0.9.0-rc1"
+kubeVersion: ">=1.28.0-0"
+home: https://github.com/openwhispr/openwhispr-server
+sources:
+  - https://github.com/openwhispr/openwhispr-server
+keywords:
+  - openwhispr
+  - transcription
+  - speech-to-text
+  - litellm
+  - whisper
+  - self-hosted
+maintainers:
+  - name: OpenWhispr Maintainers
+    url: https://github.com/openwhispr/openwhispr-server
+annotations:
+  # Renders only Cluster-prereq-friendly resources by default. Wave 0 chart
+  # ships skeleton only (ServiceAccount + Secrets path). Subsequent waves
+  # add Deployments, CNPG Cluster CR, IngressRoutes, etc.
+  category: Application
+  licenses: Apache-2.0

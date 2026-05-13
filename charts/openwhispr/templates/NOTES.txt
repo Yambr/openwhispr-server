@@ -1,0 +1,38 @@
+Thank you for installing {{ .Chart.Name }} (version {{ .Chart.Version }}, appVersion {{ .Chart.AppVersion }}).
+
+Cluster prerequisites (must be installed BEFORE this chart):
+
+  1. CloudNativePG operator (A2):       see charts/openwhispr/examples/cnpg-install.sh
+  2. Traefik 3 with two entrypoints:    see charts/openwhispr/examples/traefik-values.yaml
+                                        (websecure :443 + websecure-realtime :8443)
+  3. cert-manager:                      kubectl apply -f https://github.com/cert-manager/cert-manager/releases/latest/download/cert-manager.yaml
+  4. (Optional) LGTM stack (A3):        see charts/openwhispr/examples/lgtm-install.sh
+  5. (Optional) External Secrets Operator (A1, when secrets.mode=eso)
+
+Two-step launch flow (per pitfall #6: helm test hooks fire AFTER helm install --wait returns):
+
+  helm install ow charts/openwhispr -f your-values.yaml --wait --timeout 10m
+  helm test ow --timeout 5m
+
+The first command provisions everything; the second runs the first-launch
+SLO probe (lands in Plan 09-11) that asserts a synthetic /api/transcribe
+completes within 300 seconds of release start.
+
+To verify the install:
+
+  kubectl get pods -l app.kubernetes.io/instance={{ .Release.Name }} -n {{ .Release.Namespace }}
+  kubectl get cluster -l app.kubernetes.io/instance={{ .Release.Name }} -n {{ .Release.Namespace }}
+
+Secrets mode: {{ .Values.secrets.mode }}.
+{{- if eq .Values.secrets.mode "helm-values" }}
+
+  Inline Secret resource was rendered. The chart applied
+  `helm.sh/resource-policy: keep` so secrets persist across `helm uninstall`
+  (per T-09-09: prevents Better Auth secret regression on upgrade).
+{{- else if eq .Values.secrets.mode "eso" }}
+
+  An ExternalSecret resource was rendered against your configured
+  SecretStore. Render-time fail gates were SKIPPED (per pitfall #5).
+  Refuse-to-start enforcement moves to a pod-start initContainer in
+  Plan 09-06 once api/worker Deployments land.
+{{- end }}

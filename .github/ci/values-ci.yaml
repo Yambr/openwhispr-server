@@ -1,0 +1,49 @@
+# kind-safe overrides for CI. Hard rules per Pitfall #7 + #11:
+#   - storageClass = standard (kind has no RWX dynamic provisioner)
+#   - bundledAi.enabled = false (no GPU runner)
+#   - observability.embedded = false (no LGTM stack in CI)
+#   - postgres.replicas = 1 (kind single-node, no quorum)
+#   - Secrets are stubbed; CI workflows --set them to 32+ char random strings.
+
+postgres:
+  replicas: 1
+  storageClass: standard
+  storageSize: 1Gi
+
+valkey:
+  architecture: standalone
+  primary:
+    persistence:
+      enabled: false
+
+minio:
+  mode: standalone
+  persistence:
+    enabled: false
+
+bundledAi:
+  enabled: false
+
+observability:
+  embedded: false
+  serviceMonitor:
+    enabled: false
+  otelCollector:
+    enabled: false
+
+api:
+  replicas: 1
+  autoscaling:
+    enabled: false
+
+web:
+  replicas: 1
+
+worker:
+  autoscaling:
+    enabled: false
+
+# CI secrets are injected at workflow runtime via --set-string. Schema
+# requires non-empty 32+ char values; CI generates with `openssl rand -base64 32`.
+secrets:
+  mode: helm-values
