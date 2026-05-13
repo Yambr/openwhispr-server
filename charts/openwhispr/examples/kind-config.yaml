@@ -1,0 +1,30 @@
+# Phase 09.1 — kind cluster topology for live chart validation.
+#
+# 1 control-plane + 2 workers so HPA, PDB, anti-affinity, and DaemonSet
+# placement meaningfully exercise. The three extraPortMappings forward
+# Traefik's web (:8080), websecure (:8443), and websecure-realtime
+# (:8444) nodeports to host ports `18080/18443/18444` — chosen to avoid
+# collision with a running docker-compose stack which already binds
+# 8443 for Traefik.
+#
+# Finding 09.1-F1: original kind-config used 8443/8080/8444 → docker
+# refused with "port is already allocated" because the compose-side
+# Traefik holds 8443. Switched to 18xxx host ports; cluster-internal
+# NodePorts (30080/30443/30444) unchanged.
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+name: openwhispr
+nodes:
+  - role: control-plane
+    extraPortMappings:
+      - containerPort: 30443
+        hostPort: 18443
+        protocol: TCP
+      - containerPort: 30080
+        hostPort: 18080
+        protocol: TCP
+      - containerPort: 30444
+        hostPort: 18444
+        protocol: TCP
+  - role: worker
+  - role: worker
