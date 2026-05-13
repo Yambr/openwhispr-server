@@ -1,0 +1,57 @@
+name: spdx
+
+on:
+  pull_request:
+    paths:
+      - "**/*.ts"
+      - "**/*.tsx"
+      - "**/*.js"
+      - "**/*.jsx"
+      - "**/*.mjs"
+      - "**/*.cjs"
+      - "tools/spdx-header.ts"
+      - "tools/__tests__/spdx-header.test.ts"
+      - ".github/workflows/spdx.yml"
+  push:
+    branches: [main]
+    paths:
+      - "**/*.ts"
+      - "**/*.tsx"
+      - "**/*.js"
+      - "**/*.jsx"
+      - "**/*.mjs"
+      - "**/*.cjs"
+      - "tools/spdx-header.ts"
+      - ".github/workflows/spdx.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: spdx-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  spdx-audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v3
+        with:
+          version: 11
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: SPDX header audit
+        run: pnpm spdx:check
+
+      - name: Vitest — spdx-header codemod coverage gate (>=90/90/90/90)
+        run: pnpm test:spdx-header
