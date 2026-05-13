@@ -99,9 +99,14 @@ spec:
               port: 4000
             initialDelaySeconds: 30
             periodSeconds: 30
+          # Finding 09.1-F33 — real LiteLLM exposes both /health/liveliness
+          # and /health/readiness; mock-litellm:dev only has liveliness.
+          # Use the same endpoint for both probes — production install
+          # with real LiteLLM can override via values if separate readiness
+          # semantics matter.
           readinessProbe:
             httpGet:
-              path: /health/readiness
+              path: /health/liveliness
               port: 4000
             initialDelaySeconds: 10
             periodSeconds: 10

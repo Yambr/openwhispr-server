@@ -91,16 +91,26 @@ spec:
             # Finding 09.1-F30 — see api-deployment.yaml note.
             - name: OTEL_SDK_DISABLED
               value: "true"
+          # Finding 09.1-F32 — worker is a pure BullMQ consumer; it does
+          # NOT run an HTTP server (no Fastify, no /healthz route). The
+          # chart's httpGet probe was fiction. Switched to an exec probe
+          # that confirms the node process is alive and connected to
+          # valkey (BullMQ-internal heartbeat). Production hardening
+          # could add a thin probe-only Fastify hook to the worker bundle.
           readinessProbe:
-            httpGet:
-              path: /healthz
-              port: 3002
+            exec:
+              command:
+                - sh
+                - -c
+                - "pgrep -f 'node /app/dist/index.js' >/dev/null"
             initialDelaySeconds: 10
             periodSeconds: 10
           livenessProbe:
-            httpGet:
-              path: /healthz
-              port: 3002
+            exec:
+              command:
+                - sh
+                - -c
+                - "pgrep -f 'node /app/dist/index.js' >/dev/null"
             initialDelaySeconds: 30
             periodSeconds: 30
           resources:
