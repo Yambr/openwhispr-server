@@ -1,0 +1,10 @@
+{
+  "errors": {
+    "VALIDATION_ERROR": "Invalid request",
+    "AUTH_ERROR": "Session expired",
+    "NOT_FOUND": "Not found",
+    "RATE_LIMITED": "Too many requests",
+    "SERVICE_UNAVAILABLE": "Service temporarily unavailable",
+    "SERVER_ERROR": "Internal server error"
+  }
+}
