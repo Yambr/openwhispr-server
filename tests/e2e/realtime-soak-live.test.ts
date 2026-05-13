@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // tests/e2e/realtime-soak-live.test.ts
 //
 // Phase 04 / Plan 10 / Task 1 — 65-minute LIVE WSS soak against the REAL

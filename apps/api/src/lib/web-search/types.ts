@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // Phase 05 / Plan 03 — Web-search provider interface + typed errors.
 //
 // Source of truth: 05-03-PLAN.md + 05-RESEARCH.md § Pattern 5 (Web-Search

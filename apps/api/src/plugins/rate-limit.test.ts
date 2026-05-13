@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // Phase 6 / Plan 06-09 — layered rate-limit unit tests (D-RL1..3).
 //
 // Tests against the in-process backend (no Valkey/Redis client injected)

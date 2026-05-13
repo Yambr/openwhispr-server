@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // Phase 07.1 / Plan 09 — Browser-side fetch wrapper for apps/api endpoints.
 //
 // Centralises three same-origin concerns:

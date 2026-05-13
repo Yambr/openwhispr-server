@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // Phase 08.1 / Plan 01 / Task 1 — Forensic probe.
 //
 // Issues ONE real request to each of the four load-test endpoints, captures

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // Phase 07.1 / Plan 10 — U9 RSC entry for /app/notes/[id].
 //
 // === Access pattern: Branch B (list-then-filter) ===

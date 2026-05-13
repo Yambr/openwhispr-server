@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // Phase 07.1 / Plan 05 — auth-server unit tests (RED before GREEN).
 //
 // `getServerSession()` calls Better Auth's session endpoint over HTTP from

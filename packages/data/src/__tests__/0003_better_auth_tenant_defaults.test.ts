@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // Phase 02.5 / Plan 01 — RED tests for migration 0003_better_auth_tenant_defaults.sql.
 //
 // Source-of-record: upcoming Plan 02 commit (new migration file

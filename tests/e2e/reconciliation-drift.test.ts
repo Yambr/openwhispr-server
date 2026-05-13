@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // tests/e2e/reconciliation-drift.test.ts
 //
 // Phase 6 / Plan 06-12c / Task 1 — OBS-04 reconciliation drift e2e.

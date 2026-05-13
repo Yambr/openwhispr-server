@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 /**
  * First-launch SLO probe — DEPLOY-05 mitigation.
  *

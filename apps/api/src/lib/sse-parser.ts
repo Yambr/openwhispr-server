@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // Phase 04 / Plan 02 / Task 2 — Pure SSE → BACKEND_SPEC NDJSON translator.
 //
 // Consumes a `ReadableStream<Uint8Array>` of OpenAI Chat Completions SSE

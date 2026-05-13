@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // Phase 6 / Plan 06-10 — shared pino redact configuration.
 //
 // Canonical sensitive-key list + `makePino()` factory used by BOTH the API

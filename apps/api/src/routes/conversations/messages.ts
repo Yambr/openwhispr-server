@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // Phase 05 / Plan 07 / Task 3 — /api/conversations/messages (WIRE-25).
 //
 // Dual-method endpoint (mirrors ConversationsService.addMessage +

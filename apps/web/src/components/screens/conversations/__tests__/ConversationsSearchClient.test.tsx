@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // Phase 07.1 / Plan 11 — U13 conversations-search Client component tests (RED→GREEN).
 //
 // Surface verified:

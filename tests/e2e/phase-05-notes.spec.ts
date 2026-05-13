@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // tests/e2e/phase-05-notes — host-side e2e for WIRE-22.
 //
 // Round-trips the full notes CRUD + search lifecycle through Traefik

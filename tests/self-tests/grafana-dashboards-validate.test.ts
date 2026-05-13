@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 /**
  * grafana-dashboards-validate.test.ts — self-test for shipped Grafana
  * dashboards. Asserts every dashboard JSON under

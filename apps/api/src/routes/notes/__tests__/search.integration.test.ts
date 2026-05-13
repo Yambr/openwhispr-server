@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // Phase 05 / Plan 05 / Task 3 — search integration tests against real
 // Postgres (tsvector GIN + websearch_to_tsquery + ts_rank scoring).
 

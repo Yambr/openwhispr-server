@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // Phase 2 / Plan 04 / Task 1 — `email.ts` unit tests.
 //
 // Three branches the factory exposes:

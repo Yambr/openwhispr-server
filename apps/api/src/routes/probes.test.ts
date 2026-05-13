@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // Phase 6 / Plan 06-04 — GREEN (D-P1).
 //
 // Verifies the three kubelet-canonical probes + /api/health alias.

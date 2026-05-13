@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // tests/e2e/phase-05-transcriptions — host-side e2e for WIRE-26.
 //
 // Round-trips the full transcriptions CRUD lifecycle through Traefik

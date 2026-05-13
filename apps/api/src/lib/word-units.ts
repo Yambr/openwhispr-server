@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // Phase 03 / Plan 04 / Task 1 — minutesFromDuration helper.
 //
 // Minutes of audio rounded UP — semantics for usage_ledger kind

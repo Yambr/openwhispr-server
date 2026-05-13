@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // Phase 05 / Plan 06 — shared row→wire shape helper for folders routes.
 //
 // Mirrors apps/api/src/routes/notes/shape.ts. Every folders route MUST

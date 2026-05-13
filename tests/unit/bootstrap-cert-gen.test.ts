@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 /**
  * Phase 02.7 / D-05 — bootstrap.sh openssl SAN cert generation block.
  *

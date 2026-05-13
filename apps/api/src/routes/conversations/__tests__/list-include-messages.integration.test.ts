@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // Phase 05 / Plan 07 / Task 2 — list?include=messages integration tests.
 //
 // Validates D-27 array_agg branch:

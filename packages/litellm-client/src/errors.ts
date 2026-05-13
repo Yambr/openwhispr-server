@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // Phase 03 Plan 03 Task 1 — typed error classes for LiteLLM client.
 //
 // Two distinct error types so route handlers can map cleanly:

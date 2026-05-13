@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // Phase 6 Plan 06-08 — GREEN tests for email-delivery (D-W5).
 //
 // Real Postgres testcontainer: the handler is withTenantContext-wrapped so

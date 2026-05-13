@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // tests/integration/backup-restore.test.ts
 //
 // DATA-07 integration test: end-to-end exercise of scripts/backup/make-backup.sh

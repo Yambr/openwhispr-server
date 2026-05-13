@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // Phase 4: implement once /api/agent/stream lands.
 //
 // Phase 2 ships this file as an empty stub so the conformance suite's

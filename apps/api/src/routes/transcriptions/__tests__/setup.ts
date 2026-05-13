@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // Phase 05 / Plan 08 / Task 1 — shared test boot helper for
 // transcriptions integration tests. Mirrors folders/notes setup.ts.
 

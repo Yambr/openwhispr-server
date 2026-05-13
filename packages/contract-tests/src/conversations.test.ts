@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // Phase 05 / Plan 07 / Task 3 — WIRE-24 + WIRE-25 contract conformance
 // tests for /api/conversations/* (5 conversation routes + dual-method
 // /messages).

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 /**
  * Phase 04 / Plan 08 / Task 2b — NEGATIVE-CONTROL buffering-injection.
  *

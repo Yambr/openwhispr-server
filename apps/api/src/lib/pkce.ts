@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // Phase 2 / Plan 05 / Task 1 — PKCE (RFC 7636) helpers for the OAuth shim.
 //
 // Two pure functions, both crypto-grade. Used by `desktop-signin.ts` to

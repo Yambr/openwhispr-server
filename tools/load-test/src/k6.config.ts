@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // Phase 08 / Plan 06 — Task 3: k6 run-time configuration constants.
 //
 // Pure constants imported by main.ts. Keeping them here (a non-runtime

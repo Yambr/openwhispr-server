@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // Phase 2 / Plan 04 / Task 2 — rate-limit integration test for
 // /api/auth/verification-status (30/min keyed on (ip, email)).
 //

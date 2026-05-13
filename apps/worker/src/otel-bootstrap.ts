@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // Phase 6 / Plan 06-12c — Worker OTel SDK bootstrap (side-effect module).
 //
 // THIS FILE MUST BE IMPORTED AS THE FIRST STATEMENT OF apps/worker/src/index.ts

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 import { defineConfig } from "vitest/config";
 
 // Phase 04 Plan 07 — package-local vitest config.

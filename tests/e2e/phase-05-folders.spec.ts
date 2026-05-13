@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // tests/e2e/phase-05-folders — host-side e2e for WIRE-23.
 //
 // Round-trips the full folders CRUD lifecycle through Traefik (TLS) →

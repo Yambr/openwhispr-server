@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // Phase 07.1 / Plan 10 — U8 FoldersSidebar (Client Component).
 //
 // D-UX5 (Constitutional): folders are READ-ONLY in web. Desktop is the

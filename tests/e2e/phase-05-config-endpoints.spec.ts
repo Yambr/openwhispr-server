@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // tests/e2e/phase-05-config-endpoints — host-side e2e for WIRE-11
 // (GET /api/stt-config) + WIRE-12 (GET /api/note-recording-config).
 //

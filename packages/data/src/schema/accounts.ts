@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // Phase 2 / Plan 01 — Better Auth `account` table.
 //
 // One row per (user, provider) pair. Tenant-scoped; FORCE RLS attaches in

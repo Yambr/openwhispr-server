@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // Phase 07.1 / Plan 04 — UI-state fixture (D-TEST-3).
 //
 // D-TEST-3 boundary rule (NON-NEGOTIABLE):

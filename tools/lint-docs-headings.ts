@@ -1,4 +1,5 @@
 #!/usr/bin/env -S pnpm exec tsx
+// SPDX-License-Identifier: Apache-2.0
 /**
  * lint-docs-headings.ts — Phase 03 / Plan 01 / Task 1 (D-09).
  *

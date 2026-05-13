@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // tests/e2e/probes-dependency.test.ts
 //
 // Phase 6 / Plan 06-12a / Task 1 — OBS-05 health probes e2e.

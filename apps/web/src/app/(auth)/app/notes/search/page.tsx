@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // Phase 07.1 / Plan 10 — U10 RSC entry for /app/notes/search.
 //
 // Pure Client Component delegate — the search query is gated on q.length >= 2

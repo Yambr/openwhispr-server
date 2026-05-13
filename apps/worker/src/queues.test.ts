@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // Phase 6 Plan 06-08 — GREEN tests for the typed queue registry.
 //
 // BullMQ Queue is mocked entirely (same approach as typed-queue.test.ts).

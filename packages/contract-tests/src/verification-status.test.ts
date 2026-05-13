@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // Phase 2 / Plan 06 — GET /api/auth/verification-status contract test
 // (WIRE-02). Cookie-only endpoint — bearer must NOT bypass.
 //

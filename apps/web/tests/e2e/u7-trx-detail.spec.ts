@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // Phase 07.1 / Plan 09 — U7 transcription detail (state matrix + axe).
 //
 // Step 0 result: GET /api/transcriptions/list does NOT support ?id filter

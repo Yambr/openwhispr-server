@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // Phase 07.1 / Plan 04 — Infrastructure smoke spec (WEB-IMPL-03).
 //
 // Verifies the Plan 03 docker-compose wiring works end-to-end:

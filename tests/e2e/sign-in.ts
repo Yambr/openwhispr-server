@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // tests/e2e — host-side fixture sign-in helper.
 //
 // Mirrors `packages/contract-tests/src/helpers/sign-in-fixture.ts` but

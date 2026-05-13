@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // Phase 03 / Plan 06 / Task 1 — pyannote.ai REST client (D-07 REVISED).
 //
 // Thin undici wrapper over the 4-step pyannote.ai async API:

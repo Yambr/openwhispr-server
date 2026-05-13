@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // Phase 07.1 / Plan 12 — A2 Observability hub Playwright spec.
 //
 // Validates:

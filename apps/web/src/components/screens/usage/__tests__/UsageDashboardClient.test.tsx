@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // Phase 07.1 / Plan 08 — U4 Usage dashboard Client tests (RED→GREEN).
 //
 // Surface verified against the live GET /api/usage shape (apps/api/src/routes/usage.ts:67-71):

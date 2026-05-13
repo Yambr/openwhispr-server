@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 import { defineConfig } from "tsup";
 
 // Phase 08 / Plan 03 — bundle the mock-litellm server for the

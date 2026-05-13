@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // Phase 6 / Plan 06-12b — debug-only outbound-fetch helper.
 //
 // Wire shape: POST /__test/fetch  body={url:string}  →  200 {status:number}

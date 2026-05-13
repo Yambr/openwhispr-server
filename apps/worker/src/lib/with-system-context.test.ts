@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // Phase 6 Plan 06-07 — GREEN tests for withSystemContext (D-W2).
 import type { Job } from "bullmq";
 import pino from "pino";

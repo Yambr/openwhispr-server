@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // Phase 07.1 / Plan 11 — U13 Conversations search (Client Component).
 //
 // Reads `?q=<query>` from useSearchParams() and POSTs to

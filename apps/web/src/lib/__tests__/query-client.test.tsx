@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // Phase 07.1 / Plan 06 — TanStack Query provider tests (RED before GREEN).
 //
 // Verifies the Client provider mounts a QueryClient with the documented

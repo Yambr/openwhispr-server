@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // tests/e2e/agent-stream-first-line-latency.test.ts
 //
 // Phase 04 / Plan 09 / Task 2 — closes WIRE-07 SC#1 through the FULL

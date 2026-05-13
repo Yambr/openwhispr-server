@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // Phase 07.1 / Plan 07 — RED tests for SignUpForm (U2).
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";

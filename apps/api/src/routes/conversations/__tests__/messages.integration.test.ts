@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // Phase 05 / Plan 07 / Task 3 — WIRE-25 /api/conversations/messages
 // integration tests (POST + GET). Real Postgres + RLS.
 

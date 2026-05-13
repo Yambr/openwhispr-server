@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // Phase 05 / Plan 07 / Task 1 — conversations search integration tests.
 //
 // Covers: happy path with ts_rank score, websearch_to_tsquery

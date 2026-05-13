@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // Phase 07.1 / Plan 12 — A2 Observability hub Client Component (D-ADMIN-1, D-S1).
 //
 // Renders a static grid of deep-links into the operator's external

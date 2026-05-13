@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // Two-pool client factory unit tests — Phase 1 Plan 04 / DATA-01 / DATA-06.
 //
 // These tests exercise the env-validation paths (no DATABASE_URL set, no

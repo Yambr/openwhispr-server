@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // Phase 08 / Plan 03 / Task 1 — RED tests for latency helpers.
 //
 // Behaviours under test (mirrors PLAN.md <behavior> block):

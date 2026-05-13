@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // Phase 03 / Plan 04 / Task 1 — minutesFromDuration helper tests.
 //
 // Semantics locked in docs/wire-contracts-phase-3.md (Decision: wordsUsed

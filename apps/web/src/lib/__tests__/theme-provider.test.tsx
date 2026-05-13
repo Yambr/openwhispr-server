@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // Phase 07.1 / Plan 06 — theme-provider tests (RED before GREEN).
 //
 // Minimal wrapper around next-themes (already in deps). Persists user

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // Phase 6 / Plan 06-10 — unit tests for the shared pino redact policy.
 //
 // Asserts (a) every D-T4 anchor path is declared, (b) a sentinel sweep

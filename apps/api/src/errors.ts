@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // Phase 2 / Plan 03 / Task 1 — typed error classes for the centralized
 // envelope handler.
 //

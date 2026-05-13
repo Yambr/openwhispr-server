@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // Phase 03 / Plan 10 / Task 1 — DATA-03 schema-level idempotency property test.
 //
 // Complementary to packages/data/src/__tests__/usage-ledger.test.ts which

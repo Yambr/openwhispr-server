@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // Phase 07.1 / Plan 06 — error-boundary tests (RED before GREEN).
 //
 // Class component using React 19 error boundary lifecycle (getDerivedStateFromError

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // KEK/DEK envelope encryption — Phase 1 Plan 04 / D-11.
 //
 // Why an envelope at all:

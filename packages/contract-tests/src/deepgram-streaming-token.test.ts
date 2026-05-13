@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // Phase 04 / Plan 08 / Task 1d — POST /api/deepgram-streaming-token contract
 // test (CONTRACT-01 extension for WIRE-14, Deepgram Grant-Token mint).
 //

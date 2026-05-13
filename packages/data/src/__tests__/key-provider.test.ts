@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // KeyProvider dispatcher + EnvKeyProvider tests — Phase 1 Plan 04 /
 // D-12, PROVIDER-02.
 //

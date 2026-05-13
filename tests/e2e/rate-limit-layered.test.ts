@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // tests/e2e/rate-limit-layered.test.ts
 //
 // Phase 6 / Plan 06-12b / SCALE-04 / T-rate-limit-bypass — layered

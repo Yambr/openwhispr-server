@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // Phase 5 / Plan 01 — Tenant-scoped notes. RLS in 0007_notes_folders.sql.
 // content_search is a tsvector GENERATED ALWAYS AS (... ) STORED column,
 // indexed with GIN. Partial UNIQUE on (tenant_id, user_id, client_note_id)

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // Phase 2 / Plan 03 / Task 3 — `x-openwhispr-source` request-log tag
 // (D-16 / WIRE-19).
 //

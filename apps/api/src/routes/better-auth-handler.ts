@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // Phase 02.3 — Better Auth catch-all route plugin.
 //
 // Phase 02 Plan 04 left this wiring undone: buildApp's comments in

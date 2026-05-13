@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // Tenant-scoped sessions table. RLS attaches in 0000_initial.sql.
 //
 // Phase 02.12 — adopt Better Auth v1.6.9's canonical plain-text `token`

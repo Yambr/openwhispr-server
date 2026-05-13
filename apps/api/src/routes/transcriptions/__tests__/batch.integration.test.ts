@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // Phase 05 / Plan 08 / Task 1 — transcriptions batch-delete integration
 // tests against real Postgres + RLS.
 //

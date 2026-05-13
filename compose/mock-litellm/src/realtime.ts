@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // Phase 08.3 / Plan 01 / Task 2 — GREEN for the /v1/realtime echo handler.
 //
 // Minimal Fastify plugin that lets the k6 realtime-ws flow (and the

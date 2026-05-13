@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // Phase 03 Plan 08 — per-package coverage floor for apps/worker.
 //
 // CLAUDE.md mandates a per-phase ≥90% coverage floor on all new/modified

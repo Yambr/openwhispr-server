@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // Phase 07.1 / Plan 10 — U10 Notes search (Client Component).
 //
 // D-API verified (Plan 01): search is POST /api/notes/search with body

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // TEST-RLS-01 — fast-check property test for cross-tenant RLS isolation.
 //
 // Phase 1 / Plan 05. Drives 100+50+30+30 = 210 random tenant pairs through

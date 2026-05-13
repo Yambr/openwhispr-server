@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // Phase 07.1 / Plan 13.1 — Better Auth e2e fixture (worker-scoped storageState).
 //
 // Provides:

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // tests/e2e/horizontal-scale.test.ts
 //
 // Phase 6 / Plan 06-12b / SCALE-01 / D-P3 — horizontal-scale e2e.

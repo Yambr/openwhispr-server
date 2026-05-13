@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // Phase 05 / Plan 02 / Task 2 — GET /api/usage (WIRE-10).
 //
 // Wire shape: BACKEND_SPEC.md:416-435.

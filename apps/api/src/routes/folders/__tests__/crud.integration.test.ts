@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // Phase 05 / Plan 06 / Task 1 — folders CRUD integration tests against
 // real Postgres + RLS. Mirrors notes/__tests__/crud.integration.test.ts.
 //

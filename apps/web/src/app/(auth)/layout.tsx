@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // Phase 07.1 / Plan 05 — Authenticated route group layout.
 //
 // The Edge middleware (`src/middleware.ts`) does a cookie-existence check

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // Phase 5 / Plan 01 — Tenant-scoped settings rolled up at tenant level.
 // RLS attaches in 0006_tenant_settings.sql (ENABLE + FORCE + isolation
 // policy). AFTER INSERT trigger on tenants seeds a default row for every

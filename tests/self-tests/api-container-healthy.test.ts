@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // Phase 2 Plan 02 — D-23 self-test: bring up postgres+pgbouncer+valkey+
 // migrate+api with `--wait` and assert the api container reaches the
 // `healthy` state.

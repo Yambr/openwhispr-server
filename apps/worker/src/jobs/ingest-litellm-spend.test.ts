@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // Phase 03 Plan 08 — runIngestOnce integration test.
 //
 // Real Postgres via @testcontainers/postgresql; in-memory redis-like

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 /**
  * Phase 02.4 / G5a — better-auth-handler.ts bridge plugin.
  *

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // Phase 3 / Plan 02 / Task 2 — D-08 / RESEARCH A4 spike.
 //
 // Confirms that the `x-litellm-spend-logs-metadata` JSON header

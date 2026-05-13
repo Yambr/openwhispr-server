@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 /**
  * Phase 02.4 / G4 — observability stack (tempo + mimir + loki + otel-collector) starts clean.
  *

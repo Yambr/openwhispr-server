@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // Barrel export for the encryption module. Phase 1 Plan 04 / D-11, D-12.
 //
 // Importers should pull from `@openwhispr/data` (the package barrel) or

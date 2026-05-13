@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // Phase 04 / Plan 02 / Task 1 — Pure tool-call delta accumulator.
 //
 // OpenAI Chat Completions streaming emits `delta.tool_calls[].function.arguments`

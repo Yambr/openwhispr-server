@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // Unit tests for tools/seed-test-data.js.
 //
 // Exercised E2E in .github/workflows/helm-upgrade-matrix.yml against a real

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // Phase 5 / Plan 01 — Tenant-scoped folders. RLS in 0007_notes_folders.sql.
 // Self-referential parent_folder_id; soft-delete via deleted_at timestamptz.
 // Partial UNIQUE on (tenant_id, user_id, client_folder_id) per D-24.

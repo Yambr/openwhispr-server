@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // Phase 07.1 / Plan 10 — FoldersSidebar unit tests (RED→GREEN).
 //
 // D-UX5: folders are READ-ONLY in web. This test enforces ZERO mutation UI

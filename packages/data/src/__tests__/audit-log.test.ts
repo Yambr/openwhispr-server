@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // DATA-04 — audit_log JSONB roundtrip + B-tree index on created_at.
 //
 // Asserts that:

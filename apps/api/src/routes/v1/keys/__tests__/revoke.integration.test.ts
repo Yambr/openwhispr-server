@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // Phase 05 / Plan 09 / Task 3 — POST /api/v1/keys/:id/revoke
 // integration tests against real Postgres + RLS. Asserts:
 //   * Response shape `{ data: ApiKey }` with revoked_at populated (D-28)

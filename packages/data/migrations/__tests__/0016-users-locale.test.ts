@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // Phase 10 / Plan 10-01c — migration 0016: users.locale column.
 //
 // Adds `users.locale text NOT NULL DEFAULT 'en' CHECK (locale IN ('en','ru'))`.

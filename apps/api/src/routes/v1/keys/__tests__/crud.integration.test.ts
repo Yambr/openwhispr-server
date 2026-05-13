@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // Phase 05 / Plan 09 / Task 2 — /api/v1/keys/{list,create} integration
 // tests against real Postgres + RLS. Asserts:
 //   * V1Response envelope `{ data: T }` on every route (D-28)

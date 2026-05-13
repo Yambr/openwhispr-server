@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // Phase 2 / Plan 06 — tough-cookie@5 jar wrapper around globalThis.fetch.
 //
 // Each describe block that needs cookie-auth instantiates one CookieJar

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // Phase 2 / Plan 06 — CONTRACT-01 conformance harness env.
 //
 // All HTTP traffic targets BACKEND_URL / AUTH_URL — never an in-process

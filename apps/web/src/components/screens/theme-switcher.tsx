@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // Phase 07.1 / Plan 06 — Theme switcher dropdown (D-SEC-2 — UI preference only).
 //
 // Three options: Light / Dark / System. Sources i18n labels from the

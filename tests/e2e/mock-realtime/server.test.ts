@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // Phase 04 / Plan 07 / Task 1 — hermetic mock-realtime WS server tests.
 //
 // Test client uses the `ws` library (NOT @fastify/websocket — that's the

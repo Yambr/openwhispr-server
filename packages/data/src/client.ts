@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // Two-pool Drizzle client factory.
 //
 // Per RESEARCH-DB §"Pattern 1: Two-Pool Client Factory" and CONTEXT D-15:

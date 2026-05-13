@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // Phase 10 / Plan 02 — Language switcher (en | ru toggle).
 //
 // Mounted in AppShell next to the theme switcher (authenticated layout) and

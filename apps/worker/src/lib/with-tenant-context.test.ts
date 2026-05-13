@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // Phase 6 Plan 06-07 — GREEN tests for withTenantContext (D-W1).
 //
 // Real Postgres testcontainer (no mocks of internal logic per CLAUDE.md).

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // Self-test helpers for the docker-compose-touching suite — Phase 2 Plan 02.
 //
 // `dockerAvailable` is a sync gate evaluated at module-load. We probe by

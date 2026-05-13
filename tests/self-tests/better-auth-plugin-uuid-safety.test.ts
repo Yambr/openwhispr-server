@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 /**
  * Phase 02.8 / D-02 — Better Auth plugin UUID-safety CI lint guard.
  *

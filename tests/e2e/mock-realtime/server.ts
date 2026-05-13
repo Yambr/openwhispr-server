@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // Phase 04 / Plan 07 / Task 1 — hermetic mock-realtime WS server.
 //
 // Speaks the minimum subset of the OpenAI Realtime protocol the soak

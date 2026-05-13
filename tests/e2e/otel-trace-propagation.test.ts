@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // tests/e2e/otel-trace-propagation.test.ts
 //
 // Phase 6 / Plan 06-12c / Task 3 — OBS-01 / D-T3 OTel trace propagation e2e.

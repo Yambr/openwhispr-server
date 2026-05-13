@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // Phase 07.1 / Plan 06 — AdminShell component tests (RED before GREEN).
 //
 // AdminShell wraps the (admin) route group. NO session check (D-ADMIN-1 —

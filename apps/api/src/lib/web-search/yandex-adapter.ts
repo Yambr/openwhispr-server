@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // Phase 05 / Plan 03 — Yandex Search API v2 LIVE adapter.
 //
 // Replaces the wire-shape stub shipped in commit f7904a8. Implements the

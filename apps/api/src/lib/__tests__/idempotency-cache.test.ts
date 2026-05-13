@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // Phase 03 / Plan 06 / Task 2 — idempotency-cache.ts tests.
 //
 // Strategy: a hand-rolled in-memory RedisLike fake records every SET/GET

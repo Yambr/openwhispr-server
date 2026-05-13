@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // Phase 07.1 / Plan 12 — ObservabilityClient unit tests (RED before GREEN).
 //
 // A2 Observability hub is a Client Component that renders a static card grid

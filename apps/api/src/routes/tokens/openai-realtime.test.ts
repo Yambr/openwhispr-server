@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // Phase 04 / Plan 04 / Task 1 — POST /api/openai-realtime-token tests.
 //
 // Strategy mirrors assemblyai.test.ts / deepgram.test.ts: hermetic Fastify

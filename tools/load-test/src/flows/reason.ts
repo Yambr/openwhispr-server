@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // Phase 08 / Plan 06 — Task 2 GREEN: reason flow.
 //
 // POSTs a canned prompt to /api/reason. The prompt is selected

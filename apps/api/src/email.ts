@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // Phase 2 / Plan 04 / Task 1 — `EmailService` (D-26 / PROVIDER-04).
 //
 // Source of truth: 02-RESEARCH-CONTAINER.md § Pattern 4.

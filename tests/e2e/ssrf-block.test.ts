@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // tests/e2e/ssrf-block.test.ts
 //
 // Phase 6 / Plan 06-12b / SCALE-04 / T-ssrf — SSRF defense e2e.

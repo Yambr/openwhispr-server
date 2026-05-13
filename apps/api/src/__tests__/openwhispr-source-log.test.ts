@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // Phase 2 / Plan 04 / Task 3 — AUTH-06 / D-16: x-openwhispr-source
 // preserved on every request's structured log child.
 //

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // Phase 03 / Plan 04 / Task 2 — buildAllRoutes registry tests.
 //
 // Verifies the conditional registration semantics for the litellm-backed

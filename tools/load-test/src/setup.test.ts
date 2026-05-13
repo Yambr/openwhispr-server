@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // Phase 08 / Plan 02 — Task 2 RED: provisionUsers() user provisioner.
 //
 // `provisionUsers()` is the pure, vitest-testable core of the k6 setup()

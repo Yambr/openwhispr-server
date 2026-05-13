@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // Phase 5 / Plan 01 — shared schema helpers.
 //
 // `tsvector` customType for Postgres full-text search columns. The

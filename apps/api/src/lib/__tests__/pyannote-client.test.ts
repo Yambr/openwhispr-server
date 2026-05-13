@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // Phase 03 / Plan 06 / Task 1 — pyannote-client.ts tests.
 //
 // Strategy: undici MockAgent intercepts every pyannote.ai endpoint so we

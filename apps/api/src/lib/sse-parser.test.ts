@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // Phase 04 / Plan 02 / Task 2 — TDD GREEN suite for SSE → NDJSON parser.
 //
 // Fixture corpus under apps/api/src/routes/agent/__fixtures__/ provides

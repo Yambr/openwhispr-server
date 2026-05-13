@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // Phase 05 / Plan 06 / Task 1 — folders list integration tests
 // (keyset pagination + soft-delete + limit clamp + before/since
 // intersection).

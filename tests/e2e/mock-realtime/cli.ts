@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // Phase 04 / Plan 07 / Task 1 — CLI entrypoint for the mock-realtime
 // container. Boots `startMockRealtimeServer` on `PORT` (default 8765),
 // host 0.0.0.0 so peer compose services can reach it.

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // Phase 2 / Plan 03 / Task 2 — `dualAuthHook` (D-04, AUTH-03).
 //
 // Source of truth: 02-RESEARCH-AUTH.md § Dual-Auth Hook.

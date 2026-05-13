@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // Phase 2 / Plan 03 / Task 3 — `/api/check-user` plugin tests.
 //
 // Strategy: register the plugin against a hand-rolled fake

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // tests/e2e/phase-05-streaming-usage — host-side e2e for
 // WIRE-09 (POST /api/streaming-usage) + WIRE-10 (GET /api/usage).
 //

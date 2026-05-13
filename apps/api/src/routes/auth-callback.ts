@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // Phase 2 / Plan 05 / Task 2 — `/api/auth/desktop-callback/:provider`.
 //
 // Empirical AUTH-A1 finding (2026-05-09):

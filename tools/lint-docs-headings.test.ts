@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 /**
  * Phase 03 / Plan 01 / Task 1 — TDD test for tools/lint-docs-headings.ts
  * AND for the document docs/wire-contracts-phase-3.md (D-09).

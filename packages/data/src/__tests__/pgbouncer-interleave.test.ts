@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // PgBouncer-interleave property test — Phase 1 Plan 04 / D-20.
 //
 // The load-bearing claim of the multi-tenant data plane is "no row from

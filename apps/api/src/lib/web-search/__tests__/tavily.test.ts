@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // Phase 05 / Plan 03 / Task 2 — Tavily adapter tests.
 //
 // Strategy: undici MockAgent intercepts api.tavily.com at the network

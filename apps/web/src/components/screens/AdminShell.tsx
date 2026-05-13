@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // Phase 07.1 / Plan 06 — Admin shell (D-ADMIN-1 + D-STRUCT-1).
 //
 // Two-row admin sidebar (Observability, Configuration). NO sign-out button:

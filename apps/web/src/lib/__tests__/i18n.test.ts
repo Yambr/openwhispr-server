@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // Phase 07.1 / Plan 06 — i18next server instance tests (RED before GREEN).
 //
 // RESEARCH § Pattern 6: `getServerI18n(lng, ns)` creates a per-request

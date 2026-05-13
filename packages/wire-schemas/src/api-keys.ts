@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 /**
  * Phase 5 / Plan 01 — Wire schemas for /api/v1/keys/* family.
  * Mirrors ~/openwhispr/src/services/ApiKeysService.ts byte-for-byte (D-22).

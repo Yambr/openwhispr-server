@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // Phase 6 / Plan 03 / Task 1 — GREEN.
 //
 // OTel SDK bootstrap module unit tests per 06-03-PLAN.md acceptance

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // Phase 6 Plan 06-08 — audit-archive BullMQ job.
 //
 // D-A3: System mode. Receives `{partition_name}` from partman-maintenance

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // Programmatic migration runner — invoked by `make migrate` and by the
 // `pnpm --filter @openwhispr/data run migrate` script.
 //

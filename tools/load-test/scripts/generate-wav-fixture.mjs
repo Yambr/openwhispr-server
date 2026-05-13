@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+// SPDX-License-Identifier: Apache-2.0
 // Phase 08 / Plan 06 — Task 1 GREEN: generate the WAV fixture used by
 // the transcribe flow. Reproducible: re-running yields a byte-identical
 // file (deterministic 220 Hz sine, no randomness, fixed amplitude).

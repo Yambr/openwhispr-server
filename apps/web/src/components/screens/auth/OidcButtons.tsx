@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // Phase 07.1 / Plan 07 — OIDC button row (D-UX4).
 //
 // Renders one Button per provider id enumerated in

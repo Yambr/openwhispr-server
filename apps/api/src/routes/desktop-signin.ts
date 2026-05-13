@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // Phase 2 / Plan 05 / Task 1 — `GET /api/desktop-signin/:provider`
 // (D-05, AUTH-02).
 //

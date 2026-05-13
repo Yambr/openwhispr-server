@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // Phase 02.12 — Better-Auth-native plain-text token storage.
 // Phase 02 Plan 01's `hashToken` (SHA-256) helper was removed; the
 // AUTH-04 5-minute overlap CONTRACT survives via plain-text storage on

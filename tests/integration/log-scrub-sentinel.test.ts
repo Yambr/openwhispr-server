@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 /**
  * Phase 6 / Plan 06-10 — sentinel sweep integration test (OBS-03, D-T4).
  *

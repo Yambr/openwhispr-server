@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // Phase 07.1 / Plan 12 — A3 Config view Client Component (D-API4, D-S1, D-ADMIN-1).
 //
 // Read-only operator view of STT pipeline + note recording config.

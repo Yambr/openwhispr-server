@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // Phase 5 / Plan 01 — User-scoped overrides on top of tenant_settings.
 // RLS attaches in 0006_tenant_settings.sql. Every row carries tenant_id
 // so the canonical isolation policy applies even though PK is user_id.

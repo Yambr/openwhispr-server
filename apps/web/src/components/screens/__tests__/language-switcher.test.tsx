@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // Phase 10 / Plan 02 — LanguageSwitcher unit tests.
 //
 // The component is a small client island that:

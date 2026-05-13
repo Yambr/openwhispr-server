@@ -1,4 +1,5 @@
 #!/usr/bin/env tsx
+// SPDX-License-Identifier: Apache-2.0
 /**
  * lint-compose-chart-parity.ts — DEPLOY-02 parity gate.
  *

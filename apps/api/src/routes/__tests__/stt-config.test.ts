@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // Phase 05 / Plan 04 / Task 2 — GET /api/stt-config plugin tests.
 //
 // Mirror of streaming-usage.test.ts strategy: hand-rolled fake

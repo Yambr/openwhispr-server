@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // Unit tests for `withTenant<T>` — Phase 1 Plan 04 / D-18.
 //
 // These tests exercise the helper's contract WITHOUT a real Postgres:

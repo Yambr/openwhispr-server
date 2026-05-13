@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // Phase 04 / Plan 06 / Task 3 — buildAllRoutes registration tests for the
 // four new Phase-4 routes:
 //   * POST /api/agent/stream                  (gated on deps.litellm)

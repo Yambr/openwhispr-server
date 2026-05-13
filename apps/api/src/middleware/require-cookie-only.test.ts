@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // Phase 2 / Plan 03 / Task 2 — `requireCookieOnly` unit tests.
 //
 // BACKEND_SPEC.md mandates that `/api/auth/verification-status` and

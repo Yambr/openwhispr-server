@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // Phase 2 / Plan 08 / Task 2 — `/api/_test/*` routes (NODE_ENV=test gated).
 // Phase 02.12 — migrated to plain-text session.token storage (BA-native).
 //

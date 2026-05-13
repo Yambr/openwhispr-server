@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // tests/e2e/transcribe — host-side e2e for POST /api/transcribe.
 //
 // Round-trips a multipart audio body through Traefik (TLS) → api →

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // Phase 07.1 / Plan 08 — U5 SessionsTable Client tests (RED→GREEN).
 //
 // Surface verified against Better Auth 1.6.9 list-sessions response:

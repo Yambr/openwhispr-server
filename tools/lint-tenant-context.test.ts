@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // Phase 6 / Plan 06-09 — lint-tenant-context.test.ts — D-W4 layer 1.
 //
 // Flips the Wave 0 RED stub GREEN. Spawns the lint script via execFile

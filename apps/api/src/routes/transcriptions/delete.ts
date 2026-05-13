@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // Phase 05 / Plan 08 / Task 1 — DELETE /api/transcriptions/delete
 // (WIRE-26).
 //

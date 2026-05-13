@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // tests/e2e — host-side compose stack helpers.
 //
 // Boots the docker-compose stack with the contract-test profile +

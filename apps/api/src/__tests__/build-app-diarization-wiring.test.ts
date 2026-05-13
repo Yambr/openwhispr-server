@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // Phase 03 / CR-01 fix — buildApp must thread `redis` (and `mockDiarization`)
 // through to buildAllRoutes so the /v1/audio/diarization route is actually
 // registered in production.

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // Phase 04 / Plan 03 / Task 3 — POST /api/deepgram-streaming-token tests.
 //
 // Mirrors assemblyai.test.ts; differences: provider host, request body

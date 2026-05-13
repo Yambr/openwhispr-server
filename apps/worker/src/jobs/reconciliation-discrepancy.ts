@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // Phase 6 Plan 06-08 — reconciliation-discrepancy BullMQ job.
 //
 // D-R3 (alert + backfill): Tenant context. Child of reconciliation-daily-

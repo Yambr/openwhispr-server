@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // Phase 2 / Plan 01 / Task 3 — resolve the seeded "default" tenant UUID.
 //
 // Phase 1 seeded a single `default` tenant with a stable UUID

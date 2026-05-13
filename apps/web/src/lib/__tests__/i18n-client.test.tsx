@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // Phase 07.1 / Plan 06 — i18next Client provider tests (RED before GREEN).
 //
 // The Client provider receives a serialized `resources` snapshot from the

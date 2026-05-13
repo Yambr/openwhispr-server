@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // Phase 08 / Plan 06 — Task 1 RED: tests for createK6Adapter +
 // createMockAdapter shape contracts and WAV/JSON fixture validity.
 //
