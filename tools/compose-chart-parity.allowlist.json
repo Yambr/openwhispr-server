@@ -1,0 +1,33 @@
+{
+  "_comment": "Allowlist of docker-compose services that have NO corresponding chart Deployment/StatefulSet/Job/DaemonSet — by design.",
+  "test-only": {
+    "_comment": "Compose-only test artifacts; never deployed to K8s.",
+    "services": ["fixture-idp", "seed", "contract-test-runner", "mailpit", "speaches_models"]
+  },
+  "cluster-prereq": {
+    "_comment": "Cluster-scoped operator / addon prerequisites. Operator installs out-of-band (see charts/openwhispr/examples/*.sh).",
+    "services": ["traefik", "loki", "tempo", "mimir", "grafana", "prometheus", "otel-collector"]
+  },
+  "bundled-ai-conditional": {
+    "_comment": "Chart renders only when bundledAi.enabled=true; OFF in values-ci.yaml (T-09-08).",
+    "services": ["speaches"]
+  },
+  "load-test-only": {
+    "_comment": "docker-compose.load-test.yml horizontal-scale-out artifacts; production scale-out happens via HPA + Pooler CRD instead.",
+    "services": ["pgbouncer-2", "pgbouncer-3", "pgbouncer-4"]
+  },
+  "wave-deferred": {
+    "_comment": "Compose services whose chart Deployments land in later waves. REMOVE WHEN PLAN LANDS:\n  - postgres -> 09-04 (CNPG Cluster CR)\n  - pgbouncer -> 09-05 (CNPG Pooler CRD per A6)\n  - valkey -> 09-05 (Bitnami sub-chart per A5)\n  - minio -> 09-05 (Bitnami sub-chart per A5)\n  - migrate -> 09-08 (Helm hook Job)\n  - litellm -> 09-07 (Deployment)\n  - api/web/worker -> 09-06 (Deployments + HPAs + PDBs)",
+    "services": [
+      "postgres",
+      "pgbouncer",
+      "valkey",
+      "minio",
+      "migrate",
+      "litellm",
+      "api",
+      "web",
+      "worker"
+    ]
+  }
+}
