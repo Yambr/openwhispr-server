@@ -16,20 +16,24 @@ out of the box, corporate-LiteLLM-ready by env override.
 
 ## Quickstart — < 5 minutes from clone to first transcription
 
+The canonical operator entrypoint is **Variant A** (embedded LiteLLM Proxy,
+hosted providers via `.env` API keys). See [`examples/README.md`](./examples/README.md)
+for the full variant matrix.
+
 ```bash
-# 1. Clone and configure.
+# 1. Clone and configure for Variant A.
 git clone https://github.com/openwhispr/openwhispr-server.git
 cd openwhispr-server
-cp .env.example .env
+cp .env.embedded.example .env
 
 # 2. Fill in at least one provider key.
-#    The bundled-default topology routes /api/transcribe via LiteLLM
-#    to a public provider. The cheapest path is GROQ_API_KEY (Whisper-large-v3).
-$EDITOR .env   # set BETTER_AUTH_SECRET (32+ bytes) and GROQ_API_KEY
+#    Variant A routes /api/transcribe via the embedded LiteLLM to a public
+#    provider. The cheapest path is GROQ_API_KEY (Whisper-large-v3).
+$EDITOR .env   # set every REPLACE_ME including BETTER_AUTH_SECRET and at least one provider key
 
-# 3. Bring the stack up.
-docker compose up -d
-docker compose ps                       # confirm api, worker, postgres, valkey, litellm are healthy
+# 3. Bring the Variant A stack up (canonical default per Plan 11-01).
+docker compose -f docker-compose.embedded-litellm.yml up -d
+docker compose -f docker-compose.embedded-litellm.yml ps   # confirm api, worker, postgres, valkey, litellm are healthy
 
 # 4. Register a user and verify (dev profile uses mailpit for verification email).
 curl -fsS -X POST http://localhost:3000/api/auth/sign-up/email \

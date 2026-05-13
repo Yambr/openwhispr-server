@@ -1,0 +1,750 @@
+# OpenWhispr Server — Variant A canonical compose (Plan 11-01).
+#
+# Embedded LiteLLM Proxy + open-source / hosted AI providers via .env API
+# keys. This is the default OSS quickstart entrypoint:
+#
+#   cp .env.embedded.example .env
+#   # populate REPLACE_ME values
+#   docker compose -f docker-compose.embedded-litellm.yml up --wait
+#
+# What's included: api, web, worker, migrate, postgres, pgbouncer, valkey,
+# minio, traefik, otel-collector, grafana, loki, tempo, mimir, litellm,
+# plus mailpit (dev SMTP catch-all that the api depends on for verification
+# emails — operators with a real SMTP relay set SMTP_HOST=... in .env which
+# silently bypasses the mailpit container).
+#
+# What's NOT included: speaches, mock-litellm, fixture-idp, seed,
+# contract-test-runner. Variant C operators who need local Speaches with
+# gated pyannote weights run the separate Variant C overlay (Plan 11-03).
+#
+# HF_TOKEN is intentionally absent — Variant A never downloads gated
+# Hugging Face artifacts. See .env.embedded.example for the 12-key Variant A
+# operator scaffold.
+#
+# Original `docker-compose.yml` remains the development / full-stack entry
+# point (it carries all profiles including contract-test fixtures and is
+# what `make up` targets). Operators self-hosting OSS should prefer this
+# file as the canonical entrypoint.
+#
+# Compose Spec v2: NO `version:` key. Profiles:
+#   - default  : every service in this file (Variant A operator)
+#   - obs-only : observability stack only
+#   - db-only  : Postgres + PgBouncer only
+
+name: openwhispr
+
+networks:
+  openwhispr_internal:
+    driver: bridge
+
+volumes:
+  postgres_data:
+  valkey_data:
+  minio_data:
+  loki_data:
+  tempo_data:
+  mimir_data:
+  grafana_data:
+
+services:
+  postgres:
+    # Phase 6 / Plan 02 — custom image with pg_partman 5.2.4 built from
+    # source on top of postgres:17.5-alpine. Required by migration 0014
+    # (audit_log monthly RANGE partitioning, D-A2). The `image:` tag is
+    # the local name used by `docker compose pull` / scans; `build:` runs
+    # locally otherwise. Multi-arch (amd64+arm64) buildable.
+    build:
+      context: ./compose/postgres
+      dockerfile: Dockerfile
+      args:
+        PG_PARTMAN_VERSION: "5.2.4"
+    image: openwhispr/postgres:17.5-pgpartman
+    profiles: [default, db-only]
+    networks: [openwhispr_internal]
+    environment:
+      POSTGRES_USER: ${POSTGRES_OWNER_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_OWNER_PASSWORD}
+      POSTGRES_DB: openwhispr
+      # Phase 01.2 — pass through the role passwords so 00-roles.sh can
+      # envsubst them into 00-roles.sql.tpl before piping to psql. The
+      # Postgres entrypoint only auto-exposes POSTGRES_USER/PASSWORD/DB
+      # to init scripts; everything else must be declared explicitly.
+      POSTGRES_OWNER_PASSWORD: ${POSTGRES_OWNER_PASSWORD}
+      POSTGRES_APP_PASSWORD: ${POSTGRES_APP_PASSWORD}
+      # Phase 03 Plan 01 — POSTGRES_OWNER_USER is read by
+      # packages/data/migrations/init/01-litellm-database.sh to set the
+      # OWNER of the `litellm` database. Already set above as POSTGRES_USER
+      # on first init; declared explicitly so the script's quote_ident
+      # interpolation is decoupled from the bootstrap-superuser env-var name.
+      POSTGRES_OWNER_USER: ${POSTGRES_OWNER_USER}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      # Plan 03 (phase 01) fills this directory with role/RLS bootstrap SQL;
+      # Phase 03 Plan 01 added 01-litellm-database.sh as the fresh-install
+      # path for the separate `litellm` Postgres database (LITELLM-01).
+      # Existing-volume upgrade path (HIGH-1) is covered by the migrate
+      # runner's ensureLitellmDatabase() helper — initdb scripts only run
+      # on a freshly-initialized data volume.
+      #
+      # CRITICAL (Phase 03 e2e fix): both scripts MUST live in the same
+      # mounted directory. A second mount of `compose/postgres/initdb` to
+      # `/docker-entrypoint-initdb.d/litellm` failed at runtime — Docker
+      # cannot create a subdir inside a `:ro` mount. The 01-litellm-database.sh
+      # script was relocated into packages/data/migrations/init alongside
+      # 00-roles.sh; the redundant second mount was removed.
+      - ./packages/data/migrations/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 10s
+
+  # D-02 override: edoburu/pgbouncer instead of bitnami/pgbouncer. Bitnami's
+  # free Docker Hub PgBouncer image was retired in 2025 (paid Bitnami Secure
+  # Images subscription only). edoburu is the de-facto OSS choice with
+  # >10M pulls and env-var-driven config. See 01-RESEARCH-INFRA.md §2.2.
+  pgbouncer:
+    image: edoburu/pgbouncer:v1.25.1-p0
+    profiles: [default, db-only]
+    networks: [openwhispr_internal]
+    environment:
+      DB_HOST: postgres
+      DB_PORT: "5432"
+      DB_USER: ${POSTGRES_APP_USER}
+      DB_PASSWORD: ${POSTGRES_APP_PASSWORD}
+      DB_NAME: openwhispr
+      POOL_MODE: transaction
+      AUTH_TYPE: scram-sha-256
+      MAX_CLIENT_CONN: "2000"
+      DEFAULT_POOL_SIZE: "100"
+      RESERVE_POOL_SIZE: "5"
+      MAX_PREPARED_STATEMENTS: "200"
+      IGNORE_STARTUP_PARAMETERS: extra_float_digits,search_path
+    volumes:
+      - ./compose/pgbouncer/pgbouncer.ini:/etc/pgbouncer/pgbouncer.ini:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -p 5432 || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
+
+  valkey:
+    image: valkey/valkey:8.1-alpine
+    profiles: [default]
+    networks: [openwhispr_internal]
+    environment:
+      VALKEY_PASSWORD: ${VALKEY_PASSWORD}
+    command: ["sh", "-c", "exec valkey-server --requirepass \"$$VALKEY_PASSWORD\""]
+    volumes:
+      - valkey_data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "valkey-cli -a \"$$VALKEY_PASSWORD\" ping | grep -q PONG"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  minio:
+    image: minio/minio:RELEASE.2025-09-07T16-13-09Z
+    profiles: [default]
+    networks: [openwhispr_internal]
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
+    command: ["server", "/data", "--console-address", ":9001", "--address", ":9000"]
+    volumes:
+      - minio_data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:9000/minio/health/live"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 10s
+
+  traefik:
+    image: traefik:v3.6
+    profiles: [default]
+    # Phase 02.15 — Network aliases for in-cluster `api.localhost` /
+    # `auth.localhost` resolution (Group G closure). Docker's embedded DNS
+    # resolves these names to traefik's container IP for every service on
+    # `openwhispr_internal`, so the contract-test-runner (and any future
+    # in-cluster client that needs to follow an api 302 to its publicly-
+    # configured `OPENWHISPR_API_URL=https://api.localhost`) reaches
+    # traefik via the canonical-public hostname instead of ECONNREFUSE-ing
+    # on container loopback 127.0.0.1:443. Symmetric with prod DNS:
+    # operators publish api.localhost via /etc/hosts on the host; we
+    # publish it via Docker DNS inside the network. SAN on the bootstrap
+    # cert already covers both hostnames.
+    networks:
+      openwhispr_internal:
+        aliases:
+          - api.localhost
+          - auth.localhost
+    # Only Traefik publishes host ports (D-05). 80/443 are user traffic;
+    # 8443 is the Phase 04 Plan 05 dedicated WSS realtime entrypoint
+    # (websecure-realtime, idleTimeout 3600s — isolates long-lived
+    # /v1/realtime sessions from the short-JSON :443 ingress pool to
+    # mitigate T-04-02 ingress-pool exhaustion). 8080 is the dev
+    # dashboard (gate behind basic-auth in prod, Phase 9).
+    ports:
+      - "80:80"
+      - "443:443"
+      - "8443:8443"
+      - "8080:8080"
+    volumes:
+      - ./compose/traefik/traefik.yml:/etc/traefik/traefik.yml:ro
+      - ./compose/traefik/dynamic.yml:/etc/traefik/dynamic.yml:ro
+      - ./compose/traefik/certs:/certs:ro
+      # Phase 07.1 Plan 03 — read-only docker socket mount so the docker
+      # provider declared in traefik.yml can discover label-tagged
+      # containers (the `web` service). RO is the documented secure
+      # pattern: Traefik only LISTS containers; it never invokes
+      # docker exec / start / stop via this socket.
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    command:
+      - --ping=true
+    healthcheck:
+      test: ["CMD", "traefik", "healthcheck", "--ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:0.151.0
+    profiles: [default, obs-only, load-test-mock, load-test-realistic]
+    networks: [openwhispr_internal]
+    command: ["--config=/etc/otelcol-contrib/config.yaml"]
+    volumes:
+      - ./compose/otel-collector/config.yaml:/etc/otelcol-contrib/config.yaml:ro
+    depends_on:
+      loki:
+        condition: service_healthy
+      tempo:
+        condition: service_healthy
+      mimir:
+        # Phase 06.1 — distroless image cannot expose docker HEALTHCHECK;
+        # `service_started` is the contract upgrade. The OTLP receiver
+        # tolerates upstream-not-ready by buffering + retrying with backoff.
+        condition: service_started
+    # Phase 06.1 — no HEALTHCHECK: otel/opentelemetry-collector-contrib:0.151
+    # is distroless (no shell, no wget, no curl — only the otelcol-contrib
+    # binary). Docker HEALTHCHECK requires an in-image executable. Dependents
+    # below switch to `service_started`; the collector is itself a buffering
+    # tier so partial-readiness is tolerated.
+
+  loki:
+    image: grafana/loki:3.5.0
+    profiles: [default, obs-only, load-test-mock, load-test-realistic]
+    networks: [openwhispr_internal]
+    volumes:
+      - loki_data:/loki
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:3100/ready >/dev/null 2>&1 || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 15s
+
+  tempo:
+    image: grafana/tempo:2.8.0
+    profiles: [default, obs-only, load-test-mock, load-test-realistic]
+    networks: [openwhispr_internal]
+    # Phase 06.1 — explicit config file. The grafana/tempo image has no
+    # usable default backend; without -config.file the binary aborts
+    # with `unknown backend ""`.
+    command: ["-config.file=/etc/tempo/tempo.yaml"]
+    volumes:
+      - ./compose/tempo/tempo.yaml:/etc/tempo/tempo.yaml:ro
+      - tempo_data:/var/tempo
+    healthcheck:
+      # Phase 06.1 — grafana/tempo:2.x is distroless (no /bin/sh), so
+      # CMD-SHELL is unusable. Invoke busybox wget directly via CMD form.
+      # `--spider` returns 0 only on HTTP 2xx, so /ready 503 (ring-join)
+      # naturally fails the probe; start_period budgets cold-start time.
+      test: ["CMD", "/busybox/wget", "--spider", "-q", "http://127.0.0.1:3200/ready"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+      start_period: 60s
+
+  mimir:
+    image: grafana/mimir:2.16.0
+    profiles: [default, obs-only]
+    networks: [openwhispr_internal]
+    # Phase 06.1 — explicit config file with target=all (single-binary)
+    # and filesystem backend. Without it mimir starts with the upstream
+    # default that expects S3 + memberlist with multi-replica ring,
+    # never reaching `ready`.
+    command: ["-config.file=/etc/mimir/mimir.yaml"]
+    volumes:
+      - ./compose/mimir/mimir.yaml:/etc/mimir/mimir.yaml:ro
+      - mimir_data:/data
+    # Phase 06.1 — no HEALTHCHECK: grafana/mimir:2.x is a distroless image
+    # (no shell, no wget, no curl — only the `mimir` binary). Docker
+    # HEALTHCHECK requires an in-image executable. Dependents below switch
+    # to `service_started` for mimir specifically; orchestration-level
+    # liveness moves to Helm/K8s probes in Phase 9 where a sidecar
+    # (or kubelet HTTP probe) issues the /ready check.
+
+  grafana:
+    image: grafana/grafana:11.6.0
+    profiles: [default, obs-only]
+    networks: [openwhispr_internal]
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD}
+    volumes:
+      - ./compose/grafana/provisioning:/etc/grafana/provisioning:ro
+      - grafana_data:/var/lib/grafana
+    depends_on:
+      loki:
+        condition: service_healthy
+      tempo:
+        condition: service_healthy
+      mimir:
+        # Phase 06.1 — distroless mimir cannot expose docker HEALTHCHECK;
+        # grafana provisions mimir as a datasource at first request, which
+        # tolerates a not-yet-ready upstream and retries on each query.
+        condition: service_started
+    healthcheck:
+      # Phase 08-07 fix — grafana 11.6 emits the /api/health JSON with a
+      # space after every colon (`"database": "ok"`). The previous grep
+      # pattern `"database":"ok"` had no space and never matched, so the
+      # healthcheck stayed `starting` until retries exhausted. Use a
+      # tolerant pattern with `grep -E` and an optional whitespace.
+      test:
+        - CMD-SHELL
+        - wget -qO- http://127.0.0.1:3000/api/health | grep -Eq '"database":[[:space:]]*"ok"'
+      interval: 5s
+      timeout: 3s
+      retries: 12
+      # Phase 06.1 — first-boot installs the grafana-pyroscope-app plugin
+      # over the network (~22s on a cold cache); api/health serves
+      # `database:starting` until the bootstrap finishes. start_period
+      # budgets that one-time delay.
+      start_period: 90s
+
+  # Phase 2 Plan 02 — One-shot migration runner. Runs as openwhispr_owner
+  # DIRECT to postgres:5432 (NOT pgbouncer). DDL through transaction-mode
+  # pooling is the documented anti-pattern; migrate.ts asserts the URL
+  # hostname does not contain "pgbouncer".
+  #
+  # `restart: "no"` is QUOTED (Pitfall #8): unquoted `no` parses as boolean
+  # false in some YAML libraries.
+  #
+  # The api service gates on `service_completed_successfully` so api never
+  # boots until migrate exits 0 — rolling-deploy ready (DEPLOY-04).
+  migrate:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    profiles: [default, db-only, load-test-mock, load-test-realistic]
+    networks: [openwhispr_internal]
+    restart: "no"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      pgbouncer:
+        condition: service_healthy
+    env_file: .env
+    # Phase 01.2 — bundle is now `.cjs` (was `.js`) so Node treats it
+    # as CommonJS regardless of the api package.json `type: module` that
+    # ships in the same image at /app/package.json.
+    command: ["node", "/app/packages/data/dist/migrate.cjs"]
+
+  # Phase 03 / Plan 01 — Bundled LiteLLM Proxy sidecar (LITELLM-01 / D-01).
+  #
+  # Pinned to v1.83.14-stable (>= v1.83.7-stable carries the multipart-
+  # passthrough fix natively — PROJECT.md "What NOT to Use" forbids 1.82.x).
+  # Multi-arch image: ghcr.io/berriai/litellm publishes amd64 + arm64.
+  #
+  # Operator override: set LITELLM_BASE_URL in .env to point at a corporate
+  # LiteLLM (LITELLM-05). The bundled service is still in the `default`
+  # profile but the api service ignores it whenever LITELLM_BASE_URL points
+  # elsewhere.
+  #
+  # depends_on:
+  #   - postgres healthy : litellm shares the pg cluster (separate `litellm`
+  #     database, init script + migrate runner ensure it exists)
+  #   - migrate completed : ensureLitellmDatabase() in the runner is the
+  #     existing-volume safety net (HIGH-1)
+  litellm:
+    image: ghcr.io/berriai/litellm:main-v1.83.14-stable
+    profiles: [default]
+    networks: [openwhispr_internal]
+    environment:
+      LITELLM_MASTER_KEY: ${LITELLM_MASTER_KEY}
+      # Phase 03 e2e fix — LiteLLM v1.83+ requires DATABASE_URL non-empty
+      # at boot (Prisma engine validates via P1012). Default to the
+      # bundled `litellm` co-tenant DB created by
+      # packages/data/migrations/init/01-litellm-database.sh; operators
+      # who already export LITELLM_DATABASE_URL keep their override.
+      LITELLM_DATABASE_URL: ${LITELLM_DATABASE_URL:-postgres://${POSTGRES_OWNER_USER}:${POSTGRES_OWNER_PASSWORD}@postgres:5432/litellm}
+      DATABASE_URL: ${LITELLM_DATABASE_URL:-postgres://${POSTGRES_OWNER_USER}:${POSTGRES_OWNER_PASSWORD}@postgres:5432/litellm}
+      # Provider keys — `:-` so a fresh clone with empty keys does NOT
+      # block container boot. Endpoints whose backing key is missing
+      # surface 503 envelopes at request time (per Plan 03/04/07
+      # error-envelope contract).
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
+      GROQ_API_KEY: ${GROQ_API_KEY:-}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      # Phase 03 D-07 REVISED — PYANNOTE_API_KEY is consumed by the
+      # Fastify diarization route on the `api` service, NEVER forwarded
+      # into the litellm container. Threat T-03-01-06 mitigation: the
+      # absence of PYANNOTE_API_KEY here is intentional and verified by
+      # the plan's automated check (grep PYANNOTE on the litellm env
+      # block must return zero hits).
+    command: ["--config", "/etc/litellm/config.yaml", "--port", "4000", "--num_workers", "2"]
+    volumes:
+      # Phase 03 e2e fix — LITELLM_CONFIG_FILE selects the active config:
+      # default = litellm_config.yaml (production); contract-test profile
+      # uses litellm_config.contract.yaml (hermetic mock_response). The
+      # `make contract-test` target sets LITELLM_CONFIG_FILE so the bind
+      # picks the right file without needing two compose files.
+      - ./compose/litellm/${LITELLM_CONFIG_FILE:-litellm_config.yaml}:/etc/litellm/config.yaml:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    healthcheck:
+      # Phase 03 e2e fix — the bundled LiteLLM image (ghcr.io/berriai/litellm)
+      # does NOT ship wget or curl. Use the venv'd python3 (always present
+      # since LiteLLM is a Python service) with urllib to probe liveliness.
+      # urllib raises non-zero on non-2xx, satisfying healthcheck contract.
+      test: ["CMD", "python3", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:4000/health/liveliness',timeout=2).status==200 else 1)"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 30s
+    restart: unless-stopped
+
+  # Phase 2 Plan 02 — API container. Closes Phase 1 D-08 / SC#1 partial:
+  # the entrypoint runs check-default-secrets.cjs BEFORE node main, so
+  # `MASTER_KEK=changeme` is rejected at start time even if the operator
+  # bypassed bootstrap.sh.
+  #
+  # No `ports:` directive — Traefik (compose/traefik/dynamic.yml) routes
+  # https://api.localhost → http://api:3000. Only Traefik publishes ports
+  # to the host (D-05).
+  api:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    profiles: [default]
+    networks: [openwhispr_internal]
+    env_file: .env
+    environment:
+      NODE_ENV: production
+      OPENWHISPR_API_URL: ${OPENWHISPR_API_URL:-https://api.localhost}
+      AUTH_URL: ${AUTH_URL:-https://api.localhost}
+      # Phase 02.17 / D-02 — OPENWHISPR_PROTOCOL accepts a comma-separated
+      # list (parsed in apps/api/src/lib/scheme-allowlist.ts). The default
+      # registers `mycorp-whispr` so contract tests covering the custom-
+      # override scheme matrix in oauth-redirect.test.ts pass out of the
+      # box. Built-ins (openwhispr, openwhispr-dev, openwhispr-staging) are
+      # always allowed via BUILTIN_SCHEMES — no need to repeat here.
+      # Production operators override with their own scheme list.
+      OPENWHISPR_PROTOCOL: ${OPENWHISPR_PROTOCOL:-mycorp-whispr}
+      # Phase 02.3 — extra trusted origins for in-cluster traffic (e.g.
+      # the contract-test seed service POST-ing http://api:3000/api/auth/sign-up).
+      # Comma-separated list parsed by apps/api/src/auth.ts; in addition to
+      # AUTH_URL + OPENWHISPR_API_URL, NOT a replacement.
+      AUTH_TRUSTED_ORIGINS_EXTRA: "http://api:3000"
+      # Phase 02.21 / Residual C — opt-in flag for the test-only routes
+      # plugin (/api/_test/force-rotate, /api/_test/health-authed) needed
+      # by the AUTH-04 token-rotation contract test. Default OFF — the
+      # `make contract-test` target sets this to "true" via the env file
+      # bootstrap so the in-cluster contract suite can mint rotations,
+      # while every other docker-compose invocation (operator self-host,
+      # `docker compose up`) inherits the safe default and 404s on the
+      # _test paths. PRODUCTION OPERATORS MUST NEVER set this var to
+      # "true" in their .env — it exposes a session-rotation shortcut
+      # intended only for the contract-test stack inside openwhispr_internal.
+      OPENWHISPR_TEST_ROUTES: ${OPENWHISPR_TEST_ROUTES:-false}
+      # Phase 07.1 / Plan 13.2 — opt-out of Better Auth's email-enumeration
+      # protection. With requireEmailVerification:true, BA 1.6.9 normally
+      # returns a synthetic success response on dup sign-up to hide account
+      # existence from unauthenticated callers. Setting this var to "1"
+      # makes the apps/api `onExistingUserSignUp` hook throw a real
+      # USER_ALREADY_EXISTS so the desktop client and the U2 Playwright
+      # spec can surface the duplicate-email Alert. Production operators
+      # leave this unset to retain the canonical anti-enumeration behaviour.
+      OPENWHISPR_DISABLE_EMAIL_ENUMERATION_PROTECTION: ${OPENWHISPR_DISABLE_EMAIL_ENUMERATION_PROTECTION:-}
+      # Variant A — OIDC is operator-supplied. Better Auth's genericOAuth
+      # uses LAZY discovery (it only fetches the issuer's
+      # /.well-known/openid-configuration when an OAuth flow is actually
+      # attempted), so leaving these empty is safe; the api boots cleanly
+      # and OIDC sign-in surfaces a runtime error only when an operator
+      # forgets to wire a real IdP. Plan 11-01 cleaned the previous
+      # default that pointed at the contract-test fixture identity
+      # provider (only available in the contract-test profile of the
+      # base docker-compose.yml).
+      OIDC_ISSUER_URL: ${OIDC_ISSUER_URL:-}
+      OIDC_CLIENT_ID: ${OIDC_CLIENT_ID:-}
+      OIDC_CLIENT_SECRET: ${OIDC_CLIENT_SECRET:-}
+      # Phase 03 / Plan 01 — bundled LiteLLM endpoint + master key. Override
+      # LITELLM_BASE_URL in .env to point at a corporate LiteLLM (LITELLM-05).
+      LITELLM_BASE_URL: ${LITELLM_BASE_URL:-http://litellm:4000}
+      LITELLM_MASTER_KEY: ${LITELLM_MASTER_KEY}
+      # Phase 03 D-07 REVISED — pyannote.ai key is consumed by the Fastify
+      # diarization route (apps/api/src/routes/diarization.ts in Plan 06),
+      # NOT by the LiteLLM sidecar. Forwarded only to the api container.
+      PYANNOTE_API_KEY: ${PYANNOTE_API_KEY:-}
+      # Phase 03 e2e back-fill — MOCK_DIARIZATION=true short-circuits the
+      # diarization route to a fixture response (apps/api/src/routes/diarization.ts:71).
+      # Forwarded from the host env so `make e2e-hermetic` (and any other
+      # caller that wants the mock-mode happy path without a real
+      # PYANNOTE_API_KEY) can opt in via export. Default is empty —
+      # production operators MUST NOT set this in their .env (mock mode
+      # returns canned segments regardless of audio content).
+      MOCK_DIARIZATION: ${MOCK_DIARIZATION:-}
+      # Phase 03 / CR-01 fix — Valkey URL for the diarization idempotency
+      # cache. buildApp() reads VALKEY_URL and constructs the redis client;
+      # if unset the /v1/audio/diarization route is intentionally NOT
+      # registered (operator-actionable 404). Wire to the bundled valkey
+      # service so default `docker compose up` boots with diarization on.
+      VALKEY_URL: ${VALKEY_URL:-redis://:${VALKEY_PASSWORD}@valkey:6379/0}
+      # Phase 6 / Plan 06-12c — OTel SDK exporter endpoint. The api's
+      # otel-bootstrap.ts (Plan 06-03) constructs NodeSDK without an
+      # explicit exporter URL, so it inherits the OTEL spec default of
+      # http://localhost:4317 — which resolves to the api container
+      # itself, not the otel-collector sidecar. Without this env var
+      # NO spans, NO metrics, NO logs reach Tempo/Mimir/Loki.
+      # OBS-01 trace-propagation e2e is the test that catches this gap.
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-http://otel-collector:4317}
+      OTEL_EXPORTER_OTLP_PROTOCOL: ${OTEL_EXPORTER_OTLP_PROTOCOL:-grpc}
+      OTEL_SERVICE_NAME: ${OTEL_SERVICE_NAME:-openwhispr-api}
+      # Phase 10 / Plan 10-01d — operator-overridable locale directory.
+      # The image bakes `apps/api/dist/i18n/locales/{en,ru}.json` via the
+      # tsup onSuccess hook (see apps/api/tsup.config.ts), and i18n/init.ts
+      # honors LOCALES_DIR before falling back to the bundled path. The
+      # bind mount below points LOCALES_DIR at the source-tree JSON so
+      # operators can re-translate strings without rebuilding the image —
+      # `docker compose restart api` is enough to pick up edits. Read-only
+      # so the container cannot mutate the host tree.
+      LOCALES_DIR: /app/locales
+    volumes:
+      # Phase 10 / Plan 10-01d — see LOCALES_DIR comment above.
+      - ./apps/api/src/i18n/locales:/app/locales:ro
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      litellm:
+        condition: service_healthy
+      pgbouncer:
+        condition: service_healthy
+      valkey:
+        condition: service_healthy
+      otel-collector:
+        condition: service_started
+      # Phase 07.1 / Plan 13.3 — Mailpit promoted to the default profile so
+      # the apps/api SMTP transport (SMTP_HOST=mailpit in .env) has a live
+      # SMTP catch-all out of the box. U2 sign-up's "check your email"
+      # success state needs the verification-email send to succeed; without
+      # mailpit reachable the nodemailer transport throws and Better Auth
+      # surfaces a generic Sign-up failed alert.
+      mailpit:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:3000/api/health"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 30s
+    restart: unless-stopped
+
+  # Phase 03 Plan 08 — BullMQ worker that ingests LiteLLM_SpendLogs into
+  # our usage_ledger every 30s (LITELLM-07 / DATA-03 / SCALE-03).
+  #
+  # Runs as `openwhispr_owner` (BYPASSRLS) so it can write usage_ledger
+  # rows for any tenant after resolving tenant_id per row from the users
+  # table. Reads LiteLLM_SpendLogs DIRECT from postgres:5432 (NOT
+  # pgbouncer — Pitfall #9, cross-DB queries break through transaction-
+  # mode pooling). Watermark stored in Valkey under
+  # `litellm:spend:last_start_time` — replay-safe via ON CONFLICT DO
+  # NOTHING on usage_ledger.request_id (UPSERT converges with the api
+  # routes' inline ledger writes from Plan 04/05).
+  #
+  # No published port (worker has no HTTP listener). `restart:
+  # unless-stopped` recovers from process death; the BullMQ job loop is
+  # the liveness signal.
+  worker:
+    build:
+      context: .
+      dockerfile: apps/worker/Dockerfile
+    profiles: [default]
+    networks: [openwhispr_internal]
+    env_file: .env
+    environment:
+      NODE_ENV: production
+      VALKEY_HOST: valkey
+      VALKEY_PORT: "6379"
+      VALKEY_PASSWORD: ${VALKEY_PASSWORD}
+      # Direct postgres connection (NOT pgbouncer). Defaults to the same
+      # owner credentials used by the migrate runner; an operator can set
+      # LITELLM_READ_DATABASE_URL explicitly to point at a different
+      # cluster.
+      LITELLM_READ_DATABASE_URL: ${LITELLM_READ_DATABASE_URL:-postgres://${POSTGRES_OWNER_USER}:${POSTGRES_OWNER_PASSWORD}@postgres:5432/litellm}
+      # DATABASE_URL_OWNER is already in .env (Phase 1).
+      # Phase 6 / Plan 06-12c — OTel SDK exporter endpoint + service name.
+      # reconciliation-daily-check (Plan 06-08) registers observable gauges
+      # `litellm_reconciliation_drift_pct` / `*_usd_cents`; the worker SDK
+      # bootstrap (apps/worker/src/otel-bootstrap.ts) installs a
+      # PeriodicExportingMetricReader so those gauges actually export to
+      # the otel-collector and reach Mimir.
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-http://otel-collector:4317}
+      OTEL_EXPORTER_OTLP_PROTOCOL: ${OTEL_EXPORTER_OTLP_PROTOCOL:-grpc}
+      OTEL_SERVICE_NAME: ${OTEL_SERVICE_NAME_WORKER:-openwhispr-worker}
+      # Phase 10 / Plan 10-01d — operator-overridable locale directory for
+      # the email-template renderer. apps/worker/src/i18n/template-renderer.ts
+      # honors LOCALES_DIR before falling back to the bundled dist path.
+      # The bind mount below points LOCALES_DIR at the source-tree files so
+      # operators can re-translate subjects/bodies without rebuilding the
+      # image — `docker compose restart worker` picks up edits.
+      LOCALES_DIR: /app/locales
+    volumes:
+      # Phase 10 / Plan 10-01d — see LOCALES_DIR comment above.
+      - ./apps/worker/src/i18n/locales:/app/locales:ro
+    depends_on:
+      litellm:
+        condition: service_healthy
+      valkey:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+      otel-collector:
+        condition: service_started
+    restart: unless-stopped
+
+  # Phase 07.1 Plan 03 — Next.js 15 web app (WEB-IMPL-03 / D-DEPLOY-1 /
+  # D-DEPLOY-2 / D-ADMIN-1 / D-ADMIN-2). Same-origin deploy behind Traefik:
+  # router `web` (priority 1, PathPrefix `/`) handles every non-/api/* path;
+  # router `web-admin` (priority 100, PathPrefix `/admin`) attaches the
+  # `admin-basicauth` Traefik middleware so /admin/* is gated at the edge
+  # without an application-level role check (Phase 7 A4 refutation: Better
+  # Auth v1.6.9 has no `role` column).
+  #
+  # Routing precedence: the existing `api` router (Host(api.localhost), file
+  # provider) ranks above `web` for /api/* because Traefik scores rules
+  # primarily by specificity, and we explicitly set `web.priority=1` to keep
+  # web the absolute fallback. `web-admin.priority=100` outranks `web` so
+  # /admin/* always engages basic-auth first.
+  #
+  # Network: openwhispr_internal only — no host port. Traefik discovers the
+  # service via the docker provider added in compose/traefik/traefik.yml
+  # (read-only socket mount above on the traefik service).
+  #
+  # ADMIN_BASIC_AUTH_USERS: htpasswd-format `user:hash` entries, comma-
+  # separated. Bcrypt hashes contain `$` which docker-compose interpolates;
+  # operators MUST escape each `$` as `$$` in their `.env` (documented in
+  # .env.example). The label below interpolates the value at compose-up
+  # time; Traefik then sees the un-escaped htpasswd line.
+  web:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+      # Phase 07.1 / Plan 13.3 — NEXT_PUBLIC_* envs must be baked at BUILD
+      # time (Next.js statically replaces process.env.NEXT_PUBLIC_* in the
+      # client bundle). Compose passes these from the host `.env` into the
+      # Dockerfile's `ARG`s so the resulting image carries the operator's
+      # external observability deep-links. Empty defaults preserve the
+      # graceful Alert path in ObservabilityClient when grafana is unset.
+      args:
+        NEXT_PUBLIC_GRAFANA_BASE_URL: ${NEXT_PUBLIC_GRAFANA_BASE_URL:-}
+        NEXT_PUBLIC_TEMPO_BASE_URL: ${NEXT_PUBLIC_TEMPO_BASE_URL:-}
+        NEXT_PUBLIC_MIMIR_BASE_URL: ${NEXT_PUBLIC_MIMIR_BASE_URL:-}
+        NEXT_PUBLIC_LOKI_BASE_URL: ${NEXT_PUBLIC_LOKI_BASE_URL:-}
+        NEXT_PUBLIC_OIDC_PROVIDERS: ${NEXT_PUBLIC_OIDC_PROVIDERS:-google,github,oidc}
+    profiles: [default]
+    networks: [openwhispr_internal]
+    env_file: .env
+    environment:
+      NODE_ENV: production
+      # Same-origin: server-side fetches from RSC / route handlers reach
+      # apps/api on the internal bridge (no Traefik hop). The browser-side
+      # fetches go through Traefik via relative `/api/*` paths.
+      INTERNAL_API_URL: http://api:3000
+      # Phase 07.1 / Plan 13.2 — Playwright SSR-prefetch escape hatch.
+      # When set to "1", every RSC page that would otherwise call
+      # `queryClient.prefetchQuery` skips the prefetch so the Client subtree
+      # issues the same useQuery against /api/* in the browser, where
+      # `page.route()` can intercept. Production deploys leave this unset.
+      PLAYWRIGHT_DISABLE_SSR_PREFETCH: ${PLAYWRIGHT_DISABLE_SSR_PREFETCH:-}
+      # /admin/observability deep-links (Phase 07.1 A2). Empty defaults hide
+      # the links gracefully; operators populate per environment.
+      NEXT_PUBLIC_GRAFANA_BASE_URL: ${NEXT_PUBLIC_GRAFANA_BASE_URL:-}
+      NEXT_PUBLIC_TEMPO_BASE_URL: ${NEXT_PUBLIC_TEMPO_BASE_URL:-}
+      NEXT_PUBLIC_MIMIR_BASE_URL: ${NEXT_PUBLIC_MIMIR_BASE_URL:-}
+      NEXT_PUBLIC_LOKI_BASE_URL: ${NEXT_PUBLIC_LOKI_BASE_URL:-}
+      # OIDC provider button slugs surfaced on /sign-in (U1). Server-side
+      # OIDC config lives in apps/api per Phase 2 PROVIDER-03; this var
+      # controls UI visibility only.
+      NEXT_PUBLIC_OIDC_PROVIDERS: ${NEXT_PUBLIC_OIDC_PROVIDERS:-google,github,oidc}
+    depends_on:
+      api:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:3000/api/health"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 30s
+    restart: unless-stopped
+    labels:
+      - "traefik.enable=true"
+      # Catch-all router: every request to Host(api.localhost) not consumed
+      # by the more-specific api router falls through here. priority=1 keeps
+      # it the absolute last-resort match.
+      - "traefik.http.routers.web.rule=Host(`api.localhost`)"
+      - "traefik.http.routers.web.priority=1"
+      - "traefik.http.routers.web.entrypoints=websecure"
+      - "traefik.http.routers.web.tls=true"
+      - "traefik.http.routers.web.service=web-svc"
+      # Admin router: PathPrefix(/admin) + basic-auth middleware. priority=100
+      # outranks `web` so /admin/* engages the gate before falling through.
+      - "traefik.http.routers.web-admin.rule=Host(`api.localhost`) && PathPrefix(`/admin`)"
+      - "traefik.http.routers.web-admin.priority=100"
+      - "traefik.http.routers.web-admin.entrypoints=websecure"
+      - "traefik.http.routers.web-admin.tls=true"
+      - "traefik.http.routers.web-admin.service=web-svc"
+      - "traefik.http.routers.web-admin.middlewares=admin-basicauth@docker"
+      # Backend service: Next.js standalone listens on 3000.
+      - "traefik.http.services.web-svc.loadbalancer.server.port=3000"
+      # admin-basicauth middleware definition. ADMIN_BASIC_AUTH_USERS in
+      # .env MUST escape each bcrypt `$` as `$$` (compose interpolation);
+      # Traefik receives the un-escaped htpasswd line.
+      - "traefik.http.middlewares.admin-basicauth.basicauth.users=${ADMIN_BASIC_AUTH_USERS}"
+
+  # Phase 2 Plan 02 — Mailpit dev SMTP catch-all.
+  # Phase 07.1 / Plan 13.3 — promoted to `default` profile so the bundled
+  # OSS quickstart (`docker compose up`) and the e2e test stack both
+  # capture verification emails out of the box. Production operators who
+  # want a real SMTP relay set `SMTP_HOST=` to their relay hostname in
+  # `.env`; that override silently bypasses mailpit (the api never
+  # references the mailpit service name unless `SMTP_HOST=mailpit`).
+  # Image pinned to a minor tag (NOT `:latest`).
+  #
+  # Healthcheck: /livez was added in v1.20+ but is documented to
+  # respond with 200 in v1.29. We use `--spider` which only checks
+  # status; if /livez ever 404s, the fallback to /api/v1/info is wired
+  # via `||` so the healthcheck stays green regardless (CONTAINER-A2).
+  mailpit:
+    image: axllent/mailpit:v1.29
+    profiles: [default, dev, load-test-mock, load-test-realistic]
+    networks: [openwhispr_internal]
+    environment:
+      MP_MAX_MESSAGES: "5000"
+      MP_SMTP_AUTH_ACCEPT_ANY: "1"
+      MP_SMTP_AUTH_ALLOW_INSECURE: "1"
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - wget --quiet --tries=1 --spider http://localhost:8025/livez || wget --quiet --tries=1 --spider http://localhost:8025/api/v1/info
+      interval: 10s
+      timeout: 3s
+      retries: 3
+

@@ -1,3 +1,11 @@
+# DEPRECATED — Plan 11-01 promoted Variant A's canonical overlay to
+# `values-embedded-litellm.yaml`. This file is preserved as a backward-
+# compatible alias for operators with existing `-f values-oss-quickstart.yaml`
+# install commands; new operators should reference `values-embedded-litellm.yaml`
+# directly. Plan 11-04 may re-evaluate full removal after a deprecation
+# window. The body below is functionally identical to the new file's
+# Variant-A-only defaults (no HF_TOKEN, embedded LiteLLM, single-replica).
+#
 # OSS single-node quickstart overlay. Minimizes everything for a fresh kind
 # / single-VM install. Pair with --set-string secrets.* on the CLI.
 #
