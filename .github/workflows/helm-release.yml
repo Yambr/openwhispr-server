@@ -1,0 +1,97 @@
+name: helm-release
+
+# Chart release on tag push (v*). Packages charts/openwhispr/, pushes the
+# OCI artifact to ghcr.io/<owner>/charts/openwhispr, then opens a follow-up
+# PR that bumps .chart-versions/previous to the just-released tag — so the
+# next helm-upgrade-matrix.yml run exercises the real N-1 → N transition.
+#
+# The follow-up PR pattern decouples the release tag from the version-pin
+# commit, keeping the released ref clean.
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write       # release commit + PR create
+  packages: write       # GHCR OCI push
+  pull-requests: write  # peter-evans/create-pull-request
+
+concurrency:
+  group: helm-release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Resolve chart tag (strip leading v)
+        id: tag
+        run: |
+          ref="${GITHUB_REF_NAME#v}"
+          echo "value=${ref}" >> "$GITHUB_OUTPUT"
+
+      - name: Setup Helm
+        uses: azure/setup-helm@v4
+        with:
+          version: v3.16.4
+
+      - name: Log in to GHCR
+        run: |
+          echo "${{ secrets.GITHUB_TOKEN }}" | \
+            helm registry login ghcr.io -u "${{ github.actor }}" --password-stdin
+
+      - name: Helm dependency build
+        run: helm dependency build charts/openwhispr
+
+      - name: Helm package
+        run: |
+          mkdir -p .cr-release-packages
+          helm package charts/openwhispr \
+            --version "${{ steps.tag.outputs.value }}" \
+            --app-version "${{ steps.tag.outputs.value }}" \
+            --destination .cr-release-packages
+
+      - name: Push chart to GHCR OCI
+        run: |
+          helm push \
+            ".cr-release-packages/openwhispr-${{ steps.tag.outputs.value }}.tgz" \
+            "oci://ghcr.io/${{ github.repository_owner }}/charts"
+
+      - name: Run chart-releaser (GitHub Pages index)
+        uses: helm/chart-releaser-action@v1.6.0
+        with:
+          charts_dir: charts
+          skip_existing: true
+        env:
+          CR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Update .chart-versions/previous on default branch
+        run: |
+          echo "${{ steps.tag.outputs.value }}" > .chart-versions/previous
+
+      - name: Open follow-up PR bumping .chart-versions/previous
+        uses: peter-evans/create-pull-request@v7.0.5
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          branch: chore/bump-chart-versions-previous-${{ steps.tag.outputs.value }}
+          base: main
+          commit-message: |
+            chore: bump .chart-versions/previous to ${{ steps.tag.outputs.value }} post-release
+          title: |
+            chore: bump .chart-versions/previous to ${{ steps.tag.outputs.value }} post-release
+          body: |
+            Released chart version `${{ steps.tag.outputs.value }}` to GHCR OCI registry.
+
+            This PR updates `.chart-versions/previous` so that the next
+            `helm-upgrade-matrix.yml` run exercises the real
+            N-1 → HEAD transition starting from this tag.
+
+            Auto-opened by `.github/workflows/helm-release.yml`.
+          add-paths: |
+            .chart-versions/previous
