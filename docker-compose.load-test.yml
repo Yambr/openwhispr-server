@@ -365,7 +365,29 @@ services:
   # still boots but diarization endpoints surface a 503 envelope.
   # ---------------------------------------------------------------------
   speaches:
-    image: ghcr.io/speaches-ai/speaches:latest-cpu
+    # Phase 08.6-01: build from upstream master branch instead of the
+    # `latest-cpu` tag (v0.8.2) because the released tag does NOT expose
+    # /v1/audio/diarization (verified empirically against /openapi.json —
+    # only /v1/audio/{transcriptions,translations,speech,voices,models}
+    # are present). The diarization router (src/speaches/routers/diarization.py)
+    # lives on master and ships POST /v1/audio/diarization returning the
+    # synchronous {duration, segments[]} shape that matches our internal
+    # DiarizationResponse contract.
+    #
+    # Canonical CPU build mechanism (per upstream compose.cpu.yaml): the
+    # single Dockerfile accepts BASE_IMAGE as a build-arg. Defaulting to
+    # nvidia/cuda:12.6.3-base-ubuntu24.04 (GPU); overriding to ubuntu:24.04
+    # produces a CPU-only image that does NOT require nvidia-container-runtime.
+    #
+    # First build is ~10 min (uv sync + Python deps + ~2 GB image). The
+    # named volume speaches_models caches HF weights across boots; first
+    # boot also fetches ~3 GB of pyannote + whisper weights, hence the
+    # generous start_period below.
+    build:
+      context: https://github.com/speaches-ai/speaches.git#master
+      dockerfile: Dockerfile
+      args:
+        BASE_IMAGE: ubuntu:24.04
     profiles: [load-test-realistic]
     networks: [openwhispr_internal]
     environment:
@@ -392,7 +414,10 @@ services:
       # (~3 GB HF model download — Whisper-large-v3 + pyannote weights).
       # Subsequent boots find the weights cached in the named volume
       # and report healthy within the normal interval (08.5-RESEARCH §P8).
-      start_period: 600s
+      # Phase 08.6-01: bumped to 1200s — building speaches from master
+      # source on a cold cache takes ~10 min on macOS Docker Desktop in
+      # addition to the model download window.
+      start_period: 1200s
     volumes:
       # Phase 08.5-01 Task 2: `latest-cpu` runs as the `ubuntu` user
       # (verified against the upstream compose.cpu.yaml — 08.5-RESEARCH
