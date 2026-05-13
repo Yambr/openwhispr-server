@@ -201,16 +201,50 @@ worker:
     otelProtocol: grpc
     otelServiceName: openwhispr-worker
 
-# Ingress / cert-manager — Wave 3 ships IngressRoutes + Certificate CR.
+# Ingress / cert-manager — Wave 3 (Plan 09-09).
+#
+# Two-entrypoint topology mirrors compose/traefik/traefik.yml (Phase 04
+# Plan 05 lock-in):
+#   :443  websecure          — short-JSON routes (/api, web catch-all)
+#   :8443 websecure-realtime — long-running WSS /v1/realtime ONLY
+#                              (3600s idleTimeout per BACKEND_SPEC.md
+#                              L788-L791).
+# Operators MUST install Traefik with both entrypoints declared —
+# examples/traefik-values.yaml shows the required overlay. Pitfall #4
+# mitigation: api-deployment.yaml ships a `traefik-preflight`
+# initContainer that fails fast if `websecure-realtime` is missing.
 host:
   api: openwhispr.local
   web: openwhispr.local
 
 tls:
+  # cert-manager Certificate (templates/certificate-api.yaml) writes its
+  # TLS material into this Secret. Both IngressRoutes (api on :443 + api
+  # on :8443) reference it via `tls.secretName` so a single cert covers
+  # short-JSON + WSS realtime traffic (D-21 cert-reuse pattern).
   apiSecretName: openwhispr-api-tls
+  webSecretName: openwhispr-web-tls
 
 certManager:
+  enabled: true
   clusterIssuer: letsencrypt-prod
+
+ingress:
+  # className field is informational only — Traefik IngressRoute CRs
+  # do NOT use spec.ingressClassName (that's a built-in Ingress thing).
+  # We render Traefik CRDs exclusively (pitfall #3 — no `kind: Ingress`).
+  className: traefik
+  # Preflight initContainer in api-deployment.yaml curls the Traefik
+  # admin API and fails fast if the `websecure-realtime` entrypoint
+  # was not declared by the operator's Traefik install (pitfall #4).
+  preflightCheck: true
+  preflightTraefikAdminUrl: http://traefik.traefik.svc.cluster.local:9000
+  # Middleware forwarded-headers ipAllowList trustedIPs (RFC 1918
+  # private CIDRs, matches compose/traefik/traefik.yml).
+  trustedIPs:
+    - 10.0.0.0/8
+    - 172.16.0.0/12
+    - 192.168.0.0/16
 
 # Network policy — opt-in.
 networkPolicy:

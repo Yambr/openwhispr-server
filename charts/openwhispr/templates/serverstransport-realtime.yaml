@@ -1,0 +1,27 @@
+{{/*
+Traefik ServersTransport — long-lived upstream tuning for WSS /v1/realtime.
+
+Mirrors compose/traefik/dynamic.yml `api-realtime-transport`:
+  forwardingTimeouts.dialTimeout            30s
+  forwardingTimeouts.responseHeaderTimeout  60s
+  forwardingTimeouts.idleConnTimeout      3600s
+
+The 3600s idleConnTimeout prevents Traefik from closing the upstream
+Fastify connection mid-session during a 60-minute realtime dictation
+(BACKEND_SPEC.md L788-L791; Phase 03 Plan 07 LITELLM-03 / D-04 /
+Pitfall #7). Only the api-realtime IngressRoute references this
+ServersTransport — short-JSON routes on :443 stay on Traefik defaults.
+*/}}
+{{- $fullname := include "openwhispr.fullname" . -}}
+apiVersion: traefik.io/v1alpha1
+kind: ServersTransport
+metadata:
+  name: {{ $fullname }}-realtime-transport
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "openwhispr.labels" . | nindent 4 }}
+spec:
+  forwardingTimeouts:
+    dialTimeout: "30s"
+    responseHeaderTimeout: "60s"
+    idleConnTimeout: "3600s"

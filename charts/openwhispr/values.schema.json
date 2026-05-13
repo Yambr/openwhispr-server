@@ -142,6 +142,42 @@
     "worker": {
       "type": "object"
     },
+    "host": {
+      "type": "object",
+      "properties": {
+        "api": { "type": "string", "minLength": 1 },
+        "web": { "type": "string", "minLength": 1 }
+      }
+    },
+    "tls": {
+      "type": "object",
+      "properties": {
+        "apiSecretName": { "type": "string", "minLength": 1 },
+        "webSecretName": { "type": "string", "minLength": 1 }
+      }
+    },
+    "certManager": {
+      "type": "object",
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "clusterIssuer": { "type": "string", "minLength": 1 }
+      }
+    },
+    "ingress": {
+      "type": "object",
+      "properties": {
+        "className": { "type": "string" },
+        "preflightCheck": { "type": "boolean" },
+        "preflightTraefikAdminUrl": {
+          "type": "string",
+          "pattern": "^https?://"
+        },
+        "trustedIPs": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      }
+    },
     "litellm": {
       "type": "object",
       "properties": {
