@@ -54,6 +54,14 @@ spec:
       # 01 — HIGH-1 LiteLLM-DB auto-create) AND to pre-create the
       # litellm database so the migrate Job can run as a non-superuser.
       postInitSQL:
+        # Finding 09.1-F15 — Drizzle migrations include backfills that
+        # INSERT into RLS-enabled tables (e.g. tenant_settings backfill in
+        # 0006_tenant_settings.sql). Without BYPASSRLS the migration runs
+        # as openwhispr_owner subject to per-tenant policy → 42501. The
+        # compose-side `init/00-roles.sql.tpl` declares
+        # `WITH LOGIN BYPASSRLS` on the owner role; CNPG bootstrap omits
+        # it. ALTER restores parity.
+        - ALTER ROLE openwhispr_owner BYPASSRLS;
         - ALTER ROLE openwhispr_owner CREATEDB;
         - CREATE DATABASE litellm OWNER openwhispr_owner;
       postInitApplicationSQL:
