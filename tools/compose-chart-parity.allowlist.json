@@ -17,7 +17,7 @@
     "services": ["pgbouncer-2", "pgbouncer-3", "pgbouncer-4"]
   },
   "wave-deferred": {
-    "_comment": "Compose services whose chart Deployments land in later waves. REMOVE WHEN PLAN LANDS:\n  - postgres -> 09-04 LANDED (CNPG Cluster CR; mapped via COMPOSE_SERVICE_ALIASES.postgres=pg)\n  - pgbouncer -> 09-05 LANDED (CNPG Pooler CR; mapped via COMPOSE_SERVICE_ALIASES.pgbouncer=pg-pooler)\n  - valkey -> 09-05 LANDED (Bitnami sub-chart; mapped via COMPOSE_SERVICE_ALIASES.valkey=valkey-primary)\n  - minio -> 09-05 LANDED (Bitnami sub-chart; ow-minio Deployment, strip release prefix)\n  - api/web/worker -> 09-06 LANDED (Deployments + HPAs + PDBs)\n  - litellm -> 09-07 LANDED (embedded Deployment + ConfigMap; corporate overlay sets embedded=false)\n  - migrate -> 09-08 (Helm hook Job)",
-    "services": ["migrate"]
+    "_comment": "Compose services whose chart Deployments land in later waves. ALL LANDED in Wave 1-2 (Phase 09):\n  - postgres -> 09-04 LANDED (CNPG Cluster CR; mapped via COMPOSE_SERVICE_ALIASES.postgres=pg)\n  - pgbouncer -> 09-05 LANDED (CNPG Pooler CR; mapped via COMPOSE_SERVICE_ALIASES.pgbouncer=pg-pooler)\n  - valkey -> 09-05 LANDED (Bitnami sub-chart; mapped via COMPOSE_SERVICE_ALIASES.valkey=valkey-primary)\n  - minio -> 09-05 LANDED (Bitnami sub-chart; ow-minio Deployment, strip release prefix)\n  - api/web/worker -> 09-06 LANDED (Deployments + HPAs + PDBs)\n  - litellm -> 09-07 LANDED (embedded Deployment + ConfigMap; corporate overlay sets embedded=false)\n  - migrate -> 09-08 LANDED (pre-install/pre-upgrade Helm hook Job)",
+    "services": []
   }
 }

@@ -1,0 +1,95 @@
+{{/*
+Migration Helm hook Job — Phase 09 Plan 08.
+
+Runs the Drizzle migrations against the CNPG primary -rw service BEFORE
+the api/worker Deployments are created (pre-install) or rolled
+(pre-upgrade). Closes pitfall #15: `helm install --wait` does NOT wait
+on CRD-backed services like the CNPG Cluster, so this Job's initContainer
+runs `pg_isready` against the CNPG `-rw` service until it responds (max
+60s of pg_isready polling, bounded by Job-level activeDeadlineSeconds 300
+which fails the install if the migration hangs).
+
+Hard pins (pitfall #9 + T-09-07 mitigation):
+  - image tag = .Values.image.migrate.tag default .Chart.AppVersion
+    (never `latest` — snapshot test asserts).
+  - DATABASE_URL points at -pg-rw (NOT the Pooler) because PgBouncer
+    transaction-mode breaks Drizzle's DDL (pitfall #9). Migrations need
+    a direct, session-pinned connection.
+  - backoffLimit 0 + restartPolicy Never — one-shot semantics; do not
+    retry a failed migration (operator must inspect logs and fix).
+*/}}
+{{- $fullname := include "openwhispr.fullname" . -}}
+{{- $migrateTag := default .Chart.AppVersion .Values.image.migrate.tag -}}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  # NOTE: Job name is stable (no revision suffix). `before-hook-creation`
+  # deletes the previous Job before re-running on helm upgrade, so a stable
+  # name suffices and keeps compose-chart parity simple (resource matches
+  # the compose service `migrate` 1:1). Per-upgrade visibility comes from
+  # `kubectl describe job ...` showing the pod's startTime + completionTime.
+  name: {{ $fullname }}-migrate
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "openwhispr.labels" . | nindent 4 }}
+    app.kubernetes.io/component: migrate
+  annotations:
+    "helm.sh/hook": pre-install,pre-upgrade
+    "helm.sh/hook-weight": "-5"
+    "helm.sh/hook-delete-policy": before-hook-creation
+spec:
+  backoffLimit: 0
+  activeDeadlineSeconds: 300
+  template:
+    metadata:
+      labels:
+        {{- include "openwhispr.labels" . | nindent 8 }}
+        app.kubernetes.io/component: migrate
+    spec:
+      restartPolicy: Never
+      serviceAccountName: {{ $fullname }}-migrate
+      {{- with .Values.image.pullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      initContainers:
+        - name: wait-for-postgres
+          image: postgres:17-alpine
+          imagePullPolicy: IfNotPresent
+          command:
+            - sh
+            - -c
+            - |
+              i=0
+              until pg_isready -h {{ include "openwhispr.postgresRwHost" . }} -p 5432 -U openwhispr_owner -d openwhispr; do
+                i=$((i+1))
+                if [ $i -gt 30 ]; then
+                  echo "FATAL: pg_isready timed out after 60s against {{ include "openwhispr.postgresRwHost" . }}:5432" 1>&2
+                  exit 1
+                fi
+                echo "waiting for {{ include "openwhispr.postgresRwHost" . }}:5432 ... ($i/30)"
+                sleep 2
+              done
+              echo "postgres ready"
+      containers:
+        - name: migrate
+          image: "{{ .Values.image.migrate.repository }}:{{ $migrateTag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          command:
+            - node
+            - /app/packages/data/dist/migrate.cjs
+          envFrom:
+            - secretRef:
+                name: {{ $fullname }}-secrets
+          env:
+            # NOTE: DATABASE_URL deliberately bypasses the Pooler — Drizzle's
+            # DDL statements break under PgBouncer transaction-mode (pitfall #9).
+            - name: DATABASE_URL
+              value: "postgres://openwhispr_owner:$(POSTGRES_OWNER_PASSWORD)@{{ include "openwhispr.postgresRwHost" . }}:5432/openwhispr"
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
