@@ -682,7 +682,7 @@ Plans:
 | 6. Observability + Ops Hardening + Workers | 0/0 | Not started | - |
 | 7. Frontend UI-SPEC | 7/7 | Complete | 2026-05-12 |
 | 8. Load Test, Tuning & SLO Publication | 8/8 | Complete | 2026-05-13 |
-| 9. Helm Chart & Cloud Deploy | 0/0 | Not started | - |
+| 9. Helm Chart & Cloud Deploy | 3/12 | In Progress|  |
 | 10. i18n + Docs + OSS Housekeeping | 0/4 | Planned | - |
 
 ## Coverage Map
