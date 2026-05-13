@@ -1,0 +1,164 @@
+suite: litellm — Deployment + Service + ConfigMap (embedded ⇄ external)
+templates:
+  - litellm-deployment.yaml
+  - litellm-service.yaml
+  - configmap-litellm.yaml
+tests:
+  - it: renders LiteLLM Deployment with image pin v1.83.14-stable when embedded=true
+    template: litellm-deployment.yaml
+    set:
+      secrets:
+        mode: eso
+        external:
+          storeRef: vault-clusterstore
+    asserts:
+      - isKind:
+          of: Deployment
+      - equal:
+          path: spec.template.spec.containers[0].name
+          value: litellm
+      - equal:
+          path: spec.template.spec.containers[0].image
+          value: ghcr.io/berriai/litellm:main-v1.83.14-stable
+      - equal:
+          path: spec.template.spec.containers[0].ports[0].containerPort
+          value: 4000
+
+  - it: LiteLLM Deployment carries envFrom secrets (provider keys)
+    template: litellm-deployment.yaml
+    set:
+      secrets:
+        mode: eso
+        external:
+          storeRef: vault-clusterstore
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].envFrom[0].secretRef.name
+          value: RELEASE-NAME-openwhispr-secrets
+
+  - it: LiteLLM Deployment mounts configmap at /app/config.yaml
+    template: litellm-deployment.yaml
+    set:
+      secrets:
+        mode: eso
+        external:
+          storeRef: vault-clusterstore
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].volumeMounts[0].mountPath
+          value: /app/config.yaml
+      - equal:
+          path: spec.template.spec.containers[0].volumeMounts[0].subPath
+          value: config.yaml
+
+  - it: LiteLLM Deployment command points at /app/config.yaml and port 4000
+    template: litellm-deployment.yaml
+    set:
+      secrets:
+        mode: eso
+        external:
+          storeRef: vault-clusterstore
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].args
+          content: --config
+      - contains:
+          path: spec.template.spec.containers[0].args
+          content: /app/config.yaml
+
+  - it: LiteLLM has /health/liveliness probe
+    template: litellm-deployment.yaml
+    set:
+      secrets:
+        mode: eso
+        external:
+          storeRef: vault-clusterstore
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].livenessProbe.httpGet.path
+          value: /health/liveliness
+
+  - it: LiteLLM Deployment omits render when embedded=false
+    template: litellm-deployment.yaml
+    set:
+      secrets:
+        mode: eso
+        external:
+          storeRef: vault-clusterstore
+      litellm:
+        embedded: false
+        externalBaseUrl: https://corp.example.com
+    asserts:
+      - hasDocuments:
+          count: 0
+
+  - it: LiteLLM Service ClusterIP port 4000
+    template: litellm-service.yaml
+    set:
+      secrets:
+        mode: eso
+        external:
+          storeRef: vault-clusterstore
+    asserts:
+      - isKind:
+          of: Service
+      - equal:
+          path: spec.ports[0].port
+          value: 4000
+      - equal:
+          path: metadata.name
+          value: RELEASE-NAME-openwhispr-litellm
+
+  - it: LiteLLM Service omits render when embedded=false
+    template: litellm-service.yaml
+    set:
+      secrets:
+        mode: eso
+        external:
+          storeRef: vault-clusterstore
+      litellm:
+        embedded: false
+        externalBaseUrl: https://corp.example.com
+    asserts:
+      - hasDocuments:
+          count: 0
+
+  - it: configmap-litellm renders model_list passthrough
+    template: configmap-litellm.yaml
+    set:
+      secrets:
+        mode: eso
+        external:
+          storeRef: vault-clusterstore
+      litellm:
+        embedded: true
+        config:
+          model_list:
+            - model_name: whisper-1
+              litellm_params:
+                model: openai/whisper-1
+          router_settings:
+            timeout: 60
+    asserts:
+      - isKind:
+          of: ConfigMap
+      - matchRegex:
+          path: data["config.yaml"]
+          pattern: "whisper-1"
+      - matchRegex:
+          path: data["config.yaml"]
+          pattern: "timeout: 60"
+
+  - it: configmap-litellm omits render when embedded=false
+    template: configmap-litellm.yaml
+    set:
+      secrets:
+        mode: eso
+        external:
+          storeRef: vault-clusterstore
+      litellm:
+        embedded: false
+        externalBaseUrl: https://corp.example.com
+    asserts:
+      - hasDocuments:
+          count: 0

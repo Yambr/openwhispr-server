@@ -1,0 +1,25 @@
+{{/*
+LiteLLM Service — ClusterIP exposing port 4000. Renders only when
+litellm.embedded=true (corporate operators with embedded=false use their
+external LiteLLM via values.litellm.externalBaseUrl).
+*/}}
+{{- if .Values.litellm.embedded -}}
+{{- $fullname := include "openwhispr.fullname" . -}}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $fullname }}-litellm
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "openwhispr.labels" . | nindent 4 }}
+    app.kubernetes.io/component: litellm
+spec:
+  type: ClusterIP
+  selector:
+    {{- include "openwhispr.litellm.selectorLabels" . | nindent 4 }}
+  ports:
+    - name: http
+      port: 4000
+      targetPort: 4000
+      protocol: TCP
+{{- end }}
