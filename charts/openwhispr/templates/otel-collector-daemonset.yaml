@@ -1,0 +1,126 @@
+{{/*
+OTel Collector DaemonSet — one pod per node.
+
+hostNetwork=true is REQUIRED for the hostmetrics receiver (reads /proc
++ /sys via hostPath bind-mounts on /hostfs). Pitfall #12 — the release
+namespace MUST allow hostNetwork pods (PSA label `pod-security.kubernetes.io/enforce=privileged`
+or, on older clusters, a PodSecurityPolicy that permits hostNetwork).
+Operators running on hardened namespaces should provision a dedicated
+`openwhispr-observability` namespace with the relaxed PSA label and
+install the chart there (or split the collector into a sub-chart;
+out-of-scope for v1).
+
+dnsPolicy=ClusterFirstWithHostNet keeps cluster DNS resolution working
+even with hostNetwork — without it the pod would inherit the node's
+resolv.conf and lose access to the lgtm endpoint by DNS name.
+
+Tolerations operator=Exists ensures the collector lands on tainted nodes
+too (control-plane, GPU, dedicated workloads).
+*/}}
+{{- if .Values.observability.collector.enabled -}}
+{{- $fullname := include "openwhispr.fullname" . -}}
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: {{ $fullname }}-otel-collector
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "openwhispr.labels" . | nindent 4 }}
+    app.kubernetes.io/component: otel-collector
+spec:
+  selector:
+    matchLabels:
+      {{- include "openwhispr.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: otel-collector
+  template:
+    metadata:
+      labels:
+        {{- include "openwhispr.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: otel-collector
+      annotations:
+        # Force pod restart when the ConfigMap data changes (Helm 3
+        # doesn't auto-roll DaemonSets on dependent CM updates).
+        checksum/config: {{ include (print $.Template.BasePath "/otel-collector-configmap.yaml") . | sha256sum }}
+    spec:
+      serviceAccountName: {{ $fullname }}-otel-collector
+      hostNetwork: true
+      dnsPolicy: ClusterFirstWithHostNet
+      tolerations:
+        - operator: Exists
+      {{- with .Values.image.pullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: otel-collector
+          image: "{{ .Values.observability.collector.image.repository }}:{{ .Values.observability.collector.image.tag }}"
+          imagePullPolicy: {{ .Values.observability.collector.image.pullPolicy }}
+          args:
+            - --config=/etc/otel/config.yaml
+          env:
+            - name: K8S_NODE_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: spec.nodeName
+          ports:
+            - name: otlp-grpc
+              containerPort: 4317
+              hostPort: 4317
+              protocol: TCP
+            - name: otlp-http
+              containerPort: 4318
+              hostPort: 4318
+              protocol: TCP
+            - name: health
+              containerPort: 13133
+              protocol: TCP
+            - name: metrics
+              containerPort: 8888
+              protocol: TCP
+          securityContext:
+            # hostmetrics + kubeletstats require root read on /proc + /sys.
+            runAsUser: 0
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          volumeMounts:
+            - name: config
+              mountPath: /etc/otel
+              readOnly: true
+            - name: hostfs-proc
+              mountPath: /hostfs/proc
+              readOnly: true
+            - name: hostfs-sys
+              mountPath: /hostfs/sys
+              readOnly: true
+            - name: hostfs-varlog
+              mountPath: /hostfs/var/log
+              readOnly: true
+          livenessProbe:
+            httpGet:
+              path: /
+              port: 13133
+            initialDelaySeconds: 10
+            periodSeconds: 30
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 13133
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          resources:
+            {{- toYaml .Values.observability.collector.resources | nindent 12 }}
+      volumes:
+        - name: config
+          configMap:
+            name: {{ $fullname }}-otel-collector
+        - name: hostfs-proc
+          hostPath:
+            path: /proc
+        - name: hostfs-sys
+          hostPath:
+            path: /sys
+        - name: hostfs-varlog
+          hostPath:
+            path: /var/log
+{{- end }}

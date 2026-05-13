@@ -34,6 +34,14 @@ export const DEFAULT_HELM_ARGS = [
   ".github/ci/values-ci.yaml",
   "--set",
   "bundledAi.enabled=true",
+  // Plan 09-10 (Wave 3): exercise the OTel Collector DaemonSet path so the
+  // parity gate sees `otel-collector` as a chart resource. Values-ci leaves
+  // collector.enabled=false (kind hostNetwork friction); the lint overrides
+  // it here to flip the DaemonSet on and validates compose-vs-chart parity.
+  "--set",
+  "observability.collector.enabled=true",
+  "--set-string",
+  "observability.lgtm.endpoint=https://otlp.parity-fake.example.com",
   "--set-string",
   "secrets.litellmMasterKey=parity-fake-1234567890abcdef1234567890",
   "--set-string",
