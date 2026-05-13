@@ -43,16 +43,33 @@ postgres:
   # regex enforced in postgres-cluster.yaml.
   imageName: ghcr.io/openwhispr/cnpg-postgres-17-pgpartman:17.5
 
+# Finding 09.1-F6 — Bitnami's 2024 Secure Images migration removed
+# point-version tags from the canonical `bitnami/*` namespace. The
+# free images now live in `bitnamilegacy/*`. We re-point all
+# sub-chart images so the kind smoke install actually pulls.
 valkey:
   architecture: standalone
   auth:
     enabled: false
+  image:
+    registry: docker.io
+    repository: bitnamilegacy/valkey
+    tag: 8.1.3-debian-12-r3
   master:
     persistence:
       size: 1Gi
 
 minio:
   mode: standalone
+  image:
+    registry: docker.io
+    repository: bitnamilegacy/minio
+    tag: 2025.7.23-debian-12-r3
+  console:
+    image:
+      registry: docker.io
+      repository: bitnamilegacy/minio-object-browser
+      tag: 2.0.2-debian-12-r3
   persistence:
     size: 1Gi
   auth:
@@ -83,11 +100,14 @@ worker:
 
 # Use mock-litellm:dev (compose-built) for the kind smoke — no paid keys
 # needed; full LiteLLM end-to-end is covered by Phase 8.5 baseline.
+# Mock entrypoint is `node dist/server-bootstrap.js` with no CLI flags,
+# so the F11-introduced .Values.litellm.args is emptied here.
 litellm:
   image:
     repository: openwhispr-mock-litellm
     tag: dev
     pullPolicy: IfNotPresent
+  args: []
 
 testProbe:
   enabled: true
