@@ -25,29 +25,22 @@
 //   * PYANNOTE_API_KEY never appears in any reply payload
 //   * uploadToPresignedUrl receives the full file bytes (no truncation)
 
-import Fastify, { type FastifyInstance } from "fastify";
 import fastifyMultipart from "@fastify/multipart";
+import { DiarizationResponse, ErrorEnvelope } from "@openwhispr/contract-tests/schemas";
+import Fastify, { type FastifyInstance } from "fastify";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import {
-  DiarizationResponse,
-  ErrorEnvelope,
-} from "@openwhispr/contract-tests/schemas";
 import { registerErrorHandler } from "../../error-handler.js";
-import { zodTypeProvider } from "../../plugins/zod-type-provider.js";
-import {
-  buildDiarizationRoutes,
-  POLL_CEILING_MS,
-  POLL_INTERVAL_MS,
-} from "../diarization.js";
+import type { RedisLike } from "../../lib/idempotency-cache.js";
 import {
   MissingPyannoteKeyError,
   PyannoteAuthError,
   PyannoteBadRequestError,
-  PyannoteUnavailableError,
   type PyannoteClient,
   type PyannoteJob,
+  PyannoteUnavailableError,
 } from "../../lib/pyannote-client.js";
-import type { RedisLike } from "../../lib/idempotency-cache.js";
+import { zodTypeProvider } from "../../plugins/zod-type-provider.js";
+import { buildDiarizationRoutes, POLL_CEILING_MS, POLL_INTERVAL_MS } from "../diarization.js";
 
 const TEST_TENANT = "00000000-0000-0000-0000-000000000000";
 const TEST_USER = "11111111-1111-1111-1111-111111111111";
@@ -108,9 +101,7 @@ function makeFakePyannote(opts: FakePyannoteOpts): PyannoteClient {
     async uploadToPresignedUrl(_url, body, _ct) {
       opts.calls.push("uploadToPresignedUrl");
       if (opts.uploadThrows) throw opts.uploadThrows;
-      const buf = Buffer.isBuffer(body)
-        ? body
-        : Buffer.from(String(body ?? ""));
+      const buf = Buffer.isBuffer(body) ? body : Buffer.from(String(body ?? ""));
       opts.uploadedBytes.push(buf.length);
     },
     async submitDiarize(_mediaUri) {
@@ -165,8 +156,7 @@ function buildApp(opts: BuildOpts = {}): FastifyInstance {
   // exactOptionalPropertyTypes: omit optional fields rather than passing
   // `undefined` explicitly.
   const factory =
-    opts.pyannoteFactory ??
-    (opts.pyannote ? () => opts.pyannote as PyannoteClient : undefined);
+    opts.pyannoteFactory ?? (opts.pyannote ? () => opts.pyannote as PyannoteClient : undefined);
   const diarDeps: Parameters<typeof buildDiarizationRoutes>[0] = {
     redis: opts.redis ?? makeFakeRedis(),
   };
@@ -185,8 +175,7 @@ function multipartBody(
     "utf8",
   );
   const tail = Buffer.from(`\r\n--${boundary}--\r\n`, "utf8");
-  const fileBytes =
-    typeof payload === "string" ? Buffer.from(payload, "utf8") : payload;
+  const fileBytes = typeof payload === "string" ? Buffer.from(payload, "utf8") : payload;
   return {
     body: Buffer.concat([head, fileBytes, tail]),
     contentType: `multipart/form-data; boundary=${boundary}`,
@@ -487,10 +476,7 @@ describe("POST /v1/audio/diarization", () => {
       uploadedBytes: [],
       submittedJobIds: [],
       calls: [],
-      createMediaThrows: new PyannoteUnavailableError(
-        503,
-        "pyannote 503",
-      ),
+      createMediaThrows: new PyannoteUnavailableError(503, "pyannote 503"),
     });
     app = buildApp({ pyannote });
     const { body, contentType } = multipartBody("audio");
@@ -622,10 +608,7 @@ describe("POST /v1/audio/diarization", () => {
         uploadedBytes: [],
         submittedJobIds: [],
         calls: [],
-        createMediaThrows: new PyannoteAuthError(
-          401,
-          `bad key: ${SECRET_KEY}`,
-        ),
+        createMediaThrows: new PyannoteAuthError(401, `bad key: ${SECRET_KEY}`),
       });
       app = buildApp({ pyannote });
       const { body, contentType } = multipartBody("audio");
@@ -673,9 +656,7 @@ describe("POST /v1/audio/diarization", () => {
   });
 
   it("returns 502 envelope on PyannoteUpstreamError (presigned PUT non-2xx)", async () => {
-    const { PyannoteUpstreamError } = await import(
-      "../../lib/pyannote-client.js"
-    );
+    const { PyannoteUpstreamError } = await import("../../lib/pyannote-client.js");
     const pyannote = makeFakePyannote({
       uploadedBytes: [],
       submittedJobIds: [],
@@ -771,10 +752,7 @@ describe("POST /v1/audio/diarization", () => {
     // Pre-seed a reservation entry with bodyHash matching SHA256("audio").
     const { createHash } = await import("node:crypto");
     const bodyHash = createHash("sha256").update("audio").digest("hex");
-    store.set(
-      KEY,
-      JSON.stringify({ bodyHash, jobId: null, createdAt: Date.now() }),
-    );
+    store.set(KEY, JSON.stringify({ bodyHash, jobId: null, createdAt: Date.now() }));
     const redis: RedisLike = {
       async set(_k, _v, opts) {
         // NX always rejected — entry already exists.
@@ -812,9 +790,7 @@ describe("POST /v1/audio/diarization", () => {
     // (lines 236-238 / 242-238).
     const { createHash } = await import("node:crypto");
     const ourBodyHash = createHash("sha256").update("body-A").digest("hex");
-    const otherBodyHash = createHash("sha256")
-      .update("body-different")
-      .digest("hex");
+    const otherBodyHash = createHash("sha256").update("body-different").digest("hex");
     let getCount = 0;
     const KEY = "diar:idem:flip-key";
     const redis: RedisLike = {
@@ -952,13 +928,12 @@ describe("POST /v1/audio/diarization", () => {
     localApp.addHook("preHandler", async (req) => {
       req.user = { id: TEST_USER, email: "fixture@conformance.test" };
       req.tenant = TEST_TENANT;
-      (req as unknown as { file: () => Promise<never> }).file =
-        async () => {
-          const err = Object.assign(new Error("file too large"), {
-            code: "FST_REQ_FILE_TOO_LARGE",
-          });
-          throw err;
-        };
+      (req as unknown as { file: () => Promise<never> }).file = async () => {
+        const err = Object.assign(new Error("file too large"), {
+          code: "FST_REQ_FILE_TOO_LARGE",
+        });
+        throw err;
+      };
     });
     const calls: string[] = [];
     const pyannote = makeFakePyannote({
@@ -1002,20 +977,20 @@ describe("POST /v1/audio/diarization", () => {
     localApp.addHook("preHandler", async (req) => {
       req.user = { id: TEST_USER, email: "fixture@conformance.test" };
       req.tenant = TEST_TENANT;
-      (req as unknown as { file: () => Promise<unknown> }).file =
-        async () => ({
-          mimetype: "audio/wav",
-          file: {
-            // eslint-disable-next-line require-yield
-            async *[Symbol.asyncIterator]() {
-              const err = Object.assign(new Error("too big"), {
-                code: "FST_REQ_FILE_TOO_LARGE",
-              });
-              throw err;
-            },
-            truncated: false,
+      (req as unknown as { file: () => Promise<unknown> }).file = async () => ({
+        mimetype: "audio/wav",
+        file: {
+          // eslint-disable-next-line require-yield
+          // biome-ignore lint/correctness/useYield: throwing-only async generator simulates upstream error.
+          async *[Symbol.asyncIterator]() {
+            const err = Object.assign(new Error("too big"), {
+              code: "FST_REQ_FILE_TOO_LARGE",
+            });
+            throw err;
           },
-        });
+          truncated: false,
+        },
+      });
     });
     const pyannote = makeFakePyannote({
       uploadedBytes: [],
@@ -1057,17 +1032,17 @@ describe("POST /v1/audio/diarization", () => {
     localApp.addHook("preHandler", async (req) => {
       req.user = { id: TEST_USER, email: "fixture@conformance.test" };
       req.tenant = TEST_TENANT;
-      (req as unknown as { file: () => Promise<unknown> }).file =
-        async () => ({
-          mimetype: "audio/wav",
-          file: {
-            // eslint-disable-next-line require-yield
-            async *[Symbol.asyncIterator]() {
-              throw new Error("disk read fault");
-            },
-            truncated: false,
+      (req as unknown as { file: () => Promise<unknown> }).file = async () => ({
+        mimetype: "audio/wav",
+        file: {
+          // eslint-disable-next-line require-yield
+          // biome-ignore lint/correctness/useYield: throwing-only async generator simulates upstream error.
+          async *[Symbol.asyncIterator]() {
+            throw new Error("disk read fault");
           },
-        });
+          truncated: false,
+        },
+      });
     });
     const pyannote = makeFakePyannote({
       uploadedBytes: [],
@@ -1184,10 +1159,7 @@ describe("POST /v1/audio/diarization", () => {
       // Force an array shape — non-multipart so the route's content-type
       // guard hits the 400 path. The Array.isArray(headerKeyRaw) idx 0
       // branch is exercised regardless of the route's eventual exit.
-      (req.headers as Record<string, unknown>)["content-type"] = [
-        "application/json",
-        "text/plain",
-      ];
+      (req.headers as Record<string, unknown>)["content-type"] = ["application/json", "text/plain"];
     });
     const pyannote = makeFakePyannote({
       uploadedBytes: [],
@@ -1273,16 +1245,15 @@ describe("POST /v1/audio/diarization", () => {
     localApp.addHook("preHandler", async (req) => {
       req.user = { id: TEST_USER, email: "fixture@conformance.test" };
       req.tenant = TEST_TENANT;
-      (req as unknown as { file: () => Promise<unknown> }).file =
-        async () => ({
-          mimetype: "", // empty — triggers the fallback
-          file: {
-            async *[Symbol.asyncIterator]() {
-              yield Buffer.from("audio-bytes");
-            },
-            truncated: false,
+      (req as unknown as { file: () => Promise<unknown> }).file = async () => ({
+        mimetype: "", // empty — triggers the fallback
+        file: {
+          async *[Symbol.asyncIterator]() {
+            yield Buffer.from("audio-bytes");
           },
-        });
+          truncated: false,
+        },
+      });
     });
     const captured: { contentType?: string } = {};
     const pyannote: PyannoteClient = {
@@ -1328,5 +1299,330 @@ describe("POST /v1/audio/diarization", () => {
     } finally {
       await localApp.close();
     }
+  });
+
+  // ----------------------------------------------------------------------
+  // Phase 08.6-02 — SPEACHES_DIARIZATION_URL branch
+  //
+  // When the dep `speachesDiarizationUrl` is set, the route bypasses the
+  // pyannote.ai async orchestration entirely and POSTs the multipart body
+  // synchronously to `${url}/v1/audio/diarization`. Speaches returns the
+  // canonical `{duration, segments[]}` JSON shape in a single response —
+  // no presigned upload, no jobId, no polling, no idempotency cache.
+  //
+  // The pyannote.ai branch is fully preserved (covered by the 30+ tests
+  // above). These tests assert the Speaches branch in isolation by
+  // injecting a stub `fetch` at the network boundary.
+  // ----------------------------------------------------------------------
+  describe("SPEACHES_DIARIZATION_URL branch", () => {
+    function buildSpeachesApp(opts: {
+      speachesFetch: typeof fetch;
+      speachesUrl?: string;
+      authed?: boolean;
+    }): FastifyInstance {
+      const a = Fastify({ logger: false });
+      registerErrorHandler(a);
+      a.register(fastifyMultipart, {
+        attachFieldsToBody: false as const,
+        limits: { fileSize: 100 * 1024 * 1024 },
+      });
+      a.register(zodTypeProvider);
+      if (opts.authed !== false) {
+        a.addHook("onRequest", async (req) => {
+          req.user = { id: TEST_USER, email: "fixture@conformance.test" };
+          req.tenant = TEST_TENANT;
+        });
+      }
+      const deps: Parameters<typeof buildDiarizationRoutes>[0] = {
+        redis: makeFakeRedis(),
+        speachesDiarizationUrl: opts.speachesUrl ?? "http://speaches.internal.test:8000",
+        speachesFetch: opts.speachesFetch,
+      };
+      a.register(buildDiarizationRoutes(deps));
+      return a;
+    }
+
+    it("posts multipart to <url>/v1/audio/diarization and returns parsed JSON (200 happy path)", async () => {
+      const captured: {
+        url?: string;
+        method?: string;
+        contentType?: string | null;
+        bodyBytes?: number;
+      } = {};
+      const speachesFetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = typeof input === "string" ? input : input.toString();
+        captured.url = url;
+        captured.method = init?.method;
+        captured.contentType =
+          (init?.headers as Record<string, string> | undefined)?.["content-type"] ??
+          (init?.headers as Record<string, string> | undefined)?.["Content-Type"] ??
+          null;
+        // body is a Buffer in our client; record its length.
+        const body = init?.body;
+        if (body && typeof (body as Buffer).length === "number") {
+          captured.bodyBytes = (body as Buffer).length;
+        }
+        return new Response(
+          JSON.stringify({
+            duration: 7.25,
+            segments: [
+              { start: 0.0, end: 3.1, speaker: "SPEAKER_00" },
+              { start: 3.1, end: 7.25, speaker: "SPEAKER_01" },
+            ],
+          }),
+          { status: 200, headers: { "content-type": "application/json" } },
+        );
+      });
+      const app2 = buildSpeachesApp({ speachesFetch: speachesFetch as unknown as typeof fetch });
+      try {
+        const { body, contentType } = multipartBody("speaches-audio-bytes");
+        const res = await app2.inject({
+          method: "POST",
+          url: "/v1/audio/diarization",
+          headers: { "content-type": contentType },
+          payload: body,
+        });
+        expect(res.statusCode).toBe(200);
+        const parsed = DiarizationResponse.parse(res.json());
+        expect(parsed.segments).toHaveLength(2);
+        expect(parsed.duration).toBe(7.25);
+        expect(speachesFetch).toHaveBeenCalledTimes(1);
+        expect(captured.url).toBe("http://speaches.internal.test:8000/v1/audio/diarization");
+        expect(captured.method).toBe("POST");
+        expect(captured.contentType ?? "").toMatch(/^multipart\/form-data; boundary=/);
+        // The proxied body must include the audio bytes; with the multipart
+        // envelope overhead added we expect > raw payload length.
+        expect(captured.bodyBytes ?? 0).toBeGreaterThan(Buffer.from("speaches-audio-bytes").length);
+      } finally {
+        await app2.close();
+      }
+    });
+
+    it("sends form fields `file` (audio bytes) and `model` (pyannote/speaker-diarization-community-1)", async () => {
+      let capturedBody: Buffer | null = null;
+      let capturedCT: string | null = null;
+      const speachesFetch = async (_input: RequestInfo | URL, init?: RequestInit) => {
+        capturedBody = init?.body as Buffer;
+        capturedCT =
+          (init?.headers as Record<string, string> | undefined)?.["content-type"] ?? null;
+        return new Response(
+          JSON.stringify({
+            duration: 1.0,
+            segments: [{ start: 0, end: 1, speaker: "SPEAKER_00" }],
+          }),
+          { status: 200, headers: { "content-type": "application/json" } },
+        );
+      };
+      const app3 = buildSpeachesApp({ speachesFetch: speachesFetch as unknown as typeof fetch });
+      try {
+        const { body, contentType } = multipartBody("X-AUDIO-X");
+        const res = await app3.inject({
+          method: "POST",
+          url: "/v1/audio/diarization",
+          headers: { "content-type": contentType },
+          payload: body,
+        });
+        expect(res.statusCode).toBe(200);
+        expect(capturedBody).not.toBeNull();
+        expect(capturedCT).toMatch(/^multipart\/form-data; boundary=/);
+        const text = Buffer.from(capturedBody as unknown as Buffer).toString("utf8");
+        expect(text).toContain('name="model"');
+        expect(text).toContain("pyannote/speaker-diarization-community-1");
+        expect(text).toContain('name="file"');
+        expect(text).toContain("X-AUDIO-X");
+      } finally {
+        await app3.close();
+      }
+    });
+
+    it("maps Speaches 5xx to 503 envelope (operator-actionable)", async () => {
+      const speachesFetch = async () =>
+        new Response("internal error", {
+          status: 500,
+          headers: { "content-type": "text/plain" },
+        });
+      const app4 = buildSpeachesApp({ speachesFetch: speachesFetch as unknown as typeof fetch });
+      try {
+        const { body, contentType } = multipartBody("audio");
+        const res = await app4.inject({
+          method: "POST",
+          url: "/v1/audio/diarization",
+          headers: { "content-type": contentType },
+          payload: body,
+        });
+        expect(res.statusCode).toBe(503);
+        expect(() => ErrorEnvelope.parse(res.json())).not.toThrow();
+      } finally {
+        await app4.close();
+      }
+    });
+
+    it("maps Speaches 4xx to 502 envelope (upstream rejected payload)", async () => {
+      const speachesFetch = async () =>
+        new Response(JSON.stringify({ detail: "bad audio" }), {
+          status: 400,
+          headers: { "content-type": "application/json" },
+        });
+      const app5 = buildSpeachesApp({ speachesFetch: speachesFetch as unknown as typeof fetch });
+      try {
+        const { body, contentType } = multipartBody("audio");
+        const res = await app5.inject({
+          method: "POST",
+          url: "/v1/audio/diarization",
+          headers: { "content-type": contentType },
+          payload: body,
+        });
+        expect(res.statusCode).toBe(502);
+        expect(() => ErrorEnvelope.parse(res.json())).not.toThrow();
+      } finally {
+        await app5.close();
+      }
+    });
+
+    it("returns 400 envelope when the multipart has no file part (no Speaches call)", async () => {
+      const speachesFetch = vi.fn(async () => new Response("", { status: 200 }));
+      const app6 = buildSpeachesApp({ speachesFetch: speachesFetch as unknown as typeof fetch });
+      try {
+        const boundary = "----diar-speaches-no-file";
+        const body = Buffer.from(
+          `--${boundary}\r\nContent-Disposition: form-data; name="other"\r\n\r\nx\r\n--${boundary}--\r\n`,
+          "utf8",
+        );
+        const res = await app6.inject({
+          method: "POST",
+          url: "/v1/audio/diarization",
+          headers: { "content-type": `multipart/form-data; boundary=${boundary}` },
+          payload: body,
+        });
+        expect(res.statusCode).toBe(400);
+        expect(speachesFetch).not.toHaveBeenCalled();
+      } finally {
+        await app6.close();
+      }
+    });
+
+    it("rejects non-multipart content-type with 400 envelope (no Speaches call)", async () => {
+      const speachesFetch = vi.fn(async () => new Response("", { status: 200 }));
+      const app7 = buildSpeachesApp({ speachesFetch: speachesFetch as unknown as typeof fetch });
+      try {
+        const res = await app7.inject({
+          method: "POST",
+          url: "/v1/audio/diarization",
+          headers: { "content-type": "application/json" },
+          payload: "{}",
+        });
+        expect(res.statusCode).toBe(400);
+        expect(speachesFetch).not.toHaveBeenCalled();
+      } finally {
+        await app7.close();
+      }
+    });
+
+    it("does NOT call the pyannote factory when speachesDiarizationUrl is set", async () => {
+      const speachesFetch = async () =>
+        new Response(
+          JSON.stringify({
+            duration: 0.5,
+            segments: [{ start: 0, end: 0.5, speaker: "SPEAKER_00" }],
+          }),
+          { status: 200, headers: { "content-type": "application/json" } },
+        );
+      const pyannoteFactory = vi.fn(() => {
+        throw new Error("should not be called when Speaches branch is active");
+      });
+      const a = Fastify({ logger: false });
+      registerErrorHandler(a);
+      a.register(fastifyMultipart, {
+        attachFieldsToBody: false as const,
+        limits: { fileSize: 100 * 1024 * 1024 },
+      });
+      a.register(zodTypeProvider);
+      a.addHook("onRequest", async (req) => {
+        req.user = { id: TEST_USER, email: "fixture@conformance.test" };
+        req.tenant = TEST_TENANT;
+      });
+      a.register(
+        buildDiarizationRoutes({
+          redis: makeFakeRedis(),
+          speachesDiarizationUrl: "http://speaches.internal.test:8000",
+          speachesFetch: speachesFetch as unknown as typeof fetch,
+          pyannoteFactory: pyannoteFactory as unknown as () => PyannoteClient,
+        }),
+      );
+      try {
+        const { body, contentType } = multipartBody("audio");
+        const res = await a.inject({
+          method: "POST",
+          url: "/v1/audio/diarization",
+          headers: { "content-type": contentType },
+          payload: body,
+        });
+        expect(res.statusCode).toBe(200);
+        expect(pyannoteFactory).not.toHaveBeenCalled();
+      } finally {
+        await a.close();
+      }
+    });
+
+    it("returns 401 envelope when no auth (req.user absent; no Speaches call)", async () => {
+      const speachesFetch = vi.fn(async () => new Response("", { status: 200 }));
+      const app8 = buildSpeachesApp({
+        speachesFetch: speachesFetch as unknown as typeof fetch,
+        authed: false,
+      });
+      try {
+        const { body, contentType } = multipartBody("audio");
+        const res = await app8.inject({
+          method: "POST",
+          url: "/v1/audio/diarization",
+          headers: { "content-type": contentType },
+          payload: body,
+        });
+        expect(res.statusCode).toBe(401);
+        expect(speachesFetch).not.toHaveBeenCalled();
+      } finally {
+        await app8.close();
+      }
+    });
+
+    it("maps a 200 response with malformed JSON body to 502 envelope", async () => {
+      const speachesFetch = async () =>
+        new Response("not-json{{", {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        });
+      const app9 = buildSpeachesApp({ speachesFetch: speachesFetch as unknown as typeof fetch });
+      try {
+        const { body, contentType } = multipartBody("audio");
+        const res = await app9.inject({
+          method: "POST",
+          url: "/v1/audio/diarization",
+          headers: { "content-type": contentType },
+          payload: body,
+        });
+        expect(res.statusCode).toBe(502);
+      } finally {
+        await app9.close();
+      }
+    });
+
+    it("maps fetch() network errors (ECONNREFUSED) to 503 envelope", async () => {
+      const speachesFetch = async () => {
+        throw new TypeError("fetch failed");
+      };
+      const appA = buildSpeachesApp({ speachesFetch: speachesFetch as unknown as typeof fetch });
+      try {
+        const { body, contentType } = multipartBody("audio");
+        const res = await appA.inject({
+          method: "POST",
+          url: "/v1/audio/diarization",
+          headers: { "content-type": contentType },
+          payload: body,
+        });
+        expect(res.statusCode).toBe(503);
+      } finally {
+        await appA.close();
+      }
+    });
   });
 });
