@@ -54,27 +54,42 @@ model_list:
       api_base: http://speaches:8000/v1
       api_key: "speaches-dummy"
 
-  # ---- Realtime (OpenAI direct — unchanged from bundled config) ----
-  # Speaches realtime on Mac CPU is slow (08.5-RESEARCH §P9); Mac
-  # baseline routes /v1/realtime to OpenAI direct (same as bundled).
-  # Corporate operators with self-hosted realtime override
-  # LITELLM_BASE_URL.
+  # ---- Realtime (Speaches local — mirrors speaches-audio.md §3) ----
+  #
+  # Canonical corporate setup per speaches-audio.md §3:
+  #   wss://<lite-llm>/v1/realtime?model=<realtime-model-alias>
+  #   LiteLLM v1.82.0+ proxies the WS bidirectionally with `mode: realtime`.
+  #
+  # For Mac plateau cost-discipline (user 2026-05-13 — memory:
+  # loadtest-cost-discipline + speaches-full-local-coverage) we route ALL
+  # realtime aliases to Speaches local. Speaches Realtime docs:
+  # https://speaches.ai/usage/realtime-api — uses Whisper-CT2 for the
+  # transcription intent (no LLM upstream needed, plateau-cheap).
+  #
+  # Mac CPU numbers will be SLOW per frame; that's the expected baseline
+  # shape — operator H100 re-run substitutes numbers, NOT wiring.
+  #
+  # For real OpenAI Realtime smoke (≤10 calls proof-of-wiring), see
+  # the realistic-smoke-paid mode flag.
   - model_name: gpt-realtime
     litellm_params:
-      model: openai/gpt-realtime
-      api_key: os.environ/OPENAI_API_KEY
+      model: openai/speaches-realtime
+      api_base: http://speaches:8000/v1
+      api_key: "speaches-dummy"
       mode: realtime
 
   - model_name: gpt-realtime-mini
     litellm_params:
-      model: openai/gpt-realtime-mini
-      api_key: os.environ/OPENAI_API_KEY
+      model: openai/speaches-realtime
+      api_base: http://speaches:8000/v1
+      api_key: "speaches-dummy"
       mode: realtime
 
   - model_name: gpt-4o-realtime-preview
     litellm_params:
-      model: openai/gpt-4o-realtime-preview
-      api_key: os.environ/OPENAI_API_KEY
+      model: openai/speaches-realtime
+      api_base: http://speaches:8000/v1
+      api_key: "speaches-dummy"
       mode: realtime
 
 general_settings:
