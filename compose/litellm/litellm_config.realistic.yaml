@@ -117,4 +117,4 @@ general_settings:
 
 litellm_settings:
   drop_params: True
-  set_verbose: False
+  set_verbose: True
