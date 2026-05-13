@@ -37,12 +37,9 @@ import { Pool } from "pg";
 import pino from "pino";
 import { makeAppOwnerPool } from "./db/app-pool.js";
 import { makeLitellmPool } from "./db/litellm-pool.js";
+import { createTemplateRenderer } from "./i18n/template-renderer.js";
 import { buildAuditArchiveHandler } from "./jobs/audit-archive.js";
-import {
-  buildEmailDeliveryHandler,
-  type EmailSender,
-  type TemplateRenderer,
-} from "./jobs/email-delivery.js";
+import { buildEmailDeliveryHandler, type EmailSender } from "./jobs/email-delivery.js";
 import {
   createQueue as createIngestQueue,
   createWorker as createIngestWorker,
@@ -72,11 +69,10 @@ const noopSender: EmailSender = {
     return { delivered: true, reason: "no-op-sender" };
   },
 };
-const noopRenderer: TemplateRenderer = {
-  render() {
-    return { subject: "(no-op)", text: "no-op email body" };
-  },
-};
+// Plan 10-01b — real i18n-backed template renderer; loads en+ru bundles
+// from disk at module init. Replaces the noopRenderer stub left in place
+// by Phase 6 Plan 06-08 pending the worker i18n surface (this plan).
+const templateRenderer = createTemplateRenderer();
 const noopLitellmKeyClient: LiteLlmKeyClient = {
   async generateKey() {
     return { key_id: `noop-${Date.now()}` };
@@ -128,7 +124,11 @@ async function main(): Promise<void> {
 
   const emailWorker = new Worker(
     QUEUE_NAMES.emailDelivery,
-    buildEmailDeliveryHandler({ pool: appOwnerPool, sender: noopSender, renderer: noopRenderer }),
+    buildEmailDeliveryHandler({
+      pool: appOwnerPool,
+      sender: noopSender,
+      renderer: templateRenderer,
+    }),
     { connection },
   );
   const vkrWorker = new Worker(
