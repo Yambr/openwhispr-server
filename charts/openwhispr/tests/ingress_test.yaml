@@ -45,7 +45,15 @@ tests:
           path: spec.tls.secretName
           value: openwhispr-api-tls
 
-  - it: renders api realtime IngressRoute bound to websecure-realtime with ServersTransport
+  # Finding 09.1-F2: kubernetes ContainerPort.name has a 15-char ceiling
+  # (IANA service-name spec). The original entrypoint name
+  # `websecure-realtime` (18 chars) caused `helm install traefik` to fail
+  # with `spec.template.spec.containers[0].ports[N].name: Invalid value:
+  # "websecure-realtime": must be no more than 15 characters`. Renamed
+  # to `wsrealtime` (10 chars). The override path stays open via
+  # `.Values.ingress.realtimeEntrypointName` for operators on a Traefik
+  # installation that already declares a different short name.
+  - it: renders api realtime IngressRoute bound to the wsrealtime entrypoint with ServersTransport
     template: ingressroute-api-realtime.yaml
     set:
       secrets:
@@ -59,7 +67,7 @@ tests:
           of: IngressRoute
       - equal:
           path: spec.entryPoints[0]
-          value: websecure-realtime
+          value: wsrealtime
       - matchRegex:
           path: spec.routes[0].match
           pattern: "PathPrefix\\(`/v1/realtime`\\)"
@@ -72,6 +80,18 @@ tests:
       - equal:
           path: spec.tls.secretName
           value: openwhispr-api-tls
+
+  - it: realtime entrypoint name respects the kubernetes 15-char ContainerPort name ceiling
+    template: ingressroute-api-realtime.yaml
+    set:
+      secrets:
+        mode: eso
+        external:
+          storeRef: vault-clusterstore
+    asserts:
+      - matchRegex:
+          path: spec.entryPoints[0]
+          pattern: "^[a-z0-9]([a-z0-9-]{0,13}[a-z0-9])?$"
 
   - it: renders web IngressRoute with Host catch-all on websecure
     template: ingressroute-web.yaml

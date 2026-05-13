@@ -1,10 +1,13 @@
 {{/*
-Traefik IngressRoute — WSS /v1/realtime on :8443 (websecure-realtime).
+Traefik IngressRoute — WSS /v1/realtime on :8443.
 
 Mirrors compose/traefik/dynamic.yml router `api-realtime`. Bound
-EXCLUSIVELY to the `websecure-realtime` entrypoint (Phase 04 Plan 05
-SCALE-05 / T-04-02) so long-running WSS sessions cannot exhaust the
-:443 ingress connection pool used by short-JSON routes.
+EXCLUSIVELY to the realtime entrypoint (Phase 04 Plan 05 SCALE-05 /
+T-04-02) so long-running WSS sessions cannot exhaust the :443 ingress
+connection pool used by short-JSON routes. Entrypoint name defaults to
+`wsrealtime` (10 chars — fits k8s ContainerPort.name 15-char ceiling,
+Finding 09.1-F2); operators override via
+`.Values.ingress.realtimeEntrypointName`.
 
 ServersTransport reference: openwhispr-realtime-transport adds the
 3600s idleConnTimeout demanded by BACKEND_SPEC.md L788-L791.
@@ -23,7 +26,7 @@ metadata:
     app.kubernetes.io/component: api
 spec:
   entryPoints:
-    - websecure-realtime
+    - {{ .Values.ingress.realtimeEntrypointName }}
   routes:
     - match: Host(`{{ .Values.host.api }}`) && PathPrefix(`/v1/realtime`)
       kind: Rule

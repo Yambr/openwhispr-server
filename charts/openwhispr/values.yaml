@@ -276,9 +276,15 @@ ingress:
   # do NOT use spec.ingressClassName (that's a built-in Ingress thing).
   # We render Traefik CRDs exclusively (pitfall #3 — no `kind: Ingress`).
   className: traefik
+  # Finding 09.1-F2 — k8s ContainerPort.name has a 15-char IANA ceiling,
+  # so the realtime entrypoint name shipped by the chart is `wsrealtime`
+  # (10 chars). Operators whose Traefik install already declared a
+  # different short name (e.g. `realtime` or `wsrt`) override here.
+  # Must match `^[a-z0-9]([a-z0-9-]{0,13}[a-z0-9])?$`.
+  realtimeEntrypointName: wsrealtime
   # Preflight initContainer in api-deployment.yaml curls the Traefik
-  # admin API and fails fast if the `websecure-realtime` entrypoint
-  # was not declared by the operator's Traefik install (pitfall #4).
+  # admin API and fails fast if the realtime entrypoint was not declared
+  # by the operator's Traefik install (pitfall #4).
   preflightCheck: true
   preflightTraefikAdminUrl: http://traefik.traefik.svc.cluster.local:9000
   # Middleware forwarded-headers ipAllowList trustedIPs (RFC 1918

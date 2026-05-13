@@ -11,7 +11,10 @@
 # - websecure  (:443)               — Traefik 3 defaults; short-JSON routes
 #                                     (api PathPrefix(/api,/v1/audio), web
 #                                     catch-all).
-# - websecure-realtime (:8443)      — long-running WSS /v1/realtime ONLY.
+# - wsrealtime (:8443)              — long-running WSS /v1/realtime ONLY.
+#                                     Name shortened from `websecure-realtime`
+#                                     to fit k8s ContainerPort.name 15-char
+#                                     ceiling (Finding 09.1-F2).
 #                                     respondingTimeouts.idleTimeout=3600s
 #                                     covers the 1h ceiling demanded by
 #                                     BACKEND_SPEC.md L788-L791.
@@ -21,7 +24,7 @@
 # OpenWhispr IngressRoute CRs reference. No per-entrypoint ACME issuance.
 #
 # Pitfall #4 — the api Deployment ships a `traefik-preflight` initContainer
-# that probes `:9000/api/entrypoints` and fails fast if `websecure-realtime`
+# that probes `:9000/api/entrypoints` and fails fast if `wsrealtime`
 # is missing. Toggle off only for split-Traefik-install topologies via
 # `--set ingress.preflightCheck=false`.
 
@@ -34,7 +37,7 @@ ports:
     protocol: TCP
     tls:
       enabled: true
-  websecure-realtime:
+  wsrealtime:
     port: 8444
     expose:
       default: true
@@ -71,4 +74,4 @@ api:
 # Traefik 3 helm chart maps this via `additionalArguments`.
 additionalArguments:
   - --entryPoints.websecure.forwardedHeaders.trustedIPs=10.0.0.0/8,172.16.0.0/12,192.168.0.0/16
-  - --entryPoints.websecure-realtime.forwardedHeaders.trustedIPs=10.0.0.0/8,172.16.0.0/12,192.168.0.0/16
+  - --entryPoints.wsrealtime.forwardedHeaders.trustedIPs=10.0.0.0/8,172.16.0.0/12,192.168.0.0/16
