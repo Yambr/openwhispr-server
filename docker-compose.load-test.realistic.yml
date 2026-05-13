@@ -42,10 +42,15 @@ services:
   litellm:
     profiles: [load-test-realistic]
     image: ghcr.io/berriai/litellm:main-v1.83.14-stable
-    # Override mock's `build.context: ./compose/mock-litellm`. An empty
-    # object disables the build step entirely; the `image:` above is
-    # pulled from the registry.
-    build: {}
+    # Override mock's `build.context: ./compose/mock-litellm`. Compose
+    # merges build: as a map (context survives if we pass {}), so we
+    # explicitly point the build context at a path with no Dockerfile —
+    # compose then skips the build step and pulls the image above from
+    # the registry instead. pull_policy: always belt-and-braces.
+    build:
+      context: .
+      dockerfile: /dev/null
+    pull_policy: always
     command: ["--config", "/etc/litellm/config.yaml", "--port", "4000", "--num_workers", "2"]
     volumes:
       - ./compose/litellm/litellm_config.realistic.yaml:/etc/litellm/config.yaml:ro

@@ -382,7 +382,9 @@ services:
       HF_TOKEN: ${HF_TOKEN:-}
       ENABLE_UI: "false"
     healthcheck:
-      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:8000/health"]
+      # Phase 08.5 follow-up: latest-cpu image has curl (not wget) — use
+      # curl --fail to keep semantics intact (exit non-zero on non-2xx).
+      test: ["CMD", "curl", "-fsS", "-o", "/dev/null", "http://localhost:8000/health"]
       interval: 10s
       timeout: 5s
       retries: 5

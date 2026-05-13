@@ -1,0 +1,40 @@
+smoke-paid: 2026-05-13T00-30-05Z BASE_URL=https://api.localhost
+----------------------------------------------
+
+[1/7] sign-up: smoke-paid-1778632268@example.test
+  PASS  sign-up OK (token: 2TDT0nfb1bzqjSHUU4oi...)
+
+[2/7] api /api/reason (OpenRouter via LiteLLM)
+  PASS  api-reason-openrouter  status=200
+
+[3/7] api /api/agent/stream (OpenRouter SSE)
+  PASS  agent-stream returned NDJSON chunks (head: {"type":"text-delta","text":"ok"}
+{"type":"finish","finishReason":"stop","usage":{"promptTokens":0,"completionTokens":0})
+
+[4/7] api /api/transcribe (Speaches via LiteLLM, LOCAL control)
+  FAIL  api-transcribe-speaches  status=502 (expected 200)
+        body: {"error":"upstream transcription provider failure"}
+
+[5/7] WSS :8443/v1/realtime (Speaches Realtime, LOCAL)
+  ws-probe output:
+    MSG_AT=75ms
+    MSG_BODY={"type":"session.created","event_id":"event_IVygCFfIRPJgQ7F7yqOe2","session":{"id":"sess_B2Nx7ItxP7wvAeKOExt5m","input_audio_format":"pcm16","input_audio_transcription":{"model":"Systran/faster-distil
+    OPENED=true GOT_MSG=true
+  PASS  realtime-ws received message
+
+[6/7] LiteLLM-direct /v1/chat/completions model=qwen3.6-plus (OpenRouter)
+curl: (7) Failed to connect to localhost port 4000 after 0 ms: Couldn't connect to server
+  FAIL  litellm-chat-qwen  status=000 (expected 200)
+        body: {"error":"upstream transcription provider failure"}
+
+[7/7] LiteLLM-direct /v1/chat/completions model=gpt-4o-mini (OpenRouter)
+curl: (7) Failed to connect to localhost port 4000 after 0 ms: Couldn't connect to server
+  FAIL  litellm-chat-gpt4o-mini  status=000 (expected 200)
+        body: {"error":"upstream transcription provider failure"}
+
+==============================================
+smoke-paid SUMMARY: 4 PASS / 3 FAIL
+Failures:
+  - api-transcribe-speaches expected=200 got=502
+  - litellm-chat-qwen expected=200 got=000
+  - litellm-chat-gpt4o-mini expected=200 got=000

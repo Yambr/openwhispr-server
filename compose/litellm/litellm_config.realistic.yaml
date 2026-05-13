@@ -78,6 +78,16 @@ model_list:
       api_key: "speaches-dummy"
       mode: realtime
 
+  # k6 realtime-ws flow sends model=speaches-realtime in the WS query
+  # param (`wss://.../v1/realtime?model=speaches-realtime`), so alias
+  # this name explicitly to the same Speaches upstream.
+  - model_name: speaches-realtime
+    litellm_params:
+      model: openai/speaches-realtime
+      api_base: http://speaches:8000/v1
+      api_key: "speaches-dummy"
+      mode: realtime
+
   - model_name: gpt-realtime-mini
     litellm_params:
       model: openai/speaches-realtime
@@ -96,15 +106,14 @@ general_settings:
   master_key: os.environ/LITELLM_MASTER_KEY
   database_url: os.environ/LITELLM_DATABASE_URL
   store_model_in_db: True
-  # 08.5-RESEARCH §G2 + speaches-audio.md Section 2: pass-through for
-  # Speaches diarization. Mac smoke does NOT exercise this path
-  # (08.5-RESEARCH §G7), but the topology is correct for the operator
-  # H100 re-run path that adds diarization warm to pre-warm-speaches.sh.
-  pass_through_endpoints:
-    - path: /v1/audio/diarization
-      target: http://speaches:8000/v1/audio/diarization
-      auth: true
-      forward_headers: true
+  # NOTE: pass_through_endpoints with `auth: true` requires LiteLLM
+  # Enterprise license — startup crashes without it. speaches-audio.md
+  # §2 uses this in production (corporate operators have Enterprise),
+  # but Mac OSS load-test runs use community LiteLLM. Diarization is
+  # not exercised by the load-test smoke OR plateau, so we omit the
+  # pass-through entirely. Operators who run realistic against
+  # Enterprise LiteLLM should re-add the pass_through_endpoints block
+  # per speaches-audio.md §2.
 
 litellm_settings:
   drop_params: True
