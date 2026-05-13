@@ -11,6 +11,7 @@
     "test": "vitest run",
     "test:unit": "vitest run --coverage",
     "test:watch": "vitest",
+    "test:web-i18n": "vitest run src/app/__tests__/locale-negotiation.test.ts src/lib/__tests__/i18n-russian-coverage.test.ts src/lib/__tests__/web-plural-rules.test.ts src/locales/__tests__/coverage.test.ts src/app/api/locale/__tests__/route.test.ts src/components/screens/__tests__/language-switcher.test.tsx",
     "test:e2e": "playwright test",
     "test:e2e:ui": "playwright test --ui",
     "size": "size-limit"

@@ -69,6 +69,12 @@ jobs:
         with: { node-version: '24', cache: 'pnpm' }
       - run: pnpm install --frozen-lockfile
       - run: pnpm --filter @openwhispr/web test:unit
+      # Phase 10 / Plan 02 — Explicit gate for the i18n test surface. The
+      # `test:unit` job above runs everything (including these tests), so
+      # this step is intentionally a fast, focused re-run that fails the
+      # build if anyone disables / removes an i18n test file but leaves
+      # the rest of the suite green.
+      - run: pnpm --filter @openwhispr/web test:web-i18n
       - uses: actions/upload-artifact@v4
         if: always()
         with:
