@@ -237,4 +237,48 @@ Zero-action migration: `git pull && docker compose up -d` is sufficient — the 
 
 ---
 
-*Last updated: 2026-05-10 (Phase 03 Plan 09 — D-06 / D-07 REVISED / D-10 / D-11 / D-12).*
+## Helm chart override (Phase 9 cross-reference)
+
+The Helm chart at `charts/openwhispr/` exposes the corporate-override
+path via the same env-var contract the docker-compose deployment
+uses. The relevant `values.yaml` knobs:
+
+```yaml
+litellm:
+  # Mode "external" disables the bundled litellm Deployment + Service
+  # entirely. The api Deployment receives LITELLM_BASE_URL +
+  # LITELLM_MASTER_KEY from the secrets block and routes upstream.
+  mode: external                                    # "embedded" | "external"
+  external:
+    baseUrl: https://litellm.corp.example.com
+    # masterKey is supplied via secrets.values.litellmMasterKey
+    # (or ExternalSecret-resolved when secrets.mode=eso).
+
+secrets:
+  mode: values                                       # or "eso"
+  values:
+    litellmMasterKey: "<corp-issued master key>"     # Helm rejects placeholders
+```
+
+When `litellm.mode=external` the chart:
+
+- skips rendering the `litellm` Deployment, Service, and PVC;
+- omits the spend-log ingestion BullMQ scheduler (the bundled-ingest
+  path scans the local `litellm.LiteLLM_SpendLogs` table; with
+  external mode the corporate proxy emits its own ledger);
+- adds a `litellm-preflight` init container on the api that
+  validates `LITELLM_BASE_URL` is reachable + `LITELLM_MASTER_KEY`
+  authenticates against `/health/liveliness` before the api pod
+  starts.
+
+The `values.schema.json` enforces that `external.baseUrl` is set when
+`mode=external` and rejects `secrets.values.litellmMasterKey=""`
+placeholders.
+
+See [`operations.md` § Helm chart upgrade](./operations.md) for the
+operator-side rollout flow and [`security.md`](./security.md) §3 for
+the secret-loading model.
+
+---
+
+*Last updated: 2026-05-13 (Phase 10 Plan 10-03 — Helm cross-reference + i18n linkage).*
