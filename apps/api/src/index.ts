@@ -484,7 +484,43 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   // prior `as never` casts hid the type mismatch from tsc; they are
   // removed here so a future wrapper-leak fails typecheck immediately.
   const { db, pool: appPool } = makeAppDb();
-  const auth = buildAuth({ db }) as unknown as AuthLike;
+  // Phase 10 / Plan 10-01c — wire the BullMQ email-delivery queue so
+  // Better Auth's sendVerificationEmail hook dispatches via the worker
+  // (locale-aware templates from Plan 10-01b). Gated on VALKEY_URL: if
+  // the operator has not configured Valkey/Redis, we leave
+  // `enqueueEmail` undefined and `buildAuth` falls back to the inline
+  // `email.send` path (backward compat for OSS quickstart). Connection
+  // shape mirrors the diarization ioredis client below.
+  let enqueueEmail: ((p: import("./auth.js").EmailDeliveryPayload) => Promise<void>) | undefined;
+  if (process.env.VALKEY_URL) {
+    try {
+      const { Queue } = await import("bullmq");
+      const url = new URL(process.env.VALKEY_URL);
+      const queue = new Queue("email-delivery", {
+        connection: {
+          host: url.hostname,
+          port: Number(url.port || 6379),
+          ...(url.password ? { password: decodeURIComponent(url.password) } : {}),
+        },
+      });
+      enqueueEmail = async (payload) => {
+        await queue.add("email-delivery", payload, {
+          jobId: payload.request_id,
+          attempts: 5,
+          backoff: { type: "exponential", delay: 1_000 },
+          removeOnComplete: { age: 24 * 3600, count: 1_000 },
+          removeOnFail: { age: 7 * 24 * 3600 },
+        });
+      };
+    } catch (err) {
+      // biome-ignore lint/suspicious/noConsole: server bootstrap warning; structured logging arrives in Phase 6
+      console.warn(
+        "[buildApp] BullMQ email-delivery queue not constructed; verification emails fall back to inline SMTP:",
+        (err as Error).message,
+      );
+    }
+  }
+  const auth = buildAuth(enqueueEmail ? { db, enqueueEmail } : { db }) as unknown as AuthLike;
   // Phase 03 / Plan 04: construct the shared LiteLLM client when
   // LITELLM_MASTER_KEY is configured. Missing key -> log a one-line
   // warning and skip; transcribe/reason/diarization/realtime routes are
