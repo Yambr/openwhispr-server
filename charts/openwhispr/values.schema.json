@@ -1,0 +1,95 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "openwhispr chart values",
+  "type": "object",
+  "properties": {
+    "secrets": {
+      "type": "object",
+      "properties": {
+        "mode": {
+          "type": "string",
+          "enum": ["helm-values", "eso"]
+        },
+        "external": {
+          "type": "object",
+          "properties": {
+            "storeRef": { "type": "string" },
+            "storeKind": {
+              "type": "string",
+              "enum": ["SecretStore", "ClusterSecretStore"]
+            },
+            "path": { "type": "string" },
+            "refreshInterval": { "type": "string" }
+          }
+        },
+        "litellmMasterKey": {
+          "type": "string",
+          "not": { "enum": ["CHANGE_ME", "changeme"] },
+          "description": "LiteLLM master key. Must be >= 32 chars in helm-values mode. Empty allowed only when secrets.mode=eso."
+        },
+        "openrouterApiKey": {
+          "type": "string",
+          "not": { "enum": ["CHANGE_ME", "changeme"] }
+        },
+        "openaiApiKey": {
+          "type": "string",
+          "not": { "enum": ["CHANGE_ME", "changeme"] }
+        },
+        "pyannoteApiKey": {
+          "type": "string",
+          "not": { "enum": ["CHANGE_ME", "changeme"] }
+        },
+        "hfToken": {
+          "type": "string",
+          "not": { "enum": ["CHANGE_ME", "changeme"] }
+        },
+        "postgresOwnerPassword": {
+          "type": "string",
+          "not": { "enum": ["CHANGE_ME", "changeme"] }
+        },
+        "pgbouncerAdminPassword": {
+          "type": "string",
+          "not": { "enum": ["CHANGE_ME", "changeme"] }
+        },
+        "betterAuthSecret": {
+          "type": "string",
+          "not": { "enum": ["CHANGE_ME", "changeme"] }
+        }
+      },
+      "required": ["mode"]
+    },
+    "postgres": {
+      "type": "object",
+      "properties": {
+        "imageName": {
+          "type": "string",
+          "pattern": "^.+:17\\.[0-9]+.*$",
+          "description": "Must pin Postgres major version 17. CNPG default catalog ships PG 18 — refusing to install on non-17 image (T-09-02)."
+        },
+        "replicas": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 10
+        }
+      }
+    },
+    "bundledAi": {
+      "type": "object",
+      "properties": {
+        "enabled": { "type": "boolean" }
+      }
+    },
+    "observability": {
+      "type": "object"
+    },
+    "api": {
+      "type": "object"
+    },
+    "web": {
+      "type": "object"
+    },
+    "worker": {
+      "type": "object"
+    }
+  }
+}
