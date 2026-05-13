@@ -1,0 +1,6 @@
+# Sub-chart artifacts are fetched by `helm dependency build/update` from the
+# Chart.lock pin. Never commit them — Chart.lock + Chart.yaml are the source
+# of truth, and committing .tgz blobs bloats the repo and breaks signed
+# provenance (the Bitnami OCI charts ship cosign signatures we re-fetch).
+*
+!.gitignore

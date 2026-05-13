@@ -1,0 +1,102 @@
+suite: subcharts — Bitnami Valkey + MinIO dependency render (A5)
+# Reach into the sub-chart's specific template path to assert on the rendered
+# StatefulSet/Deployment. Bitnami's Valkey 5.6.5 chart materializes the primary
+# StatefulSet at `charts/valkey/templates/primary/application.yaml`, and MinIO
+# 17.0.21 at `charts/minio/templates/application.yaml` (ternaries between
+# Deployment in standalone mode and StatefulSet in distributed mode).
+#
+# helm-unittest's per-template `template:` selector reliably scopes evaluation
+# to a single sub-chart file, sidestepping the chart-load-time `condition:`
+# limitation (set: { x.enabled: false } cannot un-render sub-chart docs at
+# test time; that path is covered by the compose-chart parity lint instead).
+release:
+  name: ow
+  namespace: default
+tests:
+  - it: Valkey primary application renders a 1-replica StatefulSet in standalone mode
+    template: charts/valkey/templates/primary/application.yaml
+    set:
+      secrets:
+        mode: eso
+        external:
+          storeRef: vault-clusterstore
+      valkey:
+        enabled: true
+        architecture: standalone
+        auth:
+          enabled: false
+    asserts:
+      - isKind:
+          of: StatefulSet
+      - equal:
+          path: metadata.name
+          value: ow-valkey-primary
+      - equal:
+          path: spec.replicas
+          value: 1
+      - equal:
+          path: spec.serviceName
+          value: ow-valkey-headless
+
+  - it: Valkey replicas application renders a 2-replica StatefulSet in replication mode
+    template: charts/valkey/templates/replicas/application.yaml
+    set:
+      secrets:
+        mode: eso
+        external:
+          storeRef: vault-clusterstore
+      valkey:
+        enabled: true
+        architecture: replication
+        auth:
+          enabled: true
+        replica:
+          replicaCount: 2
+    asserts:
+      - isKind:
+          of: StatefulSet
+      - equal:
+          path: metadata.name
+          value: ow-valkey-replicas
+      - equal:
+          path: spec.replicas
+          value: 2
+
+  - it: MinIO application renders a Deployment in standalone mode
+    template: charts/minio/templates/application.yaml
+    set:
+      secrets:
+        mode: eso
+        external:
+          storeRef: vault-clusterstore
+      minio:
+        enabled: true
+        mode: standalone
+    asserts:
+      - isKind:
+          of: Deployment
+      - equal:
+          path: metadata.name
+          value: ow-minio
+      - equal:
+          path: metadata.labels["app.kubernetes.io/name"]
+          value: minio
+
+  - it: MinIO application switches to StatefulSet in distributed mode
+    template: charts/minio/templates/application.yaml
+    set:
+      secrets:
+        mode: eso
+        external:
+          storeRef: vault-clusterstore
+      minio:
+        enabled: true
+        mode: distributed
+        statefulset:
+          replicaCount: 4
+    asserts:
+      - isKind:
+          of: StatefulSet
+      - equal:
+          path: spec.replicas
+          value: 4

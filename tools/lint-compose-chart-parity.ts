@@ -78,6 +78,9 @@ export const CHART_KINDS = new Set([
 export const COMPOSE_SERVICE_ALIASES: Record<string, string> = {
   postgres: "pg",
   pgbouncer: "pg-pooler",
+  // Bitnami valkey sub-chart materializes the primary StatefulSet at
+  // `<release>-valkey-primary`; map the compose service to that suffix.
+  valkey: "valkey-primary",
 };
 
 export interface Allowlist {
@@ -117,10 +120,16 @@ export function extractChartResources(helmStdout: string, releaseName = "ow"): S
     if (!json.kind || !CHART_KINDS.has(json.kind)) continue;
     let name = json.metadata?.name ?? "";
     const prefix = `${releaseName}-openwhispr-`;
-    if (name.startsWith(prefix)) name = name.slice(prefix.length);
     const altPrefix = `${releaseName}-`;
-    if (!name && json.metadata?.name?.startsWith(altPrefix)) {
-      name = json.metadata.name.slice(altPrefix.length);
+    if (name.startsWith(prefix)) {
+      // First-party chart resource: strip "<release>-openwhispr-" entirely.
+      name = name.slice(prefix.length);
+    } else if (name.startsWith(altPrefix)) {
+      // Sub-chart resource (e.g. Bitnami valkey/minio): strip only the
+      // "<release>-" prefix so "ow-minio" -> "minio" matches compose service
+      // names. We keep the rest verbatim so multi-resource sub-charts
+      // (e.g. ow-valkey-primary, ow-valkey-headless) remain distinguishable.
+      name = name.slice(altPrefix.length);
     }
     if (name) out.add(name);
   }

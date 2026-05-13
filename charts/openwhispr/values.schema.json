@@ -110,6 +110,26 @@
         "enabled": { "type": "boolean" }
       }
     },
+    "valkey": {
+      "type": "object",
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "architecture": {
+          "type": "string",
+          "enum": ["standalone", "replication"]
+        }
+      }
+    },
+    "minio": {
+      "type": "object",
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "mode": {
+          "type": "string",
+          "enum": ["standalone", "distributed"]
+        }
+      }
+    },
     "observability": {
       "type": "object"
     },

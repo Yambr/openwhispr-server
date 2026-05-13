@@ -30,3 +30,21 @@ annotations:
   # add Deployments, CNPG Cluster CR, IngressRoutes, etc.
   category: Application
   licenses: Apache-2.0
+# Sub-chart dependencies. Phase 09 Plan 05 (A5 decision): vendor Bitnami
+# Valkey + MinIO via the canonical OCI Helm charts. NOTE the 2024 Bitnami
+# license change: the Helm CHARTS themselves remain Apache 2.0, while the
+# Bitnami container *images* moved to a hybrid model (Bitnami Secure premium
+# tier for hardened/long-LTS variants). Corporate operators that want to
+# avoid Bitnami's image stream can override values.valkey.image.* and
+# values.minio.image.* to point at their own registry. See
+# docs/licensing-bitnami-2024.md for the full corporate-override path
+# (including a future Option B: switch to operators rather than sub-charts).
+dependencies:
+  - name: valkey
+    version: "5.6.5"
+    repository: "oci://registry-1.docker.io/bitnamicharts"
+    condition: valkey.enabled
+  - name: minio
+    version: "17.0.21"
+    repository: "oci://registry-1.docker.io/bitnamicharts"
+    condition: minio.enabled
