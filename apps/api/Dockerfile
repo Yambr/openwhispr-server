@@ -130,6 +130,16 @@ COPY --from=builder --chown=node:node /app/packages/data/migrations /app/package
 COPY --from=builder --chown=node:node /app/tools/bootstrap/default-secrets.txt \
                                        /app/tools/bootstrap/default-secrets.txt
 
+# Phase 09 / Plan 11 — upgrade-matrix tools. The helm-upgrade-matrix.yml
+# workflow does `kubectl exec deploy/ow-api -- node /app/tools/seed-test-data.js`
+# after the N-1 install and `node /app/tools/integrity-check.js` after the
+# N upgrade. They are plain CJS scripts importing only the `pg` package
+# already in node_modules; no rebuild needed for changes to them.
+COPY --from=builder --chown=node:node /app/tools/seed-test-data.js \
+                                       /app/tools/seed-test-data.js
+COPY --from=builder --chown=node:node /app/tools/integrity-check.js \
+                                       /app/tools/integrity-check.js
+
 # Entrypoint shim — chmod 0755 in the COPY directive so we don't need
 # an explicit RUN chmod that would create another layer.
 COPY --chown=node:node --chmod=0755 apps/api/entrypoint.sh /app/entrypoint.sh
