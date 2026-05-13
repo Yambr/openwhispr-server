@@ -23,7 +23,12 @@
 #   POST /v1/chat/completions  — model=gpt-4o-mini      (OpenRouter)
 #   POST /v1/audio/transcriptions  — model=whisper-large-v3 (Speaches)
 #
-# Total: 7 distinct calls (well under 10-cap).
+# Phase 08.6-03: 8th call exercises /v1/audio/diarization against the
+# local Speaches branch (SPEACHES_DIARIZATION_URL wired in realistic
+# overlay). LOCAL — no paid-provider cost.
+#   POST /v1/audio/diarization  — Speaches (LOCAL)
+#
+# Total: 8 distinct calls (still under 10-cap).
 #
 # Exit codes:
 #   0 — all PASS, ws_msgs_sent > 0 on realtime
@@ -100,7 +105,7 @@ fi
 
 EMAIL="smoke-paid-$(date +%s)@example.test"
 log ""
-log "[1/7] sign-up: ${EMAIL}"
+log "[1/8] sign-up: ${EMAIL}"
 SIGNUP_BODY=$(curl -ksS -X POST "${BASE_URL}/api/auth/sign-up/email" \
   -H 'content-type: application/json' \
   -H "origin: ${BASE_URL}" \
@@ -116,7 +121,7 @@ PASS_COUNT=$((PASS_COUNT + 1))
 # 3. /api/reason — OpenRouter via LiteLLM (PAID) -------------------------
 
 log ""
-log "[2/7] api /api/reason (OpenRouter via LiteLLM)"
+log "[2/8] api /api/reason (OpenRouter via LiteLLM)"
 probe "api-reason-openrouter" "200" \
   -X POST "${BASE_URL}/api/reason" \
   -H "authorization: Bearer ${TOKEN}" \
@@ -126,7 +131,7 @@ probe "api-reason-openrouter" "200" \
 # 4. /api/agent/stream — OpenRouter via LiteLLM (PAID, SSE) --------------
 
 log ""
-log "[3/7] api /api/agent/stream (OpenRouter SSE)"
+log "[3/8] api /api/agent/stream (OpenRouter SSE)"
 AGENT_BODY=$(curl -ksS -m 30 -X POST "${BASE_URL}/api/agent/stream" \
   -H "authorization: Bearer ${TOKEN}" \
   -H 'content-type: application/json' \
@@ -144,7 +149,7 @@ fi
 # 5. /api/transcribe — Speaches via LiteLLM (LOCAL, control sample) ------
 
 log ""
-log "[4/7] api /api/transcribe (Speaches via LiteLLM, LOCAL control)"
+log "[4/8] api /api/transcribe (Speaches via LiteLLM, LOCAL control)"
 FIXTURE="tools/load-test/src/fixtures/sample-5s-16k.wav"
 if [[ ! -f "${FIXTURE}" ]]; then
   log "  SKIP  fixture not found at ${FIXTURE}"
@@ -159,7 +164,7 @@ fi
 # 6. WSS /v1/realtime — Speaches Realtime (LOCAL) ------------------------
 
 log ""
-log "[5/7] WSS :8443/v1/realtime (Speaches Realtime, LOCAL)"
+log "[5/8] WSS :8443/v1/realtime (Speaches Realtime, LOCAL)"
 # Use a tiny node script inline. The mock-litellm workspace has 'ws'.
 WS_RESULT=$(cd compose/mock-litellm && node --input-type=module -e "
 import { WebSocket } from 'ws';
@@ -193,7 +198,7 @@ fi
 
 LITELLM_KEY=$(grep '^LITELLM_MASTER_KEY=' .env | head -1 | cut -d= -f2-)
 log ""
-log "[6/7] LiteLLM-direct /v1/chat/completions model=qwen3.6-plus (OpenRouter)"
+log "[6/8] LiteLLM-direct /v1/chat/completions model=qwen3.6-plus (OpenRouter)"
 probe "litellm-chat-qwen" "200" \
   -X POST "${LITELLM_BASE}/v1/chat/completions" \
   -H "authorization: Bearer ${LITELLM_KEY}" \
@@ -201,12 +206,46 @@ probe "litellm-chat-qwen" "200" \
   -d '{"model":"qwen3.6-plus","messages":[{"role":"user","content":"reply with the word ok"}],"max_tokens":10}' || true
 
 log ""
-log "[7/7] LiteLLM-direct /v1/chat/completions model=gpt-4o-mini (OpenRouter)"
+log "[7/8] LiteLLM-direct /v1/chat/completions model=gpt-4o-mini (OpenRouter)"
 probe "litellm-chat-gpt4o-mini" "200" \
   -X POST "${LITELLM_BASE}/v1/chat/completions" \
   -H "authorization: Bearer ${LITELLM_KEY}" \
   -H 'content-type: application/json' \
   -d '{"model":"gpt-4o-mini","messages":[{"role":"user","content":"reply with the word ok"}],"max_tokens":10}' || true
+
+# 8. /api/diarization — Speaches local (Phase 08.6) ----------------------
+# Posts the same 5s WAV fixture to /v1/audio/diarization. The realistic
+# profile wires SPEACHES_DIARIZATION_URL=http://speaches:8000 so the api
+# route bypasses pyannote.ai entirely. Asserts 200 + segments[] non-empty
+# in the parsed JSON body.
+
+log ""
+log "[8/8] api /v1/audio/diarization (Speaches local, LOCAL)"
+if [[ ! -f "${FIXTURE}" ]]; then
+  log "  SKIP  diarization fixture not found at ${FIXTURE}"
+else
+  DIAR_BODY_FILE=/tmp/smoke-paid-diar-body
+  DIAR_STATUS=$(curl -ksS -o "${DIAR_BODY_FILE}" -w '%{http_code}' \
+    -X POST "${BASE_URL}/v1/audio/diarization" \
+    -H "authorization: Bearer ${TOKEN}" \
+    -F "file=@${FIXTURE};type=audio/wav" 2>>"${LOG_FILE}" || echo "000")
+  if [[ "${DIAR_STATUS}" == "200" ]]; then
+    SEG_COUNT=$(jq -r '.segments | length' "${DIAR_BODY_FILE}" 2>/dev/null || echo "0")
+    if [[ "${SEG_COUNT}" -gt 0 ]]; then
+      PASS_COUNT=$((PASS_COUNT + 1))
+      log "  PASS  api-diarization-speaches  status=200 segments=${SEG_COUNT}"
+    else
+      FAIL_COUNT=$((FAIL_COUNT + 1))
+      FAILURES+=("api-diarization-empty-segments")
+      log "  FAIL  api-diarization-speaches  status=200 but segments=[] (body: $(head -c 200 "${DIAR_BODY_FILE}"))"
+    fi
+  else
+    FAIL_COUNT=$((FAIL_COUNT + 1))
+    FAILURES+=("api-diarization-speaches status=${DIAR_STATUS}")
+    log "  FAIL  api-diarization-speaches  status=${DIAR_STATUS} (expected 200)"
+    log "        body: $(head -c 200 "${DIAR_BODY_FILE}")"
+  fi
+fi
 
 # Summary ---------------------------------------------------------------
 
@@ -221,5 +260,5 @@ if (( FAIL_COUNT > 0 )); then
   printf '%s\n' "${RED}smoke-paid: ${FAIL_COUNT} call(s) failed${RESET}" >&2
   exit 1
 fi
-printf '%s\n' "${GREEN}smoke-paid: PASS (${PASS_COUNT}/7 calls, log: ${LOG_FILE})${RESET}" >&2
+printf '%s\n' "${GREEN}smoke-paid: PASS (${PASS_COUNT}/8 calls, log: ${LOG_FILE})${RESET}" >&2
 exit 0
