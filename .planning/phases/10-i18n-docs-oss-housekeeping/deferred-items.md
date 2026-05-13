@@ -43,3 +43,25 @@ These should be fixed in a dedicated tech-debt plan; out of scope for 10-01a.
    messages,messages,search}, folders/{crud,list}, notes/{batch-create,
    crud,list,...}, transcriptions, rate-limit-isolation, etc.
    Out of scope for 10-01c (data-layer + auth wiring plan).
+
+## 10-04 — task 4 (CoC audit + CONTRIBUTING/SECURITY extensions) deferred
+
+7. **Task 4 of 10-04-PLAN.md** was scope-narrowed out of the finishing pass
+   on 2026-05-13. The prior executor crashed mid-summary after Tasks 1, 2,
+   and 3 (SPDX codemod + CI gate + bulk insertion + .github housekeeping).
+   The finishing pass shipped Tasks 5 and 6 (ADRs 0004-0011) and the
+   summaries. Task 4 remaining work:
+   - Audit `CODE_OF_CONDUCT.md` against Contributor Covenant 2.1 verbatim
+     text and replace if drift detected.
+   - Extend `CONTRIBUTING.md` (current 67 lines, target ~110) with the
+     "License headers" section (pointing at `pnpm spdx:fix`), the
+     "Translations" section (linking `docs/i18n.md`), the "Strict TDD"
+     section (coverage ≥ 90/90/90/90 on diff), and reaffirm the
+     English-only source rule via a link to ADR-0003.
+   - Extend `SECURITY.md` (current 34 lines, target ~80) with the response
+     SLA (72h ack, 7d status, 30d critical fix), a cross-link to
+     `docs/security.md`, a threat-model summary table (top T-IDs from
+     phases 6 and 10), and the coordinated-disclosure process text.
+   The constitutional rules (Apache-2.0 license, English-only source, SPDX
+   headers, TDD discipline) are all already enforced mechanically; the
+   Task 4 work is documentation polish that does not gate any code path.
