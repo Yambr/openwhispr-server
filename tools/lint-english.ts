@@ -63,10 +63,13 @@ const IGNORE = [
   // every `*/locales/**` directory across the monorepo so future packages
   // (apps/worker email templates, etc.) inherit the same exemption.
   "**/locales/**",
-  // i18n unit-test files (init.test.ts etc.) intentionally embed Cyrillic
-  // strings as fixtures to assert lookup behavior. They are i18n surfaces
-  // by the same rationale as the bundle JSON files.
+  // i18n unit-test files intentionally embed Cyrillic strings as fixtures
+  // to assert lookup / formatting behavior. They are i18n surfaces by the
+  // same rationale as the bundle JSON files. Pattern covers both
+  // `__tests__/*-i18n.test.*` and `i18n/__tests__/**` layouts.
   "**/i18n/__tests__/**",
+  "**/__tests__/*-i18n.test.*",
+  "**/__tests__/i18n*.test.*",
   "apps/web/tests/e2e/i18n-russian.spec.ts",
   // Reference document — Russian-language description of an upstream
   // LiteLLM/Speaches deployment that the server is configured against.

@@ -18,6 +18,7 @@ import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
 import { signOut } from "@/lib/auth-client";
+import { LanguageSwitcher } from "./language-switcher";
 import { ThemeSwitcher } from "./theme-switcher";
 
 interface NavItem {
@@ -71,6 +72,7 @@ export function AppShell({ children }: { children: ReactNode }): React.JSX.Eleme
       </aside>
       <div className="flex flex-1 flex-col">
         <header className="flex h-14 items-center justify-end gap-2 border-b border-border px-4">
+          <LanguageSwitcher />
           <ThemeSwitcher />
           <Button onClick={handleSignOut} size="sm" variant="outline">
             {t("common:common.signout.label")}
