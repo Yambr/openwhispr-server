@@ -1,0 +1,17 @@
+{{/*
+worker ConfigMap — non-secret env mirroring docker-compose.yml worker.environment.
+*/}}
+{{- $fullname := include "openwhispr.fullname" . -}}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ $fullname }}-worker-config
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "openwhispr.labels" . | nindent 4 }}
+    app.kubernetes.io/component: worker
+data:
+  NODE_ENV: {{ .Values.worker.env.nodeEnv | default "production" | quote }}
+  LOG_LEVEL: {{ .Values.worker.env.logLevel | default "info" | quote }}
+  OTEL_EXPORTER_OTLP_PROTOCOL: {{ .Values.worker.env.otelProtocol | default "grpc" | quote }}
+  OTEL_SERVICE_NAME: {{ .Values.worker.env.otelServiceName | default "openwhispr-worker" | quote }}

@@ -1,0 +1,206 @@
+suite: worker — Deployment + Service + HPA + PDB + ServiceMonitor + ConfigMap
+templates:
+  - worker-deployment.yaml
+  - worker-service.yaml
+  - worker-hpa.yaml
+  - worker-pdb.yaml
+  - worker-servicemonitor.yaml
+  - configmap-worker.yaml
+tests:
+  - it: renders worker Deployment with container name worker and port 3002 health
+    template: worker-deployment.yaml
+    set:
+      secrets:
+        mode: eso
+        external:
+          storeRef: vault-clusterstore
+    asserts:
+      - isKind:
+          of: Deployment
+      - equal:
+          path: spec.template.spec.containers[0].name
+          value: worker
+      - equal:
+          path: spec.template.spec.containers[0].ports[0].containerPort
+          value: 3002
+      - equal:
+          path: spec.template.spec.containers[0].envFrom[0].secretRef.name
+          value: RELEASE-NAME-openwhispr-secrets
+
+  - it: worker Deployment wires DATABASE_URL through the Pooler RW
+    template: worker-deployment.yaml
+    set:
+      secrets:
+        mode: eso
+        external:
+          storeRef: vault-clusterstore
+    asserts:
+      - matchRegex:
+          path: spec.template.spec.containers[0].env[?(@.name=="DATABASE_URL")].value
+          pattern: "RELEASE-NAME-openwhispr-pg-pooler-rw:5432"
+
+  - it: worker Deployment carries secret-presence-probe initContainer
+    template: worker-deployment.yaml
+    set:
+      secrets:
+        mode: eso
+        external:
+          storeRef: vault-clusterstore
+    asserts:
+      - equal:
+          path: spec.template.spec.initContainers[0].name
+          value: secret-presence-probe
+
+  - it: worker Deployment readiness/liveness probes on /healthz port 3002
+    template: worker-deployment.yaml
+    set:
+      secrets:
+        mode: eso
+        external:
+          storeRef: vault-clusterstore
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].readinessProbe.httpGet.path
+          value: /healthz
+      - equal:
+          path: spec.template.spec.containers[0].readinessProbe.httpGet.port
+          value: 3002
+
+  - it: worker Service is headless (clusterIP None) for per-pod scrape
+    template: worker-service.yaml
+    set:
+      secrets:
+        mode: eso
+        external:
+          storeRef: vault-clusterstore
+    asserts:
+      - isKind:
+          of: Service
+      - equal:
+          path: spec.clusterIP
+          value: None
+      - equal:
+          path: spec.ports[0].port
+          value: 3002
+
+  - it: worker HPA renders CPU 70% only when queueDepthMetric=false (default)
+    template: worker-hpa.yaml
+    set:
+      secrets:
+        mode: eso
+        external:
+          storeRef: vault-clusterstore
+    asserts:
+      - isKind:
+          of: HorizontalPodAutoscaler
+      - lengthEqual:
+          path: spec.metrics
+          count: 1
+      - equal:
+          path: spec.metrics[0].type
+          value: Resource
+      - equal:
+          path: spec.metrics[0].resource.target.averageUtilization
+          value: 70
+
+  - it: worker HPA appends External metric when queueDepthMetric=true
+    template: worker-hpa.yaml
+    set:
+      secrets:
+        mode: eso
+        external:
+          storeRef: vault-clusterstore
+      worker:
+        autoscaling:
+          enabled: true
+          minReplicas: 1
+          maxReplicas: 30
+          targetCPUUtilizationPercentage: 70
+          queueDepthMetric: true
+          queueDepthAverageValue: "5"
+          queueDepthQueue: "transcription"
+    asserts:
+      - lengthEqual:
+          path: spec.metrics
+          count: 2
+      - equal:
+          path: spec.metrics[1].type
+          value: External
+      - equal:
+          path: spec.metrics[1].external.metric.name
+          value: bullmq_queue_waiting_total
+      - equal:
+          path: spec.metrics[1].external.metric.selector.matchLabels.queue
+          value: transcription
+      - equal:
+          path: spec.metrics[1].external.target.averageValue
+          value: "5"
+
+  - it: worker HPA omits render when autoscaling.enabled=false
+    template: worker-hpa.yaml
+    set:
+      secrets:
+        mode: eso
+        external:
+          storeRef: vault-clusterstore
+      worker:
+        autoscaling:
+          enabled: false
+    asserts:
+      - hasDocuments:
+          count: 0
+
+  - it: worker PDB renders minAvailable 1 when minReplicas >= 2
+    template: worker-pdb.yaml
+    set:
+      secrets:
+        mode: eso
+        external:
+          storeRef: vault-clusterstore
+      worker:
+        autoscaling:
+          enabled: true
+          minReplicas: 2
+    asserts:
+      - isKind:
+          of: PodDisruptionBudget
+      - equal:
+          path: spec.minAvailable
+          value: 1
+
+  - it: worker ServiceMonitor renders only when observability.serviceMonitor.enabled
+    template: worker-servicemonitor.yaml
+    set:
+      secrets:
+        mode: eso
+        external:
+          storeRef: vault-clusterstore
+      observability:
+        serviceMonitor:
+          enabled: true
+    asserts:
+      - isKind:
+          of: ServiceMonitor
+      - equal:
+          path: spec.endpoints[0].path
+          value: /metrics
+      - equal:
+          path: spec.endpoints[0].port
+          value: http
+
+  - it: configmap-worker renders OTel + NODE_ENV
+    template: configmap-worker.yaml
+    set:
+      secrets:
+        mode: eso
+        external:
+          storeRef: vault-clusterstore
+    asserts:
+      - isKind:
+          of: ConfigMap
+      - equal:
+          path: data.NODE_ENV
+          value: production
+      - equal:
+          path: data.OTEL_SERVICE_NAME
+          value: openwhispr-worker

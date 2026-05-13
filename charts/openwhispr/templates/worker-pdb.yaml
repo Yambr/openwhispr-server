@@ -1,0 +1,19 @@
+{{/*
+worker PodDisruptionBudget — renders only when minReplicas >= 2.
+*/}}
+{{- if and .Values.worker.autoscaling.enabled (ge (int .Values.worker.autoscaling.minReplicas) 2) -}}
+{{- $fullname := include "openwhispr.fullname" . -}}
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ $fullname }}-worker
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "openwhispr.labels" . | nindent 4 }}
+    app.kubernetes.io/component: worker
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      {{- include "openwhispr.worker.selectorLabels" . | nindent 6 }}
+{{- end }}

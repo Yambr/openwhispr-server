@@ -1,0 +1,43 @@
+{{/*
+worker HorizontalPodAutoscaler (autoscaling/v2).
+Default: single CPU 70% metric. When worker.autoscaling.queueDepthMetric=true,
+appends an External metric `bullmq_queue_waiting_total` (requires
+prometheus-adapter installed cluster-side — documented in NOTES.txt).
+*/}}
+{{- if .Values.worker.autoscaling.enabled -}}
+{{- $fullname := include "openwhispr.fullname" . -}}
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: {{ $fullname }}-worker
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "openwhispr.labels" . | nindent 4 }}
+    app.kubernetes.io/component: worker
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: {{ $fullname }}-worker
+  minReplicas: {{ .Values.worker.autoscaling.minReplicas }}
+  maxReplicas: {{ .Values.worker.autoscaling.maxReplicas }}
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: {{ .Values.worker.autoscaling.targetCPUUtilizationPercentage }}
+    {{- if .Values.worker.autoscaling.queueDepthMetric }}
+    - type: External
+      external:
+        metric:
+          name: bullmq_queue_waiting_total
+          selector:
+            matchLabels:
+              queue: {{ .Values.worker.autoscaling.queueDepthQueue | default "transcription" | quote }}
+        target:
+          type: AverageValue
+          averageValue: {{ .Values.worker.autoscaling.queueDepthAverageValue | default "5" | quote }}
+    {{- end }}
+{{- end }}

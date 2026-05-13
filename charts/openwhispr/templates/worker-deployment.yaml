@@ -1,0 +1,104 @@
+{{/*
+worker Deployment — Phase 09 Plan 06.
+
+Compose-parity for the `worker` service. BullMQ consumer; no public ports
+but exposes /healthz + /metrics on 3002 for kubelet probes + Prometheus.
+
+Notes:
+  - DATABASE_URL via Pooler RW (transaction-mode is safe for the worker's
+    short-lived queries — long-running consumer loops use Valkey, not PG).
+  - LITELLM_READ_DATABASE_URL bypasses the pooler (compose parity) when the
+    operator opts in; default left empty so the worker picks the api's
+    LITELLM_BASE_URL path instead.
+  - secret-presence-probe initContainer — same fail-fast as api.
+*/}}
+{{- $fullname := include "openwhispr.fullname" . -}}
+{{- $workerTag := default .Chart.AppVersion .Values.image.worker.tag -}}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $fullname }}-worker
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "openwhispr.labels" . | nindent 4 }}
+    app.kubernetes.io/component: worker
+spec:
+  replicas: {{ .Values.worker.replicas | default 1 }}
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 25%
+      maxUnavailable: 0
+  selector:
+    matchLabels:
+      {{- include "openwhispr.worker.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "openwhispr.worker.selectorLabels" . | nindent 8 }}
+    spec:
+      serviceAccountName: {{ include "openwhispr.serviceAccountName" . }}
+      {{- with .Values.image.pullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      initContainers:
+        - name: secret-presence-probe
+          image: busybox:1.36
+          imagePullPolicy: IfNotPresent
+          command:
+            - sh
+            - -c
+            - |
+              for k in LITELLM_MASTER_KEY OPENROUTER_API_KEY OPENAI_API_KEY PYANNOTE_API_KEY HF_TOKEN POSTGRES_OWNER_PASSWORD PGBOUNCER_ADMIN_PASSWORD BETTER_AUTH_SECRET; do
+                eval v=\$$k
+                if [ -z "$v" ]; then
+                  echo "FATAL: $k empty — refusing to start (ESO not synced?)" 1>&2
+                  exit 1
+                fi
+              done
+              echo "secret-presence-probe OK"
+          envFrom:
+            - secretRef:
+                name: {{ $fullname }}-secrets
+      containers:
+        - name: worker
+          image: "{{ .Values.image.worker.repository }}:{{ $workerTag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: 3002
+              protocol: TCP
+          envFrom:
+            - secretRef:
+                name: {{ $fullname }}-secrets
+            - configMapRef:
+                name: {{ $fullname }}-worker-config
+          env:
+            - name: DATABASE_URL
+              value: "postgres://openwhispr_owner:$(POSTGRES_OWNER_PASSWORD)@{{ include "openwhispr.poolerHost" . }}:5432/openwhispr"
+            - name: REDIS_URL
+              value: "redis://{{ include "openwhispr.valkeyHost" . }}:6379"
+            - name: MINIO_ENDPOINT
+              value: "http://{{ include "openwhispr.minioHost" . }}:9000"
+            - name: LITELLM_BASE_URL
+              value: {{ include "openwhispr.litellmBaseUrl" . | quote }}
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: 3002
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 3002
+            initialDelaySeconds: 30
+            periodSeconds: 30
+          resources:
+            requests:
+              cpu: 200m
+              memory: 256Mi
+            limits:
+              cpu: 1000m
+              memory: 1Gi
