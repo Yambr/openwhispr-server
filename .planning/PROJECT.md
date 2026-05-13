@@ -34,7 +34,25 @@ It is built to enterprise standards for **1000 concurrent active users** in one 
 
 **A drop-in OpenWhispr backend any organization can self-host — open-source out of the box, corporate-LiteLLM-ready by env override.** Every other goal (multi-tenancy, observability, OSS docs, UI-SPEC) exists to serve this one outcome.
 
-## Requirements
+## Current Milestone: v2 Production Readiness
+
+**Goal:** Close the production-blocking gaps surfaced during the v1 → v2 hands-on smoke walkthrough: comprehensive E2E coverage with CJM mapping, UI-SPEC conformance audit + admin onboarding, deployment flexibility via BYOK profiles, repo structure cleanup + license switch, comment audit, trusted TLS, and enterprise SSO via LDAP/Keycloak.
+
+**Target features:**
+- Cucumber+Playwright E2E suite covering every Customer Journey Map (CJM) flow — signup→verify, sign-in, password reset, transcribe, admin onboarding, locale switch, OIDC providers, error paths. Becomes the harness every subsequent v2 phase writes test-first against.
+- First-run admin onboarding wizard replacing the unrecoverable bcrypt-in-`.env` bootstrap; auth UX brought into conformance with the existing Phase 07 `UI-SPEC-end-user.md` / `UI-SPEC-admin.md` / `design-canvas.jsx` contract (drift, not redesign).
+- Slim core + BYOK profiles — `--with-observability` / `--with-storage` / `--with-ingress` / `--with-pgbouncer` flags. Mailpit moves to dev-only. Default = api+web+worker+postgres+valkey+litellm.
+- Repo refactor: tests split from source, compose/helm in dedicated trees, route-group conventions audited, Apache 2.0 → FSL license, `speaches-audio.md` scrubbed from git history.
+- Phase-tag comment audit: 1642 `// Phase XX / Plan YY / D-ZZ` comments swept against the "no comments unless WHY is non-obvious" rule.
+- Trusted local TLS via mkcert/Caddy local CA; production ACME wired when ingress is enabled.
+- LDAP / Keycloak enterprise SSO — research + SPEC phase only in v2 (implementation scheduled for v3 pending the discuss-phase outcome).
+
+**Key context:**
+- This milestone is **brownfield repair**, not new features. Every entry traces to a concrete symptom recorded in `.planning/TECH_DEBT.md` from the 2026-05-14 stack-up walkthrough.
+- Phase ordering is deliberate: **13 (E2E+CJM) ships first** because it is the harness every subsequent phase writes test-first against. Without 13, fixes ship blind and regress.
+- UI work in Phase 12 is **conformance to an existing design contract** (Phase 07 artefacts), not a free-design redesign.
+
+
 
 ### Validated
 
