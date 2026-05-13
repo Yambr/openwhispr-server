@@ -17,6 +17,14 @@ tests:
         postgresOwnerPassword: "valid-pg-pass-1234567890abcdefghij1234"
         pgbouncerAdminPassword: "valid-pgb-pass-1234567890abcdefghij123"
         betterAuthSecret: "valid-better-auth-1234567890abcdefghij12"
+        # Finding 09.1-F22 — 7 secrets demanded by check-default-secrets.ts.
+        postgresAppPassword: "valid-pg-app-1234567890abcdefghij1234"
+        valkeyPassword: "valid-valkey-1234567890abcdefghij1234"
+        minioRootPassword: "valid-minio-1234567890abcdefghij1234"
+        traefikAdminPassword: "valid-traefik-1234567890abcdefghij12"
+        grafanaAdminPassword: "valid-grafana-1234567890abcdefghij12"
+        masterKek: "v5ux8tbIGXCoCeqi16dtiRVMVDvR4mRTojqRlL2lV-w"
+        backupAgeIdentity: "AGE-SECRET-KEY-1TESTONLY1234567890abcdefghij"
     template: secrets.yaml
     asserts:
       - isKind:
@@ -37,6 +45,14 @@ tests:
         postgresOwnerPassword: "valid-pg-pass-1234567890abcdefghij1234"
         pgbouncerAdminPassword: "valid-pgb-pass-1234567890abcdefghij123"
         betterAuthSecret: "valid-better-auth-1234567890abcdefghij12"
+        # Finding 09.1-F22 — 7 secrets demanded by check-default-secrets.ts.
+        postgresAppPassword: "valid-pg-app-1234567890abcdefghij1234"
+        valkeyPassword: "valid-valkey-1234567890abcdefghij1234"
+        minioRootPassword: "valid-minio-1234567890abcdefghij1234"
+        traefikAdminPassword: "valid-traefik-1234567890abcdefghij12"
+        grafanaAdminPassword: "valid-grafana-1234567890abcdefghij12"
+        masterKek: "v5ux8tbIGXCoCeqi16dtiRVMVDvR4mRTojqRlL2lV-w"
+        backupAgeIdentity: "AGE-SECRET-KEY-1TESTONLY1234567890abcdefghij"
     template: secrets.yaml
     asserts:
       - isKind:

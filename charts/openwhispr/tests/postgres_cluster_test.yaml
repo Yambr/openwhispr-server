@@ -8,29 +8,48 @@ tests:
   # auto-generating a random password that silently drifts from
   # POSTGRES_OWNER_PASSWORD. Only rendered in helm-values mode; the eso
   # path requires the operator to manage the secret out-of-band.
-  - it: pg-owner Secret rendered with kubernetes.io/basic-auth type (helm-values mode)
+  - it: pg-owner + pg-app Secrets rendered with kubernetes.io/basic-auth (helm-values mode)
     template: postgres-owner-secret.yaml
     set:
       secrets:
         mode: helm-values
         postgresOwnerPassword: example-owner-pass
+        postgresAppPassword: example-app-pass
     asserts:
       - hasDocuments:
-          count: 1
+          count: 2
+      # Doc 0 — owner
       - isKind:
           of: Secret
-      - equal:
-          path: type
-          value: kubernetes.io/basic-auth
+        documentIndex: 0
       - equal:
           path: metadata.name
           value: RELEASE-NAME-openwhispr-pg-owner
+        documentIndex: 0
       - equal:
           path: stringData.username
           value: openwhispr_owner
+        documentIndex: 0
       - equal:
           path: stringData.password
           value: example-owner-pass
+        documentIndex: 0
+      # Doc 1 — app (Finding 09.1-F16)
+      - isKind:
+          of: Secret
+        documentIndex: 1
+      - equal:
+          path: metadata.name
+          value: RELEASE-NAME-openwhispr-pg-app
+        documentIndex: 1
+      - equal:
+          path: stringData.username
+          value: openwhispr_app
+        documentIndex: 1
+      - equal:
+          path: stringData.password
+          value: example-app-pass
+        documentIndex: 1
 
   - it: pg-owner Secret skipped in eso mode (operator manages out-of-band)
     template: postgres-owner-secret.yaml

@@ -76,8 +76,9 @@ spec:
             - configMapRef:
                 name: {{ $fullname }}-worker-config
           env:
+            # Finding 09.1-F17 — same as api: app user via Pooler, not owner.
             - name: DATABASE_URL
-              value: "postgres://openwhispr_owner:$(POSTGRES_OWNER_PASSWORD)@{{ include "openwhispr.poolerHost" . }}:5432/openwhispr"
+              value: "postgres://openwhispr_app:$(POSTGRES_APP_PASSWORD)@{{ include "openwhispr.poolerHost" . }}:5432/openwhispr"
             - name: REDIS_URL
               value: "redis://{{ include "openwhispr.valkeyHost" . }}:6379"
             - name: MINIO_ENDPOINT

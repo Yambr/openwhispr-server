@@ -54,6 +54,36 @@
         "betterAuthSecret": {
           "type": "string",
           "not": { "enum": ["CHANGE_ME", "changeme"] }
+        },
+        "postgresAppPassword": {
+          "type": "string",
+          "not": { "enum": ["CHANGE_ME", "changeme"] },
+          "description": "Finding 09.1-F22 — POSTGRES_APP_PASSWORD demanded by check-default-secrets.ts."
+        },
+        "valkeyPassword": {
+          "type": "string",
+          "not": { "enum": ["CHANGE_ME", "changeme"] }
+        },
+        "minioRootPassword": {
+          "type": "string",
+          "not": { "enum": ["CHANGE_ME", "changeme"] }
+        },
+        "traefikAdminPassword": {
+          "type": "string",
+          "not": { "enum": ["CHANGE_ME", "changeme"] }
+        },
+        "grafanaAdminPassword": {
+          "type": "string",
+          "not": { "enum": ["CHANGE_ME", "changeme"] }
+        },
+        "masterKek": {
+          "type": "string",
+          "not": { "enum": ["CHANGE_ME", "changeme"] },
+          "description": "Master KEK — must base64url-decode to 32 bytes (EnvKeyProvider check)."
+        },
+        "backupAgeIdentity": {
+          "type": "string",
+          "not": { "enum": ["CHANGE_ME", "changeme"] }
         }
       },
       "required": ["mode"]

@@ -26,6 +26,17 @@ secrets:
   postgresOwnerPassword: "kind-dev-postgres-owner"
   pgbouncerAdminPassword: "kind-dev-pgbouncer-admin"
   betterAuthSecret: "kind-dev-better-auth-secret-must-be-long-enough-32"
+  # Finding 09.1-F22 — 7 extra secrets the API ENTRYPOINT validator
+  # (apps/api/scripts/check-default-secrets.ts) demands.
+  postgresAppPassword: "kind-dev-postgres-app"
+  valkeyPassword: "kind-dev-valkey"
+  minioRootPassword: "kind-dev-minio-root"
+  traefikAdminPassword: "kind-dev-traefik-admin"
+  grafanaAdminPassword: "kind-dev-grafana-admin"
+  # base64url(32 random bytes) for MASTER_KEK (EnvKeyProvider validates length).
+  # Generated once for the kind smoke profile — NOT a production secret.
+  masterKek: "v5ux8tbIGXCoCeqi16dtiRVMVDvR4mRTojqRlL2lV-w"
+  backupAgeIdentity: "AGE-SECRET-KEY-1KIND_DEV_PLACEHOLDER_NOT_FOR_PRODUCTION_USE"
 
 host:
   api: api.localtest.me
@@ -90,6 +101,16 @@ api:
   replicas: 1
   autoscaling:
     enabled: false
+
+# Finding 09.1-F21 — bootstrap script installs Traefik 33.2.1 without
+# exposing the :9000 admin API (Traefik chart default closes it). The
+# api Deployment's `traefik-preflight` init container curls
+# `:9000/api/entrypoints` and times out. For the kind smoke we skip
+# the preflight — production operators should install Traefik with
+# `--set ports.traefik.expose.default=true --set api.insecure=true`
+# and keep preflightCheck=true (default).
+ingress:
+  preflightCheck: false
 
 web:
   replicas: 1
