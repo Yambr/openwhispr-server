@@ -81,6 +81,39 @@ tests:
   # an HF_TOKEN stringData key (bundledAi.enabled=false is the default for
   # the new values-embedded-litellm.yaml). RED until secrets.yaml consumes
   # the openwhispr.requiredSecretKeys helper.
+  # Plan 11-01 Task 6 — Variant C positive guard. values-embedded-litellm
+  # overridden with bundledAi.enabled=true + a real hfToken renders the
+  # HF_TOKEN stringData entry with the supplied value. Guards a regression
+  # in openwhispr.requiredSecretKeys' conditional `if .Values.bundledAi.enabled`.
+  - it: values-embedded-litellm.yaml + bundledAi.enabled=true renders HF_TOKEN
+    values:
+      - ../examples/values-embedded-litellm.yaml
+    set:
+      bundledAi:
+        enabled: true
+      secrets:
+        litellmMasterKey: "valid-litellm-1234567890abcdefghij12345"
+        openrouterApiKey: "valid-openrouter-key-1234567890abcdefghij"
+        openaiApiKey: "valid-openai-key-1234567890abcdefghij1234"
+        hfToken: "hf_xyz1234567890abcdefghij"
+        postgresOwnerPassword: "valid-pg-pass-1234567890abcdefghij1234"
+        pgbouncerAdminPassword: "valid-pgb-pass-1234567890abcdefghij123"
+        betterAuthSecret: "valid-better-auth-1234567890abcdefghij12"
+        postgresAppPassword: "valid-pg-app-1234567890abcdefghij1234"
+        valkeyPassword: "valid-valkey-1234567890abcdefghij1234"
+        minioRootPassword: "valid-minio-1234567890abcdefghij1234"
+        traefikAdminPassword: "valid-traefik-1234567890abcdefghij12"
+        grafanaAdminPassword: "valid-grafana-1234567890abcdefghij12"
+        masterKek: "v5ux8tbIGXCoCeqi16dtiRVMVDvR4mRTojqRlL2lV-w"
+        backupAgeIdentity: "AGE-SECRET-KEY-1TESTONLY1234567890abcdefghij"
+    template: secrets.yaml
+    asserts:
+      - isKind:
+          of: Secret
+      - equal:
+          path: stringData.HF_TOKEN
+          value: "hf_xyz1234567890abcdefghij"
+
   - it: values-embedded-litellm.yaml renders the Secret without HF_TOKEN
     values:
       - ../examples/values-embedded-litellm.yaml
