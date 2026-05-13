@@ -1,0 +1,21 @@
+{{/*
+api PodDisruptionBudget (policy/v1).
+Renders only when api.autoscaling.minReplicas >= 2 (OSS single-node skips PDB
+to avoid permanently-blocked drains).
+*/}}
+{{- if and .Values.api.autoscaling.enabled (ge (int .Values.api.autoscaling.minReplicas) 2) -}}
+{{- $fullname := include "openwhispr.fullname" . -}}
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ $fullname }}-api
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "openwhispr.labels" . | nindent 4 }}
+    app.kubernetes.io/component: api
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      {{- include "openwhispr.api.selectorLabels" . | nindent 6 }}
+{{- end }}

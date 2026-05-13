@@ -145,9 +145,20 @@ pooler:
   reservePoolSize: "20"
 
 # LiteLLM Proxy. Wave 2 implements the Deployment.
+# Corporate operators set embedded=false + externalBaseUrl to point api/worker
+# at an internal LiteLLM (LITELLM-05 / CLAUDE.md "drop-in backend" tenet).
 litellm:
   embedded: true
-  image: ghcr.io/berriai/litellm:v1.83.7-stable
+  # Required when embedded=false (api/worker LITELLM_BASE_URL).
+  externalBaseUrl: ""
+  image:
+    repository: ghcr.io/berriai/litellm
+    tag: main-v1.83.14-stable
+  replicas: 1
+  # Passthrough into configmap-litellm at /app/config.yaml.
+  config:
+    model_list: []
+    router_settings: {}
 
 # api / web / worker — Wave 2 implements Deployments + HPAs.
 api:
@@ -157,19 +168,38 @@ api:
     minReplicas: 2
     maxReplicas: 20
     targetCPUUtilizationPercentage: 70
-  env: {}
+  # Plain-text env. Secret env stays in the Secret; this map carries only
+  # operator-tweakable knobs (NODE_ENV, LOG_LEVEL, OTel endpoints).
+  env:
+    nodeEnv: production
+    logLevel: info
+    otelProtocol: grpc
+    otelServiceName: openwhispr-api
 
 web:
   replicas: 1
+  env:
+    nodeEnv: production
+    # Server-side fetches stay in-cluster; browser fetches go via Traefik.
+    internalApiUrl: ""  # defaults to http://<fullname>-api:3000 in template
 
 worker:
+  replicas: 1
   autoscaling:
     enabled: true
     minReplicas: 1
     maxReplicas: 30
     targetCPUUtilizationPercentage: 70
     # Set to true to add an external-metric (bullmq_queue_waiting_total).
+    # Requires prometheus-adapter installed cluster-side.
     queueDepthMetric: false
+    queueDepthAverageValue: "5"
+    queueDepthQueue: "transcription"
+  env:
+    nodeEnv: production
+    logLevel: info
+    otelProtocol: grpc
+    otelServiceName: openwhispr-worker
 
 # Ingress / cert-manager — Wave 3 ships IngressRoutes + Certificate CR.
 host:

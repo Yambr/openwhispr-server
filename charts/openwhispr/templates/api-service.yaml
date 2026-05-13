@@ -1,0 +1,23 @@
+{{/*
+api Service — ClusterIP fronting the api Deployment. Port 3000 named `http`
+so the ServiceMonitor can scrape it by port name and Wave 3 Traefik
+IngressRoute can route by the same name.
+*/}}
+{{- $fullname := include "openwhispr.fullname" . -}}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $fullname }}-api
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "openwhispr.labels" . | nindent 4 }}
+    app.kubernetes.io/component: api
+spec:
+  type: ClusterIP
+  selector:
+    {{- include "openwhispr.api.selectorLabels" . | nindent 4 }}
+  ports:
+    - name: http
+      port: 3000
+      targetPort: 3000
+      protocol: TCP

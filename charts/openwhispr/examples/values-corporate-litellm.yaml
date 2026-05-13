@@ -17,10 +17,11 @@ secrets:
 
 litellm:
   embedded: false
+  # Required when embedded=false — schema-enforced (Plan 09-07 / values.schema.json).
+  externalBaseUrl: https://litellm.internal/
 
 api:
   env:
-    LITELLM_BASE_URL: https://litellm.internal/
     # Operator may also set LITELLM_VIRTUAL_KEY via ESO if their internal
     # LiteLLM requires it (see docs/litellm-target-spec.md).
 
