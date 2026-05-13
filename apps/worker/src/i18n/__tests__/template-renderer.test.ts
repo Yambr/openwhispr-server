@@ -83,9 +83,10 @@ describe("TemplateRenderer", () => {
   });
 
   it("matches the email-delivery TemplateRenderer interface (sync, positional)", async () => {
-    const { TemplateRenderer: _Type } = await import("../../jobs/email-delivery.js");
-    // Compile-time check: createTemplateRenderer() is assignable to TemplateRenderer.
-    // Runtime: positional 3-arg call returns the expected shape synchronously.
+    // Compile-time check (via the `implements TemplateRendererInterface`
+    // clause in template-renderer.ts): createTemplateRenderer() is
+    // assignable to the email-delivery TemplateRenderer interface.
+    // Runtime: positional 3-arg call returns the expected shape sync.
     const out = renderer.render("email_verification", "en", VERIFY_VARS);
     expect(typeof out.subject).toBe("string");
     expect(typeof out.text).toBe("string");
@@ -111,6 +112,68 @@ describe("TemplateRenderer", () => {
         expect(r.text.length).toBeGreaterThan(0);
       }
     }
+  });
+
+  it("leaves unknown `{var}` tokens untouched (loud QA failure mode)", () => {
+    const r = renderer.render("email_verification", "en", { verification_url: "URL" });
+    // `name` is omitted; the literal `{name}` should remain so QA notices.
+    expect(r.text).toContain("{name}");
+    expect(r.text).toContain("URL");
+  });
+
+  it("coerces non-string variables via String() (e.g. number expires_minutes)", () => {
+    const r = renderer.render("password_reset", "en", {
+      name: "Sam",
+      reset_url: "https://example.com",
+      expires_minutes: 0,
+    });
+    expect(r.text).toContain("0 minutes");
+  });
+
+  it("WorkerTemplateRenderer can be constructed with an injected bundle map (DI path)", async () => {
+    const { WorkerTemplateRenderer } = await import("../template-renderer.js");
+    // Eager construction with a hand-rolled minimal bundle proves the
+    // class constructor's bundle param is honoured (covers the default-
+    // arg branch on `bundles = loadAll()`).
+    const minimal = {
+      en: {
+        email_verification: { subject: "S-en", text: "T-en {name}" },
+        password_reset: { subject: "P-en", text: "P-en", html: "<p>P</p>" },
+        account_deletion_confirmation: { subject: "D-en", text: "D-en" },
+      },
+      ru: {
+        email_verification: { subject: "S-ru", text: "T-ru {name}" },
+        password_reset: { subject: "P-ru", text: "P-ru" },
+        account_deletion_confirmation: { subject: "D-ru", text: "D-ru" },
+      },
+    };
+    // biome-ignore lint/suspicious/noExplicitAny: DI shape is internal.
+    const r = new WorkerTemplateRenderer(minimal as any);
+    const out = r.render("email_verification", "en", { name: "Alex" });
+    expect(out.subject).toBe("S-en");
+    expect(out.text).toBe("T-en Alex");
+    expect(out.html).toBeUndefined();
+    // ru locale path:
+    const ruOut = r.render("email_verification", "ru", { name: "Alex" });
+    expect(ruOut.subject).toBe("S-ru");
+    // password_reset has html -> propagated through interpolate.
+    const pr = r.render("password_reset", "en", {});
+    expect(pr.html).toBe("<p>P</p>");
+  });
+
+  it("falls back to English locale for any unsupported value (defensive cast)", async () => {
+    // The render() signature only allows "en"|"ru"; this test casts an
+    // unsupported locale value at runtime to cover the locale-coerce
+    // branch defensively.
+    const out = renderer.render(
+      "email_verification",
+      // biome-ignore lint/suspicious/noExplicitAny: runtime defensive cast
+      "fr" as any,
+      VERIFY_VARS,
+    );
+    // Falls back to English (the implementation maps anything !== "ru"
+    // to "en").
+    expect(out.subject).toMatch(/Verify your OpenWhispr/);
   });
 
   it("honours LOCALES_DIR env override at construction time", () => {
