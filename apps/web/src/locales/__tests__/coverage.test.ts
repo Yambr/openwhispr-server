@@ -14,6 +14,9 @@ import { describe, expect, it } from "vitest";
 import adminBundle from "../en/admin.json";
 import commonBundle from "../en/common.json";
 import endUserBundle from "../en/end-user.json";
+import adminBundleRu from "../ru/admin.json";
+import commonBundleRu from "../ru/common.json";
+import endUserBundleRu from "../ru/end-user.json";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -67,6 +70,18 @@ function bundleFor(ns: string): Record<string, unknown> {
   throw new Error(`unknown namespace ${ns}`);
 }
 
+function bundleForRu(ns: string): Record<string, unknown> {
+  if (ns === "admin") return adminBundleRu as Record<string, unknown>;
+  if (ns === "end-user") return endUserBundleRu as Record<string, unknown>;
+  if (ns === "common") return commonBundleRu as Record<string, unknown>;
+  throw new Error(`unknown namespace ${ns}`);
+}
+
+// Cyrillic codepoint detector (U+0400..U+04FF, U+0500..U+052F). Built only
+// from \u escapes so this source stays ASCII-clean and does not self-trip
+// `tools/lint-english.ts`.
+const CYRILLIC = /[\u0400-\u04FF\u0500-\u052F]/;
+
 const allKeys: ExtractedKey[] = [...extractKeys(ADMIN_SPEC), ...extractKeys(END_USER_SPEC)];
 // Same Appendix C appears in both UI-SPEC files; de-duplicate by key.
 const uniqueKeys: ExtractedKey[] = Object.values(
@@ -89,6 +104,20 @@ describe("locale-bundle coverage (Phase 07.1 / Plan 06)", () => {
       // Soft check: bundle value must match the Appendix C English column
       // (the UI-SPEC is the single source of truth).
       expect(value).toBe(english);
+    });
+  }
+
+  // Phase 10 / Plan 02 — Russian parity: every UI-SPEC key must also exist
+  // in the matching ru bundle with a non-empty Cyrillic string (the UI-SPEC
+  // is English-only, so we cannot match a Russian source column — we only
+  // assert structural presence + Cyrillic content as a translation
+  // sanity check).
+  for (const { ns, key } of uniqueKeys) {
+    it(`ru bundle '${ns}' contains '${key}' with a Russian string`, () => {
+      const value = resolveKey(bundleForRu(ns), key);
+      expect(typeof value).toBe("string");
+      expect((value as string).length).toBeGreaterThan(0);
+      expect(CYRILLIC.test(value as string)).toBe(true);
     });
   }
 });
