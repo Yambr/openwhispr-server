@@ -1,0 +1,29 @@
+{{/*
+worker ServiceMonitor — gated on observability.serviceMonitor.enabled.
+Scrape path /metrics (worker exposes BullMQ + OTel custom metrics).
+*/}}
+{{- if .Values.observability.serviceMonitor.enabled -}}
+{{- $fullname := include "openwhispr.fullname" . -}}
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: {{ $fullname }}-worker
+  namespace: {{ default .Release.Namespace .Values.observability.serviceMonitor.namespace }}
+  labels:
+    {{- include "openwhispr.labels" . | nindent 4 }}
+    app.kubernetes.io/component: worker
+    {{- with .Values.observability.serviceMonitor.labels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+spec:
+  selector:
+    matchLabels:
+      {{- include "openwhispr.worker.selectorLabels" . | nindent 6 }}
+  namespaceSelector:
+    matchNames:
+      - {{ .Release.Namespace }}
+  endpoints:
+    - port: http
+      path: /metrics
+      interval: 30s
+{{- end }}

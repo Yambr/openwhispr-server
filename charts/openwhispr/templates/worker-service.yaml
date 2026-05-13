@@ -1,0 +1,24 @@
+{{/*
+worker Service — headless (clusterIP: None) so Prometheus per-pod scrape
+hits each replica individually (BullMQ work-stealing means metrics differ
+per pod). Port 3002 named `http` for /metrics + /healthz.
+*/}}
+{{- $fullname := include "openwhispr.fullname" . -}}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $fullname }}-worker
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "openwhispr.labels" . | nindent 4 }}
+    app.kubernetes.io/component: worker
+spec:
+  type: ClusterIP
+  clusterIP: None
+  selector:
+    {{- include "openwhispr.worker.selectorLabels" . | nindent 4 }}
+  ports:
+    - name: http
+      port: 3002
+      targetPort: 3002
+      protocol: TCP
