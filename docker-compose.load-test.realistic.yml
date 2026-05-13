@@ -76,3 +76,18 @@ services:
       retries: 5
       start_period: 30s
     restart: unless-stopped
+
+  # Phase 08.6-03 — point the api's /v1/audio/diarization route at the
+  # local Speaches service (built from master per Task 1). Speaches
+  # exposes /v1/audio/diarization that consumes multipart (file, model)
+  # synchronously — no pyannote.ai async upload/poll round-trip required
+  # in the realistic load-test profile.
+  #
+  # Compose merge semantics: `environment:` is a map merged per-key
+  # across overlay files. Only this single env var is added — every
+  # other api env (DATABASE_URL, VALKEY_URL, LITELLM_BASE_URL, etc.)
+  # is inherited unchanged from docker-compose.yml.
+  api:
+    profiles: [load-test-realistic]
+    environment:
+      SPEACHES_DIARIZATION_URL: http://speaches:8000
