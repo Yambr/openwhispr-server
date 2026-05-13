@@ -3,12 +3,12 @@ gsd_state_version: 1.0
 milestone: v1
 milestone_name: milestone
 status: Phase 8 + 08.1/08.2/08.3/08.4/08.5/08.6/08-08 all closed; realistic wiring LIVE-proven on Mac across 5 endpoints incl. local Speaches diarization (built from master); Phase 9 (Helm) next
-last_updated: "2026-05-13T08:45:00.000Z"
+last_updated: "2026-05-13T06:22:40.137Z"
 progress:
   total_phases: 42
   completed_phases: 14
   total_plans: 125
-  completed_plans: 123
+  completed_plans: 130
   percent: 33
 ---
 
@@ -34,7 +34,7 @@ progress:
 | Next action | Phase 9 — Helm Chart & Cloud Deploy: `/gsd-plan-phase 9` to begin scoping CloudNativePG + Traefik 3 + HPA + cert-manager work per ROADMAP §Phase 9. |
 
 ```
-[X][X][X][X][X][X][X][X][X][~][X][X][X][X][X][X][X][ ][ ]
+[X][X][X][X][X][X][X][X][X][~][X][X][X][X][X][X][X][X][ ]
  0  1  2  3  4  5  6  7 7.1 8 8.1 8.2 8.3 8.4 8.5 8.6 8-8 9 10
 ```
 
