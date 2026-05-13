@@ -7,6 +7,8 @@ packages:
   - 'tools/load-test'
   # Phase 08 / Plan 03 — Fastify mock-litellm for load-test-mock profile.
   - 'compose/mock-litellm'
+  # Phase 09 / Plan 11 — first-launch SLO probe image (DEPLOY-05 helm test hook).
+  - 'tools/test-probe'
 allowBuilds:
   cpu-features: true
   esbuild: true
