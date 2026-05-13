@@ -96,6 +96,11 @@ postgres:
     enabled: false
     bucket: ""
     s3Endpoint: ""
+    # Required when backup.enabled=true and secrets.mode=helm-values.
+    # In secrets.mode=eso the operator provisions <fullname>-pg-backup via
+    # ExternalSecret out-of-band; these fields are ignored.
+    accessKeyId: ""
+    secretAccessKey: ""
 
 # Bitnami Valkey sub-chart values (Wave 1 declares the dependency).
 valkey:

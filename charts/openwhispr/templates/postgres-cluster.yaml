@@ -1,0 +1,75 @@
+{{/*
+CloudNativePG Cluster CR (postgresql.cnpg.io/v1). Phase 09 Plan 04 (A2 + A4).
+
+Hard constraints baked in:
+  - imageName MUST match `^.+:17\.[0-9]+.*$` (T-09-02 mitigation enforced at
+    schema-validation time in values.schema.json; refuses to install on PG 18).
+  - shared_preload_libraries includes `pg_partman_bgw` (pitfall #14 of
+    09-RESEARCH.md; required for migration 0014 audit_log partitioning).
+  - postInitApplicationSQL creates the `pg_partman` extension in schema `partman`.
+  - Three instances default (HA quorum); override to 1 for OSS single-node.
+  - barmanObjectStore renders only when `backup.enabled=true`; references the
+    Secret produced by postgres-backup-secret.yaml.
+
+NOTE: helm --wait does NOT wait on CRDs (pitfall #15). Plan 09-08 adds a
+pg_isready initContainer to the migrate Job. Operators should run:
+    helm install ... --wait --timeout 10m && helm test
+*/}}
+{{- $fullname := include "openwhispr.fullname" . -}}
+apiVersion: postgresql.cnpg.io/v1
+kind: Cluster
+metadata:
+  name: {{ $fullname }}-pg
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "openwhispr.labels" . | nindent 4 }}
+spec:
+  instances: {{ .Values.postgres.replicas }}
+  imageName: {{ .Values.postgres.imageName | quote }}
+  primaryUpdateStrategy: unsupervised
+
+  postgresql:
+    parameters:
+      max_connections: "200"
+      shared_buffers: "512MB"
+      shared_preload_libraries: "pg_partman_bgw"
+    pg_hba:
+      - host all all all scram-sha-256
+
+  bootstrap:
+    initdb:
+      database: openwhispr
+      owner: openwhispr_owner
+      secret:
+        name: {{ $fullname }}-pg-owner
+      postInitApplicationSQL:
+        - CREATE SCHEMA IF NOT EXISTS partman;
+        - CREATE EXTENSION IF NOT EXISTS pg_partman SCHEMA partman;
+
+  storage:
+    size: {{ .Values.postgres.storageSize }}
+    {{- with .Values.postgres.storageClass }}
+    storageClass: {{ . | quote }}
+    {{- end }}
+
+  {{- if .Values.postgres.backup.enabled }}
+  backup:
+    retentionPolicy: "30d"
+    barmanObjectStore:
+      destinationPath: s3://{{ required "postgres.backup.bucket is required when postgres.backup.enabled=true" .Values.postgres.backup.bucket }}/cnpg
+      {{- with .Values.postgres.backup.s3Endpoint }}
+      endpointURL: {{ . | quote }}
+      {{- end }}
+      s3Credentials:
+        accessKeyId:
+          name: {{ $fullname }}-pg-backup
+          key: ACCESS_KEY_ID
+        secretAccessKey:
+          name: {{ $fullname }}-pg-backup
+          key: SECRET_ACCESS_KEY
+      wal:
+        compression: gzip
+  {{- end }}
+
+  monitoring:
+    enablePodMonitor: {{ .Values.observability.serviceMonitor.enabled }}
