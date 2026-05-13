@@ -151,12 +151,12 @@ Authoritative wire shapes pinned by the OpenWhispr client TS interfaces at `~/op
 
 ### OSS / Documentation
 
-- [ ] **DOCS-01**: `README.md` with quickstart (compose path) — under 5 minutes to first authenticated `/api/transcribe`
-- [ ] **DOCS-02**: `docs/architecture.md` — component decomposition, request lifecycle for the three hot paths, mermaid diagrams
-- [ ] **DOCS-03**: `docs/operations.md` — deploy, upgrade, scale, backup, restore, troubleshoot
-- [ ] **DOCS-04**: `docs/litellm-target-spec.md` — bundled-default LiteLLM config + corporate-override LiteLLM config (derived from `speaches-audio.md`)
-- [ ] **DOCS-05**: `docs/wire-contract.md` — references upstream `BACKEND_SPEC.md` + `OAUTH_SPEC.md`; documents which endpoints are deferred to v2 (Stripe / referrals)
-- [ ] **DOCS-06**: `docs/auth.md` — how to plug in OIDC providers; how to configure email+password; channel-scheme handling
+- [x] **DOCS-01**: `README.md` with quickstart (compose path) — under 5 minutes to first authenticated `/api/transcribe`
+- [x] **DOCS-02**: `docs/architecture.md` — component decomposition, request lifecycle for the three hot paths, mermaid diagrams
+- [x] **DOCS-03**: `docs/operations.md` — deploy, upgrade, scale, backup, restore, troubleshoot
+- [x] **DOCS-04**: `docs/litellm-target-spec.md` — bundled-default LiteLLM config + corporate-override LiteLLM config (derived from `speaches-audio.md`)
+- [x] **DOCS-05**: `docs/wire-contract.md` — references upstream `BACKEND_SPEC.md` + `OAUTH_SPEC.md`; documents which endpoints are deferred to v2 (Stripe / referrals)
+- [x] **DOCS-06**: `docs/auth.md` — how to plug in OIDC providers; how to configure email+password; channel-scheme handling
 - [ ] **DOCS-07**: `CONTRIBUTING.md`, `SECURITY.md`, `CODE_OF_CONDUCT.md`, OSS LICENSE (Apache-2.0 default), license headers
 - [ ] **DOCS-08**: ADRs for every Key Decision in this document
 - [x] **DOCS-09**: All source artifacts (docs, code, comments, commit messages, identifiers, log keys) in **English only** — hard rule, enforced by lint where mechanical, by review otherwise
@@ -308,12 +308,12 @@ All 89 v1 requirements mapped by `gsd-roadmapper` on 2026-05-08.
 | DEVEX-01 | Phase 0 | Complete |
 | I18N-01 | Phase 10 | Pending |
 | I18N-02 | Phase 10 | Pending |
-| DOCS-01 | Phase 10 | Pending |
-| DOCS-02 | Phase 10 | Pending |
-| DOCS-03 | Phase 10 | Pending |
-| DOCS-04 | Phase 10 | Pending |
-| DOCS-05 | Phase 10 | Pending |
-| DOCS-06 | Phase 10 | Pending |
+| DOCS-01 | Phase 10 | Complete |
+| DOCS-02 | Phase 10 | Complete |
+| DOCS-03 | Phase 10 | Complete |
+| DOCS-04 | Phase 10 | Complete |
+| DOCS-05 | Phase 10 | Complete |
+| DOCS-06 | Phase 10 | Complete |
 | DOCS-07 | Phase 10 | Pending |
 | DOCS-08 | Phase 10 | Pending |
 | DOCS-09 | Phase 0 | Complete |
