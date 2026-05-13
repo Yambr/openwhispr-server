@@ -128,6 +128,38 @@ spec:
             # remove this env override.
             - name: OTEL_SDK_DISABLED
               value: "true"
+            # Phase 09.2 F35 — Better Auth's trustedOrigins gate rejects
+            # POST requests whose Origin (or Referer) does not match. The
+            # in-cluster api Service URL must be admitted so the helm-test
+            # probe (and any in-cluster synthetic traffic) gets through
+            # CSRF. Plus the public host. Operators with additional
+            # ingress / IdP hostnames extend via .Values.api.env.authTrustedOriginsExtra.
+            - name: AUTH_TRUSTED_ORIGINS_EXTRA
+              value: {{ printf "http://%s-api:3000,https://%s%s" (include "openwhispr.fullname" .) .Values.host.api (ternary (printf ",%s" .Values.api.env.authTrustedOriginsExtra) "" (ne (default "" .Values.api.env.authTrustedOriginsExtra) "")) | quote }}
+            - name: AUTH_URL
+              value: "https://{{ .Values.host.api }}"
+            {{- if .Values.api.env.disableEmailVerification }}
+            # Phase 09.2 F35 — helm test probe runs synthetic signup
+            # without an email inbox. values-kind.yaml sets this to true;
+            # production overlays leave it false (default).
+            - name: OPENWHISPR_DISABLE_EMAIL_VERIFICATION
+              value: "1"
+            {{- end }}
+            # Phase 09.2 F37 — api SSRF dispatcher's default-deny allow-
+            # list must include the in-cluster LiteLLM service hostname.
+            # Without it api → LiteLLM hop returns 502 with audit row
+            # security.ssrf_blocked rule=host_not_allowed. Production
+            # operators extend via .Values.api.env.outboundAllowedHosts
+            # for additional egress targets (Bedrock proxy, vault, etc.).
+            - name: OUTBOUND_ALLOWED_HOSTS
+              value: {{ printf "%s-litellm%s" (include "openwhispr.fullname" .) (ternary (printf ",%s" .Values.api.env.outboundAllowedHosts) "" (ne (default "" .Values.api.env.outboundAllowedHosts) "")) | quote }}
+            # Phase 09.2 F38 — k8s Service IPs are RFC1918 (10.x.x.x).
+            # The SSRF dispatcher's per-IP block-list rejects rfc1918_10
+            # by default. Whitelist the litellm hostname so its private
+            # IP resolution doesn't trip the second-layer DNS-rebinding
+            # defense. Operators add more in-cluster hostnames here.
+            - name: OUTBOUND_PRIVATE_HOST_ALLOWLIST
+              value: {{ printf "%s-litellm%s" (include "openwhispr.fullname" .) (ternary (printf ",%s" .Values.api.env.outboundPrivateHostAllowlist) "" (ne (default "" .Values.api.env.outboundPrivateHostAllowlist) "")) | quote }}
           readinessProbe:
             httpGet:
               path: /api/health

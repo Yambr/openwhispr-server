@@ -37,7 +37,7 @@ tests:
     asserts:
       - matchRegex:
           path: spec.template.spec.containers[0].env[?(@.name=="DATABASE_URL")].value
-          pattern: "RELEASE-NAME-openwhispr-pg-pooler-rw:5432"
+          pattern: "RELEASE-NAME-openwhispr-pg-pooler:5432"
 
   - it: worker Deployment carries wait-for-migrate then secret-presence-probe initContainers (Finding 09.1-F3)
     template: worker-deployment.yaml

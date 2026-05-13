@@ -65,7 +65,10 @@ Pooler RW service hostname — built by CNPG operator for the Pooler CR.
 Pattern: <fullname>-pg-pooler-rw (per Plan 09-05 / pooler.yaml comments).
 */}}
 {{- define "openwhispr.poolerHost" -}}
-{{- printf "%s-pg-pooler-rw" (include "openwhispr.fullname" .) -}}
+{{/* Phase 09.2 F36 — CNPG Pooler CR creates a single Service named after
+the Pooler resource (no `-rw` suffix; only Cluster CR creates -rw/-r/-ro
+variants). Was: <fullname>-pg-pooler-rw → 500 EAI_AGAIN on every signup. */}}
+{{- printf "%s-pg-pooler" (include "openwhispr.fullname" .) -}}
 {{- end }}
 
 {{/*

@@ -104,6 +104,13 @@ export async function runProbe(opts: ProbeOptions): Promise<ProbeResult> {
   };
 
   // --- 1. Sign up via Better Auth ---------------------------------------
+  // Phase 09.2 F35: Better Auth's CSRF/origin gate rejects POST requests
+  // whose Origin (or Referer) does not match `trustedOrigins`. undici's
+  // default fetch sends NO Origin header, so the gate returned 403 in the
+  // first kind helm test run. Send Origin = target so the api side admits
+  // it (operator must include the in-cluster api Service URL in
+  // AUTH_TRUSTED_ORIGINS_EXTRA — chart api-deployment.yaml does this
+  // automatically for the in-cluster path).
   const signupUrl = `${opts.target}/api/auth/sign-up/email`;
   let signupResp: Awaited<ReturnType<typeof fetch>>;
   try {
@@ -111,7 +118,10 @@ export async function runProbe(opts: ProbeOptions): Promise<ProbeResult> {
       signupUrl,
       init({
         method: "POST",
-        headers: { "content-type": "application/json" },
+        headers: {
+          "content-type": "application/json",
+          origin: opts.target,
+        },
         body: JSON.stringify({ email, password, name: "probe" }),
       }),
     );

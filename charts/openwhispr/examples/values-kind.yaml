@@ -101,6 +101,10 @@ api:
   replicas: 1
   autoscaling:
     enabled: false
+  env:
+    # Phase 09.2 F35 — helm test probe runs synthetic signup with no
+    # inbox; verify-email step would otherwise block the SLO probe.
+    disableEmailVerification: true
 
 # Finding 09.1-F21 — bootstrap script installs Traefik 33.2.1 without
 # exposing the :9000 admin API (Traefik chart default closes it). The
