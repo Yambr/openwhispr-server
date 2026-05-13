@@ -5,6 +5,8 @@
     "NOT_FOUND": "Not found",
     "RATE_LIMITED": "Too many requests",
     "SERVICE_UNAVAILABLE": "Service temporarily unavailable",
-    "SERVER_ERROR": "Internal server error"
+    "SERVER_ERROR": "Internal server error",
+    "UPSTREAM_ERROR": "Upstream provider error",
+    "CONFLICT": "Conflict"
   }
 }
