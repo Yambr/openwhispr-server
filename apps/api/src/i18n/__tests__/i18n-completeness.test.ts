@@ -38,6 +38,10 @@ const CLASS_TO_CODE = {
   RateLimitError: "RATE_LIMITED",
   ServiceUnavailable: "SERVICE_UNAVAILABLE",
   ServerError: "SERVER_ERROR",
+  // Phase 10 / Plan 10-01d — two new typed-error classes wired into the
+  // centralized envelope handler.
+  UpstreamError: "UPSTREAM_ERROR",
+  ConflictError: "CONFLICT",
 } as const;
 
 type TypedErrorClass = keyof typeof CLASS_TO_CODE;
@@ -50,7 +54,17 @@ function loadLocaleErrors(lng: string): Record<string, string> {
   return parsed.errors;
 }
 
-function collectThrownClasses(): Set<TypedErrorClass> {
+interface ThrowScanResult {
+  classes: Set<TypedErrorClass>;
+  /**
+   * Per-instance codes: the FIRST string-literal argument of every
+   * `new <TypedError>("CODE", "msg")` call site. These must each exist
+   * in BOTH en.json and ru.json under `errors.<CODE>`.
+   */
+  perInstanceCodes: Map<string, string>; // code -> first site (file:line) for error messages
+}
+
+function collectThrownClasses(): ThrowScanResult {
   const project = new Project({
     tsConfigFilePath: resolve(API_SRC, "..", "tsconfig.json"),
     skipAddingFilesFromTsConfig: true,
@@ -58,19 +72,42 @@ function collectThrownClasses(): Set<TypedErrorClass> {
   // Restrict to apps/api/src/**/*.ts (NOT node_modules, NOT dist).
   project.addSourceFilesAtPaths(`${API_SRC}/**/*.ts`);
 
-  const seen = new Set<TypedErrorClass>();
+  const classes = new Set<TypedErrorClass>();
+  const perInstanceCodes = new Map<string, string>();
   for (const sf of project.getSourceFiles()) {
     const filePath = sf.getFilePath();
     // Skip the test file itself (would echo every class).
     if (filePath.includes("/__tests__/") || filePath.endsWith(".test.ts")) continue;
     for (const newExpr of sf.getDescendantsOfKind(SyntaxKind.NewExpression)) {
       const exprText = newExpr.getExpression().getText();
-      if (exprText in CLASS_TO_CODE) {
-        seen.add(exprText as TypedErrorClass);
+      if (!(exprText in CLASS_TO_CODE)) continue;
+      classes.add(exprText as TypedErrorClass);
+      // Phase 10 / Plan 10-01d — per-instance code scan.
+      // Signature: new <Class>(codeOrMessage, optionalMessage). If TWO
+      // string-literal args are present, arg-0 is the i18n code. Skip
+      // sites with templated / variable-bound arguments — they retain
+      // the class-default code and the existing class-level test covers
+      // them.
+      const args = newExpr.getArguments();
+      if (args.length === 2) {
+        const first = args[0];
+        const second = args[1];
+        if (
+          first?.getKind() === SyntaxKind.StringLiteral &&
+          second?.getKind() === SyntaxKind.StringLiteral
+        ) {
+          // ts-morph's getText() returns the literal WITH quotes.
+          const codeRaw = first.getText();
+          const code = codeRaw.slice(1, -1);
+          if (/^[A-Z][A-Z0-9_]*$/.test(code) && !perInstanceCodes.has(code)) {
+            const { line } = sf.getLineAndColumnAtPos(newExpr.getStart());
+            perInstanceCodes.set(code, `${filePath}:${line}`);
+          }
+        }
       }
     }
   }
-  return seen;
+  return { classes, perInstanceCodes };
 }
 
 describe("i18n key completeness — typed-error <-> locale parity (Phase 10-01a)", () => {
@@ -105,14 +142,30 @@ describe("i18n key completeness — typed-error <-> locale parity (Phase 10-01a)
   });
 
   it("every typed-error class used in `throw new …` is mapped to a code we ship", () => {
-    const thrown = collectThrownClasses();
+    const { classes } = collectThrownClasses();
     // Guard: at least one typed-error must be in use in the codebase
     // — otherwise the scanner is silently inert.
-    expect(thrown.size).toBeGreaterThan(0);
-    for (const cls of thrown) {
+    expect(classes.size).toBeGreaterThan(0);
+    for (const cls of classes) {
       const code = CLASS_TO_CODE[cls];
       expect(en[code], `class ${cls} is thrown but en.errors.${code} is missing`).toBeTruthy();
       expect(ru[code], `class ${cls} is thrown but ru.errors.${code} is missing`).toBeTruthy();
+    }
+  });
+
+  it("every PER-INSTANCE typed-error code has en + ru translations (Phase 10-01d)", () => {
+    // Catches: `throw new ValidationError("MY_NEW_CODE", "msg")` where
+    // MY_NEW_CODE was added in a route but not in en.json/ru.json.
+    const { perInstanceCodes } = collectThrownClasses();
+    for (const [code, firstSite] of perInstanceCodes) {
+      expect(
+        en[code],
+        `per-instance code '${code}' is thrown at ${firstSite} but en.errors.${code} is missing`,
+      ).toBeTruthy();
+      expect(
+        ru[code],
+        `per-instance code '${code}' is thrown at ${firstSite} but ru.errors.${code} is missing`,
+      ).toBeTruthy();
     }
   });
 });

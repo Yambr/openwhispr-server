@@ -29,10 +29,12 @@ import type { FastifyInstance } from "fastify";
 import { ZodError } from "zod";
 import {
   AuthError,
+  ConflictError,
   NotFoundError,
   RateLimitError,
   ServerError,
   ServiceUnavailable,
+  UpstreamError,
   ValidationError,
 } from "./errors.js";
 import { resolveApiErrorStatus } from "./lib/api-error-status.js";
@@ -144,6 +146,19 @@ export function registerErrorHandler(app: FastifyInstance): void {
     } else if (err instanceof NotFoundError) {
       status = 404;
       message = err.message || "Not found";
+      code = err.code;
+    } else if (err instanceof ConflictError) {
+      // Phase 10 / Plan 10-01d — 409 surface for uniqueness / version
+      // conflicts (replaces inline `reply.code(409).send(...)` sites).
+      status = 409;
+      message = err.message || "Conflict";
+      code = err.code;
+    } else if (err instanceof UpstreamError) {
+      // Phase 10 / Plan 10-01d — 502 envelope for third-party failures.
+      // Distinct from ServiceUnavailable (503 — our infra) and from
+      // SSRFBlockedError (502 — outbound policy block, handled below).
+      status = 502;
+      message = err.message || "Upstream error";
       code = err.code;
     } else if (err instanceof RateLimitError) {
       status = 429;
