@@ -750,6 +750,297 @@ WAL timestamp within retention. Retention defaults to 14 days; tune via
 | `helm test` fails with `transcribe-non-200`                       | LiteLLM upstream unreachable, or transcribe SLO budget exceeded.       | `kubectl -n openwhispr logs deploy/ow-openwhispr-litellm` for the embedded LiteLLM (or check `LITELLM_BASE_URL` connectivity in external mode); `kubectl logs <test-pod>` for the probe's structured JSON `step` field.                                                       |
 | Upgrade-matrix CI fails on integrity-check                        | Migration dropped or mutated `transcriptions` columns the seed depends on. | Inspect `tools/seed-test-data.js` — if a column was renamed legitimately, update SEED_ROWS + integrity-check to match the new schema. If unintended, the upgrade-matrix has caught a regression — revert.                                                                    |
 
+## Upgrade runbook
+
+OpenWhispr Server follows semver across the chart, the api image, and
+the worker image. Minor and patch releases are upgrade-in-place;
+major releases ship a migration guide alongside the release notes.
+
+### Helm chart upgrade (Kubernetes)
+
+```bash
+# 1. Inspect the diff between the deployed values and the new chart defaults.
+helm get values ow -n openwhispr > /tmp/current-values.yaml
+helm show values openwhispr/openwhispr --version <new-version> > /tmp/new-defaults.yaml
+diff -u /tmp/current-values.yaml /tmp/new-defaults.yaml | less
+
+# 2. Run the upgrade with --atomic so a failed rollout auto-rolls-back.
+helm upgrade ow openwhispr/openwhispr \
+  --version <new-version> \
+  -n openwhispr \
+  -f /tmp/current-values.yaml \
+  --atomic \
+  --timeout 10m
+
+# 3. The chart's pre-upgrade hook runs the `migrate` Job. The Job uses
+#    `openwhispr_migrate` role (NOT `openwhispr_app`) and runs
+#    `drizzle-kit migrate` against the `-rw` CNPG service. The api
+#    Deployment is held back until the Job reports Succeeded.
+
+# 4. Verify rollout health.
+kubectl -n openwhispr rollout status deploy/ow-openwhispr-api
+kubectl -n openwhispr rollout status deploy/ow-openwhispr-worker
+kubectl -n openwhispr exec -it deploy/ow-openwhispr-api -- curl -s http://localhost:3000/api/health
+```
+
+### Rollback (Helm)
+
+```bash
+helm history ow -n openwhispr           # find the previous revision
+helm rollback ow <revision> -n openwhispr --wait --timeout 10m
+```
+
+**Critical:** Helm rollback does NOT roll back the database migration.
+If the new release added a column or table, the old release will
+either ignore it (additive change — safe) or fail to start (breaking
+change — fix forward, do not roll back). Phase 9 enforces additive-only
+migrations via the `lint-migrations` CI gate, so rollback is always
+safe within the OpenWhispr release stream.
+
+### docker-compose upgrade (single-VM)
+
+```bash
+# 1. Snapshot the database BEFORE pulling the new images.
+make backup
+
+# 2. Pull the new images.
+docker compose pull api worker web litellm
+
+# 3. Run migrations in a one-shot container.
+docker compose run --rm --entrypoint "node dist/scripts/migrate.js" api
+
+# 4. Restart api + worker + web.
+docker compose up -d api worker web
+```
+
+A pre-flight check is in `tools/preflight-upgrade.sh`: it verifies the
+target image's `LABEL openwhispr.compose.compatible=>=N` matches the
+running `docker-compose.yml` schema before pulling.
+
+---
+
+## Scale runbook
+
+OpenWhispr Server is built to scale horizontally on three axes: api
+replicas, worker replicas, and CloudNativePG read-replicas.
+
+### api replicas (HPA on CPU + p95 latency)
+
+The Helm chart ships a `HorizontalPodAutoscaler` for the api
+Deployment. Defaults:
+
+```yaml
+api:
+  hpa:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 20
+    targetCPUUtilizationPercentage: 70
+    targetP95LatencyMillis: 800       # Prometheus adapter metric
+```
+
+The `targetP95LatencyMillis` knob requires the `prometheus-adapter`
+chart installed and pointed at Mimir / Prometheus. Without it, the
+HPA falls back to CPU-only.
+
+To scale manually past the HPA ceiling:
+
+```bash
+kubectl -n openwhispr scale deploy/ow-openwhispr-api --replicas=30
+# then bump the HPA ceiling so the manual scale isn't immediately scaled down
+kubectl -n openwhispr patch hpa ow-openwhispr-api \
+  --type='json' -p='[{"op":"replace","path":"/spec/maxReplicas","value":30}]'
+```
+
+### worker replicas (HPA on BullMQ queue depth)
+
+The worker HPA scales on the `bullmq_queue_depth` Prometheus metric
+exposed by `prometheus-redis-exporter`. Defaults:
+
+```yaml
+worker:
+  hpa:
+    enabled: true
+    minReplicas: 1
+    maxReplicas: 10
+    queues:
+      emailDelivery:
+        scaleTargetDepth: 200          # +1 replica per 200 queued jobs
+      auditArchive:
+        scaleTargetDepth: 50
+```
+
+Per-queue concurrency is set via `WORKER_CONCURRENCY_<QUEUE>` env
+vars on the worker container (see `apps/worker/src/queues.ts` for the
+defaults). Scaling worker replicas is preferred over bumping
+concurrency past 10 per replica because BullMQ's locking semantics
+keep getting better with more independent workers.
+
+### CloudNativePG read-replicas
+
+```bash
+# Add a read-replica.
+kubectl -n openwhispr patch cluster ow-openwhispr-pg \
+  --type='merge' -p '{"spec":{"instances":3}}'
+```
+
+CNPG bumps `instances` from 3 to N and joins the new replica via
+streaming replication. The api / worker app pools point at the `-rw`
+service for primary writes and `-ro` for read traffic; Drizzle does
+not auto-split read vs write, so an explicit `withReadReplica()`
+helper is the v2 deliverable. In v1 all traffic hits `-rw`; replicas
+are warm standbys for failover and ad-hoc analytics.
+
+---
+
+## Restore drill
+
+The full restore from a CNPG `barmanObjectStore` backup is a
+production-critical operation. Practice it quarterly.
+
+### RTO/RPO targets (Phase 8 SLO publication)
+
+| Metric | Target                                    |
+| ------ | ----------------------------------------- |
+| RPO    | 15 minutes (WAL archive frequency)        |
+| RTO    | 30 minutes (Helm install + WAL replay)    |
+
+### Restore procedure (CNPG point-in-time)
+
+```bash
+# 1. Identify the target timestamp.
+TARGET_TS=2026-05-13T12:00:00Z
+
+# 2. Install the kubectl-cnpg plugin if missing.
+kubectl krew install cnpg
+
+# 3. Trigger the PITR clone. The new cluster boots from the latest base
+#    backup at or before TARGET_TS, then replays WAL up to that timestamp.
+kubectl cnpg pitr restore \
+  --cluster ow-openwhispr-pg \
+  --target-time "$TARGET_TS" \
+  --new-cluster-name ow-openwhispr-pg-restore \
+  -n openwhispr
+
+# 4. Wait for the restore cluster to come up.
+kubectl -n openwhispr get cluster ow-openwhispr-pg-restore -w
+
+# 5. Repoint the api + worker at the restore cluster.
+helm upgrade ow openwhispr/openwhispr \
+  -n openwhispr \
+  --reuse-values \
+  --set postgres.existingClusterName=ow-openwhispr-pg-restore
+
+# 6. Smoke-test.
+curl -fsS https://api.example.com/api/health | jq .
+```
+
+### Verification checklist
+
+- [ ] PITR cluster reaches `Status.Phase: Cluster in healthy state`.
+- [ ] api `/api/health` returns 200.
+- [ ] worker logs show `event=worker.boot.queues_attached` for all 9 queues.
+- [ ] `SELECT max(created_at) FROM audit_log` is at or near `$TARGET_TS`.
+- [ ] At least one cross-tenant RLS sanity probe (run
+      `apps/api/scripts/post-restore-rls-probe.ts`).
+
+### Restoring on docker-compose
+
+```bash
+make restore BACKUP=/path/to/age-encrypted-pg_dump.age
+```
+
+This decrypts the backup with the configured `age` identity, drops
+and re-creates the database, and replays the dump. Downtime is the
+length of the dump replay (typically 5-15 minutes on a 50 GB
+database).
+
+---
+
+## i18n volume runbook (LOCALES_DIR override)
+
+OpenWhispr Server bundles two runtime locales (`en` + `ru`). Operators
+can override or extend the bundled translations at runtime via the
+`LOCALES_DIR` env var. See [`i18n.md`](./i18n.md) for the full
+operator guide; this section is the operations runbook.
+
+### docker-compose override
+
+`docker-compose.yml` already binds `./locales:/app/locales:ro` and
+sets `LOCALES_DIR=/app/locales` on the api and worker services. To
+activate an override on a running install:
+
+```bash
+# 1. Mirror the bundled structure into ./locales/.
+mkdir -p locales/en locales/ru
+# Override only the namespaces you want to replace. Files NOT in the
+# override dir fall back to the bundled dist/i18n/locales.
+cp /path/to/custom/en/errors.json locales/en/errors.json
+
+# 2. Restart api + worker.
+docker compose restart api worker
+
+# 3. Verify the override took effect.
+docker compose logs api | grep i18n.locales_dir
+# expect: event=i18n.locales_dir, dir=/app/locales, locales=[en,ru]
+```
+
+### Kubernetes (Helm) override
+
+```bash
+# 1. Create the ConfigMap from a directory tree.
+kubectl create configmap openwhispr-locales-override \
+  --from-file=locales/ \
+  -n openwhispr
+
+# 2. Enable the override in values.
+helm upgrade ow openwhispr/openwhispr \
+  -n openwhispr \
+  --reuse-values \
+  --set i18n.overrides.enabled=true \
+  --set i18n.overrides.configMapName=openwhispr-locales-override
+
+# 3. Verify.
+kubectl -n openwhispr logs deploy/ow-openwhispr-api | grep i18n.locales_dir
+```
+
+### Operator validation steps
+
+1. Confirm `LOCALES_DIR` is set on the api and worker (env-var
+   inspection: `docker compose config | grep LOCALES_DIR` or
+   `kubectl -n openwhispr exec deploy/ow-openwhispr-api -- env | grep LOCALES_DIR`).
+2. Confirm the mounted directory is readable (`docker compose exec
+   api ls -la $LOCALES_DIR` or the equivalent `kubectl exec`).
+3. Confirm the JSON parses (the api emits
+   `event=i18n.locales_dir_invalid, reason=...` on parse failure and
+   refuses to serve traffic; readiness probe fails).
+4. Confirm at least one localized error envelope renders the override
+   text:
+
+   ```bash
+   curl -fsS https://api.example.com/api/health \
+     -H "Accept-Language: ru" \
+     -H "X-Force-Error-For-Operator-Check: validation_failed" \
+     | jq .
+   ```
+
+   (The `X-Force-Error-For-Operator-Check` header is a debug-only
+   knob; enable it via `OPENWHISPR_DEBUG_HEADERS=1` and disable in
+   production.)
+
+### Troubleshooting
+
+| Symptom                                                      | Diagnosis                                                              | Fix                                                                                                       |
+| ------------------------------------------------------------ | ---------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------- |
+| api logs `event=i18n.locales_dir_invalid`                    | JSON parse failure in override file.                                   | `jq . locales/<lng>/<ns>.json` finds the offending file; fix the syntax and `docker compose restart api`. |
+| Verification email still in English after `users.locale='ru'`| The user's locale was null when Better Auth fired `sendVerificationEmail`. | Update `users.locale` first, then trigger a re-send via the user settings page or `pnpm bulk-update-locale`. |
+| Override file present but bundled text still shows           | `LOCALES_DIR` not set or pointing at the wrong path.                   | Check the boot log: api emits `event=i18n.locales_dir_fallback, reason=env_unset` if `LOCALES_DIR` is empty. |
+| Russian email body shows `[missing translation: ...]`        | Override directory has the `en` bundle but not `ru`.                   | Add the matching `ru/` files. Falling back to `en` is the default; the placeholder appears only with `returnNull: false` configured in i18next. |
+
+---
+
 ## Future phases
 
-- **Phase 10:** full operator handbook (deploy / upgrade / scale / backup / restore / troubleshoot) — re-uses this document
+- **Phase 10 (this document):** full operator handbook (deploy / upgrade
+  / scale / backup / restore / troubleshoot / i18n) — completed by
+  Plan 10-03.
