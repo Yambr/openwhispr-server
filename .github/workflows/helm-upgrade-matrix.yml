@@ -1,0 +1,185 @@
+name: helm-upgrade-matrix
+
+# DEPLOY-04 gate. Installs the previous (N-1) chart version on a kind cluster
+# with CNPG + Traefik + cert-manager, seeds deterministic data, upgrades to
+# the HEAD chart, then runs `helm test` (DEPLOY-05 SLO probe) and the
+# integrity-check.js script to confirm seeded rows survived the upgrade.
+#
+# Pitfall mitigations:
+#   - T-09-05: concurrency.cancel-in-progress prevents kind-cluster pileup
+#   - T-09-05: `if: always()` kind delete step prevents leaked clusters
+#   - chicken-and-egg seed: the very first run exercises a CONTRIVED
+#     0.9.0-rc1 → 0.9.0 transition. The chart-released helm-release.yml
+#     workflow updates .chart-versions/previous after each tag push, so
+#     subsequent runs exercise real N-1 → N pairs.
+
+on:
+  pull_request:
+    paths:
+      - "charts/**"
+      - ".github/workflows/helm-upgrade-matrix.yml"
+      - "tools/test-probe/**"
+      - "tools/seed-test-data.js"
+      - "tools/integrity-check.js"
+      - ".chart-versions/previous"
+  push:
+    branches: [main]
+    paths:
+      - "charts/**"
+      - ".github/workflows/helm-upgrade-matrix.yml"
+      - "tools/test-probe/**"
+      - "tools/seed-test-data.js"
+      - "tools/integrity-check.js"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: helm-upgrade-matrix-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  upgrade-matrix:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Read previous chart version
+        id: prev
+        run: |
+          if [ ! -f .chart-versions/previous ]; then
+            echo "FATAL: .chart-versions/previous missing" >&2
+            exit 1
+          fi
+          PREV=$(tr -d '[:space:]' < .chart-versions/previous)
+          if [ -z "${PREV}" ]; then
+            echo "FATAL: .chart-versions/previous is empty" >&2
+            exit 1
+          fi
+          echo "version=${PREV}" >> "$GITHUB_OUTPUT"
+          echo "Previous chart version: ${PREV}"
+
+      - name: Setup kind
+        uses: helm/kind-action@v1.10.0
+        with:
+          version: v0.24.0
+          node_image: kindest/node:v1.31.0
+          cluster_name: openwhispr-upgrade
+          wait: 120s
+
+      - name: Setup Helm
+        uses: azure/setup-helm@v4
+        with:
+          version: v3.16.4
+
+      - name: Setup kubectl
+        uses: azure/setup-kubectl@v4
+        with:
+          version: v1.31.1
+
+      - name: Install CNPG operator
+        run: bash charts/openwhispr/examples/cnpg-install.sh
+
+      - name: Install Traefik
+        run: |
+          helm repo add traefik https://traefik.github.io/charts
+          helm repo update traefik
+          helm upgrade --install traefik traefik/traefik \
+            --namespace traefik --create-namespace \
+            --version 32.1.1 \
+            -f charts/openwhispr/examples/traefik-values.yaml \
+            --wait --timeout 5m
+
+      - name: Install cert-manager
+        run: |
+          helm repo add jetstack https://charts.jetstack.io
+          helm repo update jetstack
+          helm upgrade --install cert-manager jetstack/cert-manager \
+            --namespace cert-manager --create-namespace \
+            --version v1.16.1 \
+            --set crds.enabled=true \
+            --wait --timeout 5m
+
+      - name: Generate ephemeral CI secrets
+        id: secrets
+        run: |
+          for k in litellmMasterKey openrouterApiKey openaiApiKey pyannoteApiKey hfToken postgresOwnerPassword pgbouncerAdminPassword betterAuthSecret; do
+            v=$(openssl rand -base64 32 | tr -d '\n=' | cut -c1-40)
+            echo "${k}=${v}" >> "$GITHUB_OUTPUT"
+          done
+
+      - name: Checkout N-1 chart from previous tag
+        run: |
+          PREV="${{ steps.prev.outputs.version }}"
+          git fetch --tags --depth=1 || true
+          if git rev-parse --verify "v${PREV}" >/dev/null 2>&1; then
+            REF="v${PREV}"
+          elif git rev-parse --verify "${PREV}" >/dev/null 2>&1; then
+            REF="${PREV}"
+          else
+            echo "WARNING: tag v${PREV} not found; using HEAD as N-1 (first-run contrived transition)"
+            REF=HEAD
+          fi
+          mkdir -p /tmp/charts-prev
+          git archive "${REF}" charts/openwhispr | tar -x -C /tmp/charts-prev/
+          ls /tmp/charts-prev/charts/openwhispr/
+
+      - name: Helm install N-1
+        run: |
+          helm dependency build /tmp/charts-prev/charts/openwhispr || true
+          helm install ow /tmp/charts-prev/charts/openwhispr \
+            -f .github/ci/values-ci.yaml \
+            --namespace openwhispr --create-namespace \
+            --set-string secrets.litellmMasterKey=${{ steps.secrets.outputs.litellmMasterKey }} \
+            --set-string secrets.openrouterApiKey=${{ steps.secrets.outputs.openrouterApiKey }} \
+            --set-string secrets.openaiApiKey=${{ steps.secrets.outputs.openaiApiKey }} \
+            --set-string secrets.pyannoteApiKey=${{ steps.secrets.outputs.pyannoteApiKey }} \
+            --set-string secrets.hfToken=${{ steps.secrets.outputs.hfToken }} \
+            --set-string secrets.postgresOwnerPassword=${{ steps.secrets.outputs.postgresOwnerPassword }} \
+            --set-string secrets.pgbouncerAdminPassword=${{ steps.secrets.outputs.pgbouncerAdminPassword }} \
+            --set-string secrets.betterAuthSecret=${{ steps.secrets.outputs.betterAuthSecret }} \
+            --wait --timeout 10m
+
+      - name: Seed deterministic test data into N-1 cluster
+        run: |
+          kubectl -n openwhispr wait --for=condition=available deployment/ow-openwhispr-api --timeout=5m
+          kubectl -n openwhispr exec deploy/ow-openwhispr-api -- node /app/tools/seed-test-data.js
+
+      - name: Helm upgrade to HEAD chart
+        run: |
+          helm dependency build charts/openwhispr || true
+          helm upgrade ow charts/openwhispr \
+            -f .github/ci/values-ci.yaml \
+            --namespace openwhispr \
+            --set-string secrets.litellmMasterKey=${{ steps.secrets.outputs.litellmMasterKey }} \
+            --set-string secrets.openrouterApiKey=${{ steps.secrets.outputs.openrouterApiKey }} \
+            --set-string secrets.openaiApiKey=${{ steps.secrets.outputs.openaiApiKey }} \
+            --set-string secrets.pyannoteApiKey=${{ steps.secrets.outputs.pyannoteApiKey }} \
+            --set-string secrets.hfToken=${{ steps.secrets.outputs.hfToken }} \
+            --set-string secrets.postgresOwnerPassword=${{ steps.secrets.outputs.postgresOwnerPassword }} \
+            --set-string secrets.pgbouncerAdminPassword=${{ steps.secrets.outputs.pgbouncerAdminPassword }} \
+            --set-string secrets.betterAuthSecret=${{ steps.secrets.outputs.betterAuthSecret }} \
+            --wait --timeout 10m
+
+      - name: helm test (DEPLOY-05 SLO probe)
+        run: helm test ow --namespace openwhispr --timeout 5m
+
+      - name: Integrity check (post-upgrade seeded-row validation)
+        run: |
+          kubectl -n openwhispr exec deploy/ow-openwhispr-api -- node /app/tools/integrity-check.js
+
+      - name: Dump diagnostics on failure
+        if: failure()
+        run: |
+          kubectl -n openwhispr get all
+          kubectl -n openwhispr describe pods
+          kubectl -n openwhispr logs deploy/ow-openwhispr-api --tail=200 || true
+          kubectl -n openwhispr get events --sort-by=.lastTimestamp | tail -30
+
+      - name: Tear down kind cluster
+        if: always()
+        run: |
+          kind delete cluster --name openwhispr-upgrade || true
