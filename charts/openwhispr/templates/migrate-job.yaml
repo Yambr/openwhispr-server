@@ -104,9 +104,12 @@ spec:
             - secretRef:
                 name: {{ $fullname }}-secrets
           env:
-            # NOTE: DATABASE_URL deliberately bypasses the Pooler — Drizzle's
-            # DDL statements break under PgBouncer transaction-mode (pitfall #9).
-            - name: DATABASE_URL
+            # Finding 09.1-F12 — migrate.ts requires `DATABASE_URL_OWNER`
+            # (NOT DATABASE_URL). The migration runs as the schema owner;
+            # DATABASE_URL is for the runtime app user (limited grants).
+            # Pooler is bypassed because Drizzle's DDL breaks under
+            # PgBouncer transaction-mode (pitfall #9).
+            - name: DATABASE_URL_OWNER
               value: "postgres://openwhispr_owner:$(POSTGRES_OWNER_PASSWORD)@{{ include "openwhispr.postgresRwHost" . }}:5432/openwhispr"
           resources:
             requests:

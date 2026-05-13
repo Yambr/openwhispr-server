@@ -108,7 +108,10 @@ tests:
           path: spec.template.spec.containers[0].command[1]
           pattern: "migrate\\.cjs$"
 
-  - it: migrate Job DATABASE_URL points at -pg-rw (NOT pooler — transaction-mode breaks DDL)
+  # Finding 09.1-F12: migrate.ts requires DATABASE_URL_OWNER, not
+  # DATABASE_URL. The owner has full DDL grants; DATABASE_URL is for the
+  # runtime app user (limited grants — would refuse the migration).
+  - it: migrate Job DATABASE_URL_OWNER points at -pg-rw (NOT pooler — transaction-mode breaks DDL)
     template: migrate-job.yaml
     set:
       secrets:
@@ -117,10 +120,10 @@ tests:
           storeRef: vault-clusterstore
     asserts:
       - matchRegex:
-          path: spec.template.spec.containers[0].env[?(@.name=="DATABASE_URL")].value
+          path: spec.template.spec.containers[0].env[?(@.name=="DATABASE_URL_OWNER")].value
           pattern: "RELEASE-NAME-openwhispr-pg-rw:5432"
       - notMatchRegex:
-          path: spec.template.spec.containers[0].env[?(@.name=="DATABASE_URL")].value
+          path: spec.template.spec.containers[0].env[?(@.name=="DATABASE_URL_OWNER")].value
           pattern: "pg-pooler"
 
   - it: migrate Job envFrom secret reference for DATABASE password
