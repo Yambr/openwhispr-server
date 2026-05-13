@@ -1,0 +1,22 @@
+{{/*
+web Service — ClusterIP for the Next.js SSR pod. Traefik IngressRoute
+(Wave 3) routes the apex Host(.Values.host.web) at this Service.
+*/}}
+{{- $fullname := include "openwhispr.fullname" . -}}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $fullname }}-web
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "openwhispr.labels" . | nindent 4 }}
+    app.kubernetes.io/component: web
+spec:
+  type: ClusterIP
+  selector:
+    {{- include "openwhispr.web.selectorLabels" . | nindent 4 }}
+  ports:
+    - name: http
+      port: 3001
+      targetPort: 3001
+      protocol: TCP

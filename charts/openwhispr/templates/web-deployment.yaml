@@ -1,0 +1,101 @@
+{{/*
+web Deployment — Phase 09 Plan 06. Next.js 15 SSR pod.
+
+Compose-parity for the `web` service. Same-origin deploy: server-side
+fetches stay in-cluster via INTERNAL_API_URL; browser-side fetches hit
+Traefik via NEXT_PUBLIC_API_BASE_URL (PathPrefix /api).
+
+No HPA by default — web is largely CPU-bound by Next.js RSC rendering
+and a single replica handles a 1k-user installation comfortably. Future
+plan may add HPA when SSR latency budget tightens.
+*/}}
+{{- $fullname := include "openwhispr.fullname" . -}}
+{{- $webTag := default .Chart.AppVersion .Values.image.web.tag -}}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $fullname }}-web
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "openwhispr.labels" . | nindent 4 }}
+    app.kubernetes.io/component: web
+spec:
+  replicas: {{ .Values.web.replicas }}
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 25%
+      maxUnavailable: 0
+  selector:
+    matchLabels:
+      {{- include "openwhispr.web.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "openwhispr.web.selectorLabels" . | nindent 8 }}
+    spec:
+      serviceAccountName: {{ include "openwhispr.serviceAccountName" . }}
+      {{- with .Values.image.pullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      initContainers:
+        - name: secret-presence-probe
+          image: busybox:1.36
+          imagePullPolicy: IfNotPresent
+          command:
+            - sh
+            - -c
+            - |
+              for k in LITELLM_MASTER_KEY OPENROUTER_API_KEY OPENAI_API_KEY PYANNOTE_API_KEY HF_TOKEN POSTGRES_OWNER_PASSWORD PGBOUNCER_ADMIN_PASSWORD BETTER_AUTH_SECRET; do
+                eval v=\$$k
+                if [ -z "$v" ]; then
+                  echo "FATAL: $k empty — refusing to start (ESO not synced?)" 1>&2
+                  exit 1
+                fi
+              done
+              echo "secret-presence-probe OK"
+          envFrom:
+            - secretRef:
+                name: {{ $fullname }}-secrets
+      containers:
+        - name: web
+          image: "{{ .Values.image.web.repository }}:{{ $webTag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: 3001
+              protocol: TCP
+          envFrom:
+            - secretRef:
+                name: {{ $fullname }}-secrets
+          env:
+            - name: NODE_ENV
+              value: {{ .Values.web.env.nodeEnv | default "production" | quote }}
+            - name: HOSTNAME
+              value: "0.0.0.0"
+            - name: PORT
+              value: "3001"
+            - name: INTERNAL_API_URL
+              value: {{ .Values.web.env.internalApiUrl | default (printf "http://%s-api:3000" $fullname) | quote }}
+            - name: NEXT_PUBLIC_API_BASE_URL
+              value: "https://{{ .Values.host.api }}"
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 3001
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /
+              port: 3001
+            initialDelaySeconds: 30
+            periodSeconds: 30
+          resources:
+            requests:
+              cpu: 200m
+              memory: 256Mi
+            limits:
+              cpu: 1000m
+              memory: 1Gi
