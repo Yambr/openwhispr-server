@@ -1,15 +1,16 @@
 ---
 gsd_state_version: 1.0
-milestone: v1
-milestone_name: milestone
-status: Phase 8 + 08.1/08.2/08.3/08.4/08.5/08.6/08-08 all closed; realistic wiring LIVE-proven on Mac across 5 endpoints incl. local Speaches diarization (built from master); Phase 9 (Helm) next
-last_updated: "2026-05-13T19:21:13.037Z"
+milestone: v2
+milestone_name: Production Readiness
+status: planning
+last_updated: "2026-05-13T21:48:35.073Z"
+last_activity: 2026-05-13
 progress:
-  total_phases: 42
-  completed_phases: 16
-  total_plans: 125
-  completed_plans: 141
-  percent: 38
+  total_phases: 0
+  completed_phases: 0
+  total_plans: 0
+  completed_plans: 0
+  percent: 0
 ---
 
 # Project State: OpenWhispr Server
@@ -24,19 +25,10 @@ progress:
 
 ## Current Position
 
-| Field | Value |
-|-------|-------|
-| Milestone | v1 |
-| Phase | 8 + 08.1/08.2/08.3/08.4/08.5/08.6/08-08 all CLOSED 2026-05-12/13. Phase 9 (Helm Chart & Cloud Deploy) next. |
-| Plan | Phase 8: 08-01..08-07 closed, 08-08 next (operations.md + SLO publication). Phase 08.1/08.2/08.3/08.4: all CLOSED. Phase 08.5: 08.5-01 + 08.5-02 CLOSED; 08.5-03 BLOCKED (auth gates). |
-| Status | 08.5 Waves 1+2 closed. Wiring landed but live boot not yet executed: `.env` HF_TOKEN / OPENROUTER_API_KEY / OPENAI_API_KEY still placeholder. Operator unblock recipe in `.planning/phases/08.5-…/08.5-03-STATUS.md`. Next: operator populates `.env`, runs `make load-test PROFILE=realistic` + `OPENWHISPR_LOADTEST_REUSE_STACK=1 tools/load-test/scripts/baseline.sh`, then closes Plan 08.5-03 + Phase 08-08 (operations.md + dual SLO tables). |
-| Phase progress | Phases 0/1/2/3/4/5/6/7/07.1/08.1/08.2/08.3/08.4 closed. Phase 8 partially done (08-01..08-07 closed; 08-08 next). Phase 08.5 Waves 1+2 closed (8 atomic commits); Wave 3 blocked on auth. |
-| Next action | Phase 9 — Helm Chart & Cloud Deploy: `/gsd-plan-phase 9` to begin scoping CloudNativePG + Traefik 3 + HPA + cert-manager work per ROADMAP §Phase 9. |
-
-```
-[X][X][X][X][X][X][X][X][X][~][X][X][X][X][X][X][X][X][X][X][X][~]
- 0  1  2  3  4  5  6  7 7.1 8 8.1 8.2 8.3 8.4 8.5 8.6 8-8 9 9.1 9.2 10 11
-```
+Phase: Not started (defining requirements)
+Plan: —
+Status: Defining requirements
+Last activity: 2026-05-13 — Milestone v2 started
 
 ## Performance Metrics
 
