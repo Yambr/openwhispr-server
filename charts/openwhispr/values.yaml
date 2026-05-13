@@ -116,8 +116,20 @@ minio:
 
 # CNPG Pooler CRD (A6: replaces first-party PgBouncer Deployment).
 pooler:
+  enabled: true
   instances: 2
+  # type: rw exposes a read-write Pooler that routes to the primary;
+  # alternative `ro` would route to hot-standby replicas.
   type: rw
+  # poolMode = transaction (compose parity); session / statement also valid.
+  poolMode: transaction
+  # Compose pgbouncer.ini parity:
+  #   max_client_conn 1000, default_pool_size 100, reserve_pool_size 20.
+  # cloud-ha overlay typically bumps max_client_conn to 2000 (4× compose,
+  # since one Pooler == 2 instances × 1000 = 2000 effective slots).
+  maxClientConn: "1000"
+  defaultPoolSize: "100"
+  reservePoolSize: "20"
 
 # LiteLLM Proxy. Wave 2 implements the Deployment.
 litellm:
