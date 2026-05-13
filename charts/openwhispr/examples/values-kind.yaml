@@ -38,8 +38,10 @@ certManager:
 postgres:
   replicas: 1
   storageSize: 1Gi
-  # Image override happens via --set on the CLI after `kind load docker-image`
-  # — see Plan 09.1-3 task notes.
+  # kind-loaded locally-built image (see Plan 09.1-3 prep — `docker tag`
+  # + `kind load docker-image`). Matches the `:17.X-*` schema-validator
+  # regex enforced in postgres-cluster.yaml.
+  imageName: ghcr.io/openwhispr/cnpg-postgres-17-pgpartman:17.5
 
 valkey:
   architecture: standalone

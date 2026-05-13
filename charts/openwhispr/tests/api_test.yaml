@@ -98,7 +98,7 @@ tests:
           path: spec.template.spec.containers[0].livenessProbe.httpGet.path
           value: /api/live
 
-  - it: api Deployment carries the secret-presence-probe initContainer (pitfall #5)
+  - it: api Deployment carries wait-for-migrate (Finding 09.1-F3) then secret-presence-probe (pitfall #5)
     template: api-deployment.yaml
     set:
       secrets:
@@ -106,14 +106,25 @@ tests:
         external:
           storeRef: vault-clusterstore
     asserts:
+      # Finding 09.1-F3 — wait-for-migrate is initContainer[0] so the
+      # api container only starts after migrate Job is Complete.
       - equal:
           path: spec.template.spec.initContainers[0].name
-          value: secret-presence-probe
+          value: wait-for-migrate
       - matchRegex:
           path: spec.template.spec.initContainers[0].image
+          pattern: "^bitnami/kubectl:"
+      - matchRegex:
+          path: spec.template.spec.initContainers[0].command[2]
+          pattern: "kubectl get job/RELEASE-NAME-openwhispr-migrate"
+      - equal:
+          path: spec.template.spec.initContainers[1].name
+          value: secret-presence-probe
+      - matchRegex:
+          path: spec.template.spec.initContainers[1].image
           pattern: "^busybox:"
       - equal:
-          path: spec.template.spec.initContainers[0].envFrom[0].secretRef.name
+          path: spec.template.spec.initContainers[1].envFrom[0].secretRef.name
           value: RELEASE-NAME-openwhispr-secrets
 
   - it: api Service renders ClusterIP port 3000
@@ -255,6 +266,9 @@ tests:
       - hasDocuments:
           count: 0
 
+  # Finding 09.1-F3 — initContainers ordering: [wait-for-migrate,
+  # secret-presence-probe, traefik-preflight]. Was [secret-presence-probe,
+  # traefik-preflight] before wait-for-migrate landed.
   - it: api Deployment carries traefik-preflight initContainer by default (Plan 09-09 pitfall #4)
     template: api-deployment.yaml
     set:
@@ -264,21 +278,21 @@ tests:
           storeRef: vault-clusterstore
     asserts:
       - equal:
-          path: spec.template.spec.initContainers[1].name
+          path: spec.template.spec.initContainers[2].name
           value: traefik-preflight
       - matchRegex:
-          path: spec.template.spec.initContainers[1].image
+          path: spec.template.spec.initContainers[2].image
           pattern: "^curlimages/curl:"
       # Finding 09.1-F2: name shortened to ≤15 chars; default value
       # `wsrealtime`. Override via .Values.ingress.realtimeEntrypointName.
       - matchRegex:
-          path: spec.template.spec.initContainers[1].command[2]
+          path: spec.template.spec.initContainers[2].command[2]
           pattern: '"name":"wsrealtime"'
       - matchRegex:
-          path: spec.template.spec.initContainers[1].command[2]
+          path: spec.template.spec.initContainers[2].command[2]
           pattern: "/api/entrypoints"
 
-  - it: api Deployment omits traefik-preflight when ingress.preflightCheck=false
+  - it: api Deployment omits traefik-preflight when ingress.preflightCheck=false (still keeps wait-for-migrate + secret-presence)
     template: api-deployment.yaml
     set:
       secrets:
@@ -290,9 +304,12 @@ tests:
     asserts:
       - lengthEqual:
           path: spec.template.spec.initContainers
-          count: 1
+          count: 2
       - equal:
           path: spec.template.spec.initContainers[0].name
+          value: wait-for-migrate
+      - equal:
+          path: spec.template.spec.initContainers[1].name
           value: secret-presence-probe
 
   - it: api Deployment traefik-preflight uses configurable admin URL
@@ -305,8 +322,10 @@ tests:
       ingress:
         preflightTraefikAdminUrl: http://my-traefik.custom-ns.svc.cluster.local:9000
     asserts:
+      # Finding 09.1-F3 — preflight is now initContainers[2] (wait-for-migrate
+      # at [0], secret-presence-probe at [1]).
       - matchRegex:
-          path: spec.template.spec.initContainers[1].command[2]
+          path: spec.template.spec.initContainers[2].command[2]
           pattern: "my-traefik\\.custom-ns\\.svc\\.cluster\\.local:9000"
 
   - it: configmap-api renders NODE_ENV + LOG_LEVEL non-secret env
