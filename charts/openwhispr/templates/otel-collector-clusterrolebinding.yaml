@@ -1,0 +1,23 @@
+{{/*
+ClusterRoleBinding — binds the read-only ClusterRole to the SA in the
+release namespace. Cross-namespace binding is intentional: ClusterRole
+is cluster-scoped, the SA lives in {{ .Release.Namespace }}.
+*/}}
+{{- if .Values.observability.collector.enabled -}}
+{{- $fullname := include "openwhispr.fullname" . -}}
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: {{ $fullname }}-otel-collector
+  labels:
+    {{- include "openwhispr.labels" . | nindent 4 }}
+    app.kubernetes.io/component: otel-collector
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: {{ $fullname }}-otel-collector
+subjects:
+  - kind: ServiceAccount
+    name: {{ $fullname }}-otel-collector
+    namespace: {{ .Release.Namespace }}
+{{- end }}
