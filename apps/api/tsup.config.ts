@@ -27,7 +27,24 @@
 // Native modules with C addons (pg) MUST stay external so Node loads them via
 // the runtime node_modules. better-auth is also kept external because it ships
 // dual ESM/CJS subpath exports that tsup can't reliably inline into pure ESM.
+import { copyFile, mkdir } from "node:fs/promises";
+import { resolve } from "node:path";
 import { defineConfig } from "tsup";
+
+// Phase 10 / Plan 10-01a — copy i18n locale JSON files into the bundle
+// output so the runtime container can resolve `apps/api/dist/locales/{en,ru}.json`
+// from `dist/index.js` via the same `./locales` relative path that
+// works under the source tree. Production operators can still override
+// the directory via `LOCALES_DIR` env var (docker-compose mount); the
+// bundled files are the safe default for fresh `docker compose up`.
+async function copyLocalesToDist(): Promise<void> {
+  const srcDir = resolve(__dirname, "src/i18n/locales");
+  const dstDir = resolve(__dirname, "dist/i18n/locales");
+  await mkdir(dstDir, { recursive: true });
+  for (const lng of ["en", "ru"] as const) {
+    await copyFile(resolve(srcDir, `${lng}.json`), resolve(dstDir, `${lng}.json`));
+  }
+}
 
 export default defineConfig([
   {
@@ -41,6 +58,9 @@ export default defineConfig([
     bundle: true,
     noExternal: [/^@openwhispr\//],
     external: ["pg", "pg-native", "better-auth"],
+    onSuccess: async () => {
+      await copyLocalesToDist();
+    },
   },
   {
     entry: { "scripts/check-default-secrets": "scripts/check-default-secrets.ts" },
