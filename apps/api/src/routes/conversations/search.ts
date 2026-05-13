@@ -14,18 +14,12 @@
 // raises on operator-laden user input (T-05-03).
 // ts_rank against the GIN-indexed content_search column (over title)
 // from Plan 01.
-import {
-  type ExecutableTx,
-  type TransactionalDb,
-  withTenant,
-} from "@openwhispr/data";
+import { type ExecutableTx, type TransactionalDb, withTenant } from "@openwhispr/data";
 import { sql } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
-import {
-  type CloudConversationRow,
-  rowToCloudConversation,
-} from "./shape.js";
+import { AuthError } from "../../errors.js";
+import { type CloudConversationRow, rowToCloudConversation } from "./shape.js";
 
 const SearchRequestSchema = z
   .object({
@@ -50,7 +44,7 @@ export const buildConversationsSearchRoutes = (deps: ConversationsSearchDeps) =>
       config: { rateLimit: { max: 60, timeWindow: "1 minute" } },
       handler: async (req, reply) => {
         if (!req.user || !req.tenant) {
-          return reply.code(401).send({ error: "unauthorized" });
+          throw new AuthError("UNAUTHORIZED", "unauthorized");
         }
         // Pitfall #3 — trim-blank pre-check.
         const rawBody = (req.body ?? {}) as { query?: unknown };
@@ -79,8 +73,7 @@ export const buildConversationsSearchRoutes = (deps: ConversationsSearchDeps) =>
         return reply.code(200).send({
           conversations: rows.map((row) => ({
             ...rowToCloudConversation(row),
-            score:
-              typeof row.score === "number" ? row.score : Number(row.score ?? 0),
+            score: typeof row.score === "number" ? row.score : Number(row.score ?? 0),
           })),
         });
       },

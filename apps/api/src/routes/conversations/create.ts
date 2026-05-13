@@ -12,13 +12,10 @@
 // interface but NOT persisted by /create per upstream service
 // (messages are added separately via /api/conversations/messages).
 // We follow that contract — the `messages` field is silently ignored.
-import {
-  type ExecutableTx,
-  type TransactionalDb,
-  withTenant,
-} from "@openwhispr/data";
+import { type ExecutableTx, type TransactionalDb, withTenant } from "@openwhispr/data";
 import { ConversationInputSchema } from "@openwhispr/wire-schemas";
 import type { FastifyInstance } from "fastify";
+import { AuthError } from "../../errors.js";
 import { createOrReturnExisting } from "../../lib/client-id-upsert.js";
 import { type CloudConversationRow, rowToCloudConversation } from "./shape.js";
 
@@ -34,7 +31,7 @@ export const buildConversationsCreateRoutes = (deps: ConversationsCreateDeps) =>
       config: { rateLimit: { max: 120, timeWindow: "1 minute" } },
       handler: async (req, reply) => {
         if (!req.user || !req.tenant) {
-          return reply.code(401).send({ error: "unauthorized" });
+          throw new AuthError("UNAUTHORIZED", "unauthorized");
         }
         const body = ConversationInputSchema.parse(req.body);
         const tenantId = req.tenant;

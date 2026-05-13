@@ -10,14 +10,11 @@
 // from "row never existed".
 //
 // updated_at is bumped server-side regardless of input.
-import {
-  type ExecutableTx,
-  type TransactionalDb,
-  withTenant,
-} from "@openwhispr/data";
+import { type ExecutableTx, type TransactionalDb, withTenant } from "@openwhispr/data";
 import { sql } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
+import { AuthError } from "../../errors.js";
 import { type CloudFolderRow, rowToCloudFolder } from "./shape.js";
 
 // Static allowlist of mutable columns (defense-in-depth).
@@ -53,7 +50,7 @@ export const buildFoldersUpdateRoutes = (deps: FoldersUpdateDeps) =>
       config: { rateLimit: { max: 120, timeWindow: "1 minute" } },
       handler: async (req, reply) => {
         if (!req.user || !req.tenant) {
-          return reply.code(401).send({ error: "unauthorized" });
+          throw new AuthError("UNAUTHORIZED", "unauthorized");
         }
         const body = UpdateBodySchema.parse(req.body);
         const tenantId = req.tenant;
@@ -62,7 +59,7 @@ export const buildFoldersUpdateRoutes = (deps: FoldersUpdateDeps) =>
         // Build the SET clause from provided fields only.
         const setFragments = [];
         for (const [key, col] of Object.entries(FIELD_MAP)) {
-          if (Object.prototype.hasOwnProperty.call(body, key)) {
+          if (Object.hasOwn(body, key)) {
             const v = (body as Record<string, unknown>)[key];
             setFragments.push(sql`${sql.raw(`"${col}"`)} = ${v as unknown}`);
           }

@@ -30,15 +30,12 @@
 //   5. Response: `{wordsUsed, wordsRemaining: 999_999_999, plan: 'unlimited',
 //      limitReached: false}` per D-12.
 
-import {
-  type ExecutableTx,
-  type TransactionalDb,
-  withTenant,
-} from "@openwhispr/data";
-import { StreamingUsageBodySchema } from "@openwhispr/wire-schemas";
 import { createHash } from "node:crypto";
+import { type ExecutableTx, type TransactionalDb, withTenant } from "@openwhispr/data";
+import { StreamingUsageBodySchema } from "@openwhispr/wire-schemas";
 import { sql } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
+import { AuthError } from "../errors.js";
 
 export interface StreamingUsageDeps {
   db: TransactionalDb<ExecutableTx>;
@@ -60,7 +57,7 @@ export const buildStreamingUsageRoutes = (deps: StreamingUsageDeps) =>
       handler: async (req, reply) => {
         if (!req.user || !req.tenant) {
           // Defensive — dualAuthHook should have thrown.
-          return reply.code(401).send({ error: "unauthorized" });
+          throw new AuthError("UNAUTHORIZED", "unauthorized");
         }
 
         // Manual zod parse so ZodError → centralized 400 envelope. (We do
@@ -121,8 +118,7 @@ export const buildStreamingUsageRoutes = (deps: StreamingUsageDeps) =>
           const sumRow = result.rows?.[0];
           if (sumRow) {
             const raw = sumRow.words_used;
-            wordsUsed =
-              typeof raw === "number" ? raw : raw == null ? 0 : Number(raw);
+            wordsUsed = typeof raw === "number" ? raw : raw == null ? 0 : Number(raw);
           }
         });
 

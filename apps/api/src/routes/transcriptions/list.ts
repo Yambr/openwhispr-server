@@ -7,13 +7,10 @@
 // Keyset pagination via shared parseListQuery + buildKeysetWhere +
 // buildKeysetOrderLimit helpers; soft-deleted rows excluded via
 // withSoftDelete(). Pairs with transcriptions_keyset_idx partial index.
-import {
-  type ExecutableTx,
-  type TransactionalDb,
-  withTenant,
-} from "@openwhispr/data";
+import { type ExecutableTx, type TransactionalDb, withTenant } from "@openwhispr/data";
 import { sql } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
+import { AuthError } from "../../errors.js";
 import {
   buildKeysetOrderLimit,
   buildKeysetWhere,
@@ -40,12 +37,12 @@ export const buildTranscriptionsListRoutes = (deps: TranscriptionsListDeps) =>
       config: { rateLimit: { max: 120, timeWindow: "1 minute" } },
       handler: async (req, reply) => {
         if (!req.user || !req.tenant) {
-          return reply.code(401).send({ error: "unauthorized" });
+          throw new AuthError("UNAUTHORIZED", "unauthorized");
         }
         const tenantId = req.tenant;
         const userId = req.user.id;
 
-        let parsed;
+        let parsed: ReturnType<typeof parseListQuery>;
         try {
           parsed = parseListQuery((req.query ?? {}) as ListQuery);
         } catch (err) {
@@ -68,9 +65,7 @@ export const buildTranscriptionsListRoutes = (deps: TranscriptionsListDeps) =>
           return result.rows ?? [];
         });
 
-        return reply
-          .code(200)
-          .send({ transcriptions: rows.map(rowToCloudTranscription) });
+        return reply.code(200).send({ transcriptions: rows.map(rowToCloudTranscription) });
       },
     });
   };

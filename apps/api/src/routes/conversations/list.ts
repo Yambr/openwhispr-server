@@ -14,13 +14,10 @@
 // Soft-deleted conversation rows excluded via withSoftDelete().
 // Conversation ordering: created_at DESC, id DESC — pairs with
 // conversations_keyset_idx partial index from Plan 01.
-import {
-  type ExecutableTx,
-  type TransactionalDb,
-  withTenant,
-} from "@openwhispr/data";
+import { type ExecutableTx, type TransactionalDb, withTenant } from "@openwhispr/data";
 import { sql } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
+import { AuthError } from "../../errors.js";
 import {
   buildKeysetOrderLimit,
   buildKeysetWhere,
@@ -57,13 +54,13 @@ export const buildConversationsListRoutes = (deps: ConversationsListDeps) =>
       config: { rateLimit: { max: 120, timeWindow: "1 minute" } },
       handler: async (req, reply) => {
         if (!req.user || !req.tenant) {
-          return reply.code(401).send({ error: "unauthorized" });
+          throw new AuthError("UNAUTHORIZED", "unauthorized");
         }
         const tenantId = req.tenant;
         const userId = req.user.id;
         const q = (req.query ?? {}) as ListQuery;
 
-        let parsed;
+        let parsed: ReturnType<typeof parseListQuery>;
         try {
           parsed = parseListQuery(q);
         } catch (err) {
@@ -116,9 +113,7 @@ export const buildConversationsListRoutes = (deps: ConversationsListDeps) =>
           return reply.code(200).send({
             conversations: rowsWithMessages.map((row) => ({
               ...rowToCloudConversation(row),
-              messages: Array.isArray(row.messages)
-                ? row.messages.map(rowToCloudMessage)
-                : [],
+              messages: Array.isArray(row.messages) ? row.messages.map(rowToCloudMessage) : [],
             })),
           });
         }
@@ -132,9 +127,7 @@ export const buildConversationsListRoutes = (deps: ConversationsListDeps) =>
           return result.rows ?? [];
         });
 
-        return reply
-          .code(200)
-          .send({ conversations: rows.map(rowToCloudConversation) });
+        return reply.code(200).send({ conversations: rows.map(rowToCloudConversation) });
       },
     });
   };

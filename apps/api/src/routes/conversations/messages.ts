@@ -21,14 +21,11 @@
 // RLS: conversations + messages both FORCE-RLS on tenant_id. We
 // additionally bind by user_id in every WHERE clause to keep EXPLAIN
 // output obvious (matches the established Plan 05 pattern).
-import {
-  type ExecutableTx,
-  type TransactionalDb,
-  withTenant,
-} from "@openwhispr/data";
+import { type ExecutableTx, type TransactionalDb, withTenant } from "@openwhispr/data";
 import { sql } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
+import { AuthError } from "../../errors.js";
 import { createOrReturnExisting } from "../../lib/client-id-upsert.js";
 import {
   buildKeysetOrderLimit,
@@ -66,12 +63,8 @@ export interface ConversationsMessagesDeps {
   db: TransactionalDb<ExecutableTx>;
 }
 
-export const buildConversationsMessagesRoutes = (
-  deps: ConversationsMessagesDeps,
-) =>
-  async function conversationsMessagesRoutes(
-    app: FastifyInstance,
-  ): Promise<void> {
+export const buildConversationsMessagesRoutes = (deps: ConversationsMessagesDeps) =>
+  async function conversationsMessagesRoutes(app: FastifyInstance): Promise<void> {
     // -----------------------------------------------------------------
     // POST /api/conversations/messages — add a single message.
     // -----------------------------------------------------------------
@@ -81,19 +74,14 @@ export const buildConversationsMessagesRoutes = (
       config: { rateLimit: { max: 240, timeWindow: "1 minute" } },
       handler: async (req, reply) => {
         if (!req.user || !req.tenant) {
-          return reply.code(401).send({ error: "unauthorized" });
+          throw new AuthError("UNAUTHORIZED", "unauthorized");
         }
         const body = MessageInputSchema.parse(req.body);
 
         // T-MSG-INJ — 4 KiB metadata cap.
-        const metaBytes = Buffer.byteLength(
-          JSON.stringify(body.metadata ?? {}),
-          "utf8",
-        );
+        const metaBytes = Buffer.byteLength(JSON.stringify(body.metadata ?? {}), "utf8");
         if (metaBytes > MESSAGE_METADATA_MAX_BYTES) {
-          return reply
-            .code(400)
-            .send({ error: "metadata exceeds 4096 bytes (4KB cap)" });
+          return reply.code(400).send({ error: "metadata exceeds 4096 bytes (4KB cap)" });
         }
 
         const tenantId = req.tenant;
@@ -147,7 +135,7 @@ export const buildConversationsMessagesRoutes = (
       config: { rateLimit: { max: 240, timeWindow: "1 minute" } },
       handler: async (req, reply) => {
         if (!req.user || !req.tenant) {
-          return reply.code(401).send({ error: "unauthorized" });
+          throw new AuthError("UNAUTHORIZED", "unauthorized");
         }
         const q = (req.query ?? {}) as ListQuery;
         const conversationId = q.conversation_id;
@@ -158,12 +146,10 @@ export const buildConversationsMessagesRoutes = (
         const uuidRe =
           /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/;
         if (!uuidRe.test(conversationId)) {
-          return reply
-            .code(400)
-            .send({ error: "conversation_id must be a UUID" });
+          return reply.code(400).send({ error: "conversation_id must be a UUID" });
         }
 
-        let parsed;
+        let parsed: ReturnType<typeof parseListQuery>;
         try {
           parsed = parseListQuery(q);
         } catch (err) {
@@ -201,9 +187,7 @@ export const buildConversationsMessagesRoutes = (
         if (rows === null) {
           return reply.code(404).send({ error: "conversation not found" });
         }
-        return reply
-          .code(200)
-          .send({ messages: rows.map(rowToCloudMessage) });
+        return reply.code(200).send({ messages: rows.map(rowToCloudMessage) });
       },
     });
   };

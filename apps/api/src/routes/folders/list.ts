@@ -11,13 +11,10 @@
 // Soft-deleted rows excluded via withSoftDelete().
 // Ordering: created_at DESC, id DESC — pairs with folders_keyset_idx
 // partial index from Plan 01.
-import {
-  type ExecutableTx,
-  type TransactionalDb,
-  withTenant,
-} from "@openwhispr/data";
+import { type ExecutableTx, type TransactionalDb, withTenant } from "@openwhispr/data";
 import { sql } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
+import { AuthError } from "../../errors.js";
 import {
   buildKeysetOrderLimit,
   buildKeysetWhere,
@@ -44,12 +41,12 @@ export const buildFoldersListRoutes = (deps: FoldersListDeps) =>
       config: { rateLimit: { max: 120, timeWindow: "1 minute" } },
       handler: async (req, reply) => {
         if (!req.user || !req.tenant) {
-          return reply.code(401).send({ error: "unauthorized" });
+          throw new AuthError("UNAUTHORIZED", "unauthorized");
         }
         const tenantId = req.tenant;
         const userId = req.user.id;
 
-        let parsed;
+        let parsed: ReturnType<typeof parseListQuery>;
         try {
           parsed = parseListQuery((req.query ?? {}) as ListQuery);
         } catch (err) {

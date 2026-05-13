@@ -19,14 +19,11 @@
 // Ordering: ts_rank(content_search, query) DESC, created_at DESC.
 // content_search is the tsvector GENERATED column on (title, content)
 // indexed with GIN (notes_content_search_idx).
-import {
-  type ExecutableTx,
-  type TransactionalDb,
-  withTenant,
-} from "@openwhispr/data";
+import { type ExecutableTx, type TransactionalDb, withTenant } from "@openwhispr/data";
 import { sql } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
+import { AuthError } from "../../errors.js";
 import { type CloudNoteRow, rowToCloudNote } from "./shape.js";
 
 const SearchRequestSchema = z
@@ -52,7 +49,7 @@ export const buildNotesSearchRoutes = (deps: NotesSearchDeps) =>
       config: { rateLimit: { max: 60, timeWindow: "1 minute" } },
       handler: async (req, reply) => {
         if (!req.user || !req.tenant) {
-          return reply.code(401).send({ error: "unauthorized" });
+          throw new AuthError("UNAUTHORIZED", "unauthorized");
         }
         // Pre-check trimmed length BEFORE the zod parse — a whitespace-
         // only string (`"   "`) is technically `min(1)` valid but
@@ -86,8 +83,7 @@ export const buildNotesSearchRoutes = (deps: NotesSearchDeps) =>
         return reply.code(200).send({
           notes: rows.map((row) => ({
             ...rowToCloudNote(row),
-            score:
-              typeof row.score === "number" ? row.score : Number(row.score ?? 0),
+            score: typeof row.score === "number" ? row.score : Number(row.score ?? 0),
           })),
         });
       },

@@ -6,14 +6,11 @@
 //   404:      cross-tenant / cross-user / soft-deleted (RLS invisible)
 //
 // Static allowlist of mutable columns. updated_at is bumped server-side.
-import {
-  type ExecutableTx,
-  type TransactionalDb,
-  withTenant,
-} from "@openwhispr/data";
+import { type ExecutableTx, type TransactionalDb, withTenant } from "@openwhispr/data";
 import { sql } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
+import { AuthError } from "../../errors.js";
 import { type CloudConversationRow, rowToCloudConversation } from "./shape.js";
 
 const MUTABLE_COLS = ["title", "archived_at"] as const;
@@ -42,7 +39,7 @@ export const buildConversationsUpdateRoutes = (deps: ConversationsUpdateDeps) =>
       config: { rateLimit: { max: 120, timeWindow: "1 minute" } },
       handler: async (req, reply) => {
         if (!req.user || !req.tenant) {
-          return reply.code(401).send({ error: "unauthorized" });
+          throw new AuthError("UNAUTHORIZED", "unauthorized");
         }
         const body = UpdateBodySchema.parse(req.body);
         const tenantId = req.tenant;
@@ -50,7 +47,7 @@ export const buildConversationsUpdateRoutes = (deps: ConversationsUpdateDeps) =>
 
         const setFragments = [];
         for (const [key, col] of Object.entries(FIELD_MAP)) {
-          if (Object.prototype.hasOwnProperty.call(body, key)) {
+          if (Object.hasOwn(body, key)) {
             const v = (body as Record<string, unknown>)[key];
             setFragments.push(sql`${sql.raw(`"${col}"`)} = ${v as unknown}`);
           }

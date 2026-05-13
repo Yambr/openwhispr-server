@@ -42,7 +42,7 @@ import {
 import { sql } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
 import { routeRateLimitConfig } from "../config/rate-limits.js";
-import { ServiceUnavailable } from "../errors.js";
+import { AuthError, ServiceUnavailable, UpstreamError, ValidationError } from "../errors.js";
 import { minutesFromDuration } from "../lib/word-units.js";
 
 export interface TranscribeDeps {
@@ -78,7 +78,7 @@ export const buildTranscribeRoutes = (deps: TranscribeDeps) =>
       handler: async (req, reply) => {
         if (!req.user || !req.tenant) {
           // Defensive — dualAuthHook should have thrown.
-          return reply.code(401).send({ error: "unauthorized" });
+          throw new AuthError("UNAUTHORIZED", "unauthorized");
         }
 
         const contentTypeHeader = req.headers["content-type"];
@@ -86,7 +86,10 @@ export const buildTranscribeRoutes = (deps: TranscribeDeps) =>
           ? contentTypeHeader[0]
           : contentTypeHeader;
         if (!contentType || !contentType.toLowerCase().startsWith("multipart/form-data")) {
-          return reply.code(400).send({ error: "expected multipart/form-data audio upload" });
+          throw new ValidationError(
+            "MULTIPART_REQUIRED",
+            "expected multipart/form-data audio upload",
+          );
         }
 
         let upstreamJson: UpstreamWhisperJson;
@@ -107,7 +110,10 @@ export const buildTranscribeRoutes = (deps: TranscribeDeps) =>
           }
           if (err instanceof LitellmUpstreamError) {
             req.log.warn({ status: err.status }, "litellm upstream error on /api/transcribe");
-            return reply.code(502).send({ error: "upstream transcription provider failure" });
+            throw new UpstreamError(
+              "TRANSCRIPTION_UPSTREAM_FAILED",
+              "upstream transcription provider failure",
+            );
           }
           throw err;
         }

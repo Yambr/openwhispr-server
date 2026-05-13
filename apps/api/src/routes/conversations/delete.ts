@@ -11,14 +11,11 @@
 // Messages remain physically present but become unreachable via the
 // /api/conversations/messages routes because GET filters by the
 // conversation's existence under withSoftDelete().
-import {
-  type ExecutableTx,
-  type TransactionalDb,
-  withTenant,
-} from "@openwhispr/data";
+import { type ExecutableTx, type TransactionalDb, withTenant } from "@openwhispr/data";
 import { sql } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
+import { AuthError } from "../../errors.js";
 
 const DeleteBodySchema = z.object({
   id: z.string().uuid(),
@@ -36,7 +33,7 @@ export const buildConversationsDeleteRoutes = (deps: ConversationsDeleteDeps) =>
       config: { rateLimit: { max: 120, timeWindow: "1 minute" } },
       handler: async (req, reply) => {
         if (!req.user || !req.tenant) {
-          return reply.code(401).send({ error: "unauthorized" });
+          throw new AuthError("UNAUTHORIZED", "unauthorized");
         }
         const body = DeleteBodySchema.parse(req.body);
         const tenantId = req.tenant;
