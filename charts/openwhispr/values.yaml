@@ -58,6 +58,22 @@ secrets:
   postgresOwnerPassword: ""
   pgbouncerAdminPassword: ""
   betterAuthSecret: ""
+  # Finding 09.1-F22 — apps/api/scripts/check-default-secrets.ts is the
+  # API container ENTRYPOINT validator. It demands the 10 keys below
+  # (the 8 above plus these 7) — chart was missing 7 of them which made
+  # api/web/worker pods CrashLoopBackOff on every install. Compose-side
+  # `tools/bootstrap.sh` generates these into .env; chart now does
+  # the same via render-time fail gates + ESO-mode passthrough.
+  postgresAppPassword: ""
+  valkeyPassword: ""
+  minioRootPassword: ""
+  traefikAdminPassword: ""
+  grafanaAdminPassword: ""
+  # MASTER_KEK must base64url-decode to 32 bytes (EnvKeyProvider check).
+  masterKek: ""
+  # BACKUP_AGE_IDENTITY is the age X25519 identity for borg/restic-style
+  # backup envelope encryption.
+  backupAgeIdentity: ""
 
 # Bundled-AI Speaches Deployment (GPU-only). Wave 2 implements the Deployment.
 bundledAi:

@@ -104,8 +104,12 @@ spec:
             - configMapRef:
                 name: {{ $fullname }}-api-config
           env:
+            # Finding 09.1-F17 — runtime DATABASE_URL uses openwhispr_app
+            # (NOBYPASSRLS) NOT openwhispr_owner (BYPASSRLS). Owner is
+            # reserved for DDL via the migrate Job. The two-role model
+            # matches compose-side init/00-roles.sql.tpl.
             - name: DATABASE_URL
-              value: "postgres://openwhispr_owner:$(POSTGRES_OWNER_PASSWORD)@{{ include "openwhispr.poolerHost" . }}:5432/openwhispr"
+              value: "postgres://openwhispr_app:$(POSTGRES_APP_PASSWORD)@{{ include "openwhispr.poolerHost" . }}:5432/openwhispr"
             - name: REDIS_URL
               value: "redis://{{ include "openwhispr.valkeyHost" . }}:6379"
             - name: MINIO_ENDPOINT

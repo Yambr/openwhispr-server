@@ -109,3 +109,21 @@ spec:
 
   monitoring:
     enablePodMonitor: {{ .Values.observability.serviceMonitor.enabled }}
+
+  # Finding 09.1-F16 — compose-side two-role model: openwhispr_app is
+  # the runtime user (NOBYPASSRLS) that api/web/worker connect as via
+  # the Pooler. Chart was missing this role; api/web/worker fell back
+  # to openwhispr_owner (BYPASSRLS) — bypassing multi-tenant RLS.
+  # CNPG's managed.roles is the canonical mechanism: operator
+  # reconciles ALTER ROLE on every drift, reads password from the
+  # referenced Secret on each reconcile.
+  managed:
+    roles:
+      - name: openwhispr_app
+        ensure: present
+        login: true
+        bypassrls: false
+        comment: "OpenWhispr runtime user — NO BYPASSRLS, used by api/web/worker via Pooler"
+        passwordSecret:
+          name: {{ $fullname }}-pg-app
+        connectionLimit: 200
