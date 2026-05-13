@@ -111,9 +111,12 @@ tests:
       - equal:
           path: spec.template.spec.initContainers[0].name
           value: wait-for-migrate
+      # Finding 09.1-F5: bitnami/kubectl pinned point-version tags 404 on
+      # Docker Hub (Bitnami Secure Images migration). Using upstream
+      # registry.k8s.io/kubectl as authoritative source.
       - matchRegex:
           path: spec.template.spec.initContainers[0].image
-          pattern: "^bitnami/kubectl:"
+          pattern: "^registry\\.k8s\\.io/kubectl:v"
       - matchRegex:
           path: spec.template.spec.initContainers[0].command[2]
           pattern: "kubectl get job/RELEASE-NAME-openwhispr-migrate"
