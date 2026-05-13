@@ -59,6 +59,28 @@ export const DEFAULT_HELM_ARGS = [
   "secrets.pgbouncerAdminPassword=parity-fake-1234567890abcdef1234567890",
   "--set-string",
   "secrets.betterAuthSecret=parity-fake-1234567890abcdef1234567890",
+  // Plan 11-01 — Finding 09.1-F22 expanded the required secret list with
+  // 7 more keys (postgresAppPassword, valkeyPassword, minioRootPassword,
+  // traefikAdminPassword, grafanaAdminPassword, masterKek, backupAgeIdentity).
+  // The linter's DEFAULT_HELM_ARGS never caught up — the smoke test failed
+  // silently against the live chart. Supplying all 13 keys here lets the
+  // service-level parity render proceed cleanly. MASTER_KEK must base64url-
+  // decode to 32 bytes (EnvKeyProvider check); the literal below is a real
+  // 32-byte value (v5ux8tbIGXCoCeqi16dtiRVMVDvR4mRTojqRlL2lV-w).
+  "--set-string",
+  "secrets.postgresAppPassword=parity-fake-1234567890abcdef1234567890",
+  "--set-string",
+  "secrets.valkeyPassword=parity-fake-1234567890abcdef1234567890",
+  "--set-string",
+  "secrets.minioRootPassword=parity-fake-1234567890abcdef1234567890",
+  "--set-string",
+  "secrets.traefikAdminPassword=parity-fake-1234567890abcdef1234567890",
+  "--set-string",
+  "secrets.grafanaAdminPassword=parity-fake-1234567890abcdef1234567890",
+  "--set-string",
+  "secrets.masterKek=v5ux8tbIGXCoCeqi16dtiRVMVDvR4mRTojqRlL2lV-w",
+  "--set-string",
+  "secrets.backupAgeIdentity=AGE-SECRET-KEY-1PARITYFAKE1234567890abcdefghij",
 ];
 
 export const CHART_KINDS = new Set([
@@ -91,6 +113,32 @@ export const COMPOSE_SERVICE_ALIASES: Record<string, string> = {
   // `<release>-valkey-primary`; map the compose service to that suffix.
   valkey: "valkey-primary",
 };
+
+/**
+ * Plan 11-01 — env-var keys that exist ONLY in Variant C (local Speaches
+ * with gated pyannote weights). When the linter is taught to compare
+ * compose env names against chart values (future extension), it MUST
+ * exclude these from both sides for non-Variant-C parity runs so
+ * Variant A operators do not see false-positive drift on a key their
+ * installation never uses.
+ *
+ * Today's scope (DEPLOY-02 service-level parity) does not yet compare
+ * env names, so this constant is forward-looking; it is consumed by
+ * the helper isVariantCOnlyKey() below, exported for callers that
+ * implement variant-aware env-parity (e.g. Plan 11-04 may extend the
+ * linter; the constant lives here as the single source of truth so any
+ * future caller picks up new entries without re-export churn).
+ */
+export const VARIANT_C_ONLY_KEYS = new Set<string>(["HF_TOKEN"]);
+
+/**
+ * Predicate companion to VARIANT_C_ONLY_KEYS. Returns true when the
+ * given env-var name is Variant-C-exclusive and SHOULD be excluded from
+ * drift comparisons against a non-Variant-C variant overlay.
+ */
+export function isVariantCOnlyKey(envName: string): boolean {
+  return VARIANT_C_ONLY_KEYS.has(envName);
+}
 
 export interface Allowlist {
   [category: string]: { _comment?: string; services?: string[] };
@@ -133,6 +181,15 @@ export function extractChartResources(helmStdout: string, releaseName = "ow"): S
     if (name.startsWith(prefix)) {
       // First-party chart resource: strip "<release>-openwhispr-" entirely.
       name = name.slice(prefix.length);
+      // Plan 11-01 (Rule 1 inline fix) — Finding 09.1-F10 suffixes the
+      // migrate Job name with `.Release.Revision` (e.g. `migrate-1`,
+      // `migrate-2`) to sidestep Kubernetes' immutable Job spec restriction
+      // on upgrade. The trailing `-<n>` was tripping compose-vs-chart parity
+      // (compose service `migrate` vs chart resource `migrate-1`). Strip a
+      // trailing `-<digits>` segment to restore the match. Other resources
+      // (api, web, worker, litellm, etc.) never carry a trailing digit so
+      // this is non-destructive for them.
+      name = name.replace(/-\d+$/, "");
     } else if (name.startsWith(altPrefix)) {
       // Sub-chart resource (e.g. Bitnami valkey/minio): strip only the
       // "<release>-" prefix so "ow-minio" -> "minio" matches compose service
