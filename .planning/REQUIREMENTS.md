@@ -528,23 +528,86 @@ Wave structure:
 - Kerberos / SPNEGO / Self-hosted IdP portal UI (Phase 18 anti)
 - Auto-JSDoc / `// TODO` removal in Phase 16 (anti)
 
-### Traceability — v2 (filled by roadmap)
+### Traceability — v2 (mapped 2026-05-14 by gsd-roadmapper)
 
-| Requirement | Phase(s) | Primary Artifacts |
-|-------------|---------|-------------------|
-| E2E-01..12 | 13 | (filled after roadmap creation) |
-| ADMIN-01..06 | 12 | (filled after roadmap creation) |
-| UICONF-01..07 | 12 | (filled after roadmap creation) |
-| SLIM-01..04 | 14 | (filled after roadmap creation) |
-| BYOK-01..03 | 14 | (filled after roadmap creation) |
-| STRUCT-01..07 | 15 | (filled after roadmap creation) |
-| FSL-01..07 | 15 | (filled after roadmap creation) |
-| COMMENT-01..04 | 16 | (filled after roadmap creation) |
-| TLS-01..06 | 17 | (filled after roadmap creation) |
-| SSO-01..05 | 18 | (filled after roadmap creation) |
+Work-order: **13 → 12 → 14 → 15 → 16 → 17 → 18**. 61 REQ-IDs mapped to 7 phases, 100% coverage, no orphans.
+
+| Requirement | Phase | Status | Notes |
+|-------------|-------|--------|-------|
+| E2E-01 | 13 | Pending | Cucumber+Playwright harness at `tests/e2e-cjm/` + `make e2e-cjm` + GHA `E2E_CJM=1` |
+| E2E-02 | 13 | Pending | `docs/customer-journeys.md` + `@cjm-N.M` tags + negative twins |
+| E2E-03 | 13 | Pending | Auth journey: signup happy + 4 negative twins |
+| E2E-04 | 13 | Pending | Verification via Mailpit HTTP API |
+| E2E-05 | 13 | Pending | Sign-in + 403 unverified resend-CTA journey |
+| E2E-06 | 13 | Pending | Transcribe round-trip journey |
+| E2E-07 | 13 | Pending | `/admin` landing journey |
+| E2E-08 | 13 | Pending | Locale-switch journey |
+| E2E-09 | 13 | Pending | Worker `noopSender` → nodemailer; atomic with harness commit |
+| E2E-10 | 13 | Pending | testcontainers teardown + CI prune in always() |
+| E2E-11 | 13 | Pending | Weak-assertion ESLint ban + sweep |
+| E2E-12 | 13 | Pending | Readiness probes + retry-on-flake ban |
+| ADMIN-01 | 12 | Pending | `/setup` gated by `setup_state` enum (NOT users-count) |
+| ADMIN-02 | 12 | Pending | Single-page wizard (RHF+Zod+shadcn Stepper); idempotent `POST /api/setup/admin` |
+| ADMIN-03 | 12 | Pending | `users.role` migration + Better Auth `additionalFields.role` + `skipped_legacy` backfill |
+| ADMIN-04 | 12 | Pending | `/admin` index page (closes TD-12.a 404) |
+| ADMIN-05 | 12 | Pending | basicauth-htpasswd break-glass documented; bcrypt `$$` trap removed |
+| ADMIN-06 | 12 | Pending | Wizard `@cjm-admin-onboarding` Gherkin GREEN in Phase 13 harness |
+| UICONF-01 | 12 | Pending | `GET /api/capabilities` returns providers + verification status |
+| UICONF-02 | 12 | Pending | Auth screens render conditionally vs `/api/capabilities` |
+| UICONF-03 | 12 | Pending | Per-field Zod errors localized en+ru |
+| UICONF-04 | 12 | Pending | Semantic Playwright DOM conformance vs `design-canvas.jsx` |
+| UICONF-05 | 12 | Pending | Axe a11y baseline + per-screen delta gate |
+| UICONF-06 | 12 | Pending | SignUpForm duplicate-banner regression fixed |
+| UICONF-07 | 12 | Pending | Resend-verification CTA on sign-in 403 |
+| SLIM-01 | 14 | Pending | Slim default = 6 services; bare `docker compose up` selects them |
+| SLIM-02 | 14 | Pending | Opt-in compose overlays (observability/storage/ingress/pgbouncer/dev-tools) |
+| SLIM-03 | 14 | Pending | `.env.slim.example` ~5 keys |
+| SLIM-04 | 14 | Pending | BYOK env contracts documented in `docs/operations.md` |
+| BYOK-01 | 14 | Pending | Helm `*.enabled` toggles 1:1 with compose overlays |
+| BYOK-02 | 14 | Pending | Loud-fail BYOK — refuse to start on misconfigured prod env |
+| BYOK-03 | 14 | Pending | Worker noop audit (all 3 adapters) at `apps/worker/src/index.ts:68-92` |
+| STRUCT-01 | 15 | Pending | Test-layout codified + `Phase15-MOVE-INVENTORY.md` before move PR |
+| STRUCT-02 | 15 | Pending | `compose/` directory holds every compose YAML |
+| STRUCT-03 | 15 | Pending | Helm monorepo vs separate repo — **TBD via `/gsd-discuss-phase 15`** |
+| STRUCT-04 | 15 | Pending | Traefik host split (`web.localhost` vs `api.localhost`) |
+| STRUCT-05 | 15 | Pending | Better Auth `trustedOrigins` updated; Phase 13 Playwright baseURL updated |
+| STRUCT-06 | 15 | Pending | `apps/web/public/.gitkeep` committed (closes deferred-items #2) |
+| STRUCT-07 | 15 | Pending | Route-group naming audit + `docs/conventions.md` |
+| FSL-01 | 15 | Pending | Apache-2.0 → FSL-1.1-ALv2 LICENSE replacement |
+| FSL-02 | 15 | Pending | `reuse` codemod SPDX sweep + `REUSE.toml` + `reuse lint` CI |
+| FSL-03 | 15 | Pending | Every workspace `package.json` + Docker LABEL + README badges |
+| FSL-04 | 15 | Pending | CONTRIBUTING.md DCO `Signed-off-by:` + retroactive consent |
+| FSL-05 | 15 | Pending | ADR `docs/adrs/0013-fsl-relicense.md` |
+| FSL-06 | 15 | Pending | `git filter-repo` history scrub bundled WITH FSL as ONE release event |
+| FSL-07 | 15 | Pending | Branch-protection lock → scrub → unlock runbook |
+| COMMENT-01 | 16 | Pending | ts-morph AST codemod over 771 comments in `apps/`+`packages/` |
+| COMMENT-02 | 16 | Pending | REMOVE/KEEP classification + CLAUDE.md policy ratified |
+| COMMENT-03 | 16 | Pending | ESLint regression rule prevents re-introduction |
+| COMMENT-04 | 16 | Pending | ONE squashed commit OR grouped ≤ 50 files |
+| TLS-01 | 17 | Pending | `make tls-trust` + mkcert -install + explicit host list |
+| TLS-02 | 17 | Pending | Traefik dev/prod dynamic.yml split |
+| TLS-03 | 17 | Pending | `--with-ingress` auto-ACME + cert-manager Helm sub-chart |
+| TLS-04 | 17 | Pending | README quickstart `make tls-trust` step 2 |
+| TLS-05 | 17 | Pending | Dev-cert isolation (`.dockerignore` + prod Dockerfile lint) |
+| TLS-06 | 17 | Pending | Air-gap install path documented |
+| SSO-01 | 18 | Pending (SPEC only) | SPEC ≤ 200 lines; option (a) vs (b) — **TBD via `/gsd-discuss-phase 18`** |
+| SSO-02 | 18 | Pending (SPEC only) | JIT user provisioning specification |
+| SSO-03 | 18 | Pending (SPEC only) | Red Cucumber scenarios + `compose/test/keycloak.yml` fixture |
+| SSO-04 | 18 | Pending (SPEC only) | ADR `docs/adrs/0012-ldap-via-keycloak.md` |
+| SSO-05 | 18 | Pending (SPEC only) | Operator-demand survey documented |
+
+**v2 coverage:** 61/61 mapped (100%), 0 orphans, 0 duplicates.
+**v2 distribution:** Phase 12=13, Phase 13=12, Phase 14=7, Phase 15=14, Phase 16=4, Phase 17=6, Phase 18=5 → 61 total ✓
+
+**Open questions deferred to `/gsd-discuss-phase`** (per research SUMMARY.md):
+1. Phase 14 ↔ 15 order swap — user order (14 → 15) authoritative; ARCHITECTURE alternative (15 → 14) logged for discuss-phase review.
+2. Phase 13 BDD vs plain Playwright — Cucumber+Playwright+playwright-bdd authoritative per E2E-01; may be revisited.
+3. Phase 15 Helm monorepo vs separate repo — STRUCT-03 marked TBD.
+4. Phase 18 option (a) Keycloak vs (b) direct LDAP — SSO-01 records decision matrix; final pick in ADR 0012.
 
 ---
 
 *Requirements defined: 2026-05-08*
-*v2 requirements added: 2026-05-14 — 53 REQ-IDs across 10 categories driven by TECH_DEBT.md.*
+*v2 requirements added: 2026-05-14 — 61 REQ-IDs across 10 categories driven by TECH_DEBT.md.*
+*v2 traceability mapped: 2026-05-14 by gsd-roadmapper — 7 phases (12–18), 100% coverage, work-order 13 → 12 → 14 → 15 → 16 → 17 → 18.*
 *Last updated: 2026-05-12 — Phase 07.1 WEB-IMPL-01..04 flipped to Complete; UI-SPEC-01..03 also flipped to Complete (Phase 7 closed); plan-level traceability added (Plans 07.1-01..07.1-14).*

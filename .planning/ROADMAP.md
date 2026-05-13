@@ -2,8 +2,10 @@
 
 **Created:** 2026-05-08 (rebaselined after pivot)
 **Granularity:** standard
-**Total v1 requirements:** 89
-**Coverage:** 89/89 mapped (100%)
+**Total v1 requirements:** 89 (101 incl. Phase 5 + 07.1 scope-expansions)
+**Total v2 requirements:** 61 (E2E + ADMIN + UICONF + SLIM + BYOK + STRUCT + FSL + COMMENT + TLS + SSO)
+**Coverage:** v1 101/101 mapped (100%); v2 61/61 mapped (100%)
+**v2 milestone opened:** 2026-05-14 — work-order 13 → 12 → 14 → 15 → 16 → 17 → 18
 
 ## Core Value
 
@@ -42,6 +44,19 @@ A drop-in OpenWhispr backend any organization can self-host — open-source out 
 - [x] **Phase 09.2: helm test SLO probe GREEN** — CLOSED 2026-05-13. helm test exit 0 in 1.365 s (deadline 300 s). DEPLOY-05 SLO criterion fully PASS. F35 + 3 unmasked follow-ons (F36 CNPG Pooler hostname `-pg-pooler` not `-pg-pooler-rw`; F37 SSRF allow-list missing in-cluster litellm; F38 SSRF rfc1918_10 block on k8s Service IP). 4 chart env additions: AUTH_TRUSTED_ORIGINS_EXTRA + OPENWHISPR_DISABLE_EMAIL_VERIFICATION (kind only) + OUTBOUND_ALLOWED_HOSTS + OUTBOUND_PRIVATE_HOST_ALLOWLIST. probe.ts sends Origin header (RED→GREEN vitest +1 = 22/22). helm-unittest 109/109. See `.planning/phases/09.2-helm-test-slo-probe-green/09.2-SUMMARY.md`.
 - [ ] **Phase 11: Cloud Profile Refactor (3 variants: embedded / external LiteLLM / local-Speaches example)** — IN PROGRESS 2026-05-13. Default compose+chart slim down: HF_TOKEN + Speaches container moved behind `bundledAi.enabled` (Variant C opt-in only); Variant A (OSS quickstart) = embedded LiteLLM + pyannote.ai managed diarization, minimum 12 secrets; Variant B (corporate) = external LiteLLM via `LITELLM_BASE_URL` + `LITELLM_VIRTUAL_KEY`; Variant C (GPU operators) = local Speaches in `examples/docker-compose.local-speaches.yml`. Each profile ships compose + values overlay + `.env.*.example` + README quick-start section + helm-unittest regression assertions. Plan 11-04 closes with live cloudflared tunnel demo + human-verify checkpoint. See `.planning/phases/11-cloud-profile-refactor/11-PLAN.md`.
 - [x] **Phase 10: i18n + Docs + OSS Housekeeping** — CLOSED 2026-05-13. 34 atomic commits across 4 sub-plans. **10-01 (15 commits)**: server-side i18n end-to-end — i18next + ICU bootstrap + en/ru locale bundles + 6 typed-error codes + error-handler localization + worker WorkerTemplateRenderer + 18 email template files + users.locale migration 0016 + Better Auth additionalFields.locale + enqueueEmail DI + BullMQ wired in api entrypoint + audit-log Cyrillic guard (T-10-01 mitigation) + LOCALES_DIR bind mounts + CI i18n-completeness gate + 70-site bulk conversion of inline reply.code(N).send({error}) to typed throws with 29 distinct codes en/ru. **10-02 (6 commits)**: web-side i18n — edge middleware locale negotiation (cookie → Accept-Language → en) + en+ru bundles + RSC layout + LanguageSwitcher + /api/locale route handler + i18next-ICU client+server + 763 web tests at 97.59/92.66/97.85/98.45 coverage. **10-03 (6 commits)**: docs/architecture.md (3 mermaid diagrams) + docs/i18n.md (operator LOCALES_DIR guide) + docs/security.md (threat-model index) + README quickstart + docs/operations.md + docs/auth.md + docs/wire-contract.md + docs/litellm-target-spec.md extensions. **10-04 (7 commits)**: SPDX Apache-2.0 header codemod + 675 source files headerized + CI spdx:check gate + CODEOWNERS + 4 issue templates + CODE_OF_CONDUCT.md + CONTRIBUTING.md + 8 ADRs (0004 licensing, 0005 stack, 0006 wire compat, 0007 RLS multi-tenancy, 0008 LiteLLM, 0009 Better Auth, 0010 i18n runtime, 0011 strict TDD CI). See `.planning/phases/10-i18n-docs-oss-housekeeping/10-SUMMARY.md`.
+
+
+### v2 — Production Readiness (milestone opened 2026-05-14)
+
+Work-order: **13 → 12 → 14 → 15 → 16 → 17 → 18** (user-confirmed; numbering is deliberately non-sequential — labels assigned after the order was picked). Hard ordering: 13 first (E2E harness gates everything; 13's atomic commit also replaces worker `noopSender` which 12 depends on); 15 → 17 (host split changes mkcert host list); 15 → 16 (FSL relicense rewrites every SPDX header — running 16 first = redo); 18 is SPEC-only and orthogonal to all code (schedulable anytime ≥ 13).
+
+- [ ] **Phase 13: E2E + CJM Harness (ships first — the harness every other v2 phase tests against)** — Cucumber+Playwright at `tests/e2e-cjm/`, `docs/customer-journeys.md`, ~20 Gherkin journeys with happy-path + negative-twin coverage, Mailpit-HTTP verification, testcontainers teardown, weak-assertion ESLint ban, atomic replacement of `apps/worker/src/index.ts:68-134` `noopSender` with real nodemailer in new `packages/email/`. Recommended sub-plan split: 13.a harness + worker fix + teardown + weak-assert sweep (unblocks Phase 12); 13.b 8 feature-file journeys + CJM doc.
+- [ ] **Phase 12: Admin Onboarding Wizard + UI-SPEC Conformance Audit** — `/setup` gated by `setup_state` enum (NOT users-count); single-page RHF+Zod+shadcn Stepper wizard; `users.role` migration + Better Auth `additionalFields.role`; `/admin` index page (closes TD-12.a 404); `GET /api/capabilities` driving conditional OIDC button render (closes TD-12.c capability drift); per-field Zod localized errors; resend-verification CTA on 403; semantic Playwright DOM conformance vs Phase 07 `design-canvas.jsx` (NOT pixel-diff); axe a11y baseline+delta. **Conformance to existing design contract — NOT redesign.**
+- [ ] **Phase 14: Slim Core + BYOK Profiles** — Slim default = 6 services (api+web+worker+postgres+valkey+litellm); opt-in compose overlays (observability / storage / ingress / pgbouncer / dev-tools); `.env.slim.example` ~5 keys; BYOK env matrix in `docs/operations.md`; Helm `*.enabled` toggles 1:1 with overlays; loud-fail BYOK (refuse to start on misconfigured prod env); audit ALL three worker noops at `apps/worker/src/index.ts:68-92`.
+- [ ] **Phase 15: Repo Refactor + FSL Relicense + History Scrub** — Test-layout codified (`tests/{unit,integration}/`); `compose/` directory holds every compose YAML; Traefik host split (`web.localhost` vs `api.localhost` — closes TD-15.g `/api/locale` 404 shadowing); Apache-2.0 → FSL-1.1-ALv2 via `reuse` codemod across 675 SPDX headers + every workspace `package.json` + Docker LABELs + README badges + DCO sign-off + retroactive contributor consent; `git filter-repo --path speaches-audio.md --invert-paths` history scrub bundled WITH FSL as ONE release event. Recommended sub-plan split: 15.a structural reorg + Traefik host split + test layout; 15.b FSL codemod + history scrub (irreversible-history-rewrite — owns its atomic window).
+- [ ] **Phase 16: Phase-Tag Comment Audit** — ts-morph AST codemod (NOT regex) audits **771** `// Phase XX / Plan YY / D-ZZ` comments in `apps/` + `packages/` (scope corrected from TECH_DEBT's 1642 figure which double-counted tests/tools/.planning); 50-file sample audit before bulk; two-bucket REMOVE/KEEP classification; ESLint regression rule; ONE squashed commit OR grouped ≤ 50 files. **Must run AFTER Phase 15 — FSL codemod rewrites every SPDX header; running 16 first = redo.**
+- [ ] **Phase 17: Trusted Local TLS + Production ACME** — `make tls-trust` → `mkcert -install` + cert for explicit host list (`api.localhost`, `web.localhost`, `app.localhost`, `grafana.localhost`, `mailpit.localhost` — NOT `*.localhost` wildcard); Traefik dev profile serves mkcert certs; production ACME wired through `--with-ingress`; cert-manager Helm sub-chart gated by `ingress.enabled`; dev-cert isolation (`.dockerignore` + prod Dockerfile lint); air-gap install path documented.
+- [ ] **Phase 18: LDAP / Keycloak SSO — SPEC + ADR only (NO code in v2; implementation deferred to v3)** — `SPEC-ldap-keycloak.md` ≤ 200 lines with option (a) Keycloak/Authentik OIDC frontend (recommended — zero Better Auth surgery via existing `genericOAuth`) vs option (b) direct LDAP via `ldapts`+custom Better Auth plugin; decision matrix; JIT user provisioning + group→role projection; red Cucumber scenarios + `compose/test/keycloak.yml` fixture stub (skipped pending v3); ADR `docs/adrs/0012-ldap-via-keycloak.md`. Orthogonal to all code phases — schedulable anytime ≥ Phase 13.
 
 ## Phase Details
 
@@ -679,6 +694,102 @@ Plans:
 - [ ] 10-04-PLAN.md — OSS housekeeping: SPDX header codemod + CI gate, CODEOWNERS, ISSUE_TEMPLATE, CoC 2.1 audit, CONTRIBUTING/SECURITY extension, ADRs 0004-0011 (LICENSE/NOTICE already shipped in bd81d82)
 **UI hint**: no
 
+
+### Phase 13: E2E + CJM Harness (v2 — ships first)
+**Goal**: Every subsequent v2 phase writes its tests RED against a Cucumber+Playwright harness that boots the real docker-compose stack — happy-path-only tests that ship bugs green (TD-13.a/d) become structurally impossible.
+**Depends on**: Phase 11 (v1 closed)
+**Requirements**: E2E-01, E2E-02, E2E-03, E2E-04, E2E-05, E2E-06, E2E-07, E2E-08, E2E-09, E2E-10, E2E-11, E2E-12
+**Success Criteria** (what must be TRUE):
+  1. `make e2e-cjm` boots the docker-compose stack on a clean clone, runs the Cucumber+Playwright suite against `web.localhost` + `api.localhost`, and exits 0 with every happy-path scenario AND its negative twin GREEN; the same suite runs in GHA on every PR via the `E2E_CJM=1` job.
+  2. `docs/customer-journeys.md` enumerates ~20 named journeys with `@cjm-N.M` Gherkin tags; every happy path has at least one negative twin (no journey ships happy-path-only); the signup → verification-email → verified state journey round-trips through Mailpit's HTTP API end-to-end against the real worker.
+  3. The single atomic commit that ships the harness ALSO replaces `apps/worker/src/index.ts:68-134` `noopSender` with a real nodemailer-backed `EmailSender` extracted to new `packages/email/` — Phase 12's signup-verify flow is functional from this commit forward.
+  4. testcontainers leaks are closed: `tools/global-vitest-teardown.ts` + SIGINT/SIGTERM hook drop orphan containers locally, CI runs `docker container prune --filter label=org.testcontainers=true` in `always()`; ESLint rule blocks the `getAllByText(...).length.toBeGreaterThan(0)` weak-assertion family, and the existing `apps/web/src/components/screens/auth/__tests__/*.test.tsx` files are swept to `toHaveLength(1)` where exclusivity matters.
+  5. Readiness probes (not just liveness) gate scenario start; per-scenario tenant isolation enforced; retry-on-flake is BANNED in CI config (a flake IS a bug — PITFALLS §5). Phase verifier reports PASSED with ≥ 90/90/90/90 coverage on diff and live e2e green.
+**Plans**: TBD (recommended sub-plan split per research SUMMARY.md — 13.a harness + worker fix + teardown + weak-assert sweep; 13.b feature files + CJM doc)
+**UI hint**: yes
+**Open question (deferred to `/gsd-discuss-phase 13`)**: Cucumber+Playwright+playwright-bdd (locked per REQUIREMENTS.md E2E-01) vs plain `@playwright/test` with `describe('@cjm-N.M', …)` tags (ARCHITECTURE alternative). Cucumber is authoritative for v2 roadmap — may be revisited in discuss-phase.
+
+### Phase 12: Admin Onboarding Wizard + UI-SPEC Conformance Audit (v2)
+**Goal**: A fresh operator goes from `git clone && docker compose up` to a logged-in admin in one wizard pass with zero bcrypt-in-`.env` traps, and every auth screen renders only the OIDC providers the operator actually configured.
+**Depends on**: Phase 13 (harness + real `EmailSender` worker)
+**Requirements**: ADMIN-01, ADMIN-02, ADMIN-03, ADMIN-04, ADMIN-05, ADMIN-06, UICONF-01, UICONF-02, UICONF-03, UICONF-04, UICONF-05, UICONF-06, UICONF-07
+**Success Criteria** (what must be TRUE):
+  1. First-run operator visits `/setup`, completes a single-page wizard (email + password + display name + workspace + timezone), and is logged in as an admin; the `setup_state` enum state machine (`pending` / `completed` / `skipped_legacy`) gates the route — NOT a naive users-count check (closes TD-12.b duplicate-admin trap on v1-upgrade installs).
+  2. `/admin` returns a real index page (no longer the TD-12.a 404); basicauth-htpasswd remains documented in `docs/operations.md` as the break-glass recovery path; the bcrypt-`$$`-in-`.env` escape trap is removed by the wizard for fresh installs.
+  3. `GET /api/capabilities` (or `/api/auth/providers`) returns the configured OIDC providers + email-verification status; auth screens (`SignInForm`, `SignUpForm`, `OidcButtons`, `VerifyEmailClient`) render zero social buttons when zero providers are configured (closes TD-12.c capability drift + 404 → 429 lockout cascade).
+  4. Auth screens conform semantically to `design-canvas.jsx` + `UI-SPEC-end-user.md` + `UI-SPEC-admin.md` (assertions in `tests/conformance/ui-spec/` — NOT pixel-diff); per-field Zod errors render in en+ru (no bare "Invalid input"); duplicate-banner regression in SignUpForm fixed (exactly one banner element); resend-verification CTA on sign-in 403 screen; axe a11y baseline shows zero violations on auth screens.
+  5. Phase 13 Gherkin journey `@cjm-admin-onboarding` is GREEN before merge; phase verifier reports PASSED with ≥ 90/90/90/90 coverage on diff and live e2e green.
+**Plans**: TBD
+**UI hint**: yes
+
+### Phase 14: Slim Core + BYOK Profiles (v2)
+**Goal**: Bare `docker compose up` brings up exactly the 6 services a corporate operator needs (api+web+worker+postgres+valkey+litellm), and observability / storage / ingress / pgbouncer / dev-tools land only when the operator explicitly opts in.
+**Depends on**: Phase 13 (every change asserted via Gherkin journey)
+**Requirements**: SLIM-01, SLIM-02, SLIM-03, SLIM-04, BYOK-01, BYOK-02, BYOK-03
+**Success Criteria** (what must be TRUE):
+  1. `docker compose up` with NO flags brings up exactly 6 services (api, web, worker, postgres, valkey, litellm) on a clean clone using `.env.slim.example` (~5 keys); the inverted-`profiles:` trap (TD-14.f / deferred-items #3a) is closed — universal services carry no `profiles:` key.
+  2. Opt-in overlays under `compose/` (`docker-compose.observability.yml`, `.storage.yml`, `.ingress.yml`, `.pgbouncer.yml`, `.dev-tools.yml`) layer additively; Mailpit lives ONLY in `dev-tools` (TD-14.a); each overlay has a 1:1 Helm `*.enabled` toggle on `charts/openwhispr/values.yaml` (`observability.enabled`, `storage.enabled`, `pooler.enabled`, `tls.enabled`, `mailpit.enabled`).
+  3. BYOK env contracts (`S3_ENDPOINT`, `OTEL_EXPORTER_OTLP_ENDPOINT`, `INGRESS_BASE_URL`, `SMTP_HOST`) are documented in `docs/operations.md` with the matrix of which overlay each unlocks; the api refuses to start (loud-fail) when an overlay is OFF AND the corresponding BYOK env is unset (e.g., storage overlay off AND `S3_ENDPOINT` unset → api exits non-zero at boot with a typed error code).
+  4. The full worker noop audit at `apps/worker/src/index.ts:68-92` is closed — ALL three (`noopSender` (already fixed in Phase 13), `noopLitellmKeyClient`, `noopUserKeyLookup`) are either replaced with real adapters or loud-fail at worker boot when their backing config is absent.
+  5. Phase 13 Gherkin scenarios `@cjm-byok-storage`, `@cjm-byok-observability`, `@cjm-loud-fail-misconfig` are GREEN; phase verifier reports PASSED with ≥ 90/90/90/90 coverage on diff and live e2e green.
+**Plans**: TBD
+**UI hint**: no
+**Open question (deferred to `/gsd-discuss-phase 14` or 15)**: Phase 14 ↔ 15 order swap — user-confirmed order (13→12→14→15→…) vs ARCHITECTURE's recommendation to swap (13→12→15→14→…) so the Phase 15 `compose/` reorg precedes Phase 14's overlay authoring. User order is authoritative for v2 roadmap; ARCHITECTURE alternative sidebar logged here.
+
+### Phase 15: Repo Refactor + FSL Relicense + History Scrub (v2)
+**Goal**: The repo's structure stops fighting the framework (Traefik host split eliminates `/api/locale` 404 shadowing), the license switches from Apache-2.0 to FSL-1.1-ALv2 across every surface (LICENSE + 675 SPDX headers + every workspace `package.json` + every Docker LABEL + every README badge), and `speaches-audio.md` is scrubbed from git history — bundled as ONE release event so contributors absorb one force-push, not two.
+**Depends on**: Phase 14 (overlay structure must exist before `compose/` reorg)
+**Requirements**: STRUCT-01, STRUCT-02, STRUCT-03, STRUCT-04, STRUCT-05, STRUCT-06, STRUCT-07, FSL-01, FSL-02, FSL-03, FSL-04, FSL-05, FSL-06, FSL-07
+**Success Criteria** (what must be TRUE):
+  1. Test-layout convention codified in `docs/conventions.md` (recommendation: `apps/<app>/tests/{unit,integration}/` full split; `tests/e2e-cjm/` at root); `Phase15-MOVE-INVENTORY.md` exists BEFORE any move PR; `compose/` directory holds every compose YAML; route-group naming convention (`(admin)` / `(public)` / `(authed)`) documented or eliminated; `apps/web/public/.gitkeep` committed (closes deferred-items #2).
+  2. Traefik host split — `web.localhost` routes to Next.js, `api.localhost` routes to Fastify; the `/api/locale` 404 shadowing (TD-15.g) is closed; Better Auth `trustedOrigins` updated; Phase 13 Playwright `baseURL` follows the new hosts; the Phase 17 mkcert host list (`web.localhost`, `api.localhost`, `app.localhost`, `grafana.localhost`, `mailpit.localhost`) is what gets trusted.
+  3. License surface fully migrated to FSL-1.1-ALv2: root `LICENSE` replaced; `MIGRATING.md` published with 7-day notice; pre-scrub tag captured; `reuse` codemod sweeps every `.ts/.tsx/.js/.sh/.py/.sql/.yaml/.yml` SPDX header (~675 files); every workspace `package.json` `license` field updated; every Docker `LABEL org.opencontainers.image.licenses` updated; README badges updated; `REUSE.toml` + `reuse lint` CI gate green; DCO `Signed-off-by:` required in `CONTRIBUTING.md`; retroactive existing-contributor consent thread linked from ADR `docs/adrs/0013-fsl-relicense.md`.
+  4. `git filter-repo --path speaches-audio.md --invert-paths` history scrub executed and bundled with the FSL relicense as ONE force-push (PITFALLS §10 — two force-pushes amortise badly); branch-protection lock → scrub → unlock → push → re-lock runbook published; CI cache invalidation documented; signed-commit re-signing path documented.
+  5. Phase 13 Gherkin scenarios continue GREEN against the new hosts (no regression); phase verifier reports PASSED with ≥ 90/90/90/90 coverage on diff and live e2e green.
+**Plans**: TBD (recommended sub-plan split per research SUMMARY.md — 15.a structural reorg + Traefik host split + test layout codification; 15.b FSL codemod + history scrub — 15.b is irreversible-history-rewrite and OWNS its atomic window).
+**UI hint**: no
+**Open question (deferred to `/gsd-discuss-phase 15`)**: Helm in monorepo (current lean) vs separate repo (TD-15.d original proposal). Marked TBD on STRUCT-03 — decision belongs to discuss-phase outcome.
+
+### Phase 16: Phase-Tag Comment Audit (v2)
+**Goal**: 771 stale `// Phase XX / Plan YY / D-ZZ` comments in `apps/` + `packages/` are swept against the "no comments unless WHY is non-obvious" rule, and the codebase stops carrying historic provenance that no longer earns its keep — without burying readers in 771 atomic commits.
+**Depends on**: Phase 15 (FSL codemod rewrites every SPDX header — running 16 first means redoing 16 after 15)
+**Requirements**: COMMENT-01, COMMENT-02, COMMENT-03, COMMENT-04
+**Success Criteria** (what must be TRUE):
+  1. The ts-morph AST codemod (NOT regex — comment syntax inside string literals is brittle under regex) audits exactly 771 phase-tag comments in `apps/` + `packages/`; tests/tools/.planning are explicitly OUT of audit scope per the scope correction (TECH_DEBT's "1642" figure double-counted them).
+  2. A 50-file sample audit lands BEFORE the bulk run, with REMOVE / KEEP classification per CLAUDE.md policy: REMOVE = comment merely re-states the phase number a reader can derive from the surrounding code; KEEP = comment explains a non-obvious WHY the code itself cannot.
+  3. An ESLint regression rule lands in the same phase preventing re-introduction of `// Phase XX` / `// Plan YY` / `// D-ZZ` provenance comments in future code (existing exemptions documented).
+  4. The sweep is delivered as ONE squashed commit OR grouped into ≤ 50 file commits — NEVER 771 atomic commits; reviewer can read the diff in a single sitting.
+  5. Phase verifier reports PASSED with ≥ 90/90/90/90 coverage unchanged (no behavior changes — comment-only sweep); live e2e green; no Phase 13 Gherkin regression.
+**Plans**: TBD
+**UI hint**: no
+
+### Phase 17: Trusted Local TLS + Production ACME (v2)
+**Goal**: A first-time operator runs `make tls-trust` once, and `https://web.localhost` / `https://api.localhost` open in their browser without a cert warning; production deploys with `--with-ingress` (compose) or `ingress.enabled=true` (Helm) wire up Let's Encrypt ACME automatically.
+**Depends on**: Phase 15 (host split locks the canonical mkcert host list)
+**Requirements**: TLS-01, TLS-02, TLS-03, TLS-04, TLS-05, TLS-06
+**Success Criteria** (what must be TRUE):
+  1. `make tls-trust` wraps `mkcert -install` + cert generation for the explicit host list (`api.localhost`, `web.localhost`, `app.localhost`, `grafana.localhost`, `mailpit.localhost` — NOT a `*.localhost` wildcard, PITFALLS §16); the README quickstart documents `make tls-trust` as step 2 (right after `cp .env.example .env`); a fresh browser does not warn on first run.
+  2. Traefik dev profile (`compose/traefik/dynamic.dev.yml`) serves mkcert certs from `compose/traefik/certs/`; production profile (`dynamic.prod.yml`) uses ACME; `--with-ingress` compose overlay auto-wires Let's Encrypt; cert-manager Helm sub-chart (`cert-manager 1.16+`) is gated by `ingress.enabled` on K8s and renders an `Issuer` template.
+  3. Dev-cert isolation is enforced — `.dockerignore` excludes `**/rootCA*.pem`; production Dockerfile lint forbids mkcert paths; a Phase 13 Gherkin scenario asserts the production image contains no dev CA artefacts.
+  4. Air-gap install path documented for operators without internet access to download mkcert (binary mirroring + manual install steps in `docs/operations.md`); no ship-a-real-CA-root anti-pattern (PITFALLS §16 — CVE territory).
+  5. Phase verifier reports PASSED with ≥ 90/90/90/90 coverage on diff; live e2e green; Phase 13 `@cjm-tls-trusted-localhost` scenario GREEN.
+**Plans**: TBD
+**UI hint**: no
+
+### Phase 18: LDAP / Keycloak SSO — SPEC + ADR Only (v2 — NO code; implementation deferred to v3)
+**Goal**: Enterprise operators evaluating self-host see a documented, reviewed path to LDAP/Keycloak SSO with a clear option (a) vs option (b) decision matrix, JIT user provisioning spec, and skeleton red Gherkin scenarios — but v2 ships ZERO production code for SSO so the milestone closes on schedule.
+**Depends on**: Phase 13 (red Gherkin scenarios use the harness); orthogonal to all other code phases
+**Requirements**: SSO-01, SSO-02, SSO-03, SSO-04, SSO-05
+**Success Criteria** (what must be TRUE):
+  1. `.planning/phases/18-…/SPEC-ldap-keycloak.md` (≤ 200 lines) documents option (a) Keycloak/Authentik as OIDC frontend over LDAP (recommended — zero Better Auth surgery via existing `genericOAuth` plugin) vs option (b) direct LDAP via `ldapts 8.1.7` + custom Better Auth plugin; decision matrix covers ops cost / corporate familiarity / failure modes / v3-impl LOC estimate.
+  2. JIT user provisioning specification covers Better Auth lifecycle hooks, group → role projection, role mapping; the spec names the exact Better Auth extension points it would consume but writes NO code.
+  3. Skeleton red Cucumber scenarios live in `tests/e2e-cjm/features/sso/` (tagged `@skip-pending-v3` and excluded from the default run); `compose/test/keycloak.yml` fixture stub committed; v3 plan can `make e2e-cjm SSO=1` and watch them fail meaningfully.
+  4. ADR `docs/adrs/0012-ldap-via-keycloak.md` captures the option-(a)-vs-(b) decision after `/gsd-discuss-phase 18`; operator-demand survey documented (PITFALLS §14 prerequisite) — anonymised operator-conversation notes back the option chosen.
+  5. Phase verifier reports PASSED — `gaps_found` does NOT trigger on the "no implementation" criterion because Phase 18 is explicitly SPEC-only in v2; the v2 milestone closes with Phase 18 as a `passed_spec_only` artefact.
+**Plans**: TBD
+**UI hint**: no
+**Open question (deferred to `/gsd-discuss-phase 18`)**: option (a) Keycloak/Authentik vs option (b) direct LDAP. SSO-01 records the decision matrix; the final pick lands in ADR 0012 after discuss-phase.
+
 ## Progress Table
 
 | Phase | Plans Complete | Status | Completed |
@@ -694,10 +805,21 @@ Plans:
 | 8. Load Test, Tuning & SLO Publication | 8/8 | Complete | 2026-05-13 |
 | 9. Helm Chart & Cloud Deploy | 11/11 | Complete | 2026-05-13 |
 | 10. i18n + Docs + OSS Housekeeping | 7/5 | Complete   | 2026-05-13 |
+| 11. Cloud Profile Refactor | 1/5 | In progress | - |
+| **— v2 milestone (opened 2026-05-14) —** | | | |
+| 13. E2E + CJM Harness | 0/0 | Not started | - |
+| 12. Admin Onboarding + UI-SPEC Conformance | 0/0 | Not started | - |
+| 14. Slim Core + BYOK Profiles | 0/0 | Not started | - |
+| 15. Repo Refactor + FSL + History Scrub | 0/0 | Not started | - |
+| 16. Phase-Tag Comment Audit | 0/0 | Not started | - |
+| 17. Trusted Local TLS + Production ACME | 0/0 | Not started | - |
+| 18. LDAP / Keycloak SSO (SPEC only) | 0/0 | Not started | - |
 
 ## Coverage Map
 
-89 v1 requirements → 11 phases, no orphans, no duplicates.
+v1: 101 requirements → 11 phases (no orphans, no duplicates). v2: 61 requirements → 7 phases (12–18) (no orphans, no duplicates).
+
+### v1 Coverage
 
 | Requirement | Phase |
 |-------------|-------|
@@ -791,6 +913,75 @@ Plans:
 | DOCS-08 | 10 |
 | DOCS-09 | 10 |
 
+### v2 Coverage
+
+| Requirement | Phase |
+|-------------|-------|
+| E2E-01 | 13 |
+| E2E-02 | 13 |
+| E2E-03 | 13 |
+| E2E-04 | 13 |
+| E2E-05 | 13 |
+| E2E-06 | 13 |
+| E2E-07 | 13 |
+| E2E-08 | 13 |
+| E2E-09 | 13 |
+| E2E-10 | 13 |
+| E2E-11 | 13 |
+| E2E-12 | 13 |
+| ADMIN-01 | 12 |
+| ADMIN-02 | 12 |
+| ADMIN-03 | 12 |
+| ADMIN-04 | 12 |
+| ADMIN-05 | 12 |
+| ADMIN-06 | 12 |
+| UICONF-01 | 12 |
+| UICONF-02 | 12 |
+| UICONF-03 | 12 |
+| UICONF-04 | 12 |
+| UICONF-05 | 12 |
+| UICONF-06 | 12 |
+| UICONF-07 | 12 |
+| SLIM-01 | 14 |
+| SLIM-02 | 14 |
+| SLIM-03 | 14 |
+| SLIM-04 | 14 |
+| BYOK-01 | 14 |
+| BYOK-02 | 14 |
+| BYOK-03 | 14 |
+| STRUCT-01 | 15 |
+| STRUCT-02 | 15 |
+| STRUCT-03 | 15 |
+| STRUCT-04 | 15 |
+| STRUCT-05 | 15 |
+| STRUCT-06 | 15 |
+| STRUCT-07 | 15 |
+| FSL-01 | 15 |
+| FSL-02 | 15 |
+| FSL-03 | 15 |
+| FSL-04 | 15 |
+| FSL-05 | 15 |
+| FSL-06 | 15 |
+| FSL-07 | 15 |
+| COMMENT-01 | 16 |
+| COMMENT-02 | 16 |
+| COMMENT-03 | 16 |
+| COMMENT-04 | 16 |
+| TLS-01 | 17 |
+| TLS-02 | 17 |
+| TLS-03 | 17 |
+| TLS-04 | 17 |
+| TLS-05 | 17 |
+| TLS-06 | 17 |
+| SSO-01 | 18 |
+| SSO-02 | 18 |
+| SSO-03 | 18 |
+| SSO-04 | 18 |
+| SSO-05 | 18 |
+
+**v2 distribution:** Phase 12=13, Phase 13=12, Phase 14=7, Phase 15=14, Phase 16=4, Phase 17=6, Phase 18=5 → 61 total ✓
+
 ---
 *Roadmap created: 2026-05-08 after baseline pivot (defer Stripe/referrals/quotas to v2; bundle LiteLLM with OSS models; UI-SPEC only)*
 *Last updated: 2026-05-09 — Phase 02.7 plan list populated (7 plans across 3 waves).*
+*Last updated: 2026-05-14 — v2 milestone opened. 7 v2 phases appended (12–18) covering 61 REQ-IDs; work-order 13 → 12 → 14 → 15 → 16 → 17 → 18; 4 open questions deferred to /gsd-discuss-phase per phase.*
