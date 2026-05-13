@@ -32,7 +32,12 @@ spec:
     parameters:
       max_connections: "200"
       shared_buffers: "512MB"
-      shared_preload_libraries: "pg_partman_bgw"
+    # Finding 09.1-F4 — CNPG ≥1.22 rejects `shared_preload_libraries`
+    # inside `postgresql.parameters` ("Can't set fixed configuration
+    # parameter"). It must be declared as a first-class spec field which
+    # CNPG operator manages outside the normal parameters dict.
+    shared_preload_libraries:
+      - pg_partman_bgw
     pg_hba:
       - host all all all scram-sha-256
 

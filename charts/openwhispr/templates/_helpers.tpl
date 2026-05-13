@@ -88,7 +88,11 @@ container is auditable + reproducible.
 */}}
 {{- define "openwhispr.waitForMigrateInitContainer" -}}
 - name: wait-for-migrate
-  image: bitnami/kubectl:1.30.4
+  # Finding 09.1-F5 — bitnami/kubectl:1.30.4 returns 404 from Docker Hub
+  # (Bitnami Secure Images migration deprecated point-version tags). The
+  # upstream registry.k8s.io/kubectl image is authoritative and pinned by
+  # k8s release branch.
+  image: registry.k8s.io/kubectl:v1.30.4
   imagePullPolicy: IfNotPresent
   command:
     - sh

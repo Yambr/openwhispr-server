@@ -30,9 +30,16 @@ tests:
       - equal:
           path: spec.instances
           value: 3
+      # Finding 09.1-F4 — CNPG ≥1.22 admission webhook rejects
+      # `shared_preload_libraries` inside `postgresql.parameters` as a
+      # fixed parameter. Must live as `spec.postgresql.shared_preload_libraries`
+      # (list, not string). The pg_partman_bgw entry is mandatory for the
+      # monthly RANGE partition maintenance Job in migration 0011.
       - equal:
-          path: spec.postgresql.parameters.shared_preload_libraries
+          path: spec.postgresql.shared_preload_libraries[0]
           value: pg_partman_bgw
+      - notExists:
+          path: spec.postgresql.parameters.shared_preload_libraries
       - equal:
           path: spec.bootstrap.initdb.database
           value: openwhispr
