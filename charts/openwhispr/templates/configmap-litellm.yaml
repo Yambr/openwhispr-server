@@ -1,0 +1,22 @@
+{{/*
+LiteLLM ConfigMap — wraps .Values.litellm.config as YAML. Operators
+override `litellm.config.model_list` + `litellm.config.router_settings`
+to add providers without touching the chart. Mounted at /app/config.yaml
+in the LiteLLM Deployment.
+
+Renders only when litellm.embedded=true.
+*/}}
+{{- if .Values.litellm.embedded -}}
+{{- $fullname := include "openwhispr.fullname" . -}}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ $fullname }}-litellm-config
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "openwhispr.labels" . | nindent 4 }}
+    app.kubernetes.io/component: litellm
+data:
+  config.yaml: |
+{{ toYaml .Values.litellm.config | indent 4 }}
+{{- end }}
