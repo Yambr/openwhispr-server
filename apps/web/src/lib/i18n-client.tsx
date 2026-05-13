@@ -1,4 +1,4 @@
-// Phase 07.1 / Plan 06 — i18next App-Router Client provider (D-STACK-7).
+// Phase 07.1 / Plan 06 + Phase 10 / Plan 02 — i18next App-Router Client provider.
 //
 // RESEARCH § Pattern 6 + Pitfall 1: the Client provider receives a serialized
 // `resources` snapshot from the nearest RSC parent and never re-fetches.
@@ -8,9 +8,16 @@
 // Implementation: create the instance synchronously in `useMemo` and pass it
 // to `I18nextProvider`. Synchronous `init()` is fine when `resources` are
 // inlined — no backend plugin needed on the Client.
+//
+// Phase 10 / Plan 02 registers `i18next-icu` here as well so client-side
+// re-renders (e.g. when a `count` interpolation changes) use the same CLDR
+// plural rules as the SSR pass. The plugin operates entirely on the
+// in-memory instance, so it does not break the RSC→Client serialization
+// boundary (only the plain `resources` snapshot crosses the wire).
 "use client";
 
 import { createInstance } from "i18next";
+import ICU from "i18next-icu";
 import { type ReactNode, useMemo } from "react";
 import { I18nextProvider } from "react-i18next";
 
@@ -25,6 +32,7 @@ export function I18nProvider({
 }): React.JSX.Element {
   const i18n = useMemo(() => {
     const i = createInstance();
+    i.use(ICU);
     i.init({
       lng,
       resources: { [lng]: resources },

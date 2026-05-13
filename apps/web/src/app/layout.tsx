@@ -12,6 +12,7 @@
 //   Toaster           — Sonner toast root (renders portal-level outside the
 //                       boundary so notifications survive a child crash).
 import type { Metadata } from "next";
+import { headers } from "next/headers";
 import type { ReactNode } from "react";
 import { Toaster } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -32,13 +33,22 @@ export default async function RootLayout({
 }: {
   children: ReactNode;
 }): Promise<React.JSX.Element> {
-  // v1 is English-only (D-STACK-7). Phase 10 introduces the Accept-Language
-  // → NEXT_LOCALE cookie chain.
-  const lng = "en";
+  // Phase 10 / Plan 02 — Edge middleware (`src/middleware.ts`) resolves the
+  // active locale from (NEXT_LOCALE cookie → Accept-Language → "en") and
+  // forwards it to RSC handlers as the `x-locale` request header. If the
+  // header is absent (e.g. a request that bypassed the matcher), fall back
+  // to "en" — the server factory will additionally fall back to "en" for
+  // any missing key, so this default is purely cosmetic for <html lang>.
+  const requestHeaders = await headers();
+  const rawLocale = requestHeaders.get("x-locale");
+  const lng = rawLocale === "ru" ? "ru" : "en";
   const i18n = await getServerI18n(lng, ["admin", "end-user", "common"]);
   // Plain serialisable snapshot of the resource store for the Client
   // provider (Pitfall 1 — RSC→Client serialization boundary).
-  const resources = i18n.services.resourceStore.data[lng] as Record<
+  // Resource store can also be empty on cold start if all keys missed —
+  // defensively coalesce to `{}` so the Client provider never receives
+  // `undefined` (which would crash the useMemo init).
+  const resources = (i18n.services.resourceStore.data[lng] ?? {}) as Record<
     string,
     Record<string, unknown>
   >;
