@@ -87,6 +87,41 @@ tests:
           path: spec.ports[0].name
           value: http
 
+  # Plan 11-01 — secret-presence-probe must source env-name list from helper.
+  - it: web secret-presence-probe omits HF_TOKEN when bundledAi.enabled=false (Variant A)
+    template: web-deployment.yaml
+    set:
+      bundledAi:
+        enabled: false
+      secrets:
+        mode: eso
+        external:
+          storeRef: vault-clusterstore
+    asserts:
+      - equal:
+          path: spec.template.spec.initContainers[1].name
+          value: secret-presence-probe
+      - notMatchRegex:
+          path: spec.template.spec.initContainers[1].command[2]
+          pattern: "HF_TOKEN"
+
+  - it: web secret-presence-probe includes HF_TOKEN when bundledAi.enabled=true (Variant C)
+    template: web-deployment.yaml
+    set:
+      bundledAi:
+        enabled: true
+      secrets:
+        mode: eso
+        external:
+          storeRef: vault-clusterstore
+    asserts:
+      - equal:
+          path: spec.template.spec.initContainers[1].name
+          value: secret-presence-probe
+      - matchRegex:
+          path: spec.template.spec.initContainers[1].command[2]
+          pattern: "HF_TOKEN"
+
   - it: web Deployment honors web.replicas override
     template: web-deployment.yaml
     set:

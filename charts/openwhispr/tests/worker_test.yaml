@@ -54,6 +54,41 @@ tests:
           path: spec.template.spec.initContainers[1].name
           value: secret-presence-probe
 
+  # Plan 11-01 — secret-presence-probe must source env-name list from helper.
+  - it: worker secret-presence-probe omits HF_TOKEN when bundledAi.enabled=false (Variant A)
+    template: worker-deployment.yaml
+    set:
+      bundledAi:
+        enabled: false
+      secrets:
+        mode: eso
+        external:
+          storeRef: vault-clusterstore
+    asserts:
+      - equal:
+          path: spec.template.spec.initContainers[1].name
+          value: secret-presence-probe
+      - notMatchRegex:
+          path: spec.template.spec.initContainers[1].command[2]
+          pattern: "HF_TOKEN"
+
+  - it: worker secret-presence-probe includes HF_TOKEN when bundledAi.enabled=true (Variant C)
+    template: worker-deployment.yaml
+    set:
+      bundledAi:
+        enabled: true
+      secrets:
+        mode: eso
+        external:
+          storeRef: vault-clusterstore
+    asserts:
+      - equal:
+          path: spec.template.spec.initContainers[1].name
+          value: secret-presence-probe
+      - matchRegex:
+          path: spec.template.spec.initContainers[1].command[2]
+          pattern: "HF_TOKEN"
+
   # Finding 09.1-F32 — worker is a pure BullMQ consumer with no HTTP
   # server. The original /healthz probe was fiction (connection refused).
   # Switched to exec probe that confirms the node entrypoint is alive.

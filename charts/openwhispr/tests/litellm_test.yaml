@@ -149,6 +149,41 @@ tests:
           path: data["config.yaml"]
           pattern: "timeout: 60"
 
+  # Plan 11-01 — secret-presence-probe must source env-name list from helper.
+  - it: litellm secret-presence-probe omits HF_TOKEN when bundledAi.enabled=false (Variant A)
+    template: litellm-deployment.yaml
+    set:
+      bundledAi:
+        enabled: false
+      secrets:
+        mode: eso
+        external:
+          storeRef: vault-clusterstore
+    asserts:
+      - equal:
+          path: spec.template.spec.initContainers[0].name
+          value: secret-presence-probe
+      - notMatchRegex:
+          path: spec.template.spec.initContainers[0].command[2]
+          pattern: "HF_TOKEN"
+
+  - it: litellm secret-presence-probe includes HF_TOKEN when bundledAi.enabled=true (Variant C)
+    template: litellm-deployment.yaml
+    set:
+      bundledAi:
+        enabled: true
+      secrets:
+        mode: eso
+        external:
+          storeRef: vault-clusterstore
+    asserts:
+      - equal:
+          path: spec.template.spec.initContainers[0].name
+          value: secret-presence-probe
+      - matchRegex:
+          path: spec.template.spec.initContainers[0].command[2]
+          pattern: "HF_TOKEN"
+
   - it: configmap-litellm omits render when embedded=false
     template: configmap-litellm.yaml
     set:

@@ -76,3 +76,32 @@ tests:
     asserts:
       - hasDocuments:
           count: 0
+
+  # Plan 11-01 — Variant A canonical overlay must render the Secret WITHOUT
+  # an HF_TOKEN stringData key (bundledAi.enabled=false is the default for
+  # the new values-embedded-litellm.yaml). RED until secrets.yaml consumes
+  # the openwhispr.requiredSecretKeys helper.
+  - it: values-embedded-litellm.yaml renders the Secret without HF_TOKEN
+    values:
+      - ../examples/values-embedded-litellm.yaml
+    set:
+      secrets:
+        litellmMasterKey: "valid-litellm-1234567890abcdefghij12345"
+        openrouterApiKey: "valid-openrouter-key-1234567890abcdefghij"
+        openaiApiKey: "valid-openai-key-1234567890abcdefghij1234"
+        postgresOwnerPassword: "valid-pg-pass-1234567890abcdefghij1234"
+        pgbouncerAdminPassword: "valid-pgb-pass-1234567890abcdefghij123"
+        betterAuthSecret: "valid-better-auth-1234567890abcdefghij12"
+        postgresAppPassword: "valid-pg-app-1234567890abcdefghij1234"
+        valkeyPassword: "valid-valkey-1234567890abcdefghij1234"
+        minioRootPassword: "valid-minio-1234567890abcdefghij1234"
+        traefikAdminPassword: "valid-traefik-1234567890abcdefghij12"
+        grafanaAdminPassword: "valid-grafana-1234567890abcdefghij12"
+        masterKek: "v5ux8tbIGXCoCeqi16dtiRVMVDvR4mRTojqRlL2lV-w"
+        backupAgeIdentity: "AGE-SECRET-KEY-1TESTONLY1234567890abcdefghij"
+    template: secrets.yaml
+    asserts:
+      - isKind:
+          of: Secret
+      - notExists:
+          path: stringData.HF_TOKEN
