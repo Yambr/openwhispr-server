@@ -51,8 +51,16 @@ describe("middleware.ts (Phase 07.1 / Plan 05)", () => {
     expect(res.headers.get("location")).toBeNull();
   });
 
-  it("matcher targets /app/:path* only (D-ADMIN-1: no /admin in matcher)", () => {
-    expect(config.matcher).toEqual(["/app/:path*"]);
+  it("matcher excludes /admin/* (D-ADMIN-1: Traefik basic-auth gate authoritative)", () => {
+    // Phase 10 / Plan 02 widened the matcher to also catch public and auth
+    // routes so the locale-negotiation `x-locale` header is set on every
+    // page render. The widened pattern still excludes static assets
+    // (`/_next/*`, files with extensions) AND must continue to exclude
+    // `/admin/*` per D-ADMIN-1 — admin is gated at Traefik basic-auth
+    // before reaching Next.js.
+    expect(config.matcher).toEqual(["/((?!_next/|favicon|.*\\..*).*)"]);
+    // Sanity: the regex must not literally name /admin/:path* — that would
+    // have been the old, narrower form.
     expect(config.matcher).not.toContain("/admin/:path*");
   });
 });

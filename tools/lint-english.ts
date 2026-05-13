@@ -58,10 +58,15 @@ const IGNORE = [
   "**/pnpm-lock.yaml",
   "packages/i18n/locales/**",
   "tests/fixtures/i18n/**",
-  // Phase 10 / Plan 02 — Web Russian translation bundles + Russian-rendering
-  // e2e specs are i18n surfaces, not source artifacts. Allowlisted per the
-  // same rule that covers `packages/i18n/locales/**`.
-  "apps/web/src/locales/**",
+  // Phase 10 — i18n locale-bundle files (web + api) and Russian-rendering
+  // e2e specs are i18n surfaces, not source artifacts. Allowlist covers
+  // every `*/locales/**` directory across the monorepo so future packages
+  // (apps/worker email templates, etc.) inherit the same exemption.
+  "**/locales/**",
+  // i18n unit-test files (init.test.ts etc.) intentionally embed Cyrillic
+  // strings as fixtures to assert lookup behavior. They are i18n surfaces
+  // by the same rationale as the bundle JSON files.
+  "**/i18n/__tests__/**",
   "apps/web/tests/e2e/i18n-russian.spec.ts",
   // Reference document — Russian-language description of an upstream
   // LiteLLM/Speaches deployment that the server is configured against.
