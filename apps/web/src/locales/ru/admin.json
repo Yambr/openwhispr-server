@@ -1,1 +1,167 @@
-{}
+{
+  "admin": {
+    "config": {
+      "action": {
+        "refresh": {
+          "label": "Обновить"
+        }
+      },
+      "alert-readonly": {
+        "body": {
+          "label": "Для изменений требуется перезапустить контейнер api с обновлёнными переменными окружения."
+        }
+      },
+      "error-fetch-failed": {
+        "body": {
+          "label": "Повторите попытку или проверьте журналы контейнера api в Grafana."
+        },
+        "retry": {
+          "label": "Повторить"
+        },
+        "title": {
+          "label": "Не удалось загрузить конфигурацию"
+        }
+      },
+      "link": {
+        "override-docs": {
+          "label": "Документация: как переопределить"
+        }
+      },
+      "nav": {
+        "sidebar": {
+          "label": "Конфигурация"
+        }
+      },
+      "note": {
+        "endpoint": {
+          "label": "GET /api/note-recording-config"
+        },
+        "row-allowed-formats": {
+          "label": "Разрешённые форматы"
+        },
+        "row-diarization": {
+          "label": "Диаризация включена"
+        },
+        "row-max-duration": {
+          "label": "Максимальная длительность (секунды)"
+        },
+        "row-sample-rate": {
+          "label": "Частота дискретизации (Гц)"
+        },
+        "title": {
+          "label": "Запись заметок"
+        }
+      },
+      "stt": {
+        "endpoint": {
+          "label": "GET /api/stt-config"
+        },
+        "row-default-language": {
+          "label": "Язык по умолчанию"
+        },
+        "row-default-model": {
+          "label": "Модель по умолчанию"
+        },
+        "row-providers": {
+          "label": "Доступные провайдеры"
+        },
+        "title": {
+          "label": "Настройки STT"
+        }
+      },
+      "subtitle": {
+        "body": {
+          "text": "Серверные параметры STT и записи заметок. Только для чтения."
+        }
+      },
+      "title": {
+        "heading": {
+          "text": "Конфигурация"
+        }
+      }
+    },
+    "observability": {
+      "action": {
+        "open-grafana": {
+          "label": "Открыть Grafana"
+        }
+      },
+      "card-api-latency": {
+        "body": {
+          "label": "p50, p95, p99 из хуков Fastify"
+        },
+        "title": {
+          "label": "Уровень API — задержка запросов"
+        }
+      },
+      "card-litellm": {
+        "title": {
+          "label": "LiteLLM — маршрутизация провайдеров"
+        }
+      },
+      "card-postgres": {
+        "title": {
+          "label": "Postgres — секции и vacuum"
+        }
+      },
+      "card-security": {
+        "title": {
+          "label": "Безопасность — лимиты и сбои аутентификации"
+        }
+      },
+      "card-system": {
+        "title": {
+          "label": "Система — CPU, RAM, диск, сеть"
+        }
+      },
+      "card-worker-queue": {
+        "body": {
+          "label": "BullMQ: глубина очереди, повторы, пропускная способность"
+        },
+        "title": {
+          "label": "Воркер — очередь задач STT"
+        }
+      },
+      "error-env-missing": {
+        "body": {
+          "label": "Задайте NEXT_PUBLIC_GRAFANA_BASE_URL и переразверните контейнер web."
+        },
+        "title": {
+          "label": "Эндпоинт Grafana не настроен"
+        }
+      },
+      "nav": {
+        "sidebar": {
+          "label": "Наблюдаемость"
+        }
+      },
+      "quicklinks": {
+        "alertmanager": {
+          "label": "Alertmanager — маршрутизация и заглушки"
+        },
+        "loki": {
+          "label": "Loki — журналы приложений"
+        },
+        "mimir": {
+          "label": "Mimir — метрики Prometheus"
+        },
+        "tempo": {
+          "label": "Tempo — распределённая трассировка"
+        },
+        "title": {
+          "label": "Быстрые ссылки"
+        }
+      },
+      "subtitle": {
+        "body": {
+          "text": "Прямые ссылки на дашборды Grafana для этой установки."
+        }
+      },
+      "title": {
+        "heading": {
+          "text": "Наблюдаемость"
+        }
+      }
+    }
+  }
+}

@@ -1,1 +1,40 @@
-{}
+{
+  "common": {
+    "action": {
+      "cancel": { "label": "Отмена" },
+      "confirm": { "label": "Подтвердить" },
+      "copy": { "label": "Копировать" }
+    },
+    "error": {
+      "boundary": {
+        "title": { "text": "Что-то пошло не так" },
+        "body": { "text": "Произошла непредвиденная ошибка при отображении этой страницы." },
+        "retry": { "label": "Повторить" }
+      },
+      "network": {
+        "title": { "text": "Сетевая ошибка" },
+        "body": {
+          "text": "Не удалось связаться с сервером OpenWhispr. Проверьте подключение и повторите попытку."
+        }
+      }
+    },
+    "language": {
+      "label": { "label": "Язык" },
+      "english": { "label": "English" },
+      "russian": { "label": "Русский" }
+    },
+    "loading": { "label": "Загрузка…" },
+    "signout": { "label": "Выйти" },
+    "theme": {
+      "toggle": { "label": "Переключить тему" },
+      "light": { "label": "Светлая" },
+      "dark": { "label": "Тёмная" },
+      "system": { "label": "Системная" }
+    },
+    "test": {
+      "plural": {
+        "unread": "{count, plural, one{# ONE_ARM непрочитанное сообщение} few{# FEW_ARM непрочитанных сообщения} many{# MANY_ARM непрочитанных сообщений} other{# MANY_ARM непрочитанных сообщения}}"
+      }
+    }
+  }
+}

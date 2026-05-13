@@ -53,11 +53,16 @@ const MARKERS: Record<"one" | "few" | "many", string> = {
 
 describe("web ICU plural rules — ru (Phase 10 / Plan 02)", () => {
   it("each CLDR boundary integer routes to the expected plural arm", async () => {
+    // Mirror the production resource shape: `getServerI18n` produces
+    // resourceStore.data[lng] = { common: <commonRu>, admin: ..., end-user: ... }
+    // where each namespace's payload is the entire JSON file (which itself
+    // is wrapped in {common: ...}). The doubled wrap is what enables the
+    // `t("common.test.plural.unread")` lookup pattern used throughout the app.
     const i = createInstance();
     i.use(ICU);
     await i.init({
       lng: "ru",
-      resources: { ru: commonRu as unknown as Record<string, Record<string, unknown>> },
+      resources: { ru: { common: commonRu as unknown as Record<string, unknown> } },
       ns: ["common"],
       defaultNS: "common",
       interpolation: { escapeValue: false },
