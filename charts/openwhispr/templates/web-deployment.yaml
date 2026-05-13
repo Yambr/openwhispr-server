@@ -88,15 +88,26 @@ spec:
             # (openwhispr_app) + Pooler as api/worker.
             - name: DATABASE_URL
               value: "postgres://openwhispr_app:$(POSTGRES_APP_PASSWORD)@{{ include "openwhispr.poolerHost" . }}:5432/openwhispr"
+            # Finding 09.1-F28 — web's buildApp also reads VALKEY_URL.
+            - name: VALKEY_URL
+              value: "redis://{{ include "openwhispr.valkeyHost" . }}:6379"
+            # Finding 09.1-F30 — OTel collector sidecar not present in
+            # kind smoke profile. Disable exporter to silence
+            # PeriodicExportingMetricReader stack-trace logspam.
+            - name: OTEL_SDK_DISABLED
+              value: "true"
+          # Finding 09.1-F31 — Next.js root `/` returns 404 (no index
+          # page; auth-gated to /login). `/api/health` is the canonical
+          # health endpoint (apps/web/src/app/api/health/route.ts).
           readinessProbe:
             httpGet:
-              path: /
+              path: /api/health
               port: 3001
             initialDelaySeconds: 10
             periodSeconds: 10
           livenessProbe:
             httpGet:
-              path: /
+              path: /api/health
               port: 3001
             initialDelaySeconds: 30
             periodSeconds: 30

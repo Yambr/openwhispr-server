@@ -88,6 +88,9 @@ spec:
               value: "http://{{ include "openwhispr.minioHost" . }}:9000"
             - name: LITELLM_BASE_URL
               value: {{ include "openwhispr.litellmBaseUrl" . | quote }}
+            # Finding 09.1-F30 — see api-deployment.yaml note.
+            - name: OTEL_SDK_DISABLED
+              value: "true"
           readinessProbe:
             httpGet:
               path: /healthz
