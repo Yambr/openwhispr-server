@@ -138,6 +138,7 @@ Authoritative wire shapes pinned by the OpenWhispr client TS interfaces at `~/op
 - [x] **TEST-COV-01**: Coverage gate ≥ 85% lines / ≥ 80% branches on the API tier (excluding generated code); enforced in CI
 - [x] **TEST-MUTATION-01**: Mutation testing (Stryker) on critical modules: auth, multi-tenancy enforcement, virtual-key minting; PR fails on score regression
 - [x] **TEST-LOAD-01**: k6 nightly load test asserts 1000 concurrent at p95 SLO; CI fails on regression
+  - **Phase 8 deviation (2026-05-13, D-EXEC-1):** Nightly cadence + CI auto-regression-gate deferred. Phase 8 delivers manual on-demand `make load-test PROFILE={mock,realistic}` + published baseline SLO budgets (Run 5, commit `a5e5920`) + operator runbook in `docs/operations.md`. Nightly automation re-opens in a post-v1 phase. See `.planning/phases/08-load-test-tuning-slo-publication/08-SUMMARY.md` and `docs/operations.md#cadence-and-deferrals`.
 - [x] **TEST-MIGRATION-01**: Migration tests verify forward apply + rollback on real Postgres in CI on every `migrations/` change
 - [ ] **TEST-I18N-01**: i18n completeness test fails CI when a key exists in `en` but is missing in `ru` (or vice versa)
 - [x] **TEST-RLS-01**: RLS property tests assert no cross-tenant read or write paths exist; random tenant pairs, every queryable model
