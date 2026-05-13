@@ -643,12 +643,19 @@ Plans:
   4. Online-migration discipline is enforced (CONCURRENTLY indexes, NOT VALID then VALIDATE constraints, batched column adds) by a `squawk`/`pgroll` lint that blocks PRs with blocking patterns.
   5. The DEPLOY-05 first-launch SLO test gates CI: from `git clone` to first authenticated `/api/transcribe` against the bundled LiteLLM in **< 5 minutes**.
   6. Tests written first (TDD); all CI checks green.
-**Plans**: 4 plans
+**Plans**: 11 plans (4 waves)
 Plans:
-- [ ] 10-01-PLAN.md — Server i18n (API + Worker): i18next + ICU + http-middleware, error-envelope translation at setErrorHandler, worker TemplateRenderer (3 templates), users.locale column, TEST-I18N-01 gate
-- [ ] 10-02-PLAN.md — Web Russian translations + locale negotiation: NEXT_LOCALE cookie + Edge middleware + RSC layout, 200+ key ru bundles, language switcher, /api/locale route
-- [ ] 10-03-PLAN.md — Docs suite: docs/architecture.md, docs/i18n.md, docs/security.md (new); README + operations.md + auth.md + wire-contract.md + litellm-target-spec.md extensions
-- [ ] 10-04-PLAN.md — OSS housekeeping: SPDX header codemod + CI gate, CODEOWNERS, ISSUE_TEMPLATE, CoC 2.1 audit, CONTRIBUTING/SECURITY extension, ADRs 0004-0011 (LICENSE/NOTICE already shipped in bd81d82)
+- [x] 09-01-PLAN.md — Chart skeleton + secrets-mode dual path + helm-lint CI (Wave 0)
+- [x] 09-02-PLAN.md — squawk PR-gate via tools/lint-migrations.ts + 16-rule allowlist (Wave 0)
+- [x] 09-03-PLAN.md — Compose↔chart parity lint via tools/lint-compose-chart-parity.ts (Wave 0)
+- [x] 09-04-PLAN.md — CNPG Cluster CR + custom openwhispr/cnpg-postgres-17-pgpartman image (Wave 1)
+- [x] 09-05-PLAN.md — CNPG Pooler CRD + Bitnami Valkey + MinIO sub-charts (Wave 1)
+- [x] 09-06-PLAN.md — api/web/worker Deployments + HPAs + PDBs + ServiceMonitors (Wave 2)
+- [x] 09-07-PLAN.md — LiteLLM Deployment (embedded mode) + external-mode helper (Wave 2)
+- [x] 09-08-PLAN.md — migrate Job as pre-install/pre-upgrade Helm hook (Wave 2)
+- [x] 09-09-PLAN.md — Traefik IngressRoute :443 (api+web) and :8443 (websecure-realtime) + cert-manager (Wave 3)
+- [x] 09-10-PLAN.md — OTel Collector DaemonSet + ServiceMonitor wiring (Wave 3)
+- [ ] 09-11-PLAN.md — Helm test SLO probe + helm-upgrade-matrix.yml + helm-release.yml + operations.md (Wave 4)
 **UI hint**: no
 
 ### Phase 10: i18n + Docs + OSS Housekeeping
@@ -682,7 +689,7 @@ Plans:
 | 6. Observability + Ops Hardening + Workers | 0/0 | Not started | - |
 | 7. Frontend UI-SPEC | 7/7 | Complete | 2026-05-12 |
 | 8. Load Test, Tuning & SLO Publication | 8/8 | Complete | 2026-05-13 |
-| 9. Helm Chart & Cloud Deploy | 3/12 | In Progress|  |
+| 9. Helm Chart & Cloud Deploy | 10/11 | In Progress|  |
 | 10. i18n + Docs + OSS Housekeeping | 0/4 | Planned | - |
 
 ## Coverage Map

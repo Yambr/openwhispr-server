@@ -582,7 +582,174 @@ Reference: `.planning/phases/08.5-realistic-profile-boot-and-baseline/08.5-03-ST
    container topology. On Mac it is the smoke gate only; on GPU it is the
    plateau.
 
+## Helm chart (Kubernetes)
+
+The `charts/openwhispr/` Helm chart wraps the full 18-service compose stack
+into a single release for Kubernetes operators. The chart targets a vanilla
+Kubernetes 1.28+ cluster with three operator-installed prerequisites
+(CloudNativePG, Traefik 3, cert-manager) and an optional fourth prereq
+(External Secrets Operator) when running in `secrets.mode=eso`.
+
+### Prerequisites
+
+| Prerequisite               | Version    | Purpose                                       | Install command (greenfield)                   |
+| -------------------------- | ---------- | --------------------------------------------- | ---------------------------------------------- |
+| CloudNativePG operator     | 1.29.x     | Postgres 17 HA Cluster + Pooler CRDs          | `bash charts/openwhispr/examples/cnpg-install.sh` |
+| Traefik 3                  | 32.x chart | Ingress + dual entrypoints `:443` and `:8443` | `helm install traefik traefik/traefik -f charts/openwhispr/examples/traefik-values.yaml` |
+| cert-manager               | v1.16+     | TLS issuance via ClusterIssuer                | `helm install cert-manager jetstack/cert-manager --set crds.enabled=true` |
+| External Secrets Operator  | v0.10+     | OPTIONAL — only when `secrets.mode=eso`       | `helm install external-secrets external-secrets/external-secrets` |
+| LGTM stack (Grafana/Tempo/Loki/Mimir) | latest | OPTIONAL observability backend     | `bash charts/openwhispr/examples/lgtm-install.sh` |
+| NVIDIA device plugin       | latest     | OPTIONAL — only when `bundledAi.enabled=true` | `kubectl apply -f https://raw.githubusercontent.com/NVIDIA/k8s-device-plugin/v0.16.2/deployments/static/nvidia-device-plugin.yml` |
+
+The Traefik install MUST declare both `websecure` (:443) and
+`websecure-realtime` (:8443) entrypoints. The chart ships a
+`traefik-preflight` initContainer that refuses to start the api pod if the
+second entrypoint is missing — see `charts/openwhispr/examples/traefik-values.yaml`
+for the exact `--entrypoints.websecure-realtime.address=:8443` overlay.
+
+### Install
+
+```bash
+# 1. Generate or supply 8 secrets (≥ 32 chars each) — see secrets posture below.
+cp charts/openwhispr/examples/values-oss-quickstart.yaml my-values.yaml
+# Edit my-values.yaml with your hostnames, secrets, postgres sizing, etc.
+
+# 2. Build sub-chart dependencies (Bitnami Valkey + MinIO).
+helm dependency build charts/openwhispr
+
+# 3. Install — uses pre-install/pre-upgrade Helm-hook Job to run drizzle migrations.
+helm install ow charts/openwhispr -f my-values.yaml \
+  --namespace openwhispr --create-namespace \
+  --wait --timeout 10m
+
+# 4. Run the first-launch SLO probe (DEPLOY-05). Exits 0 if a fresh user can
+#    sign-up and POST /api/transcribe in under 5 minutes end-to-end.
+helm test ow --namespace openwhispr --timeout 5m
+```
+
+The chart's `helm test` hook runs the
+`ghcr.io/openwhispr/openwhispr-test-probe:<appVersion>` image which
+performs the full sign-up → bearer → transcribe round-trip and asserts
+elapsedMs ≤ `testProbe.sloDeadlineMs` (default 300000 ms). The probe is
+defined in `charts/openwhispr/templates/tests/first-launch-slo.yaml` and
+its TARGET defaults to `https://{{ .Values.host.api }}`.
+
+### Upgrade
+
+```bash
+git pull
+helm dependency build charts/openwhispr
+helm upgrade ow charts/openwhispr -f my-values.yaml \
+  --namespace openwhispr \
+  --wait --timeout 10m
+helm test ow --namespace openwhispr --timeout 5m
+```
+
+The migrate Job is annotated `helm.sh/hook: pre-install,pre-upgrade` so it
+runs BEFORE the rolling api/web/worker rollout. Each rollout is also
+gated by:
+
+  - readiness probes on `/api/health` (api), `/healthz` (web), and a TCP
+    probe on the worker port — the rollout pauses if any pod fails.
+  - the `traefik-preflight` initContainer described above (api only).
+  - the `secret-presence-probe` initContainer in `secrets.mode=eso` mode
+    (api + worker) — fails fast if the ESO sync hasn't materialized the
+    Secret yet.
+
+### Safe rollback (within one minor version)
+
+```bash
+# List release history
+helm history ow --namespace openwhispr
+
+# Roll back to revision N (must be within the same minor — schema rolls
+# forward-compatible per the expand/contract migration discipline).
+helm rollback ow N --namespace openwhispr --wait --timeout 10m
+```
+
+**Migration expand/contract dance.** Drizzle migrations are written
+backwards-compatible across one minor version:
+
+  1. Expand (release v0.N.0): add new column NULL-defaulting; write code
+     to BOTH columns; reads still tolerate the old column.
+  2. Backfill (release v0.N.1 or operator-driven): online backfill of the
+     new column from the old one.
+  3. Contract (release v0.N+1.0): drop the old column; reads switch to
+     the new column.
+
+Rolling back across an expand-contract boundary (e.g. v0.N+1.0 → v0.N.0)
+is NOT safe; treat such boundaries as one-way doors. The
+`tools/lint-migrations.ts` squawk gate blocks migrations that violate
+expand/contract patterns (e.g. dropping a column in the same release
+that added its replacement).
+
+### Secrets posture
+
+The chart supports two modes via `secrets.mode`:
+
+#### helm-values mode (default — OSS quickstart)
+
+Operator supplies all 8 secrets via `--set-string secrets.<key>=…` or a
+sealed values file. The chart renders an inline `Secret` resource with
+`helm.sh/resource-policy: keep` so `helm uninstall` does not delete it.
+
+Required keys (chart enforces ≥ 32 chars and rejects `CHANGE_ME` /
+`changeme` placeholders at render time):
+
+  - `secrets.litellmMasterKey`
+  - `secrets.openrouterApiKey`
+  - `secrets.openaiApiKey`
+  - `secrets.pyannoteApiKey`
+  - `secrets.hfToken`
+  - `secrets.postgresOwnerPassword`
+  - `secrets.pgbouncerAdminPassword`
+  - `secrets.betterAuthSecret`
+
+#### eso mode (corporate)
+
+```yaml
+secrets:
+  mode: eso
+  external:
+    storeRef: vault-clusterstore
+    storeKind: ClusterSecretStore
+    path: openwhispr
+    refreshInterval: 1h
+```
+
+The chart renders an `ExternalSecret` referencing the named
+`ClusterSecretStore` (or `SecretStore`) instead of inline values. The
+operator pre-creates the SecretStore pointing at Vault / AWS Secrets
+Manager / GCP Secret Manager and populates the `path` with the same 8
+keys. The `secret-presence-probe` initContainer on every app pod fails
+fast (exit 1, restart) if ESO hasn't materialized the target Secret yet,
+giving the rollout visibility into the sync race rather than a silent
+500 cascade.
+
+### Backup and restore
+
+The CNPG Cluster CR (`templates/postgres-cluster.yaml`) ships with a
+`barmanObjectStore` block writing WAL + base backups to MinIO (or the
+configured `postgres.backup.objectStore` S3 bucket) every
+`postgres.backup.scheduleCron` (default `@daily`). Point-in-time recovery
+via `kubectl cnpg pitr` (CNPG plugin) reconstructs the cluster to any
+WAL timestamp within retention. Retention defaults to 14 days; tune via
+`postgres.backup.retentionPolicy`.
+
+### Troubleshooting
+
+| Symptom                                                          | Diagnosis                                                                                                                          | Fix                                                                                                                                                                                                                                                                          |
+| ---------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `helm install` fails with `values.secrets.litellmMasterKey is empty` | The render-time `fail` gate caught a missing or placeholder secret. | Generate 32+ char random strings: `openssl rand -base64 32 \| tr -d '\n=' \| cut -c1-40`. Supply all 8 keys, or switch to `secrets.mode=eso` and create the SecretStore out-of-band.                                                                                          |
+| api pod CrashLoopBackOff, init container `traefik-preflight` failing | Traefik install is missing the `:8443 websecure-realtime` entrypoint. | Add `--entrypoints.websecure-realtime.address=:8443` to the Traefik install or follow `charts/openwhispr/examples/traefik-values.yaml` exactly.                                                                                                                              |
+| api pod CrashLoopBackOff, init container `secret-presence-probe` failing (eso mode) | ESO hasn't synced the Secret yet, or the SecretStore is misconfigured. | `kubectl -n openwhispr describe externalsecret openwhispr-secrets` and `kubectl get secretstore -A` — check the `Status.Conditions` for the underlying error.                                                                                                                |
+| migrate Job stuck in Init/Pending                                  | CNPG cluster not yet ready; init container `pg_isready` is looping against the `-rw` service. | `kubectl -n openwhispr get cluster ow-openwhispr-pg` — confirm `Status.Phase: Cluster in healthy state`. Bump `postgres.replicas` only after replicas are joined.                                                                                                             |
+| Postgres pod exits with `could not load library pg_partman_bgw`    | `postgres.imageName` not pointing at the custom `cnpg-postgres-17-pgpartman` image, OR `postgres.shared_preload_libraries` missing `pg_partman_bgw`. | Confirm `postgres.imageName: ghcr.io/openwhispr/openwhispr-cnpg-postgres-17-pgpartman:17.6-<chart-version>`; values.schema.json enforces `:17.*` via regex.                                                                                                                  |
+| Bundled-AI Speaches pod Pending with `0/3 nodes available: no nodes match nvidia.com/gpu.present` | GPU node label missing or NVIDIA device plugin not installed.            | `kubectl get nodes -L nvidia.com/gpu.present`. Install the NVIDIA device plugin (see Prerequisites) and label your GPU node(s) `nvidia.com/gpu.present=true`. Or disable bundled AI: `--set bundledAi.enabled=false`.                                                       |
+| cert-manager Certificate stuck `Issuing`                          | ClusterIssuer misconfigured or DNS-01 / HTTP-01 challenge failing.    | `kubectl describe certificate openwhispr-api-tls -n openwhispr`; `kubectl describe clusterissuer letsencrypt-prod`. For air-gapped clusters use the internal CA ClusterIssuer template at `charts/openwhispr/examples/cert-manager-clusterissuer-internal-ca.yaml`.           |
+| `helm test` fails with `transcribe-non-200`                       | LiteLLM upstream unreachable, or transcribe SLO budget exceeded.       | `kubectl -n openwhispr logs deploy/ow-openwhispr-litellm` for the embedded LiteLLM (or check `LITELLM_BASE_URL` connectivity in external mode); `kubectl logs <test-pod>` for the probe's structured JSON `step` field.                                                       |
+| Upgrade-matrix CI fails on integrity-check                        | Migration dropped or mutated `transcriptions` columns the seed depends on. | Inspect `tools/seed-test-data.js` — if a column was renamed legitimately, update SEED_ROWS + integrity-check to match the new schema. If unintended, the upgrade-matrix has caught a regression — revert.                                                                    |
+
 ## Future phases
 
-- **Phase 9:** Helm chart deploy + upgrade-matrix discipline; Helm small / large rows in the sizing matrix above
 - **Phase 10:** full operator handbook (deploy / upgrade / scale / backup / restore / troubleshoot) — re-uses this document
