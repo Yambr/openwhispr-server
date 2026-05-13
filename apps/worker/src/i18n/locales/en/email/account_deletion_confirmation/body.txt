@@ -1,0 +1,8 @@
+Hello {name},
+
+This is a confirmation that your OpenWhispr account was deleted on {deleted_at}. All personal data tied to the account has been queued for removal in line with our retention policy.
+
+If you did not request this deletion, please contact support immediately.
+
+Regards,
+The OpenWhispr team
