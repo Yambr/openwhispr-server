@@ -29,6 +29,12 @@
     "DIARIZATION_JOB_FAILED": "Diarization job failed",
     "PYANNOTE_UNAVAILABLE": "Pyannote.ai upstream unavailable",
     "PYANNOTE_REJECTED": "Pyannote rejected request",
-    "PYANNOTE_UPSTREAM": "Pyannote upstream error"
+    "PYANNOTE_UPSTREAM": "Pyannote upstream error",
+    "METADATA_TOO_LARGE": "Metadata exceeds 4096 bytes (4KB cap)",
+    "INVALID_UUID": "conversation_id must be a UUID",
+    "BATCH_TOO_LARGE": "Batch size exceeds the per-request limit",
+    "REASONING_UPSTREAM_FAILED": "Upstream reasoning provider failure",
+    "WEB_SEARCH_NOT_CONFIGURED": "Web search provider is not configured",
+    "WEB_SEARCH_PROVIDER_KEY_MISSING": "Web search provider key is missing"
   }
 }

@@ -41,7 +41,11 @@ import { type ExecutableTx, type TransactionalDb, withTenant } from "@openwhispr
 import { WebSearchRequestSchema } from "@openwhispr/wire-schemas";
 import { sql } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
-import { AuthError } from "../../errors.js";
+import {
+  AuthError,
+  ServiceUnavailable as TypedServiceUnavailable,
+  UpstreamError as TypedUpstreamError,
+} from "../../errors.js";
 import { resolveWebSearchProvider, webSearchRegistry } from "../../lib/web-search/registry.js";
 import {
   MissingProviderKeyError,
@@ -102,9 +106,10 @@ export const buildWebSearchRoutes = (deps: WebSearchDeps) =>
               : provider.name === "yandex"
                 ? "Yandex"
                 : provider.name;
-          return reply.code(503).send({
-            error: `${label} not configured (set ${envVarName} in .env)`,
-          });
+          throw new TypedServiceUnavailable(
+            "WEB_SEARCH_NOT_CONFIGURED",
+            `${label} not configured (set ${envVarName} in .env)`,
+          );
         }
 
         let result: { results: Array<{ title: string; url: string; snippet: string }> };
@@ -112,14 +117,17 @@ export const buildWebSearchRoutes = (deps: WebSearchDeps) =>
           result = await provider.search(body.query, body.numResults);
         } catch (e) {
           if (e instanceof MissingProviderKeyError) {
-            return reply.code(503).send({ error: e.message });
+            throw new TypedServiceUnavailable("WEB_SEARCH_PROVIDER_KEY_MISSING", e.message);
           }
           if (e instanceof UpstreamError) {
             req.log.warn(
               { provider: provider.name, message: e.message },
               "web-search upstream failure",
             );
-            return reply.code(502).send({ error: "web-search upstream failed" });
+            throw new TypedUpstreamError(
+              "WEB_SEARCH_UPSTREAM_FAILED",
+              "web-search upstream failed",
+            );
           }
           throw e;
         }

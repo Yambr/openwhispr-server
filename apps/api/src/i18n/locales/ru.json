@@ -29,6 +29,12 @@
     "DIARIZATION_JOB_FAILED": "Задача диаризации завершилась ошибкой",
     "PYANNOTE_UNAVAILABLE": "Сервис pyannote.ai недоступен",
     "PYANNOTE_REJECTED": "Pyannote отклонил запрос",
-    "PYANNOTE_UPSTREAM": "Ошибка вышестоящего сервиса pyannote"
+    "PYANNOTE_UPSTREAM": "Ошибка вышестоящего сервиса pyannote",
+    "METADATA_TOO_LARGE": "Размер метаданных превышает 4096 байт (лимит 4KB)",
+    "INVALID_UUID": "Параметр conversation_id должен быть UUID",
+    "BATCH_TOO_LARGE": "Размер пакета превышает допустимый предел",
+    "REASONING_UPSTREAM_FAILED": "Ошибка вышестоящего сервиса рассуждений",
+    "WEB_SEARCH_NOT_CONFIGURED": "Провайдер веб-поиска не настроен",
+    "WEB_SEARCH_PROVIDER_KEY_MISSING": "Отсутствует ключ провайдера веб-поиска"
   }
 }

@@ -41,7 +41,7 @@ import { createHash } from "node:crypto";
 import { setTimeout as sleep } from "node:timers/promises";
 import { DiarizationResponse } from "@openwhispr/contract-tests/schemas";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
-import { AuthError, ServiceUnavailable } from "../errors.js";
+import { AuthError, ServiceUnavailable, UpstreamError, ValidationError } from "../errors.js";
 import {
   createIdempotencyCache,
   type IdempotencyCache,
@@ -164,7 +164,10 @@ function handleDiarization(deps: DiarizationDeps, idem: IdempotencyCache) {
     const contentTypeHeader = req.headers["content-type"];
     const contentType = Array.isArray(contentTypeHeader) ? contentTypeHeader[0] : contentTypeHeader;
     if (!contentType || !contentType.toLowerCase().startsWith("multipart/")) {
-      return reply.code(400).send({ error: "expected multipart/form-data with `file` field" });
+      throw new ValidationError(
+        "MULTIPART_FILE_FIELD_REQUIRED",
+        "expected multipart/form-data with `file` field",
+      );
     }
 
     // Fast-fail when PYANNOTE_API_KEY is unset — emit 503 with operator-
@@ -194,12 +197,12 @@ function handleDiarization(deps: DiarizationDeps, idem: IdempotencyCache) {
       // the limit is exceeded; we convert to a 400 envelope.
       const fastifyErr = err as { code?: string; message?: string };
       if (fastifyErr.code === "FST_REQ_FILE_TOO_LARGE") {
-        return reply.code(400).send({ error: "file exceeds size limit" });
+        throw new ValidationError("FILE_TOO_LARGE", "file exceeds size limit");
       }
       throw err;
     }
     if (!filePart) {
-      return reply.code(400).send({ error: "expected `file` multipart field" });
+      throw new ValidationError("MULTIPART_FILE_FIELD_MISSING", "expected `file` multipart field");
     }
 
     // Buffer the file (bounded by @fastify/multipart's 100MB limits.fileSize
@@ -223,12 +226,12 @@ function handleDiarization(deps: DiarizationDeps, idem: IdempotencyCache) {
     } catch (err) {
       const fastifyErr = err as { code?: string };
       if (fastifyErr.code === "FST_REQ_FILE_TOO_LARGE") {
-        return reply.code(400).send({ error: "file exceeds size limit" });
+        throw new ValidationError("FILE_TOO_LARGE", "file exceeds size limit");
       }
       throw err;
     }
     if (truncated) {
-      return reply.code(400).send({ error: "file exceeds size limit" });
+      throw new ValidationError("FILE_TOO_LARGE", "file exceeds size limit");
     }
     const fileBuffer = Buffer.concat(chunks);
     const bodyHash = hash.digest("hex");
@@ -317,7 +320,7 @@ function handleDiarization(deps: DiarizationDeps, idem: IdempotencyCache) {
           return reply.code(200).send(DiarizationResponse.parse(job.output));
         }
         if (job.status === "failed" || job.status === "cancelled") {
-          return reply.code(502).send({ error: `diarization job ${job.status}`, jobId });
+          throw new UpstreamError("DIARIZATION_JOB_FAILED", `diarization job ${job.status}`);
         }
         // status === 'created' | 'running' — wait then poll again.
         try {
@@ -344,7 +347,7 @@ function mapPyannoteError(err: unknown, reply: FastifyReply, req: FastifyRequest
   if (err instanceof PyannoteUnavailableError) {
     req.log.warn({ status: err.status }, "pyannote upstream unavailable");
     reply.header("retry-after", "30");
-    return reply.code(503).send({ error: "pyannote.ai upstream unavailable" });
+    throw new ServiceUnavailable("PYANNOTE_UNAVAILABLE", "pyannote.ai upstream unavailable");
   }
   if (err instanceof PyannoteAuthError) {
     // Pitfall #8: pyannote 401/403 → 503 (operator-actionable), NEVER 401
@@ -358,11 +361,11 @@ function mapPyannoteError(err: unknown, reply: FastifyReply, req: FastifyRequest
   }
   if (err instanceof PyannoteBadRequestError) {
     req.log.warn({ status: err.status }, "pyannote rejected request");
-    return reply.code(502).send({ error: `pyannote rejected request (${err.status})` });
+    throw new UpstreamError("PYANNOTE_REJECTED", `pyannote rejected request (${err.status})`);
   }
   if (err instanceof PyannoteUpstreamError) {
     req.log.warn({ status: err.status }, "pyannote upstream error");
-    return reply.code(502).send({ error: "pyannote upstream error" });
+    throw new UpstreamError("PYANNOTE_UPSTREAM", "pyannote upstream error");
   }
   // Unknown — let the centralized error handler emit the canonical 500.
   throw err;
@@ -398,7 +401,10 @@ function handleSpeachesDiarization(deps: DiarizationDeps) {
     const contentTypeHeader = req.headers["content-type"];
     const contentType = Array.isArray(contentTypeHeader) ? contentTypeHeader[0] : contentTypeHeader;
     if (!contentType || !contentType.toLowerCase().startsWith("multipart/")) {
-      return reply.code(400).send({ error: "expected multipart/form-data with `file` field" });
+      throw new ValidationError(
+        "MULTIPART_FILE_FIELD_REQUIRED",
+        "expected multipart/form-data with `file` field",
+      );
     }
 
     // Read the multipart `file` part. @fastify/multipart is registered
@@ -409,12 +415,12 @@ function handleSpeachesDiarization(deps: DiarizationDeps) {
     } catch (err) {
       const fastifyErr = err as { code?: string };
       if (fastifyErr.code === "FST_REQ_FILE_TOO_LARGE") {
-        return reply.code(400).send({ error: "file exceeds size limit" });
+        throw new ValidationError("FILE_TOO_LARGE", "file exceeds size limit");
       }
       throw err;
     }
     if (!filePart) {
-      return reply.code(400).send({ error: "expected `file` multipart field" });
+      throw new ValidationError("MULTIPART_FILE_FIELD_MISSING", "expected `file` multipart field");
     }
 
     const chunks: Buffer[] = [];
@@ -427,12 +433,12 @@ function handleSpeachesDiarization(deps: DiarizationDeps) {
     } catch (err) {
       const fastifyErr = err as { code?: string };
       if (fastifyErr.code === "FST_REQ_FILE_TOO_LARGE") {
-        return reply.code(400).send({ error: "file exceeds size limit" });
+        throw new ValidationError("FILE_TOO_LARGE", "file exceeds size limit");
       }
       throw err;
     }
     if (truncated) {
-      return reply.code(400).send({ error: "file exceeds size limit" });
+      throw new ValidationError("FILE_TOO_LARGE", "file exceeds size limit");
     }
     const fileBuffer = Buffer.concat(chunks);
     const fileMime = filePart.mimetype || "application/octet-stream";

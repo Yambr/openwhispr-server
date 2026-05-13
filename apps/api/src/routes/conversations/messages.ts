@@ -25,7 +25,7 @@ import { type ExecutableTx, type TransactionalDb, withTenant } from "@openwhispr
 import { sql } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
-import { AuthError } from "../../errors.js";
+import { AuthError, NotFoundError, ValidationError } from "../../errors.js";
 import { createOrReturnExisting } from "../../lib/client-id-upsert.js";
 import {
   buildKeysetOrderLimit,
@@ -81,7 +81,7 @@ export const buildConversationsMessagesRoutes = (deps: ConversationsMessagesDeps
         // T-MSG-INJ — 4 KiB metadata cap.
         const metaBytes = Buffer.byteLength(JSON.stringify(body.metadata ?? {}), "utf8");
         if (metaBytes > MESSAGE_METADATA_MAX_BYTES) {
-          return reply.code(400).send({ error: "metadata exceeds 4096 bytes (4KB cap)" });
+          throw new ValidationError("METADATA_TOO_LARGE", "metadata exceeds 4096 bytes (4KB cap)");
         }
 
         const tenantId = req.tenant;
@@ -120,7 +120,7 @@ export const buildConversationsMessagesRoutes = (deps: ConversationsMessagesDeps
         });
 
         if (!result) {
-          return reply.code(404).send({ error: "conversation not found" });
+          throw new NotFoundError("CONVERSATION_NOT_FOUND", "conversation not found");
         }
         return reply.code(200).send(rowToCloudMessage(result));
       },
@@ -140,13 +140,13 @@ export const buildConversationsMessagesRoutes = (deps: ConversationsMessagesDeps
         const q = (req.query ?? {}) as ListQuery;
         const conversationId = q.conversation_id;
         if (!conversationId || typeof conversationId !== "string") {
-          return reply.code(400).send({ error: "conversation_id required" });
+          throw new ValidationError("CONVERSATION_ID_REQUIRED", "conversation_id required");
         }
         // UUID sanity check — keep the SQL cast from raising.
         const uuidRe =
           /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/;
         if (!uuidRe.test(conversationId)) {
-          return reply.code(400).send({ error: "conversation_id must be a UUID" });
+          throw new ValidationError("INVALID_UUID", "conversation_id must be a UUID");
         }
 
         let parsed: ReturnType<typeof parseListQuery>;
@@ -185,7 +185,7 @@ export const buildConversationsMessagesRoutes = (deps: ConversationsMessagesDeps
         });
 
         if (rows === null) {
-          return reply.code(404).send({ error: "conversation not found" });
+          throw new NotFoundError("CONVERSATION_NOT_FOUND", "conversation not found");
         }
         return reply.code(200).send({ messages: rows.map(rowToCloudMessage) });
       },

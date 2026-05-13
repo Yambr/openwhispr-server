@@ -14,7 +14,7 @@ import { type ExecutableTx, type TransactionalDb, withTenant } from "@openwhispr
 import { sql } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
-import { AuthError } from "../../errors.js";
+import { AuthError, NotFoundError } from "../../errors.js";
 
 const DeleteBodySchema = z.object({
   id: z.string().uuid(),
@@ -52,7 +52,7 @@ export const buildNotesDeleteRoutes = (deps: NotesDeleteDeps) =>
         });
 
         if (!updated) {
-          return reply.code(404).send({ error: "note not found" });
+          throw new NotFoundError("NOTE_NOT_FOUND", "note not found");
         }
         return reply.code(200).send({ ok: true });
       },

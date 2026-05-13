@@ -41,7 +41,7 @@ import {
 } from "@openwhispr/litellm-client";
 import { sql } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
-import { AuthError, ServiceUnavailable } from "../errors.js";
+import { AuthError, ServiceUnavailable, UpstreamError } from "../errors.js";
 
 export interface ReasonDeps {
   db: TransactionalDb<ExecutableTx>;
@@ -118,7 +118,10 @@ export const buildReasonRoutes = (deps: ReasonDeps) =>
           }
           if (err instanceof LitellmUpstreamError) {
             req.log.warn({ status: err.status }, "litellm upstream error on /api/reason");
-            return reply.code(502).send({ error: "upstream reasoning provider failure" });
+            throw new UpstreamError(
+              "REASONING_UPSTREAM_FAILED",
+              "upstream reasoning provider failure",
+            );
           }
           throw err;
         }

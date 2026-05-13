@@ -16,7 +16,7 @@ import { type ExecutableTx, type TransactionalDb, withTenant } from "@openwhispr
 import { FolderInputSchema } from "@openwhispr/wire-schemas";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
-import { AuthError } from "../../errors.js";
+import { AuthError, ValidationError } from "../../errors.js";
 import { createOrReturnExisting } from "../../lib/client-id-upsert.js";
 import { type CloudFolderRow, rowToCloudFolder } from "./shape.js";
 
@@ -49,7 +49,10 @@ export const buildFoldersBatchCreateRoutes = (deps: FoldersBatchCreateDeps) =>
 
         // D-30 — batch size exceeds 500 → 400 envelope.
         if (foldersInput.length > MAX_BATCH_SIZE) {
-          return reply.code(400).send({ error: `batch size exceeds ${MAX_BATCH_SIZE} items` });
+          throw new ValidationError(
+            "BATCH_TOO_LARGE",
+            `batch size exceeds ${MAX_BATCH_SIZE} items`,
+          );
         }
 
         const tenantId = req.tenant;

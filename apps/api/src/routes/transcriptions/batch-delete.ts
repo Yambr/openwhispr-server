@@ -17,7 +17,7 @@ import { type ExecutableTx, type TransactionalDb, withTenant } from "@openwhispr
 import { sql } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
-import { AuthError } from "../../errors.js";
+import { AuthError, ValidationError } from "../../errors.js";
 
 const MAX_BATCH_SIZE = 500;
 
@@ -42,7 +42,10 @@ export const buildTranscriptionsBatchDeleteRoutes = (deps: TranscriptionsBatchDe
         const body = BatchDeleteBodySchema.parse(req.body);
 
         if (body.ids.length > MAX_BATCH_SIZE) {
-          return reply.code(400).send({ error: `batch size exceeds ${MAX_BATCH_SIZE} items` });
+          throw new ValidationError(
+            "BATCH_TOO_LARGE",
+            `batch size exceeds ${MAX_BATCH_SIZE} items`,
+          );
         }
 
         const tenantId = req.tenant;
