@@ -1,0 +1,41 @@
+smoke-paid: 2026-05-13T01-18-23Z BASE_URL=https://api.localhost
+----------------------------------------------
+
+[1/8] sign-up: smoke-paid-1778635103@example.test
+  PASS  sign-up OK (token: QWz9hgkusKO0Wy3R9kTS...)
+
+[2/8] api /api/reason (OpenRouter via LiteLLM)
+  PASS  api-reason-openrouter  status=200
+
+[3/8] api /api/agent/stream (OpenRouter SSE)
+  PASS  agent-stream returned NDJSON chunks (head: {"type":"text-delta","text":"ok"}
+{"type":"finish","finishReason":"stop","usage":{"promptTokens":0,"completionTokens":0})
+
+[4/8] api /api/transcribe (Speaches via LiteLLM, LOCAL control)
+  PASS  api-transcribe-speaches  status=200
+
+[5/8] WSS :8443/v1/realtime (Speaches Realtime, LOCAL)
+  ws-probe output:
+    MSG_AT=60ms
+    MSG_BODY={"type":"session.created","event_id":"event_xAzLxxREI90OugpsqlRBv","session":{"id":"sess_dV2FmBivJzeUPK32jKk4K","input_audio_format":"pcm16","input_audio_transcription":{"model":"Systran/faster-distil
+    OPENED=true GOT_MSG=true
+  PASS  realtime-ws received message
+
+[6/8] LiteLLM-direct /v1/chat/completions model=qwen3.6-plus (OpenRouter)
+curl: (7) Failed to connect to localhost port 4000 after 0 ms: Couldn't connect to server
+  FAIL  litellm-chat-qwen  status=000 (expected 200)
+        body: {"text":"Thank you.","wordsUsed":1,"wordsRemaining":999999999,"plan":"unlimited","limitReached":false,"sttProvider":"groq","sttModel":"whisper-large-v3","language":"en","duration":5,"segments":[{"id":
+
+[7/8] LiteLLM-direct /v1/chat/completions model=gpt-4o-mini (OpenRouter)
+curl: (7) Failed to connect to localhost port 4000 after 0 ms: Couldn't connect to server
+  FAIL  litellm-chat-gpt4o-mini  status=000 (expected 200)
+        body: {"text":"Thank you.","wordsUsed":1,"wordsRemaining":999999999,"plan":"unlimited","limitReached":false,"sttProvider":"groq","sttModel":"whisper-large-v3","language":"en","duration":5,"segments":[{"id":
+
+[8/8] api /v1/audio/diarization (Speaches local, LOCAL)
+  PASS  api-diarization-speaches  status=200 duration=5s segments=0
+
+==============================================
+smoke-paid SUMMARY: 6 PASS / 2 FAIL
+Failures:
+  - litellm-chat-qwen expected=200 got=000
+  - litellm-chat-gpt4o-mini expected=200 got=000

@@ -400,7 +400,10 @@ services:
       # of lazily on the first request. Without this, the first
       # transcribe request blocks 30–120 s while Whisper loads, and the
       # smoke gate's iter-0 latency pollutes the entire run.
-      PRELOAD_MODELS: "Systran/faster-whisper-large-v3,pyannote/speaker-diarization-community-1"
+      # Phase 08.6-01: Speaches master uses pydantic-settings list parsing
+      # for PRELOAD_MODELS — comma-separated strings throw SettingsError.
+      # The canonical format is a JSON array.
+      PRELOAD_MODELS: '["Systran/faster-whisper-large-v3","pyannote/speaker-diarization-community-1"]'
       HF_TOKEN: ${HF_TOKEN:-}
       ENABLE_UI: "false"
     healthcheck:
