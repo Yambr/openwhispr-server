@@ -96,6 +96,14 @@ spec:
         # idempotently here on every restart (postInitSQL only runs once
         # at initdb time, but the GRANT is idempotent).
         - GRANT openwhispr_app TO openwhispr_owner WITH ADMIN OPTION;
+        # Finding 09.1-F26 — PG 17 separates ALTER ROLE attribute changes
+        # from ALTER ROLE SET <parameter>. The latter requires either
+        # superuser OR an explicit `GRANT SET ON PARAMETER` for non-
+        # superusers (pg_parameter_acl, PG 15+). Custom GUCs (app.*)
+        # also need this grant to be settable via ALTER ROLE.
+        # Migrations call ALTER ROLE openwhispr_app SET app.tenant_id,
+        # so grant SET on the parameter to the owner here.
+        - GRANT SET ON PARAMETER "app.tenant_id" TO openwhispr_owner;
       postInitApplicationSQL:
         - CREATE SCHEMA IF NOT EXISTS partman;
         - CREATE EXTENSION IF NOT EXISTS pg_partman SCHEMA partman;
