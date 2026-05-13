@@ -41,6 +41,29 @@ import { SSRFBlockedError } from "./lib/ssrf-dispatcher.js";
 const JSON_CT = "application/json; charset=utf-8";
 
 /**
+ * Phase 10 / Plan 10-01a — translate the canonical envelope message via
+ * req.i18n when present. Falls back to `fallback` (which is either the
+ * constructor-supplied `err.message` or the per-class default literal
+ * the handler already computed) when:
+ *   - the request has no `i18n` (i18nPlugin not registered — legacy
+ *     boot path, existing tests). This preserves the contract pinned by
+ *     apps/api/src/error-handler.test.ts (advisor B10).
+ *   - `code` is undefined (Better Auth APIError, ZodError, fastify
+ *     validation, default catch-all — none of these expose a stable
+ *     typed-error code in Plan 10-01a's scope; 10-01d will broaden the
+ *     surface).
+ */
+function localize(
+  req: { i18n?: { t(k: string, o?: object): string } },
+  code: string | undefined,
+  fallback: string,
+): string {
+  const t = req.i18n?.t;
+  if (!t || !code) return fallback;
+  return t.call(req.i18n, `errors.${code}`, { defaultValue: fallback });
+}
+
+/**
  * Phase 6 / Plan 06-12e — walk `err.cause` chain to find an
  * `SSRFBlockedError`.
  *
@@ -92,6 +115,12 @@ export function registerErrorHandler(app: FastifyInstance): void {
   app.setErrorHandler((err, req, reply) => {
     let status = 500;
     let message = "Internal server error";
+    // Phase 10 / Plan 10-01a — when set, the handler will look up
+    // `errors.<code>` via req.i18n before emitting `message`. Left
+    // undefined for non-typed errors (ZodError, fastify validation,
+    // APIError, default catch-all) to preserve their existing literal
+    // emission semantics.
+    let code: string | undefined;
 
     const fv = err as FastifyValidationLike;
     const errMessage = err instanceof Error ? err.message : "";
@@ -107,21 +136,33 @@ export function registerErrorHandler(app: FastifyInstance): void {
     } else if (err instanceof ValidationError) {
       status = 400;
       message = err.message || "Invalid request";
+      code = err.code;
     } else if (err instanceof AuthError) {
       status = 401;
       message = err.message || "Session expired";
+      code = err.code;
     } else if (err instanceof NotFoundError) {
       status = 404;
       message = err.message || "Not found";
-    } else if (err instanceof RateLimitError || fv.statusCode === 429) {
+      code = err.code;
+    } else if (err instanceof RateLimitError) {
       status = 429;
       message = errMessage || "Too many requests";
-    } else if (err instanceof ServiceUnavailable || fv.statusCode === 503) {
+      code = err.code;
+    } else if (fv.statusCode === 429) {
+      status = 429;
+      message = errMessage || "Too many requests";
+    } else if (err instanceof ServiceUnavailable) {
+      status = 503;
+      message = errMessage || "Service temporarily unavailable";
+      code = err.code;
+    } else if (fv.statusCode === 503) {
       status = 503;
       message = errMessage || "Service temporarily unavailable";
     } else if (err instanceof ServerError) {
       status = 500;
       message = err.message || "Internal server error";
+      code = err.code;
     } else if (findSSRFBlockedError(err) !== null) {
       // Phase 6 / Plan 06 (SCALE-04, D-S5) — outbound blocked by SSRF
       // gate. 502 envelope; audit_log row already written by the
@@ -161,6 +202,15 @@ export function registerErrorHandler(app: FastifyInstance): void {
     // client.
     req.log.warn({ err, status }, "request error");
 
-    reply.status(status).type(JSON_CT).send({ error: message });
+    // Phase 10 / Plan 10-01a — localize typed-error messages via
+    // i18next using `req.i18n` (steered by Accept-Language). When code
+    // is undefined (non-typed errors) OR req.i18n is missing (legacy
+    // boot), `message` flows through untouched.
+    const localized = localize(
+      req as unknown as { i18n?: { t(k: string, o?: object): string } },
+      code,
+      message,
+    );
+    reply.status(status).type(JSON_CT).send({ error: localized });
   });
 }

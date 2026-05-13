@@ -62,6 +62,7 @@ import type { ExecutableTx, TransactionalDb } from "@openwhispr/data";
 import type { LitellmClient } from "@openwhispr/litellm-client";
 import Fastify, { type FastifyInstance } from "fastify";
 import { registerErrorHandler } from "./error-handler.js";
+import { i18nPlugin } from "./i18n/init.js";
 import { type DepCheck, makeDepCheck } from "./lib/dep-check.js";
 import type { RedisLike } from "./lib/idempotency-cache.js";
 import { buildMintBearer } from "./lib/mint-bearer.js";
@@ -224,6 +225,15 @@ export const buildApp = async (opts: BuildAppOptions = {}): Promise<FastifyInsta
 
   // 5. x-openwhispr-source mirrored onto every req.log child (AUTH-06).
   await app.register(requestLog);
+
+  // 5b. Phase 10 / Plan 10-01a — i18next middleware: attach `req.i18n`
+  //     (and `req.language`) keyed off Accept-Language so the centralized
+  //     error handler can emit localized envelopes. Registered AFTER
+  //     requestLog (preserves the structured logger ordering) and BEFORE
+  //     dual-auth / routes so error envelopes emitted from anywhere
+  //     downstream (auth hook, route handlers, plugin errors) read a
+  //     populated `req.i18n` at error-emission time.
+  await app.register(i18nPlugin);
 
   // 6. Rate-limit BEFORE routes so per-route configs apply.
   // Phase 6 / Plan 06-09 / D-RL3 — when EITHER tier emits 429, fire a
