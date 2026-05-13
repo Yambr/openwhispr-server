@@ -9,14 +9,11 @@
 // table. The `notes.folder_id` FK is ON DELETE SET NULL but soft-delete
 // does NOT trigger that — children stay attached, will be re-parented if
 // the folder is restored. This matches upstream desktop semantics.
-import {
-  type ExecutableTx,
-  type TransactionalDb,
-  withTenant,
-} from "@openwhispr/data";
+import { type ExecutableTx, type TransactionalDb, withTenant } from "@openwhispr/data";
 import { sql } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
+import { AuthError } from "../../errors.js";
 
 const DeleteBodySchema = z.object({
   id: z.string().uuid(),
@@ -34,7 +31,7 @@ export const buildFoldersDeleteRoutes = (deps: FoldersDeleteDeps) =>
       config: { rateLimit: { max: 120, timeWindow: "1 minute" } },
       handler: async (req, reply) => {
         if (!req.user || !req.tenant) {
-          return reply.code(401).send({ error: "unauthorized" });
+          throw new AuthError("UNAUTHORIZED", "unauthorized");
         }
         const body = DeleteBodySchema.parse(req.body);
         const tenantId = req.tenant;

@@ -16,13 +16,10 @@
 // collections trigger 400 + an envelope explaining the cap. Phase 6
 // will introduce async BullMQ bulk-delete; for v1 the cap keeps the
 // request-time roundtrip bounded.
-import {
-  type ExecutableTx,
-  type TransactionalDb,
-  withTenant,
-} from "@openwhispr/data";
+import { type ExecutableTx, type TransactionalDb, withTenant } from "@openwhispr/data";
 import { sql } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
+import { AuthError } from "../../errors.js";
 
 const MAX_INLINE_PURGE = 1000;
 
@@ -41,7 +38,7 @@ export const buildNotesDeleteAllRoutes = (deps: NotesDeleteAllDeps) =>
       config: { rateLimit: { max: 3, timeWindow: "1 minute" } },
       handler: async (req, reply) => {
         if (!req.user || !req.tenant) {
-          return reply.code(401).send({ error: "unauthorized" });
+          throw new AuthError("UNAUTHORIZED", "unauthorized");
         }
         const tenantId = req.tenant;
         const userId = req.user.id;
@@ -76,11 +73,9 @@ export const buildNotesDeleteAllRoutes = (deps: NotesDeleteAllDeps) =>
         });
 
         if (result.exceeded) {
-          return reply
-            .code(400)
-            .send({
-              error: `delete-all exceeds ${MAX_INLINE_PURGE} rows; please delete in batches`,
-            });
+          return reply.code(400).send({
+            error: `delete-all exceeds ${MAX_INLINE_PURGE} rows; please delete in batches`,
+          });
         }
         return reply.code(200).send({ deleted: result.deleted });
       },

@@ -12,13 +12,10 @@
 // Pattern 1: createOrReturnExisting() from apps/api/src/lib/client-id-upsert.ts.
 // All DB activity under withTenant(deps.db, tenantId, ...) so FORCE-RLS
 // is in force (tenant_id GUC bound for the transaction).
-import {
-  type ExecutableTx,
-  type TransactionalDb,
-  withTenant,
-} from "@openwhispr/data";
+import { type ExecutableTx, type TransactionalDb, withTenant } from "@openwhispr/data";
 import { NoteInputSchema } from "@openwhispr/wire-schemas";
 import type { FastifyInstance } from "fastify";
+import { AuthError } from "../../errors.js";
 import { createOrReturnExisting } from "../../lib/client-id-upsert.js";
 import { type CloudNoteRow, rowToCloudNote } from "./shape.js";
 
@@ -34,7 +31,7 @@ export const buildNotesCreateRoutes = (deps: NotesCreateDeps) =>
       config: { rateLimit: { max: 120, timeWindow: "1 minute" } },
       handler: async (req, reply) => {
         if (!req.user || !req.tenant) {
-          return reply.code(401).send({ error: "unauthorized" });
+          throw new AuthError("UNAUTHORIZED", "unauthorized");
         }
         const body = NoteInputSchema.parse(req.body);
         const tenantId = req.tenant;

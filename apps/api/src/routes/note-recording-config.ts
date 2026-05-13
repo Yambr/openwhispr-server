@@ -15,12 +15,9 @@
 // + `note_recording_overrides` (user) JSONB columns and falls through
 // to NOTE_RECORDING_* env defaults.
 
-import {
-  type ExecutableTx,
-  type TransactionalDb,
-  withTenant,
-} from "@openwhispr/data";
+import { type ExecutableTx, type TransactionalDb, withTenant } from "@openwhispr/data";
 import type { FastifyInstance } from "fastify";
+import { AuthError } from "../errors.js";
 import { resolveNoteRecordingConfig } from "../lib/settings-resolver.js";
 
 export interface NoteRecordingConfigDeps {
@@ -36,7 +33,7 @@ export const buildNoteRecordingConfigRoutes = (deps: NoteRecordingConfigDeps) =>
       handler: async (req, reply) => {
         if (!req.user || !req.tenant) {
           // Defensive — dualAuthHook should have thrown.
-          return reply.code(401).send({ error: "unauthorized" });
+          throw new AuthError("UNAUTHORIZED", "unauthorized");
         }
         const tenantId = req.tenant;
         const userId = req.user.id;

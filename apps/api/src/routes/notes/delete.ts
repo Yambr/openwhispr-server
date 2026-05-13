@@ -10,14 +10,11 @@
 // keyset partial index drops the row from `notes_keyset_idx` at the
 // same instant (WHERE deleted_at IS NULL clause), so list/search
 // continue to skip it without further filtering work.
-import {
-  type ExecutableTx,
-  type TransactionalDb,
-  withTenant,
-} from "@openwhispr/data";
+import { type ExecutableTx, type TransactionalDb, withTenant } from "@openwhispr/data";
 import { sql } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
+import { AuthError } from "../../errors.js";
 
 const DeleteBodySchema = z.object({
   id: z.string().uuid(),
@@ -35,7 +32,7 @@ export const buildNotesDeleteRoutes = (deps: NotesDeleteDeps) =>
       config: { rateLimit: { max: 120, timeWindow: "1 minute" } },
       handler: async (req, reply) => {
         if (!req.user || !req.tenant) {
-          return reply.code(401).send({ error: "unauthorized" });
+          throw new AuthError("UNAUTHORIZED", "unauthorized");
         }
         const body = DeleteBodySchema.parse(req.body);
         const tenantId = req.tenant;

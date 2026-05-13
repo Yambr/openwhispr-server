@@ -17,14 +17,11 @@
 // idempotency semantics as /create, applied per element. Rows without
 // a client_note_id are returned with `client_note_id: null` in the
 // response (the desktop ignores those entries).
-import {
-  type ExecutableTx,
-  type TransactionalDb,
-  withTenant,
-} from "@openwhispr/data";
+import { type ExecutableTx, type TransactionalDb, withTenant } from "@openwhispr/data";
 import { NoteInputSchema } from "@openwhispr/wire-schemas";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
+import { AuthError } from "../../errors.js";
 import { createOrReturnExisting } from "../../lib/client-id-upsert.js";
 import type { CloudNoteRow } from "./shape.js";
 
@@ -55,16 +52,14 @@ export const buildNotesBatchCreateRoutes = (deps: NotesBatchCreateDeps) =>
       config: { rateLimit: { max: 5, timeWindow: "1 minute" } },
       handler: async (req, reply) => {
         if (!req.user || !req.tenant) {
-          return reply.code(401).send({ error: "unauthorized" });
+          throw new AuthError("UNAUTHORIZED", "unauthorized");
         }
         const parsed = BatchCreateBodySchema.parse(req.body);
         const notesInput = Array.isArray(parsed) ? parsed : parsed.notes;
 
         // D-30 — batch size exceeds 500 → 400 envelope.
         if (notesInput.length > MAX_BATCH_SIZE) {
-          return reply
-            .code(400)
-            .send({ error: `batch size exceeds ${MAX_BATCH_SIZE} items` });
+          return reply.code(400).send({ error: `batch size exceeds ${MAX_BATCH_SIZE} items` });
         }
 
         const tenantId = req.tenant;

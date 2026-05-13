@@ -12,14 +12,11 @@
 // semantics as /create, applied per element. Sequential within ONE
 // withTenant transaction (parallel would deadlock on the partial UNIQUE
 // index).
-import {
-  type ExecutableTx,
-  type TransactionalDb,
-  withTenant,
-} from "@openwhispr/data";
+import { type ExecutableTx, type TransactionalDb, withTenant } from "@openwhispr/data";
 import { FolderInputSchema } from "@openwhispr/wire-schemas";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
+import { AuthError } from "../../errors.js";
 import { createOrReturnExisting } from "../../lib/client-id-upsert.js";
 import { type CloudFolderRow, rowToCloudFolder } from "./shape.js";
 
@@ -45,16 +42,14 @@ export const buildFoldersBatchCreateRoutes = (deps: FoldersBatchCreateDeps) =>
       config: { rateLimit: { max: 5, timeWindow: "1 minute" } },
       handler: async (req, reply) => {
         if (!req.user || !req.tenant) {
-          return reply.code(401).send({ error: "unauthorized" });
+          throw new AuthError("UNAUTHORIZED", "unauthorized");
         }
         const parsed = BatchCreateBodySchema.parse(req.body);
         const foldersInput = Array.isArray(parsed) ? parsed : parsed.folders;
 
         // D-30 — batch size exceeds 500 → 400 envelope.
         if (foldersInput.length > MAX_BATCH_SIZE) {
-          return reply
-            .code(400)
-            .send({ error: `batch size exceeds ${MAX_BATCH_SIZE} items` });
+          return reply.code(400).send({ error: `batch size exceeds ${MAX_BATCH_SIZE} items` });
         }
 
         const tenantId = req.tenant;

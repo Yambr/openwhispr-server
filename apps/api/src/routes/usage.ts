@@ -15,13 +15,10 @@
 //   3. Response: `{wordsUsed, wordsRemaining: 999_999_999, plan:
 //      'unlimited', limitReached: false}` per D-12/D-15.
 
-import {
-  type ExecutableTx,
-  type TransactionalDb,
-  withTenant,
-} from "@openwhispr/data";
+import { type ExecutableTx, type TransactionalDb, withTenant } from "@openwhispr/data";
 import { sql } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
+import { AuthError } from "../errors.js";
 
 export interface UsageDeps {
   db: TransactionalDb<ExecutableTx>;
@@ -42,7 +39,7 @@ export const buildUsageRoutes = (deps: UsageDeps) =>
       handler: async (req, reply) => {
         if (!req.user || !req.tenant) {
           // Defensive — dualAuthHook should have thrown.
-          return reply.code(401).send({ error: "unauthorized" });
+          throw new AuthError("UNAUTHORIZED", "unauthorized");
         }
 
         const tenantId = req.tenant;
@@ -58,8 +55,7 @@ export const buildUsageRoutes = (deps: UsageDeps) =>
           const sumRow = result.rows?.[0];
           if (sumRow) {
             const raw = sumRow.words_used;
-            wordsUsed =
-              typeof raw === "number" ? raw : raw == null ? 0 : Number(raw);
+            wordsUsed = typeof raw === "number" ? raw : raw == null ? 0 : Number(raw);
           }
         });
 

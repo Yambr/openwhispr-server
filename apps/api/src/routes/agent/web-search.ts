@@ -37,18 +37,12 @@
 //   * T-WEB-INJ — WebSearchRequestSchema enforces 1..256 chars on query
 //     and 1..10 on numResults.
 
-import {
-  type ExecutableTx,
-  type TransactionalDb,
-  withTenant,
-} from "@openwhispr/data";
+import { type ExecutableTx, type TransactionalDb, withTenant } from "@openwhispr/data";
 import { WebSearchRequestSchema } from "@openwhispr/wire-schemas";
 import { sql } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
-import {
-  resolveWebSearchProvider,
-  webSearchRegistry,
-} from "../../lib/web-search/registry.js";
+import { AuthError } from "../../errors.js";
+import { resolveWebSearchProvider, webSearchRegistry } from "../../lib/web-search/registry.js";
 import {
   MissingProviderKeyError,
   UpstreamError,
@@ -88,7 +82,7 @@ export const buildWebSearchRoutes = (deps: WebSearchDeps) =>
       handler: async (req, reply) => {
         if (!req.user || !req.tenant) {
           // Defensive — dualAuthHook should have thrown already.
-          return reply.code(401).send({ error: "unauthorized" });
+          throw new AuthError("UNAUTHORIZED", "unauthorized");
         }
 
         // Manual zod parse so ZodError → centralized 400 envelope.
@@ -96,12 +90,18 @@ export const buildWebSearchRoutes = (deps: WebSearchDeps) =>
 
         if (!provider.isConfigured()) {
           // Per-provider 503 envelope. Pitfall #8 — NEVER 401.
-          const envVarName = provider.name === "tavily" ? "TAVILY_API_KEY"
-            : provider.name === "yandex" ? "YANDEX_SEARCH_API_KEY + YANDEX_SEARCH_FOLDER_ID"
-            : "<provider env vars>";
-          const label = provider.name === "tavily" ? "Tavily"
-            : provider.name === "yandex" ? "Yandex"
-            : provider.name;
+          const envVarName =
+            provider.name === "tavily"
+              ? "TAVILY_API_KEY"
+              : provider.name === "yandex"
+                ? "YANDEX_SEARCH_API_KEY + YANDEX_SEARCH_FOLDER_ID"
+                : "<provider env vars>";
+          const label =
+            provider.name === "tavily"
+              ? "Tavily"
+              : provider.name === "yandex"
+                ? "Yandex"
+                : provider.name;
           return reply.code(503).send({
             error: `${label} not configured (set ${envVarName} in .env)`,
           });

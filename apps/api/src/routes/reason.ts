@@ -41,7 +41,7 @@ import {
 } from "@openwhispr/litellm-client";
 import { sql } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
-import { ServiceUnavailable } from "../errors.js";
+import { AuthError, ServiceUnavailable } from "../errors.js";
 
 export interface ReasonDeps {
   db: TransactionalDb<ExecutableTx>;
@@ -89,7 +89,7 @@ export const buildReasonRoutes = (deps: ReasonDeps) =>
       handler: async (req, reply) => {
         if (!req.user || !req.tenant) {
           // Defensive — dualAuthHook should have thrown.
-          return reply.code(401).send({ error: "unauthorized" });
+          throw new AuthError("UNAUTHORIZED", "unauthorized");
         }
 
         // Manual zod parse so .strict() rejection raises ZodError —
@@ -117,13 +117,8 @@ export const buildReasonRoutes = (deps: ReasonDeps) =>
             throw new ServiceUnavailable(err.message);
           }
           if (err instanceof LitellmUpstreamError) {
-            req.log.warn(
-              { status: err.status },
-              "litellm upstream error on /api/reason",
-            );
-            return reply
-              .code(502)
-              .send({ error: "upstream reasoning provider failure" });
+            req.log.warn({ status: err.status }, "litellm upstream error on /api/reason");
+            return reply.code(502).send({ error: "upstream reasoning provider failure" });
           }
           throw err;
         }

@@ -11,14 +11,11 @@
 // semantics as /create, applied per element. Sequential within ONE
 // withTenant transaction (parallel would deadlock on the partial UNIQUE
 // index). D-32 — NO usage_ledger writes (storage-only).
-import {
-  type ExecutableTx,
-  type TransactionalDb,
-  withTenant,
-} from "@openwhispr/data";
+import { type ExecutableTx, type TransactionalDb, withTenant } from "@openwhispr/data";
 import { TranscriptionInputSchema } from "@openwhispr/wire-schemas";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
+import { AuthError } from "../../errors.js";
 import { createOrReturnExisting } from "../../lib/client-id-upsert.js";
 import { type CloudTranscriptionRow, rowToCloudTranscription } from "./shape.js";
 
@@ -35,28 +32,22 @@ export interface TranscriptionsBatchCreateDeps {
   db: TransactionalDb<ExecutableTx>;
 }
 
-export const buildTranscriptionsBatchCreateRoutes = (
-  deps: TranscriptionsBatchCreateDeps,
-) =>
-  async function transcriptionsBatchCreateRoutes(
-    app: FastifyInstance,
-  ): Promise<void> {
+export const buildTranscriptionsBatchCreateRoutes = (deps: TranscriptionsBatchCreateDeps) =>
+  async function transcriptionsBatchCreateRoutes(app: FastifyInstance): Promise<void> {
     app.route({
       method: "POST",
       url: "/api/transcriptions/batch-create",
       config: { rateLimit: { max: 5, timeWindow: "1 minute" } },
       handler: async (req, reply) => {
         if (!req.user || !req.tenant) {
-          return reply.code(401).send({ error: "unauthorized" });
+          throw new AuthError("UNAUTHORIZED", "unauthorized");
         }
         const parsed = BatchCreateBodySchema.parse(req.body);
         const items = Array.isArray(parsed) ? parsed : parsed.transcriptions;
 
         // D-30 — batch size > 500 → 400 envelope BEFORE any DB work.
         if (items.length > MAX_BATCH_SIZE) {
-          return reply
-            .code(400)
-            .send({ error: `batch size exceeds ${MAX_BATCH_SIZE} items` });
+          return reply.code(400).send({ error: `batch size exceeds ${MAX_BATCH_SIZE} items` });
         }
 
         const tenantId = req.tenant;
@@ -66,9 +57,7 @@ export const buildTranscriptionsBatchCreateRoutes = (
           const results: ReturnType<typeof rowToCloudTranscription>[] = [];
           for (const input of items) {
             const text = input.text ?? "";
-            const wordCount = text.trim().length === 0
-              ? 0
-              : text.trim().split(/\s+/).length;
+            const wordCount = text.trim().length === 0 ? 0 : text.trim().split(/\s+/).length;
             const insertValues: Record<string, unknown> = {
               tenant_id: tenantId,
               user_id: userId,
@@ -83,17 +72,14 @@ export const buildTranscriptionsBatchCreateRoutes = (
               audio_duration_ms: input.audio_duration_ms ?? null,
               status: input.status ?? "completed",
             };
-            const { row } = await createOrReturnExisting<CloudTranscriptionRow>(
-              tx,
-              {
-                table: "transcriptions",
-                clientIdColumn: "client_transcription_id",
-                tenantId,
-                userId,
-                clientIdValue: input.client_transcription_id ?? null,
-                insertValues,
-              },
-            );
+            const { row } = await createOrReturnExisting<CloudTranscriptionRow>(tx, {
+              table: "transcriptions",
+              clientIdColumn: "client_transcription_id",
+              tenantId,
+              userId,
+              clientIdValue: input.client_transcription_id ?? null,
+              insertValues,
+            });
             results.push(rowToCloudTranscription(row));
           }
           return results;

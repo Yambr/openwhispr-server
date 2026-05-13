@@ -13,14 +13,11 @@
 //
 // Uses `id = ANY($1::uuid[])` for a single-statement bulk update — one
 // transaction, one round-trip; RLS still gates each row.
-import {
-  type ExecutableTx,
-  type TransactionalDb,
-  withTenant,
-} from "@openwhispr/data";
+import { type ExecutableTx, type TransactionalDb, withTenant } from "@openwhispr/data";
 import { sql } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
+import { AuthError } from "../../errors.js";
 
 const MAX_BATCH_SIZE = 500;
 
@@ -32,26 +29,20 @@ export interface TranscriptionsBatchDeleteDeps {
   db: TransactionalDb<ExecutableTx>;
 }
 
-export const buildTranscriptionsBatchDeleteRoutes = (
-  deps: TranscriptionsBatchDeleteDeps,
-) =>
-  async function transcriptionsBatchDeleteRoutes(
-    app: FastifyInstance,
-  ): Promise<void> {
+export const buildTranscriptionsBatchDeleteRoutes = (deps: TranscriptionsBatchDeleteDeps) =>
+  async function transcriptionsBatchDeleteRoutes(app: FastifyInstance): Promise<void> {
     app.route({
       method: "POST",
       url: "/api/transcriptions/batch-delete",
       config: { rateLimit: { max: 5, timeWindow: "1 minute" } },
       handler: async (req, reply) => {
         if (!req.user || !req.tenant) {
-          return reply.code(401).send({ error: "unauthorized" });
+          throw new AuthError("UNAUTHORIZED", "unauthorized");
         }
         const body = BatchDeleteBodySchema.parse(req.body);
 
         if (body.ids.length > MAX_BATCH_SIZE) {
-          return reply
-            .code(400)
-            .send({ error: `batch size exceeds ${MAX_BATCH_SIZE} items` });
+          return reply.code(400).send({ error: `batch size exceeds ${MAX_BATCH_SIZE} items` });
         }
 
         const tenantId = req.tenant;

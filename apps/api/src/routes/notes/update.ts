@@ -13,14 +13,11 @@
 // updated_at is bumped server-side regardless of input. The desktop's
 // PATCH may carry `updated_at` from its own clock but the server is
 // the source of truth on this field.
-import {
-  type ExecutableTx,
-  type TransactionalDb,
-  withTenant,
-} from "@openwhispr/data";
+import { type ExecutableTx, type TransactionalDb, withTenant } from "@openwhispr/data";
 import { sql } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
+import { AuthError } from "../../errors.js";
 import { type CloudNoteRow, rowToCloudNote } from "./shape.js";
 
 // Allowed mutable columns. STRICT allowlist — defends against
@@ -94,7 +91,7 @@ export const buildNotesUpdateRoutes = (deps: NotesUpdateDeps) =>
       config: { rateLimit: { max: 120, timeWindow: "1 minute" } },
       handler: async (req, reply) => {
         if (!req.user || !req.tenant) {
-          return reply.code(401).send({ error: "unauthorized" });
+          throw new AuthError("UNAUTHORIZED", "unauthorized");
         }
         const body = UpdateBodySchema.parse(req.body);
         const tenantId = req.tenant;
@@ -103,7 +100,7 @@ export const buildNotesUpdateRoutes = (deps: NotesUpdateDeps) =>
         // Build the SET clause from provided fields only.
         const setFragments = [];
         for (const [key, col] of Object.entries(FIELD_MAP)) {
-          if (Object.prototype.hasOwnProperty.call(body, key)) {
+          if (Object.hasOwn(body, key)) {
             const v = (body as Record<string, unknown>)[key];
             // sql.identifier-style: quote literal column name (statically
             // sourced from FIELD_MAP, never user input).

@@ -17,13 +17,10 @@
 // is in force (tenant_id GUC bound for the transaction). Cross-tenant
 // invisibility is guaranteed by the api_keys_isolation RLS policy from
 // Plan 01 migration 0010 (T-05-07 mitigation).
-import {
-  type ExecutableTx,
-  type TransactionalDb,
-  withTenant,
-} from "@openwhispr/data";
+import { type ExecutableTx, type TransactionalDb, withTenant } from "@openwhispr/data";
 import { sql } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
+import { AuthError } from "../../../errors.js";
 
 export interface KeysListDeps {
   db: TransactionalDb<ExecutableTx>;
@@ -81,7 +78,7 @@ export const buildKeysListRoutes = (deps: KeysListDeps) =>
       config: { rateLimit: { max: 120, timeWindow: "1 minute" } },
       handler: async (req, reply) => {
         if (!req.user || !req.tenant) {
-          return reply.code(401).send({ error: "unauthorized" });
+          throw new AuthError("UNAUTHORIZED", "unauthorized");
         }
         const tenantId = req.tenant;
         const userId = req.user.id;
@@ -101,9 +98,7 @@ export const buildKeysListRoutes = (deps: KeysListDeps) =>
         });
 
         // V1Response envelope per D-28: { data: { keys: ApiKey[] } }.
-        return reply
-          .code(200)
-          .send({ data: { keys: rows.map(rowToApiKey) } });
+        return reply.code(200).send({ data: { keys: rows.map(rowToApiKey) } });
       },
     });
   };

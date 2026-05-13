@@ -25,6 +25,7 @@ import { type ExecutableTx, type TransactionalDb, withTenant } from "@openwhispr
 import { sql } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
+import { AuthError } from "../../../errors.js";
 import { auditCtxFromRequest, recordAudit } from "../../../lib/audit.js";
 import { type ApiKeyRow, rowToApiKey } from "./list.js";
 
@@ -44,7 +45,7 @@ export const buildKeysRevokeRoutes = (deps: KeysRevokeDeps) =>
       config: { rateLimit: { max: 120, timeWindow: "1 minute" } },
       handler: async (req, reply) => {
         if (!req.user || !req.tenant) {
-          return reply.code(401).send({ error: "unauthorized" });
+          throw new AuthError("UNAUTHORIZED", "unauthorized");
         }
         const tenantId = req.tenant;
         const userId = req.user.id;

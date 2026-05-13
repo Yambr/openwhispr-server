@@ -26,12 +26,9 @@
 // no LiteLLM gate). Same rate-limit budget as the rest of the
 // operational surface.
 
-import {
-  type ExecutableTx,
-  type TransactionalDb,
-  withTenant,
-} from "@openwhispr/data";
+import { type ExecutableTx, type TransactionalDb, withTenant } from "@openwhispr/data";
 import type { FastifyInstance } from "fastify";
+import { AuthError } from "../errors.js";
 import { resolveSttConfig } from "../lib/settings-resolver.js";
 
 export interface SttConfigDeps {
@@ -47,7 +44,7 @@ export const buildSttConfigRoutes = (deps: SttConfigDeps) =>
       handler: async (req, reply) => {
         if (!req.user || !req.tenant) {
           // Defensive — dualAuthHook should have thrown.
-          return reply.code(401).send({ error: "unauthorized" });
+          throw new AuthError("UNAUTHORIZED", "unauthorized");
         }
         const tenantId = req.tenant;
         const userId = req.user.id;

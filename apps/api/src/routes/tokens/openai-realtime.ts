@@ -33,7 +33,7 @@
 //     fan-out beyond the intended 2.
 
 import type { FastifyInstance } from "fastify";
-import { ServiceUnavailable } from "../../errors.js";
+import { ServiceUnavailable, ValidationError } from "../../errors.js";
 import { callProvider } from "./_call-provider.js";
 
 const DEFAULT_MODEL = "gpt-realtime";
@@ -74,7 +74,7 @@ export const buildOpenAIRealtimeTokenRoutes = () =>
         const streams = body.streams ?? 1;
         // D-17 + T-04-INPUT: explicit allowlist, no Number coercion.
         if (streams !== 1 && streams !== 2) {
-          return reply.code(400).send({ error: "streams must be 1 or 2" });
+          throw new ValidationError("INVALID_STREAMS_COUNT", "streams must be 1 or 2");
         }
         const model = body.model ?? DEFAULT_MODEL;
 

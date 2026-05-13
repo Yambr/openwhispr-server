@@ -41,7 +41,7 @@ import { createHash } from "node:crypto";
 import { setTimeout as sleep } from "node:timers/promises";
 import { DiarizationResponse } from "@openwhispr/contract-tests/schemas";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
-import { ServiceUnavailable } from "../errors.js";
+import { AuthError, ServiceUnavailable } from "../errors.js";
 import {
   createIdempotencyCache,
   type IdempotencyCache,
@@ -151,7 +151,7 @@ function handleDiarization(deps: DiarizationDeps, idem: IdempotencyCache) {
   return async (req: FastifyRequest, reply: FastifyReply) => {
     if (!req.user || !req.tenant) {
       // Defensive — dualAuthHook should have thrown.
-      return reply.code(401).send({ error: "unauthorized" });
+      throw new AuthError("UNAUTHORIZED", "unauthorized");
     }
 
     // Mock-mode short-circuit (contract-test profile). The fixture body
@@ -392,7 +392,7 @@ function handleSpeachesDiarization(deps: DiarizationDeps) {
   const fetchImpl: typeof fetch = deps.speachesFetch ?? globalThis.fetch;
   return async (req: FastifyRequest, reply: FastifyReply) => {
     if (!req.user || !req.tenant) {
-      return reply.code(401).send({ error: "unauthorized" });
+      throw new AuthError("UNAUTHORIZED", "unauthorized");
     }
 
     const contentTypeHeader = req.headers["content-type"];
