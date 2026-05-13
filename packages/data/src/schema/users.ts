@@ -24,6 +24,13 @@ export const users = pgTable(
     emailVerifiedAt: timestamp("email_verified_at", { withTimezone: true }),
     image: text("image"),
     passwordHash: text("password_hash"),
+    // Phase 10 / Plan 10-01c — per-user preferred locale used by the API
+    // i18next negotiation chain (cookie → Accept-Language → DB → 'en') and
+    // the worker email-template renderer (Plan 10-01b). Constrained at the
+    // database layer to {'en','ru'} via CHECK in migration 0016. The
+    // drizzle column declares the default; the CHECK predicate (which
+    // drizzle-kit cannot emit from this DSL) lives in the migration.
+    locale: text("locale").notNull().default("en"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
