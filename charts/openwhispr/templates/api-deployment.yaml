@@ -70,19 +70,20 @@ spec:
           image: curlimages/curl:8.10.1
           imagePullPolicy: IfNotPresent
           # Pitfall #4 mitigation — operator's Traefik install might omit
-          # the websecure-realtime entrypoint (long WSS for /v1/realtime).
-          # Fail fast here rather than serving 60-min realtime sessions
-          # to an entrypoint that silently capped them at 60s.
-          # See charts/openwhispr/examples/traefik-values.yaml for the
-          # correct Traefik install overlay.
+          # the realtime entrypoint (long WSS for /v1/realtime). Fail fast
+          # here rather than serving 60-min realtime sessions to an
+          # entrypoint that silently capped them at 60s. See
+          # charts/openwhispr/examples/traefik-values.yaml for the correct
+          # Traefik install overlay. Entrypoint name is overridable via
+          # `.Values.ingress.realtimeEntrypointName` (Finding 09.1-F2).
           command:
             - sh
             - -c
             - |
               set -eu
-              echo "traefik-preflight: probing {{ .Values.ingress.preflightTraefikAdminUrl }}/api/entrypoints"
-              if ! curl -fsS --max-time 10 "{{ .Values.ingress.preflightTraefikAdminUrl }}/api/entrypoints" | grep -q websecure-realtime; then
-                echo "FATAL: Traefik missing websecure-realtime entrypoint" 1>&2
+              echo "traefik-preflight: probing {{ .Values.ingress.preflightTraefikAdminUrl }}/api/entrypoints for {{ .Values.ingress.realtimeEntrypointName }}"
+              if ! curl -fsS --max-time 10 "{{ .Values.ingress.preflightTraefikAdminUrl }}/api/entrypoints" | grep -q '"name":"{{ .Values.ingress.realtimeEntrypointName }}"'; then
+                echo "FATAL: Traefik missing realtime entrypoint '{{ .Values.ingress.realtimeEntrypointName }}'" 1>&2
                 echo "       see charts/openwhispr/examples/traefik-values.yaml" 1>&2
                 exit 1
               fi

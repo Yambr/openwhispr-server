@@ -4,7 +4,7 @@ Cluster prerequisites (must be installed BEFORE this chart):
 
   1. CloudNativePG operator (A2):       see charts/openwhispr/examples/cnpg-install.sh
   2. Traefik 3 with two entrypoints:    see charts/openwhispr/examples/traefik-values.yaml
-                                        (websecure :443 + websecure-realtime :8443)
+                                        (websecure :443 + {{ .Values.ingress.realtimeEntrypointName }} :8443)
   3. cert-manager:                      kubectl apply -f https://github.com/cert-manager/cert-manager/releases/latest/download/cert-manager.yaml
   4. (Optional) LGTM stack (A3):        see charts/openwhispr/examples/lgtm-install.sh
   5. (Optional) External Secrets Operator (A1, when secrets.mode=eso)

@@ -269,9 +269,11 @@ tests:
       - matchRegex:
           path: spec.template.spec.initContainers[1].image
           pattern: "^curlimages/curl:"
+      # Finding 09.1-F2: name shortened to ≤15 chars; default value
+      # `wsrealtime`. Override via .Values.ingress.realtimeEntrypointName.
       - matchRegex:
           path: spec.template.spec.initContainers[1].command[2]
-          pattern: "websecure-realtime"
+          pattern: '"name":"wsrealtime"'
       - matchRegex:
           path: spec.template.spec.initContainers[1].command[2]
           pattern: "/api/entrypoints"
