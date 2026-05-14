@@ -51,6 +51,18 @@ export const DEFAULT_HELM_ARGS = [
   // it here to flip the DaemonSet on and validates compose-vs-chart parity.
   "--set",
   "observability.collector.enabled=true",
+  // Plan 14-06 / BYOK-01 — five slim-core toggles default to false. The
+  // parity linter must render the FULL profile so every chart resource is
+  // visible to the 1:1 compose-overlay check. Each --set below mirrors a
+  // compose overlay (observability / storage / ingress / pgbouncer).
+  "--set",
+  "observability.enabled=true",
+  "--set",
+  "storage.enabled=true",
+  "--set",
+  "tls.enabled=true",
+  "--set",
+  "pooler.enabled=true",
   "--set-string",
   "observability.lgtm.endpoint=https://otlp.parity-fake.example.com",
   "--set-string",
