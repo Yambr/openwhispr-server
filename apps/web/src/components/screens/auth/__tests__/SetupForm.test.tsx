@@ -335,6 +335,48 @@ describe("SetupForm — Task 4 client wizard", () => {
     expect(routerPush).toHaveBeenCalledWith("/admin");
   });
 
+  it("(extra) non-2xx fetch response surfaces the generic error alert", async () => {
+    globalThis.fetch = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ error: { code: "ADMIN_CREATE_FAILED" } }), {
+        status: 400,
+        headers: { "content-type": "application/json" },
+      }),
+    ) as unknown as typeof fetch;
+    const { SetupForm } = await import("../SetupForm");
+    const user = userEvent.setup();
+    render(
+      <WrapForm>
+        <SetupForm />
+      </WrapForm>,
+    );
+    await user.type(screen.getByLabelText(/^name$/i), "Alice");
+    await user.type(screen.getByLabelText(/email/i), "a@x.test");
+    await user.type(screen.getByLabelText(/^password$/i), "CorrectHorseBattery9");
+    await user.type(screen.getByLabelText(/workspace name/i), "Acme");
+    await user.click(screen.getByRole("button", { name: /create admin and finish setup/i }));
+    expect(await screen.findByRole("alert")).toBeInTheDocument();
+    expect(screen.getByText(/Setup failed/i)).toBeInTheDocument();
+    expect(routerPush).not.toHaveBeenCalled();
+  });
+
+  it("(extra) thrown fetch (network failure) surfaces the generic error alert", async () => {
+    globalThis.fetch = vi.fn().mockRejectedValue(new Error("network")) as unknown as typeof fetch;
+    const { SetupForm } = await import("../SetupForm");
+    const user = userEvent.setup();
+    render(
+      <WrapForm>
+        <SetupForm />
+      </WrapForm>,
+    );
+    await user.type(screen.getByLabelText(/^name$/i), "Alice");
+    await user.type(screen.getByLabelText(/email/i), "a@x.test");
+    await user.type(screen.getByLabelText(/^password$/i), "CorrectHorseBattery9");
+    await user.type(screen.getByLabelText(/workspace name/i), "Acme");
+    await user.click(screen.getByRole("button", { name: /create admin and finish setup/i }));
+    expect(await screen.findByRole("alert")).toBeInTheDocument();
+    expect(screen.getByText(/Setup failed/i)).toBeInTheDocument();
+  });
+
   it("(e) 201 with warnings:['tenant_rename_failed'] renders notice AND still redirects", async () => {
     globalThis.fetch = vi.fn().mockResolvedValue(
       new Response(
