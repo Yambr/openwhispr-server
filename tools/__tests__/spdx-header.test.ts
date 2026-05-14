@@ -1,18 +1,31 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 // REUSE-IgnoreStart
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+  readFileSync as _readFileSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { resolve as _resolve, join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   applyHeader,
+  applyHeaderHash,
   auditDir,
+  auditDirHash,
   fixDir,
+  fixDirHash,
+  HASH_HEADER,
   HEADER,
+  hasHashHeader,
   hasHeader,
   isBinary,
   main,
   shouldSkip,
+  shouldSkipHash,
 } from "../spdx-header.js";
 
 let workDir: string;
@@ -369,5 +382,190 @@ describe("main CLI", () => {
     const code = await main(["node", "spdx-header.ts"]);
     expect(code).toBe(2);
   });
+});
+
+// ---------------------------------------------------------------------------
+// HI-01 regression — hash-comment-style SPDX headers (.yml/.yaml/.sh).
+//
+// After Phase 15-03 the TS/JS codemod is the contractual sweep tool, but
+// three files (compose/traefik/dynamic.dev.yml + 2 GitHub workflows) carry
+// an inline `# SPDX-License-Identifier: Apache-2.0` line that fell outside
+// the .ts/.js include patterns. These tests assert the codemod gains a
+// parallel hash-style audit + fix pair so the next sweep is byte-clean.
+// ---------------------------------------------------------------------------
+
+describe("HASH_HEADER constant (HI-01)", () => {
+  it("is the FSL-1.1-ALv2 SPDX short-form line with # comment prefix", () => {
+    expect(HASH_HEADER).toBe("# SPDX-License-Identifier: FSL-1.1-ALv2");
+  });
+});
+
+describe("hasHashHeader (HI-01)", () => {
+  it("returns true when first non-shebang line is the # SPDX header", () => {
+    expect(hasHashHeader("# SPDX-License-Identifier: FSL-1.1-ALv2\nfoo:\n")).toBe(true);
+  });
+
+  it("returns true when shebang precedes # header on line 2", () => {
+    expect(
+      hasHashHeader("#!/usr/bin/env bash\n# SPDX-License-Identifier: FSL-1.1-ALv2\necho hi\n"),
+    ).toBe(true);
+  });
+
+  it("returns false when no header present", () => {
+    expect(hasHashHeader("foo:\n")).toBe(false);
+  });
+
+  it("returns false when a stale Apache-2.0 # header is on line 1", () => {
+    expect(hasHashHeader("# SPDX-License-Identifier: Apache-2.0\nfoo:\n")).toBe(false);
+  });
+
+  it("returns false when a stale Apache-2.0 # header is on line 2 after shebang", () => {
+    expect(
+      hasHashHeader("#!/usr/bin/env bash\n# SPDX-License-Identifier: Apache-2.0\necho hi\n"),
+    ).toBe(false);
+  });
+});
+
+describe("applyHeaderHash (HI-01)", () => {
+  it("inserts # header on line 1 for plain yaml file", () => {
+    const out = applyHeaderHash("foo: bar\n");
+    expect(out).toBe("# SPDX-License-Identifier: FSL-1.1-ALv2\nfoo: bar\n");
+  });
+
+  it("inserts # header on line 2 when shebang on line 1 (sh file)", () => {
+    const out = applyHeaderHash("#!/usr/bin/env bash\necho hi\n");
+    expect(out).toBe("#!/usr/bin/env bash\n# SPDX-License-Identifier: FSL-1.1-ALv2\necho hi\n");
+  });
+
+  it("is idempotent — second application is a no-op", () => {
+    const once = applyHeaderHash("foo:\n");
+    const twice = applyHeaderHash(once);
+    expect(twice).toBe(once);
+  });
+
+  it("rewrites stale Apache-2.0 # header on line 1 to FSL-1.1-ALv2", () => {
+    const out = applyHeaderHash("# SPDX-License-Identifier: Apache-2.0\nfoo:\n");
+    expect(out).toBe("# SPDX-License-Identifier: FSL-1.1-ALv2\nfoo:\n");
+  });
+
+  it("rewrites stale Apache-2.0 # header on line 2 after shebang to FSL-1.1-ALv2", () => {
+    const out = applyHeaderHash(
+      "#!/usr/bin/env bash\n# SPDX-License-Identifier: Apache-2.0\necho hi\n",
+    );
+    expect(out).toBe("#!/usr/bin/env bash\n# SPDX-License-Identifier: FSL-1.1-ALv2\necho hi\n");
+  });
+
+  it("rewriting a stale Apache-2.0 # header is idempotent on second application", () => {
+    const once = applyHeaderHash("# SPDX-License-Identifier: Apache-2.0\nfoo:\n");
+    const twice = applyHeaderHash(once);
+    expect(twice).toBe(once);
+    expect(once.startsWith("# SPDX-License-Identifier: FSL-1.1-ALv2\n")).toBe(true);
+  });
+});
+
+describe("shouldSkipHash (HI-01)", () => {
+  it("does NOT skip ordinary .yml files", () => {
+    expect(shouldSkipHash("compose/traefik/dynamic.dev.yml")).toBe(false);
+  });
+
+  it("does NOT skip ordinary .yaml files", () => {
+    expect(shouldSkipHash("infra/values.yaml")).toBe(false);
+  });
+
+  it("does NOT skip ordinary .sh files", () => {
+    expect(shouldSkipHash("tools/foo.sh")).toBe(false);
+  });
+
+  it("does NOT skip github workflow yml under .github/workflows", () => {
+    expect(shouldSkipHash(".github/workflows/conformance-axe.yml")).toBe(false);
+    expect(shouldSkipHash(".github/workflows/e2e-cjm.yml")).toBe(false);
+  });
+
+  it("skips .ts files (handled by the TS-style codemod)", () => {
+    expect(shouldSkipHash("apps/api/src/index.ts")).toBe(true);
+  });
+
+  it("skips node_modules", () => {
+    expect(shouldSkipHash("node_modules/foo/foo.yml")).toBe(true);
+  });
+
+  it("skips dist", () => {
+    expect(shouldSkipHash("dist/x.yml")).toBe(true);
+  });
+});
+
+describe("auditDirHash + fixDirHash (HI-01)", () => {
+  it("flags .yml / .yaml / .sh files still carrying a stale Apache-2.0 # header", async () => {
+    write("a.yml", "# SPDX-License-Identifier: FSL-1.1-ALv2\nfoo: bar\n");
+    write("b.yaml", "# SPDX-License-Identifier: Apache-2.0\nfoo: bar\n");
+    write("c.sh", "#!/usr/bin/env bash\n# SPDX-License-Identifier: Apache-2.0\necho hi\n");
+    write("d.yml", "foo: bar\n");
+    const missing = await auditDirHash(workDir);
+    expect(missing.sort()).toEqual(["b.yaml", "c.sh", "d.yml"]);
+  });
+
+  it("rewrites stale Apache-2.0 # headers in-place to FSL-1.1-ALv2", async () => {
+    const p1 = write("a.yml", "# SPDX-License-Identifier: Apache-2.0\nfoo: bar\n");
+    const p2 = write(
+      "b.sh",
+      "#!/usr/bin/env bash\n# SPDX-License-Identifier: Apache-2.0\necho hi\n",
+    );
+    const count = await fixDirHash(workDir);
+    expect(count).toBe(2);
+    expect(_readFileSync(p1, "utf8")).toBe("# SPDX-License-Identifier: FSL-1.1-ALv2\nfoo: bar\n");
+    expect(_readFileSync(p2, "utf8")).toBe(
+      "#!/usr/bin/env bash\n# SPDX-License-Identifier: FSL-1.1-ALv2\necho hi\n",
+    );
+    const count2 = await fixDirHash(workDir);
+    expect(count2).toBe(0);
+  });
+
+  it("inserts # header into files missing it entirely", async () => {
+    const p = write("fresh.yml", "foo: bar\n");
+    const count = await fixDirHash(workDir);
+    expect(count).toBe(1);
+    expect(_readFileSync(p, "utf8")).toBe("# SPDX-License-Identifier: FSL-1.1-ALv2\nfoo: bar\n");
+  });
+
+  it("CLI: audit-hash returns 0 when clean", async () => {
+    write("a.yml", "# SPDX-License-Identifier: FSL-1.1-ALv2\nfoo:\n");
+    const code = await main(["node", "spdx-header.ts", "audit-hash", workDir]);
+    expect(code).toBe(0);
+  });
+
+  it("CLI: audit-hash returns 1 when files are stale or missing", async () => {
+    write("stale.yml", "# SPDX-License-Identifier: Apache-2.0\nfoo:\n");
+    const code = await main(["node", "spdx-header.ts", "audit-hash", workDir]);
+    expect(code).toBe(1);
+  });
+
+  it("CLI: fix-hash returns 0 and modifies files", async () => {
+    write("stale.yml", "# SPDX-License-Identifier: Apache-2.0\nfoo:\n");
+    const code = await main(["node", "spdx-header.ts", "fix-hash", workDir]);
+    expect(code).toBe(0);
+  });
+});
+
+describe("HI-01 regression — three specific paths must carry FSL hash header", () => {
+  // These three paths were flagged by gsd-code-reviewer (HI-01) as still
+  // carrying inline `# SPDX-License-Identifier: Apache-2.0`. After the fix
+  // they MUST be `# SPDX-License-Identifier: FSL-1.1-ALv2`.
+  const REPO_ROOT = _resolve(__dirname, "..", "..");
+  const PATHS = [
+    "compose/traefik/dynamic.dev.yml",
+    ".github/workflows/conformance-axe.yml",
+    ".github/workflows/e2e-cjm.yml",
+  ] as const;
+
+  for (const rel of PATHS) {
+    it(`${rel} carries # SPDX-License-Identifier: FSL-1.1-ALv2 as the first SPDX line`, () => {
+      const full = _resolve(REPO_ROOT, rel);
+      const text = _readFileSync(full, "utf8");
+      // Must contain the FSL hash header.
+      expect(text.includes("# SPDX-License-Identifier: FSL-1.1-ALv2")).toBe(true);
+      // Must NOT contain the stale Apache-2.0 hash header.
+      expect(text.includes("# SPDX-License-Identifier: Apache-2.0")).toBe(false);
+    });
+  }
 });
 // REUSE-IgnoreEnd
