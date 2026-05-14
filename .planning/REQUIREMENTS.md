@@ -428,11 +428,11 @@ Wave structure:
 
 ### E2E coverage + Customer Journey Map (Phase 13)
 
-- [ ] **E2E-01**: Cucumber+Playwright harness at `tests/e2e-cjm/` (separate from existing vitest `tests/e2e/`) booting the docker-compose stack; `make e2e-cjm` runs locally and in GHA `E2E_CJM=1` job
-- [ ] **E2E-02**: `docs/customer-journeys.md` (CJM) enumerates ~20 user journeys with `@cjm-N.M` Gherkin tags; every happy-path scenario has at least one negative-twin scenario (no journey ships happy-path-only)
+- [x] **E2E-01**: Cucumber+Playwright harness at `tests/e2e-cjm/` (separate from existing vitest `tests/e2e/`) booting the docker-compose stack; `make e2e-cjm` runs locally and in GHA `E2E_CJM=1` job
+- [x] **E2E-02**: `docs/customer-journeys.md` (CJM) enumerates ~20 user journeys with `@cjm-N.M` Gherkin tags; every happy-path scenario has at least one negative-twin scenario (no journey ships happy-path-only)
 - [ ] **E2E-03**: Auth journey coverage — signup happy path + 4 negative twins (already-registered dedup, password<8 per-field error, locale-scoped error copy, social-button gating)
 - [ ] **E2E-04**: Verification journey via Mailpit HTTP API (`/api/v1/messages` polling), end-to-end signup → email → token → verified-state
-- [ ] **E2E-05**: Sign-in journey + 403 unverified path with resend-verification CTA (TD-13.c)
+- [x] **E2E-05**: Sign-in journey + 403 unverified path with resend-verification CTA (TD-13.c)
 - [ ] **E2E-06**: Transcribe round-trip journey (multipart audio → `/api/transcribe` → response shape match)
 - [ ] **E2E-07**: Admin landing journey — `/admin` reaches a real page (not 404), basicauth break-glass tested separately from app-level admin role
 - [ ] **E2E-08**: Locale-switch journey covering the `/api/locale` routing split (TD-15.g symptom)
@@ -534,11 +534,11 @@ Work-order: **13 → 12 → 14 → 15 → 16 → 17 → 18**. 61 REQ-IDs mapped 
 
 | Requirement | Phase | Status | Notes |
 |-------------|-------|--------|-------|
-| E2E-01 | 13 | Pending | Cucumber+Playwright harness at `tests/e2e-cjm/` + `make e2e-cjm` + GHA `E2E_CJM=1` |
-| E2E-02 | 13 | Pending | `docs/customer-journeys.md` + `@cjm-N.M` tags + negative twins |
+| E2E-01 | 13 | Complete (13-01) | Cucumber+Playwright harness at `tests/e2e-cjm/` + `make e2e-cjm` + GHA `E2E_CJM=1` |
+| E2E-02 | 13 | Complete (13-02) | `docs/customer-journeys.md` + `@cjm-N.M` tags + negative twins |
 | E2E-03 | 13 | Pending | Auth journey: signup happy + 4 negative twins |
 | E2E-04 | 13 | Pending | Verification via Mailpit HTTP API |
-| E2E-05 | 13 | Pending | Sign-in + 403 unverified resend-CTA journey |
+| E2E-05 | 13 | Complete (13-02) | Sign-in + 403 unverified resend-CTA journey |
 | E2E-06 | 13 | Pending | Transcribe round-trip journey |
 | E2E-07 | 13 | Pending | `/admin` landing journey |
 | E2E-08 | 13 | Pending | Locale-switch journey |

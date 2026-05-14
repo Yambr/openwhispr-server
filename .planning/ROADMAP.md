@@ -706,8 +706,8 @@ Plans:
   4. testcontainers leaks are closed: `tools/global-vitest-teardown.ts` + SIGINT/SIGTERM hook drop orphan containers locally, CI runs `docker container prune --filter label=org.testcontainers=true` in `always()`; ESLint rule blocks the `getAllByText(...).length.toBeGreaterThan(0)` weak-assertion family, and the existing `apps/web/src/components/screens/auth/__tests__/*.test.tsx` files are swept to `toHaveLength(1)` where exclusivity matters.
   5. Readiness probes (not just liveness) gate scenario start; per-scenario tenant isolation enforced; retry-on-flake is BANNED in CI config (a flake IS a bug — PITFALLS §5). Phase verifier reports PASSED with ≥ 90/90/90/90 coverage on diff and live e2e green.
 **Plans:** 2 plans
-- [ ] 13-01-PLAN.md — harness scaffold + packages/email/ + worker noopSender removal + global-vitest-teardown + lint-weak-assertions + 7-site sweep + readiness probe + @cjm-1.1/1.2 reference scenarios (ATOMIC commit per D-04)
-- [ ] 13-02-PLAN.md — docs/customer-journeys.md + lint-cjm-doc + 7 remaining feature files (@cjm-2..8) + @expected-red downstream scenarios for Phases 12/15
+- [x] 13-01-PLAN.md — harness scaffold + packages/email/ + worker noopSender removal + global-vitest-teardown + lint-weak-assertions + 7-site sweep + readiness probe + @cjm-1.1/1.2 reference scenarios (ATOMIC commit `17c603e`)
+- [x] 13-02-PLAN.md — docs/customer-journeys.md + lint-cjm-doc + 7 remaining feature files (@cjm-2..8) + @expected-red downstream scenarios for Phases 12/15 (ATOMIC commit `df91de2`)
 **UI hint**: yes
 **Open question (deferred to `/gsd-discuss-phase 13`)**: Cucumber+Playwright+playwright-bdd (locked per REQUIREMENTS.md E2E-01) vs plain `@playwright/test` with `describe('@cjm-N.M', …)` tags (ARCHITECTURE alternative). Cucumber is authoritative for v2 roadmap — may be revisited in discuss-phase.
 

@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v2
 milestone_name: — Production Readiness
 status: Roadmap created — 7 v2 phases (12–18), 61 REQ-IDs mapped 100%, work-order 13 → 12 → 14 → 15 → 16 → 17 → 18
-last_updated: "2026-05-13T23:09:51.590Z"
+last_updated: "2026-05-14T09:52:07.218Z"
 last_activity: 2026-05-14 — v2 ROADMAP.md appended; STATE + REQUIREMENTS traceability updated
 progress:
   total_phases: 49
-  completed_phases: 16
-  total_plans: 125
-  completed_plans: 141
-  percent: 33
+  completed_phases: 17
+  total_plans: 127
+  completed_plans: 143
+  percent: 35
 ---
 
 # Project State: OpenWhispr Server
@@ -25,10 +25,10 @@ progress:
 
 ## Current Position
 
-Phase: Not started (v2 roadmap drafted; awaiting `/gsd-plan-phase 13`)
-Plan: —
-Status: Roadmap created — 7 v2 phases (12–18), 61 REQ-IDs mapped 100%, work-order 13 → 12 → 14 → 15 → 16 → 17 → 18
-Last activity: 2026-05-14 — v2 ROADMAP.md appended; STATE + REQUIREMENTS traceability updated
+Phase: 13 — E2E + CJM Harness (v2 ships-first) CLOSED — Wave 1 atomic commit `17c603e`, Wave 2 atomic commit `df91de2`
+Plan: 13-02 COMPLETED (next: Phase 12 admin onboarding, which inherits 10 @expected-red @after-phase-12 scenarios authored in 13-02)
+Status: Phase 13 CLOSED. v2 roadmap remaining: Phase 12 → 14 → 15 → 16 → 17 → 18 (six phases, work-order locked).
+Last activity: 2026-05-14 — Phase 13-02 atomic feat commit `df91de2` lands docs/customer-journeys.md (20 anchors, 8 sections), tools/lint-cjm-doc.ts (3-mode linter + 26 tests, 100/94.87/100/100 coverage), 7 new .feature files + 8 step modules, Makefile + GHA wired with lint gate, 10/10 in-phase scenarios GREEN on fresh DB+mailpit, 10 @expected-red scenarios queued (7 after-phase-12, 3 after-phase-15).
 
 ## Performance Metrics
 
