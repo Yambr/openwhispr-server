@@ -452,9 +452,9 @@ Wave structure:
 - [ ] **UICONF-01**: `GET /api/capabilities` (or `/api/auth/providers`) endpoint returns the configured OIDC providers + email-verification status; closes UI/BE capability drift (TD-12.c)
 - [ ] **UICONF-02**: Auth screens (`SignInForm`, `SignUpForm`, `OidcButtons`, `VerifyEmailClient`) conditionally render against `/api/capabilities` — zero buttons for zero providers
 - [ ] **UICONF-03**: Per-field Zod error mapping (TD-13.b) — every form field surfaces its own error message, localized en+ru, no bare "Invalid input"
-- [ ] **UICONF-04**: Semantic Playwright DOM conformance suite vs `.planning/phases/07-frontend-ui-spec/design/design-canvas.jsx` + `UI-SPEC-end-user.md` + `UI-SPEC-admin.md` — NOT pixel-diff; lives in `tests/conformance/ui-spec/`
+- [x] **UICONF-04**: Semantic Playwright DOM conformance suite vs `.planning/phases/07-frontend-ui-spec/design/design-canvas.jsx` + `UI-SPEC-end-user.md` + `UI-SPEC-admin.md` — NOT pixel-diff; lives in `tests/conformance/ui-spec/`
 - [ ] **UICONF-05**: Axe a11y baseline + per-screen delta gate; auth screens MUST pass with zero violations
-- [ ] **UICONF-06**: SignUpForm duplicate-banner regression fixed; conformance test asserts exactly one banner element (TD-13.a)
+- [x] **UICONF-06**: SignUpForm duplicate-banner regression fixed; conformance test asserts exactly one banner element (TD-13.a)
 - [ ] **UICONF-07**: Resend-verification CTA on sign-in 403 screen (TD-12.e)
 
 ### Slim core + BYOK profiles (Phase 14)
@@ -555,9 +555,9 @@ Work-order: **13 → 12 → 14 → 15 → 16 → 17 → 18**. 61 REQ-IDs mapped 
 | UICONF-01 | 12 | Pending | `GET /api/capabilities` returns providers + verification status |
 | UICONF-02 | 12 | Pending | Auth screens render conditionally vs `/api/capabilities` |
 | UICONF-03 | 12 | Pending | Per-field Zod errors localized en+ru |
-| UICONF-04 | 12 | Pending | Semantic Playwright DOM conformance vs `design-canvas.jsx` |
+| UICONF-04 | 12 | Complete | Semantic Playwright DOM conformance vs `design-canvas.jsx` |
 | UICONF-05 | 12 | Pending | Axe a11y baseline + per-screen delta gate |
-| UICONF-06 | 12 | Pending | SignUpForm duplicate-banner regression fixed |
+| UICONF-06 | 12 | Complete | SignUpForm duplicate-banner regression fixed |
 | UICONF-07 | 12 | Pending | Resend-verification CTA on sign-in 403 |
 | SLIM-01 | 14 | Pending | Slim default = 6 services; bare `docker compose up` selects them |
 | SLIM-02 | 14 | Pending | Opt-in compose overlays (observability/storage/ingress/pgbouncer/dev-tools) |

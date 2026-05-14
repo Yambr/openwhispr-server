@@ -723,11 +723,11 @@ Plans:
   5. Phase 13 Gherkin journey `@cjm-admin-onboarding` is GREEN before merge; phase verifier reports PASSED with ≥ 90/90/90/90 coverage on diff and live e2e green.
 **Plans**: 5 plans
 Plans:
-- [ ] 12-01-PLAN.md — setup_state singleton schema + 0017 migration + users.role + Better Auth additionalFields.role (input:false)
-- [ ] 12-02-PLAN.md — Public /api/auth/providers + authed /api/capabilities + shared listConfiguredOidcProviders helper (D-08 zero-drift)
-- [ ] 12-03-PLAN.md — Idempotent POST /api/setup/admin + /setup wizard page + vendored shadcn-stepper + UICONF-03 zod-i18n
-- [ ] 12-04-PLAN.md — Auth screens consume /api/auth/providers + UICONF-06/07 fixes + /admin index page + ADMIN-05 ops docs
-- [ ] 12-05a-PLAN.md — UICONF-04 Vitest+RTL conformance suite (6 files) with JSX-oracle citations
+- [x] 12-01-PLAN.md — setup_state singleton schema + 0017 migration + users.role + Better Auth additionalFields.role (input:false)
+- [x] 12-02-PLAN.md — Public /api/auth/providers + authed /api/capabilities + shared listConfiguredOidcProviders helper (D-08 zero-drift)
+- [x] 12-03-PLAN.md — Idempotent POST /api/setup/admin + /setup wizard page + vendored shadcn-stepper + UICONF-03 zod-i18n
+- [x] 12-04-PLAN.md — Auth screens consume /api/auth/providers + UICONF-06/07 fixes + /admin index page + ADMIN-05 ops docs
+- [x] 12-05a-PLAN.md — UICONF-04 Vitest+RTL conformance suite (6 files) with JSX-oracle citations
 - [ ] 12-05b-PLAN.md — UICONF-05 axe baseline (5 routes) + flip 5 @cjm scenarios GREEN
 **UI hint**: yes
 
@@ -817,7 +817,7 @@ Plans:
 | 11. Cloud Profile Refactor | 1/5 | In progress | - |
 | **— v2 milestone (opened 2026-05-14) —** | | | |
 | 13. E2E + CJM Harness | 0/0 | Not started | - |
-| 12. Admin Onboarding + UI-SPEC Conformance | 0/0 | Not started | - |
+| 12. Admin Onboarding + UI-SPEC Conformance | 5/6 | In Progress|  |
 | 14. Slim Core + BYOK Profiles | 0/0 | Not started | - |
 | 15. Repo Refactor + FSL + History Scrub | 0/0 | Not started | - |
 | 16. Phase-Tag Comment Audit | 0/0 | Not started | - |

@@ -2,14 +2,14 @@
 gsd_state_version: 1.0
 milestone: v2
 milestone_name: — Production Readiness
-status: Roadmap created — 7 v2 phases (12–18), 61 REQ-IDs mapped 100%, work-order 13 → 12 → 14 → 15 → 16 → 17 → 18
-last_updated: "2026-05-14T14:00:00Z"
-last_activity: 2026-05-14 — Phase 13 fully closed: verification PASSED 13/13 must-haves, security audit 0 HIGH/CRITICAL, code-review HI-01 (EmailSender dev loud-fail) + HI-02 (redact creds in bootstrap warn) fixed (commits 5c579d3, b437b9c)
+status: verifying
+last_updated: "2026-05-14T15:03:56.377Z"
+last_activity: "2026-05-14 — Phase 13 closed end-to-end: verifier PASSED 13/13 must-haves (13-VERIFICATION.md); security audit cleared 11/11 declared threats + 8/8 prompt surfaces with 0 HIGH/CRITICAL (13-SECURITY.md); code-review surfaced 2 HIGH (HI-01 EmailSender dev-fallback false-positive delivered:true; HI-02 bootstrap console.warn leaking credential-bearing URLs from Redis/BullMQ/LiteLLM init errors) — both fixed under TDD with atomic commit `5c579d3` (fix + tests + caller updates) + docs `b437b9c`. Coverage on diff stayed 100/100/100/100 on packages/email and new apps/api/src/lib/redact-url.ts."
 progress:
   total_phases: 49
   completed_phases: 17
-  total_plans: 127
-  completed_plans: 143
+  total_plans: 133
+  completed_plans: 148
   percent: 35
 ---
 
@@ -92,6 +92,7 @@ Last activity: 2026-05-14 — Phase 13 closed end-to-end: verifier PASSED 13/13 
 | Phase 08 P05 | 10m | 3 tasks | 7 files |
 | Phase 08 P06 | ~45 min | 5 tasks | 20 files |
 | Phase 08 P07 | 32m03s wall clock | 4 tasks | 11 files |
+| Phase 12 P05a | 6m | 3 tasks | 7 files |
 
 ## Accumulated Context
 
@@ -231,3 +232,4 @@ Last activity: 2026-05-14 — Phase 13 closed end-to-end: verifier PASSED 13/13 
 - [Phase 08]: Plan 06: agent-stream records TTFB and total Trends separately to keep per-axis SLO regressions visible
 - [Phase 08]: Plan 06: Grafana dashboard 19665 rewritten with DS_PROMETHEUS->mimir + stable uid for provisioning
 - [Phase 08]: Plan 07 live mock run: D-LOAD-EV env-gate for email verification; mock-litellm overrides base litellm under load-test; pgbouncer rename + 4-replica scale-out; realistic profile DEFERRED with Apple-Silicon CPU-saturation root cause
+- [Phase ?]: Plan 12-05a: hand-curated JSX-oracle inventory fixture is the conformance source of truth; tests assert semantic DOM only, never pixel/style.
