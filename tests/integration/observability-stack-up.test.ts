@@ -21,7 +21,16 @@
 import { type ExecFileSyncOptions, execFileSync } from "node:child_process";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
-const COMPOSE_PROFILE = ["--profile", "obs-only"];
+// Phase 14 / Plan 14-03 — slim-core base no longer carries the obs
+// services; they live in `compose/docker-compose.observability.yml`.
+// Replace the `--profile obs-only` selector with the explicit overlay
+// chain so this smoke still exercises the 4-service obs core.
+const COMPOSE_PROFILE = [
+  "-f",
+  "docker-compose.yml",
+  "-f",
+  "compose/docker-compose.observability.yml",
+];
 const SERVICES = ["tempo", "mimir", "loki", "otel-collector"];
 
 function run(
