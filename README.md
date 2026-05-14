@@ -1,6 +1,6 @@
 # OpenWhispr Server
 
-[![License: Apache 2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](./LICENSE)
+[![License: FSL-1.1-ALv2](https://img.shields.io/badge/license-FSL--1.1--ALv2-blue.svg)](./LICENSE)
 [![Languages](https://img.shields.io/badge/languages-en%20%7C%20ru-brightgreen.svg)](./docs/i18n.md)
 [![CI](https://github.com/openwhispr/openwhispr-server/actions/workflows/ci.yml/badge.svg)](https://github.com/openwhispr/openwhispr-server/actions/workflows/ci.yml)
 [![Security](https://github.com/openwhispr/openwhispr-server/actions/workflows/security.yml/badge.svg)](https://github.com/openwhispr/openwhispr-server/actions/workflows/security.yml)

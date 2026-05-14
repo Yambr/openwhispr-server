@@ -1,7 +1,8 @@
 {
   "name": "@openwhispr/tests-e2e-cjm",
   "private": true,
+  "license": "FSL-1.1-ALv2",
   "version": "0.0.0",
   "type": "module",
-  "description": "Phase 13 customer-journey e2e suite. The support/ modules use ESM-style imports (node: scheme + .js suffix re-exports + import.meta.url) — `type: module` declares this so cross-suite imports (e.g. Phase 12 conformance lane via tests/conformance/ui-spec/axe.spec.ts) resolve via Node's ESM loader rather than the repo-root CJS default."
+  "description": "Phase 13 customer-journey e2e suite. The support/ modules use ESM-style imports (node: scheme + .js suffix re-exports + import.meta.url) \u2014 `type: module` declares this so cross-suite imports (e.g. Phase 12 conformance lane via tests/conformance/ui-spec/axe.spec.ts) resolve via Node's ESM loader rather than the repo-root CJS default."
 }
