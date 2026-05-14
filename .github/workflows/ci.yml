@@ -36,6 +36,7 @@ jobs:
         with: { node-version: '24', cache: 'pnpm' }
       - run: pnpm install --frozen-lockfile
       - run: pnpm lint:english
+      - run: pnpm lint:colocated-tests
 
   commitlint:
     if: github.event_name == 'pull_request'

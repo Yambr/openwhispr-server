@@ -9,6 +9,14 @@ pre-commit:
       stage_fixed: true
     english:
       run: pnpm exec tsx tools/lint-english.ts
+    # Phase 15 / Plan 15-01 / STRUCT-01 — fail-fast when a new co-located
+    # *.test.ts is staged under apps/<app>/src or packages/<pkg>/src.
+    # The legacy allow-list at tools/lint-colocated-tests.legacy-allowlist.txt
+    # exempts pre-15-02 paths; that file is deleted as the final commit of
+    # 15-02 once tools/migrate-tests.ts --apply lands.
+    colocated-tests:
+      glob: "{apps,packages}/*/src/**/*.test.ts"
+      run: pnpm lint:colocated-tests
     # Phase 6 / Plan 06-09 / D-W4 layer 1 — fail-fast if any BullMQ job
     # handler is not wrapped in withTenantContext / withSystemContext.
     # The scan is ~1s against 8 job files; fast enough for pre-commit.
