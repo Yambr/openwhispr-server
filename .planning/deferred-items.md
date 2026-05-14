@@ -26,9 +26,30 @@ Items discovered during execution that are out of scope for the current plan.
 
 **Likely fix:** Update the fixture body to use the canonical `PLACEHOLDER_BOOTSTRAP_WILL_REPLACE` literal for every secret key; the regeneration path then exercises correctly. Belongs in a phase auditing bootstrap fixtures or in Phase 14's own bootstrap-test sweep if it grows.
 
-## From Plan 14-01 (Phase 14)
+## From Plan 14-01 (Phase 14) — RESOLVED by Plan 14-03
 
-### Compose-shape tests asserting the pre-slim-core 19-service base
+All 7 cascading compose-shape tests were retargeted in Plan 14-03:
+- `tests/integration/traefik-network-alias.test.ts` — now merges base
+  + ingress + contract-test overlays.
+- `tests/integration/traefik-realtime-entrypoint.test.ts` — reads
+  `compose/docker-compose.ingress.yml` directly for the host-port assertion.
+- `tests/integration/contract-test-runner-compose.test.ts` — merges base
+  + ingress + contract-test for the `--profile contract-test` surface;
+  bare base for the negative ("not in default") assertion.
+- `tests/integration/oidc-env-wiring.test.ts` — merges base + contract-test
+  for fixture-idp env wiring; bare base for the lazy-discovery default.
+- `tests/infra/compose-schema.test.ts` — DELETED (replaced wholesale by
+  `tests/integration/slim-core-base.test.ts` from Plan 14-01).
+- `tests/integration/traefik-forwarded-headers.test.ts` — NO change required
+  (reads `compose/traefik/traefik.yml` directly, not the compose file).
+- `tests/integration/traefik-no-buffering.test.ts` — NO change required
+  (reads `compose/traefik/dynamic.yml` directly).
+
+Per-describe timeouts bumped to 30s on retargeted files
+(`docker compose config` against the merged chain takes ~10s; vitest
+default 5s timed out).
+
+### Compose-shape tests asserting the pre-slim-core 19-service base (historical record)
 
 **Discovered:** 2026-05-14 during Plan 14-01 execution.
 
