@@ -25,6 +25,7 @@ import {
   buildAuthCallbackRoutes,
   type MintBearer,
 } from "./auth-callback.js";
+import { type AuthProvidersDeps, buildAuthProvidersRoutes } from "./auth-providers.js";
 import { type BetterAuthHandlerDeps, buildBetterAuthHandlerRoutes } from "./better-auth-handler.js";
 import { buildCheckUserRoutes, type CheckUserDeps } from "./check-user.js";
 import {
@@ -196,8 +197,13 @@ export function buildAllRoutes(deps: AllRoutesDeps): readonly RoutePlugin[] {
     auth: deps.auth,
     db: deps.db,
   };
+  // Phase 12 / Plan 12-02 — public capability-discovery endpoints used
+  // by the admin-onboarding wizard (Plan 12-03) and the auth screens.
+  // Both register UNCONDITIONALLY: no DB dep, env-derived, public.
+  const authProvidersDeps: AuthProvidersDeps = {};
   const plugins: RoutePlugin[] = [
     buildBetterAuthHandlerRoutes(betterAuthHandlerDeps),
+    buildAuthProvidersRoutes(authProvidersDeps),
     buildCheckUserRoutes(checkUserDeps),
     buildVerificationStatusRoutes(verificationDeps),
     buildDeleteAccountRoutes(deleteAccountDeps),
