@@ -38,6 +38,7 @@ import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import { bearer } from "better-auth/plugins/bearer";
 import { genericOAuth } from "better-auth/plugins/generic-oauth";
 import { cookieDomainConfig } from "./lib/cookie-domain.js";
+import { readOidcProvidersForRegistration } from "./lib/oidc-providers.js";
 
 /**
  * Structural return type for buildAuth. Better Auth's full instance type
@@ -105,27 +106,13 @@ export interface BuildAuthOptions {
   enqueueEmail?: (payload: EmailDeliveryPayload) => Promise<void>;
 }
 
-interface OidcProviderConfig {
-  providerId: string;
-  discoveryUrl: string;
-  clientId: string;
-  clientSecret: string;
-}
-
-function readOidcProviders(): OidcProviderConfig[] {
-  const issuer = process.env.OIDC_ISSUER_URL;
-  const clientId = process.env.OIDC_CLIENT_ID;
-  const clientSecret = process.env.OIDC_CLIENT_SECRET;
-  if (!issuer || !clientId || !clientSecret) return [];
-  return [
-    {
-      providerId: "oidc",
-      discoveryUrl: `${issuer.replace(/\/+$/, "")}/.well-known/openid-configuration`,
-      clientId,
-      clientSecret,
-    },
-  ];
-}
+// Phase 12 / Plan 12-02 / Task 1 — OIDC env-reading logic moved to
+// `./lib/oidc-providers.ts` so the public `GET /api/auth/providers`
+// route and the Better Auth registration share ONE source of truth
+// (D-08, T-12.02-04 zero-drift mitigation). The previous private
+// `readOidcProviders()` here is replaced by an import of
+// `readOidcProvidersForRegistration` which returns the same shape
+// genericOAuth consumes.
 
 /**
  * Build a Better Auth instance bound to the given `appDb`.
@@ -184,7 +171,7 @@ function rateLimitDisabled(): boolean {
 
 export function buildAuth(opts: BuildAuthOptions): AuthInstance {
   const { db } = opts;
-  const oidcProviders = readOidcProviders();
+  const oidcProviders = readOidcProvidersForRegistration();
   // Email service: caller can inject for tests; production path
   // constructs the nodemailer-backed service from env. The dev fallback
   // (SMTP_HOST unset) inside makeEmailService preserves the < 5 min
