@@ -469,6 +469,46 @@
         }
       }
     },
+    "setup": {
+      "title": {
+        "heading": { "text": "Set up your OpenWhispr server" }
+      },
+      "subtitle": {
+        "body": {
+          "text": "Create the first admin account, name your workspace, and pick a timezone."
+        }
+      },
+      "stepper": {
+        "aria_label": { "text": "Setup wizard progress" }
+      },
+      "step": {
+        "identity": { "title": { "text": "Identity" } },
+        "workspace": { "title": { "text": "Workspace" } },
+        "review": { "title": { "text": "Review" } }
+      },
+      "form": {
+        "name": { "label": "Name" },
+        "email": { "label": "Email" },
+        "password": { "label": "Password" },
+        "workspace": { "label": "Workspace name" },
+        "timezone": { "label": "Timezone" },
+        "submit": { "label": "Create admin and finish setup" }
+      },
+      "error": {
+        "generic": {
+          "title": { "text": "Setup failed" },
+          "body": { "text": "Could not finish setup. Review the form and try again." }
+        }
+      },
+      "warning": {
+        "tenant_rename_failed": {
+          "text": "Admin created, but the workspace name could not be saved. You can change it later from the admin panel."
+        }
+      },
+      "initializing": {
+        "text": "Server is initializing. Refresh in a few seconds."
+      }
+    },
     "signup": {
       "action": {
         "signin-link": {
