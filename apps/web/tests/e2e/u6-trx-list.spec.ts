@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: FSL-1.1-ALv2
 // Phase 07.1 / Plan 09 — U6 transcriptions list (state matrix + axe).
 //
 // D-TEST-3 boundary rule:

@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: FSL-1.1-ALv2
 // Phase 07.1 / Plan 09 — clientFetch wrapper unit tests.
 //
 // Covers happy path (GET, POST with object body, string body), 204

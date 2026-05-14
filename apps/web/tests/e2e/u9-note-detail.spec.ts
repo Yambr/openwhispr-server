@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: FSL-1.1-ALv2
 // Phase 07.1 / Plan 10 — U9 note detail (state matrix + axe).
 //
 // Branch B: apps/api has no GET /api/notes/:id; we use the list endpoint

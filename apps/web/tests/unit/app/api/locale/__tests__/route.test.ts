@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: FSL-1.1-ALv2
 // Phase 10 / Plan 02 — /api/locale route handler unit tests.
 //
 // Exercises the POST handler directly (App Router style — the route module

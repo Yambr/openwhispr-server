@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: FSL-1.1-ALv2
 // Phase 07.1 / Plan 04 — Data seeding fixture.
 //
 // === Seed endpoint inventory (Plan 04 / Step 0 pre-flight, verified 2026-05-12) ===

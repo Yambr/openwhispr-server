@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: FSL-1.1-ALv2
 // Phase 07.1 / Plan 13.1 — Playwright globalSetup hook.
 //
 // Goal: avoid Better Auth's anti-abuse rate limiter (Plan 13 deviation —
