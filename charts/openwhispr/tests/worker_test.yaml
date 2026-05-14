@@ -212,7 +212,8 @@ tests:
           path: spec.minAvailable
           value: 1
 
-  - it: worker ServiceMonitor renders only when observability.serviceMonitor.enabled
+  # Plan 14-06 — observability.enabled umbrella AND-gates the sub-toggle.
+  - it: worker ServiceMonitor renders only when observability umbrella + serviceMonitor are both on
     template: worker-servicemonitor.yaml
     set:
       secrets:
@@ -220,6 +221,7 @@ tests:
         external:
           storeRef: vault-clusterstore
       observability:
+        enabled: true
         serviceMonitor:
           enabled: true
     asserts:

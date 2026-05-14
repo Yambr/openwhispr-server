@@ -62,13 +62,16 @@ tests:
           path: spec.replicas
           value: 2
 
-  - it: MinIO application renders a Deployment in standalone mode
+  # Plan 14-06 — Chart.yaml condition flipped from minio.enabled -> storage.enabled.
+  - it: MinIO application renders a Deployment in standalone mode (storage.enabled=true)
     template: charts/minio/templates/application.yaml
     set:
       secrets:
         mode: eso
         external:
           storeRef: vault-clusterstore
+      storage:
+        enabled: true
       minio:
         enabled: true
         mode: standalone
@@ -82,13 +85,15 @@ tests:
           path: metadata.labels["app.kubernetes.io/name"]
           value: minio
 
-  - it: MinIO application switches to StatefulSet in distributed mode
+  - it: MinIO application switches to StatefulSet in distributed mode (storage.enabled=true)
     template: charts/minio/templates/application.yaml
     set:
       secrets:
         mode: eso
         external:
           storeRef: vault-clusterstore
+      storage:
+        enabled: true
       minio:
         enabled: true
         mode: distributed

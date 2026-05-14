@@ -120,8 +120,15 @@ spec:
             # it, /v1/audio/diarization is silently disabled at boot.
             - name: VALKEY_URL
               value: "redis://{{ include "openwhispr.valkeyHost" . }}:6379"
+            {{- if .Values.storage.enabled }}
+            # Plan 14-06 / BYOK-01 — MINIO_ENDPOINT injection is now gated on
+            # the top-level `storage.enabled` toggle. With storage disabled
+            # (slim-core default) the api MUST find a `S3_ENDPOINT` value in
+            # the operator-supplied Secret or hit the BYOK loud-fail boot
+            # guard (plan 14-04 assertBYOKConfig).
             - name: MINIO_ENDPOINT
               value: "http://{{ include "openwhispr.minioHost" . }}:9000"
+            {{- end }}
             - name: LITELLM_BASE_URL
               value: {{ include "openwhispr.litellmBaseUrl" . | quote }}
             # Finding 09.1-F30 — OTel collector sidecar not present in

@@ -4,7 +4,8 @@ Gated on observability.serviceMonitor.enabled because the CRD is a cluster
 prerequisite (A3) and chart install on a cluster without Prometheus Operator
 would crash with `no matches for kind ServiceMonitor`.
 */}}
-{{- if .Values.observability.serviceMonitor.enabled -}}
+{{- /* Plan 14-06 — AND-gate the new top-level observability.enabled umbrella with the existing serviceMonitor.enabled sub-toggle. */ -}}
+{{- if and .Values.observability.enabled .Values.observability.serviceMonitor.enabled -}}
 {{- $fullname := include "openwhispr.fullname" . -}}
 apiVersion: monitoring.coreos.com/v1
 kind: ServiceMonitor

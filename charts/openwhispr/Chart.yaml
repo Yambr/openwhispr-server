@@ -47,4 +47,7 @@ dependencies:
   - name: minio
     version: "17.0.21"
     repository: "oci://registry-1.docker.io/bitnamicharts"
-    condition: minio.enabled
+    # Plan 14-06 / BYOK-01 — condition was `minio.enabled`; flipped to the
+    # new top-level `storage.enabled` toggle so the Bitnami minio sub-chart
+    # render is 1:1 with the `compose/docker-compose.storage.yml` overlay.
+    condition: storage.enabled

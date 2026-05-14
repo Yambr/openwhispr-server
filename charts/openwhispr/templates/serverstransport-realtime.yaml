@@ -12,6 +12,8 @@ Fastify connection mid-session during a 60-minute realtime dictation
 Pitfall #7). Only the api-realtime IngressRoute references this
 ServersTransport — short-JSON routes on :443 stay on Traefik defaults.
 */}}
+{{- /* Plan 14-06 / BYOK-01 — gate on the top-level tls.enabled toggle. */ -}}
+{{- if .Values.tls.enabled -}}
 {{- $fullname := include "openwhispr.fullname" . -}}
 apiVersion: traefik.io/v1alpha1
 kind: ServersTransport
@@ -25,3 +27,4 @@ spec:
     dialTimeout: "30s"
     responseHeaderTimeout: "60s"
     idleConnTimeout: "3600s"
+{{- end }}

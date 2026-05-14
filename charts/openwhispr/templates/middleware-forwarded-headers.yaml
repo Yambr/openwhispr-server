@@ -8,6 +8,8 @@ trust-boundary inheritance).
 
 Bound to both IngressRoutes (api short-JSON + api realtime + web).
 */}}
+{{- /* Plan 14-06 / BYOK-01 — gate on the top-level tls.enabled toggle. */ -}}
+{{- if .Values.tls.enabled -}}
 {{- $fullname := include "openwhispr.fullname" . -}}
 apiVersion: traefik.io/v1alpha1
 kind: Middleware
@@ -22,3 +24,4 @@ spec:
       {{- range .Values.ingress.trustedIPs }}
       - {{ . | quote }}
       {{- end }}
+{{- end }}

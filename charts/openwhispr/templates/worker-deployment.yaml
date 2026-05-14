@@ -85,8 +85,12 @@ spec:
             # Finding 09.1-F28 — worker also reads VALKEY_URL.
             - name: VALKEY_URL
               value: "redis://{{ include "openwhispr.valkeyHost" . }}:6379"
+            {{- if .Values.storage.enabled }}
+            # Plan 14-06 / BYOK-01 — MINIO_ENDPOINT injection gated on the
+            # top-level `storage.enabled` toggle (parity with api-deployment).
             - name: MINIO_ENDPOINT
               value: "http://{{ include "openwhispr.minioHost" . }}:9000"
+            {{- end }}
             - name: LITELLM_BASE_URL
               value: {{ include "openwhispr.litellmBaseUrl" . | quote }}
             # Finding 09.1-F30 — see api-deployment.yaml note.

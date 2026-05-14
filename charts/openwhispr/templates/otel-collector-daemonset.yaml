@@ -17,7 +17,8 @@ resolv.conf and lose access to the lgtm endpoint by DNS name.
 Tolerations operator=Exists ensures the collector lands on tainted nodes
 too (control-plane, GPU, dedicated workloads).
 */}}
-{{- if .Values.observability.collector.enabled -}}
+{{- /* Plan 14-06 — AND-gate the new top-level observability.enabled umbrella with the existing collector.enabled sub-toggle. */ -}}
+{{- if and .Values.observability.enabled .Values.observability.collector.enabled -}}
 {{- $fullname := include "openwhispr.fullname" . -}}
 apiVersion: apps/v1
 kind: DaemonSet

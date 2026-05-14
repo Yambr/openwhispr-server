@@ -11,6 +11,8 @@ Phase 04 Plan 05 lock-in: this route is bound EXCLUSIVELY to the
 :8443 entrypoint (templates/ingressroute-api-realtime.yaml).
 Pitfall #3 — chart renders NO `kind: Ingress` resources anywhere.
 */}}
+{{- /* Plan 14-06 / BYOK-01 — gate the entire Traefik IngressRoute on the new top-level tls.enabled toggle (1:1 with compose/docker-compose.ingress.yml overlay). */ -}}
+{{- if .Values.tls.enabled -}}
 {{- $fullname := include "openwhispr.fullname" . -}}
 apiVersion: traefik.io/v1alpha1
 kind: IngressRoute
@@ -43,3 +45,4 @@ spec:
           namespace: {{ .Release.Namespace }}
   tls:
     secretName: {{ .Values.tls.apiSecretName }}
+{{- end }}

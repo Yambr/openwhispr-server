@@ -36,6 +36,7 @@ tests:
         external:
           storeRef: vault-clusterstore
       observability:
+        enabled: true
         collector:
           enabled: true
         lgtm:
@@ -69,6 +70,7 @@ tests:
         external:
           storeRef: vault-clusterstore
       observability:
+        enabled: true
         collector:
           enabled: true
         lgtm:
@@ -98,6 +100,7 @@ tests:
         external:
           storeRef: vault-clusterstore
       observability:
+        enabled: true
         collector:
           enabled: true
         lgtm:
@@ -129,6 +132,7 @@ tests:
         external:
           storeRef: vault-clusterstore
       observability:
+        enabled: true
         collector:
           enabled: true
         lgtm:
@@ -169,6 +173,7 @@ tests:
         external:
           storeRef: vault-clusterstore
       observability:
+        enabled: true
         collector:
           enabled: true
         lgtm:
