@@ -86,6 +86,28 @@ readonly OWNER="${SCRUB_OWNER:-openwhispr}"
 readonly REPO="${SCRUB_REPO:-openwhispr-server}"
 readonly BRANCH="${SCRUB_BRANCH:-main}"
 
+# HI-03: per-invocation state directory. Each scrub run isolates its
+# workdir-path and protection-rollback files under
+# ${REPO_ROOT}/.scrub-state/${RUN_ID}/ so concurrent or interrupted
+# re-runs cannot cross-pollute. The RUN_ID is also emitted to the log
+# so an operator can pin a Stage 9 rollback to a specific run via the
+# SCRUB_RUN_ID env override.
+RUN_ID="${SCRUB_RUN_ID:-$(date +%Y%m%d-%H%M%S)-$$}"
+readonly RUN_ID
+readonly STATE_DIR_ROOT="${REPO_ROOT}/.scrub-state"
+readonly STATE_DIR="${STATE_DIR_ROOT}/${RUN_ID}"
+readonly WORKDIR_PATH_FILE="${STATE_DIR}/workdir.path"
+readonly ROLLBACK_PATH_FILE="${STATE_DIR}/protection-rollback.json"
+
+# HI-03: explicit GPG-keyring precondition. Disabled by default so OSS
+# contributors without signed tags are not blocked, but operators
+# running the real scrub against signed tags MUST set
+# OPENWHISPR_SCRUB_REQUIRE_GPG=1 (the runbook documents this). When
+# enabled, Stage 7's `git verify-tag` is gated on a working keyring;
+# without it, signed tags can be silently classified as unsigned and
+# the rewrite loses signature attestation.
+readonly REQUIRE_GPG="${OPENWHISPR_SCRUB_REQUIRE_GPG:-0}"
+
 # Marker prefix for dry-run lines so test harness + operator can grep cleanly.
 readonly DRY_MARKER="[DRY-RUN]"
 
@@ -127,6 +149,9 @@ log "  Pre-flight tag:    ${PRE_TAG}"
 log "  GitHub repo:       ${OWNER}/${REPO}"
 log "  Protected branch:  ${BRANCH}"
 log "  Mode:              $(if (( DRY_RUN )); then echo 'DRY-RUN (no mutations)'; else echo 'EXECUTE'; fi)"
+log "  RUN_ID:            ${RUN_ID}"
+log "  State dir:         .scrub-state/${RUN_ID}/  (pin Stage 9 to this run by exporting SCRUB_RUN_ID=${RUN_ID})"
+log "  GPG keyring gate:  $(if (( REQUIRE_GPG )); then echo 'REQUIRED (OPENWHISPR_SCRUB_REQUIRE_GPG=1)'; else echo 'disabled (set OPENWHISPR_SCRUB_REQUIRE_GPG=1 for signed-tag operators)'; fi)"
 log "================================================================"
 
 log ""
@@ -183,6 +208,31 @@ if ! (cd "${REPO_ROOT}" && git log --all --diff-filter=A --pretty=format: --name
 fi
 log "  ok:    target '${TARGET_PATH}' present in history"
 
+# Check 7 (HI-03) — GPG keyring access for signed-tag attestation. When
+# OPENWHISPR_SCRUB_REQUIRE_GPG=1 the operator has signed tags in the
+# repo and Stage 7 must be able to verify them. Without a working
+# keyring `git verify-tag` returns false silently and the rewrite loses
+# signature attestation — exactly the failure mode 15-RESEARCH-history-
+# scrub.md warned against. The check is OPT-IN so OSS contributors
+# without signed tags are not blocked.
+if (( REQUIRE_GPG )); then
+  if ! command -v gpg >/dev/null 2>&1; then
+    die_precondition "gpg binary not found on PATH but OPENWHISPR_SCRUB_REQUIRE_GPG=1. Install gpg (brew install gnupg / apt-get install gnupg) and import the signer's public key (gpg --import <key>.asc) before re-running."
+  fi
+  if ! gpg --list-keys >/dev/null 2>&1; then
+    die_precondition "gpg keyring not accessible (gpg --list-keys failed) but OPENWHISPR_SCRUB_REQUIRE_GPG=1. Without a keyring, Stage 7 'git verify-tag' silently classifies signed tags as unsigned and the rewrite loses signature attestation. Recover with: gpg --list-keys; if empty, import the signer's public key via 'gpg --import <key>.asc'."
+  fi
+  log "  ok:    gpg keyring accessible (signed-tag attestation gate satisfied)"
+else
+  log "  skip:  OPENWHISPR_SCRUB_REQUIRE_GPG not set; gpg keyring gate disabled (signed tags will be best-effort enumerated in Stage 7 only)"
+fi
+
+# HI-03 — Provision the per-invocation state directory now that all
+# preconditions have passed. Idempotent: if SCRUB_RUN_ID was reused to
+# resume a partially-completed run, this is a no-op.
+mkdir -p "${STATE_DIR}"
+log "  ok:    state dir provisioned at ${STATE_DIR}"
+
 log ""
 log "Pre-flight: PASSED"
 log ""
@@ -236,9 +286,9 @@ log "  method:   PUT (full-replace; PATCH is NOT supported on this endpoint)"
 log "  payload:  enforce_admins=true, allow_force_pushes=false, required_pull_request_reviews=null"
 if (( DRY_RUN )); then
   log "  would call: gh api -X PUT /repos/${OWNER}/${REPO}/branches/${BRANCH}/protection -f enforce_admins=true ..."
-  log "  would store current protection state to /tmp/scrub-protection-rollback.json for restore."
+  log "  would store current protection state to ${ROLLBACK_PATH_FILE} for restore (.scrub-state/${RUN_ID}/protection-rollback.json)."
 else
-  ROLLBACK_FILE="$(mktemp /tmp/scrub-protection-rollback.XXXXXX.json)"
+  ROLLBACK_FILE="${ROLLBACK_PATH_FILE}"
   if gh api "/repos/${OWNER}/${REPO}/branches/${BRANCH}/protection" > "${ROLLBACK_FILE}" 2>/dev/null; then
     log "  stored:  current protection -> ${ROLLBACK_FILE}"
   else
@@ -273,7 +323,10 @@ else
   (cd "${WORKDIR}/${REPO}.git" && git filter-repo --path "${TARGET_PATH}" --invert-paths --force) \
     || die_midflight "git filter-repo failed inside ${WORKDIR}/${REPO}.git"
   log "  rewritten: ${WORKDIR}/${REPO}.git"
-  echo "${WORKDIR}" > /tmp/scrub-workdir.path
+  # HI-03: write the workdir path under the per-invocation state dir so
+  # concurrent or interrupted re-runs cannot cross-pollute.
+  echo "${WORKDIR}" > "${WORKDIR_PATH_FILE}"
+  log "  recorded:  workdir path -> ${WORKDIR_PATH_FILE} (.scrub-state/${RUN_ID}/workdir.path)"
 fi
 
 # ---------------------------------------------------------------------------
@@ -287,9 +340,9 @@ if (( DRY_RUN )); then
   log "  would run: git -C \${WORKDIR}/${REPO}.git log --all --oneline | wc -l"
   log "  would run: git -C \${WORKDIR}/${REPO}.git log --all -- ${TARGET_PATH}  # MUST be empty"
 else
-  WORKDIR="$(cat /tmp/scrub-workdir.path 2>/dev/null || echo '')"
+  WORKDIR="$(cat "${WORKDIR_PATH_FILE}" 2>/dev/null || echo '')"
   if [[ -z "${WORKDIR}" ]]; then
-    die_midflight "workdir path not recorded — Stage 4 did not complete cleanly"
+    die_midflight "workdir path not recorded at ${WORKDIR_PATH_FILE} — Stage 4 did not complete cleanly. If resuming a prior run, set SCRUB_RUN_ID to its run-id and re-export it."
   fi
   COUNT_AFTER="$(git -C "${WORKDIR}/${REPO}.git" log --all --oneline | wc -l | tr -d ' ')"
   STILL_PRESENT="$(git -C "${WORKDIR}/${REPO}.git" log --all -- "${TARGET_PATH}" 2>/dev/null | head -c 16 || true)"
@@ -308,7 +361,7 @@ log "  rationale: --force-with-lease fails if ${BRANCH} advanced mid-window; --f
 if (( DRY_RUN )); then
   log "  would run: git -C \${WORKDIR}/${REPO}.git push --force-with-lease origin ${BRANCH}"
 else
-  WORKDIR="$(cat /tmp/scrub-workdir.path)"
+  WORKDIR="$(cat "${WORKDIR_PATH_FILE}")"
   (cd "${WORKDIR}/${REPO}.git" && git push --force-with-lease origin "${BRANCH}") \
     || die_midflight "force-push failed; main may have advanced — retry from Stage 4 after coordinating freeze. Do NOT switch to --force."
   log "  pushed: ${BRANCH} -> origin (force-with-lease)"
@@ -324,10 +377,21 @@ if (( DRY_RUN )); then
   log "  would run: for tag in \$(git -C \${WORKDIR}/${REPO}.git tag); do git verify-tag \"\$tag\" 2>/dev/null && echo \"signed: \$tag\"; done"
   log "  signed tags listed are deferred-items #1 (manual re-sign post-event)."
 else
-  WORKDIR="$(cat /tmp/scrub-workdir.path)"
+  WORKDIR="$(cat "${WORKDIR_PATH_FILE}")"
   (cd "${WORKDIR}/${REPO}.git" && git push --force --tags origin) \
     || die_midflight "force-push of tags failed"
   log "  pushed: surviving tags -> origin (force)"
+  # HI-03 — re-verify the keyring is still reachable from inside the bare
+  # mirror clone before enumerating signed tags. A passing pre-flight check
+  # does not guarantee the keyring is reachable from this cwd (different
+  # GNUPGHOME, etc.); fail loudly rather than silently classifying signed
+  # tags as unsigned. Only fires when the operator opted in to the gate.
+  if (( REQUIRE_GPG )); then
+    if ! (cd "${WORKDIR}/${REPO}.git" && gpg --list-keys >/dev/null 2>&1); then
+      die_midflight "gpg keyring not reachable from inside ${WORKDIR}/${REPO}.git despite OPENWHISPR_SCRUB_REQUIRE_GPG=1 passing pre-flight. Signed-tag attestation would be silently lost — refusing to proceed. Recover by ensuring GNUPGHOME is reachable from this shell, then re-run with the same SCRUB_RUN_ID=${RUN_ID}."
+    fi
+    log "  ok:    gpg keyring still accessible from rewrite cwd"
+  fi
   log "  signed tags requiring manual re-sign (deferred-items #1):"
   (cd "${WORKDIR}/${REPO}.git" && \
     for tag in $(git tag); do
@@ -371,18 +435,25 @@ fi
 log ""
 log "Stage 9: restore branch protection on '${BRANCH}' from rollback file"
 if (( DRY_RUN )); then
-  log "  would run: gh api -X PUT /repos/${OWNER}/${REPO}/branches/${BRANCH}/protection -H 'Content-Type: application/json' --input /tmp/scrub-protection-rollback.json"
+  log "  would run: gh api -X PUT /repos/${OWNER}/${REPO}/branches/${BRANCH}/protection -H 'Content-Type: application/json' --input ${ROLLBACK_PATH_FILE}"
+  log "  pinned to:  RUN_ID=${RUN_ID} (set SCRUB_RUN_ID=<id> to resume a different run)"
 else
-  ROLLBACK_FILE="$(ls -t /tmp/scrub-protection-rollback.*.json 2>/dev/null | head -1 || echo '')"
-  if [[ -n "${ROLLBACK_FILE}" && -s "${ROLLBACK_FILE}" ]]; then
-    log "  restoring from: ${ROLLBACK_FILE}"
+  # HI-03: use the per-invocation rollback file by RUN_ID, not a
+  # ls -t glob across /tmp/. Cross-run pollution is impossible because
+  # ${ROLLBACK_PATH_FILE} is namespaced under .scrub-state/${RUN_ID}/.
+  ROLLBACK_FILE="${ROLLBACK_PATH_FILE}"
+  if [[ -s "${ROLLBACK_FILE}" ]]; then
+    log "  restoring from: ${ROLLBACK_FILE} (RUN_ID=${RUN_ID})"
     # The full-replace PUT will recreate the original rule.
     gh api -X PUT "/repos/${OWNER}/${REPO}/branches/${BRANCH}/protection" \
       --input "${ROLLBACK_FILE}" >/dev/null \
       || die_midflight "restoring branch protection failed; manual restore required via GitHub UI"
     log "  restored: original protection rule on ${BRANCH}"
+    # HI-03: consume the rollback file so a future re-run of this RUN_ID
+    # cannot reapply stale state.
+    rm -f "${ROLLBACK_FILE}"
   else
-    log "  note:    no rollback file present; operator must set protection manually via GitHub UI"
+    log "  note:    no rollback file at ${ROLLBACK_FILE}; operator must set protection manually via GitHub UI"
   fi
 fi
 
@@ -399,7 +470,7 @@ if (( DRY_RUN )); then
   NEW_HEAD_PLACEHOLDER="<filled-by-15-04-execution>"
   log "  new HEAD SHA (post-scrub): ${NEW_HEAD_PLACEHOLDER}"
 else
-  WORKDIR="$(cat /tmp/scrub-workdir.path)"
+  WORKDIR="$(cat "${WORKDIR_PATH_FILE}")"
   NEW_HEAD="$(git -C "${WORKDIR}/${REPO}.git" rev-parse "${BRANCH}")"
   log "  new HEAD SHA (post-scrub): ${NEW_HEAD}"
   log "  NEXT: open the T+15min advisory issue and the post-scrub ops PR using the SHA above."
