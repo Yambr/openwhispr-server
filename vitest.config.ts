@@ -1,5 +1,15 @@
 // SPDX-License-Identifier: Apache-2.0
+import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import { defineConfig } from "vitest/config";
+
+// Phase 15 / Plan 02 (STRUCT-01) — root-relative anchor so the
+// `projects` array resolves correctly even when this config is
+// `mergeConfig`'d into a child workspace config (e.g.
+// apps/api/vitest.config.ts), which would otherwise re-anchor the
+// relative paths against the child's directory.
+const ROOT_DIR = dirname(fileURLToPath(import.meta.url));
+const p = (rel: string): string => resolve(ROOT_DIR, rel);
 
 // Vitest 4 root config for the pnpm monorepo. Discovers tests across all
 // workspaces and enforces v8 native coverage thresholds.
@@ -18,6 +28,68 @@ export default defineConfig({
     // Failures are swallowed inside the hook — globalTeardown must NEVER
     // abort the test report.
     globalTeardown: ["./tools/global-vitest-teardown.ts"],
+    // Phase 15 / Plan 02 (STRUCT-01) — Vitest 3.2+ `projects` array
+    // replacing the deprecated `workspace` field (CONTEXT Q4). Each
+    // entry is a glob to a workspace vitest.config.ts that declares
+    // its own test surface (anchored at `tests/**/*.test.ts` post-
+    // migrate-tests-codemod from 15-01). Workspaces without an inline
+    // vitest.config.ts are not standalone projects; their tests are
+    // discovered via the apps/* and packages/* globs against the
+    // inherited root config.
+    projects: [
+      // Explicit configs for workspaces that customize coverage /
+      // timeouts. Paths are anchored at the root via `p(...)` so a
+      // child workspace mergeConfig'ing this root doesn't re-anchor
+      // the relative entries against its own dir.
+      p("apps/api/vitest.config.ts"),
+      p("apps/web/vitest.config.ts"),
+      p("apps/worker/vitest.config.ts"),
+      p("packages/byok-guard/vitest.config.ts"),
+      p("packages/contract-tests/vitest.config.ts"),
+      p("packages/data/vitest.config.ts"),
+      p("packages/email/vitest.config.ts"),
+      p("packages/litellm-client/vitest.config.ts"),
+      p("tools/load-test/vitest.config.ts"),
+      p("tools/test-probe/vitest.config.ts"),
+      p("compose/mock-litellm/vitest.config.ts"),
+      p("tests/e2e/vitest.config.ts"),
+      p("tests/e2e/mock-realtime/vitest.config.ts"),
+      // Workspaces WITHOUT an inline vitest.config.ts: declare an
+      // inline project so `pnpm exec vitest run` discovers their
+      // tests/ trees post-migrate-tests codemod.
+      {
+        extends: true,
+        test: {
+          name: "@openwhispr/auth",
+          root: p("packages/auth"),
+          include: ["tests/**/*.test.ts"],
+        },
+      },
+      {
+        extends: true,
+        test: {
+          name: "@openwhispr/i18n",
+          root: p("packages/i18n"),
+          include: ["tests/**/*.test.ts"],
+        },
+      },
+      {
+        extends: true,
+        test: {
+          name: "@openwhispr/observability",
+          root: p("packages/observability"),
+          include: ["tests/**/*.test.ts"],
+        },
+      },
+      {
+        extends: true,
+        test: {
+          name: "@openwhispr/wire-schemas",
+          root: p("packages/wire-schemas"),
+          include: ["tests/**/*.test.ts"],
+        },
+      },
+    ],
     coverage: {
       provider: "v8",
       reporter: ["text", "json-summary", "json", "lcov"],
