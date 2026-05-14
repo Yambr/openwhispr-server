@@ -43,12 +43,14 @@ const API_PKG = path.join(REPO_ROOT, "apps/api/package.json");
 const WORKER_PKG = path.join(REPO_ROOT, "apps/worker/package.json");
 
 const IMPORT_LINE =
-  /import\s+\{\s*assertBYOKConfig\s*\}\s+from\s+["']@openwhispr\/byok-guard["']\s*;?/;
-const CALL_LINE = /assertBYOKConfig\(\)\s*;?/;
-const OTEL_IMPORT_LINE = /import\s+["']\.\/otel-bootstrap\.js["']\s*;?/;
+  /^import\s+\{\s*assertBYOKConfig\s*\}\s+from\s+["']@openwhispr\/byok-guard["']\s*;?\s*$/m;
+// Anchored to start-of-line so comments mentioning the symbol do not
+// match. (Multi-line flag so `^` means start-of-line.)
+const CALL_LINE = /^assertBYOKConfig\(\)\s*;?\s*$/m;
+const OTEL_IMPORT_LINE = /^import\s+["']\.\/otel-bootstrap\.js["']\s*;?\s*$/m;
 const SSRF_IMPORT_LINE =
-  /import\s+\{\s*installGlobalSSRF\s*\}\s+from\s+["']\.\/bootstrap\.js["']\s*;?/;
-const SSRF_CALL_LINE = /installGlobalSSRF\(\)\s*;?/;
+  /^import\s+\{\s*installGlobalSSRF\s*\}\s+from\s+["']\.\/bootstrap\.js["']\s*;?\s*$/m;
+const SSRF_CALL_LINE = /^installGlobalSSRF\(\)\s*;?\s*$/m;
 
 describe("boot-order (Phase 14 / Plan 04 / Task 3)", () => {
   describe("apps/api/src/index.ts", () => {

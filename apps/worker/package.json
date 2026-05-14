@@ -15,6 +15,7 @@
     "@opentelemetry/exporter-metrics-otlp-grpc": "^0.217.0",
     "@opentelemetry/instrumentation-pino": "^0.63.0",
     "@opentelemetry/sdk-node": "^0.217.0",
+    "@openwhispr/byok-guard": "workspace:*",
     "@openwhispr/email": "workspace:*",
     "@openwhispr/observability": "workspace:*",
     "bullmq": "^5.16.0",
