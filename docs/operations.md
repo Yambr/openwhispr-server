@@ -925,6 +925,53 @@ OpenWhispr Server follows semver across the chart, the api image, and
 the worker image. Minor and patch releases are upgrade-in-place;
 major releases ship a migration guide alongside the release notes.
 
+### Upgrade from Phase 13 — virtual-key-rotation removal
+
+Phase 14 / Plan 05 removed the `virtual-key-rotation` BullMQ worker,
+its weekly cron, and its noop LiteLLM key-client + user-key-lookup
+adapters per CONTEXT decision 3 and the REQUIREMENTS BYOK-03 audit
+closure. The production rotation dispatcher was never built; the
+weekly cron enqueued a nil-UUID sentinel against noop adapters in
+production code — a direct violation of the constitutional "no mocks
+of internal logic" rule (CLAUDE.md).
+
+**Operator action — none required for new installs.** A fresh
+`docker compose up` or `helm install` against Phase 14+ images
+provisions the seven surviving queues only, and Valkey never sees a
+`bull:virtual-key-rotation:*` keyspace.
+
+**Operator action — upgrade-in-place from Phase 13 → 14.** Existing
+deployments have stale `bull:virtual-key-rotation:*` keys in Valkey
+from the prior worker boot (scheduler metadata, job records, repeatable
+job manifest). The Phase 14 worker drains these automatically at boot
+via a one-shot SCAN+DEL loop in `apps/worker/src/index.ts`
+(`drainStaleVkrKeys`) — wrapped in try/catch so cleanup failure never
+blocks the worker from starting. For most operators the transient
+cleanup is sufficient and no further action is needed.
+
+If you prefer a manual one-shot cleanup (e.g. fleet-wide rollout where
+you'd rather drain keys before the new worker image lands), exec into
+the Valkey container and run:
+
+```bash
+# docker-compose
+docker compose exec valkey valkey-cli \
+  -a "${VALKEY_PASSWORD}" \
+  --scan --pattern 'bull:virtual-key-rotation:*' \
+  | xargs -r docker compose exec -T valkey valkey-cli -a "${VALKEY_PASSWORD}" DEL bull:virtual-key-rotation:*
+
+# Kubernetes (Helm) — one-liner against the Valkey StatefulSet
+kubectl -n openwhispr exec sts/ow-valkey -- sh -c \
+  'valkey-cli -a "$VALKEY_PASSWORD" --scan --pattern "bull:virtual-key-rotation:*" \
+     | xargs -r valkey-cli -a "$VALKEY_PASSWORD" DEL bull:virtual-key-rotation:*'
+```
+
+The one-shot is idempotent — subsequent runs find zero matching keys
+and exit cleanly. After a single successful drain the worker's
+boot-time cleanup is a belt-and-braces no-op; the cleanup helper will
+be removed in a future phase once stragglers stop appearing in
+production telemetry.
+
 ### Helm chart upgrade (Kubernetes)
 
 ```bash
