@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: FSL-1.1-ALv2
 // Phase 02.5 / Plan 01 — RED test for D-01 (explicit Better Auth ↔ drizzle
 // schema-key mapping). Goes green when Plan 03 changes apps/api/src/auth.ts
 // to import named drizzle tables (users/sessions/accounts/verifications)

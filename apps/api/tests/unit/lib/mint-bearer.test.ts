@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: FSL-1.1-ALv2
 // Phase 02.7 / Plan 02.7-02 / D-01 — `buildMintBearer` adapter unit tests.
 //
 // Source-of-record commit: <filled at commit time>

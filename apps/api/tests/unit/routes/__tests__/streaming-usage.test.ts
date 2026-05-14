@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: FSL-1.1-ALv2
 // Phase 05 / Plan 02 / Task 1 — POST /api/streaming-usage plugin tests.
 //
 // Strategy mirrors transcribe.test.ts / reason.test.ts: hand-rolled fake

@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: FSL-1.1-ALv2
 // Phase 6 / Plan 03 / Task 1 — GREEN (D-T4 + English-only constitutional).
 //
 // Verifies the pino redact configuration exported from request-log.ts:

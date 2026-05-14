@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: FSL-1.1-ALv2
 // Phase 2 / Plan 05 / Task 1 — `/api/desktop-signin/:provider` plugin tests.
 //
 // Strategy mirrors `check-user.test.ts`: register the plugin against a

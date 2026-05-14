@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: FSL-1.1-ALv2
 // Phase 03 / Plan 06 / Task 3 — POST /v1/audio/diarization plugin tests.
 //
 // Strategy mirrors transcribe.test.ts and reason.test.ts: register the

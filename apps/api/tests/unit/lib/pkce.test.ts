@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: FSL-1.1-ALv2
 // Phase 2 / Plan 05 / Task 1 — PKCE pure-function tests.
 //
 // generatePkceVerifier() emits a 43-char URL-safe-base64 string from

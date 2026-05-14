@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: FSL-1.1-ALv2
 // Phase 02.12 — D-04 TDD RED: assert sessions schema exposes a plain `token`
 // (text) column matching Better Auth v1.6.9's drizzle-adapter expectation.
 //

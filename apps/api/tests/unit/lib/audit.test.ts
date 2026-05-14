@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: FSL-1.1-ALv2
 // Phase 6 / Plan 05 / Task 1 — recordAudit helper tests.
 //
 // The helper writes one row to `audit_log` synchronously inside the

@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: FSL-1.1-ALv2
 // Phase 2 / Plan 03 / Task 3 — `/api/auth/delete-account` plugin tests.
 //
 // In-process: hand-rolled fake `AuthLike` (cookie-only contract) + fake

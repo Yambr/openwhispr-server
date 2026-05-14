@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: FSL-1.1-ALv2
 // Phase 04 / Plan 02 / Task 1 — TDD GREEN suite.
 //
 // Wave 1 expands the Wave 0 RED stub into the 7 behavior tests required

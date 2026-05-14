@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: FSL-1.1-ALv2
 // Phase 04 / Plan 06 / Task 1 — translate-tools.ts pure helper tests.
 //
 // translateLegacyTools converts BACKEND_SPEC's legacy `tools` array shape

@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: FSL-1.1-ALv2
 /**
  * Phase 02.9 / D-02 — Conformance fixture email addresses must satisfy
  * Better Auth v1.6.9's email validator (Zod v4 `z.email()` from Zod v4.x),

@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: FSL-1.1-ALv2
 // Phase 2 / Plan 03 / Task 2 — `dualAuthHook` unit tests.
 //
 // Strategy: exercise the hook against a hand-rolled `AuthLike` fake.

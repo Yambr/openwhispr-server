@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: FSL-1.1-ALv2
 // Phase 13 review HI-02 — Static guard against re-introducing
 // credential-leaking bootstrap warns.
 //

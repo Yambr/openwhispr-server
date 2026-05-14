@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: FSL-1.1-ALv2
 // Phase 10 / Plan 10-01a / Step 5 — i18n integration in the centralized
 // error handler. Asserts:
 //   1. When `req.i18n` is present (i18nPlugin mounted) and an
