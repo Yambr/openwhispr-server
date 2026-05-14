@@ -33,6 +33,12 @@ import Fastify, { type FastifyInstance } from "fastify";
 import { Pool } from "pg";
 import { registerErrorHandler } from "../../error-handler.js";
 import { buildCapabilitiesRoutes } from "../capabilities.js";
+import {
+  buildSetupAdminRoutes,
+  type SetupAdminDeps,
+  type SetupAdminRenameTenant,
+  type SetupAdminSignUpEmail,
+} from "../setup-admin.js";
 import { buildSetupStateRoutes } from "../setup-state.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -181,6 +187,20 @@ export async function seedUser(
 }
 
 /**
+ * Truncate users between test cases. Plan 12-03 setup-admin tests
+ * INSERT admin users via the fake signUpEmail emulation; each test
+ * starts from an empty users table.
+ *
+ * `RESTART IDENTITY CASCADE` resets any serial sequences and cascades
+ * through accounts / sessions / verification_token tables that Better
+ * Auth created in migrations 0001..0011. Owner pool bypasses RLS so no
+ * `withTenant` context is required.
+ */
+export async function resetUsers(pool: Pool): Promise<void> {
+  await pool.query(`TRUNCATE TABLE users RESTART IDENTITY CASCADE`);
+}
+
+/**
  * Reset setup_state back to its post-migration default. Migration 0017
  * INSERTs the singleton row; tests that mutate it MUST restore it (or
  * delete user rows) between test cases.
@@ -258,6 +278,48 @@ export async function buildSetupStateApp(opts: BuildSetupStateAppOpts): Promise<
   }
   const dbAny = opts.db as unknown as Parameters<typeof buildSetupStateRoutes>[0]["db"];
   await app.register(buildSetupStateRoutes({ db: dbAny }));
+  await app.ready();
+  return app;
+}
+
+export interface BuildSetupAdminAppOpts {
+  db: NodePgDatabase;
+  /**
+   * The owner Pool is forwarded so the route plugin can issue raw SQL
+   * for two columns NOT declared in the drizzle schema TS files:
+   *   * users.role — added by migration 0017 as a nullable text
+   *                  (kept out of users.ts on purpose; Better Auth's
+   *                  additionalFields owns the type declaration with
+   *                  input:false so public sign-ups never escalate).
+   * The same channel covers any future migration-only column without
+   * forcing a schema-TS rebuild.
+   */
+  ownerPool: Pool;
+  signUpEmail: SetupAdminSignUpEmail;
+  renameTenant?: SetupAdminRenameTenant;
+  withRateLimit?: boolean;
+}
+
+/**
+ * Build a Fastify instance with the setup-admin route registered.
+ * Mirrors `buildSetupStateApp` — registers @fastify/rate-limit when the
+ * per-route `config.rateLimit` needs to fire (rate-limit assertion).
+ */
+export async function buildSetupAdminApp(opts: BuildSetupAdminAppOpts): Promise<FastifyInstance> {
+  const app = Fastify({ logger: false, trustProxy: true });
+  registerErrorHandler(app);
+  if (opts.withRateLimit) {
+    const rateLimit = (await import("@fastify/rate-limit")).default;
+    await app.register(rateLimit, { global: false });
+  }
+  const dbAny = opts.db as unknown as SetupAdminDeps["db"];
+  const deps: SetupAdminDeps = {
+    db: dbAny,
+    ownerPool: opts.ownerPool,
+    signUpEmail: opts.signUpEmail,
+    ...(opts.renameTenant ? { renameTenant: opts.renameTenant } : {}),
+  };
+  await app.register(buildSetupAdminRoutes(deps));
   await app.ready();
   return app;
 }

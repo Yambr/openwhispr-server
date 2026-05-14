@@ -74,6 +74,11 @@ import { buildNotesSearchRoutes, type NotesSearchDeps } from "./notes/search.js"
 import { buildNotesUpdateRoutes, type NotesUpdateDeps } from "./notes/update.js";
 import { buildRealtimeRoutes, type RealtimeDeps } from "./realtime.js";
 import { buildReasonRoutes, type ReasonDeps } from "./reason.js";
+import {
+  buildSetupAdminRoutes,
+  type SetupAdminRenameTenant,
+  type SetupAdminSignUpEmail,
+} from "./setup-admin.js";
 import { buildSetupStateRoutes, type SetupStateDeps } from "./setup-state.js";
 import { buildStreamingUsageRoutes, type StreamingUsageDeps } from "./streaming-usage.js";
 import { buildSttConfigRoutes, type SttConfigDeps } from "./stt-config.js";
@@ -165,6 +170,26 @@ export interface AllRoutesDeps {
    * this — bootstrap.sh deny-list refuses placeholder values.
    */
   mockDiarization?: boolean;
+  /**
+   * Phase 12 / Plan 12-03 — POST /api/setup/admin wiring. When supplied,
+   * the route is registered; when omitted (e.g. minimal-mode boot, or a
+   * deployment that disables the wizard), the route is NOT registered
+   * and the centralized notFoundHandler emits the canonical 404 envelope.
+   *
+   * `ownerPool` is the BYPASSRLS pg.Pool from `makeOwnerDb()` — required
+   * because the handler writes to users.role (migration-only column) and
+   * tenants (root table), neither of which is reachable through the
+   * RLS-subject app pool.
+   *
+   * `signUpEmail` is `auth.api.signUpEmail` bound to the production
+   * Better Auth instance; tests inject a fake that emulates the Drizzle-
+   * adapter INSERT side-effect against the testcontainer DB.
+   */
+  setupAdmin?: {
+    ownerPool: import("pg").Pool;
+    signUpEmail: SetupAdminSignUpEmail;
+    renameTenant?: SetupAdminRenameTenant;
+  };
 }
 
 /**
@@ -352,6 +377,21 @@ export function buildAllRoutes(deps: AllRoutesDeps): readonly RoutePlugin[] {
     // middleware will gate on revoked_at IS NULL before verifyKey().
     buildKeysRevokeRoutes({ db: deps.db } satisfies KeysRevokeDeps),
   ];
+  // Phase 12 / Plan 12-03 — POST /api/setup/admin (idempotent wizard
+  // claim). Conditionally registered: needs an owner pool + a bound
+  // signUpEmail callable. Same conditional-registration pattern as
+  // `if (deps.redis)` above for diarization. When omitted, the
+  // centralized notFoundHandler emits the canonical 404 envelope.
+  if (deps.setupAdmin) {
+    plugins.push(
+      buildSetupAdminRoutes({
+        db: deps.db,
+        ownerPool: deps.setupAdmin.ownerPool,
+        signUpEmail: deps.setupAdmin.signUpEmail,
+        ...(deps.setupAdmin.renameTenant ? { renameTenant: deps.setupAdmin.renameTenant } : {}),
+      }),
+    );
+  }
   // Phase 03 / Plan 04: conditionally register the transcribe route only
   // when a LiteLLM client was constructed (LITELLM_MASTER_KEY present).
   // Plans 05/06/07 follow the same pattern as they land.
