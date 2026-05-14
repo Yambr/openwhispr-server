@@ -39,7 +39,7 @@
     "migrate:rollback": "pnpm --filter @openwhispr/data exec drizzle-kit drop"
   },
   "devDependencies": {
-    "@axe-core/playwright": "^4.10.2",
+    "@axe-core/playwright": "4.11.2",
     "@biomejs/biome": "2.4.14",
     "@commitlint/cli": "21.0.0",
     "@commitlint/config-conventional": "21.0.0",
