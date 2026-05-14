@@ -41,6 +41,78 @@ bash 5.x natively — no action required there.
 The script also needs `openssl` (universal) and, for full backup support,
 the `age` binary on PATH (see "Backup and restore" below).
 
+## BYOK Environment Matrix
+
+The slim-core base ships without `minio`, `traefik`, `otel-collector`,
+`pgbouncer`, or `mailpit`. When you do NOT enable an overlay AND the
+corresponding BYOK env var is unset, the api refuses to start with a
+Pino fatal record (see `apps/api/src/lib/byok-guard.ts`). The fatal
+record carries a stable `code:` field for alerting and an inline
+`hint:` line that names the offending env + the overlay file the
+operator can enable instead.
+
+The matrix below is the single source of truth for that contract.
+Each row maps one overlay to (a) the BYOK env(s) the api requires
+when the overlay is OFF, (b) the loud-fail code emitted on missing
+env, (c) the compose overlay file to add via `-f` to opt in, and
+(d) the Helm chart toggle for the K8s path.
+
+| Overlay | BYOK env(s) when OFF | Loud-fail code | Compose overlay file | Helm toggle |
+|---|---|---|---|---|
+| storage | `S3_ENDPOINT` (plus `S3_ACCESS_KEY`, `S3_SECRET_KEY`, `S3_BUCKET` when `S3_ENDPOINT` is set) | `BYOK_STORAGE_REQUIRED` | `compose/docker-compose.storage.yml` | `storage.enabled` |
+| observability | `OTEL_EXPORTER_OTLP_ENDPOINT` (sentinel value `disabled` is the explicit opt-out — anything else is treated as a real endpoint URL) | `BYOK_OBSERVABILITY_REQUIRED` | `compose/docker-compose.observability.yml` | `observability.enabled` |
+| ingress | `INGRESS_BASE_URL` | `BYOK_INGRESS_REQUIRED` | `compose/docker-compose.ingress.yml` | `tls.enabled` |
+| pgbouncer | `DATABASE_URL` (already required for every profile; the row exists for documentation symmetry, not a new gate) | `BYOK_DATABASE_REQUIRED` | `compose/docker-compose.pgbouncer.yml` | `pooler.enabled` |
+| dev-tools | `SMTP_HOST` (`NODE_ENV=production` only — matches the `createEmailSender` precedent in `packages/email/src/EmailSender.ts`) | `BYOK_SMTP_REQUIRED` | `compose/docker-compose.dev-tools.yml` | `mailpit.enabled` |
+
+### Reading the loud-fail record
+
+When `apps/api/src/lib/byok-guard.ts` trips, you get a single Pino
+JSON line on stderr before `process.exit(1)`:
+
+```json
+{
+  "level": 60,
+  "event": "byok.required",
+  "code": "BYOK_STORAGE_REQUIRED",
+  "overlay": "storage",
+  "missing": ["S3_ENDPOINT"],
+  "hint": "Set S3_ENDPOINT or enable the storage overlay (docker compose -f docker-compose.yml -f compose/docker-compose.storage.yml up)",
+  "msg": "BYOK env missing for disabled overlay; refusing to start"
+}
+```
+
+Grep your alerting on the `code:` field (stable enum), not on `msg:`.
+Credential-bearing strings are passed through `redact-url` before
+landing in the record; see `apps/api/src/lib/redact-url.ts`.
+
+### Upgrade path from `.env.example`
+
+Existing operators with a hand-tuned `.env` built from the legacy
+90-key template can migrate to the slim contract incrementally:
+
+```bash
+cp .env.slim.example .env.new
+diff .env .env.new                # review which keys you actually need
+# Copy your operator-set values across into .env.new. Keep
+# PLACEHOLDER_BOOTSTRAP_WILL_REPLACE on every secret you want
+# tools/bootstrap.sh to (re)generate.
+mv .env.new .env
+./tools/bootstrap.sh              # auto-fills placeholders
+```
+
+Operators who prefer to stay on the full 90-key template can keep
+their existing `.env` and pin the bootstrap template explicitly:
+
+```bash
+BOOTSTRAP_ENV_TEMPLATE=$PWD/.env.full.example ./tools/bootstrap.sh
+```
+
+For each overlay you previously had implicitly enabled by the
+monolithic `.env`, add the matching `-f compose/docker-compose.<overlay>.yml`
+flag to your `docker compose` command and uncomment the section of
+`.env.slim.example` that lists its BYOK envs.
+
 ## Backup and restore
 
 Phase 1 ships an `age`-encrypted `pg_dump` round-trip. The two operator
