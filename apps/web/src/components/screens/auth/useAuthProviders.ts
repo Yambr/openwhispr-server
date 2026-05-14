@@ -67,7 +67,7 @@ export function useAuthProviders(): UseAuthProvidersResult {
         // Fail closed — surface no providers, never throw. Surface to console
         // so an operator can correlate auth-screen flakes with their api
         // logs, but never block the page on a transient blip.
-        // eslint-disable-next-line no-console
+        // biome-ignore lint/suspicious/noConsole: intentional fail-closed observability hook (RESEARCH §9 P2)
         console.warn("[useAuthProviders] fetch failed; rendering zero providers", err);
         if (!cancelled) setData({ providers: [] });
       }
