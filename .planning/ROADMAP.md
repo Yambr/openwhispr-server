@@ -721,7 +721,14 @@ Plans:
   3. `GET /api/capabilities` (or `/api/auth/providers`) returns the configured OIDC providers + email-verification status; auth screens (`SignInForm`, `SignUpForm`, `OidcButtons`, `VerifyEmailClient`) render zero social buttons when zero providers are configured (closes TD-12.c capability drift + 404 → 429 lockout cascade).
   4. Auth screens conform semantically to `design-canvas.jsx` + `UI-SPEC-end-user.md` + `UI-SPEC-admin.md` (assertions in `tests/conformance/ui-spec/` — NOT pixel-diff); per-field Zod errors render in en+ru (no bare "Invalid input"); duplicate-banner regression in SignUpForm fixed (exactly one banner element); resend-verification CTA on sign-in 403 screen; axe a11y baseline shows zero violations on auth screens.
   5. Phase 13 Gherkin journey `@cjm-admin-onboarding` is GREEN before merge; phase verifier reports PASSED with ≥ 90/90/90/90 coverage on diff and live e2e green.
-**Plans**: TBD
+**Plans**: 5 plans
+Plans:
+- [ ] 12-01-PLAN.md — setup_state singleton schema + 0017 migration + users.role + Better Auth additionalFields.role (input:false)
+- [ ] 12-02-PLAN.md — Public /api/auth/providers + authed /api/capabilities + shared listConfiguredOidcProviders helper (D-08 zero-drift)
+- [ ] 12-03-PLAN.md — Idempotent POST /api/setup/admin + /setup wizard page + vendored shadcn-stepper + UICONF-03 zod-i18n
+- [ ] 12-04-PLAN.md — Auth screens consume /api/auth/providers + UICONF-06/07 fixes + /admin index page + ADMIN-05 ops docs
+- [ ] 12-05a-PLAN.md — UICONF-04 Vitest+RTL conformance suite (6 files) with JSX-oracle citations
+- [ ] 12-05b-PLAN.md — UICONF-05 axe baseline (5 routes) + flip 5 @cjm scenarios GREEN
 **UI hint**: yes
 
 ### Phase 14: Slim Core + BYOK Profiles (v2)

@@ -170,5 +170,6 @@ A fresh operator goes from `git clone && docker compose up` to a logged-in admin
 - Multi-step wizard variant (Option A) — if onboarding UX research surfaces operator confusion, can refactor Stepper-progress → true multi-step without changing the `/api/setup/admin` contract.
 - `design-canvas.jsx` runnable conformance — currently STATIC oracle (Figma canvas wrapper); future phase could mount it as a Storybook artboard if visual regression becomes valuable. Phase 12 keeps it static.
 - Email-template "resend verification" copy update — UICONF-07 requires the CTA; copy may benefit from a Phase 18 i18n review pass (not blocking Phase 12).
+- **`users.timezone` column persistence** — the Phase 12 wizard collects a timezone field (RHF Zod schema, `Intl.supportedValuesOf('timeZone')` picker, default from `Intl.DateTimeFormat().resolvedOptions().timeZone`) but the current `packages/data/src/schema/users.ts` has NO `timezone` column. Plan 12-03 handler accepts the field in the POST body for forward-compat but does NOT write it to any column; the wizard remembers the value only as a UX preset. Follow-up phase will add a migration `00NN_users_timezone.sql` (nullable text, no default, squawk-clean) + a Drizzle column declaration + persist the wizard value in the setup-admin handler. Documented per plan-check BLOCKER 3 fix (Phase 12 revision).
 
 </deferred_ideas>
