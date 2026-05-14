@@ -91,8 +91,17 @@ export function createEmailSender(opts: CreateEmailSenderOpts): EmailSender {
     );
     return {
       async send({ to, subject }) {
-        log.info({ to, subject, event: "email.skipped" }, "email skipped (SMTP not configured)");
-        return { delivered: true, reason: "smtp-not-configured" };
+        // Phase 13 review HI-01: NEVER swallow. The previous shape returned
+        // `delivered:true` which lied to Better Auth and the worker's
+        // email-delivery job — silent black hole on any non-prod env that
+        // forgot SMTP_HOST (staging, qa, CI without mailpit). Per file-header
+        // Pitfall #4 ("NEVER swallow"), the dev-fallback now reports
+        // `delivered:false` with a stable `reason` token so callers can
+        // distinguish "skipped because SMTP unconfigured" from a real
+        // transport failure. Worker treats `smtp-not-configured` as a
+        // non-fatal skip in non-prod (see apps/worker/src/jobs/email-delivery.ts).
+        log.warn({ to, subject, event: "email.skipped" }, "email skipped (SMTP not configured)");
+        return { delivered: false, reason: "smtp-not-configured" };
       },
     };
   }

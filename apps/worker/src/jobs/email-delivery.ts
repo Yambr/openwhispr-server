@@ -66,6 +66,21 @@ export interface EmailDeliveryDeps {
   pool: Pool;
   sender: EmailSender;
   renderer: TemplateRenderer;
+  /**
+   * Phase 13 review HI-01 — environment gate for the dev-fallback skip
+   * carve-out. When the EmailSender returns `{ delivered:false,
+   * reason:"smtp-not-configured" }` (the dev no-op path in
+   * `@openwhispr/email`), the worker MUST NOT throw in non-production
+   * environments — that would burn 5 BullMQ retry attempts on a stack
+   * that intentionally has SMTP unconfigured. In production we keep the
+   * loud-fail posture (defence-in-depth: the EmailSender's
+   * construction-time throw normally fires first in prod, but a future
+   * injected sender could bypass that gate).
+   *
+   * Defaults to `process.env.NODE_ENV` so production wiring (apps/worker/
+   * src/index.ts) does not need to thread the value through explicitly.
+   */
+  nodeEnv?: string | undefined;
 }
 
 /**
@@ -77,6 +92,7 @@ export interface EmailDeliveryDeps {
 export function buildEmailDeliveryHandler(
   deps: EmailDeliveryDeps,
 ): (job: import("bullmq").Job) => Promise<void> {
+  const nodeEnv = deps.nodeEnv ?? process.env.NODE_ENV;
   return withTenantContext(emailDeliverySchema, deps.pool, async (data) => {
     const rendered = deps.renderer.render(data.template_id, data.locale, data.variables);
     const result = await deps.sender.send({
@@ -86,7 +102,15 @@ export function buildEmailDeliveryHandler(
       ...(rendered.html ? { html: rendered.html } : {}),
     });
     if (!result.delivered) {
-      // Surface a throw so BullMQ retries on transient send failure.
+      // Phase 13 review HI-01: dev-fallback skip carve-out. Only the
+      // canonical `smtp-not-configured` reason emitted by
+      // @openwhispr/email's no-op sender takes the non-fatal path, and
+      // only outside production. Every other reason — and the
+      // smtp-not-configured reason in production — keeps the retry-throw
+      // posture so BullMQ retries on transient send failure.
+      if (result.reason === "smtp-not-configured" && nodeEnv !== "production") {
+        return;
+      }
       throw new Error(
         `email-delivery send did not deliver (template=${data.template_id} reason=${result.reason ?? "unknown"})`,
       );
