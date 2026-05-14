@@ -695,7 +695,7 @@ Plans:
 **UI hint**: no
 
 
-### Phase 13: E2E + CJM Harness (v2 — ships first)
+### Phase 13: E2E + CJM Harness (v2 — ships first) ✅ CLOSED 2026-05-14
 **Goal**: Every subsequent v2 phase writes its tests RED against a Cucumber+Playwright harness that boots the real docker-compose stack — happy-path-only tests that ship bugs green (TD-13.a/d) become structurally impossible.
 **Depends on**: Phase 11 (v1 closed)
 **Requirements**: E2E-01, E2E-02, E2E-03, E2E-04, E2E-05, E2E-06, E2E-07, E2E-08, E2E-09, E2E-10, E2E-11, E2E-12
