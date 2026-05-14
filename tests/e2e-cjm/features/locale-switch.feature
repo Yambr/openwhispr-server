@@ -9,7 +9,7 @@ Feature: Locale switch
     When the user switches the locale to "ru"
     Then a NEXT_LOCALE cookie is set to "ru" and the next render serves Russian copy
 
-  @cjm-6.2 @expected-red @after-phase-15
-  Scenario: /api/locale routes via api.localhost host split, not via app.localhost
+  @cjm-6.2 @after-docker-up @expected-red
+  Scenario: /api/locale routes via api.localhost host split, not via web.localhost
     When a GET to /api/locale on api.localhost is issued
     Then the host-split routing returns 200 and a JSON locale body

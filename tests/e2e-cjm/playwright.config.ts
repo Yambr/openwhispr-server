@@ -43,7 +43,12 @@ export default defineConfig({
   workers: 1,
   reporter: [["list"]],
   use: {
-    baseURL: "https://app.localhost",
+    // Phase 15 / Plan 02 (STRUCT-05) — host split: the web app lives at
+    // web.localhost; api.localhost is reserved for the Fastify api
+    // container (see compose/traefik/dynamic.dev.yml). Prior baseURL
+    // was app.localhost which had no Traefik router declared and was
+    // implicitly captured by the api router (TD-15.g).
+    baseURL: "https://web.localhost",
     ignoreHTTPSErrors: true,
     trace: "retain-on-failure",
   },
