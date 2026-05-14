@@ -2,6 +2,7 @@
   "name": "@openwhispr/e2e",
   "version": "0.0.0",
   "private": true,
+  "license": "FSL-1.1-ALv2",
   "type": "module",
   "description": "Host-side end-to-end suite (DISCIPLINE rule 3 back-fill). Runs against the live docker-compose stack with the hermetic mock-LiteLLM contract profile by default; extend via env to target real-key compose profiles.",
   "scripts": {

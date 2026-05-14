@@ -46,6 +46,8 @@ COPY package.json ./
 RUN npm install --no-audit --no-fund --omit=dev --omit=optional
 
 FROM node:24-alpine AS runner
+LABEL org.opencontainers.image.source="https://github.com/openwhispr/openwhispr-server" \
+      org.opencontainers.image.licenses="FSL-1.1-ALv2"
 WORKDIR /app
 ENV NODE_ENV=production
 # Runtime needs: prod deps + compiled JS + package.json (for ESM type).

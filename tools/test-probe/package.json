@@ -2,8 +2,9 @@
   "name": "@openwhispr/test-probe",
   "version": "0.0.0",
   "private": true,
+  "license": "FSL-1.1-ALv2",
   "type": "module",
-  "description": "Helm test hook image — first-launch SLO probe (DEPLOY-05). Seeds a user via Better Auth, POSTs a 5s WAV to /api/transcribe, asserts elapsed-ms < SLO_DEADLINE_MS, never logs the bearer token.",
+  "description": "Helm test hook image \u2014 first-launch SLO probe (DEPLOY-05). Seeds a user via Better Auth, POSTs a 5s WAV to /api/transcribe, asserts elapsed-ms < SLO_DEADLINE_MS, never logs the bearer token.",
   "main": "./src/probe.ts",
   "bin": {
     "openwhispr-test-probe": "./src/probe.ts"

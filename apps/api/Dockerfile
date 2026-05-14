@@ -107,6 +107,8 @@ RUN pnpm install --frozen-lockfile --prod --ignore-scripts \
 
 # ----- runtime: minimal image, non-root, healthcheck -----
 FROM node:24-alpine AS runtime
+LABEL org.opencontainers.image.source="https://github.com/openwhispr/openwhispr-server" \
+      org.opencontainers.image.licenses="FSL-1.1-ALv2"
 WORKDIR /app
 
 ENV NODE_ENV=production

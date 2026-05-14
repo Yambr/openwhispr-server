@@ -2,6 +2,7 @@
   "name": "@openwhispr/load-test",
   "version": "0.0.0",
   "private": true,
+  "license": "FSL-1.1-ALv2",
   "type": "module",
   "description": "k6 load-test workspace for OpenWhispr Server (Phase 08).",
   "main": "./src/main.ts",

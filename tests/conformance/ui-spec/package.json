@@ -1,6 +1,7 @@
 {
   "name": "@openwhispr/conformance-ui-spec",
   "private": true,
+  "license": "FSL-1.1-ALv2",
   "version": "0.0.0",
   "type": "module",
   "description": "Phase 12 UICONF-05 axe baseline (real Chromium against e2e-cjm compose stack). Lives outside the main test suites so its boot lifecycle (bootStack/tearStack from tests/e2e-cjm/support/compose-harness) does not collide with vitest workers.",
