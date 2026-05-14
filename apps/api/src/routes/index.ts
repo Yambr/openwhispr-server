@@ -74,6 +74,7 @@ import { buildNotesSearchRoutes, type NotesSearchDeps } from "./notes/search.js"
 import { buildNotesUpdateRoutes, type NotesUpdateDeps } from "./notes/update.js";
 import { buildRealtimeRoutes, type RealtimeDeps } from "./realtime.js";
 import { buildReasonRoutes, type ReasonDeps } from "./reason.js";
+import { buildSetupStateRoutes, type SetupStateDeps } from "./setup-state.js";
 import { buildStreamingUsageRoutes, type StreamingUsageDeps } from "./streaming-usage.js";
 import { buildSttConfigRoutes, type SttConfigDeps } from "./stt-config.js";
 import { buildTestOnlyRoutes } from "./test-only.js";
@@ -203,10 +204,12 @@ export function buildAllRoutes(deps: AllRoutesDeps): readonly RoutePlugin[] {
   // Both register UNCONDITIONALLY: no DB dep, env-derived, public.
   const authProvidersDeps: AuthProvidersDeps = {};
   const capabilitiesDeps: CapabilitiesDeps = { db: deps.db };
+  const setupStateDeps: SetupStateDeps = { db: deps.db };
   const plugins: RoutePlugin[] = [
     buildBetterAuthHandlerRoutes(betterAuthHandlerDeps),
     buildAuthProvidersRoutes(authProvidersDeps),
     buildCapabilitiesRoutes(capabilitiesDeps),
+    buildSetupStateRoutes(setupStateDeps),
     buildCheckUserRoutes(checkUserDeps),
     buildVerificationStatusRoutes(verificationDeps),
     buildDeleteAccountRoutes(deleteAccountDeps),
