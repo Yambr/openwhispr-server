@@ -443,19 +443,19 @@ Wave structure:
 
 ### Admin onboarding + UI-SPEC conformance (Phase 12)
 
-- [ ] **ADMIN-01**: `/setup` route at `apps/web/src/app/(public)/setup/page.tsx` gated by `setup_state` enum state machine (NOT users-count) with explicit states: `pending`, `completed`, `skipped_legacy`
-- [ ] **ADMIN-02**: Single-page wizard fields (email, password, display name, workspace name, timezone); RHF7+Zod3+shadcn Stepper composition; idempotent `POST /api/setup/admin`
-- [ ] **ADMIN-03**: `ALTER TABLE users ADD COLUMN role text` migration + Better Auth `additionalFields.role` extension; backfill existing v1 installs to `setup_state.status='skipped_legacy'`
-- [ ] **ADMIN-04**: `/admin` Next.js index page (closes TD-12.a 404); admin breadcrumb / nav surface drives to `config` and future subpages
-- [ ] **ADMIN-05**: Basicauth-htpasswd remains as documented break-glass recovery path with secret rotation documented in `docs/operations.md`; Bcrypt-`$$` escape trap removed by wizard (TD-12.f)
+- [x] **ADMIN-01**: `/setup` route at `apps/web/src/app/(public)/setup/page.tsx` gated by `setup_state` enum state machine (NOT users-count) with explicit states: `pending`, `completed`, `skipped_legacy`
+- [x] **ADMIN-02**: Single-page wizard fields (email, password, display name, workspace name, timezone); RHF7+Zod3+shadcn Stepper composition; idempotent `POST /api/setup/admin`
+- [x] **ADMIN-03**: `ALTER TABLE users ADD COLUMN role text` migration + Better Auth `additionalFields.role` extension; backfill existing v1 installs to `setup_state.status='skipped_legacy'`
+- [x] **ADMIN-04**: `/admin` Next.js index page (closes TD-12.a 404); admin breadcrumb / nav surface drives to `config` and future subpages
+- [x] **ADMIN-05**: Basicauth-htpasswd remains as documented break-glass recovery path with secret rotation documented in `docs/operations.md`; Bcrypt-`$$` escape trap removed by wizard (TD-12.f)
 - [x] **ADMIN-06**: Wizard onboarding e2e test in Phase 13 harness — green Gherkin journey before merge
-- [ ] **UICONF-01**: `GET /api/capabilities` (or `/api/auth/providers`) endpoint returns the configured OIDC providers + email-verification status; closes UI/BE capability drift (TD-12.c)
-- [ ] **UICONF-02**: Auth screens (`SignInForm`, `SignUpForm`, `OidcButtons`, `VerifyEmailClient`) conditionally render against `/api/capabilities` — zero buttons for zero providers
-- [ ] **UICONF-03**: Per-field Zod error mapping (TD-13.b) — every form field surfaces its own error message, localized en+ru, no bare "Invalid input"
+- [x] **UICONF-01**: `GET /api/capabilities` (or `/api/auth/providers`) endpoint returns the configured OIDC providers + email-verification status; closes UI/BE capability drift (TD-12.c)
+- [x] **UICONF-02**: Auth screens (`SignInForm`, `SignUpForm`, `OidcButtons`, `VerifyEmailClient`) conditionally render against `/api/capabilities` — zero buttons for zero providers
+- [x] **UICONF-03**: Per-field Zod error mapping (TD-13.b) — every form field surfaces its own error message, localized en+ru, no bare "Invalid input"
 - [x] **UICONF-04**: Semantic Playwright DOM conformance suite vs `.planning/phases/07-frontend-ui-spec/design/design-canvas.jsx` + `UI-SPEC-end-user.md` + `UI-SPEC-admin.md` — NOT pixel-diff; lives in `tests/conformance/ui-spec/`
 - [x] **UICONF-05**: Axe a11y baseline + per-screen delta gate; auth screens MUST pass with zero violations
 - [x] **UICONF-06**: SignUpForm duplicate-banner regression fixed; conformance test asserts exactly one banner element (TD-13.a)
-- [ ] **UICONF-07**: Resend-verification CTA on sign-in 403 screen (TD-12.e)
+- [x] **UICONF-07**: Resend-verification CTA on sign-in 403 screen (TD-12.e)
 
 ### Slim core + BYOK profiles (Phase 14)
 
@@ -546,19 +546,19 @@ Work-order: **13 → 12 → 14 → 15 → 16 → 17 → 18**. 61 REQ-IDs mapped 
 | E2E-10 | 13 | Pending | testcontainers teardown + CI prune in always() |
 | E2E-11 | 13 | Pending | Weak-assertion ESLint ban + sweep |
 | E2E-12 | 13 | Pending | Readiness probes + retry-on-flake ban |
-| ADMIN-01 | 12 | Pending | `/setup` gated by `setup_state` enum (NOT users-count) |
-| ADMIN-02 | 12 | Pending | Single-page wizard (RHF+Zod+shadcn Stepper); idempotent `POST /api/setup/admin` |
-| ADMIN-03 | 12 | Pending | `users.role` migration + Better Auth `additionalFields.role` + `skipped_legacy` backfill |
-| ADMIN-04 | 12 | Pending | `/admin` index page (closes TD-12.a 404) |
-| ADMIN-05 | 12 | Pending | basicauth-htpasswd break-glass documented; bcrypt `$$` trap removed |
+| ADMIN-01 | 12 | Complete | `/setup` gated by `setup_state` enum (NOT users-count) |
+| ADMIN-02 | 12 | Complete | Single-page wizard (RHF+Zod+shadcn Stepper); idempotent `POST /api/setup/admin` |
+| ADMIN-03 | 12 | Complete | `users.role` migration + Better Auth `additionalFields.role` + `skipped_legacy` backfill |
+| ADMIN-04 | 12 | Complete | `/admin` index page (closes TD-12.a 404) |
+| ADMIN-05 | 12 | Complete | basicauth-htpasswd break-glass documented; bcrypt `$$` trap removed |
 | ADMIN-06 | 12 | Complete | Wizard `@cjm-admin-onboarding` Gherkin GREEN in Phase 13 harness |
-| UICONF-01 | 12 | Pending | `GET /api/capabilities` returns providers + verification status |
-| UICONF-02 | 12 | Pending | Auth screens render conditionally vs `/api/capabilities` |
-| UICONF-03 | 12 | Pending | Per-field Zod errors localized en+ru |
+| UICONF-01 | 12 | Complete | `GET /api/capabilities` returns providers + verification status |
+| UICONF-02 | 12 | Complete | Auth screens render conditionally vs `/api/capabilities` |
+| UICONF-03 | 12 | Complete | Per-field Zod errors localized en+ru |
 | UICONF-04 | 12 | Complete | Semantic Playwright DOM conformance vs `design-canvas.jsx` |
 | UICONF-05 | 12 | Complete | Axe a11y baseline + per-screen delta gate |
 | UICONF-06 | 12 | Complete | SignUpForm duplicate-banner regression fixed |
-| UICONF-07 | 12 | Pending | Resend-verification CTA on sign-in 403 |
+| UICONF-07 | 12 | Complete | Resend-verification CTA on sign-in 403 |
 | SLIM-01 | 14 | Pending | Slim default = 6 services; bare `docker compose up` selects them |
 | SLIM-02 | 14 | Pending | Opt-in compose overlays (observability/storage/ingress/pgbouncer/dev-tools) |
 | SLIM-03 | 14 | Pending | `.env.slim.example` ~5 keys |
