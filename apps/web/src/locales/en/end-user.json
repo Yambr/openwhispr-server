@@ -424,6 +424,9 @@
             "disabled": "Forgot password? — coming soon, contact your operator."
           }
         },
+        "resendVerification": {
+          "label": "Resend verification email"
+        },
         "signup-link": {
           "label": "Don't have an account? Sign up"
         }
@@ -434,6 +437,17 @@
         },
         "title": {
           "text": "Sign-in failed"
+        },
+        "unverified": {
+          "title": {
+            "text": "Verify your email to sign in"
+          },
+          "body": {
+            "text": "We have not received confirmation for this email yet. Resend the verification link below."
+          },
+          "sent": {
+            "text": "Verification email sent. Check your inbox."
+          }
         }
       },
       "form": {

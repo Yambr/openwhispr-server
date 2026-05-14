@@ -27,12 +27,16 @@ vi.mock("next/link", () => ({
 
 const signInEmail = vi.fn();
 const signInSocial = vi.fn();
+const sendVerificationEmail = vi.fn();
 vi.mock("@/lib/auth-client", () => ({
   authClient: {
     signIn: {
       email: (...args: unknown[]) => signInEmail(...args),
       social: (...args: unknown[]) => signInSocial(...args),
     },
+    // Plan 12-04 / UICONF-07: Better Auth React client surface exposes
+    // sendVerificationEmail({ email }) for the resend-verification flow.
+    sendVerificationEmail: (...args: unknown[]) => sendVerificationEmail(...args),
   },
 }));
 
@@ -52,15 +56,26 @@ const resources = {
           github: { label: "Continue with GitHub" },
           sso: { label: "Continue with SSO" },
         },
+        error: {
+          title: { text: "Sign-in failed" },
+          body: { text: "Check your email and password, then try again." },
+          // Plan 12-04 / UICONF-07: dedicated copy for 403 EMAIL_NOT_VERIFIED.
+          unverified: {
+            title: { text: "Verify your email to sign in" },
+            body: {
+              text: "We have not received confirmation for this email yet. Resend the verification link below.",
+            },
+            sent: {
+              text: "Verification email sent. Check your inbox.",
+            },
+          },
+        },
         action: {
           forgotPassword: {
             link: { disabled: "Forgot password? — coming soon, contact your operator." },
           },
           "signup-link": { label: "Don't have an account? Sign up" },
-        },
-        error: {
-          title: { text: "Sign-in failed" },
-          body: { text: "Check your email and password, then try again." },
+          resendVerification: { label: "Resend verification email" },
         },
       },
     },
@@ -267,5 +282,88 @@ describe("SignInForm (Phase 07.1 / Plan 07 — U1)", () => {
     await waitFor(() => expect(signInSocial).toHaveBeenCalledTimes(1));
     const arg = signInSocial.mock.calls[0]?.[0] as { provider: string };
     expect(arg.provider).toBe("google");
+  });
+
+  // ---------------------------------------------------------------------
+  // UICONF-07 — resend-verification CTA on 403 EMAIL_NOT_VERIFIED (Plan 12-04)
+  // ---------------------------------------------------------------------
+
+  it("UICONF-07: renders resend CTA when sign-in returns EMAIL_NOT_VERIFIED", async () => {
+    signInEmail.mockResolvedValueOnce({
+      data: null,
+      error: { code: "EMAIL_NOT_VERIFIED", message: "Email not verified" },
+    });
+    const { SignInForm } = await import("../SignInForm");
+    const user = userEvent.setup();
+    render(
+      <Wrap>
+        <SignInForm />
+      </Wrap>,
+    );
+    await user.type(screen.getByLabelText(/email/i), "alice@test.local");
+    await user.type(screen.getByLabelText(/password/i), "Pwa9!testStrong");
+    await user.click(screen.getByRole("button", { name: /^sign in$/i }));
+
+    // Dedicated unverified-email alert title + body distinct from the generic one.
+    expect(await screen.findByText(/verify your email to sign in/i)).toBeInTheDocument();
+    expect(screen.getByText(/have not received confirmation/i)).toBeInTheDocument();
+    // The CTA is a Button (resend), not a link.
+    expect(screen.getByRole("button", { name: /resend verification email/i })).toBeInTheDocument();
+    // The generic sign-in failure copy MUST NOT be on screen for this branch.
+    expect(screen.queryByText(/^sign-in failed$/i)).not.toBeInTheDocument();
+  });
+
+  it("UICONF-07: clicking the resend CTA calls authClient.sendVerificationEmail and shows the 'sent' state", async () => {
+    signInEmail.mockResolvedValueOnce({
+      data: null,
+      error: { code: "EMAIL_NOT_VERIFIED", message: "Email not verified" },
+    });
+    sendVerificationEmail.mockResolvedValueOnce({ data: { status: true }, error: null });
+
+    const { SignInForm } = await import("../SignInForm");
+    const user = userEvent.setup();
+    render(
+      <Wrap>
+        <SignInForm />
+      </Wrap>,
+    );
+    await user.type(screen.getByLabelText(/email/i), "alice@test.local");
+    await user.type(screen.getByLabelText(/password/i), "Pwa9!testStrong");
+    await user.click(screen.getByRole("button", { name: /^sign in$/i }));
+
+    const resendBtn = await screen.findByRole("button", { name: /resend verification email/i });
+    await user.click(resendBtn);
+
+    await waitFor(() => expect(sendVerificationEmail).toHaveBeenCalledTimes(1));
+    const arg = sendVerificationEmail.mock.calls[0]?.[0] as { email: string };
+    expect(arg.email).toBe("alice@test.local");
+
+    await waitFor(() => {
+      expect(screen.getByText(/verification email sent/i)).toBeInTheDocument();
+    });
+  });
+
+  it("UICONF-07: a non-403 error does NOT render the resend CTA (regression guard)", async () => {
+    signInEmail.mockResolvedValueOnce({
+      data: null,
+      error: { code: "INVALID_CREDENTIALS", message: "Wrong password" },
+    });
+    const { SignInForm } = await import("../SignInForm");
+    const user = userEvent.setup();
+    render(
+      <Wrap>
+        <SignInForm />
+      </Wrap>,
+    );
+    await user.type(screen.getByLabelText(/email/i), "alice@test.local");
+    await user.type(screen.getByLabelText(/password/i), "Pwa9!testStrong");
+    await user.click(screen.getByRole("button", { name: /^sign in$/i }));
+
+    await waitFor(() => {
+      expect(screen.getByText(/sign-in failed/i)).toBeInTheDocument();
+    });
+    expect(
+      screen.queryByRole("button", { name: /resend verification email/i }),
+    ).not.toBeInTheDocument();
   });
 });
