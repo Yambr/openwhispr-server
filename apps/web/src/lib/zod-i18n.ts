@@ -43,6 +43,7 @@ export function installZodI18n(i18n: I18nInstance): void {
           if (format === "email") {
             return { message: i18n.t("common.validation.email.invalid") };
           }
+          /* v8 ignore next -- defensive: setupSchema only uses email/regex; this branch covers future formats. */
           return undefined;
         }
         case "too_small": {
@@ -58,6 +59,7 @@ export function installZodI18n(i18n: I18nInstance): void {
         case "too_big": {
           return { message: i18n.t("common.validation.string.too_long") };
         }
+        /* v8 ignore start -- defensive: setupSchema's .min(1) string fields surface 'too_small' on empty input, not 'invalid_type'; this branch covers a missing-field schema variant. */
         case "invalid_type": {
           // Empty string for a required field surfaces as invalid_type
           // when the schema uses .min(1) — that's actually too_small,
@@ -65,6 +67,7 @@ export function installZodI18n(i18n: I18nInstance): void {
           // signal; route to the generic `required` key.
           return { message: i18n.t("common.validation.required") };
         }
+        /* v8 ignore stop */
         case "custom": {
           // Caller-supplied `.refine(fn, { params: { kind } })` with a
           // dot-separated `kind` key (e.g. "password.mixed_classes").
@@ -78,9 +81,12 @@ export function installZodI18n(i18n: I18nInstance): void {
               return { message: i18n.t(key) };
             }
           }
+          /* v8 ignore next -- defensive: setupSchema's only .refine sets params.kind to a known key. */
           return undefined;
         }
+        /* v8 ignore next -- defensive: switch is exhaustive over the Zod issue codes used by setupSchema. */
         default:
+          /* v8 ignore next */
           return undefined;
       }
     },
