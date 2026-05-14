@@ -55,12 +55,28 @@ export const USER_PROJECT = "openwhispr";
 
 /**
  * Compose files to layer when booting `-p e2e-cjm`. ORDER MATTERS — base
- * `docker-compose.yml` then the `embedded-litellm` overlay (which appends
- * a LiteLLM service + env wiring). Per plan OQ-2 binding.
+ * `docker-compose.yml` (slim-core, Phase 14 / Plan 14-01) then the
+ * `embedded-litellm` overlay (which appends a LiteLLM service + env
+ * wiring), then the Phase 14 / Plan 14-03 opt-in overlays the CJM
+ * happy-path needs:
+ *
+ *   - observability — Phase 13 trace-propagation assertions.
+ *   - pgbouncer    — production-parity pooler.
+ *   - dev-tools    — mailpit for verification-email assertions.
+ *   - ingress      — Traefik (`https://api.localhost/api/health` readiness URL
+ *                    below depends on this overlay being layered).
+ *
+ * The ingress overlay's `ports: !reset []` is compatible with this list
+ * (Phase 13 scenarios already address services via Traefik front URL;
+ * see `DEFAULT_HEALTH_URL` below).
  */
 export const COMPOSE_FILES: readonly string[] = [
   "docker-compose.yml",
   "docker-compose.embedded-litellm.yml",
+  "compose/docker-compose.observability.yml",
+  "compose/docker-compose.pgbouncer.yml",
+  "compose/docker-compose.dev-tools.yml",
+  "compose/docker-compose.ingress.yml",
 ] as const;
 
 /** Profile selector applied to `compose up`. Per plan OQ-2 binding. */

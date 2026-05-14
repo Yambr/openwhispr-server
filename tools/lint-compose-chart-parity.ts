@@ -21,10 +21,20 @@ import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import { parse, parseAllDocuments } from "yaml";
 
+// Phase 14 / Plan 14-03 — slim-core base + opt-in overlays. The parity
+// linter must union the service set across the base AND every overlay so
+// the allowlist + chart can resolve services that live exclusively in
+// an overlay (e.g. traefik in ingress, mailpit in dev-tools).
 export const DEFAULT_COMPOSE_FILES = [
   "docker-compose.yml",
   "docker-compose.load-test.yml",
   "docker-compose.load-test.realistic.yml",
+  "compose/docker-compose.observability.yml",
+  "compose/docker-compose.storage.yml",
+  "compose/docker-compose.ingress.yml",
+  "compose/docker-compose.pgbouncer.yml",
+  "compose/docker-compose.dev-tools.yml",
+  "compose/docker-compose.contract-test.yml",
 ];
 
 export const DEFAULT_HELM_ARGS = [
