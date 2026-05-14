@@ -1,0 +1,70 @@
+name: chart-release
+
+# Phase 15 / Plan 03 (STRUCT-03 Option 3) — Helm chart release on the
+# `chart-v*` tag namespace. The chart semver lane is DECOUPLED from
+# the server semver lane (`.github/workflows/helm-release.yml` fires
+# on `v*` tags and pushes the chart as an OCI artifact to ghcr.io).
+# This workflow uses helm/chart-releaser-action to publish the
+# packaged chart + index.yaml to the `gh-pages` branch, which
+# ArtifactHub (https://artifacthub.io/) consumes per
+# charts/openwhispr/artifacthub-repo.yml.
+#
+# Tag namespace separation:
+#   v*         -> server release   -> helm-release.yml (OCI to ghcr.io)
+#   chart-v*   -> chart release    -> THIS workflow   (gh-pages index)
+#
+# Operator one-shot prerequisite: the `gh-pages` branch must exist
+# before the first run (chart-releaser-action does not create it).
+# See the 15-04 runbook for the
+# `git checkout --orphan gh-pages && git commit --allow-empty
+# && git push origin gh-pages` bootstrap step.
+
+on:
+  push:
+    tags:
+      - "chart-v*"
+
+permissions:
+  contents: write       # release commit + tag push
+  pages: write          # gh-pages publish
+
+concurrency:
+  group: chart-release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout (full history required for chart-releaser-action)
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Configure git identity (for the chart-releaser release commit)
+        run: |
+          git config user.name "${{ github.actor }}"
+          git config user.email "${{ github.actor }}@users.noreply.github.com"
+
+      - name: Setup Helm
+        uses: azure/setup-helm@v4
+        with:
+          version: v3.16.4
+
+      - name: Helm dependency build
+        run: helm dependency build charts/openwhispr
+
+      - name: Run chart-releaser (publishes packaged chart + index.yaml to gh-pages)
+        # Pinned to v1.6.0 per the existing helm-release.yml convention.
+        # When chart-releaser-action publishes a new release, bump the
+        # pin via dependabot or a manual PR; do NOT consume the floating
+        # major tag (`@v1`) in production CI.
+        uses: helm/chart-releaser-action@v1.6.0
+        with:
+          charts_dir: charts
+          # `skip_existing: true` makes the workflow idempotent across
+          # re-runs of the same tag. Without it, a re-run on the same
+          # chart-v* tag fails with "release already exists".
+          skip_existing: true
+        env:
+          CR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
