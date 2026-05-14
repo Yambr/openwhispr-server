@@ -114,7 +114,7 @@ afterEach(() => {
 
 describe("bootStack — envOverrides", () => {
   it("writes a temp env file and passes --env-file to compose up", async () => {
-    const router = (cmd: string, args: string[]): FakeChildSpec => {
+    const router = (_cmd: string, args: string[]): FakeChildSpec => {
       // `ps -q` for openwhispr-stack detection → no running stack.
       if (args.includes("ps") && args.includes("-q")) return { stdout: "" };
       return { exitCode: 0 };
