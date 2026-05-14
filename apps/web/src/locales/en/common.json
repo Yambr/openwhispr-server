@@ -35,6 +35,18 @@
       "plural": {
         "unread": "{count, plural, one{# unread message} other{# unread messages}}"
       }
+    },
+    "validation": {
+      "email": { "invalid": "Enter a valid email address." },
+      "password": {
+        "min_length": "Password must be at least 12 characters.",
+        "mixed_classes": "Password must include upper-, lower-case, and a digit."
+      },
+      "required": "This field is required.",
+      "string": {
+        "too_short": "Value is too short.",
+        "too_long": "Value is too long."
+      }
     }
   }
 }
