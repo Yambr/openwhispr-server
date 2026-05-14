@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: FSL-1.1-ALv2
 /**
  * apps/api/scripts/check-default-secrets.ts — defense-in-depth check
  * invoked by the API container ENTRYPOINT before `node dist/index.js`.
@@ -31,8 +31,8 @@ const here =
       // biome-ignore lint/style/noNonNullAssertion: CJS bundle guarantees __dirname
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       ((globalThis as unknown as { __dirname?: string }).__dirname ??
-        // biome-ignore lint/correctness/noUndeclaredVariables: CJS-only fallback
-        (typeof __dirname !== "undefined" ? __dirname : ""));
+      // biome-ignore lint/correctness/noUndeclaredVariables: CJS-only fallback
+      (typeof __dirname !== "undefined" ? __dirname : ""));
 
 // In the container image the deny-list ships at /app/tools/bootstrap/default-secrets.txt
 // (Dockerfile COPY). Local invocation (tsx, vitest) finds it via the
@@ -49,8 +49,7 @@ const monorepoDenyPath = resolve(
 );
 
 const denyPath = resolve(
-  process.env.DENY_LIST_PATH ??
-    (here.startsWith("/app") ? containerDenyPath : monorepoDenyPath),
+  process.env.DENY_LIST_PATH ?? (here.startsWith("/app") ? containerDenyPath : monorepoDenyPath),
 );
 
 const deny = readFileSync(denyPath, "utf8")

@@ -1,13 +1,13 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: FSL-1.1-ALv2
 // Phase 05 / Plan 08 / Task 1 — shared test boot helper for
 // transcriptions integration tests. Mirrors folders/notes setup.ts.
 
+import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import { PostgreSqlContainer, type StartedPostgreSqlContainer } from "@testcontainers/postgresql";
 import { drizzle } from "drizzle-orm/node-postgres";
 import { migrate } from "drizzle-orm/node-postgres/migrator";
 import Fastify, { type FastifyInstance } from "fastify";
-import { resolve, dirname } from "node:path";
-import { fileURLToPath } from "node:url";
 import { Pool } from "pg";
 import { registerErrorHandler } from "../../../error-handler.js";
 import { zodTypeProvider } from "../../../plugins/zod-type-provider.js";
@@ -54,13 +54,9 @@ export async function bootMigratedPostgres(): Promise<BootedPostgres> {
   await superPool.query(
     `CREATE ROLE openwhispr_owner WITH LOGIN BYPASSRLS CREATEROLE PASSWORD '${ownerPw}'`,
   );
-  await superPool.query(
-    `CREATE ROLE openwhispr_app   WITH LOGIN          PASSWORD '${appPw}'`,
-  );
+  await superPool.query(`CREATE ROLE openwhispr_app   WITH LOGIN          PASSWORD '${appPw}'`);
   await superPool.query(`GRANT openwhispr_app TO openwhispr_owner WITH ADMIN OPTION`);
-  await superPool.query(
-    `GRANT SET, ALTER SYSTEM ON PARAMETER "app.tenant_id" TO openwhispr_owner`,
-  );
+  await superPool.query(`GRANT SET, ALTER SYSTEM ON PARAMETER "app.tenant_id" TO openwhispr_owner`);
   await superPool.query(`ALTER DATABASE openwhispr OWNER TO openwhispr_owner`);
   await superPool.query(`ALTER SCHEMA public OWNER TO openwhispr_owner`);
   await superPool.end();

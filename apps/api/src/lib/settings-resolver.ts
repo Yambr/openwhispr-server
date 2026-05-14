@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: FSL-1.1-ALv2
 // Phase 05 / Plan 04 / Task 1 — Settings resolution chain (D-18, D-19, D-20).
 //
 // Both `/api/stt-config` (WIRE-11) and `/api/note-recording-config`
@@ -26,8 +26,9 @@
 //       isolation policies on both tables reference current_setting
 //       ('app.tenant_id', true) so cross-tenant settings are invisible
 //       (T-05-05 mitigation).
-import { sql } from "drizzle-orm";
+
 import type { ExecutableTx } from "@openwhispr/data";
+import { sql } from "drizzle-orm";
 
 interface StringRow {
   stt_config?: Record<string, unknown> | null;
@@ -175,7 +176,7 @@ export async function resolveNoteRecordingConfig(
     (typeof tenantCfg.diarizationEnabled === "boolean"
       ? tenantCfg.diarizationEnabled
       : undefined) ??
-    (process.env.NOTE_RECORDING_DIARIZATION_ENABLED !== "false");
+    process.env.NOTE_RECORDING_DIARIZATION_ENABLED !== "false";
 
   return {
     maxDurationSeconds,

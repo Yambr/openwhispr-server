@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: FSL-1.1-ALv2
 // Phase 04 / Plan 04 / Task 1 — POST /api/openai-realtime-token.
 //
 // Source of truth: 04-RESEARCH.md §2.5 (OpenAI Realtime block lines 526–554)

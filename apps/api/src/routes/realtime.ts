@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: FSL-1.1-ALv2
 // Phase 03 / Plan 07 / Task 1 — WSS /v1/realtime reverse-proxy mount
 // (LITELLM-03, D-04).
 //
@@ -39,8 +39,8 @@
 //     normalized to the authenticated user id.
 
 import fastifyHttpProxy from "@fastify/http-proxy";
-import type { FastifyInstance } from "fastify";
 import type { LitellmClient } from "@openwhispr/litellm-client";
+import type { FastifyInstance } from "fastify";
 import { AuthError } from "../errors.js";
 
 /**

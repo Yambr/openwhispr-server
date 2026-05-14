@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: FSL-1.1-ALv2
 // Phase 05 / Plan 06 / Task 1 — PATCH /api/folders/update (WIRE-23).
 //
 // Wire shape (matches ~/openwhispr/src/services/FoldersService.ts.update):

@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: FSL-1.1-ALv2
 // Phase 2 Plan 02 — Build artifacts for the API container.
 // Phase 02.1 — make the api bundle self-contained for container runtime.
 //

@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: FSL-1.1-ALv2
 // Phase 6 / Plan 06 / SCALE-04 — process-wide SSRF dispatcher bootstrap.
 //
 // Imported by apps/api/src/index.ts AFTER `./otel-bootstrap.js` (so the

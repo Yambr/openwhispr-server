@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: FSL-1.1-ALv2
 // Phase 04 / Plan 03 / Task 1 — shared undici provider-mint helper.
 //
 // Source of truth: 04-RESEARCH.md §2.5 (lines 441–484) + 04-CONTEXT.md
@@ -26,7 +26,7 @@
 // (setGlobalDispatcher) is also reachable in production for tracing
 // instrumentation later.
 
-import { fetch, getGlobalDispatcher, setGlobalDispatcher, Agent } from "undici";
+import { Agent, fetch, getGlobalDispatcher, setGlobalDispatcher } from "undici";
 
 /** Total per-call budget (connect + body). 5s per D-20.
  *

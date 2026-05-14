@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: FSL-1.1-ALv2
 // Phase 02.7 / Plan 03 — D-02 helper.
 //
 // Resolves a Better Auth `APIError` to a numeric HTTP status, defensively

@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: FSL-1.1-ALv2
 // Phase 05 / Plan 05 / Task 1 — Keyset pagination helper (D-25).
 //
 // Shared by every CRUD list route (notes, folders, conversations,
@@ -24,7 +24,7 @@
 //   retry. The (created_at, id) lexicographic compare is the standard
 //   keyset technique. PG resolves `(a, b) < (c, d)` as `a<c OR (a=c
 //   AND b<d)` which the partial DESC index serves directly.
-import { sql, type SQL } from "drizzle-orm";
+import { type SQL, sql } from "drizzle-orm";
 
 export interface ParsedListQuery {
   limit: number;

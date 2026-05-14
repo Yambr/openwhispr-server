@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: FSL-1.1-ALv2
 // Phase 05 / Plan 08 / Task 1 — GET /api/transcriptions/list (WIRE-26).
 //
 // Wire shape (matches ~/openwhispr/src/services/TranscriptionsService.ts.list):

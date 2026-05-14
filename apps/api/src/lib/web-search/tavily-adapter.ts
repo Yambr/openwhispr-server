@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: FSL-1.1-ALv2
 // Phase 05 / Plan 03 / Task 2 — Tavily web-search adapter (live).
 //
 // Source of truth: https://docs.tavily.com/documentation/api-reference/endpoint/search
@@ -23,11 +23,7 @@
 //     Authorization header. Error messages never include it.
 
 import { fetch } from "undici";
-import {
-  MissingProviderKeyError,
-  UpstreamError,
-  type WebSearchProvider,
-} from "./types.js";
+import { MissingProviderKeyError, UpstreamError, type WebSearchProvider } from "./types.js";
 
 const TAVILY_URL = "https://api.tavily.com/search";
 const TOTAL_TIMEOUT_MS = 5000;
@@ -51,8 +47,7 @@ export class TavilyAdapter implements WebSearchProvider {
   readonly name = "tavily";
 
   isConfigured(): boolean {
-    return typeof process.env.TAVILY_API_KEY === "string"
-      && process.env.TAVILY_API_KEY.length > 0;
+    return typeof process.env.TAVILY_API_KEY === "string" && process.env.TAVILY_API_KEY.length > 0;
   }
 
   async search(
@@ -63,13 +58,11 @@ export class TavilyAdapter implements WebSearchProvider {
   }> {
     const apiKey = process.env.TAVILY_API_KEY;
     if (!apiKey) {
-      throw new MissingProviderKeyError(
-        "Tavily not configured (set TAVILY_API_KEY in .env)",
-      );
+      throw new MissingProviderKeyError("Tavily not configured (set TAVILY_API_KEY in .env)");
     }
     const ctrl = new AbortController();
     const timer = setTimeout(() => ctrl.abort(), TOTAL_TIMEOUT_MS);
-    let res;
+    let res: Response;
     try {
       res = await fetch(TAVILY_URL, {
         method: "POST",
@@ -97,9 +90,7 @@ export class TavilyAdapter implements WebSearchProvider {
     }
     if (res.status === 401 || res.status === 403) {
       // The provider rejected the key; treat as misconfigured (D-08).
-      throw new MissingProviderKeyError(
-        "Tavily not configured (set TAVILY_API_KEY in .env)",
-      );
+      throw new MissingProviderKeyError("Tavily not configured (set TAVILY_API_KEY in .env)");
     }
     if (!res.ok) {
       throw new UpstreamError(`Tavily upstream returned ${res.status}`);

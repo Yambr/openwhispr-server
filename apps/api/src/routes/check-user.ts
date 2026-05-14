@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: FSL-1.1-ALv2
 // Phase 2 / Plan 03 / Task 3 — `POST /api/check-user`.
 //
 // Pre-auth flow used by the desktop "do you have an account?" pivot

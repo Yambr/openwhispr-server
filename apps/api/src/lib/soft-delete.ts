@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: FSL-1.1-ALv2
 // Phase 05 / Plan 05 / Task 1 — Soft-delete helper (D-23).
 //
 // Single SQL fragment shared by every read path (list, search, get) on
@@ -16,7 +16,7 @@
 // `hard_delete=true` short-circuits the filter for paths that
 // deliberately read tombstones (e.g. operator audit queries). Phase 5
 // CRUD routes NEVER pass `hard_delete=true`.
-import { sql, type SQL } from "drizzle-orm";
+import { type SQL, sql } from "drizzle-orm";
 
 /**
  * Returns ` AND deleted_at IS NULL` as a leading-AND SQL fragment.

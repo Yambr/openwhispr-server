@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: FSL-1.1-ALv2
 // Phase 03 / Plan 04 / Task 1 — POST /api/transcribe.
 //
 // Wire shape: docs/wire-contracts-phase-3.md "POST /api/transcribe".

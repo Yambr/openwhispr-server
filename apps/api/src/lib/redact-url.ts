@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: FSL-1.1-ALv2
 // Phase 13 review HI-02 — Bootstrap-log URL redactor.
 //
 // The bootstrap catch arms in apps/api/src/index.ts (BullMQ email-delivery

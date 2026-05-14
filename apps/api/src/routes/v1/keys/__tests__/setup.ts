@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: FSL-1.1-ALv2
 // Phase 05 / Plan 09 — shared test boot helper for /api/v1/keys/*
 // integration tests. Mirrors transcriptions/__tests__/setup.ts.
 //

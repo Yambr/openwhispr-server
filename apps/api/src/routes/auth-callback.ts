@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: FSL-1.1-ALv2
 // Phase 2 / Plan 05 / Task 2 — `/api/auth/desktop-callback/:provider`.
 //
 // Empirical AUTH-A1 finding (2026-05-09):
@@ -32,15 +32,12 @@
 //
 // Reject envelope shape mirrors the rest of Plan 03 (D-13): single-key
 // `{error:"<message>"}`, application/json; charset=utf-8.
-import type { FastifyInstance } from "fastify";
+
+import { type ExecutableTx, type TransactionalDb, withTenant } from "@openwhispr/data";
 import { sql } from "drizzle-orm";
-import { buildProtocolRedirect } from "../lib/scheme-allowlist.js";
-import {
-  withTenant,
-  type TransactionalDb,
-  type ExecutableTx,
-} from "@openwhispr/data";
+import type { FastifyInstance } from "fastify";
 import { resolveDefaultTenantId } from "../lib/default-tenant.js";
+import { buildProtocolRedirect } from "../lib/scheme-allowlist.js";
 
 /**
  * Token-mint adapter. Production wires Better Auth's genericOAuth
@@ -105,136 +102,132 @@ export const buildAuthCallbackRoutes = (deps: AuthCallbackDeps) =>
     app.get<{
       Params: { provider: string };
       Querystring: { state?: string; code?: string; error?: string };
-    }>(
-      "/api/auth/desktop-callback/:provider",
-      { config: { auth: false } },
-      async (req, reply) => {
-        const { provider } = req.params;
-        if (!SUPPORTED_PROVIDERS.has(provider)) {
-          return reply
-            .code(400)
-            .type("application/json; charset=utf-8")
-            .send({ error: "unsupported provider" });
-        }
+    }>("/api/auth/desktop-callback/:provider", { config: { auth: false } }, async (req, reply) => {
+      const { provider } = req.params;
+      if (!SUPPORTED_PROVIDERS.has(provider)) {
+        return reply
+          .code(400)
+          .type("application/json; charset=utf-8")
+          .send({ error: "unsupported provider" });
+      }
 
-        // IdP-side error (user denied consent etc.). Surface as 400 with
-        // the IdP's error code echoed in the envelope message — the
-        // single-key shape is preserved.
-        if (req.query.error) {
-          return reply
-            .code(400)
-            .type("application/json; charset=utf-8")
-            .send({ error: `idp error: ${req.query.error}` });
-        }
+      // IdP-side error (user denied consent etc.). Surface as 400 with
+      // the IdP's error code echoed in the envelope message — the
+      // single-key shape is preserved.
+      if (req.query.error) {
+        return reply
+          .code(400)
+          .type("application/json; charset=utf-8")
+          .send({ error: `idp error: ${req.query.error}` });
+      }
 
-        const stateId = req.query.state;
-        const code = req.query.code;
-        if (!stateId || !code) {
-          return reply
-            .code(400)
-            .type("application/json; charset=utf-8")
-            .send({ error: "missing state or code" });
-        }
+      const stateId = req.query.state;
+      const code = req.query.code;
+      if (!stateId || !code) {
+        return reply
+          .code(400)
+          .type("application/json; charset=utf-8")
+          .send({ error: "missing state or code" });
+      }
 
-        const tenantId = await resolveDefaultTenantId();
-        // Atomic CAS: mark consumed_at, but only if not already
-        // consumed AND not expired. RETURNING gives us the row data we
-        // need (scheme + code_verifier) iff the CAS succeeded.
-        //
-        // We also separately fetch any row matching the id (regardless
-        // of consumed/expired) so we can emit precise error envelopes
-        // that distinguish "missing" / "already consumed" / "expired".
-        const result = await withTenant(db, tenantId, async (tx) => {
-          const fresh = (await tx.execute(
-            sql`UPDATE oauth_state
+      const tenantId = await resolveDefaultTenantId();
+      // Atomic CAS: mark consumed_at, but only if not already
+      // consumed AND not expired. RETURNING gives us the row data we
+      // need (scheme + code_verifier) iff the CAS succeeded.
+      //
+      // We also separately fetch any row matching the id (regardless
+      // of consumed/expired) so we can emit precise error envelopes
+      // that distinguish "missing" / "already consumed" / "expired".
+      const result = await withTenant(db, tenantId, async (tx) => {
+        const fresh = (await tx.execute(
+          sql`UPDATE oauth_state
                 SET consumed_at = now()
                 WHERE id = ${stateId}::uuid
                   AND consumed_at IS NULL
                   AND expires_at > now()
                 RETURNING id, scheme, code_verifier, consumed_at, expires_at`,
-          )) as { rows: OauthStateRow[] };
-          if (fresh.rows.length > 0) {
-            return { kind: "ok" as const, row: fresh.rows[0] };
-          }
-          // CAS failed — diagnose to emit the right envelope.
-          const probe = (await tx.execute(
-            sql`SELECT id, scheme, code_verifier, consumed_at, expires_at
+        )) as { rows: OauthStateRow[] };
+        if (fresh.rows.length > 0) {
+          return { kind: "ok" as const, row: fresh.rows[0] };
+        }
+        // CAS failed — diagnose to emit the right envelope.
+        const probe = (await tx.execute(
+          sql`SELECT id, scheme, code_verifier, consumed_at, expires_at
                 FROM oauth_state
                 WHERE id = ${stateId}::uuid`,
-          )) as { rows: OauthStateRow[] };
-          if (probe.rows.length === 0) {
-            return { kind: "missing" as const };
-          }
-          const row = probe.rows[0];
-          if (!row) return { kind: "missing" as const };
-          // CR-01 (02-REVIEW.md) / 02-VERIFICATION.md gap 3:
-          // Check expires_at FIRST. A row that is both expired AND
-          // consumed (legitimate consumption ≥10 min ago) must report
-          // "expired" — the more authoritative time-based signal —
-          // rather than the misleading "already consumed". This avoids
-          // ambiguity for both the desktop client and operator logs.
-          const expiresAtMs = new Date(row.expires_at).getTime();
-          if (Number.isFinite(expiresAtMs) && expiresAtMs <= Date.now()) {
-            return { kind: "expired" as const };
-          }
-          if (row.consumed_at) {
-            return { kind: "consumed" as const };
-          }
+        )) as { rows: OauthStateRow[] };
+        if (probe.rows.length === 0) {
+          return { kind: "missing" as const };
+        }
+        const row = probe.rows[0];
+        if (!row) return { kind: "missing" as const };
+        // CR-01 (02-REVIEW.md) / 02-VERIFICATION.md gap 3:
+        // Check expires_at FIRST. A row that is both expired AND
+        // consumed (legitimate consumption ≥10 min ago) must report
+        // "expired" — the more authoritative time-based signal —
+        // rather than the misleading "already consumed". This avoids
+        // ambiguity for both the desktop client and operator logs.
+        const expiresAtMs = new Date(row.expires_at).getTime();
+        if (Number.isFinite(expiresAtMs) && expiresAtMs <= Date.now()) {
           return { kind: "expired" as const };
-        });
-
-        if (result.kind === "missing") {
-          return reply
-            .code(400)
-            .type("application/json; charset=utf-8")
-            .send({ error: "invalid state" });
         }
-        if (result.kind === "consumed") {
-          return reply
-            .code(400)
-            .type("application/json; charset=utf-8")
-            .send({ error: "state already consumed" });
+        if (row.consumed_at) {
+          return { kind: "consumed" as const };
         }
-        if (result.kind === "expired") {
-          return reply
-            .code(400)
-            .type("application/json; charset=utf-8")
-            .send({ error: "state expired" });
-        }
+        return { kind: "expired" as const };
+      });
 
-        const stateRow = result.row;
-        if (!stateRow) {
-          // Defensive — should be unreachable given the kind check.
-          return reply
-            .code(400)
-            .type("application/json; charset=utf-8")
-            .send({ error: "invalid state" });
-        }
+      if (result.kind === "missing") {
+        return reply
+          .code(400)
+          .type("application/json; charset=utf-8")
+          .send({ error: "invalid state" });
+      }
+      if (result.kind === "consumed") {
+        return reply
+          .code(400)
+          .type("application/json; charset=utf-8")
+          .send({ error: "state already consumed" });
+      }
+      if (result.kind === "expired") {
+        return reply
+          .code(400)
+          .type("application/json; charset=utf-8")
+          .send({ error: "state expired" });
+      }
 
-        if (!mintBearer) {
-          // Operator hasn't supplied the IdP token-exchange adapter.
-          // Plan 06 wires the real Better Auth-backed adapter; until
-          // then return a clean 503 (matching the unconfigured-OIDC
-          // path on /api/desktop-signin).
-          return reply
-            .code(503)
-            .type("application/json; charset=utf-8")
-            .send({ error: "oauth callback not configured" });
-        }
+      const stateRow = result.row;
+      if (!stateRow) {
+        // Defensive — should be unreachable given the kind check.
+        return reply
+          .code(400)
+          .type("application/json; charset=utf-8")
+          .send({ error: "invalid state" });
+      }
 
-        const bearer = await mintBearer({
-          code,
-          codeVerifier: stateRow.code_verifier,
-          stateId,
-          provider,
-          tenantId,
-          scheme: stateRow.scheme,
-        });
+      if (!mintBearer) {
+        // Operator hasn't supplied the IdP token-exchange adapter.
+        // Plan 06 wires the real Better Auth-backed adapter; until
+        // then return a clean 503 (matching the unconfigured-OIDC
+        // path on /api/desktop-signin).
+        return reply
+          .code(503)
+          .type("application/json; charset=utf-8")
+          .send({ error: "oauth callback not configured" });
+      }
 
-        const target = buildProtocolRedirect(stateRow.scheme, bearer);
-        return reply.redirect(target, 302);
-      },
-    );
+      const bearer = await mintBearer({
+        code,
+        codeVerifier: stateRow.code_verifier,
+        stateId,
+        provider,
+        tenantId,
+        scheme: stateRow.scheme,
+      });
+
+      const target = buildProtocolRedirect(stateRow.scheme, bearer);
+      return reply.redirect(target, 302);
+    });
   };
 
 export default buildAuthCallbackRoutes;
