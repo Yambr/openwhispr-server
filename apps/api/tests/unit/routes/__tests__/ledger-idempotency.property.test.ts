@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: FSL-1.1-ALv2
 // Phase 05 / Plan 02 / Task 1 — ledger idempotency property test (route level).
 //
 // Property: for N random sessionIds * M retries each, the route returns

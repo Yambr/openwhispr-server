@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: FSL-1.1-ALv2
 // Phase 12 / Plan 12-02 / Task 2 + Task 4 — public /api/auth/providers tests.
 //
 // Hermetic — no DB, no testcontainer. Uses an env override on the

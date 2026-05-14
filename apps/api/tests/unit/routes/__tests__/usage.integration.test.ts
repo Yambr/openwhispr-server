@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: FSL-1.1-ALv2
 // Phase 05 / Plan 02 / Task 2 — GET /api/usage integration test.
 //
 // Real Postgres 17-alpine testcontainer + production Drizzle migrations.

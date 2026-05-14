@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: FSL-1.1-ALv2
 // Phase 2 / Plan 04 / Task 2 — /api/health is rate-limit-exempt.
 //
 // `config.rateLimit = false` opts the route out of the global limiter.

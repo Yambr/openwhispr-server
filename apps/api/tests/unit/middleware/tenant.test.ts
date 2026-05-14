@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: FSL-1.1-ALv2
 // Unit tests for the Fastify tenantPlugin — Phase 1 Plan 04 / D-19.
 //
 // The plugin registers an `onRequest` hook that reads `x-tenant-id` from

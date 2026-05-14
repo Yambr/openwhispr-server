@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: FSL-1.1-ALv2
 // Phase-2 debt back-fill — coverage closure for plugins/rate-limit.ts.
 //
 // Stage-A coverage was L=60 / B=80 / F=75 / S=60 on rate-limit.ts; the

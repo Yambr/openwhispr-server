@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: FSL-1.1-ALv2
 // Phase 05 / Plan 08 / Task 1 — transcriptions CRUD integration tests
 // against real Postgres + RLS. Mirrors folders/crud.integration.test.ts.
 //

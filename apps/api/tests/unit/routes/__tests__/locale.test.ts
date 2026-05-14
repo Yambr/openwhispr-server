@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: FSL-1.1-ALv2
 // Phase 15 / Plan 02 / Task 1 — RED unit tests for GET /api/locale.
 //
 // New Fastify route that returns the request's negotiated locale as a

@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: FSL-1.1-ALv2
 // Phase 6 / Plan 06-12b — unit tests for the debug-only /__test/fetch route.
 //
 // Coverage targets:

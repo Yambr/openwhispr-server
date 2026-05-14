@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: FSL-1.1-ALv2
 /**
  * Phase 02.7 / Plan 02.7-04 / D-03 Layer A — seed signUp() loud-fail
  * + seedConformanceFixtures preflight diagnostic.

@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: FSL-1.1-ALv2
 // Phase 05 / Plan 09 / Task 1 — argon2-keys helper unit tests.
 //
 // Exercises real Argon2id (no boundary mocks — this is in-process crypto

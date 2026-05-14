@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: FSL-1.1-ALv2
 // Phase 12 / Plan 12-01 / Task 5 — role-escalation regression test.
 //
 // Threat T-12.01-01 (STRIDE: E — Elevation of Privilege): a public client

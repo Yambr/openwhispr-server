@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: FSL-1.1-ALv2
 // Phase-2 debt back-fill — coverage closure for src/auth.ts.
 //
 // Stage-A coverage on auth.ts was L=86.66 / B=100 / F=38.46 / S=87.5.

@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: FSL-1.1-ALv2
 // Phase 2 / Plan 01 / Task 1 — RED tests for the cookie-domain resolver.
 // Source of truth: 02-RESEARCH-AUTH.md § Cookie Host Scoping (PITFALLS #5).
 import { afterEach, beforeEach, describe, expect, it } from "vitest";

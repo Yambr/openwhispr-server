@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: FSL-1.1-ALv2
 // Phase 02.6 — RED test for D-01 (entrypoint must destructure makeAppDb's
 // `{db, pool}` wrapper and pass the bare Drizzle instance to buildAuth +
 // buildApp). Goes green when apps/api/src/index.ts:229-233 is changed

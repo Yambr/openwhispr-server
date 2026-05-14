@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: FSL-1.1-ALv2
 // Phase 10 / Plan 10-01a / Step 4 — typed error classes carry a stable
 // `code` literal for i18n key lookup (`errors.<CODE>`).
 //

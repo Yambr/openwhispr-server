@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: FSL-1.1-ALv2
 // Phase 05 / Plan 05 / Task 1 — soft-delete helper unit tests.
 //
 // Pure JS — no Postgres. Asserts the emitted SQL fragment has the

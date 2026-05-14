@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: FSL-1.1-ALv2
 // Phase 12 / Plan 12-02 / Task 1 — unit tests for the shared OIDC
 // provider helper. Pure function on `env`; no I/O, no DB.
 //

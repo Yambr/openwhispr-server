@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: FSL-1.1-ALv2
 // Phase 2 / Plan 04 — health smoke test (replaces Phase 0 placeholder).
 // buildApp is now async; the response shape is `{status:"ok"}` per the
 // HealthResponse zod schema in @openwhispr/contract-tests.
