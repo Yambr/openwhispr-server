@@ -242,17 +242,15 @@ cleanup_fixture
 # --- Test 6 ----------------------------------------------------------------
 echo "Test 6: branch protection lock uses gh api PUT (not PATCH)"
 make_fixture "put-not-patch"
-PATH="${FIXTURE}/bin:${PATH}" bash "${SCRUB}" --dry-run >/dev/null 2>&1 || true
-# In dry-run mode the script must still print/declare the planned gh api
-# invocation. Assert the planned-or-real invocation references PUT.
-if grep -q 'gh api -X PUT' "${ARGV_LOG}" || \
-   grep -q 'gh api .* -X PUT' "${ARGV_LOG}" || \
-   PATH="${FIXTURE}/bin:${PATH}" bash "${SCRUB}" --dry-run 2>&1 | grep -q '\-X PUT'; then
+# Capture stdout+stderr of a fresh --dry-run into a single variable so the
+# OR-chain is straight-forward (no pipefail interactions on subprocess pipes).
+OUT6="$(PATH="${FIXTURE}/bin:${PATH}" bash "${SCRUB}" --dry-run 2>&1 || true)"
+if echo "${OUT6}" | grep -q -- '-X PUT'; then
   pass "PUT invocation declared for branch protection"
 else
-  fail "no PUT invocation found in script output or mock argv log"
+  fail "no PUT invocation found in --dry-run output"
 fi
-if PATH="${FIXTURE}/bin:${PATH}" bash "${SCRUB}" --dry-run 2>&1 | grep -q '\-X PATCH /repos/.*/branches/main/protection'; then
+if echo "${OUT6}" | grep -q -E '\-X PATCH +/repos/.*/branches/main/protection'; then
   fail "script uses PATCH (forbidden; full-replace PUT only per GitHub API)"
 else
   pass "no PATCH used for branch-protection endpoint"
