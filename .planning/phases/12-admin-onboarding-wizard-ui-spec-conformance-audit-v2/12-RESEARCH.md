@@ -1,5 +1,28 @@
 ## RESEARCH COMPLETE
 
+
+## Correction Log (2026-05-14)
+
+**Trigger:** User flagged that Phase 07 design ships **6 JSX files (4987 LOC)**, not just `design-canvas.jsx`, and the prior research (commit `a5bcf84`) treated `design-canvas.jsx` as the only oracle. The user's words: *"учти там были оjsx файлы с дизайном"* + *"а в прошлый раз клод хуй забил на них"*. Phase 07 implementation already partially ignored these JSX files; Phase 12 UICONF-04 audit MUST close that gap.
+
+**What changed in this revision:**
+
+| § | Change | Why |
+|---|--------|-----|
+| §11 | Cross-checked SignUpForm.tsx:102-115 fix against `screens-user.jsx` `ScreenSignUp` (lines 97-183) — design renders **ONE** `<Alert>`-equivalent element (one `lede` block), corroborating the root cause that bug = re-using one i18n key in both AlertTitle and AlertDescription. | Adds JSX corroboration for D-21 / UICONF-06 fix. |
+| §12 | Conformance test inventory chain now flows **JSX → markdown → test**: each assertion file MUST cite `screens-user.jsx:LINE` (or `screens-admin.jsx:LINE`) the inventory was derived from. UI-SPEC-\*.md is human-derived from JSX; JSX is source-of-truth. | Closes the "Claude забил на jsx" risk. |
+| §14 | **Plan 12-05 split → 12-05a (Vitest+RTL structural, JSX-derived inventories) + 12-05b (Playwright axe).** Each of {SignInForm, SignUpForm, OidcButtons, VerifyEmailClient, setup wizard, /admin index} gets its own conformance test file derived from its JSX source. | Prior 12-05 was over-sized; per-screen JSX-derived inventories raise task count. |
+| §15 | Added threat-row (h): admin screens (A1-A3 from `screens-admin.jsx`) may surface user PII (actor email at lines 192, 215, 230). Phase 12's `/admin` index (ADMIN-04) MUST NOT expose unscoped user counts pre-RLS-gate. | Info-disclosure surface present in design must not leak into Phase 12 impl. |
+| §16 NEW | **Phase 07 Design JSX Inventory** — table of all 6 files, their artboard exports, which Phase 12 deliverable references each one, and which screens Phase 07.1 implemented vs skipped. | Single source-of-truth so Phase 12 doesn't repeat Phase 07's mistake. |
+| D-20 (in user_constraints) | Re-scoped: D-20 says `design-canvas.jsx` itself is a STATIC wrapper. That's correct **for design-canvas.jsx only** (1437 LOC Figma host). The OTHER 5 files — `screens-user.jsx`, `screens-admin.jsx`, `ui.jsx`, `browser-window.jsx`, `tweaks-panel.jsx` — ARE runnable JSX with concrete component definitions and ARE the canonical oracle. | Critical scope correction. |
+| §7 / Wizard composition | Confirmed: **NO `/setup` or onboarding artboard exists in any of the 6 JSX files** (verified by `grep -in 'onboarding\|setup\|wizard\|stepper\|identity\|workspace'`; only hit is a JSDoc example comment at `design-canvas.jsx:10`). The Phase 12 `/setup` wizard is therefore a **Phase 12 deviation from design with rationale** — it composes `ui.jsx` primitives (`AuthShell`, `Btn`, `Field`) but its overall structure has no JSX oracle. | Eliminates risk of inventing a phantom "design" the planner thinks exists. |
+| §12 / §15 | `/admin` index page (ADMIN-04, closes TD-12.a) MUST mirror **`screens-admin.jsx` ScreenConfig** (A3, lines 445-628) structure — read-only card grid with STT/note-recording sections + effective-env table. | Concrete oracle for ADMIN-04. |
+| §6 (P6) | Pitfall P6 rephrased: parsing `design-canvas.jsx` is wrong; but the 5 runnable JSX files ARE referenceable — hand-curate role/label inventory from them (cite by file:line), then mirror in markdown UI-SPEC. | Closes the "ignore all JSX" overcorrection risk from the prior research. |
+
+**Baseline commit:** `a5bcf84 docs(12): research phase admin wizard + ui-spec conformance domain`. Diff scope = sections marked above; no decisions D-01..D-27 contradicted; planner-discretion items unchanged.
+
+---
+
 # Phase 12: Admin Onboarding Wizard + UI-SPEC Conformance Audit (v2) — Research
 
 **Researched:** 2026-05-14
@@ -46,7 +69,7 @@ strict TDD ordering.
 - **D-17** Reject multi-step (A) and no-Stepper (C).
 - **D-18** Vitest+RTL structural conformance at `apps/web/src/components/__tests__/conformance/{SignInForm,SignUpForm,OidcButtons,VerifyEmailClient,setup}.test.tsx`.
 - **D-19** Playwright `@axe-core/playwright@4.11.2` axe baseline at `tests/conformance/ui-spec/axe.spec.ts`; reuses Phase 13 `tests/e2e-cjm/support/compose-harness.ts`.
-- **D-20** `design-canvas.jsx` is STATIC oracle (1437 LOC Figma canvas wrapper, not mountable).
+- **D-20** `design-canvas.jsx` (1437 LOC, ONE of 6 JSX files in design/) is a Figma-canvas WRAPPER and NOT directly mountable. **CORRECTION (2026-05-14):** the OTHER 5 files — `screens-user.jsx` (1616 LOC), `screens-admin.jsx` (630 LOC), `ui.jsx` (440 LOC), `browser-window.jsx` (200 LOC), `tweaks-panel.jsx` (664 LOC) — ARE runnable JSX component sources and ARE the canonical oracle for UICONF-04. Conformance assertions MUST trace back to a `screens-{user,admin}.jsx:LINE` citation. See §16 inventory.
 - **D-21** UICONF-06 gate = `expect(screen.getAllByRole('alert')).toHaveLength(1)` in SignUpForm conformance test.
 - **D-22** No retry-on-flake (Phase 13 D-12 carries over).
 - **D-23** Reject standalone-Playwright (A) and Vitest-only (B).
@@ -642,7 +665,9 @@ it("UICONF-06: renders exactly one banner element (no duplicate)", async () => {
 });
 ```
 
-**Confidence:** HIGH [VERIFIED source-line]
+**JSX corroboration (added 2026-05-14):** `screens-user.jsx:97-183` (`ScreenSignUp`) renders **exactly one error surface** — it uses the `Field` component's `error` prop (mirroring U1 sign-in's `Field label="Email" error={...}` at L28), NOT a stacked AlertTitle+AlertDescription with duplicated text. Design intent confirms D-21's "exactly one banner" gate AND the §11 fix locus (per-error `.title.text` + `.body.text` keys in SignUpForm.tsx template).
+
+**Confidence:** HIGH [VERIFIED source-line + JSX oracle cross-check]
 
 ---
 
@@ -658,10 +683,18 @@ apps/web/src/components/__tests__/conformance/
 └── setup.test.tsx              # /setup wizard page
 ```
 
-**Inventory source — hand-curated from `UI-SPEC-end-user.md` / `UI-SPEC-admin.md`, NOT parse `design-canvas.jsx`:**
-- Parsing 1437 LOC of Figma-canvas JSX (postit wrapper around artboards) would produce a fragile coupling to layout positions, not to roles/labels
-- Hand-curating produces stable assertions: "SignInForm contains a heading 'Sign in', an email input with `autocomplete=email`, a password input with `autocomplete=current-password`, a submit button labelled 'Sign in', and a separator preceding the OIDC row"
-- This matches D-20 ("design-canvas.jsx as STATIC oracle... walks it as a reference (parse JSX OR hand-derived role/label inventory)")
+**Inventory chain (CORRECTED 2026-05-14):** **JSX source → markdown spec → conformance test.** The 5 runnable JSX files in `.planning/phases/07-frontend-ui-spec/design/` (`screens-user.jsx`, `screens-admin.jsx`, `ui.jsx`, `browser-window.jsx`, `tweaks-panel.jsx`) are the **source-of-truth**; `UI-SPEC-end-user.md` / `UI-SPEC-admin.md` are **human-derived from JSX**; conformance tests assert against role/label inventories **derived from JSX (cite by file:line)**.
+
+- **Do NOT parse `design-canvas.jsx`** (1437 LOC Figma wrapper, host-only). D-20 stands for that file specifically.
+- **DO hand-derive inventory from `screens-user.jsx` / `screens-admin.jsx` / `ui.jsx`.** Each conformance test file MUST include a header comment citing the JSX source line range, e.g.:
+  ```tsx
+  // SignInForm.test.tsx — conformance inventory derived from
+  //   .planning/phases/07-frontend-ui-spec/design/screens-user.jsx:7-94 (ScreenSignIn)
+  //   + ui.jsx:229-316 (AuthShell primitive)
+  // Inventory items: see §16 "screens-user.jsx canonical oracle" table.
+  ```
+- Markdown UI-SPEC-*.md may be a useful secondary reference but ties to it WITHOUT the JSX citation will be rejected at review (UI-SPEC inherits from JSX, not vice versa)
+- See §16 for the full per-screen inventory table
 
 **Per-spec contributions to ≥90/90/90/90 coverage gate**:
 - Each conformance test calls `render(<Component />)` and exercises mount-time code paths (i18n hooks, fetch effects, default form state) — counts toward `apps/web/src/**` coverage
@@ -760,7 +793,7 @@ if (result.error?.code === "EMAIL_NOT_VERIFIED") {
 2. GREEN: `POST /api/setup/admin` handler implementing §3 contract
 3. Vendor `shadcn-stepper` → `apps/web/src/components/ui/stepper.tsx` with SPDX header (D-12)
 4. RED: setup wizard component test `apps/web/src/components/__tests__/conformance/setup.test.tsx`
-5. GREEN: `apps/web/src/app/(public)/setup/page.tsx` + Client Component wizard form
+5. GREEN: `apps/web/src/app/(public)/setup/page.tsx` + Client Component wizard form (composes `ui.jsx:AuthShell` primitive per §16; document no-JSX-oracle deviation in component header comment)
 6. Add zod `errorMap` global (apps/web/src/lib/zod-i18n.ts) + en+ru `validation.*` keys
 7. Add `end-user.setup.*` i18n keys (en+ru parity)
 8. Atomic commit
@@ -774,20 +807,32 @@ if (result.error?.code === "EMAIL_NOT_VERIFIED") {
 5. RED: SignUpForm conformance test (UICONF-06 — title ≠ body, single banner)
 6. GREEN: fix SignUpForm.tsx:102-115 banner keys + add new i18n keys
 7. RED: SignInForm test for unverified-email resend CTA (UICONF-07)
-8. GREEN: SignInForm CTA + `/admin/page.tsx` index page + docs/operations.md bcrypt break-glass note (ADMIN-05)
+8. GREEN: SignInForm CTA + `apps/web/src/app/(admin)/admin/page.tsx` index page (mirrors `screens-admin.jsx:445-628` ScreenConfig structure — Shell + Sidebar kind="admin" + read-only alert + 2-col card grid; §15(h) prohibits surfacing user PII) + docs/operations.md bcrypt break-glass note (ADMIN-05)
 *Targets: UICONF-02, UICONF-06, UICONF-07, ADMIN-04, ADMIN-05*
 
 ### Wave 3 — Conformance + e2e flip-green (depends on Waves 1+2 GREEN)
 
-**Plan 12-05 — UICONF-04/05 hybrid conformance suite + CJM flip-green**
-1. Hand-derive role/label inventory from `UI-SPEC-end-user.md` + `UI-SPEC-admin.md` (inline in test files as constants)
-2. RED+GREEN: Vitest+RTL conformance tests for {SignInForm, SignUpForm, OidcButtons, VerifyEmailClient} — assert inventory
-3. RED+GREEN: axe spec at `tests/conformance/ui-spec/axe.spec.ts` reusing compose-harness (D-19)
-4. Verify zero axe violations on `/sign-in`, `/sign-up`, `/verify-email`, `/setup` (rule set: wcag2aa + wcag21aa)
-5. REMOVE `@expected-red @after-phase-12` tags from features/{admin-onboarding,signup-verify,oidc-providers}.feature lines 6, 17, 32, 6, 12 respectively (D-27)
-6. Run `make e2e-cjm` end-to-end; verify all 5 scenarios flip GREEN
-7. Atomic commit
-*Targets: UICONF-04, UICONF-05, ADMIN-06*
+> **CORRECTION 2026-05-14:** Plan 12-05 split into **12-05a (Vitest+RTL structural)** + **12-05b (Playwright axe + cjm flip-green)** — each of {SignInForm, SignUpForm, OidcButtons, VerifyEmailClient, setup wizard, /admin index} now gets its own JSX-derived conformance test (6 files, ~50 LOC each), which is too much for one plan alongside axe + tag-flips.
+
+**Plan 12-05a — UICONF-04 Vitest+RTL conformance suite (JSX-derived inventories)** (depends on 12-04 GREEN)
+1. Hand-derive role/label inventory for `SignInForm` from `screens-user.jsx:7-94` + `ui.jsx:229-316` (AuthShell); inline as test constants
+2. RED+GREEN: `apps/web/src/components/__tests__/conformance/SignInForm.test.tsx` — assert inventory + header comment citing JSX source
+3. RED+GREEN: `conformance/SignUpForm.test.tsx` from `screens-user.jsx:97-183` (includes UICONF-06 single-banner + title≠body asserts; collaborates with Plan 12-04's fix landing first)
+4. RED+GREEN: `conformance/OidcButtons.test.tsx` from `screens-user.jsx:15-25` (3 providers configured → 3 buttons; 0 providers → 0 buttons; ghost variant on generic OIDC)
+5. RED+GREEN: `conformance/VerifyEmailClient.test.tsx` from `screens-user.jsx:186-260` (4 variants: pending/verifying/success/error)
+6. RED+GREEN: `conformance/setup.test.tsx` for `/setup` wizard — JSX-derived inventory pulls from `ui.jsx:229-316` (AuthShell) + `ui.jsx:338-352` (Field) + `ui.jsx:326-336` (Btn); documents the no-JSX-oracle deviation in a header comment per §16
+7. RED+GREEN: `conformance/admin-index.test.tsx` for `/admin` page — mirrors `screens-admin.jsx:445-628` (ScreenConfig) structure: Shell + Sidebar kind="admin" + page-head "Configuration" lede + read-only alert
+8. Atomic commit (all 6 conformance test files + any drift fixes that surface)
+*Targets: UICONF-04*
+
+**Plan 12-05b — UICONF-05 axe baseline + CJM flip-green** (depends on 12-05a GREEN)
+1. Bump `@axe-core/playwright` 4.10.2 → 4.11.2 (CONTEXT D-19 lock)
+2. RED+GREEN: `tests/conformance/ui-spec/axe.spec.ts` reusing Phase 13 compose-harness; iterate routes `/sign-in`, `/sign-up`, `/verify-email`, `/setup`, `/admin`
+3. Verify zero axe violations (rule set: `wcag2a + wcag2aa + wcag21a + wcag21aa`)
+4. REMOVE `@expected-red @after-phase-12` tags from features/{admin-onboarding,signup-verify,oidc-providers}.feature lines 6, 17, 32, 6, 12 respectively (D-27)
+5. Run `make e2e-cjm` end-to-end; verify all 5 scenarios (cjm-5.1, 5.3, 1.5, 7.1, 7.2) flip GREEN
+6. Atomic commit
+*Targets: UICONF-05, ADMIN-06*
 
 **Wave ordering rationale**:
 - Wave 1 plans (12-01, 12-02) are independent — can run in parallel; both are needed before Wave 2
@@ -809,6 +854,7 @@ if (result.error?.code === "EMAIL_NOT_VERIFIED") {
 | (e) | Role escalation via `POST /api/auth/sign-up/email` body | Better Auth public endpoint | `additionalFields.role` MUST be `input: false` (§2 above). Only `/api/setup/admin` server-side handler writes role='admin' after atomic claim. Contract test asserts a sign-up body with `{role:"admin"}` does NOT result in users.role='admin'. |
 | (f) | Tab-clobbering during wizard submit | Two concurrent submits from same user | D-15 idempotency: both return 200 with the admin shape. Form's `submitting` state disables the button; UX is single-success. |
 | (g) | Open redirect via wizard | Post-submit redirect | Mirror SignInForm's hardcoded `/app` redirect (apps/web/src/components/screens/auth/SignInForm.tsx:66 — `router.push("/app")` is the precedent). Wizard redirects to `/admin` after success — no `?next=` URL param read. |
+| (h) | Admin screens leak user PII | `/admin` index page (ADMIN-04) | `screens-admin.jsx` A1 (ScreenAudit) surfaces actor emails (`elena@acme.dev` at L192, L215, L230) and IP addresses (L222, L685-702). Phase 12's `/admin` index MUST mirror only A3 (`ScreenConfig`, L445-628) which surfaces NO user PII — only env-var names + redacted values. **Phase 12 MUST NOT** ship A1/A2 mirrors (out of scope) and MUST NOT widen the `/admin` index to surface user counts, session lists, or audit-log rows before RLS-gated admin queries land in Phase 13+. |
 
 **Confidence:** HIGH
 
@@ -845,8 +891,8 @@ if (result.error?.code === "EMAIL_NOT_VERIFIED") {
 ### P5. Wizard transaction across Better Auth boundary
 **What goes wrong:** Wrapping the entire `/api/setup/admin` handler in `db.transaction(async (tx) => {...})` and passing `tx` to `auth.api.signUpEmail()` fails — Better Auth opens its own connection. **Avoid:** Explicit rollback path (§3 step 4); document in handler comment.
 
-### P6. Parsing `design-canvas.jsx`
-**What goes wrong:** Implementer writes a Babel AST walker to extract role/label inventory from the 1437-LOC Figma-canvas wrapper. Walker breaks on inline JSX, postit wrappers, or canvas-positioning props. **Avoid:** Hand-curate inventory from UI-SPEC-end-user.md + UI-SPEC-admin.md (§12). The canvas wrapper is for visual designers, not for automation.
+### P6. Parsing `design-canvas.jsx` — but DO read the OTHER 5 JSX files
+**What goes wrong (overcorrection 1):** Implementer writes a Babel AST walker to extract role/label inventory from the 1437-LOC Figma-canvas wrapper. Walker breaks on inline JSX, postit wrappers, or canvas-positioning props. **What goes wrong (overcorrection 2 — the prior Phase 07 mistake):** Implementer reads the prior research's "design-canvas.jsx is static" framing and **ignores ALL 6 design JSX files** including the runnable ones. **Avoid both:** Hand-curate inventory from `screens-user.jsx`, `screens-admin.jsx`, `ui.jsx` (cite by file:line per §16) — NOT by AST-walking `design-canvas.jsx`. The wrapper is for visual designers; the screens are for conformance.
 
 ### P7. i18n key parity drift
 **What goes wrong:** Adding `validation.*` keys to en/common.json but forgetting ru/common.json → CI fails on Phase 10's `i18n-russian-coverage.test.ts`. **Avoid:** Same atomic commit for en+ru (D-25).
@@ -909,6 +955,8 @@ user: {
 | A2 | `Intl.supportedValuesOf('timeZone')` returns ~430 entries on Node 24 | §8 | LOW — exact count affects only Combobox-vs-Select decision; both work |
 | A3 | Better Auth `signIn.email` returns `{ error: { code: "EMAIL_NOT_VERIFIED" } }` | §13 | MEDIUM — if code string is different, the resend-CTA trigger needs adjustment; check at handler-test time |
 | A4 | Better Auth's drizzleAdapter cannot accept an outer transaction context | §3 | MEDIUM — affects whether handler wraps in `db.transaction` or uses explicit rollback. If wrong, simpler tx path works |
+| A5 | Phase 07.1 ignored design JSX files when implementing auth screens → drift expected | §16 implementation-status table | LOW — Plan 12-05a conformance test IS the audit that surfaces drift; no risk to plan, but task count in 12-04 may grow if drift is broad |
+| A6 | The 5 runnable JSX files in `design/` are Phase 07-final and not superseded by a later doc | §16 | LOW — verified by `ls -la design/` timestamps (May 12); no later JSX commits found |
 
 **If user-confirmation needed:** A3 + A4 are the two MEDIUM-risk items. Discuss-phase can lock by checking the Better Auth changelog for `EMAIL_NOT_VERIFIED` constant and the drizzleAdapter README on transaction support.
 
@@ -926,7 +974,12 @@ user: {
    - What's unclear: do we reuse `/api/capabilities` (authed — but the wizard caller isn't authed yet) OR add a tiny public `/api/setup-state` returning just `{status}`?
    - Recommendation: tiny public endpoint `/api/setup-state` returning `{status}`. Cache 30s. No info leak (the existence of a setup state isn't sensitive).
 
-3. **Should `setup_state` migration also seed a default `setup_state.id=1` if neither branch (users-exist / users-empty) matches?**
+3. **Wizard composition without JSX oracle — confirm Plan 12-03's AuthShell mirror is the right baseline?**
+   - What we know: NO `/setup` or `onboarding` artboard exists in any of the 6 design JSX files (grep verified 2026-05-14). `ui.jsx:229-316` `AuthShell` is the only auth-flow shell.
+   - What's unclear: should the wizard reuse `AuthShell` (matches U1/U2/U3 visual language) OR ship its own shell (signals "this is operator-onboarding, not user-signup")?
+   - Recommendation: **reuse `AuthShell`** with `sideTitle="Set up your OpenWhispr Server."` + `sideQuote="One-time admin onboarding. Takes about 60 seconds."`. Documented as a deliberate deviation in §16. Future visual designer may add a `ScreenSetup` artboard to `screens-admin.jsx`; until then this is the canonical baseline.
+
+4. **Should `setup_state` migration also seed a default `setup_state.id=1` if neither branch (users-exist / users-empty) matches?**
    - What we know: §1 INSERT covers both branches via CASE.
    - What's unclear: if the migration runs in a brand-new DB with no `users` TABLE yet (older Phase 0 install where users came in a later migration), the `EXISTS (SELECT 1 FROM "users")` errors.
    - Recommendation: migration 0017 runs AFTER 0001_better_auth.sql which creates users — verified by ordering. No defensive branch needed.
@@ -975,8 +1028,8 @@ user: {
 | UICONF-01 | `/api/auth/providers` + `/api/capabilities` | contract | `apps/api/src/routes/__tests__/auth-providers.test.ts` | ❌ Plan 12-02 |
 | UICONF-02 | Auth screens conditional render | RTL conformance | `apps/web/src/components/__tests__/conformance/OidcButtons.test.tsx` | ❌ Plan 12-04 + Plan 12-05 |
 | UICONF-03 | Per-field zod errors en+ru | RTL + i18n parity | `apps/web/src/lib/__tests__/zod-i18n.test.ts` + existing i18n-russian-coverage | ❌ Plan 12-03 |
-| UICONF-04 | Semantic DOM conformance | RTL conformance | conformance/*.test.tsx suite | ❌ Plan 12-05 |
-| UICONF-05 | axe baseline | Playwright | `tests/conformance/ui-spec/axe.spec.ts` | ❌ Plan 12-05 |
+| UICONF-04 | Semantic DOM conformance (JSX-derived) | RTL conformance | conformance/{SignInForm,SignUpForm,OidcButtons,VerifyEmailClient,setup,admin-index}.test.tsx (6 files) | ❌ Plan 12-05a |
+| UICONF-05 | axe baseline | Playwright | `tests/conformance/ui-spec/axe.spec.ts` | ❌ Plan 12-05b |
 | UICONF-06 | Single banner; title≠body | RTL | conformance/SignUpForm.test.tsx | ❌ Plan 12-04 |
 | UICONF-07 | Resend-verification CTA | RTL | conformance/SignInForm.test.tsx | ❌ Plan 12-04 |
 
@@ -986,7 +1039,7 @@ user: {
 - **Phase gate:** Full suite green + `make conformance` zero violations + `make e2e-cjm` 5 scenarios flipped to GREEN before `/gsd-verify-work`
 
 ### Wave 0 Gaps
-- [ ] `apps/web/src/components/__tests__/conformance/` directory + 5 test files — created in Plans 12-04 + 12-05
+- [ ] `apps/web/src/components/__tests__/conformance/` directory + **6 test files** (SignInForm, SignUpForm, OidcButtons, VerifyEmailClient, setup, admin-index) — created in Plan 12-05a, each citing its `screens-{user,admin}.jsx:LINE` source per §16
 - [ ] `tests/conformance/ui-spec/axe.spec.ts` — created in Plan 12-05
 - [ ] `apps/web/src/lib/zod-i18n.ts` + tests — created in Plan 12-03
 - [ ] `apps/api/src/lib/oidc-providers.ts` + tests — created in Plan 12-02
@@ -1038,6 +1091,74 @@ user: {
 
 ---
 
+## §16. Phase 07 Design JSX Inventory
+
+> **NEW SECTION (Correction 2026-05-14).** The canonical oracle for Phase 12 UICONF-04. Every conformance assertion in Plan 12-05a MUST cite a row from this table.
+
+### All 6 JSX files in `.planning/phases/07-frontend-ui-spec/design/`
+
+| File | LOC | Role | Mountable? | Phase 12 Deliverable Citing It |
+|------|-----|------|------------|--------------------------------|
+| `design-canvas.jsx` | 1437 | Figma-canvas WRAPPER (`<DCSection>`, `<DCArtboard>`, `<DCPostIt>`, pan/zoom viewport, state sidecar) | **NO** — host shell only | None (D-20 STATIC) |
+| `screens-user.jsx` | 1616 | **13 runnable user-facing screens** (U1-U13): ScreenSignIn, ScreenSignUp, ScreenVerify, ScreenUsage, ScreenAccount, ScreenTrxList, ScreenTrxDetail, ScreenNotesList, ScreenNoteDetail, ScreenNotesSearch, ScreenConvList, ScreenConvDetail, ScreenConvSearch | **YES** | UICONF-04 conformance for SignInForm, SignUpForm, OidcButtons, VerifyEmailClient (Plan 12-05a) |
+| `screens-admin.jsx` | 630 | **3 runnable admin screens** (A1-A3): ScreenAudit, ScreenObservability, ScreenConfig | **YES** | ADMIN-04 `/admin` index structure (Plan 12-04 mirrors `ScreenConfig` card-grid layout) |
+| `ui.jsx` | 440 | **Shared primitives**: `Icon` (53 icon SVG paths), `BrowserFrame`, `Shell`, `Sidebar` (NAV_ADMIN + NAV_USER), `TopBar`, `AuthShell` (split-panel auth wrap), `Badge`, `Btn`, `Field`, `Sk` (skeleton), `SkeletonTable`, `EmptyState`, `ErrorState` | **YES** | Setup wizard composes `AuthShell` (`ui.jsx:229-316`) + `Btn`/`Field`; admin index uses `Shell` + `Sidebar` |
+| `browser-window.jsx` | 200 | macOS Chrome window chrome (`ChromeWindow`, `ChromeTabBar`, `ChromeToolbar`) | **YES** but design-only | None — pure visual chrome for design canvas |
+| `tweaks-panel.jsx` | 664 | Tweaks shell + form-control helpers + host edit-mode protocol | **YES** but design-only | None — visual-designer tooling |
+
+### `screens-user.jsx` — Canonical oracle citations for Phase 12 conformance
+
+> Cite these line ranges in `apps/web/src/components/__tests__/conformance/*.test.tsx`.
+
+| Screen | Function | Line range | Phase 12 conformance file | Inventory items (excerpt) |
+|--------|----------|------------|---------------------------|---------------------------|
+| **U1 Sign-in** | `ScreenSignIn` | `screens-user.jsx:7-94` | `SignInForm.test.tsx` | heading "Sign in" (L13), lede "Welcome back to your OpenWhispr Server." (L13), 3 OIDC buttons in `oidc-row` (L15-25): Google + GitHub + SSO/OIDC, `or-sep` "Or with email" (L26), Email field with error slot (L28-34), Password field with eye-toggle (L35-45), "Remember this device" checkbox (L54-75), "Forgot password?" link (L76-78), accent submit "Sign in" full-width (L81-83), footer "No account? Sign up" link (L85-90) |
+| **U2 Sign-up** | `ScreenSignUp` | `screens-user.jsx:97-183` | `SignUpForm.test.tsx` | heading "Create account" (L104), lede "The first registered user becomes the admin of this server." (L105), `AuthShell` `sideTitle="Create your OpenWhispr account."` + `sideQuote="One account per self-host operator. The first signup becomes the admin."` (L100-102), Name field (L107-109), Email field (L110-112), Password field with strength meter (L113-132 — 4px bar + "Strong" label; **NOTE** Phase 12 D-14 REMOVES this), Terms+Privacy checkbox (L134-168), accent submit "Create account" full-width (L170-172), **EXACTLY ONE error surface** (the `Field` `error` prop pattern, L28 in U1, or via `lede` in U2 — design renders no duplicated banner; **corroborates UICONF-06 fix**) |
+| **U3 Verify email** | `ScreenVerify` | `screens-user.jsx:186-260` | `VerifyEmailClient.test.tsx` | 4 variants: `pending` / `verifying` / `success` / `error` (L186-219), icon-circle 56px (L194-213) — icon switches `mail`/`check`/`alert`, sideTitle "Verify your email." (L189), heading per variant (L214-219), CTA per variant (L235-252): "Open mail app" / skeleton / "Continue to dashboard" / "Send a new link", secondary "Use a different email" ghost CTA (L253-255) |
+| **OIDC button row** | inside `ScreenSignIn` | `screens-user.jsx:15-25` | `OidcButtons.test.tsx` | exactly 3 buttons when ALL 3 providers configured: `<Btn lg icon="google">Continue with Google`, `<Btn lg icon="github">Continue with GitHub`, `<Btn lg icon="key" kind="ghost">Continue with SSO (OIDC)` — `kind="ghost"` only on the generic OIDC button (visual hierarchy) |
+
+### `ui.jsx` — Auth-wrap primitive (canonical for `/setup` deviation rationale)
+
+`AuthShell` at `ui.jsx:229-316` is the **only** auth-flow shell in the design. Phase 12's `/setup` wizard, per Open Question (§7), has **no design oracle**. Recommended composition (Plan 12-03 task 5):
+
+```tsx
+// apps/web/src/app/(public)/setup/page.tsx
+// Composes ui.jsx:AuthShell (L229-316) with sideTitle/sideQuote per the wizard intent,
+// then renders the Stepper + form in the `<div className="form">` slot.
+// Design-deviation rationale: no `/setup` artboard exists in any of the 6 JSX files
+// (verified by grep 2026-05-14). The wizard mirrors the auth-flow visual language
+// (AuthShell split-panel + Field + Btn primitives) but its content/steps are new.
+```
+
+### `screens-admin.jsx` — Canonical oracle for `/admin` index (ADMIN-04, closes TD-12.a)
+
+| Screen | Function | Line range | Phase 12 deliverable | Structural mirror |
+|--------|----------|------------|----------------------|-------------------|
+| **A1 Audit log** | `ScreenAudit` | `screens-admin.jsx:4-251` | NOT in Phase 12 scope (Phase 13+ admin work) | — |
+| **A2 Observability** | `ScreenObservability` | `screens-admin.jsx:281-442` | NOT in Phase 12 scope | — |
+| **A3 Config** | `ScreenConfig` | `screens-admin.jsx:445-628` | **`/admin` index page** (ADMIN-04) | Card-grid 2-col (L478) with STT-config + note-recording cards + Effective-env table (L584-624) — Phase 12 implementation MAY omit the actual tables but MUST preserve the `Shell` + `Sidebar kind="admin"` + page-head + read-only alert (L462-476) structure |
+
+### Phase 07.1 implementation status — what was shipped vs skipped
+
+> Inferred from existing `apps/web/src/components/screens/auth/` directory + git log (2026-05-14).
+
+| Design artboard | Phase 07.1 implemented? | Drift from JSX | Phase 12 action |
+|-----------------|------------------------|----------------|-----------------|
+| U1 Sign-in (`ScreenSignIn`) | ✓ `SignInForm.tsx` | Unknown until Plan 12-05a conformance test runs; **prior Phase 07.1 ignored JSX** → assume drift, audit via JSX-derived inventory | Conformance test in 12-05a CITES `screens-user.jsx:7-94` |
+| U2 Sign-up (`ScreenSignUp`) | ✓ `SignUpForm.tsx` | Known: duplicate-banner bug (UICONF-06) is a drift from JSX which has single-error-surface pattern | Conformance test + fix in 12-04 + 12-05a |
+| U3 Verify (`ScreenVerify`) | ✓ `VerifyEmailClient.tsx` | Unknown; audit 4 variants | Conformance test in 12-05a CITES `screens-user.jsx:186-260` |
+| OIDC row (in `ScreenSignIn`) | ✓ `OidcButtons.tsx` | Known: reads `NEXT_PUBLIC_OIDC_PROVIDERS` build-time bake-in instead of capability endpoint (TD-12.c) | Refactor in 12-04 + conformance test 12-05a CITES `screens-user.jsx:15-25` |
+| U4-U13 (Usage, Account, Trx, Notes, Conv) | Likely ✗ for v1 (Phase 12 scope is auth + onboarding + admin only) | n/a for Phase 12 | Out of scope |
+| A1-A2 (Audit, Observability) | ✗ | n/a for Phase 12 | Out of scope (Phase 13+) |
+| A3 Config | ✗ | Not implemented yet | Phase 12 ADMIN-04 ships `/admin` index mirroring `ScreenConfig` structure |
+| `/setup` wizard | ✗ (new in Phase 12) | **No JSX oracle exists** — documented deviation per §7 | Plan 12-03 composes `AuthShell` primitive |
+
+**Rule for Phase 12 implementers:** UICONF-04 is the audit that catches divergence from JSX. **Phase 12 MUST NOT widen drift** beyond what's documented above. If Plan 12-05a conformance reveals additional drift in SignInForm / SignUpForm / VerifyEmailClient / OidcButtons that isn't in the table above, the fix lands in Plan 12-04 (or a follow-up) before the conformance gate is allowed to pass.
+
+**Confidence:** HIGH [VERIFIED by reading all 6 JSX files end-to-end on 2026-05-14; LOC counts match `wc -l` output]
+
+---
+
 ## Sources
 
 ### Primary (HIGH confidence)
@@ -1051,6 +1172,10 @@ user: {
 - `tests/e2e-cjm/support/compose-harness.ts:1-40` (bootStack/tearStack contract for axe spec)
 - `tests/e2e-cjm/features/{admin-onboarding,signup-verify,oidc-providers}.feature` (tag locations to flip)
 - `.planning/phases/12-…/12-CONTEXT.md` (23 locked decisions D-01..D-27)
+- **`.planning/phases/07-frontend-ui-spec/design/screens-user.jsx:1-1616`** (U1-U13 — canonical oracle for UICONF-04 user-facing screens)
+- **`.planning/phases/07-frontend-ui-spec/design/screens-admin.jsx:1-630`** (A1-A3 — canonical oracle for ADMIN-04 `/admin` index)
+- **`.planning/phases/07-frontend-ui-spec/design/ui.jsx:1-440`** (shared primitives: AuthShell L229-316, Field L338-352, Btn L326-336, Shell L137-155, Sidebar L170-203)
+- **`.planning/phases/07-frontend-ui-spec/design/browser-window.jsx:1-200`** + **`tweaks-panel.jsx:1-664`** (design-time chrome only; not Phase 12 oracle)
 
 ### Secondary (MEDIUM confidence)
 - shadcn/ui#1422 — confirmed no official Stepper primitive (referenced in CONTEXT D-12)
