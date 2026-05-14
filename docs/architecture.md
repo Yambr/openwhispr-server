@@ -260,7 +260,6 @@ flowchart TD
 
   subgraph queues[Valkey-backed BullMQ queues]
     Q1[email-delivery]
-    Q2[virtual-key-rotation]
     Q3[usage-rollup-daily-dispatcher]
     Q4[usage-rollup-daily-tenant]
     Q5[reconciliation-daily-check]
@@ -272,7 +271,6 @@ flowchart TD
 
   subgraph workers[Worker processes]
     W1[emailWorker -> SMTP transport<br/>+ template renderer (en/ru)]
-    W2[vkrWorker -> rotates LiteLLM virtual keys]
     W3[rollupDispatcher -> fan out per tenant]
     W4[rollupTenant -> per-tenant aggregate]
     W5[reconciliationCheck -> compare ledger vs LiteLLM spend]
@@ -285,7 +283,6 @@ flowchart TD
   APISignup --> Q1
   APIRoute --> Q9
   APIRoute --> Q1
-  Scheduler --> Q2
   Scheduler --> Q3
   Scheduler --> Q5
   Scheduler --> Q7
@@ -294,7 +291,6 @@ flowchart TD
   ChildOf -- Q7 archives --> Q8
 
   Q1 --> W1
-  Q2 --> W2
   Q3 --> W3
   Q4 --> W4
   Q5 --> W5
@@ -303,6 +299,14 @@ flowchart TD
   Q8 --> W8
   Q9 --> W9
 ```
+
+> Phase 14 / Plan 05 — Q2 (virtual-key-rotation) + W2 (vkrWorker)
+> removed per CONTEXT decision 3 + REQUIREMENTS BYOK-03 audit closure.
+> The production rotation dispatcher was never built; the weekly cron
+> enqueued a nil-UUID sentinel against noop adapters, violating
+> CLAUDE.md "no mocks of internal logic". The Q2/W2 slot indices are
+> intentionally left unused so the surviving slot numbers stay stable
+> for downstream readers / Helm chart consumers.
 
 Per-queue defaults (centralised in `apps/worker/src/queues.ts`):
 
