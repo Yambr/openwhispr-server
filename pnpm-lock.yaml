@@ -450,6 +450,22 @@ importers:
 
   packages/auth: {}
 
+  packages/byok-guard:
+    dependencies:
+      pino:
+        specifier: '*'
+        version: 9.14.0
+    devDependencies:
+      '@types/node':
+        specifier: 25.6.2
+        version: 25.6.2
+      typescript:
+        specifier: 6.0.3
+        version: 6.0.3
+      vitest:
+        specifier: 4.1.5
+        version: 4.1.5(@opentelemetry/api@1.9.1)(@types/node@25.6.2)(@vitest/coverage-v8@4.1.5)(happy-dom@20.9.0)(vite@8.0.11(@types/node@25.6.2)(esbuild@0.27.7)(jiti@2.6.1)(tsx@4.21.0)(yaml@2.8.4))
+
   packages/contract-tests:
     dependencies:
       pg:
