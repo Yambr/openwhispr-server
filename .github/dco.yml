@@ -1,0 +1,44 @@
+# Developer Certificate of Origin enforcement configuration.
+#
+# Authoritative reference for the DCO requirement on every new commit:
+# CONTRIBUTING.md § "Developer Certificate of Origin (DCO)" and
+# docs/adrs/0013-fsl-relicense.md § "Retroactive consent".
+#
+# This file is consumed by the GitHub App "DCO" (https://github.com/apps/dco)
+# OR the Probot-DCO-compatible action ("tim-actions/dco" / "tisonkun/actions-dco")
+# whichever is wired in `.github/workflows/dco.yml` once the bot is installed
+# on the repository.
+#
+# Behavior:
+# - require.members: false — sign-off is required for EVERY contributor,
+#   including project maintainers and organization members. This avoids
+#   the common pitfall where members are accidentally exempted from the
+#   policy that protects them.
+# - allowRemediationCommits.individual: true — a contributor may add a
+#   single remediation commit with the missing Signed-off-by trailer to
+#   satisfy DCO retroactively on their own PR series.
+# - allowRemediationCommits.thirdParty: false — maintainers MUST NOT
+#   sign off on commits authored by other contributors. The original
+#   author has to add the trailer themselves (or the commit is dropped).
+#
+# allow.cutoff_sha — every commit AT OR BEFORE this SHA is grandfathered
+# into the FSL-1.1-ALv2 grant via the retroactive consent tracking issue
+# referenced in ADR-0013. The cutoff SHA is the post-scrub HEAD that
+# Phase 15-04's `git filter-repo` produces. Phase 15-04 fills this value
+# once the force-push lands; until then, the placeholder below makes the
+# config inert (no commits below an empty SHA are exempted).
+#
+# cutoff_sha: TBD-from-15-04  (must be a 40-character full SHA after
+# the Phase 15-04 history rewrite; never use a short SHA — abbreviated
+# SHAs are ambiguous and the DCO bot will refuse to load the config.)
+
+require:
+  members: false
+
+allowRemediationCommits:
+  individual: true
+  thirdParty: false
+
+allow:
+  # cutoff_sha: TBD-from-15-04
+  cutoff_sha: ""

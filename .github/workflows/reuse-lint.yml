@@ -1,0 +1,54 @@
+name: reuse-lint
+
+# Phase 15 / Plan 03 — REUSE 3.3 compliance gate. Verifies that every
+# file in the working tree is covered either by an inline SPDX short-
+# form header (TS / JS / shell / Python / SQL / etc.) or by an
+# aggregate annotation in REUSE.toml, and that the LICENSES/ directory
+# contains the canonical text of every SPDX identifier referenced.
+#
+# Authoritative configuration: REUSE.toml + LICENSES/ at repo root.
+# CONTRIBUTING.md § "Developer Certificate of Origin" documents the
+# contributor-facing impact.
+
+on:
+  pull_request:
+    paths:
+      - "**"
+      - "!**/coverage/**"
+      - "!**/dist/**"
+      - "!**/.next/**"
+      - "!**/node_modules/**"
+  push:
+    branches: [main]
+    paths:
+      - "**"
+      - "!**/coverage/**"
+      - "!**/dist/**"
+      - "!**/.next/**"
+      - "!**/node_modules/**"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: reuse-lint-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  reuse-lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Python (for reuse CLI)
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install reuse via pipx
+        run: |
+          python -m pip install --upgrade pipx
+          pipx install reuse
+
+      - name: REUSE 3.3 compliance check
+        run: reuse lint
