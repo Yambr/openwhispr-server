@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: FSL-1.1-ALv2
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -32,19 +32,19 @@ function write(rel: string, content: string): string {
 }
 
 describe("HEADER constant", () => {
-  it("is the SPDX short-form line", () => {
-    expect(HEADER).toBe("// SPDX-License-Identifier: Apache-2.0");
+  it("is the FSL-1.1-ALv2 SPDX short-form line", () => {
+    expect(HEADER).toBe("// SPDX-License-Identifier: FSL-1.1-ALv2");
   });
 });
 
 describe("hasHeader", () => {
   it("returns true when first non-shebang line is the SPDX header", () => {
-    expect(hasHeader("// SPDX-License-Identifier: Apache-2.0\nexport {};\n")).toBe(true);
+    expect(hasHeader("// SPDX-License-Identifier: FSL-1.1-ALv2\nexport {};\n")).toBe(true);
   });
 
   it("returns true when shebang precedes header on line 2", () => {
     expect(
-      hasHeader("#!/usr/bin/env node\n// SPDX-License-Identifier: Apache-2.0\nexport {};\n"),
+      hasHeader("#!/usr/bin/env node\n// SPDX-License-Identifier: FSL-1.1-ALv2\nexport {};\n"),
     ).toBe(true);
   });
 
@@ -55,18 +55,28 @@ describe("hasHeader", () => {
   it("returns false when shebang present but no header on line 2", () => {
     expect(hasHeader("#!/usr/bin/env node\nexport {};\n")).toBe(false);
   });
+
+  it("returns false when a stale Apache-2.0 header is on line 1", () => {
+    expect(hasHeader("// SPDX-License-Identifier: Apache-2.0\nexport {};\n")).toBe(false);
+  });
+
+  it("returns false when a stale Apache-2.0 header is on line 2 after shebang", () => {
+    expect(
+      hasHeader("#!/usr/bin/env node\n// SPDX-License-Identifier: Apache-2.0\nexport {};\n"),
+    ).toBe(false);
+  });
 });
 
 describe("applyHeader", () => {
   it("inserts header on line 1 for plain file", () => {
     const out = applyHeader("export const x = 1;\n");
-    expect(out).toBe("// SPDX-License-Identifier: Apache-2.0\nexport const x = 1;\n");
+    expect(out).toBe("// SPDX-License-Identifier: FSL-1.1-ALv2\nexport const x = 1;\n");
   });
 
   it("inserts header on line 2 when shebang on line 1", () => {
     const out = applyHeader("#!/usr/bin/env node\nconsole.log(1);\n");
     expect(out).toBe(
-      "#!/usr/bin/env node\n// SPDX-License-Identifier: Apache-2.0\nconsole.log(1);\n",
+      "#!/usr/bin/env node\n// SPDX-License-Identifier: FSL-1.1-ALv2\nconsole.log(1);\n",
     );
   });
 
@@ -89,12 +99,12 @@ describe("applyHeader", () => {
 
   it("handles shebang without trailing newline", () => {
     const out = applyHeader("#!/usr/bin/env node");
-    expect(out).toBe("#!/usr/bin/env node\n// SPDX-License-Identifier: Apache-2.0\n");
+    expect(out).toBe("#!/usr/bin/env node\n// SPDX-License-Identifier: FSL-1.1-ALv2\n");
   });
 
   it("handles empty input", () => {
     const out = applyHeader("");
-    expect(out).toBe("// SPDX-License-Identifier: Apache-2.0\n");
+    expect(out).toBe("// SPDX-License-Identifier: FSL-1.1-ALv2\n");
   });
 
   it("does not introduce stray blank line after header", () => {
@@ -103,6 +113,37 @@ describe("applyHeader", () => {
     expect(lines[0]).toBe(HEADER);
     expect(lines[1]).toBe("export {};");
     expect(lines[1]).not.toBe("");
+  });
+
+  it("rewrites stale Apache-2.0 header on line 1 to FSL-1.1-ALv2", () => {
+    const out = applyHeader("// SPDX-License-Identifier: Apache-2.0\nexport const x = 1;\n");
+    expect(out).toBe("// SPDX-License-Identifier: FSL-1.1-ALv2\nexport const x = 1;\n");
+  });
+
+  it("rewrites stale Apache-2.0 header on line 2 after shebang to FSL-1.1-ALv2", () => {
+    const out = applyHeader(
+      "#!/usr/bin/env node\n// SPDX-License-Identifier: Apache-2.0\nconsole.log(1);\n",
+    );
+    expect(out).toBe(
+      "#!/usr/bin/env node\n// SPDX-License-Identifier: FSL-1.1-ALv2\nconsole.log(1);\n",
+    );
+  });
+
+  it("rewriting a stale Apache-2.0 header is idempotent on second application", () => {
+    const once = applyHeader("// SPDX-License-Identifier: Apache-2.0\nexport {};\n");
+    const twice = applyHeader(once);
+    expect(twice).toBe(once);
+    expect(once.startsWith("// SPDX-License-Identifier: FSL-1.1-ALv2\n")).toBe(true);
+  });
+
+  it("rewrites a stale Apache-2.0 header with no trailing newline", () => {
+    const out = applyHeader("// SPDX-License-Identifier: Apache-2.0");
+    expect(out).toBe("// SPDX-License-Identifier: FSL-1.1-ALv2\n");
+  });
+
+  it("rewrites a stale Apache-2.0 header on line 2 after shebang with no trailing newline", () => {
+    const out = applyHeader("#!/usr/bin/env node\n// SPDX-License-Identifier: Apache-2.0");
+    expect(out).toBe("#!/usr/bin/env node\n// SPDX-License-Identifier: FSL-1.1-ALv2\n");
   });
 });
 
@@ -176,11 +217,18 @@ describe("isBinary", () => {
 
 describe("auditDir", () => {
   it("reports files missing header", async () => {
-    write("a.ts", "// SPDX-License-Identifier: Apache-2.0\nexport {};\n");
+    write("a.ts", "// SPDX-License-Identifier: FSL-1.1-ALv2\nexport {};\n");
     write("b.ts", "export const x = 1;\n");
     write("c.ts", "#!/usr/bin/env node\nconsole.log(1);\n");
     const missing = await auditDir(workDir);
     expect(missing.sort()).toEqual(["b.ts", "c.ts"]);
+  });
+
+  it("flags files still carrying a stale Apache-2.0 header", async () => {
+    write("a.ts", "// SPDX-License-Identifier: FSL-1.1-ALv2\nexport {};\n");
+    write("stale.ts", "// SPDX-License-Identifier: Apache-2.0\nexport const x = 1;\n");
+    const missing = await auditDir(workDir);
+    expect(missing).toEqual(["stale.ts"]);
   });
 
   it("ignores JSON, node_modules, dist, coverage", async () => {
@@ -200,8 +248,8 @@ describe("auditDir", () => {
   });
 
   it("returns empty array when all files have headers", async () => {
-    write("a.ts", "// SPDX-License-Identifier: Apache-2.0\nexport {};\n");
-    write("b.tsx", "// SPDX-License-Identifier: Apache-2.0\nexport const x = 1;\n");
+    write("a.ts", "// SPDX-License-Identifier: FSL-1.1-ALv2\nexport {};\n");
+    write("b.tsx", "// SPDX-License-Identifier: FSL-1.1-ALv2\nexport const x = 1;\n");
     const missing = await auditDir(workDir);
     expect(missing).toEqual([]);
   });
@@ -214,10 +262,10 @@ describe("fixDir", () => {
     const count1 = await fixDir(workDir);
     expect(count1).toBe(2);
     expect(readFileSync(p1, "utf8")).toBe(
-      "// SPDX-License-Identifier: Apache-2.0\nexport const x = 1;\n",
+      "// SPDX-License-Identifier: FSL-1.1-ALv2\nexport const x = 1;\n",
     );
     expect(readFileSync(p2, "utf8")).toBe(
-      "#!/usr/bin/env node\n// SPDX-License-Identifier: Apache-2.0\nconsole.log(1);\n",
+      "#!/usr/bin/env node\n// SPDX-License-Identifier: FSL-1.1-ALv2\nconsole.log(1);\n",
     );
     const count2 = await fixDir(workDir);
     expect(count2).toBe(0);
@@ -225,6 +273,22 @@ describe("fixDir", () => {
     const count3 = await fixDir(workDir);
     expect(count3).toBe(0);
     expect(readFileSync(p1, "utf8")).toBe(snap1);
+  });
+
+  it("rewrites stale Apache-2.0 headers in-place to FSL-1.1-ALv2", async () => {
+    const p1 = write("a.ts", "// SPDX-License-Identifier: Apache-2.0\nexport {};\n");
+    const p2 = write(
+      "b.ts",
+      "#!/usr/bin/env node\n// SPDX-License-Identifier: Apache-2.0\nconsole.log(1);\n",
+    );
+    const count = await fixDir(workDir);
+    expect(count).toBe(2);
+    expect(readFileSync(p1, "utf8")).toBe("// SPDX-License-Identifier: FSL-1.1-ALv2\nexport {};\n");
+    expect(readFileSync(p2, "utf8")).toBe(
+      "#!/usr/bin/env node\n// SPDX-License-Identifier: FSL-1.1-ALv2\nconsole.log(1);\n",
+    );
+    const count2 = await fixDir(workDir);
+    expect(count2).toBe(0);
   });
 
   it("skips files under excluded directories", async () => {
@@ -246,7 +310,7 @@ describe("fixDir", () => {
 
 describe("main CLI", () => {
   it("audit returns 0 when clean", async () => {
-    write("a.ts", "// SPDX-License-Identifier: Apache-2.0\nexport {};\n");
+    write("a.ts", "// SPDX-License-Identifier: FSL-1.1-ALv2\nexport {};\n");
     const code = await main(["node", "spdx-header.ts", "audit", workDir]);
     expect(code).toBe(0);
   });

@@ -89,6 +89,24 @@ export default defineConfig({
           include: ["tests/**/*.test.ts"],
         },
       },
+      // Phase 15 / Plan 03 — `tools/` ships standalone CLI codemods +
+      // linters (spdx-header, lint-*, migrate-tests) tested via sibling
+      // *.test.ts and __tests__/*.test.ts files. After the Plan 15-02
+      // switch to a `projects:` array, these files were no longer
+      // covered by any project entry; this entry restores them so
+      // `pnpm test:spdx-header` and `pnpm test:lint-*` run.
+      {
+        extends: true,
+        test: {
+          name: "tools",
+          root: p("tools"),
+          include: ["*.test.ts", "__tests__/*.test.ts"],
+          // Exclude per-workspace tools/ subdirs that ship their own
+          // vitest.config.ts (load-test, test-probe) — those are
+          // separate projects above.
+          exclude: ["load-test/**", "test-probe/**", "node_modules/**", "dist/**"],
+        },
+      },
     ],
     coverage: {
       provider: "v8",
