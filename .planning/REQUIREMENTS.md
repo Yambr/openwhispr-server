@@ -459,13 +459,13 @@ Wave structure:
 
 ### Slim core + BYOK profiles (Phase 14)
 
-- [ ] **SLIM-01**: Slim default = 6 services (api+web+worker+postgres+valkey+litellm); bare `docker compose up` (no flag) selects all slim-core services (TD-14.f / deferred-items #3a fix)
-- [ ] **SLIM-02**: Opt-in compose overlay files: `compose/docker-compose.observability.yml`, `.storage.yml`, `.ingress.yml`, `.pgbouncer.yml`, `.dev-tools.yml` (mailpit only here, TD-14.a)
-- [ ] **SLIM-03**: `.env.slim.example` with ~5 keys (DATABASE_URL, BETTER_AUTH_SECRET, LITELLM_MASTER_KEY, plus storage / ingress when enabled)
-- [ ] **SLIM-04**: BYOK env-var contracts documented in `docs/operations.md` — `S3_ENDPOINT`, `OTEL_EXPORTER_OTLP_ENDPOINT`, `INGRESS_BASE_URL`, `SMTP_HOST`
-- [ ] **BYOK-01**: Helm `*.enabled` toggles 1:1 with compose overlays — `observability.enabled`, `storage.enabled`, `pooler.enabled`, `tls.enabled`, `mailpit.enabled` (already present in `charts/openwhispr/values.yaml` — audited)
-- [ ] **BYOK-02**: Loud-fail BYOK — api refuses to start if any required BYOK service is unconfigured (e.g., `--with-storage` off AND `S3_ENDPOINT` unset)
-- [ ] **BYOK-03**: Worker `noopX` audit at `apps/worker/src/index.ts:68-92` — sweep ALL three (`noopSender` + `noopLitellmKeyClient` + `noopUserKeyLookup`); replace with real adapters or loud-fail (TD-mailpit + TD-14.c symptoms)
+- [x] **SLIM-01**: Slim default = 6 services (api+web+worker+postgres+valkey+litellm); bare `docker compose up` (no flag) selects all slim-core services (TD-14.f / deferred-items #3a fix)
+- [x] **SLIM-02**: Opt-in compose overlay files: `compose/docker-compose.observability.yml`, `.storage.yml`, `.ingress.yml`, `.pgbouncer.yml`, `.dev-tools.yml` (mailpit only here, TD-14.a)
+- [x] **SLIM-03**: `.env.slim.example` with ~5 keys (DATABASE_URL, BETTER_AUTH_SECRET, LITELLM_MASTER_KEY, plus storage / ingress when enabled)
+- [x] **SLIM-04**: BYOK env-var contracts documented in `docs/operations.md` — `S3_ENDPOINT`, `OTEL_EXPORTER_OTLP_ENDPOINT`, `INGRESS_BASE_URL`, `SMTP_HOST`
+- [x] **BYOK-01**: Helm `*.enabled` toggles 1:1 with compose overlays — `observability.enabled`, `storage.enabled`, `pooler.enabled`, `tls.enabled`, `mailpit.enabled` (already present in `charts/openwhispr/values.yaml` — audited)
+- [x] **BYOK-02**: Loud-fail BYOK — api refuses to start if any required BYOK service is unconfigured (e.g., `--with-storage` off AND `S3_ENDPOINT` unset)
+- [x] **BYOK-03**: Worker `noopX` audit at `apps/worker/src/index.ts:68-92` — sweep ALL three (`noopSender` + `noopLitellmKeyClient` + `noopUserKeyLookup`); replace with real adapters or loud-fail (TD-mailpit + TD-14.c symptoms)
 
 ### Repo structure refactor (Phase 15)
 
@@ -559,13 +559,13 @@ Work-order: **13 → 12 → 14 → 15 → 16 → 17 → 18**. 61 REQ-IDs mapped 
 | UICONF-05 | 12 | Complete | Axe a11y baseline + per-screen delta gate |
 | UICONF-06 | 12 | Complete | SignUpForm duplicate-banner regression fixed |
 | UICONF-07 | 12 | Complete | Resend-verification CTA on sign-in 403 |
-| SLIM-01 | 14 | Pending | Slim default = 6 services; bare `docker compose up` selects them |
-| SLIM-02 | 14 | Pending | Opt-in compose overlays (observability/storage/ingress/pgbouncer/dev-tools) |
-| SLIM-03 | 14 | Pending | `.env.slim.example` ~5 keys |
-| SLIM-04 | 14 | Pending | BYOK env contracts documented in `docs/operations.md` |
-| BYOK-01 | 14 | Pending | Helm `*.enabled` toggles 1:1 with compose overlays |
-| BYOK-02 | 14 | Pending | Loud-fail BYOK — refuse to start on misconfigured prod env |
-| BYOK-03 | 14 | Pending | Worker noop audit (all 3 adapters) at `apps/worker/src/index.ts:68-92` |
+| SLIM-01 | 14 | Complete | Slim default = 6 services; bare `docker compose up` selects them |
+| SLIM-02 | 14 | Complete | Opt-in compose overlays (observability/storage/ingress/pgbouncer/dev-tools) |
+| SLIM-03 | 14 | Complete | `.env.slim.example` ~5 keys |
+| SLIM-04 | 14 | Complete | BYOK env contracts documented in `docs/operations.md` |
+| BYOK-01 | 14 | Complete | Helm `*.enabled` toggles 1:1 with compose overlays |
+| BYOK-02 | 14 | Complete | Loud-fail BYOK — refuse to start on misconfigured prod env |
+| BYOK-03 | 14 | Complete | Worker noop audit (all 3 adapters) at `apps/worker/src/index.ts:68-92` |
 | STRUCT-01 | 15 | Pending | Test-layout codified + `Phase15-MOVE-INVENTORY.md` before move PR |
 | STRUCT-02 | 15 | Pending | `compose/` directory holds every compose YAML |
 | STRUCT-03 | 15 | Pending | Helm monorepo vs separate repo — **TBD via `/gsd-discuss-phase 15`** |

@@ -52,7 +52,7 @@ Work-order: **13 → 12 → 14 → 15 → 16 → 17 → 18** (user-confirmed; nu
 
 - [ ] **Phase 13: E2E + CJM Harness (ships first — the harness every other v2 phase tests against)** — Cucumber+Playwright at `tests/e2e-cjm/`, `docs/customer-journeys.md`, ~20 Gherkin journeys with happy-path + negative-twin coverage, Mailpit-HTTP verification, testcontainers teardown, weak-assertion ESLint ban, atomic replacement of `apps/worker/src/index.ts:68-134` `noopSender` with real nodemailer in new `packages/email/`. Recommended sub-plan split: 13.a harness + worker fix + teardown + weak-assert sweep (unblocks Phase 12); 13.b 8 feature-file journeys + CJM doc.
 - [x] **Phase 12: Admin Onboarding Wizard + UI-SPEC Conformance Audit** — `/setup` gated by `setup_state` enum (NOT users-count); single-page RHF+Zod+shadcn Stepper wizard; `users.role` migration + Better Auth `additionalFields.role`; `/admin` index page (closes TD-12.a 404); `GET /api/capabilities` driving conditional OIDC button render (closes TD-12.c capability drift); per-field Zod localized errors; resend-verification CTA on 403; semantic Playwright DOM conformance vs Phase 07 `design-canvas.jsx` (NOT pixel-diff); axe a11y baseline+delta. **Conformance to existing design contract — NOT redesign.** (completed 2026-05-14)
-- [ ] **Phase 14: Slim Core + BYOK Profiles** — Slim default = 6 services (api+web+worker+postgres+valkey+litellm); opt-in compose overlays (observability / storage / ingress / pgbouncer / dev-tools); `.env.slim.example` ~5 keys; BYOK env matrix in `docs/operations.md`; Helm `*.enabled` toggles 1:1 with overlays; loud-fail BYOK (refuse to start on misconfigured prod env); audit ALL three worker noops at `apps/worker/src/index.ts:68-92`.
+- [x] **Phase 14: Slim Core + BYOK Profiles** — Slim default = 6 services (api+web+worker+postgres+valkey+litellm); opt-in compose overlays (observability / storage / ingress / pgbouncer / dev-tools); `.env.slim.example` ~5 keys; BYOK env matrix in `docs/operations.md`; Helm `*.enabled` toggles 1:1 with overlays; loud-fail BYOK (refuse to start on misconfigured prod env); audit ALL three worker noops at `apps/worker/src/index.ts:68-92`. (completed 2026-05-14)
 - [ ] **Phase 15: Repo Refactor + FSL Relicense + History Scrub** — Test-layout codified (`tests/{unit,integration}/`); `compose/` directory holds every compose YAML; Traefik host split (`web.localhost` vs `api.localhost` — closes TD-15.g `/api/locale` 404 shadowing); Apache-2.0 → FSL-1.1-ALv2 via `reuse` codemod across 675 SPDX headers + every workspace `package.json` + Docker LABELs + README badges + DCO sign-off + retroactive contributor consent; `git filter-repo --path speaches-audio.md --invert-paths` history scrub bundled WITH FSL as ONE release event. Recommended sub-plan split: 15.a structural reorg + Traefik host split + test layout; 15.b FSL codemod + history scrub (irreversible-history-rewrite — owns its atomic window).
 - [ ] **Phase 16: Phase-Tag Comment Audit** — ts-morph AST codemod (NOT regex) audits **771** `// Phase XX / Plan YY / D-ZZ` comments in `apps/` + `packages/` (scope corrected from TECH_DEBT's 1642 figure which double-counted tests/tools/.planning); 50-file sample audit before bulk; two-bucket REMOVE/KEEP classification; ESLint regression rule; ONE squashed commit OR grouped ≤ 50 files. **Must run AFTER Phase 15 — FSL codemod rewrites every SPDX header; running 16 first = redo.**
 - [ ] **Phase 17: Trusted Local TLS + Production ACME** — `make tls-trust` → `mkcert -install` + cert for explicit host list (`api.localhost`, `web.localhost`, `app.localhost`, `grafana.localhost`, `mailpit.localhost` — NOT `*.localhost` wildcard); Traefik dev profile serves mkcert certs; production ACME wired through `--with-ingress`; cert-manager Helm sub-chart gated by `ingress.enabled`; dev-cert isolation (`.dockerignore` + prod Dockerfile lint); air-gap install path documented.
@@ -742,13 +742,13 @@ Plans:
   4. The full worker noop audit at `apps/worker/src/index.ts:68-92` is closed — ALL three (`noopSender` (already fixed in Phase 13), `noopLitellmKeyClient`, `noopUserKeyLookup`) are either replaced with real adapters or loud-fail at worker boot when their backing config is absent.
   5. Phase 13 Gherkin scenarios `@cjm-byok-storage`, `@cjm-byok-observability`, `@cjm-loud-fail-misconfig` are GREEN; phase verifier reports PASSED with ≥ 90/90/90/90 coverage on diff and live e2e green.
 **Plans**: 7 plans (4 waves)
-- [ ] 14-01-PLAN.md — Slim-core base: delete profiles, strip overlay services, add api/web host ports (Wave 1)
-- [ ] 14-02-PLAN.md — .env.slim.example + bootstrap.sh env-overridable + BYOK matrix in operations.md (Wave 1)
-- [ ] 14-03-PLAN.md — Six compose overlays + Grafana datasource + Makefile + cjm harness + parity allowlist (Wave 2)
-- [ ] 14-04-PLAN.md — byok-guard module + OTel =disabled sentinel + boot-order wire-up (Wave 2, TDD)
-- [ ] 14-05-PLAN.md — Virtual-key-rotation removal + transient Valkey cleanup + log-scrub rewrite (Wave 3)
-- [ ] 14-06-PLAN.md — Helm 5 toggles (observability umbrella, storage, tls, pooler flip, mailpit informational) + helm-unittest (Wave 3)
-- [ ] 14-07-PLAN.md — Gherkin authoring: @cjm-byok-storage, @cjm-byok-observability, @cjm-loud-fail-misconfig + bootStack envOverrides (Wave 4)
+- [x] 14-01-PLAN.md — Slim-core base: delete profiles, strip overlay services, add api/web host ports (Wave 1)
+- [x] 14-02-PLAN.md — .env.slim.example + bootstrap.sh env-overridable + BYOK matrix in operations.md (Wave 1)
+- [x] 14-03-PLAN.md — Six compose overlays + Grafana datasource + Makefile + cjm harness + parity allowlist (Wave 2)
+- [x] 14-04-PLAN.md — byok-guard module + OTel =disabled sentinel + boot-order wire-up (Wave 2, TDD)
+- [x] 14-05-PLAN.md — Virtual-key-rotation removal + transient Valkey cleanup + log-scrub rewrite (Wave 3)
+- [x] 14-06-PLAN.md — Helm 5 toggles (observability umbrella, storage, tls, pooler flip, mailpit informational) + helm-unittest (Wave 3)
+- [x] 14-07-PLAN.md — Gherkin authoring: @cjm-byok-storage, @cjm-byok-observability, @cjm-loud-fail-misconfig + bootStack envOverrides (Wave 4)
 **UI hint**: no
 **Open question (deferred to `/gsd-discuss-phase 14` or 15)**: Phase 14 ↔ 15 order swap — user-confirmed order (13→12→14→15→…) vs ARCHITECTURE's recommendation to swap (13→12→15→14→…) so the Phase 15 `compose/` reorg precedes Phase 14's overlay authoring. User order is authoritative for v2 roadmap; ARCHITECTURE alternative sidebar logged here.
 
@@ -825,7 +825,7 @@ Plans:
 | **— v2 milestone (opened 2026-05-14) —** | | | |
 | 13. E2E + CJM Harness | 0/0 | Not started | - |
 | 12. Admin Onboarding + UI-SPEC Conformance | 6/6 | Complete   | 2026-05-14 |
-| 14. Slim Core + BYOK Profiles | 0/0 | Not started | - |
+| 14. Slim Core + BYOK Profiles | 7/7 | Complete   | 2026-05-14 |
 | 15. Repo Refactor + FSL + History Scrub | 0/0 | Not started | - |
 | 16. Phase-Tag Comment Audit | 0/0 | Not started | - |
 | 17. Trusted Local TLS + Production ACME | 0/0 | Not started | - |
