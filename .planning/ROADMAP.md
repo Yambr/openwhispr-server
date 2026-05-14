@@ -51,7 +51,7 @@ A drop-in OpenWhispr backend any organization can self-host — open-source out 
 Work-order: **13 → 12 → 14 → 15 → 16 → 17 → 18** (user-confirmed; numbering is deliberately non-sequential — labels assigned after the order was picked). Hard ordering: 13 first (E2E harness gates everything; 13's atomic commit also replaces worker `noopSender` which 12 depends on); 15 → 17 (host split changes mkcert host list); 15 → 16 (FSL relicense rewrites every SPDX header — running 16 first = redo); 18 is SPEC-only and orthogonal to all code (schedulable anytime ≥ 13).
 
 - [ ] **Phase 13: E2E + CJM Harness (ships first — the harness every other v2 phase tests against)** — Cucumber+Playwright at `tests/e2e-cjm/`, `docs/customer-journeys.md`, ~20 Gherkin journeys with happy-path + negative-twin coverage, Mailpit-HTTP verification, testcontainers teardown, weak-assertion ESLint ban, atomic replacement of `apps/worker/src/index.ts:68-134` `noopSender` with real nodemailer in new `packages/email/`. Recommended sub-plan split: 13.a harness + worker fix + teardown + weak-assert sweep (unblocks Phase 12); 13.b 8 feature-file journeys + CJM doc.
-- [ ] **Phase 12: Admin Onboarding Wizard + UI-SPEC Conformance Audit** — `/setup` gated by `setup_state` enum (NOT users-count); single-page RHF+Zod+shadcn Stepper wizard; `users.role` migration + Better Auth `additionalFields.role`; `/admin` index page (closes TD-12.a 404); `GET /api/capabilities` driving conditional OIDC button render (closes TD-12.c capability drift); per-field Zod localized errors; resend-verification CTA on 403; semantic Playwright DOM conformance vs Phase 07 `design-canvas.jsx` (NOT pixel-diff); axe a11y baseline+delta. **Conformance to existing design contract — NOT redesign.**
+- [x] **Phase 12: Admin Onboarding Wizard + UI-SPEC Conformance Audit** — `/setup` gated by `setup_state` enum (NOT users-count); single-page RHF+Zod+shadcn Stepper wizard; `users.role` migration + Better Auth `additionalFields.role`; `/admin` index page (closes TD-12.a 404); `GET /api/capabilities` driving conditional OIDC button render (closes TD-12.c capability drift); per-field Zod localized errors; resend-verification CTA on 403; semantic Playwright DOM conformance vs Phase 07 `design-canvas.jsx` (NOT pixel-diff); axe a11y baseline+delta. **Conformance to existing design contract — NOT redesign.** (completed 2026-05-14)
 - [ ] **Phase 14: Slim Core + BYOK Profiles** — Slim default = 6 services (api+web+worker+postgres+valkey+litellm); opt-in compose overlays (observability / storage / ingress / pgbouncer / dev-tools); `.env.slim.example` ~5 keys; BYOK env matrix in `docs/operations.md`; Helm `*.enabled` toggles 1:1 with overlays; loud-fail BYOK (refuse to start on misconfigured prod env); audit ALL three worker noops at `apps/worker/src/index.ts:68-92`.
 - [ ] **Phase 15: Repo Refactor + FSL Relicense + History Scrub** — Test-layout codified (`tests/{unit,integration}/`); `compose/` directory holds every compose YAML; Traefik host split (`web.localhost` vs `api.localhost` — closes TD-15.g `/api/locale` 404 shadowing); Apache-2.0 → FSL-1.1-ALv2 via `reuse` codemod across 675 SPDX headers + every workspace `package.json` + Docker LABELs + README badges + DCO sign-off + retroactive contributor consent; `git filter-repo --path speaches-audio.md --invert-paths` history scrub bundled WITH FSL as ONE release event. Recommended sub-plan split: 15.a structural reorg + Traefik host split + test layout; 15.b FSL codemod + history scrub (irreversible-history-rewrite — owns its atomic window).
 - [ ] **Phase 16: Phase-Tag Comment Audit** — ts-morph AST codemod (NOT regex) audits **771** `// Phase XX / Plan YY / D-ZZ` comments in `apps/` + `packages/` (scope corrected from TECH_DEBT's 1642 figure which double-counted tests/tools/.planning); 50-file sample audit before bulk; two-bucket REMOVE/KEEP classification; ESLint regression rule; ONE squashed commit OR grouped ≤ 50 files. **Must run AFTER Phase 15 — FSL codemod rewrites every SPDX header; running 16 first = redo.**
@@ -728,7 +728,7 @@ Plans:
 - [x] 12-03-PLAN.md — Idempotent POST /api/setup/admin + /setup wizard page + vendored shadcn-stepper + UICONF-03 zod-i18n
 - [x] 12-04-PLAN.md — Auth screens consume /api/auth/providers + UICONF-06/07 fixes + /admin index page + ADMIN-05 ops docs
 - [x] 12-05a-PLAN.md — UICONF-04 Vitest+RTL conformance suite (6 files) with JSX-oracle citations
-- [ ] 12-05b-PLAN.md — UICONF-05 axe baseline (5 routes) + flip 5 @cjm scenarios GREEN
+- [x] 12-05b-PLAN.md — UICONF-05 axe baseline (5 routes) + flip 5 @cjm scenarios GREEN
 **UI hint**: yes
 
 ### Phase 14: Slim Core + BYOK Profiles (v2)
@@ -817,7 +817,7 @@ Plans:
 | 11. Cloud Profile Refactor | 1/5 | In progress | - |
 | **— v2 milestone (opened 2026-05-14) —** | | | |
 | 13. E2E + CJM Harness | 0/0 | Not started | - |
-| 12. Admin Onboarding + UI-SPEC Conformance | 5/6 | In Progress|  |
+| 12. Admin Onboarding + UI-SPEC Conformance | 6/6 | Complete   | 2026-05-14 |
 | 14. Slim Core + BYOK Profiles | 0/0 | Not started | - |
 | 15. Repo Refactor + FSL + History Scrub | 0/0 | Not started | - |
 | 16. Phase-Tag Comment Audit | 0/0 | Not started | - |
