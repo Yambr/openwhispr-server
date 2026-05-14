@@ -285,7 +285,7 @@ Then(
 
 After(async ({ tenantId }: CjmFixtures) => {
   const s = state.get(tenantId);
-  if (!s || !s.booted) return;
+  if (!s?.booted) return;
   // Always teardown — idempotent, never throws (per harness contract).
   await tearStack({
     projectName: s.projectName,
