@@ -77,7 +77,7 @@ describe("useAuthProviders (Phase 12 / Plan 12-04)", () => {
     // Hook MUST hit /api/auth/providers with credentials:'omit' (public endpoint).
     expect(calls).toHaveLength(1);
     expect(calls[0]?.url).toBe("/api/auth/providers");
-    expect((calls[0]?.init ?? {}).credentials).toBe("omit");
+    expect(calls[0]?.init?.credentials).toBe("omit");
   });
 
   it("fails closed (loading=false, providers=[]) when fetch rejects", async () => {
