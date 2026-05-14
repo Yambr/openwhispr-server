@@ -1,3 +1,8 @@
+<!--
+SPDX-FileCopyrightText: 2026 Nick Iambroskin and OpenWhispr Server contributors
+SPDX-License-Identifier: FSL-1.1-ALv2
+-->
+<!-- REUSE-IgnoreStart -->
 ---
 phase: 10
 plan: 00
@@ -175,3 +180,4 @@ No unplanned items. No gaps.
 ## Output
 
 Each plan produces a SUMMARY at `.planning/phases/10-i18n-docs-oss-housekeeping/10-{NN}-SUMMARY.md`.
+<!-- REUSE-IgnoreEnd -->

@@ -1,3 +1,8 @@
+<!--
+SPDX-FileCopyrightText: 2026 Nick Iambroskin and OpenWhispr Server contributors
+SPDX-License-Identifier: FSL-1.1-ALv2
+-->
+<!-- REUSE-IgnoreStart -->
 ---
 phase: 10
 title: i18n, Docs & OSS Housekeeping
@@ -200,3 +205,4 @@ ADRs verified present:
 - FOUND: docs/adrs/0009-better-auth-email-password-and-oidc-plugin.md
 - FOUND: docs/adrs/0010-i18n-runtime-i18next-icu-en-ru-operator-overridable.md
 - FOUND: docs/adrs/0011-strict-tdd-github-actions-ci-max-automation.md
+<!-- REUSE-IgnoreEnd -->

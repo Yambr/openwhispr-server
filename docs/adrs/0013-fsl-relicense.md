@@ -1,3 +1,8 @@
+<!--
+SPDX-FileCopyrightText: 2026 Nick Iambroskin and OpenWhispr Server contributors
+SPDX-License-Identifier: FSL-1.1-ALv2
+-->
+<!-- REUSE-IgnoreStart -->
 # ADR-0013: Relicense to FSL-1.1-ALv2 with delayed Apache-2.0 grant
 
 **Status:** accepted
@@ -237,3 +242,4 @@ grant clause made FSL-1.1-ALv2 the decisive winner over the alternatives.
 - **Phase 15 CONTEXT:** [`.planning/phases/15-repo-refactor-fsl-relicense-history-scrub-v2/15-CONTEXT.md`](../../.planning/phases/15-repo-refactor-fsl-relicense-history-scrub-v2/15-CONTEXT.md)
 - **Pre-relicense annotated tag:** `pre-fsl-relicense-2026-05-15` (last Apache-2.0 HEAD = commit `040a814`)
 - **Post-scrub cutoff SHA:** filled by Plan 15-04 once `git filter-repo --path speaches-audio.md --invert-paths` lands and force-pushes the rewritten history.
+<!-- REUSE-IgnoreEnd -->

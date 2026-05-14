@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
+// REUSE-IgnoreStart
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -369,3 +370,4 @@ describe("main CLI", () => {
     expect(code).toBe(2);
   });
 });
+// REUSE-IgnoreEnd

@@ -1,3 +1,8 @@
+<!--
+SPDX-FileCopyrightText: 2026 Nick Iambroskin and OpenWhispr Server contributors
+SPDX-License-Identifier: FSL-1.1-ALv2
+-->
+<!-- REUSE-IgnoreStart -->
 # ADR-0004: Apache-2.0 licensing for OpenWhispr Server
 
 **Status:** superseded by ADR-0013 (2026-05-15)
@@ -80,3 +85,4 @@ the same Apache-2.0 grant.
 - `.github/workflows/spdx.yml` (CI gate)
 - https://www.apache.org/licenses/LICENSE-2.0
 - https://spdx.org/licenses/Apache-2.0.html
+<!-- REUSE-IgnoreEnd -->

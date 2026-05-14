@@ -1,3 +1,8 @@
+<!--
+SPDX-FileCopyrightText: 2026 Nick Iambroskin and OpenWhispr Server contributors
+SPDX-License-Identifier: FSL-1.1-ALv2
+-->
+<!-- REUSE-IgnoreStart -->
 ---
 phase: 10
 plan: 10-04
@@ -168,3 +173,4 @@ Lint gates verified:
 
 - `pnpm lint:english` PASSED on all 8 new ADRs (verified by pre-commit lefthook).
 - `commitlint` PASSED on both ADR commits.
+<!-- REUSE-IgnoreEnd -->

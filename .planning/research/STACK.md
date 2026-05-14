@@ -1,3 +1,8 @@
+<!--
+SPDX-FileCopyrightText: 2026 Nick Iambroskin and OpenWhispr Server contributors
+SPDX-License-Identifier: FSL-1.1-ALv2
+-->
+<!-- REUSE-IgnoreStart -->
 # Stack Research — v2 Production Readiness (Brownfield)
 
 **Domain:** v2 milestone deltas on top of the locked v1 OpenWhispr Server stack
@@ -625,3 +630,4 @@ No new dependencies. The 1642 `// Phase XX / Plan YY / D-ZZ` comments are addres
 - **18** (LDAP/Keycloak SPEC) — research + SPEC only in v2; impl in v3.
 
 Sources: see per-section citations above.
+<!-- REUSE-IgnoreEnd -->

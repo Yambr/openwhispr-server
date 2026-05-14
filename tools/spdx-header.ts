@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
+// REUSE-IgnoreStart
 /**
  * spdx-header.ts — SPDX short-form license-header codemod.
  *
@@ -271,3 +272,4 @@ if (invokedDirect) {
   );
 }
 /* c8 ignore stop */
+// REUSE-IgnoreEnd

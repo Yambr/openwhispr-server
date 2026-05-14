@@ -20,6 +20,17 @@
 
 version = 1
 
+# --- TypeScript / JavaScript sources ----------------------------------------
+# Files of these extensions carry an inline `SPDX-License-Identifier` short-
+# form header on line 1 (or line 2 after a shebang) written by
+# `tools/spdx-header.ts`. The aggregate annotation here adds the copyright
+# attribution that the inline header omits.
+[[annotations]]
+path = ["**/*.ts", "**/*.tsx", "**/*.js", "**/*.jsx", "**/*.mjs", "**/*.cjs"]
+precedence = "aggregate"
+SPDX-FileCopyrightText = "2026 Nick Iambroskin and OpenWhispr Server contributors"
+SPDX-License-Identifier = "FSL-1.1-ALv2"
+
 # --- Shell scripts ----------------------------------------------------------
 [[annotations]]
 path = "**/*.sh"
@@ -127,9 +138,86 @@ precedence = "override"
 SPDX-FileCopyrightText = "2026 Nick Iambroskin and OpenWhispr Server contributors"
 SPDX-License-Identifier = "FSL-1.1-ALv2"
 
-# --- Build / test artifact directories that occasionally slip into the
-# --- index but should be license-typed for completeness if they ever do.
-# REUSE 3.3 supports "skip" via the `lint` ignore list at the tree level
-# rather than per-annotation; we exclude generated/vendored output via
-# .gitignore at the source-control layer instead. No `[lint]` block is
-# necessary here as long as the working tree we lint matches `git ls-files`.
+# --- Catch-all annotations for files REUSE flags as missing
+# --- copyright/license information (.gitignore, .dockerignore,
+# --- .env.example, fixture/log/binary artifacts, Helm chart templates,
+# --- etc.). Each pattern is listed explicitly to keep additions
+# --- discoverable on diff review.
+
+[[annotations]]
+path = "**/.gitignore"
+precedence = "aggregate"
+SPDX-FileCopyrightText = "2026 Nick Iambroskin and OpenWhispr Server contributors"
+SPDX-License-Identifier = "FSL-1.1-ALv2"
+
+[[annotations]]
+path = "**/.dockerignore"
+precedence = "aggregate"
+SPDX-FileCopyrightText = "2026 Nick Iambroskin and OpenWhispr Server contributors"
+SPDX-License-Identifier = "FSL-1.1-ALv2"
+
+[[annotations]]
+path = ["**/.env.*example", "**/.env.example"]
+precedence = "aggregate"
+SPDX-FileCopyrightText = "2026 Nick Iambroskin and OpenWhispr Server contributors"
+SPDX-License-Identifier = "FSL-1.1-ALv2"
+
+[[annotations]]
+path = "**/.gitkeep"
+precedence = "aggregate"
+SPDX-FileCopyrightText = "2026 Nick Iambroskin and OpenWhispr Server contributors"
+SPDX-License-Identifier = "FSL-1.1-ALv2"
+
+[[annotations]]
+path = [".github/CODEOWNERS", ".github/**/CODEOWNERS"]
+precedence = "aggregate"
+SPDX-FileCopyrightText = "2026 Nick Iambroskin and OpenWhispr Server contributors"
+SPDX-License-Identifier = "FSL-1.1-ALv2"
+
+[[annotations]]
+path = ["**/*.sse", "**/*.ndjson"]
+precedence = "aggregate"
+SPDX-FileCopyrightText = "2026 Nick Iambroskin and OpenWhispr Server contributors"
+SPDX-License-Identifier = "FSL-1.1-ALv2"
+
+[[annotations]]
+path = ["**/*.txt", "**/*.log", "**/*.tpl", "**/*.fixture.txt"]
+precedence = "aggregate"
+SPDX-FileCopyrightText = "2026 Nick Iambroskin and OpenWhispr Server contributors"
+SPDX-License-Identifier = "FSL-1.1-ALv2"
+
+[[annotations]]
+path = "**/*.wav"
+precedence = "aggregate"
+SPDX-FileCopyrightText = "2026 Nick Iambroskin and OpenWhispr Server contributors"
+SPDX-License-Identifier = "FSL-1.1-ALv2"
+
+[[annotations]]
+path = ["**/Chart.lock", "**/NOTES.txt", "**/_helpers.tpl", "**/*.ini"]
+precedence = "aggregate"
+SPDX-FileCopyrightText = "2026 Nick Iambroskin and OpenWhispr Server contributors"
+SPDX-License-Identifier = "FSL-1.1-ALv2"
+
+[[annotations]]
+path = ["**/*.conf", "**/*.sql.tpl"]
+precedence = "aggregate"
+SPDX-FileCopyrightText = "2026 Nick Iambroskin and OpenWhispr Server contributors"
+SPDX-License-Identifier = "FSL-1.1-ALv2"
+
+[[annotations]]
+path = "**/*.age.pub"
+precedence = "aggregate"
+SPDX-FileCopyrightText = "2026 Nick Iambroskin and OpenWhispr Server contributors"
+SPDX-License-Identifier = "FSL-1.1-ALv2"
+
+[[annotations]]
+path = [".planning/phases/07-frontend-ui-spec/design/**", ".planning/phases/**/*.jsx", ".planning/phases/**/*.js"]
+precedence = "aggregate"
+SPDX-FileCopyrightText = "2026 Nick Iambroskin and OpenWhispr Server contributors"
+SPDX-License-Identifier = "FSL-1.1-ALv2"
+
+[[annotations]]
+path = ["**/.size-limit.cjs", "**/.size-limit.js", "**/userlist.txt.example"]
+precedence = "aggregate"
+SPDX-FileCopyrightText = "2026 Nick Iambroskin and OpenWhispr Server contributors"
+SPDX-License-Identifier = "FSL-1.1-ALv2"
