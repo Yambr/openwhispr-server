@@ -47,6 +47,85 @@ surface, see `packages/contract-tests/src/negative-matrix.test.ts`
 | `/api/deepgram-streaming-token`    | POST   | bearer | Deepgram ephemeral token |
 | `/api/openai-realtime-token`       | POST   | bearer | OpenAI Realtime ephemeral client_secret |
 
+### Phase 15 — Public locale negotiation (TD-15.g)
+
+| Route          | Method | Auth | Notes |
+| -------------- | ------ | ---- | ----- |
+| `/api/locale`  | GET    | none | Read-only locale negotiation; honors `Accept-Language` |
+
+`GET /api/locale` is a public, read-only endpoint that returns the
+locale negotiated by `i18next-http-middleware` from the request's
+`Accept-Language` header. It exists for two callers:
+
+1. The desktop client / web app reads it on first load (before the
+   user's language preference cookie exists) to render the initial
+   shell in the correct locale.
+2. The Phase 13 `@cjm-6.2` and Phase 15 `@cjm-traefik-host-split`
+   Gherkin oracles assert it as proof that `api.localhost` host-split
+   routing reaches the Fastify API container (not the Next.js web
+   container).
+
+**Method + path:** `GET /api/locale`
+
+**Auth:** none (public, exposed at the public edge).
+
+**Request:**
+
+- Headers:
+  - `Accept-Language: <RFC 9110 language-priority list>` (optional;
+    `i18next-http-middleware` reads this and selects the best match
+    from `supportedLngs: ['en','ru']`). If absent, the response is
+    `{"locale":"en"}` (the configured `fallbackLng`).
+
+**Response (always 200 OK):**
+
+```http
+HTTP/1.1 200 OK
+content-type: application/json; charset=utf-8
+cache-control: no-store
+
+{"locale":"en"}
+```
+
+or, when `Accept-Language: ru` (or `ru-RU`, etc.) is supplied:
+
+```http
+HTTP/1.1 200 OK
+content-type: application/json; charset=utf-8
+cache-control: no-store
+
+{"locale":"ru"}
+```
+
+**Response body schema (info-leak gate, unit-tested):** the JSON object
+contains EXACTLY one key, `locale`, whose value is one of `"en"` or
+`"ru"`. Adding a field requires extending the unit test at
+`apps/api/tests/unit/routes/__tests__/locale.test.ts` that asserts the
+exact key set.
+
+**Status codes:** `200 OK` only (no error paths — the handler never
+throws on valid HTTP framing).
+
+**Rate limit:** `60 requests / minute / IP`, matching `/api/auth/providers`
+(the other unauthenticated discovery endpoint exposed at the public
+edge). Enforced by `@fastify/rate-limit` via the route's
+`config.rateLimit` block (`apps/api/src/routes/locale.ts:72`).
+
+**Cache directives:** `cache-control: no-store` — the negotiated locale
+depends entirely on the per-request `Accept-Language` header; caching
+would poison clients behind shared upstream proxies. Body is tiny so
+cache hits would save negligible bytes.
+
+**Wire-compat note:** introduced in Phase 15 / Plan 02 / Task 1 as the
+TD-15.g closure (public locale negotiation endpoint). Source:
+`apps/api/src/routes/locale.ts`. The route ships unconditionally
+(wired in `apps/api/src/routes/index.ts:236-240`); there is no feature
+flag. Because the endpoint is read-only and stateless, future
+extensions (e.g. exposing the resolved `supportedLngs` set) MUST add
+new keys rather than renaming `locale`.
+
+---
+
 ### Phase 5 — Operational Endpoints + CRUD Families (WIRE-08..12, WIRE-16, WIRE-22..29)
 
 | Route                                 | Method      | Auth    | WIRE | Notes |
