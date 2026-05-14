@@ -60,7 +60,8 @@ export function resolveLocale(req: FastifyRequest): SupportedLocale {
   return "en";
 }
 
-// biome-ignore lint/complexity/noBannedTypes: forward-compat — zero deps today; keep shape so future env/db hooks land non-breaking
+// Forward-compat shape: zero deps today; keep the typed surface so future
+// env/db hooks land non-breaking for callers in routes/index.ts.
 export type LocaleDeps = Record<string, never>;
 
 export const buildLocaleRoutes = (_deps: LocaleDeps = {} as LocaleDeps) =>
