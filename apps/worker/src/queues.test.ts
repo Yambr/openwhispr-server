@@ -34,11 +34,13 @@ const { QUEUE_NAMES, buildQueueRegistry, closeQueueRegistry, DEFAULT_JOB_OPTS } 
 );
 
 describe("queues.ts — typed queue registry (Phase 6 Plan 06-08)", () => {
-  it("exposes the 8 documented queue names", () => {
-    expect(Object.keys(QUEUE_NAMES)).toHaveLength(8);
+  it("exposes the 7 documented queue names", () => {
+    // Phase 14 / Plan 05 — virtualKeyRotation was removed (CONTEXT
+    // decision 3 + BYOK-03 audit closure). The previous 8th queue is
+    // gone wholesale, not stubbed.
+    expect(Object.keys(QUEUE_NAMES)).toHaveLength(7);
     expect(QUEUE_NAMES).toMatchObject({
       emailDelivery: "email-delivery",
-      virtualKeyRotation: "virtual-key-rotation",
       usageRollupDispatcher: "usage-rollup-daily-dispatcher",
       usageRollupTenant: "usage-rollup-daily-tenant",
       reconciliationDailyCheck: "reconciliation-daily-check",

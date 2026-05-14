@@ -14,12 +14,10 @@ import { partmanMaintenanceSchema } from "./jobs/partman-maintenance.js";
 import { reconciliationDailyCheckSchema } from "./jobs/reconciliation-daily-check.js";
 import { reconciliationDiscrepancySchema } from "./jobs/reconciliation-discrepancy.js";
 import { usageRollupDispatcherSchema, usageRollupTenantSchema } from "./jobs/usage-rollup-daily.js";
-import { virtualKeyRotationSchema } from "./jobs/virtual-key-rotation.js";
 import { type TypedQueue, typedQueue } from "./lib/typed-queue.js";
 
 export const QUEUE_NAMES = {
   emailDelivery: "email-delivery",
-  virtualKeyRotation: "virtual-key-rotation",
   usageRollupDispatcher: "usage-rollup-daily-dispatcher",
   usageRollupTenant: "usage-rollup-daily-tenant",
   reconciliationDailyCheck: "reconciliation-daily-check",
@@ -30,7 +28,6 @@ export const QUEUE_NAMES = {
 
 export interface QueueRegistry {
   emailDelivery: TypedQueue<typeof emailDeliverySchema>;
-  virtualKeyRotation: TypedQueue<typeof virtualKeyRotationSchema>;
   usageRollupDispatcher: TypedQueue<typeof usageRollupDispatcherSchema>;
   usageRollupTenant: TypedQueue<typeof usageRollupTenantSchema>;
   reconciliationDailyCheck: TypedQueue<typeof reconciliationDailyCheckSchema>;
@@ -55,7 +52,6 @@ export function buildQueueRegistry(connection: ConnectionOptions): QueueRegistry
   const opts = { connection, defaultJobOptions: DEFAULT_JOB_OPTS };
   return {
     emailDelivery: typedQueue(QUEUE_NAMES.emailDelivery, emailDeliverySchema, opts),
-    virtualKeyRotation: typedQueue(QUEUE_NAMES.virtualKeyRotation, virtualKeyRotationSchema, opts),
     usageRollupDispatcher: typedQueue(
       QUEUE_NAMES.usageRollupDispatcher,
       usageRollupDispatcherSchema,
@@ -80,7 +76,6 @@ export function buildQueueRegistry(connection: ConnectionOptions): QueueRegistry
 export async function closeQueueRegistry(reg: QueueRegistry): Promise<void> {
   await Promise.allSettled([
     reg.emailDelivery.close(),
-    reg.virtualKeyRotation.close(),
     reg.usageRollupDispatcher.close(),
     reg.usageRollupTenant.close(),
     reg.reconciliationDailyCheck.close(),
