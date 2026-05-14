@@ -59,15 +59,16 @@ const resources = {
         error: {
           title: { text: "Sign-in failed" },
           body: { text: "Check your email and password, then try again." },
-          // Plan 12-04 / UICONF-07: dedicated copy for 403 EMAIL_NOT_VERIFIED.
-          unverified: {
-            title: { text: "Verify your email to sign in" },
-            body: {
-              text: "We have not received confirmation for this email yet. Resend the verification link below.",
-            },
-            sent: {
-              text: "Verification email sent. Check your inbox.",
-            },
+        },
+        // Plan 12-04 / UICONF-07: dedicated copy for 403 EMAIL_NOT_VERIFIED.
+        // Flattened to satisfy UI-SPEC 5-level schema (D-ART4).
+        "error-unverified": {
+          title: { text: "Verify your email to sign in" },
+          body: {
+            text: "We have not received confirmation for this email yet. Resend the verification link below.",
+          },
+          sent: {
+            text: "Verification email sent. Check your inbox.",
           },
         },
         action: {

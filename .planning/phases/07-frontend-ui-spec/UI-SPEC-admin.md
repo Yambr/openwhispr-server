@@ -474,6 +474,14 @@ translation is deferred to Phase 10.
 | `admin.config.stt.title.label` | STT config |
 | `admin.config.subtitle.body.text` | Server-side STT and note-recording defaults. Read-only. |
 | `admin.config.title.heading.text` | Configuration |
+| `admin.index.card-note.endpoint.text` | GET /api/note-recording-config |
+| `admin.index.card-note.title.text` | Note recording |
+| `admin.index.card-stt.endpoint.text` | GET /api/stt-config |
+| `admin.index.card-stt.title.text` | Speech-to-text |
+| `admin.index.lede.body.text` | Server-side configuration for speech-to-text and note recording. Set via env vars; admin can view but not edit in v1. |
+| `admin.index.readonly.body.text` | Edits require restarting the api container with updated env. See config.md. |
+| `admin.index.readonly.title.text` | Read-only |
+| `admin.index.title.heading.text` | Configuration |
 | `admin.observability.action.open-grafana.label` | Open Grafana |
 | `admin.observability.card-api-latency.body.label` | p50, p95, p99 from Fastify hooks |
 | `admin.observability.card-api-latency.title.label` | API tier — request latency |
@@ -596,9 +604,13 @@ translation is deferred to Phase 10.
 | `end-user.notes-search.input.placeholder.text` | Search your notes |
 | `end-user.notes-search.result.score.label` | Score |
 | `end-user.notes-search.title.heading.text` | Search notes |
+| `end-user.signin.action.resendVerification.label` | Resend verification email |
 | `end-user.signin.action.signup-link.label` | Don't have an account? Sign up |
 | `end-user.signin.error.body.text` | Check your email and password, then try again. |
 | `end-user.signin.error.title.text` | Sign-in failed |
+| `end-user.signin.error-unverified.body.text` | We have not received confirmation for this email yet. Resend the verification link below. |
+| `end-user.signin.error-unverified.sent.text` | Verification email sent. Check your inbox. |
+| `end-user.signin.error-unverified.title.text` | Verify your email to sign in |
 | `end-user.signin.form.email.label` | Email |
 | `end-user.signin.form.password.label` | Password |
 | `end-user.signin.form.submit.label` | Sign in |
@@ -608,8 +620,10 @@ translation is deferred to Phase 10.
 | `end-user.signin.subtitle.body.text` | Use your email or your organization SSO. |
 | `end-user.signin.title.heading.text` | Sign in to OpenWhispr |
 | `end-user.signup.action.signin-link.label` | Already have an account? Sign in |
-| `end-user.signup.error.duplicate.text` | This email is already registered. Sign in instead. |
-| `end-user.signup.error.generic.text` | Sign-up failed. Please review the form and try again. |
+| `end-user.signup.error-duplicate.title.text` | Email already registered |
+| `end-user.signup.error-duplicate.body.text` | This email is already registered. Sign in instead. |
+| `end-user.signup.error-generic.title.text` | Sign-up failed |
+| `end-user.signup.error-generic.body.text` | Sign-up failed. Please review the form and try again. |
 | `end-user.signup.form.email.label` | Email |
 | `end-user.signup.form.name.label` | Name |
 | `end-user.signup.form.password.label` | Password |

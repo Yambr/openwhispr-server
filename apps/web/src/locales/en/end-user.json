@@ -437,17 +437,17 @@
         },
         "title": {
           "text": "Sign-in failed"
+        }
+      },
+      "error-unverified": {
+        "title": {
+          "text": "Verify your email to sign in"
         },
-        "unverified": {
-          "title": {
-            "text": "Verify your email to sign in"
-          },
-          "body": {
-            "text": "We have not received confirmation for this email yet. Resend the verification link below."
-          },
-          "sent": {
-            "text": "Verification email sent. Check your inbox."
-          }
+        "body": {
+          "text": "We have not received confirmation for this email yet. Resend the verification link below."
+        },
+        "sent": {
+          "text": "Verification email sent. Check your inbox."
         }
       },
       "form": {
@@ -529,22 +529,20 @@
           "label": "Already have an account? Sign in"
         }
       },
-      "error": {
-        "duplicate": {
-          "title": {
-            "text": "Email already registered"
-          },
-          "body": {
-            "text": "This email is already registered. Sign in instead."
-          }
+      "error-duplicate": {
+        "title": {
+          "text": "Email already registered"
         },
-        "generic": {
-          "title": {
-            "text": "Sign-up failed"
-          },
-          "body": {
-            "text": "Sign-up failed. Please review the form and try again."
-          }
+        "body": {
+          "text": "This email is already registered. Sign in instead."
+        }
+      },
+      "error-generic": {
+        "title": {
+          "text": "Sign-up failed"
+        },
+        "body": {
+          "text": "Sign-up failed. Please review the form and try again."
         }
       },
       "form": {

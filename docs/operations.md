@@ -200,6 +200,103 @@ There is no "graceful" rotation in v1 — sessions cannot survive a secret
 change. Treat the secret as a long-lived credential rotated only on
 compromise.
 
+### Admin break-glass recovery (bcrypt htpasswd)
+
+> **Phase 12 / Plan 12-04 — ADMIN-05.** This is the recovery path for the
+> operator-grade scenario where the in-product `/setup` wizard cannot be
+> reached (e.g. the public web app is offline, DNS is broken, the
+> `setup_state` row was hand-rolled to `completed` and the admin email
+> address is no longer reachable). The wizard is the **preferred** path —
+> use this break-glass procedure **only** when the wizard is genuinely
+> unavailable.
+
+The admin surface at `/admin/*` is gated at the Traefik edge by HTTP
+basic-auth (Phase 07.1 D-ADMIN-1, see `compose/traefik/dynamic.yml`).
+The credential list lives in the `ADMIN_BASIC_AUTH_USERS` env variable
+on the web service — a comma-separated list of `htpasswd`-formatted
+entries (`user:$2y$05$bcrypt-hash`). Traefik validates the
+`Authorization: Basic <base64(user:pass)>` header against this list
+**before** any application code runs, so a misconfigured Better Auth
+session, a corrupted Postgres row, or a broken `setup_state` table
+**cannot lock the operator out** of `/admin/*`.
+
+**When to use this path:**
+
+1. The `/setup` wizard returns 5xx and you must intervene before the
+   wizard becomes reachable again.
+2. The first-run admin account was created against an SMTP transport
+   that is no longer reachable and the operator cannot recover the
+   verification email.
+3. A clean-room recovery: you are inspecting the running deployment
+   from a side-channel before the in-product flows are wired up.
+
+**Procedure:**
+
+1. **Generate a fresh bcrypt entry** on any host with `htpasswd`
+   installed (the `apache2-utils` Debian package or the macOS Homebrew
+   `httpd` package both ship it):
+
+   ```bash
+   htpasswd -nbB ops "REPLACE_WITH_STRONG_PASSPHRASE"
+   # → ops:$2y$05$qsl4tlvm/v6JZb1lWcohOugC0sbgBYpzqL3GhWjyJ7K5e3aXz1Zbq
+   ```
+
+   The `-B` flag forces bcrypt (do NOT use `-m` MD5 or `-s` SHA-1; both
+   are deprecated and ineligible for the `ADMIN_BASIC_AUTH_USERS` list).
+
+2. **Append the entry to `ADMIN_BASIC_AUTH_USERS`** in `.env` (or your
+   secret manager / Helm values):
+
+   ```bash
+   ADMIN_BASIC_AUTH_USERS="alice:$2y$05$existing-hash,ops:$2y$05$qsl4tlvm/v6JZb1lWcohOugC0sbgBYpzqL3GhWjyJ7K5e3aXz1Zbq"
+   ```
+
+   The value is parsed by Traefik on next configuration reload; no
+   restart of the api or worker is required, only the web service
+   (or the Traefik container in K8s) needs to pick up the new env.
+
+3. **Reload Traefik:**
+
+   ```bash
+   docker compose restart traefik
+   ```
+
+   In K8s, the Helm chart re-renders the basic-auth secret and the
+   Traefik IngressRoute picks it up on its next reconcile.
+
+4. **Verify** with a deliberate request that the new credential works:
+
+   ```bash
+   curl -i -u "ops:REPLACE_WITH_STRONG_PASSPHRASE" https://example.com/admin/config
+   # → 200 OK on the AdminShell HTML
+   ```
+
+   If you receive a `401 Unauthorized`, Traefik did NOT pick up the new
+   entry — re-check the env var (single line, no stray quoting) and
+   re-run `docker compose restart traefik`.
+
+5. **Remove the entry once recovery is complete.** Break-glass
+   credentials are NOT persistent operator accounts — once the in-
+   product wizard is reachable and a real admin exists, prune the
+   `ops` entry from `ADMIN_BASIC_AUTH_USERS` and reload Traefik again.
+   Rotating away from break-glass is a recovery-completion gate.
+
+**Why this is separate from the wizard:** the wizard
+(`POST /api/setup/admin`, Plan 12-03) creates a Better Auth admin user
+that lives in Postgres and exercises the SMTP transport for email
+verification. The basic-auth list lives in env and never touches the
+database — that separation is what makes it usable when the database
+or the email transport is the thing that's broken. The two paths are
+complementary; the wizard is for steady state, basic-auth is for
+disaster recovery.
+
+**Audit trail:** Traefik logs every basic-auth request including the
+authenticated username (visible in Tempo via the access-log shipper).
+Rotating an `ops` break-glass credential should be paired with a
+written note in your operator runbook recording who ran the recovery
+and when — `ADMIN_BASIC_AUTH_USERS` is plaintext in `.env` and is NOT
+self-auditing.
+
 ### Default-secrets entrypoint check
 
 The API container refuses to boot if any required env var holds a deny-list
