@@ -120,6 +120,13 @@
       "when": 1779033600000,
       "tag": "0016_users_locale",
       "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1779638400000,
+      "tag": "0017_setup_state",
+      "breakpoints": true
     }
   ]
 }

@@ -275,6 +275,20 @@ export function buildAuth(opts: BuildAuthOptions): AuthInstance {
           defaultValue: "en",
           input: true,
         },
+        // Phase 12 / Plan 12-01 — admin role marker. T-12.01-01 mitigation
+        // (STRIDE: E — Elevation): `input: false` instructs Better Auth NOT
+        // to read this field from public sign-up bodies. A request carrying
+        // `{ role: 'admin' }` therefore lands with `users.role IS NULL`. The
+        // wizard claim handler (Plan 12-03) sets the value server-side after
+        // the atomic `UPDATE setup_state ... WHERE status='pending'` succeeds.
+        // The DB column lands in migration 0017_setup_state.sql (nullable
+        // text, no DEFAULT — squawk-clean per `adding-required-field`).
+        role: {
+          type: "string",
+          required: false,
+          defaultValue: null,
+          input: false,
+        },
       },
     },
     emailAndPassword: {

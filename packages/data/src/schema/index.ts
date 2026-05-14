@@ -12,6 +12,7 @@ export * from "./messages.js";
 export * from "./notes.js";
 export * from "./oauth_state.js";
 export * from "./sessions.js";
+export * from "./setup_state.js";
 export * from "./tenant_settings.js";
 export * from "./tenants.js";
 export * from "./transcriptions.js";
