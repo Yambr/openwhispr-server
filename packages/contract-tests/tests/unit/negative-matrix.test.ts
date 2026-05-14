@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: FSL-1.1-ALv2
 // Phase 05 / Plan 10 / Task 1 — WIRE-29 + WIRE-16 CONTRACT-01 negative matrix.
 //
 // Proves the `cloud-api-request` envelope passthrough invariant

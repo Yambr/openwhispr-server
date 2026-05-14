@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: FSL-1.1-ALv2
 // Phase 04 / Plan 08 / Task 1c — POST /api/streaming-token contract test
 // (CONTRACT-01 extension for WIRE-13, AssemblyAI v3 ephemeral token mint).
 //

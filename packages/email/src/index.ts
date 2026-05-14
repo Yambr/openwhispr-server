@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: FSL-1.1-ALv2
 // Phase 13 / Plan 01 / Task 04 — Public barrel for `@openwhispr/email`.
 //
 // Consumers (apps/worker, apps/api after D-04 wiring lands in Session 5)

@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: FSL-1.1-ALv2
 // Tenant-scoped users table. RLS attaches in 0000_initial.sql.
 // (tenant_id, email) is unique per tenant so the same email may exist
 // under multiple tenants without collision.

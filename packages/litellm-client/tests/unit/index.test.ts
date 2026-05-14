@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: FSL-1.1-ALv2
 // Phase 03 Plan 03 Task 1 — buildLitellmClient tests.
 //
 // Uses undici's MockAgent so we exercise the real undici call surface

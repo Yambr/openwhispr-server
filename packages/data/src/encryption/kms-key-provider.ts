@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: FSL-1.1-ALv2
 // KmsKeyProvider — v1 stub. Phase 1 Plan 04 / D-12, PROVIDER-02.
 //
 // Every method throws a descriptive "deferred to v1+" error so wiring

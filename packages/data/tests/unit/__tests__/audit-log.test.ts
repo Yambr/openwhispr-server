@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: FSL-1.1-ALv2
 // DATA-04 — audit_log JSONB roundtrip + B-tree index on created_at.
 //
 // Asserts that:

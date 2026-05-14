@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: FSL-1.1-ALv2
 // Phase 03 / Plan 05 / Task 2 — POST /api/reason contract test (WIRE-06).
 //
 // Asserts the wire shape returned by /api/reason against the canonical

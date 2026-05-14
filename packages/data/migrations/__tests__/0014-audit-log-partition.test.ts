@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: FSL-1.1-ALv2
 // Phase 6 / Plan 02 / Task 2 — migration 0014 forward + rollback.
 //
 // Boots a Postgres 17.5 container WITH pg_partman 5.2.4 (custom image

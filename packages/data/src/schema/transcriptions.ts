@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: FSL-1.1-ALv2
 // Phase 5 / Plan 01 — Tenant-scoped transcriptions. RLS in 0009_transcriptions.sql.
 // Phase 5 / Plan 08 — adds raw_text, word_count, source, status (0013).
 import { integer, pgTable, real, text, timestamp, uuid } from "drizzle-orm/pg-core";

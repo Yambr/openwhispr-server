@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: FSL-1.1-ALv2
 // Phase 2 / Plan 06 — sign-in fixture helper.
 //
 // Posts to `/api/auth/sign-in/email` (Better Auth's default) using a

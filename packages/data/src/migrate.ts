@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: FSL-1.1-ALv2
 // Programmatic migration runner — invoked by `make migrate` and by the
 // `pnpm --filter @openwhispr/data run migrate` script.
 //
@@ -29,7 +29,9 @@ import { Pool } from "pg";
 const here =
   typeof import.meta?.url === "string"
     ? dirname(fileURLToPath(import.meta.url))
-    : (typeof __dirname !== "undefined" ? __dirname : process.cwd());
+    : typeof __dirname !== "undefined"
+      ? __dirname
+      : process.cwd();
 const MIGRATIONS_FOLDER = resolve(here, "..", "migrations");
 
 /**

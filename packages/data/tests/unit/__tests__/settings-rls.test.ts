@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: FSL-1.1-ALv2
 // Phase 5 / Plan 01 — settings-table introspection test.
 //
 // Boots a real Postgres 17 + PgBouncer 1.23 testcontainer, applies the

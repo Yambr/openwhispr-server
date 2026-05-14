@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: FSL-1.1-ALv2
 /**
  * Phase 5 / Plan 01 — Wire schemas for /api/transcriptions/* family.
  * Mirrors ~/openwhispr/src/services/TranscriptionsService.ts byte-for-byte (D-22).

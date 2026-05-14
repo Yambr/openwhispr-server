@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: FSL-1.1-ALv2
 // Phase 2 / Plan 06 — tough-cookie@5 jar wrapper around globalThis.fetch.
 //
 // Each describe block that needs cookie-auth instantiates one CookieJar
@@ -31,7 +31,8 @@ export function makeJarFetch(): JarFetch {
     // Capture every Set-Cookie. fetch's Headers object collapses
     // duplicates in some runtimes; undici exposes getSetCookie().
     const setCookies =
-      typeof (res.headers as Headers & { getSetCookie?: () => string[] }).getSetCookie === "function"
+      typeof (res.headers as Headers & { getSetCookie?: () => string[] }).getSetCookie ===
+      "function"
         ? (res.headers as Headers & { getSetCookie: () => string[] }).getSetCookie()
         : res.headers.get("set-cookie")
           ? [res.headers.get("set-cookie") as string]

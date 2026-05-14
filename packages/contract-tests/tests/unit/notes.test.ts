@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: FSL-1.1-ALv2
 // Phase 05 / Plan 05 / Task 3 — WIRE-22 contract conformance tests for
 // /api/notes/* (all 7 routes).
 //

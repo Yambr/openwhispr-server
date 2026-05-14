@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: FSL-1.1-ALv2
 // Phase 12 / Plan 12-01 / Task 1 — RED schema test (RESEARCH §1).
 //
 // Asserts the shape of the `setup_state` singleton Drizzle pgTable and its

@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: FSL-1.1-ALv2
 // Phase 03 / Plan 04 / Task 2 — multipart body helper for contract tests.
 //
 // Reads a fixture audio file (default: tests/fixtures/audio/sample-1s.wav)
@@ -26,9 +26,7 @@ export function audioMultipartBody(filename = "sample-1s.wav"): AudioMultipartBo
   const boundary = `----openwhispr-test-boundary-${Date.now()}-${Math.floor(Math.random() * 1e6)}`;
   // packages/contract-tests/src/helpers -> tests/fixtures/audio is
   // ../../../../tests/fixtures/audio at repo root.
-  const fileBytes = readFileSync(
-    resolve(__dirname, "../../../../tests/fixtures/audio", filename),
-  );
+  const fileBytes = readFileSync(resolve(__dirname, "../../../../tests/fixtures/audio", filename));
   const head = Buffer.from(
     `--${boundary}\r\nContent-Disposition: form-data; name="file"; filename="${filename}"\r\nContent-Type: audio/wav\r\n\r\n`,
     "utf8",

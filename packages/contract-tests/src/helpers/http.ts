@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: FSL-1.1-ALv2
 // Phase 2 / Plan 06 — envelope-asserting fetch wrapper.
 //
 // Every non-2xx response body MUST parse as ErrorEnvelope (D-13 / WIRE-17).
@@ -17,13 +17,10 @@ export interface FetchResult {
   ok: boolean;
 }
 
-export async function fetchAndParse(
-  url: string,
-  init?: RequestInit,
-): Promise<FetchResult> {
+export async function fetchAndParse(url: string, init?: RequestInit): Promise<FetchResult> {
   const res = await fetch(url, init);
   const text = await res.text();
-  let body: unknown = undefined;
+  let body: unknown;
   if (text.length > 0) {
     try {
       body = JSON.parse(text);

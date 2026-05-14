@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: FSL-1.1-ALv2
 // Phase 5 / Plan 01 — Tenant-scoped API keys. RLS in 0010_api_keys.sql.
 //
 // Storage shape per D-29:

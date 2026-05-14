@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: FSL-1.1-ALv2
 // Phase 12 / Plan 12-01 — singleton `setup_state` table + status pgEnum.
 //
 // Operator-global, NOT tenant-scoped. NO RLS attaches here (CONTEXT D-02):

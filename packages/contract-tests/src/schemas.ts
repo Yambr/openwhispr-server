@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: FSL-1.1-ALv2
 // Phase 2 / Plan 03 / Task 1 — Single zod source of truth for Phase 2
 // wire shapes. Imported by both the apps/api route handlers AND the
 // CONTRACT-01 conformance suite (Plan 06). If a shape changes, it changes

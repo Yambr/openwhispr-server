@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: FSL-1.1-ALv2
 // Phase 14 / Plan 04 / Task 1 — per-package 90/90/90/90 coverage floor on
 // the BYOK boot-time guard library. Mirrors packages/email/vitest.config.ts.
 //

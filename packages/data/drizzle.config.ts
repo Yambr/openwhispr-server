@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: FSL-1.1-ALv2
 // Drizzle Kit configuration for @openwhispr/data.
 //
 // Per RESEARCH-DB Pitfall 8: the drizzle migrations bookkeeping table lives

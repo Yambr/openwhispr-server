@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: FSL-1.1-ALv2
 // Phase 12 / Plan 12-01 — migration 0017: setup_state singleton + users.role.
 //
 // Per CLAUDE.md "no mocks of internal logic": real Postgres testcontainers,

@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: FSL-1.1-ALv2
 // Phase 03 Plan 03 Task 1 — typed error classes for LiteLLM client.
 //
 // Two distinct error types so route handlers can map cleanly:
@@ -19,9 +19,7 @@ export class MissingProviderKeyError extends Error {
   public readonly model: string;
 
   constructor(envVar: string, model: string) {
-    super(
-      `${envVar} is not configured. Set it in .env to enable model "${model}" via LiteLLM.`,
-    );
+    super(`${envVar} is not configured. Set it in .env to enable model "${model}" via LiteLLM.`);
     this.name = "MissingProviderKeyError";
     this.envVar = envVar;
     this.model = model;

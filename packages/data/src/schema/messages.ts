@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: FSL-1.1-ALv2
 // Phase 5 / Plan 01 — Tenant-scoped chat messages bound to conversations.
 // RLS in 0008_conversations_messages.sql. role CHECK enforced in SQL.
 import { jsonb, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";

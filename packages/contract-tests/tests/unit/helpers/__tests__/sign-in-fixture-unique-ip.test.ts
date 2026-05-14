@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: FSL-1.1-ALv2
 // Phase 02.18 — TDD-RED test for D-02.
 //
 // Asserts that signInFixture() forwards a unique `x-forwarded-for` header

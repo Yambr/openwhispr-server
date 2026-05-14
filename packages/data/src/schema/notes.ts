@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: FSL-1.1-ALv2
 // Phase 5 / Plan 01 — Tenant-scoped notes. RLS in 0007_notes_folders.sql.
 // content_search is a tsvector GENERATED ALWAYS AS (... ) STORED column,
 // indexed with GIN. Partial UNIQUE on (tenant_id, user_id, client_note_id)
@@ -10,8 +10,8 @@
 // Migration 0011 adds the columns to the live table; this Drizzle schema
 // mirrors the new shape so the typed query layer recognises the columns.
 import { integer, pgTable, real, text, timestamp, uuid } from "drizzle-orm/pg-core";
-import { folders } from "./folders.js";
 import { tsvector } from "./_helpers.js";
+import { folders } from "./folders.js";
 import { tenants } from "./tenants.js";
 import { users } from "./users.js";
 

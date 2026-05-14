@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: FSL-1.1-ALv2
 // Phase 1 Plan 04 / D-18 — `withTenant<T>` is the single chokepoint that
 // every app-side database operation must flow through.
 //
