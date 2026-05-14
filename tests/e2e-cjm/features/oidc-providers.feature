@@ -3,13 +3,13 @@
 
 Feature: OIDC providers
 
-  @cjm-7.1 @expected-red @after-phase-12
+  @cjm-7.1
   Scenario: Zero providers configured yields zero OIDC buttons on the sign-in page
     Given the stack has zero OIDC providers configured
     When the sign-in page is loaded
     Then zero OIDC social-login buttons are rendered on the sign-in page
 
-  @cjm-7.2 @expected-red @after-phase-12
+  @cjm-7.2
   Scenario: One provider configured yields exactly one OIDC button
     Given OIDC_PROVIDERS_JSON is set to a single provider config
     When the sign-in page is loaded
