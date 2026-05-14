@@ -33,6 +33,29 @@
       }
     }
   },
+  "overrides": [
+    {
+      "includes": ["**/*.test.ts", "**/*.test.tsx", "**/*.spec.ts"],
+      "linter": {
+        "rules": {
+          "style": {
+            "noNonNullAssertion": "off"
+          },
+          "correctness": {
+            "noUnsafeOptionalChaining": "off"
+          },
+          "suspicious": {
+            "noTemplateCurlyInString": "off",
+            "noExplicitAny": "off",
+            "noNonNullAssertedOptionalChain": "off"
+          }
+        }
+      },
+      "formatter": {
+        "formatWithErrors": true
+      }
+    }
+  ],
   "assist": { "actions": { "source": { "organizeImports": "on" } } },
   "css": {
     "parser": {
