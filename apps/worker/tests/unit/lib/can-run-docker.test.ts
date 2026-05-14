@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: FSL-1.1-ALv2
 // Phase 03 / Plan 08 back-fill (Stage B) — canRunDocker macOS support.
 //
 // The original canRunDocker() probe only checked /var/run/docker.sock,

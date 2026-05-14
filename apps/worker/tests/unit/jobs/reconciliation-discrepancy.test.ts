@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: FSL-1.1-ALv2
 // Phase 6 Plan 06-08 — GREEN tests for reconciliation-discrepancy (D-R3).
 //
 // Real Postgres testcontainer for the withTenantContext pool acquisition;

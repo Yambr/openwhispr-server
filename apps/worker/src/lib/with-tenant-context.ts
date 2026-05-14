@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: FSL-1.1-ALv2
 // Phase 6 Plan 06-07 / D-W1 — withTenantContext HOF for BullMQ job handlers.
 //
 // Every tenant-scoped BullMQ job processor MUST be wrapped by this HOF or by

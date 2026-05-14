@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: FSL-1.1-ALv2
 // Phase 14 / Plan 04 / Task 3 — BYOK boot guard. MUST run BEFORE the
 // OTel SDK side-effect import so a misconfigured OTLP endpoint does
 // not produce cascading dial noise on stderr before the fatal

@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: FSL-1.1-ALv2
 // Phase 10 / Plan 10-01b — Worker TemplateRenderer (RED → GREEN).
 //
 // Contract:
@@ -168,11 +168,7 @@ describe("TemplateRenderer", () => {
     // The render() signature only allows "en"|"ru"; this test casts an
     // unsupported locale value at runtime to cover the locale-coerce
     // branch defensively.
-    const out = renderer.render(
-      "email_verification",
-      "fr" as any,
-      VERIFY_VARS,
-    );
+    const out = renderer.render("email_verification", "fr" as any, VERIFY_VARS);
     // Falls back to English (the implementation maps anything !== "ru"
     // to "en").
     expect(out.subject).toMatch(/Verify your OpenWhispr/);

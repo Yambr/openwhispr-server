@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: FSL-1.1-ALv2
 // Phase 6 Plan 06-08 — GREEN tests for installSchedulers.
 //
 // Verifies the 4 recurring jobs land on their queues with the expected cron
