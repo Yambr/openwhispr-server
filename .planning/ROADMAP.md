@@ -826,7 +826,7 @@ Plans:
 | 13. E2E + CJM Harness | 0/0 | Not started | - |
 | 12. Admin Onboarding + UI-SPEC Conformance | 6/6 | Complete   | 2026-05-14 |
 | 14. Slim Core + BYOK Profiles | 7/7 | Complete   | 2026-05-14 |
-| 15. Repo Refactor + FSL + History Scrub | 0/0 | Not started | - |
+| 15. Repo Refactor + FSL + History Scrub | 2/4 | In Progress|  |
 | 16. Phase-Tag Comment Audit | 0/0 | Not started | - |
 | 17. Trusted Local TLS + Production ACME | 0/0 | Not started | - |
 | 18. LDAP / Keycloak SSO (SPEC only) | 0/0 | Not started | - |

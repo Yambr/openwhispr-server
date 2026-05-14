@@ -471,16 +471,16 @@ Wave structure:
 
 - [ ] **STRUCT-01**: Test-layout convention codified (`apps/<app>/tests/{unit,integration}/` full split; `tests/e2e-cjm/` at root) + `Phase15-MOVE-INVENTORY.md` deliverable BEFORE any move PR
 - [ ] **STRUCT-02**: `compose/` directory holds every compose YAML; root no longer carries operator-facing compose files (TD-15.c)
-- [ ] **STRUCT-03**: Helm stays in monorepo unless `/gsd-discuss-phase 15` decides otherwise (open question; TD-15.d)
+- [x] **STRUCT-03**: Helm stays in monorepo unless `/gsd-discuss-phase 15` decides otherwise (open question; TD-15.d)
 - [ ] **STRUCT-04**: Traefik host split — `web.localhost` for Next.js app, `api.localhost` for Fastify; closes the `/api/locale` 404 shadowing (TD-15.g)
 - [ ] **STRUCT-05**: Better Auth `trustedOrigins` updated to match new host split; Playwright baseURL in Phase 13 harness uses the new hosts
 - [ ] **STRUCT-06**: `apps/web/public/.gitkeep` committed (closes deferred-items #2)
 - [ ] **STRUCT-07**: Route-group naming audit — `(admin)`, `(public)`, `(authed)` etc. — convention documented in `docs/conventions.md` or eliminated (TD-15.b)
-- [ ] **FSL-01**: Apache 2.0 → FSL-1.1-ALv2 — root `LICENSE` replaced; `MIGRATING.md` + 7-day notice; pre-scrub tag created
-- [ ] **FSL-02**: SPDX header sweep via `reuse` codemod — every `.ts/.tsx/.js/.sh/.py/.sql/.yaml/.yml` file; `REUSE.toml` + `reuse lint` CI gate
-- [ ] **FSL-03**: Every workspace `package.json` `license` field updated; Docker `LABEL org.opencontainers.image.licenses` updated; README badges updated
-- [ ] **FSL-04**: CONTRIBUTING.md DCO `Signed-off-by:` requirement; retroactive consent thread with existing v1 contributors
-- [ ] **FSL-05**: ADR `docs/adrs/0013-fsl-relicense.md` documenting Apache→FSL transition reasoning
+- [x] **FSL-01**: Apache 2.0 → FSL-1.1-ALv2 — root `LICENSE` replaced; `MIGRATING.md` + 7-day notice; pre-scrub tag created
+- [x] **FSL-02**: SPDX header sweep via `reuse` codemod — every `.ts/.tsx/.js/.sh/.py/.sql/.yaml/.yml` file; `REUSE.toml` + `reuse lint` CI gate
+- [x] **FSL-03**: Every workspace `package.json` `license` field updated; Docker `LABEL org.opencontainers.image.licenses` updated; README badges updated
+- [x] **FSL-04**: CONTRIBUTING.md DCO `Signed-off-by:` requirement; retroactive consent thread with existing v1 contributors
+- [x] **FSL-05**: ADR `docs/adrs/0013-fsl-relicense.md` documenting Apache→FSL transition reasoning
 - [ ] **FSL-06**: `git filter-repo --path speaches-audio.md --invert-paths` history scrub; bundled WITH FSL relicense as ONE release event (PITFALLS §10 — two force-pushes amortise badly)
 - [ ] **FSL-07**: Branch-protection lock → scrub → unlock → push → re-lock runbook; CI cache invalidation documented
 
@@ -568,16 +568,16 @@ Work-order: **13 → 12 → 14 → 15 → 16 → 17 → 18**. 61 REQ-IDs mapped 
 | BYOK-03 | 14 | Complete | Worker noop audit (all 3 adapters) at `apps/worker/src/index.ts:68-92` |
 | STRUCT-01 | 15 | Pending | Test-layout codified + `Phase15-MOVE-INVENTORY.md` before move PR |
 | STRUCT-02 | 15 | Pending | `compose/` directory holds every compose YAML |
-| STRUCT-03 | 15 | Pending | Helm monorepo vs separate repo — **TBD via `/gsd-discuss-phase 15`** |
+| STRUCT-03 | 15 | Complete | Helm monorepo vs separate repo — **TBD via `/gsd-discuss-phase 15`** |
 | STRUCT-04 | 15 | Pending | Traefik host split (`web.localhost` vs `api.localhost`) |
 | STRUCT-05 | 15 | Pending | Better Auth `trustedOrigins` updated; Phase 13 Playwright baseURL updated |
 | STRUCT-06 | 15 | Pending | `apps/web/public/.gitkeep` committed (closes deferred-items #2) |
 | STRUCT-07 | 15 | Pending | Route-group naming audit + `docs/conventions.md` |
-| FSL-01 | 15 | Pending | Apache-2.0 → FSL-1.1-ALv2 LICENSE replacement |
-| FSL-02 | 15 | Pending | `reuse` codemod SPDX sweep + `REUSE.toml` + `reuse lint` CI |
-| FSL-03 | 15 | Pending | Every workspace `package.json` + Docker LABEL + README badges |
-| FSL-04 | 15 | Pending | CONTRIBUTING.md DCO `Signed-off-by:` + retroactive consent |
-| FSL-05 | 15 | Pending | ADR `docs/adrs/0013-fsl-relicense.md` |
+| FSL-01 | 15 | Complete | Apache-2.0 → FSL-1.1-ALv2 LICENSE replacement |
+| FSL-02 | 15 | Complete | `reuse` codemod SPDX sweep + `REUSE.toml` + `reuse lint` CI |
+| FSL-03 | 15 | Complete | Every workspace `package.json` + Docker LABEL + README badges |
+| FSL-04 | 15 | Complete | CONTRIBUTING.md DCO `Signed-off-by:` + retroactive consent |
+| FSL-05 | 15 | Complete | ADR `docs/adrs/0013-fsl-relicense.md` |
 | FSL-06 | 15 | Pending | `git filter-repo` history scrub bundled WITH FSL as ONE release event |
 | FSL-07 | 15 | Pending | Branch-protection lock → scrub → unlock runbook |
 | COMMENT-01 | 16 | Pending | ts-morph AST codemod over 771 comments in `apps/`+`packages/` |
