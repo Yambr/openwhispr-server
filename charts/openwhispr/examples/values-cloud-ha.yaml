@@ -11,6 +11,20 @@
 secrets:
   mode: helm-values
 
+# Plan 14-06 / BYOK-01 — flip the four slim-core toggles back to true so
+# production K8s deployments keep their full HA topology. mailpit stays
+# off (it's a dev-only SMTP inbox and has no Helm template anyway). The
+# `observability.enabled` umbrella is set inside the consolidated
+# `observability:` block below.
+storage:
+  enabled: true
+tls:
+  enabled: true
+pooler:
+  enabled: true
+mailpit:
+  enabled: false
+
 postgres:
   replicas: 3
   storageSize: 100Gi
@@ -31,11 +45,18 @@ minio:
     size: 100Gi
 
 observability:
+  # Plan 14-06 / BYOK-01 — umbrella ON, AND-gating both sub-toggles.
+  enabled: true
   embedded: false
   serviceMonitor:
     enabled: true
-  otelCollector:
+  collector:
     enabled: true
+  lgtm:
+    # Operators MUST point this at their cluster's OTLP/HTTP ingest endpoint
+    # (Grafana Agent / OTel gateway / Tempo+Mimir+Loki front-door). The
+    # placeholder satisfies values.schema.json — replace before install.
+    endpoint: https://otlp.example.com
 
 api:
   replicas: 2
