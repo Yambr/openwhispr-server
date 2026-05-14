@@ -1,0 +1,70 @@
+# SPDX-License-Identifier: Apache-2.0
+# Phase 12 / Plan 05b — UICONF-05 axe conformance lane.
+#
+# Runs the 5-route axe baseline (/sign-in, /sign-up, /verify-email, /setup,
+# /admin) against a fresh `-p e2e-cjm` compose project booted from the base
+# file + embedded-litellm overlay. Mirrors the e2e-cjm.yml boot recipe so a
+# single trust-store + hosts-aliases setup serves both lanes.
+#
+# D-22 (Phase 12 carry-over of Phase 13 D-12): retry-on-flake is BANNED.
+# The conformance lane runs with `retries: 0`; a flake here is a real defect.
+name: conformance-axe
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "tests/conformance/ui-spec/**"
+      - "tests/e2e-cjm/support/**"
+      - "apps/web/src/app/**"
+      - "apps/web/src/components/**"
+      - "docker-compose.yml"
+      - "docker-compose.embedded-litellm.yml"
+      - "compose/**"
+      - ".github/workflows/conformance-axe.yml"
+  push:
+    branches: [main]
+concurrency:
+  group: conformance-axe-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  axe-baseline:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24.x
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm exec playwright install --with-deps chromium
+      - name: Add localhost hostname aliases
+        run: |
+          sudo sh -c 'echo "127.0.0.1 app.localhost api.localhost auth.localhost mailpit.localhost" >> /etc/hosts'
+      - name: docker compose build
+        run: docker compose -f docker-compose.yml -f docker-compose.embedded-litellm.yml build api worker web
+      - name: Run UICONF-05 axe baseline (boots stack via bootStack())
+        env:
+          E2E_CJM: "1"
+          CI: "true"
+        # `axe.spec.ts` calls bootStack()/tearStack() in beforeAll/afterAll.
+        # The spec itself owns the compose lifecycle for this lane.
+        run: pnpm exec playwright test --config tests/conformance/ui-spec/playwright.config.ts
+      - name: Assert no testcontainers leaked
+        if: always()
+        run: |
+          leaked=$(docker ps --filter label=org.testcontainers=true --format '{{.Names}}')
+          if [ -n "$leaked" ]; then
+            echo "FAIL: testcontainers survived after conformance-axe run:"
+            echo "$leaked"
+            exit 1
+          fi
+          echo "OK: no containers with label=org.testcontainers=true remain."
+      - name: Upload playwright trace on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: conformance-axe-trace
+          path: tests/conformance/ui-spec/test-results/
+          retention-days: 7
