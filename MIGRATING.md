@@ -68,7 +68,37 @@ The full Recovery section (including signed-tag re-anchoring, GHA cache
 flushing, and corporate-mirror update procedures) lives in
 [ADR-0013 § Recovery](docs/adrs/0013-fsl-relicense.md#recovery-for-downstream-consumers-who-need-to-stay-on-apache-20).
 
-<!-- POST-SCRUB-HEAD-SHA: filled by 15-04 once `git filter-repo` lands. -->
+<!--
+POST-SCRUB-HEAD-SHA placeholder.
+
+Status (2026-05-15): the 15-04 plan-authoring run has shipped
+`tools/history-scrub.sh`, `docs/runbooks/15-04-history-scrub.md`, and
+the two `.github/ISSUE_TEMPLATE/fsl-history-scrub-*.md` advisory
+templates. The actual `git filter-repo` + force-push has NOT yet run.
+
+The operator, immediately after executing
+`bash tools/history-scrub.sh --force`, captures the new HEAD SHA emitted
+by Stage 10 and replaces this comment block with a "### Post-scrub HEAD"
+section in the SAME atomic commit (subject
+`ops(15-04): execute history scrub`) that also updates
+`.github/dco.yml`'s `cutoff_sha`. Template for that section:
+
+    ### Post-scrub HEAD (Phase 15-04 atomic event)
+
+    - **Force-push date (UTC):** `<YYYY-MM-DDTHH:MMZ>`
+    - **New `main` HEAD SHA:** `<NEW_HEAD_SHA>` (full 40 characters)
+    - **Pre-scrub rollback tag:** `pre-fsl-scrub-2026-05-15` →
+      `<PRE_SCRUB_TAG_SHA>` (preserved on origin, ~90-day reflog window)
+    - **Recovery one-liner:** `git fetch origin && git reset --hard origin/main`
+
+Until that commit lands, the value below is intentionally left as the
+sentinel `<filled-by-15-04-execution>` — DO NOT replace it with a
+guessed SHA. The runbook driver (`tools/history-scrub.sh` Stage 10)
+emits the real SHA when the operator runs the force-push.
+
+Sentinel value (replace verbatim in the ops commit):
+POST-SCRUB-HEAD-SHA: <filled-by-15-04-execution>
+-->
 
 ### Questions?
 
