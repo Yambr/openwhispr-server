@@ -2,7 +2,7 @@
 // Phase 07.1 / Plan 07 — RED tests for SignUpForm (U2).
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { I18nProvider } from "@/lib/i18n-client";
 
 vi.mock("next/navigation", () => ({
@@ -51,8 +51,17 @@ const resources = {
           body: { text: "We sent a verification link to your address. Open it to continue." },
         },
         error: {
-          duplicate: { text: "This email is already registered. Sign in instead." },
-          generic: { text: "Sign-up failed. Please review the form and try again." },
+          // Plan 12-04 / UICONF-06: title.text and body.text are DISTINCT i18n
+          // keys per errorKind so the Alert primitive renders different copy
+          // for AlertTitle vs AlertDescription (no duplicate-banner regression).
+          duplicate: {
+            title: { text: "Email already registered" },
+            body: { text: "This email is already registered. Sign in instead." },
+          },
+          generic: {
+            title: { text: "Sign-up failed" },
+            body: { text: "Sign-up failed. Please review the form and try again." },
+          },
         },
       },
     },
@@ -68,11 +77,31 @@ function Wrap({ children }: { children: React.ReactNode }) {
   );
 }
 
+// Plan 12-04: OidcButtons now reads /api/auth/providers via the
+// `useAuthProviders` hook (TD-12.c closure) instead of NEXT_PUBLIC_OIDC_PROVIDERS.
+function stubProvidersFetch(): void {
+  vi.spyOn(globalThis, "fetch").mockResolvedValue({
+    ok: true,
+    status: 200,
+    json: async () => ({
+      providers: [
+        { id: "google", name: "Google", enabled: true },
+        { id: "github", name: "GitHub", enabled: true },
+        { id: "oidc", name: "Single Sign-On", enabled: true },
+      ],
+      emailVerification: { required: true, configured: true },
+    }),
+  } as unknown as Response);
+}
+
 describe("SignUpForm (Phase 07.1 / Plan 07 — U2)", () => {
   beforeEach(() => {
     signUpEmail.mockReset();
     signInSocial.mockReset();
-    process.env.NEXT_PUBLIC_OIDC_PROVIDERS = "google,github,oidc";
+    stubProvidersFetch();
+  });
+  afterEach(() => {
+    vi.restoreAllMocks();
   });
 
   it("renders name + email + password inputs and submit button", async () => {
@@ -95,7 +124,9 @@ describe("SignUpForm (Phase 07.1 / Plan 07 — U2)", () => {
         <SignUpForm />
       </Wrap>,
     );
-    expect(screen.getByRole("button", { name: /continue with google/i })).toBeInTheDocument();
+    expect(
+      await screen.findByRole("button", { name: /continue with google/i }),
+    ).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /continue with github/i })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /continue with sso/i })).toBeInTheDocument();
   });
@@ -143,7 +174,9 @@ describe("SignUpForm (Phase 07.1 / Plan 07 — U2)", () => {
     await user.type(screen.getByLabelText(/email/i), "alice@test.local");
     await user.type(screen.getByLabelText(/^password$/i), "Pwa9!testStrong");
     await user.click(screen.getByRole("button", { name: /^sign up$/i }));
-    expect(await screen.findByText(/already registered/i)).toBeInTheDocument();
+    expect(await screen.findByText(/email already registered/i)).toBeInTheDocument();
+    // Body copy (description) is still present and distinct from the title.
+    expect(screen.getByText(/already registered\. sign in instead\./i)).toBeInTheDocument();
   });
 
   it("renders generic error when authClient.signUp.email throws", async () => {
@@ -159,7 +192,9 @@ describe("SignUpForm (Phase 07.1 / Plan 07 — U2)", () => {
     await user.type(screen.getByLabelText(/email/i), "alice@test.local");
     await user.type(screen.getByLabelText(/^password$/i), "Pwa9!testStrong");
     await user.click(screen.getByRole("button", { name: /^sign up$/i }));
-    expect(await screen.findByText(/sign-up failed/i)).toBeInTheDocument();
+    // Title copy is "Sign-up failed" — body adds the actionable sentence.
+    expect(await screen.findByText(/^sign-up failed$/i)).toBeInTheDocument();
+    expect(screen.getByText(/review the form and try again/i)).toBeInTheDocument();
   });
 
   it("renders generic error for non-duplicate failures", async () => {
@@ -178,6 +213,37 @@ describe("SignUpForm (Phase 07.1 / Plan 07 — U2)", () => {
     await user.type(screen.getByLabelText(/email/i), "alice@test.local");
     await user.type(screen.getByLabelText(/^password$/i), "Pwa9!testStrong");
     await user.click(screen.getByRole("button", { name: /^sign up$/i }));
-    expect(await screen.findByText(/sign-up failed/i)).toBeInTheDocument();
+    expect(await screen.findByText(/^sign-up failed$/i)).toBeInTheDocument();
+  });
+
+  // Plan 12-04 / UICONF-06: regression guard for the SignUpForm.tsx:102-115
+  // duplicate-i18n-key bug. Exactly one Alert; title text and body text must
+  // be DIFFERENT strings (RESEARCH §11). Reflected in conformance suite.
+  it("UICONF-06: renders exactly one banner element with distinct title/body copy", async () => {
+    signUpEmail.mockResolvedValueOnce({
+      data: null,
+      error: { code: "USER_ALREADY_EXISTS", message: "User already exists" },
+    });
+    const { SignUpForm } = await import("../SignUpForm");
+    const user = userEvent.setup();
+    render(
+      <Wrap>
+        <SignUpForm />
+      </Wrap>,
+    );
+    await user.type(screen.getByLabelText(/name/i), "Alice");
+    await user.type(screen.getByLabelText(/email/i), "alice@test.local");
+    await user.type(screen.getByLabelText(/^password$/i), "Pwa9!testStrong");
+    await user.click(screen.getByRole("button", { name: /^sign up$/i }));
+
+    await waitFor(() => {
+      expect(screen.getAllByRole("alert")).toHaveLength(1);
+    });
+    const alert = screen.getByRole("alert");
+    const title = alert.querySelector('[data-slot="alert-title"]')?.textContent ?? "";
+    const body = alert.querySelector('[data-slot="alert-description"]')?.textContent ?? "";
+    expect(title.length).toBeGreaterThan(0);
+    expect(body.length).toBeGreaterThan(0);
+    expect(title).not.toBe(body);
   });
 });

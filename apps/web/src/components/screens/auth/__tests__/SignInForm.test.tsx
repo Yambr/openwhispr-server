@@ -80,16 +80,33 @@ function Wrap({ children }: { children: React.ReactNode }) {
   );
 }
 
+// Plan 12-04: OidcButtons now reads /api/auth/providers via the
+// `useAuthProviders` hook (TD-12.c closure) instead of NEXT_PUBLIC_OIDC_PROVIDERS.
+// All sign-in tests that used to munge the env var now stub `fetch` instead.
+function stubProvidersFetch(providers: { id: "google" | "github" | "oidc"; name: string }[]): void {
+  vi.spyOn(globalThis, "fetch").mockResolvedValue({
+    ok: true,
+    status: 200,
+    json: async () => ({
+      providers: providers.map((p) => ({ id: p.id, name: p.name, enabled: true })),
+      emailVerification: { required: true, configured: true },
+    }),
+  } as unknown as Response);
+}
+
 describe("SignInForm (Phase 07.1 / Plan 07 — U1)", () => {
-  const ORIGINAL_ENV = process.env.NEXT_PUBLIC_OIDC_PROVIDERS;
   beforeEach(() => {
     signInEmail.mockReset();
     signInSocial.mockReset();
-    process.env.NEXT_PUBLIC_OIDC_PROVIDERS = "google,github,oidc";
+    // Default: all three providers configured (matches the pre-Plan-12-04 default).
+    stubProvidersFetch([
+      { id: "google", name: "Google" },
+      { id: "github", name: "GitHub" },
+      { id: "oidc", name: "Single Sign-On" },
+    ]);
   });
   afterEach(() => {
-    if (ORIGINAL_ENV === undefined) delete process.env.NEXT_PUBLIC_OIDC_PROVIDERS;
-    else process.env.NEXT_PUBLIC_OIDC_PROVIDERS = ORIGINAL_ENV;
+    vi.restoreAllMocks();
   });
 
   it("renders email + password inputs and submit button", async () => {
@@ -104,28 +121,31 @@ describe("SignInForm (Phase 07.1 / Plan 07 — U1)", () => {
     expect(screen.getByRole("button", { name: /sign in/i })).toBeInTheDocument();
   });
 
-  it("renders all three OIDC buttons when env enumerates google,github,oidc", async () => {
+  it("renders all three OIDC buttons when the providers endpoint returns google,github,oidc", async () => {
     const { SignInForm } = await import("../SignInForm");
     render(
       <Wrap>
         <SignInForm />
       </Wrap>,
     );
-    expect(screen.getByRole("button", { name: /continue with google/i })).toBeInTheDocument();
+    expect(
+      await screen.findByRole("button", { name: /continue with google/i }),
+    ).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /continue with github/i })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /continue with sso/i })).toBeInTheDocument();
   });
 
-  it("hides specific OIDC button when env excludes it", async () => {
-    process.env.NEXT_PUBLIC_OIDC_PROVIDERS = "google";
-    vi.resetModules();
+  it("hides specific OIDC button when the providers endpoint excludes it", async () => {
+    stubProvidersFetch([{ id: "google", name: "Google" }]);
     const { SignInForm } = await import("../SignInForm");
     render(
       <Wrap>
         <SignInForm />
       </Wrap>,
     );
-    expect(screen.getByRole("button", { name: /continue with google/i })).toBeInTheDocument();
+    expect(
+      await screen.findByRole("button", { name: /continue with google/i }),
+    ).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /continue with github/i })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /continue with sso/i })).not.toBeInTheDocument();
   });
@@ -189,28 +209,32 @@ describe("SignInForm (Phase 07.1 / Plan 07 — U1)", () => {
     });
   });
 
-  it("renders no OIDC buttons when env enumerates an empty / unknown list", async () => {
-    process.env.NEXT_PUBLIC_OIDC_PROVIDERS = "unknown-provider";
-    vi.resetModules();
+  it("renders no OIDC buttons when the providers endpoint returns an empty list", async () => {
+    stubProvidersFetch([]);
     const { SignInForm } = await import("../SignInForm");
     render(
       <Wrap>
         <SignInForm />
       </Wrap>,
     );
-    expect(screen.queryByRole("button", { name: /continue with/i })).not.toBeInTheDocument();
+    // Wait a tick for the fetch promise to settle; OidcButtons resolves to null
+    // and never renders any "continue with" affordance.
+    await waitFor(() => {
+      expect(screen.queryByRole("button", { name: /continue with/i })).not.toBeInTheDocument();
+    });
   });
 
-  it("uses default provider list when env is unset", async () => {
-    delete process.env.NEXT_PUBLIC_OIDC_PROVIDERS;
-    vi.resetModules();
+  it("renders all three buttons when the providers endpoint returns the default set", async () => {
+    // Default stub from beforeEach already returns google + github + oidc.
     const { SignInForm } = await import("../SignInForm");
     render(
       <Wrap>
         <SignInForm />
       </Wrap>,
     );
-    expect(screen.getByRole("button", { name: /continue with google/i })).toBeInTheDocument();
+    expect(
+      await screen.findByRole("button", { name: /continue with google/i }),
+    ).toBeInTheDocument();
   });
 
   it("shows the error alert when authClient.signIn.email throws", async () => {
@@ -239,7 +263,7 @@ describe("SignInForm (Phase 07.1 / Plan 07 — U1)", () => {
         <SignInForm />
       </Wrap>,
     );
-    await user.click(screen.getByRole("button", { name: /continue with google/i }));
+    await user.click(await screen.findByRole("button", { name: /continue with google/i }));
     await waitFor(() => expect(signInSocial).toHaveBeenCalledTimes(1));
     const arg = signInSocial.mock.calls[0]?.[0] as { provider: string };
     expect(arg.provider).toBe("google");

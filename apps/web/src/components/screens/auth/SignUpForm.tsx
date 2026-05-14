@@ -100,16 +100,21 @@ export function SignUpForm(): React.JSX.Element {
       </CardHeader>
       <CardContent className="flex flex-col gap-4">
         {errorKind ? (
+          // Plan 12-04 / UICONF-06: title and body resolve to DISTINCT i18n
+          // keys per errorKind. Mirrors the SignInForm.tsx:83-84 shape and
+          // closes the duplicate-banner regression at the bug locus (the
+          // previous AlertTitle + AlertDescription pair rendered the same
+          // i18n key twice — RESEARCH §11 root cause).
           <Alert variant="destructive" role="alert">
             <AlertTitle>
               {errorKind === "duplicate"
-                ? t("end-user.signup.error.duplicate.text")
-                : t("end-user.signup.error.generic.text")}
+                ? t("end-user.signup.error.duplicate.title.text")
+                : t("end-user.signup.error.generic.title.text")}
             </AlertTitle>
             <AlertDescription>
               {errorKind === "duplicate"
-                ? t("end-user.signup.error.duplicate.text")
-                : t("end-user.signup.error.generic.text")}
+                ? t("end-user.signup.error.duplicate.body.text")
+                : t("end-user.signup.error.generic.body.text")}
             </AlertDescription>
           </Alert>
         ) : null}

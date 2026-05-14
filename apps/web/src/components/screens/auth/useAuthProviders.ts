@@ -5,7 +5,7 @@
 // GET /api/auth/providers (Plan 12-02) at mount and exposes it to the
 // auth-screen client components (OidcButtons, SignInForm, SignUpForm,
 // VerifyEmailClient). Closes TD-12.c by replacing the previous
-// build-time NEXT_PUBLIC_OIDC_PROVIDERS env read in OidcButtons.tsx.
+// build-time env read in OidcButtons.tsx (TD-12.c).
 //
 // Contract (RESEARCH §9):
 //   - Initial state: { loading: true, providers: [] }. OidcButtons relies
