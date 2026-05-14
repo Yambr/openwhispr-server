@@ -29,7 +29,7 @@ Feature: Signup and email verification round-trip
     When an invalid signup is submitted with Accept-Language "ru"
     Then the response error message renders in Russian copy
 
-  @cjm-1.5 @expected-red @after-phase-12
+  @cjm-1.5
   Scenario: Zero providers configured produces zero social-login buttons on the public sign-up page
     Given the stack has zero OIDC providers configured
     When the sign-up page is loaded

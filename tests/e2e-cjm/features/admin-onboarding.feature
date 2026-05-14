@@ -3,7 +3,7 @@
 
 Feature: Admin onboarding
 
-  @cjm-5.1 @expected-red @after-phase-12
+  @cjm-5.1
   Scenario: /admin reaches a real admin landing page
     Given valid admin basicauth credentials are configured
     When the admin GETs /admin with those credentials
@@ -14,7 +14,7 @@ Feature: Admin onboarding
     When an unauthenticated request hits /admin
     Then the response is 401 with a "WWW-Authenticate: Basic" header
 
-  @cjm-5.3 @expected-red @after-phase-12
+  @cjm-5.3
   Scenario: First-run setup wizard flips setup_state from pending to completed
     Given the stack has setup_state "pending"
     When the wizard is completed via the /setup route
