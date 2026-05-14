@@ -57,7 +57,13 @@ function runBootstrap(root: string): RunResult {
   try {
     const stdout = execFileSync("bash", [SCRIPT], {
       encoding: "utf8",
-      env: { ...process.env, BOOTSTRAP_REPO_ROOT: root },
+      env: {
+        ...process.env,
+        BOOTSTRAP_REPO_ROOT: root,
+        // Phase 14 / Plan 02 — bootstrap.sh defaults to .env.slim.example;
+        // this fixture writes .env.example. Pin the template explicitly.
+        BOOTSTRAP_ENV_TEMPLATE: join(root, ".env.example"),
+      },
       stdio: ["ignore", "pipe", "pipe"],
     });
     return { code: 0, stdout, stderr: "" };

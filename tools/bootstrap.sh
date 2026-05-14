@@ -36,13 +36,36 @@ fi
 
 REPO_ROOT="${BOOTSTRAP_REPO_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
 readonly REPO_ROOT
-readonly ENV_EXAMPLE="${REPO_ROOT}/.env.example"
+# Phase 14 / Plan 02 / Task 1 — Template path is now env-overridable. The
+# slim-core OSS quickstart defaults to .env.slim.example (RESEARCH section
+# D.1, 90-key delta in section D.2). Power users wanting the full 90-key
+# reference set `BOOTSTRAP_ENV_TEMPLATE=.env.full.example`. CI / scratch
+# tests pass an arbitrary absolute path. No silent fallback to a different
+# template if the requested one is missing — surfaces operator typos loudly.
+readonly ENV_EXAMPLE="${BOOTSTRAP_ENV_TEMPLATE:-${REPO_ROOT}/.env.slim.example}"
 readonly ENV_FILE="${REPO_ROOT}/.env"
 readonly DENY_LIST="${REPO_ROOT}/tools/bootstrap/default-secrets.txt"
 
+# Dry-run flag: print the resolved template path (after the existence guard
+# below) and exit 0. Used by tools/bootstrap.test.sh and by operators
+# debugging template resolution. Must NOT write .env, must NOT touch certs,
+# must NOT mutate the filesystem in any way.
+PRINT_TEMPLATE_ONLY=0
+if (( $# > 0 )) && [[ "$1" == "--print-template" ]]; then
+  PRINT_TEMPLATE_ONLY=1
+fi
+
 if [[ ! -f "${ENV_EXAMPLE}" ]]; then
-  echo "bootstrap: .env.example not found at ${ENV_EXAMPLE}" >&2
+  printf 'bootstrap: template not found: %s\n' "${ENV_EXAMPLE}" >&2
+  if [[ -n "${BOOTSTRAP_ENV_TEMPLATE:-}" ]]; then
+    printf '  (BOOTSTRAP_ENV_TEMPLATE override; unset it to use the slim default)\n' >&2
+  fi
   exit 2
+fi
+
+if (( PRINT_TEMPLATE_ONLY )); then
+  printf '%s\n' "${ENV_EXAMPLE}"
+  exit 0
 fi
 if [[ ! -f "${DENY_LIST}" ]]; then
   echo "bootstrap: deny-list not found at ${DENY_LIST}" >&2

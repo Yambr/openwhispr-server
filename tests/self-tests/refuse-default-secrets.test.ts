@@ -30,7 +30,14 @@ function runBootstrap(repoRoot: string): RunResult {
   try {
     const stdout = execFileSync("bash", [SCRIPT], {
       encoding: "utf8",
-      env: { ...process.env, BOOTSTRAP_REPO_ROOT: repoRoot },
+      env: {
+        ...process.env,
+        BOOTSTRAP_REPO_ROOT: repoRoot,
+        // Phase 14 / Plan 02 — bootstrap.sh now defaults to .env.slim.example.
+        // This test fixture writes .env.example; override the template path
+        // so the test stays exercising the same monolithic-template surface.
+        BOOTSTRAP_ENV_TEMPLATE: join(repoRoot, ".env.example"),
+      },
       stdio: ["ignore", "pipe", "pipe"],
     });
     return { code: 0, stdout, stderr: "" };
