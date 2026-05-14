@@ -327,3 +327,50 @@ exits 0 during the 15-01 -> 15-02 window. The file is DELETED as the
 final commit of 15-02 once `migrate-tests.ts --apply` has relocated
 every entry.
 
+
+## Route groups (apps/web/src/app)
+
+Next.js App Router groups (folders wrapped in `()` parens) are used in
+`apps/web/src/app` to attach a shared layout to a set of routes without
+affecting the URL path. The repo convention as of Phase 15 (STRUCT-07):
+
+| Group       | URL contribution | Layout responsibility | Contents (today)                |
+|-------------|------------------|------------------------|---------------------------------|
+| `(public)/` | none (transparent) | unauthenticated shell — sign-in, sign-up, password reset, OIDC callbacks, verify-email | `setup/`, `sign-in/`, `sign-up/`, `verify-email/` |
+| `(auth)/`   | none             | post-login authenticated shell — the **authed** user experience (NOT the auth/login forms) | `app/` (the dashboard root) |
+| `(admin)/`  | none             | admin-only shell — tenant-admin and owner surfaces | `admin/` |
+
+**Naming note:** `(auth)/` historically reads ambiguously (it could mean
+"auth flows" or "authed users"). In this repo it means **authed-user**
+routes — the post-login experience. Auth flow pages (sign-in/sign-up/
+verify-email) live under `(public)/`. A future rename to `(authed)/`
+was considered during Phase 15 plan 02 audit and deferred — touching
+the literal folder name requires sweeping every test, every Playwright
+selector that references file paths, and every middleware matcher. The
+deferred work is tracked under TD-15.h.
+
+**When to introduce a new group:** add a group when a NEW slice of the
+app needs a shared layout that the existing three cannot accommodate
+(e.g. a future `(api-keys)/` if the BYOK self-service UI grew its own
+chrome). Do NOT add a group purely for "namespacing" — that is what
+plain folders are for. Each group costs one `layout.tsx` and one mental
+model item; the budget is small.
+
+### Canonical mkcert host list (forward-pointer to Phase 17)
+
+The dev TLS stack provisioned by Phase 17's mkcert workflow covers
+exactly five `.localhost` vhosts that the Traefik dynamic config wires:
+
+- `api.localhost` — Fastify API container (port 3000). See
+  `compose/traefik/dynamic.yml` and the `api`, `api-realtime`,
+  `api-audio` routers therein.
+- `web.localhost` — Next.js web app (port 3001). See
+  `compose/traefik/dynamic.dev.yml` (`web` router, Phase 15 plan 02).
+- `app.localhost` — alias retained for backward-compat with pre-Phase-15
+  desktop builds; currently captured by the broader `api` router when
+  declared. Phase 17 is responsible for the explicit cert + router.
+- `grafana.localhost` — Grafana UI (Phase 06 observability stack).
+- `mailpit.localhost` — Mailpit dev SMTP UI (Phase 02 dev-tools overlay).
+
+Phase 17 owns the actual cert provisioning + the trust-store integration;
+Phase 15 locks the canonical list via the dynamic.dev.yml + this doc.
