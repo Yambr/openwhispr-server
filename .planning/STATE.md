@@ -3,8 +3,8 @@ gsd_state_version: 1.0
 milestone: v2
 milestone_name: — Production Readiness
 status: Roadmap created — 7 v2 phases (12–18), 61 REQ-IDs mapped 100%, work-order 13 → 12 → 14 → 15 → 16 → 17 → 18
-last_updated: "2026-05-14T09:52:07.218Z"
-last_activity: 2026-05-14 — v2 ROADMAP.md appended; STATE + REQUIREMENTS traceability updated
+last_updated: "2026-05-14T14:00:00Z"
+last_activity: 2026-05-14 — Phase 13 fully closed: verification PASSED 13/13 must-haves, security audit 0 HIGH/CRITICAL, code-review HI-01 (EmailSender dev loud-fail) + HI-02 (redact creds in bootstrap warn) fixed (commits 5c579d3, b437b9c)
 progress:
   total_phases: 49
   completed_phases: 17
@@ -25,10 +25,10 @@ progress:
 
 ## Current Position
 
-Phase: 13 — E2E + CJM Harness (v2 ships-first) CLOSED — Wave 1 atomic commit `17c603e`, Wave 2 atomic commit `df91de2`
-Plan: 13-02 COMPLETED (next: Phase 12 admin onboarding, which inherits 10 @expected-red @after-phase-12 scenarios authored in 13-02)
-Status: Phase 13 CLOSED. v2 roadmap remaining: Phase 12 → 14 → 15 → 16 → 17 → 18 (six phases, work-order locked).
-Last activity: 2026-05-14 — Phase 13-02 atomic feat commit `df91de2` lands docs/customer-journeys.md (20 anchors, 8 sections), tools/lint-cjm-doc.ts (3-mode linter + 26 tests, 100/94.87/100/100 coverage), 7 new .feature files + 8 step modules, Makefile + GHA wired with lint gate, 10/10 in-phase scenarios GREEN on fresh DB+mailpit, 10 @expected-red scenarios queued (7 after-phase-12, 3 after-phase-15).
+Phase: 13 — E2E + CJM Harness (v2 ships-first) FULLY CLOSED — Wave 1 `17c603e`, Wave 2 `df91de2`, post-review fix `5c579d3`
+Plan: All plans completed + code-review HIGHs closed. Next: Phase 12 admin onboarding, which inherits 7 @expected-red @after-phase-12 scenarios authored in 13-02.
+Status: Phase 13 FULLY CLOSED through all GSD gates (discuss→plan→execute→verify→validate→code-review→security→fix). v2 roadmap remaining: Phase 12 → 14 → 15 → 16 → 17 → 18 (six phases, work-order locked).
+Last activity: 2026-05-14 — Phase 13 closed end-to-end: verifier PASSED 13/13 must-haves (13-VERIFICATION.md); security audit cleared 11/11 declared threats + 8/8 prompt surfaces with 0 HIGH/CRITICAL (13-SECURITY.md); code-review surfaced 2 HIGH (HI-01 EmailSender dev-fallback false-positive delivered:true; HI-02 bootstrap console.warn leaking credential-bearing URLs from Redis/BullMQ/LiteLLM init errors) — both fixed under TDD with atomic commit `5c579d3` (fix + tests + caller updates) + docs `b437b9c`. Coverage on diff stayed 100/100/100/100 on packages/email and new apps/api/src/lib/redact-url.ts.
 
 ## Performance Metrics
 
