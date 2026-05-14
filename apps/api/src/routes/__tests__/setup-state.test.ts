@@ -1,10 +1,16 @@
 // SPDX-License-Identifier: Apache-2.0
 // Phase 12 / Plan 12-02 / Task 5 — GET /api/setup-state tests.
 //
-// DB-fake pattern (same rationale as capabilities.test.ts — see that
-// file's header for the apps/api integration-harness limitation).
+// D-12.02-EX1 close-out: replaces the prior makeFakeDb pattern (which
+// violated CLAUDE.md's no-mocks-of-internal-logic rule — drizzle's
+// transaction/execute IS internal logic, the process boundary lives at
+// the libpq driver) with a real Postgres testcontainer. The shared
+// inline harness lives at apps/api/src/routes/__tests__/setup.ts; it
+// mirrors apps/api/src/lib/audit.test.ts's proven pattern for booting
+// PG + pg_partman + the full migration set 0000..0017.
 //
-// Coverage matrix:
+// Coverage matrix (preserved verbatim from the previous fake-driven
+// suite):
 //   1. Default pending status -> 200 {status:'pending'}, Object.keys === ['status'].
 //   2. status='completed' -> 200 {status:'completed'}.
 //   3. status='skipped_legacy' -> 200 {status:'skipped_legacy'}.
@@ -14,67 +20,29 @@
 //   7. Info-leak gate: body has EXACTLY ['status'] keys; no tenant id,
 //      no completedAt, no createdAt, no env-derived fields.
 //   8. Cache-Control: no-store (no max-age, no public, no private).
+//
+// One container shared across the file (`beforeAll` boot is ~5-10s; a
+// per-test container would balloon CI runtime to multiple minutes). Each
+// test resets setup_state via `resetSetupState` to keep cases independent.
 
-import rateLimit from "@fastify/rate-limit";
-import Fastify, { type FastifyInstance } from "fastify";
-import { afterEach, describe, expect, it } from "vitest";
-import { registerErrorHandler } from "../../error-handler.js";
-import { buildSetupStateRoutes } from "../setup-state.js";
+import type { FastifyInstance } from "fastify";
+import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
+import {
+  type BootedPostgres,
+  bootMigratedPostgres,
+  buildSetupStateApp,
+  resetSetupState,
+} from "./setup.js";
 
-function makeFakeDb(initialStatus: "pending" | "completed" | "skipped_legacy" | null): {
-  db: Parameters<typeof buildSetupStateRoutes>[0]["db"];
-  setStatus: (s: "pending" | "completed" | "skipped_legacy" | null) => void;
-} {
-  let status = initialStatus;
-  const tx = {
-    async execute(query: unknown): Promise<unknown> {
-      const chunks = (query as { queryChunks?: unknown[] }).queryChunks ?? [];
-      const parts: string[] = [];
-      for (const c of chunks) {
-        if (typeof c === "string") {
-          parts.push(c);
-        } else if (c && typeof c === "object" && "value" in c) {
-          const v = (c as { value: unknown }).value;
-          if (Array.isArray(v) && v.every((x) => typeof x === "string")) {
-            parts.push((v as string[]).join(""));
-          }
-        }
-      }
-      const sqlText = parts.join("");
-      if (/SELECT status FROM setup_state/i.test(sqlText)) {
-        return { rows: status === null ? [] : [{ status }] };
-      }
-      return { rows: [] };
-    },
-  };
-  const db = {
-    async transaction<T>(cb: (t: typeof tx) => Promise<T>): Promise<T> {
-      return cb(tx);
-    },
-  };
-  return {
-    db: db as unknown as Parameters<typeof buildSetupStateRoutes>[0]["db"],
-    setStatus(s) {
-      status = s;
-    },
-  };
-}
+let booted: BootedPostgres;
 
-async function buildApp(opts: {
-  db: Parameters<typeof buildSetupStateRoutes>[0]["db"];
-  withRateLimit?: boolean;
-}): Promise<FastifyInstance> {
-  const app = Fastify({ logger: false, trustProxy: true });
-  registerErrorHandler(app);
-  if (opts.withRateLimit) {
-    // Register the actual Fastify rate-limit plugin so the per-route
-    // `config.rateLimit` is honored. In-process backend (no Redis).
-    await app.register(rateLimit, { global: false });
-  }
-  await app.register(buildSetupStateRoutes({ db: opts.db }));
-  await app.ready();
-  return app;
-}
+beforeAll(async () => {
+  booted = await bootMigratedPostgres();
+}, 180_000);
+
+afterAll(async () => {
+  await booted?.shutdown();
+});
 
 describe("GET /api/setup-state — public, boolean-shaped status", () => {
   let app: FastifyInstance | undefined;
@@ -86,8 +54,8 @@ describe("GET /api/setup-state — public, boolean-shaped status", () => {
   });
 
   it("returns 200 + {status:'pending'} on a fresh migrated DB (default singleton row)", async () => {
-    const { db } = makeFakeDb("pending");
-    app = await buildApp({ db });
+    await resetSetupState(booted.ownerPool, "pending");
+    app = await buildSetupStateApp({ db: booted.db });
     const res = await app.inject({ method: "GET", url: "/api/setup-state" });
     expect(res.statusCode).toBe(200);
     const body = res.json() as Record<string, unknown>;
@@ -96,32 +64,34 @@ describe("GET /api/setup-state — public, boolean-shaped status", () => {
   });
 
   it("returns 200 + {status:'completed'} when the singleton was claimed", async () => {
-    const { db } = makeFakeDb("completed");
-    app = await buildApp({ db });
+    await resetSetupState(booted.ownerPool, "completed");
+    app = await buildSetupStateApp({ db: booted.db });
     const res = await app.inject({ method: "GET", url: "/api/setup-state" });
     expect(res.statusCode).toBe(200);
     expect(res.json()).toEqual({ status: "completed" });
   });
 
   it("returns 200 + {status:'skipped_legacy'} on a v1-upgrade install", async () => {
-    const { db } = makeFakeDb("skipped_legacy");
-    app = await buildApp({ db });
+    await resetSetupState(booted.ownerPool, "skipped_legacy");
+    app = await buildSetupStateApp({ db: booted.db });
     const res = await app.inject({ method: "GET", url: "/api/setup-state" });
     expect(res.statusCode).toBe(200);
     expect(res.json()).toEqual({ status: "skipped_legacy" });
   });
 
   it("returns 200 + {status:'pending'} as defensive default when the row is missing", async () => {
-    const { db } = makeFakeDb(null);
-    app = await buildApp({ db });
+    await resetSetupState(booted.ownerPool, "missing");
+    app = await buildSetupStateApp({ db: booted.db });
     const res = await app.inject({ method: "GET", url: "/api/setup-state" });
     expect(res.statusCode).toBe(200);
     expect(res.json()).toEqual({ status: "pending" });
+    // Restore the row for downstream tests.
+    await resetSetupState(booted.ownerPool, "pending");
   });
 
   it("requires NO authentication — anonymous request returns 200 (no req.user / req.tenant stamped)", async () => {
-    const { db } = makeFakeDb("pending");
-    app = await buildApp({ db });
+    await resetSetupState(booted.ownerPool, "pending");
+    app = await buildSetupStateApp({ db: booted.db });
     // Explicitly NO onRequest hook to stamp req.user — handler must not
     // care. Verifies T-12.02-05 (the wizard's /setup RSC fetch
     // succeeds before any admin user exists).
@@ -130,8 +100,8 @@ describe("GET /api/setup-state — public, boolean-shaped status", () => {
   });
 
   it("enforces per-IP rate-limit: the 31st request within the window returns 429", async () => {
-    const { db } = makeFakeDb("pending");
-    app = await buildApp({ db, withRateLimit: true });
+    await resetSetupState(booted.ownerPool, "pending");
+    app = await buildSetupStateApp({ db: booted.db, withRateLimit: true });
     // 30 requests from the same IP — all succeed.
     for (let i = 0; i < 30; i++) {
       const r = await app.inject({
@@ -150,8 +120,8 @@ describe("GET /api/setup-state — public, boolean-shaped status", () => {
   });
 
   it("info-leak gate: response body has EXACTLY ['status'] keys — no PII, no env, no timestamps", async () => {
-    const { db } = makeFakeDb("completed");
-    app = await buildApp({ db });
+    await resetSetupState(booted.ownerPool, "completed");
+    app = await buildSetupStateApp({ db: booted.db });
     const res = await app.inject({ method: "GET", url: "/api/setup-state" });
     expect(res.statusCode).toBe(200);
     const body = res.json() as Record<string, unknown>;
@@ -168,8 +138,8 @@ describe("GET /api/setup-state — public, boolean-shaped status", () => {
   });
 
   it("emits Cache-Control: no-store with no max-age / public / private directives", async () => {
-    const { db } = makeFakeDb("pending");
-    app = await buildApp({ db });
+    await resetSetupState(booted.ownerPool, "pending");
+    app = await buildSetupStateApp({ db: booted.db });
     const res = await app.inject({ method: "GET", url: "/api/setup-state" });
     expect(res.statusCode).toBe(200);
     const cc = res.headers["cache-control"];

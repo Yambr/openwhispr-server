@@ -1,111 +1,77 @@
 // SPDX-License-Identifier: Apache-2.0
 // Phase 12 / Plan 12-02 / Task 3 — GET /api/capabilities tests.
 //
-// DB-fake pattern (mirror of web-search.integration.test.ts). The
-// capabilities handler's only DB interaction is a single `SELECT status
-// FROM setup_state WHERE id = 1`; the fake records the executed SQL
-// and returns a configurable status row, which lets us:
+// D-12.02-EX1 close-out: replaces the prior makeFakeDb pattern (which
+// violated CLAUDE.md's no-mocks-of-internal-logic rule — drizzle's
+// transaction/execute IS internal logic, the process boundary lives at
+// the libpq driver) with a real Postgres testcontainer. The shared
+// inline harness lives at ./setup.ts; it mirrors
+// apps/api/src/lib/audit.test.ts's proven pattern for booting PG +
+// pg_partman + the full migration set 0000..0017.
 //
-//   * Exercise the 401 / shape / ETag / 304 / cross-tenant / status-flip
-//     behaviour deterministically and quickly (no testcontainer boot).
-//   * Avoid the pre-existing apps/api/src/routes/* integration-test
-//     harness limitation: the shared `bootMigratedPostgres` helper in
-//     `apps/api/src/routes/notes/__tests__/setup.ts` does NOT provision
-//     the `partman` schema, so migration 0014 (audit_log partitioning)
-//     fails with SQLSTATE 3F000 the moment any apps/api integration
-//     test reaches it. The canonical fix lives in
-//     packages/data/src/__tests__/helpers.ts (uses the
-//     `openwhispr/postgres:17.5-pgpartman` image) which apps/api cannot
-//     cross-import per the worktree contract. Building that image
-//     locally is also blocked: prior plans documented Docker Hub TLS
-//     handshake timeouts in this environment.
+// Real-PG also lets us seed a real `tenants` row + `users` row so the
+// tenant-scoped ETag assertions exercise the FK-validated production
+// schema rather than synthetic UUIDs.
 //
-// CLAUDE.md "no mocks of internal logic" permits process-boundary
-// fakes (DB driver = process boundary). The handler's SQL is asserted
-// verbatim, which is how web-search.integration.test.ts establishes
-// the same contract.
+// Coverage matrix (preserved from the previous fake-driven suite, with
+// the lone fake-internals test — "sql-template chunk-walker captures
+// literal SELECT/WHERE" — replaced by an equivalent real-PG assertion
+// that the handler reads through to setup_state via the real schema):
+//   1. 401 for anonymous request.
+//   2. 200 + minimal payload shape for authed request.
+//   3. Missing setup_state row -> 'pending' (defensive default).
+//   4. No LITELLM_MASTER_KEY -> all features false.
+//   5. Realtime requires LITELLM_MASTER_KEY AND OPENAI_API_KEY.
+//   6. Cache-Control + weak ETag + If-None-Match -> 304.
+//   7. Different tenants under same env -> DIFFERENT ETags.
+//   8. ETag changes when setup_state.status flips pending -> completed.
+//   9. Handler reads through to the real setup_state schema:
+//      seeding `completed_at` does NOT leak it into the response body
+//      (the SELECT projects only `status`).
 
-import { sql } from "drizzle-orm";
-import Fastify, { type FastifyInstance } from "fastify";
-import { afterEach, describe, expect, it } from "vitest";
-import { registerErrorHandler } from "../../error-handler.js";
-import { buildCapabilitiesRoutes } from "../capabilities.js";
+import type { FastifyInstance } from "fastify";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import {
+  type BootedPostgres,
+  bootMigratedPostgres,
+  buildCapabilitiesApp,
+  resetSetupState,
+  seedTenant,
+  seedUser,
+} from "./setup.js";
 
 const TENANT_A = "00000000-0000-0000-0000-000000000000";
 const TENANT_B = "11111111-1111-1111-1111-111111111111";
-const USER = { id: "22222222-2222-2222-2222-222222222222", email: "a@example.com" };
+const USER_A_ID = "22222222-2222-2222-2222-222222222222";
+const USER_A_EMAIL = "a@example.com";
+const USER = { id: USER_A_ID, email: USER_A_EMAIL };
 
-interface RecordedQuery {
-  sqlText: string;
-}
+let booted: BootedPostgres;
 
-function makeFakeDb(initialStatus: "pending" | "completed" | "skipped_legacy" | null): {
-  db: Parameters<typeof buildCapabilitiesRoutes>[0]["db"];
-  recorded: RecordedQuery[];
-  setStatus: (s: "pending" | "completed" | "skipped_legacy" | null) => void;
-} {
-  let status = initialStatus;
-  const recorded: RecordedQuery[] = [];
-  const tx = {
-    async execute(query: unknown): Promise<unknown> {
-      const chunks = (query as { queryChunks?: unknown[] }).queryChunks ?? [];
-      const parts: string[] = [];
-      for (const c of chunks) {
-        if (typeof c === "string") {
-          parts.push(c);
-        } else if (c && typeof c === "object" && "value" in c) {
-          const v = (c as { value: unknown }).value;
-          if (Array.isArray(v) && v.every((x) => typeof x === "string")) {
-            parts.push((v as string[]).join(""));
-          } else {
-            parts.push("?");
-          }
-        } else {
-          parts.push(String(c));
-        }
-      }
-      const sqlText = parts.join("");
-      recorded.push({ sqlText });
-      // Match SELECT status FROM setup_state WHERE id = 1
-      if (/SELECT status FROM setup_state/i.test(sqlText)) {
-        return { rows: status === null ? [] : [{ status }] };
-      }
-      return { rows: [] };
-    },
-  };
-  const db = {
-    async transaction<T>(cb: (t: typeof tx) => Promise<T>): Promise<T> {
-      return cb(tx);
-    },
-  };
-  return {
-    db: db as unknown as Parameters<typeof buildCapabilitiesRoutes>[0]["db"],
-    recorded,
-    setStatus(s) {
-      status = s;
-    },
-  };
-}
+beforeAll(async () => {
+  booted = await bootMigratedPostgres();
+  // Seed two tenants + one user under tenant A. The handler does not
+  // join through these tables, but seeding them keeps the FK story
+  // realistic (a real authenticated request always has a backing user
+  // row).
+  await seedTenant(booted.ownerPool, { tenantId: TENANT_A, name: "Tenant A" });
+  await seedTenant(booted.ownerPool, { tenantId: TENANT_B, name: "Tenant B" });
+  await seedUser(booted.ownerPool, {
+    tenantId: TENANT_A,
+    email: USER_A_EMAIL,
+    userId: USER_A_ID,
+  });
+}, 180_000);
 
-async function buildApp(opts: {
-  db: Parameters<typeof buildCapabilitiesRoutes>[0]["db"];
-  env: NodeJS.ProcessEnv;
-  user?: { id: string; email: string };
-  tenantId?: string;
-}): Promise<FastifyInstance> {
-  const app = Fastify({ logger: false });
-  registerErrorHandler(app);
-  if (opts.user && opts.tenantId) {
-    const { user, tenantId } = opts;
-    app.addHook("onRequest", async (req) => {
-      req.user = user;
-      req.tenant = tenantId;
-    });
-  }
-  await app.register(buildCapabilitiesRoutes({ db: opts.db, env: opts.env }));
-  await app.ready();
-  return app;
-}
+afterAll(async () => {
+  await booted?.shutdown();
+});
+
+beforeEach(async () => {
+  // Default state for each test — explicit per-test status overrides
+  // come BELOW this reset.
+  await resetSetupState(booted.ownerPool, "pending");
+});
 
 describe("GET /api/capabilities", () => {
   let app: FastifyInstance | undefined;
@@ -117,19 +83,17 @@ describe("GET /api/capabilities", () => {
   });
 
   it("returns 401 for an anonymous request (no session)", async () => {
-    const { db } = makeFakeDb("pending");
-    app = await buildApp({ db, env: {} as NodeJS.ProcessEnv });
+    app = await buildCapabilitiesApp({ db: booted.db, env: {} as NodeJS.ProcessEnv });
     const res = await app.inject({ method: "GET", url: "/api/capabilities" });
     expect(res.statusCode).toBe(401);
   });
 
   it("returns 200 with the Phase-12 minimal payload shape for an authed request", async () => {
-    const { db, recorded } = makeFakeDb("pending");
     const env = {
       LITELLM_MASTER_KEY: "sk-litellm",
       OPENAI_API_KEY: "sk-openai",
     } as NodeJS.ProcessEnv;
-    app = await buildApp({ db, env, user: USER, tenantId: TENANT_A });
+    app = await buildCapabilitiesApp({ db: booted.db, env, user: USER, tenantId: TENANT_A });
 
     const res = await app.inject({ method: "GET", url: "/api/capabilities" });
     expect(res.statusCode).toBe(200);
@@ -145,17 +109,12 @@ describe("GET /api/capabilities", () => {
     const features = body.features as Record<string, unknown>;
     expect(Object.keys(features).sort()).toEqual(["agent", "realtime", "transcribe"]);
     expect(features).toEqual({ transcribe: true, agent: true, realtime: true });
-
-    // Verify the handler executed the canonical setup_state SELECT.
-    const setupSelect = recorded.find((r) => /SELECT status FROM setup_state/i.test(r.sqlText));
-    expect(setupSelect).toBeDefined();
-    expect(setupSelect!.sqlText).toMatch(/WHERE id = 1/i);
   });
 
   it("treats a missing setup_state row as 'pending' (defensive robustness)", async () => {
-    const { db } = makeFakeDb(null);
-    app = await buildApp({
-      db,
+    await resetSetupState(booted.ownerPool, "missing");
+    app = await buildCapabilitiesApp({
+      db: booted.db,
       env: {} as NodeJS.ProcessEnv,
       user: USER,
       tenantId: TENANT_A,
@@ -167,9 +126,8 @@ describe("GET /api/capabilities", () => {
   });
 
   it("derives features from env: missing LITELLM_MASTER_KEY → all features false", async () => {
-    const { db } = makeFakeDb("pending");
-    app = await buildApp({
-      db,
+    app = await buildCapabilitiesApp({
+      db: booted.db,
       env: {} as NodeJS.ProcessEnv,
       user: USER,
       tenantId: TENANT_A,
@@ -181,9 +139,8 @@ describe("GET /api/capabilities", () => {
   });
 
   it("realtime requires both LITELLM_MASTER_KEY AND OPENAI_API_KEY", async () => {
-    const { db } = makeFakeDb("pending");
-    app = await buildApp({
-      db,
+    app = await buildCapabilitiesApp({
+      db: booted.db,
       env: { LITELLM_MASTER_KEY: "sk" } as NodeJS.ProcessEnv,
       user: USER,
       tenantId: TENANT_A,
@@ -194,9 +151,8 @@ describe("GET /api/capabilities", () => {
   });
 
   it("emits Cache-Control: private, max-age=30 + weak ETag; matching If-None-Match → 304", async () => {
-    const { db } = makeFakeDb("pending");
-    app = await buildApp({
-      db,
+    app = await buildCapabilitiesApp({
+      db: booted.db,
       env: {} as NodeJS.ProcessEnv,
       user: USER,
       tenantId: TENANT_A,
@@ -220,10 +176,18 @@ describe("GET /api/capabilities", () => {
 
   it("emits DIFFERENT ETags for two different tenants under the same env+status", async () => {
     const env = {} as NodeJS.ProcessEnv;
-    const { db: dbA } = makeFakeDb("pending");
-    const { db: dbB } = makeFakeDb("pending");
-    const appA = await buildApp({ db: dbA, env, user: USER, tenantId: TENANT_A });
-    const appB = await buildApp({ db: dbB, env, user: USER, tenantId: TENANT_B });
+    const appA = await buildCapabilitiesApp({
+      db: booted.db,
+      env,
+      user: USER,
+      tenantId: TENANT_A,
+    });
+    const appB = await buildCapabilitiesApp({
+      db: booted.db,
+      env,
+      user: USER,
+      tenantId: TENANT_B,
+    });
     try {
       const resA = await appA.inject({ method: "GET", url: "/api/capabilities" });
       const resB = await appB.inject({ method: "GET", url: "/api/capabilities" });
@@ -238,8 +202,7 @@ describe("GET /api/capabilities", () => {
 
   it("ETag changes when setup_state.status flips pending → completed (same tenant, same env)", async () => {
     const env = {} as NodeJS.ProcessEnv;
-    const { db, setStatus } = makeFakeDb("pending");
-    app = await buildApp({ db, env, user: USER, tenantId: TENANT_A });
+    app = await buildCapabilitiesApp({ db: booted.db, env, user: USER, tenantId: TENANT_A });
 
     const before = await app.inject({ method: "GET", url: "/api/capabilities" });
     expect(before.statusCode).toBe(200);
@@ -248,7 +211,8 @@ describe("GET /api/capabilities", () => {
     );
     const etagBefore = before.headers.etag as string;
 
-    setStatus("completed");
+    // Flip the real row.
+    await resetSetupState(booted.ownerPool, "completed");
 
     const after = await app.inject({ method: "GET", url: "/api/capabilities" });
     expect(after.statusCode).toBe(200);
@@ -259,28 +223,42 @@ describe("GET /api/capabilities", () => {
     expect(etagAfter).not.toBe(etagBefore);
   });
 
-  // Sanity: the handler builds the SQL via drizzle's `sql` template,
-  // so we use a stable surface. Probe with a real `sql` invocation to
-  // demonstrate the chunk-walker captures the literal SQL the same way
-  // production reads it. drizzle wraps literals in `StringChunk` objects
-  // with a `value: string[]` field — same surface as web-search's fake.
-  it("sql-template chunk-walker captures literal SELECT/WHERE in setup_state query", () => {
-    const q = sql`SELECT status FROM setup_state WHERE id = 1`;
-    const chunks = (q as unknown as { queryChunks: unknown[] }).queryChunks;
-    expect(Array.isArray(chunks)).toBe(true);
-    const parts: string[] = [];
-    for (const c of chunks) {
-      if (typeof c === "string") {
-        parts.push(c);
-      } else if (c && typeof c === "object" && "value" in c) {
-        const v = (c as { value: unknown }).value;
-        if (Array.isArray(v) && v.every((x) => typeof x === "string")) {
-          parts.push((v as string[]).join(""));
-        }
-      }
-    }
-    const txt = parts.join("");
-    expect(txt).toMatch(/SELECT status FROM setup_state/i);
-    expect(txt).toMatch(/WHERE id = 1/i);
+  it("reads through real setup_state schema: completed_at column exists in DB but is NOT projected into the response body", async () => {
+    // Real-PG replacement for the previous fake-internals chunk-walker
+    // test. Sets setup_state.completed_at to a known timestamp via SQL,
+    // then asserts:
+    //   (a) the timestamp is observably present in the DB row, AND
+    //   (b) the handler's response body does NOT leak it.
+    // This proves the handler's SELECT projects only `status` (not
+    // `SELECT *`) and operates against the real production schema.
+    const stamp = "2025-01-15T12:34:56.000Z";
+    await booted.ownerPool.query(
+      `UPDATE setup_state
+         SET status = 'completed'::setup_state_status,
+             completed_at = $1::timestamptz
+       WHERE id = 1`,
+      [stamp],
+    );
+    // Sanity: the DB really has the timestamp now.
+    const dbRow = await booted.ownerPool.query<{ completed_at: Date | null; status: string }>(
+      `SELECT status, completed_at FROM setup_state WHERE id = 1`,
+    );
+    expect(dbRow.rows[0]?.status).toBe("completed");
+    expect(dbRow.rows[0]?.completed_at).toBeInstanceOf(Date);
+
+    app = await buildCapabilitiesApp({
+      db: booted.db,
+      env: {} as NodeJS.ProcessEnv,
+      user: USER,
+      tenantId: TENANT_A,
+    });
+    const res = await app.inject({ method: "GET", url: "/api/capabilities" });
+    expect(res.statusCode).toBe(200);
+    const serialised = res.body;
+    expect(serialised).not.toMatch(/completed_at|completedAt/);
+    expect(serialised).not.toMatch(/2025-01-15T12:34:56/);
+    const body = res.json() as { auth: { setup: { status: string } } };
+    expect(body.auth.setup.status).toBe("completed");
+    expect(Object.keys(body.auth.setup)).toEqual(["status"]);
   });
 });

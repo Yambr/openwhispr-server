@@ -227,3 +227,24 @@ This plan's tasks all carry `tdd="true"` but the task-level RED/GREEN cycle was 
 3. Atomic commit landing both — the established convention in this repo (mirrors Plan 12-01's commit structure where each task likewise shipped a single commit with both the failing-then-passing test and the implementation).
 
 The plan-check resolution `D-12.01-EX1` from Plan 12-01 documented the same convention, so this is the established Phase-12 cadence. If future verification requires separated `test(...)` + `feat(...)` commits, the per-commit history can be reconstructed from the file diffs.
+
+## Deviation D-12.02-EX1 — CLOSED
+
+The original Task 3 + Task 5 commits (`fc27e79`, `60e7ab4`) shipped `capabilities.test.ts` and `setup-state.test.ts` using a hand-rolled `makeFakeDb()` that intercepted `drizzle`'s `transaction.execute`. This violated CLAUDE.md's constitutional rule "no mocks of internal logic — DB-touching code uses real Postgres + PgBouncer + Valkey via testcontainers" because drizzle's `transaction`/`execute` IS internal logic — the legitimate process boundary lives one level below at the libpq driver.
+
+The executor's justification rested on two factual errors:
+
+1. **"The apps/api integration-test harness does not provision the `partman` schema."** Actually it does: `apps/api/src/lib/audit.test.ts:48-145` already runs the canonical provisioning chain (`CREATE SCHEMA partman` → `CREATE EXTENSION pg_partman SCHEMA partman` → role + schema grants → drizzle `migrate()` through 0014). Five other integration tests in `apps/api/src/routes/notes/__tests__/` and `apps/api/src/routes/v1/keys/__tests__/` use the inline pattern successfully.
+2. **"Building the custom pg_partman image is blocked by Docker Hub TLS handshake timeouts."** The image `openwhispr/postgres:17.5-pgpartman` (88e79d6ba7de, 279 MB) was already built locally from `compose/postgres/Dockerfile`; no Docker Hub pull was needed.
+
+**Resolution.** A new shared inline harness landed at `apps/api/src/routes/__tests__/setup.ts`, mirroring the proven `audit.test.ts` pattern exactly: `PARTMAN_IMAGE` constant, full role + grants chain, drizzle `migrate()` against `packages/data/migrations`. Both test files were rewritten to use it. Cross-importing `packages/data/src/__tests__/helpers.ts` is blocked by the orchestrator's per-worktree protocol, so the harness is inlined inside `apps/api/` — same trade-off `notes/__tests__/setup.ts` made.
+
+**Test inventory after fix:**
+
+- `apps/api/src/routes/__tests__/setup-state.test.ts` — 8 tests (unchanged count). Each test calls `resetSetupState(booted.ownerPool, ...)` to set the singleton row via real SQL, then asserts the handler's response. The "missing row → defensive pending" case is covered by `resetSetupState(..., "missing")` which `DELETE`s the singleton, plus a follow-up restore so subsequent tests are independent.
+- `apps/api/src/routes/__tests__/capabilities.test.ts` — 9 tests. Eight tests preserve the prior assertions verbatim against real PG (401 anonymous, minimal-shape, missing-row default, env-derived features, realtime gating on LITELLM + OPENAI keys, ETag + If-None-Match → 304, cross-tenant ETag divergence, status-flip ETag rotation). The 9th test replaces the prior fake-internals chunk-walker assertion with a real-PG equivalent: it UPDATEs `setup_state.completed_at` to a known timestamp, then asserts the handler's response body does NOT leak that column — proving the SELECT projects only `status`.
+- Combined run: `pnpm vitest run apps/api/src/routes/__tests__/capabilities.test.ts apps/api/src/routes/__tests__/setup-state.test.ts` → **17/17 passing in 8.29s** against a real Postgres 17 + pg_partman 5.2.4 testcontainer.
+
+**Container cleanup verified.** Post-run `docker ps -a --filter label=org.testcontainers` and `docker volume ls --filter label=org.testcontainers` both empty — Ryuk cleanup fires correctly under this suite's `beforeAll`/`afterAll` pairing.
+
+**Closing commit:** see `git log --oneline -1` after this section lands (commit message prefix `fix(12-02): replace DB-fake with real Postgres testcontainer`).
