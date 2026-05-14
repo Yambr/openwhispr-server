@@ -1,10 +1,17 @@
 # ADR-0004: Apache-2.0 licensing for OpenWhispr Server
 
-**Status:** accepted
+**Status:** superseded by ADR-0013 (2026-05-15)
 
 **Date:** 2026-05-13
 
 **Phase:** 10 — i18n, Docs & OSS Housekeeping
+
+> **Superseded note (2026-05-15):** As of Phase 15 / ADR-0013, OpenWhispr
+> Server is licensed under FSL-1.1-ALv2 with a delayed Apache-2.0 future
+> grant. This ADR is preserved as historical record; the decision it
+> captures applied between Phase 10 and Phase 15. See
+> [ADR-0013](./0013-fsl-relicense.md) for the relicense rationale and
+> recovery runbook.
 
 ## Context
 
