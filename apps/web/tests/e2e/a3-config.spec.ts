@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: FSL-1.1-ALv2
 // Phase 07.1 / Plan 12 — A3 Config view Playwright spec.
 //
 // Validates the four UI states + axe-core clean for the admin Config view.

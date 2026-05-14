@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: FSL-1.1-ALv2
 // Phase 10 / Plan 02 — Locale negotiation pipeline (RED before GREEN).
 //
 // Exercises the Edge middleware locale-resolution logic directly against

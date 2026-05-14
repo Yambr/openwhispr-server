@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: FSL-1.1-ALv2
 // Phase 07.1 / Plan 05 — Playwright spec for the Edge middleware gate.
 //
 // Asserts the three behaviors that distinguish our cookie-presence gate

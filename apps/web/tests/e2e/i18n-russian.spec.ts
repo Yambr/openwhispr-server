@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: FSL-1.1-ALv2
 // Phase 10 / Plan 02 — Russian rendering + hydration smoke (RED before GREEN).
 //
 // Validates the locale-negotiation chain end-to-end against the real

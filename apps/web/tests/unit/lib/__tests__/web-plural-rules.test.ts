@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: FSL-1.1-ALv2
 // Phase 10 / Plan 02 — Web ICU plural-rules parity (RED before GREEN).
 //
 // Instantiates a client-style i18next instance with the `i18next-icu`

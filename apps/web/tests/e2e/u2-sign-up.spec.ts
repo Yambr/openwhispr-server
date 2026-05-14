@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: FSL-1.1-ALv2
 // Phase 07.1 / Plan 07 — U2 Sign-up Playwright spec.
 import { expect, test } from "@playwright/test";
 import { FIXTURE_PASSWORD, fixtureEmail } from "./fixtures/auth.js";
