@@ -27,6 +27,7 @@ import {
 } from "./auth-callback.js";
 import { type AuthProvidersDeps, buildAuthProvidersRoutes } from "./auth-providers.js";
 import { type BetterAuthHandlerDeps, buildBetterAuthHandlerRoutes } from "./better-auth-handler.js";
+import { buildCapabilitiesRoutes, type CapabilitiesDeps } from "./capabilities.js";
 import { buildCheckUserRoutes, type CheckUserDeps } from "./check-user.js";
 import {
   buildConversationsCreateRoutes,
@@ -201,9 +202,11 @@ export function buildAllRoutes(deps: AllRoutesDeps): readonly RoutePlugin[] {
   // by the admin-onboarding wizard (Plan 12-03) and the auth screens.
   // Both register UNCONDITIONALLY: no DB dep, env-derived, public.
   const authProvidersDeps: AuthProvidersDeps = {};
+  const capabilitiesDeps: CapabilitiesDeps = { db: deps.db };
   const plugins: RoutePlugin[] = [
     buildBetterAuthHandlerRoutes(betterAuthHandlerDeps),
     buildAuthProvidersRoutes(authProvidersDeps),
+    buildCapabilitiesRoutes(capabilitiesDeps),
     buildCheckUserRoutes(checkUserDeps),
     buildVerificationStatusRoutes(verificationDeps),
     buildDeleteAccountRoutes(deleteAccountDeps),
