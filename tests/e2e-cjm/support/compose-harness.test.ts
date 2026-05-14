@@ -1,0 +1,298 @@
+// SPDX-License-Identifier: Apache-2.0
+// Phase 14 / Plan 14-07 / Task 1 — unit tests for the bootStack() extension.
+//
+// Verifies the two new opts wired by this plan:
+//
+//   1. `envOverrides?: Record<string, string | undefined>` — when present,
+//      bootStack() writes a temp env file under
+//      `tests/e2e-cjm/.scratch/<scenario>.env` and invokes `docker compose
+//      --env-file <temp> -f … up`. Undefined values are written as bare
+//      `KEY=` (explicit unset). The harness does NOT mutate `process.env`.
+//
+//   2. `expectExit?: number` — when set, bootStack() reduces the readiness
+//      budget to a short window (15s), invokes `compose up -d` WITHOUT the
+//      `--wait` flag, polls the api container exit code via
+//      `compose ps --format json --status exited`, and on a matching exit
+//      collects stderr via `compose logs api --no-color --tail=200`.
+//      The returned shape extends with `{ stderr, exitCode }`.
+//
+// CLAUDE.md anti-mock rule: we mock at the PROCESS BOUNDARY only — the
+// injected `spawnFn` simulates the `docker compose` CLI surface. The
+// harness's own argv-construction and env-file authorship are real
+// (filesystem writes are real; tmp dir is cleaned up after each test).
+
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+import { bootStack, tearStack } from "./compose-harness.js";
+
+// Lightweight EventEmitter-shaped child mock. We model the subset bootStack
+// touches: `on('close'|'error', cb)` and pipe-mode `stdout` / `stderr`
+// streams that emit a fixed buffer immediately. The mock invokes `close`
+// asynchronously so the harness's Promise plumbing fires deterministically.
+interface FakeChildSpec {
+  exitCode?: number;
+  stdout?: string;
+  stderr?: string;
+}
+
+function makeFakeChild(spec: FakeChildSpec) {
+  type Handler = (...args: unknown[]) => void;
+  const closeHandlers: Handler[] = [];
+  const errorHandlers: Handler[] = [];
+  const stdoutListeners: Handler[] = [];
+  const child = {
+    on(event: string, cb: Handler) {
+      if (event === "close") closeHandlers.push(cb);
+      else if (event === "error") errorHandlers.push(cb);
+      return child;
+    },
+    stdout: {
+      on(event: string, cb: Handler) {
+        if (event === "data") stdoutListeners.push(cb);
+        return child.stdout;
+      },
+    },
+    stderr: {
+      on(_event: string, _cb: Handler) {
+        return child.stderr;
+      },
+    },
+  };
+  // Drive callbacks on next tick.
+  queueMicrotask(() => {
+    if (spec.stdout) {
+      for (const l of stdoutListeners) l(Buffer.from(spec.stdout));
+    }
+    for (const cb of closeHandlers) cb(spec.exitCode ?? 0);
+  });
+  return child;
+}
+
+interface SpawnCall {
+  cmd: string;
+  args: string[];
+  // The full argv as one string for cheap substring assertions.
+  joined: string;
+}
+
+function makeSpawnRecorder(router: (cmd: string, args: string[]) => FakeChildSpec): {
+  spawnFn: (cmd: string, args: string[]) => ReturnType<typeof makeFakeChild>;
+  calls: SpawnCall[];
+} {
+  const calls: SpawnCall[] = [];
+  const spawnFn = (cmd: string, args: string[]) => {
+    calls.push({ cmd, args, joined: [cmd, ...args].join(" ") });
+    return makeFakeChild(router(cmd, args));
+  };
+  return { spawnFn: spawnFn as unknown as typeof spawnFn, calls };
+}
+
+// Stub waitForReadiness for happy-path branches (resolves instantly).
+const waitOk = vi.fn(async () => ({
+  attempts: 1,
+  elapsedMs: 1,
+  body: { status: "ok", migrations_completed: true },
+}));
+
+// Scratch dir for envOverrides temp files. The harness writes into
+// `tests/e2e-cjm/.scratch/` relative to REPO_ROOT, but we can override the
+// scratch dir per-test via the `scratchDir` opt to keep these tests
+// hermetic.
+let scratchDir: string;
+
+beforeEach(() => {
+  scratchDir = mkdtempSync(join(tmpdir(), "cjm-harness-"));
+  waitOk.mockClear();
+});
+
+afterEach(() => {
+  rmSync(scratchDir, { recursive: true, force: true });
+});
+
+describe("bootStack — envOverrides", () => {
+  it("writes a temp env file and passes --env-file to compose up", async () => {
+    const router = (cmd: string, args: string[]): FakeChildSpec => {
+      // `ps -q` for openwhispr-stack detection → no running stack.
+      if (args.includes("ps") && args.includes("-q")) return { stdout: "" };
+      return { exitCode: 0 };
+    };
+    const { spawnFn, calls } = makeSpawnRecorder(router);
+
+    await bootStack({
+      composeFiles: ["docker-compose.yml"],
+      envOverrides: {
+        S3_ENDPOINT: "https://s3.corp.example.com",
+        OTEL_EXPORTER_OTLP_ENDPOINT: undefined, // explicit unset
+        DATABASE_URL: "postgresql://app@postgres/app",
+      },
+      scratchDir,
+      scenarioId: "byok-storage-1",
+      spawnFn,
+      waitForReadinessFn: waitOk,
+      inheritStdio: false,
+      skipUserStackStop: true,
+    });
+
+    const upCall = calls.find((c) => c.joined.includes(" up "));
+    expect(upCall, "expected an `up` call").toBeTruthy();
+    // --env-file must precede `up`.
+    expect(upCall?.joined).toMatch(/--env-file\s+\S+\.env\s+/);
+
+    // The temp file exists and contains the merged overrides.
+    const envPath = upCall?.args[upCall.args.indexOf("--env-file") + 1] as string;
+    const contents = readFileSync(envPath, "utf8");
+    expect(contents).toMatch(/^S3_ENDPOINT=https:\/\/s3\.corp\.example\.com$/m);
+    // Undefined overrides become `KEY=` (explicit unset of an inherited var).
+    expect(contents).toMatch(/^OTEL_EXPORTER_OTLP_ENDPOINT=$/m);
+    expect(contents).toMatch(/^DATABASE_URL=postgresql:\/\/app@postgres\/app$/m);
+  });
+
+  it("does NOT mutate process.env when applying envOverrides", async () => {
+    const router = (_cmd: string, args: string[]): FakeChildSpec => {
+      if (args.includes("ps") && args.includes("-q")) return { stdout: "" };
+      return { exitCode: 0 };
+    };
+    const { spawnFn } = makeSpawnRecorder(router);
+    const before = process.env.S3_ENDPOINT;
+
+    await bootStack({
+      composeFiles: ["docker-compose.yml"],
+      envOverrides: { S3_ENDPOINT: "https://forbidden-mutation.example.com" },
+      scratchDir,
+      scenarioId: "no-mutation",
+      spawnFn,
+      waitForReadinessFn: waitOk,
+      skipUserStackStop: true,
+      inheritStdio: false,
+    });
+
+    expect(process.env.S3_ENDPOINT).toBe(before);
+  });
+});
+
+describe("bootStack — expectExit + stderr capture", () => {
+  it("returns exitCode and stderr when api container exits non-zero", async () => {
+    const fatalLine = JSON.stringify({
+      level: 60,
+      event: "byok.required",
+      code: "BYOK_STORAGE_REQUIRED",
+      overlay: "storage",
+      missing: ["S3_ENDPOINT"],
+      hint: "Set the missing env(s) OR enable the overlay (…).",
+      msg: "BYOK env missing for disabled overlay; refusing to start",
+    });
+    const router = (_cmd: string, args: string[]): FakeChildSpec => {
+      if (
+        args.includes("ps") &&
+        args.includes("-q") &&
+        args.includes("-p") &&
+        args.includes("openwhispr")
+      )
+        return { stdout: "" };
+      // For the exit-status poll: `ps` (no -q) reports an exited api.
+      if (
+        args.includes("ps") &&
+        args.includes("--format") &&
+        args.some((a) => a.startsWith("api"))
+      ) {
+        return { stdout: JSON.stringify({ Service: "api", State: "exited", ExitCode: 1 }) };
+      }
+      if (args.includes("logs") && args.includes("api")) {
+        return { stdout: `${fatalLine}\n` };
+      }
+      return { exitCode: 0 };
+    };
+    const { spawnFn } = makeSpawnRecorder(router);
+
+    const result = await bootStack({
+      composeFiles: ["docker-compose.yml"],
+      envOverrides: { S3_ENDPOINT: undefined },
+      expectExit: 1,
+      scratchDir,
+      scenarioId: "expect-exit",
+      spawnFn,
+      waitForReadinessFn: waitOk,
+      skipUserStackStop: true,
+      inheritStdio: false,
+      // Short polling for the test path.
+      expectExitTimeoutMs: 500,
+      expectExitIntervalMs: 25,
+    });
+
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr).toBeDefined();
+    expect(result.stderr).toContain('"event":"byok.required"');
+    expect(result.stderr).toContain('"code":"BYOK_STORAGE_REQUIRED"');
+    // The harness MUST NOT have called waitForReadiness when expectExit is set.
+    expect(waitOk).not.toHaveBeenCalled();
+  });
+
+  it("returns null exitCode and times out when api never exits but expectExit is set", async () => {
+    const router = (_cmd: string, args: string[]): FakeChildSpec => {
+      if (args.includes("ps") && args.includes("-q")) return { stdout: "" };
+      // exit-status poll always reports running.
+      if (args.includes("ps") && args.includes("--format")) {
+        return { stdout: JSON.stringify({ Service: "api", State: "running", ExitCode: 0 }) };
+      }
+      if (args.includes("logs")) return { stdout: "no fatal yet" };
+      return { exitCode: 0 };
+    };
+    const { spawnFn } = makeSpawnRecorder(router);
+
+    const result = await bootStack({
+      composeFiles: ["docker-compose.yml"],
+      expectExit: 1,
+      scratchDir,
+      scenarioId: "expect-exit-timeout",
+      spawnFn,
+      waitForReadinessFn: waitOk,
+      skipUserStackStop: true,
+      inheritStdio: false,
+      expectExitTimeoutMs: 150,
+      expectExitIntervalMs: 25,
+    });
+
+    expect(result.exitCode).toBeNull();
+    // Even on timeout, harness collects whatever stderr/logs exist so tests
+    // can diagnose stuck boots.
+    expect(typeof result.stderr).toBe("string");
+  });
+});
+
+describe("tearStack — temp env file cleanup", () => {
+  it("removes the temp env file authored during bootStack", async () => {
+    const router = (_cmd: string, args: string[]): FakeChildSpec => {
+      if (args.includes("ps") && args.includes("-q")) return { stdout: "" };
+      return { exitCode: 0 };
+    };
+    const { spawnFn, calls } = makeSpawnRecorder(router);
+
+    const boot = await bootStack({
+      composeFiles: ["docker-compose.yml"],
+      envOverrides: { S3_ENDPOINT: "https://x.example.com" },
+      scratchDir,
+      scenarioId: "cleanup",
+      spawnFn,
+      waitForReadinessFn: waitOk,
+      skipUserStackStop: true,
+      inheritStdio: false,
+    });
+
+    const upCall = calls.find((c) => c.joined.includes(" up "));
+    const envPath = upCall?.args[upCall.args.indexOf("--env-file") + 1] as string;
+    expect(readFileSync(envPath, "utf8").length).toBeGreaterThan(0);
+
+    await tearStack({
+      composeFiles: ["docker-compose.yml"],
+      spawnFn,
+      skipUserStackRestart: true,
+      inheritStdio: false,
+      envFilePath: boot.envFilePath,
+    });
+
+    expect(() => readFileSync(envPath, "utf8")).toThrow();
+  });
+});
