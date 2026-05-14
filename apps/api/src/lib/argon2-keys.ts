@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: FSL-1.1-ALv2
 // Phase 05 / Plan 09 / Task 1 — Argon2id helper for API key issuance and
 // verification (WIRE-27, D-29).
 //
@@ -24,8 +24,9 @@
 // Per Pitfall #5, @node-rs/argon2 dispatches hash/verify work onto the
 // NAPI tokio threadpool, so 100 concurrent verify calls do NOT block
 // Fastify's main thread (unlike the pure-JS `argon2` package).
-import { Algorithm, hash, verify } from "@node-rs/argon2";
+
 import { randomBytes } from "node:crypto";
+import { Algorithm, hash, verify } from "@node-rs/argon2";
 
 /**
  * OWASP 2026 password-storage Argon2id parameters. Module-level constant
@@ -78,10 +79,7 @@ export async function hashKey(clearText: string): Promise<string> {
  * upgrades. Per T-PARAM-DOWNGRADE we accept the format string as
  * authoritative; the constant-time `verify` returns false on mismatch.
  */
-export async function verifyKey(
-  clearText: string,
-  storedHash: string,
-): Promise<boolean> {
+export async function verifyKey(clearText: string, storedHash: string): Promise<boolean> {
   return verify(storedHash, clearText);
 }
 

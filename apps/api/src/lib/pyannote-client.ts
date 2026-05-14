@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: FSL-1.1-ALv2
 // Phase 03 / Plan 06 / Task 1 — pyannote.ai REST client (D-07 REVISED).
 //
 // Thin undici wrapper over the 4-step pyannote.ai async API:
@@ -26,7 +26,7 @@
 //   - PyannoteUpstreamError (presigned PUT non-2xx, etc.) → Route surfaces
 //                                                            502.
 
-import { request, type Dispatcher } from "undici";
+import { type Dispatcher, request } from "undici";
 
 export class MissingPyannoteKeyError extends Error {
   override name = "MissingPyannoteKeyError";
@@ -39,14 +39,20 @@ export class MissingPyannoteKeyError extends Error {
 
 export class PyannoteAuthError extends Error {
   override name = "PyannoteAuthError";
-  constructor(public readonly status: number, message?: string) {
+  constructor(
+    public readonly status: number,
+    message?: string,
+  ) {
     super(message ?? `pyannote auth failed (${status})`);
   }
 }
 
 export class PyannoteUnavailableError extends Error {
   override name = "PyannoteUnavailableError";
-  constructor(public readonly status: number, message?: string) {
+  constructor(
+    public readonly status: number,
+    message?: string,
+  ) {
     super(message ?? `pyannote unavailable (${status})`);
   }
 }
@@ -81,12 +87,7 @@ export class PyannoteUpstreamError extends Error {
   }
 }
 
-export type PyannoteJobStatus =
-  | "created"
-  | "running"
-  | "succeeded"
-  | "failed"
-  | "cancelled";
+export type PyannoteJobStatus = "created" | "running" | "succeeded" | "failed" | "cancelled";
 
 export interface PyannoteSegment {
   start: number;
@@ -128,9 +129,7 @@ export interface CreatePyannoteClientOptions {
 
 const DEFAULT_BASE_URL = "https://api.pyannote.ai";
 
-export function createPyannoteClient(
-  opts: CreatePyannoteClientOptions = {},
-): PyannoteClient {
+export function createPyannoteClient(opts: CreatePyannoteClientOptions = {}): PyannoteClient {
   const apiKey = opts.apiKey ?? process.env.PYANNOTE_API_KEY;
   if (!apiKey || apiKey.length === 0) {
     throw new MissingPyannoteKeyError();
@@ -258,10 +257,7 @@ export function createPyannoteClient(
       if (opts.dispatcher) {
         (reqOpts as { dispatcher?: Dispatcher }).dispatcher = opts.dispatcher;
       }
-      const res = await doRequest(
-        `${baseUrl}/v1/jobs/${encodeURIComponent(jobId)}`,
-        reqOpts,
-      );
+      const res = await doRequest(`${baseUrl}/v1/jobs/${encodeURIComponent(jobId)}`, reqOpts);
       if (res.statusCode >= 300) {
         const text = await res.body.text();
         classify(res.statusCode, text);

@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: FSL-1.1-ALv2
 // Phase 05 / Plan 05 / Task 1 — Client-id upsert helper (D-24, Pattern 1).
 //
 // Centralizes the "INSERT OR RETURN EXISTING" semantics for every CRUD
@@ -36,8 +36,9 @@
 //   gates both the INSERT and the fallback SELECT. The helper does
 //   NOT set the GUC itself — that would double-set it inside a nested
 //   transaction and silently misbehave under PgBouncer transaction-mode.
-import { sql, type SQL } from "drizzle-orm";
+
 import type { ExecutableTx } from "@openwhispr/data";
+import { type SQL, sql } from "drizzle-orm";
 
 export interface UpsertParams {
   /** Postgres table name (untrusted-input-free; caller passes a literal). */
@@ -109,9 +110,7 @@ export async function createOrReturnExisting<T extends Record<string, unknown>>(
     // avoid that (e.g. desktop client always sends a client id today).
     const insert = sql.raw(`INSERT INTO ${tbl} (${colList}) VALUES `);
     const tail = sql.raw(` RETURNING *`);
-    const result = (await tx.execute(
-      sql`${insert}(${valuesSql})${tail}`,
-    )) as { rows?: T[] };
+    const result = (await tx.execute(sql`${insert}(${valuesSql})${tail}`)) as { rows?: T[] };
     const row = result.rows?.[0];
     if (!row) {
       throw new Error("client-id-upsert: INSERT RETURNING produced no row");
@@ -128,18 +127,16 @@ export async function createOrReturnExisting<T extends Record<string, unknown>>(
   const conflictTail = sql.raw(
     ` ON CONFLICT ("tenant_id", "user_id", ${cidCol}) WHERE ${cidCol} IS NOT NULL DO NOTHING RETURNING *`,
   );
-  const insertResult = (await tx.execute(
-    sql`${insertHead}(${valuesSql})${conflictTail}`,
-  )) as { rows?: T[] };
+  const insertResult = (await tx.execute(sql`${insertHead}(${valuesSql})${conflictTail}`)) as {
+    rows?: T[];
+  };
   const insertedRow = insertResult.rows?.[0];
   if (insertedRow) {
     return { row: insertedRow, created: true };
   }
 
   // Conflict path — SELECT existing row.
-  const selectHead = sql.raw(
-    `SELECT * FROM ${tbl} WHERE "tenant_id" = `,
-  );
+  const selectHead = sql.raw(`SELECT * FROM ${tbl} WHERE "tenant_id" = `);
   const selectMid = sql.raw(`::uuid AND "user_id" = `);
   const selectMid2 = sql.raw(`::uuid AND ${cidCol} = `);
   const selectTail = sql.raw(` LIMIT 1`);

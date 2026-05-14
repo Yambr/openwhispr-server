@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: FSL-1.1-ALv2
 // Phase 05 / Plan 03 — Yandex Search API v2 LIVE adapter.
 //
 // Replaces the wire-shape stub shipped in commit f7904a8. Implements the
@@ -64,7 +64,7 @@ const REGION_MAP: Record<string, RegionTuple> = {
 };
 
 function mapRegion(input: string | undefined): RegionTuple {
-  if (input && Object.prototype.hasOwnProperty.call(REGION_MAP, input)) {
+  if (input && Object.hasOwn(REGION_MAP, input)) {
     return REGION_MAP[input]!;
   }
   return REGION_MAP.ru!;
@@ -143,12 +143,12 @@ function findOpen(s: string, tag: string, from: number): OpenPos | -1 {
     const next = s.charCodeAt(found + prefix.length);
     // valid open if the next char terminates the tag name (space, >, /, or newline)
     if (
-      next === 0x20 /* space */
-      || next === 0x3e /* > */
-      || next === 0x2f /* / */
-      || next === 0x09 /* tab */
-      || next === 0x0a /* \n */
-      || next === 0x0d /* \r */
+      next === 0x20 /* space */ ||
+      next === 0x3e /* > */ ||
+      next === 0x2f /* / */ ||
+      next === 0x09 /* tab */ ||
+      next === 0x0a /* \n */ ||
+      next === 0x0d /* \r */
     ) {
       const gt = s.indexOf(">", found + prefix.length);
       if (gt === -1) return -1;
@@ -210,7 +210,7 @@ function extractPassages(s: string): string[] {
 function stripHlword(s: string): string {
   if (s.length === 0) return s;
   // close tags first
-  let out = s.split("</hlword>").join("");
+  const out = s.split("</hlword>").join("");
   // open tags (may carry attributes, e.g. <hlword priority="phrase">)
   let result = "";
   let i = 0;
@@ -243,10 +243,7 @@ export class YandexAdapter implements WebSearchProvider {
     const key = process.env.YANDEX_SEARCH_API_KEY;
     const folder = readFolderId();
     return (
-      typeof key === "string"
-      && key.length > 0
-      && typeof folder === "string"
-      && folder.length > 0
+      typeof key === "string" && key.length > 0 && typeof folder === "string" && folder.length > 0
     );
   }
 

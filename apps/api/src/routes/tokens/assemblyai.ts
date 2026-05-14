@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: FSL-1.1-ALv2
 // Phase 04 / Plan 03 / Task 2 — POST /api/streaming-token (AssemblyAI v3).
 //
 // Source of truth: 04-RESEARCH.md §2.5 (AssemblyAI block lines 488–503)

@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: FSL-1.1-ALv2
 // Phase 2 / Plan 03 / Task 3 — `GET /api/auth/verification-status`.
 //
 // Cookie-only per BACKEND_SPEC.md (NON-NEGOTIABLE wire contract — see
@@ -14,16 +14,17 @@
 //
 // Rate limit (D-28): 30/min keyed on (ip, email) — the desktop polls
 // during onboarding; busy fixtures must not DoS each other.
-import type { FastifyInstance } from "fastify";
-import { sql } from "drizzle-orm";
+
 import {
   VerificationStatusQuery,
   VerificationStatusResponse,
 } from "@openwhispr/contract-tests/schemas";
-import { withTenant, type TransactionalDb, type ExecutableTx } from "@openwhispr/data";
+import { type ExecutableTx, type TransactionalDb, withTenant } from "@openwhispr/data";
+import { sql } from "drizzle-orm";
+import type { FastifyInstance } from "fastify";
+import { AuthError } from "../errors.js";
 import type { AuthLike } from "../middleware/dual-auth.js";
 import { buildRequireCookieOnly } from "../middleware/require-cookie-only.js";
-import { AuthError } from "../errors.js";
 
 export interface VerificationStatusDeps {
   db: TransactionalDb<ExecutableTx>;

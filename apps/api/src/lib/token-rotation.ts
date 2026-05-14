@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: FSL-1.1-ALv2
 // Phase 02.12 — adopt Better Auth v1.6.9's plain-text session.token model.
 // Phase 02 Plan 01's hashToken (SHA-256) helper + bytea storage are removed
 // in favor of plain-text bearer storage on `sessions.token` and

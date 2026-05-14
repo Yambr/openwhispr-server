@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: FSL-1.1-ALv2
 // Phase 12 / Plan 12-02 / Task 5 — Public GET /api/setup-state.
 //
 // Boolean-shaped status endpoint consumed by the unauthenticated

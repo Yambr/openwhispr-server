@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: FSL-1.1-ALv2
 // Phase 2 / Plan 03 / Task 2 — `requireCookieOnly` (BACKEND_SPEC.md
 // §verification-status, §delete-account).
 //
@@ -48,9 +48,7 @@ export function buildRequireCookieOnly(opts: RequireCookieOnlyOptions) {
  * unchanged so Better Auth's cookie validator can see the request
  * context.
  */
-export function cookieOnlyHeaders(
-  src: Record<string, string | string[] | undefined>,
-): Headers {
+export function cookieOnlyHeaders(src: Record<string, string | string[] | undefined>): Headers {
   const headers = new Headers();
   for (const [k, v] of Object.entries(src)) {
     // Cookie-only contract: drop authorization entirely.

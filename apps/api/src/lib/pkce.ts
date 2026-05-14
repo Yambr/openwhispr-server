@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: FSL-1.1-ALv2
 // Phase 2 / Plan 05 / Task 1 — PKCE (RFC 7636) helpers for the OAuth shim.
 //
 // Two pure functions, both crypto-grade. Used by `desktop-signin.ts` to
@@ -42,8 +42,5 @@ export function generatePkceVerifier(): string {
  * the verifier alphabet is `[A-Za-z0-9_-]`).
  */
 export function pkceChallengeS256(verifier: string): string {
-  return createHash("sha256")
-    .update(verifier)
-    .digest("base64url")
-    .replace(/=+$/, "");
+  return createHash("sha256").update(verifier).digest("base64url").replace(/=+$/, "");
 }

@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: FSL-1.1-ALv2
 // Phase 12 / Plan 12-03 / Task 1 — POST /api/setup/admin.
 //
 // Idempotent atomic-UPDATE-claim handler that bootstraps the first

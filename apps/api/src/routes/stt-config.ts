@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: FSL-1.1-ALv2
 // Phase 05 / Plan 04 / Task 2 — GET /api/stt-config (WIRE-11).
 //
 // Wire shape: BACKEND_SPEC.md:438.

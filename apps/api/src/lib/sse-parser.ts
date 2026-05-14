@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: FSL-1.1-ALv2
 // Phase 04 / Plan 02 / Task 2 — Pure SSE → BACKEND_SPEC NDJSON translator.
 //
 // Consumes a `ReadableStream<Uint8Array>` of OpenAI Chat Completions SSE
@@ -87,9 +87,7 @@ function* translateChunk(
   }
 }
 
-export async function* sseToNdjson(
-  input: SseToNdjsonInput,
-): AsyncGenerator<StreamChunk> {
+export async function* sseToNdjson(input: SseToNdjsonInput): AsyncGenerator<StreamChunk> {
   const reader = input.body.getReader();
   const decoder = new TextDecoder("utf-8");
   let buf = "";
@@ -101,13 +99,12 @@ export async function* sseToNdjson(
       if (done) break;
       buf += decoder.decode(value, { stream: true });
 
-      let sep: number;
-      while ((sep = buf.indexOf("\n\n")) !== -1) {
+      let sep: number = buf.indexOf("\n\n");
+      while (sep !== -1) {
         const frame = buf.slice(0, sep);
         buf = buf.slice(sep + 2);
-        const dataLine = frame
-          .split("\n")
-          .find((l) => l.startsWith("data: "));
+        sep = buf.indexOf("\n\n");
+        const dataLine = frame.split("\n").find((l) => l.startsWith("data: "));
         if (!dataLine) continue;
         const payload = dataLine.slice(6);
         if (payload === "[DONE]") {

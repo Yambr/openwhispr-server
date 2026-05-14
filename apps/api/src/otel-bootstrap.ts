@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: FSL-1.1-ALv2
 // Phase 6 / Plan 03 / Task 1 — OTel SDK bootstrap (side-effect module).
 //
 // THIS FILE MUST BE IMPORTED AS THE FIRST STATEMENT OF apps/api/src/index.ts

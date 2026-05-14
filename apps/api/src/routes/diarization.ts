@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: FSL-1.1-ALv2
 // Phase 03 / Plan 06 / Task 3 — POST /v1/audio/diarization (D-07 REVISED).
 //
 // Wire shape: docs/wire-contracts-phase-3.md "Diarization" — the desktop

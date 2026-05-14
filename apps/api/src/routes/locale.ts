@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: FSL-1.1-ALv2
 // Phase 15 / Plan 02 / Task 1 — Public GET /api/locale.
 //
 // Returns the locale negotiated by the i18next-http-middleware from the

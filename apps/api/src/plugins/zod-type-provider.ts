@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: FSL-1.1-ALv2
 // Phase 2 / Plan 03 / Task 1 — wires the Fastify zod type provider.
 //
 // `@fastify/type-provider-zod` ships two compilers (validator + serializer)
@@ -10,12 +10,10 @@
 // (and Plan 04's buildApp) can simply `await app.register(zodTypeProvider)`.
 // Plan 04 owns the actual `withTypeProvider<ZodTypeProvider>()` cast at
 // the buildApp boundary because it owns `index.ts`.
+
+import { serializerCompiler, validatorCompiler } from "@fastify/type-provider-zod";
 import type { FastifyInstance } from "fastify";
 import fp from "fastify-plugin";
-import {
-  serializerCompiler,
-  validatorCompiler,
-} from "@fastify/type-provider-zod";
 
 export type { ZodTypeProvider } from "@fastify/type-provider-zod";
 

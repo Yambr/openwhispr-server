@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: FSL-1.1-ALv2
 // Phase 04 / Plan 06 / Task 1 — pure helpers consumed by /api/agent/stream.
 //
 // Two pure functions, no I/O, no Fastify dependencies — composable in the
@@ -46,9 +46,7 @@ export interface ChatMessage {
  * unchanged so callers can spread the result conditionally without
  * branching: `{ ...(translated ? { tools: translated } : {}) }`.
  */
-export function translateLegacyTools(
-  tools: LegacyTool[] | undefined,
-): OpenAITool[] | undefined {
+export function translateLegacyTools(tools: LegacyTool[] | undefined): OpenAITool[] | undefined {
   if (tools === undefined) return undefined;
   return tools.map((t) => ({
     type: "function" as const,

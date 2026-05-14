@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: FSL-1.1-ALv2
 // Phase 1 Plan 04 / D-19 — Fastify `tenantPlugin` exposes `req.tenantId`.
 //
 // Phase 1 reads the tenant id from the `x-tenant-id` request header. This
