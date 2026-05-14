@@ -74,7 +74,7 @@ export const USER_PROJECT = "openwhispr";
  */
 export const COMPOSE_FILES: readonly string[] = [
   "docker-compose.yml",
-  "docker-compose.embedded-litellm.yml",
+  "compose/docker-compose.embedded-litellm.yml",
   "compose/docker-compose.observability.yml",
   "compose/docker-compose.pgbouncer.yml",
   "compose/docker-compose.dev-tools.yml",

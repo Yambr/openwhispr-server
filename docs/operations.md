@@ -678,7 +678,7 @@ sourced from the on-Mac live run.
   `/usr/local/bin/fd-probe.sh` (traefik side) refuses to start if
   `ulimit -n < 65535` — the container exits non-zero with a clear stderr
   message rather than silently regressing to the OS default of 1024.
-- Under the load-test profiles, `docker-compose.load-test.yml` explicitly
+- Under the load-test profiles, `compose/docker-compose.load-test.yml` explicitly
   sets `ulimits: nofile: { soft: 65535, hard: 65535 }` on both services.
 - Default Docker on Linux already lifts the limit; the probe exists for
   Mac / Windows / older Docker Desktop installations where the host

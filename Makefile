@@ -396,7 +396,7 @@ e2e-cjm:
 	@set -e; \
 	trap '$(MAKE) -s e2e-cjm-teardown' EXIT INT TERM; \
 	docker compose -p e2e-cjm \
-		-f docker-compose.yml -f docker-compose.embedded-litellm.yml \
+		-f docker-compose.yml -f compose/docker-compose.embedded-litellm.yml \
 		--profile default up -d --wait; \
 	pnpm tsx tests/e2e-cjm/support/wait-for-readiness.ts; \
 	if [ -n "$$SCENARIO" ]; then \
@@ -407,7 +407,7 @@ e2e-cjm:
 
 e2e-cjm-teardown:
 	-@docker compose -p e2e-cjm \
-		-f docker-compose.yml -f docker-compose.embedded-litellm.yml \
+		-f docker-compose.yml -f compose/docker-compose.embedded-litellm.yml \
 		down -v --remove-orphans
 	@if [ -f .e2e-cjm-user-was-running ] && [ "$$(cat .e2e-cjm-user-was-running)" = "1" ]; then \
 		echo "e2e-cjm-teardown: restarting user 'openwhispr' project"; \

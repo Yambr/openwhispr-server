@@ -5,8 +5,8 @@
 #
 #   docker compose \
 #     -f docker-compose.yml \
-#     -f docker-compose.load-test.yml \
-#     -f docker-compose.load-test.realistic.yml \
+#     -f compose/docker-compose.load-test.yml \
+#     -f compose/docker-compose.load-test.realistic.yml \
 #     --profile load-test-realistic up -d --wait
 #
 # This file's sole job is to un-mock the `litellm` service that

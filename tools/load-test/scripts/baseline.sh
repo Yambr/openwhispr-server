@@ -51,8 +51,8 @@ cd "$ROOT"
 # Three-file overlay so the real LiteLLM container wins (08.5-01 Task 2).
 COMPOSE_BASE="docker compose \
   -f docker-compose.yml \
-  -f docker-compose.load-test.yml \
-  -f docker-compose.load-test.realistic.yml \
+  -f compose/docker-compose.load-test.yml \
+  -f compose/docker-compose.load-test.realistic.yml \
   --profile load-test-realistic"
 
 RUN_DIR=".planning/phases/08.5-realistic-profile-boot-and-baseline/runs"

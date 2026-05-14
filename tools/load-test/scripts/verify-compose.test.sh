@@ -98,8 +98,8 @@ if command -v docker >/dev/null 2>&1; then
   set +e
   docker compose \
     -f docker-compose.yml \
-    -f docker-compose.load-test.yml \
-    -f docker-compose.load-test.realistic.yml \
+    -f compose/docker-compose.load-test.yml \
+    -f compose/docker-compose.load-test.realistic.yml \
     --profile load-test-realistic config >"$RENDER_LOG" 2>&1
   render_rc=$?
   set -e

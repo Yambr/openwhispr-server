@@ -324,7 +324,7 @@ metadata:
   // template render but point composeFiles at the new Variant A file.
   it("variant A parity: docker-compose.embedded-litellm.yml has no drift against chart", () => {
     const code = main({
-      composeFiles: ["docker-compose.embedded-litellm.yml"],
+      composeFiles: ["compose/docker-compose.embedded-litellm.yml"],
     });
     expect(code).toBe(0);
   }, 60_000);

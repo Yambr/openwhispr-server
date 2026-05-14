@@ -18,7 +18,7 @@ on:
       - "apps/web/src/app/**"
       - "apps/web/src/components/**"
       - "docker-compose.yml"
-      - "docker-compose.embedded-litellm.yml"
+      - "compose/docker-compose.embedded-litellm.yml"
       - "compose/**"
       - ".github/workflows/conformance-axe.yml"
   push:
@@ -43,7 +43,7 @@ jobs:
         run: |
           sudo sh -c 'echo "127.0.0.1 app.localhost api.localhost auth.localhost mailpit.localhost" >> /etc/hosts'
       - name: docker compose build
-        run: docker compose -f docker-compose.yml -f docker-compose.embedded-litellm.yml build api worker web
+        run: docker compose -f docker-compose.yml -f compose/docker-compose.embedded-litellm.yml build api worker web
       - name: Run UICONF-05 axe baseline (boots stack via bootStack())
         env:
           E2E_CJM: "1"

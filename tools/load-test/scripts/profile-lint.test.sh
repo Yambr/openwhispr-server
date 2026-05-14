@@ -7,9 +7,9 @@
 #
 # Truths enforced (mirrors 08-05 plan must_haves.truths):
 #  T1.  `docker compose -f docker-compose.yml config --quiet` returns 0.
-#  T2.  `docker compose -f docker-compose.yml -f docker-compose.load-test.yml
+#  T2.  `docker compose -f docker-compose.yml -f compose/docker-compose.load-test.yml
 #        --profile load-test-mock config --quiet` returns 0.
-#  T3.  `docker compose -f docker-compose.yml -f docker-compose.load-test.yml
+#  T3.  `docker compose -f docker-compose.yml -f compose/docker-compose.load-test.yml
 #        --profile load-test-realistic config --quiet` returns 0.
 #  T4.  Default profile (no override file) contains NEITHER mock-litellm NOR
 #        speaches NOR pgbouncer-1..4.
@@ -41,7 +41,7 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd)"
 cd "$REPO_ROOT"
 
 BASE_COMPOSE="docker-compose.yml"
-OVERRIDE_COMPOSE="docker-compose.load-test.yml"
+OVERRIDE_COMPOSE="compose/docker-compose.load-test.yml"
 
 FAILS=0
 pass() { printf "  \033[32mPASS\033[0m %s\n" "$1"; }

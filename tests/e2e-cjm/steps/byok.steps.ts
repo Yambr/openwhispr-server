@@ -54,7 +54,7 @@ const state = new Map<string, ByokScenarioState>();
 /** Canonical slim-core base files (no overlays). */
 const SLIM_CORE_BASE: readonly string[] = [
   "docker-compose.yml",
-  "docker-compose.embedded-litellm.yml",
+  "compose/docker-compose.embedded-litellm.yml",
 ] as const;
 
 /** Map of overlay name → compose file path. */

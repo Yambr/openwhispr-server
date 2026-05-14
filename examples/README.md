@@ -9,7 +9,7 @@ scenarios.
 
 | Variant | Compose entrypoint | Chart values overlay | AI plane | When to pick |
 |---|---|---|---|---|
-| **A** | `docker-compose.embedded-litellm.yml` | `charts/openwhispr/examples/values-embedded-litellm.yaml` | Embedded LiteLLM Proxy, hosted providers via `.env` keys (OpenRouter / OpenAI) | Default OSS self-host. No GPU; relies on hosted APIs. |
+| **A** | `compose/docker-compose.embedded-litellm.yml` | `charts/openwhispr/examples/values-embedded-litellm.yaml` | Embedded LiteLLM Proxy, hosted providers via `.env` keys (OpenRouter / OpenAI) | Default OSS self-host. No GPU; relies on hosted APIs. |
 | **B** | base `docker-compose.yml` with `LITELLM_BASE_URL=` override | `charts/openwhispr/examples/values-corporate-litellm.yaml` | External corporate LiteLLM (Bedrock proxy, vLLM, internal gateway) | Enterprise operator pointing at an existing on-prem LiteLLM. |
 | **C** | Variant A overlay + Speaches container (Plan 11-03) | values overlay with `bundledAi.enabled=true` | Embedded LiteLLM + local Speaches (gated pyannote weights) | GPU-equipped operators wanting fully-offline transcription + diarization. |
 
@@ -24,7 +24,7 @@ HF_TOKEN. A fresh clone runs in two steps:
 ```bash
 cp .env.embedded.example .env
 # edit .env — populate every REPLACE_ME (see comments for provenance pointers)
-docker compose -f docker-compose.embedded-litellm.yml up --wait
+docker compose -f compose/docker-compose.embedded-litellm.yml up --wait
 # https://api.localhost serves the api + web stack via Traefik
 ```
 
