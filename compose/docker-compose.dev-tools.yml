@@ -1,0 +1,32 @@
+# Phase 14 / Plan 14-03 — Dev-tools overlay.
+#
+# Re-introduces ONLY mailpit (dev SMTP catch-all) — TD-14.a closure
+# (CONTEXT decision 1). Fixture-idp / seed / contract-test-runner live in
+# the contract-test overlay (`compose/docker-compose.contract-test.yml`).
+#
+#   docker compose -f docker-compose.yml -f compose/docker-compose.dev-tools.yml up -d
+#
+# No api.depends_on.mailpit re-add: per RESEARCH §A.3 mailpit table, the
+# slim-core api boot is intentionally decoupled from mailpit. EmailSender.ts
+# loud-fails at runtime (NOT boot) when SMTP_HOST is set but unreachable.
+
+services:
+  mailpit:
+    image: axllent/mailpit:v1.29
+    networks: [openwhispr_internal]
+    # Phase 13 / Plan 01 / Task 13-01-08 — bind HTTP API to host loopback so
+    # the e2e-cjm harness (running outside the compose network) can poll
+    # /api/v1/messages without depending on Traefik.
+    ports:
+      - "127.0.0.1:8025:8025"
+    environment:
+      MP_MAX_MESSAGES: "5000"
+      MP_SMTP_AUTH_ACCEPT_ANY: "1"
+      MP_SMTP_AUTH_ALLOW_INSECURE: "1"
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - wget --quiet --tries=1 --spider http://localhost:8025/livez || wget --quiet --tries=1 --spider http://localhost:8025/api/v1/info
+      interval: 10s
+      timeout: 3s
+      retries: 3

@@ -19,17 +19,21 @@
 #
 # The password is sourced from the GRAFANA_POSTGRES_READER_PASSWORD env var
 # referenced by Grafana's standard $__env() expansion; operators set the
-# secret in .env before `docker compose up`. Connection goes through
-# PgBouncer in transaction-pool mode (port 6432) to share the existing
-# session-pool budget; Grafana issues short read-only queries that fit the
-# transaction-pool model.
+# secret in .env before `docker compose up`.
+#
+# Phase 14 / Plan 14-03 (RESEARCH §A.3): connection is DIRECT to
+# postgres:5432, NOT through pgbouncer:6432. Grafana lives in the
+# observability overlay; pgbouncer lives in its own overlay. We do not
+# want to force operators who enable observability to also enable pooler.
+# Grafana issues short read-only queries against `usage_ledger` — direct
+# postgres is correct.
 apiVersion: 1
 datasources:
   - name: Postgres (read-only)
     type: postgres
     access: proxy
     uid: postgres-readonly
-    url: pgbouncer:6432
+    url: postgres:5432
     user: grafana_reader
     jsonData:
       database: openwhispr

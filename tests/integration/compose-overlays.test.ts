@@ -111,6 +111,10 @@ function dockerAvailable(): boolean {
 
 const HAS_DOCKER = dockerAvailable();
 
+// Docker compose config calls take ~10s on cold cache; bump vitest's
+// default 5s timeout for every docker-gated assertion below.
+const DOCKER_TIMEOUT_MS = 30_000;
+
 function composeConfigQuiet(files: string[]): { ok: boolean; stderr: string } {
   const args = ["compose"];
   for (const f of files) {
@@ -191,10 +195,14 @@ describe("Phase 14 / Plan 14-03 — observability overlay", () => {
     expect(env.OTEL_EXPORTER_OTLP_ENDPOINT).toMatch(/:-http:\/\/otel-collector:4317/);
   });
 
-  it.skipIf(!HAS_DOCKER)("merges cleanly with slim-core base", () => {
-    const res = composeConfigQuiet([BASE_COMPOSE, path]);
-    expect(res.ok, `docker compose config -q failed: ${res.stderr}`).toBe(true);
-  });
+  it.skipIf(!HAS_DOCKER)(
+    "merges cleanly with slim-core base",
+    { timeout: DOCKER_TIMEOUT_MS },
+    () => {
+      const res = composeConfigQuiet([BASE_COMPOSE, path]);
+      expect(res.ok, `docker compose config -q failed: ${res.stderr}`).toBe(true);
+    },
+  );
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -224,10 +232,14 @@ describe("Phase 14 / Plan 14-03 — storage overlay", () => {
     expect(env.S3_ENDPOINT).toMatch(/:-http:\/\/minio:9000/);
   });
 
-  it.skipIf(!HAS_DOCKER)("merges cleanly with slim-core base", () => {
-    const res = composeConfigQuiet([BASE_COMPOSE, path]);
-    expect(res.ok, `docker compose config -q failed: ${res.stderr}`).toBe(true);
-  });
+  it.skipIf(!HAS_DOCKER)(
+    "merges cleanly with slim-core base",
+    { timeout: DOCKER_TIMEOUT_MS },
+    () => {
+      const res = composeConfigQuiet([BASE_COMPOSE, path]);
+      expect(res.ok, `docker compose config -q failed: ${res.stderr}`).toBe(true);
+    },
+  );
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -268,20 +280,31 @@ describe("Phase 14 / Plan 14-03 — ingress overlay", () => {
     expect(text).toMatch(/\bweb:[\s\S]*?\bports:\s*(!reset\s*\[\s*\]|!reset\s*\n\s*\[\s*\])/);
   });
 
-  it.skipIf(!HAS_DOCKER)("merges cleanly with slim-core base", () => {
-    const res = composeConfigQuiet([BASE_COMPOSE, path]);
-    expect(res.ok, `docker compose config -q failed: ${res.stderr}`).toBe(true);
-  });
+  it.skipIf(!HAS_DOCKER)(
+    "merges cleanly with slim-core base",
+    { timeout: DOCKER_TIMEOUT_MS },
+    () => {
+      const res = composeConfigQuiet([BASE_COMPOSE, path]);
+      expect(res.ok, `docker compose config -q failed: ${res.stderr}`).toBe(true);
+    },
+  );
 
-  it.skipIf(!HAS_DOCKER)("merged config strips api + web host ports via !reset", () => {
-    const cfg = composeConfigJson([BASE_COMPOSE, path]) as {
-      services?: Record<string, { ports?: unknown[] }>;
-    };
-    const apiPorts = cfg.services?.api?.ports ?? [];
-    const webPorts = cfg.services?.web?.ports ?? [];
-    expect(apiPorts).toEqual([]);
-    expect(webPorts).toEqual([]);
-  });
+  it.skipIf(!HAS_DOCKER)(
+    "merged config strips api + web host ports via !reset",
+    { timeout: DOCKER_TIMEOUT_MS },
+    () => {
+      const cfg = composeConfigJson([BASE_COMPOSE, path]) as {
+        services?: Record<string, { ports?: unknown[] | null }>;
+      };
+      // `!reset []` clears the merged ports list. compose JSON omits a
+      // null/empty `ports` key or emits `[]` depending on version —
+      // accept both.
+      const apiPorts = cfg.services?.api?.ports ?? [];
+      const webPorts = cfg.services?.web?.ports ?? [];
+      expect(apiPorts ?? []).toEqual([]);
+      expect(webPorts ?? []).toEqual([]);
+    },
+  );
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -320,10 +343,14 @@ describe("Phase 14 / Plan 14-03 — pgbouncer overlay", () => {
     expect(dep.pgbouncer?.condition).toBe("service_healthy");
   });
 
-  it.skipIf(!HAS_DOCKER)("merges cleanly with slim-core base", () => {
-    const res = composeConfigQuiet([BASE_COMPOSE, path]);
-    expect(res.ok, `docker compose config -q failed: ${res.stderr}`).toBe(true);
-  });
+  it.skipIf(!HAS_DOCKER)(
+    "merges cleanly with slim-core base",
+    { timeout: DOCKER_TIMEOUT_MS },
+    () => {
+      const res = composeConfigQuiet([BASE_COMPOSE, path]);
+      expect(res.ok, `docker compose config -q failed: ${res.stderr}`).toBe(true);
+    },
+  );
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -346,10 +373,14 @@ describe("Phase 14 / Plan 14-03 — dev-tools overlay", () => {
     expect(keys.has("contract-test-runner")).toBe(false);
   });
 
-  it.skipIf(!HAS_DOCKER)("merges cleanly with slim-core base", () => {
-    const res = composeConfigQuiet([BASE_COMPOSE, path]);
-    expect(res.ok, `docker compose config -q failed: ${res.stderr}`).toBe(true);
-  });
+  it.skipIf(!HAS_DOCKER)(
+    "merges cleanly with slim-core base",
+    { timeout: DOCKER_TIMEOUT_MS },
+    () => {
+      const res = composeConfigQuiet([BASE_COMPOSE, path]);
+      expect(res.ok, `docker compose config -q failed: ${res.stderr}`).toBe(true);
+    },
+  );
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -371,10 +402,14 @@ describe("Phase 14 / Plan 14-03 — contract-test overlay", () => {
     expect(keys.has("contract-test-runner")).toBe(true);
   });
 
-  it.skipIf(!HAS_DOCKER)("merges cleanly with slim-core base", () => {
-    const res = composeConfigQuiet([BASE_COMPOSE, path]);
-    expect(res.ok, `docker compose config -q failed: ${res.stderr}`).toBe(true);
-  });
+  it.skipIf(!HAS_DOCKER)(
+    "merges cleanly with slim-core base",
+    { timeout: DOCKER_TIMEOUT_MS },
+    () => {
+      const res = composeConfigQuiet([BASE_COMPOSE, path]);
+      expect(res.ok, `docker compose config -q failed: ${res.stderr}`).toBe(true);
+    },
+  );
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
