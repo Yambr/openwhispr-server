@@ -741,7 +741,14 @@ Plans:
   3. BYOK env contracts (`S3_ENDPOINT`, `OTEL_EXPORTER_OTLP_ENDPOINT`, `INGRESS_BASE_URL`, `SMTP_HOST`) are documented in `docs/operations.md` with the matrix of which overlay each unlocks; the api refuses to start (loud-fail) when an overlay is OFF AND the corresponding BYOK env is unset (e.g., storage overlay off AND `S3_ENDPOINT` unset → api exits non-zero at boot with a typed error code).
   4. The full worker noop audit at `apps/worker/src/index.ts:68-92` is closed — ALL three (`noopSender` (already fixed in Phase 13), `noopLitellmKeyClient`, `noopUserKeyLookup`) are either replaced with real adapters or loud-fail at worker boot when their backing config is absent.
   5. Phase 13 Gherkin scenarios `@cjm-byok-storage`, `@cjm-byok-observability`, `@cjm-loud-fail-misconfig` are GREEN; phase verifier reports PASSED with ≥ 90/90/90/90 coverage on diff and live e2e green.
-**Plans**: TBD
+**Plans**: 7 plans (4 waves)
+- [ ] 14-01-PLAN.md — Slim-core base: delete profiles, strip overlay services, add api/web host ports (Wave 1)
+- [ ] 14-02-PLAN.md — .env.slim.example + bootstrap.sh env-overridable + BYOK matrix in operations.md (Wave 1)
+- [ ] 14-03-PLAN.md — Six compose overlays + Grafana datasource + Makefile + cjm harness + parity allowlist (Wave 2)
+- [ ] 14-04-PLAN.md — byok-guard module + OTel =disabled sentinel + boot-order wire-up (Wave 2, TDD)
+- [ ] 14-05-PLAN.md — Virtual-key-rotation removal + transient Valkey cleanup + log-scrub rewrite (Wave 3)
+- [ ] 14-06-PLAN.md — Helm 5 toggles (observability umbrella, storage, tls, pooler flip, mailpit informational) + helm-unittest (Wave 3)
+- [ ] 14-07-PLAN.md — Gherkin authoring: @cjm-byok-storage, @cjm-byok-observability, @cjm-loud-fail-misconfig + bootStack envOverrides (Wave 4)
 **UI hint**: no
 **Open question (deferred to `/gsd-discuss-phase 14` or 15)**: Phase 14 ↔ 15 order swap — user-confirmed order (13→12→14→15→…) vs ARCHITECTURE's recommendation to swap (13→12→15→14→…) so the Phase 15 `compose/` reorg precedes Phase 14's overlay authoring. User order is authoritative for v2 roadmap; ARCHITECTURE alternative sidebar logged here.
 
