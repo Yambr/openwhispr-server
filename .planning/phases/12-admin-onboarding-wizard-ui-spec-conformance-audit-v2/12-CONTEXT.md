@@ -61,7 +61,13 @@ A fresh operator goes from `git clone && docker compose up` to a logged-in admin
 ### UI-SPEC conformance test approach (Option C — advisor-recommended hybrid)
 - **D-18:** **Vitest + @testing-library/react structural conformance** at `apps/web/src/components/__tests__/conformance/{SignInForm,SignUpForm,OidcButtons,VerifyEmailClient,setup}.test.tsx`. Asserts presence/order/aria-labels/roles/landmarks/banner-counts vs UI-SPEC.md inventory. Lands inside `pnpm test:unit` → counts toward ≥90/90/90/90 coverage gate on `apps/web/src/**`.
 - **D-19:** **Playwright `@axe-core/playwright` axe baseline** at `tests/conformance/ui-spec/axe.spec.ts`. Boots Phase 13 compose harness primitive (`tests/e2e-cjm/support/compose-harness.ts` reused); one test per auth screen + `/setup`. Real Chromium — required for contrast / focus-visible / landmark-unique rules that happy-dom cannot honestly evaluate. Versions locked: `@axe-core/playwright@4.11.2` + `@playwright/test@1.60.0` (Phase 13 lockfile).
-- **D-20:** **`design-canvas.jsx` as STATIC oracle** — confirmed via advisor research: 1437-LOC Figma-canvas host (DC = bg/grid/postit wrapper) with inline artboards; NOT mountable production component. The suite walks it as a reference (parse JSX OR hand-derived role/label inventory in `UI-SPEC-end-user.md` / `UI-SPEC-admin.md`), assert presence in the real screens.
+- **D-20:** **6 design JSX files in `.planning/phases/07-frontend-ui-spec/design/` are the canonical UICONF-04 oracle** (corrected 2026-05-14 after user flagged that prior Phase 07.1 implementation ignored most of them). Only `design-canvas.jsx` (1437 LOC) is the static Figma-host wrapper; the other 5 are runnable JSX components:
+  - **`screens-user.jsx` (1616 LOC)** — U1 sign-in, U2 sign-up, U3 verify email, U4 usage, U5 account, U6-U13 transcriptions/notes/conversations. THIS is the oracle for SignInForm/SignUpForm/VerifyEmailClient + OidcButtons conformance. Each conformance test cites `screens-user.jsx:LINE` of the artboard it derives from.
+  - **`screens-admin.jsx` (630 LOC)** — A1 Audit log, A2 Observability, A3 Config. A3 ScreenConfig (`screens-admin.jsx:445-628`) is the oracle for the `/admin` index page (ADMIN-04, closes TD-12.a).
+  - **`ui.jsx` (440 LOC)** — shared primitives: `AuthShell` (L229-316), `BrowserFrame`, `Field`, `Btn`, `Shell`, `Sidebar`, `TopBar`, `Card`, `Skeleton`. The `/setup` wizard composes `AuthShell` since NO `/setup` artboard exists in any of the 6 JSX files (verified via grep — only hit is a JSDoc example).
+  - **`browser-window.jsx` (200 LOC)** + **`tweaks-panel.jsx` (664 LOC)** — design-time chrome / editor only; NOT production oracle.
+  - JSX source is source-of-truth; markdown UI-SPEC-{end-user,admin}.md is human-derived from JSX. Citation chain MUST trace to `screens-{user,admin}.jsx:LINE`, not the markdown.
+  - **Wizard composition (NO JSX oracle for /setup):** Plan 12-03 must compose `ui.jsx:AuthShell` (L229-316) for the layout shell + new internal artboard for Identity/Workspace/Review sections. Document as explicit Phase 12 deviation from design with rationale (open question Q3 in 12-RESEARCH.md).
 - **D-21:** **UICONF-06 specific gate** — `expect(screen.getAllByRole('alert')).toHaveLength(1)` in the SignUpForm conformance test. Closes the duplicate-banner regression.
 - **D-22:** **No retry-on-flake** — Phase 13 D-12 lock carries over. axe spec is deterministic on a booted stack.
 - **D-23:** **Rejected alternatives:** Option A (standalone Playwright only) — slow, no coverage credit, duplicates compose boot. Option B (Vitest only) — fails UICONF-05 honestly (happy-dom does not implement layout/contrast rules).
@@ -102,9 +108,13 @@ A fresh operator goes from `git clone && docker compose up` to a logged-in admin
 - `apps/web/src/components/screens/auth/{SignInForm,SignUpForm,OidcButtons,VerifyEmailClient}.tsx` — conditional rendering against `/api/auth/providers`.
 - `apps/web/src/components/screens/auth/__tests__/{SignInForm,SignUpForm,VerifyEmailClient}.test.tsx` — existing Vitest+RTL pattern to extend.
 - `apps/web/src/components/ui/` — where the vendored `stepper.tsx` lands.
-- `.planning/phases/07-frontend-ui-spec/design/design-canvas.jsx` — STATIC oracle for UICONF-04 (1437 LOC, Figma canvas wrapper).
-- `.planning/phases/07-frontend-ui-spec/UI-SPEC-end-user.md` — end-user-facing spec for conformance asserts.
-- `.planning/phases/07-frontend-ui-spec/UI-SPEC-admin.md` — admin-facing spec for `/setup` + `/admin` conformance asserts.
+- `.planning/phases/07-frontend-ui-spec/design/screens-user.jsx` — **RUNNABLE oracle (1616 LOC)** for U1 sign-in, U2 sign-up, U3 verify email + U4-U13. Phase 12 conformance tests for SignInForm/SignUpForm/VerifyEmailClient/OidcButtons derive their assertions FROM this file with `screens-user.jsx:LINE` citations.
+- `.planning/phases/07-frontend-ui-spec/design/screens-admin.jsx` — **RUNNABLE oracle (630 LOC)** for A1-A3 admin screens. A3 ScreenConfig (`screens-admin.jsx:445-628`) is the oracle for the new `/admin` index page (ADMIN-04).
+- `.planning/phases/07-frontend-ui-spec/design/ui.jsx` — **RUNNABLE primitives (440 LOC)**: `AuthShell` (L229-316), `Field`, `Btn`, `Shell`, `Sidebar`, `Card`, `Skeleton`. The /setup wizard composes `AuthShell`.
+- `.planning/phases/07-frontend-ui-spec/design/design-canvas.jsx` — STATIC Figma-host wrapper (1437 LOC). Reference only, NOT mountable.
+- `.planning/phases/07-frontend-ui-spec/design/{browser-window,tweaks-panel}.jsx` — design-time chrome/editor; NOT production oracle.
+- `.planning/phases/07-frontend-ui-spec/UI-SPEC-end-user.md` — human-derived end-user spec (secondary to screens-user.jsx).
+- `.planning/phases/07-frontend-ui-spec/UI-SPEC-admin.md` — human-derived admin spec (secondary to screens-admin.jsx).
 
 ### CJM scenarios to flip GREEN
 - `tests/e2e-cjm/features/admin-onboarding.feature` — `@cjm-5.1` `/admin` reaches a real page; `@cjm-5.3` Wizard happy path.
