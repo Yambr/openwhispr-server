@@ -194,6 +194,32 @@ export async function fixDir(rootDir: string): Promise<number> {
       continue;
     }
     if (isBinary(buf)) {
+      // Source files that legitimately embed NUL bytes in string literals
+      // (e.g. test fixtures asserting redactor behavior on binary garbage)
+      // get flagged by the NUL-byte heuristic but are still valid UTF-8
+      // source. If the file already opens with the correct SPDX header
+      // (or a stale header we know how to rewrite via the binary-safe
+      // path below), we proceed; otherwise we refuse to write.
+      const headerBytes = Buffer.from(`${HEADER}\n`, "utf8");
+      if (buf.subarray(0, headerBytes.length).equals(headerBytes)) {
+        // Already correctly headed — nothing to do.
+        continue;
+      }
+      // Binary-safe stale-header rewrite: scan for any known stale header
+      // followed by a newline at byte 0; if found, splice in FSL header.
+      let rewritten = false;
+      for (const stale of STALE_HEADERS) {
+        const staleBytes = Buffer.from(`${stale}\n`, "utf8");
+        if (buf.subarray(0, staleBytes.length).equals(staleBytes)) {
+          const tail = buf.subarray(staleBytes.length);
+          const newBuf = Buffer.concat([headerBytes, tail]);
+          writeFileSync(full, newBuf);
+          changed += 1;
+          rewritten = true;
+          break;
+        }
+      }
+      if (rewritten) continue;
       throw new Error(`spdx-header: refusing to write to binary file ${rel}`);
     }
     const before = buf.toString("utf8");

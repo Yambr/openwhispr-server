@@ -306,6 +306,38 @@ describe("fixDir", () => {
     writeFileSync(p, Buffer.from([0x00, 0x01, 0x02]));
     await expect(fixDir(workDir)).rejects.toThrow(/binary/);
   });
+
+  it("silently skips binary-flagged files that already carry the FSL header", async () => {
+    const p = join(workDir, "with-nul.ts");
+    const buf = Buffer.concat([
+      Buffer.from("// SPDX-License-Identifier: FSL-1.1-ALv2\n", "utf8"),
+      Buffer.from([
+        0x63, 0x6f, 0x6e, 0x73, 0x74, 0x20, 0x78, 0x20, 0x3d, 0x20, 0x22, 0x00, 0x22, 0x3b, 0x0a,
+      ]),
+    ]);
+    writeFileSync(p, buf);
+    const count = await fixDir(workDir);
+    expect(count).toBe(0);
+    expect(readFileSync(p)).toEqual(buf);
+  });
+
+  it("rewrites a stale Apache-2.0 header on a binary-flagged source file via byte-splice", async () => {
+    const p = join(workDir, "with-nul-apache.ts");
+    const buf = Buffer.concat([
+      Buffer.from("// SPDX-License-Identifier: Apache-2.0\n", "utf8"),
+      Buffer.from([
+        0x63, 0x6f, 0x6e, 0x73, 0x74, 0x20, 0x78, 0x20, 0x3d, 0x20, 0x22, 0x00, 0x22, 0x3b, 0x0a,
+      ]),
+    ]);
+    writeFileSync(p, buf);
+    const count = await fixDir(workDir);
+    expect(count).toBe(1);
+    const after = readFileSync(p);
+    expect(after.subarray(0, 41).toString("utf8")).toBe(
+      "// SPDX-License-Identifier: FSL-1.1-ALv2\n",
+    );
+    expect(after.includes(0x00)).toBe(true);
+  });
 });
 
 describe("main CLI", () => {
