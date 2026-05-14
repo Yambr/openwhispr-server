@@ -44,6 +44,17 @@
 //      populated by the time it fires.
 //   9. Register Plan 03's routes via `allRoutes` from routes/index.ts.
 
+// Phase 14 / Plan 04 / Task 3 — BYOK boot guard. MUST run BEFORE the
+// OTel SDK import side-effect below: a misconfigured OTLP endpoint
+// would otherwise cause cascading dial noise on stderr before the
+// fatal "byok.required" record reaches operators. Also runs BEFORE
+// installGlobalSSRF() to avoid wasted setup on a process about to
+// exit 1. The guard is a pure-function call that returns void on a
+// satisfied env contract — happy path adds zero overhead.
+import { assertBYOKConfig } from "@openwhispr/byok-guard";
+
+assertBYOKConfig();
+
 // Phase 6 / Plan 03 / Task 1 (D-T3 load order) — OTel SDK must start
 // BEFORE any other import resolves so `@opentelemetry/instrumentation-pino`
 // patches the `pino` module at require time. This import is intentionally
