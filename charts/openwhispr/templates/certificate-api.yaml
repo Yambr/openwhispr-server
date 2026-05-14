@@ -10,7 +10,8 @@ ClusterIssuer (not namespaced Issuer) so a single cluster-wide ACME
 account / internal CA can issue for any release namespace. Operators
 install the ClusterIssuer out-of-band — see examples/cert-manager-*.yaml.
 */}}
-{{- if .Values.certManager.enabled -}}
+{{- /* Plan 14-06 / BYOK-01 — AND-gate with the new top-level tls.enabled toggle (TLS off = no Certificate, regardless of certManager). */ -}}
+{{- if and .Values.tls.enabled .Values.certManager.enabled -}}
 {{- $fullname := include "openwhispr.fullname" . -}}
 apiVersion: cert-manager.io/v1
 kind: Certificate

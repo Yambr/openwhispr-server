@@ -21,7 +21,8 @@ Exporters
                    per-signal exporters (otlp/tempo, otlphttp/loki,
                    prometheusremotewrite).
 */}}
-{{- if .Values.observability.collector.enabled -}}
+{{- /* Plan 14-06 — AND-gate the new top-level observability.enabled umbrella with the existing collector.enabled sub-toggle. */ -}}
+{{- if and .Values.observability.enabled .Values.observability.collector.enabled -}}
 {{- $fullname := include "openwhispr.fullname" . -}}
 apiVersion: v1
 kind: ConfigMap

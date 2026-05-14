@@ -89,7 +89,14 @@ bundledAi:
 
 # Observability. Per A3 the LGTM stack is a cluster prerequisite. Chart ships
 # ServiceMonitor / PodMonitor / OTel Collector DaemonSet+RBAC+ConfigMap only.
+#
+# Plan 14-06 / BYOK-01 — `enabled` is the NEW umbrella toggle (1:1 with the
+# `compose/docker-compose.observability.yml` overlay). It AND-gates every
+# existing sub-toggle (`collector.enabled`, `serviceMonitor.enabled`) so
+# slim-core operators get zero observability surface unless they explicitly
+# opt in to both the umbrella AND the sub-component.
 observability:
+  enabled: false
   embedded: false
   serviceMonitor:
     enabled: false
@@ -158,7 +165,21 @@ valkey:
     # this; ignored in standalone.
     replicaCount: 2
 
+# Plan 14-06 / BYOK-01 — top-level `storage.enabled` toggle (1:1 with the
+# `compose/docker-compose.storage.yml` overlay). Drives Chart.yaml's
+# `condition: storage.enabled` on the Bitnami minio sub-chart AND gates
+# the api/worker-deployment MINIO_ENDPOINT env injection. Default false:
+# slim-core operators supply their own S3 via secrets (BYOK-02 loud-fail
+# wired in plan 14-04). The legacy `minio.enabled` sub-chart gate is
+# preserved for backward compatibility with overlays that pre-date the
+# rename but is no longer the canonical switch — set `storage.enabled`.
+storage:
+  enabled: false
+
 # Bitnami MinIO sub-chart values (A5 — pinned to chart 17.0.21 in Chart.yaml).
+# NOTE: Chart.yaml `condition` now reads `storage.enabled` (Plan 14-06);
+# `minio.enabled` here is retained only as a legacy pass-through for
+# operators who still set it directly. New code should drive `storage.enabled`.
 minio:
   enabled: true
   mode: standalone
@@ -168,8 +189,11 @@ minio:
   # Cloud-ha overlay flips mode=distributed and bumps replicas to 4.
 
 # CNPG Pooler CRD (A6: replaces first-party PgBouncer Deployment).
+# Plan 14-06 / BYOK-01 — `pooler.enabled` flipped from true->false to match
+# the slim-core compose default (compose/docker-compose.pgbouncer.yml is an
+# opt-in overlay). Cloud-HA / production overlay flips back to true.
 pooler:
-  enabled: true
+  enabled: false
   instances: 2
   # type: rw exposes a read-write Pooler that routes to the primary;
   # alternative `ro` would route to hot-standby replicas.
@@ -312,6 +336,14 @@ helperProbe:
   enabled: false
 
 tls:
+  # Plan 14-06 / BYOK-01 — `enabled` is the master gate for the Traefik
+  # IngressRoute / Middleware / ServersTransport CRDs and the cert-manager
+  # Certificate resources (1:1 with the `compose/docker-compose.ingress.yml`
+  # overlay). Default false: slim-core operators terminate TLS upstream or
+  # via a separately-installed Traefik chart. The non-toggle sub-keys
+  # (`apiSecretName`, `webSecretName`) stay where they are — only `enabled`
+  # toggles rendering.
+  enabled: false
   # cert-manager Certificate (templates/certificate-api.yaml) writes its
   # TLS material into this Secret. Both IngressRoutes (api on :443 + api
   # on :8443) reference it via `tls.secretName` so a single cert covers
@@ -345,6 +377,15 @@ ingress:
     - 10.0.0.0/8
     - 172.16.0.0/12
     - 192.168.0.0/16
+
+# Plan 14-06 / BYOK-01 — `mailpit.enabled` is INFORMATIONAL-ONLY. No Helm
+# template renders against this key; mailpit-on-K8s isn't a production
+# pattern (it's a dev-only SMTP inbox shipped by
+# `compose/docker-compose.dev-tools.yml`). The toggle exists so the
+# `tools/lint-compose-chart-parity` linter can verify the slim-core
+# overlay-to-chart 1:1 mapping (CONTEXT decision 6 / RESEARCH §C.1).
+mailpit:
+  enabled: false
 
 # Network policy — opt-in.
 networkPolicy:

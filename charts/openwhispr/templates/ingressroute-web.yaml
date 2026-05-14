@@ -10,6 +10,8 @@ scoring picks the more specific /api PathPrefix first).
 
 No PathPrefix constraint — this route is the catch-all for Host(web).
 */}}
+{{- /* Plan 14-06 / BYOK-01 — gate on the top-level tls.enabled toggle. */ -}}
+{{- if .Values.tls.enabled -}}
 {{- $fullname := include "openwhispr.fullname" . -}}
 apiVersion: traefik.io/v1alpha1
 kind: IngressRoute
@@ -34,3 +36,4 @@ spec:
           namespace: {{ .Release.Namespace }}
   tls:
     secretName: {{ .Values.tls.webSecretName }}
+{{- end }}

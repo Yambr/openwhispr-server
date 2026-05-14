@@ -7,7 +7,8 @@ Least-privilege: get/list/watch only, on the resources kubeletstats
 Cluster-scoped (not namespaced Role) because the DaemonSet runs in a
 single namespace but observes pods/nodes across the whole cluster.
 */}}
-{{- if .Values.observability.collector.enabled -}}
+{{- /* Plan 14-06 — AND-gate the new top-level observability.enabled umbrella with the existing collector.enabled sub-toggle. */ -}}
+{{- if and .Values.observability.enabled .Values.observability.collector.enabled -}}
 {{- $fullname := include "openwhispr.fullname" . -}}
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole

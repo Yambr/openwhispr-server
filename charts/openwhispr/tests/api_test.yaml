@@ -237,7 +237,8 @@ tests:
       - hasDocuments:
           count: 0
 
-  - it: api ServiceMonitor renders only when observability.serviceMonitor.enabled=true
+  # Plan 14-06 — observability.enabled umbrella AND-gates the sub-toggle.
+  - it: api ServiceMonitor renders only when observability umbrella + serviceMonitor are both on
     template: api-servicemonitor.yaml
     set:
       secrets:
@@ -245,6 +246,7 @@ tests:
         external:
           storeRef: vault-clusterstore
       observability:
+        enabled: true
         serviceMonitor:
           enabled: true
     asserts:

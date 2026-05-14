@@ -3,7 +3,8 @@ ClusterRoleBinding — binds the read-only ClusterRole to the SA in the
 release namespace. Cross-namespace binding is intentional: ClusterRole
 is cluster-scoped, the SA lives in {{ .Release.Namespace }}.
 */}}
-{{- if .Values.observability.collector.enabled -}}
+{{- /* Plan 14-06 — AND-gate the new top-level observability.enabled umbrella with the existing collector.enabled sub-toggle. */ -}}
+{{- if and .Values.observability.enabled .Values.observability.collector.enabled -}}
 {{- $fullname := include "openwhispr.fullname" . -}}
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding

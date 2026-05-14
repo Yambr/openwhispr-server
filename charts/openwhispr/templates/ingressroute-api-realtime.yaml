@@ -15,6 +15,8 @@ ServersTransport reference: openwhispr-realtime-transport adds the
 Cert reuse (D-21): same TLS Secret as the short-JSON IngressRoute —
 both entrypoints serve the same SAN, no separate ACME issuance.
 */}}
+{{- /* Plan 14-06 / BYOK-01 — gate on the top-level tls.enabled toggle. */ -}}
+{{- if .Values.tls.enabled -}}
 {{- $fullname := include "openwhispr.fullname" . -}}
 apiVersion: traefik.io/v1alpha1
 kind: IngressRoute
@@ -40,3 +42,4 @@ spec:
           namespace: {{ .Release.Namespace }}
   tls:
     secretName: {{ .Values.tls.apiSecretName }}
+{{- end }}

@@ -2,7 +2,8 @@
 worker ServiceMonitor — gated on observability.serviceMonitor.enabled.
 Scrape path /metrics (worker exposes BullMQ + OTel custom metrics).
 */}}
-{{- if .Values.observability.serviceMonitor.enabled -}}
+{{- /* Plan 14-06 — AND-gate the new top-level observability.enabled umbrella with the existing serviceMonitor.enabled sub-toggle. */ -}}
+{{- if and .Values.observability.enabled .Values.observability.serviceMonitor.enabled -}}
 {{- $fullname := include "openwhispr.fullname" . -}}
 apiVersion: monitoring.coreos.com/v1
 kind: ServiceMonitor
