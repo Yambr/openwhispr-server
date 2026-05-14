@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: FSL-1.1-ALv2
 // tests/e2e/phase-05-negative-matrix — host-side e2e for WIRE-29 + WIRE-16.
 //
 // Runs the same negative matrix as
@@ -40,7 +40,7 @@ async function probe(method: string, path: string, body?: string): Promise<Fetch
   }
   const res = await fetch(`${BACKEND_URL}${path}`, init);
   const text = await res.text();
-  let parsed: unknown = undefined;
+  let parsed: unknown;
   if (text.length > 0) {
     try {
       parsed = JSON.parse(text);
@@ -124,10 +124,7 @@ describe("e2e — Phase 05 negative matrix (envelope passthrough via Traefik TLS
   });
 
   it("WIRE-16 + D-35 — synthetic /api/nonexistent-* → 404 envelope", async () => {
-    const res = await probe(
-      "GET",
-      `/api/nonexistent-${crypto.randomUUID()}-e2e`,
-    );
+    const res = await probe("GET", `/api/nonexistent-${crypto.randomUUID()}-e2e`);
     expect(res.status).toBe(404);
     expect(() => TolerantEnvelope.parse(res.body)).not.toThrow();
   });

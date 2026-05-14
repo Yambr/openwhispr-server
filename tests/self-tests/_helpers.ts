@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: FSL-1.1-ALv2
 // Self-test helpers for the docker-compose-touching suite — Phase 2 Plan 02.
 //
 // `dockerAvailable` is a sync gate evaluated at module-load. We probe by
@@ -16,11 +16,10 @@ import { spawnSync } from "node:child_process";
 
 function probeDockerDaemon(): boolean {
   try {
-    const r = spawnSync(
-      "docker",
-      ["version", "--format", "{{.Server.Version}}"],
-      { encoding: "utf8", timeout: 5_000 },
-    );
+    const r = spawnSync("docker", ["version", "--format", "{{.Server.Version}}"], {
+      encoding: "utf8",
+      timeout: 5_000,
+    });
     return r.status === 0 && r.stdout.trim().length > 0;
   } catch {
     return false;
@@ -31,11 +30,10 @@ export const dockerAvailable: boolean = probeDockerDaemon();
 
 export function composeVersion(): [number, number, number] | null {
   try {
-    const r = spawnSync(
-      "docker",
-      ["compose", "version", "--short"],
-      { encoding: "utf8", timeout: 5_000 },
-    );
+    const r = spawnSync("docker", ["compose", "version", "--short"], {
+      encoding: "utf8",
+      timeout: 5_000,
+    });
     if (r.status !== 0) return null;
     const m = /(\d+)\.(\d+)\.(\d+)/.exec(r.stdout.trim());
     if (!m) return null;
@@ -81,9 +79,7 @@ export function dockerCompose(
  * for every REQUIRED_KEY plus the connection strings. Caller can override
  * specific keys (e.g. `MASTER_KEK: "changeme"` for the deny-list test).
  */
-export function fixtureSecrets(
-  overrides: Record<string, string> = {},
-): Record<string, string> {
+export function fixtureSecrets(overrides: Record<string, string> = {}): Record<string, string> {
   const strong = (k: string) => `STRONG_FIXTURE_${k}_8a3f9c2d1e7b4a6f`;
   return {
     POSTGRES_OWNER_USER: "openwhispr_owner",

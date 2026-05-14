@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: FSL-1.1-ALv2
 // Phase 13 / Plan 02 / Task 13-02-03 — @cjm-6.* locale switch step bindings.
 //
 // Both scenarios are tagged @expected-red @after-phase-15 — Phase 15 closes

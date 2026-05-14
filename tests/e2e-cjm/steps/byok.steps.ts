@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: FSL-1.1-ALv2
 // Phase 14 / Plan 14-07 — step defs for the BYOK loud-fail feature suites.
 //
 // Source-of-truth:

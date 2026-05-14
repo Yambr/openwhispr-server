@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: FSL-1.1-ALv2
 // Phase 13 / Plan 01 / Task 13-01-07 — mailpit polling helper for the
 // signup-verify CJM scenarios.
 //

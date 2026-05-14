@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: FSL-1.1-ALv2
 // tests/e2e — vitest globalSetup.
 //
 // Brings the docker-compose stack up ONCE for the whole e2e suite,

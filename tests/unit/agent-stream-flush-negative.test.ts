@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: FSL-1.1-ALv2
 /**
  * Phase 04 / Plan 08 / Task 2b — NEGATIVE-CONTROL buffering-injection.
  *
@@ -122,7 +122,9 @@ beforeAll(async () => {
  * apples-to-apples timing measurement. The 'data' event fires the
  * moment the kernel hands up the first TCP segment.
  */
-function postFirstByte(path: string): Promise<{ status: number; tFirstByte: number; tStart: number }> {
+function postFirstByte(
+  path: string,
+): Promise<{ status: number; tFirstByte: number; tStart: number }> {
   return new Promise((resolve, reject) => {
     const tStart = performance.now();
     const req = httpRequest(

@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: FSL-1.1-ALv2
 // tests/e2e/phase-05-folders — host-side e2e for WIRE-23.
 //
 // Round-trips the full folders CRUD lifecycle through Traefik (TLS) →
@@ -140,11 +140,7 @@ describe("e2e — /api/folders/* full lifecycle (real compose stack)", () => {
 
     // Hygiene: soft-delete all the e2e-created folders so the fixture
     // user's folder list does not balloon over repeated runs.
-    const toCleanup = [
-      createdIds[0],
-      createdIds[1],
-      ...batchBody.created.map((f) => f.id),
-    ];
+    const toCleanup = [createdIds[0], createdIds[1], ...batchBody.created.map((f) => f.id)];
     for (const id of toCleanup) {
       await jar.fetch(`${BACKEND_URL}/api/folders/delete`, {
         method: "DELETE",

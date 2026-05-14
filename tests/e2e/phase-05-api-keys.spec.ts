@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: FSL-1.1-ALv2
 // tests/e2e/phase-05-api-keys — host-side e2e for WIRE-27.
 //
 // Round-trips the API-keys lifecycle through Traefik (TLS) → api →
@@ -87,10 +87,7 @@ describe("e2e — /api/v1/keys/* full lifecycle (real compose stack)", () => {
     }
 
     // 3) revoke keyA.
-    const rev = await jar.fetch(
-      `${BACKEND_URL}/api/v1/keys/${keyA.id}/revoke`,
-      { method: "POST" },
-    );
+    const rev = await jar.fetch(`${BACKEND_URL}/api/v1/keys/${keyA.id}/revoke`, { method: "POST" });
     expect(rev.status).toBe(200);
     const revBody = V1RevokeResponse.parse(await rev.json()).data;
     expect(revBody.id).toBe(keyA.id);
@@ -98,14 +95,11 @@ describe("e2e — /api/v1/keys/* full lifecycle (real compose stack)", () => {
     const firstRevokedAt = revBody.revoked_at;
 
     // Idempotent: re-revoke preserves the original timestamp.
-    const revAgain = await jar.fetch(
-      `${BACKEND_URL}/api/v1/keys/${keyA.id}/revoke`,
-      { method: "POST" },
-    );
+    const revAgain = await jar.fetch(`${BACKEND_URL}/api/v1/keys/${keyA.id}/revoke`, {
+      method: "POST",
+    });
     expect(revAgain.status).toBe(200);
-    expect(V1RevokeResponse.parse(await revAgain.json()).data.revoked_at).toBe(
-      firstRevokedAt,
-    );
+    expect(V1RevokeResponse.parse(await revAgain.json()).data.revoked_at).toBe(firstRevokedAt);
 
     // 4) list still includes the revoked row with revoked_at populated;
     //    keyB unchanged (revoked_at null).

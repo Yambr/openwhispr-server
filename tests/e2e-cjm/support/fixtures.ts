@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: FSL-1.1-ALv2
 // Phase 13 / Plan 02 / Task 13-02-03 — shared step-file fixtures.
 //
 // Re-export `Given/When/Then` from `world.ts` (the canonical createBdd

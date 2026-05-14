@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: FSL-1.1-ALv2
 // Phase 13 / Plan 02 / Task 13-02-03 — @cjm-7.* OIDC provider step bindings.
 //
 // @cjm-7.1 (in-phase, GREEN) — against a stack with zero OIDC providers

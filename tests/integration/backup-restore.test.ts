@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: FSL-1.1-ALv2
 // tests/integration/backup-restore.test.ts
 //
 // DATA-07 integration test: end-to-end exercise of scripts/backup/make-backup.sh

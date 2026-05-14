@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: FSL-1.1-ALv2
 // tests/e2e/reason — host-side e2e for POST /api/reason.
 //
 // Round-trips `{text:"hello"}` through Traefik (TLS) → api → LiteLLM

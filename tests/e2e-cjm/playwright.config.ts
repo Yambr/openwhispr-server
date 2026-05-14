@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: FSL-1.1-ALv2
 // Phase 13 / Plan 01 / Task 01 — playwright-bdd 8.4.2 entrypoint.
 //
 // Per the upstream playwright-bdd 8.x API (verified against

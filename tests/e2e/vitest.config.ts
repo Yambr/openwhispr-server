@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: FSL-1.1-ALv2
 // tests/e2e — host-side e2e vitest config (DISCIPLINE rule 3 back-fill).
 //
 // Opt-in via `E2E=1`. Without the env flag the suite bails immediately

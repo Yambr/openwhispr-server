@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: FSL-1.1-ALv2
 /**
  * Phase 04 / Plan 08 / Task 2c — STRUCTURAL no-buffering assertion (D-04).
  *
@@ -101,7 +101,9 @@ describe("Plan 08 / Task 2c — STRUCTURAL: no Traefik buffering middleware on a
       // Also catch the case where someone names a middleware something
       // innocuous but its definition contains a `buffering:` key.
       const definedAsBuffering =
-        typeof defn === "object" && defn !== null && "buffering" in (defn as Record<string, unknown>);
+        typeof defn === "object" &&
+        defn !== null &&
+        "buffering" in (defn as Record<string, unknown>);
       expect(
         definedAsBuffering,
         `middleware '${name}' defines a buffering: block — Traefik buffering is opt-in and forbidden by Phase 4 D-04`,

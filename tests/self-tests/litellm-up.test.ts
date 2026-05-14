@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: FSL-1.1-ALv2
 /**
  * Phase 03 / Plan 01 / Task 2 — LiteLLM smoke test (LITELLM-01).
  *
@@ -95,7 +95,7 @@ describe("litellm sidecar — smoke (LITELLM-01)", () => {
     const fs = await import("node:fs");
     const raw = fs.readFileSync("docker-compose.yml", "utf8");
     // Slice to the litellm service block (litellm: through the next top-level service).
-    const m = raw.match(/\n  litellm:\n[\s\S]+?(?=\n  [a-z][a-z0-9_-]*:\n)/);
+    const m = raw.match(/\n {2}litellm:\n[\s\S]+?(?=\n {2}[a-z][a-z0-9_-]*:\n)/);
     expect(m, "litellm: service block not found in docker-compose.yml").toBeTruthy();
     const block = m?.[0] ?? "";
     expect(block).not.toMatch(/PYANNOTE_API_KEY:\s/);

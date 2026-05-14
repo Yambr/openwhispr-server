@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: FSL-1.1-ALv2
 // Phase 13 / Plan 01 / Task 13-01-07 — readiness gate for the e2e-cjm harness.
 //
 // Polls `${READINESS_HEALTH_URL:-https://api.localhost/api/health}` until the

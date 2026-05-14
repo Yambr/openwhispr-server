@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: FSL-1.1-ALv2
 // Phase 2 Plan 02 — D-25 self-test: closes Phase 1 D-08 / SC#1 partial.
 //
 // Spins up the api container with MASTER_KEK=changeme (every other
@@ -12,12 +12,7 @@
 import { copyFileSync, existsSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import {
-  composeAtLeast,
-  dockerAvailable,
-  dockerCompose,
-  fixtureSecrets,
-} from "./_helpers.js";
+import { composeAtLeast, dockerAvailable, dockerCompose, fixtureSecrets } from "./_helpers.js";
 
 const skip = !dockerAvailable || !composeAtLeast(2, 20);
 
@@ -49,37 +44,37 @@ function restoreEnv(): void {
   }
 }
 
-describe.skipIf(skip)("Phase 2 Plan 02 D-25 — api entrypoint defense-in-depth (closes Phase 1 SC#1)", () => {
-  beforeAll(async () => {
-    backupExistingEnv();
-    // Build the api image once (cached on subsequent runs in CI).
-    const r = dockerCompose(["build", "api"], { timeoutMs: 600_000 });
-    if (r.exitCode !== 0) {
-      // Surface the build error to the developer; downstream `it` will
-      // skip rather than spam unrelated failures.
-      // biome-ignore lint/suspicious/noConsole: surface build failure for diagnosis
-      console.error("docker compose build api failed:\n", r.stderr || r.stdout);
-    }
-  }, 600_000);
+describe.skipIf(skip)(
+  "Phase 2 Plan 02 D-25 — api entrypoint defense-in-depth (closes Phase 1 SC#1)",
+  () => {
+    beforeAll(async () => {
+      backupExistingEnv();
+      // Build the api image once (cached on subsequent runs in CI).
+      const r = dockerCompose(["build", "api"], { timeoutMs: 600_000 });
+      if (r.exitCode !== 0) {
+        // Surface the build error to the developer; downstream `it` will
+        // skip rather than spam unrelated failures.
+        // biome-ignore lint/suspicious/noConsole: surface build failure for diagnosis
+        console.error("docker compose build api failed:\n", r.stderr || r.stdout);
+      }
+    }, 600_000);
 
-  afterAll(() => {
-    restoreEnv();
-  });
+    afterAll(() => {
+      restoreEnv();
+    });
 
-  it("exits non-zero with MASTER_KEK in stderr when MASTER_KEK=changeme", () => {
-    writeFixtureEnv({ MASTER_KEK: "changeme" });
+    it("exits non-zero with MASTER_KEK in stderr when MASTER_KEK=changeme", () => {
+      writeFixtureEnv({ MASTER_KEK: "changeme" });
 
-    // Run the api container with --no-deps (don't try to start postgres
-    // etc.); the entrypoint should reject before reaching node main.
-    const r = dockerCompose(
-      ["run", "--rm", "--no-deps", "api"],
-      { timeoutMs: 120_000 },
-    );
+      // Run the api container with --no-deps (don't try to start postgres
+      // etc.); the entrypoint should reject before reaching node main.
+      const r = dockerCompose(["run", "--rm", "--no-deps", "api"], { timeoutMs: 120_000 });
 
-    expect(r.exitCode).not.toBe(0);
-    // The check-default-secrets script writes both the offending key
-    // name and the literal "refusing to start" string per Phase 1.
-    expect(r.stderr + r.stdout).toMatch(/MASTER_KEK/);
-    expect(r.stderr + r.stdout).toMatch(/refusing to start/);
-  }, 180_000);
-});
+      expect(r.exitCode).not.toBe(0);
+      // The check-default-secrets script writes both the offending key
+      // name and the literal "refusing to start" string per Phase 1.
+      expect(r.stderr + r.stdout).toMatch(/MASTER_KEK/);
+      expect(r.stderr + r.stdout).toMatch(/refusing to start/);
+    }, 180_000);
+  },
+);

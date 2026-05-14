@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: FSL-1.1-ALv2
 // Phase 13 / Plan 02 / Task 13-02-03 — @cjm-5.* admin onboarding step bindings.
 //
 // @cjm-5.1 + @cjm-5.3 are tagged @expected-red @after-phase-12 — the steps

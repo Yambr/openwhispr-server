@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: FSL-1.1-ALv2
 // Phase 3 / Plan 02 / Task 4 (HIGH-3) — guard the per-package vitest
 // coverage thresholds.
 //
@@ -15,11 +15,7 @@ import { describe, expect, it } from "vitest";
 
 const repoRoot = process.cwd();
 
-const PACKAGES = [
-  "apps/api",
-  "packages/litellm-client",
-  "packages/data",
-] as const;
+const PACKAGES = ["apps/api", "packages/litellm-client", "packages/data"] as const;
 
 interface MaybeConfig {
   default: {
@@ -51,9 +47,7 @@ describe("per-package vitest coverage configs (HIGH-3)", () => {
 
       it("sets nested coverage.thresholds at 90/90/90/90", async () => {
         // Dynamic import — works for ESM .ts via vitest's transform.
-        const mod = (await import(
-          /* @vite-ignore */ configPath
-        )) as MaybeConfig;
+        const mod = (await import(/* @vite-ignore */ configPath)) as MaybeConfig;
         const t = mod.default.test?.coverage?.thresholds;
         expect(t).toBeDefined();
         expect(t!.lines).toBe(90);
@@ -63,9 +57,7 @@ describe("per-package vitest coverage configs (HIGH-3)", () => {
       });
 
       it("scopes coverage.include to this package's src tree", async () => {
-        const mod = (await import(
-          /* @vite-ignore */ configPath
-        )) as MaybeConfig;
+        const mod = (await import(/* @vite-ignore */ configPath)) as MaybeConfig;
         const include = mod.default.test?.coverage?.include;
         expect(include).toBeDefined();
         expect(include).toContain("src/**/*.ts");
