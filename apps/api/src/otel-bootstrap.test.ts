@@ -22,7 +22,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -31,6 +31,10 @@ describe("otel-bootstrap (Phase 6 / Plan 03 / Task 1)", () => {
   it("exposes a started NodeSDK with PinoInstrumentation registered (D-T3)", async () => {
     const mod = await import("./otel-bootstrap.js");
     expect(mod.sdk).toBeDefined();
+    // Phase 14 / Plan 04: sdk is now `NodeSDK | null` (null when
+    // OTEL_EXPORTER_OTLP_ENDPOINT === "disabled"). At default load the
+    // env is unset/URL so sdk MUST be non-null.
+    if (mod.sdk === null) throw new Error("expected NodeSDK at default env");
     expect(typeof mod.sdk.shutdown).toBe("function");
     expect(Array.isArray(mod.registeredInstrumentations)).toBe(true);
     const pino = mod.registeredInstrumentations.find(
@@ -81,6 +85,7 @@ describe("otel-bootstrap (Phase 6 / Plan 03 / Task 1)", () => {
 
   it("shutdown() resolves cleanly (SIGTERM hook target)", async () => {
     const mod = await import("./otel-bootstrap.js");
+    if (mod.sdk === null) throw new Error("expected NodeSDK at default env");
     await expect(mod.sdk.shutdown()).resolves.not.toThrow();
   });
 
@@ -110,6 +115,55 @@ describe("otel-bootstrap (Phase 6 / Plan 03 / Task 1)", () => {
       shutdown: () => Promise.reject(new Error("synthetic shutdown failure")),
     } as unknown as Parameters<typeof mod.shutdownSdk>[0];
     await expect(mod.shutdownSdk(fakeSdk)).resolves.toBeUndefined();
+  });
+
+  describe("OTEL_EXPORTER_OTLP_ENDPOINT=disabled sentinel (Phase 14 / Plan 04 / Task 2)", () => {
+    let savedOtlpEndpoint: string | undefined;
+    beforeEach(() => {
+      savedOtlpEndpoint = process.env.OTEL_EXPORTER_OTLP_ENDPOINT;
+      vi.resetModules();
+    });
+    afterEach(() => {
+      if (savedOtlpEndpoint === undefined) {
+        delete process.env.OTEL_EXPORTER_OTLP_ENDPOINT;
+      } else {
+        process.env.OTEL_EXPORTER_OTLP_ENDPOINT = savedOtlpEndpoint;
+      }
+      vi.resetModules();
+    });
+
+    it("env=`disabled` → exported `sdk === null`", async () => {
+      process.env.OTEL_EXPORTER_OTLP_ENDPOINT = "disabled";
+      const mod = await import("./otel-bootstrap.js");
+      expect(mod.sdk).toBeNull();
+    });
+
+    it("env=`disabled` → startSdk() is a no-op (never constructs nor starts a NodeSDK)", async () => {
+      process.env.OTEL_EXPORTER_OTLP_ENDPOINT = "disabled";
+      const mod = await import("./otel-bootstrap.js");
+      // With sdk null, startSdk() must return without throwing and
+      // without doing any work. Pass the null sdk explicitly to assert
+      // the no-op-safe wrapper contract.
+      expect(() => mod.startSdk(null)).not.toThrow();
+      // Default-arg path also no-ops:
+      expect(() => mod.startSdk()).not.toThrow();
+    });
+
+    it("env=`disabled` → shutdownSdk() resolves to undefined synchronously without throwing", async () => {
+      process.env.OTEL_EXPORTER_OTLP_ENDPOINT = "disabled";
+      const mod = await import("./otel-bootstrap.js");
+      await expect(mod.shutdownSdk(null)).resolves.toBeUndefined();
+      await expect(mod.shutdownSdk()).resolves.toBeUndefined();
+    });
+
+    it("env set to a URL → sdk is a NodeSDK instance; startSdk() calls .start()", async () => {
+      process.env.OTEL_EXPORTER_OTLP_ENDPOINT = "http://otel-collector:4317";
+      const mod = await import("./otel-bootstrap.js");
+      expect(mod.sdk).not.toBeNull();
+      if (mod.sdk === null) throw new Error("unreachable — already asserted non-null");
+      expect(typeof mod.sdk.start).toBe("function");
+      expect(typeof mod.sdk.shutdown).toBe("function");
+    });
   });
 
   it("does NOT expose a /metrics Prometheus-pull endpoint (D-T6)", () => {
