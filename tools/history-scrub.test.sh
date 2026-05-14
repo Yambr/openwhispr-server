@@ -269,6 +269,97 @@ else
 fi
 cleanup_fixture
 
+# --- Test 8 (HI-03) --------------------------------------------------------
+echo "Test 8 (HI-03): state files isolated per-run under .scrub-state/<RUN_ID>/"
+make_fixture "state-isolation"
+OUT8="$(PATH="${FIXTURE}/bin:${PATH}" bash "${SCRUB}" --dry-run 2>&1 || true)"
+# Dry-run must reference the per-invocation .scrub-state directory, NOT the
+# fixed-path /tmp/scrub-workdir.path or the glob-pick rollback file.
+if echo "${OUT8}" | grep -qE '\.scrub-state/'; then
+  pass "dry-run references per-invocation .scrub-state/ directory"
+else
+  fail "dry-run does not mention .scrub-state/ (state-dir isolation missing)"
+fi
+if echo "${OUT8}" | grep -q '/tmp/scrub-workdir.path'; then
+  fail "dry-run still mentions racy fixed-path /tmp/scrub-workdir.path"
+else
+  pass "no reference to racy /tmp/scrub-workdir.path"
+fi
+if echo "${OUT8}" | grep -qE 'ls -t /tmp/scrub-protection-rollback'; then
+  fail "dry-run still mentions racy glob-pick rollback selector"
+else
+  pass "no reference to ls -t glob-pick rollback selector"
+fi
+# RUN_ID must be emitted to stderr/stdout so operator can pin Stage 9.
+if echo "${OUT8}" | grep -qE 'RUN_ID|run-id'; then
+  pass "RUN_ID surfaced for operator pinning"
+else
+  fail "RUN_ID not surfaced in dry-run output"
+fi
+cleanup_fixture
+
+# --- Test 9 (HI-03) --------------------------------------------------------
+echo "Test 9 (HI-03): --force aborts when gpg keyring precondition fails"
+make_fixture "gpg-precondition-fail"
+# Add a gpg mock that fails `--list-keys`. The script must refuse Stage 7
+# before any push-tags side effect, citing the missing keyring.
+cat > "${FIXTURE}/bin/gpg" <<'EOF'
+#!/usr/bin/env bash
+case "$1 ${2:-}" in
+  "--list-keys"*|"--list-secret-keys"*)
+    echo "gpg: no keyring found" >&2
+    exit 2
+    ;;
+  *) exit 0 ;;
+esac
+EOF
+chmod +x "${FIXTURE}/bin/gpg"
+# Set OPENWHISPR_SCRUB_REQUIRE_GPG=1 so the precondition fires (the script
+# treats the env knob as the explicit operator opt-in to the keyring gate;
+# absent the knob, the existing behavior is preserved so OSS contributors
+# who do not own signed tags are not blocked).
+set +e
+OPENWHISPR_SCRUB_REQUIRE_GPG=1 \
+  PATH="${FIXTURE}/bin:${PATH}" bash "${SCRUB}" --dry-run >"${FIXTURE}/out" 2>"${FIXTURE}/err"
+RC=$?
+set -e
+if (( RC != 0 )); then
+  pass "non-zero exit (${RC}) when gpg keyring precondition fails"
+else
+  fail "expected non-zero exit on gpg precondition failure, got 0"
+fi
+if grep -qi 'gpg' "${FIXTURE}/err" || grep -qi 'gpg' "${FIXTURE}/out"; then
+  pass "stderr or stdout cites gpg / keyring"
+else
+  fail "no mention of gpg / keyring in output"
+fi
+cleanup_fixture
+
+# --- Test 10 (HI-03) -------------------------------------------------------
+echo "Test 10 (HI-03): --force passes gpg precondition when keyring is present"
+make_fixture "gpg-precondition-pass"
+cat > "${FIXTURE}/bin/gpg" <<'EOF'
+#!/usr/bin/env bash
+case "$1 ${2:-}" in
+  "--list-keys"*|"--list-secret-keys"*)
+    echo "pub   rsa4096 2026-01-01 [SC]"
+    echo "      ABCD1234ABCD1234ABCD1234ABCD1234ABCD1234"
+    echo "uid           [ultimate] Operator <ops@example.com>"
+    exit 0
+    ;;
+  *) exit 0 ;;
+esac
+EOF
+chmod +x "${FIXTURE}/bin/gpg"
+OUT10="$(OPENWHISPR_SCRUB_REQUIRE_GPG=1 \
+  PATH="${FIXTURE}/bin:${PATH}" bash "${SCRUB}" --dry-run 2>&1 || true)"
+if echo "${OUT10}" | grep -q 'Stage 10:'; then
+  pass "dry-run reaches Stage 10 with gpg keyring present"
+else
+  fail "dry-run did not reach Stage 10 despite gpg keyring present"
+fi
+cleanup_fixture
+
 # --- Summary ---------------------------------------------------------------
 printf '\n%s: %d passed, %d failed\n' "$(basename "${BASH_SOURCE[0]}")" "${PASSED}" "${FAILED}" >&2
 if (( FAILED > 0 )); then
