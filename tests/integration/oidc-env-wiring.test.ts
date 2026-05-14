@@ -30,13 +30,17 @@
 import { execFileSync } from "node:child_process";
 import { describe, expect, it } from "vitest";
 
+// Phase 14 / Plan 14-03 — slim-core inverted the base; fixture-idp is now
+// in the contract-test overlay. OIDC env defaults on api STAY in slim-core
+// base (lazy discovery is safe — see test 4 below), so for the
+// default-only assertion we read bare slim-core; for contract-test
+// assertions we merge base + contract-test.
+const BASE_FILES = ["-f", "docker-compose.yml"];
+const CONTRACT_FILES = [...BASE_FILES, "-f", "compose/docker-compose.contract-test.yml"];
+
 function composeConfig(profiles: string[]): string {
-  const args = ["compose"];
-  for (const p of profiles) {
-    args.push("--profile", p);
-  }
-  args.push("config");
-  return execFileSync("docker", args, {
+  const files = profiles.includes("contract-test") ? CONTRACT_FILES : BASE_FILES;
+  return execFileSync("docker", ["compose", ...files, "config"], {
     cwd: process.cwd().endsWith("/tests/integration") ? `${process.cwd()}/../..` : process.cwd(),
     encoding: "utf8",
     stdio: ["ignore", "pipe", "pipe"],
@@ -56,33 +60,37 @@ function dockerAvailable(): boolean {
 
 const HAS_DOCKER = dockerAvailable();
 
-describe.skipIf(!HAS_DOCKER)("Phase 02.13 — OIDC env wired into api service", () => {
-  // The `api` service is in `profiles: [default]`; `fixture-idp` is in
-  // `profiles: [contract-test]`. Contract-test E2E activates BOTH (Makefile
-  // contract-test target). We assert against the merged config of both.
-  it("api service environment declares OIDC_ISSUER_URL pointing at fixture-idp by default", () => {
-    const merged = composeConfig(["default", "contract-test"]);
-    expect(merged).toMatch(/OIDC_ISSUER_URL:\s*http:\/\/fixture-idp:9000/);
-  });
+describe.skipIf(!HAS_DOCKER)(
+  "Phase 02.13 — OIDC env wired into api service",
+  { timeout: 30_000 },
+  () => {
+    // The `api` service is in `profiles: [default]`; `fixture-idp` is in
+    // `profiles: [contract-test]`. Contract-test E2E activates BOTH (Makefile
+    // contract-test target). We assert against the merged config of both.
+    it("api service environment declares OIDC_ISSUER_URL pointing at fixture-idp by default", () => {
+      const merged = composeConfig(["default", "contract-test"]);
+      expect(merged).toMatch(/OIDC_ISSUER_URL:\s*http:\/\/fixture-idp:9000/);
+    });
 
-  it("api service environment declares OIDC_CLIENT_ID with a non-empty default", () => {
-    const merged = composeConfig(["default", "contract-test"]);
-    expect(merged).toMatch(/OIDC_CLIENT_ID:\s*conformance-test-client/);
-  });
+    it("api service environment declares OIDC_CLIENT_ID with a non-empty default", () => {
+      const merged = composeConfig(["default", "contract-test"]);
+      expect(merged).toMatch(/OIDC_CLIENT_ID:\s*conformance-test-client/);
+    });
 
-  it("api service environment declares OIDC_CLIENT_SECRET with a non-empty default", () => {
-    const merged = composeConfig(["default", "contract-test"]);
-    expect(merged).toMatch(/OIDC_CLIENT_SECRET:\s*conformance-test-secret-do-not-use-in-prod/);
-  });
+    it("api service environment declares OIDC_CLIENT_SECRET with a non-empty default", () => {
+      const merged = composeConfig(["default", "contract-test"]);
+      expect(merged).toMatch(/OIDC_CLIENT_SECRET:\s*conformance-test-secret-do-not-use-in-prod/);
+    });
 
-  it("default profile alone still ships OIDC env (lazy-discovery is safe)", () => {
-    // D-01: keeping the env on the api service unconditionally is safe
-    // because Better Auth genericOAuth fetches the discovery doc lazily on
-    // first OAuth attempt — default-profile users never trigger that path
-    // unless they intentionally call /api/desktop-signin/oidc. The
-    // fixture-idp DNS name resolves to NXDOMAIN outside the contract-test
-    // network, but no resolution is attempted at boot.
-    const merged = composeConfig(["default"]);
-    expect(merged).toMatch(/OIDC_ISSUER_URL:\s*http:\/\/fixture-idp:9000/);
-  });
-});
+    it("default profile alone still ships OIDC env (lazy-discovery is safe)", () => {
+      // D-01: keeping the env on the api service unconditionally is safe
+      // because Better Auth genericOAuth fetches the discovery doc lazily on
+      // first OAuth attempt — default-profile users never trigger that path
+      // unless they intentionally call /api/desktop-signin/oidc. The
+      // fixture-idp DNS name resolves to NXDOMAIN outside the contract-test
+      // network, but no resolution is attempted at boot.
+      const merged = composeConfig(["default"]);
+      expect(merged).toMatch(/OIDC_ISSUER_URL:\s*http:\/\/fixture-idp:9000/);
+    });
+  },
+);

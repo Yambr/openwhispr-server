@@ -34,7 +34,11 @@ const REPO_ROOT = process.cwd().endsWith("/tests/integration")
 
 const TRAEFIK_YML_PATH = resolve(REPO_ROOT, "compose/traefik/traefik.yml");
 const DYNAMIC_YML_PATH = resolve(REPO_ROOT, "compose/traefik/dynamic.yml");
-const COMPOSE_YML_PATH = resolve(REPO_ROOT, "docker-compose.yml");
+// Phase 14 / Plan 14-03 — traefik moved from base to the ingress overlay.
+// Test 6 below now inspects the overlay file directly (pure YAML — no
+// `docker compose config` required, preserving the original "no docker
+// daemon at run time" property of this test file).
+const COMPOSE_YML_PATH = resolve(REPO_ROOT, "compose/docker-compose.ingress.yml");
 
 interface RespondingTimeouts {
   readTimeout?: string | number;
@@ -82,8 +86,7 @@ const loadStatic = (): TraefikStatic =>
   parse(readFileSync(TRAEFIK_YML_PATH, "utf8")) as TraefikStatic;
 const loadDynamic = (): DynamicConfig =>
   parse(readFileSync(DYNAMIC_YML_PATH, "utf8")) as DynamicConfig;
-const loadCompose = (): Compose =>
-  parse(readFileSync(COMPOSE_YML_PATH, "utf8")) as Compose;
+const loadCompose = (): Compose => parse(readFileSync(COMPOSE_YML_PATH, "utf8")) as Compose;
 
 describe("Phase 04 Plan 05 — Traefik realtime entrypoint split", () => {
   it("Test 1: websecure-realtime entrypoint exists on :8443 with long timeouts", () => {

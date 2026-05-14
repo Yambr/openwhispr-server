@@ -29,13 +29,21 @@
 import { execFileSync } from "node:child_process";
 import { describe, expect, it } from "vitest";
 
-function composeConfig(profiles: string[]): string {
-  const args = ["compose"];
-  for (const p of profiles) {
-    args.push("--profile", p);
-  }
-  args.push("config");
-  return execFileSync("docker", args, {
+// Phase 14 / Plan 14-03 — slim-core inverted the base: traefik +
+// fixture-idp + contract-test-runner moved to overlays. This suite
+// merges base + ingress + contract-test (replaces the old
+// `--profile default --profile contract-test` invocation).
+const PHASE_14_OVERLAYS = [
+  "-f",
+  "docker-compose.yml",
+  "-f",
+  "compose/docker-compose.ingress.yml",
+  "-f",
+  "compose/docker-compose.contract-test.yml",
+];
+
+function composeConfig(_profiles: string[]): string {
+  return execFileSync("docker", ["compose", ...PHASE_14_OVERLAYS, "config"], {
     cwd: process.cwd().endsWith("/tests/integration") ? `${process.cwd()}/../..` : process.cwd(),
     encoding: "utf8",
     stdio: ["ignore", "pipe", "pipe"],
@@ -63,64 +71,70 @@ function dockerAvailable(): boolean {
 
 const HAS_DOCKER = dockerAvailable();
 
-describe.skipIf(!HAS_DOCKER)("Phase 02.15 — traefik network aliases + runner CA trust", () => {
-  it("traefik service announces api.localhost as a network alias on openwhispr_internal", () => {
-    const merged = composeConfig(["default", "contract-test"]);
-    const traefik = extractServiceBlock(merged, "traefik");
-    expect(traefik).toMatch(/aliases:[\s\S]*?- api\.localhost/);
-  });
+// Phase 14 / Plan 14-03 — `docker compose config` against the merged
+// overlay chain takes ~10s; bump suite timeout (vitest default is 5s).
+describe.skipIf(!HAS_DOCKER)(
+  "Phase 02.15 — traefik network aliases + runner CA trust",
+  { timeout: 30_000 },
+  () => {
+    it("traefik service announces api.localhost as a network alias on openwhispr_internal", () => {
+      const merged = composeConfig(["default", "contract-test"]);
+      const traefik = extractServiceBlock(merged, "traefik");
+      expect(traefik).toMatch(/aliases:[\s\S]*?- api\.localhost/);
+    });
 
-  it("traefik service announces auth.localhost as a network alias on openwhispr_internal", () => {
-    const merged = composeConfig(["default", "contract-test"]);
-    const traefik = extractServiceBlock(merged, "traefik");
-    expect(traefik).toMatch(/aliases:[\s\S]*?- auth\.localhost/);
-  });
+    it("traefik service announces auth.localhost as a network alias on openwhispr_internal", () => {
+      const merged = composeConfig(["default", "contract-test"]);
+      const traefik = extractServiceBlock(merged, "traefik");
+      expect(traefik).toMatch(/aliases:[\s\S]*?- auth\.localhost/);
+    });
 
-  it("contract-test-runner BACKEND_URL flips to https://api.localhost (Traefik path, full TLS)", () => {
-    const merged = composeConfig(["default", "contract-test"]);
-    const runner = extractServiceBlock(merged, "contract-test-runner");
-    expect(runner).toMatch(/BACKEND_URL:\s*https:\/\/api\.localhost/);
-  });
+    it("contract-test-runner BACKEND_URL flips to https://api.localhost (Traefik path, full TLS)", () => {
+      const merged = composeConfig(["default", "contract-test"]);
+      const runner = extractServiceBlock(merged, "contract-test-runner");
+      expect(runner).toMatch(/BACKEND_URL:\s*https:\/\/api\.localhost/);
+    });
 
-  it("contract-test-runner AUTH_URL flips to https://api.localhost", () => {
-    const merged = composeConfig(["default", "contract-test"]);
-    const runner = extractServiceBlock(merged, "contract-test-runner");
-    expect(runner).toMatch(/AUTH_URL:\s*https:\/\/api\.localhost/);
-  });
+    it("contract-test-runner AUTH_URL flips to https://api.localhost", () => {
+      const merged = composeConfig(["default", "contract-test"]);
+      const runner = extractServiceBlock(merged, "contract-test-runner");
+      expect(runner).toMatch(/AUTH_URL:\s*https:\/\/api\.localhost/);
+    });
 
-  // Phase 02.22 — NODE_EXTRA_CA_CERTS must point at the issuing CA, not the
-  // end-entity leaf. Node 24 + OpenSSL 3 reject a leaf (CA:FALSE) as a trust
-  // anchor (X509Certificate.ca === false → DEPTH_ZERO_SELF_SIGNED_CERT). The
-  // bootstrap-generated root-ca.crt is what Node trusts; the leaf chains up.
-  it("contract-test-runner trusts bootstrap-generated root CA via NODE_EXTRA_CA_CERTS (Phase 02.22)", () => {
-    const merged = composeConfig(["default", "contract-test"]);
-    const runner = extractServiceBlock(merged, "contract-test-runner");
-    expect(runner).toMatch(/NODE_EXTRA_CA_CERTS:\s*\/certs\/root-ca\.crt/);
-  });
+    // Phase 02.22 — NODE_EXTRA_CA_CERTS must point at the issuing CA, not the
+    // end-entity leaf. Node 24 + OpenSSL 3 reject a leaf (CA:FALSE) as a trust
+    // anchor (X509Certificate.ca === false → DEPTH_ZERO_SELF_SIGNED_CERT). The
+    // bootstrap-generated root-ca.crt is what Node trusts; the leaf chains up.
+    it("contract-test-runner trusts bootstrap-generated root CA via NODE_EXTRA_CA_CERTS (Phase 02.22)", () => {
+      const merged = composeConfig(["default", "contract-test"]);
+      const runner = extractServiceBlock(merged, "contract-test-runner");
+      expect(runner).toMatch(/NODE_EXTRA_CA_CERTS:\s*\/certs\/root-ca\.crt/);
+    });
 
-  it("contract-test-runner mounts root-ca.crt read-only at /certs/root-ca.crt (Phase 02.22 — no image rebuild on rotation)", () => {
-    const merged = composeConfig(["default", "contract-test"]);
-    const runner = extractServiceBlock(merged, "contract-test-runner");
-    expect(runner).toMatch(/root-ca\.crt/);
-    expect(runner).toMatch(/target:\s*\/certs\/root-ca\.crt/);
-    expect(runner).toMatch(/read_only:\s*true/);
-  });
+    it("contract-test-runner mounts root-ca.crt read-only at /certs/root-ca.crt (Phase 02.22 — no image rebuild on rotation)", () => {
+      const merged = composeConfig(["default", "contract-test"]);
+      const runner = extractServiceBlock(merged, "contract-test-runner");
+      expect(runner).toMatch(/root-ca\.crt/);
+      expect(runner).toMatch(/target:\s*\/certs\/root-ca\.crt/);
+      expect(runner).toMatch(/read_only:\s*true/);
+    });
 
-  it("contract-test-runner does NOT carry AUTH_TRUSTED_ORIGINS_EXTRA (it is a seed-side concern)", () => {
-    const merged = composeConfig(["default", "contract-test"]);
-    const runner = extractServiceBlock(merged, "contract-test-runner");
-    expect(runner).not.toMatch(/AUTH_TRUSTED_ORIGINS_EXTRA/);
-  });
+    it("contract-test-runner does NOT carry AUTH_TRUSTED_ORIGINS_EXTRA (it is a seed-side concern)", () => {
+      const merged = composeConfig(["default", "contract-test"]);
+      const runner = extractServiceBlock(merged, "contract-test-runner");
+      expect(runner).not.toMatch(/AUTH_TRUSTED_ORIGINS_EXTRA/);
+    });
 
-  it("api service still carries AUTH_TRUSTED_ORIGINS_EXTRA for the in-cluster seed POST", () => {
-    const merged = composeConfig(["default", "contract-test"]);
-    const api = extractServiceBlock(merged, "api");
-    expect(api).toMatch(/AUTH_TRUSTED_ORIGINS_EXTRA:\s*http:\/\/api:3000/);
-  });
+    it("api service still carries AUTH_TRUSTED_ORIGINS_EXTRA for the in-cluster seed POST", () => {
+      const merged = composeConfig(["default", "contract-test"]);
+      const api = extractServiceBlock(merged, "api");
+      expect(api).toMatch(/AUTH_TRUSTED_ORIGINS_EXTRA:\s*http:\/\/api:3000/);
+    });
 
-  it("contract-test-runner does NOT set NODE_TLS_REJECT_UNAUTHORIZED (CA trust is the proper fix; CLAUDE.md no-workarounds)", () => {
-    const merged = composeConfig(["default", "contract-test"]);
-    const runner = extractServiceBlock(merged, "contract-test-runner");
-    expect(runner).not.toMatch(/NODE_TLS_REJECT_UNAUTHORIZED/);
-  });
-});
+    it("contract-test-runner does NOT set NODE_TLS_REJECT_UNAUTHORIZED (CA trust is the proper fix; CLAUDE.md no-workarounds)", () => {
+      const merged = composeConfig(["default", "contract-test"]);
+      const runner = extractServiceBlock(merged, "contract-test-runner");
+      expect(runner).not.toMatch(/NODE_TLS_REJECT_UNAUTHORIZED/);
+    });
+  },
+);
