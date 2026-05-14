@@ -517,10 +517,20 @@
       },
       "error": {
         "duplicate": {
-          "text": "This email is already registered. Sign in instead."
+          "title": {
+            "text": "Email already registered"
+          },
+          "body": {
+            "text": "This email is already registered. Sign in instead."
+          }
         },
         "generic": {
-          "text": "Sign-up failed. Please review the form and try again."
+          "title": {
+            "text": "Sign-up failed"
+          },
+          "body": {
+            "text": "Sign-up failed. Please review the form and try again."
+          }
         }
       },
       "form": {
