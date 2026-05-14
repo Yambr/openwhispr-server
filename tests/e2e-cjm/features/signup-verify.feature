@@ -18,3 +18,19 @@ Feature: Signup and email verification round-trip
     When the same email tries to sign up again with password "Cjm1Pass!23"
     Then the API returns a 422 with code "USER_ALREADY_EXISTS"
     And no second verification email is sent to "cjm-1-2@e2e.test" within 5 seconds
+
+  @cjm-1.3
+  Scenario: Password shorter than 8 chars is rejected with a per-field validation error
+    When a new user signs up with a 6-char password "Short1"
+    Then the signup response is a 4xx validation error mentioning password length
+
+  @cjm-1.4 @expected-red @after-phase-15
+  Scenario: Locale-scoped error copy renders in Russian under Accept-Language ru
+    When an invalid signup is submitted with Accept-Language "ru"
+    Then the response error message renders in Russian copy
+
+  @cjm-1.5 @expected-red @after-phase-12
+  Scenario: Zero providers configured produces zero social-login buttons on the public sign-up page
+    Given the stack has zero OIDC providers configured
+    When the sign-up page is loaded
+    Then zero OIDC social-login buttons are rendered

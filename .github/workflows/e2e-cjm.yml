@@ -30,6 +30,8 @@ jobs:
           node-version: 24.x
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      - name: Lint customer-journeys.md and feature cross-refs
+        run: pnpm tsx tools/lint-cjm-doc.ts --features tests/e2e-cjm/features --check-expected-red
       - run: pnpm exec playwright install --with-deps chromium
       - name: Add localhost hostname aliases
         run: |

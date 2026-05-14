@@ -343,6 +343,12 @@ e2e-cjm:
 		echo "e2e-cjm: refusing to run — set E2E_CJM=1 (this target boots a hermetic compose project and stops/restarts your local stack)"; \
 		exit 1; \
 	fi
+	@# Phase 13 / Plan 02 / Task 13-02-04: gate the pipeline on the
+	@# CJM-doc + .feature cross-ref lint BEFORE incurring docker compose
+	@# costs. Mode 2 (--features) + Mode 3 (--check-expected-red) together
+	@# enforce the D-10 "doc before features" invariant and the
+	@# `@expected-red ↔ @after-phase-N` pairing rule.
+	@pnpm tsx tools/lint-cjm-doc.ts --features tests/e2e-cjm/features --check-expected-red
 	@if docker compose -p openwhispr ps -q 2>/dev/null | head -1 | grep -q . ; then \
 		echo "e2e-cjm: stopping user 'openwhispr' project (will restart on teardown)"; \
 		echo "1" > .e2e-cjm-user-was-running; \
@@ -359,7 +365,7 @@ e2e-cjm:
 	if [ -n "$$SCENARIO" ]; then \
 		pnpm exec playwright test --grep "$$SCENARIO" --config tests/e2e-cjm/playwright.config.ts; \
 	else \
-		pnpm exec playwright test --config tests/e2e-cjm/playwright.config.ts; \
+		pnpm exec playwright test --grep-invert "@expected-red" --config tests/e2e-cjm/playwright.config.ts; \
 	fi
 
 e2e-cjm-teardown:
