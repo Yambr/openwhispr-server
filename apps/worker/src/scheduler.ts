@@ -12,20 +12,19 @@
 //   | usage-rollup-daily-dispatcher  | `5 0 * * *` | Just after UTC midnight       |
 //   | reconciliation-daily-check     | `0 1 * * *` | 1h after rollup so ledger has settled |
 //   | partman-maintenance            | `0 2 * * *` | After reconciliation; before peak |
-//   | virtual-key-rotation (sentinel)| `0 3 * * 0` | Weekly Sunday — dispatcher shape |
 //
 // audit-archive is NOT scheduled directly: partman-maintenance enqueues it
 // per-detached-partition.
 //
-// virtual-key-rotation cron uses a sentinel payload (tenant_id +
-// user_id = nil-UUID) — the production rotation cron path is owned by a
-// separate dispatcher in a future plan; this is the minimum to satisfy
-// the must_have acceptance criterion. On-demand rotation goes via
-// /api/admin/keys/rotate (Plan 06-09).
+// Phase 14 / Plan 05 — virtual-key-rotation cron removed wholesale per
+// CONTEXT decision 3 + BYOK-03 audit closure. The previous nil-UUID
+// sentinel payload could never succeed against the noop adapters; the
+// production rotation dispatcher does not exist and is out of Phase 14
+// scope. See `apps/worker/src/index.ts` for the transient Valkey
+// cleanup that drains stale `bull:virtual-key-rotation:*` keys on
+// boot for upgrade-in-place operators.
 
 import type { QueueRegistry } from "./queues.js";
-
-const NIL_UUID = "00000000-0000-0000-0000-000000000000";
 
 /** UTC date helper — used as the rollup dispatcher's payload `date` field. */
 function utcDateString(now: Date = new Date()): string {
@@ -40,14 +39,12 @@ export interface SchedulerConfig {
   usageRollupCron?: string;
   reconciliationCron?: string;
   partmanCron?: string;
-  virtualKeyRotationCron?: string;
 }
 
 export const DEFAULT_SCHEDULER_CONFIG: Required<SchedulerConfig> = {
   usageRollupCron: "5 0 * * *",
   reconciliationCron: "0 1 * * *",
   partmanCron: "0 2 * * *",
-  virtualKeyRotationCron: "0 3 * * 0",
 };
 
 export async function installSchedulers(
@@ -84,16 +81,5 @@ export async function installSchedulers(
     "partman-maintenance",
     { pattern: cfg.partmanCron, tz: "UTC" },
     { name: "partman-maintenance", data: {} },
-  );
-
-  // 4. virtual-key-rotation — sentinel payload; production dispatcher
-  //    iterates the user/tenant table to fan-out per-user children.
-  await registry.virtualKeyRotation.upsertJobScheduler(
-    "virtual-key-rotation-weekly",
-    { pattern: cfg.virtualKeyRotationCron, tz: "UTC" },
-    {
-      name: "virtual-key-rotation",
-      data: { tenant_id: NIL_UUID, user_id: NIL_UUID, reason: "scheduled" },
-    },
   );
 }

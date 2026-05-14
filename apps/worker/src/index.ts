@@ -33,14 +33,16 @@ import "./otel-bootstrap.js";
 //   5. 8 BullMQ Worker instances — one per queue.
 //   6. SIGTERM/SIGINT graceful drain over all 8 workers.
 //
-// The collaborators that the new jobs require (SMTP transport, LiteLLM key
-// client, user-key lookup, template renderer) are intentionally left as
-// stubs in this commit because the production wiring lives in routes /
-// services that Phase 5/6 have not yet shipped (see deferred items in
-// 06-08-SUMMARY). The worker boots with no-op stubs so the cron schedules
-// fire safely; the dispatcher pattern means a no-op email-delivery /
-// virtual-key-rotation cron tick is harmless until the API enqueues real
-// payloads.
+// Phase 14 / Plan 05 — the virtual-key-rotation worker, its noop
+// LiteLLM key client + user-key lookup adapters, its weekly cron, and
+// its Zod queue handle were removed wholesale (CONTEXT decision 3 +
+// BYOK-03 audit closure). The production driver does not exist; the
+// cron enqueued a nil-UUID sentinel that could never succeed; the
+// `noopLitellmKeyClient` + `noopUserKeyLookup` constants were
+// internal mocks in production code (forbidden by CLAUDE.md "no mocks
+// of internal logic"). Removing the dead path is the constitutional
+// fix. See `apps/worker/src/index.ts` transient-cleanup block below
+// for the one-shot drain of stale Valkey keys on upgrade-in-place.
 
 import { createEmailSender } from "@openwhispr/email";
 import { type ConnectionOptions, Worker } from "bullmq";
@@ -64,11 +66,6 @@ import {
   buildUsageRollupDispatcher,
   buildUsageRollupTenantHandler,
 } from "./jobs/usage-rollup-daily.js";
-import {
-  buildVirtualKeyRotationHandler,
-  type LiteLlmKeyClient,
-  type UserKeyLookup,
-} from "./jobs/virtual-key-rotation.js";
 import { buildQueueRegistry, closeQueueRegistry, QUEUE_NAMES } from "./queues.js";
 import { installSchedulers } from "./scheduler.js";
 
@@ -86,22 +83,48 @@ const realSender = createEmailSender({ log, env: process.env });
 // from disk at module init. Replaces the noopRenderer stub left in place
 // by Phase 6 Plan 06-08 pending the worker i18n surface (this plan).
 const templateRenderer = createTemplateRenderer();
-const noopLitellmKeyClient: LiteLlmKeyClient = {
-  async generateKey() {
-    return { key_id: `noop-${Date.now()}` };
-  },
-  async deleteKey() {
-    /* no-op */
-  },
-};
-const noopUserKeyLookup: UserKeyLookup = {
-  async loadCurrentKeyId() {
-    return null;
-  },
-  async storeNewKeyId() {
-    /* no-op */
-  },
-};
+
+/**
+ * Phase 14 / Plan 05 — transient cleanup of stale BullMQ keys left over
+ * from the deleted virtual-key-rotation worker. Operators upgrading
+ * in-place have `bull:virtual-key-rotation:*` keys in Valkey from a
+ * previous worker boot; BullMQ would not delete them on its own and a
+ * resurrected Worker pickup of a nonexistent queue is harmless but
+ * produces log noise. SCAN+DEL with a small COUNT so the cleanup is
+ * non-blocking on a large keyspace. Idempotent — a second boot finds
+ * zero matching keys and exits the loop cleanly. Safe to remove in a
+ * future phase once stragglers stop appearing. Wrapped in try/catch
+ * because cleanup failure must NEVER prevent the worker from booting.
+ */
+async function drainStaleVkrKeys(redis: IORedis, logger: typeof log): Promise<void> {
+  try {
+    let cursor = "0";
+    let total = 0;
+    do {
+      // SCAN returns [next_cursor, keys[]]. COUNT is a hint to Valkey.
+      const [next, keys] = await redis.scan(
+        cursor,
+        "MATCH",
+        "bull:virtual-key-rotation:*",
+        "COUNT",
+        "200",
+      );
+      cursor = next;
+      if (keys.length > 0) {
+        await redis.del(...keys);
+        total += keys.length;
+      }
+    } while (cursor !== "0");
+    if (total > 0) {
+      logger.info(
+        { deleted: total },
+        "drained stale bull:virtual-key-rotation:* keys (Plan 14-05)",
+      );
+    }
+  } catch (err) {
+    logger.warn({ err }, "transient vkr-key cleanup failed; non-fatal");
+  }
+}
 
 async function main(): Promise<void> {
   const redis = new IORedis({
@@ -111,6 +134,12 @@ async function main(): Promise<void> {
     maxRetriesPerRequest: null,
   });
   const connection: ConnectionOptions = redis;
+
+  // Phase 14 / Plan 05 — transient cleanup of stale BullMQ keys from
+  // the removed virtual-key-rotation worker. Runs before any Worker
+  // construction so a (hypothetical) future re-add of the queue can't
+  // race with the drain. Non-fatal — try/catch lives inside the helper.
+  await drainStaleVkrKeys(redis, log);
 
   const litellmPool = makeLitellmPool();
   const appOwnerPool = makeAppOwnerPool();
@@ -141,15 +170,6 @@ async function main(): Promise<void> {
       pool: appOwnerPool,
       sender: realSender,
       renderer: templateRenderer,
-    }),
-    { connection },
-  );
-  const vkrWorker = new Worker(
-    QUEUE_NAMES.virtualKeyRotation,
-    buildVirtualKeyRotationHandler({
-      pool: appOwnerPool,
-      litellm: noopLitellmKeyClient,
-      userKeyLookup: noopUserKeyLookup,
     }),
     { connection },
   );
@@ -200,7 +220,6 @@ async function main(): Promise<void> {
   const workers = [
     ingestWorker,
     emailWorker,
-    vkrWorker,
     rollupDispatcherWorker,
     rollupTenantWorker,
     reconciliationCheckWorker,

@@ -38,7 +38,6 @@ function makeRegistry() {
     usageRollupDispatcher: makeQueueStub(),
     reconciliationDailyCheck: makeQueueStub(),
     partmanMaintenance: makeQueueStub(),
-    virtualKeyRotation: makeQueueStub(),
     // Unused but required to match shape.
     emailDelivery: makeQueueStub(),
     usageRollupTenant: makeQueueStub(),
@@ -87,19 +86,11 @@ describe("installSchedulers (Phase 6 Plan 06-08)", () => {
     expect((r.partmanMaintenance.captures[0]?.jobData as any).data).toEqual({});
   });
 
-  it("upserts virtual-key-rotation at 0 3 * * 0 (weekly Sunday)", async () => {
-    const r = makeRegistry();
-    // biome-ignore lint/suspicious/noExplicitAny: registry shape compat
-    await installSchedulers(r as any);
-    expect(r.virtualKeyRotation.captures[0]?.repeat).toMatchObject({
-      pattern: "0 3 * * 0",
-      tz: "UTC",
-    });
-    // biome-ignore lint/suspicious/noExplicitAny: introspection
-    const data = (r.virtualKeyRotation.captures[0]?.jobData as any).data;
-    expect(data.reason).toBe("scheduled");
-    expect(data.tenant_id).toBe("00000000-0000-0000-0000-000000000000");
-  });
+  // Phase 14 / Plan 05 — the virtual-key-rotation cron + queue were
+  // removed wholesale (CONTEXT decision 3 + BYOK-03 audit closure).
+  // The previous "upserts virtual-key-rotation at 0 3 * * 0" test is
+  // deleted; the corresponding negative-assertion lives in
+  // tests/integration/virtual-key-rotation-removed.test.ts.
 
   it("honors override cron strings supplied in SchedulerConfig", async () => {
     const r = makeRegistry();
@@ -108,20 +99,17 @@ describe("installSchedulers (Phase 6 Plan 06-08)", () => {
       usageRollupCron: "15 0 * * *",
       reconciliationCron: "30 1 * * *",
       partmanCron: "45 2 * * *",
-      virtualKeyRotationCron: "0 4 * * 1",
     });
     expect(r.usageRollupDispatcher.captures[0]?.repeat).toMatchObject({ pattern: "15 0 * * *" });
     expect(r.reconciliationDailyCheck.captures[0]?.repeat).toMatchObject({ pattern: "30 1 * * *" });
     expect(r.partmanMaintenance.captures[0]?.repeat).toMatchObject({ pattern: "45 2 * * *" });
-    expect(r.virtualKeyRotation.captures[0]?.repeat).toMatchObject({ pattern: "0 4 * * 1" });
   });
 
-  it("DEFAULT_SCHEDULER_CONFIG locks the four documented cron strings", () => {
+  it("DEFAULT_SCHEDULER_CONFIG locks the three documented cron strings", () => {
     expect(DEFAULT_SCHEDULER_CONFIG).toEqual({
       usageRollupCron: "5 0 * * *",
       reconciliationCron: "0 1 * * *",
       partmanCron: "0 2 * * *",
-      virtualKeyRotationCron: "0 3 * * 0",
     });
   });
 });
