@@ -1,0 +1,25 @@
+# ArtifactHub repository metadata for OpenWhispr Server.
+#
+# This file is consumed by ArtifactHub (https://artifacthub.io/) when the
+# Helm repository (published to gh-pages via
+# `helm/chart-releaser-action` — see .github/workflows/chart-release.yml)
+# is registered at https://artifacthub.io/control-panel/repositories.
+#
+# Authoritative spec: https://artifacthub.io/docs/topics/repositories/helm-charts/
+#
+# repositoryID is a unique UUID-v4 identifier; it lets ArtifactHub
+# associate this gh-pages URL with the same repo across re-registrations
+# (e.g. if the chart's GH Pages URL ever moves between
+# `openwhispr/openwhispr-server` mirrors). Generate via `uuidgen` once;
+# never rotate.
+repositoryID: 7e3a7c40-3f99-4f01-8d4a-2f2c8c5f5c01
+
+# Owners listed here appear as the repository contacts on the
+# ArtifactHub UI. Match the maintainers list in charts/openwhispr/Chart.yaml.
+owners:
+  - name: OpenWhispr Maintainers
+    email: maintainers@openwhispr.example.com
+
+# Files / glob patterns to exclude from ArtifactHub's package scanner.
+# Empty list = scan every chart at every chart-v* release tag.
+ignore: []

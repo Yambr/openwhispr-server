@@ -8,6 +8,33 @@
 A drop-in OpenWhispr backend any organization can self-host — open-source
 out of the box, corporate-LiteLLM-ready by env override.
 
+## Install the Helm chart
+
+OpenWhispr Server ships an in-repo Helm chart at `charts/openwhispr/`.
+Chart releases are decoupled from server releases — chart semver moves
+on the `chart-v*` tag namespace and the packaged chart + index.yaml are
+published to the repository's `gh-pages` branch via
+`helm/chart-releaser-action` (see
+[`.github/workflows/chart-release.yml`](./.github/workflows/chart-release.yml)
+and [STRUCT-03 research](./.planning/phases/15-repo-refactor-fsl-relicense-history-scrub-v2/15-RESEARCH-helm-location.md)).
+
+```bash
+# Register the Helm repository (one-time):
+helm repo add openwhispr https://openwhispr.github.io/openwhispr-server
+helm repo update
+
+# Install:
+helm install openwhispr openwhispr/openwhispr --namespace openwhispr --create-namespace
+
+# Or pin to a specific chart version:
+helm install openwhispr openwhispr/openwhispr --version 1.0.0
+```
+
+Operators who want the OCI distribution channel (ghcr.io) instead of
+the GitHub Pages index — the `v*` server-release lane publishes the
+same chart at `oci://ghcr.io/openwhispr/charts/openwhispr` via
+[`.github/workflows/helm-release.yml`](./.github/workflows/helm-release.yml).
+
 > **Status: Phase 10 (i18n, docs, OSS housekeeping).** Wire surface
 > (Phase 2-5), operational substrate (Phase 6-7), load-test + SLOs
 > (Phase 8), Helm chart (Phase 9), and server-side + web-side i18n

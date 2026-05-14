@@ -7,8 +7,12 @@ description: |
   bundled-AI on GPU nodes) into a single Helm chart.
 type: application
 # Chart version moves together with appVersion per STACK.md convention.
-version: 0.9.0-rc1
-# Locked to the release tag; release workflow (Plan 09-11) bumps both keys.
+# Phase 15 / Plan 03 (STRUCT-03 Option 3) — chart semver is now decoupled
+# from server semver. Chart releases fire on the `chart-v*` tag namespace
+# via `.github/workflows/chart-release.yml`; server releases continue on
+# `v*` via `.github/workflows/helm-release.yml`. First release on the
+# chart-v* lane is 1.0.0.
+version: 1.0.0
 appVersion: "0.9.0-rc1"
 kubeVersion: ">=1.28.0-0"
 home: https://github.com/openwhispr/openwhispr-server
@@ -29,7 +33,7 @@ annotations:
   # ships skeleton only (ServiceAccount + Secrets path). Subsequent waves
   # add Deployments, CNPG Cluster CR, IngressRoutes, etc.
   category: Application
-  licenses: Apache-2.0
+  licenses: FSL-1.1-ALv2
 # Sub-chart dependencies. Phase 09 Plan 05 (A5 decision): vendor Bitnami
 # Valkey + MinIO via the canonical OCI Helm charts. NOTE the 2024 Bitnami
 # license change: the Helm CHARTS themselves remain Apache 2.0, while the
