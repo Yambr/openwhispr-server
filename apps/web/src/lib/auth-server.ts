@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: FSL-1.1-ALv2
 // Phase 07.1 / Plan 05 — RSC server-side session validation.
 //
 // Why HTTP instead of importing the apps/api Better Auth instance directly:

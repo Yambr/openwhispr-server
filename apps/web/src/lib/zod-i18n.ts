@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: FSL-1.1-ALv2
 // Phase 12 / Plan 12-03 / Task 3 — Zod 4 setErrorMap ↔ i18next bridge
 // (UICONF-03 per-field localized errors).
 //

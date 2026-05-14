@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: FSL-1.1-ALv2
 // Phase 07.1 / Plan 07 — U2 Sign-up form.
 //
 // Client Component. RHF + zod + Better Auth signUp.email. Success state

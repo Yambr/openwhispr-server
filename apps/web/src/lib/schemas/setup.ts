@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: FSL-1.1-ALv2
 // Phase 12 / Plan 12-03 / Task 3 — Zod schema for the setup wizard.
 //
 // Mirrors the API-side schema in apps/api/src/routes/setup-admin.ts

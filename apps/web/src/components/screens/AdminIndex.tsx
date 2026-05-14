@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: FSL-1.1-ALv2
 // Phase 12 / Plan 12-04 — /admin index AdminIndex component (closes TD-12.a).
 //
 // Conformance inventory derived from

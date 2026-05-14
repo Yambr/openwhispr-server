@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: FSL-1.1-ALv2
 // Phase 07.1 / Plan 08 — U5 Account composite (Client Component).
 //
 // Receives the server-resolved Better Auth user object from the RSC parent

@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: FSL-1.1-ALv2
 // Phase 07.1 / Plan 07 — U3 Verify-email route.
 //
 // RSC parses `?token=` and validates it against a tight regex BEFORE

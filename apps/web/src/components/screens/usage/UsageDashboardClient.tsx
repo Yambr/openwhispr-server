@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: FSL-1.1-ALv2
 // Phase 07.1 / Plan 08 — U4 Usage dashboard (Client Component).
 //
 // KPI-only (D-STACK-6 + D-API6 + A2/A3 REFUTED): four cards from the live

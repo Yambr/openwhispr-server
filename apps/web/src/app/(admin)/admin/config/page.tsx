@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: FSL-1.1-ALv2
 // Phase 07.1 / Plan 12 — A3 /admin/config RSC entry (D-API4, D-S1, D-ADMIN-1).
 //
 // Renders the Config view client. Server-side prefetch is intentionally

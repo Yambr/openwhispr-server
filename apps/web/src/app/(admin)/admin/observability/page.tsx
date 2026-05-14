@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: FSL-1.1-ALv2
 // Phase 07.1 / Plan 12 — A2 /admin/observability RSC entry (D-ADMIN-1, D-S1).
 //
 // Pure pass-through to the Client Component: A2 has zero server-side data

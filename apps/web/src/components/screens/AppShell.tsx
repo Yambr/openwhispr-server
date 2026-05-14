@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: FSL-1.1-ALv2
 // Phase 07.1 / Plan 06 — End-user app shell (D-STRUCT-1).
 //
 // Five-row sidebar (Dashboard, Transcriptions, Notes, Conversations, Account)

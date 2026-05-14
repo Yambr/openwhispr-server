@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: FSL-1.1-ALv2
 // Phase 07.1 / Plan 10 — U10 NotesSearchClient unit tests (RED→GREEN).
 //
 // D-API: search is POST /api/notes/search (verified Plan 01) — NOT GET.

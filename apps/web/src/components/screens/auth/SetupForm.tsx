@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: FSL-1.1-ALv2
 // Phase 12 / Plan 12-03 / Task 4 — Client wizard form.
 //
 // Conformance inventory: composes ui.jsx:AuthShell (L229-316) + ui.jsx:Field

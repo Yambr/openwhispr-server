@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: FSL-1.1-ALv2
 // Phase 07.1 / Plan 11 — U11 conversations-list Client component tests (RED→GREEN).
 //
 // Surface verified:

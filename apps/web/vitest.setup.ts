@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: FSL-1.1-ALv2
 // Phase 07.1 / Plan 04 — Vitest global setup.
 //
 // @testing-library/react auto-cleanup between tests. React 19's concurrent
