@@ -1,0 +1,58 @@
+# Phase 14 / Plan 14-03 — Pgbouncer overlay.
+#
+# Re-introduces the pooler that slim-core stripped from base. Layer for
+# transaction-mode pooling in production-parity stacks:
+#
+#   docker compose -f docker-compose.yml -f compose/docker-compose.pgbouncer.yml up -d
+#
+# Re-injects:
+#   - api.depends_on.pgbouncer: service_healthy
+#   - api.environment.DATABASE_URL pointing at pgbouncer:6432 (overlay re-
+#     points the app-tier read/write traffic through the pooler).
+#   - migrate.depends_on.pgbouncer: service_healthy (sequencing barrier per
+#     RESEARCH §A.1 — migrate STILL writes DDL direct to postgres:5432; the
+#     dependency is purely a start-ordering gate so api never lap-skips
+#     ahead of pgbouncer being ready).
+
+services:
+  api:
+    depends_on:
+      pgbouncer:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_APP_USER}:${POSTGRES_APP_PASSWORD}@pgbouncer:6432/${POSTGRES_DB:-openwhispr}
+
+  migrate:
+    depends_on:
+      pgbouncer:
+        condition: service_healthy
+
+  pgbouncer:
+    # D-02: edoburu (OSS) — Bitnami's free PgBouncer image was retired
+    # in 2025 (paid Bitnami Secure Images subscription only).
+    image: edoburu/pgbouncer:v1.25.1-p0
+    networks: [openwhispr_internal]
+    environment:
+      DB_HOST: postgres
+      DB_PORT: "5432"
+      DB_USER: ${POSTGRES_APP_USER}
+      DB_PASSWORD: ${POSTGRES_APP_PASSWORD}
+      DB_NAME: ${POSTGRES_DB:-openwhispr}
+      POOL_MODE: transaction
+      AUTH_TYPE: scram-sha-256
+      MAX_CLIENT_CONN: "2000"
+      DEFAULT_POOL_SIZE: "100"
+      RESERVE_POOL_SIZE: "5"
+      MAX_PREPARED_STATEMENTS: "200"
+      IGNORE_STARTUP_PARAMETERS: extra_float_digits,search_path
+    volumes:
+      - ./compose/pgbouncer/pgbouncer.ini:/etc/pgbouncer/pgbouncer.ini:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -p 5432 || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 5s

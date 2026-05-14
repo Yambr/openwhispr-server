@@ -1,0 +1,99 @@
+# Phase 14 / Plan 14-03 — Contract-test overlay.
+#
+# Re-introduces the 3 services needed by `make contract-test`:
+#   - fixture-idp           : OIDC IdP fixture for CONTRACT-01 conformance
+#   - seed                  : one-shot conformance fixture seeder
+#   - contract-test-runner  : in-network vitest runner driving the suite
+#
+#   docker compose -f docker-compose.yml \
+#                  -f compose/docker-compose.ingress.yml \
+#                  -f compose/docker-compose.contract-test.yml \
+#                  up -d
+#
+# The runner targets `https://api.localhost` via Traefik (NODE_EXTRA_CA_CERTS
+# trusts the bootstrap-generated root CA), so this overlay is paired with
+# the ingress overlay in CI.
+
+services:
+  # Phase 2 Plan 06 — Fixture OIDC IdP for CONTRACT-01.
+  fixture-idp:
+    build:
+      context: ./tests/fixtures/idp
+    networks: [openwhispr_internal]
+    environment:
+      ISSUER: http://fixture-idp:9000
+      PORT: "9000"
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:9000/livez"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+      start_period: 5s
+
+  # Phase 02.3 — One-shot conformance fixture seeder. Reuses the api image
+  # (ships data/dist/seed-conformance.cjs via the Phase 02.1 Dockerfile).
+  # `restart: "no"` because this is a one-shot seed, not a long-running service.
+  seed:
+    image: openwhispr-api
+    networks: [openwhispr_internal]
+    restart: "no"
+    depends_on:
+      api:
+        condition: service_healthy
+    env_file: .env
+    environment:
+      # Disable mailpit dependency: seed-conformance signs up users via
+      # Better Auth which would otherwise try to send verification mail.
+      # Empty SMTP_HOST routes through the dev no-op email path.
+      SMTP_HOST: ""
+      # The seed posts directly to api:3000 on the internal network (no
+      # traefik/TLS hop). better-auth's CSRF gate compares the request
+      # Origin header against trustedOrigins; api's
+      # AUTH_TRUSTED_ORIGINS_EXTRA env adds `http://api:3000` so this
+      # in-cluster path is accepted alongside the public origin.
+      AUTH_URL: "http://api:3000"
+    entrypoint: ["node"]
+    command: ["/app/packages/data/dist/seed-conformance.cjs"]
+
+  # Phase 02.14 — Contract-test runner inside openwhispr_internal.
+  # Host-side vitest cannot resolve docker-internal DNS (`fixture-idp`,
+  # `api`), so the OAuth 302 hop fails with `getaddrinfo ENOTFOUND
+  # fixture-idp`. Running the suite in-network gives it the same DNS
+  # view as the api itself.
+  contract-test-runner:
+    build:
+      context: .
+      dockerfile: packages/contract-tests/Dockerfile
+    image: openwhispr-contract-test-runner
+    networks: [openwhispr_internal]
+    restart: "no"
+    depends_on:
+      api:
+        condition: service_healthy
+      fixture-idp:
+        condition: service_healthy
+    # Phase 02.15 + 02.22 — runner drives traffic through Traefik via the
+    # canonical-public `https://api.localhost` URL. Docker DNS resolves
+    # `api.localhost` to the traefik container (network aliases on the
+    # ingress overlay); the bootstrap-generated root CA is mounted RO
+    # and trusted via NODE_EXTRA_CA_CERTS. Exercises the full Traefik
+    # + TLS + cert-SAN path end-to-end.
+    env_file: .env
+    environment:
+      BACKEND_URL: https://api.localhost
+      AUTH_URL: https://api.localhost
+      NODE_EXTRA_CA_CERTS: /certs/root-ca.crt
+      # Phase 03 / Plan 10 — pass the resolved LITELLM_BASE_URL through as
+      # LITELLM_BASE_URL_PROBE for the litellm-base-url-override.test.ts
+      # strict assert (PROVIDER-01).
+      LITELLM_BASE_URL_PROBE: ${LITELLM_BASE_URL:-http://litellm:4000}
+      # Phase 02.22 — test-suite skip gates exported by the host `make
+      # e2e-test` target are NOT auto-forwarded to `docker compose run`.
+      # Default-empty so the runner still boots when the host hasn't
+      # exported them.
+      RUN_E2E: ${RUN_E2E:-}
+      MOCK_DIARIZATION: ${MOCK_DIARIZATION:-}
+      OPENWHISPR_TEST_ROUTES: ${OPENWHISPR_TEST_ROUTES:-}
+      MISSING_KEY_TEST_MODE: ${MISSING_KEY_TEST_MODE:-}
+    volumes:
+      - ./compose/traefik/certs/root-ca.crt:/certs/root-ca.crt:ro

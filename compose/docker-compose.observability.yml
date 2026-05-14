@@ -1,0 +1,126 @@
+# Phase 14 / Plan 14-03 — Observability overlay.
+#
+# Re-introduces the 5 LGTM-stack services (otel-collector, loki, tempo, mimir,
+# grafana) that slim-core (Plan 14-01) stripped from the base. Layer this
+# overlay on top of `docker-compose.yml` when you want spans/metrics/logs
+# captured locally:
+#
+#   docker compose -f docker-compose.yml -f compose/docker-compose.observability.yml up -d
+#
+# In addition to declaring the 5 services, this overlay re-injects two
+# deltas on the slim-core api + worker so traces/logs/metrics actually flow:
+#   - api.depends_on.otel-collector: service_started (start-ordering only;
+#     the collector buffers + retries on upstream cold start so service_started
+#     is the correct gate per RESEARCH §A.1 row 6).
+#   - api.environment.OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-http://otel-collector:4317}
+#     The `:-` default is overlay-resident; slim-core base intentionally
+#     leaves the env unset so the loud-fail guard (plan 14-04) surfaces
+#     missing observability config when this overlay is OFF.
+#   - same on worker.
+
+services:
+  # ─── api/worker deltas re-introduced by the overlay ─────────────────────
+  api:
+    depends_on:
+      otel-collector:
+        condition: service_started
+    environment:
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-http://otel-collector:4317}
+
+  worker:
+    depends_on:
+      otel-collector:
+        condition: service_started
+    environment:
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-http://otel-collector:4317}
+
+  # ─── LGTM stack ─────────────────────────────────────────────────────────
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:0.151.0
+    networks: [openwhispr_internal]
+    command: ["--config=/etc/otelcol-contrib/config.yaml"]
+    volumes:
+      - ./compose/otel-collector/config.yaml:/etc/otelcol-contrib/config.yaml:ro
+    depends_on:
+      loki:
+        condition: service_healthy
+      tempo:
+        condition: service_healthy
+      mimir:
+        # Distroless image: no in-image executable for HEALTHCHECK; depends
+        # downgrade to service_started. The OTLP receiver tolerates a
+        # not-yet-ready upstream by buffering + retrying.
+        condition: service_started
+    # No HEALTHCHECK: otel/opentelemetry-collector-contrib is distroless.
+
+  loki:
+    image: grafana/loki:3.5.0
+    networks: [openwhispr_internal]
+    volumes:
+      - loki_data:/loki
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:3100/ready >/dev/null 2>&1 || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 15s
+
+  tempo:
+    image: grafana/tempo:2.8.0
+    networks: [openwhispr_internal]
+    command: ["-config.file=/etc/tempo/tempo.yaml"]
+    volumes:
+      - ./compose/tempo/tempo.yaml:/etc/tempo/tempo.yaml:ro
+      - tempo_data:/var/tempo
+    healthcheck:
+      # grafana/tempo:2.x is distroless: no /bin/sh. Use busybox wget via CMD.
+      test: ["CMD", "/busybox/wget", "--spider", "-q", "http://127.0.0.1:3200/ready"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+      start_period: 60s
+
+  mimir:
+    image: grafana/mimir:2.16.0
+    networks: [openwhispr_internal]
+    command: ["-config.file=/etc/mimir/mimir.yaml"]
+    volumes:
+      - ./compose/mimir/mimir.yaml:/etc/mimir/mimir.yaml:ro
+      - mimir_data:/data
+    # No HEALTHCHECK: grafana/mimir:2.x is distroless. Dependents use
+    # service_started; Helm/K8s probes own liveness in Phase 9.
+
+  grafana:
+    image: grafana/grafana:11.6.0
+    networks: [openwhispr_internal]
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD}
+    volumes:
+      - ./compose/grafana/provisioning:/etc/grafana/provisioning:ro
+      - grafana_data:/var/lib/grafana
+    depends_on:
+      loki:
+        condition: service_healthy
+      tempo:
+        condition: service_healthy
+      mimir:
+        condition: service_started
+    healthcheck:
+      # grafana 11.6 emits /api/health JSON with whitespace after colons;
+      # match tolerantly via grep -E with optional whitespace.
+      test:
+        - CMD-SHELL
+        - wget -qO- http://127.0.0.1:3000/api/health | grep -Eq '"database":[[:space:]]*"ok"'
+      interval: 5s
+      timeout: 3s
+      retries: 12
+      # First-boot installs the grafana-pyroscope-app plugin over the
+      # network (~22s on cold cache); /api/health serves database:starting
+      # until bootstrap finishes.
+      start_period: 90s
+
+volumes:
+  loki_data:
+  tempo_data:
+  mimir_data:
+  grafana_data:

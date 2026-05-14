@@ -1,0 +1,71 @@
+# Phase 14 / Plan 14-03 — Ingress overlay (Traefik).
+#
+# Re-introduces Traefik 3 in front of api + web, terminates TLS with the
+# bootstrap-generated cert, and STRIPS the slim-core base host ports
+# (`3000:3000` on web, `4000:3000` on api) via the compose 2.20+
+# `ports: !reset []` override. With this overlay layered, only Traefik
+# is reachable on the host (`:80`, `:443`, `:8443`, `:8080`):
+#
+#   docker compose -f docker-compose.yml -f compose/docker-compose.ingress.yml up -d
+#
+# Without this overlay, slim-core base continues to bind `localhost:3000`
+# (web) and `localhost:4000` (api) for the OSS quickstart contract.
+#
+# F-01 (plan-check resolution): `ports: !reset []` is the official compose
+# override-merge syntax to clear (rather than append to) the base list.
+# Compose 2.23+ has the `!reset` tag; verified locally against
+# Docker Compose version v2.23.0-desktop.1.
+
+services:
+  api:
+    # F-01 — clear the slim-core `4000:3000` host port so the api is only
+    # reachable via Traefik (`https://api.localhost`).
+    ports: !reset []
+
+  web:
+    # F-01 — clear the slim-core `3000:3000` host port so the web app is
+    # only reachable via Traefik (`https://api.localhost`).
+    ports: !reset []
+
+  traefik:
+    image: traefik:v3.6
+    # Phase 02.15 — Network aliases for in-cluster `api.localhost` /
+    # `auth.localhost` resolution. Docker's embedded DNS resolves these
+    # names to traefik's container IP for every service on
+    # `openwhispr_internal`, so the contract-test-runner (and any future
+    # in-cluster client that needs to follow an api 302 to its publicly-
+    # configured `OPENWHISPR_API_URL=https://api.localhost`) reaches
+    # traefik via the canonical-public hostname instead of ECONNREFUSE-ing
+    # on container loopback. SAN on the bootstrap cert covers both names.
+    networks:
+      openwhispr_internal:
+        aliases:
+          - api.localhost
+          - auth.localhost
+    # Only Traefik publishes host ports (D-05). 80/443 are user traffic;
+    # 8443 is the Phase 04 Plan 05 dedicated WSS realtime entrypoint
+    # (websecure-realtime, idleTimeout 3600s — isolates long-lived
+    # /v1/realtime sessions from the short-JSON :443 ingress pool).
+    # 8080 is the dev dashboard (gate behind basic-auth in prod).
+    ports:
+      - "80:80"
+      - "443:443"
+      - "8443:8443"
+      - "8080:8080"
+    volumes:
+      - ./compose/traefik/traefik.yml:/etc/traefik/traefik.yml:ro
+      - ./compose/traefik/dynamic.yml:/etc/traefik/dynamic.yml:ro
+      - ./compose/traefik/certs:/certs:ro
+      # Phase 07.1 Plan 03 — read-only docker socket mount so the docker
+      # provider declared in traefik.yml can discover label-tagged
+      # containers (the `web` service). RO is the documented secure
+      # pattern: Traefik only LISTS containers; it never invokes docker
+      # exec / start / stop via this socket.
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    command:
+      - --ping=true
+    healthcheck:
+      test: ["CMD", "traefik", "healthcheck", "--ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
