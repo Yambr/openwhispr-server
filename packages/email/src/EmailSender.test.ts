@@ -335,7 +335,13 @@ describe("createEmailSender — dev fallback (T4, T9)", () => {
     ).not.toThrow();
   });
 
-  it("T9: dev-fallback .send -> delivered:true, reason:'smtp-not-configured'", async () => {
+  it("T9 (HI-01): dev-fallback .send -> delivered:false, reason:'smtp-not-configured'", async () => {
+    // Phase 13 review HI-01: the dev fallback previously returned
+    // delivered:true which silently lied to Better Auth and the worker's
+    // email-delivery job. Loud-fail principle (file-header Pitfall #4)
+    // requires delivered:false so callers can detect the no-op and treat
+    // it as a non-fatal skip (in non-prod) or a hard failure (in prod,
+    // where the construction-time throw fires first).
     const sender = createEmailSender({ log: makeLog(), env: {} });
     const out = await sender.send({
       to: "u@test.local",
@@ -343,7 +349,7 @@ describe("createEmailSender — dev fallback (T4, T9)", () => {
       text: "Body",
     });
     expect(out).toEqual({
-      delivered: true,
+      delivered: false,
       reason: "smtp-not-configured",
     });
   });
@@ -355,14 +361,33 @@ describe("createEmailSender — dev fallback (T4, T9)", () => {
     expect(createTransportMock).not.toHaveBeenCalled();
   });
 
-  it("dev-fallback .send logs event=email.skipped at info", async () => {
+  it("dev-fallback .send logs event=email.skipped at WARN (HI-01)", async () => {
+    // HI-01 also upgrades the per-send log from info to warn so a developer
+    // running a non-prod stack with SMTP unconfigured sees the skipped
+    // delivery in the warning channel of their logger (greppable in Loki).
+    // The construction-time warn ("email.smtp_not_configured") fires once at
+    // boot; this WARN fires per send.
     const log = makeLog();
     const sender = createEmailSender({ log, env: {} });
     await sender.send({ to: "u@test.local", subject: "Hi", text: "B" });
-    const infoCall = log.info.mock.calls.find(
+    const warnCall = log.warn.mock.calls.find(
       ([p]) => (p as { event?: string }).event === "email.skipped",
     );
-    expect(infoCall).toBeDefined();
+    expect(warnCall).toBeDefined();
+    const payload = warnCall?.[0] as Record<string, unknown>;
+    expect(payload).toMatchObject({
+      event: "email.skipped",
+      to: "u@test.local",
+      subject: "Hi",
+    });
+  });
+
+  it("HI-01 regression guard: dev-fallback NEVER returns delivered:true", async () => {
+    // Explicit guard against re-introducing the silent-success path. If
+    // anyone flips dev-fallback back to delivered:true, this fails loud.
+    const sender = createEmailSender({ log: makeLog(), env: { NODE_ENV: "development" } });
+    const out = await sender.send({ to: "u@test.local", subject: "Hi", text: "B" });
+    expect(out.delivered).toBe(false);
   });
 });
 

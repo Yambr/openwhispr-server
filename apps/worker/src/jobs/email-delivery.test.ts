@@ -199,6 +199,98 @@ SUITE("email-delivery (D-W5)", () => {
     ).rejects.toThrow(/reason=unknown/);
   });
 
+  it("HI-01: treats reason='smtp-not-configured' as non-fatal skip in non-prod", async () => {
+    // Phase 13 review HI-01: when the API's EmailSender dev-fallback returns
+    // delivered:false + reason:'smtp-not-configured' (no SMTP_HOST in
+    // non-prod), the worker MUST NOT throw — that would burn 5 BullMQ retry
+    // attempts on a misconfigured-by-design dev stack and surface as
+    // spurious red failures in CI. The handler should resolve cleanly so
+    // BullMQ records `completed` and operators see one WARN line per job.
+    if (!h) throw new Error("harness");
+    const skipSender: EmailSender = {
+      async send() {
+        return { delivered: false, reason: "smtp-not-configured" };
+      },
+    };
+    const { renderer } = makeStubs();
+    const handler = buildEmailDeliveryHandler({
+      pool: h.pool,
+      sender: skipSender,
+      renderer,
+      // Explicitly non-prod — dev/test/staging all share the skip path.
+      nodeEnv: "development",
+    });
+    await expect(
+      handler(
+        fakeJob({
+          tenant_id: TENANT,
+          to: "a@b.co",
+          template_id: "welcome",
+          request_id: REQ,
+        }),
+      ),
+    ).resolves.toBeUndefined();
+  });
+
+  it("HI-01: STILL throws on reason='smtp-not-configured' when NODE_ENV=production", async () => {
+    // Production must remain loud-fail. The EmailSender's construction-time
+    // throw normally fires first in prod (SMTP_HOST is required), but a
+    // defence-in-depth pass at the worker layer guards against an injected
+    // sender stub or future code path that bypasses the construction check.
+    if (!h) throw new Error("harness");
+    const skipSender: EmailSender = {
+      async send() {
+        return { delivered: false, reason: "smtp-not-configured" };
+      },
+    };
+    const { renderer } = makeStubs();
+    const handler = buildEmailDeliveryHandler({
+      pool: h.pool,
+      sender: skipSender,
+      renderer,
+      nodeEnv: "production",
+    });
+    await expect(
+      handler(
+        fakeJob({
+          tenant_id: TENANT,
+          to: "a@b.co",
+          template_id: "welcome",
+          request_id: REQ,
+        }),
+      ),
+    ).rejects.toThrow(/did not deliver/);
+  });
+
+  it("HI-01: still throws on OTHER non-delivery reasons in non-prod (e.g. smtp-unreachable)", async () => {
+    // The skip carve-out is keyed strictly on `smtp-not-configured`. Any
+    // other failure reason (transport error, refused recipient, etc.)
+    // must keep the retry-throw posture so BullMQ retries.
+    if (!h) throw new Error("harness");
+    const failingSender: EmailSender = {
+      async send() {
+        return { delivered: false, reason: "smtp-unreachable" };
+      },
+    };
+    const { renderer } = makeStubs();
+    const handler = buildEmailDeliveryHandler({
+      pool: h.pool,
+      sender: failingSender,
+      renderer,
+      nodeEnv: "development",
+    });
+    await expect(
+      handler(
+        fakeJob({
+          tenant_id: TENANT,
+          to: "a@b.co",
+          template_id: "welcome",
+          request_id: REQ,
+        }),
+      ),
+    ).rejects.toThrow(/did not deliver/);
+  });
+
   it("passes locale + variables through to the renderer", async () => {
     if (!h) throw new Error("harness");
     const rendererSpy = vi.fn().mockReturnValue({ subject: "S", text: "T" });

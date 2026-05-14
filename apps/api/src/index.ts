@@ -67,6 +67,7 @@ import { i18nPlugin } from "./i18n/init.js";
 import { type DepCheck, makeDepCheck } from "./lib/dep-check.js";
 import type { RedisLike } from "./lib/idempotency-cache.js";
 import { buildMintBearer } from "./lib/mint-bearer.js";
+import { redactUrl } from "./lib/redact-url.js";
 import {
   recordPreviousToken as recordPreviousTokenLib,
   tryPreviousToken as tryPreviousTokenLib,
@@ -526,10 +527,17 @@ if (import.meta.url === `file://${process.argv[1]}`) {
         });
       };
     } catch (err) {
+      // Phase 13 review HI-02: NEVER log `err.message` here — both
+      // `new URL(...)` and ioredis/BullMQ embed the credential-bearing
+      // URL into thrown error messages, which would leak the Valkey
+      // password through stdout to Loki. We log the redacted URL + the
+      // error class name; operators get an actionable diagnostic without
+      // the secret.
       // biome-ignore lint/suspicious/noConsole: server bootstrap warning; structured logging arrives in Phase 6
       console.warn(
         "[buildApp] BullMQ email-delivery queue not constructed; verification emails fall back to inline SMTP:",
-        (err as Error).message,
+        redactUrl(process.env.VALKEY_URL ?? ""),
+        (err as Error).name,
       );
     }
   }
@@ -554,10 +562,16 @@ if (import.meta.url === `file://${process.argv[1]}`) {
     // above, so they can never drift out of sync at boot.
     litellmMasterKey = litellmConfig.masterKey;
   } catch (err) {
+    // Phase 13 review HI-02: do NOT log `err.message` — `loadLitellmConfigFromEnv`
+    // can embed LITELLM_BASE_URL (potentially with embedded credentials)
+    // into its thrown error message. Log the redacted base URL + error
+    // class name so operators see which endpoint failed without exposing
+    // any password component to Loki.
     // biome-ignore lint/suspicious/noConsole: server bootstrap warning; structured logging arrives in Phase 6
     console.warn(
       "[buildApp] LiteLLM client not constructed; LITELLM-backed routes (transcribe, reason, diarization, realtime) will not be registered:",
-      (err as Error).message,
+      redactUrl(process.env.LITELLM_BASE_URL ?? ""),
+      (err as Error).name,
     );
   }
   // Phase 03 / Plan 06 (CR-01) + e2e fix: construct the Valkey/Redis
@@ -584,10 +598,14 @@ if (import.meta.url === `file://${process.argv[1]}`) {
       });
       redis = client as unknown as RedisLike;
     } catch (err) {
+      // Phase 13 review HI-02: ioredis throws errors whose `.message`
+      // embeds the offending URL verbatim ("Invalid URL: redis://user:secret@host:6379").
+      // Log the redacted URL + error class name instead.
       // biome-ignore lint/suspicious/noConsole: server bootstrap warning; structured logging arrives in Phase 6
       console.warn(
         "[buildApp] Valkey client not constructed; /v1/audio/diarization will NOT be registered. Set VALKEY_URL to enable diarization:",
-        (err as Error).message,
+        redactUrl(process.env.VALKEY_URL ?? ""),
+        (err as Error).name,
       );
     }
   } else {
