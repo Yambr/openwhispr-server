@@ -13,7 +13,12 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-import { findViolations, isAllowed } from "./lint-colocated-tests.js";
+import {
+  findViolations,
+  isAllowed,
+  LEGACY_ALLOWLIST_FILE,
+  readLegacyAllowlist,
+} from "./lint-colocated-tests.js";
 
 let root: string;
 
@@ -88,5 +93,33 @@ describe("findViolations (real tmpdir glob)", () => {
     touch("apps/api/src/a.test.ts");
     const violations = await findViolations(root);
     expect(violations).toEqual(["apps/api/src/a.test.ts", "apps/api/src/b.test.ts"]);
+  });
+
+  it("skips paths listed in the legacy allow-list file (15-01 -> 15-02 transition)", async () => {
+    touch("apps/api/src/legacy.test.ts");
+    touch("apps/api/src/new.test.ts");
+    const listPath = join(root, LEGACY_ALLOWLIST_FILE);
+    mkdirSync(join(listPath, ".."), { recursive: true });
+    writeFileSync(listPath, "# legacy allow-list\napps/api/src/legacy.test.ts\n\n", "utf8");
+    const violations = await findViolations(root);
+    expect(violations).toEqual(["apps/api/src/new.test.ts"]);
+  });
+});
+
+describe("readLegacyAllowlist", () => {
+  it("returns an empty Set when the file does not exist", () => {
+    expect(readLegacyAllowlist(root).size).toBe(0);
+  });
+
+  it("ignores blank lines and comments", () => {
+    const listPath = join(root, LEGACY_ALLOWLIST_FILE);
+    mkdirSync(join(listPath, ".."), { recursive: true });
+    writeFileSync(
+      listPath,
+      "# header comment\n\napps/api/src/a.test.ts\n  apps/api/src/b.test.ts  \n",
+      "utf8",
+    );
+    const set = readLegacyAllowlist(root);
+    expect([...set].sort()).toEqual(["apps/api/src/a.test.ts", "apps/api/src/b.test.ts"]);
   });
 });
