@@ -36,6 +36,13 @@ import { NodeSDK, metrics as sdkMetrics } from "@opentelemetry/sdk-node";
 
 const { PeriodicExportingMetricReader } = sdkMetrics;
 
+// Phase 14 / Plan 04 / Task 2 — `=disabled` sentinel (CONTEXT.md decision 5).
+// Mirrors the api-side short-circuit: when the operator opts out of
+// observability via `OTEL_EXPORTER_OTLP_ENDPOINT=disabled`, the worker
+// MUST NOT construct a NodeSDK (the OTLPMetricExporter would otherwise
+// try to dial the OTel collector on every export tick and flood stderr).
+const OTEL_DISABLED = process.env.OTEL_EXPORTER_OTLP_ENDPOINT === "disabled";
+
 diag.setLogger(
   new DiagConsoleLogger(),
   DiagLogLevel[
@@ -65,19 +72,32 @@ const pinoInstrumentation = new PinoInstrumentation({ logKeys: pinoLogKeys });
 // no HTTP /metrics endpoint per D-T6; everything flows OTLP -> Collector ->
 // prometheusremotewrite -> Mimir). 15s interval matches the OTel SDK default
 // and is well under the Plan 11 dashboard 30s scrape cadence so each render
-// has fresh data.
-const metricReader = new PeriodicExportingMetricReader({
-  exporter: new OTLPMetricExporter({}),
-  exportIntervalMillis: 15_000,
-});
+// has fresh data. Skipped entirely when OTel is disabled — constructing the
+// exporter would itself wire a default gRPC channel.
+const metricReader = OTEL_DISABLED
+  ? null
+  : new PeriodicExportingMetricReader({
+      exporter: new OTLPMetricExporter({}),
+      exportIntervalMillis: 15_000,
+    });
 
-export const sdk = new NodeSDK({
-  serviceName: process.env.OTEL_SERVICE_NAME ?? "openwhispr-worker",
-  instrumentations: [pinoInstrumentation],
-  metricReader,
-});
+export const sdk: NodeSDK | null = OTEL_DISABLED
+  ? null
+  : new NodeSDK({
+      serviceName: process.env.OTEL_SERVICE_NAME ?? "openwhispr-worker",
+      instrumentations: [pinoInstrumentation],
+      // metricReader is non-null when OTEL_DISABLED is false; the ternary
+      // above guarantees it. Cast through `NonNullable` to satisfy strict
+      // exactOptionalPropertyTypes.
+      metricReader: metricReader as NonNullable<typeof metricReader>,
+    });
 
-export const startSdk = (target = sdk): void => {
+/**
+ * Phase 14 / Plan 04 — no-op-safe when target is null (the =disabled
+ * sentinel was set at module load).
+ */
+export const startSdk = (target: NodeSDK | null = sdk): void => {
+  if (target === null) return;
   try {
     target.start();
   } catch (err) {
@@ -85,7 +105,11 @@ export const startSdk = (target = sdk): void => {
   }
 };
 
-export const shutdownSdk = (target = sdk): Promise<void> => {
+/**
+ * Phase 14 / Plan 04 — resolves to undefined when target is null.
+ */
+export const shutdownSdk = (target: NodeSDK | null = sdk): Promise<void> => {
+  if (target === null) return Promise.resolve();
   return target.shutdown().catch((err) => {
     diag.error("Worker OTel SDK shutdown failed", err as Error);
   });

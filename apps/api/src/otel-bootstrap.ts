@@ -30,6 +30,19 @@ import { getNodeAutoInstrumentations } from "@opentelemetry/auto-instrumentation
 import { PinoInstrumentation } from "@opentelemetry/instrumentation-pino";
 import { NodeSDK } from "@opentelemetry/sdk-node";
 
+// Phase 14 / Plan 04 / Task 2 — `=disabled` sentinel.
+// CONTEXT.md decision 5: `OTEL_EXPORTER_OTLP_ENDPOINT=disabled` is the
+// explicit opt-out from observability. The byok-guard (loud-fail path)
+// treats `disabled` as a valid value (returns void, does NOT exit). This
+// file short-circuits SDK construction when the sentinel is set so a
+// slim-core deployment without the observability overlay does not dial
+// a missing OTLP collector and produce cascading retry noise on stderr.
+// The sentinel must be checked BEFORE NodeSDK is constructed; merely
+// skipping startSdk() is not enough — `new NodeSDK({...})` itself wires
+// the default exporter (http://localhost:4317) into the global meter
+// provider, and that wiring is what produces the dial noise.
+const OTEL_DISABLED = process.env.OTEL_EXPORTER_OTLP_ENDPOINT === "disabled";
+
 // Diag logger is used by OTel internals; default to ERROR to avoid
 // flooding stdout (we expose it via OTEL_LOG_LEVEL env for debugging).
 diag.setLogger(
@@ -74,17 +87,24 @@ export const registeredInstrumentations: ReadonlyArray<{
   { name: "@opentelemetry/auto-instrumentations-node" },
 ];
 
-export const sdk = new NodeSDK({
-  serviceName: process.env.OTEL_SERVICE_NAME ?? "openwhispr-api",
-  instrumentations: [autoInstrumentations, pinoInstrumentation],
-});
+export const sdk: NodeSDK | null = OTEL_DISABLED
+  ? null
+  : new NodeSDK({
+      serviceName: process.env.OTEL_SERVICE_NAME ?? "openwhispr-api",
+      instrumentations: [autoInstrumentations, pinoInstrumentation],
+    });
 
 /**
  * Start the NodeSDK. Exported so tests can exercise the catch branch
  * (start-failure must not crash the API). Production-path callers
  * invoke this once at module load (see immediate call below).
+ *
+ * Phase 14 / Plan 04: returns early when `target === null` (the
+ * `=disabled` sentinel was set at module load). The default argument
+ * captures the module-scope `sdk`, which is itself null in that case.
  */
-export const startSdk = (target = sdk): void => {
+export const startSdk = (target: NodeSDK | null = sdk): void => {
+  if (target === null) return;
   try {
     target.start();
   } catch (err) {
@@ -102,8 +122,12 @@ export const startSdk = (target = sdk): void => {
  * killing the process. Returns the underlying shutdown Promise so
  * callers can await it; the SIGTERM-installed wrapper consumes its
  * rejection to keep Node's signal-handler contract synchronous.
+ *
+ * Phase 14 / Plan 04: resolves to undefined without dialing the SDK
+ * when `target === null` (the `=disabled` sentinel was set).
  */
-export const shutdownSdk = (target = sdk): Promise<void> => {
+export const shutdownSdk = (target: NodeSDK | null = sdk): Promise<void> => {
+  if (target === null) return Promise.resolve();
   return target.shutdown().catch((err) => {
     diag.error("OTel SDK shutdown failed", err as Error);
   });
@@ -112,7 +136,7 @@ export const shutdownSdk = (target = sdk): Promise<void> => {
 // Start synchronously at module load — the load-order test in
 // `otel-bootstrap.test.ts` plus the literal-first-import discipline
 // in `apps/api/src/index.ts` together guarantee this runs before any
-// `import pino from "pino"` resolves.
+// `import pino from "pino"` resolves. No-op when sdk is null.
 startSdk();
 
 // SIGTERM hook — best-effort flush so spans/logs/metrics reach the
