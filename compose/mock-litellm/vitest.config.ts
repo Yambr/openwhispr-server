@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: FSL-1.1-ALv2
 // Phase 08 / Plan 03 — package-local vitest config for @openwhispr/mock-litellm.
 //
 // CLAUDE.md mandates ≥90/90/90/90 coverage on diff. We pin those

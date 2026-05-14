@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: FSL-1.1-ALv2
 // Phase 08.5-01 Task 1 — RED: realistic litellm config shape assertions.
 //
 // Verifies the new compose/litellm/litellm_config.realistic.yaml (created

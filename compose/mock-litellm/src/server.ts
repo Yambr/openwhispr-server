@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: FSL-1.1-ALv2
 // Phase 08 / Plan 03 / Task 2 — Fastify mock-litellm server.
 //
 // Stands in for the real LiteLLM upstream under the `load-test-mock`
