@@ -6,7 +6,8 @@
         contract-test contract-test-deployed contract-test-missing-keys e2e-test e2e-test-live \
         e2e-hermetic e2e-test-phase6 e2e-cjm e2e-cjm-teardown \
         load-test seed backup restore migrate migrate-rollback logs ps restart \
-        verify-images
+        verify-images \
+        up-with-observability up-with-storage up-with-ingress up-with-pgbouncer up-with-dev-tools up-full
 
 help:
 	@grep -E '^[a-zA-Z0-9_-]+:' Makefile | awk -F: '{print $$1}' | sort -u
@@ -30,8 +31,44 @@ format:
 typecheck:
 	pnpm typecheck
 
+# Phase 14 / Plan 14-03 — slim-core + opt-in overlays.
+#
+# `up` brings the bare 6-service slim-core stack (api, web, worker,
+# postgres, valkey, litellm + the migrate one-shot). Layer overlays via
+# the per-overlay `up-with-*` targets, or `up-full` to layer them all
+# (observability + storage + ingress + pgbouncer + dev-tools).
+#
+# `--wait` makes the target block until every long-running service is
+# healthy — the OSS quickstart contract per CONTEXT.md.
 up:
-	docker compose --profile default up -d
+	docker compose up -d --wait
+
+up-with-observability:
+	docker compose -f docker-compose.yml -f compose/docker-compose.observability.yml up -d --wait
+
+up-with-storage:
+	docker compose -f docker-compose.yml -f compose/docker-compose.storage.yml up -d --wait
+
+up-with-ingress:
+	docker compose -f docker-compose.yml -f compose/docker-compose.ingress.yml up -d --wait
+
+up-with-pgbouncer:
+	docker compose -f docker-compose.yml -f compose/docker-compose.pgbouncer.yml up -d --wait
+
+up-with-dev-tools:
+	docker compose -f docker-compose.yml -f compose/docker-compose.dev-tools.yml up -d --wait
+
+# `up-full` chains every NON-contract-test overlay in order:
+# observability -> storage -> ingress -> pgbouncer -> dev-tools.
+up-full:
+	docker compose \
+		-f docker-compose.yml \
+		-f compose/docker-compose.observability.yml \
+		-f compose/docker-compose.storage.yml \
+		-f compose/docker-compose.ingress.yml \
+		-f compose/docker-compose.pgbouncer.yml \
+		-f compose/docker-compose.dev-tools.yml \
+		up -d --wait
 
 down:
 	docker compose down
