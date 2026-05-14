@@ -80,6 +80,7 @@ apps/api/src/routes/__tests__/ledger-idempotency.property.test.ts
 apps/api/src/routes/__tests__/note-recording-config.test.ts
 apps/api/src/routes/__tests__/registration.test.ts
 apps/api/src/routes/__tests__/setup-admin.test.ts
+apps/api/src/routes/__tests__/locale.test.ts
 apps/api/src/routes/__tests__/setup-state.test.ts
 apps/api/src/routes/__tests__/streaming-usage-observability.test.ts
 apps/api/src/routes/__tests__/streaming-usage.integration.test.ts
