@@ -876,37 +876,43 @@ Phase 13 is mostly additive (new packages/dirs/files) but does have one runtime-
 | A8 | The `playwright-coverage` plugin from third parties exists for browser-side v8 coverage; NOT recommended for v2. | Coverage strategy | Low risk; we explicitly deprioritize. |
 | A9 | Mailpit HTTP API endpoint `/api/v1/messages` returns 200 JSON; specific fields (`Subject`, `To.Address`, `Snippet`, `ID`) are stable in mailpit v1.29. | Mailpit helper | Verified by mailpit docs (not re-fetched); standard endpoint. Helper code in `support/mailpit-helper.ts` is straightforward to author. |
 
-## Open Questions
+## Open Questions (RESOLVED)
 
 1. **Should Phase 13 lift versions to npm-registry HEAD (`@cucumber/cucumber@12.8.3`, `playwright-bdd@8.5.1`) or hold at REQUIREMENTS.md-locked (12.8.2, 8.4.2)?**
    - What we know: REQUIREMENTS.md locks 12.8.2 + 8.4.2. Registry HEAD is 12.8.3 + 8.5.1 (one+two patches/minors ahead).
    - What's unclear: Whether REQUIREMENTS-locked is intentional pinning or training-data lag.
    - Recommendation: HOLD at REQUIREMENTS-locked for v2 ship (stability > newness for a brownfield phase that gates 5 downstream phases). Lift in v3.
+   - **RESOLVED:** HOLD at `@cucumber/cucumber@12.8.2` + `playwright-bdd@8.4.2` (user decision #1 from /gsd-plan-phase orchestrator). v3 may lift.
 
 2. **ESLint plugin vs tsx-lint script for the weak-assertion ban?**
    - What we know: Repo uses Biome as primary linter (`pnpm lint`); no ESLint detected in inventory.
    - What's unclear: Whether adding ESLint is acceptable vs writing `tools/lint-weak-assertions.ts` matching the `lint-english.ts` precedent.
    - Recommendation: tsx-lint script (option c above). Matches `tools/lint-*.ts` family.
+   - **RESOLVED:** tsx-lint script `tools/lint-weak-assertions.ts` matching the `tools/lint-english.ts` family (user decision #2 from /gsd-plan-phase orchestrator). No ESLint introduced.
 
 3. **Does `apps/api/src/health.ts` already expose `migrations_completed`?**
    - What we know: Readiness contract requires it (Pitfall 5).
    - What's unclear: Whether endpoint exposes the field.
    - Recommendation: Planner runs `grep -n migrations_completed apps/api/src/health.ts` during planning. If absent, add to 13.a Wave 1.
+   - **RESOLVED:** Executor verifies `apps/api/src/routes/health.ts` first; if `migrations_completed` is absent, add it AND update `packages/contract-tests/schemas/health.ts` HealthResponse in the same atomic commit (user decision #6 from /gsd-plan-phase orchestrator). Implementation lands in plan 13-01 Task 13-01-05.
 
 4. **Notes-component weak-assertion sweep IN or OUT of scope?**
    - What we know: D-02 names only `auth/__tests__/`. Notes has 4 sites in 2 files.
    - What's unclear: Whether user wants strict D-02 adherence or broader sweep.
    - Recommendation: Sweep all 7 sites (3 auth + 4 notes); the ESLint/tsx-lint rule will fail CI on any future PR touching them otherwise.
+   - **RESOLVED:** Sweep ALL 7 sites — 3 in `auth/__tests__/SignUpForm.test.tsx` + 2 in `notes/__tests__/NoteDetailClient.test.tsx` + 4 in `notes/__tests__/NotesListClient.test.tsx` (user decision #3 from /gsd-plan-phase orchestrator). Lint script enforces no regression on any future PR.
 
 5. **Phase 13 scenarios that are expected-RED until downstream phases ship (Phase 12, Phase 14, Phase 15).**
    - What we know: `@cjm-5.x` red until Phase 12; `@cjm-6.x` red until Phase 15 (TD-15.g); `@cjm-7.x` red until Phase 14 fixture-idp wiring.
    - What's unclear: Whether CI `e2e-cjm` job marks them `skip`-with-rationale OR fails until each phase lands.
    - Recommendation: Mark with `@expected-red @after-phase-12` etc. tags; `playwright.config.ts:grepInvert: '@expected-red'` filters them out in CI until the corresponding phase ships, at which point the tag is removed.
+   - **RESOLVED:** Use paired `@expected-red @after-phase-N` tag scheme; CI Makefile runs Playwright with `--grep-invert "@expected-red"` (user decision #4 from /gsd-plan-phase orchestrator). `tools/lint-cjm-doc.ts --check-expected-red` enforces pairing.
 
 6. **Compose stack lifecycle in CI: re-use existing `e2e-hermetic` boot OR boot independently?**
    - What we know: GHA `e2e-hermetic` (ci.yml:390) already boots the stack for vitest e2e.
    - What's unclear: Whether `e2e-cjm` job reuses that booted stack OR boots its own.
    - Recommendation: Independent boot. `e2e-cjm` runs in its own job for isolation + parallel speed. Compose CLI caches images aggressively.
+   - **RESOLVED:** Independent compose stack boot via `tests/e2e-cjm/support/compose-harness.ts` — `e2e-cjm` job does NOT share with `e2e-hermetic` (user decision #5 from /gsd-plan-phase orchestrator). Compose layer cache + per-job isolation wins over shared-stack complexity.
 
 ## State of the Art
 
