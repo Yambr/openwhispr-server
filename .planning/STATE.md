@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v2
 milestone_name: — Production Readiness
 status: verifying
-last_updated: "2026-05-14T15:03:56.377Z"
+last_updated: "2026-05-14T15:20:04.490Z"
 last_activity: "2026-05-14 — Phase 13 closed end-to-end: verifier PASSED 13/13 must-haves (13-VERIFICATION.md); security audit cleared 11/11 declared threats + 8/8 prompt surfaces with 0 HIGH/CRITICAL (13-SECURITY.md); code-review surfaced 2 HIGH (HI-01 EmailSender dev-fallback false-positive delivered:true; HI-02 bootstrap console.warn leaking credential-bearing URLs from Redis/BullMQ/LiteLLM init errors) — both fixed under TDD with atomic commit `5c579d3` (fix + tests + caller updates) + docs `b437b9c`. Coverage on diff stayed 100/100/100/100 on packages/email and new apps/api/src/lib/redact-url.ts."
 progress:
   total_phases: 49
-  completed_phases: 17
+  completed_phases: 18
   total_plans: 133
-  completed_plans: 148
-  percent: 35
+  completed_plans: 149
+  percent: 37
 ---
 
 # Project State: OpenWhispr Server
@@ -93,6 +93,7 @@ Last activity: 2026-05-14 — Phase 13 closed end-to-end: verifier PASSED 13/13 
 | Phase 08 P06 | ~45 min | 5 tasks | 20 files |
 | Phase 08 P07 | 32m03s wall clock | 4 tasks | 11 files |
 | Phase 12 P05a | 6m | 3 tasks | 7 files |
+| Phase 12 P05b | 12 | 3 tasks | 12 files |
 
 ## Accumulated Context
 
