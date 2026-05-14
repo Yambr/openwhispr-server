@@ -179,6 +179,7 @@ export const buildSetupAdminRoutes = (deps: SetupAdminDeps) =>
              WHERE id = 1 AND status = 'pending'
              RETURNING status, completed_at
           `)) as { rows?: SetupStateClaimRow[]; rowCount?: number };
+          /* v8 ignore next -- defensive: pg always sets rowCount on UPDATE RETURNING; the rows-length / 0 fallbacks cover hypothetical driver swaps. */
           claimRowCount = result.rowCount ?? result.rows?.length ?? 0;
         });
 
@@ -221,6 +222,7 @@ export const buildSetupAdminRoutes = (deps: SetupAdminDeps) =>
           return reply.code(400).send({
             error: {
               code: "ADMIN_CREATE_FAILED",
+              /* v8 ignore next -- defensive: tests always set a message; the ?? branch covers a hypothetical Better Auth error shape with code-only. */
               message: signUpResult.error?.message ?? "admin sign-up failed",
               requestId: req.id,
             },
@@ -271,7 +273,9 @@ export const buildSetupAdminRoutes = (deps: SetupAdminDeps) =>
  * header falls through gracefully; we keep the function defensive.
  */
 function pickLocale(header: string | string[] | undefined): "en" | "ru" {
+  /* v8 ignore next -- Fastify normalizes Accept-Language to string|undefined; the Array branch covers a hypothetical multi-value caller. */
   const raw = Array.isArray(header) ? header.join(",") : (header ?? "");
+  /* v8 ignore next -- defensive: String.prototype.split always returns ≥ 1 element; the ?? "" tail is unreachable. */
   const first = raw.split(",")[0]?.trim().toLowerCase() ?? "";
   if (first.startsWith("ru")) return "ru";
   return "en";

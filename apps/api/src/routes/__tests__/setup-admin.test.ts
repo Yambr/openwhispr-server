@@ -398,6 +398,72 @@ describe("POST /api/setup/admin — idempotent claim + workspace + rollback cont
     expect(colRes.rows).toHaveLength(0);
   });
 
+  it("(extra) invalid body shape -> 400 INVALID_BODY (Zod safeParse rejection branch)", async () => {
+    const fakeAuth = makeFakeAuth({ ownerPool: booted.ownerPool });
+    app = await buildSetupAdminApp({
+      db: booted.db,
+      ownerPool: booted.ownerPool,
+      signUpEmail: fakeAuth.signUpEmail,
+    });
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/setup/admin",
+      // Missing required `workspace` + bad email → safeParse fails.
+      payload: { email: "x", password: "tooshort", name: "" },
+    });
+    expect(res.statusCode).toBe(400);
+    const body = res.json() as { error: { code: string } };
+    expect(body.error.code).toBe("INVALID_BODY");
+    expect(fakeAuth.calls).toHaveLength(0);
+  });
+
+  it("(extra) Accept-Language: ru,en propagates locale='ru' into signUpEmail call (pickLocale branch)", async () => {
+    const fakeAuth = makeFakeAuth({ ownerPool: booted.ownerPool });
+    app = await buildSetupAdminApp({
+      db: booted.db,
+      ownerPool: booted.ownerPool,
+      signUpEmail: fakeAuth.signUpEmail,
+    });
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/setup/admin",
+      headers: { "accept-language": "ru-RU,ru;q=0.9,en;q=0.5" },
+      payload: {
+        email: "ru-admin@acme.test",
+        password: "CorrectHorseBattery9",
+        name: "Ruslan",
+        workspace: "Acme RU",
+        timezone: "Europe/Moscow",
+      },
+    });
+    expect(res.statusCode).toBe(201);
+    expect(fakeAuth.calls).toHaveLength(1);
+    expect(fakeAuth.calls[0]?.body.locale).toBe("ru");
+  });
+
+  it("(extra) Accept-Language: en-US,en propagates locale='en' (pickLocale default branch)", async () => {
+    const fakeAuth = makeFakeAuth({ ownerPool: booted.ownerPool });
+    app = await buildSetupAdminApp({
+      db: booted.db,
+      ownerPool: booted.ownerPool,
+      signUpEmail: fakeAuth.signUpEmail,
+    });
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/setup/admin",
+      headers: { "accept-language": "en-US,en;q=0.9" },
+      payload: {
+        email: "en-admin@acme.test",
+        password: "CorrectHorseBattery9",
+        name: "Eve",
+        workspace: "Acme EN",
+        timezone: "UTC",
+      },
+    });
+    expect(res.statusCode).toBe(201);
+    expect(fakeAuth.calls[0]?.body.locale).toBe("en");
+  });
+
   it("(7) tenant_rename failure path: db.update(tenants) throws -> 201 with warnings; admin still created", async () => {
     // Inject a `renameTenant` callable into the route deps and provide
     // an always-throwing version (T-12.03-05 sub-test 7). Mirrors the
