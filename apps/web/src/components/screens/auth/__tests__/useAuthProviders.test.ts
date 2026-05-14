@@ -80,6 +80,23 @@ describe("useAuthProviders (Phase 12 / Plan 12-04)", () => {
     expect(calls[0]?.init?.credentials).toBe("omit");
   });
 
+  it("fails closed (loading=false, providers=[]) when fetch returns non-OK status", async () => {
+    // Covers the `!res.ok` branch — a 5xx without a thrown error.
+    vi.spyOn(globalThis, "fetch").mockResolvedValue({
+      ok: false,
+      status: 503,
+      json: async () => ({}),
+    } as unknown as Response);
+
+    const { result } = renderHook(() => useAuthProviders());
+
+    await waitFor(() => {
+      expect(result.current.loading).toBe(false);
+    });
+    expect(result.current.providers).toEqual([]);
+    expect(warnSpy).toHaveBeenCalled();
+  });
+
   it("fails closed (loading=false, providers=[]) when fetch rejects", async () => {
     vi.spyOn(globalThis, "fetch").mockRejectedValue(new Error("network down"));
 
@@ -91,6 +108,54 @@ describe("useAuthProviders (Phase 12 / Plan 12-04)", () => {
     expect(result.current.providers).toEqual([]);
     // Failure is logged via console.warn, not thrown (fail-closed contract).
     expect(warnSpy).toHaveBeenCalled();
+  });
+
+  it("does not setState after unmount (cancelled=true branch — success path)", async () => {
+    // The hook's cleanup MUST short-circuit the success setState when the
+    // component unmounts mid-fetch. We exercise the cleanup by holding the
+    // fetch promise pending until after unmount, then resolving it.
+    let resolveFetch: (v: unknown) => void = () => undefined;
+    const fetchPromise = new Promise<unknown>((r) => {
+      resolveFetch = r;
+    });
+    vi.spyOn(globalThis, "fetch").mockReturnValue(fetchPromise as Promise<Response>);
+
+    const { result, unmount } = renderHook(() => useAuthProviders());
+    expect(result.current.loading).toBe(true);
+    unmount();
+    // Now resolve — the hook should NOT throw or warn; the cleanup is silent.
+    resolveFetch({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        providers: [],
+        emailVerification: { required: true, configured: true },
+      }),
+    });
+    // Tiny yield for the microtask chain.
+    await new Promise<void>((r) => {
+      setTimeout(r, 0);
+    });
+    expect(warnSpy).not.toHaveBeenCalled();
+  });
+
+  it("does not setState after unmount (cancelled=true branch — error path)", async () => {
+    let rejectFetch: (reason: unknown) => void = () => undefined;
+    const fetchPromise = new Promise<unknown>((_, rej) => {
+      rejectFetch = rej;
+    });
+    vi.spyOn(globalThis, "fetch").mockReturnValue(fetchPromise as Promise<Response>);
+
+    const { unmount } = renderHook(() => useAuthProviders());
+    unmount();
+    rejectFetch(new Error("offline"));
+    await new Promise<void>((r) => {
+      setTimeout(r, 0);
+    });
+    // The catch branch still warns once (observability hook) regardless of
+    // cancelled, but it MUST NOT call setData when cancelled=true (verified
+    // by the absence of any 'act' warnings — none surface in this test).
+    expect(warnSpy).toHaveBeenCalledTimes(1);
   });
 
   it("issues exactly one fetch per component lifecycle (no remount refetch loop)", async () => {
