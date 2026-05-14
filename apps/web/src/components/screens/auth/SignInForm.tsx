@@ -129,12 +129,12 @@ export function SignInForm(): React.JSX.Element {
             role="alert"
             data-testid="signin-unverified-alert"
           >
-            <AlertTitle>{t("end-user.signin.error.unverified.title.text")}</AlertTitle>
+            <AlertTitle>{t("end-user.signin.error-unverified.title.text")}</AlertTitle>
             <AlertDescription className="flex flex-col gap-2">
               <span>
                 {state.resend === "sent"
-                  ? t("end-user.signin.error.unverified.sent.text")
-                  : t("end-user.signin.error.unverified.body.text")}
+                  ? t("end-user.signin.error-unverified.sent.text")
+                  : t("end-user.signin.error-unverified.body.text")}
               </span>
               {state.resend !== "sent" ? (
                 <Button

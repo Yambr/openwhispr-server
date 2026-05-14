@@ -50,18 +50,17 @@ const resources = {
           title: { text: "Check your email" },
           body: { text: "We sent a verification link to your address. Open it to continue." },
         },
-        error: {
-          // Plan 12-04 / UICONF-06: title.text and body.text are DISTINCT i18n
-          // keys per errorKind so the Alert primitive renders different copy
-          // for AlertTitle vs AlertDescription (no duplicate-banner regression).
-          duplicate: {
-            title: { text: "Email already registered" },
-            body: { text: "This email is already registered. Sign in instead." },
-          },
-          generic: {
-            title: { text: "Sign-up failed" },
-            body: { text: "Sign-up failed. Please review the form and try again." },
-          },
+        // Plan 12-04 / UICONF-06: title.text and body.text are DISTINCT i18n
+        // keys per errorKind so the Alert primitive renders different copy
+        // for AlertTitle vs AlertDescription (no duplicate-banner regression).
+        // Keys are flattened to satisfy UI-SPEC 5-level schema (D-ART4).
+        "error-duplicate": {
+          title: { text: "Email already registered" },
+          body: { text: "This email is already registered. Sign in instead." },
+        },
+        "error-generic": {
+          title: { text: "Sign-up failed" },
+          body: { text: "Sign-up failed. Please review the form and try again." },
         },
       },
     },

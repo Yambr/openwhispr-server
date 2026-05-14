@@ -1,5 +1,41 @@
 {
   "admin": {
+    "index": {
+      "title": {
+        "heading": {
+          "text": "Configuration"
+        }
+      },
+      "lede": {
+        "body": {
+          "text": "Server-side configuration for speech-to-text and note recording. Set via env vars; admin can view but not edit in v1."
+        }
+      },
+      "readonly": {
+        "title": {
+          "text": "Read-only"
+        },
+        "body": {
+          "text": "Edits require restarting the api container with updated env. See config.md."
+        }
+      },
+      "card-stt": {
+        "title": {
+          "text": "Speech-to-text"
+        },
+        "endpoint": {
+          "text": "GET /api/stt-config"
+        }
+      },
+      "card-note": {
+        "title": {
+          "text": "Note recording"
+        },
+        "endpoint": {
+          "text": "GET /api/note-recording-config"
+        }
+      }
+    },
     "config": {
       "action": {
         "refresh": {

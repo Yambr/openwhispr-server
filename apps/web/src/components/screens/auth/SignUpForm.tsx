@@ -108,13 +108,13 @@ export function SignUpForm(): React.JSX.Element {
           <Alert variant="destructive" role="alert">
             <AlertTitle>
               {errorKind === "duplicate"
-                ? t("end-user.signup.error.duplicate.title.text")
-                : t("end-user.signup.error.generic.title.text")}
+                ? t("end-user.signup.error-duplicate.title.text")
+                : t("end-user.signup.error-generic.title.text")}
             </AlertTitle>
             <AlertDescription>
               {errorKind === "duplicate"
-                ? t("end-user.signup.error.duplicate.body.text")
-                : t("end-user.signup.error.generic.body.text")}
+                ? t("end-user.signup.error-duplicate.body.text")
+                : t("end-user.signup.error-generic.body.text")}
             </AlertDescription>
           </Alert>
         ) : null}
