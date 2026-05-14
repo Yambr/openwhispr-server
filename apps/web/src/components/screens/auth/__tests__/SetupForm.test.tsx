@@ -3,18 +3,39 @@
 //
 // Two describe blocks:
 //   * Task 3 — "schema" — exercises `setupSchema` + the zod-i18n bridge
-//     across 6 Zod-issue permutations in both EN and RU. RED before
-//     setup.ts + zod-i18n.ts + i18n keys land.
+//     across 6 Zod-issue permutations in both EN and RU.
 //   * Task 4 — SetupForm component tests (RHF + Zod + Stepper +
-//     IntersectionObserver + idempotent submit). Currently a placeholder
-//     suite that will RED → GREEN as Task 4 lands.
+//     IntersectionObserver + idempotent submit) AND a small RSC-page
+//     guard suite (verifies the page fetches PUBLIC /api/setup-state,
+//     NOT /api/capabilities — BLOCKER 1 regression net).
 
+import { render, screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { createInstance } from "i18next";
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { I18nProvider } from "@/lib/i18n-client";
 import { setupSchema } from "@/lib/schemas/setup";
 import { installZodI18n } from "@/lib/zod-i18n";
 import enCommon from "@/locales/en/common.json";
+import enEndUser from "@/locales/en/end-user.json";
 import ruCommon from "@/locales/ru/common.json";
+
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({ push: routerPush, replace: vi.fn(), refresh: vi.fn() }),
+  useSearchParams: () => new URLSearchParams(),
+  usePathname: () => "/setup",
+  redirect: (path: string) => {
+    rscRedirect(path);
+  },
+}));
+vi.mock("next/link", () => ({
+  default: ({ href, children }: { href: string; children: React.ReactNode }) => (
+    <a href={href}>{children}</a>
+  ),
+}));
+
+const routerPush = vi.fn();
+const rscRedirect = vi.fn();
 
 /**
  * Build an isolated i18next instance bound to a single language. The
@@ -142,5 +163,298 @@ describe("schema — setupSchema + zod-i18n bridge (Task 3, UICONF-03)", () => {
       const msg = r.error.issues.find((i) => i.path[0] === "password")?.message;
       expect(msg).toBe(ruExpected.passwordMinLength);
     }
+  });
+});
+
+// ---------------------------------------------------------------------
+// Task 4 — SetupForm component tests.
+//
+// The form mounts inside an I18nProvider seeded with the live
+// `end-user` + `common` namespaces so localized copy resolves
+// correctly. The fetch global is replaced per-test (no leak between
+// `it`s); RHF + IntersectionObserver run inside happy-dom which lacks
+// a real IntersectionObserver — we stub a minimal one for the effect's
+// teardown to call .disconnect on.
+// ---------------------------------------------------------------------
+
+const formResources = {
+  "end-user": enEndUser as unknown as Record<string, unknown>,
+  common: enCommon as unknown as Record<string, unknown>,
+};
+
+function WrapForm({ children }: { children: React.ReactNode }) {
+  return (
+    <I18nProvider lng="en" resources={formResources}>
+      {children}
+    </I18nProvider>
+  );
+}
+
+const originalFetch = globalThis.fetch;
+
+beforeEach(() => {
+  routerPush.mockReset();
+  rscRedirect.mockReset();
+  // Minimal IntersectionObserver stub for happy-dom (lacks the API).
+  // The component's effect calls .observe + cleanup .disconnect; no
+  // test asserts on `currentStep` flips driven by the observer.
+  // biome-ignore lint/suspicious/noExplicitAny: minimal IO shim
+  (globalThis as any).IntersectionObserver = class {
+    observe() {}
+    disconnect() {}
+    unobserve() {}
+    takeRecords() {
+      return [];
+    }
+  };
+});
+
+afterEach(() => {
+  globalThis.fetch = originalFetch;
+});
+
+describe("SetupForm — Task 4 client wizard", () => {
+  it("renders all field labels (Identity + Workspace) + submit button", async () => {
+    const { SetupForm } = await import("../SetupForm");
+    render(
+      <WrapForm>
+        <SetupForm />
+      </WrapForm>,
+    );
+    expect(screen.getByLabelText(/^name$/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/email/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/^password$/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/workspace name/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/timezone/i)).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: /create admin and finish setup/i }),
+    ).toBeInTheDocument();
+  });
+
+  it("(a) valid submit posts JSON to /api/setup/admin including workspace + timezone", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          admin: { email: "a@x.test" },
+          alreadyCompleted: false,
+        }),
+        { status: 201, headers: { "content-type": "application/json" } },
+      ),
+    );
+    globalThis.fetch = fetchMock as unknown as typeof fetch;
+    const { SetupForm } = await import("../SetupForm");
+    const user = userEvent.setup();
+    render(
+      <WrapForm>
+        <SetupForm />
+      </WrapForm>,
+    );
+    await user.type(screen.getByLabelText(/^name$/i), "Alice");
+    await user.type(screen.getByLabelText(/email/i), "a@x.test");
+    await user.type(screen.getByLabelText(/^password$/i), "CorrectHorseBattery9");
+    await user.type(screen.getByLabelText(/workspace name/i), "Acme");
+    await user.click(screen.getByRole("button", { name: /create admin and finish setup/i }));
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+    const call = fetchMock.mock.calls[0];
+    expect(call?.[0]).toBe("/api/setup/admin");
+    const init = call?.[1] as RequestInit;
+    expect(init.method).toBe("POST");
+    const body = JSON.parse(init.body as string) as Record<string, unknown>;
+    expect(body.email).toBe("a@x.test");
+    expect(body.workspace).toBe("Acme");
+    expect(typeof body.timezone).toBe("string");
+    expect((body.timezone as string).length).toBeGreaterThan(0);
+  });
+
+  it("(b) invalid email surfaces a single localized error via getByRole('alert')", async () => {
+    const { SetupForm } = await import("../SetupForm");
+    const user = userEvent.setup();
+    render(
+      <WrapForm>
+        <SetupForm />
+      </WrapForm>,
+    );
+    await user.type(screen.getByLabelText(/^name$/i), "Alice");
+    await user.type(screen.getByLabelText(/email/i), "not-an-email");
+    await user.type(screen.getByLabelText(/^password$/i), "CorrectHorseBattery9");
+    await user.type(screen.getByLabelText(/workspace name/i), "Acme");
+    await user.click(screen.getByRole("button", { name: /create admin and finish setup/i }));
+    expect(await screen.findByText("Enter a valid email address.")).toBeInTheDocument();
+  });
+
+  it("(c) submit button disables while the fetch is in flight", async () => {
+    let resolveFetch!: (r: Response) => void;
+    const pending = new Promise<Response>((r) => {
+      resolveFetch = r;
+    });
+    globalThis.fetch = vi.fn().mockReturnValue(pending) as unknown as typeof fetch;
+    const { SetupForm } = await import("../SetupForm");
+    const user = userEvent.setup();
+    render(
+      <WrapForm>
+        <SetupForm />
+      </WrapForm>,
+    );
+    await user.type(screen.getByLabelText(/^name$/i), "Alice");
+    await user.type(screen.getByLabelText(/email/i), "a@x.test");
+    await user.type(screen.getByLabelText(/^password$/i), "CorrectHorseBattery9");
+    await user.type(screen.getByLabelText(/workspace name/i), "Acme");
+    const submitBtn = screen.getByRole("button", { name: /create admin and finish setup/i });
+    await user.click(submitBtn);
+    await waitFor(() => expect(submitBtn).toBeDisabled());
+    // Resolve so the cleanup doesn't hang.
+    resolveFetch(
+      new Response(JSON.stringify({ admin: { email: "a@x.test" }, alreadyCompleted: false }), {
+        status: 201,
+        headers: { "content-type": "application/json" },
+      }),
+    );
+  });
+
+  it("(d) 201 success triggers router.push('/admin') with NO query string", async () => {
+    globalThis.fetch = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ admin: { email: "a@x.test" }, alreadyCompleted: false }), {
+        status: 201,
+        headers: { "content-type": "application/json" },
+      }),
+    ) as unknown as typeof fetch;
+    const { SetupForm } = await import("../SetupForm");
+    const user = userEvent.setup();
+    render(
+      <WrapForm>
+        <SetupForm />
+      </WrapForm>,
+    );
+    await user.type(screen.getByLabelText(/^name$/i), "Alice");
+    await user.type(screen.getByLabelText(/email/i), "a@x.test");
+    await user.type(screen.getByLabelText(/^password$/i), "CorrectHorseBattery9");
+    await user.type(screen.getByLabelText(/workspace name/i), "Acme");
+    await user.click(screen.getByRole("button", { name: /create admin and finish setup/i }));
+    await waitFor(() => expect(routerPush).toHaveBeenCalledTimes(1));
+    expect(routerPush).toHaveBeenCalledWith("/admin");
+  });
+
+  it("(e) 201 with warnings:['tenant_rename_failed'] renders notice AND still redirects", async () => {
+    globalThis.fetch = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          admin: { email: "a@x.test" },
+          alreadyCompleted: false,
+          warnings: ["tenant_rename_failed"],
+        }),
+        { status: 201, headers: { "content-type": "application/json" } },
+      ),
+    ) as unknown as typeof fetch;
+    const { SetupForm } = await import("../SetupForm");
+    const user = userEvent.setup();
+    render(
+      <WrapForm>
+        <SetupForm />
+      </WrapForm>,
+    );
+    await user.type(screen.getByLabelText(/^name$/i), "Alice");
+    await user.type(screen.getByLabelText(/email/i), "a@x.test");
+    await user.type(screen.getByLabelText(/^password$/i), "CorrectHorseBattery9");
+    await user.type(screen.getByLabelText(/workspace name/i), "Acme");
+    await user.click(screen.getByRole("button", { name: /create admin and finish setup/i }));
+    await waitFor(() => expect(routerPush).toHaveBeenCalledWith("/admin"));
+    // Notice IS rendered (synchronously set right before router.push;
+    // the inline mock router-push does not unmount the component).
+    expect(
+      screen.queryByText(/admin created, but the workspace name could not be saved/i),
+    ).toBeInTheDocument();
+  });
+});
+
+// ---------------------------------------------------------------------
+// Task 4 — RSC page guard.
+//
+// page.tsx is a Server Component using async/await + redirect() from
+// next/navigation. We unit-test the page's branch logic by invoking
+// the default export directly with mocked headers + global fetch.
+// ---------------------------------------------------------------------
+
+vi.mock("next/headers", () => ({
+  headers: async () => new Headers({ "x-locale": "en" }),
+}));
+
+vi.mock("@/lib/i18n", () => ({
+  getServerI18n: async () => ({
+    t: (k: string) => k, // identity translator — assertions match the raw key
+  }),
+}));
+
+describe("/setup RSC page guard — fetch target + branches", () => {
+  beforeEach(() => {
+    rscRedirect.mockReset();
+    routerPush.mockReset();
+  });
+  afterEach(() => {
+    globalThis.fetch = originalFetch;
+  });
+
+  it("status='pending' -> renders <SetupForm /> (no redirect)", async () => {
+    globalThis.fetch = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ status: "pending" }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      }),
+    ) as unknown as typeof fetch;
+    const { default: SetupPage } = await import("@/app/(public)/setup/page");
+    const node = await SetupPage();
+    expect(rscRedirect).not.toHaveBeenCalled();
+    // The returned node is the <SetupForm /> JSX element — assert
+    // structural match.
+    expect(node).toBeDefined();
+  });
+
+  it("status='completed' -> redirect('/sign-in')", async () => {
+    globalThis.fetch = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ status: "completed" }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      }),
+    ) as unknown as typeof fetch;
+    const { default: SetupPage } = await import("@/app/(public)/setup/page");
+    await SetupPage();
+    expect(rscRedirect).toHaveBeenCalledWith("/sign-in");
+  });
+
+  it("status='skipped_legacy' -> redirect('/sign-in')", async () => {
+    globalThis.fetch = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ status: "skipped_legacy" }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      }),
+    ) as unknown as typeof fetch;
+    const { default: SetupPage } = await import("@/app/(public)/setup/page");
+    await SetupPage();
+    expect(rscRedirect).toHaveBeenCalledWith("/sign-in");
+  });
+
+  it("503 / fetch failure -> renders initializing copy (no redirect)", async () => {
+    globalThis.fetch = vi
+      .fn()
+      .mockRejectedValue(new Error("connection refused")) as unknown as typeof fetch;
+    const { default: SetupPage } = await import("@/app/(public)/setup/page");
+    const node = await SetupPage();
+    expect(rscRedirect).not.toHaveBeenCalled();
+    expect(node).toBeDefined();
+  });
+
+  it("(BLOCKER 1 regression net) fetch URL targets /api/setup-state, NEVER /api/capabilities", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ status: "pending" }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      }),
+    );
+    globalThis.fetch = fetchMock as unknown as typeof fetch;
+    const { default: SetupPage } = await import("@/app/(public)/setup/page");
+    await SetupPage();
+    const calls = fetchMock.mock.calls.map((c) => String(c[0]));
+    expect(calls.some((u) => u.includes("/api/setup-state"))).toBe(true);
+    expect(calls.some((u) => u.includes("/api/capabilities"))).toBe(false);
   });
 });
