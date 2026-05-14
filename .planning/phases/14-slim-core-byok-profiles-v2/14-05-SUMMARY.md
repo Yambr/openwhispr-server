@@ -185,6 +185,14 @@ The bulk of the 383 deletions is the two deleted job files (276 LOC combined); t
 - **Fix:** Re-worded to `test(14-05): add red conformance for virtual-key-rotation removal` (all-lowercase subject).
 - **Commit:** `dc49bca`
 
+**3. [Process — surfaced for visibility] Plan 14-06 chart work bundled into the final SUMMARY commit**
+
+- **Found during:** Post-commit inspection of `356a02d`
+- **Issue:** The parallel Plan 14-06 (Helm chart) was making uncommitted edits to `charts/openwhispr/{Chart.yaml,templates/*,tests/*,values.yaml}` while Plan 14-05 was executing inline on `main`. When I ran `git commit` for the 14-05 SUMMARY with only `.planning/.../14-05-SUMMARY.md` staged, the resulting commit unexpectedly included 22 chart files. Re-inspecting lefthook config (`biome` with `stage_fixed: true`), no glob would have matched those YAMLs to auto-stage them; the most likely cause is that the parallel 14-06 process staged its files between my `git add` and `git commit`. The 14-05 + 14-06 changesets are otherwise non-overlapping (worker source + tests + docs vs. charts).
+- **Mitigation:** Content is preserved correctly on `main` — every chart edit is the 14-06 agent's intended GREEN work. The downside is loss of per-plan commit cleanliness for `356a02d`; the 14-06 SUMMARY will need to acknowledge that part of its GREEN landed under a 14-05 SHA. No content loss; no rollback warranted. Recommend the 14-06 agent inspect `356a02d` against its own diff and note the bundled commit in its SUMMARY.
+- **Files affected (14-06's, not 14-05's):** `charts/openwhispr/Chart.yaml`, `charts/openwhispr/templates/*` (16 files), `charts/openwhispr/tests/*` (4 files), `charts/openwhispr/values.yaml`
+- **Commit:** `356a02d` (mixed: 14-05 SUMMARY + 14-06 chart GREEN)
+
 **Auth gates:** None.
 
 **Architectural changes:** None.
