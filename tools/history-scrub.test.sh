@@ -258,14 +258,19 @@ fi
 cleanup_fixture
 
 # --- Test 7 ----------------------------------------------------------------
-echo "Test 7: --dry-run is idempotent (same output twice)"
+echo "Test 7: --dry-run is idempotent (same output twice) when SCRUB_RUN_ID is pinned"
 make_fixture "idempotent"
-OUT1="$(PATH="${FIXTURE}/bin:${PATH}" bash "${SCRUB}" --dry-run 2>&1 || true)"
-OUT2="$(PATH="${FIXTURE}/bin:${PATH}" bash "${SCRUB}" --dry-run 2>&1 || true)"
+# HI-03: RUN_ID is timestamp-dependent by default to isolate concurrent
+# runs. To assert idempotency contractually, pin SCRUB_RUN_ID so the
+# operator's "resume the same run" path holds byte-stable. Without this
+# pin the dry-run banner naturally varies by wall-clock — that's the
+# whole point of per-invocation state isolation.
+OUT1="$(SCRUB_RUN_ID=test7-pin PATH="${FIXTURE}/bin:${PATH}" bash "${SCRUB}" --dry-run 2>&1 || true)"
+OUT2="$(SCRUB_RUN_ID=test7-pin PATH="${FIXTURE}/bin:${PATH}" bash "${SCRUB}" --dry-run 2>&1 || true)"
 if [[ "${OUT1}" == "${OUT2}" ]]; then
-  pass "two --dry-run invocations produce identical output"
+  pass "two --dry-run invocations produce identical output with pinned SCRUB_RUN_ID"
 else
-  fail "non-idempotent output across two --dry-run runs"
+  fail "non-idempotent output across two --dry-run runs with pinned SCRUB_RUN_ID"
 fi
 cleanup_fixture
 
