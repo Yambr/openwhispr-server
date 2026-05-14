@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: FSL-1.1-ALv2
 // Phase 13 / Plan 02 / Task 13-02-02 — execFileSync-driven + in-process
 // unit tests for tools/lint-cjm-doc.ts. Pattern lifted from
 // tools/lint-weak-assertions.test.ts.

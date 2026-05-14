@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: FSL-1.1-ALv2
 // RED-then-GREEN tests for the first-launch SLO probe.
 // Per CLAUDE.md "no internal mocks": the "backend" boundary is a REAL
 // Fastify server bound to 127.0.0.1 on an ephemeral port. The probe is

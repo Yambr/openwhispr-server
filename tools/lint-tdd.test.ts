@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: FSL-1.1-ALv2
 import { execFileSync } from "node:child_process";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";

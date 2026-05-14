@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: FSL-1.1-ALv2
 /**
  * lint-ui-spec.config.ts — Phase 07 / Plan 02 (D-ART7).
  *

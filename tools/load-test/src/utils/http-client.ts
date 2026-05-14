@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: FSL-1.1-ALv2
 // Phase 08 / Plan 06 — Task 1 GREEN: injectable HTTP client interface
 // used by the four k6 flow files.
 //

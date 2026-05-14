@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: FSL-1.1-ALv2
 // Phase 09 / Plan 11 — upgrade-matrix data seeder.
 //
 // Inserts N=10 deterministic rows into the `transcriptions` table so the

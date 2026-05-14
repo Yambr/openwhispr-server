@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: FSL-1.1-ALv2
 // Phase 08 / Plan 06 — k6 load-test bundle.
 //
 // k6 imports a flat ES bundle at runtime. The k6 globals (`k6`, `k6/http`,

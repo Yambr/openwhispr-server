@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: FSL-1.1-ALv2
 // Phase 08.5-02 / Task 2 — k6 baseline scenario options builder.
 //
 // Pure helper: no k6/* imports so vitest can drive it directly. baseline.ts

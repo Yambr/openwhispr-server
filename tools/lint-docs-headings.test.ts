@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: FSL-1.1-ALv2
 /**
  * Phase 03 / Plan 01 / Task 1 — TDD test for tools/lint-docs-headings.ts
  * AND for the document docs/wire-contracts-phase-3.md (D-09).
@@ -50,7 +50,9 @@ describe("lint-docs-headings — live wire-contracts-phase-3.md", () => {
     const result = run([LIVE_DOC]);
     if (result.code !== 0) {
       // Fail loudly with full diagnostic — the doc is the contract.
-      throw new Error(`lint-docs-headings rejected ${LIVE_DOC} (exit ${result.code}):\n${result.stderr}`);
+      throw new Error(
+        `lint-docs-headings rejected ${LIVE_DOC} (exit ${result.code}):\n${result.stderr}`,
+      );
     }
     expect(result.code).toBe(0);
   });

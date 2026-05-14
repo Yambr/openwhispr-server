@@ -1,5 +1,5 @@
 #!/usr/bin/env -S pnpm exec tsx
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: FSL-1.1-ALv2
 /**
  * lint-weak-assertions.ts — Bans weak DOM assertions of the form
  *
