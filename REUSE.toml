@@ -1,0 +1,135 @@
+# REUSE 3.3+ annotation source-of-truth for OpenWhispr Server.
+#
+# This file declares the SPDX license and copyright for every file in the
+# repo that does NOT carry an inline `// SPDX-License-Identifier: ...`
+# short-form header. The in-tree codemod (`tools/spdx-header.ts`) writes
+# inline headers for .ts/.tsx/.js/.mjs/.cjs files; everything else
+# (.sh, .py, .sql, .yaml, .yml, Dockerfile, *.md, plus repo-root meta
+# files like .gitignore, .env.*.example, Makefile, biome.json, etc.) is
+# covered by [[annotations]] here.
+#
+# All files in OpenWhispr Server are licensed under FSL-1.1-ALv2 effective
+# 2026-05-15 (see ADR-0013). Prior to that date the repo was Apache-2.0
+# (see ADR-0004, superseded). The pre-fsl-relicense-2026-05-15 annotated
+# tag preserves the last Apache-2.0 HEAD.
+#
+# To verify the entire tree is REUSE-compliant:
+#   reuse lint
+#
+# (Install: `pipx install reuse` or `pip install --user reuse`.)
+
+version = 1
+
+# --- Shell scripts ----------------------------------------------------------
+[[annotations]]
+path = "**/*.sh"
+precedence = "aggregate"
+SPDX-FileCopyrightText = "2026 Nick Iambroskin and OpenWhispr Server contributors"
+SPDX-License-Identifier = "FSL-1.1-ALv2"
+
+# --- Python sources ---------------------------------------------------------
+[[annotations]]
+path = "**/*.py"
+precedence = "aggregate"
+SPDX-FileCopyrightText = "2026 Nick Iambroskin and OpenWhispr Server contributors"
+SPDX-License-Identifier = "FSL-1.1-ALv2"
+
+# --- SQL migrations and queries ---------------------------------------------
+[[annotations]]
+path = "**/*.sql"
+precedence = "aggregate"
+SPDX-FileCopyrightText = "2026 Nick Iambroskin and OpenWhispr Server contributors"
+SPDX-License-Identifier = "FSL-1.1-ALv2"
+
+# --- YAML config (workflows, compose, helm values, etc.) --------------------
+[[annotations]]
+path = ["**/*.yaml", "**/*.yml"]
+precedence = "aggregate"
+SPDX-FileCopyrightText = "2026 Nick Iambroskin and OpenWhispr Server contributors"
+SPDX-License-Identifier = "FSL-1.1-ALv2"
+
+# --- Dockerfiles (no extension; matched by basename) ------------------------
+[[annotations]]
+path = ["**/Dockerfile", "**/Dockerfile.*"]
+precedence = "aggregate"
+SPDX-FileCopyrightText = "2026 Nick Iambroskin and OpenWhispr Server contributors"
+SPDX-License-Identifier = "FSL-1.1-ALv2"
+
+# --- Markdown docs (READMEs, ADRs, guides, runbooks, etc.) ------------------
+[[annotations]]
+path = "**/*.md"
+precedence = "aggregate"
+SPDX-FileCopyrightText = "2026 Nick Iambroskin and OpenWhispr Server contributors"
+SPDX-License-Identifier = "FSL-1.1-ALv2"
+
+# --- JSON config (package.json, tsconfig, vitest, biome, etc.) --------------
+# JSON does not support comments, so we cannot write inline SPDX headers.
+[[annotations]]
+path = ["**/*.json", "**/*.jsonc"]
+precedence = "aggregate"
+SPDX-FileCopyrightText = "2026 Nick Iambroskin and OpenWhispr Server contributors"
+SPDX-License-Identifier = "FSL-1.1-ALv2"
+
+# --- TOML config ------------------------------------------------------------
+[[annotations]]
+path = "**/*.toml"
+precedence = "aggregate"
+SPDX-FileCopyrightText = "2026 Nick Iambroskin and OpenWhispr Server contributors"
+SPDX-License-Identifier = "FSL-1.1-ALv2"
+
+# --- Gherkin feature files --------------------------------------------------
+[[annotations]]
+path = "**/*.feature"
+precedence = "aggregate"
+SPDX-FileCopyrightText = "2026 Nick Iambroskin and OpenWhispr Server contributors"
+SPDX-License-Identifier = "FSL-1.1-ALv2"
+
+# --- HTML / CSS / SCSS (Next.js app, conformance harness) -------------------
+[[annotations]]
+path = ["**/*.html", "**/*.css", "**/*.scss"]
+precedence = "aggregate"
+SPDX-FileCopyrightText = "2026 Nick Iambroskin and OpenWhispr Server contributors"
+SPDX-License-Identifier = "FSL-1.1-ALv2"
+
+# --- Repo-root meta files (dotfiles, Makefile, etc.) ------------------------
+# Catch-all for files at the repo root that aren't covered by the above
+# patterns. Listed explicitly to make additions discoverable.
+[[annotations]]
+path = [
+  ".dockerignore",
+  ".editorconfig",
+  ".env.*.example",
+  ".gitattributes",
+  ".gitignore",
+  ".nvmrc",
+  ".npmrc",
+  ".prettierignore",
+  ".tool-versions",
+  "Makefile",
+  "lefthook.yml",
+  "lefthook.yaml",
+  "renovate.json",
+  "pnpm-workspace.yaml",
+  "pnpm-lock.yaml",
+  "tsconfig*.json",
+  ".chart-versions/*",
+  "Phase15-MOVE-INVENTORY.md",
+]
+precedence = "aggregate"
+SPDX-FileCopyrightText = "2026 Nick Iambroskin and OpenWhispr Server contributors"
+SPDX-License-Identifier = "FSL-1.1-ALv2"
+
+# --- LICENSE / NOTICE -------------------------------------------------------
+# The LICENSE file itself is FSL-1.1-ALv2; NOTICE is repo metadata.
+[[annotations]]
+path = ["LICENSE", "NOTICE", "MIGRATING.md"]
+precedence = "override"
+SPDX-FileCopyrightText = "2026 Nick Iambroskin and OpenWhispr Server contributors"
+SPDX-License-Identifier = "FSL-1.1-ALv2"
+
+# --- Build / test artifact directories that occasionally slip into the
+# --- index but should be license-typed for completeness if they ever do.
+# REUSE 3.3 supports "skip" via the `lint` ignore list at the tree level
+# rather than per-annotation; we exclude generated/vendored output via
+# .gitignore at the source-control layer instead. No `[lint]` block is
+# necessary here as long as the working tree we lint matches `git ls-files`.
