@@ -32,8 +32,8 @@ cp .env.embedded.example .env
 $EDITOR .env   # set every REPLACE_ME including BETTER_AUTH_SECRET and at least one provider key
 
 # 3. Bring the Variant A stack up (canonical default per Plan 11-01).
-docker compose -f docker-compose.embedded-litellm.yml up -d
-docker compose -f docker-compose.embedded-litellm.yml ps   # confirm api, worker, postgres, valkey, litellm are healthy
+docker compose -f compose/docker-compose.embedded-litellm.yml up -d
+docker compose -f compose/docker-compose.embedded-litellm.yml ps   # confirm api, worker, postgres, valkey, litellm are healthy
 
 # 4. Register a user and verify (dev profile uses mailpit for verification email).
 curl -fsS -X POST http://localhost:3000/api/auth/sign-up/email \

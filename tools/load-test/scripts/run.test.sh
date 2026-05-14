@@ -130,7 +130,7 @@ rm -rf "$STUB_DIR"
 # ---------------------------------------------------------------
 
 # 9. Realistic branch layers docker-compose.load-test.realistic.yml.
-grep -F "docker-compose.load-test.realistic.yml" "$SCRIPT" >/dev/null \
+grep -F "compose/docker-compose.load-test.realistic.yml" "$SCRIPT" >/dev/null \
   || fail "run.sh missing 08.5 third compose overlay (docker-compose.load-test.realistic.yml)"
 
 # 10. Realistic branch exports LOADTEST_PROFILE=realistic so pre-warm

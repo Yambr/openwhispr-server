@@ -34,7 +34,7 @@ set -uo pipefail
 REQUIRED_RAM_BYTES=$((24 * 1024 * 1024 * 1024))
 REQUIRED_PORTS_TCP=(9009 4000 8000 80 443)
 REQUIRED_FD_LIMIT=65535
-TRACKED_COMPOSE_FILES=(docker-compose.yml docker-compose.load-test.yml)
+TRACKED_COMPOSE_FILES=(docker-compose.yml compose/docker-compose.load-test.yml)
 
 YES=0
 VERBOSE=0

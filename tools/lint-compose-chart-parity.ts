@@ -27,8 +27,12 @@ import { parse, parseAllDocuments } from "yaml";
 // an overlay (e.g. traefik in ingress, mailpit in dev-tools).
 export const DEFAULT_COMPOSE_FILES = [
   "docker-compose.yml",
-  "docker-compose.load-test.yml",
-  "docker-compose.load-test.realistic.yml",
+  // Phase 15 / Plan 02 (STRUCT-02) — load-test overlays relocated to compose/
+  // alongside every other overlay (storage/ingress/pgbouncer/dev-tools/
+  // contract-test/embedded-litellm). Only the base docker-compose.yml
+  // stays at the repo root.
+  "compose/docker-compose.load-test.yml",
+  "compose/docker-compose.load-test.realistic.yml",
   "compose/docker-compose.observability.yml",
   "compose/docker-compose.storage.yml",
   "compose/docker-compose.ingress.yml",

@@ -37,7 +37,7 @@ jobs:
         run: |
           sudo sh -c 'echo "127.0.0.1 app.localhost api.localhost auth.localhost mailpit.localhost" >> /etc/hosts'
       - name: docker compose build
-        run: docker compose -f docker-compose.yml -f docker-compose.embedded-litellm.yml build api worker web
+        run: docker compose -f docker-compose.yml -f compose/docker-compose.embedded-litellm.yml build api worker web
       - name: make e2e-cjm
         env:
           E2E_CJM: "1"

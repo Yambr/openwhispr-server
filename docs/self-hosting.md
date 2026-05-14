@@ -12,7 +12,7 @@
 Plan 11-01 promoted the embedded-LiteLLM compose + chart bundle to the
 canonical OSS entrypoint. Fresh operators should start there:
 
-- **Compose:** `docker-compose.embedded-litellm.yml`
+- **Compose:** `compose/docker-compose.embedded-litellm.yml`
 - **Chart values:** `charts/openwhispr/examples/values-embedded-litellm.yaml`
 - **Env scaffold:** `.env.embedded.example`
 - **Variant matrix + quickstart commands:** [`examples/README.md`](../examples/README.md)

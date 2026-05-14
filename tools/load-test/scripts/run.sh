@@ -49,9 +49,9 @@ cd "$ROOT"
 # overlay (08.5-01) so the real LiteLLM container wins over the mock.
 # Mock profile path is unchanged — byte-identical to Phase 08.
 if [ "$PROFILE" = "realistic" ]; then
-  COMPOSE_BASE="docker compose -f docker-compose.yml -f docker-compose.load-test.yml -f docker-compose.load-test.realistic.yml --profile $COMPOSE_PROFILE"
+  COMPOSE_BASE="docker compose -f docker-compose.yml -f compose/docker-compose.load-test.yml -f compose/docker-compose.load-test.realistic.yml --profile $COMPOSE_PROFILE"
 else
-  COMPOSE_BASE="docker compose -f docker-compose.yml -f docker-compose.load-test.yml --profile $COMPOSE_PROFILE"
+  COMPOSE_BASE="docker compose -f docker-compose.yml -f compose/docker-compose.load-test.yml --profile $COMPOSE_PROFILE"
 fi
 if [ "${OPENWHISPR_LOADTEST_KEEP_STACK:-0}" = "1" ]; then
   trap 'printf "OPENWHISPR_LOADTEST_KEEP_STACK=1 — stack left running for forensic capture. Tear down with: %s down\n" "$COMPOSE_BASE" >&2' EXIT INT TERM

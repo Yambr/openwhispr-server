@@ -52,7 +52,7 @@ FIXTURE="$ROOT/tools/load-test/src/fixtures/sample-5s-16k.wav"
 test -s "$FIXTURE" || { echo "[pre-warm] FAILED — fixture missing: $FIXTURE" >&2; exit 1; }
 
 echo "[pre-warm] copying fixture into speaches container..."
-COMPOSE="docker compose -f docker-compose.yml -f docker-compose.load-test.yml --profile load-test-realistic"
+COMPOSE="docker compose -f docker-compose.yml -f compose/docker-compose.load-test.yml --profile load-test-realistic"
 
 # Copy via stdin into a known path inside the container, then curl
 # locally. `docker compose cp` is the portable form; falls back to
