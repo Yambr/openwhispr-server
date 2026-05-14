@@ -1,3 +1,8 @@
+<!--
+SPDX-FileCopyrightText: 2026 Nick Iambroskin and OpenWhispr Server contributors
+SPDX-License-Identifier: FSL-1.1-ALv2
+-->
+<!-- REUSE-IgnoreStart -->
 # Architecture: v2 Production Readiness Integration
 
 **Milestone:** v2 (Phases 12–18)
@@ -341,3 +346,4 @@ All findings sourced from direct codebase inspection on 2026-05-14:
 - `grep -rn "// Phase\|/\* Phase" apps packages` → 771 (NOT 1642; sweep scope must be defined for Phase 16)
 
 **Confidence: HIGH** — every claim traces to a specific file or line. No web-search findings, no training-data assumptions.
+<!-- REUSE-IgnoreEnd -->

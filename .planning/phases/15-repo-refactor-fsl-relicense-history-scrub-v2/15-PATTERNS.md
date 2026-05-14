@@ -1,3 +1,8 @@
+<!--
+SPDX-FileCopyrightText: 2026 Nick Iambroskin and OpenWhispr Server contributors
+SPDX-License-Identifier: FSL-1.1-ALv2
+-->
+<!-- REUSE-IgnoreStart -->
 # Phase 15 — Pattern Map
 
 **Mapped:** 2026-05-14
@@ -295,3 +300,4 @@ Until 15-03 lands, new files in 15-01 + 15-02 carry `Apache-2.0` per current con
 - **Files scanned (read-only):** 18 (incl. CONTEXT.md + 4 RESEARCH-*.md, vitest configs, spdx-header.ts, bootstrap.sh, traefik dynamic.yml, ADR-0004, ci.yml, spdx.yml, helm-release.yml, auth.ts excerpt, Dockerfile sample, conventions.md, ADR template, ADR-0011 head)
 - **Search scope:** `tools/`, `compose/`, `apps/{api,web,worker}/`, `packages/`, `tests/`, `docs/`, `.github/workflows/`, root
 - **Analogs found:** 18 / 25 files (72%); 7 files have no in-repo precedent (RISK callouts above)
+<!-- REUSE-IgnoreEnd -->

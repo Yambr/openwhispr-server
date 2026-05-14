@@ -1,3 +1,8 @@
+<!--
+SPDX-FileCopyrightText: 2026 Nick Iambroskin and OpenWhispr Server contributors
+SPDX-License-Identifier: FSL-1.1-ALv2
+-->
+<!-- REUSE-IgnoreStart -->
 # Phase 10: i18n + Docs + OSS Housekeeping — Research
 
 **Researched:** 2026-05-13
@@ -724,3 +729,4 @@ See dedicated section below.
 
 **Research date:** 2026-05-13
 **Valid until:** 30 days (stable area — i18next, Apache-2.0, CLDR all mature)
+<!-- REUSE-IgnoreEnd -->

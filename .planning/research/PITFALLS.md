@@ -1,3 +1,8 @@
+<!--
+SPDX-FileCopyrightText: 2026 Nick Iambroskin and OpenWhispr Server contributors
+SPDX-License-Identifier: FSL-1.1-ALv2
+-->
+<!-- REUSE-IgnoreStart -->
 # Pitfalls Research — v2 Production Readiness (Brownfield)
 
 **Domain:** Brownfield production-readiness milestone on an enterprise self-hosted backend (OpenWhispr Server) — adding E2E discovery, admin onboarding, BYOK profiles, repo refactor + FSL relicense, comment audit, trusted TLS, and an SSO SPEC to a repo that already shipped v1.
@@ -694,3 +699,4 @@ These pitfalls block multiple downstream phases. Roadmapper must order according
 ---
 *Pitfalls research for: v2 production-readiness on a brownfield repo*
 *Researched: 2026-05-14*
+<!-- REUSE-IgnoreEnd -->
