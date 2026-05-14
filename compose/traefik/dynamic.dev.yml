@@ -1,0 +1,49 @@
+# SPDX-License-Identifier: Apache-2.0
+# Phase 15 / Plan 02 (STRUCT-04) — Traefik v3 dev-profile dynamic config.
+#
+# The base `dynamic.yml` (loaded in production) already declares the
+# `api` router on `Host(api.localhost) && PathPrefix(/api)`, plus the
+# `api-realtime` router on `Host(api.localhost) && PathPrefix(/v1/realtime)`,
+# plus the `api-audio` router on `Host(api.localhost) && PathPrefix(/v1/audio)`.
+# This dev overlay ADDS:
+#
+#   - `web` router on `Host(web.localhost)` → web:3001 (Next.js dev server).
+#
+# Result: api.localhost ALWAYS reaches the Fastify API container; the
+# small `/api/locale` Gherkin oracle (@cjm-traefik-host-split) proves
+# the host-split holds. web.localhost reaches the Next.js web app shell.
+#
+# Canonical mkcert 5-host list (Phase 17 will provision certs for all
+# five against the same Traefik instance): api.localhost, web.localhost,
+# app.localhost (alias for backward-compat with pre-Phase-15 desktop
+# builds — wired via the api router's loose Host match in dynamic.yml's
+# Phase-17 follow-up; not declared here), grafana.localhost,
+# mailpit.localhost. dynamic.yml already routes grafana + mailpit; this
+# file owns the web split-host.
+#
+# Loaded by adding this path to Traefik's `providers.file.directory`
+# (compose/traefik/traefik.yml) OR by listing both files via
+# `providers.file.filename` overlays in compose/docker-compose.ingress.yml.
+
+http:
+  routers:
+    # Phase 15 / Plan 02 — Next.js web app shell. Lower priority than
+    # the api/api-realtime/api-audio routers (which carry explicit
+    # PathPrefix constraints with high score) so api.localhost traffic
+    # NEVER falls through here. Bound to both web + websecure for the
+    # mkcert path AND a plain :80 fallback when local TLS isn't wired.
+    web:
+      rule: "Host(`web.localhost`)"
+      service: web-svc
+      entryPoints: [web, websecure]
+      tls: {}
+
+  services:
+    web-svc:
+      loadBalancer:
+        servers:
+          # Next.js dev server inside the `web` container. The web
+          # docker-compose entry exposes 3001 internally (the app
+          # listens on 3001 to avoid colliding with the api on 3000
+          # when both run under docker-compose on the same network).
+          - url: "http://web:3001"
