@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: FSL-1.1-ALv2
 // Phase 10 / Plan 10-01b — Worker TemplateRenderer (GREEN).
 //
 // Responsibilities:

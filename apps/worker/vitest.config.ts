@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: FSL-1.1-ALv2
 // Phase 03 Plan 08 — per-package coverage floor for apps/worker.
 //
 // CLAUDE.md mandates a per-phase ≥90% coverage floor on all new/modified
@@ -25,10 +25,7 @@ export default mergeConfig(
         // Exclude the entry point and integration test container bootstrap —
         // entry is a thin process-level wiring layer covered by a smoke test;
         // integration test files are themselves test code.
-        exclude: [
-          "src/index.ts",
-          "**/*.test.ts",
-        ],
+        exclude: ["src/index.ts", "**/*.test.ts"],
         thresholds: {
           lines: 90,
           branches: 90,

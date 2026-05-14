@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: FSL-1.1-ALv2
 // Phase 6 Plan 06-08 — GREEN tests for audit-archive (D-A3).
 //
 // The exporter shell-out is replaced with a fake spawn that captures the

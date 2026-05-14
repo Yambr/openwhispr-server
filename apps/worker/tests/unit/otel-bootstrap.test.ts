@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: FSL-1.1-ALv2
 // Phase 14 / Plan 04 / Task 2 — Worker OTel SDK bootstrap unit tests.
 //
 // Mirrors apps/api/src/otel-bootstrap.test.ts for the worker tier. The

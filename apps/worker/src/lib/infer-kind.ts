@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: FSL-1.1-ALv2
 // Phase 03 Plan 08 — map a LiteLLM model alias to the matching usage_ledger
 // `kind` value. Mirrors the per-route kind constants used by the api:
 //   * /api/transcribe -> 'transcribe_minutes' (Plan 04)
@@ -11,10 +11,7 @@
 // to 'reason_tokens' (the safe default — token-priced models are the
 // most common surface; mis-labelling minutes-priced models would be
 // worse since the units column would be a token count).
-export type LedgerKind =
-  | "transcribe_minutes"
-  | "reason_tokens"
-  | "realtime_minutes";
+export type LedgerKind = "transcribe_minutes" | "reason_tokens" | "realtime_minutes";
 
 export function inferKind(model: string): LedgerKind {
   if (model === "whisper-large-v3" || model.includes("whisper")) {

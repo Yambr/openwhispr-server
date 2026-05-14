@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: FSL-1.1-ALv2
 // Phase 03 Plan 08 — pg.Pool factory for the LiteLLM co-tenant database.
 //
 // MUST connect DIRECT to postgres:5432 (NOT pgbouncer). Cross-database reads
@@ -13,9 +13,7 @@ const { Pool } = pg;
 export function makeLitellmPool(env: NodeJS.ProcessEnv = process.env): pg.Pool {
   const url = env.LITELLM_READ_DATABASE_URL ?? env.LITELLM_DATABASE_URL;
   if (!url) {
-    throw new Error(
-      "LITELLM_READ_DATABASE_URL or LITELLM_DATABASE_URL is required",
-    );
+    throw new Error("LITELLM_READ_DATABASE_URL or LITELLM_DATABASE_URL is required");
   }
   let host: string | null = null;
   try {

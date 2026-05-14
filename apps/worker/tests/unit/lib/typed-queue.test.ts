@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: FSL-1.1-ALv2
 // Phase 6 Plan 06-07 — GREEN tests for typedQueue (D-W3).
 //
 // We avoid booting a real BullMQ+Redis here (the integration aspect is
