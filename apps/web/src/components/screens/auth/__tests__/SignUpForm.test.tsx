@@ -215,6 +215,45 @@ describe("SignUpForm (Phase 07.1 / Plan 07 — U2)", () => {
     expect(await screen.findByText(/^sign-up failed$/i)).toBeInTheDocument();
   });
 
+  it("treats USER_ALREADY_EXISTS detected by message alone as duplicate", async () => {
+    // Covers the `code ?? ""` + message-regex fallback when Better Auth omits
+    // the canonical code but the message still carries 'already exists'.
+    signUpEmail.mockResolvedValueOnce({
+      data: null,
+      error: { message: "User Already Exists in the database" },
+    });
+    const { SignUpForm } = await import("../SignUpForm");
+    const user = userEvent.setup();
+    render(
+      <Wrap>
+        <SignUpForm />
+      </Wrap>,
+    );
+    await user.type(screen.getByLabelText(/name/i), "Alice");
+    await user.type(screen.getByLabelText(/email/i), "alice@test.local");
+    await user.type(screen.getByLabelText(/^password$/i), "Pwa9!testStrong");
+    await user.click(screen.getByRole("button", { name: /^sign up$/i }));
+    expect(await screen.findByText(/email already registered/i)).toBeInTheDocument();
+  });
+
+  it("treats an entirely empty error object as generic", async () => {
+    // Covers both `code ?? ""` AND `message ?? ""` fallbacks evaluating to
+    // empty strings.
+    signUpEmail.mockResolvedValueOnce({ data: null, error: {} });
+    const { SignUpForm } = await import("../SignUpForm");
+    const user = userEvent.setup();
+    render(
+      <Wrap>
+        <SignUpForm />
+      </Wrap>,
+    );
+    await user.type(screen.getByLabelText(/name/i), "Alice");
+    await user.type(screen.getByLabelText(/email/i), "alice@test.local");
+    await user.type(screen.getByLabelText(/^password$/i), "Pwa9!testStrong");
+    await user.click(screen.getByRole("button", { name: /^sign up$/i }));
+    expect(await screen.findByText(/^sign-up failed$/i)).toBeInTheDocument();
+  });
+
   // Plan 12-04 / UICONF-06: regression guard for the SignUpForm.tsx:102-115
   // duplicate-i18n-key bug. Exactly one Alert; title text and body text must
   // be DIFFERENT strings (RESEARCH §11). Reflected in conformance suite.

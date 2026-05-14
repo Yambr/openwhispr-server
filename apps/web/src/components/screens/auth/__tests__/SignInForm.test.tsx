@@ -344,6 +344,37 @@ describe("SignInForm (Phase 07.1 / Plan 07 — U1)", () => {
     });
   });
 
+  it("UICONF-07: resend failure falls back to the generic error branch", async () => {
+    signInEmail.mockResolvedValueOnce({
+      data: null,
+      error: { code: "EMAIL_NOT_VERIFIED", message: "Email not verified" },
+    });
+    sendVerificationEmail.mockRejectedValueOnce(new Error("smtp transport down"));
+
+    const { SignInForm } = await import("../SignInForm");
+    const user = userEvent.setup();
+    render(
+      <Wrap>
+        <SignInForm />
+      </Wrap>,
+    );
+    await user.type(screen.getByLabelText(/email/i), "alice@test.local");
+    await user.type(screen.getByLabelText(/password/i), "Pwa9!testStrong");
+    await user.click(screen.getByRole("button", { name: /^sign in$/i }));
+
+    const resendBtn = await screen.findByRole("button", { name: /resend verification email/i });
+    await user.click(resendBtn);
+
+    // Fallback: surface the generic sign-in failure copy; do NOT leave the
+    // user on a half-broken unverified screen with a failing CTA.
+    await waitFor(() => {
+      expect(screen.getByText(/sign-in failed/i)).toBeInTheDocument();
+    });
+    expect(
+      screen.queryByRole("button", { name: /resend verification email/i }),
+    ).not.toBeInTheDocument();
+  });
+
   it("UICONF-07: a non-403 error does NOT render the resend CTA (regression guard)", async () => {
     signInEmail.mockResolvedValueOnce({
       data: null,
