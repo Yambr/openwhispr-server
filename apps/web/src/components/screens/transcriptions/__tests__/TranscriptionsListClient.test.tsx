@@ -186,7 +186,9 @@ describe("TranscriptionsListClient (Phase 07.1 / Plan 09)", () => {
     });
     renderWithProviders(<TranscriptionsListClient />);
     await waitFor(() => {
-      expect(screen.getAllByText("—").length).toBeGreaterThanOrEqual(4);
+      // Four nulled fields per row (audio_duration_ms / provider / model /
+      // language) → exactly four em-dash placeholders for the single row.
+      expect(screen.getAllByText("—")).toHaveLength(4);
     });
   });
 

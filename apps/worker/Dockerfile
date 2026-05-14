@@ -27,12 +27,17 @@ COPY apps/worker/package.json apps/worker/
 # into this Dockerfile. tsup's noExternal pattern fails to resolve it
 # at build time without the package present in the build context.
 COPY packages/observability/package.json packages/observability/
+# Phase 13 / Plan 01 — @openwhispr/email is a workspace dep of @openwhispr/worker
+# (replaces noopSender with the shared SMTP-sender library). Source tree
+# required because tsup inlines workspace deps via noExternal.
+COPY packages/email/package.json packages/email/
 
 RUN pnpm install --frozen-lockfile --ignore-scripts
 
 COPY tsconfig.base.json ./
 COPY apps/worker apps/worker
 COPY packages/observability packages/observability
+COPY packages/email packages/email
 
 RUN pnpm --filter @openwhispr/worker build
 
@@ -45,6 +50,7 @@ RUN corepack enable && corepack prepare pnpm@11.0.8 --activate
 COPY pnpm-lock.yaml pnpm-workspace.yaml package.json ./
 COPY apps/worker/package.json apps/worker/
 COPY packages/observability/package.json packages/observability/
+COPY packages/email/package.json packages/email/
 
 RUN pnpm install --frozen-lockfile --prod --ignore-scripts \
       --node-linker=hoisted \

@@ -49,6 +49,10 @@ COPY packages/litellm-client/package.json packages/litellm-client/
 # exit non-zero. Add the manifests + source trees so tsup can inline them.
 COPY packages/observability/package.json packages/observability/
 COPY packages/wire-schemas/package.json packages/wire-schemas/
+# Phase 13 / Plan 01 — packages/email is the shared SMTP-sender library
+# extracted from apps/api/src/email.ts. tsup's noExternal pattern needs the
+# source tree so the api bundle inlines createEmailSender.
+COPY packages/email/package.json packages/email/
 
 # Full install (dev included — needed for tsup/typescript).
 # --ignore-scripts skips lefthook prepare which has no purpose in the image.
@@ -62,6 +66,7 @@ COPY packages/contract-tests packages/contract-tests
 COPY packages/litellm-client packages/litellm-client
 COPY packages/observability packages/observability
 COPY packages/wire-schemas packages/wire-schemas
+COPY packages/email packages/email
 COPY tools tools
 
 # Build api (which now inlines @openwhispr/* via noExternal in tsup config).
@@ -90,6 +95,7 @@ COPY packages/contract-tests/package.json packages/contract-tests/
 COPY packages/litellm-client/package.json packages/litellm-client/
 COPY packages/observability/package.json packages/observability/
 COPY packages/wire-schemas/package.json packages/wire-schemas/
+COPY packages/email/package.json packages/email/
 
 # Production-only install with hoisted linker. --filter @openwhispr/api...
 # walks api's transitive prod deps but excludes its devDeps (e.g. tsup, tsx).

@@ -25,9 +25,9 @@
 // transport interface — third-party SMTP) per CLAUDE.md's rule that
 // internal logic must NOT be mocked.
 
+import type { EmailSender as EmailService } from "@openwhispr/email";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { buildAuth, fallbackLog } from "../auth.js";
-import type { EmailService } from "../email.js";
 
 const stubDb = {} as unknown as Parameters<typeof buildAuth>[0]["db"];
 
@@ -47,11 +47,11 @@ afterEach(() => {
 });
 
 interface AuthOptionsRuntime {
-  emailAndPassword?: {
-    sendVerificationEmail?: (args: {
-      user: { email: string };
-      url: string;
-    }) => Promise<void>;
+  // Phase 13 / Plan 01 — sendVerificationEmail moved from emailAndPassword
+  // to top-level emailVerification (Better Auth 1.6.9 reads from the
+  // latter key, not the former).
+  emailVerification?: {
+    sendVerificationEmail?: (args: { user: { email: string }; url: string }) => Promise<void>;
   };
   logger?: unknown;
 }
@@ -76,7 +76,7 @@ describe("buildAuth — sendVerificationEmail closure (line 183)", () => {
     };
     const auth = buildAuth({ db: stubDb, email });
     const opts = auth.options as unknown as AuthOptionsRuntime;
-    const send = opts.emailAndPassword?.sendVerificationEmail;
+    const send = opts.emailVerification?.sendVerificationEmail;
     expect(typeof send).toBe("function");
     await send?.({
       user: { email: "user@example.test" },
@@ -86,12 +86,8 @@ describe("buildAuth — sendVerificationEmail closure (line 183)", () => {
     expect(sent[0]?.to).toBe("user@example.test");
     expect(sent[0]?.subject).toMatch(/Verify your OpenWhispr account/);
     // Both bodies (text + html) contain the verification URL.
-    expect(sent[0]?.text).toContain(
-      "https://api.localhost/api/auth/verify?token=abc",
-    );
-    expect(sent[0]?.html).toContain(
-      "https://api.localhost/api/auth/verify?token=abc",
-    );
+    expect(sent[0]?.text).toContain("https://api.localhost/api/auth/verify?token=abc");
+    expect(sent[0]?.html).toContain("https://api.localhost/api/auth/verify?token=abc");
   });
 
   it("propagates transport errors (does not swallow Pitfall #4 nodemailer failures)", async () => {
@@ -102,10 +98,10 @@ describe("buildAuth — sendVerificationEmail closure (line 183)", () => {
     };
     const auth = buildAuth({ db: stubDb, email });
     const opts = auth.options as unknown as AuthOptionsRuntime;
-    const send = opts.emailAndPassword?.sendVerificationEmail;
-    await expect(
-      send?.({ user: { email: "u@b.test" }, url: "https://x.test/y" }),
-    ).rejects.toThrow(/SMTP_RELAY_DOWN/);
+    const send = opts.emailVerification?.sendVerificationEmail;
+    await expect(send?.({ user: { email: "u@b.test" }, url: "https://x.test/y" })).rejects.toThrow(
+      /SMTP_RELAY_DOWN/,
+    );
   });
 });
 
@@ -122,9 +118,7 @@ describe("buildAuth — fallbackLog.child branch (line 126)", () => {
     const plugins = auth.options.plugins ?? [];
     expect(plugins.some((p) => p.id === "bearer")).toBe(true);
     const opts = auth.options as unknown as AuthOptionsRuntime;
-    expect(typeof opts.emailAndPassword?.sendVerificationEmail).toBe(
-      "function",
-    );
+    expect(typeof opts.emailVerification?.sendVerificationEmail).toBe("function");
   });
 
   it("fallbackLog is used by makeEmailService when neither opts.log nor SMTP_HOST is set", () => {

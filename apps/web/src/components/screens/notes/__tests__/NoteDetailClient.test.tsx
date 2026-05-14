@@ -357,7 +357,12 @@ describe("NoteDetailClient (Phase 07.1 / Plan 10)", () => {
     });
     renderWithProviders(<NoteDetailClient noteId={NID} />);
     await waitFor(() => {
-      expect(screen.getAllByText("—").length).toBeGreaterThan(0);
+      // Default makeNote has audio_duration_seconds=null → 1 em-dash for
+      // duration; this test sets folder_id to a UUID that misses the
+      // folders cache → 1 em-dash for folder. Exactly 2 em-dashes total
+      // (participants section is gated on note_type==='meeting', default
+      // is 'personal' so it does not render).
+      expect(screen.getAllByText("—")).toHaveLength(2);
     });
   });
 
@@ -367,7 +372,9 @@ describe("NoteDetailClient (Phase 07.1 / Plan 10)", () => {
     });
     renderWithProviders(<NoteDetailClient noteId={NID} />);
     await waitFor(() => {
-      expect(screen.getAllByText("—").length).toBeGreaterThan(0);
+      // null audio_duration_seconds → 1 em-dash; default makeNote has
+      // folder_id=null → 1 em-dash for folder. Exactly 2 em-dashes.
+      expect(screen.getAllByText("—")).toHaveLength(2);
     });
   });
 

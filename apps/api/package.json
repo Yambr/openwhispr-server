@@ -24,6 +24,7 @@
     "@opentelemetry/sdk-node": "^0.55.0",
     "@openwhispr/contract-tests": "workspace:*",
     "@openwhispr/data": "workspace:*",
+    "@openwhispr/email": "workspace:*",
     "@openwhispr/litellm-client": "workspace:*",
     "@openwhispr/observability": "workspace:*",
     "@openwhispr/wire-schemas": "workspace:*",

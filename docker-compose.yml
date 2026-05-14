@@ -715,6 +715,13 @@ services:
     image: axllent/mailpit:v1.29
     profiles: [default, dev, load-test-mock, load-test-realistic]
     networks: [openwhispr_internal]
+    # Phase 13 / Plan 01 / Task 13-01-08 — bind the HTTP API to host loopback
+    # so the e2e-cjm harness (running outside the compose network) can poll
+    # /api/v1/messages without depending on Traefik. The Traefik route at
+    # https://mailpit.localhost (provisioned via compose/traefik/dynamic.yml)
+    # remains the primary path for browsers and for the harness default.
+    ports:
+      - "127.0.0.1:8025:8025"
     environment:
       MP_MAX_MESSAGES: "5000"
       MP_SMTP_AUTH_ACCEPT_ANY: "1"

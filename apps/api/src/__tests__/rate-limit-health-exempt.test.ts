@@ -6,10 +6,10 @@
 // return 200, zero 429.
 import Fastify from "fastify";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { rateLimitPlugin } from "../plugins/rate-limit.js";
-import healthRoutes from "../routes/health.js";
-import { zodTypeProvider } from "../plugins/zod-type-provider.js";
 import { registerErrorHandler } from "../error-handler.js";
+import { rateLimitPlugin } from "../plugins/rate-limit.js";
+import { zodTypeProvider } from "../plugins/zod-type-provider.js";
+import { registerProbes } from "../routes/probes.js";
 
 async function buildTestApp() {
   const app = Fastify({ logger: false, trustProxy: true });
@@ -23,7 +23,11 @@ async function buildTestApp() {
     max: 5,
     timeWindow: "1 minute",
   });
-  await app.register(healthRoutes);
+  // Phase 6 / Plan 06-04 (D-P1): `/api/health` is owned by registerProbes
+  // (the prior `routes/health.ts` plugin was dead code; deleted in
+  // Plan 13-01 / Task 13-01-05). This test still asserts the SAME
+  // contract: `config.rateLimit:false` on /api/health is honored.
+  await registerProbes(app);
   await app.ready();
   return app;
 }

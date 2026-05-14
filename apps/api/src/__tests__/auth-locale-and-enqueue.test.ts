@@ -30,13 +30,13 @@ vi.mock("better-auth/plugins/bearer", () => ({ bearer: () => ({ id: "bearer" }) 
 vi.mock("better-auth/plugins/generic-oauth", () => ({
   genericOAuth: () => ({ id: "generic-oauth" }),
 }));
-vi.mock("../email.js", () => ({
-  makeEmailService: () => ({ send: async () => {} }),
+vi.mock("@openwhispr/email", () => ({
+  createEmailSender: () => ({ send: async () => {} }),
 }));
 
 const { buildAuth } = await import("../auth.js");
 
-import type { EmailService } from "../email.js";
+import type { EmailSender as EmailService } from "@openwhispr/email";
 
 const stubDb = {} as unknown as Parameters<typeof buildAuth>[0]["db"];
 
@@ -71,7 +71,10 @@ interface UserModelCfg {
 
 interface AuthOptionsRuntime {
   user?: UserModelCfg["user"];
-  emailAndPassword?: {
+  // Phase 13 / Plan 01 — sendVerificationEmail moved from emailAndPassword
+  // to top-level emailVerification (Better Auth 1.6.9 reads from the
+  // latter key, not the former).
+  emailVerification?: {
     sendVerificationEmail?: (args: {
       user: { email: string; locale?: string };
       url: string;
@@ -124,7 +127,7 @@ describe("buildAuth — sendVerificationEmail enqueueEmail DI path", () => {
     };
     const auth = buildAuth({ db: stubDb, email, enqueueEmail });
     const opts = auth.options as unknown as AuthOptionsRuntime;
-    const send = opts.emailAndPassword?.sendVerificationEmail;
+    const send = opts.emailVerification?.sendVerificationEmail;
     expect(typeof send).toBe("function");
     await send?.({
       user: {
@@ -143,7 +146,14 @@ describe("buildAuth — sendVerificationEmail enqueueEmail DI path", () => {
     expect(payload.template_id).toBe("email_verification");
     expect(payload.locale).toBe("ru");
     expect(payload.to).toBe("ru@user.test");
-    expect(payload.variables).toEqual({ url: "https://api.localhost/api/auth/verify?token=abc" });
+    // Phase 13 / Plan 01 — the worker's email_verification template
+    // interpolates `{verification_url}` and `{name}`. The api now sends both
+    // canonical keys; `url` is kept as a back-compat alias.
+    expect(payload.variables).toMatchObject({
+      url: "https://api.localhost/api/auth/verify?token=abc",
+      verification_url: "https://api.localhost/api/auth/verify?token=abc",
+      name: "ru@user.test",
+    });
     // request_id is a fresh UUID
     expect(payload.request_id).toMatch(
       /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/,
@@ -163,7 +173,7 @@ describe("buildAuth — sendVerificationEmail enqueueEmail DI path", () => {
       enqueueEmail: enqueueEmail as never,
     });
     const opts = auth.options as unknown as AuthOptionsRuntime;
-    const send = opts.emailAndPassword?.sendVerificationEmail;
+    const send = opts.emailVerification?.sendVerificationEmail;
     await send?.({
       user: { email: "no-locale@user.test" } as never,
       url: "https://x.test/y",
@@ -181,7 +191,7 @@ describe("buildAuth — sendVerificationEmail enqueueEmail DI path", () => {
     };
     const auth = buildAuth({ db: stubDb, email });
     const opts = auth.options as unknown as AuthOptionsRuntime;
-    const send = opts.emailAndPassword?.sendVerificationEmail;
+    const send = opts.emailVerification?.sendVerificationEmail;
     await send?.({
       user: { email: "legacy@user.test" } as never,
       url: "https://api.localhost/verify?t=x",
@@ -200,7 +210,7 @@ describe("buildAuth — sendVerificationEmail enqueueEmail DI path", () => {
       enqueueEmail,
     });
     const opts = auth.options as unknown as AuthOptionsRuntime;
-    const send = opts.emailAndPassword?.sendVerificationEmail;
+    const send = opts.emailVerification?.sendVerificationEmail;
     await expect(
       send?.({ user: { email: "x@y.test" } as never, url: "https://x/y" }),
     ).rejects.toThrow(/REDIS_DOWN/);

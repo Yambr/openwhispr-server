@@ -243,7 +243,9 @@ describe("SessionsTable (Phase 07.1 / Plan 08)", () => {
     });
     renderWithProviders(<SessionsTable currentSessionToken="tok-1" />);
     await waitFor(() => {
-      expect(screen.getAllByText("—").length).toBeGreaterThanOrEqual(4);
+      // 4 null fields (userAgent / ipAddress / createdAt / expiresAt) →
+      // exactly 4 em-dash placeholders for the single row.
+      expect(screen.getAllByText("—")).toHaveLength(4);
     });
   });
 
@@ -261,7 +263,11 @@ describe("SessionsTable (Phase 07.1 / Plan 08)", () => {
     });
     renderWithProviders(<SessionsTable currentSessionToken="tok-1" />);
     await waitFor(() => {
-      expect(screen.getAllByText("—").length).toBeGreaterThanOrEqual(2);
+      // 2 invalid date strings (createdAt + expiresAt → formatDate NaN
+      // branch) → exactly 2 em-dashes. userAgent / ipAddress fields use
+      // defaults from the row() helper, not null, so they do NOT render
+      // em-dashes here.
+      expect(screen.getAllByText("—")).toHaveLength(2);
     });
   });
 

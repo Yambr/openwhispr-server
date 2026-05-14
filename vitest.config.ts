@@ -12,6 +12,12 @@ import { defineConfig } from "vitest/config";
 // gate. Do not move these keys to the flat shape.
 export default defineConfig({
   test: {
+    // Phase 13 / Plan 01 / Task 02 — runs `docker container prune -f
+    // --filter label=org.testcontainers=true` after every vitest run to
+    // close the leak documented in `.planning/deferred-items.md §1`.
+    // Failures are swallowed inside the hook — globalTeardown must NEVER
+    // abort the test report.
+    globalTeardown: ["./tools/global-vitest-teardown.ts"],
     coverage: {
       provider: "v8",
       reporter: ["text", "json-summary", "json", "lcov"],
@@ -32,7 +38,12 @@ export default defineConfig({
         "**/.stryker-tmp/**",
         "**/reports/**",
         "packages/i18n/locales/**",
-        "tools/**",
+        // Phase 13 / Plan 01 / Task 02 (OQ-5 resolution) — `tools/**` is no
+        // longer blanket-excluded. The new lint/teardown tools
+        // (`tools/lint-weak-assertions.ts`, `tools/global-vitest-teardown.ts`)
+        // are subject to the constitutional ≥90/90/90/90 coverage floor.
+        // Individual fixture/helper files inside tools/ can be re-excluded
+        // here on a per-file basis if needed.
         "tests/**",
         "scripts/**",
         // Phase 0 placeholder modules whose branches/lines are node-API or

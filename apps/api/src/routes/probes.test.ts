@@ -187,11 +187,15 @@ describe("/startupz (D-P1 — boot completion)", () => {
 });
 
 describe("/api/health alias (back-compat with apps/api/src/health.test.ts)", () => {
-  it("delegates to /livez behavior — 200 with {status:'ok'}", async () => {
+  it("delegates to /livez behavior — 200 with {status:'ok', migrations_completed:false} when migrationsCheck not wired", async () => {
     const app = await makeApp();
     const res = await app.inject({ method: "GET", url: "/api/health" });
     expect(res.statusCode).toBe(200);
-    expect(res.json()).toEqual({ status: "ok" });
+    // Plan 13-01 / Task 13-01-05 — new field `migrations_completed`. When
+    // no migrationsCheck dep is wired, the field defaults to `false` so
+    // the harness/operator gets an actionable "migrations runner has not
+    // been wired into the boot" signal (distinct from runtime DB outage).
+    expect(res.json()).toEqual({ status: "ok", migrations_completed: false });
     await app.close();
   });
 
@@ -211,6 +215,61 @@ describe("/api/health alias (back-compat with apps/api/src/health.test.ts)", () 
     const res = await app.inject({ method: "GET", url: "/api/health" });
     expect(res.statusCode).toBe(200);
     expect(calls).toEqual([]);
+    await app.close();
+  });
+});
+
+describe("/api/health migrations_completed (Plan 13-01 / Task 13-01-05)", () => {
+  async function makeAppWithMigrationsCheck(migrationsCheck: () => Promise<boolean>) {
+    const app = Fastify({ logger: false });
+    await registerProbes(app, { migrationsCheck });
+    await app.ready();
+    return app;
+  }
+
+  it("returns migrations_completed:true when injected migrationsCheck resolves true", async () => {
+    const calls: number[] = [];
+    const migrationsCheck = async (): Promise<boolean> => {
+      calls.push(Date.now());
+      return true;
+    };
+    const app = await makeAppWithMigrationsCheck(migrationsCheck);
+    const res = await app.inject({ method: "GET", url: "/api/health" });
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toEqual({ status: "ok", migrations_completed: true });
+    expect(calls).toHaveLength(1);
+    await app.close();
+  });
+
+  it("returns migrations_completed:false when injected migrationsCheck resolves false", async () => {
+    const migrationsCheck = async (): Promise<boolean> => false;
+    const app = await makeAppWithMigrationsCheck(migrationsCheck);
+    const res = await app.inject({ method: "GET", url: "/api/health" });
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toEqual({ status: "ok", migrations_completed: false });
+    await app.close();
+  });
+
+  it("returns migrations_completed:false (does not throw) when migrationsCheck rejects — defensive fallback", async () => {
+    const migrationsCheck = async (): Promise<boolean> => {
+      throw new Error("pool not ready");
+    };
+    const app = await makeAppWithMigrationsCheck(migrationsCheck);
+    const res = await app.inject({ method: "GET", url: "/api/health" });
+    // /api/health is /livez aliased — it MUST stay 200 even when the
+    // migration probe hiccups. The field reports false to surface the
+    // hiccup without cascading into a kubelet restart loop.
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toEqual({ status: "ok", migrations_completed: false });
+    await app.close();
+  });
+
+  it("still emits Deprecation + Link headers when migrationsCheck is wired", async () => {
+    const migrationsCheck = async (): Promise<boolean> => true;
+    const app = await makeAppWithMigrationsCheck(migrationsCheck);
+    const res = await app.inject({ method: "GET", url: "/api/health" });
+    expect(res.headers["deprecation"]).toBe("true");
+    expect(res.headers["link"]).toBe('</livez>; rel="successor-version"');
     await app.close();
   });
 });

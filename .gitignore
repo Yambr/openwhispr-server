@@ -66,3 +66,9 @@ compose/traefik/certs/*.srl
 /speaches-audio.md
 Open wispr server.zip
 .debug/
+
+# Phase 13 / Plan 01 — e2e-cjm harness artifacts (generated bddgen specs,
+# playwright traces, and the Makefile sidecar state file).
+tests/e2e-cjm/.bdd-gen/
+tests/e2e-cjm/test-results/
+.e2e-cjm-user-was-running

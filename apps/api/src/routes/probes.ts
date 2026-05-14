@@ -59,13 +59,25 @@ export interface ProbesDeps {
    * tests inject deterministic fakes.
    */
   readonly depCheck?: DepCheck;
+  /**
+   * Plan 13-01 / Task 13-01-05 — optional migrations probe consulted by
+   * `/api/health` to populate the `migrations_completed: boolean` field.
+   * Production wires `() => count(_meta.__drizzle_migrations) > 0` against
+   * the existing app pool (no fresh pg.Client). Tests inject deterministic
+   * fakes. When omitted, the field reports `false` (operator-actionable
+   * signal that no DB-backed probe was attached at boot, distinct from a
+   * runtime DB outage). Errors thrown by `migrationsCheck` are swallowed
+   * and surfaced as `false` so `/api/health` (an alias of `/livez`) never
+   * cascades a kubelet restart on a migrations-probe hiccup.
+   */
+  readonly migrationsCheck?: () => Promise<boolean>;
 }
 
 export const registerProbes = async (
   app: FastifyInstance,
   deps: ProbesDeps = {},
 ): Promise<void> => {
-  const { depCheck } = deps;
+  const { depCheck, migrationsCheck } = deps;
 
   app.route({
     method: "GET",
@@ -112,7 +124,21 @@ export const registerProbes = async (
     handler: async (_req, reply) => {
       reply.header("Deprecation", "true");
       reply.header("Link", '</livez>; rel="successor-version"');
-      return reply.send({ status: "ok" as const });
+      // Plan 13-01 / Task 13-01-05 — surface the migrations_completed
+      // signal. When migrationsCheck is unwired OR throws, default to
+      // `false`: /api/health is /livez-aliased and MUST stay 200, but the
+      // field truthfully reports that no positive migration confirmation
+      // was obtained (operator/harness reads this to gate a readiness
+      // decision; kubelet does not consult /api/health for restart).
+      let migrations_completed = false;
+      if (migrationsCheck) {
+        try {
+          migrations_completed = await migrationsCheck();
+        } catch {
+          migrations_completed = false;
+        }
+      }
+      return reply.send({ status: "ok" as const, migrations_completed });
     },
   });
 };

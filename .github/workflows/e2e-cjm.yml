@@ -1,0 +1,60 @@
+# SPDX-License-Identifier: Apache-2.0
+# Phase 13 / Plan 01 / Task 13-01-08 — CJM ships-first gate in CI.
+#
+# Runs the @cjm-1.1 + @cjm-1.2 scenarios against a fresh `e2e-cjm` compose
+# project booted from the base file + embedded-litellm overlay. The runner
+# never has a pre-existing `openwhispr` project, so the Makefile target's
+# stop/restart dance is a no-op here. Retry-on-flake is BANNED (D-12).
+#
+# After the run, the workflow asserts that no testcontainers
+# (label=org.testcontainers=true) survived — a regression-canary for the
+# vitest leak that `tools/global-vitest-teardown.ts` closes.
+name: e2e-cjm
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+concurrency:
+  group: e2e-cjm-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  e2e-cjm:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24.x
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm exec playwright install --with-deps chromium
+      - name: Add localhost hostname aliases
+        run: |
+          sudo sh -c 'echo "127.0.0.1 app.localhost api.localhost auth.localhost mailpit.localhost" >> /etc/hosts'
+      - name: docker compose build
+        run: docker compose -f docker-compose.yml -f docker-compose.embedded-litellm.yml build api worker web
+      - name: make e2e-cjm
+        env:
+          E2E_CJM: "1"
+          CI: "true"
+        run: make e2e-cjm
+      - name: Assert no testcontainers leaked
+        if: always()
+        run: |
+          leaked=$(docker ps --filter label=org.testcontainers=true --format '{{.Names}}')
+          if [ -n "$leaked" ]; then
+            echo "FAIL: testcontainers survived after e2e-cjm run:"
+            echo "$leaked"
+            exit 1
+          fi
+          echo "OK: no containers with label=org.testcontainers=true remain."
+      - name: Upload playwright trace on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-trace
+          path: tests/e2e-cjm/test-results/
+          retention-days: 7
