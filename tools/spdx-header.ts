@@ -39,6 +39,27 @@ import { exit } from "node:process";
 export const HEADER = "// SPDX-License-Identifier: FSL-1.1-ALv2";
 
 /**
+ * Hash-comment-style sibling of {@link HEADER} for file families where
+ * `#` is the line-comment leader: YAML (.yml/.yaml), shell (.sh), and
+ * any future hash-comment surface (Dockerfile is excluded — those use
+ * `LABEL org.opencontainers.image.licenses` per FSL-03 instead).
+ *
+ * Phase 15 / Plan 03 / HI-01: three files (compose/traefik/dynamic.dev.yml,
+ * .github/workflows/conformance-axe.yml, .github/workflows/e2e-cjm.yml)
+ * fell outside the TS/JS codemod scope and retained stale Apache-2.0
+ * inline SPDX. The hash-style audit + fix pair below makes that class
+ * unable to recur.
+ */
+export const HASH_HEADER = "# SPDX-License-Identifier: FSL-1.1-ALv2";
+
+export const STALE_HASH_HEADERS: readonly string[] = ["# SPDX-License-Identifier: Apache-2.0"];
+
+function isStaleHashHeader(line: string | undefined): boolean {
+  if (line === undefined) return false;
+  return STALE_HASH_HEADERS.includes(line);
+}
+
+/**
  * Stale SPDX header lines that this codemod will recognise and REWRITE to
  * `HEADER` (Phase 15 / Plan 03 relicense sweep). When the project later
  * relicenses again, add the prior identifier to this list so a single
@@ -55,6 +76,8 @@ function isStaleHeader(line: string | undefined): boolean {
 }
 
 const EXTENSIONS = [".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs"];
+
+const HASH_EXTENSIONS = [".yml", ".yaml", ".sh"];
 
 const SKIP_DIRS = [
   "node_modules",
@@ -147,6 +170,116 @@ export function applyHeader(text: string): string {
     return `${HEADER}\n${rest}`;
   }
   return `${HEADER}\n${text}`;
+}
+
+export function shouldSkipHash(relPath: string): boolean {
+  const norm = relPath.replace(/\\/g, "/");
+  if (/\.generated\.[a-z]+$/i.test(norm)) return true;
+  if (norm.includes("/locales/") || norm.startsWith("locales/")) return true;
+  for (const dir of SKIP_DIRS) {
+    if (norm.includes(`/${dir}/`) || norm.startsWith(`${dir}/`)) return true;
+  }
+  const dot = norm.lastIndexOf(".");
+  if (dot === -1) return true;
+  const ext = norm.slice(dot);
+  if (!HASH_EXTENSIONS.includes(ext)) return true;
+  return false;
+}
+
+export function hasHashHeader(text: string): boolean {
+  const lines = text.split("\n");
+  if (lines.length === 0) return false;
+  if (lines[0]?.startsWith("#!")) {
+    return lines[1] === HASH_HEADER;
+  }
+  return lines[0] === HASH_HEADER;
+}
+
+export function applyHeaderHash(text: string): string {
+  if (hasHashHeader(text)) return text;
+  if (text.startsWith("#!")) {
+    const nlIdx = text.indexOf("\n");
+    if (nlIdx === -1) {
+      return `${text}\n${HASH_HEADER}\n`;
+    }
+    const shebang = text.slice(0, nlIdx);
+    const afterShebang = text.slice(nlIdx + 1);
+    const secondLineEnd = afterShebang.indexOf("\n");
+    const secondLine = secondLineEnd === -1 ? afterShebang : afterShebang.slice(0, secondLineEnd);
+    if (isStaleHashHeader(secondLine)) {
+      const rest = secondLineEnd === -1 ? "" : afterShebang.slice(secondLineEnd + 1);
+      return `${shebang}\n${HASH_HEADER}\n${rest}`;
+    }
+    return `${shebang}\n${HASH_HEADER}\n${afterShebang}`;
+  }
+  const firstLineEnd = text.indexOf("\n");
+  const firstLine = firstLineEnd === -1 ? text : text.slice(0, firstLineEnd);
+  if (isStaleHashHeader(firstLine)) {
+    const rest = firstLineEnd === -1 ? "" : text.slice(firstLineEnd + 1);
+    return `${HASH_HEADER}\n${rest}`;
+  }
+  return `${HASH_HEADER}\n${text}`;
+}
+
+const HASH_PATTERNS = ["**/*.yml", "**/*.yaml", "**/*.sh"];
+
+async function* iterateFilesHash(rootDir: string): AsyncGenerator<string> {
+  const realRoot = resolve(rootDir);
+  const seen = new Set<string>();
+  for (const pattern of HASH_PATTERNS) {
+    for await (const file of glob(pattern, { cwd: realRoot, exclude: IGNORE })) {
+      const rel = typeof file === "string" ? file : String(file);
+      if (seen.has(rel)) continue;
+      seen.add(rel);
+      if (shouldSkipHash(rel)) continue;
+      yield rel;
+    }
+  }
+}
+
+export async function auditDirHash(rootDir: string): Promise<string[]> {
+  const missing: string[] = [];
+  const realRoot = resolve(rootDir);
+  for await (const rel of iterateFilesHash(realRoot)) {
+    const full = resolve(realRoot, rel);
+    let buf: Buffer;
+    try {
+      buf = readFileSync(full);
+    } catch {
+      /* c8 ignore next */
+      continue;
+    }
+    if (isBinary(buf)) continue;
+    const text = buf.toString("utf8");
+    if (!hasHashHeader(text)) missing.push(rel);
+  }
+  return missing;
+}
+
+export async function fixDirHash(rootDir: string): Promise<number> {
+  let changed = 0;
+  const realRoot = resolve(rootDir);
+  for await (const rel of iterateFilesHash(realRoot)) {
+    const full = resolve(realRoot, rel);
+    let buf: Buffer;
+    try {
+      buf = readFileSync(full);
+    } catch {
+      /* c8 ignore next */
+      continue;
+    }
+    if (isBinary(buf)) {
+      /* c8 ignore next */
+      continue;
+    }
+    const before = buf.toString("utf8");
+    const after = applyHeaderHash(before);
+    if (after !== before) {
+      writeFileSync(full, after, "utf8");
+      changed += 1;
+    }
+  }
+  return changed;
 }
 
 async function* iterateFiles(rootDir: string): AsyncGenerator<string> {
@@ -251,7 +384,24 @@ export async function main(argv: string[]): Promise<number> {
     process.stdout.write(`spdx-header: inserted header into ${n} file(s) under ${rootDir}\n`);
     return 0;
   }
-  process.stderr.write("usage: spdx-header.ts <audit|fix> [rootDir]\n");
+  if (cmd === "audit-hash") {
+    const missing = await auditDirHash(rootDir);
+    if (missing.length === 0) {
+      process.stdout.write(`spdx-header: audit-hash clean (${rootDir})\n`);
+      return 0;
+    }
+    process.stderr.write(
+      `spdx-header: ${missing.length} hash-comment file(s) missing header in ${rootDir}\n`,
+    );
+    for (const m of missing) process.stderr.write(`  ${m}\n`);
+    return 1;
+  }
+  if (cmd === "fix-hash") {
+    const n = await fixDirHash(rootDir);
+    process.stdout.write(`spdx-header: inserted hash header into ${n} file(s) under ${rootDir}\n`);
+    return 0;
+  }
+  process.stderr.write("usage: spdx-header.ts <audit|fix|audit-hash|fix-hash> [rootDir]\n");
   return 2;
 }
 

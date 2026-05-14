@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: Apache-2.0
+# SPDX-License-Identifier: FSL-1.1-ALv2
 # Phase 15 / Plan 02 (STRUCT-04) — Traefik v3 dev-profile dynamic config.
 #
 # The base `dynamic.yml` (loaded in production) already declares the
