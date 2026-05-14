@@ -64,4 +64,51 @@ pnpm test:mutation:incremental   # Stryker against changed files
 
 ## License of contributions
 
-By contributing, you agree your work is licensed under Apache-2.0 (matches the repo).
+By contributing, you agree your work is licensed under FSL-1.1-ALv2
+(matches the repo as of [ADR-0013](./docs/adrs/0013-fsl-relicense.md),
+effective 2026-05-15). Pre-relicense contributions remain under
+Apache-2.0 via the `pre-fsl-relicense-2026-05-15` annotated tag — see
+the [Recovery section of ADR-0013](./docs/adrs/0013-fsl-relicense.md#recovery-for-downstream-consumers-who-need-to-stay-on-apache-20)
+for the rebase-off-the-tag one-liner.
+
+## Developer Certificate of Origin (DCO)
+
+Every commit must carry a `Signed-off-by:` trailer attesting to the
+[Developer Certificate of Origin v1.1](https://developercertificate.org/).
+This is a lightweight per-commit affirmation — no CLA, no per-contributor
+signing ceremony — that the contributor has the right to submit the work
+under the project's outbound license (FSL-1.1-ALv2 with delayed
+Apache-2.0 future grant).
+
+Add the trailer to every commit with `git commit --signoff` (or
+`git commit -s`). Configure git globally to add it automatically:
+
+```bash
+git config --global format.signoff true
+# or per-repository:
+git config --local format.signoff true
+```
+
+The resulting commit message ends with:
+
+```
+Signed-off-by: Your Name <your.email@example.com>
+```
+
+The CI DCO bot enforces this on every PR after the cutoff SHA (filled
+in once the Phase 15-04 history-scrub force-push lands; see
+[`.github/dco.yml`](.github/dco.yml) and
+[ADR-0013 § Retroactive consent](./docs/adrs/0013-fsl-relicense.md#retroactive-consent)).
+Commits at or before the cutoff are grandfathered into the FSL grant by
+the contributor consent tracking issue referenced in ADR-0013.
+
+If you forgot to sign off and need to add it retroactively to your
+branch:
+
+```bash
+# Re-sign the last commit:
+git commit --amend --signoff
+
+# Re-sign every commit on a feature branch off main:
+git rebase --signoff main
+```
