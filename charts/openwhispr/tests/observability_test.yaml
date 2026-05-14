@@ -1,0 +1,171 @@
+suite: observability — umbrella toggle (Plan 14-06 / BYOK-01)
+# `observability.enabled` is the NEW umbrella toggle that AND-gates the existing
+# `observability.collector.enabled` and `observability.serviceMonitor.enabled`
+# sub-toggles (CONTEXT decision 6; RESEARCH §C.1). With the umbrella OFF,
+# collector + serviceMonitor templates MUST render zero documents even when
+# their sub-toggles are explicitly true.
+release:
+  name: ow
+  namespace: default
+templates:
+  - otel-collector-daemonset.yaml
+  - otel-collector-configmap.yaml
+  - otel-collector-serviceaccount.yaml
+  - otel-collector-clusterrole.yaml
+  - otel-collector-clusterrolebinding.yaml
+  - api-servicemonitor.yaml
+  - worker-servicemonitor.yaml
+tests:
+  - it: umbrella OFF — collector DaemonSet renders zero docs even if collector.enabled=true
+    template: otel-collector-daemonset.yaml
+    set:
+      secrets:
+        mode: eso
+        external:
+          storeRef: vault-clusterstore
+      observability:
+        enabled: false
+        collector:
+          enabled: true
+        lgtm:
+          endpoint: https://otlp.example.com
+    asserts:
+      - hasDocuments:
+          count: 0
+
+  - it: umbrella OFF — otel ConfigMap renders zero docs even if collector.enabled=true
+    template: otel-collector-configmap.yaml
+    set:
+      secrets:
+        mode: eso
+        external:
+          storeRef: vault-clusterstore
+      observability:
+        enabled: false
+        collector:
+          enabled: true
+        lgtm:
+          endpoint: https://otlp.example.com
+    asserts:
+      - hasDocuments:
+          count: 0
+
+  - it: umbrella OFF — otel ServiceAccount + RBAC render zero docs even if collector.enabled=true
+    set:
+      secrets:
+        mode: eso
+        external:
+          storeRef: vault-clusterstore
+      observability:
+        enabled: false
+        collector:
+          enabled: true
+        lgtm:
+          endpoint: https://otlp.example.com
+    asserts:
+      - hasDocuments:
+          count: 0
+        template: otel-collector-serviceaccount.yaml
+      - hasDocuments:
+          count: 0
+        template: otel-collector-clusterrole.yaml
+      - hasDocuments:
+          count: 0
+        template: otel-collector-clusterrolebinding.yaml
+
+  - it: umbrella OFF — api + worker ServiceMonitor render zero docs even if serviceMonitor.enabled=true
+    set:
+      secrets:
+        mode: eso
+        external:
+          storeRef: vault-clusterstore
+      observability:
+        enabled: false
+        serviceMonitor:
+          enabled: true
+    asserts:
+      - hasDocuments:
+          count: 0
+        template: api-servicemonitor.yaml
+      - hasDocuments:
+          count: 0
+        template: worker-servicemonitor.yaml
+
+  - it: umbrella ON + collector ON — DaemonSet + ConfigMap render
+    set:
+      secrets:
+        mode: eso
+        external:
+          storeRef: vault-clusterstore
+      observability:
+        enabled: true
+        collector:
+          enabled: true
+        lgtm:
+          endpoint: https://otlp.example.com
+    asserts:
+      - hasDocuments:
+          count: 1
+        template: otel-collector-daemonset.yaml
+      - hasDocuments:
+          count: 1
+        template: otel-collector-configmap.yaml
+
+  - it: umbrella ON + serviceMonitor ON — api + worker ServiceMonitor render
+    set:
+      secrets:
+        mode: eso
+        external:
+          storeRef: vault-clusterstore
+      observability:
+        enabled: true
+        serviceMonitor:
+          enabled: true
+    asserts:
+      - hasDocuments:
+          count: 1
+        template: api-servicemonitor.yaml
+      - hasDocuments:
+          count: 1
+        template: worker-servicemonitor.yaml
+
+  - it: umbrella ON + collector OFF — DaemonSet renders zero docs (AND-gate sub-toggle still respected)
+    template: otel-collector-daemonset.yaml
+    set:
+      secrets:
+        mode: eso
+        external:
+          storeRef: vault-clusterstore
+      observability:
+        enabled: true
+        collector:
+          enabled: false
+    asserts:
+      - hasDocuments:
+          count: 0
+
+  - it: umbrella ON + serviceMonitor OFF — api ServiceMonitor renders zero docs
+    template: api-servicemonitor.yaml
+    set:
+      secrets:
+        mode: eso
+        external:
+          storeRef: vault-clusterstore
+      observability:
+        enabled: true
+        serviceMonitor:
+          enabled: false
+    asserts:
+      - hasDocuments:
+          count: 0
+
+  - it: default render (umbrella OFF by default) — collector DaemonSet renders zero docs
+    template: otel-collector-daemonset.yaml
+    set:
+      secrets:
+        mode: eso
+        external:
+          storeRef: vault-clusterstore
+    asserts:
+      - hasDocuments:
+          count: 0

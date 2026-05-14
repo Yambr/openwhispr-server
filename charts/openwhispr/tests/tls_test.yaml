@@ -1,0 +1,193 @@
+suite: tls — toggle gates IngressRoute / Middleware / ServersTransport / Certificate (Plan 14-06 / BYOK-01)
+# `tls.enabled` is the NEW top-level toggle that gates every Traefik/cert-manager
+# template (RESEARCH §C.1). With `false` (slim-core default) ALL of these render
+# zero documents. With `true`, they render. The non-toggle `ingress.*` sub-keys
+# (realtimeEntrypointName, trustedIPs, preflight*) stay where they are — only
+# `tls.enabled` toggles render.
+release:
+  name: ow
+  namespace: default
+tests:
+  - it: tls.enabled=false (default) — ingressroute-api renders zero docs
+    template: ingressroute-api.yaml
+    set:
+      secrets:
+        mode: eso
+        external:
+          storeRef: vault-clusterstore
+    asserts:
+      - hasDocuments:
+          count: 0
+
+  - it: tls.enabled=false (default) — ingressroute-api-realtime renders zero docs
+    template: ingressroute-api-realtime.yaml
+    set:
+      secrets:
+        mode: eso
+        external:
+          storeRef: vault-clusterstore
+    asserts:
+      - hasDocuments:
+          count: 0
+
+  - it: tls.enabled=false (default) — ingressroute-web renders zero docs
+    template: ingressroute-web.yaml
+    set:
+      secrets:
+        mode: eso
+        external:
+          storeRef: vault-clusterstore
+    asserts:
+      - hasDocuments:
+          count: 0
+
+  - it: tls.enabled=false (default) — serverstransport-realtime renders zero docs
+    template: serverstransport-realtime.yaml
+    set:
+      secrets:
+        mode: eso
+        external:
+          storeRef: vault-clusterstore
+    asserts:
+      - hasDocuments:
+          count: 0
+
+  - it: tls.enabled=false (default) — middleware-forwarded-headers renders zero docs
+    template: middleware-forwarded-headers.yaml
+    set:
+      secrets:
+        mode: eso
+        external:
+          storeRef: vault-clusterstore
+    asserts:
+      - hasDocuments:
+          count: 0
+
+  - it: tls.enabled=false (default) — certificate-api renders zero docs
+    template: certificate-api.yaml
+    set:
+      secrets:
+        mode: eso
+        external:
+          storeRef: vault-clusterstore
+    asserts:
+      - hasDocuments:
+          count: 0
+
+  - it: tls.enabled=false (default) — certificate-web renders zero docs
+    template: certificate-web.yaml
+    set:
+      secrets:
+        mode: eso
+        external:
+          storeRef: vault-clusterstore
+    asserts:
+      - hasDocuments:
+          count: 0
+
+  - it: tls.enabled=true — ingressroute-api renders 1 doc
+    template: ingressroute-api.yaml
+    set:
+      secrets:
+        mode: eso
+        external:
+          storeRef: vault-clusterstore
+      tls:
+        enabled: true
+    asserts:
+      - hasDocuments:
+          count: 1
+      - isKind:
+          of: IngressRoute
+
+  - it: tls.enabled=true — ingressroute-api-realtime renders 1 doc
+    template: ingressroute-api-realtime.yaml
+    set:
+      secrets:
+        mode: eso
+        external:
+          storeRef: vault-clusterstore
+      tls:
+        enabled: true
+    asserts:
+      - hasDocuments:
+          count: 1
+      - isKind:
+          of: IngressRoute
+
+  - it: tls.enabled=true — ingressroute-web renders 1 doc
+    template: ingressroute-web.yaml
+    set:
+      secrets:
+        mode: eso
+        external:
+          storeRef: vault-clusterstore
+      tls:
+        enabled: true
+    asserts:
+      - hasDocuments:
+          count: 1
+      - isKind:
+          of: IngressRoute
+
+  - it: tls.enabled=true — serverstransport-realtime renders 1 doc
+    template: serverstransport-realtime.yaml
+    set:
+      secrets:
+        mode: eso
+        external:
+          storeRef: vault-clusterstore
+      tls:
+        enabled: true
+    asserts:
+      - hasDocuments:
+          count: 1
+      - isKind:
+          of: ServersTransport
+
+  - it: tls.enabled=true — middleware-forwarded-headers renders 1 doc
+    template: middleware-forwarded-headers.yaml
+    set:
+      secrets:
+        mode: eso
+        external:
+          storeRef: vault-clusterstore
+      tls:
+        enabled: true
+    asserts:
+      - hasDocuments:
+          count: 1
+      - isKind:
+          of: Middleware
+
+  - it: tls.enabled=true + certManager.enabled=true — certificate-api renders 1 doc
+    template: certificate-api.yaml
+    set:
+      secrets:
+        mode: eso
+        external:
+          storeRef: vault-clusterstore
+      tls:
+        enabled: true
+      certManager:
+        enabled: true
+    asserts:
+      - hasDocuments:
+          count: 1
+      - isKind:
+          of: Certificate
+
+  - it: tls.enabled=true + certManager.enabled=false — certificate-api still renders zero docs (existing inner gate preserved)
+    template: certificate-api.yaml
+    set:
+      secrets:
+        mode: eso
+        external:
+          storeRef: vault-clusterstore
+      tls:
+        enabled: true
+      certManager:
+        enabled: false
+    asserts:
+      - hasDocuments:
+          count: 0

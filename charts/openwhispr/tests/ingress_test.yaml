@@ -7,7 +7,18 @@ templates:
   - serverstransport-realtime.yaml
   - certificate-api.yaml
   - certificate-web.yaml
+# Plan 14-06 — suite-level default flips tls.enabled=true so every render
+# assertion below exercises the GREEN path. Complementary tls.enabled=false
+# zero-doc cases live in tests/tls_test.yaml.
+set:
+  tls:
+    enabled: true
 tests:
+  # Plan 14-06 — `tls.enabled` flipped from absent→explicit-false-default in slim-core
+  # values. Every legacy assertion in this suite was written when ingressroute / cert
+  # / middleware / serverstransport templates were UNGATED. Each `set:` block must now
+  # set `tls.enabled: true` so the template renders. Complementary `tls.enabled=false`
+  # zero-doc cases live in tests/tls_test.yaml (the dedicated toggle suite).
   - it: renders api IngressRoute bound to the websecure entrypoint
     template: ingressroute-api.yaml
     set:
@@ -103,6 +114,7 @@ tests:
       host:
         web: web.example.com
       tls:
+        enabled: true
         webSecretName: my-web-tls
     asserts:
       - hasDocuments:
