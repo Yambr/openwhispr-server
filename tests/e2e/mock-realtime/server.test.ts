@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: FSL-1.1-ALv2
 // Phase 04 / Plan 07 / Task 1 — hermetic mock-realtime WS server tests.
 //
 // Test client uses the `ws` library (NOT @fastify/websocket — that's the
@@ -7,7 +7,7 @@
 
 import { afterEach, describe, expect, it } from "vitest";
 import WebSocket from "ws";
-import { startMockRealtimeServer, type StopHandle } from "./server.js";
+import { type StopHandle, startMockRealtimeServer } from "./server.js";
 
 describe("mock-realtime WS server", () => {
   let handle: StopHandle | undefined;

@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: FSL-1.1-ALv2
 // Constitutional self-test for the RLS-introspection lint (Phase 1 / Plan 05).
 //
 // Mirrors tests/self-tests/cyrillic-injection.test.ts in spirit: it injects

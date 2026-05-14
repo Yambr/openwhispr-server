@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: FSL-1.1-ALv2
 // tests/e2e/audit-log-write.test.ts
 //
 // Phase 6 / Plan 06-12a / Task 2 — DATA-04 audit-log emission e2e.

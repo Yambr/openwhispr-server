@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: FSL-1.1-ALv2
 /**
  * Phase 02.12 — D-04 TDD RED: integration test that proves the migration
  * chain through 0005 produces a `sessions.token` plain-text column with a

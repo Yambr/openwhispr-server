@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: FSL-1.1-ALv2
 // tests/e2e/realtime-soak-hermetic.test.ts
 //
 // Phase 04 / Plan 09 / Task 3 — 5-minute hermetic WSS soak through the
@@ -33,8 +33,8 @@
 
 import { describe, expect, it } from "vitest";
 import WebSocket from "ws";
-import { signInFixture } from "./sign-in.js";
 import { BACKEND_URL } from "./compose-helper.js";
+import { signInFixture } from "./sign-in.js";
 
 interface CloseLogEntry {
   elapsedSec: number;
@@ -72,162 +72,154 @@ function realtimeSoakUrl(): string {
 }
 
 describe("e2e — WSS /v1/realtime 5-min hermetic soak (SCALE-05)", () => {
-  it(
-    "session survives 300s through Traefik :8443 + mock-realtime — zero ingress-attributable closes; p95 ping RTT < 1s",
-    async () => {
-      const jar = await signInFixture("fixture@conformance.test");
-      const cookie = await jar.jar.getCookieString(BACKEND_URL);
-      expect(cookie.length).toBeGreaterThan(0);
+  it("session survives 300s through Traefik :8443 + mock-realtime — zero ingress-attributable closes; p95 ping RTT < 1s", async () => {
+    const jar = await signInFixture("fixture@conformance.test");
+    const cookie = await jar.jar.getCookieString(BACKEND_URL);
+    expect(cookie.length).toBeGreaterThan(0);
 
-      const ws = new WebSocket(realtimeSoakUrl(), {
-        headers: { cookie },
-        // Self-signed Traefik cert (process-wide
-        // NODE_TLS_REJECT_UNAUTHORIZED=0 set in tests/e2e/setup.ts).
-        // Belt-and-suspenders: also disable on this socket.
-        rejectUnauthorized: false,
+    const ws = new WebSocket(realtimeSoakUrl(), {
+      headers: { cookie },
+      // Self-signed Traefik cert (process-wide
+      // NODE_TLS_REJECT_UNAUTHORIZED=0 set in tests/e2e/setup.ts).
+      // Belt-and-suspenders: also disable on this socket.
+      rejectUnauthorized: false,
+    });
+
+    const start = Date.now();
+    const closeLog: CloseLogEntry[] = [];
+    const pingRtts: number[] = [];
+    let sessionCreatedAtMs: number | null = null;
+    let opened = false;
+
+    const opened_p = new Promise<void>((resolveOpen, rejectOpen) => {
+      const openTimer = setTimeout(() => rejectOpen(new Error("WS open timeout (10s)")), 10_000);
+      ws.once("open", () => {
+        opened = true;
+        clearTimeout(openTimer);
+        resolveOpen();
       });
-
-      const start = Date.now();
-      const closeLog: CloseLogEntry[] = [];
-      const pingRtts: number[] = [];
-      let sessionCreatedAtMs: number | null = null;
-      let opened = false;
-
-      const opened_p = new Promise<void>((resolveOpen, rejectOpen) => {
-        const openTimer = setTimeout(
-          () => rejectOpen(new Error("WS open timeout (10s)")),
-          10_000,
-        );
-        ws.once("open", () => {
-          opened = true;
+      ws.once("error", (err) => {
+        if (!opened) {
           clearTimeout(openTimer);
-          resolveOpen();
-        });
-        ws.once("error", (err) => {
-          if (!opened) {
-            clearTimeout(openTimer);
-            rejectOpen(err);
-          }
-        });
-      });
-
-      // session.created listener — installed BEFORE 'open' is awaited
-      // so we don't miss the immediate frame from mock-realtime
-      // (Plan 07 deviation: server emits session.created on the open
-      // callback synchronously).
-      const sessionCreated_p = new Promise<void>((resolveSession, rejectSession) => {
-        const sessionTimer = setTimeout(
-          () => rejectSession(new Error("session.created not received within 5s of open")),
-          15_000,
-        );
-        ws.on("message", (data) => {
-          if (sessionCreatedAtMs !== null) return;
-          try {
-            const msg = JSON.parse(data.toString()) as { type?: string };
-            if (msg.type === "session.created") {
-              sessionCreatedAtMs = Date.now();
-              clearTimeout(sessionTimer);
-              resolveSession();
-            }
-          } catch {
-            /* non-JSON frame — ignore */
-          }
-        });
-      });
-
-      ws.on("close", (code, reasonBuf) => {
-        const elapsedSec = (Date.now() - start) / 1000;
-        const reason = reasonBuf?.toString?.() ?? "";
-        // Close-code attribution per RESEARCH §2.10 close-code table:
-        //   1001 (going away) — Traefik or proxy initiated → INGRESS
-        //   1011 (server error) — Fastify proxy crashed / wsClient err → INGRESS
-        //   1000 (normal) — clean close at end of test → NOT ingress
-        //   1006 (abnormal) — TCP-level drop, often network/upstream → NOT ingress (logged)
-        //   anything else — logged but not ingress-attributable
-        const isOurs = elapsedSec < 300 && (code === 1001 || code === 1011);
-        closeLog.push({ elapsedSec, code, reason, isOurs });
-      });
-
-      // ── Wait for connection + first frame (gate 1) ──────────────────
-      await opened_p;
-      await sessionCreated_p;
-      expect(sessionCreatedAtMs).not.toBeNull();
-      // eslint-disable-next-line no-console
-      console.log(
-        `[SCALE-05] session.created received +${((sessionCreatedAtMs! - start) / 1000).toFixed(2)}s`,
-      );
-
-      // ── Drive ping every 20s for 5 minutes ──────────────────────────
-      const pingInterval = setInterval(() => {
-        if (ws.readyState !== WebSocket.OPEN) return;
-        const tStart = Date.now();
-        const onPong = () => {
-          pingRtts.push(Date.now() - tStart);
-        };
-        ws.once("pong", onPong);
-        try {
-          ws.ping("keepalive");
-        } catch {
-          /* socket already closed; outer close handler will flag if ours */
+          rejectOpen(err);
         }
-      }, 20_000);
+      });
+    });
 
-      // Drive a response.create every 30s — exercises the application-
-      // layer path through mock-realtime so the session has actual
-      // traffic, not just protocol pings.
-      const responseInterval = setInterval(() => {
-        if (ws.readyState !== WebSocket.OPEN) return;
-        try {
-          ws.send(JSON.stringify({ type: "response.create" }));
-        } catch {
-          /* see ping handler */
-        }
-      }, 30_000);
-
-      // 5 min + 5s buffer. NOT controlled by vitest fake timers — the
-      // soak is wall-clock (Plan 08 D-?: real wall-clock for any test
-      // that depends on a real-server clock).
-      await new Promise((r) => setTimeout(r, 305_000));
-
-      clearInterval(pingInterval);
-      clearInterval(responseInterval);
-
-      const elapsedAtClean = (Date.now() - start) / 1000;
-      // eslint-disable-next-line no-console
-      console.log(
-        `[SCALE-05] T+${elapsedAtClean.toFixed(0)}s sending clean close 1000; ` +
-          `pingRtts.length=${pingRtts.length} closeLog.length=${closeLog.length}`,
+    // session.created listener — installed BEFORE 'open' is awaited
+    // so we don't miss the immediate frame from mock-realtime
+    // (Plan 07 deviation: server emits session.created on the open
+    // callback synchronously).
+    const sessionCreated_p = new Promise<void>((resolveSession, rejectSession) => {
+      const sessionTimer = setTimeout(
+        () => rejectSession(new Error("session.created not received within 5s of open")),
+        15_000,
       );
+      ws.on("message", (data) => {
+        if (sessionCreatedAtMs !== null) return;
+        try {
+          const msg = JSON.parse(data.toString()) as { type?: string };
+          if (msg.type === "session.created") {
+            sessionCreatedAtMs = Date.now();
+            clearTimeout(sessionTimer);
+            resolveSession();
+          }
+        } catch {
+          /* non-JSON frame — ignore */
+        }
+      });
+    });
 
-      if (ws.readyState === WebSocket.OPEN) {
-        ws.close(1000, "soak-complete");
+    ws.on("close", (code, reasonBuf) => {
+      const elapsedSec = (Date.now() - start) / 1000;
+      const reason = reasonBuf?.toString?.() ?? "";
+      // Close-code attribution per RESEARCH §2.10 close-code table:
+      //   1001 (going away) — Traefik or proxy initiated → INGRESS
+      //   1011 (server error) — Fastify proxy crashed / wsClient err → INGRESS
+      //   1000 (normal) — clean close at end of test → NOT ingress
+      //   1006 (abnormal) — TCP-level drop, often network/upstream → NOT ingress (logged)
+      //   anything else — logged but not ingress-attributable
+      const isOurs = elapsedSec < 300 && (code === 1001 || code === 1011);
+      closeLog.push({ elapsedSec, code, reason, isOurs });
+    });
+
+    // ── Wait for connection + first frame (gate 1) ──────────────────
+    await opened_p;
+    await sessionCreated_p;
+    expect(sessionCreatedAtMs).not.toBeNull();
+    // eslint-disable-next-line no-console
+    console.log(
+      `[SCALE-05] session.created received +${((sessionCreatedAtMs! - start) / 1000).toFixed(2)}s`,
+    );
+
+    // ── Drive ping every 20s for 5 minutes ──────────────────────────
+    const pingInterval = setInterval(() => {
+      if (ws.readyState !== WebSocket.OPEN) return;
+      const tStart = Date.now();
+      const onPong = () => {
+        pingRtts.push(Date.now() - tStart);
+      };
+      ws.once("pong", onPong);
+      try {
+        ws.ping("keepalive");
+      } catch {
+        /* socket already closed; outer close handler will flag if ours */
       }
-      // Give the close handler a chance to fire so closeLog captures
-      // the terminal frame.
-      await new Promise((r) => setTimeout(r, 1500));
+    }, 20_000);
 
-      // ── Assertions ──────────────────────────────────────────────────
-      const ingressCloses = closeLog.filter((c) => c.isOurs);
-      // eslint-disable-next-line no-console
-      console.log(
-        `[SCALE-05] closeLog=${JSON.stringify(closeLog)} ingress-attributable=${ingressCloses.length}`,
-      );
-      expect(ingressCloses).toEqual([]);
+    // Drive a response.create every 30s — exercises the application-
+    // layer path through mock-realtime so the session has actual
+    // traffic, not just protocol pings.
+    const responseInterval = setInterval(() => {
+      if (ws.readyState !== WebSocket.OPEN) return;
+      try {
+        ws.send(JSON.stringify({ type: "response.create" }));
+      } catch {
+        /* see ping handler */
+      }
+    }, 30_000);
 
-      // Ping RTT p95 < 1s. With ping every 20s for 300s we expect
-      // 14–15 samples; require at least 10 to defend against a single
-      // missed pong skewing the percentile.
-      // eslint-disable-next-line no-console
-      console.log(
-        `[SCALE-05] pingRtts (n=${pingRtts.length}): min=${Math.min(...pingRtts, Infinity)} ` +
-          `max=${Math.max(...pingRtts, -Infinity)} p95=${percentile(pingRtts, 0.95)}ms`,
-      );
-      expect(pingRtts.length).toBeGreaterThanOrEqual(10);
-      expect(percentile(pingRtts, 0.95)).toBeLessThan(1000);
-    },
-    // 6 minutes — covers the 305s soak + connection setup + close drain
-    // + assertion overhead. Stays under the 600_000 vitest.e2e.config
-    // ceiling.
-    360_000,
-  );
+    // 5 min + 5s buffer. NOT controlled by vitest fake timers — the
+    // soak is wall-clock (Plan 08 D-?: real wall-clock for any test
+    // that depends on a real-server clock).
+    await new Promise((r) => setTimeout(r, 305_000));
+
+    clearInterval(pingInterval);
+    clearInterval(responseInterval);
+
+    const elapsedAtClean = (Date.now() - start) / 1000;
+    // eslint-disable-next-line no-console
+    console.log(
+      `[SCALE-05] T+${elapsedAtClean.toFixed(0)}s sending clean close 1000; ` +
+        `pingRtts.length=${pingRtts.length} closeLog.length=${closeLog.length}`,
+    );
+
+    if (ws.readyState === WebSocket.OPEN) {
+      ws.close(1000, "soak-complete");
+    }
+    // Give the close handler a chance to fire so closeLog captures
+    // the terminal frame.
+    await new Promise((r) => setTimeout(r, 1500));
+
+    // ── Assertions ──────────────────────────────────────────────────
+    const ingressCloses = closeLog.filter((c) => c.isOurs);
+    // eslint-disable-next-line no-console
+    console.log(
+      `[SCALE-05] closeLog=${JSON.stringify(closeLog)} ingress-attributable=${ingressCloses.length}`,
+    );
+    expect(ingressCloses).toEqual([]);
+
+    // Ping RTT p95 < 1s. With ping every 20s for 300s we expect
+    // 14–15 samples; require at least 10 to defend against a single
+    // missed pong skewing the percentile.
+    // eslint-disable-next-line no-console
+    console.log(
+      `[SCALE-05] pingRtts (n=${pingRtts.length}): min=${Math.min(...pingRtts, Infinity)} ` +
+        `max=${Math.max(...pingRtts, -Infinity)} p95=${percentile(pingRtts, 0.95)}ms`,
+    );
+    expect(pingRtts.length).toBeGreaterThanOrEqual(10);
+    expect(percentile(pingRtts, 0.95)).toBeLessThan(1000);
+  }, // + assertion overhead. Stays under the 600_000 vitest.e2e.config // 6 minutes — covers the 305s soak + connection setup + close drain
+  // ceiling.
+  360_000);
 });

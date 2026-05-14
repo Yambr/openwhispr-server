@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: FSL-1.1-ALv2
 // Phase 3 / Plan 02 / Task 1 — guard the contract-test LiteLLM config.
 //
 // CRITICAL CORRECTNESS: every chat/audio model in litellm_config.contract.yaml
@@ -30,10 +30,7 @@ interface LitellmConfig {
 }
 
 const repoRoot = process.cwd();
-const configPath = join(
-  repoRoot,
-  "compose/litellm/litellm_config.contract.yaml",
-);
+const configPath = join(repoRoot, "compose/litellm/litellm_config.contract.yaml");
 
 describe("compose/litellm/litellm_config.contract.yaml", () => {
   const raw = readFileSync(configPath, "utf8");
@@ -69,9 +66,7 @@ describe("compose/litellm/litellm_config.contract.yaml", () => {
   });
 
   it("declares D-12 realtime entries with mode: realtime (parity with default config)", () => {
-    const realtime = cfg.model_list.filter(
-      (m) => m.litellm_params.mode === "realtime",
-    );
+    const realtime = cfg.model_list.filter((m) => m.litellm_params.mode === "realtime");
     expect(realtime.length).toBeGreaterThanOrEqual(3);
     const names = realtime.map((m) => m.model_name);
     expect(names).toContain("gpt-realtime");
@@ -81,8 +76,6 @@ describe("compose/litellm/litellm_config.contract.yaml", () => {
 
   it("references LITELLM_MASTER_KEY and LITELLM_DATABASE_URL from env (no inline secrets)", () => {
     expect(cfg.general_settings.master_key).toBe("os.environ/LITELLM_MASTER_KEY");
-    expect(cfg.general_settings.database_url).toBe(
-      "os.environ/LITELLM_DATABASE_URL",
-    );
+    expect(cfg.general_settings.database_url).toBe("os.environ/LITELLM_DATABASE_URL");
   });
 });

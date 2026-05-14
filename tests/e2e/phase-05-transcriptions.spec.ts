@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: FSL-1.1-ALv2
 // tests/e2e/phase-05-transcriptions — host-side e2e for WIRE-26.
 //
 // Round-trips the full transcriptions CRUD lifecycle through Traefik
@@ -57,14 +57,11 @@ describe("e2e — /api/transcriptions/* full lifecycle (real compose stack)", ()
     ];
     const createdIds: string[] = [];
     for (const seed of seeds) {
-      const res = await jar.fetch(
-        `${BACKEND_URL}/api/transcriptions/create`,
-        {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify(seed),
-        },
-      );
+      const res = await jar.fetch(`${BACKEND_URL}/api/transcriptions/create`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(seed),
+      });
       expect(res.status).toBe(200);
       const tx = CloudTranscription.parse(await res.json());
       createdIds.push(tx.id);
@@ -87,9 +84,7 @@ describe("e2e — /api/transcriptions/* full lifecycle (real compose stack)", ()
     expect(retryTx.text).toBe("first transcript"); // first-writer-wins.
 
     // List — should see at least the 3 we created.
-    const list1 = await jar.fetch(
-      `${BACKEND_URL}/api/transcriptions/list?limit=50`,
-    );
+    const list1 = await jar.fetch(`${BACKEND_URL}/api/transcriptions/list?limit=50`);
     expect(list1.status).toBe(200);
     const list1Body = ListResponse.parse(await list1.json());
     for (const id of createdIds) {
@@ -105,32 +100,23 @@ describe("e2e — /api/transcriptions/* full lifecycle (real compose stack)", ()
     expect(del.status).toBe(200);
 
     // List — idA excluded.
-    const list2 = await jar.fetch(
-      `${BACKEND_URL}/api/transcriptions/list?limit=50`,
-    );
+    const list2 = await jar.fetch(`${BACKEND_URL}/api/transcriptions/list?limit=50`);
     const list2Body = ListResponse.parse(await list2.json());
-    expect(
-      list2Body.transcriptions.find((t) => t.id === createdIds[0]),
-    ).toBeUndefined();
+    expect(list2Body.transcriptions.find((t) => t.id === createdIds[0])).toBeUndefined();
 
     // batch-delete remaining 2.
     const remaining = [createdIds[1]!, createdIds[2]!];
-    const batchDel = await jar.fetch(
-      `${BACKEND_URL}/api/transcriptions/batch-delete`,
-      {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ ids: remaining }),
-      },
-    );
+    const batchDel = await jar.fetch(`${BACKEND_URL}/api/transcriptions/batch-delete`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ ids: remaining }),
+    });
     expect(batchDel.status).toBe(200);
     const batchDelBody = BatchDeleteResponse.parse(await batchDel.json());
     expect(new Set(batchDelBody.deleted)).toEqual(new Set(remaining));
 
     // List — all gone.
-    const list3 = await jar.fetch(
-      `${BACKEND_URL}/api/transcriptions/list?limit=50`,
-    );
+    const list3 = await jar.fetch(`${BACKEND_URL}/api/transcriptions/list?limit=50`);
     const list3Body = ListResponse.parse(await list3.json());
     for (const id of createdIds) {
       expect(list3Body.transcriptions.find((t) => t.id === id)).toBeUndefined();

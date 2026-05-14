@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: FSL-1.1-ALv2
 import { defineConfig } from "vitest/config";
 
 // Phase 04 Plan 07 — package-local vitest config.

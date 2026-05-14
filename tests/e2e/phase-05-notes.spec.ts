@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: FSL-1.1-ALv2
 // tests/e2e/phase-05-notes — host-side e2e for WIRE-22.
 //
 // Round-trips the full notes CRUD + search lifecycle through Traefik

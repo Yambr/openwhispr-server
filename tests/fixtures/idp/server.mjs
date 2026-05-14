@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: FSL-1.1-ALv2
 // Phase 2 / Plan 06 — Fixture OIDC IdP for the contract-test profile.
 //
 // Minimal OIDC-shaped HTTP server (~70 lines) used ONLY by the

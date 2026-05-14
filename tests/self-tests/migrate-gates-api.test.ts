@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: FSL-1.1-ALv2
 // Phase 2 Plan 02 — migrate-gates-api self-test: verifies the
 // `depends_on: { migrate: { condition: service_completed_successfully } }`
 // link by inspecting container timestamps after `compose up --wait`.
@@ -6,8 +6,9 @@
 // Compose 2.20+ honors `service_completed_successfully`; older versions
 // silently ignore it (Pitfall #6). Test skips cleanly under both
 // no-Docker and Compose < 2.20 conditions.
-import { copyFileSync, existsSync, rmSync, writeFileSync } from "node:fs";
+
 import { spawnSync } from "node:child_process";
+import { copyFileSync, existsSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
@@ -58,27 +59,27 @@ function dockerInspect(name: string): InspectResult | null {
   };
 }
 
-describe.skipIf(skip)("Phase 2 Plan 02 — migrate gates api start (service_completed_successfully)", () => {
-  beforeAll(() => {
-    const envPath = join(ROOT, ".env");
-    if (existsSync(envPath)) copyFileSync(envPath, ENV_BACKUP);
-    writeFixtureEnv();
-  });
+describe.skipIf(skip)(
+  "Phase 2 Plan 02 — migrate gates api start (service_completed_successfully)",
+  () => {
+    beforeAll(() => {
+      const envPath = join(ROOT, ".env");
+      if (existsSync(envPath)) copyFileSync(envPath, ENV_BACKUP);
+      writeFixtureEnv();
+    });
 
-  afterAll(() => {
-    dockerCompose(["down", "-v"], { timeoutMs: 120_000 });
-    const envPath = join(ROOT, ".env");
-    if (existsSync(ENV_BACKUP)) {
-      copyFileSync(ENV_BACKUP, envPath);
-      rmSync(ENV_BACKUP, { force: true });
-    } else if (existsSync(envPath)) {
-      rmSync(envPath, { force: true });
-    }
-  });
+    afterAll(() => {
+      dockerCompose(["down", "-v"], { timeoutMs: 120_000 });
+      const envPath = join(ROOT, ".env");
+      if (existsSync(ENV_BACKUP)) {
+        copyFileSync(ENV_BACKUP, envPath);
+        rmSync(ENV_BACKUP, { force: true });
+      } else if (existsSync(envPath)) {
+        rmSync(envPath, { force: true });
+      }
+    });
 
-  it(
-    "migrate exits 0 before api starts (timestamps strictly ordered, or fallback contract)",
-    async () => {
+    it("migrate exits 0 before api starts (timestamps strictly ordered, or fallback contract)", async () => {
       const up = dockerCompose(
         [
           "up",
@@ -136,7 +137,6 @@ describe.skipIf(skip)("Phase 2 Plan 02 — migrate gates api start (service_comp
           `migrate finishedAt=${migrate.finishedAt} must be <= api startedAt=${api.startedAt}`,
         ).toBe(true);
       }
-    },
-    600_000,
-  );
-});
+    }, 600_000);
+  },
+);

@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: FSL-1.1-ALv2
 // tests/e2e/phase-05-web-search — host-side e2e for
 // WIRE-08 (POST /api/agent/web-search).
 //
@@ -34,8 +34,8 @@ const WebSearchResponse = z.object({
 });
 const ErrorEnvelope = z.object({ error: z.string().min(1) }).strict();
 
-const HAVE_TAVILY = typeof process.env.TAVILY_API_KEY === "string"
-  && process.env.TAVILY_API_KEY.length > 0;
+const HAVE_TAVILY =
+  typeof process.env.TAVILY_API_KEY === "string" && process.env.TAVILY_API_KEY.length > 0;
 
 describe("e2e — POST /api/agent/web-search (real compose stack)", () => {
   it("returns 401 envelope on the unauthenticated path", async () => {

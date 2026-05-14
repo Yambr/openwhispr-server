@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: FSL-1.1-ALv2
 // tests/e2e/realtime — host-side e2e for WSS /v1/realtime.
 //
 // LiteLLM v1.83.x does NOT honor `mock_response` for `mode: realtime`

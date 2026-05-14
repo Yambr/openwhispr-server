@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: FSL-1.1-ALv2
 /**
  * Phase 04 / Plan 08 / Task 2a — POSITIVE buffering-injection control.
  *
@@ -81,7 +81,9 @@ beforeAll(async () => {
  * fetch / undici body buffering that could mask the streaming behavior
  * we're trying to assert.
  */
-function postFirstByte(path: string): Promise<{ status: number; tFirstByte: number; tStart: number }> {
+function postFirstByte(
+  path: string,
+): Promise<{ status: number; tFirstByte: number; tStart: number }> {
   return new Promise((resolve, reject) => {
     const tStart = performance.now();
     const req = httpRequest(

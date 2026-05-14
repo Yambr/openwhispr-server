@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: FSL-1.1-ALv2
 // Phase 13 / Plan 02 / Task 13-02-03 — extra @cjm-1.* scenarios that
 // extend the Wave-1 signup-verify.feature (1.3 password-too-short,
 // 1.4 ru locale-scoped error copy, 1.5 zero-providers gating).

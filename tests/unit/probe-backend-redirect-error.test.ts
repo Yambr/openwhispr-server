@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: FSL-1.1-ALv2
 /**
  * Phase 02.7 / D-05 — probeBackend() must loud-fail on http→https 308 redirect
  * instead of silently treating it as "backend unreachable" → skip-all-25.

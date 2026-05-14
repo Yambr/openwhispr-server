@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: FSL-1.1-ALv2
 /**
  * Phase 02.4 / G2 — packages/data/migrations/init/00-roles.sql.tpl idempotency.
  *

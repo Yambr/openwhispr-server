@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: FSL-1.1-ALv2
 // Phase 13 / Plan 02 / Task 13-02-03 — @cjm-2.* step bindings.
 //
 // API-driven (no browser). Hits Better Auth at api.localhost via undici.

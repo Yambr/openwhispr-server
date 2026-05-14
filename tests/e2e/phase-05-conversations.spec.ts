@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: FSL-1.1-ALv2
 // tests/e2e/phase-05-conversations — host-side e2e for WIRE-24 +
 // WIRE-25.
 //
@@ -46,9 +46,7 @@ const ListResponse = z.object({
   conversations: z.array(CloudConversation),
 });
 const ListWithMessagesResponse = z.object({
-  conversations: z.array(
-    CloudConversation.extend({ messages: z.array(CloudMessage) }),
-  ),
+  conversations: z.array(CloudConversation.extend({ messages: z.array(CloudMessage) })),
 });
 const MessagesListResponse = z.object({
   messages: z.array(CloudMessage),
@@ -69,29 +67,23 @@ describe("e2e — /api/conversations/* + /messages full lifecycle (real compose 
     // 1. Create 2 conversations.
     const idA = rnd("convA");
     const idB = rnd("convB");
-    const createA = await jar.fetch(
-      `${BACKEND_URL}/api/conversations/create`,
-      {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          client_conversation_id: idA,
-          title: "Quarterly Roadmap e2e",
-        }),
-      },
-    );
+    const createA = await jar.fetch(`${BACKEND_URL}/api/conversations/create`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        client_conversation_id: idA,
+        title: "Quarterly Roadmap e2e",
+      }),
+    });
     const convA = CloudConversation.parse(await createA.json());
-    const createB = await jar.fetch(
-      `${BACKEND_URL}/api/conversations/create`,
-      {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          client_conversation_id: idB,
-          title: "Side Topic e2e",
-        }),
-      },
-    );
+    const createB = await jar.fetch(`${BACKEND_URL}/api/conversations/create`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        client_conversation_id: idB,
+        title: "Side Topic e2e",
+      }),
+    });
     const convB = CloudConversation.parse(await createB.json());
     expect(convA.id).not.toBe(convB.id);
 
@@ -113,20 +105,17 @@ describe("e2e — /api/conversations/* + /messages full lifecycle (real compose 
     // 3. Add 5 messages to convA via single-message POST.
     const msgIds: string[] = [];
     for (let i = 0; i < 5; i++) {
-      const res = await jar.fetch(
-        `${BACKEND_URL}/api/conversations/messages`,
-        {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({
-            conversation_id: convA.id,
-            role: i % 2 === 0 ? "user" : "assistant",
-            content: `e2e msg ${i}`,
-            metadata: { idx: i },
-            client_message_id: `${idA}-m${i}`,
-          }),
-        },
-      );
+      const res = await jar.fetch(`${BACKEND_URL}/api/conversations/messages`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          conversation_id: convA.id,
+          role: i % 2 === 0 ? "user" : "assistant",
+          content: `e2e msg ${i}`,
+          metadata: { idx: i },
+          client_message_id: `${idA}-m${i}`,
+        }),
+      });
       expect(res.status).toBe(200);
       const m = CloudMessage.parse(await res.json());
       msgIds.push(m.id);
@@ -163,24 +152,19 @@ describe("e2e — /api/conversations/* + /messages full lifecycle (real compose 
     });
     expect(search.status).toBe(200);
     const searchBody = SearchResponse.parse(await search.json());
-    expect(
-      searchBody.conversations.find((c) => c.id === convA.id),
-    ).toBeDefined();
+    expect(searchBody.conversations.find((c) => c.id === convA.id)).toBeDefined();
 
     // 7. Metadata >4 KiB → 400 envelope.
-    const oversized = await jar.fetch(
-      `${BACKEND_URL}/api/conversations/messages`,
-      {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          conversation_id: convA.id,
-          role: "user",
-          content: "x",
-          metadata: { blob: "y".repeat(5000) },
-        }),
-      },
-    );
+    const oversized = await jar.fetch(`${BACKEND_URL}/api/conversations/messages`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        conversation_id: convA.id,
+        role: "user",
+        content: "x",
+        metadata: { blob: "y".repeat(5000) },
+      }),
+    });
     expect(oversized.status).toBe(400);
     const oversizedBody = await oversized.json();
     expect(() => ErrorEnvelope.parse(oversizedBody)).not.toThrow();
@@ -193,13 +177,9 @@ describe("e2e — /api/conversations/* + /messages full lifecycle (real compose 
     });
     expect(del.status).toBe(200);
 
-    const listPost = await jar.fetch(
-      `${BACKEND_URL}/api/conversations/list?limit=50`,
-    );
+    const listPost = await jar.fetch(`${BACKEND_URL}/api/conversations/list?limit=50`);
     const listPostBody = ListResponse.parse(await listPost.json());
-    expect(
-      listPostBody.conversations.find((c) => c.id === convB.id),
-    ).toBeUndefined();
+    expect(listPostBody.conversations.find((c) => c.id === convB.id)).toBeUndefined();
 
     // Hygiene — soft-delete convA too so the fixture user's list does
     // not grow across reruns.

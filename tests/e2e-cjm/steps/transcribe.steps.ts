@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: FSL-1.1-ALv2
 // Phase 13 / Plan 02 / Task 13-02-03 — @cjm-4.* transcribe round-trip.
 //
 // Happy path (@cjm-4.1): sign up + verify + sign in to get a session cookie,

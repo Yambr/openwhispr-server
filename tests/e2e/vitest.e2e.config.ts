@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: FSL-1.1-ALv2
 // tests/e2e — Phase 04 / Plan 09 vitest config for the realtime+stream
 // e2e suite (`make e2e-test` target).
 //

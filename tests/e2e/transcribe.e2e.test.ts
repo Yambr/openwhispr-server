@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: FSL-1.1-ALv2
 // tests/e2e/transcribe — host-side e2e for POST /api/transcribe.
 //
 // Round-trips a multipart audio body through Traefik (TLS) → api →
@@ -14,7 +14,7 @@
 
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
-import { BACKEND_URL, audioMultipartBody } from "./compose-helper.js";
+import { audioMultipartBody, BACKEND_URL } from "./compose-helper.js";
 import { signInFixture } from "./sign-in.js";
 
 const TranscribeResponse = z.object({

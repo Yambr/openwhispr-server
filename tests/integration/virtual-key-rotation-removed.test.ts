@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: FSL-1.1-ALv2
 // Phase 14 / Plan 05 — RED conformance for virtual-key-rotation removal.
 //
 // CONTEXT.md decision 3 + RESEARCH §A.5 + REQUIREMENTS BYOK-03 audit closure:

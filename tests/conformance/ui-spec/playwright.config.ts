@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: FSL-1.1-ALv2
 // Phase 12 / Plan 05b / Task 2 — Playwright config for the UICONF-05 axe
 // conformance lane.
 //
