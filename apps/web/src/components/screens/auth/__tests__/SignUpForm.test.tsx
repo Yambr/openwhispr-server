@@ -143,9 +143,7 @@ describe("SignUpForm (Phase 07.1 / Plan 07 — U2)", () => {
     await user.type(screen.getByLabelText(/email/i), "alice@test.local");
     await user.type(screen.getByLabelText(/^password$/i), "Pwa9!testStrong");
     await user.click(screen.getByRole("button", { name: /^sign up$/i }));
-    await waitFor(() => {
-      expect(screen.getAllByText(/already registered/i).length).toBeGreaterThan(0);
-    });
+    expect(await screen.findByText(/already registered/i)).toBeInTheDocument();
   });
 
   it("renders generic error when authClient.signUp.email throws", async () => {
@@ -161,9 +159,7 @@ describe("SignUpForm (Phase 07.1 / Plan 07 — U2)", () => {
     await user.type(screen.getByLabelText(/email/i), "alice@test.local");
     await user.type(screen.getByLabelText(/^password$/i), "Pwa9!testStrong");
     await user.click(screen.getByRole("button", { name: /^sign up$/i }));
-    await waitFor(() => {
-      expect(screen.getAllByText(/sign-up failed/i).length).toBeGreaterThan(0);
-    });
+    expect(await screen.findByText(/sign-up failed/i)).toBeInTheDocument();
   });
 
   it("renders generic error for non-duplicate failures", async () => {
@@ -182,8 +178,6 @@ describe("SignUpForm (Phase 07.1 / Plan 07 — U2)", () => {
     await user.type(screen.getByLabelText(/email/i), "alice@test.local");
     await user.type(screen.getByLabelText(/^password$/i), "Pwa9!testStrong");
     await user.click(screen.getByRole("button", { name: /^sign up$/i }));
-    await waitFor(() => {
-      expect(screen.getAllByText(/sign-up failed/i).length).toBeGreaterThan(0);
-    });
+    expect(await screen.findByText(/sign-up failed/i)).toBeInTheDocument();
   });
 });

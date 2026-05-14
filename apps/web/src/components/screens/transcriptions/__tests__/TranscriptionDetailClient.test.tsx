@@ -342,7 +342,9 @@ describe("TranscriptionDetailClient (Phase 07.1 / Plan 09)", () => {
     });
     renderWithProviders(<TranscriptionDetailClient transcriptionId={TID} />);
     await waitFor(() => {
-      expect(screen.getAllByText("—").length).toBeGreaterThanOrEqual(4);
+      // Four nulled fields (audio_duration_ms / provider / model / language)
+      // → exactly four em-dash placeholders rendered.
+      expect(screen.getAllByText("—")).toHaveLength(4);
     });
   });
 

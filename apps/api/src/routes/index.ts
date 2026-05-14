@@ -59,7 +59,6 @@ import { buildFoldersCreateRoutes, type FoldersCreateDeps } from "./folders/crea
 import { buildFoldersDeleteRoutes, type FoldersDeleteDeps } from "./folders/delete.js";
 import { buildFoldersListRoutes, type FoldersListDeps } from "./folders/list.js";
 import { buildFoldersUpdateRoutes, type FoldersUpdateDeps } from "./folders/update.js";
-import healthRoutes from "./health.js";
 import {
   buildNoteRecordingConfigRoutes,
   type NoteRecordingConfigDeps,
@@ -198,13 +197,6 @@ export function buildAllRoutes(deps: AllRoutesDeps): readonly RoutePlugin[] {
     db: deps.db,
   };
   const plugins: RoutePlugin[] = [
-    // Phase 6 / Plan 06-04 (D-P1): /api/health is now registered by
-    // `registerProbes` at buildApp scope (alongside /livez, /readyz,
-    // /startupz) — dropped from this list to avoid the duplicate
-    // route-registration that would crash Fastify on boot. The new
-    // /api/health emits Deprecation + Link successor-version headers
-    // pointing at /livez per RFC 8594; the back-compat body shape
-    // `{status:"ok"}` is unchanged so existing contract tests still pass.
     buildBetterAuthHandlerRoutes(betterAuthHandlerDeps),
     buildCheckUserRoutes(checkUserDeps),
     buildVerificationStatusRoutes(verificationDeps),
@@ -482,5 +474,4 @@ export {
   buildUsageRoutes,
   buildVerificationStatusRoutes,
   buildWebSearchRoutes,
-  healthRoutes,
 };

@@ -12,14 +12,18 @@ import { HealthResponse } from "./schemas.js";
 const REACHABLE = await probeBackend();
 
 describe.skipIf(!REACHABLE)("GET /api/health", () => {
-  it("returns 200 with { status: 'ok' } within 3s budget", async () => {
+  it("returns 200 with { status: 'ok', migrations_completed: boolean } within 3s budget", async () => {
     const start = Date.now();
     const res = await fetch(`${BACKEND_URL}/api/health`, {
       signal: AbortSignal.timeout(3000),
     });
     expect(res.status).toBe(200);
     expect(Date.now() - start).toBeLessThan(3000);
-    HealthResponse.parse(await res.json());
+    // Plan 13-01 / Task 13-01-05 — HealthResponse extended with
+    // migrations_completed. Schema parse covers the type contract;
+    // the explicit field check guards against accidental schema relaxation.
+    const body = HealthResponse.parse(await res.json());
+    expect(typeof body.migrations_completed).toBe("boolean");
   });
 
   it("does not require auth (no Authorization header → 200)", async () => {

@@ -185,6 +185,15 @@ export interface BuildAppOptions {
    * — an operator-actionable signal distinct from a runtime dep outage.
    */
   depCheck?: DepCheck;
+  /**
+   * Plan 13-01 / Task 13-01-05 — optional migrations probe for the
+   * /api/health `migrations_completed` field. Production wires
+   * `count(*) FROM _meta.__drizzle_migrations > 0` against the existing
+   * app pool returned by `makeAppDb()` (NO fresh pg.Client — the existing
+   * pool is reused to avoid leaking PG connections under the kubelet
+   * probe cadence). Tests inject fakes.
+   */
+  migrationsCheck?: () => Promise<boolean>;
 }
 
 export const buildApp = async (opts: BuildAppOptions = {}): Promise<FastifyInstance> => {
@@ -447,7 +456,10 @@ export const buildApp = async (opts: BuildAppOptions = {}): Promise<FastifyInsta
   // mount `./routes/health.js`; that registration has been folded into
   // `registerProbes` so there's a single source-of-truth for the health
   // surface across the app's lifecycle.
-  await registerProbes(app, opts.depCheck ? { depCheck: opts.depCheck } : {});
+  await registerProbes(app, {
+    ...(opts.depCheck ? { depCheck: opts.depCheck } : {}),
+    ...(opts.migrationsCheck ? { migrationsCheck: opts.migrationsCheck } : {}),
+  });
 
   // Phase 6 / Plan 06-12b — debug-only outbound-fetch helper. Registered
   // ONLY when NODE_ENV === 'test' so production / dev / staging boots
@@ -605,6 +617,38 @@ if (import.meta.url === `file://${process.argv[1]}`) {
       litellmUrl: litellmBaseUrl,
     });
   }
+  // Plan 13-01 / Task 13-01-05 — wire the /api/health migrations_completed
+  // probe. Queries the canonical drizzle table `_meta.__drizzle_migrations`
+  // and reports count > 0.
+  //
+  // Phase 13 / Session 5 fix: the appPool runs as `openwhispr_app` which
+  // does NOT have USAGE on the `_meta` schema (RLS isolation; the schema
+  // is owner-only). Reusing the appPool here would silently return `false`
+  // for ever. We construct a tiny dedicated owner pool (max=1, lazy) bound
+  // to DATABASE_URL_OWNER and POOL it for the probe's lifetime. The pool
+  // is closed at process exit via the existing shutdown hook below.
+  //
+  // Connection acquisition errors and missing-table errors both surface
+  // as `false` (the migrations runner has not yet completed its first
+  // apply); transient outages also surface as `false` so the harness never
+  // falsely reports "ready" during a DB hiccup.
+  const { Pool: PgPool } = await import("pg");
+  const ownerUrl = process.env.DATABASE_URL_OWNER;
+  const probeOwnerPool = ownerUrl ? new PgPool({ connectionString: ownerUrl, max: 1 }) : undefined;
+  buildOpts.migrationsCheck = async (): Promise<boolean> => {
+    if (!probeOwnerPool) return false;
+    try {
+      const result = await probeOwnerPool.query<{ count: string }>(
+        "SELECT count(*)::text AS count FROM _meta.__drizzle_migrations",
+      );
+      const row = result.rows[0];
+      if (!row) return false;
+      const n = Number.parseInt(row.count, 10);
+      return Number.isFinite(n) && n > 0;
+    } catch {
+      return false;
+    }
+  };
   const app = await buildApp(buildOpts);
   const port = Number(process.env.PORT ?? 3000);
   app.listen({ port, host: "0.0.0.0" }).catch((err) => {

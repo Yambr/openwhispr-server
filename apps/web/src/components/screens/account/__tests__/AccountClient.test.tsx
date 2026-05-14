@@ -110,9 +110,11 @@ describe("AccountClient (Phase 07.1 / Plan 08)", () => {
       currentSessionToken: "tok-1",
     });
     expect(screen.getByText(/^Profile$/)).toBeInTheDocument();
-    // SessionsTable always renders an "Active sessions" h2 (both in skeleton
-    // and loaded states) — assert ≥1 occurrence.
-    expect(screen.getAllByText(/Active sessions/i).length).toBeGreaterThanOrEqual(1);
+    // SessionsTable renders an "Active sessions" h2 in the skeleton render
+    // path (synchronous, before useQuery resolves). Strong single-element
+    // assertion — getByText throws on multiple matches, so this implicitly
+    // also catches a future regression that double-mounts the header.
+    expect(screen.getByText(/Active sessions/i)).toBeInTheDocument();
     expect(screen.getByText(/Danger zone/i)).toBeInTheDocument();
   });
 
@@ -155,7 +157,9 @@ describe("AccountClient (Phase 07.1 / Plan 08)", () => {
       },
       currentSessionToken: "tok-1",
     });
-    expect(screen.getAllByText("—").length).toBeGreaterThanOrEqual(1);
+    // name=null → 1 em-dash for the name cell. createdAt is valid so the
+    // created date cell renders the formatted year, not an em-dash.
+    expect(screen.getAllByText("—")).toHaveLength(1);
   });
 
   it("renders em-dash for invalid createdAt string (NaN branch)", () => {

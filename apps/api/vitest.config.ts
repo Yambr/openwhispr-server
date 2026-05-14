@@ -23,6 +23,10 @@ export default mergeConfig(
   rootConfig,
   defineConfig({
     test: {
+      // Phase 13 / Plan 01 / Task 02 — install SIGINT/SIGTERM handlers that
+      // prune leaked testcontainers when a vitest run is interrupted. See
+      // tools/global-vitest-teardown.ts and `.planning/deferred-items.md §1`.
+      setupFiles: ["./vitest.setup.ts"],
       coverage: {
         // Narrow to this package's source files. The root config's
         // exclude list still applies (placeholder modules etc.); when

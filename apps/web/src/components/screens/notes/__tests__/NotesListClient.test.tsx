@@ -161,9 +161,9 @@ describe("NotesListClient (Phase 07.1 / Plan 10)", () => {
     renderWithProviders(<NotesListClient />);
     await waitFor(() => {
       // "Work" appears in both the sidebar (folders list) AND the table
-      // row's Folder column — assert at least 2 occurrences to prove the
-      // table cell resolved the folder_id → name via the folders cache.
-      expect(screen.getAllByText("Work").length).toBeGreaterThanOrEqual(2);
+      // row's Folder column — exactly 2 occurrences prove the table cell
+      // resolved the folder_id → name via the folders cache.
+      expect(screen.getAllByText("Work")).toHaveLength(2);
     });
   });
 
@@ -273,7 +273,9 @@ describe("NotesListClient (Phase 07.1 / Plan 10)", () => {
     await waitFor(() => {
       expect(screen.getByText("(untitled)")).toBeInTheDocument();
     });
-    expect(screen.getAllByText("—").length).toBeGreaterThan(0);
+    // Per-row em-dash cells: folder (folder_id=null) + date (created_at="")
+    // → exactly 2 em-dashes for the single row.
+    expect(screen.getAllByText("—")).toHaveLength(2);
   });
 
   it("renders folder em-dash when folder_id has no match in folders cache", async () => {
@@ -291,8 +293,10 @@ describe("NotesListClient (Phase 07.1 / Plan 10)", () => {
     await waitFor(() => {
       expect(screen.getByText("orphan")).toBeInTheDocument();
     });
-    // No folder match → em-dash placeholder.
-    expect(screen.getAllByText("—").length).toBeGreaterThan(0);
+    // No folder match → exactly 1 em-dash for the folder cell (created_at
+    // is a valid ISO from makeNote so the date column renders the formatted
+    // value, not "—").
+    expect(screen.getAllByText("—")).toHaveLength(1);
   });
 
   it("falls back to created_at as-is when Date parsing throws", async () => {

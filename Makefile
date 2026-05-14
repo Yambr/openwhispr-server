@@ -4,7 +4,7 @@
 
 .PHONY: dev test lint lint-rls format typecheck up down clean clean-stack help \
         contract-test contract-test-deployed contract-test-missing-keys e2e-test e2e-test-live \
-        e2e-hermetic e2e-test-phase6 \
+        e2e-hermetic e2e-test-phase6 e2e-cjm e2e-cjm-teardown \
         load-test seed backup restore migrate migrate-rollback logs ps restart \
         verify-images
 
@@ -330,3 +330,44 @@ migrate:
 
 migrate-rollback:
 	pnpm --filter @openwhispr/data exec drizzle-kit drop --config=drizzle.config.ts
+
+# ─── Phase 13 / Plan 01 / Task 13-01-08 — CJM ships-first gate ────────────
+# Boots a hermetic compose project (`-p e2e-cjm`) using the base file +
+# embedded-litellm overlay, waits for /api/health migrations_completed=true,
+# runs the playwright-bdd suite, and ALWAYS tears down via a trap. If the
+# contributor was running their own `openwhispr` project, it is `stop`'d
+# before boot and `start`'d again in the teardown. Retry-on-flake is BANNED
+# (D-12). Gated by E2E_CJM=1.
+e2e-cjm:
+	@if [ "$$E2E_CJM" != "1" ]; then \
+		echo "e2e-cjm: refusing to run — set E2E_CJM=1 (this target boots a hermetic compose project and stops/restarts your local stack)"; \
+		exit 1; \
+	fi
+	@if docker compose -p openwhispr ps -q 2>/dev/null | head -1 | grep -q . ; then \
+		echo "e2e-cjm: stopping user 'openwhispr' project (will restart on teardown)"; \
+		echo "1" > .e2e-cjm-user-was-running; \
+		docker compose -p openwhispr stop; \
+	else \
+		echo "0" > .e2e-cjm-user-was-running; \
+	fi
+	@set -e; \
+	trap '$(MAKE) -s e2e-cjm-teardown' EXIT INT TERM; \
+	docker compose -p e2e-cjm \
+		-f docker-compose.yml -f docker-compose.embedded-litellm.yml \
+		--profile default up -d --wait; \
+	pnpm tsx tests/e2e-cjm/support/wait-for-readiness.ts; \
+	if [ -n "$$SCENARIO" ]; then \
+		pnpm exec playwright test --grep "$$SCENARIO" --config tests/e2e-cjm/playwright.config.ts; \
+	else \
+		pnpm exec playwright test --config tests/e2e-cjm/playwright.config.ts; \
+	fi
+
+e2e-cjm-teardown:
+	-@docker compose -p e2e-cjm \
+		-f docker-compose.yml -f docker-compose.embedded-litellm.yml \
+		down -v --remove-orphans
+	@if [ -f .e2e-cjm-user-was-running ] && [ "$$(cat .e2e-cjm-user-was-running)" = "1" ]; then \
+		echo "e2e-cjm-teardown: restarting user 'openwhispr' project"; \
+		docker compose -p openwhispr start; \
+	fi
+	-@rm -f .e2e-cjm-user-was-running

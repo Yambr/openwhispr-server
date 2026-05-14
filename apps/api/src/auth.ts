@@ -32,11 +32,11 @@ import type { AppDb } from "@openwhispr/data/client";
 // scoped only to the drizzleAdapter call. The drizzle exports keep their
 // pluralized names everywhere else.
 import { accounts, sessions, users, verifications } from "@openwhispr/data/schema";
+import { createEmailSender, type EmailSender as EmailService } from "@openwhispr/email";
 import { betterAuth } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import { bearer } from "better-auth/plugins/bearer";
 import { genericOAuth } from "better-auth/plugins/generic-oauth";
-import { type EmailService, makeEmailService } from "./email.js";
 import { cookieDomainConfig } from "./lib/cookie-domain.js";
 
 /**
@@ -189,7 +189,12 @@ export function buildAuth(opts: BuildAuthOptions): AuthInstance {
   // constructs the nodemailer-backed service from env. The dev fallback
   // (SMTP_HOST unset) inside makeEmailService preserves the < 5 min
   // OSS first-launch SLO without requiring an SMTP relay.
-  const email: EmailService = opts.email ?? makeEmailService((opts.log ?? fallbackLog) as never);
+  // Phase 13 / Plan 01 — use shared @openwhispr/email factory. The Logger
+  // contract is structural; FastifyBaseLogger satisfies it without a cast
+  // at the source, but we narrow to `never` here to bypass the historical
+  // (now-removed) FastifyBaseLogger coupling without churning callers.
+  const email: EmailService =
+    opts.email ?? createEmailSender({ log: (opts.log ?? fallbackLog) as never, env: process.env });
 
   // ── Phase 8 / Plan 01 ────────────────────────────────────────────────
   // Loud WARN banner when the load-test switch is on so an operator who
@@ -283,16 +288,33 @@ export function buildAuth(opts: BuildAuthOptions): AuthInstance {
       // production default of strict verification. Pattern matches
       // OPENWHISPR_DISABLE_RATE_LIMIT (plan 08-01).
       requireEmailVerification: process.env.OPENWHISPR_DISABLE_EMAIL_VERIFICATION !== "1",
-      // Plan 04 wiring: route verification emails through `email.send()`.
-      // If the transport throws (Pitfall #4), Better Auth keeps the
-      // account unverified — operator sees the error and the desktop's
-      // verification-status poll keeps returning false.
-      //
-      // Phase 10 / Plan 10-01c — when `opts.enqueueEmail` is wired by the
-      // production entrypoint, route through the BullMQ email-delivery
-      // queue so the worker renders the locale-aware template (Plan
-      // 10-01b). Backward-compat: every existing call site that omits
-      // `enqueueEmail` continues to hit the inline `email.send` path.
+      // Phase 07.1 / Plan 13.2 — Better Auth's `onExistingUserSignUp` cannot
+      // surface a USER_ALREADY_EXISTS error: the internal context wrapper
+      // `runInBackgroundOrAwait` (create-context.mjs:211) swallows any throw
+      // inside the hook and logs `Failed to run background task`, then the
+      // request continues to return the synthetic anti-enumeration response.
+      // The duplicate-email opt-out therefore lives one layer above as a
+      // Fastify preHandler — see apps/api/src/routes/better-auth-handler.ts
+      // (the `OPENWHISPR_DISABLE_EMAIL_ENUMERATION_PROTECTION` env-gate).
+    },
+    // Phase 13 / Plan 01 — verification-mail dispatch BELONGS under the
+    // top-level `emailVerification` key. Better Auth 1.6.9's
+    // `api/routes/sign-up.mjs` reads `options.emailVerification
+    // .sendVerificationEmail`, NOT `options.emailAndPassword
+    // .sendVerificationEmail` — so the prior Phase-10 placement (under
+    // emailAndPassword) was dead code and no verification email was
+    // EVER sent for fresh signups. The harness scenario @cjm-1.1
+    // surfaced this; fix is to mirror the closure to the correct key.
+    //
+    // Phase 10 / Plan 10-01c — when `opts.enqueueEmail` is wired by the
+    // production entrypoint, route through the BullMQ email-delivery
+    // queue so the worker renders the locale-aware template (Plan
+    // 10-01b). Backward-compat: every call site that omits
+    // `enqueueEmail` continues to hit the inline `email.send` path.
+    // If the transport throws (Pitfall #4), Better Auth keeps the
+    // account unverified — operator sees the error and the desktop's
+    // verification-status poll keeps returning false.
+    emailVerification: {
       sendVerificationEmail: async ({
         user,
         url,
@@ -303,17 +325,17 @@ export function buildAuth(opts: BuildAuthOptions): AuthInstance {
         if (opts.enqueueEmail) {
           const locale: "en" | "ru" = user.locale === "ru" ? "ru" : "en";
           await opts.enqueueEmail({
-            // Better Auth surfaces additionalFields on the user object; the
-            // Drizzle adapter populates tenantId from the row. When the hook
-            // is invoked outside a tenant context (shouldn't happen in
-            // production but we don't want to crash here), fall through to
-            // the zero UUID so the Zod schema on the worker side still
-            // parses; the worker logs a per-tenant warning.
             tenant_id: user.tenantId ?? "00000000-0000-0000-0000-000000000000",
             to: user.email,
             template_id: "email_verification",
             locale,
-            variables: { url },
+            // Phase 13 / Plan 01 — the worker's email_verification template
+            // (apps/worker/src/i18n/locales/{en,ru}/email/email_verification/
+            // body.{txt,html}) interpolates `{verification_url}` and `{name}`.
+            // Send both so the rendered email is not a string of literal
+            // placeholders. The api receives a Better Auth `url` parameter;
+            // alias it to `verification_url` for the worker contract.
+            variables: { verification_url: url, url, name: user.email },
             request_id: crypto.randomUUID(),
           });
           return;
@@ -325,14 +347,6 @@ export function buildAuth(opts: BuildAuthOptions): AuthInstance {
           html: `<p>Click to verify: <a href="${url}">${url}</a></p>`,
         });
       },
-      // Phase 07.1 / Plan 13.2 — Better Auth's `onExistingUserSignUp` cannot
-      // surface a USER_ALREADY_EXISTS error: the internal context wrapper
-      // `runInBackgroundOrAwait` (create-context.mjs:211) swallows any throw
-      // inside the hook and logs `Failed to run background task`, then the
-      // request continues to return the synthetic anti-enumeration response.
-      // The duplicate-email opt-out therefore lives one layer above as a
-      // Fastify preHandler — see apps/api/src/routes/better-auth-handler.ts
-      // (the `OPENWHISPR_DISABLE_EMAIL_ENUMERATION_PROTECTION` env-gate).
     },
     session: {
       // D-03: ≥30-day TTL.

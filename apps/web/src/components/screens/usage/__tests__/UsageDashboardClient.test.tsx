@@ -182,8 +182,9 @@ describe("UsageDashboardClient (Phase 07.1 / Plan 08)", () => {
     await waitFor(() => {
       expect(screen.getByTestId("kpi-words-used")).toBeInTheDocument();
     });
-    // Two non-finite values → two em-dashes
-    expect(screen.getAllByText("—").length).toBeGreaterThanOrEqual(2);
+    // Two non-finite values → exactly two em-dashes (wordsUsed=NaN +
+    // wordsRemaining=Infinity each render one em-dash KPI cell).
+    expect(screen.getAllByText("—")).toHaveLength(2);
   });
 
   it("clicking Refresh invalidates usage query", async () => {

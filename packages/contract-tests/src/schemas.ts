@@ -44,7 +44,17 @@ export const DeleteAccountResponse = z.object({}).passthrough();
 export type DeleteAccountResponse = z.infer<typeof DeleteAccountResponse>;
 
 // GET /api/health
-export const HealthResponse = z.object({ status: z.literal("ok") });
+//
+// Plan 13-01 / Task 13-01-05 — `migrations_completed` added so the e2e-cjm
+// harness's wait-for-readiness probe has a deterministic post-migrate
+// signal without needing a direct Postgres connection (Postgres is not
+// host-bound in the compose stack — see RECON OQ-3). NOT `.strict()` so
+// the desktop and old contract consumers can ignore extras and so future
+// fields can land without a wire-shape break.
+export const HealthResponse = z.object({
+  status: z.literal("ok"),
+  migrations_completed: z.boolean(),
+});
 export type HealthResponse = z.infer<typeof HealthResponse>;
 
 // ---------------------------------------------------------------------

@@ -32,6 +32,7 @@ import "./otel-bootstrap.js";
 // virtual-key-rotation cron tick is harmless until the API enqueues real
 // payloads.
 
+import { createEmailSender } from "@openwhispr/email";
 import { type ConnectionOptions, Worker } from "bullmq";
 import { Redis as IORedis } from "ioredis";
 import { Pool } from "pg";
@@ -40,7 +41,7 @@ import { makeAppOwnerPool } from "./db/app-pool.js";
 import { makeLitellmPool } from "./db/litellm-pool.js";
 import { createTemplateRenderer } from "./i18n/template-renderer.js";
 import { buildAuditArchiveHandler } from "./jobs/audit-archive.js";
-import { buildEmailDeliveryHandler, type EmailSender } from "./jobs/email-delivery.js";
+import { buildEmailDeliveryHandler } from "./jobs/email-delivery.js";
 import {
   createQueue as createIngestQueue,
   createWorker as createIngestWorker,
@@ -63,13 +64,14 @@ import { installSchedulers } from "./scheduler.js";
 
 const log = pino({ name: "worker" });
 
-// Default no-op SMTP transport — overridden in production by wiring the
-// API's nodemailer-backed EmailService into this entrypoint via env.
-const noopSender: EmailSender = {
-  async send() {
-    return { delivered: true, reason: "no-op-sender" };
-  },
-};
+// Phase 13 / Plan 01 / Task 13-01-08 — real SMTP-backed EmailSender from
+// the shared `@openwhispr/email` package. Replaces the Phase 6 noopSender
+// stub. In production (NODE_ENV=production) this throws at construction
+// time if SMTP_HOST is unset (loud-fail), guaranteeing the worker never
+// silently swallows verification emails. In non-prod it logs a warning
+// and returns a logging-only sender so `docker compose up` still boots
+// on a fresh clone with no SMTP env vars.
+const realSender = createEmailSender({ log, env: process.env });
 // Plan 10-01b — real i18n-backed template renderer; loads en+ru bundles
 // from disk at module init. Replaces the noopRenderer stub left in place
 // by Phase 6 Plan 06-08 pending the worker i18n surface (this plan).
@@ -127,7 +129,7 @@ async function main(): Promise<void> {
     QUEUE_NAMES.emailDelivery,
     buildEmailDeliveryHandler({
       pool: appOwnerPool,
-      sender: noopSender,
+      sender: realSender,
       renderer: templateRenderer,
     }),
     { connection },
