@@ -73,4 +73,5 @@ Open wispr server.zip
 # playwright traces, and the Makefile sidecar state file).
 tests/e2e-cjm/.bdd-gen/
 tests/e2e-cjm/test-results/
+tests/e2e-cjm/.scratch/
 .e2e-cjm-user-was-running
