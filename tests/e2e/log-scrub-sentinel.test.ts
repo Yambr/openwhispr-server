@@ -103,24 +103,25 @@ describe.skipIf(process.env.E2E !== "1")("log scrub sentinel sweep e2e (OBS-03, 
     expect(apiLogs).not.toContain(sentinelAuth);
   }, 180_000);
 
-  it("worker job with SENTINEL-VK-<t> payload leaves sentinel ABSENT from worker container stdout", async () => {
+  it("worker job with SENTINEL-EMAIL-<t> payload leaves sentinel ABSENT from worker container stdout", async () => {
     if (!stack) throw new Error("stack not initialized");
-    const sentinelVk = `SENTINEL-VK-${Date.now()}`;
-    // virtual-key-rotation's Zod schema requires
-    // {tenant_id, user_id, reason}. We deliberately omit `tenant_id`
-    // and stash the sentinel under `virtual_key` (one of the
-    // canonical REDACT_PATHS entries — Plan 06-10). The job will fail
-    // its Zod parse — that failure path is exactly the one most
-    // likely to log the payload verbatim if the redactor isn't
-    // wired into withTenantContext / withSystemContext, which is the
-    // OBS-03 invariant.
-    const jobId = await enqueueBullMQJob(
-      stack.projectName,
-      "virtual-key-rotation",
-      "virtual-key-rotation",
-      { virtual_key: sentinelVk, reason: "test" },
-    );
-    const result = await waitForBullMQJob(stack.projectName, "virtual-key-rotation", jobId, {
+    const sentinelEmail = `SENTINEL-EMAIL-${Date.now()}`;
+    // Phase 14 / Plan 05 — the virtual-key-rotation queue this test
+    // previously exercised was removed wholesale (CONTEXT decision 3 +
+    // BYOK-03 audit closure). The sentinel sweep is re-anchored to
+    // email-delivery, the cheapest surviving queue with a deterministic
+    // Zod-validated payload schema. We deliberately omit `tenant_id`
+    // and stash the sentinel under `password` — one of the canonical
+    // REDACT_PATHS entries from Plan 06-10. The job will fail its Zod
+    // parse before reaching the SMTP boundary; that failure path is
+    // exactly the one most likely to log the payload verbatim if the
+    // redactor isn't wired into withTenantContext / withSystemContext,
+    // which is the OBS-03 invariant we sweep for.
+    const jobId = await enqueueBullMQJob(stack.projectName, "email-delivery", "email-delivery", {
+      password: sentinelEmail,
+      reason: "test",
+    });
+    const result = await waitForBullMQJob(stack.projectName, "email-delivery", jobId, {
       deadlineMs: 60_000,
     });
     // We expect failure (invalid payload) — the failure path is what
@@ -135,6 +136,6 @@ describe.skipIf(process.env.E2E !== "1")("log scrub sentinel sweep e2e (OBS-03, 
       composeService: "worker",
     });
     expect(workerLogs.length).toBeGreaterThan(0);
-    expect(workerLogs).not.toContain(sentinelVk);
+    expect(workerLogs).not.toContain(sentinelEmail);
   }, 180_000);
 });
