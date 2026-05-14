@@ -2,12 +2,26 @@ suite: pooler — CNPG Pooler CR (A6)
 templates:
   - pooler.yaml
 tests:
-  - it: renders Pooler bound to {fullname}-pg with transaction mode
+  # Plan 14-06 — `pooler.enabled` flipped from true→false in slim-core defaults.
+  # The renders-Pooler case must now explicitly opt in by setting pooler.enabled=true.
+  - it: default render — pooler renders zero docs (slim-core default; pooler.enabled=false)
     set:
       secrets:
         mode: eso
         external:
           storeRef: vault-clusterstore
+    asserts:
+      - hasDocuments:
+          count: 0
+
+  - it: renders Pooler bound to {fullname}-pg with transaction mode (explicit pooler.enabled=true)
+    set:
+      secrets:
+        mode: eso
+        external:
+          storeRef: vault-clusterstore
+      pooler:
+        enabled: true
     asserts:
       - hasDocuments:
           count: 1
@@ -41,13 +55,16 @@ tests:
           path: spec.pgbouncer.parameters.reserve_pool_size
           value: "20"
 
-  - it: enables PodMonitor when observability.serviceMonitor.enabled=true
+  - it: enables PodMonitor when observability umbrella + serviceMonitor are both on
     set:
       secrets:
         mode: eso
         external:
           storeRef: vault-clusterstore
+      pooler:
+        enabled: true
       observability:
+        enabled: true
         serviceMonitor:
           enabled: true
     asserts:
@@ -74,6 +91,7 @@ tests:
         external:
           storeRef: vault-clusterstore
       pooler:
+        enabled: true
         maxClientConn: "2000"
     asserts:
       - equal:

@@ -1,0 +1,70 @@
+suite: storage — toggle gates MinIO sub-chart + MINIO_ENDPOINT injection (Plan 14-06 / BYOK-01)
+# `storage.enabled` is the NEW top-level toggle. With `false` (slim-core default):
+#   - Chart.yaml `condition: storage.enabled` keeps the Bitnami minio sub-chart unrendered
+#   - api-deployment.yaml + worker-deployment.yaml omit the MINIO_ENDPOINT env injection
+#     so that the api hits the BYOK loud-fail guard (plan 14-04) at boot when neither
+#     storage is enabled nor an operator-supplied S3_ENDPOINT secret is present.
+# With `true`, MINIO_ENDPOINT is injected on api + worker.
+release:
+  name: ow
+  namespace: default
+tests:
+  - it: storage.enabled=false (default) — api-deployment omits MINIO_ENDPOINT env entry
+    template: api-deployment.yaml
+    set:
+      secrets:
+        mode: eso
+        external:
+          storeRef: vault-clusterstore
+    asserts:
+      - notContains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: MINIO_ENDPOINT
+          any: true
+
+  - it: storage.enabled=false (default) — worker-deployment omits MINIO_ENDPOINT env entry
+    template: worker-deployment.yaml
+    set:
+      secrets:
+        mode: eso
+        external:
+          storeRef: vault-clusterstore
+    asserts:
+      - notContains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: MINIO_ENDPOINT
+          any: true
+
+  - it: storage.enabled=true — api-deployment renders MINIO_ENDPOINT env entry
+    template: api-deployment.yaml
+    set:
+      secrets:
+        mode: eso
+        external:
+          storeRef: vault-clusterstore
+      storage:
+        enabled: true
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: MINIO_ENDPOINT
+          any: true
+
+  - it: storage.enabled=true — worker-deployment renders MINIO_ENDPOINT env entry
+    template: worker-deployment.yaml
+    set:
+      secrets:
+        mode: eso
+        external:
+          storeRef: vault-clusterstore
+      storage:
+        enabled: true
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: MINIO_ENDPOINT
+          any: true
