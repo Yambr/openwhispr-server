@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: FSL-1.1-ALv2
 // SPDX-License-Identifier: MIT
 // Phase 12 / Plan 12-03 / Task 2 — vendored shadcn-stepper primitive.
 //

@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: FSL-1.1-ALv2
 // Phase 12 / Plan 12-05a — UICONF-04 conformance inventory derived from
 //   .planning/phases/07-frontend-ui-spec/design/screens-admin.jsx:445-628 (ScreenConfig).
 // Inventory: see 12-RESEARCH.md §16 table and __fixtures__/jsx-inventory.ts.

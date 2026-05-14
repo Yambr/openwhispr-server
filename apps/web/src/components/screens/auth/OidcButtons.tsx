@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: FSL-1.1-ALv2
 // Phase 12 / Plan 12-04 — OIDC button row (UICONF-02, TD-12.c).
 //
 // Reads the runtime list of configured OIDC providers from

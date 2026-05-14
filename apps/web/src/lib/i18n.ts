@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: FSL-1.1-ALv2
 // Phase 07.1 / Plan 06 + Phase 10 / Plan 02 — i18next App-Router server instance.
 //
 // RESEARCH § Pattern 6. Phase 07.1 shipped en-only with `lng = "en"` hard

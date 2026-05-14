@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: FSL-1.1-ALv2
 // Phase 07.1 / Plan 07 — U1 Sign-in form.
 // Phase 12 / Plan 12-04 — UICONF-07 resend-verification CTA on 403.
 //

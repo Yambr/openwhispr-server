@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: FSL-1.1-ALv2
 // Phase 07.1 / Plan 06 — TanStack Query 5 Client provider (D-STACK-3).
 //
 // RESEARCH § Pattern 5: each browser tab gets ONE QueryClient instance for

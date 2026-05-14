@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: FSL-1.1-ALv2
 // Phase 07.1 / Plan 08 — U5 SessionsTable (Client Component).
 //
 // D-API2: every session-management call is a Better Auth catch-all:

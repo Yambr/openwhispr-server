@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: FSL-1.1-ALv2
 // Phase 07.1 / Plan 12 — ConfigClient unit tests (RED before GREEN).
 //
 // A3 Config view fires two parallel queries (GET /api/stt-config and

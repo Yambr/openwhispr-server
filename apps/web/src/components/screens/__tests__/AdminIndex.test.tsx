@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: FSL-1.1-ALv2
 // Phase 12 / Plan 12-04 — RED+GREEN tests for the /admin index AdminIndex.
 //
 // Mirrors `.planning/phases/07-frontend-ui-spec/design/screens-admin.jsx:445-628`

@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: FSL-1.1-ALv2
 // Phase 07.1 / Plan 09 — U7 RSC entry for /app/transcriptions/[id].
 //
 // === U7 access-pattern decision: Branch B (list-then-filter) ===

@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: FSL-1.1-ALv2
 // Phase 07.1 / Plan 10 — U8 RSC entry for /app/notes.
 //
 // Prefetches GET /api/notes/list?limit=20 + GET /api/folders/list server-side

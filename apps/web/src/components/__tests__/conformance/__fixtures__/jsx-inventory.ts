@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: FSL-1.1-ALv2
 // Phase 12 / Plan 12-05a — UICONF-04 hand-curated JSX-oracle inventory.
 //
 // Source-of-truth JSX oracles (RESEARCH §16 / D-20):

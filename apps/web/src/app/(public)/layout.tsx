@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: FSL-1.1-ALv2
 // Phase 07.1 / Plan 07 + Phase 10 / Plan 02 — Public route group layout.
 //
 // Centred single-column shell used by U1 (/sign-in), U2 (/sign-up), and

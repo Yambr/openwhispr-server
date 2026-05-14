@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: FSL-1.1-ALv2
 // Phase 12 / Plan 12-04 — /admin index RSC entry (closes TD-12.a, ADMIN-04).
 //
 // Pure RSC entry that hands off to the Client AdminIndex. NO session
