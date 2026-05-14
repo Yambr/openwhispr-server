@@ -1,9 +1,12 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: FSL-1.1-ALv2
 /**
  * spdx-header.ts — SPDX short-form license-header codemod.
  *
- * Inserts `// SPDX-License-Identifier: Apache-2.0` on the first non-shebang
- * line of every TypeScript / JavaScript source file under the working tree.
+ * Inserts `// SPDX-License-Identifier: FSL-1.1-ALv2` on the first non-shebang
+ * line of every TypeScript / JavaScript source file under the working tree,
+ * and (Phase 15 / Plan 03) rewrites any pre-existing stale Apache-2.0 SPDX
+ * header in-place to the FSL identifier. Used both for ongoing audit (CI
+ * gate via `pnpm spdx:check`) and as the one-shot relicense sweep tool.
  *
  * Scope:
  *   - Extensions: .ts, .tsx, .js, .jsx, .mjs, .cjs
@@ -32,7 +35,23 @@ import { glob } from "node:fs/promises";
 import { resolve } from "node:path";
 import { exit } from "node:process";
 
-export const HEADER = "// SPDX-License-Identifier: Apache-2.0";
+export const HEADER = "// SPDX-License-Identifier: FSL-1.1-ALv2";
+
+/**
+ * Stale SPDX header lines that this codemod will recognise and REWRITE to
+ * `HEADER` (Phase 15 / Plan 03 relicense sweep). When the project later
+ * relicenses again, add the prior identifier to this list so a single
+ * `pnpm spdx:fix` flips every file in-place without needing a separate
+ * migration tool. The match is exact on the full line; comment style is
+ * fixed to `// SPDX-License-Identifier: ...` (the only shape we have ever
+ * written).
+ */
+export const STALE_HEADERS: readonly string[] = ["// SPDX-License-Identifier: Apache-2.0"];
+
+function isStaleHeader(line: string | undefined): boolean {
+  if (line === undefined) return false;
+  return STALE_HEADERS.includes(line);
+}
 
 const EXTENSIONS = [".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs"];
 
@@ -100,6 +119,10 @@ export function hasHeader(text: string): boolean {
 
 export function applyHeader(text: string): string {
   if (hasHeader(text)) return text;
+  // Stale-header rewrite path (Phase 15 / Plan 03 relicense sweep). When
+  // the first non-shebang line is a known stale SPDX identifier, REPLACE
+  // it in-place rather than prepending a fresh header (which would leave
+  // the file with two SPDX lines and trip `reuse lint`).
   if (text.startsWith("#!")) {
     const nlIdx = text.indexOf("\n");
     if (nlIdx === -1) {
@@ -107,8 +130,20 @@ export function applyHeader(text: string): string {
       return `${text}\n${HEADER}\n`;
     }
     const shebang = text.slice(0, nlIdx);
-    const rest = text.slice(nlIdx + 1);
-    return `${shebang}\n${HEADER}\n${rest}`;
+    const afterShebang = text.slice(nlIdx + 1);
+    const secondLineEnd = afterShebang.indexOf("\n");
+    const secondLine = secondLineEnd === -1 ? afterShebang : afterShebang.slice(0, secondLineEnd);
+    if (isStaleHeader(secondLine)) {
+      const rest = secondLineEnd === -1 ? "" : afterShebang.slice(secondLineEnd + 1);
+      return `${shebang}\n${HEADER}\n${rest}`;
+    }
+    return `${shebang}\n${HEADER}\n${afterShebang}`;
+  }
+  const firstLineEnd = text.indexOf("\n");
+  const firstLine = firstLineEnd === -1 ? text : text.slice(0, firstLineEnd);
+  if (isStaleHeader(firstLine)) {
+    const rest = firstLineEnd === -1 ? "" : text.slice(firstLineEnd + 1);
+    return `${HEADER}\n${rest}`;
   }
   return `${HEADER}\n${text}`;
 }
