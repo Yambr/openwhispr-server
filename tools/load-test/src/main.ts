@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: FSL-1.1-ALv2
 // Phase 08 / Plan 06 — Task 3: k6 entrypoint.
 //
 // This file is excluded from vitest coverage (vitest.config.ts) because

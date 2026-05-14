@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: FSL-1.1-ALv2
 // Phase 09 / Plan 11 — upgrade-matrix integrity check.
 //
 // Verifies the rows seeded by `tools/seed-test-data.js` survived the

@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: FSL-1.1-ALv2
 // Phase 08.5-02 / Task 1 — RED: baseline scenario shape assertions.
 //
 // baseline-options.ts is a thin pure helper (no k6/* imports) that

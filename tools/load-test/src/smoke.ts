@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: FSL-1.1-ALv2
 // Phase 08.1-followup — k6 smoke gate entry.
 //
 // 30-second low-VU sanity run that exercises EVERY flow (transcribe,

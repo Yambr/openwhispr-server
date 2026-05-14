@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: FSL-1.1-ALv2
 // Phase 08.1 / Plan 01 / Task 3 RED→GREEN — realtime-ws flow tests.
 //
 // The flow opens a wss connection, sends a ping, records the round-trip

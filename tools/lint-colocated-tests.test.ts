@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: FSL-1.1-ALv2
 /**
  * lint-colocated-tests.test.ts — RED→GREEN coverage for the lint guard.
  *

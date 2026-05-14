@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: FSL-1.1-ALv2
 // Phase 08 / Plan 02 — Task 2 GREEN: k6 setup() user provisioner.
 //
 // `provisionUsers()` is the pure, vitest-testable core of the k6 setup()

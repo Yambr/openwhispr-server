@@ -1,5 +1,5 @@
 #!/usr/bin/env -S pnpm exec tsx
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: FSL-1.1-ALv2
 /**
  * lint-docs-headings.ts — Phase 03 / Plan 01 / Task 1 (D-09).
  *
@@ -181,7 +181,9 @@ function lintFile(target: string): Issue[] {
 function main(): number {
   const targets = process.argv.slice(2);
   if (targets.length === 0) {
-    process.stderr.write("lint-docs-headings: usage: lint-docs-headings.ts <markdown-file> [<markdown-file>...]\n");
+    process.stderr.write(
+      "lint-docs-headings: usage: lint-docs-headings.ts <markdown-file> [<markdown-file>...]\n",
+    );
     return 2;
   }
 

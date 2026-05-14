@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: FSL-1.1-ALv2
 // Phase 08 / Plan 02 — Task 2 RED: Bearer rotation helpers.
 //
 // Better Auth rotates session tokens via the `set-auth-token` response

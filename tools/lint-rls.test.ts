@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: FSL-1.1-ALv2
 // Unit test for tools/lint-rls.ts — Phase 1 Plan 05.
 //
 // Boots a real Postgres 17 testcontainer, applies the canonical

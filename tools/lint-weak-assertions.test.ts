@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: FSL-1.1-ALv2
 // Phase 13 / Plan 01 / Task 03 — execFileSync-driven unit tests for
 // tools/lint-weak-assertions.ts. Pattern lifted from tools/lint-english.test.ts.
 import { execFileSync } from "node:child_process";
