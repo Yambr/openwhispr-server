@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: FSL-1.1-ALv2
 // Phase 2 / Plan 06 — Cross-cutting wire conventions.
 //
 // Asserts the global error envelope (D-13/WIRE-17), 401-not-200 on auth

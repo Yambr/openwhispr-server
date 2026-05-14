@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: FSL-1.1-ALv2
 // Phase 03 / Plan 04 / Task 2 — POST /api/transcribe contract test
 // (WIRE-05).
 //

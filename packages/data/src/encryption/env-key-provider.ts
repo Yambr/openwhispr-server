@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: FSL-1.1-ALv2
 // EnvKeyProvider — reads the master KEK from `MASTER_KEK` env, caches it
 // after the first call, and wraps/unwraps per-row DEKs under it via
 // AES-256-GCM. Phase 1 Plan 04 / D-11, D-12.

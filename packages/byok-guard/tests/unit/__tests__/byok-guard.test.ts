@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: FSL-1.1-ALv2
 // Phase 14 / Plan 04 / Task 1 — RED then GREEN.
 //
 // Unit tests for `assertBYOKConfig()`: the boot-time guard that refuses

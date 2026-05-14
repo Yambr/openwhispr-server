@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: FSL-1.1-ALv2
 // Phase 0 i18n loader stub. Reads the en/ru common.json files from disk so the
 // rest of the codebase can depend on a real loader signature; full i18next
 // wiring (CLDR plurals, Accept-Language negotiation) lands in Phase 7+.

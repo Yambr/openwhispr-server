@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: FSL-1.1-ALv2
 // TEST-MIGRATION-01 + DATA-01 + DATA-06 integration test.
 //
 // Spins up a real Postgres 17 container via @testcontainers/postgresql,

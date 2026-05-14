@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: FSL-1.1-ALv2
 // Phase 5 / Plan 01 — Tenant-scoped conversations. RLS in 0008_conversations_messages.sql.
 // content_search is a tsvector GENERATED column over (title), indexed with GIN.
 import { pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";

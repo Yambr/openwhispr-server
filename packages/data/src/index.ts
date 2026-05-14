@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: FSL-1.1-ALv2
 // @openwhispr/data — Phase 1 Wave 2 surface.
 //
 // Plan 03 lands schema + two-pool client factory + the first migration.

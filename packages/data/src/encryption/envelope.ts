@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: FSL-1.1-ALv2
 // KEK/DEK envelope encryption — Phase 1 Plan 04 / D-11.
 //
 // Why an envelope at all:

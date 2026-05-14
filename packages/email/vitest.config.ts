@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: FSL-1.1-ALv2
 // Phase 13 / Plan 01 / Task 04 — per-package 90/90/90/90 coverage floor on
 // the shared email-sending library. Mirrors packages/litellm-client/vitest.config.ts.
 //

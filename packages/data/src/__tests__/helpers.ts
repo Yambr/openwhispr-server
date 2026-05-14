@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: FSL-1.1-ALv2
 // Shared testcontainers helpers for the Plan 03 data-layer suite.
 //
 // All three integration tests (migration-rollback, usage-ledger, audit-log)

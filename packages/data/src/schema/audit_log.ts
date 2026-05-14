@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: FSL-1.1-ALv2
 // Tenant-scoped audit log. RLS attaches in 0000_initial.sql; the table
 // is converted to a monthly RANGE-partitioned parent in migration
 // 0014_audit_log_partition.sql (Phase 6 / Plan 02, DATA-04 D-A2).

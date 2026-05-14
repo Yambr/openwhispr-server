@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: FSL-1.1-ALv2
 // Phase 3 / Plan 02 / Task 4 (HIGH-3 fix) — per-package coverage floor.
 // See apps/api/vitest.config.ts for the architectural rationale.
 //

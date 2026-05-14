@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: FSL-1.1-ALv2
 // DATA-03 — usage_ledger idempotency on request_id.
 //
 // Inserts a ledger row, then re-inserts the same request_id; the second

@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: FSL-1.1-ALv2
 // Aggregate schema export. The TENANT_SCOPED_TABLES literal is the
 // auto-discovery hook used by the Plan 05 RLS lint and the Plan 04
 // PgBouncer-interleave property test — adding a new tenant-scoped table

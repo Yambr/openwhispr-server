@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: FSL-1.1-ALv2
 // KEK/DEK envelope-encryption tests — Phase 1 Plan 04 / D-11, D-12.
 //
 // What we're proving:
@@ -94,8 +94,8 @@ describe("envelope encryption — Phase 1 Plan 04", () => {
   });
 
   it("encryptValue runtime-guards against non-Buffer plaintext", async () => {
-    await expect(
-      encryptValue(provider, "raw-string" as any),
-    ).rejects.toThrow(/plaintext must be a Buffer/);
+    await expect(encryptValue(provider, "raw-string" as any)).rejects.toThrow(
+      /plaintext must be a Buffer/,
+    );
   });
 });

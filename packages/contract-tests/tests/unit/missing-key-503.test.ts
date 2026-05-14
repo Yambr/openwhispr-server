@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: FSL-1.1-ALv2
 // Phase 03 / Plan 10 / Task 1 — Pitfall #8: missing provider key → 503 (NOT 401).
 //
 // Pitfall #8 (recorded in 03-CONTEXT.md): a misconfigured provider key

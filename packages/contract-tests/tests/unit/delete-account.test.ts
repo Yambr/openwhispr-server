@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: FSL-1.1-ALv2
 // Phase 2 / Plan 06 — DELETE /api/auth/delete-account contract test
 // (WIRE-03 / D-11).
 //

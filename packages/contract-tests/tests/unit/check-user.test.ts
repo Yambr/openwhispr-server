@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: FSL-1.1-ALv2
 // Phase 2 / Plan 06 — POST /api/check-user contract test (WIRE-01).
 //
 // Asserts the response shape (CheckUserResponse from the shared schema

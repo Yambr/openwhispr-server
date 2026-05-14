@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: FSL-1.1-ALv2
 // Phase 04 / Plan 08 / Task 1e — POST /api/openai-realtime-token contract
 // test (CONTRACT-01 extension for WIRE-15, OpenAI Realtime ephemeral
 // client_secret mint).

@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: FSL-1.1-ALv2
 // Phase 05 / Plan 09 / Task 3 — WIRE-27 contract conformance tests for
 // /api/v1/keys/* (3 routes: list, create, revoke).
 //

@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: FSL-1.1-ALv2
 // Phase 2 / Plan 06 — OAuth multi-channel scheme matrix (D-18 / AUTH-02).
 //
 // Loops 4 schemes through the full OAuth flow and asserts the FINAL

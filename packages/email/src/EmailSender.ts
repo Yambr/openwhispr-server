@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: FSL-1.1-ALv2
 // Phase 13 / Plan 01 / Task 04 — Shared, Fastify-decoupled email-sending
 // library. Extracted from apps/api/src/email.ts and hardened with:
 //   * Structural `Logger` interface (no @fastify/* coupling — works with

@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: FSL-1.1-ALv2
 // Phase 03 / Plan 10 / Task 1 — PROVIDER-01 single-endpoint abstraction.
 //
 // Asserts the api process resolves a single source of truth for

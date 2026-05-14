@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: FSL-1.1-ALv2
 // Phase 2 / Plan 06 — AUTH-04 token rotation overlap (D-19).
 //
 // Validates the ≥5 min overlap window: after a forced rotation the OLD

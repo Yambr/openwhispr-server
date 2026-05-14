@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: FSL-1.1-ALv2
 // Phase 2 / Plan 06 — D-20 / AUTH-07 split-host cookie reach test.
 //
 // Validates that when AUTH_URL ≠ OPENWHISPR_API_URL but they share an

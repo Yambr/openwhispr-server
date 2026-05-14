@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: FSL-1.1-ALv2
 // Phase 14 / Plan 04 / Task 1 — Vendored copy of apps/api/src/lib/redact-url.ts
 // (Phase 13 HI-02 helper). Vendored rather than imported to keep
 // `packages/byok-guard/` self-contained — the package is consumed by BOTH

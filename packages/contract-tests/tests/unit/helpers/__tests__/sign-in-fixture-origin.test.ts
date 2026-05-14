@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: FSL-1.1-ALv2
 // Phase 02.10 — TDD-01b RED test for Group A defect.
 //
 // Source-of-record commit: bde77b4 (Phase 02.10 CONTEXT — locks D-01: forward

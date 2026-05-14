@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: FSL-1.1-ALv2
 // Phase 2 / Plan 05 / Task 3 — token-rotation overlap integration test.
 // Phase 02.12 — migrated to plain-text storage (sessions.previous_token).
 //

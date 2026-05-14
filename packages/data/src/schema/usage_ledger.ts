@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: FSL-1.1-ALv2
 // Tenant-scoped usage ledger. RLS attaches in 0000_initial.sql.
 // `request_id` is GLOBALLY UNIQUE (idempotency key per DATA-03). Re-posting
 // the same request_id surfaces a unique-violation error rather than a

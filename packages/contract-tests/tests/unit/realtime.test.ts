@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: FSL-1.1-ALv2
 // Phase 03 / Plan 07 / Task 2 — WSS /v1/realtime contract test
 // (LITELLM-03, D-04).
 //
