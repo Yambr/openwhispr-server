@@ -1,5 +1,32 @@
 OpenWhispr Server
-Copyright 2026 Nick Iambroskin and contributors
+Copyright 2026 Nick Iambroskin and OpenWhispr Server contributors
 
-This product includes software developed at OpenWhispr (https://github.com/openwhispr/openwhispr-server).
+This product includes software developed at OpenWhispr
+(https://github.com/openwhispr/openwhispr-server).
 
+Effective 2026-05-15, OpenWhispr Server is licensed under the Functional
+Source License, Version 1.1, ALv2 Future License (FSL-1.1-ALv2). The full
+license text is provided in the root LICENSE file. The license includes
+an explicit grant of future re-licensing to the Apache License, Version
+2.0, which becomes effective on the second anniversary of each release
+date of the Software.
+
+Prior to 2026-05-15, OpenWhispr Server was distributed under the Apache
+License, Version 2.0. The last Apache-2.0 HEAD is preserved as the
+annotated git tag `pre-fsl-relicense-2026-05-15`. See ADR-0013
+(docs/adrs/0013-fsl-relicense.md) for the rationale and recovery runbook.
+
+Patent grant: As provided in the LICENSE "Patents" clause, the Licensor
+grants a patent license covering claims that would necessarily be
+infringed by your use of the Software for a Permitted Purpose. The patent
+license terminates if you initiate patent litigation alleging that the
+Software infringes patent rights.
+
+Third-party attributions:
+
+This product bundles or depends upon software produced by third parties
+whose own license notices accompany those works in the dependency graph.
+Their notices are preserved in the source distributions of those works
+(`pnpm-lock.yaml`, container image SBOMs, and per-image NOTICE files) and
+are required to be carried forward in any redistribution of derivative
+works per the Redistribution clause of FSL-1.1-ALv2.
