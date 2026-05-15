@@ -21,3 +21,14 @@ tests
 *.log
 coverage
 .nyc_output
+
+# TLS-05 / Phase 17 — dev-CA isolation (PITFALLS §13)
+**/rootCA*.pem
+**/root-ca.*
+**/*mkcert*
+**/*.localhost.pem
+**/*.localhost.key
+**/local.crt
+**/local.key
+compose/traefik/certs/
+.certs/
