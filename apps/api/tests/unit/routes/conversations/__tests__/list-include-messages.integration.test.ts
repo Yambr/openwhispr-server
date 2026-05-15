@@ -13,30 +13,34 @@
 import type { FastifyInstance } from "fastify";
 import type { Pool } from "pg";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
-import {
-  bootMigratedPostgres,
-  buildTestApp,
-  seedUser,
-} from "../../../../../src/routes/conversations/__tests__/setup.js";
+import { buildTestApp } from "../../../../../src/routes/conversations/__tests__/setup.js";
+import { getSharedRoutePool } from "../../../../support/shared-route-pool.js";
+
+// Phase 18.1.2 / Plan 05 / Cluster #2 sub-cluster 2a — shared-pg migration
+// (Option A canon — see crud.integration.test.ts header for the full
+// rationale). HARD RULE: production-tree setup.ts left untouched;
+// `buildTestApp` still imported from there.
 
 const TENANT_A = "00000000-0000-0000-0000-000000000000";
 
 let pool: Pool;
-let shutdown: () => Promise<void>;
 let userA: string;
 let appA: FastifyInstance;
 
 beforeAll(async () => {
-  const booted = await bootMigratedPostgres();
-  pool = booted.pool;
-  shutdown = booted.shutdown.bind(booted);
-  userA = await seedUser(pool, { tenantId: TENANT_A, email: "list-inc@test" });
+  pool = await getSharedRoutePool();
+  const ra = await pool.query<{ id: string }>(
+    `INSERT INTO users (tenant_id, email) VALUES ($1, $2)
+       ON CONFLICT (tenant_id, (lower(email))) DO UPDATE SET email = EXCLUDED.email
+       RETURNING id`,
+    [TENANT_A, "list-inc@test"],
+  );
+  userA = ra.rows[0]!.id;
   appA = await buildTestApp({ pool, userId: userA, tenantId: TENANT_A });
 }, 180_000);
 
 afterAll(async () => {
   if (appA) await appA.close();
-  if (shutdown) await shutdown();
 }, 60_000);
 
 beforeEach(async () => {
