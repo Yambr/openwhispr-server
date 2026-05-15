@@ -911,6 +911,23 @@ Plans:
 **Plans**: 3-5 plans (TBC at /gsd-discuss-phase 19).
 **Open question**: SR-19.1 production migration strategy — Option (i) strip `public.` prefixes from 18 migrations + re-stamp `_journal.json` hashes OR Option (ii) introduce `OPENWHISPR_DB_SCHEMA` env knob. Multi-tenant + RLS implications differ. Advisor decides.
 
+### Phase 19.1: reset-mail wiring (sendResetPassword)
+**Goal**: Flip `@cjm-3.1` (password-reset) from `@expected-red @after-phase-19.1` to GREEN. Wire Better Auth `sendResetPassword` lifecycle hook to enqueue a `password_reset` email through the existing worker email pipeline. Adds the missing downstream code for the first of 4 repointed `@cjm` tags from Phase 18.1-05.
+**Depends on**: Phase 13 (E2E CJM harness), Phase 19 (BYOK + Fastify types green for clean integration baseline).
+**Requirements**:
+  - SR-19.1.1: `apps/api/src/auth.ts` Better Auth config registers `emailAndPassword.sendResetPassword({ user, url, token }, request)` lifecycle hook that calls the email enqueue path.
+  - SR-19.1.2: `packages/email/src/templates/password-reset.ts` (NEW) — i18n-aware template (en+ru parity per D-43 Phase 14) with subject + body + CTA URL.
+  - SR-19.1.3: Worker BullMQ job processes `password_reset` jobs and dispatches via `EmailSender` (existing).
+  - SR-19.1.4: `tests/e2e-cjm/features/password-reset.feature` `@cjm-3.1` scenario flips from `@expected-red` to GREEN: signup → request reset → mailpit shows email with reset URL → POST `/api/auth/reset-password` with token → sign-in with new password succeeds.
+  - SR-19.1.5: Step definitions in `tests/e2e-cjm/steps/password-reset.steps.ts` cover the full round-trip (already real per Phase 18.1-A3, may need extension).
+**Success Criteria**:
+  1. `@cjm-3.1` scenario GREEN against full compose stack (api + worker + mailpit + valkey).
+  2. en+ru i18n parity for template subject + body in SAME atomic commit.
+  3. `pnpm test` per-package GREEN; no new failures introduced.
+  4. `docs/customer-journeys.md` `@cjm-3.1` row updated (remove `@expected-red` annotation).
+**Plans**: 2-3 plans (TBC at /gsd-discuss-phase 19.1).
+**Open question**: Email template format — plain text + HTML, or HTML-only? React-email or hand-rolled? Advisor decides per existing `packages/email/src/EmailSender.ts` conventions.
+
 ## Progress Table
 
 | Phase | Plans Complete | Status | Completed |
