@@ -25,7 +25,7 @@ import { Writable } from "node:stream";
 import pino from "pino";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import * as guard from "../../../src/index.js";
-import { assertBYOKConfig, type BYOKFatalRecord } from "../../../src/index.js";
+import { assertBYOKConfig, type BYOKFatalRecord, BYOKGuardError } from "../../../src/index.js";
 
 /**
  * NDJSON line collector — pino writes one JSON record per line to a
@@ -69,62 +69,58 @@ function happyEnv(): NodeJS.ProcessEnv {
   } as NodeJS.ProcessEnv;
 }
 
-describe("assertBYOKConfig (Phase 14 / Plan 04 / Task 1)", () => {
-  let exitSpy: ReturnType<typeof vi.spyOn>;
-
-  beforeEach(() => {
-    // process.exit is mocked to throw a marker so the function under
-    // test halts the same way it would in production (subsequent
-    // statements never run) without killing the test runner.
-    exitSpy = vi.spyOn(process, "exit").mockImplementation(((code?: number) => {
-      throw new Error(`__byok_exit_${code}__`);
-    }) as never);
-  });
-
+describe("assertBYOKConfig (Phase 14 / Plan 04 / Task 1; Phase 19 / Plan 02 throw-not-exit contract)", () => {
   afterEach(() => {
-    exitSpy.mockRestore();
     vi.restoreAllMocks();
   });
 
   /**
+   * Phase 19 / Plan 02 — `assertBYOKConfig` now THROWS `BYOKGuardError`
+   * instead of `process.exit(1)` (SR-19.3, D-09). The library logs the
+   * fatal record then throws; entrypoints catch + log + exit.
+   *
    * Capture the fatal record emitted by `assertBYOKConfig(env)`. Returns
-   * `null` when no fatal was emitted (happy path). Throws if the function
-   * exits without emitting any line OR if the captured line is not JSON.
+   * `null` when no fatal was emitted (happy path). `threwGuardError` is
+   * `true` iff the call threw a `BYOKGuardError` (the new contract).
    */
   function runWithCapture(env: NodeJS.ProcessEnv): {
     record: BYOKFatalRecord | null;
-    exitCode: number | null;
+    threwGuardError: boolean;
+    thrown: unknown;
     rawStderr: string;
   } {
     const { stream, lines, raw } = makeLineCollector();
     const logger = pino({ name: "boot", level: "fatal" }, stream);
-    let exitCode: number | null = null;
+    let threwGuardError = false;
+    let thrown: unknown;
     try {
       assertBYOKConfig(env, { logger });
     } catch (err) {
-      const msg = (err as Error).message;
-      const match = msg.match(/^__byok_exit_(\d+)__$/);
-      if (!match?.[1]) throw err; // not our marker — re-throw real errors
-      exitCode = Number.parseInt(match[1], 10);
+      thrown = err;
+      if (err instanceof BYOKGuardError) {
+        threwGuardError = true;
+      } else {
+        throw err; // surface unexpected errors
+      }
     }
     const record = lines.length > 0 ? (JSON.parse(lines[0] as string) as BYOKFatalRecord) : null;
-    return { record, exitCode, rawStderr: raw.join("") };
+    return { record, threwGuardError, thrown, rawStderr: raw.join("") };
   }
 
-  it("happy path — all BYOK envs set → returns void, no fatal, no exit", () => {
-    const { record, exitCode } = runWithCapture(happyEnv());
+  it("happy path — all BYOK envs set → returns void, no fatal, no throw", () => {
+    const { record, threwGuardError } = runWithCapture(happyEnv());
     expect(record).toBeNull();
-    expect(exitCode).toBeNull();
+    expect(threwGuardError).toBe(false);
   });
 
-  it("storage — S3_ENDPOINT unset → fatal BYOK_STORAGE_REQUIRED + exit 1", () => {
+  it("storage — S3_ENDPOINT unset → fatal BYOK_STORAGE_REQUIRED + throws BYOKGuardError", () => {
     const env = happyEnv();
     delete env.S3_ENDPOINT;
     delete env.S3_ACCESS_KEY;
     delete env.S3_SECRET_KEY;
     delete env.S3_BUCKET;
-    const { record, exitCode } = runWithCapture(env);
-    expect(exitCode).toBe(1);
+    const { record, threwGuardError } = runWithCapture(env);
+    expect(threwGuardError).toBe(true);
     expect(record).toMatchObject({
       event: "byok.required",
       code: "BYOK_STORAGE_REQUIRED",
@@ -139,8 +135,8 @@ describe("assertBYOKConfig (Phase 14 / Plan 04 / Task 1)", () => {
     delete env.S3_ACCESS_KEY;
     delete env.S3_SECRET_KEY;
     // S3_BUCKET stays set — assert subset behavior.
-    const { record, exitCode } = runWithCapture(env);
-    expect(exitCode).toBe(1);
+    const { record, threwGuardError } = runWithCapture(env);
+    expect(threwGuardError).toBe(true);
     expect(record?.code).toBe("BYOK_STORAGE_REQUIRED");
     expect(record?.missing).toEqual(["S3_ACCESS_KEY", "S3_SECRET_KEY"]);
   });
@@ -148,8 +144,8 @@ describe("assertBYOKConfig (Phase 14 / Plan 04 / Task 1)", () => {
   it("observability — OTEL_EXPORTER_OTLP_ENDPOINT unset → fatal BYOK_OBSERVABILITY_REQUIRED", () => {
     const env = happyEnv();
     delete env.OTEL_EXPORTER_OTLP_ENDPOINT;
-    const { record, exitCode } = runWithCapture(env);
-    expect(exitCode).toBe(1);
+    const { record, threwGuardError } = runWithCapture(env);
+    expect(threwGuardError).toBe(true);
     expect(record).toMatchObject({
       event: "byok.required",
       code: "BYOK_OBSERVABILITY_REQUIRED",
@@ -161,24 +157,24 @@ describe("assertBYOKConfig (Phase 14 / Plan 04 / Task 1)", () => {
   it("observability — `=disabled` sentinel → returns void (guard yields to otel-bootstrap)", () => {
     const env = happyEnv();
     env.OTEL_EXPORTER_OTLP_ENDPOINT = "disabled";
-    const { record, exitCode } = runWithCapture(env);
+    const { record, threwGuardError } = runWithCapture(env);
     expect(record).toBeNull();
-    expect(exitCode).toBeNull();
+    expect(threwGuardError).toBe(false);
   });
 
   it("observability — URL value → returns void", () => {
     const env = happyEnv();
     env.OTEL_EXPORTER_OTLP_ENDPOINT = "https://otel.corp.example.com:4317";
-    const { record, exitCode } = runWithCapture(env);
+    const { record, threwGuardError } = runWithCapture(env);
     expect(record).toBeNull();
-    expect(exitCode).toBeNull();
+    expect(threwGuardError).toBe(false);
   });
 
   it("ingress — INGRESS_BASE_URL unset → fatal BYOK_INGRESS_REQUIRED", () => {
     const env = happyEnv();
     delete env.INGRESS_BASE_URL;
-    const { record, exitCode } = runWithCapture(env);
-    expect(exitCode).toBe(1);
+    const { record, threwGuardError } = runWithCapture(env);
+    expect(threwGuardError).toBe(true);
     expect(record?.code).toBe("BYOK_INGRESS_REQUIRED");
     expect(record?.overlay).toBe("ingress");
     expect(record?.missing).toEqual(["INGRESS_BASE_URL"]);
@@ -187,8 +183,8 @@ describe("assertBYOKConfig (Phase 14 / Plan 04 / Task 1)", () => {
   it("pgbouncer — DATABASE_URL unset → fatal BYOK_DATABASE_REQUIRED", () => {
     const env = happyEnv();
     delete env.DATABASE_URL;
-    const { record, exitCode } = runWithCapture(env);
-    expect(exitCode).toBe(1);
+    const { record, threwGuardError } = runWithCapture(env);
+    expect(threwGuardError).toBe(true);
     expect(record?.code).toBe("BYOK_DATABASE_REQUIRED");
     expect(record?.overlay).toBe("pgbouncer");
     expect(record?.missing).toEqual(["DATABASE_URL"]);
@@ -197,8 +193,8 @@ describe("assertBYOKConfig (Phase 14 / Plan 04 / Task 1)", () => {
   it("dev-tools (SMTP) — NODE_ENV=production AND SMTP_HOST unset → fatal BYOK_SMTP_REQUIRED", () => {
     const env = happyEnv();
     delete env.SMTP_HOST;
-    const { record, exitCode } = runWithCapture(env);
-    expect(exitCode).toBe(1);
+    const { record, threwGuardError } = runWithCapture(env);
+    expect(threwGuardError).toBe(true);
     expect(record?.code).toBe("BYOK_SMTP_REQUIRED");
     expect(record?.overlay).toBe("dev-tools");
     expect(record?.missing).toContain("SMTP_HOST");
@@ -208,18 +204,18 @@ describe("assertBYOKConfig (Phase 14 / Plan 04 / Task 1)", () => {
     const env = happyEnv();
     env.NODE_ENV = "test";
     delete env.SMTP_HOST;
-    const { record, exitCode } = runWithCapture(env);
+    const { record, threwGuardError } = runWithCapture(env);
     expect(record).toBeNull();
-    expect(exitCode).toBeNull();
+    expect(threwGuardError).toBe(false);
   });
 
   it("dev-tools (SMTP) — NODE_ENV unset AND SMTP_HOST unset → returns void (NODE_ENV gate honored)", () => {
     const env = happyEnv();
     delete env.NODE_ENV;
     delete env.SMTP_HOST;
-    const { record, exitCode } = runWithCapture(env);
+    const { record, threwGuardError } = runWithCapture(env);
     expect(record).toBeNull();
-    expect(exitCode).toBeNull();
+    expect(threwGuardError).toBe(false);
   });
 
   it("first-violation-only — five overlays misconfigured → ONE fatal record with code BYOK_STORAGE_REQUIRED", () => {
@@ -227,14 +223,14 @@ describe("assertBYOKConfig (Phase 14 / Plan 04 / Task 1)", () => {
     const env: NodeJS.ProcessEnv = { NODE_ENV: "production" } as NodeJS.ProcessEnv;
     const { stream, lines } = makeLineCollector();
     const logger = pino({ name: "boot", level: "fatal" }, stream);
-    let exitCode: number | null = null;
+    let threwGuardError = false;
     try {
       assertBYOKConfig(env, { logger });
     } catch (err) {
-      const m = (err as Error).message.match(/^__byok_exit_(\d+)__$/);
-      if (m?.[1]) exitCode = Number.parseInt(m[1], 10);
+      if (err instanceof BYOKGuardError) threwGuardError = true;
+      else throw err;
     }
-    expect(exitCode).toBe(1);
+    expect(threwGuardError).toBe(true);
     expect(lines).toHaveLength(1);
     const record = JSON.parse(lines[0] as string) as BYOKFatalRecord;
     expect(record.code).toBe("BYOK_STORAGE_REQUIRED");
@@ -272,24 +268,14 @@ describe("assertBYOKConfig (Phase 14 / Plan 04 / Task 1)", () => {
     expect(() => guard.createBootLogger()).not.toThrow();
   });
 
-  it("default logger — assertBYOKConfig(env) works without opts.logger (constructs its own pino instance)", () => {
+  it("default logger — assertBYOKConfig(env) works without opts.logger (constructs its own pino instance) and throws BYOKGuardError", () => {
     const env = happyEnv();
     delete env.INGRESS_BASE_URL;
-    // We cannot directly capture stderr from the default logger here,
-    // but we CAN assert it does not throw a non-exit error and that
-    // process.exit(1) is still called.
-    let exitCode: number | null = null;
-    try {
-      assertBYOKConfig(env);
-    } catch (err) {
-      const m = (err as Error).message.match(/^__byok_exit_(\d+)__$/);
-      if (m?.[1]) exitCode = Number.parseInt(m[1], 10);
-    }
-    expect(exitCode).toBe(1);
+    expect(() => assertBYOKConfig(env)).toThrow(BYOKGuardError);
   });
 
-  it("default env — assertBYOKConfig() (zero args) falls back to process.env", () => {
-    // Save & nuke selected keys so the call exits.
+  it("default env — assertBYOKConfig() (zero args) falls back to process.env and throws BYOKGuardError", () => {
+    // Save & nuke selected keys so the call throws.
     const saved = process.env.INGRESS_BASE_URL;
     const savedNodeEnv = process.env.NODE_ENV;
     const savedS3 = process.env.S3_ENDPOINT;
@@ -302,12 +288,11 @@ describe("assertBYOKConfig (Phase 14 / Plan 04 / Task 1)", () => {
     process.env.DATABASE_URL = "postgres://x";
     process.env.NODE_ENV = "test";
     delete process.env.SMTP_HOST;
-    let exitCode: number | null = null;
+    let thrown: unknown;
     try {
       assertBYOKConfig();
     } catch (err) {
-      const m = (err as Error).message.match(/^__byok_exit_(\d+)__$/);
-      if (m?.[1]) exitCode = Number.parseInt(m[1], 10);
+      thrown = err;
     }
     // Restore.
     if (saved === undefined) delete process.env.INGRESS_BASE_URL;
@@ -322,6 +307,55 @@ describe("assertBYOKConfig (Phase 14 / Plan 04 / Task 1)", () => {
     else process.env.DATABASE_URL = savedDb;
     if (savedSmtp === undefined) delete process.env.SMTP_HOST;
     else process.env.SMTP_HOST = savedSmtp;
-    expect(exitCode).toBe(1);
+    expect(thrown).toBeInstanceOf(BYOKGuardError);
+  });
+
+  describe("BYOKGuardError thrown contract (Phase 19 / Plan 02; SR-19.3, D-09, D-11)", () => {
+    // D-11 mandates the lib throws BYOKGuardError; entrypoints catch + exit.
+    // These tests are the canonical witnesses for the new contract.
+    it("Test 1 — assertBYOKConfig({}) throws BYOKGuardError", () => {
+      expect(() =>
+        assertBYOKConfig({} as NodeJS.ProcessEnv, { logger: makeSilentLogger() }),
+      ).toThrow(BYOKGuardError);
+    });
+
+    it("Test 2 — thrown error carries the fatal record's `msg` string", () => {
+      let thrown: unknown;
+      try {
+        assertBYOKConfig({} as NodeJS.ProcessEnv, { logger: makeSilentLogger() });
+      } catch (err) {
+        thrown = err;
+      }
+      expect(thrown).toBeInstanceOf(BYOKGuardError);
+      // The current contract is that the thrown message matches the pino
+      // record's `msg` (the fixed "BYOK env missing for disabled overlay;
+      // refusing to start" string). Operators get the structured record
+      // via the pino fatal line; the error message is the same human
+      // signal for any `instanceof BYOKGuardError` catch handler.
+      expect((thrown as BYOKGuardError).message).toBe(
+        "BYOK env missing for disabled overlay; refusing to start",
+      );
+    });
+
+    it("Test 3 — valid env does not throw", () => {
+      expect(() => assertBYOKConfig(happyEnv(), { logger: makeSilentLogger() })).not.toThrow();
+    });
+
+    it("Test 4 — BYOKGuardError is a named Error subclass", () => {
+      expect(BYOKGuardError.prototype).toBeInstanceOf(Error);
+      expect(new BYOKGuardError("x").name).toBe("BYOKGuardError");
+      expect(new BYOKGuardError("x")).toBeInstanceOf(Error);
+      expect(new BYOKGuardError("x")).toBeInstanceOf(BYOKGuardError);
+    });
   });
 });
+
+/** Silent logger that swallows fatal records (used by BYOKGuardError contract tests). */
+function makeSilentLogger() {
+  const sink = new Writable({
+    write(_chunk, _enc, cb) {
+      cb();
+    },
+  });
+  return pino({ name: "boot", level: "fatal" }, sink);
+}
