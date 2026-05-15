@@ -1,24 +1,22 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
-// Phase 07.1 / Plan 07 + Phase 10 / Plan 02 — Public route group layout.
+// Public route group layout. AuthShell (Phase 18.1.1 / Plan 04, D-13/D-14)
+// owns the layout for U1 (/sign-in), U2 (/sign-up), U3 (/verify-email), and
+// U4 (/setup) — this wrapper drops the centered single-column shell so the
+// two-column AuthShell grid is not double-centered.
 //
-// Centred single-column shell used by U1 (/sign-in), U2 (/sign-up), and
-// U3 (/verify-email). No sidebar, no AppShell — public pages render
-// before authentication is established.
-//
-// Phase 10 / Plan 02 mounts `LanguageSwitcher` in the top-right corner so
-// unauthenticated visitors can pick a locale before signing in. The
-// component is a client island and reads the active locale from the
-// inherited `I18nProvider` context established in the root layout.
+// The Phase 10 LanguageSwitcher is preserved as an absolute-positioned
+// header element so it overlays the right (form) column on lg+ and the
+// fullscreen form on <lg.
 import type { ReactNode } from "react";
 import { LanguageSwitcher } from "@/components/screens/language-switcher";
 
 export default function PublicLayout({ children }: { children: ReactNode }): React.JSX.Element {
   return (
-    <main className="flex min-h-svh flex-col bg-background">
-      <header className="flex h-14 items-center justify-end gap-2 px-6">
+    <main className="relative min-h-svh bg-background">
+      <header className="absolute top-0 right-0 z-20 flex h-14 items-center justify-end gap-2 px-6">
         <LanguageSwitcher />
       </header>
-      <div className="flex flex-1 items-center justify-center p-6">{children}</div>
+      {children}
     </main>
   );
 }
