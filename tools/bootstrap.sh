@@ -356,16 +356,19 @@ authorityKeyIdentifier = keyid,issuer
 subjectKeyIdentifier = hash
 
 [alt_names]
+# Phase 17 / Plan 17-01 — PITFALLS §13: list each host EXPLICITLY (no wildcards).
+# Wildcard SAN entries (`*.localhost`, `*.example.test`) were dropped here to
+# match the mkcert path (`make tls-trust`) which also enumerates each host.
 DNS.1 = localhost
-DNS.2 = *.localhost
-DNS.3 = api.localhost
-DNS.4 = auth.localhost
-DNS.5 = grafana.localhost
-DNS.6 = minio-console.localhost
-DNS.7 = mailpit.localhost
-DNS.8 = api.example.test
-DNS.9 = auth.example.test
-DNS.10 = *.example.test
+DNS.2 = api.localhost
+DNS.3 = web.localhost
+DNS.4 = app.localhost
+DNS.5 = auth.localhost
+DNS.6 = grafana.localhost
+DNS.7 = minio-console.localhost
+DNS.8 = mailpit.localhost
+DNS.9 = api.example.test
+DNS.10 = auth.example.test
 IP.1 = 127.0.0.1
 IP.2 = ::1
 LEAF_EXT
