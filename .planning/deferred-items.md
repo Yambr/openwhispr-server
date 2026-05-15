@@ -139,6 +139,10 @@ default 5s timed out).
 - Owner: next operator picking up v2 close-out work.
 - Closes ROADMAP Phase 18.1 SC9 (re-confirm-deferred-with-justification path).
 
+### §14-04 CLOSED (2026-05-15, Phase 19 — SR-19.2 + SR-19.3)
+
+**Status:** CLOSED via Phase 19-01 (SR-19.2 fastify.d.ts, commit 626fa30) + Phase 19-02 (SR-19.3 BYOKGuardError throw/catch, commit 1488057). The decorator-invisibility class root cause is fixed; remaining symptom-catalog items (BullMQ Promise wrap, RequestInit.body strictness, etc.) belong to distinct subsystems and are tracked under their respective deferrals, not §14-04.
+
 ### §14-04 SR-19.2 root-cause closure (2026-05-15, Phase 19-01-02)
 
 - **SR-19.2 deliverable landed:** canonical `apps/api/src/types/fastify.d.ts`
@@ -265,19 +269,17 @@ Vitest 4.1.5 removed `poolOptions` AND `poolMatchGlobs` (node_modules/vitest/dis
 
 If port-exhaustion recurs after Plans 03-05 land, revisit via Vitest `projects` config (Option b).
 
-### Phase 18.1.2-03 W-2 HALT: per-schema isolation blocked by hardcoded "public." FK refs in migrations
+### Phase 18.1.2-03 W-2 / W-2-bis → SR-19.1 (FK strip) + SR-19.1b (test-infra design) — Phase 19-03 update
 
-Production migration SQL at `packages/data/migrations/0000_*.sql` hardcodes `REFERENCES "public"."tenants"` and similar FK constraints. Test infrastructure attempting search_path-per-schema isolation (W-2 canonical pattern from Plan 03-01) FAILS because `search_path` doesn't redirect explicit `public.` prefixes in production migration SQL.
+**Status:** Partial closure 2026-05-15 via Phase 19-03 Plan 03 commit `d45291d` (SR-19.1 Option a). The 8 hardcoded `REFERENCES "public"."<table>"` sites in `packages/data/migrations/0000_initial.sql` + `0014_audit_log_partition.sql` + `0014_audit_log_partition.down.sql` are stripped. 3 partman registry literals (`'public.audit_log'` in partman API calls + part_config) intentionally exempt (NOT FK refs).
 
-**Constraint per CLAUDE.md hard rule #1:** Do NOT edit migration SQL to enable test isolation. Production code is canonical.
+**Carry → SR-19.1b (open):** Per-file `search_path` test-isolation infrastructure design is still required. `apps/api/tests/support/shared-pg.ts` was BORN at commit `15c24c9` with the shared-public + TRUNCATE pattern; no prior per-file state exists for atomic revert. Mild D-20 violation acknowledged. Suggested design (deferred to v3 or dedicated test-infra-hardening phase): `acquireSchema(testId)` API + per-schema `migrationsSchema=_meta_test_<id>` + partman-aware helper. Estimated scope: ~4-6h. Touches ~17 integration test files + `shared-pg.ts` + a new partman test helper. Tracked as SERVER-ERRORS.md Entry 6.
 
-**Pragmatic test pattern adopted by Plan 18.1.2-03 (Option A):**
-- Both `usage.integration.test.ts` + `streaming-usage.integration.test.ts` share `public` schema via `getSharedPostgres()`
-- Drizzle `_meta.__drizzle_migrations` detects already-applied migrations → second test file's `migrate()` is a no-op
-- Per-file logical isolation via existing `TRUNCATE` in `beforeEach` + unique user emails
-- Cross-file leakage minimal (each test inserts its own users + truncates only the ledger table it touches)
-
-**Real fix (future phase):** Make production migrations schema-aware (strip explicit `public.` prefixes from FK refs OR introduce a SCHEMA env knob that migrations honor). Requires user decision + dedicated phase — out of 18.1.2 scope.
+**Current pattern (GREEN, in place since Phase 18.1.2-03):**
+- Shared `public` schema via `getSharedPostgres()` (shared-pg.ts)
+- Drizzle `_meta.__drizzle_migrations` no-ops repeated migrate() calls
+- Per-file `TRUNCATE` in `beforeEach` + unique user emails for logical isolation
+- 25/25 integration tests + 479/479 route tests stay GREEN post-SR-19.1 strip
 
 ### Phase 18.1.2-03 retry #3 W-2-bis HALT: shared-pg.ts uses `postgres:17-alpine` (no pg_partman)
 
