@@ -493,7 +493,7 @@ Wave structure:
 
 ### Trusted local TLS + production ACME (Phase 17)
 
-- [ ] **TLS-01**: `make tls-trust` Makefile target wraps `mkcert -install` + cert generation for explicit host list (`api.localhost`, `web.localhost`, `app.localhost`, `grafana.localhost`, `mailpit.localhost`) — NOT `*.localhost` wildcard
+- [ ] **TLS-01**: `make tls-trust` Makefile target wraps `mkcert -install` + cert generation for the canonical 10-host explicit list (`localhost`, `api.localhost`, `web.localhost`, `app.localhost`, `auth.localhost`, `grafana.localhost`, `minio-console.localhost`, `mailpit.localhost`, `api.example.test`, `auth.example.test`, plus IPs `127.0.0.1` + `::1`) — NOT `*.localhost` wildcard. Host list must match `tools/bootstrap.sh:362-371` byte-for-byte so the mkcert and openssl paths produce SAN-equivalent certs (WR-02 review fix, 2026-05-15).
 - [ ] **TLS-02**: Traefik dev profile (`compose/traefik/dynamic.dev.yml`) serves mkcert certs from `compose/traefik/certs/`; production profile (`dynamic.prod.yml`) uses ACME
 - [ ] **TLS-03**: `--with-ingress` compose profile auto-wires Let's Encrypt ACME; cert-manager Helm sub-chart (`cert-manager 1.16+`) gated by `ingress.enabled` on K8s
 - [ ] **TLS-04**: README quickstart includes `make tls-trust` step 2 (after `cp .env.example .env`); browser does not warn on first run

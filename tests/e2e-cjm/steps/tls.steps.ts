@@ -38,7 +38,7 @@ Then("the response is 200 with no TLS warning", async () => {
   throw new Error("requires live stack; @after-docker-up — stays @expected-red");
 });
 
-Then("the served leaf cert SAN list contains exactly the 5 explicit hosts", async () => {
+Then("the served leaf cert SAN list contains exactly the 10 canonical hosts", async () => {
   throw new Error("requires live cert + openssl; @after-docker-up — stays @expected-red");
 });
 
