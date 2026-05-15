@@ -27,7 +27,7 @@ vi.mock("node:child_process", () => ({
 import { __resetForTests, assertDockerAvailable } from "../testcontainer-availability";
 
 describe("tools/testcontainer-availability.ts", () => {
-  let warnSpy: ReturnType<typeof vi.spyOn>;
+  let stderrSpy: ReturnType<typeof vi.spyOn>;
   let priorEnv: string | undefined;
 
   beforeEach(() => {
@@ -35,11 +35,11 @@ describe("tools/testcontainer-availability.ts", () => {
     __resetForTests();
     priorEnv = process.env.OPENWHISPR_SKIP_TESTCONTAINERS;
     delete process.env.OPENWHISPR_SKIP_TESTCONTAINERS;
-    warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    stderrSpy = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
   });
 
   afterEach(() => {
-    warnSpy.mockRestore();
+    stderrSpy.mockRestore();
     if (priorEnv === undefined) delete process.env.OPENWHISPR_SKIP_TESTCONTAINERS;
     else process.env.OPENWHISPR_SKIP_TESTCONTAINERS = priorEnv;
   });
@@ -49,7 +49,7 @@ describe("tools/testcontainer-availability.ts", () => {
     const result = assertDockerAvailable();
     expect(result).toBe(true);
     expect(process.env.OPENWHISPR_SKIP_TESTCONTAINERS).toBeUndefined();
-    expect(warnSpy).not.toHaveBeenCalled();
+    expect(stderrSpy).not.toHaveBeenCalled();
     expect(execFileSyncMock).toHaveBeenCalledTimes(1);
     const [bin, argv, opts] = execFileSyncMock.mock.calls[0];
     expect(bin).toBe("docker");
@@ -67,9 +67,9 @@ describe("tools/testcontainer-availability.ts", () => {
     }).not.toThrow();
     expect(result).toBe(false);
     expect(process.env.OPENWHISPR_SKIP_TESTCONTAINERS).toBe("1");
-    expect(warnSpy).toHaveBeenCalledTimes(1);
+    expect(stderrSpy).toHaveBeenCalledTimes(1);
     // Structured: single-line JSON-shaped payload with event + reason.
-    const [payload] = warnSpy.mock.calls[0] as [string];
+    const [payload] = stderrSpy.mock.calls[0] as [string];
     expect(payload).toContain("docker.unavailable");
     expect(payload).toContain("ENOENT");
   });
@@ -86,7 +86,24 @@ describe("tools/testcontainer-availability.ts", () => {
     }).not.toThrow();
     expect(result).toBe(false);
     expect(process.env.OPENWHISPR_SKIP_TESTCONTAINERS).toBe("1");
-    expect(warnSpy).toHaveBeenCalledTimes(1);
+    expect(stderrSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it("(c2) non-Error throw value → String() fallback in structured reason; no rethrow", () => {
+    execFileSyncMock.mockImplementation(() => {
+      // eslint-disable-next-line @typescript-eslint/no-throw-literal
+      throw "docker daemon panic"; // string, not Error
+    });
+    let result: boolean | undefined;
+    expect(() => {
+      result = assertDockerAvailable();
+    }).not.toThrow();
+    expect(result).toBe(false);
+    expect(process.env.OPENWHISPR_SKIP_TESTCONTAINERS).toBe("1");
+    expect(stderrSpy).toHaveBeenCalledTimes(1);
+    const [payload] = stderrSpy.mock.calls[0] as [string];
+    expect(payload).toContain("docker.unavailable");
+    expect(payload).toContain("docker daemon panic");
   });
 
   it("(d) idempotent — two consecutive daemon-down calls warn exactly once", () => {
@@ -95,7 +112,7 @@ describe("tools/testcontainer-availability.ts", () => {
     });
     assertDockerAvailable();
     assertDockerAvailable();
-    expect(warnSpy).toHaveBeenCalledTimes(1);
+    expect(stderrSpy).toHaveBeenCalledTimes(1);
     expect(process.env.OPENWHISPR_SKIP_TESTCONTAINERS).toBe("1");
   });
 });
