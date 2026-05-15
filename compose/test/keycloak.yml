@@ -1,0 +1,42 @@
+# SPDX-License-Identifier: FSL-1.1-ALv2
+# Phase 18 / Plan 01 / Wave 4 — Keycloak 26 fixture stub.
+#
+# Opt-in via `--profile sso`. The realm-import directory
+# ./compose/test/keycloak/ is intentionally EMPTY in v2 — scenario
+# @cjm-sso-1.6 (loud-fail on missing realm) depends on that emptiness
+# in v3. Phase 19 ships realm-openwhispr-test.json + scripts/seed-keycloak-realm.sh.
+#
+# Usage (Phase 19 reference):
+#   docker compose -f docker-compose.yml \
+#                  -f compose/test/keycloak.yml \
+#                  --profile sso up -d
+
+services:
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.0
+    profiles: ["sso"]
+    environment:
+      KC_BOOTSTRAP_ADMIN_USERNAME: admin
+      KC_BOOTSTRAP_ADMIN_PASSWORD: admin
+      KC_HEALTH_ENABLED: "true"
+      KC_HTTP_ENABLED: "true"
+      KC_HOSTNAME_STRICT: "false"
+    command: ["start-dev", "--import-realm"]
+    ports:
+      - "8089:8080"
+      - "9000:9000"
+    volumes:
+      - ./compose/test/keycloak/:/opt/keycloak/data/import:ro
+    healthcheck:
+      test: ["CMD-SHELL", "exec 3<>/dev/tcp/127.0.0.1/9000 && printf 'GET /health/ready HTTP/1.0\\r\\n\\r\\n' >&3 && grep -q '200 OK' <&3"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+      start_period: 5s
+    container_name: e2e-cjm-keycloak
+    networks:
+      - openwhispr_internal
+
+networks:
+  openwhispr_internal:
+    external: true
