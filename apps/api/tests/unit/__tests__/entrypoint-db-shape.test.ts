@@ -58,18 +58,15 @@ vi.mock("@openwhispr/data/client", () => ({
   makeAppDb: () => ({ db: fakeDrizzle, pool: fakePool }),
 }));
 
-// Phase 18.1.2-04-01 — `@openwhispr/byok-guard` is mocked to a no-op so the
-// entrypoint's `assertBYOKConfig()` call at apps/api/src/index.ts:56 does
-// not trip vitest's `process.exit` trap (the guard calls `process.exit(1)`
-// when BYOK envs are missing — see SERVER-ERRORS.md Entry 4). This is a
-// pure test-side mock; production behavior is unchanged. CLAUDE.md hard
-// rule §Conventions #1 ("NEVER edit production server code to make tests
-// pass") forbids refactoring the guard to throw-not-exit — we mock at the
-// module boundary instead. Δ-3 closure: this is what unblocks the 2
-// entrypoint-db-shape failures cascaded from D-07.
-vi.mock("@openwhispr/byok-guard", () => ({
-  assertBYOKConfig: () => undefined,
-}));
+// Phase 19 / Plan 02 (SR-19.3, D-12): the Phase 18.1.2-04-01
+// `vi.mock("@openwhispr/byok-guard", ...)` workaround has been REMOVED.
+// The library now THROWS `BYOKGuardError` (no more `process.exit(1)`),
+// so vitest's `process.exit` trap is no longer tripped at module-eval
+// time. The entrypoint's own try/catch handles BYOKGuardError; under
+// `beforeAll` we set the BYOK envs (S3_*, OTEL_*, INGRESS_BASE_URL,
+// DATABASE_URL, SMTP_HOST, NODE_ENV=test) so the guard returns void
+// and the entrypoint's `await buildApp(...)` chain reaches the
+// captured buildAuth call site.
 
 vi.mock("../../../src/auth.js", () => ({
   buildAuth: (opts: { db?: unknown }) => {
@@ -163,6 +160,15 @@ beforeAll(() => {
   process.env.BETTER_AUTH_SECRET = "test-secret-32-chars-long-xxxxxxxxx";
   process.env.DATABASE_URL = "postgres://test/test";
   process.env.PORT = "0";
+  // Phase 19 / Plan 02 (D-12): BYOK envs set in-test (real semantics,
+  // not a re-mock). NODE_ENV=test skips the dev-tools/SMTP gate.
+  process.env.NODE_ENV = "test";
+  process.env.S3_ENDPOINT = "https://s3.test.example.com";
+  process.env.S3_ACCESS_KEY = "AKIATEST";
+  process.env.S3_SECRET_KEY = "test-secret";
+  process.env.S3_BUCKET = "openwhispr-test";
+  process.env.OTEL_EXPORTER_OTLP_ENDPOINT = "http://otel-test.invalid:4317";
+  process.env.INGRESS_BASE_URL = "https://api.test.example.com";
   process.argv[1] = indexPath;
 });
 

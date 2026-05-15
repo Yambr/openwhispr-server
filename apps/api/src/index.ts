@@ -51,9 +51,26 @@
 // installGlobalSSRF() to avoid wasted setup on a process about to
 // exit 1. The guard is a pure-function call that returns void on a
 // satisfied env contract — happy path adds zero overhead.
-import { assertBYOKConfig } from "@openwhispr/byok-guard";
+//
+// Phase 19 / Plan 02 (SR-19.3, D-09 + D-10): the library now THROWS
+// `BYOKGuardError`; this entrypoint catches it, logs via a synchronous
+// pino, and exits. The library's own pino.fatal record has already
+// flushed to stderr by the time we re-enter the catch — the
+// `process.boot` log here is supplementary context (cause-chain pino
+// `{ err }`). Any non-BYOKGuardError is re-thrown.
+import { assertBYOKConfig, BYOKGuardError } from "@openwhispr/byok-guard";
+import pino from "pino";
 
-assertBYOKConfig();
+try {
+  assertBYOKConfig();
+} catch (err) {
+  if (err instanceof BYOKGuardError) {
+    const bootLog = pino({ name: "api-boot" }, pino.destination({ sync: true, dest: 2 }));
+    bootLog.fatal({ err }, "BYOK guard refused boot");
+    process.exit(1);
+  }
+  throw err;
+}
 
 // Phase 6 / Plan 03 / Task 1 (D-T3 load order) — OTel SDK must start
 // BEFORE any other import resolves so `@opentelemetry/instrumentation-pino`

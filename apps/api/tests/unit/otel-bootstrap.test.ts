@@ -58,7 +58,7 @@ describe("otel-bootstrap (Phase 6 / Plan 03 / Task 1)", () => {
     expect(mod.disabledInstrumentations).toContain("@opentelemetry/instrumentation-dns");
   });
 
-  it("apps/api/src/index.ts imports ./otel-bootstrap.js immediately after the BYOK guard (Phase 14 / Plan 04 supersedes the original D-T3 first-line rule)", () => {
+  it("apps/api/src/index.ts imports ./otel-bootstrap.js immediately after the BYOK guard (Phase 14 / Plan 04 supersedes the original D-T3 first-line rule; Phase 19 / Plan 02 wraps the guard call in try/catch)", () => {
     // Original D-T3 rule: ./otel-bootstrap.js MUST be the very first
     // executable statement so PinoInstrumentation patches pino before
     // any pino import resolves.
@@ -66,42 +66,36 @@ describe("otel-bootstrap (Phase 6 / Plan 03 / Task 1)", () => {
     // Phase 14 / Plan 04 amends this rule: the BYOK boot-guard MUST
     // run BEFORE otel-bootstrap so a misconfigured OTLP endpoint does
     // not produce cascading dial noise before the fatal record
-    // reaches stderr. The guard is a pure synchronous call that does
-    // NOT import pino (it uses pino itself, but transitively — pino
-    // is imported from @openwhispr/byok-guard, which is loaded
-    // BEFORE this file's pino is touched, and the SDK then patches
-    // the singleton on the next pino import).
+    // reaches stderr.
     //
-    // The spirit of D-T3 (no business-logic imports between the OTel
-    // SDK start and any pino consumer) is preserved: between the
-    // guard import and ./otel-bootstrap.js there are ONLY the two
-    // guard statements (import + call) — no other resolutions.
+    // Phase 19 / Plan 02 (SR-19.3, D-09 + D-10) further amends: the
+    // guard library now THROWS `BYOKGuardError` (process.exit moved
+    // out of the library to the entrypoint). The entrypoint wraps the
+    // guard call in try/catch and calls `process.exit(1)` on
+    // BYOKGuardError. The boot-pino used in the catch block is
+    // synchronous (sync:true destination) — flush-before-exit
+    // discipline preserved. The import-order invariant is unchanged:
+    // the byok-guard import + its try/catch wrapper must precede the
+    // ./otel-bootstrap.js side-effect import.
     const indexPath = path.join(__dirname, "..", "..", "src", "index.ts");
     if (!fs.existsSync(indexPath)) throw new Error(`source-contract path moved: ${indexPath}`);
     const src = fs.readFileSync(indexPath, "utf8");
-    const lines = src.split(/\r?\n/);
-    const codeLines: string[] = [];
-    let inBlockComment = false;
-    for (const raw of lines) {
-      const line = raw.trim();
-      if (!line) continue;
-      if (inBlockComment) {
-        if (line.includes("*/")) inBlockComment = false;
-        continue;
-      }
-      if (line.startsWith("/*")) {
-        if (!line.includes("*/")) inBlockComment = true;
-        continue;
-      }
-      if (line.startsWith("//")) continue;
-      codeLines.push(line);
-      if (codeLines.length >= 3) break;
-    }
-    expect(codeLines[0]).toMatch(
-      /^import\s+\{\s*assertBYOKConfig\s*\}\s+from\s+["']@openwhispr\/byok-guard["'];?$/,
+    // Assert byok-guard import precedes the otel-bootstrap import.
+    const byokImportIdx = src.indexOf(
+      'import { assertBYOKConfig, BYOKGuardError } from "@openwhispr/byok-guard"',
     );
-    expect(codeLines[1]).toMatch(/^assertBYOKConfig\(\);?$/);
-    expect(codeLines[2]).toMatch(/^import\s+["']\.\/otel-bootstrap\.js["'];?$/);
+    const otelImportIdx = src.indexOf('import "./otel-bootstrap.js"');
+    expect(byokImportIdx).toBeGreaterThan(-1);
+    expect(otelImportIdx).toBeGreaterThan(-1);
+    expect(byokImportIdx).toBeLessThan(otelImportIdx);
+    // Assert the guard call is wrapped in try/catch + BYOKGuardError
+    // handler before the otel-bootstrap import (D-10).
+    const tryIdx = src.indexOf("try {\n  assertBYOKConfig();");
+    expect(tryIdx).toBeGreaterThan(byokImportIdx);
+    expect(tryIdx).toBeLessThan(otelImportIdx);
+    const catchIdx = src.indexOf("if (err instanceof BYOKGuardError)");
+    expect(catchIdx).toBeGreaterThan(tryIdx);
+    expect(catchIdx).toBeLessThan(otelImportIdx);
   });
 
   it("shutdown() resolves cleanly (SIGTERM hook target)", async () => {

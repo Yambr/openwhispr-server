@@ -4,9 +4,26 @@
 // not produce cascading dial noise on stderr before the fatal
 // "byok.required" record reaches operators. The guard is a pure-
 // function call that returns void on a satisfied env contract.
-import { assertBYOKConfig } from "@openwhispr/byok-guard";
+//
+// Phase 19 / Plan 02 (SR-19.3, D-09 + D-10): library now THROWS
+// `BYOKGuardError`; worker entrypoint catches + logs + exits.
+// Mirrors apps/api/src/index.ts.
+import { assertBYOKConfig, BYOKGuardError } from "@openwhispr/byok-guard";
+import pinoBoot from "pino";
 
-assertBYOKConfig();
+try {
+  assertBYOKConfig();
+} catch (err) {
+  if (err instanceof BYOKGuardError) {
+    const bootLog = pinoBoot(
+      { name: "worker-boot" },
+      pinoBoot.destination({ sync: true, dest: 2 }),
+    );
+    bootLog.fatal({ err }, "BYOK guard refused boot");
+    process.exit(1);
+  }
+  throw err;
+}
 
 // Phase 6 / Plan 06-12c — OTel SDK bootstrap MUST be the first executable
 // import (after the byok-guard call above) so PinoInstrumentation

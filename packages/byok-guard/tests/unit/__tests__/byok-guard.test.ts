@@ -23,7 +23,7 @@
 //     but tests pass an explicit object to avoid global mutation).
 import { Writable } from "node:stream";
 import pino from "pino";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import * as guard from "../../../src/index.js";
 import { assertBYOKConfig, type BYOKFatalRecord, BYOKGuardError } from "../../../src/index.js";
 

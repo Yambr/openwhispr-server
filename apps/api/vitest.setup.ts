@@ -15,4 +15,27 @@
 // app runtime; here it lives only inside vitest workers.
 process.env.TESTCONTAINERS_REUSE_ENABLE = "true";
 
+// Phase 19 / Plan 02 (SR-19.3, D-12 + pitfall §7) — BYOK envs for vitest
+// workers. After the library refactor (process.exit → throw BYOKGuardError),
+// any test that imports `apps/api/src/index.ts` triggers the entrypoint's
+// boot-time `assertBYOKConfig()` call. Without these envs the guard throws,
+// the entrypoint's catch handler calls `process.exit(1)`, and vitest's
+// trap fails the test file at load time. We set the canonical happy-env
+// here so all api unit tests see a satisfied BYOK contract; tests that
+// need to assert the boot-guard surface itself (none today) can override
+// per-file. `OTEL_EXPORTER_OTLP_ENDPOINT=disabled` activates the sentinel
+// short-circuit (no OTel dial in tests). `NODE_ENV=test` skips the SMTP
+// gate. These do NOT affect production behavior.
+process.env.NODE_ENV ??= "test";
+process.env.S3_ENDPOINT ??= "https://s3.test.example.com";
+process.env.S3_ACCESS_KEY ??= "AKIATEST";
+process.env.S3_SECRET_KEY ??= "test-secret";
+process.env.S3_BUCKET ??= "openwhispr-test";
+// Use a real URL (not the `=disabled` sentinel) so otel-bootstrap's
+// SDK instantiates — otel-bootstrap.test.ts asserts `mod.sdk !== null`
+// at default load, which is incompatible with the sentinel.
+process.env.OTEL_EXPORTER_OTLP_ENDPOINT ??= "http://otel-test.invalid:4317";
+process.env.INGRESS_BASE_URL ??= "https://api.test.example.com";
+process.env.DATABASE_URL ??= "postgres://test/test";
+
 import "../../tools/testcontainer-reaper-setup";
