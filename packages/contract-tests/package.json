@@ -16,6 +16,7 @@
     "build": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
+    "@openwhispr/wire-schemas": "workspace:*",
     "pg": "8.20.0",
     "tough-cookie": "5.1.2",
     "zod": "4.4.3"

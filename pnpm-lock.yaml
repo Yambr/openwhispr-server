@@ -477,6 +477,9 @@ importers:
 
   packages/contract-tests:
     dependencies:
+      '@openwhispr/wire-schemas':
+        specifier: workspace:*
+        version: link:../wire-schemas
       pg:
         specifier: 8.20.0
         version: 8.20.0

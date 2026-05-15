@@ -18,6 +18,22 @@
         }
       }
     },
+    "auth": {
+      "shell": {
+        "kicker": { "default": { "text": "Self-host · v1" } },
+        "title": { "default": { "text": "Your speech, on your servers." } },
+        "quote": {
+          "default": {
+            "text": "Private speech-to-text, structured notes, and conversation history — running in your own environment, with full audit trail."
+          }
+        },
+        "footer": {
+          "status": { "text": "Status" },
+          "docs": { "text": "Docs" },
+          "github": { "text": "GitHub" }
+        }
+      }
+    },
     "language": {
       "label": { "label": "Language" },
       "english": { "label": "English" },
