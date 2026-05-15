@@ -93,6 +93,17 @@ It is built to enterprise standards for **1000 concurrent active users** in one 
 
 2. **Surface costly architectural decisions as deferred-items, not in-flight rewrites.** When a test infrastructure approach (e.g., search_path-per-schema isolation) is blocked by production-code constraints, log it in `.planning/deferred-items.md` with `WHY:` evidence and use the next-best-pragmatic-but-non-invasive pattern. A future phase + user decision can change production. The current phase's job is to close test debt without invading server surface.
 
+3. **NEVER report "✅ done" based solely on a sub-agent's claim.** When a spawned executor / advisor / researcher returns a summary, the orchestrator (main agent) MUST independently verify before claiming completion to the user. Verification means:
+   - **(a) Commits exist:** `git log --oneline -<N>` confirms each cited SHA is on HEAD
+   - **(b) Tests are GREEN:** for test-fix work, re-run the cited `pnpm test <pattern>` command and read the exit code + summary line with own eyes
+   - **(c) Files have the claimed edits:** `grep <fingerprint-line> <file>` for state/ROADMAP/docs edits
+   - **(d) Working tree state is clean:** `git status --short` shows expected state (no orphaned partial edits, no untracked debris)
+   - **(e) For HALT cases:** confirm working tree is at the SHA the sub-agent named, not silently divergent
+   
+   A sub-agent's textual `## PLAN COMPLETE` block is INPUT, not PROOF — treat it like CI output you have to parse and validate. The user has direct evidence (file diffs, git log, IDE diagnostics) that contradict false reports.
+   
+   **Trust but verify** from `~/.claude/CLAUDE.md` global rules is INHERITED HERE as constitutional. The cheapest failure mode is the orchestrator parroting a sub-agent's optimistic summary verbatim and the user discovering the lie via their IDE.
+
 ### Tactical conventions
 
 Conventions not yet otherwise established. Will populate as patterns emerge.
