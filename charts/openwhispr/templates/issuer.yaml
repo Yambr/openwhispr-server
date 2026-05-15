@@ -41,5 +41,11 @@ spec:
     solvers:
       - http01:
           ingress:
-            class: {{ .Values.ingress.className }}
+            # WR-05 review fix (2026-05-15): cert-manager 1.13+ deprecated
+            # `class:` in favour of `ingressClassName:` (matches upstream
+            # Ingress API). 1.16 still accepts both; 1.18+ removes `class`.
+            # This is the FIRST structural consumer of .Values.ingress.className
+            # in the chart — it MUST match a real cluster IngressClass when
+            # certManager.renderIssuer=true.
+            ingressClassName: {{ .Values.ingress.className }}
 {{- end }}

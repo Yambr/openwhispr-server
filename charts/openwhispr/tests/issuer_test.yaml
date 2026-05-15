@@ -60,10 +60,10 @@ tests:
       # solvers.http01.ingress.class in favour of ingressClassName
       # (matches upstream Ingress API). Pin the migration.
       - equal:
-          path: spec.solvers[0].http01.ingress.ingressClassName
+          path: spec.acme.solvers[0].http01.ingress.ingressClassName
           value: traefik
       - notExists:
-          path: spec.solvers[0].http01.ingress.class
+          path: spec.acme.solvers[0].http01.ingress.class
 
   - it: certManager.issuerKind=Issuer — issuer.yaml renders namespaced Issuer with .metadata.namespace
     template: issuer.yaml

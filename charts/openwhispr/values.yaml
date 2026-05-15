@@ -378,9 +378,20 @@ certManager:
   installCRDs: true
 
 ingress:
-  # className field is informational only — Traefik IngressRoute CRs
-  # do NOT use spec.ingressClassName (that's a built-in Ingress thing).
-  # We render Traefik CRDs exclusively (pitfall #3 — no `kind: Ingress`).
+  # className is load-bearing when certManager.renderIssuer=true — the
+  # rendered (Cluster)Issuer's spec.solvers[0].http01.ingress.ingressClassName
+  # consumes it (templates/issuer.yaml). cert-manager's HTTP-01 solver
+  # creates a transient Ingress resource for the ACME challenge, and that
+  # Ingress's ingressClassName MUST match a real cluster IngressClass
+  # registered by the operator's Traefik install — otherwise the challenge
+  # Ingress is unrouted and ACME issuance hangs.
+  #
+  # WR-05 review-fix (2026-05-15): prior comment said "informational only"
+  # because the only consumer at the time rendered Traefik IngressRoute
+  # CRDs (which ignore spec.ingressClassName). That is still true for the
+  # IngressRoute templates, but the issuer.yaml template now consumes the
+  # value structurally — keep this value in sync with the operator's real
+  # IngressClass when renderIssuer=true.
   className: traefik
   # Finding 09.1-F2 — k8s ContainerPort.name has a 15-char IANA ceiling,
   # so the realtime entrypoint name shipped by the chart is `wsrealtime`
