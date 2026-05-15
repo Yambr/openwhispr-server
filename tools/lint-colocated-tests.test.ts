@@ -14,6 +14,7 @@ import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import {
+  findStalePathLiterals,
   findViolations,
   isAllowed,
   LEGACY_ALLOWLIST_FILE,
@@ -103,6 +104,71 @@ describe("findViolations (real tmpdir glob)", () => {
     writeFileSync(listPath, "# legacy allow-list\napps/api/src/legacy.test.ts\n\n", "utf8");
     const violations = await findViolations(root);
     expect(violations).toEqual(["apps/api/src/new.test.ts"]);
+  });
+});
+
+describe("findStalePathLiterals (D-05 — AST scanner for broken __dirname paths)", () => {
+  it("detects readFileSync(path.resolve(__dirname, 'non-existent.ts'))", async () => {
+    touch("apps/api/tests/unit/a.test.ts");
+    const testFile = join(root, "apps/api/tests/unit/a.test.ts");
+    writeFileSync(
+      testFile,
+      `import { readFileSync } from "node:fs";
+import path from "node:path";
+const __dirname = "";
+readFileSync(path.resolve(__dirname, "non-existent.ts"));
+`,
+      "utf8",
+    );
+    const stale = await findStalePathLiterals(root);
+    expect(stale.length).toBeGreaterThanOrEqual(1);
+    expect(stale[0]).toMatchObject({
+      file: "apps/api/tests/unit/a.test.ts",
+      target: expect.stringContaining("non-existent.ts"),
+    });
+  });
+
+  it("does NOT flag existing target paths", async () => {
+    touch("apps/api/tests/unit/sibling.ts");
+    touch("apps/api/tests/unit/b.test.ts");
+    const testFile = join(root, "apps/api/tests/unit/b.test.ts");
+    writeFileSync(
+      testFile,
+      `import { readFileSync } from "node:fs";
+import path from "node:path";
+readFileSync(path.resolve(__dirname, "sibling.ts"));
+`,
+      "utf8",
+    );
+    const stale = await findStalePathLiterals(root);
+    expect(stale).toEqual([]);
+  });
+
+  it("detects new URL('./foo', import.meta.url) when target missing", async () => {
+    touch("apps/api/tests/unit/c.test.ts");
+    writeFileSync(
+      join(root, "apps/api/tests/unit/c.test.ts"),
+      `const u = new URL("./gone.json", import.meta.url);\n`,
+      "utf8",
+    );
+    const stale = await findStalePathLiterals(root);
+    expect(stale.some((s) => s.target.endsWith("gone.json"))).toBe(true);
+  });
+
+  it("ignores non-string-literal arguments (template/identifier) safely", async () => {
+    touch("apps/api/tests/unit/d.test.ts");
+    writeFileSync(
+      join(root, "apps/api/tests/unit/d.test.ts"),
+      `import { readFileSync } from "node:fs";
+import path from "node:path";
+const n = "x.ts";
+readFileSync(path.resolve(__dirname, n));
+readFileSync(path.resolve(__dirname, \`x.ts\`));
+`,
+      "utf8",
+    );
+    const stale = await findStalePathLiterals(root);
+    expect(stale).toEqual([]);
   });
 });
 
