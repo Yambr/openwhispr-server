@@ -24,6 +24,15 @@ pre-commit:
     phase-tag-comments:
       glob: "{apps,packages}/**/*.{ts,tsx}"
       run: pnpm lint:phase-tag-comments
+    # Phase 17 / Plan 02 / TLS-05 — fail-fast when a Dockerfile gains a
+    # COPY/ADD/RUN line referencing dev-CA / mkcert artefacts (`rootCA*.pem`,
+    # `root-ca.{crt,key}`, `mkcert`, `compose/traefik/certs/`,
+    # `*.localhost.{pem,key}`, `local.{crt,key}`). NARROW glob `**/Dockerfile`
+    # avoids matching `.dockerignore` or `Dockerfile.bak`; 17-PATTERNS risk
+    # callout line 226.
+    dockerfile-tls:
+      glob: "**/Dockerfile"
+      run: pnpm lint:dockerfile-tls
     # Phase 6 / Plan 06-09 / D-W4 layer 1 — fail-fast if any BullMQ job
     # handler is not wrapped in withTenantContext / withSystemContext.
     # The scan is ~1s against 8 job files; fast enough for pre-commit.

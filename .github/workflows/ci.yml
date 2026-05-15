@@ -38,6 +38,7 @@ jobs:
       - run: pnpm lint:english
       - run: pnpm lint:colocated-tests
       - run: pnpm lint:phase-tag-comments
+      - run: pnpm lint:dockerfile-tls
 
   commitlint:
     if: github.event_name == 'pull_request'
