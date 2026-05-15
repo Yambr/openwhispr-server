@@ -76,7 +76,25 @@ export interface AudioTranscriptionRequest {
   contentType: string;
   userId: string;
   requestId: string;
+  /**
+   * Phase 19.2 / Plan 02 — SERVER-ERRORS Entry 11 closure.
+   *
+   * LiteLLM Proxy's `/v1/audio/transcriptions` rejects requests with
+   * `model=None` (HTTP 400 "Invalid model name passed in model=None").
+   * Since the underlying OpenAI-compatible multipart endpoint has no
+   * JSON body slot to inject model, we forward it as a URL query-string
+   * param (the proxy honors both query and multipart-form variants;
+   * query is simpler and preserves the streaming body invariant).
+   *
+   * Defaults to `whisper-large-v3` (the bundled-default Groq alias in
+   * `compose/litellm/litellm_config.yaml`). Corporate operators
+   * override via the route's STT_MODEL constant or an env knob;
+   * `checkProviderKey` continues to gate on the same default alias.
+   */
+  model?: string;
 }
+
+export const DEFAULT_STT_MODEL = "whisper-large-v3";
 
 export interface PassthroughRequest {
   method: string;
@@ -215,8 +233,13 @@ export function buildLitellmClient(
     },
 
     async audioTranscriptions(args) {
-      checkProviderKey("whisper-large-v3");
-      const res = await doRequest(`${config.baseUrl}/v1/audio/transcriptions`, {
+      // Phase 19.2 / Plan 02 — SERVER-ERRORS Entry 11 closure: forward
+      // the model as a URL query-string param so LiteLLM's
+      // /v1/audio/transcriptions does not reject with `model=None`.
+      const model = args.model ?? DEFAULT_STT_MODEL;
+      checkProviderKey(model);
+      const url = `${config.baseUrl}/v1/audio/transcriptions?model=${encodeURIComponent(model)}`;
+      const res = await doRequest(url, {
         method: "POST",
         headers: {
           ...authHeaders(args.userId, args.requestId),
