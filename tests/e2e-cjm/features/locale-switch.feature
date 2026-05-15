@@ -3,7 +3,7 @@
 
 Feature: Locale switch
 
-  @cjm-6.1 @expected-red @after-phase-15
+  @cjm-6.1 @expected-red @after-phase-19.4
   Scenario: Switching locale to ru persists via cookie and renders Russian copy
     Given the user is on the public sign-up page
     When the user switches the locale to "ru"

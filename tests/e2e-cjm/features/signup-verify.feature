@@ -24,7 +24,7 @@ Feature: Signup and email verification round-trip
     When a new user signs up with a 6-char password "Short1"
     Then the signup response is a 4xx validation error mentioning password length
 
-  @cjm-1.4 @expected-red @after-phase-15
+  @cjm-1.4 @expected-red @after-phase-19.3
   Scenario: Locale-scoped error copy renders in Russian under Accept-Language ru
     When an invalid signup is submitted with Accept-Language "ru"
     Then the response error message renders in Russian copy

@@ -3,7 +3,7 @@
 
 Feature: Password reset
 
-  @cjm-3.1 @expected-red @after-phase-12
+  @cjm-3.1 @expected-red @after-phase-19.1
   Scenario: Reset link delivered via mailpit; user sets new password and signs in
     Given a fresh verified user exists for reset
     When the user requests a password reset

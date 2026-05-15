@@ -85,3 +85,54 @@ default 5s timed out).
 **Why deferred:** Per SCOPE BOUNDARY rule. Verified by `grep -i otel|sdk|NodeSDK` on the typecheck output — none of the errors reference the otel-bootstrap files Plan 14-04 modified. The `NodeSDK | null` propagation introduced by this plan typechecks cleanly. These failures pre-date the plan and live in unrelated code paths.
 
 **Likely fix:** Each error needs targeted attention in its owning subsystem (typed-queue / tenant-context / litellm-client). They would naturally be picked up by the next phase that touches those files. Not urgent — vitest test runs are unaffected (vitest uses esbuild, not tsc).
+
+### §14-04 re-confirmed by Phase 18.1 (2026-05-15)
+
+- 7 typecheck errors cataloged in 14-04 remain deferred.
+- Re-confirm verified: failures evaluated on commit `2d50d62ef303008ef28cf660c61e216aa27699d6` (HEAD at the time of Phase 18.1 Plan 05 execution); `pnpm typecheck` exit code 1, error count 1.
+- Drift since 14-04: -6 (baseline 7 → current 1; the surviving error is `packages/litellm-client/src/index.ts:171` — `Promise<ResponseData<unknown>>` not assignable to `Promise<ResponseData<null>>` on `chatCompletionsStream`. The six apps/api + apps/worker errors enumerated in §14-04 appear to have been resolved by intervening work; investigate before Phase 18.2 to confirm none re-surface under a different shape).
+- Justification: scope-stretch for 18.1 (test-debt-closure phase). Fix scheduled for Phase 18.2 OR milestone-close gate.
+- Owner: next operator picking up v2 close-out work.
+- Closes ROADMAP Phase 18.1 SC9 (re-confirm-deferred-with-justification path).
+
+## From Phase 18.1 — stale @expected-red REPOINT
+
+### @cjm-3.1 password-reset — @after-phase-19.1 reset-mail wiring
+
+**Discovered:** 2026-05-15 during Phase 18.1 v2 test-debt closure.
+
+**Symptom:** `tests/e2e-cjm/features/password-reset.feature:6` carried `@after-phase-12` (speculative). Actual missing pre-req: `apps/api/src/auth.ts` lacks a `sendResetPassword` hook (Better Auth `forget-password` endpoint runs but never enqueues an email; worker `password_reset` template exists but is uncalled).
+
+**Why deferred:** Phase 12 closed without wiring the hook; not a Phase 12 bug, but a future-phase deliverable. REPOINT to `@after-phase-19.1`.
+
+**Likely fix:** Wire `sendResetPassword` in `apps/api/src/auth.ts` Better Auth config; enqueue via worker `password_reset` template; flip `@cjm-3.1` GREEN. Sub-phase 19.1 = reset-mail.
+
+### @cjm-4.1 transcribe — @after-phase-19.2 stt-fixture
+
+**Discovered:** 2026-05-15 during Phase 18.1.
+
+**Symptom:** `tests/e2e-cjm/features/transcribe.feature:6` carried `@after-phase-12`. Actual missing pre-req: `apps/api/src/routes/transcribe.ts` proxies to LiteLLM (`provider=groq, model=whisper-large-v3`) and throws `MissingProviderKeyError → 503` when `GROQ_API_KEY` empty. CJM compose stack defaults to empty.
+
+**Why deferred:** Per `feedback_loadtest_cost_discipline.md` (paid cloud gets smokes only — no real GROQ key in CI). REPOINT to `@after-phase-19.2`; bias toward a mock-litellm transcribe overlay (canned `{text: ""}` response).
+
+**Likely fix:** Add `compose/docker-compose.cjm-mock-stt.yml` overlay that wires `mock-litellm` to respond canned `{text: ""}` for whisper requests; flip `@cjm-4.1` GREEN. Sub-phase 19.2 = stt-fixture.
+
+### @cjm-1.4 signup-verify (RU locale) — @after-phase-19.3 ba-i18n
+
+**Discovered:** 2026-05-15 during Phase 18.1.
+
+**Symptom:** `tests/e2e-cjm/features/signup-verify.feature:27` carried `@after-phase-15`. Actual missing pre-req: `apps/api/src/routes/better-auth-handler.ts` is a black-box `webHandler` pass-through; Better Auth 4xx error envelope returns ENGLISH verbatim; `req.t(...)` never invoked.
+
+**Why deferred:** Phase 15 surface was FSL relicense + relocation — not i18n. REPOINT to `@after-phase-19.3`.
+
+**Likely fix:** Wrap Better Auth 4xx responses with a `req.t("better-auth:errors.<code>")` interception layer; flip `@cjm-1.4` GREEN. Sub-phase 19.3 = ba-i18n.
+
+### @cjm-6.1 locale-switch — @after-phase-19.4 locale-e2e
+
+**Discovered:** 2026-05-15 during Phase 18.1.
+
+**Symptom:** `tests/e2e-cjm/features/locale-switch.feature:6` carried `@after-phase-15`. Actual missing pre-req: `tests/e2e-cjm/steps/locale.steps.ts:26-42` — all three step bodies `throw new Error("locale UI ships in Phase 15 — @cjm-6.1 stays @expected-red")`. Web-side `language-switcher.tsx` exists; cjm harness uses undici/fetch (no Playwright) and web container is not booted.
+
+**Why deferred:** Requires booting the web container in cjm harness AND swapping out the cucumber HTTP-only step pattern for Playwright. Non-trivial infra. REPOINT to `@after-phase-19.4`.
+
+**Likely fix:** Add web service to `compose/docker-compose.cjm.yml`; replace `throw` stubs in `tests/e2e-cjm/steps/locale.steps.ts:26-42` with real Playwright step-defs driving `LanguageSwitcher`; flip `@cjm-6.1` GREEN. Sub-phase 19.4 = locale-e2e.

@@ -159,8 +159,14 @@ export function extractFeatureTags(text: string): FeatureTags {
       }
     }
     if (tokens.includes("@expected-red")) {
-      const phaseTok = tokens.find((t) => /^@after-phase-\d+$/.test(t));
-      const phase = phaseTok ? Number.parseInt(phaseTok.replace("@after-phase-", ""), 10) : null;
+      const phaseTok = tokens.find((t) => /^@after-phase-\d+(\.\d+)?$/.test(t));
+      // Sub-phase tags `@after-phase-19.1` admitted alongside `@after-phase-19`
+      // (Phase 18.1 / Plan 05; per D-29). `afterPhase` records the major
+      // numeric component only — minor is preserved in `raw` for downstream
+      // tooling that needs the full sub-phase reference.
+      const phase = phaseTok
+        ? Number.parseInt(phaseTok.replace("@after-phase-", "").split(".")[0], 10)
+        : null;
       expectedRed.push({ line: i + 1, afterPhase: phase, raw: raw.trim() });
     }
   }

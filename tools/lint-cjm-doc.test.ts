@@ -241,6 +241,59 @@ describe("lint-cjm-doc (in-process)", () => {
     expect(offenders).toHaveLength(0);
   });
 
+  // Phase 18.1 / Plan 05 — sub-phase tag form `@after-phase-N.M` admitted
+  // alongside back-compat `@after-phase-N`. Malformed shapes still rejected.
+  it("lintExpectedRedPairing accepts sub-phase tag form @after-phase-19.1 (D-29)", () => {
+    const features = new Map<string, string>([
+      ["ok-sub.feature", "  @cjm-3.1 @expected-red @after-phase-19.1\n  Scenario: X\n"],
+    ]);
+    const offenders = lintExpectedRedPairing(features);
+    expect(offenders).toHaveLength(0);
+  });
+
+  it("lintExpectedRedPairing accepts back-compat @after-phase-N form", () => {
+    const features = new Map<string, string>([
+      ["ok-bc.feature", "  @cjm-1.1 @expected-red @after-phase-19\n  Scenario: X\n"],
+    ]);
+    const offenders = lintExpectedRedPairing(features);
+    expect(offenders).toHaveLength(0);
+  });
+
+  it("lintExpectedRedPairing rejects malformed @after-phase-19a (suffix)", () => {
+    const features = new Map<string, string>([
+      ["bad-suffix.feature", "  @cjm-1.1 @expected-red @after-phase-19a\n  Scenario: X\n"],
+    ]);
+    const offenders = lintExpectedRedPairing(features);
+    expect(offenders).toHaveLength(1);
+    expect(offenders[0].message).toMatch(/after-phase/);
+  });
+
+  it("lintExpectedRedPairing rejects malformed @after-phase- (no digits)", () => {
+    const features = new Map<string, string>([
+      ["bad-empty.feature", "  @cjm-1.1 @expected-red @after-phase-\n  Scenario: X\n"],
+    ]);
+    const offenders = lintExpectedRedPairing(features);
+    expect(offenders).toHaveLength(1);
+    expect(offenders[0].message).toMatch(/after-phase/);
+  });
+
+  it("lintExpectedRedPairing rejects malformed @after-phase-19. (trailing dot)", () => {
+    const features = new Map<string, string>([
+      ["bad-trail.feature", "  @cjm-1.1 @expected-red @after-phase-19.\n  Scenario: X\n"],
+    ]);
+    const offenders = lintExpectedRedPairing(features);
+    expect(offenders).toHaveLength(1);
+    expect(offenders[0].message).toMatch(/after-phase/);
+  });
+
+  it("extractFeatureTags parses sub-phase tag and records major component in afterPhase", () => {
+    const feature = "  @cjm-3.1 @expected-red @after-phase-19.1\n  Scenario: X\n";
+    const tags = extractFeatureTags(feature);
+    expect(tags.expectedRed).toHaveLength(1);
+    expect(tags.expectedRed[0].afterPhase).toBe(19);
+    expect(tags.expectedRed[0].raw).toMatch(/@after-phase-19\.1/);
+  });
+
   it("collectFeatureFiles returns [] for non-existent dir", () => {
     const dir = join(tmpdir(), `lcd-missing-${Date.now()}-${Math.random()}`);
     expect(collectFeatureFiles(dir)).toEqual([]);
