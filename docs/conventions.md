@@ -374,3 +374,86 @@ exactly five `.localhost` vhosts that the Traefik dynamic config wires:
 
 Phase 17 owns the actual cert provisioning + the trust-store integration;
 Phase 15 locks the canonical list via the dynamic.dev.yml + this doc.
+
+---
+
+## Phase-tag comments
+
+Per CLAUDE.md (constitutional, non-negotiable): the only legitimate code
+comments explain **non-obvious WHY**. Header-style `// Phase NN[.M] / Plan
+NN-MM —` banners and bare trailing `// D-NN` references encode planning
+provenance that does not earn its keep at read time and SHOULD NOT appear
+in `apps/` or `packages/` source. Phase 16 codifies the audit + sweep
+tooling that enforces this rule going forward.
+
+### REMOVE bucket (mechanical, ≈ 4 rules)
+
+A line is classified as REMOVE when it matches one of these patterns AND
+no KEEP rule applies:
+
+1. **Bare header** — `// Phase NN[.M] [/ Plan NN[-MM]] [— punctuation]`
+   with no prose body (matches the regex
+   `^//\s*Phase\s+\d+[\.\d]*(\s*[/-]\s*Plan\s+\d+[-\d]*)?[:\s\-—]*$`).
+2. **Trailing bare `// D-NN`** — comment-only line with `// D-\d+(\.\d+(-EX\d+)?)?`
+   and no body text after the ID (matches the regex
+   `^\s*//\s*D-\d+(\.\d+(-EX\d+)?)?\s*$`). Trailing `// D-NN` suffixes on
+   code lines are KEPT — removing them via whole-line filtering would
+   erase production code.
+3. **History close-out** — `// D-NN.M-EXk close-out: <prose>` refactor
+   narrative that the reader cannot act on.
+4. **Implementation-note standalone** — `// Phase NN — implementation note`
+   at the top of a test fixture.
+
+### KEEP bucket (conservative — anything ambiguous)
+
+KEEP rules are evaluated BEFORE the REMOVE rules so the default-KEEP
+precedence is structural, not order-dependent:
+
+1. **Multi-line context** — the previous or next line is also `//`.
+2. **Normative keyword** — line contains `because`, `to avoid`,
+   `workaround`, `fixes`, `NEVER`, `MUST`, or `prevent` (uppercase tokens
+   case-sensitive).
+3. **Reference marker** — references `PITFALLS §` or `SUMMARY.md`.
+4. **Inline `// D-NN — <body>`** — em-dash followed by non-empty prose.
+5. **Default** — ambiguous → KEEP, never auto-REMOVE.
+
+### Enforcement
+
+- **CLI guard** — `tsx tools/lint-phase-tag-comments.ts` (wired into
+  `pnpm lint:phase-tag-comments`, lefthook `pre-commit`, and CI
+  `lint-english` job). Exit 0 = clean; exit 1 = violations listed on
+  stderr; exit 2 = internal error.
+- **Coverage** — `tools/__tests__/lint-phase-tag-comments.test.ts` covers
+  the guard at ≥ 90/90/90/90.
+- The lint CLI imports `classifyLine` from
+  [`tools/phase-tag-sweep.ts`](../tools/phase-tag-sweep.ts) (single source
+  of truth — codemod and guard CANNOT drift on REMOVE/KEEP semantics).
+
+### Migration tooling
+
+```
+tsx tools/phase-tag-sweep.ts audit [rootDir]   # dry-run, exit 1 if dirty
+tsx tools/phase-tag-sweep.ts fix   [rootDir]   # in-place delete
+```
+
+The codemod uses **regex-on-text line-by-line**, NOT AST traversal. The
+ts-morph dep stays unused-by-Phase-16 and is reserved for a deferred
+inline-comment phase (CONTEXT Q1 + Q2). The 16-02 sweep applies `fix`
+per area in atomic commits.
+
+### Allowlist semantics
+
+[`tools/lint-phase-tag-comments.allowlist.txt`](../tools/lint-phase-tag-comments.allowlist.txt)
+is a transitional file holding POSIX paths whose REMOVE-bucket comments
+are intentionally retained (e.g., a narrative anchor that the heuristic
+cannot safely keep). Entries SHOULD be removed when the corresponding
+sweep commit lands; new entries require a one-line rationale in the
+commit body that adds them.
+
+### Out of scope (Phase 16)
+
+- Inline `// D-NN — <prose>` rewrites that strip the `D-NN` prefix while
+  keeping the body — deferred to a follow-up cleanup phase if appetite
+  remains.
+- `// T-NN-NN` ticket-ref sweeps (≈ 75 hits across the repo) — deferred.
+
