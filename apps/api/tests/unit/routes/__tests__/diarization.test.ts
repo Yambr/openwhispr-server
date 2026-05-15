@@ -411,7 +411,7 @@ describe("POST /v1/audio/diarization", () => {
     // resume polling. ErrorEnvelope is .strict() — assert the `error`
     // field directly rather than parsing strictly.
     const json = res.json() as { error: string; jobId: string };
-    expect(json.error).toMatch(/diarization job failed/);
+    expect(json.error).toBe("diarization job failed");
     expect(json.jobId).toBe("job-1");
   });
 
@@ -432,7 +432,7 @@ describe("POST /v1/audio/diarization", () => {
     });
     expect(res.statusCode).toBe(502);
     const json = res.json() as { error: string; jobId: string };
-    expect(json.error).toMatch(/cancelled/);
+    expect(json.error).toBe("diarization job cancelled");
     expect(json.jobId).toBe("job-1");
   });
 
