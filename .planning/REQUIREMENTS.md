@@ -605,6 +605,51 @@ Work-order: **13 → 12 → 14 → 15 → 16 → 17 → 18**. 61 REQ-IDs mapped 
 3. Phase 15 Helm monorepo vs separate repo — STRUCT-03 marked TBD.
 4. Phase 18 option (a) Keycloak vs (b) direct LDAP — SSO-01 records decision matrix; final pick in ADR 0012.
 
+### Traceability — v2.2 (mapped 2026-05-16 by gsd-roadmapper)
+
+Work-order: **31 → 32 → 33 → 34 → 35 → 36 → 37 → 38 → 39 → 40 → 41**. 32 REQ-IDs mapped to 11 phases, 100% coverage, no orphans. Phase 31 (lockers) ships FIRST as the gate Phases 32–41 are tested against; Phase 33 depends on Phase 32 (RLS posture before encryption-at-rest migration touches the same Better Auth schemas).
+
+| Requirement | Phase | Status | Notes |
+|-------------|-------|--------|-------|
+| LOCKER-01 | 31 | Pending | `tools/lint-no-env-branches.ts` + tests at ≥ 90/90/90/90 |
+| LOCKER-02 | 31 | Pending | `tools/lint-no-suppressions.ts` + tests + seeded allowlist |
+| LOCKER-03 | 31 | Pending | `tools/lint-no-hardcode.ts` + tests + allowlist for tests/.env.example/compose/docs/charts/tools |
+| LOCKER-04 | 31 | Pending | `tools/lint-prod-readiness.ts` — Fastify routes need zod+rateLimit; exports need non-test importer |
+| LOCKER-05 | 31 | Pending | `tools/lint-secret-shape-in-error.ts` — refuses untruncated `bodyText`/`responseBody`/`upstreamPayload` on Error subclasses |
+| LOCKER-06 | 31 | Pending | `tools/lint-shell-credential-interpolation.ts` — refuses `bash -c "...${*_URL\|KEY\|PASSWORD\|SECRET\|TOKEN}..."` |
+| LOCKER-07 | 31 | Pending | `.planning/DISCIPLINE.md` Rules 11–14 + `CLAUDE.md` mirror, SAME commit as linter source |
+| LOCKER-08 | 31 | Pending | Lefthook + `ci.yml` + `nightly.yml` wired; `make lint:lockers` shipped |
+| LOCKER-09 | 31 | Pending | Per-locker allowlists seeded; CI fails on net additions; each entry has tracking-issue ID |
+| CRIT-FIX-01 | 32 | Pending | Migration `0017_rls_fail_closed.sql` + 88-case property test on real Postgres testcontainer — Source: `data.md` CR-01 + HI-04 |
+| CRIT-FIX-02 | 33 | Pending | Migration `0018_envelope_encrypt_secret_columns.sql` + Drizzle lens + `lint-no-plaintext-secret-columns` (Rule 15) + `docs/security.md` — Source: `data.md` CR-02 |
+| CRIT-FIX-03 | 34 | Pending | `tenantPlugin` deleted OR replaced with `req.untrustedTenantHint` guard; E2E forged-header refusal — Source: `api-core.md` CR-01 |
+| CRIT-FIX-04 | 35.a | Pending | `config: { auth: false }` on `/api/locale`, `/api/auth/providers`, `/api/setup-state` — Source: `api-routes-rest.md` CR-01 |
+| CRIT-FIX-05 | 35.b | Pending | `headers.getSetCookie()` in `better-auth-handler.ts` — Source: `api-routes-rest.md` CR-02 |
+| CRIT-FIX-06 | 35.c | Pending | `setup-admin` step-4 + state flip wrapped in single tx with rollback — Source: `api-routes-rest.md` CR-03 |
+| CRIT-FIX-07 | 36.a | Pending | `audit-archive.ts` replaces `bash -c` with Node `spawn('pg_dump', ...)` + `PGPASSWORD` env — Source: `worker.md` CR-01 |
+| CRIT-FIX-08 | 36.b | Pending | `reconciliation-discrepancy.ts` honest windowed backfill OR delete with rationale — Source: `worker.md` CR-02 |
+| CRIT-FIX-09 | 37 | Pending | `LitellmUpstreamError.bodyText` truncated+private+`toJSON()` override — Source: `litellm-client.md` CR-01 |
+| CRIT-FIX-10 | 38 | Pending | `packages/auth/` deleted OR renamed to `-stub` with `private: true` — Source: `small-pkgs.md` CR-01 |
+| HIGH-FIX-WIRE-01 | 39 | Pending | `.strict()` on every input zod schema — Source: `wire-schemas.md` HI-1 |
+| HIGH-FIX-WIRE-02 | 39 | Pending | Output schemas use `.uuid()`/`.datetime({offset:true})`/`.url()` — Source: `wire-schemas.md` HI-2 |
+| HIGH-FIX-WIRE-03 | 39 | Pending | Long-text + metadata bounded by `.max()` — Source: `wire-schemas.md` HI-3, HI-4 |
+| HIGH-FIX-WIRE-04 | 39 | Pending | Symmetrical enums + `.int().nonneg()` counts — Source: `wire-schemas.md` HI-5, HI-6 |
+| HIGH-FIX-BYOK-01 | 40 | Pending | Wire schemas moved to `@openwhispr/wire-schemas`; `@openwhispr/contract-tests` `private: true` — Source: `byok-guard-contract-tests.md` HI-1 |
+| HIGH-FIX-BYOK-02 | 40 | Pending | `redactUrl` query-string + SigV4 + bearer-in-path + drift-as-failure parity test — Source: `byok-guard-contract-tests.md` HI-2 |
+| HIGH-FIX-BYOK-03 | 40 | Pending | `fetchAndParse` envelope enforcement on non-2xx — Source: `byok-guard-contract-tests.md` HI-3 |
+| HIGH-FIX-API-CORE | 41.a | Pending | `resolveDefaultTenantId()` swap at `auth.ts:330,380` + delete `placeholder.ts` — Source: `api-core.md` HI-01..03 |
+| HIGH-FIX-AGENT-STREAM | 41.b | Pending | `/api/agent/stream` model reconciliation + zod body + per-user rateLimit — Source: `api-routes-transcriptions.md` HI-01..03 |
+| HIGH-FIX-WEB | 41.c | Pending | RSC role-check on `/admin/*` + remove `PLAYWRIGHT_DISABLE_SSR_PREFETCH` from prod — Source: `web.md` HI-1, HI-2 |
+| HIGH-FIX-WORKER | 41.d | Pending | Shared redact factory + reconciliation-daily-check bound + fresh `driftStore` + `metadata.duration` validation — Source: `worker.md` HI-1..4 |
+| HIGH-FIX-DATA | 41.e | Pending | LiteLLM-init idempotency + migration `0019` (TRUNCATE → UPSERT) + account-token TTL — Source: `data.md` HI-01..03 (HI-04 closed by Phase 32) |
+| HIGH-FIX-LITELLM | 41.f | Pending | `headersTimeout`/`bodyTimeout`/required `AbortSignal` + SSRF dispatcher assert + model-alias single-source + `streamOptions` opt-out — Source: `litellm-client.md` HI-01..04 |
+| HIGH-FIX-SMALL | 41.g | Pending | Real en/ru bundles OR i18n→stub + byok/redact parity test + `SMTP_SECURE` flexible parser — Source: `small-pkgs.md` HI-01..03 |
+
+**v2.2 coverage:** 32/32 mapped (100%), 0 orphans, 0 duplicates.
+**v2.2 distribution:** Phase 31=9, Phase 32=1, Phase 33=1, Phase 34=1, Phase 35=3 (a/b/c), Phase 36=2 (a/b), Phase 37=1, Phase 38=1, Phase 39=4, Phase 40=3, Phase 41=7 (a/b/c/d/e/f/g) = 33 line items across 32 REQ-IDs (Phase 41 has 7 sub-plans for 7 REQ-IDs; Phase 35/36 sub-letters group multiple REQ-IDs per phase) ✓.
+
+**Milestone close criterion:** re-run the 11-agent `gsd-code-reviewer` pre-publication review against main; expect ≤ 5 residual HIGH and 0 CRITICAL. Anything else → milestone remains open and additional phases inserted.
+
 ---
 
 ## v2.2 Requirements — Pre-OSS Security & Hygiene
