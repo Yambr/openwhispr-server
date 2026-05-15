@@ -22,7 +22,7 @@
 //   6. per-user 30/min — 31st 429; two userIds isolated (T-04-04 mitigation)
 //   7. malformed provider response (no `token` field) → 503 malformed
 
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import Fastify, { type FastifyInstance } from "fastify";
@@ -34,10 +34,23 @@ import { rateLimitPlugin } from "../../../../src/plugins/rate-limit.js";
 import { buildAssemblyAITokenRoutes } from "../../../../src/routes/tokens/assemblyai.js";
 
 const ASSEMBLYAI_HOST = "https://streaming.assemblyai.com";
-const FIXTURE_DIR = resolve(dirname(fileURLToPath(import.meta.url)), "__fixtures__");
-const ASSEMBLYAI_FIXTURE = JSON.parse(
-  readFileSync(resolve(FIXTURE_DIR, "assemblyai-v3-token-response.json"), "utf8"),
-) as { token: string };
+const FIXTURE_DIR = resolve(
+  dirname(fileURLToPath(import.meta.url)),
+  "..",
+  "..",
+  "..",
+  "..",
+  "src",
+  "routes",
+  "tokens",
+  "__fixtures__",
+);
+const ASSEMBLYAI_FIXTURE_PATH = resolve(FIXTURE_DIR, "assemblyai-v3-token-response.json");
+if (!existsSync(ASSEMBLYAI_FIXTURE_PATH))
+  throw new Error(`source-contract path moved: ${ASSEMBLYAI_FIXTURE_PATH}`);
+const ASSEMBLYAI_FIXTURE = JSON.parse(readFileSync(ASSEMBLYAI_FIXTURE_PATH, "utf8")) as {
+  token: string;
+};
 
 let agent: MockAgent;
 

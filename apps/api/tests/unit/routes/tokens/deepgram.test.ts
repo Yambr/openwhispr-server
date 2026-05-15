@@ -7,7 +7,7 @@
 //
 // Acceptance matrix (6 tests, see 04-03-PLAN.md Task 3 behavior).
 
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import Fastify, { type FastifyInstance } from "fastify";
@@ -19,10 +19,24 @@ import { rateLimitPlugin } from "../../../../src/plugins/rate-limit.js";
 import { buildDeepgramTokenRoutes } from "../../../../src/routes/tokens/deepgram.js";
 
 const DEEPGRAM_HOST = "https://api.deepgram.com";
-const FIXTURE_DIR = resolve(dirname(fileURLToPath(import.meta.url)), "__fixtures__");
-const DEEPGRAM_FIXTURE = JSON.parse(
-  readFileSync(resolve(FIXTURE_DIR, "deepgram-grant-token-response.json"), "utf8"),
-) as { access_token: string; expires_in: number };
+const FIXTURE_DIR = resolve(
+  dirname(fileURLToPath(import.meta.url)),
+  "..",
+  "..",
+  "..",
+  "..",
+  "src",
+  "routes",
+  "tokens",
+  "__fixtures__",
+);
+const DEEPGRAM_FIXTURE_PATH = resolve(FIXTURE_DIR, "deepgram-grant-token-response.json");
+if (!existsSync(DEEPGRAM_FIXTURE_PATH))
+  throw new Error(`source-contract path moved: ${DEEPGRAM_FIXTURE_PATH}`);
+const DEEPGRAM_FIXTURE = JSON.parse(readFileSync(DEEPGRAM_FIXTURE_PATH, "utf8")) as {
+  access_token: string;
+  expires_in: number;
+};
 
 let agent: MockAgent;
 

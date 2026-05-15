@@ -26,7 +26,7 @@
 //   8. malformed upstream (no `value` field) → 503 malformed-response
 //   9. unauthenticated → 401 BEFORE rate-limit bucket consumed
 
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import Fastify, { type FastifyInstance } from "fastify";
@@ -38,10 +38,25 @@ import { rateLimitPlugin } from "../../../../src/plugins/rate-limit.js";
 import { buildOpenAIRealtimeTokenRoutes } from "../../../../src/routes/tokens/openai-realtime.js";
 
 const OPENAI_HOST = "https://api.openai.com";
-const FIXTURE_DIR = resolve(dirname(fileURLToPath(import.meta.url)), "__fixtures__");
-const OPENAI_FIXTURE = JSON.parse(
-  readFileSync(resolve(FIXTURE_DIR, "openai-client-secret-response.json"), "utf8"),
-) as { value: string; expires_at: number; session: Record<string, unknown> };
+const FIXTURE_DIR = resolve(
+  dirname(fileURLToPath(import.meta.url)),
+  "..",
+  "..",
+  "..",
+  "..",
+  "src",
+  "routes",
+  "tokens",
+  "__fixtures__",
+);
+const OPENAI_FIXTURE_PATH = resolve(FIXTURE_DIR, "openai-client-secret-response.json");
+if (!existsSync(OPENAI_FIXTURE_PATH))
+  throw new Error(`source-contract path moved: ${OPENAI_FIXTURE_PATH}`);
+const OPENAI_FIXTURE = JSON.parse(readFileSync(OPENAI_FIXTURE_PATH, "utf8")) as {
+  value: string;
+  expires_at: number;
+  session: Record<string, unknown>;
+};
 
 let agent: MockAgent;
 
