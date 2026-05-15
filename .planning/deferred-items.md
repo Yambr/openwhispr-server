@@ -136,3 +136,14 @@ default 5s timed out).
 **Why deferred:** Requires booting the web container in cjm harness AND swapping out the cucumber HTTP-only step pattern for Playwright. Non-trivial infra. REPOINT to `@after-phase-19.4`.
 
 **Likely fix:** Add web service to `compose/docker-compose.cjm.yml`; replace `throw` stubs in `tests/e2e-cjm/steps/locale.steps.ts:26-42` with real Playwright step-defs driving `LanguageSwitcher`; flip `@cjm-6.1` GREEN. Sub-phase 19.4 = locale-e2e.
+
+---
+
+## From Phase 18.1.1-01 (Bucket A path-fix sweep)
+
+- **otel-bootstrap SIGTERM line-131 pre-existing failure** — `expected [Function] to not throw an error but 'Error: process.exit unexpectedly called with "143"' was thrown`. Unrelated to Cluster 4 path-fix scope. 2 path-related failures dropped to 1 (the SIGTERM one) after Cluster 4 path-fix landed; SIGTERM failure exists independent of path. File: apps/api/tests/unit/otel-bootstrap.test.ts:131. Defer to a separate behaviour-fix plan.
+
+- **entrypoint-db-shape BYOK env missing failure** — after Cluster 5 path-fix (new URL → ../../../src/index.ts), the test now correctly resolves to apps/api/src/index.ts but the bootstrap branch triggers `byok-guard` `process.exit(1)` because the test env lacks BYOK env vars. Pre-fix the same failure (different exception path); fix is to set BYOK env in test setUp, out of Bucket A scope. File: apps/api/tests/unit/__tests__/entrypoint-db-shape.test.ts. Defer to a behaviour-fix plan.
+## From Phase 18.1.1-01 (Bucket A path-fix sweep)
+
+- **otel-bootstrap SIGTERM line-131 pre-existing failure** — `expected [Function] to not throw an error but 'Error: process.exit unexpectedly called with "143"' was thrown`. Unrelated to Cluster 4 path-fix scope. The 2 path-related failures dropped to 1 (the SIGTERM one) after Cluster 4 fix landed; SIGTERM failure exists independent of path. File: apps/api/tests/unit/otel-bootstrap.test.ts:131. Defer to a separate behaviour-fix plan.
