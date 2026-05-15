@@ -822,9 +822,12 @@ describe("POST /api/agent/stream", () => {
     // production failure class this phase was opened to eliminate. We read
     // the route source from disk and assert zero occurrences of the import
     // alias and call site.
+    // red-baseline: 2026-05-15 (Phase 18.1 F3 — Test 16 ENOENT)
     const here = dirname(fileURLToPath(import.meta.url));
     const routePath = resolve(here, "stream.ts");
     const source = readFileSync(routePath, "utf8");
+    // POSITIVE — prove the file was actually loaded (no silent empty-string pass).
+    expect(source.length).toBeGreaterThan(100);
     expect(source).not.toMatch(/fetch\s+as\s+undiciFetch/);
     expect(source).not.toMatch(/\bundiciFetch\s*\(/);
     // Positive guard: the route MUST call chatCompletionsStream and bridge
