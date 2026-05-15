@@ -35,6 +35,23 @@ Feature: Trusted local TLS + production ACME isolation
     And no path matches compose/traefik/certs/
     And any bootstrap-minted cert SAN list contains no wildcard entries
 
+  @cjm-tls-no-dev-ca-in-traefik-image @after-docker-build
+  Scenario: traefik image contains no dev CA artefacts
+    # IN-01 review-fix (2026-05-15): Scenario 2 above targets only the api
+    # production image. The per-context `compose/traefik/.dockerignore`
+    # protects a DIFFERENT image (`compose/traefik/Dockerfile`) — its
+    # build context is the cert-laden `compose/traefik/` directory. A
+    # future deletion of compose/traefik/.dockerignore would not break
+    # any Scenario-2 assertion. This scenario closes the compound-failure
+    # window by scanning the traefik image filesystem with the same
+    # `docker create + docker export | tar -t` pattern.
+    Given the traefik production image has been built with tag openwhispr-traefik:tls-test
+    When the traefik image filesystem is scanned via docker-export + tar
+    Then no path in the traefik image matches rootCA.pem
+    And no path in the traefik image matches local.crt or local.key
+    And no path in the traefik image contains mkcert
+    And no path in the traefik image matches compose/traefik/certs/
+
   @cjm-tls-acme-staging @after-docker-up @expected-red
   Scenario: ACME staging endpoint issues cert via Traefik prod profile
     Given the operator has set LETSENCRYPT_EMAIL and LETSENCRYPT_STAGING=1
