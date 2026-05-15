@@ -17,34 +17,41 @@
 import type { FastifyInstance } from "fastify";
 import type { Pool } from "pg";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
-import {
-  bootMigratedPostgres,
-  buildTestApp,
-  seedUser,
-} from "../../../../../src/routes/notes/__tests__/setup.js";
+import { buildTestApp } from "../../../../../src/routes/notes/__tests__/setup.js";
+import { getSharedRoutePool } from "../../../../support/shared-route-pool.js";
+
+// Phase 18.1.2 / Plan 05 / Cluster #2 sub-cluster 2b — shared-pg
+// migration (Option A canon).
 
 const TENANT_A = "00000000-0000-0000-0000-000000000000";
 const TENANT_B = "00000000-0000-0000-0000-00000000000b";
 
 let pool: Pool;
-let shutdown: () => Promise<void>;
 let userA: string;
 let userB: string;
 let appA: FastifyInstance;
 let appB: FastifyInstance;
 
 beforeAll(async () => {
-  const booted = await bootMigratedPostgres();
-  pool = booted.pool;
-  shutdown = booted.shutdown.bind(booted);
-  // Seed tenants explicitly — tenant A is the default seeded by 0000_initial;
-  // tenant B must be inserted.
+  pool = await getSharedRoutePool();
   await pool.query(
     `INSERT INTO tenants (id, name) VALUES ($1, 'Tenant B') ON CONFLICT (id) DO NOTHING`,
     [TENANT_B],
   );
-  userA = await seedUser(pool, { tenantId: TENANT_A, email: "crud-a@test" });
-  userB = await seedUser(pool, { tenantId: TENANT_B, email: "crud-b@test" });
+  const ra = await pool.query<{ id: string }>(
+    `INSERT INTO users (tenant_id, email) VALUES ($1, $2)
+       ON CONFLICT (tenant_id, (lower(email))) DO UPDATE SET email = EXCLUDED.email
+       RETURNING id`,
+    [TENANT_A, "crud-a@test"],
+  );
+  const rb = await pool.query<{ id: string }>(
+    `INSERT INTO users (tenant_id, email) VALUES ($1, $2)
+       ON CONFLICT (tenant_id, (lower(email))) DO UPDATE SET email = EXCLUDED.email
+       RETURNING id`,
+    [TENANT_B, "crud-b@test"],
+  );
+  userA = ra.rows[0]!.id;
+  userB = rb.rows[0]!.id;
   appA = await buildTestApp({ pool, userId: userA, tenantId: TENANT_A });
   appB = await buildTestApp({ pool, userId: userB, tenantId: TENANT_B });
 }, 180_000);
@@ -52,7 +59,6 @@ beforeAll(async () => {
 afterAll(async () => {
   if (appA) await appA.close();
   if (appB) await appB.close();
-  if (shutdown) await shutdown();
 }, 60_000);
 
 beforeEach(async () => {
