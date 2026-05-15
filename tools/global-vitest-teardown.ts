@@ -25,7 +25,7 @@
  */
 import { execFileSync } from "node:child_process";
 
-const PRUNE_ARGV: readonly string[] = [
+const BASE_PRUNE_ARGV: readonly string[] = [
   "container",
   "prune",
   "-f",
@@ -33,9 +33,26 @@ const PRUNE_ARGV: readonly string[] = [
   "label=org.testcontainers=true",
 ];
 
+/**
+ * Build the `docker container prune` argv. When the environment variable
+ * `OPENWHISPR_TESTCONTAINER_SESSION_ID` is set the prune is narrowed by an
+ * additional `--filter label=org.testcontainers.session-id=<id>` so a
+ * worker tearing down only removes the containers IT spawned, not those of
+ * a peer vitest worker running in parallel (D-08 hardening, Phase 18.1.1
+ * Plan 03). When unset, the legacy broad filter argv is returned verbatim
+ * for backwards compatibility with the existing apps/api setup.
+ */
+function buildPruneArgv(): string[] {
+  const id = process.env.OPENWHISPR_TESTCONTAINER_SESSION_ID;
+  if (id && id.length > 0) {
+    return [...BASE_PRUNE_ARGV, "--filter", `label=org.testcontainers.session-id=${id}`];
+  }
+  return [...BASE_PRUNE_ARGV];
+}
+
 function pruneTestcontainers(): void {
   try {
-    execFileSync("docker", [...PRUNE_ARGV], { stdio: "inherit" });
+    execFileSync("docker", buildPruneArgv(), { stdio: "inherit" });
   } catch {
     // Swallow. Common benign causes:
     //   - `docker` binary absent (e.g., CI sandbox without DinD)
