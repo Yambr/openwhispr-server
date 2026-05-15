@@ -51,6 +51,7 @@ import { getStepStatus, Step, StepIndicator, StepLabel, Stepper } from "@/compon
 import { useZodForm } from "@/lib/form-utils";
 import { type SetupInput, setupSchema } from "@/lib/schemas/setup";
 import { installZodI18n } from "@/lib/zod-i18n";
+import { AuthShell } from "./AuthShell";
 
 type ErrorKind = "duplicate" | "generic" | null;
 
@@ -198,192 +199,202 @@ export function SetupForm(): React.JSX.Element {
   const watched = form.watch();
 
   return (
-    <Card className="w-full max-w-xl">
-      <CardHeader>
-        <CardTitle>{t("end-user.setup.title.heading.text")}</CardTitle>
-        <CardDescription>{t("end-user.setup.subtitle.body.text")}</CardDescription>
-      </CardHeader>
-      <CardContent className="flex flex-col gap-6">
-        <Stepper currentStep={currentStep} aria-label={t("end-user.setup.stepper.aria_label.text")}>
-          {SECTION_IDS.map((id, idx) => {
-            const status = getStepStatus(idx, currentStep);
-            return (
-              <Step key={id} status={status} isLast={idx === SECTION_IDS.length - 1}>
-                <StepIndicator status={status} index={idx + 1} />
-                <StepLabel status={status}>{stepLabels[idx]}</StepLabel>
-              </Step>
-            );
-          })}
-        </Stepper>
-
-        {errorKind ? (
-          <Alert variant="destructive" role="alert">
-            <AlertTitle>{t("end-user.setup.error.generic.title.text")}</AlertTitle>
-            <AlertDescription>{t("end-user.setup.error.generic.body.text")}</AlertDescription>
-          </Alert>
-        ) : null}
-        {warningKind === "tenant_rename_failed" ? (
-          <Alert role="status">
-            <AlertDescription>
-              {t("end-user.setup.warning.tenant_rename_failed.text")}
-            </AlertDescription>
-          </Alert>
-        ) : null}
-
-        <Form {...form}>
-          <form
-            onSubmit={form.handleSubmit(onSubmit as never)}
-            className="flex flex-col gap-6"
-            noValidate
+    <AuthShell
+      sideTitle={t("end-user.setup.shell.sideTitle.text")}
+      sideQuote={t("end-user.setup.shell.sideQuote.text")}
+    >
+      <Card className="w-full max-w-xl">
+        <CardHeader>
+          <CardTitle>{t("end-user.setup.title.heading.text")}</CardTitle>
+          <CardDescription>{t("end-user.setup.subtitle.body.text")}</CardDescription>
+        </CardHeader>
+        <CardContent className="flex flex-col gap-6">
+          <Stepper
+            currentStep={currentStep}
+            aria-label={t("end-user.setup.stepper.aria_label.text")}
           >
-            <section
-              id="identity"
-              aria-labelledby={stepIds[0]}
-              ref={(el) => {
-                sectionRefs.current[0] = el;
-              }}
-              className="flex flex-col gap-3"
-            >
-              <h2 id={stepIds[0]} className="text-base font-medium">
-                {stepLabels[0]}
-              </h2>
-              <FormField
-                control={form.control}
-                name="name"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>{t("end-user.setup.form.name.label")}</FormLabel>
-                    <FormControl>
-                      <Input type="text" autoComplete="name" disabled={submitting} {...field} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <FormField
-                control={form.control}
-                name="email"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>{t("end-user.setup.form.email.label")}</FormLabel>
-                    <FormControl>
-                      <Input type="email" autoComplete="email" disabled={submitting} {...field} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <FormField
-                control={form.control}
-                name="password"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>{t("end-user.setup.form.password.label")}</FormLabel>
-                    <FormControl>
-                      <Input
-                        type="password"
-                        autoComplete="new-password"
-                        disabled={submitting}
-                        {...field}
-                      />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-            </section>
+            {SECTION_IDS.map((id, idx) => {
+              const status = getStepStatus(idx, currentStep);
+              return (
+                <Step key={id} status={status} isLast={idx === SECTION_IDS.length - 1}>
+                  <StepIndicator status={status} index={idx + 1} />
+                  <StepLabel status={status}>{stepLabels[idx]}</StepLabel>
+                </Step>
+              );
+            })}
+          </Stepper>
 
-            <section
-              id="workspace"
-              aria-labelledby={stepIds[1]}
-              ref={(el) => {
-                sectionRefs.current[1] = el;
-              }}
-              className="flex flex-col gap-3"
+          {errorKind ? (
+            <Alert variant="destructive" role="alert">
+              <AlertTitle>{t("end-user.setup.error.generic.title.text")}</AlertTitle>
+              <AlertDescription>{t("end-user.setup.error.generic.body.text")}</AlertDescription>
+            </Alert>
+          ) : null}
+          {warningKind === "tenant_rename_failed" ? (
+            <Alert role="status">
+              <AlertDescription>
+                {t("end-user.setup.warning.tenant_rename_failed.text")}
+              </AlertDescription>
+            </Alert>
+          ) : null}
+
+          <Form {...form}>
+            <form
+              onSubmit={form.handleSubmit(onSubmit as never)}
+              className="flex flex-col gap-6"
+              noValidate
             >
-              <h2 id={stepIds[1]} className="text-base font-medium">
-                {stepLabels[1]}
-              </h2>
-              <FormField
-                control={form.control}
-                name="workspace"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>{t("end-user.setup.form.workspace.label")}</FormLabel>
-                    <FormControl>
-                      <Input
-                        type="text"
-                        autoComplete="organization"
-                        disabled={submitting}
-                        {...field}
-                      />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <FormField
-                control={form.control}
-                name="timezone"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>{t("end-user.setup.form.timezone.label")}</FormLabel>
-                    <FormControl>
-                      {/* Native <select> — RESEARCH §8 recommended a
+              <section
+                id="identity"
+                aria-labelledby={stepIds[0]}
+                ref={(el) => {
+                  sectionRefs.current[0] = el;
+                }}
+                className="flex flex-col gap-3"
+              >
+                <h2 id={stepIds[0]} className="text-base font-medium">
+                  {stepLabels[0]}
+                </h2>
+                <FormField
+                  control={form.control}
+                  name="name"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>{t("end-user.setup.form.name.label")}</FormLabel>
+                      <FormControl>
+                        <Input type="text" autoComplete="name" disabled={submitting} {...field} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={form.control}
+                  name="email"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>{t("end-user.setup.form.email.label")}</FormLabel>
+                      <FormControl>
+                        <Input type="email" autoComplete="email" disabled={submitting} {...field} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={form.control}
+                  name="password"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>{t("end-user.setup.form.password.label")}</FormLabel>
+                      <FormControl>
+                        <Input
+                          type="password"
+                          autoComplete="new-password"
+                          disabled={submitting}
+                          {...field}
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              </section>
+
+              <section
+                id="workspace"
+                aria-labelledby={stepIds[1]}
+                ref={(el) => {
+                  sectionRefs.current[1] = el;
+                }}
+                className="flex flex-col gap-3"
+              >
+                <h2 id={stepIds[1]} className="text-base font-medium">
+                  {stepLabels[1]}
+                </h2>
+                <FormField
+                  control={form.control}
+                  name="workspace"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>{t("end-user.setup.form.workspace.label")}</FormLabel>
+                      <FormControl>
+                        <Input
+                          type="text"
+                          autoComplete="organization"
+                          disabled={submitting}
+                          {...field}
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={form.control}
+                  name="timezone"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>{t("end-user.setup.form.timezone.label")}</FormLabel>
+                      <FormControl>
+                        {/* Native <select> — RESEARCH §8 recommended a
                           cmdk-Combobox for the ~430-zone surface, but
                           apps/web does not yet vendor cmdk. Pulling it
                           in is out of scope for Plan 12-03; the native
                           select remains keyboard-accessible and screen-
                           reader friendly. Tracked in SUMMARY's
                           deviations section as a follow-up. */}
-                      <select
-                        {...field}
-                        disabled={submitting}
-                        className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm"
-                      >
-                        {listTimezones().map((tz) => (
-                          <option key={tz} value={tz}>
-                            {tz}
-                          </option>
-                        ))}
-                      </select>
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-            </section>
+                        <select
+                          {...field}
+                          disabled={submitting}
+                          className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm"
+                        >
+                          {listTimezones().map((tz) => (
+                            <option key={tz} value={tz}>
+                              {tz}
+                            </option>
+                          ))}
+                        </select>
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              </section>
 
-            <section
-              id="review"
-              aria-labelledby={stepIds[2]}
-              ref={(el) => {
-                sectionRefs.current[2] = el;
-              }}
-              className="flex flex-col gap-3"
-            >
-              <h2 id={stepIds[2]} className="text-base font-medium">
-                {stepLabels[2]}
-              </h2>
-              <dl className="grid grid-cols-2 gap-2 text-sm">
-                <dt className="text-muted-foreground">{t("end-user.setup.form.name.label")}</dt>
-                <dd>{watched.name || "—"}</dd>
-                <dt className="text-muted-foreground">{t("end-user.setup.form.email.label")}</dt>
-                <dd>{watched.email || "—"}</dd>
-                <dt className="text-muted-foreground">
-                  {t("end-user.setup.form.workspace.label")}
-                </dt>
-                <dd>{watched.workspace || "—"}</dd>
-                <dt className="text-muted-foreground">{t("end-user.setup.form.timezone.label")}</dt>
-                <dd>{watched.timezone || "—"}</dd>
-              </dl>
-              <Button type="submit" disabled={submitting}>
-                {t("end-user.setup.form.submit.label")}
-              </Button>
-            </section>
-          </form>
-        </Form>
-      </CardContent>
-    </Card>
+              <section
+                id="review"
+                aria-labelledby={stepIds[2]}
+                ref={(el) => {
+                  sectionRefs.current[2] = el;
+                }}
+                className="flex flex-col gap-3"
+              >
+                <h2 id={stepIds[2]} className="text-base font-medium">
+                  {stepLabels[2]}
+                </h2>
+                <dl className="grid grid-cols-2 gap-2 text-sm">
+                  <dt className="text-muted-foreground">{t("end-user.setup.form.name.label")}</dt>
+                  <dd>{watched.name || "—"}</dd>
+                  <dt className="text-muted-foreground">{t("end-user.setup.form.email.label")}</dt>
+                  <dd>{watched.email || "—"}</dd>
+                  <dt className="text-muted-foreground">
+                    {t("end-user.setup.form.workspace.label")}
+                  </dt>
+                  <dd>{watched.workspace || "—"}</dd>
+                  <dt className="text-muted-foreground">
+                    {t("end-user.setup.form.timezone.label")}
+                  </dt>
+                  <dd>{watched.timezone || "—"}</dd>
+                </dl>
+                <Button type="submit" disabled={submitting}>
+                  {t("end-user.setup.form.submit.label")}
+                </Button>
+              </section>
+            </form>
+          </Form>
+        </CardContent>
+      </Card>
+    </AuthShell>
   );
 }
