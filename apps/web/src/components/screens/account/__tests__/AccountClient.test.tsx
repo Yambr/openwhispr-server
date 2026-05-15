@@ -31,7 +31,7 @@ const resources = {
     "end-user": {
       account: {
         title: { heading: { text: "Account" } },
-        subtitle: { body: { text: "Manage your profile and account." } },
+        subtitle: { body: { text: "Manage your profile, active sessions, and account deletion." } },
         profile: {
           title: { label: "Profile" },
           name: { label: "Name" },
