@@ -17,14 +17,15 @@
 //     a Project-wide AST walk of `throw new …` to prove every class IS
 //     reachable from the codebase (no dead classes shipping locales).
 
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { Project, SyntaxKind } from "ts-morph";
 import { describe, expect, it } from "vitest";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
-const API_SRC = resolve(HERE, "..", "..");
+const API_SRC = resolve(HERE, "..", "..", "..", "..", "src");
+if (!existsSync(API_SRC)) throw new Error(`source-contract path moved: ${API_SRC}`);
 
 /**
  * Canonical mapping from typed-error class name to i18n code literal.
@@ -48,7 +49,8 @@ const CLASS_TO_CODE = {
 type TypedErrorClass = keyof typeof CLASS_TO_CODE;
 
 function loadLocaleErrors(lng: string): Record<string, string> {
-  const path = resolve(HERE, "..", "locales", `${lng}.json`);
+  const path = resolve(API_SRC, "i18n", "locales", `${lng}.json`);
+  if (!existsSync(path)) throw new Error(`source-contract path moved: ${path}`);
   const raw = readFileSync(path, "utf-8");
   const parsed = JSON.parse(raw) as { errors?: Record<string, string> };
   if (!parsed.errors) throw new Error(`locale ${lng} missing 'errors' namespace`);
