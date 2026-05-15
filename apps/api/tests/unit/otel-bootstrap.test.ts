@@ -123,11 +123,28 @@ describe("otel-bootstrap (Phase 6 / Plan 03 / Task 1)", () => {
 
   it("emitting SIGTERM after module load triggers the shutdown hook (line coverage for onSignal)", async () => {
     await import("../../src/otel-bootstrap");
-    // The handler is registered via process.once("SIGTERM", onSignal);
-    // emitting the signal exercises the onSignal body — its sole job
-    // is to call shutdownSdk() (return is void; we don't await the
-    // internal promise because Node's signal handlers are sync).
-    expect(() => process.emit("SIGTERM" as never)).not.toThrow();
+    // Phase 18.1.2-04-03 (D-09): vitest's worker process registers its OWN
+    // SIGTERM handler at worker boot that calls process.exit(143) BEFORE
+    // our `onSignal` (registered via `process.once`) gets to invoke
+    // shutdownSdk(). Without the spy below this test trips
+    // "Error: process.exit unexpectedly called with 143". The proper
+    // production-side fix is to `export const onSignal` so the test can
+    // invoke it directly + spy shutdownSdk to assert behavior — that
+    // single-character source edit is deferred to a production-fix phase
+    // per CLAUDE.md §Conventions hard rule #1 (see SERVER-ERRORS.md Entry 5).
+    // Test-side: spy process.exit to swallow the worker handler's exit(143)
+    // call so the assertion can verify onSignal-body does not throw.
+    // Coverage on the onSignal arrow at otel-bootstrap.ts:144-146 is
+    // preserved because the `process.emit` does invoke the registered
+    // handler — we only suppress the cascading vitest-worker exit.
+    const exitSpy = vi
+      .spyOn(process, "exit")
+      .mockImplementation(((_code?: number) => undefined as never) as never);
+    try {
+      expect(() => process.emit("SIGTERM" as never)).not.toThrow();
+    } finally {
+      exitSpy.mockRestore();
+    }
   });
 
   it("shutdownSdk swallows a rejected shutdown so the SIGTERM handler stays infallible", async () => {
