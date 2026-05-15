@@ -31,13 +31,6 @@ const resources = {
       signup: {
         title: { heading: { text: "Create your OpenWhispr account" } },
         subtitle: { body: { text: "A confirmation email is sent to verify your address." } },
-        form: {
-          name: { label: "Name" },
-          email: { label: "Email" },
-          password: { label: "Password" },
-          confirmPassword: { label: "Confirm password" },
-          submit: { label: "Sign up" },
-        },
         oidc: {
           google: { label: "Continue with Google" },
           github: { label: "Continue with GitHub" },
@@ -45,6 +38,25 @@ const resources = {
         },
         action: {
           "signin-link": { label: "Already have an account? Sign in" },
+        },
+        // Phase 18.1.1 / Plan 04 / Task 05 (D-25, D-27) — new keys.
+        // Side-shell copy + password-strength meter band labels.
+        shell: {
+          sideTitle: { text: "Create your private workspace." },
+          sideQuote: { text: "Run OpenWhispr on your own infrastructure." },
+        },
+        form: {
+          name: { label: "Name" },
+          email: { label: "Email" },
+          password: { label: "Password" },
+          confirmPassword: { label: "Confirm password" },
+          submit: { label: "Sign up" },
+          passwordStrength: {
+            weak: { label: "Weak" },
+            fair: { label: "Fair" },
+            good: { label: "Good" },
+            strong: { label: "Strong" },
+          },
         },
         success: {
           title: { text: "Check your email" },
@@ -65,7 +77,22 @@ const resources = {
       },
     },
   },
-  common: { common: {} },
+  common: {
+    common: {
+      auth: {
+        shell: {
+          kicker: { default: { text: "Self-host · v1" } },
+          title: { default: { text: "Your speech, on your servers." } },
+          quote: { default: { text: "Private speech-to-text." } },
+          footer: {
+            status: { text: "Status" },
+            docs: { text: "Docs" },
+            github: { text: "GitHub" },
+          },
+        },
+      },
+    },
+  },
 } as Record<string, Record<string, unknown>>;
 
 function Wrap({ children }: { children: React.ReactNode }) {
@@ -283,5 +310,51 @@ describe("SignUpForm (Phase 07.1 / Plan 07 — U2)", () => {
     expect(title.length).toBeGreaterThan(0);
     expect(body.length).toBeGreaterThan(0);
     expect(title).not.toBe(body);
+  });
+
+  // ---------------------------------------------------------------------
+  // Phase 18.1.1 / Plan 04 Task 05 — D-24..D-28 visual-oracle alignment.
+  // ---------------------------------------------------------------------
+
+  it("D-24: AuthShell side-panel copy renders the signup-specific override", async () => {
+    const { SignUpForm } = await import("../SignUpForm");
+    render(
+      <Wrap>
+        <SignUpForm />
+      </Wrap>,
+    );
+    // AuthShell's <aside> ships the override sideTitle when SignUpForm
+    // forwards the resource value via the `sideTitle` prop.
+    expect(screen.getByText(/create your private workspace\./i)).toBeInTheDocument();
+    expect(screen.getByText(/run openwhispr on your own infrastructure\./i)).toBeInTheDocument();
+  });
+
+  it("D-25: renders the password-strength meter with band label", async () => {
+    const { SignUpForm } = await import("../SignUpForm");
+    const user = userEvent.setup();
+    render(
+      <Wrap>
+        <SignUpForm />
+      </Wrap>,
+    );
+    await user.type(screen.getByLabelText(/^password$/i), "abc");
+    expect(screen.getByTestId("password-strength-meter")).toBeInTheDocument();
+    expect(screen.getByText(/^weak$/i)).toBeInTheDocument();
+    // Stronger password → "Strong" band label appears.
+    await user.clear(screen.getByLabelText(/^password$/i));
+    await user.type(screen.getByLabelText(/^password$/i), "Pwa9!testStrongPwa9!");
+    expect(screen.getByText(/^strong$/i)).toBeInTheDocument();
+  });
+
+  it("W-1 scope-out: terms checkbox is intentionally absent (no /terms /privacy routes)", async () => {
+    const { SignUpForm } = await import("../SignUpForm");
+    render(
+      <Wrap>
+        <SignUpForm />
+      </Wrap>,
+    );
+    // The terms checkbox lands with Phase 19.x once /terms /privacy ship.
+    // Documented in .planning/deferred-items.md §18.1.1-04-05.
+    expect(screen.queryByRole("checkbox", { name: /agree to/i })).not.toBeInTheDocument();
   });
 });
