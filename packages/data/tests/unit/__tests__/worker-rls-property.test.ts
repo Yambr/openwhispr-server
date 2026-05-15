@@ -51,6 +51,7 @@ import { withSystemContext } from "../../../../../apps/worker/src/lib/with-syste
 import { withTenantContext } from "../../../../../apps/worker/src/lib/with-tenant-context.js";
 import { provisionPgPartman } from "../../../src/__tests__/helpers.js";
 import * as schema from "../../../src/schema/index.js";
+import { bootstrapRoles } from "../__helpers__/bootstrap-roles.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const MIGRATIONS_FOLDER = resolve(__dirname, "..", "..", "..", "migrations");
@@ -94,15 +95,10 @@ async function bootHarness(): Promise<Harness> {
     .withPassword("super-pw")
     .start();
 
+  // Phase 18.1.1 / Plan 03 / D-12 — canonical role+grants block extracted
+  // to bootstrapRoles helper; pg_partman remains per-caller.
   const superPool = new Pool({ connectionString: pg.getConnectionUri() });
-  await superPool.query(
-    `CREATE ROLE openwhispr_owner WITH LOGIN BYPASSRLS CREATEROLE PASSWORD 'owner-pw'`,
-  );
-  await superPool.query(`CREATE ROLE openwhispr_app   WITH LOGIN          PASSWORD 'app-pw'`);
-  await superPool.query(`GRANT openwhispr_app TO openwhispr_owner WITH ADMIN OPTION`);
-  await superPool.query(`GRANT SET, ALTER SYSTEM ON PARAMETER "app.tenant_id" TO openwhispr_owner`);
-  await superPool.query(`ALTER DATABASE openwhispr OWNER TO openwhispr_owner`);
-  await superPool.query(`ALTER SCHEMA public OWNER TO openwhispr_owner`);
+  await bootstrapRoles(superPool);
   await provisionPgPartman(superPool);
   await superPool.end();
 

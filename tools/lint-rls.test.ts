@@ -25,6 +25,9 @@ import { migrate } from "drizzle-orm/node-postgres/migrator";
 import { Pool } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
+import { provisionPgPartman } from "../packages/data/src/__tests__/helpers.js";
+import { bootstrapRoles } from "../packages/data/tests/unit/__helpers__/bootstrap-roles.js";
+
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = resolve(__dirname, "..");
 const SCRIPT = join(REPO_ROOT, "tools", "lint-rls.ts");
@@ -38,19 +41,25 @@ interface Booted {
 
 async function bootMigrated(): Promise<Booted> {
   const ownerPassword = "owner-pw-lint";
-  const container = await new PostgreSqlContainer("postgres:17-alpine")
+  // Phase 18.1.1 / Plan 03 / D-11+D-12 — switch to pgpartman image (the
+  // migrations folder advanced to require pg_partman at 0014) AND use the
+  // canonical bootstrapRoles helper. The previous inline bootstrap omitted
+  // CREATEROLE + GRANT ADMIN OPTION, so migration 0003 (ALTER ROLE
+  // openwhispr_app SET app.tenant_id …) failed with PG 42501; the helper
+  // grants both, transitively closing D-11.
+  const container = await new PostgreSqlContainer("openwhispr/postgres:17.5-pgpartman")
     .withDatabase("openwhispr")
     .withUsername("postgres_super")
     .withPassword("super-pw")
     .start();
 
   const superPool = new Pool({ connectionString: container.getConnectionUri() });
-  await superPool.query(
-    `CREATE ROLE openwhispr_owner WITH LOGIN BYPASSRLS PASSWORD '${ownerPassword}'`,
-  );
-  await superPool.query(`CREATE ROLE openwhispr_app WITH LOGIN PASSWORD 'app-pw-lint'`);
-  await superPool.query(`ALTER DATABASE openwhispr OWNER TO openwhispr_owner`);
-  await superPool.query(`ALTER SCHEMA public OWNER TO openwhispr_owner`);
+  await bootstrapRoles(superPool, {
+    dbName: "openwhispr",
+    ownerPassword,
+    appPassword: "app-pw-lint",
+  });
+  await provisionPgPartman(superPool);
   await superPool.end();
 
   const host = container.getHost();
