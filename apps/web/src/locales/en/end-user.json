@@ -545,6 +545,14 @@
           "label": "Already have an account? Sign in"
         }
       },
+      "shell": {
+        "sideTitle": {
+          "text": "Create your private workspace."
+        },
+        "sideQuote": {
+          "text": "Run OpenWhispr on your own infrastructure."
+        }
+      },
       "error-duplicate": {
         "title": {
           "text": "Email already registered"
@@ -573,6 +581,20 @@
         },
         "password": {
           "label": "Password"
+        },
+        "passwordStrength": {
+          "fair": {
+            "label": "Fair"
+          },
+          "good": {
+            "label": "Good"
+          },
+          "strong": {
+            "label": "Strong"
+          },
+          "weak": {
+            "label": "Weak"
+          }
         },
         "submit": {
           "label": "Sign up"

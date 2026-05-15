@@ -545,6 +545,14 @@
           "label": "Уже есть аккаунт? Войдите"
         }
       },
+      "shell": {
+        "sideTitle": {
+          "text": "Создайте своё приватное рабочее пространство."
+        },
+        "sideQuote": {
+          "text": "Запустите OpenWhispr на своей инфраструктуре."
+        }
+      },
       "error-duplicate": {
         "title": {
           "text": "Email уже зарегистрирован"
@@ -573,6 +581,20 @@
         },
         "password": {
           "label": "Пароль"
+        },
+        "passwordStrength": {
+          "fair": {
+            "label": "Средний"
+          },
+          "good": {
+            "label": "Хороший"
+          },
+          "strong": {
+            "label": "Сильный"
+          },
+          "weak": {
+            "label": "Слабый"
+          }
         },
         "submit": {
           "label": "Зарегистрироваться"
