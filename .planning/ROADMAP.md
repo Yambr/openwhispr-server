@@ -776,7 +776,9 @@ Plans:
   3. An ESLint regression rule lands in the same phase preventing re-introduction of `// Phase XX` / `// Plan YY` / `// D-ZZ` provenance comments in future code (existing exemptions documented).
   4. The sweep is delivered as ONE squashed commit OR grouped into ≤ 50 file commits — NEVER 771 atomic commits; reviewer can read the diff in a single sitting.
   5. Phase verifier reports PASSED with ≥ 90/90/90/90 coverage unchanged (no behavior changes — comment-only sweep); live e2e green; no Phase 13 Gherkin regression.
-**Plans**: TBD
+**Plans**: 2 plans
+  - [ ] 16-01-PLAN.md — Codemod + lint rule + wiring (audit/fix CLI; lint CLI; allowlist; pnpm/lefthook/CI triad; conventions doc)
+  - [ ] 16-02-PLAN.md — Per-area sweep (worker → packages → web → api/tests → api/src) + ROADMAP/REQUIREMENTS wording fix + inline ME-02 issue body
 **UI hint**: no
 
 ### Phase 17: Trusted Local TLS + Production ACME (v2)
