@@ -6,36 +6,54 @@
 //         update (200 + 404 cross-tenant), delete (soft + 404),
 //         list (basic — no include=messages branch — that's Task 2),
 //         cross-tenant RLS isolation (T-05-07).
+//
+// Phase 18.1.2 / Plan 05 / Cluster #2 sub-cluster 2a — migrated from
+// per-file PostgreSqlContainer boot (`bootMigratedPostgres()`) to the
+// shared `getSharedRoutePool()` fixture. Plan 03 canon (Option A): shared
+// `public` schema + per-file TRUNCATE + ON CONFLICT inline user seed
+// (bypasses the production-tree `seedUser` so vitest watch retries are
+// safe under `.withReuse()`). HARD RULE — zero production-code edits;
+// `buildTestApp` is still imported from the untouched production-tree
+// `apps/api/src/routes/conversations/__tests__/setup.ts`.
 
 import type { FastifyInstance } from "fastify";
 import type { Pool } from "pg";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
-import {
-  bootMigratedPostgres,
-  buildTestApp,
-  seedUser,
-} from "../../../../../src/routes/conversations/__tests__/setup.js";
+import { buildTestApp } from "../../../../../src/routes/conversations/__tests__/setup.js";
+import { getSharedRoutePool } from "../../../../support/shared-route-pool.js";
 
 const TENANT_A = "00000000-0000-0000-0000-000000000000";
 const TENANT_B = "00000000-0000-0000-0000-00000000000b";
 
 let pool: Pool;
-let shutdown: () => Promise<void>;
 let userA: string;
 let userB: string;
 let appA: FastifyInstance;
 let appB: FastifyInstance;
 
 beforeAll(async () => {
-  const booted = await bootMigratedPostgres();
-  pool = booted.pool;
-  shutdown = booted.shutdown.bind(booted);
+  pool = await getSharedRoutePool();
   await pool.query(
     `INSERT INTO tenants (id, name) VALUES ($1, 'Tenant B') ON CONFLICT (id) DO NOTHING`,
     [TENANT_B],
   );
-  userA = await seedUser(pool, { tenantId: TENANT_A, email: "conv-a@test" });
-  userB = await seedUser(pool, { tenantId: TENANT_B, email: "conv-b@test" });
+  // Inline ON CONFLICT user seed — production-tree `seedUser` lacks ON
+  // CONFLICT, so re-running against the reused container would violate
+  // the (tenant_id, lower(email)) unique index. Matches Plan 03 canon.
+  const ra = await pool.query<{ id: string }>(
+    `INSERT INTO users (tenant_id, email) VALUES ($1, $2)
+       ON CONFLICT (tenant_id, (lower(email))) DO UPDATE SET email = EXCLUDED.email
+       RETURNING id`,
+    [TENANT_A, "conv-a@test"],
+  );
+  const rb = await pool.query<{ id: string }>(
+    `INSERT INTO users (tenant_id, email) VALUES ($1, $2)
+       ON CONFLICT (tenant_id, (lower(email))) DO UPDATE SET email = EXCLUDED.email
+       RETURNING id`,
+    [TENANT_B, "conv-b@test"],
+  );
+  userA = ra.rows[0]!.id;
+  userB = rb.rows[0]!.id;
   appA = await buildTestApp({ pool, userId: userA, tenantId: TENANT_A });
   appB = await buildTestApp({ pool, userId: userB, tenantId: TENANT_B });
 }, 180_000);
@@ -43,7 +61,8 @@ beforeAll(async () => {
 afterAll(async () => {
   if (appA) await appA.close();
   if (appB) await appB.close();
-  if (shutdown) await shutdown();
+  // NOTE: do NOT stop the shared container nor end the shared pool — both
+  // are owned by the shared-pg / shared-route-pool module-scope caches.
 }, 60_000);
 
 beforeEach(async () => {

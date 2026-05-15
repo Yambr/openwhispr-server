@@ -27,6 +27,19 @@ export default mergeConfig(
       // prune leaked testcontainers when a vitest run is interrupted. See
       // tools/global-vitest-teardown.ts and `.planning/deferred-items.md §1`.
       setupFiles: ["./vitest.setup.ts"],
+      // Phase 18.1.2 / Plan 05 — serialize FILE execution within the api
+      // package. Cluster #2 integration tests share a single Postgres
+      // testcontainer (`getSharedRoutePool()`) and therefore share the
+      // `conversations`, `notes`, `folders`, `messages`, `transcriptions`,
+      // and `api_keys` tables. Their `beforeEach` clauses run unscoped
+      // DELETEs by design (Plan 03 Option A canon — shared `public` schema
+      // + per-file TRUNCATE + per-file unique user emails). Parallel file
+      // execution races those DELETEs against sibling-file INSERTs and
+      // SELECTs, so we serialize at the file level — mirrors the e2e
+      // workspace config (`tests/e2e/vitest.config.ts:fileParallelism`).
+      // Tests within a single file are already sequential by default;
+      // only inter-file concurrency changes.
+      fileParallelism: false,
       coverage: {
         // Narrow to this package's source files. The root config's
         // exclude list still applies (placeholder modules etc.); when
