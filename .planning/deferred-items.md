@@ -148,6 +148,32 @@ default 5s timed out).
 
 - **otel-bootstrap SIGTERM line-131 pre-existing failure** — `expected [Function] to not throw an error but 'Error: process.exit unexpectedly called with "143"' was thrown`. Unrelated to Cluster 4 path-fix scope. The 2 path-related failures dropped to 1 (the SIGTERM one) after Cluster 4 fix landed; SIGTERM failure exists independent of path. File: apps/api/tests/unit/otel-bootstrap.test.ts:131. Defer to a separate behaviour-fix plan.
 
+## From Phase 18.1.1-04-05 (SignUpForm terms checkbox)
+
+### W-1 SCOPE-OUT: terms checkbox deferred to Phase 19.x
+
+**Discovered:** 2026-05-15 during Plan 04 Task 05 pre-flight check.
+
+**Symptom:** Planner W-1 mandates that the SignUpForm terms checkbox
+(`acceptedTerms: z.literal(true)` field with links to `/terms` and
+`/privacy`) ships ONLY if both `apps/web/src/app/(public)/terms` and
+`apps/web/src/app/(public)/privacy` route directories exist. Pre-flight
+listing of `apps/web/src/app/(public)/` returns only `layout.tsx`,
+`setup`, `sign-in`, `sign-up`, `verify-email` — neither legal route
+exists.
+
+**Why deferred:** A terms checkbox that links to non-existent routes
+would 404 every link click. Per planner W-1 the checkbox is intentionally
+scoped out of Plan 04 Task 05; the `SignUpForm.test.tsx` carries a
+positive pin asserting `queryByRole("checkbox", { name: /agree to/i })`
+returns null so accidental future reintroduction trips the suite.
+
+**Likely fix:** When Phase 19.x ships the `/terms` and `/privacy` route
+pages, add the checkbox to SignUpForm (extending signUpSchema with
+`acceptedTerms: z.literal(true)`), wire the new
+`end-user.signup.action.acceptTerms.label` i18n key (en+ru), and remove
+the negative pin in `SignUpForm.test.tsx`.
+
 ## From Phase 18.1.1-03-03 (D-12 bootstrapRoles helper)
 
 ### worker-rls-property fast-check intermittent fail under parallel docker load
