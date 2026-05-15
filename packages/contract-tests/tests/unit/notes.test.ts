@@ -63,7 +63,8 @@ describe.skipIf(!REACHABLE)("WIRE-22 — /api/notes/* (all 7 routes)", () => {
       }),
     });
     expect(res.status).toBe(200);
-    expect(() => CloudNoteShape.parse(await res.json())).not.toThrow();
+    const body = await res.json();
+    expect(() => CloudNoteShape.parse(body)).not.toThrow();
   });
 
   it("POST /api/notes/create idempotent on same client_note_id (200, not 409)", async () => {
@@ -138,14 +139,16 @@ describe.skipIf(!REACHABLE)("WIRE-22 — /api/notes/* (all 7 routes)", () => {
       body: JSON.stringify({ id }),
     });
     expect(del.status).toBe(200);
-    expect(() => DeleteResponse.parse(await del.json())).not.toThrow();
+    const delBody = await del.json();
+    expect(() => DeleteResponse.parse(delBody)).not.toThrow();
   });
 
   it("GET /api/notes/list returns { notes: CloudNote[] }", async () => {
     const jar = await signInFixture("fixture@conformance.test");
     const res = await jar.fetch(`${BACKEND_URL}/api/notes/list?limit=5`);
     expect(res.status).toBe(200);
-    expect(() => ListResponse.parse(await res.json())).not.toThrow();
+    const body = await res.json();
+    expect(() => ListResponse.parse(body)).not.toThrow();
   });
 
   it("POST /api/notes/search returns { notes: SearchResult[] } with numeric score", async () => {
@@ -166,7 +169,8 @@ describe.skipIf(!REACHABLE)("WIRE-22 — /api/notes/* (all 7 routes)", () => {
       body: JSON.stringify({ query: "contract-search needle" }),
     });
     expect(res.status).toBe(200);
-    expect(() => SearchResponse.parse(await res.json())).not.toThrow();
+    const body = await res.json();
+    expect(() => SearchResponse.parse(body)).not.toThrow();
   });
 
   it("POST /api/notes/search returns 400 envelope on empty query", async () => {
@@ -177,7 +181,8 @@ describe.skipIf(!REACHABLE)("WIRE-22 — /api/notes/* (all 7 routes)", () => {
       body: JSON.stringify({ query: "" }),
     });
     expect(res.status).toBe(400);
-    expect(() => ErrorEnvelope.parse(await res.json())).not.toThrow();
+    const errBody = await res.json();
+    expect(() => ErrorEnvelope.parse(errBody)).not.toThrow();
   });
 
   it("DELETE /api/notes/delete-all returns { deleted: number }", async () => {
@@ -186,11 +191,12 @@ describe.skipIf(!REACHABLE)("WIRE-22 — /api/notes/* (all 7 routes)", () => {
       method: "DELETE",
     });
     expect([200, 400]).toContain(res.status);
+    const body = await res.json();
     if (res.status === 200) {
-      expect(() => DeleteAllResponse.parse(await res.json())).not.toThrow();
+      expect(() => DeleteAllResponse.parse(body)).not.toThrow();
     } else {
       // 400 envelope from the 1000-row cap.
-      expect(() => ErrorEnvelope.parse(await res.json())).not.toThrow();
+      expect(() => ErrorEnvelope.parse(body)).not.toThrow();
     }
   });
 
@@ -212,7 +218,8 @@ describe.skipIf(!REACHABLE)("WIRE-22 — /api/notes/* (all 7 routes)", () => {
       }
       const res = await fetch(`${BACKEND_URL}${p.url}`, init);
       expect(res.status, `${p.method} ${p.url}`).toBe(401);
-      expect(() => ErrorEnvelope.parse(await res.json())).not.toThrow();
+      const body = await res.json();
+      expect(() => ErrorEnvelope.parse(body)).not.toThrow();
     }
   });
 });

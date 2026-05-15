@@ -48,7 +48,8 @@ describe.skipIf(!REACHABLE)("WIRE-23 — /api/folders/* (5 routes)", () => {
       }),
     });
     expect(res.status).toBe(200);
-    expect(() => CloudFolderShape.parse(await res.json())).not.toThrow();
+    const body = await res.json();
+    expect(() => CloudFolderShape.parse(body)).not.toThrow();
   });
 
   it("POST /api/folders/create idempotent on same client_folder_id (200, not 409)", async () => {
@@ -122,14 +123,16 @@ describe.skipIf(!REACHABLE)("WIRE-23 — /api/folders/* (5 routes)", () => {
       body: JSON.stringify({ id }),
     });
     expect(del.status).toBe(200);
-    expect(() => DeleteResponse.parse(await del.json())).not.toThrow();
+    const delBody = await del.json();
+    expect(() => DeleteResponse.parse(delBody)).not.toThrow();
   });
 
   it("GET /api/folders/list returns { folders: CloudFolder[] }", async () => {
     const jar = await signInFixture("fixture@conformance.test");
     const res = await jar.fetch(`${BACKEND_URL}/api/folders/list?limit=5`);
     expect(res.status).toBe(200);
-    expect(() => ListResponse.parse(await res.json())).not.toThrow();
+    const body = await res.json();
+    expect(() => ListResponse.parse(body)).not.toThrow();
   });
 
   it("401 envelope when unauthenticated on every folders route", async () => {
@@ -148,7 +151,8 @@ describe.skipIf(!REACHABLE)("WIRE-23 — /api/folders/* (5 routes)", () => {
       }
       const res = await fetch(`${BACKEND_URL}${p.url}`, init);
       expect(res.status, `${p.method} ${p.url}`).toBe(401);
-      expect(() => ErrorEnvelope.parse(await res.json())).not.toThrow();
+      const body = await res.json();
+      expect(() => ErrorEnvelope.parse(body)).not.toThrow();
     }
   });
 });
