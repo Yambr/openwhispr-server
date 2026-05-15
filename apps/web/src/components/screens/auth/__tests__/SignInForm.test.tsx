@@ -77,13 +77,33 @@ const resources = {
           },
           "signup-link": { label: "Don't have an account? Sign up" },
           resendVerification: { label: "Resend verification email" },
+          // Phase 18.1.1 / Plan 04 / Task 04 (D-21..D-23) — new keys
+          rememberDevice: { label: "Remember this device" },
+          togglePassword: {
+            show: { label: "Show password" },
+            hide: { label: "Hide password" },
+          },
         },
+        // Phase 18.1.1 / Plan 04 / Task 04 (D-19) — text-in-rule separator
+        separator: { email: { text: "Or with email" } },
       },
     },
   },
   common: {
     common: {
       loading: { label: "Loading…" },
+      auth: {
+        shell: {
+          kicker: { default: { text: "Self-host · v1" } },
+          title: { default: { text: "Your speech, on your servers." } },
+          quote: { default: { text: "Private speech-to-text." } },
+          footer: {
+            status: { text: "Status" },
+            docs: { text: "Docs" },
+            github: { text: "GitHub" },
+          },
+        },
+      },
     },
   },
 } as Record<string, Record<string, unknown>>;
@@ -373,6 +393,65 @@ describe("SignInForm (Phase 07.1 / Plan 07 — U1)", () => {
     expect(
       screen.queryByRole("button", { name: /resend verification email/i }),
     ).not.toBeInTheDocument();
+  });
+
+  // ---------------------------------------------------------------------
+  // Phase 18.1.1 / Plan 04 Task 04 — D-16..D-23 visual-oracle alignment.
+  // ---------------------------------------------------------------------
+
+  it("D-17: renders OidcButtons BEFORE the 'Or with email' separator BEFORE the form", async () => {
+    const { SignInForm } = await import("../SignInForm");
+    render(
+      <Wrap>
+        <SignInForm />
+      </Wrap>,
+    );
+    const oidc = await screen.findByRole("button", { name: /continue with google/i });
+    const separator = await screen.findByText(/or with email/i);
+    const submit = screen.getByRole("button", { name: /^sign in$/i });
+    const order = oidc.compareDocumentPosition(separator);
+    expect(order & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    const order2 = separator.compareDocumentPosition(submit);
+    expect(order2 & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it("D-21: renders a 'Remember this device' checkbox", async () => {
+    const { SignInForm } = await import("../SignInForm");
+    render(
+      <Wrap>
+        <SignInForm />
+      </Wrap>,
+    );
+    const cb = await screen.findByRole("checkbox", { name: /remember this device/i });
+    expect(cb).toBeInTheDocument();
+  });
+
+  it("D-23: password show/hide eye toggle flips the input type and aria-label", async () => {
+    const { SignInForm } = await import("../SignInForm");
+    const user = userEvent.setup();
+    render(
+      <Wrap>
+        <SignInForm />
+      </Wrap>,
+    );
+    const pw = screen.getByLabelText(/password/i) as HTMLInputElement;
+    expect(pw.type).toBe("password");
+    const toggle = screen.getByRole("button", { name: /show password/i });
+    await user.click(toggle);
+    expect((screen.getByLabelText(/password/i) as HTMLInputElement).type).toBe("text");
+    expect(screen.getByRole("button", { name: /hide password/i })).toBeInTheDocument();
+  });
+
+  it("D-UX2 sentinel: forgot-password text remains muted (not anchor, not button)", async () => {
+    const { SignInForm } = await import("../SignInForm");
+    render(
+      <Wrap>
+        <SignInForm />
+      </Wrap>,
+    );
+    const txt = screen.getByText(/forgot password/i);
+    expect(txt.tagName.toLowerCase()).not.toBe("a");
+    expect(txt.tagName.toLowerCase()).not.toBe("button");
   });
 
   it("UICONF-07: a non-403 error does NOT render the resend CTA (regression guard)", async () => {
