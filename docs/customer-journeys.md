@@ -321,3 +321,93 @@ T-13-02-01.
 - Backend error branches: 500 generic, 502 upstream, 503 unavailable.
 - Silent-failure modes: stack trace leaks (information disclosure); error
   page renders the request body back (XSS / PII leak).
+
+---
+
+## SSO via Keycloak (after-phase-19)
+
+Corporate operators front their LDAP / Active Directory with Keycloak (or
+Authentik) and consume the existing OpenWhispr `genericOAuth` surface
+already wired in `apps/api/src/auth.ts:209` (ADR-0009 + ADR-0012). These
+journeys stay `@expected-red` until Phase 19 (v3) implements the JIT
+user-provisioning hooks. v2 ships the SPEC + ADR + RED scenarios +
+Keycloak fixture stub. See
+`.planning/phases/18-ldap-keycloak-sso-spec/SPEC-ldap-keycloak.md` and
+`docs/adrs/0012-ldap-via-keycloak.md` for the locked decision context.
+
+### @cjm-sso-1.1 First-time JIT user creation from OIDC ID token (after-phase-19 — currently @expected-red)
+
+An OIDC sign-in arrives at the api with an id_token from a Keycloak realm
+that has never been seen for this operator. Better Auth's
+`databaseHooks.user.create.before` projects the `groups` claim onto
+`users.role` and the tenant claim onto `users.tenant_id`; a new `User`
+row lands, an `account` row links the OIDC subject, and a structured log
+event `sso.jit.user.created` + matching `audit_log` row are emitted.
+
+- Backend error branches: 403 `forbidden_missing_tenant_claim`, 403
+  `forbidden_unknown_tenant`, 403 `forbidden_no_role_mapping`, 400
+  `invalid_oidc_profile`.
+- Silent-failure modes: User row created without `tenant_id` set (RLS
+  invariant violated); audit row not emitted (sign-in untraceable).
+
+### @cjm-sso-1.2 Returning OIDC user has name and email re-synced from claims (after-phase-19 — currently @expected-red)
+
+A previously-provisioned user signs in again; the IdP has updated the
+`name` claim. `databaseHooks.user.update.before` rewrites the existing
+`users.name` (and `users.email` if it changed) before the session
+issues. A `sso.jit.role.updated` audit row records the field-level diff.
+
+- Backend error branches: 403 `forbidden_tenant_mismatch` if the tenant
+  claim diverged from the existing row.
+- Silent-failure modes: name claim drift never reflected in app UI
+  (operator sees stale display name); update audit row not emitted.
+
+### @cjm-sso-1.3 Group-to-role downgrade revokes admin on next sign-in (negative twin, after-phase-19 — currently @expected-red)
+
+A user previously provisioned as `admin` signs in after their LDAP
+admin group membership was revoked upstream. Per `OIDC_REVOCATION_MODE
+= downgrade_to_default`, the role is rewritten to the configured
+default (typically `member`); a `sso.jit.role.updated` audit row
+records the downgrade.
+
+- Backend error branches: 403 `forbidden_no_role_mapping` if no group
+  matches and `OIDC_DEFAULT_ROLE=null`.
+- Silent-failure modes: revoked admin retains admin in the app
+  (privilege-revocation latency); audit row missing for the downgrade.
+
+### @cjm-sso-1.4 Tenant assignment derived from email domain claim (after-phase-19 — currently @expected-red)
+
+`OIDC_TENANT_CLAIM=email_domain` and `OIDC_TENANT_MAPPING` carries
+`acme.example → acme`. A first-time user with email
+`bob@acme.example` signs in; the JIT path resolves the tenant via the
+mapping and creates the `User` row with `tenant_id = acme`.
+
+- Backend error branches: 403 `forbidden_unknown_tenant` when the email
+  domain is not in the mapping.
+- Silent-failure modes: tenant assignment falls through to a default
+  tenant (cross-tenant leak); JIT path silently disables.
+
+### @cjm-sso-1.5 Cross-tenant isolation — RLS rejects tenant A user from tenant B rows (negative twin, after-phase-19 — currently @expected-red)
+
+Two provisioned users exist in tenants `acme` and `globex`. The `acme`
+user issues an authenticated request scoped to `globex`; the Postgres
+row-level-security policy (Phase 1 multi-tenancy) rejects with `403
+forbidden_tenant_mismatch`. This scenario is the property-level
+regression guard for JIT not bypassing RLS.
+
+- Backend error branches: 403 `forbidden_tenant_mismatch`.
+- Silent-failure modes: cross-tenant query succeeds (RLS bypass — CVE
+  class); tenant override leaks through OIDC token replay.
+
+### @cjm-sso-1.6 Loud-fail rejected when Keycloak provider config references missing realm (negative twin, after-phase-19 — currently @expected-red)
+
+Operator boots the api with `OIDC_ISSUER_URL` pointing at a Keycloak
+realm that has not been imported into the (empty) fixture import
+directory. The api MUST fail loudly: `sso.jit.rejected` structured-log
+event with non-zero exit code, NOT silent OIDC disablement. This is the
+loud-fail BYOK invariant from the SPEC's env-var table.
+
+- Backend error branches: boot exits non-zero; `sso.jit.rejected`
+  structured-log event emitted with reason `realm_not_found`.
+- Silent-failure modes: OIDC silently disables and the api serves
+  email-password only (operator believes SSO works when it does not).
