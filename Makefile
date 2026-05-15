@@ -138,7 +138,14 @@ tls-trust:
 	@# checks 3 representative hosts spanning both .localhost and
 	@# .example.test suffixes so a SAN downgrade between this Makefile and
 	@# bootstrap.sh is detectable on re-run.
-	@if openssl x509 -checkend $$((86400*30)) -noout -in compose/traefik/certs/local.crt >/dev/null 2>&1 \
+	@# WR-04 review fix (2026-05-15): `set -e` at the top of the multi-line
+	@# shell command makes the else-branch's mkcert/cp/chmod chain fail-fast.
+	@# Previously the chain used `\`-continuations + `;` separators with no
+	@# `&&` between commands, so a non-zero exit from `mkcert -cert-file …`
+	@# would NOT abort the recipe — subsequent `cp` and `chmod` invocations
+	@# still ran and the final `fi` could exit 0 even after a partial regen.
+	@set -e; \
+	if openssl x509 -checkend $$((86400*30)) -noout -in compose/traefik/certs/local.crt >/dev/null 2>&1 \
 	   && openssl x509 -in compose/traefik/certs/local.crt -noout -text | grep -q 'DNS:api.localhost' \
 	   && openssl x509 -in compose/traefik/certs/local.crt -noout -text | grep -q 'DNS:auth.localhost' \
 	   && openssl x509 -in compose/traefik/certs/local.crt -noout -text | grep -q 'DNS:api.example.test' \
