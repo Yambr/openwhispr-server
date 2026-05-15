@@ -15,5 +15,12 @@
  * multiple times across overlapping vitest workers is safe.
  */
 import { installSignalHook } from "./global-vitest-teardown.js";
+import { assertDockerAvailable } from "./testcontainer-availability.js";
 
 installSignalHook();
+// Phase 18.1.2 / Plan 01 / D-02 — probe Docker daemon AFTER installing the
+// signal hook so a daemon-down probe does not race the reaper registration.
+// `assertDockerAvailable()` mutates `process.env.OPENWHISPR_SKIP_TESTCONTAINERS`
+// and never throws (pitfall §1); downstream setupFiles + integration tests
+// branch on the env flag.
+assertDockerAvailable();
