@@ -2,11 +2,10 @@
 // Phase 05 / Plan 02 / Task 1 — POST /api/streaming-usage integration test.
 //
 // CLAUDE.md mandate: DB-touching code MUST run testcontainer integration
-// tests against real Postgres + PgBouncer + Valkey. This file boots a
-// real Postgres 17-alpine container via @testcontainers/postgresql,
-// applies the production Drizzle migrations (0000..0010), then mounts
-// the streaming-usage route on a Fastify app wired to a real Drizzle
-// node-postgres handle.
+// tests against real Postgres + PgBouncer + Valkey. This file attaches to
+// the shared Postgres 17.5 + pg_partman container, applies the production
+// Drizzle migrations (0000..0014+), then mounts the streaming-usage route
+// on a Fastify app wired to a real Drizzle node-postgres handle.
 //
 // Asserts the production end-to-end behavior:
 //   - first POST lands a usage_ledger row (kind='streaming-stt')
@@ -14,10 +13,16 @@
 //   - SUM(units) is the wordsUsed echoed in the response
 //   - body.text is NEVER persisted in usage_ledger (D-13 / T-05-08 PII)
 //   - Math.round semantics applied at insert time
+//
+// Phase 18.1.2 / Plan 03 — migrated from per-file PostgreSqlContainer
+// boot to the shared `getSharedPostgres()` fixture (RESEARCH §3 cluster #1).
+// Option A isolation per CLAUDE.md hard rule (no production code edits):
+// shared `public` schema + idempotent drizzle migrate + TRUNCATE per-file
+// + unique user email per file.
 
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { PostgreSqlContainer, type StartedPostgreSqlContainer } from "@testcontainers/postgresql";
+import type { StartedPostgreSqlContainer } from "@testcontainers/postgresql";
 import { drizzle } from "drizzle-orm/node-postgres";
 import { migrate } from "drizzle-orm/node-postgres/migrator";
 import Fastify, { type FastifyInstance } from "fastify";
@@ -26,11 +31,18 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { registerErrorHandler } from "../../../../src/error-handler.js";
 import { zodTypeProvider } from "../../../../src/plugins/zod-type-provider.js";
 import { buildStreamingUsageRoutes } from "../../../../src/routes/streaming-usage.js";
+import {
+  bootstrapSharedRoles,
+  getSharedPostgres,
+  provisionPgPartman,
+} from "../../../support/shared-pg.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-// apps/api/src/routes/__tests__ -> packages/data/migrations
+// apps/api/tests/unit/routes/__tests__ -> repo root -> packages/data/migrations
+// __tests__ (0) / routes (1) / unit (2) / tests (3) / api (4) / apps (5) / root (6)
 const MIGRATIONS_FOLDER = resolve(
   __dirname,
+  "..",
   "..",
   "..",
   "..",
@@ -50,26 +62,17 @@ let userId: string;
 let app: FastifyInstance;
 
 beforeAll(async () => {
-  const ownerPw = "owner-pw-test";
-  const appPw = "app-pw-test";
-  container = await new PostgreSqlContainer("postgres:17-alpine")
-    .withDatabase("openwhispr")
-    .withUsername("postgres_super")
-    .withPassword("super-pw")
-    .start();
+  container = await getSharedPostgres();
 
   const superPool = new Pool({ connectionString: container.getConnectionUri() });
-  await superPool.query(
-    `CREATE ROLE openwhispr_owner WITH LOGIN BYPASSRLS CREATEROLE PASSWORD '${ownerPw}'`,
-  );
-  await superPool.query(`CREATE ROLE openwhispr_app   WITH LOGIN          PASSWORD '${appPw}'`);
-  await superPool.query(`GRANT openwhispr_app TO openwhispr_owner WITH ADMIN OPTION`);
-  await superPool.query(`GRANT SET, ALTER SYSTEM ON PARAMETER "app.tenant_id" TO openwhispr_owner`);
-  await superPool.query(`ALTER DATABASE openwhispr OWNER TO openwhispr_owner`);
-  await superPool.query(`ALTER SCHEMA public OWNER TO openwhispr_owner`);
+  await bootstrapSharedRoles(superPool);
+  await provisionPgPartman(superPool);
   await superPool.end();
 
-  const ownerUri = `postgres://openwhispr_owner:${ownerPw}@${container.getHost()}:${container.getMappedPort(5432)}/openwhispr`;
+  const host = container.getHost();
+  const port = container.getMappedPort(5432);
+  const ownerUri = `postgres://openwhispr_owner:super-pw@${host}:${port}/openwhispr`;
+
   const ownerPool = new Pool({ connectionString: ownerUri });
   await migrate(drizzle(ownerPool), {
     migrationsFolder: MIGRATIONS_FOLDER,
@@ -80,7 +83,9 @@ beforeAll(async () => {
 
   pool = new Pool({ connectionString: ownerUri });
   const { rows } = await pool.query<{ id: string }>(
-    `INSERT INTO users (tenant_id, email) VALUES ($1, $2) RETURNING id`,
+    `INSERT INTO users (tenant_id, email) VALUES ($1, $2)
+       ON CONFLICT (tenant_id, (lower(email))) DO UPDATE SET email = EXCLUDED.email
+       RETURNING id`,
     [DEFAULT_TENANT_ID, TEST_USER_EMAIL],
   );
   userId = rows[0]?.id;
@@ -104,7 +109,8 @@ beforeAll(async () => {
 afterAll(async () => {
   if (app) await app.close();
   if (pool) await pool.end();
-  if (container) await container.stop();
+  // NOTE: do NOT stop the shared container here — owned by shared-pg
+  // module-scope cache + testcontainers reuse daemon (Plan 03).
 }, 60_000);
 
 beforeEach(async () => {
