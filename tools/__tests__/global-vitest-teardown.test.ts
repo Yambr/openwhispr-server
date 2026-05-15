@@ -105,4 +105,41 @@ describe("global-vitest-teardown", () => {
     expect(execFileSyncMock).toHaveBeenCalledTimes(1);
     expect(exitSpy).toHaveBeenCalledWith(143);
   });
+
+  describe("D-08 session-id filter hardening", () => {
+    const prev = process.env.OPENWHISPR_TESTCONTAINER_SESSION_ID;
+    afterEach(() => {
+      if (prev === undefined) delete process.env.OPENWHISPR_TESTCONTAINER_SESSION_ID;
+      else process.env.OPENWHISPR_TESTCONTAINER_SESSION_ID = prev;
+    });
+
+    it("adds --filter label=org.testcontainers.session-id=<id> when env set", async () => {
+      process.env.OPENWHISPR_TESTCONTAINER_SESSION_ID = "abc123";
+      await globalTeardown();
+      expect(execFileSyncMock).toHaveBeenCalledTimes(1);
+      const [, argv] = execFileSyncMock.mock.calls[0];
+      expect(argv).toEqual([
+        "container",
+        "prune",
+        "-f",
+        "--filter",
+        "label=org.testcontainers=true",
+        "--filter",
+        "label=org.testcontainers.session-id=abc123",
+      ]);
+    });
+
+    it("falls back to the broad filter when env unset (preserves legacy behaviour)", async () => {
+      delete process.env.OPENWHISPR_TESTCONTAINER_SESSION_ID;
+      await globalTeardown();
+      const [, argv] = execFileSyncMock.mock.calls[0];
+      expect(argv).toEqual([
+        "container",
+        "prune",
+        "-f",
+        "--filter",
+        "label=org.testcontainers=true",
+      ]);
+    });
+  });
 });
