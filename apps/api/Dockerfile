@@ -53,6 +53,13 @@ COPY packages/wire-schemas/package.json packages/wire-schemas/
 # extracted from apps/api/src/email.ts. tsup's noExternal pattern needs the
 # source tree so the api bundle inlines createEmailSender.
 COPY packages/email/package.json packages/email/
+# Phase 14 / Plan 14-04 — packages/byok-guard is the assertBYOKConfig
+# library imported BEFORE otel-bootstrap + installGlobalSSRF in
+# apps/api/src/index.ts and apps/worker/src/index.ts. Workspace dep
+# declared in apps/api/package.json:26 + apps/worker/package.json:19;
+# manifest was missing from the Dockerfile COPY chain (SERVER-ERRORS
+# Entry 7, Phase 19a). tsup noExternal inlines it like the others.
+COPY packages/byok-guard/package.json packages/byok-guard/
 
 # Full install (dev included — needed for tsup/typescript).
 # --ignore-scripts skips lefthook prepare which has no purpose in the image.
@@ -67,6 +74,7 @@ COPY packages/litellm-client packages/litellm-client
 COPY packages/observability packages/observability
 COPY packages/wire-schemas packages/wire-schemas
 COPY packages/email packages/email
+COPY packages/byok-guard packages/byok-guard
 COPY tools tools
 
 # Build api (which now inlines @openwhispr/* via noExternal in tsup config).
@@ -96,6 +104,9 @@ COPY packages/litellm-client/package.json packages/litellm-client/
 COPY packages/observability/package.json packages/observability/
 COPY packages/wire-schemas/package.json packages/wire-schemas/
 COPY packages/email/package.json packages/email/
+# Phase 19a / SERVER-ERRORS Entry 7 — byok-guard manifest needed for the
+# prod-deps `--filter @openwhispr/api...` walk.
+COPY packages/byok-guard/package.json packages/byok-guard/
 
 # Production-only install with hoisted linker. --filter @openwhispr/api...
 # walks api's transitive prod deps but excludes its devDeps (e.g. tsup, tsx).
