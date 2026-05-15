@@ -252,6 +252,39 @@ Verified end-to-end GREEN:
 
 ---
 
+## Entry 11 — `/api/transcribe` drops `model` on the wire to LiteLLM (Phase 19.2)
+
+**Surfacing phase:** Phase 19.2 / Plan 02 (cjm-4.1 happy-path flip; first compose-stack smoke against mock-litellm returned 502 instead of 200).
+
+**Files:**
+- `apps/api/src/routes/transcribe.ts:96-104` — handler calls `deps.litellm.audioTranscriptions({ body, contentType, userId, requestId })` with no `model` field. The route already declares `const STT_MODEL = "whisper-large-v3"` at line 62 for response-shape reporting (`sttModel: STT_MODEL` at line 145) but never forwards it to the upstream call.
+- `packages/litellm-client/src/index.ts:217-228` — `audioTranscriptions(args)` builds the upstream URL as `${config.baseUrl}/v1/audio/transcriptions` with no query string. The OpenAI-compatible multipart audio endpoint has no JSON body slot for `model` (the field belongs in the multipart form OR the URL query); the route was authored as if `checkProviderKey("whisper-large-v3")` also wired the model into the request, but that helper only validates the provider-key env var — it does not mutate the request.
+
+**Production symptom:** Live POST through Traefik → api → LiteLLM proxy fails with LiteLLM's canonical 400:
+```
+LiteLLM Proxy:ERROR: ... audio_transcription(): Exception occured -
+400: {'error': '/audio/transcriptions: Invalid model name passed in
+model=None. Call `/v1/models` to view available models for your key.'}
+INFO:     172.22.0.15:34238 - "POST /v1/audio/transcriptions HTTP/1.1" 400 Bad Request
+```
+The api maps the upstream 400 to its canonical 502 `TRANSCRIPTION_UPSTREAM_FAILED` envelope (transcribe.ts:112-118), so the desktop client sees a generic "upstream transcription provider failure" with no signal that the root cause is a missing query-param on our side. `compose/litellm/litellm_config.yaml:36-40` already exposes the `whisper-large-v3` alias correctly — the LiteLLM config is innocent; the bug is strictly server-side at the api→litellm hop.
+
+**Test workaround:** None — this is the production-side defect that blocks `@cjm-4.1`. Phase 19.2 Plan 01 (commit `8680485`) landed step-binding unit coverage with HTTP boundary mocked, which is the correct unit-test layer per `feedback_cjm_steps_need_unit_tests.md`; but unit-mocks do not exercise the real api→litellm forward, so this defect surfaced only at L2 compose smoke.
+
+**Suggested production fix (Option A — query-param injection, single source of truth):**
+1. Extend `AudioTranscriptionRequest` in `packages/litellm-client/src/index.ts:74-79` with `model?: string`.
+2. In `audioTranscriptions` (lines 217-228), append `?model=${encodeURIComponent(args.model ?? "whisper-large-v3")}` to the upstream URL builder. Preserve every other invariant (streaming body, no buffering, content-type passthrough, auth headers).
+3. In `apps/api/src/routes/transcribe.ts:96-104`, pass `model: STT_MODEL` into the `deps.litellm.audioTranscriptions({...})` call so the constant on line 62 is the single source of truth (already echoed in the response at line 145).
+4. RED-test the client first (`packages/litellm-client/tests/unit/index.test.ts` — assert the captured upstream path ends with `?model=whisper-large-v3`), then GREEN, then wire-up route + route regression test.
+
+Blast radius: ~3 LOC across 2 files + 2 tests. No compose-config edits required.
+
+**Hard-Rule INVERSION authorization:** User explicitly approved Option A production edits for Phase 19.2 under v2.1 followup batch authorization (mirrors Phase 19a/19b precedent). This entry IS the authorization receipt; closing SHAs back-filled below.
+
+**Owner:** Phase 19.2 (commit pending).
+
+---
+
 ## Append-protocol
 
 Future entries follow same shape: surfacing phase + file:line + production symptom + test workaround + suggested fix + owner.
