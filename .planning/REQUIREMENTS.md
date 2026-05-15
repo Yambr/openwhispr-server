@@ -486,10 +486,10 @@ Wave structure:
 
 ### Phase-tag comment audit (Phase 16)
 
-- [ ] **COMMENT-01**: ts-morph AST codemod (NOT regex) audits 771 `// Phase XX / Plan YY / D-ZZ` comments in `apps/` + `packages/` (NOT tests/tools/.planning); 50-file sample before bulk run
-- [ ] **COMMENT-02**: Two-bucket classification REMOVE (re-states phase number) / KEEP (explains non-obvious WHY); CLAUDE.md policy ratified
-- [ ] **COMMENT-03**: ESLint regression rule prevents re-introduction of phase-tag comments in future code
-- [ ] **COMMENT-04**: Sweep delivered as ONE squashed commit or grouped ≤ 50 files (never 771 atomic commits)
+- [ ] **COMMENT-01**: regex-on-text codemod (NOT AST traversal; ts-morph dep reserved for deferred inline-comment phase) audits approximately 754 `// Phase XX / Plan YY / D-ZZ` header comments in `apps/` + `packages/` (NOT tests/tools/.planning); per-area sweep canary (smallest area first) before bulk run
+- [ ] **COMMENT-02**: Two-bucket classification REMOVE (re-states phase number) / KEEP (explains non-obvious WHY); heuristic-only with conservative-KEEP defaults; CLAUDE.md policy ratified
+- [ ] **COMMENT-03**: lint regression rule (tsx CLI per Phase 15-01 pivot) prevents re-introduction of phase-tag comments in future code
+- [ ] **COMMENT-04**: Sweep delivered as per-area atomic commits (each area < ~300 files for comment-only deletions per Phase 15-03 precedent; never 754 atomic commits)
 
 ### Trusted local TLS + production ACME (Phase 17)
 
@@ -582,7 +582,7 @@ Work-order: **13 → 12 → 14 → 15 → 16 → 17 → 18**. 61 REQ-IDs mapped 
 | FSL-07 | 15 | Pending | Branch-protection lock → scrub → unlock runbook |
 | COMMENT-01 | 16 | Pending | ts-morph AST codemod over 771 comments in `apps/`+`packages/` |
 | COMMENT-02 | 16 | Pending | REMOVE/KEEP classification + CLAUDE.md policy ratified |
-| COMMENT-03 | 16 | Pending | ESLint regression rule prevents re-introduction |
+| COMMENT-03 | 16 | Pending | lint regression rule (tsx CLI) prevents re-introduction |
 | COMMENT-04 | 16 | Pending | ONE squashed commit OR grouped ≤ 50 files |
 | TLS-01 | 17 | Pending | `make tls-trust` + mkcert -install + explicit host list |
 | TLS-02 | 17 | Pending | Traefik dev/prod dynamic.yml split |
