@@ -60,12 +60,16 @@ Given("a fresh verified user exists for reset", async ({ apiBaseURL, tenantId })
 When("the user requests a password reset", async ({ apiBaseURL, tenantId }) => {
   const s = stateFor(tenantId);
   s.resetCursor = new Date().toISOString();
-  // Better Auth's canonical endpoint is `/api/auth/forget-password` (note
-  // British spelling per upstream). Some versions also accept
-  // `/api/auth/request-password-reset` — try the canonical first.
-  await postJsonRaw(`${apiBaseURL}/api/auth/forget-password`, {
+  // Better Auth 1.6.9 endpoint is `/api/auth/request-password-reset`
+  // (verified at node_modules/.pnpm/better-auth@1.6.9_*/dist/api/routes/
+  // password.mjs:24 — `createAuthEndpoint("/request-password-reset")`).
+  // The `forget-password` alias from earlier BA versions is NOT registered
+  // in 1.6.9 and 404s. The hook signature is unchanged ({user, url, token}).
+  // No `redirectTo` — Better Auth 1.6.9's `originCheck` rejects URLs that
+  // don't match `trustedOrigins` (or `INGRESS_BASE_URL`); we let the hook
+  // construct the URL from `ctx.context.baseURL` instead. Phase 19a fix.
+  await postJsonRaw(`${apiBaseURL}/api/auth/request-password-reset`, {
     email: s.email,
-    redirectTo: `${apiBaseURL}/reset-password`,
   });
 });
 
