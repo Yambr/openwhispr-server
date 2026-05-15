@@ -82,9 +82,15 @@ describe("withSystemContext (D-W2)", () => {
     // red-baseline: 2026-05-15 (Phase 18.1 F2) — see commit body for failure output
     // The HOF source is deterministic; we assert no GUC is bound by reading
     // its source and confirming the absence of set_config('app.tenant_id'...).
-    const src = await import("node:fs").then((fs) =>
-      fs.promises.readFile(new URL("./with-system-context.ts", import.meta.url), "utf8"),
+    const fs = await import("node:fs");
+    const { fileURLToPath } = await import("node:url");
+    const sourcePath = fileURLToPath(
+      new URL("../../../src/lib/with-system-context.ts", import.meta.url),
     );
+    if (!fs.existsSync(sourcePath)) {
+      throw new Error(`source-contract path moved: ${sourcePath}`);
+    }
+    const src = await fs.promises.readFile(sourcePath, "utf8");
     // POSITIVE — prove the file was actually loaded (no silent empty-string pass).
     expect(src).toMatch(/withSystemContext/);
     // NEGATIVE — the prod invariant (T-04): never bind app.tenant_id GUC.
