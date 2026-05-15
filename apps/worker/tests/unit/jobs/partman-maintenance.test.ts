@@ -127,10 +127,13 @@ SUITE("partman-maintenance (D-A4)", () => {
     // Static-source contract: the handler issues `CALL partman.run_maintenance_proc()`
     // (CALL, not SELECT, and not wrapped in BEGIN). Verified by handler source.
     // red-baseline: 2026-05-15 (Phase 18.1 F1) — see commit body for failure output
-    const src = require("node:fs").readFileSync(
-      require("node:path").resolve(__dirname, "partman-maintenance.ts"),
-      "utf8",
-    ) as string;
+    const fs = require("node:fs");
+    const path = require("node:path");
+    const routePath = path.resolve(__dirname, "../../../src/jobs/partman-maintenance.ts");
+    if (!fs.existsSync(routePath)) {
+      throw new Error(`source-contract path moved: ${routePath}`);
+    }
+    const src = fs.readFileSync(routePath, "utf8") as string;
     expect(src.length).toBeGreaterThan(0);
     expect(src).toMatch(/CALL\s+partman\.run_maintenance_proc\(\)/);
     expect(src).not.toMatch(/BEGIN.*partman\.run_maintenance/);
