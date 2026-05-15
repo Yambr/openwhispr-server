@@ -147,3 +147,14 @@ default 5s timed out).
 ## From Phase 18.1.1-01 (Bucket A path-fix sweep)
 
 - **otel-bootstrap SIGTERM line-131 pre-existing failure** — `expected [Function] to not throw an error but 'Error: process.exit unexpectedly called with "143"' was thrown`. Unrelated to Cluster 4 path-fix scope. The 2 path-related failures dropped to 1 (the SIGTERM one) after Cluster 4 fix landed; SIGTERM failure exists independent of path. File: apps/api/tests/unit/otel-bootstrap.test.ts:131. Defer to a separate behaviour-fix plan.
+
+## From Phase 18.1.1-01 Cluster 11 (apps/web locales coverage)
+
+- **end-user.account.subtitle.body.text content drift** —
+  `apps/web/tests/unit/locales/__tests__/coverage.test.ts` (Phase 07.1 / Plan
+  06) asserts the en bundle value matches UI-SPEC-end-user.md Appendix C
+  exactly. Cluster 11 fixed the REPO_ROOT depth (5 → 6 hops) so the spec
+  table is now reachable; one remaining mismatch is content drift:
+  bundle has `"Manage your profile and account."`; spec wants
+  `"Manage your profile, active sessions, and account deletion."`.
+  Out of scope for path-fix cluster — belongs to UI-SPEC copy reconciliation.
