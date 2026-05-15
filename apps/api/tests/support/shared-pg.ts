@@ -20,6 +20,15 @@
 // D-02 — when Plan 01's docker probe sets OPENWHISPR_SKIP_TESTCONTAINERS=1
 // the fixture rejects fast so callers can `describe.skip` from beforeAll
 // without paying the Docker connection-attempt timeout.
+//
+// Plan 03 retry #4 — image pinned to `openwhispr/postgres:17.5-pgpartman`
+// (built locally via compose/postgres/Dockerfile). Migration 0014 invokes
+// partman.create_parent, which requires pg_partman 5.x installed in the
+// `partman` schema. Plan 02 originally shipped this fixture pinned to
+// `postgres:17-alpine` — incomplete; forward-corrected here. The
+// `provisionPgPartman()` helper mirrors the grant chain proven by
+// packages/data/src/__tests__/helpers.ts so integration tests invoke a
+// single bootstrap to make the full migration set runnable.
 
 import { PostgreSqlContainer, type StartedPostgreSqlContainer } from "@testcontainers/postgresql";
 import type { Pool } from "pg";
@@ -27,8 +36,20 @@ import type { Pool } from "pg";
 let cached: Promise<StartedPostgreSqlContainer> | null = null;
 
 /**
- * Lazily start (or attach to, via `withReuse()`) a Postgres 17-alpine
- * testcontainer with the canonical openwhispr bootstrap credentials.
+ * Image tag for the custom Postgres 17.5 build that bundles pg_partman
+ * 5.2.4 (compose/postgres/Dockerfile). Migration 0014 requires it; pinning
+ * the shared container to this image guarantees the full migration set is
+ * runnable in any integration test that attaches via `getSharedPostgres()`.
+ *
+ * D-22 — this is a LOCAL image, not a registry pull. CI builds it via
+ * `make build-pg-partman`; developers run the same target on first use.
+ */
+export const SHARED_POSTGRES_IMAGE = "openwhispr/postgres:17.5-pgpartman";
+
+/**
+ * Lazily start (or attach to, via `withReuse()`) a Postgres 17.5 +
+ * pg_partman testcontainer with the canonical openwhispr bootstrap
+ * credentials.
  *
  * Module-scope memoisation collapses N concurrent callers within the same
  * vitest worker to a single container start; `withReuse()` collapses across
@@ -44,13 +65,42 @@ export async function getSharedPostgres(): Promise<StartedPostgreSqlContainer> {
       "shared-pg disabled — OPENWHISPR_SKIP_TESTCONTAINERS=1 (Plan 01 docker probe set the flag)",
     );
   }
-  cached ??= new PostgreSqlContainer("postgres:17-alpine")
+  cached ??= new PostgreSqlContainer(SHARED_POSTGRES_IMAGE)
     .withDatabase("openwhispr")
     .withUsername("postgres_super")
     .withPassword("super-pw")
     .withReuse()
     .start();
   return cached;
+}
+
+/**
+ * Idempotently provision the `partman` schema + pg_partman extension on
+ * the shared container, and grant `openwhispr_owner` the privileges
+ * pg_partman 5.x needs to drive `create_parent` / `run_maintenance_proc`
+ * (CREATE on schema, all on tables/sequences, EXECUTE on funcs+procs).
+ *
+ * Mirrors the canonical grant chain from
+ * `packages/data/src/__tests__/helpers.ts::bootMigratedPostgres()` so any
+ * integration test that runs the full migration set (0000..0014+) against
+ * the shared container can call this once after `bootstrapSharedRoles()`
+ * to land the production privilege model.
+ *
+ * Caller passes the superuser Pool (the container's bootstrap role —
+ * `postgres_super`). All statements are idempotent so a second invocation
+ * against a reused container is a no-op.
+ */
+export async function provisionPgPartman(
+  superPool: Pool,
+  ownerRole = "openwhispr_owner",
+): Promise<void> {
+  await superPool.query("CREATE SCHEMA IF NOT EXISTS partman");
+  await superPool.query("CREATE EXTENSION IF NOT EXISTS pg_partman SCHEMA partman");
+  await superPool.query(`GRANT ALL ON SCHEMA partman TO ${ownerRole}`);
+  await superPool.query(`GRANT ALL ON ALL TABLES IN SCHEMA partman TO ${ownerRole}`);
+  await superPool.query(`GRANT ALL ON ALL SEQUENCES IN SCHEMA partman TO ${ownerRole}`);
+  await superPool.query(`GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA partman TO ${ownerRole}`);
+  await superPool.query(`GRANT EXECUTE ON ALL PROCEDURES IN SCHEMA partman TO ${ownerRole}`);
 }
 
 /**
