@@ -139,6 +139,24 @@ default 5s timed out).
 - Owner: next operator picking up v2 close-out work.
 - Closes ROADMAP Phase 18.1 SC9 (re-confirm-deferred-with-justification path).
 
+### §14-04 SR-19.2 root-cause closure (2026-05-15, Phase 19-01-02)
+
+- **SR-19.2 deliverable landed:** canonical `apps/api/src/types/fastify.d.ts`
+  exists and provides the `declare module 'fastify'` augmentation for
+  `FastifyRequest.user` + `FastifyRequest.tenant`. CONTEXT.md D-07 / D-08
+  framing of "Phase 14-04 root cause" pointed at the *class* of decorator
+  invisibility problems; SR-19.2 fixes that class.
+- **Caveat (milestone honesty):** the §14-04 symptom catalog (BullMQ
+  `Promise<Promise<Job>>`, `RequestInit.body` strictness, `CloudRow`
+  generic constraint, litellm-client `ResponseData<unknown>`) is
+  *not* caused by missing decorator types — those failures belong to
+  separate subsystems and remain deferred to future phases that touch
+  those files. SR-19.2 closes the root-cause class but not every
+  catalogued symptom.
+- **Status:** root-cause class CLOSED 2026-05-15 (Phase 19-01-02);
+  individual symptom entries remain deferred per their original
+  justification. Re-evaluate at next milestone-close gate.
+
 ## From Phase 18.1 — stale @expected-red REPOINT
 
 ### @cjm-3.1 password-reset — @after-phase-19.1 reset-mail wiring
