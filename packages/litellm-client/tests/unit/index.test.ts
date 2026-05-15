@@ -269,7 +269,10 @@ describe("buildLitellmClient — audioTranscriptions", () => {
     let capturedBody: unknown;
     agent
       .get(BASE)
-      .intercept({ path: "/v1/audio/transcriptions", method: "POST" })
+      .intercept({
+        path: /^\/v1\/audio\/transcriptions(\?.*)?$/,
+        method: "POST",
+      })
       .reply((opts) => {
         capturedHeaders = opts.headers as Record<string, string>;
         capturedPath = opts.path;
@@ -288,7 +291,9 @@ describe("buildLitellmClient — audioTranscriptions", () => {
     });
     expect(res.statusCode).toBe(200);
 
-    expect(capturedPath).toBe("/v1/audio/transcriptions");
+    // Phase 19.2 SERVER-ERRORS Entry 11 — model defaults to whisper-large-v3
+    // when caller omits it; carried as a query-string param.
+    expect(capturedPath).toMatch(/^\/v1\/audio\/transcriptions\?/);
     expect(capturedMethod).toBe("POST");
     expect(capturedHeaders.authorization).toBe("Bearer sk-master-test");
     expect(capturedHeaders["content-type"]).toBe("multipart/form-data; boundary=abc");
@@ -355,7 +360,10 @@ describe("buildLitellmClient — audioTranscriptions", () => {
   it("surfaces upstream non-2xx as LitellmUpstreamError", async () => {
     agent
       .get(BASE)
-      .intercept({ path: "/v1/audio/transcriptions", method: "POST" })
+      .intercept({
+        path: /^\/v1\/audio\/transcriptions(\?.*)?$/,
+        method: "POST",
+      })
       .reply(503, "no model available");
     const client = buildLitellmClient(baseConfig(), { isOverride: false });
     const stream = Readable.from([Buffer.from("audio")]);
