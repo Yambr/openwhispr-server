@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v2
 milestone_name: — Production Readiness
-status: verifying
-last_updated: "2026-05-14T22:24:35.134Z"
-last_activity: "2026-05-14 — Phase 13 closed end-to-end: verifier PASSED 13/13 must-haves (13-VERIFICATION.md); security audit cleared 11/11 declared threats + 8/8 prompt surfaces with 0 HIGH/CRITICAL (13-SECURITY.md); code-review surfaced 2 HIGH (HI-01 EmailSender dev-fallback false-positive delivered:true; HI-02 bootstrap console.warn leaking credential-bearing URLs from Redis/BullMQ/LiteLLM init errors) — both fixed under TDD with atomic commit `5c579d3` (fix + tests + caller updates) + docs `b437b9c`. Coverage on diff stayed 100/100/100/100 on packages/email and new apps/api/src/lib/redact-url.ts."
+status: closed-with-followup
+last_updated: "2026-05-15T15:30:00.000Z"
+last_activity: "2026-05-15 — Phase 18.1 (v2 test-debt closure) CLOSED through all 7 plans + 24 atomic commits. All 7 V2-MILESTONE-REVIEW failures fixed (Plans 01-04 path-fix + diarization + AccountClient + rate-limit security 49/49 sweep); 4 stale @expected-red tags repointed to 19.1/19.2/19.3/19.4 + lint-cjm-doc regex extended; §14-04 typecheck deferral re-confirmed (drift 7→1); 5 backfill audit artefacts authored adversarially via fresh gsd-code-reviewer + gsd-security-auditor agents (12-REVIEW/SECURITY, 14-REVIEW/SECURITY, 15-SECURITY) — ZERO new HIGH findings (0/7/16/4 H/M/L/I). Aggregate pnpm test result: 14 failed / 2306 passed (was 21 failed / 2293 passed pre-18.1) — V2-REVIEW inventory CLOSED. The 14 remaining failures are NEWLY-SURFACED pre-existing debt (integration tests not in original inventory: missing __fixtures__/*.sse, @openwhispr/wire-schemas package, esbuild await parse-errors, Postgres role bootstrap, otel-bootstrap first-line invariant) — carved out to Phase 18.1.1. v2 milestone CLOSED-WITH-FOLLOWUP."
 progress:
-  total_phases: 49
-  completed_phases: 19
-  total_plans: 144
-  completed_plans: 158
-  percent: 39
+  total_phases: 50
+  completed_phases: 20
+  total_plans: 151
+  completed_plans: 165
+  percent: 40
 ---
 
 # Project State: OpenWhispr Server
@@ -25,10 +25,10 @@ progress:
 
 ## Current Position
 
-Phase: 13 — E2E + CJM Harness (v2 ships-first) FULLY CLOSED — Wave 1 `17c603e`, Wave 2 `df91de2`, post-review fix `5c579d3`
-Plan: All plans completed + code-review HIGHs closed. Next: Phase 12 admin onboarding, which inherits 7 @expected-red @after-phase-12 scenarios authored in 13-02.
-Status: Phase 13 FULLY CLOSED through all GSD gates (discuss→plan→execute→verify→validate→code-review→security→fix). v2 roadmap remaining: Phase 12 → 14 → 15 → 16 → 17 → 18 (six phases, work-order locked).
-Last activity: 2026-05-14 — Phase 13 closed end-to-end: verifier PASSED 13/13 must-haves (13-VERIFICATION.md); security audit cleared 11/11 declared threats + 8/8 prompt surfaces with 0 HIGH/CRITICAL (13-SECURITY.md); code-review surfaced 2 HIGH (HI-01 EmailSender dev-fallback false-positive delivered:true; HI-02 bootstrap console.warn leaking credential-bearing URLs from Redis/BullMQ/LiteLLM init errors) — both fixed under TDD with atomic commit `5c579d3` (fix + tests + caller updates) + docs `b437b9c`. Coverage on diff stayed 100/100/100/100 on packages/email and new apps/api/src/lib/redact-url.ts.
+Phase: 18.1 — v2 test-debt closure CLOSED-WITH-FOLLOWUP — 7 plans / ~24 atomic commits (start `0270ef1` → end `<plan-07-commit>`); all 7 V2-MILESTONE-REVIEW failures fixed in their scoped suites; pnpm test aggregate 14 failed (was 21) / 2306 passed (was 2293); 14 remaining failures are NEWLY-SURFACED pre-existing debt outside V2-REVIEW inventory — carved to Phase 18.1.1.
+Plan: All Phase 18.1 plans complete. v2 milestone CLOSED-WITH-FOLLOWUP. Next: Phase 18.1.1 (newly-surfaced test debt) OR Phase 19.1-19.4 (downstream pre-reqs for repointed @expected-red tags) OR operator-side: FSL history scrub (15-04), first real GHA e2e-cjm CI run, UICONF-05 axe baseline.
+Status: v2 milestone CLOSED-WITH-FOLLOWUP. 7 phases (12, 13, 14, 15, 16, 17, 18) shipped. Phase 18.1 closed v2 test-debt and 5 missing audit artefacts adversarially backfilled (ZERO new HIGH). 14 remaining failures need Phase 18.1.1.
+Last activity: 2026-05-15 — Phase 18.1 closed. See Last Activity for full commit chain. Carved Phase 18.1.1 in ROADMAP for: sse-parser fixtures, @openwhispr/wire-schemas package, esbuild await parse-errors, Postgres role bootstrap drift, otel-bootstrap first-line invariant, integration test suites timing out.
 
 ## Performance Metrics
 
