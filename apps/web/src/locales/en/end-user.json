@@ -500,6 +500,10 @@
       }
     },
     "setup": {
+      "shell": {
+        "sideTitle": { "text": "Set up your OpenWhispr server." },
+        "sideQuote": { "text": "The first registered user becomes the admin." }
+      },
       "title": {
         "heading": { "text": "Set up your OpenWhispr server" }
       },

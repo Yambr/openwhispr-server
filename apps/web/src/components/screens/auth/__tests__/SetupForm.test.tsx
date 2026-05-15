@@ -231,6 +231,18 @@ describe("SetupForm — Task 4 client wizard", () => {
     ).toBeInTheDocument();
   });
 
+  // Phase 18.1.1 / Plan 05 / Task 05-02 (D-32) — AuthShell wrap.
+  it("wraps the form in AuthShell with localized side copy", async () => {
+    const { SetupForm } = await import("../SetupForm");
+    render(
+      <WrapForm>
+        <SetupForm />
+      </WrapForm>,
+    );
+    expect(screen.getByText("Set up your OpenWhispr server.")).toBeInTheDocument();
+    expect(screen.getByRole("complementary")).toBeInTheDocument();
+  });
+
   it("(a) valid submit posts JSON to /api/setup/admin including workspace + timezone", async () => {
     const fetchMock = vi.fn().mockResolvedValue(
       new Response(
