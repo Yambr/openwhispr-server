@@ -63,13 +63,18 @@ export function OidcButtons({ namespace }: OidcButtonsProps): React.JSX.Element 
     }
   }
 
+  // Phase 18.1.1 / Plan 04 / D-18 — size="lg" + full width to align with the
+  // screens-user.jsx oracle. Generic SSO ("oidc") uses ghost variant so the
+  // brand row reads as "primary auth options first, neutral options last".
   return (
     <div className="flex flex-col gap-2">
       {providers.map((p) => (
         <Button
           key={p.id}
           type="button"
-          variant="outline"
+          size="lg"
+          variant={p.id === "oidc" ? "ghost" : "outline"}
+          className="w-full"
           disabled={pending !== null}
           onClick={() => onClick(p.id)}
         >

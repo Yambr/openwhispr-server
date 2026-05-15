@@ -424,11 +424,27 @@
             "disabled": "Forgot password? — coming soon, contact your operator."
           }
         },
+        "rememberDevice": {
+          "label": "Remember this device"
+        },
         "resendVerification": {
           "label": "Resend verification email"
         },
         "signup-link": {
           "label": "Don't have an account? Sign up"
+        },
+        "togglePassword": {
+          "hide": {
+            "label": "Hide password"
+          },
+          "show": {
+            "label": "Show password"
+          }
+        }
+      },
+      "separator": {
+        "email": {
+          "text": "Or with email"
         }
       },
       "error": {
