@@ -34,23 +34,30 @@ It is built to enterprise standards for **1000 concurrent active users** in one 
 
 **A drop-in OpenWhispr backend any organization can self-host — open-source out of the box, corporate-LiteLLM-ready by env override.** Every other goal (multi-tenancy, observability, OSS docs, UI-SPEC) exists to serve this one outcome.
 
-## Current Milestone: v2 Production Readiness
+## Current Milestone: v2.2 Pre-OSS Security & Hygiene
 
-**Goal:** Close the production-blocking gaps surfaced during the v1 → v2 hands-on smoke walkthrough: comprehensive E2E coverage with CJM mapping, UI-SPEC conformance audit + admin onboarding, deployment flexibility via BYOK profiles, repo structure cleanup + license switch, comment audit, trusted TLS, and enterprise SSO via LDAP/Keycloak.
+**Goal:** Close every CRITICAL and HIGH finding from the pre-publication code review, ship constitutional lockers preventing the same regressions, and produce a repository publishable on public GitHub without embarrassment under the "enterprise-grade RLS-isolated multi-tenant" claim.
 
 **Target features:**
-- Cucumber+Playwright E2E suite covering every Customer Journey Map (CJM) flow — signup→verify, sign-in, password reset, transcribe, admin onboarding, locale switch, OIDC providers, error paths. Becomes the harness every subsequent v2 phase writes test-first against.
-- First-run admin onboarding wizard replacing the unrecoverable bcrypt-in-`.env` bootstrap; auth UX brought into conformance with the existing Phase 07 `UI-SPEC-end-user.md` / `UI-SPEC-admin.md` / `design-canvas.jsx` contract (drift, not redesign).
-- Slim core + BYOK profiles — `--with-observability` / `--with-storage` / `--with-ingress` / `--with-pgbouncer` flags. Mailpit moves to dev-only. Default = api+web+worker+postgres+valkey+litellm.
-- Repo refactor: tests split from source, compose/helm in dedicated trees, route-group conventions audited, Apache 2.0 → FSL license, `speaches-audio.md` scrubbed from git history.
-- Phase-tag comment audit: 1642 `// Phase XX / Plan YY / D-ZZ` comments swept against the "no comments unless WHY is non-obvious" rule.
-- Trusted local TLS via mkcert/Caddy local CA; production ACME wired when ingress is enabled.
-- LDAP / Keycloak enterprise SSO — research + SPEC phase only in v2 (implementation scheduled for v3 pending the discuss-phase outcome).
+- **Phase 31 (ships FIRST)** — Six tsx-CLI lockers (`lint-no-env-branches`, `lint-no-suppressions`, `lint-no-hardcode`, `lint-prod-readiness`, `lint-secret-shape-in-error`, `lint-shell-credential-interpolation`) wired into Lefthook pre-commit + GitHub Actions CI; four new constitutional rules (11–14) amended into `.planning/DISCIPLINE.md` and mirrored to `CLAUDE.md`. The lockers are the GATE Phases 20–29 are tested against.
+- **Phase 32** — RLS posture: reverse migration 0003's role-default `app.tenant_id` GUC binding so any query outside `withTenant()` on a tenant-scoped table RAISES instead of silently binding to default tenant.
+- **Phase 33** — Envelope encryption wired to Better Auth credential columns (`account.{access_token, refresh_token, id_token, password}`, `verification.value`, `sessions.{token, previous_token}`, `oauth_state.code_verifier`). The existing `packages/data/src/encryption/envelope.ts` module (AES-256-GCM, per-row DEK, KEK from `MASTER_KEK` env) gets wired up — currently has 0 production consumers.
+- **Phase 34** — `tenantPlugin` retirement: kill the client-controlled `x-tenant-id` → `req.tenantId` plugin or replace with a guarded `req.untrustedTenantHint` that throws on mismatch with authoritative `req.tenant`.
+- **Phase 35** — api-routes-rest bundle: `config: { auth: false }` on public bootstrap endpoints (`/api/locale`, `/api/auth/providers`, `/api/setup-state`); `Headers.getSetCookie()` instead of `Headers.forEach` in `better-auth-handler`; `setup-admin` rollback path that doesn't leave `setup_state=completed` without an admin user.
+- **Phase 36** — worker bundle: `DATABASE_URL` (with password) out of `bash -c "..."` → Node-side `spawn` pipeline with `PGPASSWORD` env; `reconciliation-discrepancy` handler truth-telling — implement the windowed backfill properly OR delete the dishonest stub.
+- **Phase 37** — `LitellmUpstreamError.bodyText` truncated at construction + made `private` + `toJSON()` override so pino's own-property serializer cannot leak full upstream bodies to Loki.
+- **Phase 38** — `@openwhispr/auth` retirement: delete or rename to `-stub` with `private: true` so it cannot be published to npm under a load-bearing name.
+- **Phase 39** — wire-schemas HIGH sweep: `.strict()` on every input schema; `z.string().uuid()/.datetime()/.url()` on permissive output primitives; bounded long-text and metadata; symmetrical enums; non-negative integer counts.
+- **Phase 40** — byok-guard + contract-tests HIGH sweep: move shared wire schemas out of the test-helper package into `packages/wire-schemas`; extend `redactUrl` to cover query-string credentials + AWS SigV4 + bearer-token-shaped paths + every `*_API_KEY` env var (parity test enforces drift-as-failure); `fetchAndParse` envelope enforcement.
+- **Phase 41** — Residual HIGH sweep: per-package sub-plans closing the remaining HIGH findings in api-core, api-routes-transcriptions, web, worker, data, litellm-client, and small-pkgs.
 
 **Key context:**
-- This milestone is **brownfield repair**, not new features. Every entry traces to a concrete symptom recorded in `.planning/TECH_DEBT.md` from the 2026-05-14 stack-up walkthrough.
-- Phase ordering is deliberate: **13 (E2E+CJM) ships first** because it is the harness every subsequent phase writes test-first against. Without 13, fixes ship blind and regress.
-- UI work in Phase 12 is **conformance to an existing design contract** (Phase 07 artefacts), not a free-design redesign.
+- This milestone is **brownfield hygiene + security**, not new features. Every entry traces to a CRITICAL or HIGH finding in `.planning/review/REVIEW-INDEX.md` (orchestrator-verified rollup of 11 parallel `gsd-code-reviewer` agents against main @ `1832f28`).
+- **Strict sequential phase ordering at milestone level**: 31 → 32 → 33 → 34 → 35 → 36 → 37 → 38 → 39 → 40 → 41. Phase 31 (lockers) has no dependency; Phases 32–41 all depend on 31; Phase 33 (encryption) depends on 32 (RLS posture before encryption-at-rest migration touches the same schemas). Phase 20 (compose+Helm guardrails, separately-scoped audit from 2026-05-16) is unrelated and may run in parallel.
+- **Inherits ALL rules from `.planning/DISCIPLINE.md`**: strict TDD, ≥90/90/90/90 coverage on diff, E2E mandatory for user-visible routes, no mocks of internal logic, real services via testcontainers, audit trail per phase. No `--no-verify` carve-outs.
+- **CR-7 (RLS fail-closed) and CR-8 (envelope encryption) get FULL fixes**, not deferred-to-v3 documentation dodges — the "enterprise-grade RLS-isolated multi-tenant" claim is incompatible with shipping either as a known hole.
+- **Milestone close criteria**: re-run the 11-agent review against main; expect ≤ 5 residual HIGH and 0 CRITICAL. Anything else → milestone remains open.
+- **v2 milestone (LDAP SSO + repo refactor + license switch + phase-tag audit + TLS) remains OPEN**; its Phase 11 (Cloud Profile Refactor) and Phases 13/15/16/17/18 carry over and resume after v2.2 closes. v2.2 is inserted because the pre-publication review made it the more urgent stream — publishing to GitHub with 10 CRITICAL findings is not acceptable, while the v2 housekeeping items are not publication-blocking.
 
 
 
