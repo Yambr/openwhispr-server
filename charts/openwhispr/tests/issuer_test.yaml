@@ -56,6 +56,14 @@ tests:
       - equal:
           path: spec.acme.server
           value: https://acme-v02.api.letsencrypt.org/directory
+      # WR-05 review fix (2026-05-15) — cert-manager 1.13+ deprecated
+      # solvers.http01.ingress.class in favour of ingressClassName
+      # (matches upstream Ingress API). Pin the migration.
+      - equal:
+          path: spec.solvers[0].http01.ingress.ingressClassName
+          value: traefik
+      - notExists:
+          path: spec.solvers[0].http01.ingress.class
 
   - it: certManager.issuerKind=Issuer — issuer.yaml renders namespaced Issuer with .metadata.namespace
     template: issuer.yaml
