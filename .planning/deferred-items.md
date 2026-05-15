@@ -148,6 +148,18 @@ default 5s timed out).
 
 - **otel-bootstrap SIGTERM line-131 pre-existing failure** — `expected [Function] to not throw an error but 'Error: process.exit unexpectedly called with "143"' was thrown`. Unrelated to Cluster 4 path-fix scope. The 2 path-related failures dropped to 1 (the SIGTERM one) after Cluster 4 fix landed; SIGTERM failure exists independent of path. File: apps/api/tests/unit/otel-bootstrap.test.ts:131. Defer to a separate behaviour-fix plan.
 
+## From Phase 18.1.1-03-03 (D-12 bootstrapRoles helper)
+
+### worker-rls-property fast-check intermittent fail under parallel docker load
+
+**Discovered:** 2026-05-15 during Plan 03 task D-12 verification.
+
+**Symptom:** `packages/data/tests/unit/__tests__/worker-rls-property.test.ts > worker-tier RLS property (D-W4 layer 3, fast-check) > concurrent tenant-A / tenant-B jobs see only own notes (real BullMQ + Postgres)` fails intermittently with `Property failed after 8 tests` when run alongside heavy parallel testcontainer suites (e.g. `rls-property.test.ts`). The same test passes 100% when run alone or with light siblings.
+
+**Why deferred:** Pre-existing flake — the inline-SQL → `bootstrapRoles()` helper refactor in D-12 emits byte-equivalent SQL, so it is not the trigger. Failure is rooted in docker resource contention (BullMQ/Redis + Postgres + PgBouncer testcontainers all racing). Out-of-scope per executor SCOPE BOUNDARY (only fix issues directly caused by current-task changes).
+
+**Likely fix:** Either serialize worker-rls-property's vitest project so it does not co-run with rls-property/pgbouncer-interleave, or raise the fast-check seed shrink iterations to tolerate concurrent-container scheduling jitter. Belongs to a dedicated test-stability sweep.
+
 ## From Phase 18.1.1-01 Cluster 11 (apps/web locales coverage)
 
 - **end-user.account.subtitle.body.text content drift** —

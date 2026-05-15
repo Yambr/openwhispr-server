@@ -47,6 +47,7 @@ import { provisionPgPartman } from "../../../src/__tests__/helpers.js";
 import * as schema from "../../../src/schema/index.js";
 import { TENANT_SCOPED_TABLES } from "../../../src/schema/index.js";
 import { withTenant } from "../../../src/tenant-context.js";
+import { bootstrapRoles } from "../__helpers__/bootstrap-roles.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const MIGRATIONS_FOLDER = resolve(__dirname, "..", "..", "..", "migrations");
@@ -89,18 +90,10 @@ async function bootHarness(): Promise<Harness> {
     .withPassword("super-pw")
     .start();
 
+  // Phase 18.1.1 / Plan 03 / D-12 — canonical role+grants block extracted
+  // to bootstrapRoles helper; pg_partman remains per-caller.
   const superPool = new Pool({ connectionString: pg.getConnectionUri() });
-  await superPool.query(
-    `CREATE ROLE openwhispr_owner WITH LOGIN BYPASSRLS CREATEROLE PASSWORD 'owner-pw'`,
-  );
-  await superPool.query(`CREATE ROLE openwhispr_app   WITH LOGIN          PASSWORD 'app-pw'`);
-  // Phase 02.5 / Plan 02 — migration 0003 ALTERs openwhispr_app's role
-  // config; owner needs CREATEROLE + ADMIN OPTION on app + SET grant on the
-  // custom GUC `app.tenant_id`. In production owner is bootstrap superuser.
-  await superPool.query(`GRANT openwhispr_app TO openwhispr_owner WITH ADMIN OPTION`);
-  await superPool.query(`GRANT SET, ALTER SYSTEM ON PARAMETER "app.tenant_id" TO openwhispr_owner`);
-  await superPool.query(`ALTER DATABASE openwhispr OWNER TO openwhispr_owner`);
-  await superPool.query(`ALTER SCHEMA public OWNER TO openwhispr_owner`);
+  await bootstrapRoles(superPool);
   // Phase 6 / Plan 02 — provision pg_partman + GRANT chain.
   await provisionPgPartman(superPool);
   await superPool.end();
