@@ -196,3 +196,9 @@ the negative pin in `SignUpForm.test.tsx`.
   bundle has `"Manage your profile and account."`; spec wants
   `"Manage your profile, active sessions, and account deletion."`.
   Out of scope for path-fix cluster — belongs to UI-SPEC copy reconciliation.
+
+### Phase 18.1.2-02 singleThread for integration tests — DEFERRED
+
+Vitest 4.1.5 removed `poolOptions` AND `poolMatchGlobs` (node_modules/vitest/dist/chunks/coverage.DM_a_rWm.js:179: "test.poolOptions was removed in Vitest 4"). Plan 18.1.2-02 task 02-03 HALT-3-branch user choice → Option (c) Defer: rely on withReuse() solo to address Docker Desktop port-exhaustion. A1 advisor's belt-and-suspenders singleThread becomes belt-only.
+
+If port-exhaustion recurs after Plans 03-05 land, revisit via Vitest `projects` config (Option b).
