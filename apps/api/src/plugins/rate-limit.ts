@@ -28,6 +28,13 @@
 //     hook with a dedicated ioredis INCR+EXPIRE counter — fires 429 when
 //     EITHER counter is exhausted. Skipped on routes whose
 //     `config.rateLimit === false`. [D-RL1]
+//   * [Phase 18.1 V2-SEC-01] Layered model: IP-tier fires pre-auth on
+//     auth-OPEN routes (signin/signup/forgot-password — DoS shield); the
+//     per-user tier fires post-auth on every authenticated route; routes
+//     tagged `config.authRequired: true` (authed-only endpoints such as
+//     the AssemblyAI / Deepgram / OpenAI-Realtime token mints) skip the
+//     IP-tier so anonymous traffic returns 401 without populating
+//     `owrl:ip:*` (anonymous storage-exhaustion vector closed).
 //   * [Phase 6] On 429, emit an `audit_log` row with
 //     `action='security.rate_limit_exceeded'` via `recordAudit()` if a
 //     tenant context is available. Best-effort: a missing tenant (pre-
@@ -180,9 +187,18 @@ async function rateLimitPluginInner(
   // (probes), aligned with the user-tier opt-out semantics.
   fastify.addHook("onRequest", async (req, reply) => {
     const routeConfig = (
-      req as FastifyRequest & { routeOptions?: { config?: { rateLimit?: unknown } } }
+      req as FastifyRequest & {
+        routeOptions?: { config?: { rateLimit?: unknown; authRequired?: boolean } };
+      }
     ).routeOptions?.config;
     if (routeConfig?.rateLimit === false) return;
+    // Phase 18.1 / Plan 02 (V2-SEC-01) — authRequired carve-out: routes
+    // that 401 unauthenticated requests in a pre-handler MUST NOT populate
+    // `owrl:ip:*` buckets pre-auth, because that opens an anonymous
+    // storage-exhaustion DoS vector. Auth-OPEN routes (signin/signup/
+    // forgot-password) leave `config.authRequired` UNSET so the Phase 6
+    // D-RL1 IP-tier DoS shield still fires on them.
+    if (routeConfig?.authRequired === true && !req.user) return;
 
     const ipKey = `owrl:ip:${req.ip}`;
     let count = 0;
