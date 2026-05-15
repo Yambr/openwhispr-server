@@ -862,6 +862,14 @@
         "heading": {
           "text": "Verify your email"
         }
+      },
+      "shell": {
+        "sideTitle": {
+          "text": "Verify your email."
+        },
+        "sideQuote": {
+          "text": "We sent a sign-in link to your inbox. The link is valid for 30 minutes."
+        }
       }
     }
   }

@@ -38,10 +38,32 @@ const resources = {
           body: { text: "This verification link is invalid or has expired. Sign up again." },
           cta: { label: "Back to sign up" },
         },
+        // Phase 18.1.1 / Plan 05 / Task 05-01 — AuthShell wrap (D-29..D-31).
+        shell: {
+          sideTitle: { text: "Verify your email." },
+          sideQuote: {
+            text: "We sent a sign-in link to your inbox. The link is valid for 30 minutes.",
+          },
+        },
       },
     },
   },
-  common: { common: {} },
+  common: {
+    common: {
+      auth: {
+        shell: {
+          kicker: { default: { text: "Self-host · v1" } },
+          title: { default: { text: "Your speech, on your servers." } },
+          quote: { default: { text: "Private speech-to-text." } },
+          footer: {
+            status: { text: "Status" },
+            docs: { text: "Docs" },
+            github: { text: "GitHub" },
+          },
+        },
+      },
+    },
+  },
 } as Record<string, Record<string, unknown>>;
 
 function Wrap({ children }: { children: React.ReactNode }) {
@@ -135,6 +157,75 @@ describe("VerifyEmailClient (Phase 07.1 / Plan 07 — U3)", () => {
     );
     await waitFor(() => {
       expect(screen.getByText(/verification failed/i)).toBeInTheDocument();
+    });
+  });
+
+  // Phase 18.1.1 / Plan 05 / Task 05-01 (D-29..D-31) — AuthShell wrap + status badge.
+  describe("AuthShell + status badge (Phase 18.1.1 / Plan 05)", () => {
+    it("wraps the screen in AuthShell with localized sideTitle", async () => {
+      const { VerifyEmailClient } = await import("../VerifyEmailClient");
+      render(
+        <Wrap>
+          <VerifyEmailClient token={undefined} />
+        </Wrap>,
+      );
+      expect(screen.getByText("Verify your email.")).toBeInTheDocument();
+      // <aside> from AuthShell
+      expect(screen.getByRole("complementary")).toBeInTheDocument();
+    });
+
+    it("renders a status-badge testid in the error branch (no token)", async () => {
+      const { VerifyEmailClient } = await import("../VerifyEmailClient");
+      render(
+        <Wrap>
+          <VerifyEmailClient token={undefined} />
+        </Wrap>,
+      );
+      expect(screen.getByTestId("status-badge")).toBeInTheDocument();
+    });
+
+    it("renders a status-badge testid in the loading branch (pending token)", async () => {
+      let resolveIt: (v: { data: unknown; error: unknown }) => void = () => {};
+      verifyEmail.mockImplementationOnce(
+        () =>
+          new Promise<{ data: unknown; error: unknown }>((r) => {
+            resolveIt = r;
+          }),
+      );
+      const { VerifyEmailClient } = await import("../VerifyEmailClient");
+      render(
+        <Wrap>
+          <VerifyEmailClient token="abc" />
+        </Wrap>,
+      );
+      expect(screen.getByTestId("status-badge")).toBeInTheDocument();
+      // resolve to avoid dangling promise
+      resolveIt({ data: { status: true }, error: null });
+    });
+
+    it("renders a status-badge testid in the success branch", async () => {
+      verifyEmail.mockResolvedValueOnce({ data: { status: true }, error: null });
+      const { VerifyEmailClient } = await import("../VerifyEmailClient");
+      render(
+        <Wrap>
+          <VerifyEmailClient token="abc" />
+        </Wrap>,
+      );
+      await waitFor(() => {
+        expect(screen.getByText(/email verified/i)).toBeInTheDocument();
+      });
+      expect(screen.getByTestId("status-badge")).toBeInTheDocument();
+    });
+
+    it("centers the CardContent via the text-center class", async () => {
+      const { VerifyEmailClient } = await import("../VerifyEmailClient");
+      const { container } = render(
+        <Wrap>
+          <VerifyEmailClient token={undefined} />
+        </Wrap>,
+      );
+      // Any element with text-center class inside the rendered tree.
+      expect(container.querySelector(".text-center")).not.toBeNull();
     });
   });
 });
