@@ -812,6 +812,30 @@ Plans:
 **UI hint**: no
 **Open question (deferred to `/gsd-discuss-phase 18`)**: option (a) Keycloak/Authentik vs option (b) direct LDAP. SSO-01 records the decision matrix; the final pick lands in ADR 0012 after discuss-phase.
 
+### Phase 18.1: v2 test-debt closure
+**Goal**: Close the v2 milestone debt surfaced by `/V2-MILESTONE-REVIEW.md` and the full `pnpm test` sweep (21 failures / 2293 passed). Make `pnpm test` GREEN, retire stale `@expected-red` tags, backfill Phase 12 + Phase 14 review/security artefacts, and unblock the integration-tests pass. FSL history scrub (15-04) and first real GHA e2e-cjm CI run are explicitly OPERATOR-side and out of scope.
+**Depends on**: Phases 12, 13, 14, 15, 16, 17, 18 (v2 milestone closure); none of the v2 prod-code phases is reopened — this is a strict additive fix-up.
+**Requirements**: Derived from `.planning/V2-MILESTONE-REVIEW.md` (top-7 followups) + `pnpm test` sweep failures.
+**Success Criteria** (what must be TRUE):
+  1. `pnpm test` exits 0 across all workspaces; the 7 unique failures classified in V2-MILESTONE-REVIEW are GREEN or explicitly @skip with documented reason. Specifically: `apps/worker/tests/unit/jobs/partman-maintenance.test.ts`, `apps/worker/tests/unit/lib/with-system-context.test.ts`, `apps/api/tests/unit/routes/agent/stream.test.ts` (Test 16), `apps/api/tests/unit/routes/__tests__/diarization.test.ts` (×2 — `failed` + `cancelled`), `apps/api/tests/unit/routes/tokens/__tests__/rate-limit-isolation.integration.test.ts` (T3), `apps/web/src/components/screens/account/__tests__/AccountClient.test.tsx`.
+  2. The 4 stale `@expected-red` Gherkin tags — `@cjm-3.1` (password-reset), `@cjm-4.1` (transcribe), `@cjm-1.4` (signup-verify locale ru), `@cjm-6.1` (locale-switch) — are either FLIPPED to GREEN (tag removed) or moved to a different `@after-phase-N` with a justified ADR/note. `tools/lint-cjm-doc.ts` Mode-3 stays green.
+  3. Source-contract path bugs from Phase 15-02 STRUCT regression are fixed in a forward-compatible way: tests use `import.meta.url` resolution into `../../src/...` or read via package-relative paths; a lint rule (or eslint-no-restricted-syntax) prevents regression — or a lint exemption added to `tools/lint-colocated-tests.ts` documenting the legitimate `__dirname` source-contract pattern.
+  4. The diarization route handler at `apps/api/src/routes/diarization.ts` returns the canonical 502 envelope with `jobId` populated for pyannote job statuses `failed` AND `cancelled` (regression: currently returns undefined for jobId). Test added in same atomic commit per CLAUDE.md TDD constraint.
+  5. The rate-limit ordering bug at `apps/api/src/routes/tokens/_rate-limit.ts` (or equivalent plugin wiring) is fixed: unauthenticated requests get 401 BEFORE the rate-limit hook fires; `owrl:ip:*` buckets MUST NOT be created by anonymous traffic. **Security-relevant — anonymous DoS vector**. Test asserts bucket-key set unchanged before/after 35 anon requests.
+  6. `apps/web/src/components/screens/account/AccountClient.tsx` renders "Active sessions" exactly once (currently leaks into the section description + heading). Test uses `getAllByText` with explicit count assertion per weak-assertion lint rule.
+  7. Phase 12 and Phase 14 retroactively get `12-REVIEW.md` + `12-SECURITY.md` and `14-REVIEW.md` + `14-SECURITY.md` artefacts (slim, code-evidence-first; can each be ≤ 200 lines). Spawned via `/gsd-code-review` per phase scope.
+  8. ROADMAP.md "Progress Table" (lines 819-838) reflects the actual v2 state: Phase 13/15/16/17/18 marked closed with completion dates; Phase 18.1 added to table.
+  9. Pre-existing typecheck failures cataloged in `.planning/deferred-items.md` §14-04 are EITHER fixed in this phase OR re-confirmed deferred-with-justification (no silent rot).
+**Plans** (estimate): 3-5 plans
+  - [ ] 18.1-01-PLAN.md — Path-fix the 3 ENOENT source-contract tests + lint exemption/rule update
+  - [ ] 18.1-02-PLAN.md — Fix diarization status mapping (failed + cancelled → 502 with jobId)
+  - [ ] 18.1-03-PLAN.md — Fix rate-limit ordering: 401 BEFORE bucket increment for anonymous traffic (security)
+  - [ ] 18.1-04-PLAN.md — Fix AccountClient duplicate "Active sessions" copy + update test
+  - [ ] 18.1-05-PLAN.md — Retire 4 stale `@expected-red` tags (verify behavior, flip or remove)
+  - [ ] 18.1-06-PLAN.md — Backfill Phase 12 + Phase 14 REVIEW/SECURITY artefacts + sync ROADMAP progress table
+**UI hint**: minor (AccountClient component copy fix)
+**Note**: FSL force-push history scrub (Phase 15-04) + first real GHA `make e2e-cjm` run are OPERATOR-side and excluded from this phase. UICONF-05 axe baseline also operator-side.
+
 ## Progress Table
 
 | Phase | Plans Complete | Status | Completed |
