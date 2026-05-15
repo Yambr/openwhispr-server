@@ -110,6 +110,7 @@ describe("AccountClient (Phase 07.1 / Plan 08)", () => {
       currentSessionToken: "tok-1",
     });
     expect(screen.getByText(/^Profile$/)).toBeInTheDocument();
+    // red-baseline: 2026-05-15 (Phase 18.1 F7) — duplicate 'Active sessions' in <p> + <h2>; see commit body
     // SessionsTable renders an "Active sessions" h2 in the skeleton render
     // path (synchronous, before useQuery resolves). Strong single-element
     // assertion — getByText throws on multiple matches, so this implicitly
