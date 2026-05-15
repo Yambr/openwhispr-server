@@ -18,6 +18,22 @@
         }
       }
     },
+    "auth": {
+      "shell": {
+        "kicker": { "default": { "text": "Self-host · v1" } },
+        "title": { "default": { "text": "Ваша речь — на ваших серверах." } },
+        "quote": {
+          "default": {
+            "text": "Приватное распознавание речи, структурированные заметки и история диалогов — в вашей собственной среде, с полным аудит-логом."
+          }
+        },
+        "footer": {
+          "status": { "text": "Статус" },
+          "docs": { "text": "Документация" },
+          "github": { "text": "GitHub" }
+        }
+      }
+    },
     "language": {
       "label": { "label": "Язык" },
       "english": { "label": "English" },

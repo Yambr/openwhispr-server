@@ -76,7 +76,8 @@ describe("otel-bootstrap (Phase 6 / Plan 03 / Task 1)", () => {
     // SDK start and any pino consumer) is preserved: between the
     // guard import and ./otel-bootstrap.js there are ONLY the two
     // guard statements (import + call) — no other resolutions.
-    const indexPath = path.join(__dirname, "index.ts");
+    const indexPath = path.join(__dirname, "..", "..", "src", "index.ts");
+    if (!fs.existsSync(indexPath)) throw new Error(`source-contract path moved: ${indexPath}`);
     const src = fs.readFileSync(indexPath, "utf8");
     const lines = src.split(/\r?\n/);
     const codeLines: string[] = [];
@@ -191,7 +192,8 @@ describe("otel-bootstrap (Phase 6 / Plan 03 / Task 1)", () => {
     // single metrics path through OTel SDK → Collector → Mimir is the
     // locked architecture (D-T6); a /metrics scrape endpoint would
     // duplicate signal.
-    const apiRoot = path.resolve(__dirname);
+    const apiRoot = path.resolve(__dirname, "..", "..", "src");
+    if (!fs.existsSync(apiRoot)) throw new Error(`source-contract path moved: ${apiRoot}`);
     const routesDir = path.join(apiRoot, "routes");
     const stack: string[] = [routesDir, apiRoot];
     const hits: string[] = [];
