@@ -72,7 +72,6 @@ describe("recordPreviousToken (Phase 02.12 plain-text)", () => {
     // Second call: UPDATE sessions ... previous_token (text) + 5 min.
     const update = recorded.find((r) => /UPDATE\s+sessions/i.test(r.sql));
     expect(update).toBeDefined();
-    // Phase 02.12 — column is now `previous_token` (text), not `previous_token_hash`.
     expect(update?.sql).toMatch(/previous_token\b/);
     expect(update?.sql).not.toMatch(/previous_token_hash/);
     expect(update?.sql).toMatch(/5\s+minutes/);
@@ -179,7 +178,6 @@ describe("tryPreviousToken (Phase 02.12 plain-text)", () => {
     };
     await tryPreviousToken(db, "rotated-token");
     expect(captured.sql).toMatch(/lookup_session_by_previous_token/);
-    // Phase 02.12 — bearer text is bound directly; no SHA-256 hashing.
     expect(captured.params).toContain("rotated-token");
     // Negative: no Buffer params (the old bytea hash path is gone).
     expect(captured.params.find((p) => p instanceof Buffer)).toBeUndefined();

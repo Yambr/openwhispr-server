@@ -13,7 +13,6 @@ import { defineConfig } from "vitest/config";
 
 export default defineConfig({
   test: {
-    // Phase 15 / Plan 02 (STRUCT-01) — tests live under tests/unit/ post-move.
     include: ["tests/**/*.test.ts"],
     reporters: ["dot"],
     testTimeout: 60_000,

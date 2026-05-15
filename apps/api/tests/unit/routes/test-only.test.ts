@@ -225,7 +225,6 @@ describe("test-only routes (NODE_ENV=test gated)", () => {
     await app.close();
   });
 
-  // Phase 03 / Plan 10 — PROVIDER-01 introspection seam.
   it("Test 5: GET /api/_test/litellm-baseurl returns the LiteLLM client baseUrl when wired", async () => {
     vi.stubEnv("NODE_ENV", "test");
     const app = Fastify({ logger: false });

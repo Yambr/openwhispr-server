@@ -53,15 +53,11 @@ export interface RouteSpec {
  * inventory fails CI loudly (Pitfall #6 mitigation).
  */
 export const PHASE_5_ROUTES: readonly RouteSpec[] = [
-  // Phase 05 / Plan 02 — usage ledger (WIRE-09, WIRE-10)
   { method: "POST", path: "/api/streaming-usage", hasBody: true },
   { method: "GET", path: "/api/usage" },
-  // Phase 05 / Plan 03 — agent web-search (WIRE-08)
   { method: "POST", path: "/api/agent/web-search", hasBody: true },
-  // Phase 05 / Plan 04 — settings reads (WIRE-11, WIRE-12)
   { method: "GET", path: "/api/stt-config" },
   { method: "GET", path: "/api/note-recording-config" },
-  // Phase 05 / Plan 05 — notes CRUD (WIRE-22)
   { method: "POST", path: "/api/notes/create", hasBody: true },
   { method: "POST", path: "/api/notes/batch-create", hasBody: true },
   { method: "PATCH", path: "/api/notes/update", hasBody: true },
@@ -69,13 +65,11 @@ export const PHASE_5_ROUTES: readonly RouteSpec[] = [
   { method: "DELETE", path: "/api/notes/delete-all" },
   { method: "GET", path: "/api/notes/list" },
   { method: "POST", path: "/api/notes/search", hasBody: true },
-  // Phase 05 / Plan 06 — folders CRUD (WIRE-23)
   { method: "POST", path: "/api/folders/create", hasBody: true },
   { method: "POST", path: "/api/folders/batch-create", hasBody: true },
   { method: "PATCH", path: "/api/folders/update", hasBody: true },
   { method: "DELETE", path: "/api/folders/delete", hasBody: true },
   { method: "GET", path: "/api/folders/list" },
-  // Phase 05 / Plan 07 — conversations + messages (WIRE-24, WIRE-25)
   { method: "POST", path: "/api/conversations/create", hasBody: true },
   { method: "PATCH", path: "/api/conversations/update", hasBody: true },
   { method: "DELETE", path: "/api/conversations/delete", hasBody: true },
@@ -83,13 +77,11 @@ export const PHASE_5_ROUTES: readonly RouteSpec[] = [
   { method: "POST", path: "/api/conversations/search", hasBody: true },
   { method: "POST", path: "/api/conversations/messages", hasBody: true },
   { method: "GET", path: "/api/conversations/messages" },
-  // Phase 05 / Plan 08 — transcriptions CRUD (WIRE-26)
   { method: "POST", path: "/api/transcriptions/create", hasBody: true },
   { method: "POST", path: "/api/transcriptions/batch-create", hasBody: true },
   { method: "GET", path: "/api/transcriptions/list" },
   { method: "DELETE", path: "/api/transcriptions/delete", hasBody: true },
   { method: "POST", path: "/api/transcriptions/batch-delete", hasBody: true },
-  // Phase 05 / Plan 09 — api keys CRUD (WIRE-27)
   { method: "GET", path: "/api/v1/keys/list" },
   { method: "POST", path: "/api/v1/keys/create", hasBody: true },
   // /api/v1/keys/:id/revoke — synthetic UUID exercises route registration
@@ -113,7 +105,6 @@ export const PHASE_5_ROUTES: readonly RouteSpec[] = [
  * to `:param` before comparison.
  */
 export const PHASE_2_4_BASELINE_ROUTES: readonly string[] = [
-  // Phase 2
   "/api/health",
   "/api/check-user",
   "/api/auth/verification-status",
@@ -126,7 +117,6 @@ export const PHASE_2_4_BASELINE_ROUTES: readonly string[] = [
   "/api/streaming-token",
   "/api/deepgram-streaming-token",
   "/api/openai-realtime-token",
-  // Phase 3 — registered when LITELLM_MASTER_KEY is wired
   "/api/transcribe",
   "/api/reason",
   "/api/agent/stream",
