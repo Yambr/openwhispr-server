@@ -1,0 +1,66 @@
+# SPDX-License-Identifier: FSL-1.1-ALv2
+# Phase 17 / Plan 03 (TLS-02-prod / TLS-03) — Production ACME activation overlay.
+#
+# Compose with (overlay order matters — acme must come AFTER ingress so the
+# traefik service definition is already present):
+#
+#   docker compose \
+#     -f docker-compose.yml \
+#     -f compose/docker-compose.ingress.yml \
+#     -f compose/docker-compose.acme.yml \
+#     up -d --wait
+#
+# Required env:
+#   LETSENCRYPT_EMAIL=ops@example.com    # operator identity to ACME (RFC 8555 §7.3)
+#   PUBLIC_DOMAIN=example.com            # consumed by dynamic.prod.yml router rules
+#
+# Optional env:
+#   LETSENCRYPT_STAGING=1                # flip caServer to LE staging endpoint
+#   LETSENCRYPT_CA_SERVER=https://…      # explicit override (precedence over STAGING)
+#
+# IMPORTANT — HTTP-01 challenge requires port :80 reachable from the public
+# internet so the ACME server can fetch `/.well-known/acme-challenge/<token>`.
+# The base `compose/docker-compose.ingress.yml` already publishes 80 → 80 on
+# the `traefik` service; operators behind NAT MUST port-forward :80 to the
+# docker host. DNS-01 (wildcards) is OUT of scope per CONTEXT Q2-D1.
+#
+# Persistence: the named volume `letsencrypt:/letsencrypt` stores
+# `acme.json` (Let's Encrypt account key + issued certs). Operators MUST
+# back this volume up — losing it means re-running the issuance flow
+# (rate-limited at 50 certs / registered domain / week).
+
+services:
+  traefik:
+    environment:
+      # Required — fails fast at `docker compose up` if unset.
+      LETSENCRYPT_EMAIL: "${LETSENCRYPT_EMAIL:?LETSENCRYPT_EMAIL is required for the ACME overlay}"
+      # Resolution order:
+      #   1. LETSENCRYPT_CA_SERVER (explicit override)
+      #   2. LE staging URL when LETSENCRYPT_STAGING is set (any truthy value)
+      #   3. Production URL default (baked into traefik.yml via `${VAR:-default}`)
+      LETSENCRYPT_CA_SERVER: "${LETSENCRYPT_CA_SERVER:-${LETSENCRYPT_STAGING:+https://acme-staging-v02.api.letsencrypt.org/directory}}"
+    volumes:
+      # Named volume persists ACME state (account key + issued cert chain).
+      - letsencrypt:/letsencrypt
+      # Mount both dynamic configs into a dedicated directory so we can
+      # switch Traefik's file provider from `filename` (single file) to
+      # `directory` (multi-file) mode via CLI flags. This lets the existing
+      # dev `dynamic.yml` AND the new prod `dynamic.prod.yml` coexist
+      # without either touching the other's routers. Routers declaring a
+      # `certResolver` (only those in `dynamic.prod.yml`) trigger ACME;
+      # routers without it (dev profile) continue to use the static-cert
+      # `/certs/local.crt` from `dynamic.yml` `tls.certificates`.
+      - ./compose/traefik/dynamic.yml:/etc/traefik/dynamic/dynamic.yml:ro
+      - ./compose/traefik/dynamic.prod.yml:/etc/traefik/dynamic/dynamic.prod.yml:ro
+    command:
+      # Preserve the base ingress overlay's `--ping=true` argument, then
+      # switch the file provider to directory mode and disable the
+      # `filename` mode set by `traefik.yml`. Compose merges `command` by
+      # REPLACEMENT, not append — list every flag we need explicitly.
+      - --ping=true
+      - --providers.file.directory=/etc/traefik/dynamic
+      - --providers.file.filename=
+      - --providers.file.watch=true
+
+volumes:
+  letsencrypt:

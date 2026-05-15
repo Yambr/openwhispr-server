@@ -1,0 +1,66 @@
+# SPDX-License-Identifier: FSL-1.1-ALv2
+# Phase 17 / Plan 03 (TLS-02-prod / TLS-03) — production dynamic config.
+#
+# Per-host routers each opt in to the ACME HTTP-01 resolver `letsencrypt`
+# declared in `compose/traefik/traefik.yml`. ONE router per host — NEVER a
+# wildcard `Host(*.…)` rule (CONTEXT decision Q2-D1, ROADMAP SC #1).
+#
+# Hostnames are env-driven via `${PUBLIC_DOMAIN}` (consumed by the compose
+# overlay `compose/docker-compose.acme.yml`). Operators with non-uniform
+# public hostnames override individual rules by editing this file in their
+# fork or layering an additional file-provider overlay.
+#
+# Service names (`api-svc`, `api-realtime-svc`, `grafana-svc`, `mailpit-svc`)
+# match `compose/traefik/dynamic.yml:86-110` so the existing
+# `loadBalancer.servers` map is reused (no duplicate service blocks needed).
+# A `web-svc` is declared inline here because `dynamic.yml` does not own one
+# (the dev overlay `dynamic.dev.yml:42-49` owns the dev-profile mapping).
+#
+# Mailpit is intentionally OMITTED from the prod profile (it is a dev-only
+# inbox; operators that need it in prod copy the api-prod block pattern).
+#
+# Loaded by `compose/docker-compose.acme.yml` mounting this file into
+# `/etc/traefik/dynamic/dynamic.prod.yml` alongside the base `dynamic.yml`.
+
+http:
+  routers:
+    api-prod:
+      rule: "Host(`api.${PUBLIC_DOMAIN}`)"
+      service: api-svc
+      entryPoints: [websecure]
+      tls:
+        certResolver: letsencrypt
+
+    api-realtime-prod:
+      rule: "Host(`api.${PUBLIC_DOMAIN}`) && PathPrefix(`/v1/realtime`)"
+      service: api-realtime-svc
+      entryPoints: [websecure-realtime]
+      tls:
+        certResolver: letsencrypt
+
+    web-prod:
+      rule: "Host(`${PUBLIC_DOMAIN}`)"
+      service: web-svc
+      entryPoints: [websecure]
+      tls:
+        certResolver: letsencrypt
+
+    app-prod:
+      rule: "Host(`app.${PUBLIC_DOMAIN}`)"
+      service: web-svc
+      entryPoints: [websecure]
+      tls:
+        certResolver: letsencrypt
+
+    grafana-prod:
+      rule: "Host(`grafana.${PUBLIC_DOMAIN}`)"
+      service: grafana-svc
+      entryPoints: [websecure]
+      tls:
+        certResolver: letsencrypt
+
+  services:
+    web-svc:
+      loadBalancer:
+        servers:
+          - url: "http://web:3001"
