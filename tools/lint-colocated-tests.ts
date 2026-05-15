@@ -232,7 +232,8 @@ function extractStaticPathTarget(node: ts.CallExpression, fileAbs: string): stri
   if (!first || !ts.isCallExpression(first) || !isPathResolveCall(first)) return null;
   const args = first.arguments;
   if (args.length < 2) return null;
-  if (!isDirnameRef(args[0]!)) return null;
+  const first0 = args[0];
+  if (!first0 || !isDirnameRef(first0)) return null;
   const lit = staticString(args[1]);
   if (lit === null) return null;
   const base = dirname(fileAbs);
