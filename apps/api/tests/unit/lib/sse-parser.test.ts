@@ -6,7 +6,7 @@
 // translator: text-only, single-tool-call, multi-tool-call, text-then-tool,
 // premature-close, malformed-payload, utf8-split. Coverage gate: ≥90/90/90/90.
 
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { Readable } from "node:stream";
 import { fileURLToPath } from "node:url";
@@ -15,8 +15,21 @@ import { type StreamChunk, sseToNdjson } from "../../../src/lib/sse-parser.js";
 import { createToolCallAccumulator } from "../../../src/lib/tool-call-accumulator.js";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
-const fixturePath = (name: string) =>
-  resolve(HERE, "..", "routes", "agent", "__fixtures__", `${name}.sse`);
+const fixturePath = (name: string) => {
+  const p = resolve(
+    HERE,
+    "..",
+    "..",
+    "..",
+    "src",
+    "routes",
+    "agent",
+    "__fixtures__",
+    `${name}.sse`,
+  );
+  if (!existsSync(p)) throw new Error(`source-contract path moved: ${p}`);
+  return p;
+};
 
 function streamFromBuffers(bufs: Buffer[]): ReadableStream<Uint8Array> {
   return Readable.toWeb(Readable.from(bufs)) as ReadableStream<Uint8Array>;
