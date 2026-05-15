@@ -20,6 +20,10 @@ export default mergeConfig(
   rootConfig,
   defineConfig({
     test: {
+      // D-08 (Phase 18.1.1 / Plan 03) — share the testcontainer-reaper
+      // SIGINT/SIGTERM hook with apps/api + packages/data so an interrupted
+      // worker test run prunes orphan postgres containers identically.
+      setupFiles: ["../../tools/testcontainer-reaper-setup.ts"],
       coverage: {
         include: ["src/**/*.ts"],
         // Exclude the entry point and integration test container bootstrap —

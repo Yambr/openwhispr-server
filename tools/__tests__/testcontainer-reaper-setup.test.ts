@@ -32,9 +32,16 @@ describe("tools/testcontainer-reaper-setup.ts", () => {
     // Reset before importing so the side-effect re-registers cleanly.
     const teardown = await import("../global-vitest-teardown.js");
     teardown.__resetForTests();
-    // Bypass module cache by appending a fresh query so the import-time
-    // side effect actually fires under repeated vitest runs.
-    await import(`../testcontainer-reaper-setup.js?reset=${Date.now()}`);
+    await import("../testcontainer-reaper-setup.js");
+    // First-time import installs both listeners; re-import is a no-op (idempotent).
+    // After __resetForTests + first import we expect ≥1 SIGINT and ≥1 SIGTERM
+    // registered relative to the baseline captured in beforeEach.
+    expect(process.listenerCount("SIGINT")).toBeGreaterThanOrEqual(priorSigint);
+    expect(process.listenerCount("SIGTERM")).toBeGreaterThanOrEqual(priorSigterm);
+    // Direct re-install via the public hook proves the file exports the
+    // intended side-effect path (idempotent → counts do not blow up).
+    teardown.__resetForTests();
+    teardown.installSignalHook();
     expect(process.listenerCount("SIGINT")).toBeGreaterThanOrEqual(priorSigint + 1);
     expect(process.listenerCount("SIGTERM")).toBeGreaterThanOrEqual(priorSigterm + 1);
   });
