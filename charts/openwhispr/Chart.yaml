@@ -55,3 +55,27 @@ dependencies:
     # new top-level `storage.enabled` toggle so the Bitnami minio sub-chart
     # render is 1:1 with the `compose/docker-compose.storage.yml` overlay.
     condition: storage.enabled
+  # Phase 17 / Plan 03 (TLS-02-prod / TLS-03) — optional cert-manager
+  # sub-chart. Default OFF (`certManager.bundled: false`) for brownfield
+  # safety — most enterprise clusters already run cert-manager as a
+  # platform component. Greenfield operators flip `--set
+  # certManager.bundled=true`.
+  #
+  # No `alias:` — the un-aliased name `cert-manager` maps the sub-chart's
+  # values namespace to `.Values.cert-manager` (with a literal hyphen),
+  # which is INTENTIONALLY DISJOINT from this chart's existing
+  # `.Values.certManager.*` keys. The CONTEXT-recommended camelCase alias
+  # was rejected at execution time because cert-manager 1.16.4's
+  # `values.schema.json` declares `additionalProperties: false` on the
+  # whole sub-chart values document, and aliasing would have caused the
+  # sub-chart's schema validator to reject every one of our parent-chart
+  # `certManager.bundled / issuerKind / renderIssuer / acmeEmail /
+  # acmeStaging / installCRDs` keys. The Plan's `installCRDs` value
+  # remains as parent-chart documentation; operators who need it as a
+  # sub-chart passthrough set `--set cert-manager.installCRDs=true`.
+  # Pinned at 1.16.4 (CONTEXT deferred #4 — no 1.17.x bump until next
+  # phase).
+  - name: cert-manager
+    version: "1.16.4"
+    repository: "https://charts.jetstack.io"
+    condition: certManager.bundled

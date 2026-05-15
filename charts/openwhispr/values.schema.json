@@ -239,7 +239,38 @@
       "type": "object",
       "properties": {
         "enabled": { "type": "boolean" },
-        "clusterIssuer": { "type": "string", "minLength": 1 }
+        "clusterIssuer": { "type": "string", "minLength": 1 },
+        "bundled": {
+          "type": "boolean",
+          "default": false,
+          "description": "Phase 17 — opt-in to the bundled jetstack/cert-manager sub-chart (default OFF for brownfield safety)."
+        },
+        "issuerKind": {
+          "type": "string",
+          "enum": ["ClusterIssuer", "Issuer"],
+          "default": "ClusterIssuer",
+          "description": "Phase 17 — Drives templates/issuer.yaml body kind and templates/certificate-{api,web}.yaml issuerRef.kind."
+        },
+        "renderIssuer": {
+          "type": "boolean",
+          "default": false,
+          "description": "Phase 17 — render an (Cluster)Issuer body from this chart (most operators apply their issuer externally)."
+        },
+        "acmeEmail": {
+          "type": "string",
+          "default": "",
+          "description": "Phase 17 — REQUIRED at render time when renderIssuer=true. ACME account contact email per RFC 8555 §7.3."
+        },
+        "acmeStaging": {
+          "type": "boolean",
+          "default": false,
+          "description": "Phase 17 — flip true to use the Let's Encrypt staging endpoint."
+        },
+        "installCRDs": {
+          "type": "boolean",
+          "default": true,
+          "description": "Phase 17 — passthrough to the bundled cert-manager sub-chart's installCRDs value (only meaningful when bundled=true)."
+        }
       }
     },
     "ingress": {

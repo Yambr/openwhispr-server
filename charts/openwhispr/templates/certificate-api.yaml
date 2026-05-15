@@ -26,6 +26,9 @@ spec:
   dnsNames:
     - {{ .Values.host.api }}
   issuerRef:
-    kind: ClusterIssuer
+    # Phase 17 / Plan 03 — kind templated from .Values.certManager.issuerKind
+    # (default `ClusterIssuer` preserves prior behaviour byte-for-byte; flip
+    # to `Issuer` for namespaced issuance).
+    kind: {{ .Values.certManager.issuerKind }}
     name: {{ .Values.certManager.clusterIssuer }}
 {{- end }}

@@ -1,0 +1,45 @@
+{{/*
+SPDX-License-Identifier: FSL-1.1-ALv2
+
+Phase 17 / Plan 03 (TLS-02-prod / TLS-03) — cert-manager (Cluster)Issuer
+body. Rendered ONLY when all three flags are true:
+
+  - tls.enabled              (Plan 14-06 master gate for Traefik/cert-manager)
+  - certManager.enabled      (cert-manager-references master gate)
+  - certManager.renderIssuer (this chart materializes the Issuer body)
+
+Default off — most operators apply their issuer externally (see
+`examples/cert-manager-clusterissuer-letsencrypt.yaml`). Flip
+`certManager.renderIssuer: true` to have the chart render the Issuer
+alongside the Certificate CRs from `templates/certificate-{api,web}.yaml`.
+
+Issuer kind switches between cluster-scoped `ClusterIssuer` (default;
+backward-compatible with prior chart behaviour) and namespaced `Issuer`
+via `certManager.issuerKind`. The `templates/certificate-{api,web}.yaml`
+`issuerRef.kind` reads from the same value so both ends stay in sync.
+
+`required` on acmeEmail fails the render fast when renderIssuer=true and
+the operator forgot to supply acmeEmail (RFC 8555 §7.3 contact required).
+*/}}
+{{- if and .Values.tls.enabled .Values.certManager.enabled .Values.certManager.renderIssuer -}}
+{{- $fullname := include "openwhispr.fullname" . -}}
+apiVersion: cert-manager.io/v1
+kind: {{ .Values.certManager.issuerKind }}
+metadata:
+  name: {{ .Values.certManager.clusterIssuer }}
+  {{- if eq .Values.certManager.issuerKind "Issuer" }}
+  namespace: {{ .Release.Namespace }}
+  {{- end }}
+  labels:
+    {{- include "openwhispr.labels" . | nindent 4 }}
+spec:
+  acme:
+    email: {{ required "certManager.acmeEmail required when renderIssuer=true" .Values.certManager.acmeEmail }}
+    server: {{ if .Values.certManager.acmeStaging }}https://acme-staging-v02.api.letsencrypt.org/directory{{ else }}https://acme-v02.api.letsencrypt.org/directory{{ end }}
+    privateKeySecretRef:
+      name: {{ $fullname }}-acme-key
+    solvers:
+      - http01:
+          ingress:
+            class: {{ .Values.ingress.className }}
+{{- end }}

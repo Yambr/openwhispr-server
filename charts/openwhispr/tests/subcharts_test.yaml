@@ -105,3 +105,28 @@ tests:
       - equal:
           path: spec.replicas
           value: 4
+
+  # Phase 17 / Plan 03 — bundled cert-manager sub-chart matrix.
+  # The Chart.yaml `condition: certManager.bundled` is a chart-LOAD-time
+  # gate (helm-unittest's `set:` cannot un-render sub-chart docs once the
+  # tarball is on disk) — same pattern as the Valkey + MinIO rows above:
+  # `template:` selector scopes to the sub-chart template, and the
+  # presence of a rendered doc proves the sub-chart is wired correctly.
+  # The parity-with-compose `condition: certManager.bundled=false` default
+  # is exercised end-to-end in the Phase 17 Gherkin feature
+  # `tests/e2e-cjm/features/phase17-tls.feature` (scenario 3).
+  - it: cert-manager controller Deployment renders when bundled=true (validates sub-chart wiring)
+    template: charts/cert-manager/templates/deployment.yaml
+    set:
+      secrets:
+        mode: eso
+        external:
+          storeRef: vault-clusterstore
+      certManager:
+        bundled: true
+    asserts:
+      - isKind:
+          of: Deployment
+      - equal:
+          path: metadata.labels["app.kubernetes.io/name"]
+          value: cert-manager
