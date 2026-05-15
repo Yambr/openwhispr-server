@@ -1,15 +1,16 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 // Phase 13 / Plan 02 / Task 13-02-03 — @cjm-6.* locale switch step bindings.
-//
-// Both scenarios are tagged @expected-red @after-phase-15 — Phase 15 closes
-// TD-15.g (host-split routing) and ships the locale-toggle UI. Steps exist
-// so undefined-step strictness (D-11) doesn't bail; bodies raise so the
-// scenarios stay red until Phase 15.
+// Phase 19b / SR-19b.3 — @cjm-traefik-host-split[+web] step bodies turned
+// from stubs into real undici probes against the live compose stack.
 
+import { Agent, fetch as undiciFetch } from "undici";
 import { Given, Then, When } from "../support/world";
 
 interface ScenarioState {
-  unused?: string;
+  lastStatus?: number;
+  lastContentType?: string;
+  lastBody?: string;
+  lastJson?: unknown;
 }
 
 const state = new Map<string, ScenarioState>();
@@ -21,6 +22,22 @@ function stateFor(tenantId: string): ScenarioState {
     state.set(tenantId, s);
   }
   return s;
+}
+
+// Phase 19b — Traefik fronts api.localhost / web.localhost via the
+// mkcert-provisioned dev cert. The harness must not enforce strict TLS
+// when talking to *.localhost (the dev CA is local-only); mirror the
+// localhostDispatcher pattern from tests/e2e-cjm/support/fixtures.ts.
+function localhostDispatcher(url: string): Agent | undefined {
+  try {
+    const host = new URL(url).hostname;
+    if (host === "localhost" || host.endsWith(".localhost")) {
+      return new Agent({ connect: { rejectUnauthorized: false } });
+    }
+  } catch {
+    /* unreachable in tests */
+  }
+  return undefined;
 }
 
 Given("the user is on the public sign-up page", async ({ tenantId }) => {
@@ -50,44 +67,85 @@ Then("the host-split routing returns 200 and a JSON locale body", async () => {
 });
 
 // Phase 15 / Plan 02 / Task 1 — @cjm-traefik-host-split scenarios.
-//
-// These step bodies require a live docker compose stack (api + web +
-// traefik) to issue real HTTPS requests against api.localhost and
-// web.localhost. The scenarios are tagged `@after-docker-up` and remain
-// `@expected-red` in the e2e-cjm runner until the GHA workflow boots
-// the stack. The implementation is intentionally executable so the
-// step is not "undefined" (D-11 strictness); it raises a recognizable
-// error until the live stack is available.
+// Phase 19b / SR-19b.3 — bodies now issue real probes against the live
+// stack via Traefik. The Phase-15 STRUCT-05 host-split is restored:
+// api.localhost reaches the Fastify api container; web.localhost reaches
+// the Next.js web container. Both routes go through Traefik on :443
+// with the mkcert dev cert.
 
 When(
   "a GET to \\/api\\/locale on api.localhost is issued with Accept-Language {string}",
-  async (_ctx, _lang: string) => {
-    throw new Error(
-      "@cjm-traefik-host-split requires live docker compose stack (api + traefik); deferred to GHA e2e-cjm",
-    );
+  async ({ tenantId }, lang: string) => {
+    const s = stateFor(tenantId);
+    const url = "https://api.localhost/api/locale";
+    const res = await undiciFetch(url, {
+      method: "GET",
+      headers: { "accept-language": lang },
+      dispatcher: localhostDispatcher(url),
+    });
+    s.lastStatus = res.status;
+    s.lastContentType = res.headers.get("content-type") ?? "";
+    s.lastBody = await res.text();
+    try {
+      s.lastJson = JSON.parse(s.lastBody);
+    } catch {
+      s.lastJson = undefined;
+    }
   },
 );
 
 Then(
   "the response is 200 with content-type application\\/json and a locale of {string}",
-  async (_ctx, _expected: string) => {
-    throw new Error(
-      "@cjm-traefik-host-split requires live docker compose stack (api + traefik); deferred to GHA e2e-cjm",
-    );
+  ({ tenantId }, expected: string) => {
+    const s = stateFor(tenantId);
+    if (s.lastStatus !== 200) {
+      throw new Error(`expected 200, got ${s.lastStatus}: ${s.lastBody?.slice(0, 200)}`);
+    }
+    if (!s.lastContentType?.includes("application/json")) {
+      throw new Error(
+        `expected content-type application/json, got "${s.lastContentType}"; body=${s.lastBody?.slice(0, 200)}`,
+      );
+    }
+    const locale = (s.lastJson as { locale?: string } | undefined)?.locale;
+    if (locale !== expected) {
+      throw new Error(`expected locale "${expected}", got "${locale}"`);
+    }
   },
 );
 
-When("a GET to \\/ on web.localhost is issued", async () => {
-  throw new Error(
-    "@cjm-traefik-host-split-web requires live docker compose stack (web + traefik); deferred to GHA e2e-cjm",
-  );
+When("a GET to \\/ on web.localhost is issued", async ({ tenantId }) => {
+  const s = stateFor(tenantId);
+  const url = "https://web.localhost/";
+  const res = await undiciFetch(url, {
+    method: "GET",
+    dispatcher: localhostDispatcher(url),
+  });
+  s.lastStatus = res.status;
+  s.lastContentType = res.headers.get("content-type") ?? "";
+  s.lastBody = await res.text();
 });
 
 Then(
   "the response is 200 with content-type text\\/html and the body contains the web app shell marker",
-  async () => {
-    throw new Error(
-      "@cjm-traefik-host-split-web requires live docker compose stack (web + traefik); deferred to GHA e2e-cjm",
-    );
+  ({ tenantId }) => {
+    const s = stateFor(tenantId);
+    if (s.lastStatus !== 200) {
+      throw new Error(`expected 200, got ${s.lastStatus}: ${s.lastBody?.slice(0, 200)}`);
+    }
+    if (!s.lastContentType?.includes("text/html")) {
+      throw new Error(
+        `expected content-type text/html, got "${s.lastContentType}"; body=${s.lastBody?.slice(0, 200)}`,
+      );
+    }
+    // The Next.js shell consistently emits `<!DOCTYPE html>` + the
+    // OpenWhispr <title>; we match either marker (case-insensitive) so a
+    // template-level reword in either layer doesn't break the host-split
+    // assertion.
+    const body = s.lastBody ?? "";
+    if (!/<!doctype html>/i.test(body) && !/openwhispr/i.test(body)) {
+      throw new Error(
+        `body missing web-shell markers (<!doctype html> / "OpenWhispr"); first 200 chars: ${body.slice(0, 200)}`,
+      );
+    }
   },
 );

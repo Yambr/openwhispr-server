@@ -459,14 +459,13 @@ e2e-cjm:
 	docker compose -p e2e-cjm \
 		-f docker-compose.yml -f compose/docker-compose.embedded-litellm.yml \
 		-f compose/docker-compose.storage.yml \
+		-f compose/docker-compose.ingress.yml \
 		-f tests/e2e-cjm/compose-overrides.yml \
-		--profile default up -d --wait; \
+		--profile default up -d --build --wait; \
 	pnpm tsx tests/e2e-cjm/support/wait-for-readiness.ts; \
 	if [ -n "$$SCENARIO" ]; then \
-		MAILPIT_API_URL=http://localhost:8025/api/v1 \
 		pnpm exec playwright test --grep "$$SCENARIO" --config tests/e2e-cjm/playwright.config.ts; \
 	else \
-		MAILPIT_API_URL=http://localhost:8025/api/v1 \
 		pnpm exec playwright test --grep-invert "@expected-red" --config tests/e2e-cjm/playwright.config.ts; \
 	fi
 
