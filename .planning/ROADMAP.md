@@ -945,6 +945,29 @@ Plans:
 **Plans**: 1-2 plans (Dockerfile fix + cjm-lint fix; trivial scope).
 **Estimated**: ~30min total. Hard rule INVERSION authorized for production Dockerfile + lint edits.
 
+### Phase 19b: Traefik STRUCT-05 host-split regression fix — CLOSED 2026-05-16
+**Goal (delivered)**: Restore Phase 15 STRUCT-05 host-split — `api.localhost` reaches Fastify, `web.localhost` reaches Next.js — closing SERVER-ERRORS Entry 10. Unblock end-to-end validation of `@cjm-3.1` (Phase 19.1 deferred) AND `@cjm-traefik-host-split[+web]` (Phase 15 deferred since carve).
+**Depends on**: Phase 19a (e2e harness build-infra) + Phase 19.1 (sendResetPassword hook).
+**Requirements (all delivered)**:
+  - SR-19b.1: `tools/lint-traefik-routes.ts` + `tools/lint-traefik-routes.test.ts` — 5 violation classes (V1..V5), 3/3 vitest GREEN, scans both `docker-compose.yml` AND `compose/docker-compose.embedded-litellm.yml` plus dynamic.dev.yml + ingress + static traefik.yml.
+  - SR-19b.2: `docker-compose.yml`, `compose/docker-compose.embedded-litellm.yml`, `compose/traefik/dynamic.dev.yml`, `compose/docker-compose.ingress.yml`, `compose/traefik/traefik.yml` — path-B fix (file-provider single source of truth, hybrid for admin auth's env interpolation). Drops the wrong `web@docker` router on Host(api.localhost), corrects upstream port (3001→3000), mounts both dynamic files into `/etc/traefik/dynamic/` (mirroring ACME overlay shape), moves `providers.file.directory:` into static yaml to dodge Traefik 3 merge defects.
+  - SR-19b.3: `tests/e2e-cjm/steps/locale.steps.ts` real bindings for @cjm-traefik-host-split[+web] + `tests/e2e-cjm/steps/__tests__/locale.steps.test.ts` (6/6 vitest GREEN per `feedback_cjm_steps_need_unit_tests.md`) + `tests/e2e-cjm/features/traefik-host-split.feature` `@expected-red` removed. Companion production-fix: `apps/api/src/routes/locale.ts` adds `config: { auth: false, … }` (Phase 15 latent bug surfaced when scenario became executable). `Makefile e2e-cjm` target layers ingress overlay + `--build` for fresh image pickup.
+**Success Criteria (delivered)**:
+  1. `tools/lint-traefik-routes` 3/3 GREEN — regression sentinel + synthetic GOOD/BAD fixtures.
+  2. `make e2e-cjm SCENARIO="@cjm-traefik-host-split"` → 2/2 GREEN (684ms) — Phase 15 STRUCT-05 spec satisfied at runtime.
+  3. `make e2e-cjm SCENARIO="@cjm-3.1"` → 1/1 GREEN (1.2s) — Phase 19.1's deferred e2e validation closed end-to-end through Traefik+api+worker+mailpit.
+  4. SERVER-ERRORS Entry 10 CLOSED with 4 closing commit SHAs.
+**Plans** (delivered as 4 sequential commits, ~2h actual including smoke-debug):
+  - [x] `b2ebf24` test(19b-01): red — lint-traefik-routes captures STRUCT-05 host-split regression
+  - [x] `62d87d7` fix(19b-02): route api.localhost to api-svc, declare web.localhost in file provider
+  - [x] `6a5d638` fix(19b-02b): close STRUCT-05 — eliminate duplicate web labels + fix file provider
+  - [x] `e82a390` fix(19b-03): unstick @cjm-traefik-host-split[+web] — real bindings + locale auth opt-out
+**Hard-rule INVERSION**: production-fix scope authorized per Phase 19a precedent (compose orchestration yaml + locale route are production deploy artifacts; Phase 15 STRUCT-05 Gherkin spec is authoritative).
+**Memory lessons captured (~/.claude/projects/-Users-nick-openwhispr-server/memory/)**:
+  - `feedback_smoke_before_full_e2e.md` — lint → build → per-service-up → stack → playwright (cheap → expensive), never serialize discovery of independent failures behind 60s compose roundtrips.
+  - `feedback_check_loki_after_tests.md` — Loki+Grafana collect everything; first diagnostic is container logs, not playwright trace.zip.
+  - `feedback_cjm_steps_need_unit_tests.md` — every `tests/e2e-cjm/steps/*.steps.ts` MUST have vitest unit coverage; coverage waivers banned.
+
 ## Progress Table
 
 | Phase | Plans Complete | Status | Completed |
