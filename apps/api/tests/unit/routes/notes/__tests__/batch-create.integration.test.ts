@@ -11,28 +11,33 @@
 import type { FastifyInstance } from "fastify";
 import type { Pool } from "pg";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
-import {
-  bootMigratedPostgres,
-  buildTestApp,
-  seedUser,
-} from "../../../../../src/routes/notes/__tests__/setup.js";
+import { buildTestApp } from "../../../../../src/routes/notes/__tests__/setup.js";
+import { getSharedRoutePool } from "../../../../support/shared-route-pool.js";
+
+// Phase 18.1.2 / Plan 05 / Cluster #2 sub-cluster 2b — shared-pg
+// migration (Option A canon — see conversations/__tests__/crud
+// header for full rationale).
+
+const DEFAULT_TENANT_ID = "00000000-0000-0000-0000-000000000000";
 
 let pool: Pool;
-let shutdown: () => Promise<void>;
 let userId: string;
 let app: FastifyInstance;
 
 beforeAll(async () => {
-  const booted = await bootMigratedPostgres();
-  pool = booted.pool;
-  shutdown = booted.shutdown.bind(booted);
-  userId = await seedUser(pool, { email: "batch@test" });
+  pool = await getSharedRoutePool();
+  const r = await pool.query<{ id: string }>(
+    `INSERT INTO users (tenant_id, email) VALUES ($1, $2)
+       ON CONFLICT (tenant_id, (lower(email))) DO UPDATE SET email = EXCLUDED.email
+       RETURNING id`,
+    [DEFAULT_TENANT_ID, "batch@test"],
+  );
+  userId = r.rows[0]!.id;
   app = await buildTestApp({ pool, userId });
 }, 180_000);
 
 afterAll(async () => {
   if (app) await app.close();
-  if (shutdown) await shutdown();
 }, 60_000);
 
 beforeEach(async () => {

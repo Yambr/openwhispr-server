@@ -8,15 +8,16 @@ import type { Pool } from "pg";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { registerErrorHandler } from "../../../../../src/error-handler.js";
 import { zodTypeProvider } from "../../../../../src/plugins/zod-type-provider.js";
-import {
-  bootMigratedPostgres,
-  DEFAULT_TENANT_ID,
-  seedUser,
-} from "../../../../../src/routes/notes/__tests__/setup.js";
+import { DEFAULT_TENANT_ID } from "../../../../../src/routes/notes/__tests__/setup.js";
 import { buildNotesSearchRoutes } from "../../../../../src/routes/notes/search.js";
+import { getSharedRoutePool } from "../../../../support/shared-route-pool.js";
+
+// Phase 18.1.2 / Plan 05 / Cluster #2 sub-cluster 2b — shared-pg
+// migration (Option A canon). This file already inlines its own
+// `buildSearchApp` factory (does not use the production-tree
+// `buildTestApp`), so only the boot + seedUser path changes.
 
 let pool: Pool;
-let shutdown: () => Promise<void>;
 let userA: string;
 let userB: string;
 let appA: FastifyInstance;
@@ -48,15 +49,25 @@ async function buildSearchApp(opts: {
 }
 
 beforeAll(async () => {
-  const booted = await bootMigratedPostgres();
-  pool = booted.pool;
-  shutdown = booted.shutdown.bind(booted);
+  pool = await getSharedRoutePool();
   await pool.query(
     `INSERT INTO tenants (id, name) VALUES ($1, 'Tenant B-search') ON CONFLICT (id) DO NOTHING`,
     [TENANT_B],
   );
-  userA = await seedUser(pool, { email: "search-a@test" });
-  userB = await seedUser(pool, { tenantId: TENANT_B, email: "search-b@test" });
+  const ra = await pool.query<{ id: string }>(
+    `INSERT INTO users (tenant_id, email) VALUES ($1, $2)
+       ON CONFLICT (tenant_id, (lower(email))) DO UPDATE SET email = EXCLUDED.email
+       RETURNING id`,
+    [DEFAULT_TENANT_ID, "search-a@test"],
+  );
+  const rb = await pool.query<{ id: string }>(
+    `INSERT INTO users (tenant_id, email) VALUES ($1, $2)
+       ON CONFLICT (tenant_id, (lower(email))) DO UPDATE SET email = EXCLUDED.email
+       RETURNING id`,
+    [TENANT_B, "search-b@test"],
+  );
+  userA = ra.rows[0]!.id;
+  userB = rb.rows[0]!.id;
   appA = await buildSearchApp({ pool, userId: userA });
   appB = await buildSearchApp({ pool, userId: userB, tenantId: TENANT_B });
 }, 180_000);
@@ -64,7 +75,6 @@ beforeAll(async () => {
 afterAll(async () => {
   if (appA) await appA.close();
   if (appB) await appB.close();
-  if (shutdown) await shutdown();
 }, 60_000);
 
 beforeEach(async () => {
