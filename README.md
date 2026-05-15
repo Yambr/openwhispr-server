@@ -53,16 +53,21 @@ git clone https://github.com/openwhispr/openwhispr-server.git
 cd openwhispr-server
 cp .env.embedded.example .env
 
-# 2. Fill in at least one provider key.
+# 2. Install a locally-trusted dev CA + cert (mkcert; one-time per machine).
+#    Mints compose/traefik/certs/local.{crt,key} covering api/web/app/grafana/
+#    mailpit .localhost. Air-gap install path: docs/operations.md#air-gap-mkcert.
+make tls-trust
+
+# 3. Fill in at least one provider key.
 #    Variant A routes /api/transcribe via the embedded LiteLLM to a public
 #    provider. The cheapest path is GROQ_API_KEY (Whisper-large-v3).
 $EDITOR .env   # set every REPLACE_ME including BETTER_AUTH_SECRET and at least one provider key
 
-# 3. Bring the Variant A stack up (canonical default per Plan 11-01).
+# 4. Bring the Variant A stack up (canonical default per Plan 11-01).
 docker compose -f compose/docker-compose.embedded-litellm.yml up -d
 docker compose -f compose/docker-compose.embedded-litellm.yml ps   # confirm api, worker, postgres, valkey, litellm are healthy
 
-# 4. Register a user and verify (dev profile uses mailpit for verification email).
+# 5. Register a user and verify (dev profile uses mailpit for verification email).
 curl -fsS -X POST http://localhost:3000/api/auth/sign-up/email \
   -H "Content-Type: application/json" \
   -d '{"email":"you@example.com","password":"correct-horse-battery-staple","name":"Demo"}'
@@ -70,7 +75,7 @@ curl -fsS -X POST http://localhost:3000/api/auth/sign-up/email \
 # Open mailpit at http://localhost:8025 and click the verification link
 # (the link 302s to /api/auth/verify-email and sets the session cookie).
 
-# 5. Sign in and capture the bearer token (saved in cookie + set-auth-token header).
+# 6. Sign in and capture the bearer token (saved in cookie + set-auth-token header).
 curl -fsS -X POST http://localhost:3000/api/auth/sign-in/email \
   -H "Content-Type: application/json" \
   -c /tmp/owc.cookies \
@@ -78,7 +83,7 @@ curl -fsS -X POST http://localhost:3000/api/auth/sign-in/email \
   -d '{"email":"you@example.com","password":"correct-horse-battery-staple"}'
 TOKEN=$(grep -oE 'set-auth-token: [^[:space:]]+' /tmp/owc.headers | cut -d' ' -f2 | tr -d '\r')
 
-# 6. Transcribe a sample WAV.
+# 7. Transcribe a sample WAV.
 curl -fsS -X POST http://localhost:3000/api/transcribe \
   -H "Authorization: Bearer $TOKEN" \
   -F "file=@./tests/fixtures/audio/sample.wav" \

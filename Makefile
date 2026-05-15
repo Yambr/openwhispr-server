@@ -2,7 +2,7 @@
 # Phase 0: implements dev/test/lint/format/typecheck/up/down/clean/help.
 # Future-phase targets stub-fail with a phase-N pointer.
 
-.PHONY: dev test lint lint-rls format typecheck up down clean clean-stack help \
+.PHONY: dev test lint lint-rls format typecheck up down clean clean-stack tls-trust help \
         contract-test contract-test-deployed contract-test-missing-keys e2e-test e2e-test-live \
         e2e-hermetic e2e-test-phase6 e2e-cjm e2e-cjm-teardown \
         load-test seed backup restore migrate migrate-rollback logs ps restart \
@@ -102,6 +102,48 @@ clean-stack:
 	docker compose --profile default --profile contract-test down -v --remove-orphans || true
 	docker volume ls -q | grep -E '^openwhispr_' | xargs -r docker volume rm || true
 	@echo "Stack volumes cleaned. Run 'tools/bootstrap.sh' to regenerate .env, then 'make build' + 'docker compose --profile default up -d --wait'."
+
+# Phase 17 / Plan 17-01 — TLS-01 / TLS-02-dev / TLS-04.
+#
+# `make tls-trust` installs a locally-trusted dev CA via mkcert (one-time per
+# machine) and mints a single SAN cert at compose/traefik/certs/local.{crt,key}
+# covering EXACTLY 5 hosts: api.localhost, web.localhost, app.localhost,
+# grafana.localhost, mailpit.localhost. No wildcards (PITFALLS §13 — list each
+# host explicitly).
+#
+# Idempotency: regen ONLY if the cert is missing OR expiring in <30 days OR
+# missing the explicit-host SAN list OR still carrying a `*.localhost`
+# wildcard left over from the openssl bootstrap path. Otherwise prints a
+# skip message and exits 0.
+#
+# mkcert MUST be installed by the operator (no sudo, no --auto-install per
+# CONTEXT Q1-B3). On absence we exit 2 with a platform-specific install hint
+# and a forward-reference to docs/operations.md#air-gap-mkcert (authored in
+# 17-02).
+tls-trust:
+	@command -v mkcert >/dev/null 2>&1 || { \
+	  echo "mkcert not found in PATH."; \
+	  case "$$(uname -s)" in \
+	    Darwin) echo "  Install: brew install mkcert nss";; \
+	    Linux)  echo "  Install: apt install mkcert  (or see docs/operations.md#air-gap-mkcert)";; \
+	    *)      echo "  See docs/operations.md#air-gap-mkcert";; \
+	  esac; exit 2; }
+	@mkcert -install
+	@mkdir -p compose/traefik/certs
+	@# Idempotency: skip if local.crt valid >=30 days AND covers 5 explicit hosts AND no *.localhost wildcard.
+	@if openssl x509 -checkend $$((86400*30)) -noout -in compose/traefik/certs/local.crt >/dev/null 2>&1 \
+	   && openssl x509 -in compose/traefik/certs/local.crt -noout -text | grep -q 'DNS:api.localhost' \
+	   && ! openssl x509 -in compose/traefik/certs/local.crt -noout -text | grep -q 'DNS:\*\.localhost'; then \
+	  echo "tls-trust: cert valid + explicit host list — skip"; \
+	else \
+	  mkcert -cert-file compose/traefik/certs/local.crt \
+	         -key-file  compose/traefik/certs/local.key \
+	    api.localhost web.localhost app.localhost \
+	    grafana.localhost mailpit.localhost; \
+	  cp "$$(mkcert -CAROOT)/rootCA.pem" compose/traefik/certs/root-ca.crt; \
+	  chmod 644 compose/traefik/certs/local.crt compose/traefik/certs/root-ca.crt; \
+	  chmod 600 compose/traefik/certs/local.key; \
+	fi
 
 # Phase 2 / Plan 06 — CONTRACT-01 conformance suite, locally.
 #
