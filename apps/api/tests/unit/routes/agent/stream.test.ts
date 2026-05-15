@@ -27,7 +27,7 @@
 // 11. Unauthenticated → 401 BEFORE the handler hijacks the reply
 // 12. X-Accel-Buffering: no on response (forward-compat for nginx)
 
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
@@ -824,8 +824,21 @@ describe("POST /api/agent/stream", () => {
     // alias and call site.
     // red-baseline: 2026-05-15 (Phase 18.1 F3 — Test 16 ENOENT)
     const here = dirname(fileURLToPath(import.meta.url));
-    const routePath = resolve(here, "stream.ts");
-    const source = readFileSync(routePath, "utf8");
+    const streamSourcePath = resolve(
+      here,
+      "..",
+      "..",
+      "..",
+      "..",
+      "src",
+      "routes",
+      "agent",
+      "stream.ts",
+    );
+    if (!existsSync(streamSourcePath)) {
+      throw new Error(`source-contract path moved: ${streamSourcePath}`);
+    }
+    const source = readFileSync(streamSourcePath, "utf8");
     // POSITIVE — prove the file was actually loaded (no silent empty-string pass).
     expect(source.length).toBeGreaterThan(100);
     expect(source).not.toMatch(/fetch\s+as\s+undiciFetch/);
