@@ -143,8 +143,8 @@ describe("buildAuth — OPENWHISPR_DISABLE_RATE_LIMIT switch (Phase 8 Plan 01)",
 });
 
 describe(".env.example documents OPENWHISPR_DISABLE_RATE_LIMIT (Phase 8 Plan 01)", () => {
-  // Walk up from apps/api/src/auth.test.ts → repo root.
-  const envExamplePath = resolve(__dirname, "..", "..", "..", ".env.example");
+  // Walk up from apps/api/tests/unit/auth.test.ts → repo root.
+  const envExamplePath = resolve(__dirname, "..", "..", "..", "..", ".env.slim.example");
   const contents = readFileSync(envExamplePath, "utf8");
 
   it("contains an OPENWHISPR_DISABLE_RATE_LIMIT entry", () => {
