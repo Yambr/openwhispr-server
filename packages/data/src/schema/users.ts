@@ -32,6 +32,17 @@ export const users = pgTable(
     // drizzle column declares the default; the CHECK predicate (which
     // drizzle-kit cannot emit from this DSL) lives in the migration.
     locale: text("locale").notNull().default("en"),
+    // Phase 12 / Plan 12-01 — admin role marker. Better Auth's `user`
+    // additionalFields block in apps/api/src/auth.ts declares
+    // `role: { type: "string", required: false, defaultValue: null }`.
+    // Better Auth validates that every additionalField has a matching
+    // Drizzle column at schema-load time; without this entry it rejects
+    // every sign-up with "Failed to create user: field role does not
+    // exist in user Drizzle schema". DB column lands in migration
+    // 0017_setup_state.sql (text NULL, no DEFAULT, populated by the
+    // wizard claim handler post-setup_state UPDATE). Phase 19a
+    // (SERVER-ERRORS Entry 9) — Drizzle schema/migration drift fix.
+    role: text("role"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
