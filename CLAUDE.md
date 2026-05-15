@@ -87,7 +87,15 @@ It is built to enterprise standards for **1000 concurrent active users** in one 
 <!-- GSD:conventions-start source:CONVENTIONS.md -->
 ## Conventions
 
-Conventions not yet established. Will populate as patterns emerge during development.
+### Hard Rules (user-mandated, NON-NEGOTIABLE)
+
+1. **NEVER edit production server code to make tests pass.** Do not touch `packages/data/migrations/*.sql`, route handlers, plugin source, schema definitions, or any other production artefact ONLY to satisfy a failing test. If a test fails because the production code has a hardcoded value (e.g., `"public".tenants` FK reference), the test is wrong or the test infrastructure is wrong — never the production code. Document the constraint in `.planning/deferred-items.md` for future targeted production-fix phase; do NOT silently rewrite production SQL/code under the guise of a test fix.
+
+2. **Surface costly architectural decisions as deferred-items, not in-flight rewrites.** When a test infrastructure approach (e.g., search_path-per-schema isolation) is blocked by production-code constraints, log it in `.planning/deferred-items.md` with `WHY:` evidence and use the next-best-pragmatic-but-non-invasive pattern. A future phase + user decision can change production. The current phase's job is to close test debt without invading server surface.
+
+### Tactical conventions
+
+Conventions not yet otherwise established. Will populate as patterns emerge.
 <!-- GSD:conventions-end -->
 
 <!-- GSD:architecture-start source:ARCHITECTURE.md -->
