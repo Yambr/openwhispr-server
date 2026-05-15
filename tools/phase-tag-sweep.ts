@@ -137,6 +137,11 @@ function hasInlineDashBody(line: string): boolean {
  * Default branch returns KEEP — the codemod never auto-removes on ambiguity.
  */
 export function classifyLine(line: string, neighbours: Neighbours): "REMOVE" | "KEEP" {
+  // WR-01 fix: close-out narrative is REMOVE per CONTEXT Q2 regardless of
+  // body keywords (it is history, not actionable WHY). Must precede the
+  // KEEP-keyword scan because real close-out bodies frequently contain
+  // KEEP keywords like `workaround` / `removed` / `fixed`.
+  if (REMOVE_RULE_3_CLOSEOUT.test(line)) return "REMOVE";
   // KEEP rule 2: keyword set.
   if (containsKeepKeyword(line)) return "KEEP";
   // KEEP rule 3: reference markers.
@@ -151,7 +156,6 @@ export function classifyLine(line: string, neighbours: Neighbours): "REMOVE" | "
     if (prevIsComment || nextIsComment) return "KEEP";
   }
   // REMOVE rules — apply in fixed order (mutually disjoint in practice).
-  if (REMOVE_RULE_3_CLOSEOUT.test(line)) return "REMOVE";
   if (REMOVE_RULE_4_IMPL_NOTE.test(line)) return "REMOVE";
   if (REMOVE_RULE_1_HEADER.test(line)) return "REMOVE";
   if (REMOVE_RULE_1_HEADER_WITH_BODY.test(line)) return "REMOVE";
