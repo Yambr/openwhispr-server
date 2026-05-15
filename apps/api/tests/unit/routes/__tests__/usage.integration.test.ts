@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 // Phase 05 / Plan 02 / Task 2 — GET /api/usage integration test.
 //
-// Real Postgres 17-alpine testcontainer + production Drizzle migrations.
-// Boots Fastify with the usage route mounted on a real Drizzle
+// Real Postgres 17.5 + pg_partman testcontainer + production Drizzle
+// migrations. Boots Fastify with the usage route mounted on a real Drizzle
 // node-postgres handle, then asserts:
 //   - new user with no ledger entries -> wordsUsed=0
 //   - SUM(units) reflects all rows for the user across kinds (D-14)
@@ -10,10 +10,19 @@
 //     (RLS-enforced via app.tenant_id GUC inside withTenant)
 //   - 401 when req.user is absent
 //   - response shape: plan='unlimited', wordsRemaining=999_999_999
+//
+// Phase 18.1.2 / Plan 03 — migrated from per-file PostgreSqlContainer boot
+// to the shared `getSharedPostgres()` fixture (RESEARCH §3 cluster #1
+// container-reduction). Per-file isolation is preserved via Option A
+// (CLAUDE.md hard rule — no production code edits): shared `public`
+// schema + drizzle migrate (idempotent via `_meta.__drizzle_migrations`)
+// + TRUNCATE per-file + unique user emails. The Drizzle migrator no-ops on
+// the second file because all migration rows are already present in
+// `_meta.__drizzle_migrations`.
 
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { PostgreSqlContainer, type StartedPostgreSqlContainer } from "@testcontainers/postgresql";
+import type { StartedPostgreSqlContainer } from "@testcontainers/postgresql";
 import { drizzle } from "drizzle-orm/node-postgres";
 import { migrate } from "drizzle-orm/node-postgres/migrator";
 import Fastify, { type FastifyInstance } from "fastify";
@@ -22,10 +31,18 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { registerErrorHandler } from "../../../../src/error-handler.js";
 import { zodTypeProvider } from "../../../../src/plugins/zod-type-provider.js";
 import { buildUsageRoutes } from "../../../../src/routes/usage.js";
+import {
+  bootstrapSharedRoles,
+  getSharedPostgres,
+  provisionPgPartman,
+} from "../../../support/shared-pg.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
+// apps/api/tests/unit/routes/__tests__ -> repo root -> packages/data/migrations
+// __tests__ (0) / routes (1) / unit (2) / tests (3) / api (4) / apps (5) / root (6)
 const MIGRATIONS_FOLDER = resolve(
   __dirname,
+  "..",
   "..",
   "..",
   "..",
@@ -72,27 +89,32 @@ async function buildAppForUser(
   return app;
 }
 
-beforeAll(async () => {
-  const ownerPw = "owner-pw-test";
-  const appPw = "app-pw-test";
-  container = await new PostgreSqlContainer("postgres:17-alpine")
-    .withDatabase("openwhispr")
-    .withUsername("postgres_super")
-    .withPassword("super-pw")
-    .start();
+// Plan 03 Option A — unique user emails per file so the shared `public`
+// schema does not collide with sibling integration tests sharing the same
+// container. `usage-route-a` / `usage-route-b` are file-local; the
+// streaming-usage suite uses a different scheme.
+const EMAIL_A = "usage-route-a@example.com";
+const EMAIL_B = "usage-route-b@example.com";
 
+beforeAll(async () => {
+  container = await getSharedPostgres();
+
+  // Idempotent role bootstrap + pg_partman provisioning. Both helpers are
+  // safe to re-invoke against a reused container; Plan 03 retry #4 added
+  // pg_partman provisioning so migration 0014 (audit_log partitioning)
+  // succeeds.
   const superPool = new Pool({ connectionString: container.getConnectionUri() });
-  await superPool.query(
-    `CREATE ROLE openwhispr_owner WITH LOGIN BYPASSRLS CREATEROLE PASSWORD '${ownerPw}'`,
-  );
-  await superPool.query(`CREATE ROLE openwhispr_app   WITH LOGIN          PASSWORD '${appPw}'`);
-  await superPool.query(`GRANT openwhispr_app TO openwhispr_owner WITH ADMIN OPTION`);
-  await superPool.query(`GRANT SET, ALTER SYSTEM ON PARAMETER "app.tenant_id" TO openwhispr_owner`);
-  await superPool.query(`ALTER DATABASE openwhispr OWNER TO openwhispr_owner`);
-  await superPool.query(`ALTER SCHEMA public OWNER TO openwhispr_owner`);
+  await bootstrapSharedRoles(superPool);
+  await provisionPgPartman(superPool);
   await superPool.end();
 
-  const ownerUri = `postgres://openwhispr_owner:${ownerPw}@${container.getHost()}:${container.getMappedPort(5432)}/openwhispr`;
+  const host = container.getHost();
+  const port = container.getMappedPort(5432);
+  const ownerUri = `postgres://openwhispr_owner:super-pw@${host}:${port}/openwhispr`;
+
+  // Drizzle migrate is idempotent — when another suite already ran the
+  // full migration set against this shared container, `_meta.__drizzle_migrations`
+  // contains every hash and this call returns without applying anything.
   const ownerPool = new Pool({ connectionString: ownerUri });
   await migrate(drizzle(ownerPool), {
     migrationsFolder: MIGRATIONS_FOLDER,
@@ -102,19 +124,26 @@ beforeAll(async () => {
   await ownerPool.end();
 
   pool = new Pool({ connectionString: ownerUri });
+
+  // Per-file isolation: re-create the file's users via ON CONFLICT DO
+  // UPDATE so re-running the suite (vitest watch / retries) is safe.
   const a = await pool.query<{ id: string }>(
-    `INSERT INTO users (tenant_id, email) VALUES ($1, $2) RETURNING id`,
-    [DEFAULT_TENANT_ID, "usage-route-a@example.com"],
+    `INSERT INTO users (tenant_id, email) VALUES ($1, $2)
+       ON CONFLICT (tenant_id, (lower(email))) DO UPDATE SET email = EXCLUDED.email
+       RETURNING id`,
+    [DEFAULT_TENANT_ID, EMAIL_A],
   );
   const b = await pool.query<{ id: string }>(
-    `INSERT INTO users (tenant_id, email) VALUES ($1, $2) RETURNING id`,
-    [DEFAULT_TENANT_ID, "usage-route-b@example.com"],
+    `INSERT INTO users (tenant_id, email) VALUES ($1, $2)
+       ON CONFLICT (tenant_id, (lower(email))) DO UPDATE SET email = EXCLUDED.email
+       RETURNING id`,
+    [DEFAULT_TENANT_ID, EMAIL_B],
   );
   userA = a.rows[0]?.id;
   userB = b.rows[0]?.id;
 
-  appA = await buildAppForUser(pool, { id: userA, email: "usage-route-a@example.com" });
-  appB = await buildAppForUser(pool, { id: userB, email: "usage-route-b@example.com" });
+  appA = await buildAppForUser(pool, { id: userA, email: EMAIL_A });
+  appB = await buildAppForUser(pool, { id: userB, email: EMAIL_B });
   appUnauthed = await buildAppForUser(pool, null);
 }, 180_000);
 
@@ -123,7 +152,8 @@ afterAll(async () => {
   if (appB) await appB.close();
   if (appUnauthed) await appUnauthed.close();
   if (pool) await pool.end();
-  if (container) await container.stop();
+  // NOTE: do NOT stop the shared container here — it is owned by the
+  // shared-pg module-scope cache and the testcontainers reuse daemon.
 }, 60_000);
 
 beforeEach(async () => {
