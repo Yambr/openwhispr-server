@@ -31,7 +31,7 @@ const resources = {
     "end-user": {
       account: {
         title: { heading: { text: "Account" } },
-        subtitle: { body: { text: "Manage your profile, active sessions, and account deletion." } },
+        subtitle: { body: { text: "Manage your profile and account." } },
         profile: {
           title: { label: "Profile" },
           name: { label: "Name" },
@@ -110,12 +110,13 @@ describe("AccountClient (Phase 07.1 / Plan 08)", () => {
       currentSessionToken: "tok-1",
     });
     expect(screen.getByText(/^Profile$/)).toBeInTheDocument();
-    // red-baseline: 2026-05-15 (Phase 18.1 F7) — duplicate 'Active sessions' in <p> + <h2>; see commit body
-    // SessionsTable renders an "Active sessions" h2 in the skeleton render
-    // path (synchronous, before useQuery resolves). Strong single-element
-    // assertion — getByText throws on multiple matches, so this implicitly
-    // also catches a future regression that double-mounts the header.
-    expect(screen.getByText(/Active sessions/i)).toBeInTheDocument();
+    // Phase 18.1 F7 GREEN (Plan 04): heading-scoped query mirrors the analog at
+    // apps/web/src/components/screens/admin/__tests__/ConfigClient.test.tsx:165.
+    // SessionsTable renders <h2>Active sessions</h2> in the skeleton render path
+    // (synchronous, before useQuery resolves). Anchored regex + role-scoping
+    // defends against future regressions that re-introduce the phrase into the
+    // subtitle <p> (the original duplicate-text bug).
+    expect(screen.getByRole("heading", { name: /^Active sessions$/i })).toBeInTheDocument();
     expect(screen.getByText(/Danger zone/i)).toBeInTheDocument();
   });
 
