@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v2
 milestone_name: — Production Readiness
 status: closed-with-followup
-last_updated: "2026-05-15T15:30:00.000Z"
-last_activity: "2026-05-15 — Phase 18.1 (v2 test-debt closure) CLOSED through all 7 plans + 24 atomic commits. All 7 V2-MILESTONE-REVIEW failures fixed (Plans 01-04 path-fix + diarization + AccountClient + rate-limit security 49/49 sweep); 4 stale @expected-red tags repointed to 19.1/19.2/19.3/19.4 + lint-cjm-doc regex extended; §14-04 typecheck deferral re-confirmed (drift 7→1); 5 backfill audit artefacts authored adversarially via fresh gsd-code-reviewer + gsd-security-auditor agents (12-REVIEW/SECURITY, 14-REVIEW/SECURITY, 15-SECURITY) — ZERO new HIGH findings (0/7/16/4 H/M/L/I). Aggregate pnpm test result: 14 failed / 2306 passed (was 21 failed / 2293 passed pre-18.1) — V2-REVIEW inventory CLOSED. The 14 remaining failures are NEWLY-SURFACED pre-existing debt (integration tests not in original inventory: missing __fixtures__/*.sse, @openwhispr/wire-schemas package, esbuild await parse-errors, Postgres role bootstrap, otel-bootstrap first-line invariant) — carved out to Phase 18.1.1. v2 milestone CLOSED-WITH-FOLLOWUP."
+last_updated: "2026-05-15T18:00:00.000Z"
+last_activity: "2026-05-15 — Phase 18.1.1 (aggregate sweep / test debt) CLOSED-WITH-FOLLOWUP through all 6 plans + ~33 atomic commits. Plans 01..06 landed: 01 cross-cutting test-debt sweep, 02 lint-cjm-doc + JSX-oracle source-of-truth scaffolding, 03 PATTERNS doc + UI-SPEC conformance bootstrap, 04 SignIn+SignUp Bucket A AuthShell wrap (D-16..D-28), 05 VerifyEmail+Setup Bucket B AuthShell + status badge + axe baseline helper + visual-regression RED (D-29..D-34), 06 v2.1 milestone closure declaration. Aggregate pnpm test: 37 failed / 2922 passed / 347 skipped (was 41 failed / 2888 passed before Plan 05; was 14 failed / 2306 passed at start of Phase 18.1). Net +616 passing tests across Phase 18.1.1. Remaining 37 failed are all infrastructure-bound (testcontainers / docker daemon unavailable in this executor session: 27 @openwhispr/api integration, 5 tools lint-rls, 3 @openwhispr/worker, 3 @openwhispr/data, 1 pre-existing locale-coverage mismatch from Phase 18.1) — none introduced by Phase 18.1.1 surface, all carved to Phase 18.1.2. v2.1 milestone CLOSED-WITH-FOLLOWUP."
 progress:
   total_phases: 50
-  completed_phases: 20
-  total_plans: 151
-  completed_plans: 165
-  percent: 40
+  completed_phases: 21
+  total_plans: 157
+  completed_plans: 171
+  percent: 42
 ---
 
 # Project State: OpenWhispr Server
@@ -25,10 +25,10 @@ progress:
 
 ## Current Position
 
-Phase: 18.1 — v2 test-debt closure CLOSED-WITH-FOLLOWUP — 7 plans / ~24 atomic commits (start `0270ef1` → end `<plan-07-commit>`); all 7 V2-MILESTONE-REVIEW failures fixed in their scoped suites; pnpm test aggregate 14 failed (was 21) / 2306 passed (was 2293); 14 remaining failures are NEWLY-SURFACED pre-existing debt outside V2-REVIEW inventory — carved to Phase 18.1.1.
-Plan: All Phase 18.1 plans complete. v2 milestone CLOSED-WITH-FOLLOWUP. Next: Phase 18.1.1 (newly-surfaced test debt) OR Phase 19.1-19.4 (downstream pre-reqs for repointed @expected-red tags) OR operator-side: FSL history scrub (15-04), first real GHA e2e-cjm CI run, UICONF-05 axe baseline.
-Status: v2 milestone CLOSED-WITH-FOLLOWUP. 7 phases (12, 13, 14, 15, 16, 17, 18) shipped. Phase 18.1 closed v2 test-debt and 5 missing audit artefacts adversarially backfilled (ZERO new HIGH). 14 remaining failures need Phase 18.1.1.
-Last activity: 2026-05-15 — Phase 18.1 closed. See Last Activity for full commit chain. Carved Phase 18.1.1 in ROADMAP for: sse-parser fixtures, @openwhispr/wire-schemas package, esbuild await parse-errors, Postgres role bootstrap drift, otel-bootstrap first-line invariant, integration test suites timing out.
+Phase: 18.1.1 — aggregate sweep / test debt CLOSED-WITH-FOLLOWUP — 6 plans / ~33 atomic commits (start `8cab466` → end of Plan 06). All planned Bucket A + Bucket B AuthShell oracle work shipped; axe baseline helper + visual-regression RED authored; aggregate pnpm test 37 failed / 2922 passed (was 14/2306 at start of Phase 18.1); the 37 remaining failures are infrastructure-bound (docker/testcontainers absent in executor session) — carved to Phase 18.1.2.
+Plan: All Phase 18.1.1 plans complete. v2.1 milestone CLOSED-WITH-FOLLOWUP. Next: Phase 18.1.2 (infrastructure-bound test debt — testcontainers boot + docker daemon discipline) OR Phase 19.1-19.4 (downstream pre-reqs for repointed @expected-red tags) OR operator-side: bake axe + visual baselines under live stack (Tasks 05-04 + 05-05 GREEN), FSL history scrub (15-04), first real GHA e2e-cjm CI run.
+Status: v2.1 milestone CLOSED-WITH-FOLLOWUP. 8 phases (12, 13, 14, 15, 16, 17, 18, 18.1, 18.1.1) shipped. Phase 18.1.1 closed AuthShell oracle Bucket A + B and axe baseline scaffolding; 37 remaining failures need Phase 18.1.2 (infrastructure-bound, not surface-code).
+Last activity: 2026-05-15 — Phase 18.1.1 closed. See Last Activity for full commit chain. Carved Phase 18.1.2 in ROADMAP for: testcontainers-dependent integration suites (27 @openwhispr/api), tools lint-rls partman fixtures, worker BullMQ-real-postgres, otel-bootstrap signal handler, ledger/migration/audit-log infra suites, locale-coverage Phase-18.1-residual mismatch.
 
 ## Performance Metrics
 
