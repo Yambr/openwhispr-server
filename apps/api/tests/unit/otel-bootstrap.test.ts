@@ -121,29 +121,33 @@ describe("otel-bootstrap (Phase 6 / Plan 03 / Task 1)", () => {
     expect(() => mod.startSdk(fakeSdk)).not.toThrow();
   });
 
-  it("emitting SIGTERM after module load triggers the shutdown hook (line coverage for onSignal)", async () => {
-    await import("../../src/otel-bootstrap");
-    // Phase 18.1.2-04-03 (D-09): vitest's worker process registers its OWN
-    // SIGTERM handler at worker boot that calls process.exit(143) BEFORE
-    // our `onSignal` (registered via `process.once`) gets to invoke
-    // shutdownSdk(). Without the spy below this test trips
-    // "Error: process.exit unexpectedly called with 143". The proper
-    // production-side fix is to `export const onSignal` so the test can
-    // invoke it directly + spy shutdownSdk to assert behavior — that
-    // single-character source edit is deferred to a production-fix phase
-    // per CLAUDE.md §Conventions hard rule #1 (see SERVER-ERRORS.md Entry 5).
-    // Test-side: spy process.exit to swallow the worker handler's exit(143)
-    // call so the assertion can verify onSignal-body does not throw.
-    // Coverage on the onSignal arrow at otel-bootstrap.ts:144-146 is
-    // preserved because the `process.emit` does invoke the registered
-    // handler — we only suppress the cascading vitest-worker exit.
-    const exitSpy = vi
-      .spyOn(process, "exit")
-      .mockImplementation(((_code?: number) => undefined as never) as never);
+  it("onSignal invokes shutdownSdk (Phase 19 / Plan 01 / Task 03 — SR-19.4, D-14)", async () => {
+    // Phase 19-01-03 reverts the Phase 18.1.2-04-03 process.exit-spy +
+    // process.emit("SIGTERM") workaround. With `onSignal` now exported
+    // (CONTEXT.md D-13, `apps/api/src/otel-bootstrap.ts:144`), the test
+    // can invoke it directly and assert the REAL behavior — the SDK's
+    // `shutdown()` method fires (D-14). The `process.once` registrations
+    // at otel-bootstrap.ts:155-156 still install the production
+    // SIGTERM/SIGINT side-effect; they are exercised at module load.
+    //
+    // Why we spy on `sdk.shutdown` instead of `mod.shutdownSdk`:
+    // `onSignal` is a closure over the module-scope `shutdownSdk`
+    // (captured at module load), so a `vi.spyOn(mod, "shutdownSdk")`
+    // replacement on the namespace object does not retarget the closure
+    // binding (rollback fallback documented in 19-01-PLAN.md rollback §2).
+    // Spying on the SDK's underlying `shutdown` method observes the
+    // real call chain: `onSignal → shutdownSdk → sdk.shutdown`.
+    const mod = await import("../../src/otel-bootstrap");
+    if (mod.sdk === null) throw new Error("expected NodeSDK at default env");
+    const shutdownSpy = vi.spyOn(mod.sdk, "shutdown").mockResolvedValue(undefined);
     try {
-      expect(() => process.emit("SIGTERM" as never)).not.toThrow();
+      expect(() => mod.onSignal()).not.toThrow();
+      // `onSignal` schedules `shutdownSdk` via `void`; the underlying
+      // `sdk.shutdown` is invoked synchronously inside the same tick
+      // (no `await` between `onSignal` and the `.shutdown()` call).
+      expect(shutdownSpy).toHaveBeenCalled();
     } finally {
-      exitSpy.mockRestore();
+      shutdownSpy.mockRestore();
     }
   });
 

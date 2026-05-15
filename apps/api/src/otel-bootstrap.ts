@@ -141,7 +141,15 @@ startSdk();
 
 // SIGTERM hook — best-effort flush so spans/logs/metrics reach the
 // Collector before the container is killed.
-const onSignal = (): void => {
+//
+// Phase 19 / Plan 01 / Task 03 — SR-19.4 (CONTEXT.md D-13): `onSignal`
+// is exported so the unit test can invoke it directly + spy on
+// `shutdownSdk`. Replaces the Phase 18.1.2-04-03 workaround that
+// emitted SIGTERM and swallowed vitest's worker process.exit(143)
+// via a process.exit spy. The export is types-only at the call sites;
+// `process.once(..., onSignal)` registrations below keep the production
+// side-effect intact.
+export const onSignal = (): void => {
   void shutdownSdk();
 };
 process.once("SIGTERM", onSignal);
