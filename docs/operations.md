@@ -61,17 +61,30 @@ test suite locally:
 3. **`openwhispr/postgres:17.5-pgpartman` image.** The shared-pg fixture
    pins to this locally-built image (`compose/postgres/Dockerfile` —
    Postgres 17.5 with pg_partman 5.2.4 in the `partman` schema; migration
-   0014 fails without it). Build or pull on first use:
+   `packages/data/migrations/0014_audit_log_partition.sql` fails without
+   it). The standard `postgres:17-alpine` upstream image does NOT ship
+   pg_partman. Build or pull on first use:
 
    ```sh
    make build-pg-partman           # builds from compose/postgres/Dockerfile
-   # OR if the image is published to your internal registry:
+   # OR pull directly (Phase 19 / SR-19.5 canonical recipe):
+   docker pull openwhispr/postgres:17.5-pgpartman
+   # OR if the image is mirrored to your internal registry:
    docker pull <registry>/openwhispr/postgres:17.5-pgpartman
    ```
 
    The CI `test` job builds this image as part of `pnpm test`'s setup
    step; developers must build it once and let the testcontainers reuse
    daemon keep it warm thereafter.
+
+   **Background:** Phase 18.1.2 / Plan 05 introduced the shared-pg
+   fixture and surfaced the missing-image symptom on fresh clones via
+   `.planning/phases/08-client-server-audit/SERVER-ERRORS.md` Entry 3
+   ("test-suite fails on first run without an out-of-band image build").
+   The production migration is canonical (no migration code fix is
+   needed — pg_partman is the documented extension dependency); Entry 3
+   is a documentation deliverable, not a code defect. This subsection
+   is its closing artifact (Phase 19 / Plan 01 / SR-19.5, D-15).
 
 4. **pnpm workspace bootstrap.** Run `pnpm install --frozen-lockfile`
    before the FIRST test run, and after every `pnpm-lock.yaml` change.
