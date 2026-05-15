@@ -321,7 +321,10 @@ function handleDiarization(deps: DiarizationDeps, idem: IdempotencyCache) {
           return reply.code(200).send(DiarizationResponse.parse(job.output));
         }
         if (job.status === "failed" || job.status === "cancelled") {
-          throw new UpstreamError("DIARIZATION_JOB_FAILED", `diarization job ${job.status}`);
+          return reply.code(502).send({
+            error: `diarization job ${job.status}`,
+            jobId,
+          });
         }
         // status === 'created' | 'running' — wait then poll again.
         try {
