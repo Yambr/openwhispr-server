@@ -30,7 +30,6 @@ export const TENANT_SCOPED_TABLES = [
   "account",
   "verification",
   "oauth_state",
-  // Phase 5 / Plan 01 — settings + CRUD resource families
   "tenant_settings",
   "user_settings",
   "notes",
@@ -39,7 +38,6 @@ export const TENANT_SCOPED_TABLES = [
   "messages",
   "transcriptions",
   "api_keys",
-  // Phase 6 / Plan 06-08 — daily rollup written by usage-rollup-daily worker
   "usage_rollup_daily",
 ] as const;
 export type TenantScopedTable = (typeof TENANT_SCOPED_TABLES)[number];

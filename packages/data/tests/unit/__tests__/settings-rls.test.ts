@@ -60,7 +60,6 @@ interface Harness {
 }
 
 async function bootHarness(): Promise<Harness> {
-  // Phase 6 / Plan 02 — migration 0014 requires pg_partman.
   const pg = await new PostgreSqlContainer("openwhispr/postgres:17.5-pgpartman")
     .withDatabase("openwhispr")
     .withUsername("postgres_super")

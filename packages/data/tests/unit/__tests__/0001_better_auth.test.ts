@@ -201,7 +201,6 @@ describe("0001_better_auth migration — lookup_session_by_previous_token functi
   it("PUBLIC is REVOKEd; openwhispr_app has EXECUTE (post-0005 text signature)", async () => {
     const pool = new Pool({ connectionString: booted.ownerUri });
     try {
-      // Phase 02.12 — function signature is now (text), not (bytea).
       const { rows: appRow } = await pool.query<{ has: boolean }>(
         `SELECT has_function_privilege(
            'openwhispr_app',
