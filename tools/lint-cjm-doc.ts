@@ -130,7 +130,12 @@ export function lintCjmDoc(text: string, file = "docs/customer-journeys.md"): Of
 
 export interface FeatureTags {
   cjm: Array<{ major: number; minor: number; line: number }>;
-  expectedRed: Array<{ line: number; afterPhase: number | null; raw: string }>;
+  expectedRed: Array<{
+    line: number;
+    afterPhase: number | null;
+    dockerUp: boolean;
+    raw: string;
+  }>;
 }
 
 /**
@@ -167,7 +172,12 @@ export function extractFeatureTags(text: string): FeatureTags {
       const phase = phaseTok
         ? Number.parseInt(phaseTok.replace("@after-phase-", "").split(".")[0], 10)
         : null;
-      expectedRed.push({ line: i + 1, afterPhase: phase, raw: raw.trim() });
+      // Phase 19a / SR-19a.3 — `@after-docker-up` is an orthogonal pairing
+      // for scenarios gated on the full compose stack being up rather than
+      // a specific code phase landing. Recorded as `dockerUp` so downstream
+      // tooling can treat the two axes distinctly.
+      const dockerUp = tokens.includes("@after-docker-up");
+      expectedRed.push({ line: i + 1, afterPhase: phase, dockerUp, raw: raw.trim() });
     }
   }
   return { cjm, expectedRed };
@@ -209,12 +219,15 @@ export function lintExpectedRedPairing(featureContents: Map<string, string>): Of
   for (const [file, text] of featureContents) {
     const { expectedRed } = extractFeatureTags(text);
     for (const er of expectedRed) {
-      if (er.afterPhase === null) {
+      // Phase 19a / SR-19a.3 — accept EITHER axis: @after-phase-N (code phase
+      // pinned) OR @after-docker-up (compose stack pinned). Both are valid
+      // pairings; a bare @expected-red with neither is still an offender.
+      if (er.afterPhase === null && !er.dockerUp) {
         offenders.push({
           file,
           line: er.line,
           col: 1,
-          message: `@expected-red without paired @after-phase-N tag`,
+          message: `@expected-red without paired @after-phase-N or @after-docker-up tag`,
         });
       }
     }
