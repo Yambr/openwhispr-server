@@ -409,10 +409,15 @@ describe("SignInForm (Phase 07.1 / Plan 07 — U1)", () => {
     const oidc = await screen.findByRole("button", { name: /continue with google/i });
     const separator = await screen.findByText(/or with email/i);
     const submit = screen.getByRole("button", { name: /^sign in$/i });
-    const order = oidc.compareDocumentPosition(separator);
-    expect(order & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-    const order2 = separator.compareDocumentPosition(submit);
-    expect(order2 & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    // Order via flat document traversal — compareDocumentPosition bit math is
+    // brittle when one element contains another. Convert to absolute index.
+    const all = Array.from(document.querySelectorAll("*"));
+    const oidcIdx = all.indexOf(oidc);
+    const sepIdx = all.indexOf(separator);
+    const submitIdx = all.indexOf(submit);
+    expect(oidcIdx).toBeGreaterThan(-1);
+    expect(sepIdx).toBeGreaterThan(oidcIdx);
+    expect(submitIdx).toBeGreaterThan(sepIdx);
   });
 
   it("D-21: renders a 'Remember this device' checkbox", async () => {

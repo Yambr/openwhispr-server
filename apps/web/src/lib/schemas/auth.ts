@@ -7,9 +7,12 @@
 // bounded [1, 100] for display safety.
 import { z } from "zod";
 
+// Phase 18.1.1 / Plan 04 / D-21 — RHF field for "Remember this device"
+// checkbox. Better Auth signIn.email accepts `rememberMe` as a pass-through.
 export const signInSchema = z.object({
   email: z.string().email(),
   password: z.string().min(8),
+  rememberDevice: z.boolean().default(false),
 });
 export type SignInInput = z.infer<typeof signInSchema>;
 
