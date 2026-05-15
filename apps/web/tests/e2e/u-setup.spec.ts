@@ -1,0 +1,29 @@
+// SPDX-License-Identifier: FSL-1.1-ALv2
+// Phase 18.1.1 / Plan 05 / Task 05-03 — minimal /setup axe spec.
+//
+// Phase 12 did not author a Playwright spec for the setup wizard; this
+// stub navigates to /setup, asserts the AuthShell side title is
+// rendered, then runs the WCAG 2.2 AA axe scan with baseline tracking
+// (D-33). The setup wizard renders unconditionally — when the server
+// is already initialised the page is redirected before the assertion,
+// in which case the test logs and skips; this keeps the spec
+// non-flaky regardless of stack state.
+import { expect, test } from "@playwright/test";
+import { runAxe } from "./fixtures/axe.js";
+
+test.describe("U-setup (Phase 18.1.1 / Plan 05)", () => {
+  test("axe — WCAG 2.2 AA scan on /setup", async ({ page }) => {
+    const response = await page.goto("/setup");
+    // When the server has already completed initial setup, /setup
+    // either redirects or returns a non-2xx; in both cases we skip the
+    // axe scan because the wizard isn't rendered.
+    if (!response || !response.ok()) {
+      test.skip(true, "setup already completed — skipping axe scan");
+      return;
+    }
+    await expect(page.getByText(/set up your openwhispr server/i)).toBeVisible({
+      timeout: 15_000,
+    });
+    await runAxe(page, "u-setup");
+  });
+});

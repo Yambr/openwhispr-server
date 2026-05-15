@@ -25,6 +25,19 @@ export interface CompareOrWriteOptions {
   mode: "update" | "compare";
 }
 
-export async function compareOrWriteBaseline(_opts: CompareOrWriteOptions): Promise<void> {
-  throw new Error("not implemented");
+export async function compareOrWriteBaseline(opts: CompareOrWriteOptions): Promise<void> {
+  const fs = await import("node:fs/promises");
+  const path = await import("node:path");
+  if (opts.mode === "update") {
+    await fs.mkdir(path.dirname(opts.file), { recursive: true });
+    await fs.writeFile(opts.file, JSON.stringify(opts.live, null, 2));
+    return;
+  }
+  // compare
+  const baseline = JSON.parse(await fs.readFile(opts.file, "utf8")) as AxeBaselineSummary;
+  if (opts.live.passes < baseline.passes) {
+    throw new Error(
+      `baseline regression at ${opts.file}: live passes ${opts.live.passes} < baseline ${baseline.passes}`,
+    );
+  }
 }

@@ -52,6 +52,6 @@ test.describe("U3 Verify-email (Phase 07.1 / Plan 07)", () => {
   test("axe — WCAG 2.2 AA scan on /verify-email", async ({ page }) => {
     await page.goto("/verify-email");
     await page.getByText(/verification failed/i).waitFor();
-    await runAxe(page);
+    await runAxe(page, "u3-verify-email");
   });
 });
