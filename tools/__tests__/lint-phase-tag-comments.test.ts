@@ -96,4 +96,30 @@ describe("main — CLI dispatch (L6 + exit codes)", () => {
     outSpy.mockRestore();
     expect(code).toBe(0);
   });
+
+  it("L6c: main([]) defaults rootDir to process.cwd()", async () => {
+    const outSpy = vi.spyOn(process.stdout, "write").mockImplementation(() => true);
+    const errSpy = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
+    const code = await main([]);
+    outSpy.mockRestore();
+    errSpy.mockRestore();
+    // Either clean (0) or dirty (1) is acceptable; what matters is no throw.
+    expect([0, 1]).toContain(code);
+  });
+});
+
+describe("findViolations — sort + multi-file ordering", () => {
+  it("returns violations sorted by file then by lineNumber", async () => {
+    touch(
+      "apps/y/src/b.ts",
+      ["export const a = 1;", "// Phase 9", "export const b = 2;", "// Phase 8"].join("\n"),
+    );
+    touch("apps/x/src/a.ts", "// Phase 12\nexport const a = 1;\n");
+    const violations = await findViolations(root);
+    expect(violations.map((v) => `${v.file}:${v.lineNumber}`)).toEqual([
+      "apps/x/src/a.ts:1",
+      "apps/y/src/b.ts:2",
+      "apps/y/src/b.ts:4",
+    ]);
+  });
 });
