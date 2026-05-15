@@ -62,7 +62,7 @@ api in some configurations (client-side gate); in others the api returns
 - Silent-failure modes: form swallows the error and submits anyway (would
   let weak passwords through).
 
-### @cjm-1.4 Locale-scoped error copy (negative twin)
+### @cjm-1.4 Locale-scoped error copy (negative twin, after-phase-19.3 — currently @expected-red)
 
 With `Accept-Language: ru` set, the same invalid form surfaces an error
 rendered in Russian. Closes UICONF-03 — the form must render error copy in
@@ -123,7 +123,7 @@ single-use reset link in mailpit, clicks it, sets a new password, and can
 sign in with the new credentials. The negative twin covers the
 invalid-token error envelope.
 
-### @cjm-3.1 Password-reset happy path
+### @cjm-3.1 Password-reset happy path (after-phase-19.1 — currently @expected-red)
 
 User POSTs `email` to the password-reset request endpoint. Mailpit receives
 a reset email within 30s. The reset URL renders a "set new password" form.
@@ -157,7 +157,7 @@ the api proxies to LiteLLM (Whisper), and the response matches the
 `segments`, optional `language`). The negative twin asserts malformed
 payloads surface a typed-error envelope, not a 5xx stack leak.
 
-### @cjm-4.1 Multipart audio → response shape match
+### @cjm-4.1 Multipart audio → response shape match (after-phase-19.2 — currently @expected-red)
 
 Signed-in user POSTs a 0.25s 16kHz mono PCM WAV (`tests/e2e-cjm/fixtures/
 silent.wav`) to `/api/transcribe` via multipart. The api returns 200; body
@@ -238,7 +238,7 @@ must persist via cookie and produce localized copy on subsequent renders.
 A downstream-phase twin asserts the `/api/locale` endpoint routes through
 the `api.localhost` host split (closed by Phase 15).
 
-### @cjm-6.1 en↔ru cookie set
+### @cjm-6.1 en↔ru cookie set (after-phase-19.4 — currently @expected-red)
 
 User clicks the locale toggle. The response sets a `Set-Cookie:
 NEXT_LOCALE=ru; Path=/; ...` header. Reload renders the landing page copy
