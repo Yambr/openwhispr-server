@@ -247,6 +247,12 @@ describe("rate-limit-isolation — real Valkey 8 testcontainer + real plugin (T-
       // was never reached for the 35 unauthenticated requests.
       expect(keysAfter.sort()).toEqual(keysBefore.sort());
       expect(valuesAfter).toEqual(valuesBefore);
+      // red-baseline: 2026-05-15 (Phase 18.1 F6 / V2-SEC-01) — anon DoS vector.
+      // Categorical assertion: NO IP-prefixed bucket may appear during the
+      // 35-request anonymous burst against an authRequired route. This
+      // sharper invariant pins the security contract independent of any
+      // pre-existing baseline keys that might exist in keysBefore.
+      expect(keysAfter.filter((k) => k.startsWith("owrl:ip:"))).toEqual([]);
       // Final positive control: an authenticated call STILL succeeds
       // (bucket fresh — 35 401s did not consume it).
       const ok = await app.inject({
