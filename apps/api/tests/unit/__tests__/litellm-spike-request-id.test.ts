@@ -101,7 +101,13 @@ describe("LiteLLM x-litellm-spend-logs-metadata propagation (D-08 spike)", () =>
     // process.cwd() (vitest runs per-package = apps/api; the fixture lives at
     // the repo root). Walk up from apps/api/src/__tests__/ to repo root.
     const here = dirname(fileURLToPath(import.meta.url));
-    const repoRoot = join(here, "..", "..", "..", "..");
+    // Δ-1 (Phase 18.1.2-04-02): post Phase 15-02 `migrate-tests` codemod the
+    // test file moved from apps/api/src/__tests__/ → apps/api/tests/unit/__tests__/
+    // — 1 directory deeper, so the walk to repo root is 5 ups, not 4. The
+    // fixture file `tests/fixtures/audio/sample-1s.wav` EXISTS at repo root;
+    // CONTEXT D-08 originally framed this as "missing fixture" which Δ-1
+    // corrected to "path-depth bug". No file creation, no rename.
+    const repoRoot = join(here, "..", "..", "..", "..", "..");
     const fixturePath = join(repoRoot, "tests/fixtures/audio/sample-1s.wav");
     expect(existsSync(fixturePath)).toBe(true);
     const buf = readFileSync(fixturePath);
