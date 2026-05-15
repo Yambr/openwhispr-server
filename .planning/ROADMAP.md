@@ -928,6 +928,23 @@ Plans:
 **Plans**: 2-3 plans (TBC at /gsd-discuss-phase 19.1).
 **Open question**: Email template format — plain text + HTML, or HTML-only? React-email or hand-rolled? Advisor decides per existing `packages/email/src/EmailSender.ts` conventions.
 
+### Phase 19a: compose infra hot-fix (byok-guard Dockerfile + cjm-lint @after-docker-up)
+**Goal**: Unblock all compose-based e2e harness runs (Phase 13 cjm, Phase 17 TLS, traefik-host-split, locale-switch — every `@expected-red @after-phase-19.*` repointed scenario plus all 6 `@after-docker-up` ones). Close SERVER-ERRORS.md Entries 7 + 8.
+**Depends on**: Phase 19.1 (surfaced Entries 7+8). Hard rule INVERSION authorized per ledger-consuming-phase pattern (mirrors Phase 19 authorization for Entries 1-5).
+**Requirements**:
+  - SR-19a.1: `apps/api/Dockerfile` adds `packages/byok-guard/` to both builder-stage manifest list (after line 55) AND source-copy block (after line 69) AND prod-deps manifest list (after line 98). Mirrors Phase 13 `packages/email/` insertion pattern.
+  - SR-19a.2: `apps/worker/Dockerfile` adds `packages/byok-guard/` to builder + prod-deps manifest lists (after existing observability/email blocks).
+  - SR-19a.3: `tools/lint-cjm-doc.ts` accepts `@after-docker-up` as a valid `@expected-red` pairing alongside `@after-phase-N`. Unit test extension in `tools/__tests__/lint-cjm-doc.test.ts` covers both forms.
+  - SR-19a.4: Verify `docker compose -p e2e-cjm --profile default build migrate api worker` exits 0 (golden e2e infra gate).
+  - SR-19a.5: Verify `pnpm tsx tools/lint-cjm-doc.ts --features tests/e2e-cjm/features --check-expected-red` exits 0 (no offenders).
+**Success Criteria**:
+  1. Docker build green for migrate + api + worker images.
+  2. cjm-doc lint exits 0 with all 6 prior offenders accepting `@after-docker-up`.
+  3. `E2E_CJM=1 make e2e-cjm SCENARIO="@cjm-3.1"` reaches scenario execution (passes Plan 19.1-01 round-trip verification — closes Phase 19.1's deferred e2e validation).
+  4. SERVER-ERRORS.md Entries 7 + 8 transition to CLOSED with commit SHA owners.
+**Plans**: 1-2 plans (Dockerfile fix + cjm-lint fix; trivial scope).
+**Estimated**: ~30min total. Hard rule INVERSION authorized for production Dockerfile + lint edits.
+
 ## Progress Table
 
 | Phase | Plans Complete | Status | Completed |

@@ -138,6 +138,78 @@ Estimated scope: ~4-6h. Touches ~17 integration test files + `shared-pg.ts` + a 
 
 ---
 
+## Entry 7 — `@openwhispr/byok-guard` missing from api+worker Dockerfile COPY chains (Phase 19.1-01)
+
+**Surfacing phase:** Phase 19.1 / Plan 01 (e2e blocker on `E2E_CJM=1 make e2e-cjm SCENARIO="@cjm-3.1"`).
+
+**Files:**
+- `apps/api/Dockerfile:34-69` (builder stage manifest COPY block + source COPY block — lines 38-43, 64-69 enumerate workspace pkg manifests; `packages/byok-guard/` not listed in either)
+- `apps/api/Dockerfile:86-100` (prod-deps stage, lines 90-98 mirror builder manifest list; same omission)
+- `apps/worker/Dockerfile:29-40, 52-53` (same pattern; only `observability` + `email` copied)
+
+**Production symptom:** `apps/api/package.json:26` and `apps/worker/package.json:19` declare `"@openwhispr/byok-guard": "workspace:*"` (added by Phase 14 commit `630d969`). Workspace runtime install in CI/dev tree resolves fine — the package directory exists at `packages/byok-guard/` with full `src/`, `package.json`, tests. But docker `pnpm install --frozen-lockfile` inside the builder stage sees only the manifests explicitly `COPY`'d to `/app/packages/*/package.json`. With `byok-guard` missing from that allowlist:
+```
+#28 0.930 [ERR_PNPM_WORKSPACE_PKG_NOT_FOUND] In apps/api:
+  "@openwhispr/byok-guard@workspace:*" is in the dependencies but no package
+  named "@openwhispr/byok-guard" is present in the workspace
+```
+The build fails BEFORE any application code compiles. This blocks every compose-based e2e (Phase 13 cjm harness, Phase 17 TLS, traefik-host-split, locale-switch — all 4 `@expected-red @after-phase-19.*` repointed scenarios cannot validate until this is fixed).
+
+**Test workaround (Phase 19.1):** None possible. The unit-test path proves the `sendResetPassword` hook contract directly via vitest stubs (10/10 GREEN, mirrors `sendVerificationEmail` line-for-line at the four DI contract points). The `@cjm-3.1` tag flip in commit `e703314` is forward-promissory: code is correct, e2e validation deferred until this entry closes.
+
+**Suggested production fix (single phase scope):**
+1. Add to `apps/api/Dockerfile` builder stage (after line 55):
+   ```dockerfile
+   COPY packages/byok-guard/package.json packages/byok-guard/
+   ```
+2. Add to `apps/api/Dockerfile` builder stage source-copy block (after line 69):
+   ```dockerfile
+   COPY packages/byok-guard packages/byok-guard
+   ```
+3. Add to `apps/api/Dockerfile` prod-deps stage (after line 98):
+   ```dockerfile
+   COPY packages/byok-guard/package.json packages/byok-guard/
+   ```
+4. Mirror lines 1-3 in `apps/worker/Dockerfile` (after observability/email blocks).
+5. Verify: `docker compose -p e2e-cjm --profile default build migrate api worker` exits 0.
+
+Estimated scope: ~6-8 lines across 2 Dockerfiles, ~5min review + ~3min docker build verify. No code changes — pure Dockerfile manifest list extension. Pattern proven by `packages/email/` Phase 13 addition (same template).
+
+**Why deferred from Phase 14:** Commit `630d969` added the workspace dep declaration but did not extend the Dockerfile COPY chains. The omission did not surface for ~2 phases because: (a) local pnpm install resolves fine (full workspace tree available); (b) Phase 14-08 e2e was unit/integration only; (c) Phase 18.1.x test-debt phases were CLAUDE.md Hard Rule #1 gated; (d) Phase 19 production-fix scope was strictly SERVER-ERRORS Entries 1-5, did not audit Dockerfile manifests.
+
+**Owner:** unassigned. Recommend Phase 19a (compose infra hot-fix, ~15-30min total).
+
+---
+
+## Entry 8 — cjm-lint rejects `@after-docker-up` `@expected-red` pairings (Phase 19.1-01)
+
+**Surfacing phase:** Phase 19.1 / Plan 01 (cjm-doc lint gate blocking e2e harness boot).
+
+**File:** `tools/lint-cjm-doc.ts` — `--check-expected-red` mode regex `/^@after-phase-\d+(\.\d+)?$/` does NOT accept `@after-docker-up` as a valid `@expected-red` pairing token.
+
+**Production symptom:** 6 pre-existing offenders fail the lint:
+- `tests/e2e-cjm/features/locale-switch.feature:12` (@cjm-6.2)
+- `tests/e2e-cjm/features/phase17-tls.feature:7,20,55` (3× @cjm-tls-*)
+- `tests/e2e-cjm/features/traefik-host-split.feature:14,19` (2× @cjm-traefik-host-split*)
+
+All 6 carry `@after-docker-up` instead of `@after-phase-N`. The author convention is: scenarios that require the FULL docker compose stack to be running (not a specific code phase to land) are tagged `@after-docker-up`. The lint pattern was authored for code-phase repointing (`@after-phase-19.1` etc.) and does not accommodate this orthogonal axis.
+
+**Test workaround (Phase 19.1):** None possible at lint layer. The 6 offenders pre-date Phase 19.1 and are not in this phase's scope.
+
+**Suggested production fix (single-line lint extension):** In `tools/lint-cjm-doc.ts`, change the pairing regex to accept either form:
+```ts
+const phaseTok = tokens.find((t) =>
+  /^@after-phase-\d+(\.\d+)?$/.test(t) || t === "@after-docker-up"
+);
+```
+Or extend the regex to a single union: `/^@after-(phase-\d+(\.\d+)?|docker-up)$/`.
+
+Estimated scope: ~1-2 line edit + unit test extension in `tools/__tests__/lint-cjm-doc.test.ts`. ~10min.
+
+**Owner:** unassigned. Recommend Phase 19a (same hot-fix as Entry 7).
+
+---
+
 ## Append-protocol
 
 Future entries follow same shape: surfacing phase + file:line + production symptom + test workaround + suggested fix + owner.
