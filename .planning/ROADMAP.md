@@ -890,7 +890,8 @@ Plans:
 | 17. Trusted Local TLS + Production ACME | 3/3 | Complete | 2026-05-15 |
 | 18. LDAP / Keycloak SSO (SPEC only) | 1/1 | Complete-spec-only | 2026-05-15 |
 | 18.1. v2 test-debt closure | 7/7 | Complete-with-followup | 2026-05-15 |
-| 18.1.1. newly-surfaced test debt | 0/0 | Not started | - |
+| 18.1.1. aggregate sweep + AuthShell oracle | 6/6 | Complete-with-followup | 2026-05-15 |
+| 18.1.2. infrastructure-bound test debt | 0/0 | Not started | - |
 
 ## Coverage Map
 
