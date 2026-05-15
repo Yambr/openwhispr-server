@@ -21,6 +21,7 @@
     "lint:migrations": "tsx tools/lint-migrations.ts",
     "lint:compose-chart-parity": "tsx tools/lint-compose-chart-parity.ts",
     "lint:colocated-tests": "tsx tools/lint-colocated-tests.ts",
+    "lint:phase-tag-comments": "tsx tools/lint-phase-tag-comments.ts",
     "test:lint-colocated-tests": "vitest run tools/lint-colocated-tests.test.ts --coverage --coverage.include=tools/lint-colocated-tests.ts --coverage.exclude= --coverage.all=false --coverage.thresholds.lines=90 --coverage.thresholds.branches=90 --coverage.thresholds.functions=90 --coverage.thresholds.statements=90",
     "test:migrate-tests": "vitest run tools/migrate-tests.test.ts --coverage --coverage.include=tools/migrate-tests.ts --coverage.exclude= --coverage.all=false --coverage.thresholds.lines=90 --coverage.thresholds.branches=90 --coverage.thresholds.functions=90 --coverage.thresholds.statements=90",
     "spdx:check": "tsx tools/spdx-header.ts audit",

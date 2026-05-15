@@ -17,6 +17,13 @@ pre-commit:
     colocated-tests:
       glob: "{apps,packages}/*/src/**/*.test.ts"
       run: pnpm lint:colocated-tests
+    # Phase 16 / Plan 01 / COMMENT-03 — fail-fast when a new REMOVE-bucket
+    # phase-tag comment (bare header, trailing `// D-NN`, history close-out)
+    # lands in apps/ or packages/. Shares the classifier predicate with
+    # tools/phase-tag-sweep.ts so allowlist drift is structurally impossible.
+    phase-tag-comments:
+      glob: "{apps,packages}/**/*.{ts,tsx}"
+      run: pnpm lint:phase-tag-comments
     # Phase 6 / Plan 06-09 / D-W4 layer 1 — fail-fast if any BullMQ job
     # handler is not wrapped in withTenantContext / withSystemContext.
     # The scan is ~1s against 8 job files; fast enough for pre-commit.
