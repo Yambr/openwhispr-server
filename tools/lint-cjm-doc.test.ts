@@ -294,6 +294,36 @@ describe("lint-cjm-doc (in-process)", () => {
     expect(tags.expectedRed[0].raw).toMatch(/@after-phase-19\.1/);
   });
 
+  // Phase 19a / SR-19a.3 — @after-docker-up is a valid pairing for @expected-red
+  // when the scenario is gated on the full compose stack being up rather than
+  // a specific code phase landing. Six pre-existing offenders in Phase 17 TLS,
+  // traefik-host-split, and locale-switch features carry this token.
+  it("lintExpectedRedPairing accepts @after-docker-up as valid pairing", () => {
+    const features = new Map<string, string>([
+      ["ok-docker.feature", "  @cjm-tls-x @expected-red @after-docker-up\n  Scenario: X\n"],
+    ]);
+    const offenders = lintExpectedRedPairing(features);
+    expect(offenders).toHaveLength(0);
+  });
+
+  it("extractFeatureTags records dockerUp=true when @after-docker-up present", () => {
+    const feature = "  @cjm-tls-x @expected-red @after-docker-up\n  Scenario: X\n";
+    const tags = extractFeatureTags(feature);
+    expect(tags.expectedRed).toHaveLength(1);
+    expect(tags.expectedRed[0].afterPhase).toBeNull();
+    expect(tags.expectedRed[0].dockerUp).toBe(true);
+    expect(tags.expectedRed[0].raw).toMatch(/@after-docker-up/);
+  });
+
+  it("lintExpectedRedPairing still rejects @expected-red with no pairing at all", () => {
+    const features = new Map<string, string>([
+      ["bad-bare.feature", "  @cjm-1.1 @expected-red\n  Scenario: X\n"],
+    ]);
+    const offenders = lintExpectedRedPairing(features);
+    expect(offenders).toHaveLength(1);
+    expect(offenders[0].message).toMatch(/after-phase|after-docker-up/);
+  });
+
   it("collectFeatureFiles returns [] for non-existent dir", () => {
     const dir = join(tmpdir(), `lcd-missing-${Date.now()}-${Math.random()}`);
     expect(collectFeatureFiles(dir)).toEqual([]);
