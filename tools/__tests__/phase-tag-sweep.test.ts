@@ -62,6 +62,15 @@ describe("classifyLine — REMOVE bucket (CONTEXT Q2)", () => {
   it("R5: classifies `// Phase 7 — implementation note` as REMOVE", () => {
     expect(classifyLine("// Phase 7 — implementation note", {})).toBe("REMOVE");
   });
+
+  // WR-01 regression: close-out REMOVE rule must preempt the KEEP-keyword scan
+  // because CONTEXT Q2 classifies any `// D-NN.M-EXk close-out: ...` line as
+  // REMOVE (history narrative) regardless of body keywords. Without this
+  // ordering, a real-world close-out body that contains a KEEP keyword like
+  // `workaround` / `removed` / `fixed` would incorrectly stay KEEP.
+  it("R6 (WR-01): `// D-12.3-EX1 close-out: removed workaround` is REMOVE despite KEEP keyword in body", () => {
+    expect(classifyLine("// D-12.3-EX1 close-out: removed workaround.", {})).toBe("REMOVE");
+  });
 });
 
 describe("classifyLine — KEEP bucket (CONTEXT Q2)", () => {
