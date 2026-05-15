@@ -837,23 +837,33 @@ Plans:
 **UI hint**: minor (AccountClient component copy fix)
 **Note**: FSL force-push history scrub (Phase 15-04) + first real GHA `make e2e-cjm` run are OPERATOR-side and excluded from this phase. UICONF-05 axe baseline also operator-side.
 
-### Phase 18.1.1: newly-surfaced test debt (INSERTED 2026-05-15)
-**Goal**: Close the 14 pre-existing test failures revealed by Phase 18.1-07's aggregate `pnpm test` smoke that were NOT in the V2-MILESTONE-REVIEW inventory. These represent infrastructure/wiring gaps masked by per-workspace filter invocations in previous sweeps.
-**Depends on**: Phase 18.1 (test-debt closure must close V2-REVIEW inventory first to isolate signal).
-**Requirements**: Empirically derived from `pnpm test` aggregate run on commit `85e7308`:
-  - SR-1: Missing `__fixtures__/*.sse` files — `apps/api/tests/unit/lib/sse-parser.test.ts` (5 cases)
-  - SR-2: Missing `@openwhispr/wire-schemas` workspace package — `packages/contract-tests/tests/unit/*.test.ts` (5 files)
-  - SR-3: ESBuild `await` parse errors — multiple integration tests
-  - SR-4: Postgres role permissions drift (CREATEROLE on `openwhispr_app`) — `@openwhispr/data` migrate tests
-  - SR-5: `otel-bootstrap` first-line invariant — `apps/api/tests/unit/otel-bootstrap.test.ts` (2 cases, Phase 14 supersede deferred)
-  - SR-6: `lint-rls.test.ts` — `tools/`
-  - SR-7: Integration test suites timing out / not isolated under aggregate run (30+ test files)
+### Phase 18.1.1: aggregate-sweep test debt + UICONF drift closure
+**Goal**: Close (1) the 14 pre-existing test failures revealed by Phase 18.1-07's aggregate `pnpm test` smoke and (2) the auth-screen UI-SPEC conformance drift that Phase 12 left in `passed_with_gaps` state. Two parallel bucket — system test debt + visual conformance.
+**Depends on**: Phase 18.1 (V2-REVIEW inventory must close first to isolate signal).
+**Bucket A — System test debt** (empirically derived from `pnpm test` aggregate run on commit `85e7308`):
+  - SR-A1: Missing `__fixtures__/*.sse` files — `apps/api/tests/unit/lib/sse-parser.test.ts` (5 cases). NOTE: fixtures exist on disk per Phase 18.1 RESEARCH; failure mode is path resolution under aggregate-run, not absence.
+  - SR-A2: `@openwhispr/wire-schemas` resolve failure — `packages/contract-tests/tests/unit/*.test.ts` (5 files). NOTE: package directory exists at `packages/wire-schemas/`; build/exports resolution suspect.
+  - SR-A3: ESBuild `await` parse errors — multiple integration tests; likely vitest transform regression.
+  - SR-A4: Postgres role permissions drift (CREATEROLE on `openwhispr_app`) — `@openwhispr/data` migrate tests.
+  - SR-A5: `otel-bootstrap` first-line invariant — `apps/api/tests/unit/otel-bootstrap.test.ts` (2 cases, Phase 14 supersede deferred).
+  - SR-A6: `lint-rls.test.ts` — `tools/`.
+  - SR-A7: Integration test suites timing out / not isolated under aggregate run (30+ test files); testcontainer cleanup hygiene per `feedback_testcontainers_cleanup_audit.md`.
+**Bucket B — UICONF visual drift** (UICONF-05 axe baseline never executed in Phase 12 per V2-MILESTONE-REVIEW; auth screens drift vs `.planning/phases/07-frontend-ui-spec/design/screens-user.jsx` oracle):
+  - SR-B1: `AuthShell` wrapper missing from `apps/web/src/app/(public)/sign-in/`, `sign-up/`, `verify-email/`, `setup/` (oracle uses AuthShell per `ScreenSignIn`); current code wraps content in plain `<Card>`.
+  - SR-B2: Sign-in screen missing 3 OIDC button cluster per oracle (Continue with Google / GitHub / SSO ghost) — `OidcButtons` exists but layout/spec divergence TBC by visual diff.
+  - SR-B3: Password field missing show/hide eye toggle per oracle.
+  - SR-B4: Sign-in form missing "Remember this device" checkbox per oracle.
+  - SR-B5: "Forgot password?" is muted static text (per D-UX2 design decision in current code) but oracle has it as accent anchor — `D-UX2` decision predates Phase 19.1 (reset-mail). Resolve disposition: keep muted until 19.1 ships OR add disabled-state anchor with title="coming soon".
+  - SR-B6: UICONF-05 axe baseline EXECUTED at least once locally + recorded; failing assertions HALT, no silent skips.
 **Success Criteria** (what must be TRUE):
   1. `pnpm test` exits 0 across all 296 test files / 2675 tests; no `--no-verify` anywhere.
-  2. Per-category root-cause hypothesis EITHER fixed OR documented as testcontainer-availability gate (e.g., Docker MUST be running, real Postgres testcontainer required, etc.) in `docs/operations.md`.
-  3. `tests/e2e-cjm` GHA workflow first-run executed successfully OR documented as operator-deferred.
-**Plans**: 5-7 plans (TBC at /gsd-discuss-phase 18.1.1)
-**Open question**: Are these debt or constitutional regressions? Some failures predate Phase 14 (per CHECKPOINT analysis) — verifier must categorize via `git log --oneline -- <failing-test>` per file.
+  2. Per-category root-cause hypothesis EITHER fixed OR documented as testcontainer-availability gate (Docker MUST be running, real Postgres testcontainer required) in `docs/operations.md`.
+  3. `tests/e2e-cjm` GHA workflow first-run executed locally OR documented as operator-deferred with concrete unblock recipe.
+  4. Auth screens (sign-in / sign-up / verify-email / setup) visually conformant with `screens-user.jsx` oracle to within UICONF-05 axe baseline tolerance; visual regression test pinned via Playwright screenshot OR Chromatic OR equivalent.
+  5. UICONF-05 axe baseline file committed and asserted green by `make test-axe-baseline` (target added if not present).
+**Plans**: 8-10 plans (TBC at /gsd-discuss-phase 18.1.1)
+**Note**: Phase 18.2 originally carved for auth-redesign; merged into 18.1.1 Bucket B per user direction "не отложить — исправить сейчас".
+**Open question**: Are bucket-A failures debt or constitutional regressions? Verifier must categorize via `git log --oneline -- <failing-test>` per file. SR-B5 forgot-password disposition pending.
 
 ## Progress Table
 
