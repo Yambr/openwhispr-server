@@ -7,7 +7,7 @@
 # plus the `api-audio` router on `Host(api.localhost) && PathPrefix(/v1/audio)`.
 # This dev overlay ADDS:
 #
-#   - `web` router on `Host(web.localhost)` → web:3001 (Next.js dev server).
+#   - `web` router on `Host(web.localhost)` → web:3000 (Next.js dev server).
 #
 # Result: api.localhost ALWAYS reaches the Fastify API container; the
 # small `/api/locale` Gherkin oracle (@cjm-traefik-host-split) proves
@@ -42,8 +42,9 @@ http:
     web-svc:
       loadBalancer:
         servers:
-          # Next.js dev server inside the `web` container. The web
-          # docker-compose entry exposes 3001 internally (the app
-          # listens on 3001 to avoid colliding with the api on 3000
-          # when both run under docker-compose on the same network).
-          - url: "http://web:3001"
+          # Phase 19b / SR-19b.2 — the web container actually listens on
+          # PORT=3000 per apps/web/Dockerfile:110, on its own internal
+          # network namespace (no collision with api on 3000 because api
+          # lives in a different container). The earlier comment block
+          # asserted :3001 — that was wrong and never matched runtime.
+          - url: "http://web:3000"

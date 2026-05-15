@@ -437,15 +437,15 @@ services:
       start_period: 30s
     restart: unless-stopped
     labels:
-      # Traefik routing labels. HARMLESS without the edge overlay loaded;
-      # picked up by the docker provider when traefik is layered on top.
+      # Phase 19b / SR-19b.2 — STRUCT-05 host-split. The canonical `web`
+      # router lives in compose/traefik/dynamic.dev.yml (file provider) on
+      # Host(`web.localhost`); only `web-admin` stays here because its
+      # admin-basicauth middleware needs ${ADMIN_BASIC_AUTH_USERS} env
+      # interpolation, which the docker provider gives us ergonomically.
+      # HARMLESS without the edge overlay loaded; picked up by the docker
+      # provider when traefik is layered on top.
       - "traefik.enable=true"
-      - "traefik.http.routers.web.rule=Host(`api.localhost`)"
-      - "traefik.http.routers.web.priority=1"
-      - "traefik.http.routers.web.entrypoints=websecure"
-      - "traefik.http.routers.web.tls=true"
-      - "traefik.http.routers.web.service=web-svc"
-      - "traefik.http.routers.web-admin.rule=Host(`api.localhost`) && PathPrefix(`/admin`)"
+      - "traefik.http.routers.web-admin.rule=Host(`web.localhost`) && PathPrefix(`/admin`)"
       - "traefik.http.routers.web-admin.priority=100"
       - "traefik.http.routers.web-admin.entrypoints=websecure"
       - "traefik.http.routers.web-admin.tls=true"

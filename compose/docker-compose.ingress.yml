@@ -54,7 +54,14 @@ services:
       - "8080:8080"
     volumes:
       - ./compose/traefik/traefik.yml:/etc/traefik/traefik.yml:ro
-      - ./compose/traefik/dynamic.yml:/etc/traefik/dynamic.yml:ro
+      # Phase 19b / SR-19b.2 — mount BOTH dynamic configs into a single
+      # /etc/traefik/dynamic/ directory so the file provider in directory
+      # mode discovers them together. Mirrors the ACME overlay layout
+      # (compose/docker-compose.acme.yml:53-65) so dev + prod share the
+      # same shape. Without dynamic.dev.yml loaded, the `web` router on
+      # Host(`web.localhost`) is dead config (SERVER-ERRORS Entry 10).
+      - ./compose/traefik/dynamic.yml:/etc/traefik/dynamic/dynamic.yml:ro
+      - ./compose/traefik/dynamic.dev.yml:/etc/traefik/dynamic/dynamic.dev.yml:ro
       - ./compose/traefik/certs:/certs:ro
       # Phase 07.1 Plan 03 — read-only docker socket mount so the docker
       # provider declared in traefik.yml can discover label-tagged
@@ -64,13 +71,15 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock:ro
     command:
       - --ping=true
-      # Phase 17 / WR-03 review-fix (2026-05-15): the file-provider's
-      # `filename` declaration moved here from traefik.yml so the ACME
-      # overlay can switch to directory mode by REPLACING this command
-      # block (compose merges `command` by replacement, not append) WITHOUT
-      # needing the prior `--providers.file.filename=` empty-string hack
-      # that depended on undocumented Traefik 3 flag-parser behaviour.
-      - --providers.file.filename=/etc/traefik/dynamic.yml
+      # Phase 19b / SR-19b.2 — file-provider directory mode discovers all
+      # *.yml under /etc/traefik/dynamic/. Replaces the prior
+      # `--providers.file.filename=/etc/traefik/dynamic.yml` single-file
+      # pin that precluded dynamic.dev.yml from ever being loaded. The
+      # ACME overlay command block uses the same `--directory=` form
+      # (compose/docker-compose.acme.yml:65); compose merges `command` by
+      # replacement so layering ACME on top of ingress remains clean.
+      - --providers.file.directory=/etc/traefik/dynamic
+      - --providers.file.watch=true
     healthcheck:
       test: ["CMD", "traefik", "healthcheck", "--ping"]
       interval: 5s
