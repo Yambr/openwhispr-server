@@ -216,3 +216,25 @@ Production migration SQL at `packages/data/migrations/0000_*.sql` hardcodes `REF
 - Cross-file leakage minimal (each test inserts its own users + truncates only the ledger table it touches)
 
 **Real fix (future phase):** Make production migrations schema-aware (strip explicit `public.` prefixes from FK refs OR introduce a SCHEMA env knob that migrations honor). Requires user decision + dedicated phase — out of 18.1.2 scope.
+
+### Phase 18.1.2-03 retry #3 W-2-bis HALT: shared-pg.ts uses `postgres:17-alpine` (no pg_partman)
+
+**Discovered:** 2026-05-15 during Plan 18.1.2-03 retry #3 (Option A migration of `usage.integration.test.ts`).
+
+**Symptom:** Once `usage.integration.test.ts` is rewired to `getSharedPostgres()` and the MIGRATIONS_FOLDER path is corrected from 5-up to 6-up (so migrate() actually finds the real `packages/data/migrations` tree), drizzle's migrate() advances past 0013 to `0014_audit_log_partition.sql` and fails on `partman.create_parent(...)` → `error: schema "partman" does not exist` (PG SQLSTATE 3F000).
+
+**Root cause:** `apps/api/tests/support/shared-pg.ts` (created by Plan 18.1.2-02) hard-codes `new PostgreSqlContainer("postgres:17-alpine")` and never provisions `pg_partman`. Plan 02 predated awareness of migration 0014's hard partman dependency at apply time. Pattern documented in `packages/data/src/__tests__/helpers.ts` (`POSTGRES_PARTMAN_IMAGE = "openwhispr/postgres:17.5-pgpartman"` + `provisionPgPartman()` helper) is the canonical correct shape; shared-pg.ts must adopt it.
+
+**Why HALT (not Rule 3 auto-fix):**
+- Scope-stretch beyond Plan 18.1.2-03's stated "2 file migrations + 1 summary" envelope.
+- `shared-pg.ts` is a Plan 18.1.2-02 deliverable; editing it from Plan 03 conflates plan ownership.
+- Even though `shared-pg.ts` is test infrastructure (not production — CLAUDE.md hard rule #1 not directly tripped), the partman-image swap also requires propagating `provisionPgPartman()` semantics + the additional grants documented in helpers.ts:115-140. That's roughly 30 LOC of test-infra change on a file authored by a sibling plan.
+- Original streaming-usage test (untouched, with the broken 5-up path) ALSO fails — meaning these integration tests have not been runnable since migration 0014 landed in Phase 06. So the "Option A makes them green" claim was incorrect from the planner — both files need the partman fix BEFORE Option A even has a chance to be evaluated.
+
+**Proposed paths forward (user decision required):**
+- **(a)** Extend Plan 18.1.2-03 scope to also edit `apps/api/tests/support/shared-pg.ts`: switch image to `POSTGRES_PARTMAN_IMAGE`, inline the `provisionPgPartman()` semantics, add partman grants. ~30 LOC test-infra change. Test infra only — CLAUDE.md hard rule #1 not violated.
+- **(b)** Author a focused Plan 18.1.2-03.5 that fixes shared-pg.ts first, then re-runs the Option A migration of the two route tests as a follow-up wave.
+- **(c)** Add a `image?: string` + `withPgPartman?: boolean` parameter to `getSharedPostgres()` mirroring `bootMigratedPostgres()`'s shape, defaulting to the partman image since migrations beyond 0013 are now the production baseline. Cleanest API; biggest plan-02-revision surface.
+
+**Production code untouched:** confirmed. No migration SQL, route handlers, or schemas edited.
+
