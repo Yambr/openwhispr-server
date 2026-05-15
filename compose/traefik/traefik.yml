@@ -14,8 +14,15 @@
 #
 # Cert reuse (D-21 / RESEARCH §2.3): both entrypoints declare `http.tls: {}`
 # so Traefik loads `tls.certificates` from dynamic.yml — a SHARED list. No
-# separate ACME, no DNS-01, no entrypoint-specific cert minting. Operator
-# K8s topology (Phase 04 plan 10) maps the same logic to cert-manager.
+# DNS-01, no entrypoint-specific cert minting. Operator K8s topology
+# (Phase 04 plan 10) maps the same logic to cert-manager.
+#
+# Phase 17 / Plan 03 (TLS-02 / TLS-03): ACME HTTP-01 resolver `letsencrypt`
+# added below (env-driven `LETSENCRYPT_EMAIL` + `LETSENCRYPT_CA_SERVER`).
+# Resolver is INERT until a router opts in via `tls.certResolver: letsencrypt`
+# in `compose/traefik/dynamic.prod.yml`; the dev profile (`dynamic.yml` +
+# `dynamic.dev.yml`) keeps using the mkcert-provisioned `/certs/local.crt`
+# byte-for-byte unchanged.
 
 api:
   dashboard: true
@@ -120,6 +127,30 @@ providers:
     # backend container IPs through this network — must match exactly or
     # Traefik logs a noisy warning and defaults to the first available net.
     network: openwhispr_openwhispr_internal
+
+# Phase 17 / Plan 03 (TLS-02-prod / TLS-03) — single ACME HTTP-01 resolver.
+#
+# INERT until a router opts in via `tls.certResolver: letsencrypt` (see
+# `compose/traefik/dynamic.prod.yml`). The dev profile keeps using the
+# mkcert-provisioned `/certs/local.crt` from `dynamic.yml` — zero changes
+# to existing dev-profile routers.
+#
+# Activated via `compose/docker-compose.acme.yml` overlay which supplies
+# `LETSENCRYPT_EMAIL` (required) and optionally flips `LETSENCRYPT_CA_SERVER`
+# to the LE staging endpoint when `LETSENCRYPT_STAGING=1`.
+#
+# HTTP-01 challenge reuses the existing `:80 web` entrypoint. Traefik 3
+# intercepts `/.well-known/acme-challenge/*` BEFORE the 308 redirect
+# middleware fires, so the existing redirect-only `web` entrypoint
+# remains compatible without modification.
+certificatesResolvers:
+  letsencrypt:
+    acme:
+      email: "${LETSENCRYPT_EMAIL}"
+      storage: /letsencrypt/acme.json
+      caServer: "${LETSENCRYPT_CA_SERVER:-https://acme-v02.api.letsencrypt.org/directory}"
+      httpChallenge:
+        entryPoint: web
 
 log:
   level: INFO
