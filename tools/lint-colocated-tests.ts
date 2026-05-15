@@ -33,8 +33,9 @@
  */
 import { existsSync, readFileSync } from "node:fs";
 import { glob } from "node:fs/promises";
-import { join, resolve, sep } from "node:path";
+import { dirname, isAbsolute, join, resolve, sep } from "node:path";
 import { exit } from "node:process";
+import ts from "typescript";
 
 /**
  * Path (relative to rootDir) of the optional legacy allow-list file.
@@ -116,29 +117,178 @@ export async function findViolations(rootDir: string): Promise<string[]> {
   return [...out].sort();
 }
 
+/**
+ * One stale path-literal site discovered by {@link findStalePathLiterals}.
+ *
+ * `file` is the POSIX-relative path of the test source containing the
+ * call expression; `target` is the absolute filesystem path the literal
+ * would resolve to (which does NOT exist on disk).
+ */
+export interface StalePathLiteral {
+  file: string;
+  target: string;
+}
+
+/**
+ * Heuristic AST scan for D-05: detect path literals inside test files
+ * that statically resolve to non-existent siblings — typically left over
+ * after a test relocation (Phase 17) bumps __dirname depth and leaves
+ * `readFileSync(path.resolve(__dirname, "old/rel.ts"))` literally pointing
+ * at a vanished target.
+ *
+ * Patterns flagged:
+ *   - readFileSync(path.resolve(__dirname, "<literal>"))
+ *   - readFile(path.resolve(__dirname, "<literal>"))     (sync/async forms)
+ *   - new URL("<literal>", import.meta.url)
+ *
+ * Only fully-static (StringLiteral, NoSubstitutionTemplateLiteral) targets
+ * are evaluated; dynamic args are skipped intentionally — false-positive
+ * suppression matters more than recall for a regression guard.
+ */
+export async function findStalePathLiterals(rootDir: string): Promise<StalePathLiteral[]> {
+  const realRoot = resolve(rootDir);
+  const out: StalePathLiteral[] = [];
+  const patterns = [
+    "apps/*/tests/**/*.test.ts",
+    "packages/*/tests/**/*.test.ts",
+    "tools/**/*.test.ts",
+    "tests/**/*.test.ts",
+  ];
+  for (const pat of patterns) {
+    for await (const f of glob(pat, {
+      cwd: realRoot,
+      exclude: ["**/node_modules/**", "**/dist/**", "**/.next/**"],
+    })) {
+      const rel = typeof f === "string" ? f : String(f);
+      const abs = join(realRoot, rel);
+      let src: string;
+      try {
+        src = readFileSync(abs, "utf8");
+      } catch {
+        continue;
+      }
+      const sf = ts.createSourceFile(rel, src, ts.ScriptTarget.Latest, true);
+      const visit = (node: ts.Node): void => {
+        if (ts.isCallExpression(node)) {
+          const target = extractStaticPathTarget(node, abs);
+          if (target !== null && !existsSync(target)) {
+            out.push({ file: toPosix(rel), target });
+          }
+        } else if (ts.isNewExpression(node) && isUrlCtor(node)) {
+          const target = extractUrlTarget(node, abs);
+          if (target !== null && !existsSync(target)) {
+            out.push({ file: toPosix(rel), target });
+          }
+        }
+        ts.forEachChild(node, visit);
+      };
+      visit(sf);
+    }
+  }
+  return out;
+}
+
+function staticString(node: ts.Node | undefined): string | null {
+  if (!node) return null;
+  // Plain string-literal only; skip template literals (even no-substitution)
+  // and identifiers — keeps false-positive rate low for a regression guard.
+  if (ts.isStringLiteral(node)) {
+    return node.text;
+  }
+  return null;
+}
+
+function isPathResolveCall(node: ts.CallExpression): boolean {
+  const e = node.expression;
+  if (!ts.isPropertyAccessExpression(e)) return false;
+  if (e.name.text !== "resolve" && e.name.text !== "join") return false;
+  return ts.isIdentifier(e.expression) && e.expression.text === "path";
+}
+
+function isDirnameRef(node: ts.Node): boolean {
+  return ts.isIdentifier(node) && node.text === "__dirname";
+}
+
+/**
+ * If `node` is `readFileSync(path.resolve(__dirname, "<lit>"))` (or an
+ * equivalent `readFile`/`readFileSync` wrapper around `path.resolve`/`path.join`
+ * with __dirname + a static string), return the absolute resolved target.
+ * Returns null when the shape doesn't match or the literal is non-static.
+ */
+function extractStaticPathTarget(node: ts.CallExpression, fileAbs: string): string | null {
+  const callee = node.expression;
+  const calleeName = ts.isIdentifier(callee)
+    ? callee.text
+    : ts.isPropertyAccessExpression(callee)
+      ? callee.name.text
+      : "";
+  const fsLike =
+    calleeName === "readFileSync" ||
+    calleeName === "readFile" ||
+    calleeName === "existsSync" ||
+    calleeName === "statSync";
+  if (!fsLike) return null;
+  const first = node.arguments[0];
+  if (!first || !ts.isCallExpression(first) || !isPathResolveCall(first)) return null;
+  const args = first.arguments;
+  if (args.length < 2) return null;
+  if (!isDirnameRef(args[0]!)) return null;
+  const lit = staticString(args[1]);
+  if (lit === null) return null;
+  const base = dirname(fileAbs);
+  return isAbsolute(lit) ? lit : resolve(base, lit);
+}
+
+function isUrlCtor(node: ts.NewExpression): boolean {
+  return ts.isIdentifier(node.expression) && node.expression.text === "URL";
+}
+
+function extractUrlTarget(node: ts.NewExpression, fileAbs: string): string | null {
+  const args = node.arguments ?? [];
+  const lit = staticString(args[0]);
+  if (lit === null) return null;
+  // Only flag relative URL literals (./ or ../); skip protocol/abs URLs.
+  if (!lit.startsWith("./") && !lit.startsWith("../")) return null;
+  const base = dirname(fileAbs);
+  return resolve(base, lit);
+}
+
 /* c8 ignore start */
 export async function main(argv: string[]): Promise<number> {
   const rootDir = argv[2] ?? process.cwd();
   let violations: string[];
+  let stale: StalePathLiteral[];
   try {
     violations = await findViolations(rootDir);
+    stale = await findStalePathLiterals(rootDir);
   } catch (err) {
     process.stderr.write(
       `lint-colocated-tests: ${err instanceof Error ? err.message : String(err)}\n`,
     );
     return 2;
   }
-  if (violations.length === 0) {
+  if (violations.length === 0 && stale.length === 0) {
     process.stdout.write(`lint-colocated-tests: clean (${rootDir})\n`);
     return 0;
   }
-  process.stderr.write(
-    `lint-colocated-tests: ${violations.length} co-located test file(s) found:\n`,
-  );
-  for (const v of violations) process.stderr.write(`  ${v}\n`);
-  process.stderr.write(
-    'Move under apps/<app>/tests/unit/ or packages/<pkg>/tests/unit/ (see docs/conventions.md "Test layout").\n',
-  );
+  if (violations.length > 0) {
+    process.stderr.write(
+      `lint-colocated-tests: ${violations.length} co-located test file(s) found:\n`,
+    );
+    for (const v of violations) process.stderr.write(`  ${v}\n`);
+    process.stderr.write(
+      'Move under apps/<app>/tests/unit/ or packages/<pkg>/tests/unit/ (see docs/conventions.md "Test layout").\n',
+    );
+  }
+  if (stale.length > 0) {
+    process.stderr.write(
+      `lint-colocated-tests: ${stale.length} stale path literal(s) referencing non-existent files:\n`,
+    );
+    for (const s of stale) process.stderr.write(`  ${s.file} -> ${s.target}\n`);
+    process.stderr.write(
+      "Update __dirname-relative literals after a test relocation (D-05 guard).\n",
+    );
+  }
   return 1;
 }
 
