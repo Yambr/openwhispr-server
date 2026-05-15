@@ -66,6 +66,6 @@ test.describe("U1 Sign-in (Phase 07.1 / Plan 07)", () => {
   test("axe — WCAG 2.2 AA scan on /sign-in", async ({ page }) => {
     await page.goto("/sign-in");
     await page.getByRole("button", { name: /^sign in$/i }).waitFor();
-    await runAxe(page);
+    await runAxe(page, "u1-sign-in");
   });
 });
