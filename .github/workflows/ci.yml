@@ -80,12 +80,25 @@ jobs:
     permissions:
       contents: read
       pull-requests: write
+    # Phase 18.1.2 / Plan 05 / Task 05-04 — align Ryuk + post-step sweep
+    # with `e2e-phase6-quick`. Cluster #2 integration tests now share a
+    # single Postgres testcontainer via `getSharedRoutePool()`. Ryuk
+    # cannot reliably reap the shared container under GHA's job-level
+    # network namespace (see RESEARCH §2: ryuk-reaper-failure-modes),
+    # so we disable Ryuk and instead sweep orphaned testcontainers +
+    # prune volumes in an `if: always()` post-step.
+    env:
+      TESTCONTAINERS_RYUK_DISABLED: "true"
     steps:
       - uses: actions/checkout@v5
       - uses: pnpm/action-setup@v4
         with: { version: 11.0.8 }
       - uses: actions/setup-node@v5
         with: { node-version: '24', cache: 'pnpm' }
+      - name: Docker daemon preflight
+        run: |
+          docker version
+          docker info
       - run: pnpm install --frozen-lockfile
       - run: pnpm test
       - uses: davelosert/vitest-coverage-report-action@3c50566c523e04813df28de8f7c48dd97d663f1c  # v2.11.2
@@ -93,6 +106,12 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: always()
         with: { name: coverage, path: coverage/ }
+      - name: Sweep orphaned testcontainers and prune volumes
+        if: always()
+        run: |
+          docker ps -a --filter "label=org.testcontainers=true" --format '{{.ID}}' \
+            | xargs -r docker rm -f || true
+          docker volume prune -f || true
 
   mutation-quick:
     if: github.event_name == 'pull_request'
