@@ -14,7 +14,7 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 
 const HERE = fileURLToPath(new URL(".", import.meta.url));
-const MIGRATE_TS = resolve(HERE, "..", "migrate.ts");
+const MIGRATE_TS = resolve(HERE, "..", "..", "..", "src", "migrate.ts");
 
 describe("migrate — env validation", () => {
   it("exits 2 with a clear error when DATABASE_URL_OWNER is unset", () => {
