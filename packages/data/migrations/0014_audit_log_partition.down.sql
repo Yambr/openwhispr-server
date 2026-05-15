@@ -43,7 +43,7 @@ CREATE TABLE "audit_log" (
 --> statement-breakpoint
 
 ALTER TABLE "audit_log" ADD CONSTRAINT "audit_log_tenant_id_tenants_id_fk"
-	FOREIGN KEY ("tenant_id") REFERENCES "public"."tenants"("id")
+	FOREIGN KEY ("tenant_id") REFERENCES "tenants"("id")
 	ON DELETE no action ON UPDATE no action;
 --> statement-breakpoint
 

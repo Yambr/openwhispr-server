@@ -64,27 +64,27 @@ CREATE TABLE "usage_ledger" (
 );
 --> statement-breakpoint
 ALTER TABLE "users" ADD CONSTRAINT "users_tenant_id_tenants_id_fk"
-	FOREIGN KEY ("tenant_id") REFERENCES "public"."tenants"("id")
+	FOREIGN KEY ("tenant_id") REFERENCES "tenants"("id")
 	ON DELETE restrict ON UPDATE no action;
 --> statement-breakpoint
 ALTER TABLE "sessions" ADD CONSTRAINT "sessions_tenant_id_tenants_id_fk"
-	FOREIGN KEY ("tenant_id") REFERENCES "public"."tenants"("id")
+	FOREIGN KEY ("tenant_id") REFERENCES "tenants"("id")
 	ON DELETE no action ON UPDATE no action;
 --> statement-breakpoint
 ALTER TABLE "sessions" ADD CONSTRAINT "sessions_user_id_users_id_fk"
-	FOREIGN KEY ("user_id") REFERENCES "public"."users"("id")
+	FOREIGN KEY ("user_id") REFERENCES "users"("id")
 	ON DELETE cascade ON UPDATE no action;
 --> statement-breakpoint
 ALTER TABLE "audit_log" ADD CONSTRAINT "audit_log_tenant_id_tenants_id_fk"
-	FOREIGN KEY ("tenant_id") REFERENCES "public"."tenants"("id")
+	FOREIGN KEY ("tenant_id") REFERENCES "tenants"("id")
 	ON DELETE no action ON UPDATE no action;
 --> statement-breakpoint
 ALTER TABLE "usage_ledger" ADD CONSTRAINT "usage_ledger_tenant_id_tenants_id_fk"
-	FOREIGN KEY ("tenant_id") REFERENCES "public"."tenants"("id")
+	FOREIGN KEY ("tenant_id") REFERENCES "tenants"("id")
 	ON DELETE no action ON UPDATE no action;
 --> statement-breakpoint
 ALTER TABLE "usage_ledger" ADD CONSTRAINT "usage_ledger_user_id_users_id_fk"
-	FOREIGN KEY ("user_id") REFERENCES "public"."users"("id")
+	FOREIGN KEY ("user_id") REFERENCES "users"("id")
 	ON DELETE no action ON UPDATE no action;
 --> statement-breakpoint
 CREATE INDEX "users_tenant_id_idx" ON "users" USING btree ("tenant_id");
