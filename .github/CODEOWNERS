@@ -34,3 +34,26 @@
 /CODE_OF_CONDUCT.md          @nick
 /LICENSE                     @nick
 /NOTICE                      @nick
+
+# Phase 21 — QA-discipline locker surface. These paths control whether
+# future agents can ship `.skip` / `retries > 0` / untested steps /
+# production edits in test-fix PRs / sub-90% coverage. Pinning them so
+# any edit goes through code-owner review even if the catch-all rule
+# would otherwise allow it.
+/tools/lint-gherkin-tags.ts                         @nick
+/tools/lint-gherkin-tags.test.ts                    @nick
+/tools/lint-playwright-config.ts                    @nick
+/tools/lint-playwright-config.test.ts               @nick
+/tools/lint-steps-have-unit-tests.ts                @nick
+/tools/lint-steps-have-unit-tests.test.ts           @nick
+/tools/lint-steps-have-unit-tests.allowlist.txt     @nick
+/tools/lint-no-prod-edit-with-test-only-pr.ts       @nick
+/tools/lint-no-prod-edit-with-test-only-pr.test.ts  @nick
+/tools/lint-coverage-floor-per-phase.ts             @nick
+/tools/lint-coverage-floor-per-phase.test.ts        @nick
+/tests/e2e-cjm/playwright.config.ts                 @nick
+/scripts/branch-protection.json                     @nick
+/lefthook.yml                                       @nick
+/.github/workflows/                                 @nick
+/.planning/qa-audit/                                @nick
+/docs/customer-journeys.md                          @nick

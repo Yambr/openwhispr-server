@@ -62,6 +62,25 @@ pre-commit:
     web-typecheck:
       glob: "apps/web/**/*.{ts,tsx}"
       run: pnpm --filter @openwhispr/web typecheck
+    # Phase 21 / Plan 21-01 / SR-21.1 — fail-fast when any *.feature file
+    # gains a forbidden tag (.skip, .only, @skip, @focus), an orphan
+    # @cjm-N.M, a feature without a negative twin, or an @expected-red
+    # without a @after-phase-N / @after-docker-up gate. Runs ~300 ms.
+    gherkin-tags:
+      glob: "{tests/e2e-cjm/features/**/*.feature,docs/customer-journeys.md}"
+      run: pnpm lint:gherkin-tags
+    # Phase 21 / Plan 21-02 / SR-21.2 — fail-fast on retries > 0 in any
+    # playwright config, workers > 1 in the e2e-cjm config, or static
+    # test.skip/test.only/test.fixme outside __tests__/.
+    playwright-config:
+      glob: "{**/playwright.config.ts,apps/**/*.{test,spec}.ts,tests/**/*.{test,spec}.ts}"
+      run: pnpm lint:playwright-config
+    # Phase 21 / Plan 21-03 / SR-21.3 — fail-fast when a CJM step file is
+    # added without its sibling __tests__/<name>.steps.test.ts, or when a
+    # unit test crosses an HTTP boundary without mocking it.
+    steps-have-unit-tests:
+      glob: "tests/e2e-cjm/steps/**/*.ts"
+      run: pnpm lint:steps-have-unit-tests
 pre-push:
   parallel: true
   commands:
