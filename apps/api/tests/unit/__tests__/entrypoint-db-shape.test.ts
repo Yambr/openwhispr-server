@@ -58,7 +58,20 @@ vi.mock("@openwhispr/data/client", () => ({
   makeAppDb: () => ({ db: fakeDrizzle, pool: fakePool }),
 }));
 
-vi.mock("../auth.js", () => ({
+// Phase 18.1.2-04-01 — `@openwhispr/byok-guard` is mocked to a no-op so the
+// entrypoint's `assertBYOKConfig()` call at apps/api/src/index.ts:56 does
+// not trip vitest's `process.exit` trap (the guard calls `process.exit(1)`
+// when BYOK envs are missing — see SERVER-ERRORS.md Entry 4). This is a
+// pure test-side mock; production behavior is unchanged. CLAUDE.md hard
+// rule §Conventions #1 ("NEVER edit production server code to make tests
+// pass") forbids refactoring the guard to throw-not-exit — we mock at the
+// module boundary instead. Δ-3 closure: this is what unblocks the 2
+// entrypoint-db-shape failures cascaded from D-07.
+vi.mock("@openwhispr/byok-guard", () => ({
+  assertBYOKConfig: () => undefined,
+}));
+
+vi.mock("../../../src/auth.js", () => ({
   buildAuth: (opts: { db?: unknown }) => {
     captured.buildAuthArg = opts;
     return { options: { plugins: [] }, handler: async () => new Response() };
@@ -100,41 +113,41 @@ vi.mock("fastify", () => {
 
 // Mock the heavy plugins/middleware buildApp pulls in so they're cheap.
 vi.mock("@fastify/cookie", () => ({ default: async () => {} }));
-vi.mock("../plugins/zod-type-provider.js", () => ({ zodTypeProvider: async () => {} }));
-vi.mock("../plugins/request-log.js", () => ({ requestLog: async () => {} }));
-vi.mock("../plugins/rate-limit.js", () => ({ rateLimitPlugin: async () => {} }));
-vi.mock("../middleware/tenant.js", () => ({ tenantPlugin: async () => {} }));
-vi.mock("../middleware/dual-auth.js", () => ({
+vi.mock("../../../src/plugins/zod-type-provider.js", () => ({ zodTypeProvider: async () => {} }));
+vi.mock("../../../src/plugins/request-log.js", () => ({ requestLog: async () => {} }));
+vi.mock("../../../src/plugins/rate-limit.js", () => ({ rateLimitPlugin: async () => {} }));
+vi.mock("../../../src/middleware/tenant.js", () => ({ tenantPlugin: async () => {} }));
+vi.mock("../../../src/middleware/dual-auth.js", () => ({
   buildDualAuthHook: () => async () => {},
   extractBearer: () => null,
 }));
-vi.mock("../routes/index.js", () => ({ buildAllRoutes: () => [] }));
-vi.mock("../lib/mint-bearer.js", () => ({ buildMintBearer: () => async () => "" }));
-vi.mock("../lib/token-rotation.js", () => ({
+vi.mock("../../../src/routes/index.js", () => ({ buildAllRoutes: () => [] }));
+vi.mock("../../../src/lib/mint-bearer.js", () => ({ buildMintBearer: () => async () => "" }));
+vi.mock("../../../src/lib/token-rotation.js", () => ({
   // Phase 02.12 — hashToken removed; recordPreviousToken now takes plain text.
   recordPreviousToken: async () => {},
   tryPreviousToken: async () => null,
 }));
-vi.mock("../error-handler.js", () => ({ registerErrorHandler: () => {} }));
-vi.mock("../routes/health.js", () => ({ default: async () => {} }));
+vi.mock("../../../src/error-handler.js", () => ({ registerErrorHandler: () => {} }));
+vi.mock("../../../src/routes/health.js", () => ({ default: async () => {} }));
 // Phase 6 / Plan 06-04 — probes + served-by + dep-check are wired into
 // buildApp; stub them so the entrypoint-db-shape test stays narrowly
 // scoped to the Phase 02.6 D-01 invariant (no incidental coupling to
 // the Phase 6 health-probe surface).
-vi.mock("../routes/probes.js", () => ({
+vi.mock("../../../src/routes/probes.js", () => ({
   registerProbes: async () => {},
   markStartupComplete: () => {},
   resetStartupComplete: () => {},
   isStartupComplete: () => true,
 }));
-vi.mock("../plugins/served-by.js", () => ({ servedByPlugin: async () => {} }));
-vi.mock("../lib/dep-check.js", () => ({
+vi.mock("../../../src/plugins/served-by.js", () => ({ servedByPlugin: async () => {} }));
+vi.mock("../../../src/lib/dep-check.js", () => ({
   makeDepCheck: () => async () => ({ ok: true, latency_ms: 0 }),
 }));
 // Phase 6 / Plan 06-12b — debug-only /__test/fetch route. Stubbed so the
 // entrypoint-db-shape test stays narrowly scoped to the Phase 02.6 D-01
 // invariant (no incidental coupling to the debug surface).
-vi.mock("../routes/__test/fetch.js", () => ({
+vi.mock("../../../src/routes/__test/fetch.js", () => ({
   buildDebugFetchRoutes: () => async () => {},
 }));
 
