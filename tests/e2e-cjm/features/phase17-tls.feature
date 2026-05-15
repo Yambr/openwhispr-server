@@ -22,7 +22,7 @@ Feature: Trusted local TLS + production ACME isolation
     Given the developer has run `make tls-trust` on this host
     When they curl https://api.localhost/healthz with the mkcert root CA
     Then the response is 200 with no TLS warning
-    And the served leaf cert SAN list contains exactly the 5 explicit hosts
+    And the served leaf cert SAN list contains exactly the 10 canonical hosts
     And the served leaf cert SAN list contains no wildcard entries
 
   @cjm-tls-no-dev-ca-in-prod-image
