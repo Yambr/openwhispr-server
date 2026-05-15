@@ -185,7 +185,7 @@ function auditDynamicDev(dynamicDevPath: string): Violation[] {
   return out;
 }
 
-function auditIngressOverlay(ingressPath: string): Violation[] {
+function auditIngressOverlay(ingressPath: string, staticTraefikPath: string): Violation[] {
   const out: Violation[] = [];
   const yamlContent = readYamlSafe(ingressPath);
   if (!yamlContent || typeof yamlContent !== "object") {
@@ -219,24 +219,63 @@ function auditIngressOverlay(ingressPath: string): Violation[] {
   }
   const command = (traefik as { command?: unknown }).command;
   const commandList = Array.isArray(command) ? command.map(String) : [];
-  const usesDirectory = commandList.some((c) => c.startsWith("--providers.file.directory="));
   const pinsSingleFile = commandList.some((c) => c.startsWith("--providers.file.filename="));
-  if (!usesDirectory || pinsSingleFile) {
+  if (pinsSingleFile) {
     out.push({
       code: "V5",
       file: ingressPath,
-      message: pinsSingleFile
-        ? "ingress overlay pins --providers.file.filename= which precludes loading dynamic.dev.yml — switch to --providers.file.directory="
-        : "ingress overlay missing --providers.file.directory= for file-provider directory mode",
+      message:
+        "ingress overlay pins --providers.file.filename= which precludes loading dynamic.dev.yml — remove or switch to --providers.file.directory=",
+    });
+  }
+  // Directory-mode requirement is satisfied by EITHER a CLI flag in the
+  // overlay command OR a `providers.file.directory:` declaration in the
+  // static traefik.yml. The latter is the Phase 19b shape — CLI flag
+  // alone proved fragile because traefik 3's static-yaml `providers.file`
+  // partial-stanza behaviour rejects mid-merge leaf additions ("neither
+  // filename nor directory is defined") and empty `file: {}` ("file
+  // cannot be a standalone element"). Putting `directory:` directly in
+  // the static yaml avoids the entire merge minefield.
+  const cliUsesDirectory = commandList.some((c) => c.startsWith("--providers.file.directory="));
+  const staticYaml = readYamlSafe(staticTraefikPath);
+  const staticProviders = (staticYaml as { providers?: { file?: { directory?: string } } } | null)
+    ?.providers?.file;
+  const staticUsesDirectory =
+    typeof staticProviders === "object" &&
+    staticProviders !== null &&
+    typeof staticProviders.directory === "string" &&
+    staticProviders.directory.length > 0;
+  if (!cliUsesDirectory && !staticUsesDirectory) {
+    out.push({
+      code: "V5",
+      file: ingressPath,
+      message:
+        "no file-provider directory configured: set --providers.file.directory= in ingress command OR `providers.file.directory:` in compose/traefik/traefik.yml",
     });
   }
   return out;
 }
 
 export interface AuditOptions {
-  readonly composeFile?: string;
+  readonly composeFiles?: readonly string[];
   readonly dynamicDevFile?: string;
   readonly ingressFile?: string;
+  readonly staticTraefikFile?: string;
+}
+
+/**
+ * Default list of compose files known to declare service labels for
+ * the `web` service. Any new compose overlay that (re-)declares the
+ * web service labels MUST be added here so the lint catches divergent
+ * STRUCT-05 violations across overlays. The Phase 14 embedded-litellm
+ * overlay's duplicate router declaration shadowed the docker-compose.yml
+ * fix in Phase 19b — single-file audits would have missed it.
+ */
+function defaultComposeFiles(repoRoot: string): string[] {
+  return [
+    resolve(repoRoot, "docker-compose.yml"),
+    resolve(repoRoot, "compose/docker-compose.embedded-litellm.yml"),
+  ];
 }
 
 /**
@@ -245,14 +284,20 @@ export interface AuditOptions {
  * canonical layout; tests override them for synthetic fixtures.
  */
 export function auditTraefikRoutes(repoRoot: string, opts: AuditOptions = {}): Violation[] {
-  const composeFile = opts.composeFile ?? resolve(repoRoot, "docker-compose.yml");
+  const composeFiles = opts.composeFiles ?? defaultComposeFiles(repoRoot);
   const dynamicDevFile =
     opts.dynamicDevFile ?? resolve(repoRoot, "compose/traefik/dynamic.dev.yml");
   const ingressFile = opts.ingressFile ?? resolve(repoRoot, "compose/docker-compose.ingress.yml");
+  const staticTraefikFile =
+    opts.staticTraefikFile ?? resolve(repoRoot, "compose/traefik/traefik.yml");
+  const composeViolations: Violation[] = [];
+  for (const cf of composeFiles) {
+    composeViolations.push(...auditDockerCompose(cf));
+  }
   return [
-    ...auditDockerCompose(composeFile),
+    ...composeViolations,
     ...auditDynamicDev(dynamicDevFile),
-    ...auditIngressOverlay(ingressFile),
+    ...auditIngressOverlay(ingressFile, staticTraefikFile),
   ];
 }
 

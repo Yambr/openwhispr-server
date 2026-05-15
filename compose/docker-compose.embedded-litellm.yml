@@ -695,24 +695,26 @@ services:
       start_period: 30s
     restart: unless-stopped
     labels:
+      # Phase 19b / SR-19b.2 — STRUCT-05 host-split. The canonical `web`
+      # router lives in compose/traefik/dynamic.dev.yml (file provider) on
+      # Host(`web.localhost`). The earlier catch-all on Host(`api.localhost`)
+      # shadowed the file-provider api router for any path outside /api
+      # (sign-up via Better Auth, root liveness probes, /admin) and made
+      # @cjm-3.1 and @cjm-traefik-host-split impossible to validate. Only
+      # `web-admin` stays here because its admin-basicauth middleware reads
+      # ${ADMIN_BASIC_AUTH_USERS} via docker env interpolation.
       - "traefik.enable=true"
-      # Catch-all router: every request to Host(api.localhost) not consumed
-      # by the more-specific api router falls through here. priority=1 keeps
-      # it the absolute last-resort match.
-      - "traefik.http.routers.web.rule=Host(`api.localhost`)"
-      - "traefik.http.routers.web.priority=1"
-      - "traefik.http.routers.web.entrypoints=websecure"
-      - "traefik.http.routers.web.tls=true"
-      - "traefik.http.routers.web.service=web-svc"
-      # Admin router: PathPrefix(/admin) + basic-auth middleware. priority=100
-      # outranks `web` so /admin/* engages the gate before falling through.
-      - "traefik.http.routers.web-admin.rule=Host(`api.localhost`) && PathPrefix(`/admin`)"
+      # Admin router: PathPrefix(/admin) + basic-auth middleware on the
+      # web host. priority=100 keeps /admin/* engaging the gate ahead of
+      # any other web.localhost matcher.
+      - "traefik.http.routers.web-admin.rule=Host(`web.localhost`) && PathPrefix(`/admin`)"
       - "traefik.http.routers.web-admin.priority=100"
       - "traefik.http.routers.web-admin.entrypoints=websecure"
       - "traefik.http.routers.web-admin.tls=true"
       - "traefik.http.routers.web-admin.service=web-svc"
       - "traefik.http.routers.web-admin.middlewares=admin-basicauth@docker"
-      # Backend service: Next.js standalone listens on 3000.
+      # Backend service: Next.js standalone listens on PORT=3000
+      # (apps/web/Dockerfile:110).
       - "traefik.http.services.web-svc.loadbalancer.server.port=3000"
       # admin-basicauth middleware definition. ADMIN_BASIC_AUTH_USERS in
       # .env MUST escape each bcrypt `$` as `$$` (compose interpolation);

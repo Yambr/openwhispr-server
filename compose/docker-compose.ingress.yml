@@ -71,15 +71,15 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock:ro
     command:
       - --ping=true
-      # Phase 19b / SR-19b.2 — file-provider directory mode discovers all
-      # *.yml under /etc/traefik/dynamic/. Replaces the prior
-      # `--providers.file.filename=/etc/traefik/dynamic.yml` single-file
-      # pin that precluded dynamic.dev.yml from ever being loaded. The
-      # ACME overlay command block uses the same `--directory=` form
-      # (compose/docker-compose.acme.yml:65); compose merges `command` by
-      # replacement so layering ACME on top of ingress remains clean.
-      - --providers.file.directory=/etc/traefik/dynamic
-      - --providers.file.watch=true
+      # Phase 19b / SR-19b.2 — file-provider directory mode is configured
+      # in compose/traefik/traefik.yml (`providers.file.directory:
+      # /etc/traefik/dynamic`). The ACME overlay swaps the same static
+      # `providers:` block via volume-mount precedence (it mounts a
+      # different traefik.yml or relies on default behaviour). Replaces
+      # the prior `--providers.file.filename=` CLI hack that depended on
+      # Traefik 3 flag-parser leaf-merge behaviour — moved to static yaml
+      # for clarity and to dodge the "neither filename nor directory is
+      # defined" / "file cannot be a standalone element" merge defects.
     healthcheck:
       test: ["CMD", "traefik", "healthcheck", "--ping"]
       interval: 5s
