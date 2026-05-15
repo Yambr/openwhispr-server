@@ -1,0 +1,5 @@
+# SPDX-License-Identifier: FSL-1.1-ALv2
+# Phase 17 TLS-05 dev-CA-isolation lint allowlist — entries require
+# justification in commit body. Format: one POSIX path per line; blank
+# lines and `#`-prefixed lines ignored. Add a path here ONLY if a
+# forbidden token in that Dockerfile is intentional (extremely rare).
