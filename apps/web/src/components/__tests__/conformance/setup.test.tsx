@@ -132,6 +132,14 @@ describe("SetupForm conformance — documented design deviation (no /setup JSX o
         <SetupForm />
       </Wrap>,
     );
-    expect(screen.getByText(new RegExp(setupInventory.heading, "i"))).toBeInTheDocument();
+    // Phase 18.1.1 / Plan 05 / Task 05-02 — the AuthShell side panel
+    // now also renders "Set up your OpenWhispr server." (with a
+    // terminating period); narrow this assertion to the CardTitle
+    // <h*> role so it isn't ambiguous.
+    expect(
+      screen.getByRole("heading", {
+        name: new RegExp(setupInventory.heading, "i"),
+      }),
+    ).toBeInTheDocument();
   });
 });
