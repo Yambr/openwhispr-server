@@ -54,12 +54,15 @@ services:
       - ./compose/traefik/dynamic.prod.yml:/etc/traefik/dynamic/dynamic.prod.yml:ro
     command:
       # Preserve the base ingress overlay's `--ping=true` argument, then
-      # switch the file provider to directory mode and disable the
-      # `filename` mode set by `traefik.yml`. Compose merges `command` by
-      # REPLACEMENT, not append — list every flag we need explicitly.
+      # switch the file provider to directory mode. Compose merges
+      # `command` by REPLACEMENT, not append — list every flag we need
+      # explicitly. WR-03 review-fix (2026-05-15): no more empty-string
+      # `--providers.file.filename=` hack. The base overlay's
+      # `--providers.file.filename=/etc/traefik/dynamic.yml` is implicitly
+      # dropped because THIS overlay replaces the entire command list and
+      # omits it; the directory flag below takes over.
       - --ping=true
       - --providers.file.directory=/etc/traefik/dynamic
-      - --providers.file.filename=
       - --providers.file.watch=true
 
 volumes:

@@ -107,7 +107,17 @@ entryPoints:
 
 providers:
   file:
-    filename: /etc/traefik/dynamic.yml
+    # Phase 17 / WR-03 review-fix (2026-05-15): the `filename` key used to
+    # live here, but the ACME overlay (compose/docker-compose.acme.yml)
+    # had to neutralise it via `--providers.file.filename=` (empty-string
+    # CLI flag) so it could switch to directory mode. That neutralisation
+    # depended on Traefik 3's flag parser treating empty as unset — an
+    # undocumented behaviour. The provider-mode choice (filename vs
+    # directory) is now expressed exclusively at the COMPOSE-OVERLAY
+    # LAYER: the base ingress overlay passes `--providers.file.filename=
+    # /etc/traefik/dynamic.yml` as a CLI arg; the ACME overlay omits that
+    # arg and instead passes `--providers.file.directory=
+    # /etc/traefik/dynamic`. No empty-string hack.
     watch: true
   # Phase 07.1 Plan 03 (WEB-IMPL-03 / D-DEPLOY-1) — docker provider added
   # alongside the file provider so the `web` compose service can declare

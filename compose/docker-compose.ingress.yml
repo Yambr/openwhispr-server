@@ -64,6 +64,13 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock:ro
     command:
       - --ping=true
+      # Phase 17 / WR-03 review-fix (2026-05-15): the file-provider's
+      # `filename` declaration moved here from traefik.yml so the ACME
+      # overlay can switch to directory mode by REPLACING this command
+      # block (compose merges `command` by replacement, not append) WITHOUT
+      # needing the prior `--providers.file.filename=` empty-string hack
+      # that depended on undocumented Traefik 3 flag-parser behaviour.
+      - --providers.file.filename=/etc/traefik/dynamic.yml
     healthcheck:
       test: ["CMD", "traefik", "healthcheck", "--ping"]
       interval: 5s
