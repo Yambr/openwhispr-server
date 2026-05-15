@@ -865,6 +865,27 @@ Plans:
 **Note**: Phase 18.2 originally carved for auth-redesign; merged into 18.1.1 Bucket B per user direction "не отложить — исправить сейчас".
 **Open question**: Are bucket-A failures debt or constitutional regressions? Verifier must categorize via `git log --oneline -- <failing-test>` per file. SR-B5 forgot-password disposition pending.
 
+### Phase 18.1.2: infrastructure-bound test debt
+**Goal**: Resolve the 37 remaining `pnpm test` failures that are infrastructure-bound rather than surface-code defects. Phase 18.1.1's aggregate `pnpm test` revealed these as testcontainer-availability + Docker daemon discipline issues — they pass when Docker is running and integration setup-files fire correctly, fail in CI-style runs where Docker is unavailable mid-suite.
+**Depends on**: Phase 18.1.1 (must close surface-code drift first to isolate signal). Phase 18.1 reaper-helper infrastructure (`tools/testcontainer-reaper-setup.ts`) carries here.
+**Requirements** (37-failure breakdown from Phase 18.1.1-06 aggregate run):
+  - SR-1: 27 `@openwhispr/api` testcontainer-dependent integration suites — needs Docker daemon up + reaper-helper firing pre-suite
+  - SR-2: 5 `tools/lint-rls.test.ts` partman fixture cases — needs `openwhispr/postgres:17.5-pgpartman` image + `provisionPgPartman` helper booted per-test
+  - SR-3: 3 `@openwhispr/worker` BullMQ real-postgres + Valkey suites — testcontainer hygiene
+  - SR-4: 3 `@openwhispr/data` ledger/migration/audit-log infra suites — needs migration applier in setupFiles
+  - SR-5: 1 `@openwhispr/web` locale-coverage mismatch — Phase 18.1 residual content drift (separate from test infra)
+  - SR-6: 1 helm-unittest fixture — needs `helm` CLI in PATH + fixture parity
+  - SR-7: otel-bootstrap signal-handler test — process-state contamination from parallel runs
+  - SR-8: aggregate `pnpm test` exits 0 on Docker-running machine; documented in `docs/operations.md` as "Docker daemon MUST be running for full test suite" gate
+**Success Criteria**:
+  1. `pnpm test` exits 0 with Docker daemon running locally; verified on operator dev machine.
+  2. CI workflow `.github/workflows/ci.yml` adopts `services: docker:dind` OR ARM-runner-with-Docker config so testcontainers fire in CI.
+  3. Per-workspace `vitest.config.ts` setupFiles wire `testcontainer-reaper-setup.ts` (Phase 18.1.1 D-08 promote-completion verification).
+  4. `tools/lint-rls.test.ts` consistently green via `bootstrapRoles` + `provisionPgPartman` helpers under testcontainer.
+  5. `docs/operations.md` carries a "Local development test prerequisites" section enumerating Docker, mkcert, pnpm-workspace order, `make tls-trust`, etc.
+**Plans**: 4-6 plans (TBC at /gsd-discuss-phase 18.1.2)
+**Open question**: Should Docker availability be a hard gate (`vitest run --skip-on-missing-docker` config flag) or an environment requirement documented in `docs/operations.md`? Phase 18.1.2 advisors decide.
+
 ## Progress Table
 
 | Phase | Plans Complete | Status | Completed |
