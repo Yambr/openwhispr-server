@@ -607,7 +607,61 @@ Work-order: **13 → 12 → 14 → 15 → 16 → 17 → 18**. 61 REQ-IDs mapped 
 
 ---
 
+## v2.2 Requirements — Pre-OSS Security & Hygiene
+
+Driven entirely by `.planning/review/REVIEW-INDEX.md` (10 CRITICAL + 35 HIGH from 11-agent pre-publication review against main @ `1832f28`). Every requirement closes one or more numbered findings; the Source column cites the per-package report.
+
+### Constitutional lockers (Phase 31 — ships FIRST)
+
+- [ ] **LOCKER-01**: `tools/lint-no-env-branches.ts` — refuse any `process.env.NODE_ENV` / `NODE_ENV` comparison in `apps/**/src/**` and `packages/**/src/**`; allowlist limited to `bootstrap.ts`, `config/*.ts`, `otel-bootstrap.ts`, and explicit `*.config.ts`. Coverage ≥ 90/90/90/90 on the linter. Wired into Lefthook + GitHub Actions.
+- [ ] **LOCKER-02**: `tools/lint-no-suppressions.ts` — refuse `as any`, `as unknown as`, `@ts-ignore`, `@ts-nocheck`; require `@ts-expect-error` to carry a reason comment + tracking-issue ID. Seed allowlist with current main inventory; CI fails on net additions. Coverage ≥ 90/90/90/90.
+- [ ] **LOCKER-03**: `tools/lint-no-hardcode.ts` — refuse hardcoded `localhost`, `127.0.0.1`, `:3000`/`:4000`/`:8080`, UUID literals, fake-token shapes (`sk-…`, `sk-ant-…`, `AIza…`, `AKIA…`, `Bearer ey…`) outside `tests/`, `.env.*.example`, `compose/`, `docs/`, `charts/`, `tools/`. Coverage ≥ 90/90/90/90.
+- [ ] **LOCKER-04**: `tools/lint-prod-readiness.ts` — AST scan of `apps/**/src/**` + `packages/**/src/**`: (a) every Fastify `app.route/get/post/...` MUST have `schema: { body|querystring|params: <ZodSchema> }` AND `config: { rateLimit: ... }` (or explicit `rateLimit: false` only for `/api/health`); (b) every exported symbol MUST have ≥ 1 non-test importer. Coverage ≥ 90/90/90/90.
+- [ ] **LOCKER-05**: `tools/lint-secret-shape-in-error.ts` — refuse `class X extends Error { public/readonly <bodyText|responseBody|upstreamPayload|response|body>: string }` unless constructor truncates the field. Coverage ≥ 90/90/90/90.
+- [ ] **LOCKER-06**: `tools/lint-shell-credential-interpolation.ts` — refuse template-literal strings passed to `spawn('bash', ['-c', ...])` / `execSync` / `exec` referencing `*_URL`, `*_KEY`, `*_PASSWORD`, `*_SECRET`, `*_TOKEN` bindings or env vars. Coverage ≥ 90/90/90/90.
+- [ ] **LOCKER-07**: `.planning/DISCIPLINE.md` Rules 11–14 amended in (NODE_ENV branches / suppressions / hardcode / prod-readiness) and mirrored to `CLAUDE.md` § Engineering Discipline in the SAME commit as the linter source.
+- [ ] **LOCKER-08**: Lefthook pre-commit + GitHub Actions `ci.yml` + `nightly.yml` updated to invoke all six lockers BLOCKING; `make lint:lockers` target shipped.
+- [ ] **LOCKER-09**: Per-locker allowlist files (`tools/lint-*-allowlist.txt`) seeded with current main inventory; CI MUST fail on any net addition. Each allowlist entry has a tracking-issue ID.
+
+### Critical fixes (Phases 32–38)
+
+- [ ] **CRIT-FIX-01** (Phase 32): Migration `0017_rls_fail_closed.sql` reverses 0003's `ALTER ROLE openwhispr_app SET app.tenant_id` + drops the GUC-bound `tenant_id` column DEFAULT. RLS policies use `current_setting(...) IS NOT NULL AND tenant_id = current_setting(...)::uuid`. Property test (88 = 11 tables × 4 ops × 2 ctx) on real Postgres testcontainer asserts ALWAYS deny when context absent. — Source: `data.md` CR-01, HI-04.
+- [ ] **CRIT-FIX-02** (Phase 33): Migration `0018_envelope_encrypt_secret_columns.sql` converts `account.{access_token, refresh_token, id_token, password}`, `verification.value`, `sessions.{token, previous_token}`, `oauth_state.code_verifier` to envelope-encrypted `bytea` (AES-256-GCM, per-row DEK, `MASTER_KEK` env). Drizzle-level encryption lens wires `packages/data/src/encryption/envelope.ts` to all six column families. Sign-in / sign-out / password-reset integration tests round-trip end-to-end with ciphertext-on-disk assertion. KEK rotation property test green. `tools/lint-no-plaintext-secret-columns.ts` (becomes Rule 15) prevents future text-column drift. Operator docs in `docs/security.md`. — Source: `data.md` CR-02.
+- [ ] **CRIT-FIX-03** (Phase 34): `apps/api/src/middleware/tenant.ts` + index.ts:382 registration deleted (preferred) OR renamed to `req.untrustedTenantHint` with a runtime guard that throws on `req.tenant ≠ req.untrustedTenantHint`. E2E `tests/e2e/tenant-isolation.spec.ts` asserts forged `x-tenant-id` cannot escalate. — Source: `api-core.md` CR-01.
+- [ ] **CRIT-FIX-04** (Phase 35.a): `apps/api/src/routes/{locale,auth-providers,setup-state}.ts` add `config: { auth: false }`. Integration test boots full app and asserts 200 (not 401) for each. — Source: `api-routes-rest.md` CR-01.
+- [ ] **CRIT-FIX-05** (Phase 35.b): `apps/api/src/lib/better-auth-handler.ts:179-182` replaces `Headers.forEach` with `Headers.getSetCookie()` per-value emission. Test asserts N independent `set-cookie` reply headers (not comma-joined). E2E sign-in flow green against real Better Auth + browser. — Source: `api-routes-rest.md` CR-02.
+- [ ] **CRIT-FIX-06** (Phase 35.c): `apps/api/src/routes/setup-admin.ts:234` wraps step-4 role flip + `setup_state=completed` in single transaction with rollback. RED test asserts injected `pg` failure does NOT leave `completed=true` without admin user. — Source: `api-routes-rest.md` CR-03.
+- [ ] **CRIT-FIX-07** (Phase 36.a): `apps/worker/src/jobs/audit-archive.ts:96-128` replaces `spawn('bash', ['-c', script])` with Node-side `spawn('pg_dump', [...args])` + `PGPASSWORD` env + piped streams to `gzip`/`mc`/`aws`. RED test: redact-audit asserts NO `DATABASE_URL`/password in `failedReason` after injected pg_dump failure. — Source: `worker.md` CR-01.
+- [ ] **CRIT-FIX-08** (Phase 36.b): `apps/worker/src/jobs/reconciliation-discrepancy.ts:45-61` implements the windowed backfill properly (`since/until/tenant_id` read from payload; `runIngestOnce` signature extended) returning real `{rowsProcessed, rowsScanned}` — `as unknown as` cast removed. OR job deleted with rationale. RED test: destructured awaited result matches fixture counts. — Source: `worker.md` CR-02.
+- [ ] **CRIT-FIX-09** (Phase 37): `packages/litellm-client/src/errors.ts` truncates `bodyText` at construction + marks `private` + adds `toJSON()` override returning `{name, message, status}` only. Test asserts `JSON.stringify(new LitellmUpstreamError(500, 'x'.repeat(10000)))` < 500 bytes; pino structured-log contains no `bodyText` field. — Source: `litellm-client.md` CR-01.
+- [ ] **CRIT-FIX-10** (Phase 38): `packages/auth/` deleted OR renamed to `@openwhispr/auth-stub` with `private: true` in package.json. Stryker config audited for stale references. — Source: `small-pkgs.md` CR-01.
+
+### High-severity sweep (Phases 39–41)
+
+- [ ] **HIGH-FIX-WIRE-01** (Phase 39): `.strict()` on every input zod schema in `packages/wire-schemas/` (NoteInput, FolderInput, ConversationInput, TranscriptionInput, StreamingUsageBody, WebSearchRequest, CreateApiKeyOptions). Property tests reject unknown keys.
+- [ ] **HIGH-FIX-WIRE-02** (Phase 39): All output schemas use `z.string().uuid()` / `.datetime({offset:true})` / `.url()` for IDs / timestamps / URLs. Property tests reject malformed strings.
+- [ ] **HIGH-FIX-WIRE-03** (Phase 39): Long-text body fields and `metadata` records bounded by `.max()` per BACKEND_SPEC limits.
+- [ ] **HIGH-FIX-WIRE-04** (Phase 39): Symmetrical enums on note_type and other previously-asymmetrical input/output fields; non-negative integer counts via `.int().nonneg()`.
+- [ ] **HIGH-FIX-BYOK-01** (Phase 40): Wire schemas moved from `@openwhispr/contract-tests` into `@openwhispr/wire-schemas`; `contract-tests` becomes `private: true`. API routes import from `wire-schemas` only.
+- [ ] **HIGH-FIX-BYOK-02** (Phase 40): `redactUrl` covers query-string credentials (`api_key`, `token`, `key`, `code`, `secret`, AWS SigV4 `X-Amz-Signature`), URL userinfo, and bearer-token-shaped path segments (`sk-…`, `sk-ant-…`, `AIza…`, `AKIA…`). Drift-as-failure parity test against every `process.env.*_API_KEY` actually read by the codebase.
+- [ ] **HIGH-FIX-BYOK-03** (Phase 40): `fetchAndParse` envelope enforcement removes the `typeof body === "object"` guard; non-JSON / empty body raises `MalformedUpstreamEnvelopeError`.
+- [ ] **HIGH-FIX-API-CORE** (Phase 41.a): hardcoded `"00000000-..."` in `apps/api/src/auth.ts:330, 380` replaced with `resolveDefaultTenantId()`; `apps/api/src/placeholder.ts` deleted; residual bootstrap concerns audited.
+- [ ] **HIGH-FIX-AGENT-STREAM** (Phase 41.b): `apps/api/src/routes/agent/stream.ts` — `DEFAULT_AGENT_MODEL` reconciled with LiteLLM config (single source of truth); body zod validation added; per-user `rateLimit` config added.
+- [ ] **HIGH-FIX-WEB** (Phase 41.c): app-level role-check RSC guard added to `/admin/*` layout (defense-in-depth on Traefik basic-auth); `PLAYWRIGHT_DISABLE_SSR_PREFETCH` test-only branch removed from 5 production RSC pages.
+- [ ] **HIGH-FIX-WORKER** (Phase 41.d): bare `pino()` replaced with shared redact factory in worker `index.ts` and `ingest-litellm-spend.ts`; reconciliation-daily-check loop bound corrected; OTel gauge callbacks read fresh `driftStore`; minutes-priced model `metadata.duration` validation + warn-log + counter metric added.
+- [ ] **HIGH-FIX-DATA** (Phase 41.e): `migrate.ts` LiteLLM DB init idempotency enforced; migration `0019` replaces 0005's TRUNCATE with idempotent UPSERT; account-token TTL enforcement (post-encryption from Phase 33).
+- [ ] **HIGH-FIX-LITELLM** (Phase 41.f): `chatCompletions`, `audioTranscriptions`, `passthrough` get `headersTimeout`/`bodyTimeout`/required `AbortSignal`; SSRF dispatcher asserted at module load (throw if `getGlobalDispatcher()` is not wrapped); model alias drift fixed via single-source-of-truth read from `compose/litellm/litellm_config.yaml`; `streamOptions` spread allows caller opt-out of `include_usage`.
+- [ ] **HIGH-FIX-SMALL** (Phase 41.g): real en/ru locale bundles OR `packages/i18n` renamed to `-stub` (verify against Phase 10 coverage); CI parity test between `byok-guard` and `observability/redact` provider lists; `SMTP_SECURE` parsing accepts `1`/`true`/`yes`/`on` (case-insensitive).
+
+**v2.2 coverage:** 32/32 mapped (100% — 9 LOCKER + 10 CRIT-FIX + 13 HIGH-FIX).
+**v2.2 distribution:** Phase 31=9, Phase 32=1, Phase 33=1, Phase 34=1, Phase 35=3, Phase 36=2, Phase 37=1, Phase 38=1, Phase 39=4, Phase 40=3, Phase 41=6 = 32 ✓.
+
+**Milestone close criterion (v2.2 only):** re-run the 11-agent `gsd-code-reviewer` pre-publication review against main; expect ≤ 5 residual HIGH and 0 CRITICAL. Anything else → milestone remains open and additional phases inserted.
+
+---
+
 *Requirements defined: 2026-05-08*
 *v2 requirements added: 2026-05-14 — 61 REQ-IDs across 10 categories driven by TECH_DEBT.md.*
 *v2 traceability mapped: 2026-05-14 by gsd-roadmapper — 7 phases (12–18), 100% coverage, work-order 13 → 12 → 14 → 15 → 16 → 17 → 18.*
-*Last updated: 2026-05-12 — Phase 07.1 WEB-IMPL-01..04 flipped to Complete; UI-SPEC-01..03 also flipped to Complete (Phase 7 closed); plan-level traceability added (Plans 07.1-01..07.1-14).*
+*v2.2 requirements added: 2026-05-16 — 32 REQ-IDs (LOCKER-01..09 + CRIT-FIX-01..10 + HIGH-FIX-*) driven by `.planning/review/REVIEW-INDEX.md`. Phases 31–41; Phase 31 ships first as the locker GATE. Phase 20 (compose+Helm guardrails, 2026-05-16 audit) is unrelated and proceeds in parallel.*
+*Last updated: 2026-05-16 — v2.2 milestone opened.*

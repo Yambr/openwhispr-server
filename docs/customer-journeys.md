@@ -123,7 +123,7 @@ single-use reset link in mailpit, clicks it, sets a new password, and can
 sign in with the new credentials. The negative twin covers the
 invalid-token error envelope.
 
-### @cjm-3.1 Password-reset happy path (after-phase-19.1 — currently @expected-red)
+### @cjm-3.1 Password-reset happy path (Phase 19.1 + 19b — GREEN 2026-05-16)
 
 User POSTs `email` to the password-reset request endpoint. Mailpit receives
 a reset email within 30s. The reset URL renders a "set new password" form.

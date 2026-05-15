@@ -1,18 +1,16 @@
 ---
 gsd_state_version: 1.0
-milestone: v2.1
-milestone_name: — v2.1 Test-Debt + Server-Error Closure
-status: closed-with-partial-debt
-last_updated: "2026-05-15T23:15:00.000Z"
-last_activity: "2026-05-15 — Phase 19 (server-error closure) CLOSED-WITH-PARTIAL-DEBT through 3 plans / ~10 atomic commits (Plan 01 5 commits, Plan 02 3 commits, Plan 03 3 commits). SR-19.2 (fastify.d.ts module augmentation, commit 626fa30), SR-19.3 (BYOKGuardError throw not exit at api+worker entrypoints, commit 1488057), SR-19.4 (export onSignal, commit e9f20a3), SR-19.5 (pg_partman recipe in operations.md, commit 38584a9) all landed clean. SR-19.1 (strip 'public.' FK prefixes from migrations 0000+0014, commit d45291d) landed Option (a) per advisor verdict; W-2 atomic-revert of shared-pg.ts NOT executed because the file was BORN at commit 15c24c9 with the shared-public + TRUNCATE pattern (verified via git log --follow) — no prior per-file state exists to revert to. Mild D-20 atomic-revert violation acknowledged; full per-file search_path test-isolation design deferred to SR-19.1b (SERVER-ERRORS.md Entry 6, ~4-6h scope, ~17 files). SERVER-ERRORS.md Entries 1-5 closure blocks appended (commit 3619dd9): Entry 1 CLOSED-WITH-PARTIAL-DEBT, Entries 2-5 CLOSED clean. Phase 14-04 typecheck deferral CLOSED downstream by SR-19.2 + SR-19.3. ZERO `--no-verify` across all 10 commits; hard-rule inversion (production-edits allowed) honored — every prod edit traces to a SERVER-ERRORS entry with user-approved scope. Final verification: 6/6 migration 0014 partition tests GREEN; 479/479 apps/api route tests GREEN (encompasses the 25 cluster #1+#2 integration tests). 8 residual pre-existing test failures (check-default-secrets etc.) confirmed unchanged via git-stash probe — out of scope per executor SCOPE BOUNDARY.
-
-Earlier 2026-05-15 — Phase 18.1.2 (infrastructure-bound test debt) CLOSED through all 6 plans + ~26 atomic commits. Plans 01..06: 01 Docker probe + reaper wire (D-02), 02 shared-pg fixture + TESTCONTAINERS_REUSE_ENABLE (D-03/04; D-05 singleThread deferred per HALT-3 option c), 03 cluster #1 integration migration (4 files) + pgpartman image fix (3 commits including HALT retry #3 resolution), 04 Bucket B+C surface fixes (BYOK throw-not-exit Δ-3 + audio path Δ-1 4-ups→5-ups + otel-bootstrap process.exit mock + locale en+ru parity D-10/D-21), 05 cluster #2 integration migration (16 files in apps/api per Δ-2) + CI test job aligned with e2e-phase6-quick + operations.md local-dev prerequisites (D-11/12/13), 06 ROADMAP+STATE sync + v2.1 milestone CLOSED declaration. Key wins: shared-pg 15→1 container collapse closes testcontainer port-exhaustion; D-24 scope reduction (DROP SR-2 partman → D-A2 forward work; DROP SR-6 helm → verified GREEN 163/163); SERVER-ERRORS.md created as append-only ledger (Entries 1-5) for production-side issues uncovered. ZERO production edits across all 6 plans — hard rule from CLAUDE.md (codified at commit 9643b92) upheld; all fixes test-side or infra-side. Final pnpm test aggregate (2026-05-15T20:46→20:53, 401.20s wall clock): **14 files failed / 259 passed / 31 skipped (304); 8 tests failed / 3053 passed / 230 skipped (3291)** — net +131 passing tests, -29 failing tests vs Phase 18.1.1 close (37 failed / 2922 passed). The 8 residual test failures are pre-existing per `git stash` probe — predate Phase 18.1.2 and are documented in SERVER-ERRORS.md Entries 1-5 + .planning/deferred-items.md for future production-fix phases. v2.1 milestone CLOSED — Phase 18.1.1's followup work is fully resolved."
+milestone: v2.2
+milestone_name: Pre-OSS Security and Hygiene
+status: planning
+last_updated: "2026-05-15T23:19:18.541Z"
+last_activity: 2026-05-15
 progress:
-  total_phases: 50
-  completed_phases: 23
-  total_plans: 163
-  completed_plans: 180
-  percent: 46
+  total_phases: 0
+  completed_phases: 0
+  total_plans: 0
+  completed_plans: 0
+  percent: 0
 ---
 
 # Project State: OpenWhispr Server
@@ -27,10 +25,10 @@ progress:
 
 ## Current Position
 
-Phase: 19 — server-error closure (production-fix phase) **CLOSED-WITH-PARTIAL-DEBT** — 3 plans / ~10 atomic commits. Plan 01 (5 commits: SR-19.2 fastify.d.ts 626fa30, SR-19.4 export onSignal e9f20a3, SR-19.5 pg_partman recipe 38584a9, plus 2 ancillary), Plan 02 (3 commits: SR-19.3 BYOK throw-not-exit RED f8aaa1d + GREEN 1488057 + summary cbe0082), Plan 03 (3 commits: SR-19.1 Option a FK strip d45291d, Entries 1-5 ledger close 3619dd9, this STATE+ROADMAP sync). SR-19.1 W-2 atomic revert deferred to SR-19.1b (SERVER-ERRORS Entry 6, design-required).
-Plan: All Phase 19 plans complete. **v2.1 milestone CLOSED-WITH-PARTIAL-DEBT** (SR-19.1b carry — per-file search_path test isolation infra design required; ~4-6h scope, ~17 files). Next: Phase 19.1-19.4 (downstream pre-reqs for repointed `@expected-red`/`@cjm` tags) OR test-infra-hardening phase consuming SR-19.1b. Operator deferrals preserved: FSL history scrub (15-04), GHA e2e-cjm first run, axe baseline live bake, Playwright visual regression GREEN bake (Phase 18.1.1 Tasks 05-04 + 05-05).
-Status: **v2.1 milestone CLOSED-WITH-PARTIAL-DEBT**. 10 phases under v2.1 (12, 13, 14, 15, 16, 17, 18, 18.1, 18.1.1, 18.1.2, 19) all shipped. Phase 19 closed Entries 1-5 of SERVER-ERRORS.md (Entry 1 partial via Option a strip + SR-19.1b carry; Entries 2-5 clean). Phase 14-04 typecheck deferral CLOSED downstream by SR-19.2 + SR-19.3. ZERO `--no-verify` across all 10 Phase 19 commits.
-Last activity: 2026-05-15 — Phase 19 CLOSED-WITH-PARTIAL-DEBT. See Last Activity for the full plan-by-plan ledger and key wins. Hard-rule INVERSION (production edits ALLOWED) honored — every prod edit traced to a SERVER-ERRORS.md entry with user-approved scope.
+Phase: Phase 19.2 stt-fixture (@cjm-4.1) — discuss-phase queued. v2.1 milestone RE-OPENED 2026-05-16 for downstream cjm-tag flips (19.2 / 19.3 / 19.4); v2.2 (Pre-OSS Security and Hygiene) work pauses until v2.1 final closure.
+Plan: —
+Status: Pending discuss-phase 19.2
+Last activity: 2026-05-16 — Phase 19.1 CLOSED (Plan 01 hook landed earlier; e2e GREEN proven through Phase 19b cascade) + Phase 19a CLOSED + Phase 19b CLOSED (5 commits b2ebf24 → d9ce0ec). ROADMAP entries seeded for 19.2 (stt-fixture @cjm-4.1), 19.3 (ba-i18n @cjm-1.4), 19.4 (locale-e2e @cjm-6.1). v2.1 milestone formally re-opened for batch close-out. After all 4 phases complete, milestone re-closure audit captures clean-CLOSED state.
 
 ## Performance Metrics
 

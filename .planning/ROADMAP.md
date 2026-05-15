@@ -57,6 +57,20 @@ Work-order: **13 → 12 → 14 → 15 → 16 → 17 → 18** (user-confirmed; nu
 - [ ] **Phase 16: Phase-Tag Comment Audit** — regex-on-text codemod (NOT AST traversal; ts-morph dep reserved for deferred inline-comment phase) audits **approximately 754** `// Phase XX / Plan YY / D-ZZ` header comments in `apps/` + `packages/` (originally cited as 771 pre-Phase-15; delta = file deletions during structural reorg; scope corrected from TECH_DEBT's 1642 figure which double-counted tests/tools/.planning); per-area sweep canary before bulk; two-bucket REMOVE/KEEP classification (heuristic-only, conservative-KEEP defaults); lint regression rule (tsx CLI per Phase 15-01 pivot); grouped per-area atomic commits (each < ~300 files for comment-only deletions per Phase 15-03 precedent). **Must run AFTER Phase 15 — FSL codemod rewrites every SPDX header; running 16 first = redo.**
 - [ ] **Phase 17: Trusted Local TLS + Production ACME** — `make tls-trust` → `mkcert -install` + cert for explicit host list (`api.localhost`, `web.localhost`, `app.localhost`, `grafana.localhost`, `mailpit.localhost` — NOT `*.localhost` wildcard); Traefik dev profile serves mkcert certs; production ACME wired through `--with-ingress`; cert-manager Helm sub-chart gated by `ingress.enabled`; dev-cert isolation (`.dockerignore` + prod Dockerfile lint); air-gap install path documented.
 - [ ] **Phase 18: LDAP / Keycloak SSO — SPEC + ADR only (NO code in v2; implementation deferred to v3)** — `SPEC-ldap-keycloak.md` ≤ 200 lines with option (a) Keycloak/Authentik OIDC frontend (recommended — zero Better Auth surgery via existing `genericOAuth`) vs option (b) direct LDAP via `ldapts`+custom Better Auth plugin; decision matrix; JIT user provisioning + group→role projection; red Cucumber scenarios + `compose/test/keycloak.yml` fixture stub (skipped pending v3); ADR `docs/adrs/0012-ldap-via-keycloak.md`. Orthogonal to all code phases — schedulable anytime ≥ Phase 13.
+- [ ] **Phase 20: Compose+Helm Production Guardrails (P0 audit remediation)** — Close production blockers from the 2026-05-16 compose+Helm audit (`.planning/qa-audit/` / `.planning/review/`): (a) compose — `deploy.resources.limits` on all 15 services + `restart: unless-stopped` on Traefik / PgBouncer / MinIO / 5×LGTM; (b) Helm — `startupProbe` (failureThreshold=30, periodSeconds=10) on api/web/worker/litellm Deployments + `topologySpreadConstraints` (maxSkew=1, hostname) on every Deployment+DaemonSet + pod/container `securityContext` (runAsNonRoot, readOnlyRootFilesystem, drop ALL, allowPrivilegeEscalation=false, seccompProfile RuntimeDefault) on api/web/worker/litellm + OTel Collector partial-hardening completion; (c) CI — new `compose-lint` job running `docker compose config` across all profiles (default, contract-test, observability, pgbouncer, storage, load-test-mock, load-test-realistic, e2e). Tests-first per constitutional TDD. Phase 19 number reserved for the existing server-error-closure cascade (19 / 19.1).
+
+
+### v2.1 — Test-debt + Server-error closure (milestone opened 2026-05-15, RE-OPENED 2026-05-16 for downstream cjm)
+
+Work-order: 19 → 19.1 → 19a → 19b → **19.1 (close-out) → 19.2 → 19.3 → 19.4** (downstream-cjm batch added 2026-05-16 after Phase 19b proved e2e harness GREEN end-to-end). Hard ordering: 19.1 close-out FIRST (formalize the e2e GREEN proven through 19b); 19.2/19.3/19.4 are independent downstream cjm-tag flips and can run in any order.
+
+- [x] **Phase 19: Server-error closure (production-fix)** — CLOSED-WITH-PARTIAL-DEBT 2026-05-15. SERVER-ERRORS.md Entries 1-5 closed; SR-19.1b carry. See Phase Details.
+- [x] **Phase 19.1: reset-mail wiring (sendResetPassword)** — CLOSED 2026-05-16. Hook landed via commits 664f979/c8be1f5/e703314 (Plan 01, 10/10 unit tests GREEN); e2e GREEN proven through Phase 19b (`make e2e-cjm SCENARIO="@cjm-3.1"` → 1/1 GREEN 1.2s). Plan 02 round-trip extension deferred — `@cjm-3.1` already covers signup → request-reset → mailpit fetch → reset → re-sign-in.
+- [x] **Phase 19a: compose infra hot-fix (byok-guard Dockerfile + cjm-lint @after-docker-up + Drizzle role + cucumber escape + storage overlay)** — CLOSED 2026-05-16. SERVER-ERRORS Entries 7+8+9 closed via commits 6771f46/700c837/1832f28/adf0e09/9fb0e6f/9ff5040.
+- [x] **Phase 19b: Traefik STRUCT-05 host-split regression fix** — CLOSED 2026-05-16. 5 commits b2ebf24/62d87d7/6a5d638/e82a390/d9ce0ec. `@cjm-traefik-host-split[+web]` + `@cjm-3.1` all GREEN end-to-end through real Traefik+api+worker+mailpit. 3 memory lessons captured.
+- [ ] **Phase 19.2: stt-fixture (@cjm-4.1 transcribe-happy-path)** — Flip `@cjm-4.1` from `@expected-red @after-phase-19.2` to GREEN. Wire `/api/transcribe` end-to-end against LiteLLM proxy with a deterministic audio fixture (smoke-paid OR mock-litellm path); cjm scenario asserts non-empty transcription text + correct content-type. NB: existing tag in `tests/e2e-cjm/features/transcribe.feature:6` is `@cjm-4.1` (transcribe), NOT `@cjm-6.2` (host-split path-isolation — addressed by Phase 19b).
+- [ ] **Phase 19.3: ba-i18n localized error envelopes (@cjm-1.4)** — Flip `@cjm-1.4` (sign-up form validation error in Russian). Better Auth error envelope + Fastify error handler localize `message` via i18next per `Accept-Language`; web client renders the localized string. Closes UICONF-03 silent-fallback failure mode.
+- [ ] **Phase 19.4: locale-e2e (@cjm-6.1 en↔ru cookie set)** — Flip `@cjm-6.1` (locale-switch end-to-end). LanguageSwitcher cookie write + `/api/locale` round-trip + persisted user.locale + worker email template selection — full chain validated via real compose stack.
 
 ## Phase Details
 
@@ -911,8 +925,10 @@ Plans:
 **Plans**: 3-5 plans (TBC at /gsd-discuss-phase 19).
 **Open question**: SR-19.1 production migration strategy — Option (i) strip `public.` prefixes from 18 migrations + re-stamp `_journal.json` hashes OR Option (ii) introduce `OPENWHISPR_DB_SCHEMA` env knob. Multi-tenant + RLS implications differ. Advisor decides.
 
-### Phase 19.1: reset-mail wiring (sendResetPassword)
-**Goal**: Flip `@cjm-3.1` (password-reset) from `@expected-red @after-phase-19.1` to GREEN. Wire Better Auth `sendResetPassword` lifecycle hook to enqueue a `password_reset` email through the existing worker email pipeline. Adds the missing downstream code for the first of 4 repointed `@cjm` tags from Phase 18.1-05.
+### Phase 19.1: reset-mail wiring (sendResetPassword) — CLOSED 2026-05-16
+**Goal (delivered)**: Flip `@cjm-3.1` (password-reset) from `@expected-red @after-phase-19.1` to GREEN. Wire Better Auth `sendResetPassword` lifecycle hook to enqueue a `password_reset` email through the existing worker email pipeline. Adds the missing downstream code for the first of 4 repointed `@cjm` tags from Phase 18.1-05.
+
+**Outcome**: Hook + 10 unit tests landed via commits `664f979` / `c8be1f5` / `e703314` (Plan 01). End-to-end validation deferred at Plan 01 close (compose-stack defects) — closed in cascade by Phase 19a (byok-guard Dockerfile + cucumber + Drizzle role) + Phase 19b (Traefik STRUCT-05 + locale auth opt-out). Final proof: `make e2e-cjm SCENARIO="@cjm-3.1"` → 1/1 GREEN (1.2s) on 2026-05-16. Plan 02 (round-trip extension) NOT executed — the `@cjm-3.1` scenario already exercises signup → request-reset → mailpit fetch → `/api/auth/reset-password` → re-sign-in with new password; explicit Plan 02 round-trip would be redundant coverage.
 **Depends on**: Phase 13 (E2E CJM harness), Phase 19 (BYOK + Fastify types green for clean integration baseline).
 **Requirements**:
   - SR-19.1.1: `apps/api/src/auth.ts` Better Auth config registers `emailAndPassword.sendResetPassword({ user, url, token }, request)` lifecycle hook that calls the email enqueue path.
@@ -928,7 +944,7 @@ Plans:
 **Plans**: 2-3 plans (TBC at /gsd-discuss-phase 19.1).
 **Open question**: Email template format — plain text + HTML, or HTML-only? React-email or hand-rolled? Advisor decides per existing `packages/email/src/EmailSender.ts` conventions.
 
-### Phase 19a: compose infra hot-fix (byok-guard Dockerfile + cjm-lint @after-docker-up)
+### Phase 19a: compose infra hot-fix (byok-guard Dockerfile + cjm-lint @after-docker-up) — CLOSED 2026-05-16
 **Goal**: Unblock all compose-based e2e harness runs (Phase 13 cjm, Phase 17 TLS, traefik-host-split, locale-switch — every `@expected-red @after-phase-19.*` repointed scenario plus all 6 `@after-docker-up` ones). Close SERVER-ERRORS.md Entries 7 + 8.
 **Depends on**: Phase 19.1 (surfaced Entries 7+8). Hard rule INVERSION authorized per ledger-consuming-phase pattern (mirrors Phase 19 authorization for Entries 1-5).
 **Requirements**:
@@ -967,6 +983,87 @@ Plans:
   - `feedback_smoke_before_full_e2e.md` — lint → build → per-service-up → stack → playwright (cheap → expensive), never serialize discovery of independent failures behind 60s compose roundtrips.
   - `feedback_check_loki_after_tests.md` — Loki+Grafana collect everything; first diagnostic is container logs, not playwright trace.zip.
   - `feedback_cjm_steps_need_unit_tests.md` — every `tests/e2e-cjm/steps/*.steps.ts` MUST have vitest unit coverage; coverage waivers banned.
+
+### Phase 19.2: stt-fixture (@cjm-4.1 transcribe-happy-path)
+**Goal**: Flip `@cjm-4.1` (transcribe happy-path) from `@expected-red @after-phase-19.2` to GREEN. Wire `/api/transcribe` round-trip against LiteLLM proxy (default = `compose/mock-litellm` for hermetic e2e; smoke-paid path optional gated by `OPENWHISPR_LOADTEST_ALLOW_PAID`) with a deterministic small WAV/MP3 fixture; cjm step bindings assert non-empty transcription text + `content-type: application/json`.
+**Depends on**: Phase 13 (E2E CJM harness), Phase 19a (compose-build infra), Phase 19b (Traefik host-split). Phase 5 audio routes are the canonical wire surface.
+**Requirements**:
+  - SR-19.2.1: deterministic audio fixture under `tests/e2e-cjm/fixtures/audio/` (~30 KB WAV; SPDX in companion `.license` file per FSL conventions); chosen to produce reproducible non-empty text under faster-whisper-tiny-en in `compose/mock-litellm`.
+  - SR-19.2.2: `tests/e2e-cjm/steps/transcribe.steps.ts` real bindings with `undici.fetch` (multipart `audio` field, `application/octet-stream`, signed BA session bearer) against `https://api.localhost/api/transcribe`.
+  - SR-19.2.3: `tests/e2e-cjm/steps/__tests__/transcribe.steps.test.ts` vitest unit coverage per `feedback_cjm_steps_need_unit_tests.md` (URL + multipart shape + auth header + response-shape assertions).
+  - SR-19.2.4: `tests/e2e-cjm/features/transcribe.feature` — remove `@expected-red` from the happy-path scenario; keep negative twins as-is.
+  - SR-19.2.5: ensure default LiteLLM model alias for STT matches mock-litellm's faster-whisper exposure (no env override needed for e2e harness).
+  - SR-19.2.6 (smoke-paid escape hatch): a separate `@cjm-4.1-paid` scenario gated by `OPENWHISPR_LOADTEST_ALLOW_PAID=1` proves the OpenAI/Groq cloud path; default scenario stays mock-litellm (per `feedback_loadtest_cost_discipline.md`).
+**Success Criteria**:
+  1. `make e2e-cjm SCENARIO="@cjm-4.1"` → 1/1 GREEN against full compose stack with mock-litellm.
+  2. Step-binding vitest unit coverage ≥ 90/90/90/90.
+  3. `docs/customer-journeys.md` `@cjm-4.1` row updated (remove `@expected-red` annotation; add CLOSED date).
+  4. ZERO `--no-verify` across all commits; conventional commits per Phase 19a/19b precedent.
+**Plans**: 2-3 plans (TBC at /gsd-discuss-phase 19.2). Estimated ~2-3h.
+**Open question**: smoke-paid scenario — keep gated behind env in same feature file, or carve to `transcribe-paid.feature`? Advisor decides at discuss-phase.
+
+### Phase 19.3: ba-i18n localized error envelopes (@cjm-1.4)
+**Goal**: Flip `@cjm-1.4` (sign-up form validation error in Russian) from `@expected-red @after-phase-19.3` to GREEN. Better Auth error envelopes + Fastify error handler must localize the human-readable `message` field via i18next per `Accept-Language`; the web client renders the localized string. Closes UICONF-03 silent-fallback failure mode (translation key missing returns the key string).
+**Depends on**: Phase 10 (i18next bootstrap + en/ru bundles), Phase 12 (sign-up form), Phase 19a/19b (compose harness GREEN).
+**Requirements**:
+  - SR-19.3.1: extend i18next en+ru locale bundles in `packages/i18n/locales/{en,ru}/errors.json` with Better Auth validation message keys (per-field messages for invalid email, weak password, etc.); maintain en+ru parity in the SAME atomic commit (D-43 Phase 14 convention).
+  - SR-19.3.2: `apps/api/src/auth.ts` Better Auth `errorMessages` (or `messages`) localization hook reads `req.language` (set by i18nPlugin) and replaces `message` with localized string; `code` remains stable English token.
+  - SR-19.3.3: Fastify global error handler honors `req.language` for ANY error envelope it emits (not just BA's) — covers existing typed-error codes from Phase 10-01 to ensure consistent localization across surface.
+  - SR-19.3.4: `apps/web/` sign-up form renders the server-localized `message` directly; no client-side re-localization needed for server-emitted errors.
+  - SR-19.3.5: `tests/e2e-cjm/features/signup-verify.feature` — remove `@expected-red` from `@cjm-1.4` scenario; step bindings assert Russian copy via i18next-loaded fixture phrases (NOT hardcoded strings — avoid translation rot).
+  - SR-19.3.6: step bindings + vitest unit coverage per memory rule.
+**Success Criteria**:
+  1. `make e2e-cjm SCENARIO="@cjm-1.4"` → 1/1 GREEN.
+  2. en+ru parity test in `packages/i18n/__tests__/parity.test.ts` (existing) green; CI i18n-completeness gate green.
+  3. `docs/customer-journeys.md` `@cjm-1.4` row updated.
+  4. Step-binding vitest ≥ 90/90/90/90.
+**Plans**: 2 plans (TBC at /gsd-discuss-phase 19.3). Estimated ~1-2h.
+**Open question**: Better Auth 1.6.9 message-localization surface — `errorMessages` config vs error-handler middleware vs onAPIError plugin hook? Advisor decides per BA vendored docs.
+
+### Phase 19.4: locale-e2e (@cjm-6.1 en↔ru cookie set)
+**Goal**: Flip `@cjm-6.1` (locale-switch end-to-end) from `@expected-red @after-phase-19.4` to GREEN. End-to-end proof: `LanguageSwitcher` writes the `i18next` cookie; subsequent server-rendered pages honor it; `/api/locale` returns the switched locale; `user.locale` persisted on next BA session-touch; worker email template selection (e.g., welcome email) honors the persisted locale.
+**Depends on**: Phase 10-02 (web edge middleware + LanguageSwitcher), Phase 19.1 (worker email pipeline), Phase 19b (locale route auth opt-out).
+**Requirements**:
+  - SR-19.4.1: `apps/web/` `LanguageSwitcher` cookie-write asserted via Playwright DOM interaction (click → cookie present); cookie name + max-age + path + samesite verified.
+  - SR-19.4.2: server-rendered subsequent navigation honors the cookie (web edge middleware reads it; SSR locale switches without full-page hard reload).
+  - SR-19.4.3: `/api/locale` round-trip returns the cookie-selected locale.
+  - SR-19.4.4: `user.locale` column updated on next authenticated request (BA session-touch hook or explicit `/api/profile/locale` endpoint — advisor decides at discuss-phase).
+  - SR-19.4.5: worker email job (re-use `password_reset` from Phase 19.1) renders Russian template when `user.locale = 'ru'`.
+  - SR-19.4.6: `tests/e2e-cjm/features/locale-switch.feature` — remove `@expected-red` from `@cjm-6.1`; step bindings cover the full chain.
+  - SR-19.4.7: step bindings + vitest unit coverage per memory rule.
+**Success Criteria**:
+  1. `make e2e-cjm SCENARIO="@cjm-6.1"` → 1/1 GREEN against full compose stack.
+  2. Mailpit assertion: at least one email body rendered with Russian template-derived markers (subject + greeting).
+  3. `docs/customer-journeys.md` `@cjm-6.1` row updated.
+  4. Step-binding vitest ≥ 90/90/90/90.
+**Plans**: 2-3 plans (TBC at /gsd-discuss-phase 19.4). Estimated ~1-2h.
+**Open question**: Should `user.locale` persist via explicit profile endpoint OR auto-sync on BA session-touch? Latter is more transparent but adds an implicit write per request. Advisor decides.
+
+### Phase 20: Compose+Helm Production Guardrails (P0 audit remediation)
+**Goal**: Close the production blockers and HIGH-severity findings from the 2026-05-16 compose+Helm audit (`/Users/nick/.claude/plans/synchronous-forging-ripple.md`) so the deployment surfaces meet the 1000-concurrent-user HA SLO target with no resource-governance, crash-recovery, or container-hardening gaps. Both compose (single-host OSS quickstart + load-test profiles) and the Helm chart (cloud HA) must satisfy the same guardrail contract.
+**Depends on**: Phase 9 (Helm chart baseline), Phase 14 (slim core + overlay structure), Phase 19b (compose host-split — overlay merge semantics).
+**Requirements**:
+  - SR-20.1 (compose resource limits): every long-running service in `docker-compose.yml` + every overlay in `compose/*.yml` declares `deploy.resources.limits` (memory, optionally cpu). Postgres ≥ 2G, LiteLLM/api/worker ≥ 512M, web ≥ 384M, observability stack right-sized. New lint script `tools/lint-compose-resources.ts` fails CI when a service is missing limits.
+  - SR-20.2 (compose restart policies): Traefik (`compose/docker-compose.ingress.yml`), PgBouncer (`compose/docker-compose.pgbouncer.yml`), MinIO (`compose/docker-compose.storage.yml`), and all 5 LGTM services (`compose/docker-compose.observability.yml`) declare `restart: unless-stopped`. Lint script extension covers this.
+  - SR-20.3 (Helm startup probes): `charts/openwhispr/templates/api-deployment.yaml`, `web-deployment.yaml`, `worker-deployment.yaml`, `litellm-deployment.yaml` each declare a `startupProbe` with `failureThreshold: 30`, `periodSeconds: 10` (300 s startup budget) using the existing readiness probe path/port. helm-unittest assertions verify presence on all four Deployments.
+  - SR-20.4 (Helm topology spread): every Deployment + the OTel Collector DaemonSet declares `topologySpreadConstraints` with `maxSkew: 1`, `topologyKey: kubernetes.io/hostname`, `whenUnsatisfiable: ScheduleAnyway`, label selector matching the workload. Values-driven so operators can override.
+  - SR-20.5 (Helm securityContext): api/web/worker/litellm Deployments get pod-level `securityContext` (`runAsNonRoot: true`, `runAsUser: 1000`, `fsGroup: 1000`, `seccompProfile: { type: RuntimeDefault }`) AND container-level `securityContext` (`readOnlyRootFilesystem: true`, `allowPrivilegeEscalation: false`, `capabilities: { drop: [ALL] }`). Required image-runtime audit: container images must run as uid 1000 — if any image refuses, file an in-phase production-fix sub-task to rebuild it. OTel Collector keeps `runAsUser: 0` (hostmetrics constraint, documented) but gains `allowPrivilegeEscalation: false` + `seccompProfile: RuntimeDefault`. Where `readOnlyRootFS` breaks a service, add a minimal writable `emptyDir` mount and document.
+  - SR-20.6 (CI compose-lint job): new `.github/workflows/ci.yml` job `compose-lint` runs `docker compose -f docker-compose.yml -f compose/docker-compose.<overlay>.yml … --profile <p> config > /dev/null` across all 8 profile combinations (default, contract-test, observability, pgbouncer, storage, load-test-mock, load-test-realistic, e2e). Job runs in parallel with helm-lint, gates merge to main.
+  - SR-20.7 (test-first per constitutional TDD): every change lands as RED commit (failing lint/helm-unittest/vitest) → GREEN commit. No production-code-only commits without preceding RED.
+**Success Criteria** (what must be TRUE after closure):
+  1. `tools/lint-compose-resources.ts` exists, has vitest coverage ≥ 90/90/90/90, and exits non-zero on a deliberately broken fixture; runs in CI on every PR touching `docker-compose*.yml` or `compose/**/*.yml`.
+  2. Running the lint against the current tree returns 0 violations.
+  3. `helm-unittest tests/openwhispr/*.yaml` includes 4 new startupProbe assertions + 5 new topologySpread assertions + 8 new securityContext assertions (pod + container per workload); all 109+ tests PASS.
+  4. `helm template charts/openwhispr/ --debug | yq` shows every api/web/worker/litellm pod spec carries `runAsNonRoot: true` and all three container-level hardening keys.
+  5. CI `compose-lint` job is green on `main` and on PR HEAD; deliberately breaking one overlay YAML (test in PR) turns the job red.
+  6. Live `helm install` against kind (per Phase 09.1 precedent) lands all pods `1/1 Running` within 90 s — proves new probes don't regress boot time.
+  7. `docker compose --profile default up -d --wait` succeeds locally with new restart policies + limits; manual `docker kill` of pgbouncer/traefik/minio/loki/grafana shows container auto-restart within 5 s.
+  8. The original audit plan (`/Users/nick/.claude/plans/synchronous-forging-ripple.md`) sections A1–A7 + B1–B3 + C1 all flip from open to resolved.
+**Plans** (suggested split; planner to finalize):
+  - 20-01 compose resource-limit lint + apply across all services + restart policies (single atomic wave; lint script first per TDD).
+  - 20-02 Helm startupProbe + topologySpread + securityContext (split if helm-unittest matrix gets unwieldy; 1–2 plans).
+  - 20-03 CI compose-lint job + matrix profile coverage.
+**Out of scope** (deferred to P1/P2 from audit roadmap, future phases): POSIX `cap_drop` / `read_only` on compose (audit P1); NetworkPolicy templates (audit P1); HPA/PDB on web+litellm (audit P2); `checksum/config` annotations (audit P2); `docs/SELF_HOSTING.md` (audit P2).
 
 ## Progress Table
 
