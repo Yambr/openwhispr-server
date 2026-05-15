@@ -298,6 +298,44 @@ describe("buildLitellmClient — audioTranscriptions", () => {
     expect(capturedBody).toBeDefined();
   });
 
+  it("forwards model= as a query-string param on the upstream URL (Phase 19.2 SERVER-ERRORS Entry 11)", async () => {
+    // Phase 19.2 / Plan 02 — defect closure: LiteLLM proxy's
+    // /v1/audio/transcriptions requires `model` either as a multipart
+    // form field or as a query-string param. Prior to this fix the
+    // client built the URL with no model and LiteLLM rejected the
+    // request with `Invalid model name passed in model=None`,
+    // surfacing to the desktop as a 502 envelope.
+    let capturedPath: string | undefined;
+    agent
+      .get(BASE)
+      .intercept({
+        path: /^\/v1\/audio\/transcriptions(\?.*)?$/,
+        method: "POST",
+      })
+      .reply((opts) => {
+        capturedPath = opts.path;
+        return { statusCode: 200, data: { text: "ok" }, responseOptions: {} };
+      });
+
+    const client = buildLitellmClient(baseConfig(), { isOverride: false });
+    const stream = Readable.from([Buffer.from("fake-audio")]);
+    const res = await client.audioTranscriptions({
+      model: "whisper-large-v3",
+      body: stream,
+      contentType: "multipart/form-data; boundary=abc",
+      userId: "u1",
+      requestId: "r1",
+    });
+    expect(res.statusCode).toBe(200);
+    expect(capturedPath).toBeDefined();
+    // Must be on /v1/audio/transcriptions AND carry model=whisper-large-v3
+    // as a query-string param (URL-encoded; the simple alias has no
+    // special chars but assert via encodeURIComponent for forward-compat).
+    expect(capturedPath).toMatch(/^\/v1\/audio\/transcriptions\?/);
+    const qs = new URLSearchParams(capturedPath?.split("?")[1] ?? "");
+    expect(qs.get("model")).toBe("whisper-large-v3");
+  });
+
   it("throws MissingProviderKeyError when GROQ_API_KEY is unset (whisper-large-v3 -> groq)", async () => {
     const cfg = baseConfig({
       providerKeys: { openrouter: "sk-or", groq: undefined, pyannote: "hf" },
