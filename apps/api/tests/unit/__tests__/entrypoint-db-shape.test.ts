@@ -32,6 +32,7 @@
 // dependencies (fastify, plugins, Better Auth) are mocked so the
 // bootstrap completes without DB or network.
 
+import { existsSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 
@@ -141,7 +142,8 @@ vi.mock("../routes/__test/fetch.js", () => ({
 // file://${process.argv[1]}` check expects. Point process.argv[1] at the
 // actual index.ts source file so the bootstrap branch executes when we
 // dynamic-import it.
-const indexPath = fileURLToPath(new URL("../index.ts", import.meta.url));
+const indexPath = fileURLToPath(new URL("../../../src/index.ts", import.meta.url));
+if (!existsSync(indexPath)) throw new Error(`source-contract path moved: ${indexPath}`);
 const originalArgv1 = process.argv[1];
 
 beforeAll(() => {
