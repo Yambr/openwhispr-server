@@ -142,6 +142,66 @@ Then("any bootstrap-minted cert SAN list contains no wildcard entries", async ({
 });
 
 // -----------------------------------------------------------------------
+// Scenario 4 (INFO-bonus review-fix): @cjm-tls-no-dev-ca-in-traefik-image
+// — sibling of Scenario 2 targeting the traefik image. Closes the
+// per-context `compose/traefik/.dockerignore` regression-guard gap
+// (the original Scenario 2 scans the api image, NOT the traefik image,
+// so a future deletion of compose/traefik/.dockerignore would slip past
+// it). Static scan, CI-runnable without a live compose stack.
+// -----------------------------------------------------------------------
+
+Given(
+  "the traefik production image has been built with tag openwhispr-traefik:tls-test",
+  async ({ tenantId }) => {
+    const s = stateFor(tenantId);
+    s.imageTag = process.env.OPENWHISPR_TLS_TEST_TRAEFIK_IMAGE ?? "openwhispr-traefik:tls-test";
+    try {
+      execFileSync("docker", ["image", "inspect", s.imageTag], { stdio: "pipe" });
+    } catch (err) {
+      throw new Error(
+        `image ${s.imageTag} not found locally; build it via 'docker compose build traefik' before running this scenario (orig: ${err instanceof Error ? err.message : String(err)})`,
+      );
+    }
+  },
+);
+
+When("the traefik image filesystem is scanned via docker-export + tar", async ({ tenantId }) => {
+  const s = stateFor(tenantId);
+  const containerId = execFileSync("docker", ["create", s.imageTag]).toString().trim();
+  try {
+    const tarBuf = execFileSync("docker", ["export", containerId], {
+      maxBuffer: 1024 * 1024 * 1024,
+    });
+    s.tarListing = execFileSync("tar", ["-tf", "-"], {
+      input: tarBuf,
+      maxBuffer: 1024 * 1024 * 1024,
+    }).toString();
+  } finally {
+    execFileSync("docker", ["rm", "-f", containerId], { stdio: "pipe" });
+  }
+});
+
+Then("no path in the traefik image matches rootCA.pem", async ({ tenantId }) => {
+  const s = stateFor(tenantId);
+  expect(s.tarListing).not.toMatch(/rootCA[^/\s]*\.pem/);
+});
+
+Then("no path in the traefik image matches local.crt or local.key", async ({ tenantId }) => {
+  const s = stateFor(tenantId);
+  expect(s.tarListing).not.toMatch(/\blocal\.(crt|key)\b/);
+});
+
+Then("no path in the traefik image contains mkcert", async ({ tenantId }) => {
+  const s = stateFor(tenantId);
+  expect(s.tarListing).not.toMatch(/mkcert/i);
+});
+
+Then("no path in the traefik image matches compose/traefik/certs/", async ({ tenantId }) => {
+  const s = stateFor(tenantId);
+  expect(s.tarListing).not.toMatch(/compose\/traefik\/certs\//);
+});
+
+// -----------------------------------------------------------------------
 // Scenario 3: @cjm-tls-acme-staging — deferred to GHA CI.
 // -----------------------------------------------------------------------
 
