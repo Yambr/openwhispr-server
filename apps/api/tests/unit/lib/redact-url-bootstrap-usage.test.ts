@@ -14,11 +14,12 @@
 // intentionally cheap (no container boot, no Fastify wiring) so it runs
 // in every CI iteration.
 
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 
-const INDEX_PATH = fileURLToPath(new URL("../index.ts", import.meta.url));
+const INDEX_PATH = fileURLToPath(new URL("../../../src/index.ts", import.meta.url));
+if (!existsSync(INDEX_PATH)) throw new Error(`source-contract path moved: ${INDEX_PATH}`);
 const INDEX_SRC = readFileSync(INDEX_PATH, "utf-8");
 
 describe("apps/api/src/index.ts bootstrap warn redaction (HI-02)", () => {
