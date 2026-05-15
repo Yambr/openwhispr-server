@@ -36,7 +36,7 @@ import { describe, expect, it } from "vitest";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const REPO_ROOT = path.resolve(__dirname, "../../../..");
+const REPO_ROOT = path.resolve(__dirname, "../../../../..");
 const API_INDEX = path.join(REPO_ROOT, "apps/api/src/index.ts");
 const WORKER_INDEX = path.join(REPO_ROOT, "apps/worker/src/index.ts");
 const API_PKG = path.join(REPO_ROOT, "apps/api/package.json");
