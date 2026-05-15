@@ -31,6 +31,11 @@ COPY packages/observability/package.json packages/observability/
 # (replaces noopSender with the shared SMTP-sender library). Source tree
 # required because tsup inlines workspace deps via noExternal.
 COPY packages/email/package.json packages/email/
+# Phase 14 / Plan 14-04 — packages/byok-guard is the assertBYOKConfig
+# library imported at apps/worker/src/index.ts:7-9 BEFORE worker startup.
+# Workspace dep declared in apps/worker/package.json:19; manifest was
+# missing from the Dockerfile COPY chain (SERVER-ERRORS Entry 7, Phase 19a).
+COPY packages/byok-guard/package.json packages/byok-guard/
 
 RUN pnpm install --frozen-lockfile --ignore-scripts
 
@@ -38,6 +43,7 @@ COPY tsconfig.base.json ./
 COPY apps/worker apps/worker
 COPY packages/observability packages/observability
 COPY packages/email packages/email
+COPY packages/byok-guard packages/byok-guard
 
 RUN pnpm --filter @openwhispr/worker build
 
@@ -51,6 +57,9 @@ COPY pnpm-lock.yaml pnpm-workspace.yaml package.json ./
 COPY apps/worker/package.json apps/worker/
 COPY packages/observability/package.json packages/observability/
 COPY packages/email/package.json packages/email/
+# Phase 19a / SERVER-ERRORS Entry 7 — byok-guard manifest needed for the
+# prod-deps `--filter @openwhispr/worker...` walk.
+COPY packages/byok-guard/package.json packages/byok-guard/
 
 RUN pnpm install --frozen-lockfile --prod --ignore-scripts \
       --node-linker=hoisted \
