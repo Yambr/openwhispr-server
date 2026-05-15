@@ -130,16 +130,28 @@ tls-trust:
 	  esac; exit 2; }
 	@mkcert -install
 	@mkdir -p compose/traefik/certs
-	@# Idempotency: skip if local.crt valid >=30 days AND covers 5 explicit hosts AND no *.localhost wildcard.
+	@# Idempotency: skip if local.crt valid >=30 days AND covers the canonical
+	@# 10-host list AND no *.localhost wildcard. WR-02 review fix: the host
+	@# list now matches `tools/bootstrap.sh` byte-for-byte (10 hosts incl.
+	@# `auth.localhost`, `minio-console.localhost`, `api.example.test`,
+	@# `auth.example.test`, plain `localhost`); the idempotency predicate
+	@# checks 3 representative hosts spanning both .localhost and
+	@# .example.test suffixes so a SAN downgrade between this Makefile and
+	@# bootstrap.sh is detectable on re-run.
 	@if openssl x509 -checkend $$((86400*30)) -noout -in compose/traefik/certs/local.crt >/dev/null 2>&1 \
 	   && openssl x509 -in compose/traefik/certs/local.crt -noout -text | grep -q 'DNS:api.localhost' \
+	   && openssl x509 -in compose/traefik/certs/local.crt -noout -text | grep -q 'DNS:auth.localhost' \
+	   && openssl x509 -in compose/traefik/certs/local.crt -noout -text | grep -q 'DNS:api.example.test' \
 	   && ! openssl x509 -in compose/traefik/certs/local.crt -noout -text | grep -q 'DNS:\*\.localhost'; then \
-	  echo "tls-trust: cert valid + explicit host list — skip"; \
+	  echo "tls-trust: cert valid + canonical 10-host list — skip"; \
 	else \
 	  mkcert -cert-file compose/traefik/certs/local.crt \
 	         -key-file  compose/traefik/certs/local.key \
-	    api.localhost web.localhost app.localhost \
-	    grafana.localhost mailpit.localhost; \
+	    localhost \
+	    api.localhost web.localhost app.localhost auth.localhost \
+	    grafana.localhost minio-console.localhost mailpit.localhost \
+	    api.example.test auth.example.test \
+	    127.0.0.1 ::1; \
 	  cp "$$(mkcert -CAROOT)/rootCA.pem" compose/traefik/certs/root-ca.crt; \
 	  chmod 644 compose/traefik/certs/local.crt compose/traefik/certs/root-ca.crt; \
 	  chmod 600 compose/traefik/certs/local.key; \
