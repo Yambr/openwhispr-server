@@ -27,6 +27,11 @@ export const buildDeepgramTokenRoutes = () =>
       method: "POST",
       url: "/api/deepgram-streaming-token",
       config: {
+        // Phase 18.1 / Plan 02 (V2-SEC-01) — authed-only route; skip
+        // IP-tier hook on anon traffic to avoid `owrl:ip:*` pre-auth
+        // bucket creation. See rate-limit.ts onRequest hook + 18.1-02
+        // (D-06..D-08).
+        authRequired: true,
         rateLimit: {
           max: 30,
           timeWindow: "1 minute",

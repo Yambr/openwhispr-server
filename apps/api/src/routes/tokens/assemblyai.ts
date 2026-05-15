@@ -23,6 +23,11 @@
 //   * T-04-04 (cross-user rate-limit bypass): keyGenerator reads
 //     req.user.id (populated by dualAuthHook BEFORE rate-limit fires);
 //     unauthenticated requests 401 before the bucket is consumed.
+//     Phase 18.1 V2-SEC-01 hardening: the route also carries
+//     `config.authRequired: true` so the IP-tier `onRequest` hook in
+//     rate-limit.ts early-returns on anonymous traffic, preventing
+//     `owrl:ip:*` bucket creation on pre-auth 401s (anonymous DoS
+//     vector closure — paired with T3 in rate-limit-isolation.integration).
 //
 // Factory pattern matches Phase 2 conventions (see e.g. transcribe.ts):
 // the build* function takes its deps and returns a Fastify plugin so
@@ -41,6 +46,13 @@ export const buildAssemblyAITokenRoutes = () =>
       method: "POST",
       url: "/api/streaming-token",
       config: {
+        // Phase 18.1 / Plan 02 (V2-SEC-01) — `authRequired: true` opts
+        // this authed-only route out of the IP-tier `onRequest` hook in
+        // rate-limit.ts so anonymous traffic 401s without populating
+        // `owrl:ip:*` buckets. dualAuthHook still gates the request; this
+        // tag does NOT replace auth, it only narrows the IP-tier carve-
+        // out per the layered model (D-06..D-08).
+        authRequired: true,
         rateLimit: {
           max: 30,
           timeWindow: "1 minute",
