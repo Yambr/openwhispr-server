@@ -74,7 +74,7 @@ CREATE TABLE "audit_log" (
 		'security.ssrf_blocked'
 	)),
 	CONSTRAINT "audit_log_tenant_id_tenants_id_fk"
-		FOREIGN KEY ("tenant_id") REFERENCES "public"."tenants"("id")
+		FOREIGN KEY ("tenant_id") REFERENCES "tenants"("id")
 		ON DELETE no action ON UPDATE no action
 ) PARTITION BY RANGE ("created_at");
 --> statement-breakpoint
