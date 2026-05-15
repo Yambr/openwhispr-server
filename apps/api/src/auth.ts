@@ -297,6 +297,57 @@ export function buildAuth(opts: BuildAuthOptions): AuthInstance {
       // The duplicate-email opt-out therefore lives one layer above as a
       // Fastify preHandler — see apps/api/src/routes/better-auth-handler.ts
       // (the `OPENWHISPR_DISABLE_EMAIL_ENUMERATION_PROTECTION` env-gate).
+
+      // Phase 19.1 / Plan 01 — reset-password mail dispatch BELONGS under
+      // `emailAndPassword.sendResetPassword`. Better Auth 1.6.9's
+      // `api/routes/password.mjs:42` reads
+      // `ctx.context.options.emailAndPassword?.sendResetPassword` (and
+      // throws `RESET_PASSWORD_DISABLED` if absent). This is the inverse
+      // of `sendVerificationEmail` which lives under the top-level
+      // `emailVerification` key — D-01 vendored-source proof at
+      // node_modules/.pnpm/better-auth@1.6.9_*/node_modules/better-auth/
+      // dist/api/routes/password.mjs.
+      //
+      // D-02: variables payload `{ name, reset_url, url, expires_minutes:
+      //       60 }`. Literal 60 matches BA default
+      //       `resetPasswordTokenExpiresIn = 3600s` (password.mjs:64).
+      // D-03: defensive alias — emit BOTH `reset_url` (the worker
+      //       template's `{reset_url}` placeholder) AND `url` so a future
+      //       template edit using `{url}` does not silently send a string
+      //       of literal placeholders. Mirrors the `verification_url` +
+      //       `url` precedent in the verification hook above.
+      sendResetPassword: async ({
+        user,
+        url,
+      }: {
+        user: { id?: string; email: string; name?: string; locale?: string; tenantId?: string };
+        url: string;
+        token: string;
+      }) => {
+        if (opts.enqueueEmail) {
+          const locale: "en" | "ru" = user.locale === "ru" ? "ru" : "en";
+          await opts.enqueueEmail({
+            tenant_id: user.tenantId ?? "00000000-0000-0000-0000-000000000000",
+            to: user.email,
+            template_id: "password_reset",
+            locale,
+            variables: {
+              name: user.name ?? user.email,
+              reset_url: url,
+              url,
+              expires_minutes: 60,
+            },
+            request_id: crypto.randomUUID(),
+          });
+          return;
+        }
+        await email.send({
+          to: user.email,
+          subject: "Reset your OpenWhispr password",
+          text: `Click to reset: ${url}`,
+          html: `<p>Click to reset: <a href="${url}">${url}</a></p>`,
+        });
+      },
     },
     // Phase 13 / Plan 01 — verification-mail dispatch BELONGS under the
     // top-level `emailVerification` key. Better Auth 1.6.9's
