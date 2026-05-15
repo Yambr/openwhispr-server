@@ -79,11 +79,15 @@ describe("withSystemContext (D-W2)", () => {
   });
 
   it("does NOT execute SELECT set_config('app.tenant_id', ...) — verified by source contract", async () => {
+    // red-baseline: 2026-05-15 (Phase 18.1 F2) — see commit body for failure output
     // The HOF source is deterministic; we assert no GUC is bound by reading
     // its source and confirming the absence of set_config('app.tenant_id'...).
     const src = await import("node:fs").then((fs) =>
       fs.promises.readFile(new URL("./with-system-context.ts", import.meta.url), "utf8"),
     );
+    // POSITIVE — prove the file was actually loaded (no silent empty-string pass).
+    expect(src).toMatch(/withSystemContext/);
+    // NEGATIVE — the prod invariant (T-04): never bind app.tenant_id GUC.
     expect(src).not.toMatch(/set_config\('app\.tenant_id'/);
   });
 
