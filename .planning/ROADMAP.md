@@ -893,6 +893,24 @@ Plans:
   - [x] 18.1.2-06-PLAN.md — ROADMAP + STATE sync + v2.1 milestone CLOSED declaration ✅ 2026-05-15
 **Open question (resolved)**: Docker availability is a **soft gate** via `tools/testcontainer-availability.ts` probe — sets `OPENWHISPR_SKIP_TESTCONTAINERS=1` env so integration tests `describe.skip` cleanly. Documented in `docs/operations.md` (D-13). Hard gate via CI config (D-11/12) requires Docker daemon up on the test job.
 
+### Phase 19: Server-error closure (production-fix phase)
+**Goal**: Resolve production-side defects accumulated in `.planning/phases/08-client-server-audit/SERVER-ERRORS.md` Entries 1-5 (surfaced by Phases 18.1.2 + earlier under CLAUDE.md Hard Rule #1 "never edit prod from test-debt phases"). This is THE explicit production-fix phase — every entry has user-approved scope.
+**Depends on**: Phase 18.1.2 (SERVER-ERRORS.md ledger initialized). CLAUDE.md Hard Rule #1 carries: each entry was deferred from a test-debt phase; this phase reads the ledger + executes the suggested production fixes.
+**Requirements** (one per SERVER-ERRORS.md Entry):
+  - SR-19.1: Migration SQL schema-aware refactor — Entry 1 (production migration `public.tenants` FK refs blocking test isolation). Decision: Option (i) strip `"public".` prefixes OR Option (ii) `OPENWHISPR_DB_SCHEMA` env knob. Advisor recommends in discuss-phase.
+  - SR-19.2: Fastify FastifyRequest types — Entry 2 (`apps/api/src/types/fastify.d.ts` with `declare module 'fastify'` for `user` + `tenant` decorators). Closes Phase 14-04 typecheck-deferral root cause.
+  - SR-19.3: BYOK guard refactor `process.exit(1)` → `throw BYOKGuardError` — Entry 4. Export `BYOKGuardError` class. Update `apps/api/src/index.ts:54-56` + `apps/worker/src/index.ts:7-9` callers to catch+log+exit. Library throws; entrypoint exits.
+  - SR-19.4: otel-bootstrap export `onSignal` — Entry 5 (single-character `export` keyword). Allows test to invoke directly without SIGTERM-emit cascade.
+  - SR-19.5: docs/operations.md "Local development test prerequisites" — Entry 3 follow-up. Document `openwhispr/postgres:17.5-pgpartman` image + `make build-pg-partman` (if target) or `docker pull` registry path.
+**Success Criteria**:
+  1. SERVER-ERRORS.md Entries 1-5 transition `Owner: unassigned` → `Owner: Phase 19 (commit <SHA>)` + linked atomic commits.
+  2. `pnpm typecheck` exit 0 (closes Phase 14-04 deferral via SR-19.2 + SR-19.3).
+  3. `pnpm test` aggregate: 0 failed (from 8 residual after Phase 18.1.2 — these are the entries we close).
+  4. Phase 18.1.2 test-side workarounds removed where production fix supersedes (BYOK test mocks reverted to real assertion; otel test reverted to direct invoke; locale-coverage already real).
+  5. Phase 14-04 typecheck deferred-items entry updated to CLOSED.
+**Plans**: 3-5 plans (TBC at /gsd-discuss-phase 19).
+**Open question**: SR-19.1 production migration strategy — Option (i) strip `public.` prefixes from 18 migrations + re-stamp `_journal.json` hashes OR Option (ii) introduce `OPENWHISPR_DB_SCHEMA` env knob. Multi-tenant + RLS implications differ. Advisor decides.
+
 ## Progress Table
 
 | Phase | Plans Complete | Status | Completed |
