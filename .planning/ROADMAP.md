@@ -827,14 +827,33 @@ Plans:
   8. ROADMAP.md "Progress Table" (lines 819-838) reflects the actual v2 state: Phase 13/15/16/17/18 marked closed with completion dates; Phase 18.1 added to table.
   9. Pre-existing typecheck failures cataloged in `.planning/deferred-items.md` §14-04 are EITHER fixed in this phase OR re-confirmed deferred-with-justification (no silent rot).
 **Plans** (estimate): 3-5 plans
-  - [ ] 18.1-01-PLAN.md — Path-fix the 3 ENOENT source-contract tests + lint exemption/rule update
-  - [ ] 18.1-02-PLAN.md — Fix diarization status mapping (failed + cancelled → 502 with jobId)
-  - [ ] 18.1-03-PLAN.md — Fix rate-limit ordering: 401 BEFORE bucket increment for anonymous traffic (security)
-  - [ ] 18.1-04-PLAN.md — Fix AccountClient duplicate "Active sessions" copy + update test
-  - [ ] 18.1-05-PLAN.md — Retire 4 stale `@expected-red` tags (verify behavior, flip or remove)
-  - [ ] 18.1-06-PLAN.md — Backfill Phase 12 + Phase 14 REVIEW/SECURITY artefacts + sync ROADMAP progress table
+  - [x] 18.1-01-PLAN.md — Path-fix the 3 ENOENT source-contract tests (6 commits TDD pair; 14/14 GREEN per-workspace) ✅ 2026-05-15
+  - [x] 18.1-02-PLAN.md — Rate-limit security fix: authRequired skip-tag closes anon DoS bucket vector (2 commits; T3 GREEN + 49/49 sweep) ✅ 2026-05-15
+  - [x] 18.1-03-PLAN.md — Diarization status mapping (failed + cancelled → 502 with jobId) (2 commits; 46/46 GREEN) ✅ 2026-05-15
+  - [x] 18.1-04-PLAN.md — AccountClient duplicate "Active sessions" copy (2 commits; 7/7 GREEN; h2 preserved per axe baseline) ✅ 2026-05-15
+  - [x] 18.1-05-PLAN.md — REPOINT 4 stale `@expected-red` tags → 19.1/19.2/19.3/19.4 + lint-cjm-doc regex extension + §14-04 typecheck re-confirm (drift 7→1) (1 atomic commit) ✅ 2026-05-15
+  - [x] 18.1-06-PLAN.md — Backfill 5 audit artefacts (12-REVIEW + 12-SECURITY + 14-REVIEW + 14-SECURITY + 15-SECURITY); fresh adversarial agents; ZERO new HIGH (0/7/16/4 H/M/L/I) ✅ 2026-05-15
+  - [x] 18.1-07-PLAN.md — ROADMAP+STATE.md sync + v2 milestone CLOSED-WITH-FOLLOWUP declaration ✅ 2026-05-15
 **UI hint**: minor (AccountClient component copy fix)
 **Note**: FSL force-push history scrub (Phase 15-04) + first real GHA `make e2e-cjm` run are OPERATOR-side and excluded from this phase. UICONF-05 axe baseline also operator-side.
+
+### Phase 18.1.1: newly-surfaced test debt (INSERTED 2026-05-15)
+**Goal**: Close the 14 pre-existing test failures revealed by Phase 18.1-07's aggregate `pnpm test` smoke that were NOT in the V2-MILESTONE-REVIEW inventory. These represent infrastructure/wiring gaps masked by per-workspace filter invocations in previous sweeps.
+**Depends on**: Phase 18.1 (test-debt closure must close V2-REVIEW inventory first to isolate signal).
+**Requirements**: Empirically derived from `pnpm test` aggregate run on commit `85e7308`:
+  - SR-1: Missing `__fixtures__/*.sse` files — `apps/api/tests/unit/lib/sse-parser.test.ts` (5 cases)
+  - SR-2: Missing `@openwhispr/wire-schemas` workspace package — `packages/contract-tests/tests/unit/*.test.ts` (5 files)
+  - SR-3: ESBuild `await` parse errors — multiple integration tests
+  - SR-4: Postgres role permissions drift (CREATEROLE on `openwhispr_app`) — `@openwhispr/data` migrate tests
+  - SR-5: `otel-bootstrap` first-line invariant — `apps/api/tests/unit/otel-bootstrap.test.ts` (2 cases, Phase 14 supersede deferred)
+  - SR-6: `lint-rls.test.ts` — `tools/`
+  - SR-7: Integration test suites timing out / not isolated under aggregate run (30+ test files)
+**Success Criteria** (what must be TRUE):
+  1. `pnpm test` exits 0 across all 296 test files / 2675 tests; no `--no-verify` anywhere.
+  2. Per-category root-cause hypothesis EITHER fixed OR documented as testcontainer-availability gate (e.g., Docker MUST be running, real Postgres testcontainer required, etc.) in `docs/operations.md`.
+  3. `tests/e2e-cjm` GHA workflow first-run executed successfully OR documented as operator-deferred.
+**Plans**: 5-7 plans (TBC at /gsd-discuss-phase 18.1.1)
+**Open question**: Are these debt or constitutional regressions? Some failures predate Phase 14 (per CHECKPOINT analysis) — verifier must categorize via `git log --oneline -- <failing-test>` per file.
 
 ## Progress Table
 
@@ -852,14 +871,16 @@ Plans:
 | 9. Helm Chart & Cloud Deploy | 11/11 | Complete | 2026-05-13 |
 | 10. i18n + Docs + OSS Housekeeping | 7/5 | Complete   | 2026-05-13 |
 | 11. Cloud Profile Refactor | 1/5 | In progress | - |
-| **— v2 milestone (opened 2026-05-14) —** | | | |
-| 13. E2E + CJM Harness | 0/0 | Not started | - |
-| 12. Admin Onboarding + UI-SPEC Conformance | 6/6 | Complete   | 2026-05-14 |
-| 14. Slim Core + BYOK Profiles | 7/7 | Complete   | 2026-05-14 |
-| 15. Repo Refactor + FSL + History Scrub | 2/4 | In Progress|  |
-| 16. Phase-Tag Comment Audit | 0/0 | Not started | - |
-| 17. Trusted Local TLS + Production ACME | 0/0 | Not started | - |
-| 18. LDAP / Keycloak SSO (SPEC only) | 0/0 | Not started | - |
+| **— v2 milestone (CLOSED-WITH-FOLLOWUP 2026-05-15) —** | | | |
+| 13. E2E + CJM Harness | 2/2 | Complete | 2026-05-14 |
+| 12. Admin Onboarding + UI-SPEC Conformance | 6/6 | Complete | 2026-05-14 |
+| 14. Slim Core + BYOK Profiles | 7/7 | Complete | 2026-05-14 |
+| 15. Repo Refactor + FSL + History Scrub | 3/4 | Complete-with-operator-followup | 2026-05-15 |
+| 16. Phase-Tag Comment Audit | 2/2 | Complete | 2026-05-15 |
+| 17. Trusted Local TLS + Production ACME | 3/3 | Complete | 2026-05-15 |
+| 18. LDAP / Keycloak SSO (SPEC only) | 1/1 | Complete-spec-only | 2026-05-15 |
+| 18.1. v2 test-debt closure | 7/7 | Complete-with-followup | 2026-05-15 |
+| 18.1.1. newly-surfaced test debt | 0/0 | Not started | - |
 
 ## Coverage Map
 
