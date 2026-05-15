@@ -1,0 +1,119 @@
+# SPDX-License-Identifier: FSL-1.1-ALv2
+# Phase 17 / Plan 03 (TLS-02-prod / TLS-03) — helm-unittest matrix for the
+# NEW templates/issuer.yaml (Cluster)Issuer body. Covers the 5-row matrix
+# called out in 17-PATTERNS analog §8 lines 363-367:
+#   1. renderIssuer=false (default) → zero docs
+#   2. renderIssuer=true + ClusterIssuer (default) → 1 ClusterIssuer doc
+#   3. issuerKind=Issuer → namespaced Issuer with .metadata.namespace
+#   4. renderIssuer=true + empty acmeEmail → render fails (required-message)
+#   5. acmeStaging=true → server URL is acme-staging-v02
+suite: cert-manager Issuer render matrix (Phase 17 / Plan 03)
+release:
+  name: ow
+  namespace: default
+tests:
+  - it: certManager.renderIssuer=false (default) — issuer.yaml renders zero docs
+    template: issuer.yaml
+    set:
+      secrets:
+        mode: eso
+        external:
+          storeRef: vault-clusterstore
+      tls:
+        enabled: true
+      certManager:
+        enabled: true
+    asserts:
+      - hasDocuments:
+          count: 0
+
+  - it: tls.enabled=true + certManager.enabled=true + renderIssuer=true — issuer.yaml renders 1 ClusterIssuer
+    template: issuer.yaml
+    set:
+      secrets:
+        mode: eso
+        external:
+          storeRef: vault-clusterstore
+      tls:
+        enabled: true
+      certManager:
+        enabled: true
+        renderIssuer: true
+        acmeEmail: ops@example.com
+    asserts:
+      - hasDocuments:
+          count: 1
+      - isKind:
+          of: ClusterIssuer
+      - equal:
+          path: metadata.name
+          value: letsencrypt-prod
+      - notExists:
+          path: metadata.namespace
+      - equal:
+          path: spec.acme.email
+          value: ops@example.com
+      - equal:
+          path: spec.acme.server
+          value: https://acme-v02.api.letsencrypt.org/directory
+
+  - it: certManager.issuerKind=Issuer — issuer.yaml renders namespaced Issuer with .metadata.namespace
+    template: issuer.yaml
+    set:
+      secrets:
+        mode: eso
+        external:
+          storeRef: vault-clusterstore
+      tls:
+        enabled: true
+      certManager:
+        enabled: true
+        renderIssuer: true
+        issuerKind: Issuer
+        acmeEmail: ops@example.com
+    asserts:
+      - hasDocuments:
+          count: 1
+      - isKind:
+          of: Issuer
+      - equal:
+          path: metadata.namespace
+          value: default
+
+  - it: certManager.renderIssuer=true + empty acmeEmail — render fails with required message
+    template: issuer.yaml
+    set:
+      secrets:
+        mode: eso
+        external:
+          storeRef: vault-clusterstore
+      tls:
+        enabled: true
+      certManager:
+        enabled: true
+        renderIssuer: true
+        acmeEmail: ""
+    asserts:
+      - failedTemplate:
+          errorMessage: "certManager.acmeEmail required when renderIssuer=true"
+
+  - it: certManager.acmeStaging=true — server URL is acme-staging-v02
+    template: issuer.yaml
+    set:
+      secrets:
+        mode: eso
+        external:
+          storeRef: vault-clusterstore
+      tls:
+        enabled: true
+      certManager:
+        enabled: true
+        renderIssuer: true
+        acmeStaging: true
+        acmeEmail: ops@example.com
+    asserts:
+      - hasDocuments:
+          count: 1
+      - equal:
+          path: spec.acme.server
+          value: https://acme-staging-v02.api.letsencrypt.org/directory

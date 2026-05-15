@@ -191,3 +191,25 @@ tests:
     asserts:
       - hasDocuments:
           count: 0
+
+  # Phase 17 / Plan 03 — round-trip the templated issuerRef.kind from
+  # `.Values.certManager.issuerKind` through certificate-api.yaml so a
+  # future hardcoding regression is caught here.
+  - it: certManager.issuerKind=Issuer — certificate-api.yaml issuerRef.kind = Issuer
+    template: certificate-api.yaml
+    set:
+      secrets:
+        mode: eso
+        external:
+          storeRef: vault-clusterstore
+      tls:
+        enabled: true
+      certManager:
+        enabled: true
+        issuerKind: Issuer
+    asserts:
+      - hasDocuments:
+          count: 1
+      - equal:
+          path: spec.issuerRef.kind
+          value: Issuer

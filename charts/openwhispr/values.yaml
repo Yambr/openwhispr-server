@@ -354,6 +354,28 @@ tls:
 certManager:
   enabled: true
   clusterIssuer: letsencrypt-prod
+  # Phase 17 / Plan 03 (TLS-02-prod / TLS-03) — opt-in bundled cert-manager
+  # sub-chart. Default OFF for brownfield safety; flip true to vendor the
+  # jetstack/cert-manager 1.16.4 sub-chart inside this release.
+  bundled: false
+  # Phase 17 — ClusterIssuer (default; matches existing chart behaviour) or
+  # Issuer (namespaced). Drives both `templates/issuer.yaml` body kind and
+  # the `issuerRef.kind` in `templates/certificate-{api,web}.yaml`.
+  issuerKind: ClusterIssuer
+  # Phase 17 — render an (Cluster)Issuer body from this chart. Default off;
+  # most operators apply their issuer externally (see
+  # `examples/cert-manager-clusterissuer-letsencrypt.yaml`). Flip true to
+  # have the chart materialize the Issuer alongside the Certificate CRs.
+  renderIssuer: false
+  # Phase 17 — REQUIRED (render-time `required`) when renderIssuer=true.
+  # ACME identity per RFC 8555 §7.3 (account contact email).
+  acmeEmail: ""
+  # Phase 17 — flip to true to use the Let's Encrypt staging endpoint
+  # (no rate limits, untrusted root — for CI / integration tests).
+  acmeStaging: false
+  # Phase 17 — passthrough to the bundled cert-manager sub-chart's own
+  # `installCRDs` value. Only meaningful when `bundled: true`.
+  installCRDs: true
 
 ingress:
   # className field is informational only — Traefik IngressRoute CRs
