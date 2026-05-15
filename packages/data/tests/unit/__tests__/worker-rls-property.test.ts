@@ -53,7 +53,7 @@ import { provisionPgPartman } from "../../../src/__tests__/helpers.js";
 import * as schema from "../../../src/schema/index.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const MIGRATIONS_FOLDER = resolve(__dirname, "..", "..", "migrations");
+const MIGRATIONS_FOLDER = resolve(__dirname, "..", "..", "..", "migrations");
 
 function migrationsReady(): boolean {
   if (!existsSync(MIGRATIONS_FOLDER)) return false;

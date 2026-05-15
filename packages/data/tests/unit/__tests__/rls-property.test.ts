@@ -49,7 +49,7 @@ import { TENANT_SCOPED_TABLES } from "../../../src/schema/index.js";
 import { withTenant } from "../../../src/tenant-context.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const MIGRATIONS_FOLDER = resolve(__dirname, "..", "..", "migrations");
+const MIGRATIONS_FOLDER = resolve(__dirname, "..", "..", "..", "migrations");
 
 /**
  * The migrations file is produced by Plan 03; if it isn't on disk

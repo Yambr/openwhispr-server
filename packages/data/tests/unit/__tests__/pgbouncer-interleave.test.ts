@@ -53,7 +53,7 @@ import * as schema from "../../../src/schema/index.js";
 import { withTenant } from "../../../src/tenant-context.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const MIGRATIONS_FOLDER = resolve(__dirname, "..", "..", "migrations");
+const MIGRATIONS_FOLDER = resolve(__dirname, "..", "..", "..", "migrations");
 
 /**
  * Plan 03 lands the actual `0000_*.sql` migration; Plan 04 ships in
