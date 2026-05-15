@@ -96,6 +96,11 @@ export const buildTranscribeRoutes = (deps: TranscribeDeps) =>
         let upstreamJson: UpstreamWhisperJson;
         try {
           const upstream = await deps.litellm.audioTranscriptions({
+            // Phase 19.2 / Plan 02 — SERVER-ERRORS Entry 11 closure:
+            // forward STT_MODEL so LiteLLM does not reject with
+            // `model=None`. STT_MODEL is the single source of truth
+            // (also echoed in the response.sttModel field below).
+            model: STT_MODEL,
             body: req.raw,
             contentType,
             userId: req.user.id,
