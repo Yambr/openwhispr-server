@@ -1,14 +1,10 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
-// Phase 13 / Plan 01 / Task 02 — vitest 4 setupFiles entry for apps/api.
+// Phase 18.1.1 / Plan 03 / Task D-08 — apps/api vitest 4 setupFiles entry.
 //
-// Installs SIGINT/SIGTERM handlers that prune leaked testcontainers when a
-// vitest run is interrupted (Ctrl-C, kill -TERM, IDE stop button). Without
-// this hook, testcontainers' Ryuk reaper does not fire on SIGINT and leaves
-// orphan postgres containers + 30 GB+ of dangling volumes
-// (`.planning/deferred-items.md §1`).
+// Re-exports the shared tools/testcontainer-reaper-setup helper that
+// installs SIGINT/SIGTERM testcontainer-reaper handlers (formerly inlined
+// here, now extracted for apps/worker + packages/data reuse).
 //
 // `installSignalHook()` is module-scoped idempotent; re-invocations from
 // other setup files are safe no-ops.
-import { installSignalHook } from "../../tools/global-vitest-teardown";
-
-installSignalHook();
+import "../../tools/testcontainer-reaper-setup";
