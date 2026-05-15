@@ -1,0 +1,9 @@
+# Phase 19b lint fixture — POST-FIX (good) state.
+services:
+  traefik:
+    volumes:
+      - ./compose/traefik/dynamic.yml:/etc/traefik/dynamic/dynamic.yml:ro
+      - ./compose/traefik/dynamic.dev.yml:/etc/traefik/dynamic/dynamic.dev.yml:ro
+    command:
+      - --providers.file.directory=/etc/traefik/dynamic
+      - --providers.file.watch=true

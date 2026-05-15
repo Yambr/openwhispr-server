@@ -1,0 +1,16 @@
+# Phase 19b lint fixture — PRE-FIX (bad) state, reproduces STRUCT-05 regression.
+services:
+  web:
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.web.rule=Host(`api.localhost`)"
+      - "traefik.http.routers.web.priority=1"
+      - "traefik.http.routers.web.entrypoints=websecure"
+      - "traefik.http.routers.web.tls=true"
+      - "traefik.http.routers.web.service=web-svc"
+      - "traefik.http.routers.web-admin.rule=Host(`api.localhost`) && PathPrefix(`/admin`)"
+      - "traefik.http.routers.web-admin.priority=100"
+      - "traefik.http.routers.web-admin.entrypoints=websecure"
+      - "traefik.http.routers.web-admin.tls=true"
+      - "traefik.http.routers.web-admin.service=web-svc"
+      - "traefik.http.services.web-svc.loadbalancer.server.port=3000"
