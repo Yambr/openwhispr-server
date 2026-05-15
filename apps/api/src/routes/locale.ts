@@ -69,7 +69,14 @@ export const buildLocaleRoutes = (_deps: LocaleDeps = {} as LocaleDeps) =>
     app.route({
       method: "GET",
       url: "/api/locale",
-      config: { rateLimit: { max: 60, timeWindow: "1 minute" } },
+      // Phase 19b / SR-19b.3 — opt out of the global dualAuthHook so this
+      // route is genuinely public (its doc comment has always claimed
+      // "Public — no auth guard, no DB access, no env reads"). The
+      // missing `auth: false` was a Phase 15 production bug that
+      // surfaced when @cjm-traefik-host-split was finally executable
+      // post-STRUCT-05 fix — every prior phase saw the scenario as
+      // @expected-red and the regression slipped through.
+      config: { auth: false, rateLimit: { max: 60, timeWindow: "1 minute" } },
       handler: async (req: FastifyRequest, reply: FastifyReply) => {
         const locale = resolveLocale(req);
         return reply

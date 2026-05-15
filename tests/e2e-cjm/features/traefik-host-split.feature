@@ -11,12 +11,12 @@
 
 Feature: Traefik host split (web.localhost vs api.localhost)
 
-  @cjm-traefik-host-split @after-docker-up @expected-red
+  @cjm-traefik-host-split @after-docker-up
   Scenario: GET /api/locale on api.localhost returns localized JSON (not 404)
     When a GET to /api/locale on api.localhost is issued with Accept-Language "ru"
     Then the response is 200 with content-type application/json and a locale of "ru"
 
-  @cjm-traefik-host-split-web @after-docker-up @expected-red
+  @cjm-traefik-host-split-web @after-docker-up
   Scenario: GET / on web.localhost returns the web app shell (not routed to api:3000)
     When a GET to / on web.localhost is issued
     Then the response is 200 with content-type text/html and the body contains the web app shell marker
