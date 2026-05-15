@@ -807,10 +807,8 @@ Plans:
   3. Skeleton red Cucumber scenarios live in `tests/e2e-cjm/features/sso/` (tagged `@skip-pending-v3` and excluded from the default run); `compose/test/keycloak.yml` fixture stub committed; v3 plan can `make e2e-cjm SSO=1` and watch them fail meaningfully.
   4. ADR `docs/adrs/0012-ldap-via-keycloak.md` captures the option-(a)-vs-(b) decision after `/gsd-discuss-phase 18`; operator-demand survey documented (PITFALLS §14 prerequisite) — anonymised operator-conversation notes back the option chosen.
   5. Phase verifier reports PASSED — `gaps_found` does NOT trigger on the "no implementation" criterion because Phase 18 is explicitly SPEC-only in v2; the v2 milestone closes with Phase 18 as a `passed_spec_only` artefact.
-**Plans**: 3 plans
-  - [ ] 17-01-PLAN.md — Dev toolchain (`make tls-trust`, mkcert wiring, bootstrap.sh SAN de-wildcard, README quickstart)
-  - [ ] 17-02-PLAN.md — Isolation enforcement (lint-dockerfile-tls CLI, per-context `.dockerignore`, Phase 17 Gherkin feature, air-gap docs, PITFALLS §16→§13 ref-fix)
-  - [ ] 17-03-PLAN.md — Production ACME (Traefik resolver + dynamic.prod.yml + docker-compose.acme.yml overlay) and Helm cert-manager sub-chart (Chart.yaml dep + values extension + issuer.yaml + helm-unittest)
+**Plans**: 1 plan
+  - [ ] 18-01-PLAN.md — SPEC + ADR + red Gherkin + Keycloak fixture stub (4 atomic waves: ROADMAP cleanup, SPEC-ldap-keycloak.md, ADR-0012 + operator-demand survey, Gherkin scenarios + compose/test/keycloak.yml + customer-journeys.md rows)
 **UI hint**: no
 **Open question (deferred to `/gsd-discuss-phase 18`)**: option (a) Keycloak/Authentik vs option (b) direct LDAP. SSO-01 records the decision matrix; the final pick lands in ADR 0012 after discuss-phase.
 
