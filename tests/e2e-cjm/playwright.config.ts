@@ -29,9 +29,17 @@ import { defineBddConfig } from "playwright-bdd";
 // instead picked up by the `steps` glob. We include `support/**/*.ts` in the
 // steps pattern so the world (which calls `createBdd(test)` and binds the
 // Given/When/Then DSL) is loaded before any step file references it.
+// Phase 19a / SR-19a.4 — exclude `steps/__tests__/**` from the bdd
+// step-load glob. Those files are vitest unit tests for step-helper
+// modules (e.g. tls-cert-paths.test.ts from Phase 17 WR-01). They
+// import `describe`/`it` from vitest; playwright-bdd's loadStepsFromFile
+// executes them at boot and they throw `Cannot read properties of
+// undefined (reading 'config')` because vitest's runner is not present.
+// The compiled step modules themselves (e.g. tls-cert-paths.ts) ARE
+// scanned via the `steps/**/*.ts` glob.
 const testDir = defineBddConfig({
   features: "features/**/*.feature",
-  steps: ["support/world.ts", "steps/**/*.ts"],
+  steps: ["support/world.ts", "steps/**/*.ts", "!steps/**/__tests__/**"],
   outputDir: ".bdd-gen",
   verbose: true,
 });

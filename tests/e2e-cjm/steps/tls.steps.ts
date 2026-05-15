@@ -28,7 +28,11 @@ Given("the developer has run `make tls-trust` on this host", async () => {
   );
 });
 
-When("they curl https://api.localhost/healthz with the mkcert root CA", async () => {
+// Phase 19a / SR-19a.4 — escape `/` as `\/` per cucumber-expressions 18.x
+// (`/` is the alternative-separator; `://` parses as an empty alternative
+// and throws CucumberExpressionError at expression-compile time, breaking
+// every other feature spec via the shared step loader).
+When("they curl https:\\/\\/api.localhost\\/healthz with the mkcert root CA", async () => {
   throw new Error(
     "live https://api.localhost requires docker compose up; @after-docker-up — stays @expected-red until GHA stack-up",
   );
@@ -116,7 +120,7 @@ Then("no path contains mkcert", async ({ tenantId }) => {
   expect(s.tarListing).not.toMatch(/mkcert/i);
 });
 
-Then("no path matches compose/traefik/certs/", async ({ tenantId }) => {
+Then("no path matches compose\\/traefik\\/certs\\/", async ({ tenantId }) => {
   const s = stateFor(tenantId);
   expect(s.tarListing).not.toMatch(/compose\/traefik\/certs\//);
 });
@@ -196,7 +200,7 @@ Then("no path in the traefik image contains mkcert", async ({ tenantId }) => {
   expect(s.tarListing).not.toMatch(/mkcert/i);
 });
 
-Then("no path in the traefik image matches compose/traefik/certs/", async ({ tenantId }) => {
+Then("no path in the traefik image matches compose\\/traefik\\/certs\\/", async ({ tenantId }) => {
   const s = stateFor(tenantId);
   expect(s.tarListing).not.toMatch(/compose\/traefik\/certs\//);
 });
@@ -215,7 +219,7 @@ Given("the stack is up via docker compose with the acme overlay", async () => {
   throw new Error("requires live compose stack; @after-docker-up — stays @expected-red");
 });
 
-When("they curl https://api.example.com/healthz", async () => {
+When("they curl https:\\/\\/api.example.com\\/healthz", async () => {
   throw new Error("requires live ACME-issued cert; @after-docker-up — stays @expected-red");
 });
 
