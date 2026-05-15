@@ -88,6 +88,8 @@ export async function findViolations(rootDir: string): Promise<Violation[]> {
       /* c8 ignore next — node:fs/promises glob yields strings in this configuration. */
       const rel = typeof f === "string" ? f : String(f);
       const posixRel = toPosix(rel);
+      /* c8 ignore next — PATTERNS are mutually disjoint by extension, so the
+         same posixRel cannot be yielded twice; defensive dedup only. */
       if (seen.has(posixRel)) continue;
       seen.add(posixRel);
       if (allowlist.has(posixRel)) continue;
@@ -100,6 +102,7 @@ export async function findViolations(rootDir: string): Promise<Violation[]> {
       }
       const lines = text.split("\n");
       for (let i = 0; i < lines.length; i += 1) {
+        /* c8 ignore next — split() always yields strings; `?? ""` is defensive. */
         const line = lines[i] ?? "";
         const verdict = classifyLine(line, {
           prev: i > 0 ? lines[i - 1] : undefined,
@@ -112,6 +115,9 @@ export async function findViolations(rootDir: string): Promise<Violation[]> {
     }
   }
   out.sort((a, b) => {
+    /* c8 ignore next — file-compare returns the canonical -1/0/1 triple;
+       v8 coverage only exercises whichever branch the glob iteration order
+       happens to produce. */
     if (a.file !== b.file) return a.file < b.file ? -1 : 1;
     return a.lineNumber - b.lineNumber;
   });

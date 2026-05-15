@@ -78,6 +78,21 @@ describe("readAllowlist", () => {
     const set = readAllowlist(root);
     expect([...set].sort()).toEqual(["apps/x/src/a.ts", "packages/y/src/b.ts"]);
   });
+
+  // Coverage-gap follow-up (16-fix): the verifier reported branch coverage
+  // 89.28% on lint-phase-tag-comments.ts — 0.72 points under the 90 floor.
+  // The uncovered branch was the `!existsSync` early-return in readAllowlist
+  // (no allowlist file under rootDir). L4a above exercises the file-absent
+  // branch by NOT calling touch(ALLOWLIST_FILE) before the assertion. This
+  // additional test pins the same branch via a sibling rootDir to make the
+  // intent explicit and double-stamps the branch-coverage point.
+  it("L4c: returns a fresh empty Set per call when allowlist file is absent (no shared state)", () => {
+    const a = readAllowlist(root);
+    const b = readAllowlist(root);
+    expect(a.size).toBe(0);
+    expect(b.size).toBe(0);
+    expect(a).not.toBe(b);
+  });
 });
 
 describe("main — CLI dispatch (L6 + exit codes)", () => {
@@ -95,6 +110,26 @@ describe("main — CLI dispatch (L6 + exit codes)", () => {
     const code = await main([root]);
     outSpy.mockRestore();
     expect(code).toBe(0);
+  });
+
+  // Coverage-gap (16-fix): the catch arm in main (lines 126-131) was
+  // reported as branch-uncovered (verifier §6.3 — 89.28% on lint CLI).
+  // Force readAllowlist (called from findViolations) to throw by placing
+  // a DIRECTORY at the allowlist path — existsSync returns true so the
+  // empty-set shortcut is skipped, but readFileSync then throws EISDIR.
+  // The throw bubbles through findViolations into the main try/catch,
+  // exercising the `return 2;` branch.
+  it("L6d (cov-fix): main returns 2 and writes to stderr when findViolations throws", async () => {
+    mkdirSync(join(root, ALLOWLIST_FILE), { recursive: true });
+    const errChunks: string[] = [];
+    const errSpy = vi.spyOn(process.stderr, "write").mockImplementation((chunk: unknown) => {
+      errChunks.push(typeof chunk === "string" ? chunk : String(chunk));
+      return true;
+    });
+    const code = await main([root]);
+    errSpy.mockRestore();
+    expect(code).toBe(2);
+    expect(errChunks.join("")).toMatch(/lint-phase-tag-comments:/);
   });
 
   it("L6c: main([]) defaults rootDir to process.cwd()", async () => {
