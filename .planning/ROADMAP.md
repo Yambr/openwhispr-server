@@ -786,10 +786,10 @@ Plans:
 **Depends on**: Phase 15 (host split locks the canonical mkcert host list)
 **Requirements**: TLS-01, TLS-02, TLS-03, TLS-04, TLS-05, TLS-06
 **Success Criteria** (what must be TRUE):
-  1. `make tls-trust` wraps `mkcert -install` + cert generation for the explicit host list (`api.localhost`, `web.localhost`, `app.localhost`, `grafana.localhost`, `mailpit.localhost` — NOT a `*.localhost` wildcard, PITFALLS §16); the README quickstart documents `make tls-trust` as step 2 (right after `cp .env.example .env`); a fresh browser does not warn on first run.
+  1. `make tls-trust` wraps `mkcert -install` + cert generation for the explicit host list (`api.localhost`, `web.localhost`, `app.localhost`, `grafana.localhost`, `mailpit.localhost` — NOT a `*.localhost` wildcard, PITFALLS §13); the README quickstart documents `make tls-trust` as step 2 (right after `cp .env.example .env`); a fresh browser does not warn on first run.
   2. Traefik dev profile (`compose/traefik/dynamic.dev.yml`) serves mkcert certs from `compose/traefik/certs/`; production profile (`dynamic.prod.yml`) uses ACME; `--with-ingress` compose overlay auto-wires Let's Encrypt; cert-manager Helm sub-chart (`cert-manager 1.16+`) is gated by `ingress.enabled` on K8s and renders an `Issuer` template.
   3. Dev-cert isolation is enforced — `.dockerignore` excludes `**/rootCA*.pem`; production Dockerfile lint forbids mkcert paths; a Phase 13 Gherkin scenario asserts the production image contains no dev CA artefacts.
-  4. Air-gap install path documented for operators without internet access to download mkcert (binary mirroring + manual install steps in `docs/operations.md`); no ship-a-real-CA-root anti-pattern (PITFALLS §16 — CVE territory).
+  4. Air-gap install path documented for operators without internet access to download mkcert (binary mirroring + manual install steps in `docs/operations.md`); no ship-a-real-CA-root anti-pattern (PITFALLS §13 — CVE territory).
   5. Phase verifier reports PASSED with ≥ 90/90/90/90 coverage on diff; live e2e green; Phase 13 `@cjm-tls-trusted-localhost` scenario GREEN.
 **Plans**: 3 plans
   - [ ] 17-01-PLAN.md — Dev toolchain (`make tls-trust`, mkcert wiring, bootstrap.sh SAN de-wildcard, README quickstart)

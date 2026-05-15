@@ -41,6 +41,85 @@ bash 5.x natively — no action required there.
 The script also needs `openssl` (universal) and, for full backup support,
 the `age` binary on PATH (see "Backup and restore" below).
 
+## Air-gap mkcert installation
+
+Operators without internet access cannot pull mkcert from upstream
+automatically. The `make tls-trust` target (Phase 17 / Plan 17-01) fails
+loud with a platform install hint when mkcert is absent from `PATH`; this
+section documents the manual binary-mirror + checksum + trust-store
+install path for air-gapped environments. PITFALLS §13 applies — mkcert
+is the dev-only convenience layer; CI cert generation continues to use
+`tools/bootstrap.sh`'s openssl self-signed path.
+
+### 1. macOS binary mirror
+
+Upstream release index (mirror via your internal artifact registry):
+
+    https://github.com/FiloSottile/mkcert/releases/latest
+
+Choose the asset matching your CPU:
+
+- `mkcert-vX.Y.Z-darwin-amd64` — Intel Macs
+- `mkcert-vX.Y.Z-darwin-arm64` — Apple Silicon
+
+### 2. Linux binary mirror
+
+Same upstream; pick the matching Linux asset:
+
+- `mkcert-vX.Y.Z-linux-amd64`
+- `mkcert-vX.Y.Z-linux-arm64`
+
+### 3. Checksum verification
+
+Always verify against the upstream `*.sha256` companion file (or an
+operator-supplied checksum from your internal sign-off chain):
+
+    sha256sum -c mkcert-vX.Y.Z-linux-amd64.sha256
+
+Refuse the binary if the checksum does not match.
+
+### 4. PATH installation
+
+Linux:
+
+    chmod +x mkcert-vX.Y.Z-linux-amd64
+    sudo mv mkcert-vX.Y.Z-linux-amd64 /usr/local/bin/mkcert
+
+macOS:
+
+    chmod +x mkcert-vX.Y.Z-darwin-arm64
+    mv mkcert-vX.Y.Z-darwin-arm64 ~/.local/bin/mkcert
+    # or /usr/local/bin/mkcert if you prefer system-wide
+
+After install, `make tls-trust` from the repo root discovers the
+binary and continues normally.
+
+### 5. `mkcert -install` air-gap caveat
+
+Without internet, the `mkcert -install` step may still fail to write to
+the system trust store on some platforms (it shells out to platform tools
+that occasionally require network reachability for CRL checks). Manual
+fallbacks:
+
+- **macOS:**
+
+      security add-trusted-cert -d -r trustRoot \
+        -k /Library/Keychains/System.keychain \
+        "$(mkcert -CAROOT)/rootCA.pem"
+
+- **Linux (Debian/Ubuntu):**
+
+      sudo cp "$(mkcert -CAROOT)/rootCA.pem" \
+        /usr/local/share/ca-certificates/mkcert-rootCA.crt
+      sudo update-ca-certificates
+
+- **Firefox / NSS-based browsers:**
+  Firefox uses its own NSS store. On Linux, install `libnss3-tools` and
+  rerun `mkcert -install` so it can register the CA with NSS:
+
+      sudo apt install libnss3-tools
+      mkcert -install
+
 ## BYOK Environment Matrix
 
 The slim-core base ships without `minio`, `traefik`, `otel-collector`,

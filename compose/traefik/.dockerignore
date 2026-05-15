@@ -1,0 +1,8 @@
+# SPDX-License-Identifier: FSL-1.1-ALv2
+# TLS-05 / Phase 17 — per-context guard (root .dockerignore does NOT
+# cover this context; PITFALLS §13).
+certs/
+*.pem
+*.crt
+*.key
+*.srl
