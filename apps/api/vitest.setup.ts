@@ -7,4 +7,12 @@
 //
 // `installSignalHook()` is module-scoped idempotent; re-invocations from
 // other setup files are safe no-ops.
+
+// Phase 18.1.2 / Plan 02 / D-03 + pitfall §1 — opt-in to the testcontainers
+// `withReuse()` daemon-side label hash. MUST be set BEFORE any testcontainer
+// module loads (the setting is read once at @testcontainers/postgresql import
+// time). Test-only scope: setting it in package.json would leak into the
+// app runtime; here it lives only inside vitest workers.
+process.env.TESTCONTAINERS_REUSE_ENABLE = "true";
+
 import "../../tools/testcontainer-reaper-setup";
