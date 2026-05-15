@@ -70,6 +70,7 @@ describe("migration 0003_better_auth_tenant_defaults", () => {
     const u = await appPool.query<{ id: string }>(
       `INSERT INTO "users" ("email") VALUES ('bob-d03@test') RETURNING "id"`,
     );
+    // Phase 02.12 — bytea token_hash dropped; sessions.token is plain text.
     const r = await appPool.query<{ tenant_id: string }>(
       `INSERT INTO "sessions" ("user_id", "token", "expires_at")
          VALUES ($1, 'd03-test-bearer', now() + interval '1 hour')

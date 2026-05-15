@@ -3,3 +3,13 @@
 # Add a path here ONLY if its REMOVE-bucket comment is intentionally retained
 # (e.g., narrative anchor that the heuristic can't safely keep). Document
 # rationale in the commit body that adds the entry.
+
+# 16-fix (WR-01 follow-on): the WR-01 reorder (close-out check before
+# KEEP-keyword scan) exposed two pre-existing `// D-12.02-EX1 close-out: ...`
+# lines that open multi-line WHY blocks explaining the makeFakeDb→testcontainer
+# pivot rationale (CLAUDE.md no-mocks-of-internal-logic). The close-outs are
+# load-bearing WHY in this context, not history narrative. Retained via
+# allowlist until a deferred rewrite reframes the prose without the
+# `close-out:` token.
+apps/api/tests/unit/routes/__tests__/capabilities.test.ts
+apps/api/tests/unit/routes/__tests__/setup-state.test.ts

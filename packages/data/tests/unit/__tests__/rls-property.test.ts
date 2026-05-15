@@ -101,6 +101,7 @@ async function bootHarness(): Promise<Harness> {
   await superPool.query(`GRANT SET, ALTER SYSTEM ON PARAMETER "app.tenant_id" TO openwhispr_owner`);
   await superPool.query(`ALTER DATABASE openwhispr OWNER TO openwhispr_owner`);
   await superPool.query(`ALTER SCHEMA public OWNER TO openwhispr_owner`);
+  // Phase 6 / Plan 02 — provision pg_partman + GRANT chain.
   await provisionPgPartman(superPool);
   await superPool.end();
 

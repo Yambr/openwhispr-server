@@ -86,6 +86,7 @@ interface PoolHarness {
 async function bootPgWithPgBouncer(): Promise<PoolHarness> {
   const network = await new Network().start();
 
+  // Phase 6 / Plan 02 — migration 0014 requires pg_partman.
   const pg = await new PostgreSqlContainer("openwhispr/postgres:17.5-pgpartman")
     .withNetwork(network)
     .withNetworkAliases("postgres")

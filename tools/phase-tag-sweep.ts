@@ -82,14 +82,13 @@ export interface Neighbours {
 // line after trimming surrounding whitespace.
 const REMOVE_RULE_1_HEADER =
   /^\s*\/\/\s*Phase\s+\d+(?:\.\d+)*(\s*[/-]\s*Plan\s+\d+(?:-\d+)?)?[:\s\-—]*$/;
-// Extension of rule 1 — header form `// Phase NN[.M] [/ Plan NN-MM] [— body]`
-// where the post-em-dash body, if present, has no KEEP-keyword and no
-// KEEP-marker (those checks run BEFORE the REMOVE rules so they preempt
-// this match). Captures the dominant real-world pattern that CONTEXT Q1
-// scoped (754 header-style banners). Tightened to lines that DO start with
-// `// Phase NN` so non-header `//` lines can't be swept by accident.
-const REMOVE_RULE_1_HEADER_WITH_BODY =
-  /^\s*\/\/\s*Phase\s+\d+(?:\.\d+)*(\s*[/-]\s*Plan\s+\d+(?:-\d+)?)?(\s*[/-]\s*Task\s+\d+(?:-\d+)?)?(\s*\([^)]*\))?(\s*[/-]\s*D-[\w.-]+)?\s*[—–-]\s*.+$/;
+// CR-01: REMOVE_RULE_1_HEADER_WITH_BODY was removed in 16-fix because it
+// extended REMOVE-bucket coverage beyond PLAN 16-01 must_haves (sanctioned
+// exactly 4 REMOVE rules) and stripped 6+ comments carrying load-bearing
+// WHY content. CONTEXT Q2's REMOVE rule 1 is DELIBERATELY anchored to bare
+// headers — any prose body after the em-dash is reader-relevant WHY that
+// can't be derived from surrounding code, and the conservative-KEEP default
+// must apply.
 // Matches a comment-only line `  // D-19` with no body text after the ID.
 // Trailing `// D-NN` on a code line is NOT matched — filtering whole lines
 // would erase production code, which violates the "default-KEEP on
@@ -158,7 +157,6 @@ export function classifyLine(line: string, neighbours: Neighbours): "REMOVE" | "
   // REMOVE rules — apply in fixed order (mutually disjoint in practice).
   if (REMOVE_RULE_4_IMPL_NOTE.test(line)) return "REMOVE";
   if (REMOVE_RULE_1_HEADER.test(line)) return "REMOVE";
-  if (REMOVE_RULE_1_HEADER_WITH_BODY.test(line)) return "REMOVE";
   if (REMOVE_RULE_2_TRAILING_D.test(line)) return "REMOVE";
   // Default → KEEP (ambiguous → never auto-REMOVE).
   return "KEEP";
