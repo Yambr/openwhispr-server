@@ -1,0 +1,5 @@
+# Phase 16 transitional allowlist — entries ratchet down across 16-02 sweep commits.
+# Format: one POSIX path per line; blank lines and lines starting with `#` ignored.
+# Add a path here ONLY if its REMOVE-bucket comment is intentionally retained
+# (e.g., narrative anchor that the heuristic can't safely keep). Document
+# rationale in the commit body that adds the entry.
