@@ -1,0 +1,13 @@
+# Phase 19b lint fixture — POST-FIX (good) state.
+http:
+  routers:
+    web:
+      rule: "Host(`web.localhost`)"
+      service: web-svc
+      entryPoints: [web, websecure]
+      tls: {}
+  services:
+    web-svc:
+      loadBalancer:
+        servers:
+          - url: "http://web:3000"

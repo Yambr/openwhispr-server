@@ -1,0 +1,15 @@
+# Phase 19b lint fixture — PRE-FIX (bad) state.
+# Web router declared but file is not mounted in ingress overlay (V5).
+# Also points to wrong port (V3).
+http:
+  routers:
+    web:
+      rule: "Host(`web.localhost`)"
+      service: web-svc
+      entryPoints: [web, websecure]
+      tls: {}
+  services:
+    web-svc:
+      loadBalancer:
+        servers:
+          - url: "http://web:3001"

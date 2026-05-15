@@ -1,0 +1,8 @@
+# Phase 19b lint fixture — PRE-FIX (bad) state, single-file pin precludes
+# loading dynamic.dev.yml.
+services:
+  traefik:
+    volumes:
+      - ./compose/traefik/dynamic.yml:/etc/traefik/dynamic.yml:ro
+    command:
+      - --providers.file.filename=/etc/traefik/dynamic.yml

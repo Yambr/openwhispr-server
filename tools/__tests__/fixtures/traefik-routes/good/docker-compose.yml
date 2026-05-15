@@ -1,0 +1,12 @@
+# Phase 19b lint fixture — POST-FIX (good) state.
+# Web router lives in dynamic.dev.yml (file provider). Only web-admin
+# stays on docker labels (admin-basicauth env interpolation).
+services:
+  web:
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.web-admin.rule=Host(`web.localhost`) && PathPrefix(`/admin`)"
+      - "traefik.http.routers.web-admin.entrypoints=websecure"
+      - "traefik.http.routers.web-admin.tls=true"
+      - "traefik.http.routers.web-admin.service=web-svc"
+      - "traefik.http.services.web-svc.loadbalancer.server.port=3000"
