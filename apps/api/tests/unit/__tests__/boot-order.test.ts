@@ -1,14 +1,17 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 // Phase 14 / Plan 04 / Task 3 — Boot-order discipline test.
+// Phase 19 / Plan 02 (SR-19.3, D-09 + D-10) — updated to match the
+// try/catch wrapper introduced by the throw-not-exit refactor.
 //
 // Asserts the literal import + call order at the top of apps/api/src/index.ts
 // AND apps/worker/src/index.ts:
 //
-//   1. `import { assertBYOKConfig } from "@openwhispr/byok-guard";`
-//      MUST appear BEFORE `import "./otel-bootstrap.js";` and BEFORE
+//   1. `import { assertBYOKConfig, BYOKGuardError } from
+//      "@openwhispr/byok-guard";` MUST appear BEFORE
+//      `import "./otel-bootstrap.js";` and BEFORE
 //      `import { installGlobalSSRF } from "./bootstrap.js";`.
-//   2. `assertBYOKConfig();` MUST be called BEFORE
-//      `installGlobalSSRF();`.
+//   2. `assertBYOKConfig();` (inside the try/catch BYOKGuardError handler)
+//      MUST be called BEFORE `installGlobalSSRF();`.
 //
 // Rationale (CONTEXT.md decision 2 + RESEARCH §F):
 //   * The guard must fire BEFORE OTel SDK side-effects so a misconfigured
@@ -42,11 +45,15 @@ const WORKER_INDEX = path.join(REPO_ROOT, "apps/worker/src/index.ts");
 const API_PKG = path.join(REPO_ROOT, "apps/api/package.json");
 const WORKER_PKG = path.join(REPO_ROOT, "apps/worker/package.json");
 
+// Phase 19 / Plan 02: import now also names `BYOKGuardError` (the entrypoint
+// uses `err instanceof BYOKGuardError` in its catch handler).
 const IMPORT_LINE =
-  /^import\s+\{\s*assertBYOKConfig\s*\}\s+from\s+["']@openwhispr\/byok-guard["']\s*;?\s*$/m;
+  /^import\s+\{\s*assertBYOKConfig\s*,\s*BYOKGuardError\s*\}\s+from\s+["']@openwhispr\/byok-guard["']\s*;?\s*$/m;
 // Anchored to start-of-line so comments mentioning the symbol do not
-// match. (Multi-line flag so `^` means start-of-line.)
-const CALL_LINE = /^assertBYOKConfig\(\)\s*;?\s*$/m;
+// match. Phase 19 / Plan 02: the call lives inside a `try { ... }` block,
+// so the line is now indented (2 spaces). Multi-line flag so `^` means
+// start-of-line.
+const CALL_LINE = /^\s*assertBYOKConfig\(\)\s*;?\s*$/m;
 const OTEL_IMPORT_LINE = /^import\s+["']\.\/otel-bootstrap\.js["']\s*;?\s*$/m;
 const SSRF_IMPORT_LINE =
   /^import\s+\{\s*installGlobalSSRF\s*\}\s+from\s+["']\.\/bootstrap\.js["']\s*;?\s*$/m;

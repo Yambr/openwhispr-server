@@ -10,8 +10,12 @@
 // matrix from CONTEXT.md decision 2. For each row, if the required env
 // is unset (and NODE_ENV gate is satisfied for SMTP), the guard emits a
 // single Pino `fatal({event, code, overlay, missing, hint}, msg)` record
-// through `pino.final()` (truncation-safe wrapper) and calls
-// `process.exit(1)`. On a clean env it returns void.
+// through `pino.final()` (truncation-safe wrapper) and THROWS
+// `BYOKGuardError` (Phase 19 / Plan 02; SR-19.3; D-09). On a clean env
+// it returns void. The library NO LONGER calls `process.exit(1)`:
+// entrypoints (apps/api, apps/worker) catch BYOKGuardError, log with
+// their own pino, and exit. This restores process-boundary discipline
+// (SERVER-ERRORS Entry 4; PATTERNS surface 5).
 //
 // First-violation-only: if multiple overlays are misconfigured, the guard
 // fires ONCE on the FIRST matrix row in declaration order (storage →
@@ -19,15 +23,18 @@
 // fix one at a time; multi-fatal noise is anti-pattern.
 //
 // Loud-fail discipline:
-//   * `process.exit(1)` matches the api's only existing exit code
-//     (apps/api/src/index.ts:675 precedent). Do NOT use sysexits.h 78.
+//   * Phase 19 / Plan 02 (SR-19.3, D-09): the library THROWS
+//     `BYOKGuardError` after logging the fatal record. Entrypoints
+//     catch + log + `process.exit(1)`. The exit-code decision lives at
+//     the process boundary, not in the library.
 //   * Synchronous Pino destination (`pino.destination({ sync: true })`)
 //     avoids the truncation pitfall called out in Pino's fatal docs.
 //     Pino 9 removed the legacy `pino.final()` wrapper (deprecated since
 //     v6); the modern flush-before-exit guarantee is "construct the
 //     destination in sync mode" — every `logger.fatal()` write flushes
-//     synchronously before the next statement runs, so `process.exit(1)`
-//     immediately after fatal is safe. CONTEXT.md decision 2 names
+//     synchronously before the next statement runs, so the subsequent
+//     `throw` (and the entrypoint's eventual `process.exit(1)`) cannot
+//     truncate the fatal line. CONTEXT.md decision 2 names
 //     `pino.final()` by analogy; the operational invariant is identical.
 //   * MUST fire BEFORE installGlobalSSRF() and BEFORE the otel-bootstrap
 //     side-effect import, so a misconfigured OTLP endpoint doesn't
@@ -43,6 +50,22 @@
 
 import pino, { type Logger } from "pino";
 import { redactUrl } from "./redact-url.js";
+
+/**
+ * Phase 19 / Plan 02 (SR-19.3, D-09) — error thrown when an overlay's
+ * BYOK env contract is unsatisfied. The library logs the structured
+ * fatal record (via the boot pino) and THROWS this typed error;
+ * process-boundary callers (apps/api + apps/worker entrypoints) catch
+ * + log + `process.exit(1)`. Replaces the prior in-library
+ * `process.exit(1)` which violated process-boundary discipline
+ * (SERVER-ERRORS Entry 4, PATTERNS surface 5).
+ */
+export class BYOKGuardError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "BYOKGuardError";
+  }
+}
 
 /**
  * Construct a Pino logger backed by a synchronous destination on stderr
@@ -238,7 +261,12 @@ export function assertBYOKConfig(
     // Lazily construct the logger so happy-path boots allocate nothing.
     // Synchronous destination is the Pino-9 flush-before-exit guarantee.
     const logger = opts?.logger ?? createBootLogger();
-    logger.fatal(record, "BYOK env missing for disabled overlay; refusing to start");
-    process.exit(1);
+    const msg = "BYOK env missing for disabled overlay; refusing to start";
+    logger.fatal(record, msg);
+    // Phase 19 / Plan 02 (SR-19.3, D-09): throw instead of process.exit.
+    // Entrypoints (apps/api, apps/worker) catch BYOKGuardError, log via
+    // their own logger, and call process.exit(1). Library is now pure;
+    // exit-code decision lives at the process boundary.
+    throw new BYOKGuardError(msg);
   }
 }
