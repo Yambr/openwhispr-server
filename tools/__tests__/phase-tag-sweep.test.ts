@@ -109,18 +109,26 @@ describe("classifyLine — KEEP bucket (CONTEXT Q2)", () => {
 
 describe("auditDir + fixDir — codemod shape (S1-S3)", () => {
   it("S1: auditDir returns the REMOVE-violation list (paths + line numbers); KEEP lines absent", async () => {
+    // Note: trailing `// D-NN` suffixes on code lines are KEPT (deviation
+    // Rule 1 vs original plan fixture which would have erased production
+    // code under the whole-line filter — see SUMMARY). Bare comment-only
+    // `// D-NN` lines surrounded by code ARE classified REMOVE per CONTEXT
+    // Q2 rule 2; bare headers adjacent to other `//` lines are KEPT by
+    // KEEP rule 1 (multi-line context, conservative default).
     touch(
       "apps/api/src/a.ts",
       [
         "// Phase 14",
-        "export const x = 1; // D-19",
+        "export const x = 1;",
+        "// D-19",
+        "export const z = 3;",
         "// D-19 — availableProviders is COMPUTED FRESH to avoid stale cache",
         "export const y = 2;",
       ].join("\n"),
     );
     const violations = await auditDir(root);
     const rels = violations.map((v) => `${v.file}:${v.lineNumber}`).sort();
-    expect(rels).toEqual(["apps/api/src/a.ts:1", "apps/api/src/a.ts:2"]);
+    expect(rels).toEqual(["apps/api/src/a.ts:1", "apps/api/src/a.ts:3"]);
   });
 
   it("S2: fixDir deletes exactly the REMOVE lines and leaves KEEP + code intact", async () => {
