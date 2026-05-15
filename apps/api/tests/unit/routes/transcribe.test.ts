@@ -216,6 +216,11 @@ describe("POST /api/transcribe", () => {
     expect(calls).toHaveLength(1);
     expect(calls[0]?.userId).toBe(TEST_USER);
     expect(typeof calls[0]?.requestId).toBe("string");
+    // Phase 19.2 / Plan 02 — SERVER-ERRORS Entry 11 regression: route
+    // MUST forward STT_MODEL ("whisper-large-v3") into the litellm
+    // client call so the upstream URL carries `?model=...` and LiteLLM
+    // does not reject with `Invalid model name passed in model=None`.
+    expect(calls[0]?.model).toBe("whisper-large-v3");
     // Ledger row written with kind='transcribe_minutes', units=2, ON CONFLICT
     const insert = recorded.find((r) => /INSERT INTO usage_ledger/i.test(r.sql));
     expect(insert).toBeDefined();
