@@ -41,6 +41,60 @@ bash 5.x natively — no action required there.
 The script also needs `openssl` (universal) and, for full backup support,
 the `age` binary on PATH (see "Backup and restore" below).
 
+## Local development test prerequisites
+
+The api-package integration test suite (`apps/api/tests/unit/routes/**/*.integration.test.ts`)
+boots a real Postgres 17.5 + pg_partman testcontainer via the shared
+`getSharedRoutePool()` fixture (Phase 18.1.2 / Plan 05). To run the full
+test suite locally:
+
+1. **Docker daemon.** Docker Desktop, OrbStack, or `dockerd` on Linux must
+   be running and reachable. Verify with `docker version && docker info`
+   before launching tests; the testcontainers library otherwise hangs for
+   180 s before failing.
+
+2. **mkcert.** Run `make tls-trust` once per machine to install the local
+   mkcert root CA. Required for any test that talks to the compose stack
+   over HTTPS (e2e suite + Phase-6 e2e-quick). See "Air-gap mkcert
+   installation" below for offline operator instructions.
+
+3. **`openwhispr/postgres:17.5-pgpartman` image.** The shared-pg fixture
+   pins to this locally-built image (`compose/postgres/Dockerfile` —
+   Postgres 17.5 with pg_partman 5.2.4 in the `partman` schema; migration
+   0014 fails without it). Build or pull on first use:
+
+   ```sh
+   make build-pg-partman           # builds from compose/postgres/Dockerfile
+   # OR if the image is published to your internal registry:
+   docker pull <registry>/openwhispr/postgres:17.5-pgpartman
+   ```
+
+   The CI `test` job builds this image as part of `pnpm test`'s setup
+   step; developers must build it once and let the testcontainers reuse
+   daemon keep it warm thereafter.
+
+4. **pnpm workspace bootstrap.** Run `pnpm install --frozen-lockfile`
+   before the FIRST test run, and after every `pnpm-lock.yaml` change.
+   `pnpm test` will fail with module-resolution errors on a fresh clone
+   without this step.
+
+5. **Optional: disable Ryuk for stable local runs.** When iterating on
+   integration tests, set `TESTCONTAINERS_RYUK_DISABLED=true` in your
+   shell so the shared Postgres container survives between vitest
+   invocations. The container is labeled `org.testcontainers.reuse=true`
+   and `getSharedPostgres()` will reattach instead of booting a fresh
+   instance. Tear down manually with:
+
+   ```sh
+   docker ps -a --filter "label=org.testcontainers=true" --format '{{.ID}}' \
+     | xargs -r docker rm -f
+   docker volume prune -f
+   ```
+
+   The CI `test` job mirrors this discipline (see
+   `.github/workflows/ci.yml::test` — `TESTCONTAINERS_RYUK_DISABLED=true`
+   + `if: always()` sweep step) for parity between local and CI runs.
+
 ## Air-gap mkcert installation
 
 Operators without internet access cannot pull mkcert from upstream
