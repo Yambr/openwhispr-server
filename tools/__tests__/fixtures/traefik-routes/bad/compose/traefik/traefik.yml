@@ -1,0 +1,8 @@
+# Phase 19b lint fixture — PRE-FIX traefik.yml. file provider declared
+# but no directory; relies on overlay CLI flags (which used the broken
+# --providers.file.filename= pin).
+providers:
+  file:
+    watch: true
+  docker:
+    exposedByDefault: false

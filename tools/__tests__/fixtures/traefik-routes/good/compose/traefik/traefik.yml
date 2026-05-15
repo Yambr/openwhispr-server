@@ -1,0 +1,8 @@
+# Phase 19b lint fixture — POST-FIX traefik.yml. Directory mode in
+# static yaml, no CLI flag required.
+providers:
+  file:
+    directory: /etc/traefik/dynamic
+    watch: true
+  docker:
+    exposedByDefault: false

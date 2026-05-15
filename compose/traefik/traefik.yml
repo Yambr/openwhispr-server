@@ -106,18 +106,21 @@ entryPoints:
     address: ":8080"
 
 providers:
+  # Phase 19b / SR-19b.2 — file provider stanza is intentionally minimal
+  # (no static-yaml filename or directory). The actual provider mode is
+  # configured ENTIRELY via compose-overlay CLI flags (see
+  # compose/docker-compose.ingress.yml and compose/docker-compose.acme.yml:
+  # --providers.file.directory= + --providers.file.watch=). Without ANY
+  # `file:` stanza here, traefik 3 fails to register the file provider
+  # at all (no `Starting provider *file.Provider` log); WITH a partial
+  # `file: { watch: true }` stanza, traefik fails with
+  #   ERR Cannot start the provider *file.Provider error="error using
+  #   file configuration provider, neither filename nor directory is
+  #   defined"
+  # because the partial block shadows the CLI leaf-flag merge. An empty
+  # `file: {}` stanza lets the CLI flags supply all required leaves.
   file:
-    # Phase 17 / WR-03 review-fix (2026-05-15): the `filename` key used to
-    # live here, but the ACME overlay (compose/docker-compose.acme.yml)
-    # had to neutralise it via `--providers.file.filename=` (empty-string
-    # CLI flag) so it could switch to directory mode. That neutralisation
-    # depended on Traefik 3's flag parser treating empty as unset — an
-    # undocumented behaviour. The provider-mode choice (filename vs
-    # directory) is now expressed exclusively at the COMPOSE-OVERLAY
-    # LAYER: the base ingress overlay passes `--providers.file.filename=
-    # /etc/traefik/dynamic.yml` as a CLI arg; the ACME overlay omits that
-    # arg and instead passes `--providers.file.directory=
-    # /etc/traefik/dynamic`. No empty-string hack.
+    directory: /etc/traefik/dynamic
     watch: true
   # Phase 07.1 Plan 03 (WEB-IMPL-03 / D-DEPLOY-1) — docker provider added
   # alongside the file provider so the `web` compose service can declare
