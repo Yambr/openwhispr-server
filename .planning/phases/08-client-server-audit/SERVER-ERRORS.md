@@ -210,6 +210,48 @@ Estimated scope: ~1-2 line edit + unit test extension in `tools/__tests__/lint-c
 
 ---
 
+## Entry 10 — Traefik docker-label `web` router on `Host(api.localhost)` shadows file-provider `api` router (Phase 19b)
+
+**Surfacing phase:** Phase 19b / Plan 01 (sign-up/health/auth 404s through Traefik; @cjm-3.1 still red post-Entries 7+8+9).
+
+**Files:**
+- `docker-compose.yml:443-454` — docker-provider router `web` declared on `Host(api.localhost)` with `priority=1`; `web-admin` on `Host(api.localhost) && PathPrefix(/admin)`. Both target `web-svc` (Next.js).
+- `compose/docker-compose.embedded-litellm.yml:697-720` — DUPLICATE of the wrong-host labels (compose-merge layered them on top of any docker-compose.yml fix). Single-file audit would miss this; lint must scan both.
+- `compose/traefik/dynamic.dev.yml:36-39,49` — declares correct `web` router on `Host(web.localhost)` but file never mounted; URL inside also points to wrong port `:3001` (web actually listens on `:3000` per Dockerfile:110).
+- `compose/docker-compose.ingress.yml:57,73` — pre-fix: mounted only `dynamic.yml`; `--providers.file.filename=` pin precluded loading `dynamic.dev.yml`.
+- `compose/traefik/traefik.yml:108-121` — partial `providers.file: { watch: true }` stanza shadowed CLI leaf-flag merge (`Cannot start the provider *file.Provider error="error using file configuration provider, neither filename nor directory is defined"`).
+- `apps/api/src/routes/locale.ts:67-82` — companion production bug surfaced when @cjm-traefik-host-split became executable: route missing `config.auth: false`, so the global `dualAuthHook` (apps/api/src/index.ts:420) rejects unauthenticated `/api/locale` GETs with 401 despite the route doc claiming "Public".
+
+**Production symptom:** Every request to `api.localhost` outside `/api/*`, `/v1/realtime/*`, `/v1/audio/*` fell through to `web@docker` and was reverse-proxied to Next.js — which 404s with its catch-all not-found page. Sign-up (Better Auth's `/sign-up`), root liveness probes, admin console root all 404 with the wrong content-type. Tests within `/api/*` still passed because the file-provider's `api` rule wins by rule-length score there. Phase 15 STRUCT-05 truth #3 was satisfied as a file artifact but not as runtime config — the file existed on disk but was unreachable from Traefik's runtime.
+
+**Test workaround:** None at e2e tier — routing is below the test substrate. Lint-tier proof: `tools/lint-traefik-routes.ts` (new in Phase 19b) parses BOTH compose files plus dynamic.{yml,dev.yml} + the static traefik.yml, asserts the docker provider declares no `Host(api.localhost)` router targeting `web-svc` AND asserts the file provider is actually configured.
+
+**Suggested production fix (Path B — file-provider single source of truth, hybrid for admin auth):**
+1. `docker-compose.yml:443-454` + `compose/docker-compose.embedded-litellm.yml:697-720`: delete the `web` router labels; change `web-admin.rule` Host to `web.localhost`.
+2. `compose/traefik/dynamic.dev.yml:49`: `http://web:3001` → `http://web:3000`.
+3. `compose/docker-compose.ingress.yml`: mount BOTH dynamic configs to `/etc/traefik/dynamic/` (mirroring `compose/docker-compose.acme.yml:53-65`); replace `--providers.file.filename=` with reliance on static-yaml `providers.file.directory:`.
+4. `compose/traefik/traefik.yml:108-121`: declare `providers.file.directory: /etc/traefik/dynamic` directly to avoid Traefik 3 partial-stanza merge defects (empty `file: {}` and CLI leaf-flag merges both fail).
+5. `apps/api/src/routes/locale.ts`: add `config: { auth: false, … }` so the route opts out of `dualAuthHook` (Phase 15 latent companion bug).
+6. Verify: L1 lint → L2 curl trio (api.localhost/api/health 200, api.localhost/api/locale 200 JSON, web.localhost/ 200 HTML) → L3 `make e2e-cjm SCENARIO="@cjm-traefik-host-split"` + `@cjm-3.1`.
+
+Estimated scope landed: ~6 commits across ~10 files. Actual time: ~2h including smoke-debug.
+
+## Status: CLOSED 2026-05-16 (Phase 19b)
+
+**Closing commits:**
+- `b2ebf24` test(19b-01): red — lint-traefik-routes captures STRUCT-05 host-split regression
+- `62d87d7` fix(19b-02): route api.localhost to api-svc, declare web.localhost in file provider
+- `6a5d638` fix(19b-02b): close STRUCT-05 — eliminate duplicate web labels + fix file provider
+- `e82a390` fix(19b-03): unstick @cjm-traefik-host-split[+web] — real bindings + locale auth opt-out
+
+Verified end-to-end GREEN:
+- `pnpm exec vitest run tools/lint-traefik-routes.test.ts` → 3/3
+- `pnpm exec vitest run tests/e2e-cjm/steps/__tests__/locale.steps.test.ts` → 6/6
+- `E2E_CJM=1 SCENARIO="@cjm-3.1" make e2e-cjm` → 1 passed (1.2s) EXIT=0
+- `E2E_CJM=1 SCENARIO="@cjm-traefik-host-split" make e2e-cjm` → 2 passed (684ms) EXIT=0
+
+---
+
 ## Append-protocol
 
 Future entries follow same shape: surfacing phase + file:line + production symptom + test workaround + suggested fix + owner.
