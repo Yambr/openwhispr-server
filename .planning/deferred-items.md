@@ -2,6 +2,50 @@
 
 Items discovered during execution that are out of scope for the current plan.
 
+## From Plan 18.1.2-05 (Phase 18.1.2)
+
+### Aggregate `pnpm --filter @openwhispr/api test` — 33 pre-existing failing test files
+
+**Discovered:** 2026-05-15 during Plan 18.1.2-05 execution.
+
+**Symptom:** Running the full `pnpm --filter @openwhispr/api test` reports
+`Test Files 33 failed | 240 passed | 31 skipped (304)` with 4 failing tests
+total. The 33 failing FILES span:
+
+- 19 `tools/` lint-suite files (lint-cjm-doc, lint-colocated-tests,
+  lint-compose-chart-parity, lint-docs-headings, lint-english,
+  lint-migrations, lint-rls, lint-tdd, lint-tenant-context, lint-ui-spec,
+  lint-weak-assertions, migrate-tests, global-vitest-teardown,
+  lint-await-in-non-async, lint-dockerfile-tls, lint-phase-tag-comments,
+  phase-tag-sweep, readiness-probe, spdx-header,
+  testcontainer-availability, testcontainer-reaper-setup,
+  install-hooks)
+- 1 `tests/e2e-cjm` file (tls-cert-paths)
+- 4 `@openwhispr/*` package files (auth, i18n, observability, wire-schemas)
+- 1 `@openwhispr/data` worker-rls-property test
+- 5 `apps/api` files (health, index, build-app-diarization-wiring,
+  multipart-registered, lib/audit, scripts/check-default-secrets)
+
+**Why deferred:** All 33 failures **pre-exist** Plan 18.1.2-05 — confirmed
+by `git stash && pnpm test` showing identical `33 failed | 240 passed |
+31 skipped (304)` counts before and after the Plan 05 commits. None of
+the failing files were touched by Plan 05. Sample inspection of
+`tests/unit/health.test.ts` shows `Error: process.exit unexpectedly
+called with "1"` from `src/index.ts:56` — completely unrelated to the
+shared-pg fixture migration.
+
+**Plan 05 scope-bound verification:**
+- `pnpm --filter @openwhispr/api test tests/unit/routes` — 51 files passed,
+  479 tests passed in 47.89 s. ← Cluster #2's parent surface.
+- `pnpm --filter @openwhispr/api test tests/unit/routes/conversations/__tests__` — 4 files, 34 tests passed.
+- `pnpm --filter @openwhispr/api test tests/unit/routes/notes/__tests__` — 5 files, 36 tests passed.
+- `pnpm --filter @openwhispr/api test tests/unit/routes/folders/__tests__ tests/unit/routes/transcriptions/__tests__ tests/unit/routes/v1/keys/__tests__` — 6 files, 56 tests passed.
+- Shared testcontainer count after suite: 1 (label=container-hash).
+
+**Likely fix scope:** Each failing file needs its own bug-fix plan;
+they appear unrelated to one another. A Phase 18.1.2-07 or later "test
+suite stabilization" plan should triage by package.
+
 ## From Plan 12-04 (Phase 12)
 
 ### AccountClient.test.tsx — pre-existing failure on "renders the three section headings"
