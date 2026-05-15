@@ -927,7 +927,7 @@ Plans:
 | 9. Helm Chart & Cloud Deploy | 11/11 | Complete | 2026-05-13 |
 | 10. i18n + Docs + OSS Housekeeping | 7/5 | Complete   | 2026-05-13 |
 | 11. Cloud Profile Refactor | 1/5 | In progress | - |
-| **— v2.1 milestone (CLOSED 2026-05-15) —** | | | |
+| **— v2.1 milestone (CLOSED-WITH-PARTIAL-DEBT 2026-05-15 — SR-19.1b carry) —** | | | |
 | 13. E2E + CJM Harness | 2/2 | Complete | 2026-05-14 |
 | 12. Admin Onboarding + UI-SPEC Conformance | 6/6 | Complete | 2026-05-14 |
 | 14. Slim Core + BYOK Profiles | 7/7 | Complete | 2026-05-14 |
@@ -938,6 +938,7 @@ Plans:
 | 18.1. v2 test-debt closure | 7/7 | Complete-with-followup | 2026-05-15 |
 | 18.1.1. aggregate sweep + AuthShell oracle | 6/6 | Complete-with-followup | 2026-05-15 |
 | 18.1.2. infrastructure-bound test debt | 6/6 | Complete | 2026-05-15 |
+| 19. Server-error closure (production-fix phase) | 3/3 | Complete-with-partial-debt | 2026-05-15 |
 
 ## Coverage Map
 
