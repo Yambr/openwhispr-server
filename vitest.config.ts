@@ -107,6 +107,20 @@ export default defineConfig({
           exclude: ["load-test/**", "test-probe/**", "node_modules/**", "dist/**"],
         },
       },
+      // Phase 17 / WR-01 (review-fix) — pure-helper unit tests that live
+      // alongside the Gherkin step modules under tests/e2e-cjm/steps/.
+      // The Gherkin runtime itself (playwright-bdd) is invoked via
+      // `pnpm test:e2e-cjm`, NOT vitest; this entry only picks up the
+      // sibling __tests__/*.test.ts unit-test files that exercise pure
+      // predicates extracted from steps for testability.
+      {
+        extends: true,
+        test: {
+          name: "tests-e2e-cjm-steps",
+          root: p("tests/e2e-cjm/steps"),
+          include: ["__tests__/*.test.ts"],
+        },
+      },
     ],
     coverage: {
       provider: "v8",

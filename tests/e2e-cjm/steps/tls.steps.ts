@@ -16,6 +16,7 @@
 import { execFileSync } from "node:child_process";
 
 import { expect, Given, Then, When } from "../support/world";
+import { findDevCaArtefacts } from "./tls-cert-paths.js";
 
 // -----------------------------------------------------------------------
 // Scenario 1: @cjm-tls-trusted-localhost — deferred to GHA CI.
@@ -123,16 +124,20 @@ Then("no path matches compose/traefik/certs/", async ({ tenantId }) => {
 Then("any bootstrap-minted cert SAN list contains no wildcard entries", async ({ tenantId }) => {
   // Closes Q1 corollary: if the prod image happens to ship a bootstrap-
   // minted cert (it should NOT per .dockerignore, but if regression slips
-  // past it MUST not carry wildcard SANs). Step passes vacuously if no
-  // *.crt / *.pem entries exist in the tar listing.
+  // past it MUST not carry wildcard SANs). WR-01 review fix: the prior
+  // implementation flagged any `*.crt`/`*.pem` in the tar listing, which
+  // false-positives against every node-base prod image because
+  // `node:slim`/`debian:slim` ship hundreds of `etc/ssl/certs/*.pem`
+  // system-trust certs. The narrowed predicate (findDevCaArtefacts)
+  // matches ONLY the exact dev-CA / mkcert filenames the codemod targets
+  // (rootCA*.pem, root-ca.{crt,key,pem}, local.{crt,key,pem},
+  // *.localhost.{crt,pem,key}, *mkcert*, compose/traefik/certs/**). Unit-
+  // tested in __tests__/tls-cert-paths.test.ts.
   const s = stateFor(tenantId);
-  const certPaths = s.tarListing
-    .split("\n")
-    .filter((line) => /\.(crt|pem)$/.test(line) && !/node_modules/.test(line));
-  if (certPaths.length === 0) return; // vacuously passes — no shipped cert
-  // If any cert ships, fail-loud: we expect zero certs in the prod image.
+  const offending = findDevCaArtefacts(s.tarListing.split("\n"));
+  if (offending.length === 0) return; // vacuously passes — no dev-CA ships
   throw new Error(
-    `prod image unexpectedly ships ${certPaths.length} cert/pem file(s): ${certPaths.slice(0, 5).join(", ")}`,
+    `prod image unexpectedly ships ${offending.length} dev-CA artefact(s): ${offending.slice(0, 5).join(", ")}`,
   );
 });
 
