@@ -114,6 +114,88 @@ describe("classifyLine — KEEP bucket (CONTEXT Q2)", () => {
   it("default: keeps a non-comment line", () => {
     expect(classifyLine("const x = 1;", {})).toBe("KEEP");
   });
+
+  // CR-01 regression: PLAN 16-01 sanctioned exactly 4 REMOVE rules; the
+  // executor added an unauthorized 5th regex (REMOVE_RULE_1_HEADER_WITH_BODY)
+  // that stripped 6+ comments carrying load-bearing WHY content. Under the
+  // plan-sanctioned 4-rule classifier these lines all match the default
+  // KEEP branch (single-line, no KEEP keyword, no marker, no multi-line
+  // neighbour — but body carries non-obvious WHY content the reader can't
+  // derive from surrounding code). These assertions fail under the widened
+  // rule and pin the conservative-KEEP default that CONTEXT Q2 specified.
+  describe("K6 (CR-01): plan-sanctioned 4-rule classifier KEEPs prose-bearing single-line phase headers", () => {
+    it("keeps `// Phase 02.12 — hashToken removed; recordPreviousToken now takes plain text.`", () => {
+      expect(
+        classifyLine(
+          "  // Phase 02.12 — hashToken removed; recordPreviousToken now takes plain text.",
+          {},
+        ),
+      ).toBe("KEEP");
+    });
+
+    it("keeps `// Phase 02.12 — column is now \\`previous_token\\` (text), not \\`previous_token_hash\\`.`", () => {
+      expect(
+        classifyLine(
+          "    // Phase 02.12 — column is now `previous_token` (text), not `previous_token_hash`.",
+          {},
+        ),
+      ).toBe("KEEP");
+    });
+
+    it("keeps `// Phase 02.12 — bearer text is bound directly; no SHA-256 hashing.`", () => {
+      expect(
+        classifyLine("    // Phase 02.12 — bearer text is bound directly; no SHA-256 hashing.", {}),
+      ).toBe("KEEP");
+    });
+
+    it("keeps `// Phase 02.12 — bytea token_hash dropped; sessions.token is plain text.`", () => {
+      expect(
+        classifyLine(
+          "    // Phase 02.12 — bytea token_hash dropped; sessions.token is plain text.",
+          {},
+        ),
+      ).toBe("KEEP");
+    });
+
+    it("keeps `// Phase 02.12 — function signature is now (text), not (bytea).`", () => {
+      expect(
+        classifyLine("      // Phase 02.12 — function signature is now (text), not (bytea).", {}),
+      ).toBe("KEEP");
+    });
+
+    it("keeps `// Phase 6 / Plan 02 — migration 0014 requires pg_partman.` (non-obvious image choice rationale)", () => {
+      expect(
+        classifyLine("    // Phase 6 / Plan 02 — migration 0014 requires pg_partman.", {}),
+      ).toBe("KEEP");
+    });
+
+    it("keeps `// Phase 6 / Plan 02 — provision pg_partman + GRANT chain.`", () => {
+      expect(classifyLine("  // Phase 6 / Plan 02 — provision pg_partman + GRANT chain.", {})).toBe(
+        "KEEP",
+      );
+    });
+
+    it("keeps `// Phase 03 / Plan 10 — PROVIDER-01 introspection seam.`", () => {
+      expect(classifyLine("  // Phase 03 / Plan 10 — PROVIDER-01 introspection seam.", {})).toBe(
+        "KEEP",
+      );
+    });
+
+    it("keeps `// Phase 5 / Plan 01 — settings + CRUD resource families`", () => {
+      expect(classifyLine("  // Phase 5 / Plan 01 — settings + CRUD resource families", {})).toBe(
+        "KEEP",
+      );
+    });
+
+    it("keeps `// Phase 15 / Plan 02 (STRUCT-01) — tests live under tests/unit/ post-move.`", () => {
+      expect(
+        classifyLine(
+          "    // Phase 15 / Plan 02 (STRUCT-01) — tests live under tests/unit/ post-move.",
+          {},
+        ),
+      ).toBe("KEEP");
+    });
+  });
 });
 
 describe("auditDir + fixDir — codemod shape (S1-S3)", () => {
