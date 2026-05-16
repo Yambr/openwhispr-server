@@ -1,0 +1,28 @@
+# lint-no-env-branches.allowlist.txt
+#
+# Per-line allowlist for the LOCKER-01 NODE_ENV-branching regression
+# guard (Phase 31 / Plan 01). Each non-blank, non-comment line has the
+# form `<posix-path>:<lineNumber>` followed by an optional inline
+# `# issue-NNNN` tracking token (rationale stripped on read).
+#
+# Adding an entry here is a temporary measure that requires a tracking
+# issue + a one-line rationale in the commit body. Per LOCKER-09 (lands
+# in 31-07), the allowlist-diff CI step refuses any net-add without a
+# `Allowlist-grow-approved: issue-NNNN` trailer in the commit body.
+#
+# Seed (current-main inventory at Phase 31 Plan 01 land — DO NOT bulk-fix
+# in this plan; targeted fix phases follow).
+apps/api/src/auth.ts:424  # issue-31-boundary-better-auth-cookies
+apps/api/src/index.ts:494  # issue-31-debt-NODE_ENV-shortcircuit
+apps/api/src/index.ts:498  # issue-31-debt-NODE_ENV-shortcircuit
+apps/api/src/lib/ssrf-dispatcher.ts:59  # issue-31-DI-fallback-jsdoc
+apps/api/src/lib/ssrf-dispatcher.ts:163  # issue-31-DI-fallback
+apps/api/src/routes/index.ts:474  # issue-31-debt-NODE_ENV-shortcircuit
+apps/api/src/routes/test-only.ts:18  # issue-31-debt-test-only-jsdoc-header
+apps/api/src/routes/test-only.ts:122  # issue-31-debt-test-only-jsdoc
+apps/api/src/routes/test-only.ts:128  # issue-31-debt-test-only-gate
+apps/worker/src/jobs/email-delivery.ts:80  # issue-31-DI-fallback-jsdoc
+apps/worker/src/jobs/email-delivery.ts:95  # issue-31-DI-fallback
+packages/byok-guard/src/index.ts:221  # issue-31-boundary-check
+packages/email/src/EmailSender.ts:7  # issue-31-boundary-check-jsdoc
+packages/email/src/EmailSender.ts:79  # issue-31-boundary-check
