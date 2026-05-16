@@ -411,3 +411,28 @@ loud-fail BYOK invariant from the SPEC's env-var table.
   structured-log event emitted with reason `realm_not_found`.
 - Silent-failure modes: OIDC silently disables and the api serves
   email-password only (operator believes SSO works when it does not).
+
+## 15. Cross-tenant isolation (non-SSO RLS regression sentinel)
+
+Phase 24 / G8 closure. The SSO `@cjm-sso-1.5` scenario covers the
+post-JIT path but is `@expected-red @after-phase-19`. The plain
+email-password tenant has no equivalent CJM, so an RLS regression in
+the bundled flow can slip past the test suite. Phase 24 closes that gap.
+
+### @cjm-15.1 User U_A from tenant T_A cannot read a transcribe job J_B owned by T_B (negative twin)
+
+Two fresh tenants (T_A, T_B) sign up via email/password. T_B's transcribe
+job J_B exists in the database. T_A's authenticated session issues
+`GET /api/transcribe/jobs/{J_B.id}`. The api MUST respond `404` (NOT
+`403` — leakage of existence is forbidden by BACKEND_SPEC.md §10).
+
+- Backend error branches: 404 typed envelope `{ error: { code: "not_found", message: <string> } }`.
+- Silent-failure modes: 200 (RLS bypass — CVE class); 403 (leaks the
+  existence of the resource); 5xx (stack trace exposure).
+
+### @cjm-15.2 Same tenant, same user reads their own job successfully (happy path)
+
+The happy-path control. T_A's authenticated session issues `GET
+/api/transcribe/jobs/{J_A.id}` where J_A is T_A-owned. Response is 200
+with the job record. Asserts the negative twin (@cjm-15.1) is not
+testing a degenerate "everything 404s" stack.
