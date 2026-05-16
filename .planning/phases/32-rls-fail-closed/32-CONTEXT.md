@@ -14,15 +14,15 @@ Source finding: `.planning/review/data.md` CR-01 + HI-04. Migration `0003_better
 
 ## Scope (in)
 
-- New migration `packages/data/migrations/0017_rls_fail_closed.sql` reverses 0003:
+- New migration `packages/data/migrations/0018_rls_fail_closed.sql` (sequence 0017 already used by `0017_setup_state.sql`) reverses 0003:
   - `ALTER ROLE openwhispr_app RESET app.tenant_id;` (removes role-level default binding)
-  - `ALTER TABLE <table> ALTER COLUMN tenant_id DROP DEFAULT;` for every tenant-scoped table where DEFAULT was `current_setting('app.tenant_id')::uuid` (per HI-04 multiplier)
-  - RLS policy bodies updated to: `current_setting('app.tenant_id', true) IS NOT NULL AND tenant_id = current_setting('app.tenant_id', true)::uuid`
+  - `ALTER TABLE <table> ALTER COLUMN tenant_id DROP DEFAULT;` for the 4 tables where DEFAULT was `current_setting('app.tenant_id')::uuid` per migration 0003: `users`, `sessions`, `account`, `verification` (research-verified; the other 12 tenant-scoped tables never had GUC-bound DEFAULTs)
+  - RLS policy bodies updated to **silent-deny-read + raise-write** semantics: `current_setting('app.tenant_id', true) IS NOT NULL AND tenant_id = current_setting('app.tenant_id', true)::uuid`. SELECT without context returns empty result; INSERT/UPDATE/DELETE without context raises `new row violates row-level security policy`. Variant (a) chosen over raise-everywhere `missing_ok=false` because the latter would surface dozens of pre-existing routes that legitimately read empty result sets — those route fixes belong to Phase 41, not Phase 32.
 - Update `packages/data/src/tenant-context.ts`:
-  - Remove any "fallback to default tenant" code path (if present)
-  - Caller that forgets `withTenant()` → typed PG error surfaces naturally
-- Property test on real Postgres testcontainer (DISCIPLINE Rule 5): 11 tenant-scoped tables × 4 ops × 2 contexts = 88 cases. With-context → allow same-tenant rows; without-context → ALWAYS RAISES (no default-tenant binding).
-- E2E test (DISCIPLINE Rule 3) in `tests/e2e/`: full docker compose up + a route intentionally bypassing `withTenant` returns 500 with redacted error envelope (NOT 200 + default-tenant rows).
+  - Research confirms NO fallback-to-default-tenant path exists today — `withTenant()` is already clean. Phase 32's behaviour change is **migration-only**.
+  - Document the new contract in JSDoc + add a defensive runtime assertion (callers that forget `withTenant()` now get either empty results on read or a typed PG error on write).
+- Property test on real Postgres testcontainer (DISCIPLINE Rule 5): **16 tenant-scoped tables** × 4 ops × 2 contexts = **128 cases** (research-corrected from initial 11/88 estimate; the literal enumeration in `packages/data/src/schema/index.ts:25-44` has 16 entries). With-context → allow same-tenant rows. Without-context: SELECT → empty result (assert `rowCount === 0`); INSERT/UPDATE/DELETE → RAISES `42501` permission denied or `policy violation`. Reuse the existing testcontainer fixture `bootMigratedPostgres` from `packages/data/src/__tests__/helpers.ts` (has both `openwhispr_owner` BYPASSRLS and `openwhispr_app` no-BYPASSRLS roles ready).
+- E2E test (DISCIPLINE Rule 3) in `tests/e2e/rls-fail-closed.spec.ts`: a synthetic test-only route that intentionally calls a WRITE op (INSERT) without `withTenant`. Assert: 500 + redacted error envelope. (A SELECT-bypass test would return 200 + empty array under variant (a) — that case is covered by the property test, not the E2E.)
 - Update unit tests in `packages/data/src/__tests__/` documenting the new contract.
 
 ## Scope (out)
@@ -38,9 +38,10 @@ Source finding: `.planning/review/data.md` CR-01 + HI-04. Migration `0003_better
 ## Implementation Decisions
 
 ### Migration approach
-- Forward-only migration `0017_rls_fail_closed.sql`. Drizzle migration runner already supports `ALTER ROLE ... RESET ...` + `DROP DEFAULT` + `ALTER POLICY`.
+- Forward-only migration `0018_rls_fail_closed.sql`. Drizzle migration runner already supports `ALTER ROLE ... RESET ...` + `DROP DEFAULT` + `ALTER POLICY`.
 - Single migration file; one transaction is fine because the changes are metadata-only.
 - The migration MUST be idempotent (re-runs are safe per DISCIPLINE Rule 5 implicit invariant).
+- Fail-closed semantics: **silent-deny-read + raise-write** (variant (a) from research). SELECT without context returns 0 rows; INSERT/UPDATE/DELETE without context raises PG 42501. Variant (b) `missing_ok=false` was considered but rejected because it would surface dozens of pre-existing routes that legitimately read empty result sets — those route fixes belong to Phase 41.
 
 ### Rollback plan
 - `down.sql` companion that restores 0003's behaviour (re-applies `ALTER ROLE ... SET app.tenant_id ...`). Documented but discouraged — explicit warning at top of `down.sql` that rollback re-introduces the fail-open posture.
