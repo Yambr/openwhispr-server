@@ -94,6 +94,15 @@ spec:
             - name: config
               mountPath: /app/config.yaml
               subPath: config.yaml
+          # SR-20.3 — startupProbe gives a 300s boot budget; reuses
+          # /health/liveliness because mock-litellm:dev lacks the
+          # real /health/readiness endpoint (Finding 09.1-F33).
+          startupProbe:
+            httpGet:
+              path: /health/liveliness
+              port: 4000
+            failureThreshold: {{ .Values.litellm.startupProbe.failureThreshold | default 30 }}
+            periodSeconds: {{ .Values.litellm.startupProbe.periodSeconds | default 10 }}
           livenessProbe:
             httpGet:
               path: /health/liveliness

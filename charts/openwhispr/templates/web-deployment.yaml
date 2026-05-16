@@ -100,6 +100,14 @@ spec:
           # Finding 09.1-F31 — Next.js root `/` returns 404 (no index
           # page; auth-gated to /login). `/api/health` is the canonical
           # health endpoint (apps/web/src/app/api/health/route.ts).
+          # SR-20.3 — startupProbe gives a 300s boot budget; see
+          # api-deployment.yaml for rationale.
+          startupProbe:
+            httpGet:
+              path: /api/health
+              port: 3001
+            failureThreshold: {{ .Values.web.startupProbe.failureThreshold | default 30 }}
+            periodSeconds: {{ .Values.web.startupProbe.periodSeconds | default 10 }}
           readinessProbe:
             httpGet:
               path: /api/health

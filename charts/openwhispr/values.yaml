@@ -219,6 +219,16 @@ litellm:
     repository: ghcr.io/berriai/litellm
     tag: main-v1.83.14-stable
   replicas: 1
+  # SR-20.3 (Phase 20) — startupProbe budget. See api block for rationale.
+  startupProbe:
+    failureThreshold: 30
+    periodSeconds: 10
+  # SR-20.4 (Phase 20) — topology spread across nodes.
+  topologySpread:
+    enabled: true
+    maxSkew: 1
+    topologyKey: kubernetes.io/hostname
+    whenUnsatisfiable: ScheduleAnyway
   # Finding 09.1-F11 — args is overridable so the kind smoke can swap in
   # the mock-litellm image which has no `--config` flag (it's a plain
   # node process). Default value matches the upstream LiteLLM CLI surface.
@@ -237,6 +247,19 @@ litellm:
 # api / web / worker — Wave 2 implements Deployments + HPAs.
 api:
   replicas: 2
+  # SR-20.3 (Phase 20) — startupProbe budget. failureThreshold ×
+  # periodSeconds = boot budget in seconds. 30 × 10 = 300s.
+  startupProbe:
+    failureThreshold: 30
+    periodSeconds: 10
+  # SR-20.4 (Phase 20) — topology spread across nodes. Disable by
+  # setting enabled=false on single-node clusters; default ScheduleAnyway
+  # already keeps pods bootable on kind.
+  topologySpread:
+    enabled: true
+    maxSkew: 1
+    topologyKey: kubernetes.io/hostname
+    whenUnsatisfiable: ScheduleAnyway
   autoscaling:
     enabled: true
     minReplicas: 2
@@ -271,6 +294,16 @@ api:
 
 web:
   replicas: 1
+  # SR-20.3 — see api block for rationale.
+  startupProbe:
+    failureThreshold: 30
+    periodSeconds: 10
+  # SR-20.4 — see api block for rationale.
+  topologySpread:
+    enabled: true
+    maxSkew: 1
+    topologyKey: kubernetes.io/hostname
+    whenUnsatisfiable: ScheduleAnyway
   env:
     nodeEnv: production
     # Server-side fetches stay in-cluster; browser fetches go via Traefik.
@@ -278,6 +311,16 @@ web:
 
 worker:
   replicas: 1
+  # SR-20.3 — see api block for rationale.
+  startupProbe:
+    failureThreshold: 30
+    periodSeconds: 10
+  # SR-20.4 — see api block for rationale.
+  topologySpread:
+    enabled: true
+    maxSkew: 1
+    topologyKey: kubernetes.io/hostname
+    whenUnsatisfiable: ScheduleAnyway
   autoscaling:
     enabled: true
     minReplicas: 1
