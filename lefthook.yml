@@ -3,6 +3,15 @@
 pre-commit:
   parallel: true
   commands:
+    # Phase 260516-kya / Plan 01 — L1 secret-leak gate.
+    # `gitleaks protect --staged` scans the staged diff against
+    # .gitleaks.toml (single source of truth shared with pre-push L2
+    # and .github/workflows/security.yml L3). Fails-closed on any
+    # match; allowlist exempts test fixtures + .env*.example.
+    # No `glob:` — gitleaks scans the staged diff, not a file list.
+    gitleaks:
+      run: gitleaks protect --staged --redact --config=.gitleaks.toml --no-banner
+      fail_text: "Secret leak detected in staged diff. See docs/security/secret-leak-runbook.md."
     biome:
       glob: "*.{ts,tsx,js,jsx,json}"
       run: pnpm exec biome check --write {staged_files}
@@ -84,6 +93,17 @@ pre-commit:
 pre-push:
   parallel: true
   commands:
+    # Phase 260516-kya / Plan 01 — L2 secret-leak gate.
+    # Catches commits that escaped L1 via `git commit --no-verify` by
+    # scanning the commit range against .gitleaks.toml. Picks the
+    # upstream range when the local branch tracks a remote ref;
+    # falls back to HEAD~20..HEAD on a fresh branch with no upstream.
+    # UPSTREAM here is a symbolic ref (not a credential), so the
+    # inline `bash -c` does not interpolate sensitive env vars
+    # (LOCKER-06 applies to source files, not lefthook config).
+    gitleaks:
+      run: bash -c 'UPSTREAM=$(git rev-parse --abbrev-ref --symbolic-full-name @{u} 2>/dev/null || echo ""); if [ -n "$UPSTREAM" ]; then RANGE="@{u}..HEAD"; else ROOT=$(git rev-list --max-parents=0 HEAD 2>/dev/null | tail -1); if [ -n "$ROOT" ] && [ "$ROOT" != "$(git rev-parse HEAD)" ]; then RANGE="$ROOT..HEAD"; else RANGE="--all"; fi; fi; gitleaks detect --redact --config=.gitleaks.toml --no-banner --log-opts="$RANGE"'
+      fail_text: "Secret leak detected in commit range. See docs/security/secret-leak-runbook.md."
     # Phase 07.1 / Plan 13 — run the apps/web vitest suite before pushing
     # any change that touches apps/web. Coverage takes ~3s on a hot run;
     # acceptable pre-push cost.
