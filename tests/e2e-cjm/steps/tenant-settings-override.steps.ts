@@ -87,7 +87,7 @@ Given("a signed-in admin", async function (this, ctx) {
 });
 
 When(
-  "the admin PUTs /api/stt-config with model {string}",
+  "the admin PUTs \\/api\\/stt-config with model {string}",
   async function (this, ctx, model: string) {
     const { apiBaseURL, tenantId } = ctx as { apiBaseURL: string; tenantId: string };
     const s = stateFor(tenantId);
@@ -104,7 +104,7 @@ Then("the response status is {int}", async function (this, ctx, expected: number
 });
 
 Then(
-  "subsequent GET /api/stt-config returns model {string}",
+  "subsequent GET \\/api\\/stt-config returns model {string}",
   async function (this, ctx, expected: string) {
     const { apiBaseURL, tenantId } = ctx as { apiBaseURL: string; tenantId: string };
     const s = stateFor(tenantId);
@@ -114,7 +114,7 @@ Then(
 );
 
 Then(
-  'the body is the typed envelope shape "{ error: { code, message } }"',
+  /^the body is the typed envelope shape "\{ error: \{ code, message \} \}"$/,
   async function (this, ctx) {
     const { tenantId } = ctx as { tenantId: string };
     expect(stateFor(tenantId).body).toMatchObject({
