@@ -23,7 +23,7 @@
 // skips the check — corporate proxy owns its own auth posture
 // (T-03-03-04 disposition: accept).
 
-import type { Readable } from "node:stream";
+import { PassThrough, type Readable } from "node:stream";
 import { type Dispatcher, request as undiciRequest } from "undici";
 import type { LitellmClientConfig, LitellmProviderKeys } from "./config.js";
 import { LitellmUpstreamError, MissingProviderKeyError } from "./errors.js";
@@ -126,6 +126,18 @@ export interface BuildLitellmClientOptions {
    * `request` (which honors `setGlobalDispatcher(new MockAgent(...))`).
    */
   request?: typeof undiciRequest;
+}
+
+/**
+ * Phase 19.2 / Plan 02 — SERVER-ERRORS Entry 11. Extracts the `boundary`
+ * token from a `multipart/form-data` content-type header. Returns `null`
+ * when the header is not multipart or has no boundary attribute (we then
+ * skip the prefix-injection branch — query-param fallback still applies).
+ */
+function parseMultipartBoundary(contentType: string): string | null {
+  if (!contentType.toLowerCase().includes("multipart/form-data")) return null;
+  const match = contentType.match(/boundary=("?)([^";]+)\1/i);
+  return match ? (match[2] ?? null) : null;
 }
 
 export function buildLitellmClient(
@@ -234,10 +246,40 @@ export function buildLitellmClient(
 
     async audioTranscriptions(args) {
       // Phase 19.2 / Plan 02 — SERVER-ERRORS Entry 11 closure: forward
-      // the model as a URL query-string param so LiteLLM's
-      // /v1/audio/transcriptions does not reject with `model=None`.
+      // the model into LiteLLM's /v1/audio/transcriptions. LiteLLM
+      // proxy v1.83.x reads `model` ONLY from the multipart form data
+      // (`form_data = await get_form_data(request)` →
+      // `data.get("model", None)` at proxy_server.py:8076); the query
+      // string is ignored and `model=None` triggers
+      // `Invalid model name passed in model=None` (HTTP 400). We
+      // therefore:
+      //   (a) belt-and-braces append `?model=...` to the URL for
+      //       forward-compat / alt LiteLLM forks that DO honor query;
+      //   (b) prepend a synthetic multipart part `name="model"` to the
+      //       request body — the multipart parser accepts fields in
+      //       any order and the file part still comes through intact.
+      // Streaming invariant preserved: we wrap the original Readable
+      // in a PassThrough and write the prefix bytes before piping the
+      // caller's body. No buffering of the audio payload.
       const model = args.model ?? DEFAULT_STT_MODEL;
       checkProviderKey(model);
+
+      const boundary = parseMultipartBoundary(args.contentType);
+      let body: Readable = args.body;
+      if (boundary) {
+        const prefix = Buffer.from(
+          `--${boundary}\r\n` +
+            `Content-Disposition: form-data; name="model"\r\n\r\n` +
+            `${model}\r\n`,
+          "utf8",
+        );
+        const through = new PassThrough();
+        through.write(prefix);
+        args.body.on("error", (err) => through.destroy(err));
+        args.body.pipe(through);
+        body = through;
+      }
+
       const url = `${config.baseUrl}/v1/audio/transcriptions?model=${encodeURIComponent(model)}`;
       const res = await doRequest(url, {
         method: "POST",
@@ -245,7 +287,7 @@ export function buildLitellmClient(
           ...authHeaders(args.userId, args.requestId),
           "content-type": args.contentType,
         },
-        body: args.body,
+        body,
       });
       return ensureOk(res);
     },
