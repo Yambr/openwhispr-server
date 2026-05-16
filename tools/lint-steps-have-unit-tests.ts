@@ -44,9 +44,12 @@ export interface Offender {
 
 const BOUNDARY_MOCK_PATTERNS = [
   /\bvi\.spyOn\b/,
+  /\bvi\.fn\(\)/, // `vi.fn()` used as a fetch stub is a valid boundary mock (assigned to `fetchSpy`, then mockResolvedValue)
+  /\bvi\.stubGlobal\b/, // vi.stubGlobal('fetch', …) pattern
   /\bnock\b/,
   /\bmsw\b/,
   /\bmockFetch\b/,
+  /\bfetchSpy\b/, // by-name spy assigned from vi.fn()
   /\bsetupServer\b/, // msw/node convenience
 ];
 
