@@ -28,6 +28,7 @@
 // orchestrating the full Worker/Queue lifecycle. The Worker class itself
 // is a thin shim that delegates to runIngestOnce on every job invocation.
 
+import { metrics } from "@opentelemetry/api";
 import { makePino } from "@openwhispr/observability";
 import type { ConnectionOptions } from "bullmq";
 import { Queue, Worker } from "bullmq";
@@ -60,6 +61,63 @@ export function _buildIngestLog(destination?: DestinationStream): Logger {
   return makePino(opts);
 }
 const log = _buildIngestLog();
+
+/**
+ * Phase 41.d / HI-4 — minutes-priced model duration validation.
+ *
+ * For `transcribe_minutes` / `realtime_minutes` rows, `metadata.duration`
+ * is the SOLE billing signal. Prior to this phase a non-numeric duration
+ * (string, missing, wrong type) silently produced a `units=0` ledger
+ * insert — pure data loss on the revenue path with no log, no metric.
+ *
+ * The fix:
+ *   1. Validate the duration is a finite positive number via
+ *      `validateDuration`. On failure, return `null`.
+ *   2. On null: log warn, increment OTel counter
+ *      `worker_billing_anomalies_total{reason="non_numeric_duration"}`,
+ *      SKIP the insert (matches the existing skip pattern for
+ *      missing end_user / missing tenant at the same call-site).
+ *
+ * Decision rationale (skip vs insert-with-NULL): see
+ * `.planning/phases/41-residual-high-sweep/41-d-DECISIONS.md §D-1`.
+ */
+const billingAnomalyCounter = metrics
+  .getMeter("worker.ingest-litellm-spend")
+  .createCounter("worker_billing_anomalies_total", {
+    description: "Count of LiteLLM spend rows skipped due to billing-data anomalies",
+  });
+
+// Test-seam: in-process tally of counter increments. The OTel API doesn't
+// expose a public read on a Counter; tests verify the increment via this
+// mirror. Kept underscore-prefixed to match the project's `_for-test`
+// export convention.
+const _billingAnomalies = new Map<string, number>();
+export function _readBillingAnomalies(): Array<{ reason: string; count: number }> {
+  return Array.from(_billingAnomalies.entries()).map(([reason, count]) => ({ reason, count }));
+}
+export function _resetBillingAnomalies(): void {
+  _billingAnomalies.clear();
+}
+function recordBillingAnomaly(reason: string): void {
+  billingAnomalyCounter.add(1, { reason });
+  _billingAnomalies.set(reason, (_billingAnomalies.get(reason) ?? 0) + 1);
+}
+
+/**
+ * Validate `metadata.duration` is a finite positive number (seconds).
+ * Returns the validated number on success, `null` on failure. Callers
+ * MUST treat `null` as a skip-with-anomaly signal — never coerce to 0.
+ */
+export function validateDuration(
+  metadata: Record<string, unknown> | null | undefined,
+): number | null {
+  if (!metadata) return null;
+  const d = metadata["duration"];
+  if (typeof d !== "number") return null;
+  if (!Number.isFinite(d)) return null;
+  if (d <= 0) return null;
+  return d;
+}
 
 export const QUEUE_NAME = "litellm-spend-ingest";
 export const SCHEDULER_KEY = "ingest-litellm-spend";
@@ -240,10 +298,25 @@ export async function runIngestOnce(
     }
 
     const kind = inferKind(r.model);
-    const units =
-      kind === "reason_tokens"
-        ? (r.total_tokens ?? 0)
-        : Math.ceil(extractDuration(r.metadata) / 60);
+    let units: number;
+    if (kind === "reason_tokens") {
+      units = r.total_tokens ?? 0;
+    } else {
+      // Phase 41.d / HI-4 — minutes-priced models REQUIRE a numeric
+      // metadata.duration; missing/non-numeric values were previously
+      // billed as 0 silently. Now: log warn, emit anomaly counter, skip
+      // the row entirely (no usage_ledger insert).
+      const seconds = validateDuration(r.metadata);
+      if (seconds === null) {
+        log.warn(
+          { rid: ourRid, model: r.model, kind, metadata: r.metadata },
+          "minutes-priced row has missing or non-numeric duration — skipping (no usage_ledger insert)",
+        );
+        recordBillingAnomaly("non_numeric_duration");
+        continue;
+      }
+      units = Math.ceil(seconds / 60);
+    }
 
     const insertRes = await deps.appOwnerPool.query(
       `
@@ -311,9 +384,7 @@ export function createWorker(deps: JobDeps): Worker {
   return new Worker(QUEUE_NAME, handler, { connection: deps.connection });
 }
 
-function extractDuration(metadata: Record<string, unknown> | null | undefined): number {
-  if (!metadata) return 0;
-  const d = metadata["duration"];
-  if (typeof d === "number" && Number.isFinite(d) && d > 0) return d;
-  return 0;
-}
+// Phase 41.d / HI-4 — the legacy `extractDuration` (silent-coerce-to-0)
+// helper is replaced by `validateDuration` above, which returns null on
+// invalid input so callers can SKIP-with-anomaly-counter instead of
+// silently zero-billing.
