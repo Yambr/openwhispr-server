@@ -27,6 +27,8 @@
     "test:lint-no-env-branches": "vitest run tools/lint-no-env-branches.test.ts --coverage --coverage.include=tools/lint-no-env-branches.ts --coverage.exclude= --coverage.all=false --coverage.thresholds.lines=90 --coverage.thresholds.branches=90 --coverage.thresholds.functions=90 --coverage.thresholds.statements=90",
     "lint:no-suppressions": "tsx tools/lint-no-suppressions.ts",
     "test:lint-no-suppressions": "vitest run tools/lint-no-suppressions.test.ts --coverage --coverage.include=tools/lint-no-suppressions.ts --coverage.exclude= --coverage.all=false --coverage.thresholds.lines=90 --coverage.thresholds.branches=90 --coverage.thresholds.functions=90 --coverage.thresholds.statements=90",
+    "lint:no-hardcode": "tsx tools/lint-no-hardcode.ts",
+    "test:lint-no-hardcode": "vitest run tools/lint-no-hardcode.test.ts --coverage --coverage.include=tools/lint-no-hardcode.ts --coverage.exclude= --coverage.all=false --coverage.thresholds.lines=90 --coverage.thresholds.branches=90 --coverage.thresholds.functions=90 --coverage.thresholds.statements=90",
     "test:lint-colocated-tests": "vitest run tools/lint-colocated-tests.test.ts --coverage --coverage.include=tools/lint-colocated-tests.ts --coverage.exclude= --coverage.all=false --coverage.thresholds.lines=90 --coverage.thresholds.branches=90 --coverage.thresholds.functions=90 --coverage.thresholds.statements=90",
     "test:migrate-tests": "vitest run tools/migrate-tests.test.ts --coverage --coverage.include=tools/migrate-tests.ts --coverage.exclude= --coverage.all=false --coverage.thresholds.lines=90 --coverage.thresholds.branches=90 --coverage.thresholds.functions=90 --coverage.thresholds.statements=90",
     "spdx:check": "tsx tools/spdx-header.ts audit",
