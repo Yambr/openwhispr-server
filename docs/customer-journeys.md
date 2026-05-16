@@ -572,3 +572,37 @@ shape; the body MUST NOT contain a Node.js stack trace.
 - Backend error branches: 415 typed envelope `{ error: { code, message } }`.
 - Silent-failure modes: 200 with empty segments (server happily ate
   text/plain); 5xx stack trace.
+
+## 11. Realtime WSS — user journey (G4 closure)
+
+Phase 29 closes G4 from `.planning/qa-audit/2026-05-16-cjm-coverage.md`.
+`WSS /v1/realtime` already ships (Phase 04 / Phase 08.4) on the dedicated
+`:8443` Traefik entrypoint. Contract tests assert the handshake; this CJM
+adds the end-user round-trip (open → bearer-auth → close cleanly) and the
+auth-rejection negative twin.
+
+### @cjm-11.1 Authenticated WSS opens, accepts a server hello, closes cleanly (happy path)
+
+A signed-in user opens `wss://api.localhost:8443/v1/realtime` with the
+session cookie attached. The server MUST accept the upgrade and send at
+least one frame (the OpenAI Realtime `session.created` envelope). The
+client closes; the close MUST be code 1000 (normal) or 1005 (no status).
+
+- Backend error branches: 4401 / 4403 / 1008 — auth rejection;
+  1011 — server abort (upstream LiteLLM unhealthy).
+- Silent-failure modes: server accepts upgrade but never sends any
+  frame (client hangs); upgrade succeeds without auth check
+  (CVE class).
+
+### @cjm-11.2 Unauthenticated WSS closes with auth-reject code (negative twin)
+
+Open `wss://api.localhost:8443/v1/realtime` WITHOUT a bearer / cookie.
+The server MUST close with a 4401 / 4403 / 1008 code. The auth gate
+MUST fire BEFORE any application frame is sent (no `session.created`
+leakage to anonymous clients).
+
+- Backend error branches: 4401 (custom auth-reject), 4403 (forbidden),
+  1008 (policy violation).
+- Silent-failure modes: 1006 (abnormal closure — connection dropped
+  silently; client cannot distinguish auth failure from network);
+  upgrade accepted then idle (hang).
