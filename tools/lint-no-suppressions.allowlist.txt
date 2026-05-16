@@ -7,14 +7,14 @@ apps/api/src/auth.ts:547  # issue-31-debt-suppression (33-04 shifted +73 lines)
 apps/api/src/error-handler.ts:226  # issue-31-debt-suppression
 apps/api/src/i18n/init.ts:152  # issue-31-debt-suppression
 apps/api/src/i18n/init.ts:153  # issue-31-debt-suppression
-apps/api/src/index.ts:297  # issue-31-debt-suppression-tx-bridge (33-04 shifted +9 lines)
-apps/api/src/index.ts:306  # issue-31-debt-suppression (33-04 shifted +9 lines)
-apps/api/src/index.ts:334  # issue-31-debt-suppression (33-04 shifted +9 lines)
-apps/api/src/index.ts:369  # issue-31-debt-suppression (33-04 shifted +9 lines)
-apps/api/src/index.ts:405  # issue-31-debt-suppression (33-04 shifted +9 lines)
-apps/api/src/index.ts:581  # issue-31-debt-suppression (33-04 shifted +9 lines)
-apps/api/src/index.ts:636  # issue-31-debt-suppression (33-04 shifted +9 lines)
-apps/api/src/index.ts:671  # issue-31-debt-suppression (33-04 shifted +9 lines)
+apps/api/src/index.ts:296  # issue-31-debt-suppression-tx-bridge (33-04 +9; 34 -1)
+apps/api/src/index.ts:305  # issue-31-debt-suppression (33-04 +9; 34 -1)
+apps/api/src/index.ts:333  # issue-31-debt-suppression (33-04 +9; 34 -1)
+apps/api/src/index.ts:368  # issue-31-debt-suppression (33-04 +9; 34 -1)
+apps/api/src/index.ts:404  # issue-31-debt-suppression (33-04 +9; 34 -1)
+apps/api/src/index.ts:580  # issue-31-debt-suppression (33-04 +9; 34 -1)
+apps/api/src/index.ts:635  # issue-31-debt-suppression (33-04 +9; 34 -1)
+apps/api/src/index.ts:670  # issue-31-debt-suppression (33-04 +9; 34 -1)
 apps/api/src/lib/api-error-status.ts:20  # issue-31-debt-suppression
 apps/api/src/lib/api-error-status.ts:52  # issue-31-debt-suppression
 apps/api/src/routes/locale.ts:53  # issue-31-debt-suppression

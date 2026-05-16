@@ -8,13 +8,15 @@
 //   `FastifyRequest` without an explicit `declare module 'fastify'` block.
 //
 // Phase 19-01 mandates a **dedicated, canonical** ambient module
-// augmentation at `apps/api/src/types/fastify.d.ts`. Today the two
-// augmentations live inline in `apps/api/src/middleware/dual-auth.ts`
-// and `apps/api/src/middleware/tenant.ts`; consumers (route handlers)
-// must transitively import those modules to pick up the types. The
-// canonical `.d.ts` file is loaded by tsc via `include: src/**/*.ts`
-// without any consumer needing to import a middleware file — closing
-// the Phase 14-04 typecheck-deferral root cause (deferred-items §14-04).
+// augmentation at `apps/api/src/types/fastify.d.ts`. Originally the
+// `req.user` / `req.tenant` augmentations lived inline in middleware
+// files; consumers (route handlers) had to transitively import those
+// modules to pick up the types. The canonical `.d.ts` file is loaded
+// by tsc via `include: src/**/*.ts` without any consumer needing to
+// import a middleware file — closing the Phase 14-04 typecheck-deferral
+// root cause (deferred-items §14-04). (Phase 34 retired the
+// `tenantPlugin` and its inline `req.tenantId: string` augmentation;
+// only the `req.user` / `req.tenant` shapes remain.)
 //
 // RED proof (this test file at HEAD = 866c514):
 //   1. `apps/api/src/types/fastify.d.ts` does NOT exist on disk — the
