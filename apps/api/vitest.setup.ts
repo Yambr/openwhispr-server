@@ -38,4 +38,10 @@ process.env.OTEL_EXPORTER_OTLP_ENDPOINT ??= "http://otel-test.invalid:4317";
 process.env.INGRESS_BASE_URL ??= "https://api.test.example.com";
 process.env.DATABASE_URL ??= "postgres://test/test";
 
+// Phase 33 / Plan 33-04 — MASTER_KEK default for vitest workers so
+// EnvKeyProvider.getKek() does not throw at module-load time when the
+// lens is instantiated by buildAuth / route plugins. 32 bytes of
+// base64url-encoded zeros; production .env is boot-gated by DATA-06.
+process.env.MASTER_KEK ??= Buffer.alloc(32).toString("base64url");
+
 import "../../tools/testcontainer-reaper-setup";

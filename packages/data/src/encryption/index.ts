@@ -34,4 +34,6 @@ export type {
   FingerprintColumn,
 } from "./lens.js";
 export { wrapAdapter } from "./lens.js";
+export type { EncryptedCodeVerifierSidecars } from "./oauth-state-codec.js";
+export { decryptCodeVerifierFromRow, encryptCodeVerifier } from "./oauth-state-codec.js";
 export { VaultKeyProvider } from "./vault-key-provider.js";

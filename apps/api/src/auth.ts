@@ -18,6 +18,12 @@
 // custom-protocol redirect. This factory only stands up the auth
 // instance; no callback rewriting yet.
 
+import {
+  type EncryptedColumnMap,
+  type KeyProvider,
+  selectProvider,
+  wrapAdapter,
+} from "@openwhispr/data";
 import type { AppDb } from "@openwhispr/data/client";
 // Phase 02.5 / Plan 03 / D-01 — Explicit Better-Auth-canonical schema map.
 //
@@ -78,8 +84,53 @@ export interface EmailDeliveryPayload {
   request_id: string;
 }
 
+/**
+ * Phase 33 / Plan 33-04 — Better-Auth model → encrypted-column map.
+ * Each entry corresponds to a column added 6 bytea sidecars by migration
+ * 0019. The lens transparently encrypts on write + decrypts on read.
+ * `sessions.token` carries a SHA-256 fingerprint via `sessions.token_fp`
+ * so Better-Auth's bearer-token lookup remains O(log N) once Plan 33-05
+ * drops the plaintext column.
+ *
+ * Keys are camelCase to match Better-Auth's adapter-layer field names;
+ * sidecarPrefix is the snake_case DB column prefix.
+ *
+ * `oauth_state.code_verifier` is NOT in this map: Plan 33-04 task 3
+ * encrypts that column via a manual codec at the 3 sql-template sites in
+ * apps/api/src/routes/{auth-callback,desktop-signin}.ts (those bypass
+ * the Better-Auth adapter surface entirely).
+ *
+ * `users.password_hash` is NOT in this map: empirical grep confirms no
+ * application code writes it. See 33-04-DECISIONS.md §D-01.
+ */
+export const ENCRYPTED_COLUMNS_MAP: EncryptedColumnMap = {
+  account: {
+    accessToken: { sidecarPrefix: "access_token" },
+    refreshToken: { sidecarPrefix: "refresh_token" },
+    idToken: { sidecarPrefix: "id_token" },
+    password: { sidecarPrefix: "password" },
+  },
+  verification: { value: { sidecarPrefix: "value" } },
+  session: {
+    token: {
+      sidecarPrefix: "token",
+      fingerprint: { column: "tokenFp", algorithm: "sha256" },
+    },
+    previousToken: {
+      sidecarPrefix: "previous_token",
+      fingerprint: { column: "previousTokenFp", algorithm: "sha256" },
+    },
+  },
+};
+
 export interface BuildAuthOptions {
   db: AppDb;
+  /**
+   * Phase 33 / Plan 33-04 — KeyProvider DI handle. Production wires
+   * `selectProvider()` (env-backed); tests inject deterministic providers.
+   * When omitted, the factory calls `selectProvider()` itself.
+   */
+  keyProvider?: KeyProvider;
   /** Optional logger; not consumed by Better Auth itself but available for hooks. */
   log?: { info: (msg: unknown) => void; warn: (msg: unknown) => void };
   /**
@@ -222,17 +273,39 @@ export function buildAuth(opts: BuildAuthOptions): AuthInstance {
     // dev — its own NODE_ENV-aware behaviour). Only when the operator
     // explicitly opts in do we force-disable the limiter.
     ...(rateLimitOff ? { rateLimit: { enabled: false } } : {}),
-    database: drizzleAdapter(db, {
-      provider: "pg",
-      // Better Auth canonical model names (left) ↔ our pluralized drizzle
-      // table objects (right). Phase 02.5 / Plan 03 / D-01.
-      schema: {
-        user: users,
-        session: sessions,
-        account: accounts,
-        verification: verifications,
-      },
-    }),
+    // Phase 33 / Plan 33-04 — wrap the drizzle adapter with the
+    // envelope-encryption lens. `drizzleAdapter(db, ...)` returns a
+    // factory `(options) => DBAdapter`; Better-Auth invokes the factory
+    // at construction time with its own options. We compose
+    // `wrapAdapter` AFTER the factory resolves so the lens sees the
+    // fully-constructed `DBAdapter` shape. The lens transparently
+    // intercepts every create/update/findOne/findMany. KEK rotation
+    // is supported by passing an array of providers; v1 uses a single
+    // provider sourced from `opts.keyProvider` or `selectProvider()`.
+    // SCOPE NOTE (33-04-DECISIONS §D-05): Better-Auth's adapter-factory
+    // strips unknown keys during field-translation, so the 6 bytea
+    // sidecar keys produced by the lens currently fall through to NULL
+    // until Plan 33-05's schema-side additionalFields declarations land.
+    database: (() => {
+      const factory = drizzleAdapter(db, {
+        provider: "pg",
+        // Better Auth canonical model names (left) ↔ our pluralized drizzle
+        // table objects (right). Phase 02.5 / Plan 03 / D-01.
+        schema: {
+          user: users,
+          session: sessions,
+          account: accounts,
+          verification: verifications,
+        },
+      });
+      const activeProvider = opts.keyProvider ?? selectProvider();
+      return ((options: unknown) =>
+        wrapAdapter(
+          (factory as (o: unknown) => Parameters<typeof wrapAdapter>[0])(options),
+          activeProvider,
+          ENCRYPTED_COLUMNS_MAP,
+        )) as unknown as ReturnType<typeof drizzleAdapter>;
+    })(),
     secret: process.env.BETTER_AUTH_SECRET,
     baseURL: process.env.AUTH_URL ?? "http://localhost:3000",
     // Phase 02.3 — AUTH_TRUSTED_ORIGINS_EXTRA: optional comma-separated
