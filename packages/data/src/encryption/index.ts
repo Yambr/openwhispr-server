@@ -5,6 +5,15 @@
 // from `@openwhispr/data/encryption` for the narrow surface — both
 // resolve to this file.
 
+export {
+  EX_CONFIG,
+  KeyProviderStubError,
+  MasterKekInvalidLengthError,
+  MasterKekMissingError,
+  validateEncryptionBoot,
+  validateKeyProviderSelection,
+  validateMasterKek,
+} from "./boot.js";
 export { EnvKeyProvider } from "./env-key-provider.js";
 export type { EncryptedRow } from "./envelope.js";
 export { decryptValue, encryptValue } from "./envelope.js";
