@@ -52,7 +52,7 @@ describe("Phase 14 / Plan 02 — .env.slim.example conformance", () => {
     );
   });
 
-  it("Test 3: uncommented keys are exactly the 10-key slim contract", () => {
+  it("Test 3: uncommented keys are exactly the 11-key slim contract", () => {
     const expectedKeys = [
       // 5 user-visible mandatory inputs (CONTEXT decision 4)
       "POSTGRES_APP_PASSWORD",
@@ -67,6 +67,10 @@ describe("Phase 14 / Plan 02 — .env.slim.example conformance", () => {
       "BACKUP_AGE_IDENTITY",
       // OTel disable sentinel (CONTEXT decision 5)
       "OTEL_EXPORTER_OTLP_ENDPOINT",
+      // Phase 15 / Plan 02 (STRUCT-05) — Better Auth trustedOrigins env
+      // extension for split-host dev (web.localhost + api.localhost via
+      // Traefik). See apps/api/src/auth.ts trustedOrigins computation.
+      "AUTH_TRUSTED_ORIGINS_EXTRA",
     ];
     const active = parseActiveKeys(slimText);
     const actualKeys = [...active.keys()].sort();
@@ -174,6 +178,7 @@ describe("Phase 14 / Plan 02 — .env.slim.example conformance", () => {
       "MASTER_KEK",
       "BACKUP_AGE_IDENTITY",
       "OTEL_EXPORTER_OTLP_ENDPOINT",
+      "AUTH_TRUSTED_ORIGINS_EXTRA",
       "DATABASE_URL",
       "VALKEY_URL",
       "LITELLM_BASE_URL",
