@@ -65,6 +65,42 @@ export interface FingerprintColumn {
 export interface EncryptedColumnConfig {
   readonly sidecarPrefix: string;
   readonly fingerprint?: FingerprintColumn;
+  /**
+   * Phase 41.e / HI-03 — opt-in TTL enforcement at the lens layer.
+   *
+   * When set, after the lens successfully decrypts the column, it reads
+   * `row[expiresColumn]` and — if the value is a `Date` (or ISO string)
+   * in the past — throws `AccountTokenExpiredError`. `null` / `undefined`
+   * is treated as "no expiry" and passes through.
+   *
+   * Defense-in-depth against route handlers that consume a decrypted
+   * OAuth bearer without explicit `expires_at > now()` filtering. See
+   * .planning/review/data.md HI-03 + 41-e-DECISIONS §D-3.
+   */
+  readonly expiresColumn?: string;
+}
+
+/**
+ * Phase 41.e / HI-03 — thrown by the lens on read paths when an
+ * `expiresColumn`-configured column is past its expiry. Carries
+ * (model, column, expiresAt) diagnostic context. Per Pitfall #4 the
+ * message NEVER includes plaintext payload — only model + column names
+ * and the expiry timestamp.
+ */
+export class AccountTokenExpiredError extends Error {
+  override readonly name = "AccountTokenExpiredError";
+  readonly model: string;
+  readonly column: string;
+  readonly expiresAt: Date;
+
+  constructor(model: string, column: string, expiresAt: Date) {
+    super(
+      `lens: ${model}.${column} expired at ${expiresAt.toISOString()} — refusing to surface plaintext`,
+    );
+    this.model = model;
+    this.column = column;
+    this.expiresAt = expiresAt;
+  }
 }
 
 /** `{ [model]: { [column]: EncryptedColumnConfig } }` */
@@ -120,11 +156,30 @@ async function encryptInto(
  * the row alone — supports the 33-03 backfill mid-window where legacy
  * rows still serve plaintext from the original column.
  */
+/**
+ * Phase 41.e / HI-03 — coerce a raw `expires_at` cell into a `Date`,
+ * accepting Date instances and ISO-8601 strings (the two shapes pg
+ * drivers and JSON-deserialised payloads produce). Returns `null` on
+ * `null` / `undefined` / unparseable input.
+ */
+function coerceExpiresAt(raw: unknown): Date | null {
+  if (raw === null || raw === undefined) return null;
+  if (raw instanceof Date) {
+    return Number.isNaN(raw.getTime()) ? null : raw;
+  }
+  if (typeof raw === "string") {
+    const d = new Date(raw);
+    return Number.isNaN(d.getTime()) ? null : d;
+  }
+  return null;
+}
+
 async function decryptFrom(
   target: Record<string, unknown>,
   column: string,
   config: EncryptedColumnConfig,
   providers: readonly KeyProvider[],
+  model: string,
 ): Promise<void> {
   const sidecarPresent = SIDECAR_KEYS.every((k) => {
     const v = target[sidecarFieldName(config.sidecarPrefix, k)];
@@ -167,6 +222,18 @@ async function decryptFrom(
   }
   if (config.fingerprint) {
     delete target[config.fingerprint.column];
+  }
+
+  // Phase 41.e / HI-03 — TTL enforcement at the lens layer. The check
+  // runs AFTER successful decrypt so an expired-token error always
+  // implies the underlying ciphertext was valid (no leaking of GCM
+  // mismatch diagnostics through TTL semantics). The error carries
+  // ONLY (model, column, expiresAt) — never the plaintext value.
+  if (config.expiresColumn !== undefined) {
+    const expiresAt = coerceExpiresAt(target[config.expiresColumn]);
+    if (expiresAt !== null && expiresAt.getTime() < Date.now()) {
+      throw new AccountTokenExpiredError(model, column, expiresAt);
+    }
   }
 }
 
@@ -251,7 +318,7 @@ export function wrapAdapter(
     const modelCols = columnMap[model];
     if (!modelCols) return;
     for (const [col, cfg] of Object.entries(modelCols)) {
-      await decryptFrom(row, col, cfg, providers);
+      await decryptFrom(row, col, cfg, providers, model);
     }
   }
 

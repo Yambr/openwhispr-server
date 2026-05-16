@@ -106,8 +106,23 @@ export interface EmailDeliveryPayload {
  */
 export const ENCRYPTED_COLUMNS_MAP: EncryptedColumnMap = {
   account: {
-    accessToken: { sidecarPrefix: "access_token" },
-    refreshToken: { sidecarPrefix: "refresh_token" },
+    // Phase 41.e / HI-03 — opt-in TTL enforcement at the lens layer.
+    // On every read of an account row carrying access_token / refresh_token
+    // sidecars, the lens decrypts the value AND checks the matching
+    // expires_at column; if past, `AccountTokenExpiredError` is thrown
+    // before plaintext is surfaced to any consumer. Defense-in-depth
+    // against route handlers that forget explicit `expires_at > now()`
+    // filtering on the upstream OAuth refresh-token / id-token replay path.
+    // id_token is JWT-self-expiring (carries `exp` claim) — no DB column.
+    // password has no expiry semantic. See 41-e-DECISIONS §D-3.
+    accessToken: {
+      sidecarPrefix: "access_token",
+      expiresColumn: "accessTokenExpiresAt",
+    },
+    refreshToken: {
+      sidecarPrefix: "refresh_token",
+      expiresColumn: "refreshTokenExpiresAt",
+    },
     idToken: { sidecarPrefix: "id_token" },
     password: { sidecarPrefix: "password" },
   },
