@@ -33,7 +33,14 @@
 // Reject envelope shape mirrors the rest of Plan 03 (D-13): single-key
 // `{error:"<message>"}`, application/json; charset=utf-8.
 
-import { type ExecutableTx, type TransactionalDb, withTenant } from "@openwhispr/data";
+import {
+  decryptCodeVerifierFromRow,
+  type ExecutableTx,
+  type KeyProvider,
+  selectProvider,
+  type TransactionalDb,
+  withTenant,
+} from "@openwhispr/data";
 import { sql } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
 import { resolveDefaultTenantId } from "../lib/default-tenant.js";
@@ -84,12 +91,21 @@ export interface AuthCallbackDeps {
    * channel-scheme echo + state lifecycle.
    */
   mintBearer?: MintBearer;
+  /** Phase 33 / Plan 33-04 — KeyProvider for oauth_state codec decrypt. */
+  keyProvider?: KeyProvider;
 }
 
 interface OauthStateRow {
   id: string;
   scheme: string;
-  code_verifier: string;
+  code_verifier: string | null;
+  // Phase 33 / Plan 33-04 — bytea sidecars (nullable until 33-05).
+  code_verifier_dek_wrapped: Buffer | null;
+  code_verifier_dek_iv: Buffer | null;
+  code_verifier_dek_auth_tag: Buffer | null;
+  code_verifier_value_iv: Buffer | null;
+  code_verifier_value_auth_tag: Buffer | null;
+  code_verifier_value_ciphertext: Buffer | null;
   consumed_at: string | null;
   expires_at: string;
 }
@@ -99,6 +115,8 @@ const SUPPORTED_PROVIDERS = new Set<string>(["oidc"]);
 export const buildAuthCallbackRoutes = (deps: AuthCallbackDeps) =>
   async function authCallbackRoutes(app: FastifyInstance): Promise<void> {
     const { db, mintBearer } = deps;
+    // Phase 33 / Plan 33-04 — provider resolved once at route registration.
+    const keyProvider: KeyProvider = deps.keyProvider ?? selectProvider();
     app.get<{
       Params: { provider: string };
       Querystring: { state?: string; code?: string; error?: string };
@@ -145,14 +163,22 @@ export const buildAuthCallbackRoutes = (deps: AuthCallbackDeps) =>
                 WHERE id = ${stateId}::uuid
                   AND consumed_at IS NULL
                   AND expires_at > now()
-                RETURNING id, scheme, code_verifier, consumed_at, expires_at`,
+                RETURNING id, scheme, code_verifier,
+                          code_verifier_dek_wrapped, code_verifier_dek_iv,
+                          code_verifier_dek_auth_tag, code_verifier_value_iv,
+                          code_verifier_value_auth_tag, code_verifier_value_ciphertext,
+                          consumed_at, expires_at`,
         )) as { rows: OauthStateRow[] };
         if (fresh.rows.length > 0) {
           return { kind: "ok" as const, row: fresh.rows[0] };
         }
         // CAS failed — diagnose to emit the right envelope.
         const probe = (await tx.execute(
-          sql`SELECT id, scheme, code_verifier, consumed_at, expires_at
+          sql`SELECT id, scheme, code_verifier,
+                     code_verifier_dek_wrapped, code_verifier_dek_iv,
+                     code_verifier_dek_auth_tag, code_verifier_value_iv,
+                     code_verifier_value_auth_tag, code_verifier_value_ciphertext,
+                     consumed_at, expires_at
                 FROM oauth_state
                 WHERE id = ${stateId}::uuid`,
         )) as { rows: OauthStateRow[] };
@@ -216,9 +242,13 @@ export const buildAuthCallbackRoutes = (deps: AuthCallbackDeps) =>
           .send({ error: "oauth callback not configured" });
       }
 
+      // Phase 33 / Plan 33-04 — decrypt verifier via the codec. Falls
+      // back to plaintext when sidecars are absent (legacy mid-backfill).
+      const codeVerifier = await decryptCodeVerifierFromRow([keyProvider], stateRow);
+
       const bearer = await mintBearer({
         code,
-        codeVerifier: stateRow.code_verifier,
+        codeVerifier,
         stateId,
         provider,
         tenantId,
