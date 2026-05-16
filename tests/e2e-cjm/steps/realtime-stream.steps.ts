@@ -96,7 +96,7 @@ Given("a signed-in user", async function (this, ctx) {
 });
 
 When(
-  "the user opens wss://api.localhost:8443/v1/realtime with the session cookie",
+  "the user opens wss:\\/\\/api.localhost:8443\\/v1\\/realtime with the session cookie",
   async function (this, ctx) {
     const { tenantId } = ctx as { tenantId: string };
     const s = stateFor(tenantId);
