@@ -72,6 +72,14 @@ const IGNORE = [
   "**/__tests__/*-i18n.test.*",
   "**/__tests__/i18n*.test.*",
   "apps/web/tests/e2e/i18n-russian.spec.ts",
+  // Phase 33 — CJM signup-extras step unit tests own a Cyrillic-detection
+  // regex (the literal source uses the U+0410..U+044F + U+0401 + U+0451
+  // codepoint range) as the assertion subject under test. The regex must
+  // contain the Cyrillic block by its own definition, so the file is an
+  // i18n surface by construction. Same rationale as the
+  // `__tests__/*-i18n.test.*` pattern; this file's name doesn't fit the
+  // i18n-suffix shape but its purpose is identical.
+  "tests/e2e-cjm/steps/__tests__/signup-extras.steps.test.ts",
   // Reference document — Russian-language description of an upstream
   // LiteLLM/Speaches deployment that the server is configured against.
   // Treated as i18n-context input, not a source artifact. Allowlisted per
