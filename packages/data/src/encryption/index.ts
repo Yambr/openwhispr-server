@@ -5,6 +5,14 @@
 // from `@openwhispr/data/encryption` for the narrow surface — both
 // resolve to this file.
 
+export type {
+  BackfillColumnConfig,
+  BackfillColumnMap,
+  BackfillColumnResult,
+  BackfillReport,
+  RunBackfillOpts,
+} from "./backfill.js";
+export { runBackfill } from "./backfill.js";
 export {
   EX_CONFIG,
   KeyProviderStubError,

@@ -157,15 +157,9 @@ describe("runBackfill — integration on real PG testcontainer", () => {
         const sesId = (
           await ownerPool.query<{ id: string }>(
             `INSERT INTO "sessions"
-              ("tenant_id", "user_id", "token_hash", "token", "previous_token", "expires_at")
-             VALUES ($1,$2, decode($3,'hex'), $4, $5, now() + interval '1 hour') RETURNING "id"`,
-            [
-              tenantId,
-              userId,
-              createHash("sha256").update(tokenPt).digest("hex"),
-              tokenPt,
-              prevTokenPt,
-            ],
+              ("tenant_id", "user_id", "token", "previous_token", "expires_at")
+             VALUES ($1,$2,$3,$4, now() + interval '1 hour') RETURNING "id"`,
+            [tenantId, userId, tokenPt, prevTokenPt],
           )
         ).rows[0]!.id;
         seeded.push({
