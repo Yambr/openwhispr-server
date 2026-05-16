@@ -85,14 +85,12 @@ describe("0018_rls_fail_closed: RLS policy bodies now fail-closed (silent-deny-r
         expect(rows.length).toBeGreaterThanOrEqual(1);
         const qual = rows[0]!.qual ?? "";
         const withCheck = rows[0]!.with_check ?? "";
-        // The fail-closed body must include an IS NOT NULL gate on the GUC.
-        expect(qual).toMatch(/IS NOT NULL/i);
-        // Empty-string guard prevents '::uuid cast errors and ensures
-        // a missing GUC reduces target set to 0 rather than raising.
-        expect(qual).toContain("<> ''");
+        // The fail-closed body uses NULLIF(current_setting(...), '')::uuid
+        // so an unset GUC short-circuits to NULL (treated as FALSE) rather
+        // than raising on a cast of ''::uuid.
+        expect(qual).toMatch(/NULLIF\(current_setting/i);
         // WITH CHECK mirrors USING for INSERT/UPDATE semantics.
-        expect(withCheck).toMatch(/IS NOT NULL/i);
-        expect(withCheck).toContain("<> ''");
+        expect(withCheck).toMatch(/NULLIF\(current_setting/i);
       } finally {
         await pool.end();
       }
