@@ -60,6 +60,14 @@ export interface CreateEmailSenderOpts {
   env: NodeJS.ProcessEnv;
 }
 
+// Phase 41.g / HI-03 — accept the common truthy env-flag spellings operators
+// write in .env files. Strict `=== "true"` silently rejects `1` / `TRUE` /
+// `yes` / `on` and falls back to the port heuristic, which can downgrade
+// SMTP to plaintext when the operator believed they had opted into TLS.
+function parseBoolEnv(value: string): boolean {
+  return ["1", "true", "yes", "on"].includes(value.toLowerCase().trim());
+}
+
 /**
  * Build an `EmailSender` from the given environment. Performs all env
  * validation at construction time so misconfiguration surfaces during boot
@@ -111,8 +119,10 @@ export function createEmailSender(opts: CreateEmailSenderOpts): EmailSender {
   const password = env.SMTP_PASSWORD;
   // SMTP_SECURE explicit override beats port heuristic. Heuristic is
   // `port === 465` (implicit TLS); 587/STARTTLS and 1025/mailpit are
-  // plaintext-or-STARTTLS, so secure=false by default.
-  const secure = env.SMTP_SECURE !== undefined ? env.SMTP_SECURE === "true" : port === 465;
+  // plaintext-or-STARTTLS, so secure=false by default. Accept the common
+  // truthy spellings operators write in .env files (1/true/yes/on, any
+  // case, trimmed) — strict `=== "true"` silently downgrades to plaintext.
+  const secure = env.SMTP_SECURE !== undefined ? parseBoolEnv(env.SMTP_SECURE) : port === 465;
   // Default to verifying the server cert. Operators set
   // SMTP_REJECT_UNAUTHORIZED=false ONLY when intentionally connecting to
   // a self-signed internal relay (corporate dev environments).
