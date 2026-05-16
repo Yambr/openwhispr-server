@@ -24,4 +24,6 @@ tests/e2e-cjm/steps/signin.steps.ts
 tests/e2e-cjm/steps/signup-extras.steps.ts
 tests/e2e-cjm/steps/sso.steps.ts
 tests/e2e-cjm/steps/tls.steps.ts
-tests/e2e-cjm/steps/transcribe.steps.ts
+# transcribe.steps.ts removed 2026-05-16 (post-rebase) — Phase 19.2 on main
+# shipped tests/e2e-cjm/steps/__tests__/transcribe.steps.test.ts with the
+# fetchSpy / vi.fn() boundary-mock pattern. Allowlist must shrink, not grow.
