@@ -268,11 +268,17 @@ describe("scanFile — additional shapes", () => {
     expect(scanFile(file).length).toBe(1);
   });
 
-  it("real-repo seed: flags packages/litellm-client/src/errors.ts (CR-9)", () => {
+  it("real-repo regression: packages/litellm-client/src/errors.ts is CLEAN post-CR-9", () => {
+    // Phase 37 / CRIT-FIX-09 (CR-9) closed by making `bodyText` `private
+    // readonly`, truncating via `.slice(0, 200)` at construction, and
+    // overriding `toJSON()`. This test originally asserted ONE finding
+    // (the un-fixed RED state). Post-fix, the linter correctly returns
+    // [], and we keep this assertion as a forward-looking regression
+    // sentinel: if anyone re-introduces a leak in this canonical file
+    // the suite should fail.
     const realFile = join(REPO_ROOT, "packages", "litellm-client", "src", "errors.ts");
     const findings = scanFile(realFile);
-    expect(findings.length).toBe(1);
-    expect(findings[0]?.field).toBe("bodyText");
+    expect(findings).toEqual([]);
   });
 });
 
