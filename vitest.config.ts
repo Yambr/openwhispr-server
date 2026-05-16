@@ -121,6 +121,23 @@ export default defineConfig({
           include: ["__tests__/*.test.ts"],
         },
       },
+      // Phase 23 / Plan 23-01 / SR-23.1 — tests/integration/ surface.
+      // Pre-Phase-23 these files (docs-operations-byok-matrix.test.ts,
+      // compose-overlays.test.ts, env-slim-example.test.ts, …) had NO
+      // explicit project entry — they were picked up incidentally by
+      // an earlier flat-glob root config. After the v3 projects-array
+      // migration the surface drifted out of discovery. This entry
+      // restores it so the BYOK provider-matrix integration test (and
+      // every other tests/integration/*.test.ts file) is part of
+      // `pnpm test`.
+      {
+        extends: true,
+        test: {
+          name: "tests-integration",
+          root: p("tests/integration"),
+          include: ["**/*.test.ts"],
+        },
+      },
     ],
     coverage: {
       provider: "v8",
