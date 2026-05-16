@@ -28,15 +28,38 @@
 // orchestrating the full Worker/Queue lifecycle. The Worker class itself
 // is a thin shim that delegates to runIngestOnce on every job invocation.
 
+import { makePino } from "@openwhispr/observability";
 import type { ConnectionOptions } from "bullmq";
 import { Queue, Worker } from "bullmq";
 import type { Pool } from "pg";
-import pino from "pino";
+import type { DestinationStream, Logger } from "pino";
 import { z } from "zod";
 import { inferKind } from "../lib/infer-kind.js";
 import { withSystemContext } from "../lib/with-system-context.js";
 
-const log = pino({ name: "ingest-litellm-spend" });
+/**
+ * Phase 41.d / HI-1 — module logger built via the shared `makePino` factory
+ * from `@openwhispr/observability` so the canonical D-T4 redact paths apply
+ * (bearer tokens, cookies, `*.token`/`*.secret`/`*.password`/`*.apiKey`,
+ * provider API-key env names). Prior to this phase the module used a bare
+ * `pino({ name: "ingest-litellm-spend" })` with NO redact config, which
+ * shipped secret-shaped values straight to Loki via OTel pino-instrumentation.
+ *
+ * The `_buildIngestLog` test seam is exported (underscore-prefixed) so the
+ * unit test can construct an isolated logger with a capturing destination
+ * stream — same pattern as `_resetDriftStoreForTest` in
+ * `reconciliation-daily-check.ts`.
+ */
+export function _buildIngestLog(destination?: DestinationStream): Logger {
+  const opts: Parameters<typeof makePino>[0] = {
+    base: { service: "worker", component: "ingest-litellm-spend" },
+  };
+  if (destination !== undefined) {
+    opts.destination = destination;
+  }
+  return makePino(opts);
+}
+const log = _buildIngestLog();
 
 export const QUEUE_NAME = "litellm-spend-ingest";
 export const SCHEDULER_KEY = "ingest-litellm-spend";

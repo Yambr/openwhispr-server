@@ -68,10 +68,10 @@ import "./otel-bootstrap.js";
 // for the one-shot drain of stale Valkey keys on upgrade-in-place.
 
 import { createEmailSender } from "@openwhispr/email";
+import { makePino } from "@openwhispr/observability";
 import { type ConnectionOptions, Worker } from "bullmq";
 import { Redis as IORedis } from "ioredis";
 import { Pool } from "pg";
-import pino from "pino";
 import { makeAppOwnerPool } from "./db/app-pool.js";
 import { makeLitellmPool } from "./db/litellm-pool.js";
 import { createTemplateRenderer } from "./i18n/template-renderer.js";
@@ -92,7 +92,12 @@ import {
 import { buildQueueRegistry, closeQueueRegistry, QUEUE_NAMES } from "./queues.js";
 import { installSchedulers } from "./scheduler.js";
 
-const log = pino({ name: "worker" });
+// Phase 41.d / HI-1 — shared redact factory; replaces a bare `pino({ name })`
+// that bypassed the D-T4 redact paths. Boot-time pre-OTel logger above
+// (`pinoBoot`) intentionally stays bare-pino because it runs BEFORE the
+// observability package is safe to import (BYOK guard rejection path on
+// sync-stderr). Every post-bootstrap log line MUST flow through `makePino`.
+const log = makePino({ base: { service: "worker" } });
 
 // Phase 13 / Plan 01 / Task 13-01-08 — real SMTP-backed EmailSender from
 // the shared `@openwhispr/email` package. Replaces the Phase 6 noopSender

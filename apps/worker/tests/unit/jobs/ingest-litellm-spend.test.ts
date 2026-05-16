@@ -31,6 +31,7 @@ import { PostgreSqlContainer } from "@testcontainers/postgresql";
 import pg from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
+  _buildIngestLog,
   BATCH_SIZE,
   createQueue,
   createWorker,
@@ -620,6 +621,36 @@ describe("BullMQ wiring (no-redis smoke)", () => {
     // Last positional param ($5) is `units`. With null total_tokens the
     // route's fallback yields 0.
     expect(captured?.[4]).toBe(0);
+  });
+
+  // Phase 41.d / HI-1 — the ingest-litellm-spend module-level logger MUST
+  // be built via the shared `makePino` factory from
+  // `@openwhispr/observability` so the canonical D-T4 redact paths apply.
+  // Prior to the fix it used a bare `pino({ name: "ingest-litellm-spend" })`
+  // with no `redact` config, which would ship secret-shaped values (e.g.
+  // `OPENAI_API_KEY`, `password`, `authorization` headers) straight to
+  // Loki when an error path logged them.
+  it("module logger redacts D-T4 secret-shaped keys via the shared makePino factory", () => {
+    const chunks: string[] = [];
+    const log = _buildIngestLog({ write: (c: string) => chunks.push(c) });
+    log.warn(
+      {
+        OPENAI_API_KEY: "sk-fakefake-very-secret-leaked-key",
+        password: "p@ssw0rd",
+        authorization: "Bearer ey-fake-jwt",
+        token: "tok-leaked",
+        rid: "ow-rid-safe",
+      },
+      "secret-shape redact assertion",
+    );
+    const joined = chunks.join("");
+    expect(joined).not.toContain("sk-fakefake-very-secret-leaked-key");
+    expect(joined).not.toContain("p@ssw0rd");
+    expect(joined).not.toContain("ey-fake-jwt");
+    expect(joined).not.toContain("tok-leaked");
+    expect(joined).toContain("[REDACTED]");
+    // Safe (non-secret) keys remain.
+    expect(joined).toContain("ow-rid-safe");
   });
 
   it("ensureScheduler delegates to queue.upsertJobScheduler with canonical args", async () => {
