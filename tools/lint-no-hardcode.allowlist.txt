@@ -26,7 +26,6 @@
 #       31-08-DECISIONS.md §D-2.
 
 # --- (a) PERMANENT — canonical DEFAULT_TENANT_ID sentinel (DO NOT REMOVE) ---
-apps/api/src/middleware/tenant.ts:44  # canonical-default-tenant
 apps/api/src/auth.ts:403  # canonical-default-tenant (33-04 shifted +73 lines)
 apps/api/src/auth.ts:453  # canonical-default-tenant (33-04 shifted +73 lines)
 apps/api/src/lib/default-tenant.ts:5  # canonical-default-tenant
@@ -45,7 +44,7 @@ packages/data/src/schema/tenants.ts:4  # canonical-default-tenant
 apps/api/src/auth.ts:310  # issue-31-debt-hardcode-localhost-3000 (33-04 shifted +73 lines)
 apps/api/src/routes/test-only.ts:181  # issue-31-debt-hardcode-localhost-3000
 apps/api/src/routes/better-auth-handler.ts:49  # issue-31-debt-hardcode-localhost
-apps/api/src/index.ts:665  # issue-31-debt-hardcode-litellm-port-4000 (33-04 shifted +9 lines)
+apps/api/src/index.ts:664  # issue-31-debt-hardcode-litellm-port-4000 (33-04 +9; 34 -1)
 apps/web/src/app/(auth)/app/page.tsx:16  # issue-31-debt-hardcode-port-3000-phase-41c
 apps/web/src/app/(auth)/app/notes/page.tsx:14  # issue-31-debt-hardcode-port-3000-phase-41c
 apps/web/src/app/(auth)/app/transcriptions/page.tsx:14  # issue-31-debt-hardcode-port-3000-phase-41c

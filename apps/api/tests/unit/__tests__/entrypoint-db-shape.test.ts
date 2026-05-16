@@ -113,7 +113,6 @@ vi.mock("@fastify/cookie", () => ({ default: async () => {} }));
 vi.mock("../../../src/plugins/zod-type-provider.js", () => ({ zodTypeProvider: async () => {} }));
 vi.mock("../../../src/plugins/request-log.js", () => ({ requestLog: async () => {} }));
 vi.mock("../../../src/plugins/rate-limit.js", () => ({ rateLimitPlugin: async () => {} }));
-vi.mock("../../../src/middleware/tenant.js", () => ({ tenantPlugin: async () => {} }));
 vi.mock("../../../src/middleware/dual-auth.js", () => ({
   buildDualAuthHook: () => async () => {},
   extractBearer: () => null,

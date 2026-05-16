@@ -115,7 +115,6 @@ import {
   extractBearer,
   type TryPreviousToken,
 } from "./middleware/dual-auth.js";
-import { tenantPlugin } from "./middleware/tenant.js";
 import { rateLimitPlugin } from "./plugins/rate-limit.js";
 import { requestLog } from "./plugins/request-log.js";
 import { servedByPlugin } from "./plugins/served-by.js";
@@ -384,11 +383,11 @@ export const buildApp = async (opts: BuildAppOptions = {}): Promise<FastifyInsta
     });
   }
 
-  // 7. Phase 1 tenant middleware (D-19) — populates req.tenantId from
-  //    the placeholder header until Plan 03's dual-auth hook supersedes
-  //    it. Kept here for backward-compat with Phase 1 tests; Plan 03's
-  //    middleware sets req.tenant (different field, same intent).
-  await app.register(tenantPlugin);
+  // 7. (Phase 34 / CR-1 closure) The legacy `tenantPlugin` that read
+  //    a client-controlled `x-tenant-id` header into `req.tenantId` was
+  //    retired here. The authoritative tenant binding (`req.tenant`) is
+  //    set by `dualAuthHook` from the resolved Better Auth session.
+  //    See `.planning/phases/34-tenant-plugin-retirement/34-AUDIT.md`.
 
   // If we have all the pieces (auth + db), wire the full route surface.
   // Otherwise (Phase 1-style smoke / first-launch dev), expose only the
