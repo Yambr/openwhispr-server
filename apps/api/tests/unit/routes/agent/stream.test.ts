@@ -750,39 +750,23 @@ describe("POST /api/agent/stream", () => {
     }
   });
 
-  it("Test 14 (branch coverage) — handler tolerates missing body (req.body undefined → empty object) AND missing messages", async () => {
-    let captured: Record<string, unknown> | null = null;
+  it("Test 14 (HI-02) — empty body returns 400 zod envelope BEFORE reply.hijack (no upstream call)", async () => {
+    // Phase 41.b / HI-02 — previously the route did `(req.body ?? {}) as
+    // RequestBody` and tolerated missing `messages`. The strict
+    // AgentStreamRequestSchema now requires `messages` so an empty body
+    // is a canonical 400 — flowing through registerErrorHandler's
+    // ZodError → 400 envelope branch (NOT a post-hijack stream_error
+    // chunk). No upstream call is ever issued.
+    let upstreamHit = false;
     agent
       .get(LITELLM_BASE)
       .intercept({ path: LITELLM_PATH, method: "POST" })
-      .reply(200, (opts) => {
-        const raw = typeof opts.body === "string" ? opts.body : String(opts.body ?? "");
-        captured = JSON.parse(raw) as Record<string, unknown>;
+      .reply(200, () => {
+        upstreamHit = true;
         return buildTextOnlySse();
       });
 
-    const app = Fastify({ logger: false, trustProxy: true });
-    registerErrorHandler(app);
-    app.addHook("onRequest", async (req) => {
-      const auth = req.headers.authorization;
-      const value = Array.isArray(auth) ? auth[0] : auth;
-      if (value !== "Bearer ok-u1") throw new AuthError("unauthorized");
-      (req as unknown as { user: { id: string; email: string } }).user = {
-        id: "u1",
-        email: "u1@test.local",
-      };
-    });
-    // Wipe req.body BEFORE the handler so the `req.body ?? {}` branch fires.
-    app.addHook("preHandler", async (req) => {
-      (req as unknown as { body?: unknown }).body = undefined;
-    });
-    await app.register(
-      buildAgentStreamRoutes({
-        db: fakeDb() as never,
-        litellm: fakeLitellm(),
-      }),
-    );
-    await app.ready();
+    const app = await buildTestApp({ bearerMap: { "Bearer ok-u1": "u1" } });
     try {
       const r = await app.inject({
         method: "POST",
@@ -790,9 +774,62 @@ describe("POST /api/agent/stream", () => {
         headers: { authorization: "Bearer ok-u1", "content-type": "application/json" },
         payload: {},
       });
-      expect(r.statusCode).toBe(200);
-      expect(captured).not.toBeNull();
-      expect((captured as { messages: unknown[] }).messages).toEqual([]);
+      expect(r.statusCode).toBe(400);
+      // ZodError flows through the centralized handler; envelope has
+      // an `error` string field.
+      const json = r.json() as { error?: string };
+      expect(typeof json.error).toBe("string");
+      expect(upstreamHit).toBe(false);
+    } finally {
+      await app.close();
+    }
+  });
+
+  it("Test 19 (HI-02) — string `tools` field is rejected with 400 zod envelope (cast-bypass class)", async () => {
+    const app = await buildTestApp({ bearerMap: { "Bearer ok-u1": "u1" } });
+    try {
+      const r = await app.inject({
+        method: "POST",
+        url: "/api/agent/stream",
+        headers: { authorization: "Bearer ok-u1", "content-type": "application/json" },
+        payload: { messages: [{ role: "user", content: "hi" }], tools: "abc" },
+      });
+      expect(r.statusCode).toBe(400);
+      expect(r.headers["content-type"]).toMatch(/application\/json/);
+    } finally {
+      await app.close();
+    }
+  });
+
+  it("Test 20 (HI-02) — unknown top-level keys are rejected (strict)", async () => {
+    const app = await buildTestApp({ bearerMap: { "Bearer ok-u1": "u1" } });
+    try {
+      const r = await app.inject({
+        method: "POST",
+        url: "/api/agent/stream",
+        headers: { authorization: "Bearer ok-u1", "content-type": "application/json" },
+        payload: { messages: [{ role: "user", content: "hi" }], sneaky: 1 },
+      });
+      expect(r.statusCode).toBe(400);
+    } finally {
+      await app.close();
+    }
+  });
+
+  it("Test 21 (HI-02) — oversize messages (> 50) is rejected with 400 (cost-multiplier cap)", async () => {
+    const app = await buildTestApp({ bearerMap: { "Bearer ok-u1": "u1" } });
+    try {
+      const messages = Array.from({ length: 51 }, () => ({
+        role: "user",
+        content: "x",
+      }));
+      const r = await app.inject({
+        method: "POST",
+        url: "/api/agent/stream",
+        headers: { authorization: "Bearer ok-u1", "content-type": "application/json" },
+        payload: { messages },
+      });
+      expect(r.statusCode).toBe(400);
     } finally {
       await app.close();
     }

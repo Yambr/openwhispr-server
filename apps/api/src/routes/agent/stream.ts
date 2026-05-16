@@ -49,16 +49,16 @@ import {
   type LitellmClient,
   LitellmUpstreamError,
 } from "@openwhispr/litellm-client";
+import {
+  type AgentChatMessage,
+  type AgentLegacyTool,
+  AgentStreamRequestSchema,
+} from "@openwhispr/wire-schemas";
 import type { FastifyInstance } from "fastify";
 import { AuthError } from "../../errors.js";
 import { type StreamChunk, sseToNdjson } from "../../lib/sse-parser.js";
 import { createToolCallAccumulator } from "../../lib/tool-call-accumulator.js";
-import {
-  type ChatMessage,
-  type LegacyTool,
-  prependSystemPrompt,
-  translateLegacyTools,
-} from "./translate-tools.js";
+import { prependSystemPrompt, translateLegacyTools } from "./translate-tools.js";
 
 export interface AgentStreamDeps {
   db: TransactionalDb<ExecutableTx>;
@@ -69,13 +69,6 @@ export interface AgentStreamDeps {
    * the existing sseToNdjson consumer.
    */
   litellm: LitellmClient;
-}
-
-interface RequestBody {
-  messages: ChatMessage[];
-  model?: string;
-  systemPrompt?: string;
-  tools?: LegacyTool[];
 }
 
 // Phase 41.b / HI-01 — DEFAULT_AGENT_MODEL is now sourced from
@@ -127,7 +120,17 @@ export const buildAgentStreamRoutes = (deps: AgentStreamDeps) =>
           throw new AuthError("unauthorized");
         }
         const userId = req.user.id;
-        const body = (req.body ?? {}) as RequestBody;
+        // Phase 41.b / HI-02 — strict zod validation BEFORE reply.hijack()
+        // so a ZodError flows through the centralized 400 envelope handler
+        // instead of being swallowed into a synthetic stream_error finish
+        // chunk post-hijack. The schema enforces messages/tools cap +
+        // structural shape; downstream code can rely on the narrowed types.
+        const body: {
+          messages: AgentChatMessage[];
+          model?: string;
+          systemPrompt?: string;
+          tools?: AgentLegacyTool[];
+        } = AgentStreamRequestSchema.parse(req.body ?? {});
 
         // (2) Set headers, hijack, flush, disable Nagle (D-02 / D-04).
         // Use raw.setHeader directly so light-my-request preserves them
