@@ -540,3 +540,35 @@ and SHOULD instruct the client to clear the session cookie (via
 - Silent-failure modes: server silently re-issues a token for an
   expired session (session-lifetime bypass — CVE class); 5xx with the
   expired token in a stack trace.
+
+## 10. Diarization — multi-speaker round-trip (G3 closure)
+
+Phase 28 closes G3 from `.planning/qa-audit/2026-05-16-cjm-coverage.md`.
+`POST /v1/audio/diarization` already ships (Phase 08.6) routing to either
+pyannote.ai (default) or local Speaches (`SPEACHES_DIARIZATION_URL`
+override). Memory `feedback_speaches_diarization_build_from_main` locks
+the Speaches main-branch build as a prerequisite. Phase 28 lands the
+end-to-end CJM.
+
+### @cjm-10.1 Multi-speaker wav returns speaker-segmented JSON (happy path, after-docker-up)
+
+A signed-in user POSTs a multipart `file=<2-speaker.wav>` to
+`/v1/audio/diarization`. The api MUST respond `200` with
+`{duration: number, segments: [{start, end, speaker}, ...]}` containing
+at least 2 distinct speaker labels and every segment carrying the three
+numeric/string fields exactly.
+
+- Backend error branches: 415 on wrong content-type; 502 on upstream
+  diarization failure; 503 if `SPEACHES_DIARIZATION_URL` is unreachable.
+- Silent-failure modes: empty `segments` array (would hide a misconfig);
+  raw pyannote.ai async-orchestration leakage to the client.
+
+### @cjm-10.2 Non-audio payload → 415 typed envelope (negative twin)
+
+A signed-in user POSTs `Content-Type: text/plain` to `/v1/audio/diarization`.
+The api MUST respond `4xx` (preferably `415`) with the typed envelope
+shape; the body MUST NOT contain a Node.js stack trace.
+
+- Backend error branches: 415 typed envelope `{ error: { code, message } }`.
+- Silent-failure modes: 200 with empty segments (server happily ate
+  text/plain); 5xx stack trace.
