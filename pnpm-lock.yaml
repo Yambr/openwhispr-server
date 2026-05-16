@@ -373,6 +373,9 @@ importers:
       '@openwhispr/byok-guard':
         specifier: workspace:*
         version: link:../../packages/byok-guard
+      '@openwhispr/data':
+        specifier: workspace:*
+        version: link:../../packages/data
       '@openwhispr/email':
         specifier: workspace:*
         version: link:../../packages/email
@@ -11227,7 +11230,7 @@ snapshots:
       pg: 8.20.0
       react: 19.1.0
       react-dom: 19.1.0(react@19.1.0)
-      vitest: 4.1.5(@opentelemetry/api@1.9.1)(@types/node@25.6.2)(@vitest/coverage-v8@4.1.5)(happy-dom@20.9.0)(vite@8.0.11(@types/node@25.6.2)(esbuild@0.27.7)(jiti@2.6.1)(tsx@4.21.0)(yaml@2.8.4))
+      vitest: 4.1.5(@opentelemetry/api@1.9.1)(@types/node@20.19.40)(@vitest/coverage-v8@4.1.5)(happy-dom@20.9.0)(vite@8.0.11(@types/node@20.19.40)(esbuild@0.27.7)(jiti@2.6.1)(tsx@4.21.0)(yaml@2.8.4))
     transitivePeerDependencies:
       - '@cloudflare/workers-types'
       - '@opentelemetry/api'

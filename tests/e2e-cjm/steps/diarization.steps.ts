@@ -11,13 +11,27 @@
 // tagged @after-docker-up @after-speaches-main and only runs when the
 // compose stack has the Speaches main-branch image (Phase 08.6).
 
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { Agent, FormData, fetch as undiciFetch } from "undici";
 
 import { expect, freshTenant, Given, signedInAs, Then, When } from "../support/fixtures";
 
-const FIXTURE_WAV = resolve(__dirname, "../fixtures/silent.wav");
+// Phase 28 — playwright-bdd loader runs under ESM, where `__dirname` is
+// not defined. Mirror the transcribe.steps.ts fixture resolver (try repo
+// root via `process.cwd()` first, then known relative fallbacks).
+function resolveFixtureWav(): string {
+  const candidates = [
+    resolve(process.cwd(), "tests/e2e-cjm/fixtures/silent.wav"),
+    resolve(process.cwd(), "fixtures/silent.wav"),
+    resolve(process.cwd(), "../../tests/e2e-cjm/fixtures/silent.wav"),
+  ];
+  for (const c of candidates) {
+    if (existsSync(c)) return c;
+  }
+  return candidates[0] ?? "";
+}
+const FIXTURE_WAV = resolveFixtureWav();
 
 interface DiarizationSegment {
   start: unknown;

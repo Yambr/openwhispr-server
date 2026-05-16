@@ -36,6 +36,11 @@ COPY packages/email/package.json packages/email/
 # Workspace dep declared in apps/worker/package.json:19; manifest was
 # missing from the Dockerfile COPY chain (SERVER-ERRORS Entry 7, Phase 19a).
 COPY packages/byok-guard/package.json packages/byok-guard/
+# Phase 33 / CR-02 — @openwhispr/data is a workspace dep of @openwhispr/worker
+# (validateEncryptionBoot import at apps/worker/src/index.ts:12). Manifest
+# was missing from the Dockerfile COPY chain; tsup's noExternal walk fails
+# to resolve `@openwhispr/data` without the package present.
+COPY packages/data/package.json packages/data/
 
 RUN pnpm install --frozen-lockfile --ignore-scripts
 
@@ -44,6 +49,7 @@ COPY apps/worker apps/worker
 COPY packages/observability packages/observability
 COPY packages/email packages/email
 COPY packages/byok-guard packages/byok-guard
+COPY packages/data packages/data
 
 RUN pnpm --filter @openwhispr/worker build
 
@@ -60,6 +66,9 @@ COPY packages/email/package.json packages/email/
 # Phase 19a / SERVER-ERRORS Entry 7 — byok-guard manifest needed for the
 # prod-deps `--filter @openwhispr/worker...` walk.
 COPY packages/byok-guard/package.json packages/byok-guard/
+# Phase 33 / CR-02 — packages/data manifest needed for the prod-deps
+# `--filter @openwhispr/worker...` walk (mirror of builder stage).
+COPY packages/data/package.json packages/data/
 
 RUN pnpm install --frozen-lockfile --prod --ignore-scripts \
       --node-linker=hoisted \
