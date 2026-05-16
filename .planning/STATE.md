@@ -1,16 +1,16 @@
 ---
 gsd_state_version: 1.0
 milestone: v2.2
-milestone_name: Pre-OSS Security and Hygiene
-status: planning
-last_updated: "2026-05-15T23:19:18.541Z"
-last_activity: 2026-05-15
+milestone_name: — Pre-OSS Security & Hygiene
+status: Pending discuss-phase 19.3
+last_updated: "2026-05-16T01:50:59.430Z"
+last_activity: "2026-05-16 — Phase 19.2 CLOSED with SERVER-ERRORS Entry 11 cascade resolved through 3 production layers (client query-param + multipart-injection + LiteLLM config `groq/` prefix). 7 commits: `8680485` / `e80b047` / `c2a5e79` / `1f60ff0` / `c5112d9` / `9e1db63` / `c4a49d6`. `@cjm-4.1` GREEN end-to-end (1.8s). Earlier 2026-05-16 — Phase 19.1 CLOSED + Phase 19a CLOSED + Phase 19b CLOSED. ROADMAP entries still pending for 19.3 (ba-i18n @cjm-1.4) and 19.4 (locale-e2e @cjm-6.1)."
 progress:
-  total_phases: 0
-  completed_phases: 0
-  total_plans: 0
-  completed_plans: 0
-  percent: 0
+  total_phases: 71
+  completed_phases: 24
+  total_plans: 178
+  completed_plans: 182
+  percent: 34
 ---
 
 # Project State: OpenWhispr Server
@@ -96,6 +96,7 @@ Last activity: 2026-05-16 — Phase 19.2 CLOSED with SERVER-ERRORS Entry 11 casc
 | Phase 12 P05b | 12 | 3 tasks | 12 files |
 | Phase 14 P07 | 7 | 3 tasks | 7 files |
 | Phase 15-repo-refactor-fsl-relicense-history-scrub-v2 P03 | 120 | 6 tasks | 640 files |
+| Phase 31 P31-08 | 5m | 3 tasks | 7 files |
 
 ## Accumulated Context
 
@@ -241,3 +242,4 @@ Last activity: 2026-05-16 — Phase 19.2 CLOSED with SERVER-ERRORS Entry 11 casc
 - [Phase 18.1.2]: HARD RULE codified at commit 9643b92 — never edit production code to fix tests; all 6 plans honored this (ZERO prod edits). Test fixtures, setup files, vitest config, and CI workflow are the only legitimate fix surfaces for infrastructure-bound failures.
 - [Phase 18.1.2]: SERVER-ERRORS.md introduced as append-only ledger for production-side issues uncovered during test fixes; Entries 1-5 enumerate the 33 pre-existing test failures (verified pre-existing via `git stash` probe) for future production-fix phases.
 - [Phase 18.1.2]: v2.1 milestone advances from CLOSED-WITH-FOLLOWUP → CLOSED. Phase 18.1.1's 37-failure followup work is fully resolved (4 closed by Phase 18.1.2 surface fixes; 33 reclassified to pre-existing production-debt ledger per stash verification).
+- [Phase ?]: Phase 31 CLOSED; LOCKER-04 BLOCKING flip deferred to Phase 41
