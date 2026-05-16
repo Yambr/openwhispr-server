@@ -42,17 +42,25 @@ export async function recordPreviousToken(
   sessionId: string,
   oldToken: string,
 ): Promise<void> {
-  // Phase 33 / Plan 33-04 — also write `previous_token_fp = sha256(oldToken)`
-  // so `tryPreviousToken` can resolve the bearer via the partial-unique
-  // fingerprint index after Plan 33-05 drops the plaintext column. Within
-  // the 33-04 → 33-05 window both columns are populated; lookup uses fp.
+  // Phase 33 / Plan 33-05 — plaintext `sessions.previous_token` column
+  // dropped by migration 0020. Only the SHA-256 fingerprint sidecar
+  // (`previous_token_fp`) is written; `tryPreviousToken` resolves the
+  // bearer via the partial-unique fingerprint index. The 5-minute
+  // overlap CONTRACT is preserved as a behaviour guarantee — storage
+  // shape is now fingerprint-only.
+  //
+  // The plaintext `oldToken` is NOT persisted because the route hooks
+  // never need to read it back — Better Auth itself owns the next-token
+  // emission and the rotation contract only requires "an attacker
+  // presenting the OLD bearer during the overlap window resolves to
+  // the same (user_id, tenant_id) tuple". The fingerprint achieves that
+  // without exposing recoverable plaintext.
   const { createHash } = await import("node:crypto");
   const fp = createHash("sha256").update(oldToken, "utf8").digest();
   await withTenant(db, tenantId, async (tx) => {
     await tx.execute(
       sql`UPDATE sessions
-          SET previous_token = ${oldToken},
-              previous_token_fp = ${fp},
+          SET previous_token_fp = ${fp},
               previous_token_expires_at = now() + interval '5 minutes'
           WHERE id = ${sessionId}::uuid`,
     );

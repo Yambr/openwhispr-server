@@ -364,6 +364,156 @@ Semantics per (op, context) cell after migration 0018:
 
 ---
 
+## 12. Encryption at rest (envelope encryption for credential columns)
+
+**Source:** Phase 33 (CRIT-FIX-02 closure). Phase 33's `tools/lint-no-plaintext-secret-columns.ts` (LOCKER-PLAINTEXT-COLS / DISCIPLINE Rule 15) refuses any reintroduction of plaintext credential columns from the schema side; this section is the operator-facing companion.
+
+### 12.1 Scope — what is encrypted
+
+The 8 Better Auth + OAuth credential columns are envelope-encrypted at rest via AES-256-GCM with a per-row data-encryption key (DEK) wrapped under the deploy's master key-encryption key (KEK):
+
+| Table | Column | Sensitivity |
+|---|---|---|
+| `account` | `access_token` | OAuth-issued bearer for the upstream IdP |
+| `account` | `refresh_token` | Long-lived OAuth refresh credential |
+| `account` | `id_token` | OIDC ID token (claims about the user) |
+| `account` | `password` | Hashed credential password (Better Auth-managed) |
+| `verification` | `value` | Email-verification + password-reset short-lived tokens |
+| `sessions` | `token` | Active session bearer (channel-scheme echoed back to client) |
+| `sessions` | `previous_token` | AUTH-04 5-minute rotation overlap bearer |
+| `oauth_state` | `code_verifier` | PKCE code_verifier for in-flight OAuth handshakes |
+
+Each column maps to 6 nullable `bytea` sidecar columns (the `EncryptedRow` shape declared in `packages/data/src/encryption/envelope.ts`):
+
+- `<col>_dek_wrapped` — AES-256-GCM(KEK, DEK)
+- `<col>_dek_iv` — 12-byte IV used to wrap the DEK
+- `<col>_dek_auth_tag` — 16-byte GCM tag over `dek_wrapped`
+- `<col>_value_iv` — 12-byte IV used to encrypt plaintext
+- `<col>_value_auth_tag` — 16-byte GCM tag over `value_ciphertext`
+- `<col>_value_ciphertext` — AES-256-GCM(DEK, plaintext)
+
+`sessions.token` and `sessions.previous_token` additionally carry a SHA-256 fingerprint sidecar (`token_fp` NOT NULL, full UNIQUE INDEX; `previous_token_fp` nullable, partial INDEX for the AUTH-04 5-minute overlap window) so lookup-by-token remains O(log N) without ciphertext-side scanning.
+
+The lens that round-trips plaintext ↔ ciphertext at the Drizzle adapter layer lives at `packages/data/src/encryption/lens.ts`; the OAuth-state codec for the three raw-`sql` fragment sites lives at `packages/data/src/encryption/oauth-state-codec.ts`. Boot-time validation is at `packages/data/src/encryption/validate-boot.ts` and runs from both `apps/api/src/index.ts` and `apps/worker/src/index.ts` — process exits `78` (BSD `EX_CONFIG`) on missing/short `MASTER_KEK` or unsupported `OPENWHISPR_KEY_PROVIDER`.
+
+### 12.2 `MASTER_KEK` env — setup
+
+`MASTER_KEK` is 32 raw bytes encoded as base64. **Never log it**, never commit it, never bake it into images. The value MUST be present at boot for both `api` and `worker` containers; absence or wrong length causes immediate exit-78.
+
+```bash
+# Generate locally (DEV/test only — production KEK MUST come from KMS, see 12.5):
+openssl rand -base64 32
+# 32-byte base64 string, exactly 44 chars including trailing '='
+```
+
+Provision via your secret store (Kubernetes Secret, docker-compose `.env` mounted as a file, AWS Secrets Manager, etc.).
+
+```yaml
+# docker-compose.yml fragment (self-host single-VM quickstart)
+services:
+  api:
+    environment:
+      OPENWHISPR_KEY_PROVIDER: env
+      MASTER_KEK: ${MASTER_KEK}
+  worker:
+    environment:
+      OPENWHISPR_KEY_PROVIDER: env
+      MASTER_KEK: ${MASTER_KEK}
+```
+
+```yaml
+# Helm values fragment (K8s production)
+api:
+  extraEnv:
+    - name: OPENWHISPR_KEY_PROVIDER
+      value: env
+    - name: MASTER_KEK
+      valueFrom:
+        secretKeyRef:
+          name: openwhispr-master-kek
+          key: master-kek-b64
+```
+
+### 12.3 KEK rotation runbook
+
+KEK rotation is performed via an overlap window. The current v1 implementation supports a single-key `env` provider; the overlap pattern below documents the operator procedure once the `MASTER_KEK_PREVIOUS` env support lands (tracked as future work — landing-phase deferred per Phase 33 / Plan 33-05 § "Out of scope").
+
+1. Generate the new KEK material (`openssl rand -base64 32` or KMS — see 12.5).
+2. Deploy `api` + `worker` with both `MASTER_KEK_CURRENT` (new) AND `MASTER_KEK_PREVIOUS` (old) set. Read paths try `MASTER_KEK_CURRENT` first and fall back to `MASTER_KEK_PREVIOUS`; write paths always wrap under `MASTER_KEK_CURRENT`.
+3. Run the re-wrap migrator (`pnpm --filter @openwhispr/data exec tsx src/encryption/rewrap-migrator.ts` — future work) until every `<col>_dek_wrapped` value has been re-wrapped under the new KEK. The migrator is idempotent.
+4. Once the migrator reports zero rows remaining under `MASTER_KEK_PREVIOUS`, redeploy with `MASTER_KEK_PREVIOUS` unset and `MASTER_KEK = MASTER_KEK_CURRENT` (back to single-key shape).
+
+During the overlap window, the boot validator accepts either env name; outside the window, only `MASTER_KEK` is honored.
+
+### 12.4 Rollback rescue procedure
+
+Migration `0020_envelope_encrypt_secret_columns_drop_plaintext.sql` is forward-only. The companion `.down.sql` (NOT in the drizzle journal — mirrors 0018/0019 rescue precedent) restores the plaintext-column **shape** but CANNOT recover plaintext data (it has been dropped from disk). To restore plaintext content during an emergency rollback:
+
+1. Stop all writers (api + worker scaled to 0).
+2. Run the reverse-backfill (`pnpm --filter @openwhispr/data exec tsx src/encryption/reverse-backfill.ts` — future work) which decrypts every row's ciphertext and writes the plaintext to a temporary staging table.
+3. Apply the rescue `0020.down.sql`.
+4. Copy plaintext values from the staging table into the restored plaintext columns.
+5. Drop the staging table.
+
+In v1, steps 2 and 4 are operator scripts; automating them is out of scope for Phase 33.
+
+### 12.5 KMS provisioning recipes
+
+The `env` provider is the v1 default. To source `MASTER_KEK` from a managed KMS, the operator fetches the raw bytes once at deploy time and exports them via the env path.
+
+**AWS KMS** (`generate-data-key` with `AES_256`):
+
+```bash
+aws kms generate-data-key \
+  --key-id arn:aws:kms:eu-west-1:123456789012:key/<kms-key-arn> \
+  --key-spec AES_256 \
+  --query 'Plaintext' --output text \
+  > master-kek-b64.txt
+```
+
+**GCP KMS** (`decrypt` a customer-managed key-protected secret):
+
+```bash
+gcloud kms decrypt \
+  --location europe-west1 \
+  --keyring openwhispr-prod \
+  --key master-kek-v1 \
+  --ciphertext-file master-kek.enc \
+  --plaintext-file - \
+  | base64 > master-kek-b64.txt
+```
+
+**Azure Key Vault** (named secret stores the base64 plaintext directly):
+
+```bash
+az keyvault secret show \
+  --vault-name openwhispr-prod-kv \
+  --name master-kek-b64 \
+  --query 'value' --output tsv \
+  > master-kek-b64.txt
+```
+
+**HashiCorp Vault** (KV v2):
+
+```bash
+vault kv get -field=plaintext secret/openwhispr/master-kek \
+  > master-kek-b64.txt
+```
+
+In every case, the deploy harness reads `master-kek-b64.txt` and exports `MASTER_KEK=$(cat master-kek-b64.txt)` to the container env. The file MUST be `chmod 600` and deleted from the host after deploy.
+
+### 12.6 Defence-in-depth — LOCKER-PLAINTEXT-COLS
+
+The `tools/lint-no-plaintext-secret-columns.ts` linter (LOCKER-PLAINTEXT-COLS / DISCIPLINE Rule 15) scans `packages/data/src/schema/**/*.ts` via the TypeScript Compiler API and REFUSES (exit 1, BLOCKING from day one — no `--warn-only`, no allowlist) any `text(...)` / `varchar(...)` / `char(...)` declaration whose first argument matches the 8 credential names above. This catches:
+
+- An accidental `drizzle-kit generate` regeneration that re-emits a plaintext column declaration alongside the bytea sidecars.
+- A copy-pasted route that adds a new credential column without going through envelope encryption.
+- A future contributor unfamiliar with this section who attempts to "simplify" the schema.
+
+The linter runs in lefthook pre-commit, CI `lint-english` job, and the nightly `lockers-nightly` job — every commit, every PR, every night. Any future legitimate exception requires a DISCIPLINE amendment, not a flag flip.
+
+---
+
 ## 10. Related documentation
 
 - [`architecture.md`](./architecture.md) — components, request hot

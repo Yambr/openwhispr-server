@@ -15,3 +15,22 @@ export const tsvector = customType<{ data: string; notNull: true }>({
     return "tsvector";
   },
 });
+
+// Phase 33 / Plan 33-05 — envelope-encryption sidecar columns.
+//
+// Postgres `bytea` columns hold AES-256-GCM ciphertext / IVs / GCM tags /
+// wrapped DEKs (the 6-sidecar shape declared in
+// `packages/data/src/encryption/envelope.ts`) plus the SHA-256
+// fingerprint helper columns (`token_fp` / `previous_token_fp`) used
+// for O(log N) lookup against ciphertext. The Drizzle pg-core dialect
+// does not ship a built-in `bytea` builder, so this customType wraps
+// it once and the four credential schemas import it from here.
+//
+// `data: Uint8Array` keeps the Node-side type narrow — pg's BYTEA codec
+// hands back `Buffer` (a Uint8Array subclass) and accepts both
+// `Buffer.from(...)` and any Uint8Array on the write side.
+export const bytea = customType<{ data: Uint8Array; driverData: Buffer }>({
+  dataType() {
+    return "bytea";
+  },
+});

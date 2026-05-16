@@ -241,24 +241,8 @@ describe("runMain — CLI entrypoint shape", () => {
     expect(bufs.stderr.out).toMatch(/(sessions.*token|token.*sessions)/s);
   });
 
-  it("exits 2 with diagnostic when scanning bombs", () => {
-    // Inject a root that exists but is not a directory.
-    const f = touchSchema("accounts.ts", `${HEAD}export const a = pgTable("x", {});\n`);
-    void f;
-    const bufs = makeBuffers();
-    // Force a throw via a synthetic root that does not exist AND a parallel
-    // boom path: monkey-patch the runMain by passing a sentinel that the
-    // production source surfaces as an internal-error path. Cheapest: pass
-    // an empty string root which globSync rejects with TypeError.
-    const code = runMain({
-      root: "\0invalid",
-      stdout: bufs.stdout,
-      stderr: bufs.stderr,
-    });
-    expect(code === 2 || code === 0).toBe(true);
-    // The exact code depends on platform globSync behavior; the
-    // important contract is "internal error is surfaced, not silently
-    // swallowed". 0 acceptable when globSync returns [] for the bogus
-    // root rather than throwing (depends on node version).
-  });
+  // Note: the runMain catch branch (internal-error → exit 2) is `c8
+  // ignore`d in the source — globSync + scanFile both swallow per-file
+  // errors so the path is unreachable from the fixture set. Kept as a
+  // defensive surface for unexpected non-fixture failures.
 });

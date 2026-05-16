@@ -307,16 +307,22 @@ SUITE("TEST-RLS-01: 100+ random tenant pairs through PgBouncer", () => {
       const userId = userIdRows.rows[0]?.id;
       if (!userId) throw new Error("seeded user missing id");
 
-      // Phase 02.12 — sessions.token is plain text (BA-native). Bind a unique
-      // bearer per insert so the UNIQUE index doesn't reject duplicates.
+      // Phase 33 / Plan 33-05 — plaintext `sessions.token` column dropped
+      // by migration 0020. Seed via `token_fp` (NOT NULL, full UNIQUE
+      // INDEX) — the SHA-256 fingerprint of a synthetic bearer. The 6
+      // bytea sidecars are left NULL because this RLS-property test
+      // doesn't exercise envelope decryption; it asserts cross-tenant
+      // isolation, which is independent of credential ciphertext.
+      const { createHash } = await import("node:crypto");
       await withTenant(db, tenantA, async (tx) => {
         let i = 0;
         for (const sec of expirations) {
           const bearer = `rls-prop-${tenantA}-${userId}-${i++}-${sec}`;
+          const fp = createHash("sha256").update(bearer, "utf8").digest();
           await tx.execute(
-            sql`INSERT INTO sessions (tenant_id, user_id, token, expires_at)
+            sql`INSERT INTO sessions (tenant_id, user_id, token_fp, expires_at)
                 VALUES (${tenantA}::uuid, ${userId}::uuid,
-                        ${bearer},
+                        ${fp},
                         now() + (${sec}::int * interval '1 second'))`,
           );
         }

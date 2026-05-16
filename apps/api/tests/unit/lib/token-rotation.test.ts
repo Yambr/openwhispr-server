@@ -48,7 +48,7 @@ const SESSION_UUID = "11111111-2222-3333-4444-555555555555";
 type FakeTx = { execute(query: unknown): Promise<unknown> };
 
 describe("recordPreviousToken (Phase 02.12 plain-text)", () => {
-  it("UPDATEs sessions with previous_token + 5-minute expiry under withTenant", async () => {
+  it("UPDATEs sessions with previous_token_fp (SHA-256 of oldToken) + 5-minute expiry under withTenant (Phase 33 / Plan 33-05)", async () => {
     const recorded: RecordedQuery[] = [];
     const tx: FakeTx = {
       async execute(q: unknown): Promise<unknown> {
@@ -69,15 +69,28 @@ describe("recordPreviousToken (Phase 02.12 plain-text)", () => {
     expect(setConfig).toBeDefined();
     expect(setConfig?.params).toContain(TENANT);
 
-    // Second call: UPDATE sessions ... previous_token (text) + 5 min.
+    // Second call: UPDATE sessions ... previous_token_fp + 5 min.
+    // Phase 33 / Plan 33-05 — plaintext `previous_token` column dropped
+    // by migration 0020. Only the SHA-256 fingerprint is written.
     const update = recorded.find((r) => /UPDATE\s+sessions/i.test(r.sql));
     expect(update).toBeDefined();
-    // Phase 02.12 — column is now `previous_token` (text), not `previous_token_hash`.
-    expect(update?.sql).toMatch(/previous_token\b/);
+    expect(update?.sql).toMatch(/previous_token_fp\b/);
     expect(update?.sql).not.toMatch(/previous_token_hash/);
+    // Plaintext `previous_token` column reference MUST be gone — the
+    // column does not exist post-0020.
+    expect(update?.sql).not.toMatch(/SET previous_token =/);
+    expect(update?.sql).not.toMatch(/previous_token,\s*/);
     expect(update?.sql).toMatch(/5\s+minutes/);
-    expect(update?.params).toContain(oldToken);
+    // params include the 32-byte SHA-256 fingerprint (Buffer) of oldToken.
+    const { createHash } = await import("node:crypto");
+    const expectedFp = createHash("sha256").update(oldToken, "utf8").digest();
+    const hasFp = (update?.params ?? []).some(
+      (p) => Buffer.isBuffer(p) && p.equals(expectedFp),
+    );
+    expect(hasFp).toBe(true);
     expect(update?.params).toContain(SESSION_UUID);
+    // Plaintext bearer MUST NOT be bound as a param.
+    expect(update?.params).not.toContain(oldToken);
   });
 
   it("rejects an invalid tenant UUID via withTenant guard", async () => {

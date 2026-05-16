@@ -145,15 +145,19 @@ describe("0001_better_auth migration — users / sessions extensions", () => {
     }
   });
 
-  // Phase 02.12 — post-0005 plain-text columns. The bytea hash columns
-  // originally added by 0001 are dropped in 0005.
+  // Phase 33 / Plan 33-05 — migration 0020 drops the 8 plaintext
+  // credential columns. `sessions.token` and `sessions.previous_token`
+  // are now envelope-encrypted at rest; the canonical lookup surface
+  // is the SHA-256 fingerprint sidecar (`token_fp` NOT NULL +
+  // `previous_token_fp` nullable). Migrate the column-existence
+  // assertions accordingly.
   it.each([
-    "token",
-    "previous_token",
+    "token_fp",
+    "previous_token_fp",
     "previous_token_expires_at",
     "ip_address",
     "user_agent",
-  ])("sessions has post-0005 column %s", async (col) => {
+  ])("sessions has post-0020 column %s", async (col) => {
     const pool = new Pool({ connectionString: booted.ownerUri });
     try {
       const { rows } = await pool.query<{ column_name: string; data_type: string }>(
@@ -167,13 +171,13 @@ describe("0001_better_auth migration — users / sessions extensions", () => {
     }
   });
 
-  it("sessions has a partial index on previous_token (post-0005)", async () => {
+  it("sessions has a partial index on previous_token_fp (post-0019/0020)", async () => {
     const pool = new Pool({ connectionString: booted.ownerUri });
     try {
       const { rows } = await pool.query<{ indexname: string; indexdef: string }>(
         `SELECT indexname, indexdef FROM pg_indexes
          WHERE schemaname='public' AND tablename='sessions'
-           AND indexname='sessions_previous_token_idx'`,
+           AND indexname='sessions_previous_token_fp_idx'`,
       );
       expect(rows).toHaveLength(1);
       expect(rows[0]?.indexdef).toMatch(/WHERE/i);
