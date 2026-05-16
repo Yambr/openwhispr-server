@@ -21,17 +21,10 @@ services:
   worker:
     environment:
       INGRESS_BASE_URL: ${INGRESS_BASE_URL:-http://localhost:4000}
-      # Phase 19a / SR-19a.4 — `compose/docker-compose.storage.yml` injects
-      # S3_ENDPOINT only on the `api` service. The BYOK guard runs on both
-      # api AND worker boot and refuses to start without S3_ENDPOINT when
-      # the storage overlay is OFF — but the storage overlay IS layered in
-      # the e2e-cjm Makefile target, just incompletely (api-only). Without
-      # this worker override, the BYOK guard refuses worker boot in a
-      # restart loop and password_reset jobs never get dispatched.
-      # SERVER-ERRORS candidate: storage.yml should inject S3_ENDPOINT on
-      # worker (mirroring api) — surfaced as a production-side gap but
-      # patched here non-invasively per CLAUDE.md Hard Rule #1.
-      S3_ENDPOINT: ${S3_ENDPOINT:-http://minio:9000}
-      S3_ACCESS_KEY: ${S3_ACCESS_KEY:-${MINIO_ROOT_USER}}
-      S3_SECRET_KEY: ${S3_SECRET_KEY:-${MINIO_ROOT_PASSWORD}}
-      S3_BUCKET: ${S3_BUCKET:-openwhispr}
+      # Phase 48 / Plan 48-01 / L7 — SR-19a.4 CLOSED. The worker S3_*
+      # block that previously lived here is now upstream in
+      # compose/docker-compose.storage.yml (worker block mirrors api).
+      # Keeping only INGRESS_BASE_URL — that override remains e2e-cjm-
+      # only because the BYOK guard's ingress branch requires it
+      # whenever the ingress overlay is OFF (e2e-cjm boots without
+      # ingress to keep localhost ports available to playwright).
