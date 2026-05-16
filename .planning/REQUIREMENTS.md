@@ -613,7 +613,7 @@ Work-order: **31 → 32 → 33 → 34 → 35 → 36 → 37 → 38 → 39 → 40 
 |-------------|-------|--------|-------|
 | LOCKER-01 | 31 | Pending | `tools/lint-no-env-branches.ts` + tests at ≥ 90/90/90/90 |
 | LOCKER-02 | 31 | Pending | `tools/lint-no-suppressions.ts` + tests + seeded allowlist |
-| LOCKER-03 | 31 | Pending | `tools/lint-no-hardcode.ts` + tests + allowlist for tests/.env.example/compose/docs/charts/tools |
+| LOCKER-03 | 31 | Complete | `tools/lint-no-hardcode.ts` + tests + allowlist for tests/.env.example/compose/docs/charts/tools — Phase 31 Plan 03 (commits d0309f0, cd49775) |
 | LOCKER-04 | 31 | Pending | `tools/lint-prod-readiness.ts` — Fastify routes need zod+rateLimit; exports need non-test importer |
 | LOCKER-05 | 31 | Pending | `tools/lint-secret-shape-in-error.ts` — refuses untruncated `bodyText`/`responseBody`/`upstreamPayload` on Error subclasses |
 | LOCKER-06 | 31 | Pending | `tools/lint-shell-credential-interpolation.ts` — refuses `bash -c "...${*_URL\|KEY\|PASSWORD\|SECRET\|TOKEN}..."` |
@@ -660,7 +660,7 @@ Driven entirely by `.planning/review/REVIEW-INDEX.md` (10 CRITICAL + 35 HIGH fro
 
 - [ ] **LOCKER-01**: `tools/lint-no-env-branches.ts` — refuse any `process.env.NODE_ENV` / `NODE_ENV` comparison in `apps/**/src/**` and `packages/**/src/**`; allowlist limited to `bootstrap.ts`, `config/*.ts`, `otel-bootstrap.ts`, and explicit `*.config.ts`. Coverage ≥ 90/90/90/90 on the linter. Wired into Lefthook + GitHub Actions.
 - [ ] **LOCKER-02**: `tools/lint-no-suppressions.ts` — refuse `as any`, `as unknown as`, `@ts-ignore`, `@ts-nocheck`; require `@ts-expect-error` to carry a reason comment + tracking-issue ID. Seed allowlist with current main inventory; CI fails on net additions. Coverage ≥ 90/90/90/90.
-- [ ] **LOCKER-03**: `tools/lint-no-hardcode.ts` — refuse hardcoded `localhost`, `127.0.0.1`, `:3000`/`:4000`/`:8080`, UUID literals, fake-token shapes (`sk-…`, `sk-ant-…`, `AIza…`, `AKIA…`, `Bearer ey…`) outside `tests/`, `.env.*.example`, `compose/`, `docs/`, `charts/`, `tools/`. Coverage ≥ 90/90/90/90.
+- [x] **LOCKER-03**: `tools/lint-no-hardcode.ts` — refuse hardcoded `localhost`, `127.0.0.1`, `:3000`/`:4000`/`:8080`, UUID literals, fake-token shapes (`sk-…`, `sk-ant-…`, `AIza…`, `AKIA…`, `Bearer ey…`) outside `tests/`, `.env.*.example`, `compose/`, `docs/`, `charts/`, `tools/`. Coverage ≥ 90/90/90/90. — Phase 31 Plan 03 (d0309f0, cd49775).
 - [ ] **LOCKER-04**: `tools/lint-prod-readiness.ts` — AST scan of `apps/**/src/**` + `packages/**/src/**`: (a) every Fastify `app.route/get/post/...` MUST have `schema: { body|querystring|params: <ZodSchema> }` AND `config: { rateLimit: ... }` (or explicit `rateLimit: false` only for `/api/health`); (b) every exported symbol MUST have ≥ 1 non-test importer. Coverage ≥ 90/90/90/90.
 - [ ] **LOCKER-05**: `tools/lint-secret-shape-in-error.ts` — refuse `class X extends Error { public/readonly <bodyText|responseBody|upstreamPayload|response|body>: string }` unless constructor truncates the field. Coverage ≥ 90/90/90/90.
 - [ ] **LOCKER-06**: `tools/lint-shell-credential-interpolation.ts` — refuse template-literal strings passed to `spawn('bash', ['-c', ...])` / `execSync` / `exec` referencing `*_URL`, `*_KEY`, `*_PASSWORD`, `*_SECRET`, `*_TOKEN` bindings or env vars. Coverage ≥ 90/90/90/90.
