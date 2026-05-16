@@ -157,7 +157,7 @@ the api proxies to LiteLLM (Whisper), and the response matches the
 `segments`, optional `language`). The negative twin asserts malformed
 payloads surface a typed-error envelope, not a 5xx stack leak.
 
-### @cjm-4.1 Multipart audio → response shape match (after-phase-19.2 — currently @expected-red)
+### @cjm-4.1 Multipart audio → response shape match — CLOSED 2026-05-16
 
 Signed-in user POSTs a 0.25s 16kHz mono PCM WAV (`tests/e2e-cjm/fixtures/
 silent.wav`) to `/api/transcribe` via multipart. The api returns 200; body
