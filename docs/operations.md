@@ -636,7 +636,7 @@ NOT diagnose it as a server fault.**
 | `DEEPGRAM_API_KEY` | for `/api/deepgram-streaming-token` | none — route returns 503 if absent | `apps/api/src/routes/tokens/deepgram.ts` | Deepgram Grant Token (Plan 03; D-15, D-18). |
 | `DEEPGRAM_TOKEN_TTL` | optional | `30` (seconds) | `apps/api/src/routes/tokens/deepgram.ts` | Same caveat as `ASSEMBLYAI_TOKEN_TTL`. |
 | `OPENAI_API_KEY` | for `/api/openai-realtime-token` and `/v1/realtime` | none — route returns 503 if absent | `apps/api/src/routes/tokens/openai-realtime.ts`, LiteLLM realtime upstream | Already documented for the Phase 3 realtime WSS proxy (D-12); Phase 4 adds the parallel-mint route (`streams=2`) via `/v1/realtime/client_secrets` (Plan 04; D-16, D-17). |
-| `DEFAULT_AGENT_MODEL` | optional | `qwen/qwen3.6-plus` | `apps/api/src/routes/agent/stream.ts` | Override the default model id for `/api/agent/stream` requests that don't pass `model:` in the body. |
+| `DEFAULT_AGENT_MODEL` | optional | first `model_name` in `compose/litellm/litellm_config.yaml` (bundled: `qwen3.6-plus`) | `apps/api/src/routes/agent/stream.ts` | Override the default model id for `/api/agent/stream` requests that don't pass `model:` in the body. When unset, the route reads `model_list[0].model_name` from the bundled LiteLLM yaml. |
 
 All three token routes share a per-user 30/min rate limit keyed on
 `req.user.id` (T-04-04 mitigation: leaked-bearer abuse is bounded
