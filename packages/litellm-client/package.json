@@ -11,6 +11,9 @@
     "./errors": "./src/errors.ts"
   },
   "scripts": {
+    "generate-aliases": "tsx scripts/generate-aliases.ts",
+    "prebuild": "pnpm run generate-aliases",
+    "pretest": "pnpm run generate-aliases",
     "test": "vitest run",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "build": "tsc -p tsconfig.json --noEmit"
@@ -20,6 +23,7 @@
     "yaml": "^2.8.4"
   },
   "devDependencies": {
+    "tsx": "^4.20.3",
     "vitest": "4.1.5"
   }
 }

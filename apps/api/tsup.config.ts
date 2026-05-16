@@ -58,7 +58,17 @@ export default defineConfig([
     splitting: false,
     bundle: true,
     noExternal: [/^@openwhispr\//],
-    external: ["pg", "pg-native", "better-auth"],
+    // Phase 41.f-hotfix — `yaml` (used by the model-alias unit-test seam in
+    // packages/litellm-client/src/model-aliases-yaml-test-seam.ts) ships
+    // pre-bundled CJS that calls `require('process')` at module top level.
+    // tsup's ESM bundler emits a `Dynamic require of "process" is not
+    // supported` runtime crash if it tries to inline that module. Production
+    // never reaches the yaml seam (the runtime path reads the build-time
+    // codegen JSON in `litellm-aliases.generated.json`), but the static
+    // import edge still exists, so we keep `yaml` external and have the
+    // hoisted prod node_modules resolve it at runtime. Same shape as
+    // `pg`/`better-auth`: external for ESM-incompatibility reasons.
+    external: ["pg", "pg-native", "better-auth", "yaml"],
     onSuccess: async () => {
       await copyLocalesToDist();
     },
