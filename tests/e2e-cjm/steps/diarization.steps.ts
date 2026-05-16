@@ -152,7 +152,7 @@ Given("a wav fixture is available", async function (this, ctx) {
 });
 
 When(
-  "the user POSTs the wav to /v1/audio/diarization as multipart/form-data",
+  "the user POSTs the wav to \\/v1\\/audio\\/diarization as multipart\\/form-data",
   async function (this, ctx) {
     const { apiBaseURL, tenantId } = ctx as { apiBaseURL: string; tenantId: string };
     const s = stateFor(tenantId);
@@ -165,7 +165,7 @@ When(
 );
 
 When(
-  "the user POSTs {string} content to /v1/audio/diarization",
+  "the user POSTs {string} content to \\/v1\\/audio\\/diarization",
   async function (this, ctx, contentType: string) {
     const { apiBaseURL, tenantId } = ctx as { apiBaseURL: string; tenantId: string };
     const s = stateFor(tenantId);
@@ -215,7 +215,7 @@ Then(
 );
 
 Then(
-  'the body is the typed envelope shape "{ error: { code, message } }"',
+  /^the body is the typed envelope shape "\{ error: \{ code, message \} \}"$/,
   async function (this, ctx) {
     const { tenantId } = ctx as { tenantId: string };
     const body = stateFor(tenantId).body;

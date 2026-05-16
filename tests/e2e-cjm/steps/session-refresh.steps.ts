@@ -201,7 +201,7 @@ Then("the response Set-Cookie header clears the session cookie", async function 
 });
 
 Then(
-  'the body is the typed envelope shape "{ error: { code, message } }"',
+  /^the body is the typed envelope shape "\{ error: \{ code, message \} \}"$/,
   async function (this, ctx) {
     const { tenantId } = ctx as { tenantId: string };
     const body = stateFor(tenantId).body;

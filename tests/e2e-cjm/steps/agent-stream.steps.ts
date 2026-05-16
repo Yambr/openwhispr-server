@@ -170,7 +170,7 @@ Then("the response status is {int}", async function (this, ctx, expectedStatus: 
 });
 
 Then(
-  'the body is the typed envelope shape "{ error: { code, message } }"',
+  /^the body is the typed envelope shape "\{ error: \{ code, message \} \}"$/,
   async function (this, ctx) {
     const { tenantId } = ctx as { tenantId: string };
     const s = stateFor(tenantId);
