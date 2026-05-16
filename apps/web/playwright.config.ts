@@ -28,7 +28,11 @@ export default defineConfig({
   // when isolation is proven sufficient.
   fullyParallel: false,
   forbidOnly: !!process.env.CI,
-  retries: process.env.CI ? 2 : 0,
+  // Phase 21 / Plan 21-02 / SR-21.2 — D-12: retry-on-flake is BANNED.
+  // Was `process.env.CI ? 2 : 0`; the CI branch hid flakes by retrying
+  // failed assertions twice before reporting failure. A flake IS a bug;
+  // surface it loud instead of muting it.
+  retries: 0,
   // Workers: 1 in CI; locally use Playwright's default (undefined → auto)
   // expressed as a percentage string so `exactOptionalPropertyTypes` accepts it.
   workers: process.env.CI ? 1 : "50%",

@@ -546,3 +546,105 @@ jobs:
       - name: Tear down (defensive)
         if: always()
         run: docker compose down -v --remove-orphans || true
+
+
+  # ────────────────────────────────────────────────────────────────
+  # Phase 21 — anti-shortcut locker jobs (SR-21.1 .. SR-21.5).
+  # Each runs the linter on the full tree on every PR. Required.
+  # ────────────────────────────────────────────────────────────────
+
+  lint-gherkin-tags:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+      - uses: pnpm/action-setup@v4
+        with: { version: 11.0.8 }
+      - uses: actions/setup-node@v5
+        with: { node-version: '24', cache: 'pnpm' }
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm lint:gherkin-tags
+      - run: pnpm test:lint-gherkin-tags
+
+  lint-playwright-config:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+      - uses: pnpm/action-setup@v4
+        with: { version: 11.0.8 }
+      - uses: actions/setup-node@v5
+        with: { node-version: '24', cache: 'pnpm' }
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm lint:playwright-config
+      - run: pnpm test:lint-playwright-config
+
+  lint-steps-have-unit-tests:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+      - uses: pnpm/action-setup@v4
+        with: { version: 11.0.8 }
+      - uses: actions/setup-node@v5
+        with: { node-version: '24', cache: 'pnpm' }
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm lint:steps-have-unit-tests
+      - run: pnpm test:lint-steps-have-unit-tests
+
+  # SR-21.4 — Hard Rule §1 enforcement. PR-only job; reads title + body
+  # + changed-files list from GitHub API via `gh`.
+  prod-edit-guard:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      pull-requests: read
+    steps:
+      - uses: actions/checkout@v5
+        with: { fetch-depth: 0 }
+      - uses: pnpm/action-setup@v4
+        with: { version: 11.0.8 }
+      - uses: actions/setup-node@v5
+        with: { node-version: '24', cache: 'pnpm' }
+      - run: pnpm install --frozen-lockfile
+      - name: Capture PR metadata
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          gh pr view "${PR_NUMBER}" --json title -q '.title' > /tmp/title.txt
+          gh pr view "${PR_NUMBER}" --json body -q '.body' > /tmp/body.txt
+          gh pr diff "${PR_NUMBER}" --name-only > /tmp/changed.txt
+      - run: |
+          pnpm tsx tools/lint-no-prod-edit-with-test-only-pr.ts \
+            --title "$(cat /tmp/title.txt)" \
+            --body  "$(cat /tmp/body.txt)" \
+            --files /tmp/changed.txt
+      - run: pnpm test:lint-prod-edit-guard
+
+  # SR-21.5 — strict 90/90/90/90 per-file gate against the PR diff.
+  # Reads coverage/coverage-summary.json (produced by the `test` job).
+  coverage-floor:
+    if: github.event_name == 'pull_request'
+    needs: test
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      pull-requests: read
+    steps:
+      - uses: actions/checkout@v5
+        with: { fetch-depth: 0 }
+      - uses: pnpm/action-setup@v4
+        with: { version: 11.0.8 }
+      - uses: actions/setup-node@v5
+        with: { node-version: '24', cache: 'pnpm' }
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm test --coverage
+      - name: Capture changed files
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: gh pr diff "${PR_NUMBER}" --name-only > /tmp/changed.txt
+      - run: |
+          pnpm tsx tools/lint-coverage-floor-per-phase.ts \
+            --summary coverage/coverage-summary.json \
+            --changed /tmp/changed.txt
+      - run: pnpm test:lint-coverage-floor
