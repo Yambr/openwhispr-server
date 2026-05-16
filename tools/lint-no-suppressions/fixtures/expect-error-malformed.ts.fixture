@@ -1,0 +1,13 @@
+// SPDX-License-Identifier: FSL-1.1-ALv2
+// Phase 31 / LOCKER-02 — malformed @ts-expect-error variants: bare
+// (no issue-id) + wrong-prefix (no `issue-NNNN:` form). Both must be
+// flagged by the `expect-error-malformed` rule.
+export function bare(): number {
+  // @ts-expect-error
+  return null;
+}
+
+export function wrongPrefix(): number {
+  // @ts-expect-error fixme: drizzle column is nullable
+  return null;
+}

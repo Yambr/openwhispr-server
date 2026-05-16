@@ -1,0 +1,22 @@
+// SPDX-License-Identifier: FSL-1.1-ALv2
+// Phase 31 / LOCKER-02 — fixture: four forbidden patterns at
+// fixed lines 8, 14, 17, 21 (allowlist test pins these line numbers).
+// Do not lint this file in CI; it is staged into a temp tree at test
+// time only.
+
+type Used = { foo: string };
+const a = {} as any;
+
+// Padding lines preserve the violation line numbers expected by
+// the `respects the allowlist (line-granular)` test in
+// lint-no-suppressions.test.ts.
+
+const b = "x" as unknown as number;
+
+const cWrap = (undefined as Used).foo;
+// @ts-ignore
+const c = cWrap;
+
+const dWrap = String(a) + String(b) + c;
+// @ts-nocheck
+export const d = dWrap;
