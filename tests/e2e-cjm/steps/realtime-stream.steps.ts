@@ -110,7 +110,7 @@ When(
 );
 
 When(
-  "wss://api.localhost:8443/v1/realtime is opened WITHOUT any bearer or cookie",
+  "wss:\\/\\/api.localhost:8443\\/v1\\/realtime is opened WITHOUT any bearer or cookie",
   async function (this, ctx) {
     const { tenantId } = ctx as { tenantId: string };
     const s = stateFor(tenantId);
