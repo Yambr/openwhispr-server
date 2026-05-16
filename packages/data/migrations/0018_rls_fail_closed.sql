@@ -7,22 +7,22 @@
 -- four GUC-bound column DEFAULTs) AND reshapes every tenant-scoped table's
 -- RLS USING/WITH CHECK clause to silent-deny-read + raise-write semantics.
 --
--- Semantics per (op, context) cell after this migration:
---   SELECT without GUC → 0 rows (silent deny)
---   INSERT without GUC → 42501 new row violates row-level security policy
---   UPDATE without GUC → 0 rows affected (USING reduces target set to 0)
---   DELETE without GUC → 0 rows affected (USING reduces target set to 0)
--- With GUC set via withTenant(): rows of the binding tenant visible/mutable;
--- INSERTs with a foreign tenant_id raise 42501 (WITH CHECK fails).
+-- Why NULLIF(current_setting(...), '')::uuid:
+--   With missing_ok=true, current_setting returns '' (empty string) when the
+--   GUC is unset. The previous policy body cast '' directly to uuid which
+--   raised `invalid input syntax for type uuid`. AND-chain short-circuit
+--   (current_setting IS NOT NULL AND current_setting <> '' AND tenant_id =
+--   current_setting::uuid) is NOT reliable through PG's RLS planner — the
+--   predicate may be reordered. NULLIF is the canonical pattern: NULLIF('',
+--   '') → NULL, ::uuid → NULL, comparison `tenant_id = NULL` evaluates to
+--   NULL (treated as FALSE for both USING and WITH CHECK). Side-effects:
+--   SELECT without GUC returns 0 rows; UPDATE/DELETE without GUC affect 0
+--   rows; INSERT without GUC raises 42501 because WITH CHECK against a row
+--   whose tenant_id is non-NULL evaluates `<uuid> = NULL` → NULL → fail.
 --
 -- Forward-only. Companion 0018_rls_fail_closed.down.sql documents rollback
--- (re-introduces fail-open posture — DISCOURAGED, breaks the multi-tenant
--- invariant). The down file is NOT in the journal; it exists only as a
--- run-once-by-hand rescue script.
---
--- Idempotency: ALTER ROLE ... RESET is idempotent; DROP DEFAULT is
--- idempotent (no-op if already null); DROP POLICY IF EXISTS + CREATE POLICY
--- is the canonical pattern used by 0014_audit_log_partition.sql.
+-- (re-introduces fail-open posture — DISCOURAGED). The down file is NOT in
+-- the journal; it exists only as a run-once-by-hand rescue script.
 
 DO $$
 BEGIN
@@ -46,14 +46,10 @@ DROP POLICY IF EXISTS "users_tenant_isolation" ON "users";
 --> statement-breakpoint
 CREATE POLICY "users_tenant_isolation" ON "users"
   USING (
-    current_setting('app.tenant_id', true) IS NOT NULL
-    AND current_setting('app.tenant_id', true) <> ''
-    AND "tenant_id" = current_setting('app.tenant_id', true)::uuid
+    "tenant_id" = NULLIF(current_setting('app.tenant_id', true), '')::uuid
   )
   WITH CHECK (
-    current_setting('app.tenant_id', true) IS NOT NULL
-    AND current_setting('app.tenant_id', true) <> ''
-    AND "tenant_id" = current_setting('app.tenant_id', true)::uuid
+    "tenant_id" = NULLIF(current_setting('app.tenant_id', true), '')::uuid
   );
 --> statement-breakpoint
 
@@ -62,14 +58,10 @@ DROP POLICY IF EXISTS "sessions_tenant_isolation" ON "sessions";
 --> statement-breakpoint
 CREATE POLICY "sessions_tenant_isolation" ON "sessions"
   USING (
-    current_setting('app.tenant_id', true) IS NOT NULL
-    AND current_setting('app.tenant_id', true) <> ''
-    AND "tenant_id" = current_setting('app.tenant_id', true)::uuid
+    "tenant_id" = NULLIF(current_setting('app.tenant_id', true), '')::uuid
   )
   WITH CHECK (
-    current_setting('app.tenant_id', true) IS NOT NULL
-    AND current_setting('app.tenant_id', true) <> ''
-    AND "tenant_id" = current_setting('app.tenant_id', true)::uuid
+    "tenant_id" = NULLIF(current_setting('app.tenant_id', true), '')::uuid
   );
 --> statement-breakpoint
 
@@ -78,14 +70,10 @@ DROP POLICY IF EXISTS "audit_log_tenant_isolation" ON "audit_log";
 --> statement-breakpoint
 CREATE POLICY "audit_log_tenant_isolation" ON "audit_log"
   USING (
-    current_setting('app.tenant_id', true) IS NOT NULL
-    AND current_setting('app.tenant_id', true) <> ''
-    AND "tenant_id" = current_setting('app.tenant_id', true)::uuid
+    "tenant_id" = NULLIF(current_setting('app.tenant_id', true), '')::uuid
   )
   WITH CHECK (
-    current_setting('app.tenant_id', true) IS NOT NULL
-    AND current_setting('app.tenant_id', true) <> ''
-    AND "tenant_id" = current_setting('app.tenant_id', true)::uuid
+    "tenant_id" = NULLIF(current_setting('app.tenant_id', true), '')::uuid
   );
 --> statement-breakpoint
 
@@ -94,14 +82,10 @@ DROP POLICY IF EXISTS "usage_ledger_tenant_isolation" ON "usage_ledger";
 --> statement-breakpoint
 CREATE POLICY "usage_ledger_tenant_isolation" ON "usage_ledger"
   USING (
-    current_setting('app.tenant_id', true) IS NOT NULL
-    AND current_setting('app.tenant_id', true) <> ''
-    AND "tenant_id" = current_setting('app.tenant_id', true)::uuid
+    "tenant_id" = NULLIF(current_setting('app.tenant_id', true), '')::uuid
   )
   WITH CHECK (
-    current_setting('app.tenant_id', true) IS NOT NULL
-    AND current_setting('app.tenant_id', true) <> ''
-    AND "tenant_id" = current_setting('app.tenant_id', true)::uuid
+    "tenant_id" = NULLIF(current_setting('app.tenant_id', true), '')::uuid
   );
 --> statement-breakpoint
 
@@ -110,14 +94,10 @@ DROP POLICY IF EXISTS "account_tenant_isolation" ON "account";
 --> statement-breakpoint
 CREATE POLICY "account_tenant_isolation" ON "account"
   USING (
-    current_setting('app.tenant_id', true) IS NOT NULL
-    AND current_setting('app.tenant_id', true) <> ''
-    AND "tenant_id" = current_setting('app.tenant_id', true)::uuid
+    "tenant_id" = NULLIF(current_setting('app.tenant_id', true), '')::uuid
   )
   WITH CHECK (
-    current_setting('app.tenant_id', true) IS NOT NULL
-    AND current_setting('app.tenant_id', true) <> ''
-    AND "tenant_id" = current_setting('app.tenant_id', true)::uuid
+    "tenant_id" = NULLIF(current_setting('app.tenant_id', true), '')::uuid
   );
 --> statement-breakpoint
 
@@ -126,14 +106,10 @@ DROP POLICY IF EXISTS "verification_tenant_isolation" ON "verification";
 --> statement-breakpoint
 CREATE POLICY "verification_tenant_isolation" ON "verification"
   USING (
-    current_setting('app.tenant_id', true) IS NOT NULL
-    AND current_setting('app.tenant_id', true) <> ''
-    AND "tenant_id" = current_setting('app.tenant_id', true)::uuid
+    "tenant_id" = NULLIF(current_setting('app.tenant_id', true), '')::uuid
   )
   WITH CHECK (
-    current_setting('app.tenant_id', true) IS NOT NULL
-    AND current_setting('app.tenant_id', true) <> ''
-    AND "tenant_id" = current_setting('app.tenant_id', true)::uuid
+    "tenant_id" = NULLIF(current_setting('app.tenant_id', true), '')::uuid
   );
 --> statement-breakpoint
 
@@ -142,14 +118,10 @@ DROP POLICY IF EXISTS "oauth_state_tenant_isolation" ON "oauth_state";
 --> statement-breakpoint
 CREATE POLICY "oauth_state_tenant_isolation" ON "oauth_state"
   USING (
-    current_setting('app.tenant_id', true) IS NOT NULL
-    AND current_setting('app.tenant_id', true) <> ''
-    AND "tenant_id" = current_setting('app.tenant_id', true)::uuid
+    "tenant_id" = NULLIF(current_setting('app.tenant_id', true), '')::uuid
   )
   WITH CHECK (
-    current_setting('app.tenant_id', true) IS NOT NULL
-    AND current_setting('app.tenant_id', true) <> ''
-    AND "tenant_id" = current_setting('app.tenant_id', true)::uuid
+    "tenant_id" = NULLIF(current_setting('app.tenant_id', true), '')::uuid
   );
 --> statement-breakpoint
 
@@ -158,14 +130,10 @@ DROP POLICY IF EXISTS "tenant_settings_isolation" ON "tenant_settings";
 --> statement-breakpoint
 CREATE POLICY "tenant_settings_isolation" ON "tenant_settings"
   USING (
-    current_setting('app.tenant_id', true) IS NOT NULL
-    AND current_setting('app.tenant_id', true) <> ''
-    AND "tenant_id" = current_setting('app.tenant_id', true)::uuid
+    "tenant_id" = NULLIF(current_setting('app.tenant_id', true), '')::uuid
   )
   WITH CHECK (
-    current_setting('app.tenant_id', true) IS NOT NULL
-    AND current_setting('app.tenant_id', true) <> ''
-    AND "tenant_id" = current_setting('app.tenant_id', true)::uuid
+    "tenant_id" = NULLIF(current_setting('app.tenant_id', true), '')::uuid
   );
 --> statement-breakpoint
 
@@ -174,14 +142,10 @@ DROP POLICY IF EXISTS "user_settings_isolation" ON "user_settings";
 --> statement-breakpoint
 CREATE POLICY "user_settings_isolation" ON "user_settings"
   USING (
-    current_setting('app.tenant_id', true) IS NOT NULL
-    AND current_setting('app.tenant_id', true) <> ''
-    AND "tenant_id" = current_setting('app.tenant_id', true)::uuid
+    "tenant_id" = NULLIF(current_setting('app.tenant_id', true), '')::uuid
   )
   WITH CHECK (
-    current_setting('app.tenant_id', true) IS NOT NULL
-    AND current_setting('app.tenant_id', true) <> ''
-    AND "tenant_id" = current_setting('app.tenant_id', true)::uuid
+    "tenant_id" = NULLIF(current_setting('app.tenant_id', true), '')::uuid
   );
 --> statement-breakpoint
 
@@ -190,14 +154,10 @@ DROP POLICY IF EXISTS "notes_isolation" ON "notes";
 --> statement-breakpoint
 CREATE POLICY "notes_isolation" ON "notes"
   USING (
-    current_setting('app.tenant_id', true) IS NOT NULL
-    AND current_setting('app.tenant_id', true) <> ''
-    AND "tenant_id" = current_setting('app.tenant_id', true)::uuid
+    "tenant_id" = NULLIF(current_setting('app.tenant_id', true), '')::uuid
   )
   WITH CHECK (
-    current_setting('app.tenant_id', true) IS NOT NULL
-    AND current_setting('app.tenant_id', true) <> ''
-    AND "tenant_id" = current_setting('app.tenant_id', true)::uuid
+    "tenant_id" = NULLIF(current_setting('app.tenant_id', true), '')::uuid
   );
 --> statement-breakpoint
 
@@ -206,14 +166,10 @@ DROP POLICY IF EXISTS "folders_isolation" ON "folders";
 --> statement-breakpoint
 CREATE POLICY "folders_isolation" ON "folders"
   USING (
-    current_setting('app.tenant_id', true) IS NOT NULL
-    AND current_setting('app.tenant_id', true) <> ''
-    AND "tenant_id" = current_setting('app.tenant_id', true)::uuid
+    "tenant_id" = NULLIF(current_setting('app.tenant_id', true), '')::uuid
   )
   WITH CHECK (
-    current_setting('app.tenant_id', true) IS NOT NULL
-    AND current_setting('app.tenant_id', true) <> ''
-    AND "tenant_id" = current_setting('app.tenant_id', true)::uuid
+    "tenant_id" = NULLIF(current_setting('app.tenant_id', true), '')::uuid
   );
 --> statement-breakpoint
 
@@ -222,14 +178,10 @@ DROP POLICY IF EXISTS "conversations_isolation" ON "conversations";
 --> statement-breakpoint
 CREATE POLICY "conversations_isolation" ON "conversations"
   USING (
-    current_setting('app.tenant_id', true) IS NOT NULL
-    AND current_setting('app.tenant_id', true) <> ''
-    AND "tenant_id" = current_setting('app.tenant_id', true)::uuid
+    "tenant_id" = NULLIF(current_setting('app.tenant_id', true), '')::uuid
   )
   WITH CHECK (
-    current_setting('app.tenant_id', true) IS NOT NULL
-    AND current_setting('app.tenant_id', true) <> ''
-    AND "tenant_id" = current_setting('app.tenant_id', true)::uuid
+    "tenant_id" = NULLIF(current_setting('app.tenant_id', true), '')::uuid
   );
 --> statement-breakpoint
 
@@ -238,14 +190,10 @@ DROP POLICY IF EXISTS "messages_isolation" ON "messages";
 --> statement-breakpoint
 CREATE POLICY "messages_isolation" ON "messages"
   USING (
-    current_setting('app.tenant_id', true) IS NOT NULL
-    AND current_setting('app.tenant_id', true) <> ''
-    AND "tenant_id" = current_setting('app.tenant_id', true)::uuid
+    "tenant_id" = NULLIF(current_setting('app.tenant_id', true), '')::uuid
   )
   WITH CHECK (
-    current_setting('app.tenant_id', true) IS NOT NULL
-    AND current_setting('app.tenant_id', true) <> ''
-    AND "tenant_id" = current_setting('app.tenant_id', true)::uuid
+    "tenant_id" = NULLIF(current_setting('app.tenant_id', true), '')::uuid
   );
 --> statement-breakpoint
 
@@ -254,14 +202,10 @@ DROP POLICY IF EXISTS "transcriptions_isolation" ON "transcriptions";
 --> statement-breakpoint
 CREATE POLICY "transcriptions_isolation" ON "transcriptions"
   USING (
-    current_setting('app.tenant_id', true) IS NOT NULL
-    AND current_setting('app.tenant_id', true) <> ''
-    AND "tenant_id" = current_setting('app.tenant_id', true)::uuid
+    "tenant_id" = NULLIF(current_setting('app.tenant_id', true), '')::uuid
   )
   WITH CHECK (
-    current_setting('app.tenant_id', true) IS NOT NULL
-    AND current_setting('app.tenant_id', true) <> ''
-    AND "tenant_id" = current_setting('app.tenant_id', true)::uuid
+    "tenant_id" = NULLIF(current_setting('app.tenant_id', true), '')::uuid
   );
 --> statement-breakpoint
 
@@ -270,14 +214,10 @@ DROP POLICY IF EXISTS "api_keys_isolation" ON "api_keys";
 --> statement-breakpoint
 CREATE POLICY "api_keys_isolation" ON "api_keys"
   USING (
-    current_setting('app.tenant_id', true) IS NOT NULL
-    AND current_setting('app.tenant_id', true) <> ''
-    AND "tenant_id" = current_setting('app.tenant_id', true)::uuid
+    "tenant_id" = NULLIF(current_setting('app.tenant_id', true), '')::uuid
   )
   WITH CHECK (
-    current_setting('app.tenant_id', true) IS NOT NULL
-    AND current_setting('app.tenant_id', true) <> ''
-    AND "tenant_id" = current_setting('app.tenant_id', true)::uuid
+    "tenant_id" = NULLIF(current_setting('app.tenant_id', true), '')::uuid
   );
 --> statement-breakpoint
 
@@ -286,12 +226,8 @@ DROP POLICY IF EXISTS "usage_rollup_daily_isolation" ON "usage_rollup_daily";
 --> statement-breakpoint
 CREATE POLICY "usage_rollup_daily_isolation" ON "usage_rollup_daily"
   USING (
-    current_setting('app.tenant_id', true) IS NOT NULL
-    AND current_setting('app.tenant_id', true) <> ''
-    AND "tenant_id" = current_setting('app.tenant_id', true)::uuid
+    "tenant_id" = NULLIF(current_setting('app.tenant_id', true), '')::uuid
   )
   WITH CHECK (
-    current_setting('app.tenant_id', true) IS NOT NULL
-    AND current_setting('app.tenant_id', true) <> ''
-    AND "tenant_id" = current_setting('app.tenant_id', true)::uuid
+    "tenant_id" = NULLIF(current_setting('app.tenant_id', true), '')::uuid
   );
