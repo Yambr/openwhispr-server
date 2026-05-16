@@ -60,7 +60,7 @@ export default defineConfig({
       {
         extends: true,
         test: {
-          name: "@openwhispr/auth",
+          name: "@openwhispr/auth-stub",
           root: p("packages/auth"),
           include: ["tests/**/*.test.ts"],
         },
