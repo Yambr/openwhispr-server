@@ -62,7 +62,7 @@ api in some configurations (client-side gate); in others the api returns
 - Silent-failure modes: form swallows the error and submits anyway (would
   let weak passwords through).
 
-### @cjm-1.4 Locale-scoped error copy (negative twin, after-phase-19.3 — currently @expected-red)
+### @cjm-1.4 Locale-scoped error copy (negative twin) — CLOSED 2026-05-16
 
 With `Accept-Language: ru` set, the same invalid form surfaces an error
 rendered in Russian. Closes UICONF-03 — the form must render error copy in

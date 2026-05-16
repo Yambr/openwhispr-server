@@ -41,29 +41,40 @@ function localhostDispatcher(url: string): Agent | undefined {
 }
 
 // Phase 19.4 / Plan 01 — @cjm-6.1 real bindings against the live web +
-// api stack via Traefik. The flow exercises the wire-level localization
-// chain: GET public sign-up (proves web shell reachable), POST web's
-// /api/locale to flip the NEXT_LOCALE cookie (Phase 10 / Plan 02 —
-// apps/web/src/app/api/locale/route.ts), then re-fetch sign-up with
-// the new cookie and assert Russian copy via the unicode Cyrillic
-// regex. We do NOT spin a browser — the wire-level chain is the
-// minimal evidence the LanguageSwitcher contract holds.
+// api stack via Traefik. The flow exercises the full localization
+// chain: GET the public sign-up page (proves the web shell is reachable
+// at the negotiated host), POST web's /api/locale to flip the cookie
+// (Phase 10 / Plan 02 — apps/web/src/app/api/locale/route.ts), then
+// fetch the sign-up page again with the new cookie and assert the
+// response carries Russian copy markers OR the cookie was set to ru.
+//
+// We do NOT spin a browser here — the wire-level test catches the
+// regression the UI-spec scenario describes (cookie persisted +
+// subsequent render honors it). A full browser test would require
+// playwright-browser overhead; the cookie-write + cookie-read chain
+// is the minimal evidence the LanguageSwitcher's contract holds.
 Given("the user is on the public sign-up page", async ({ tenantId }) => {
   const s = stateFor(tenantId);
   const url = "https://web.localhost/sign-up";
-  const res = await undiciFetch(url, { method: "GET", dispatcher: localhostDispatcher(url) });
+  const res = await undiciFetch(url, {
+    method: "GET",
+    dispatcher: localhostDispatcher(url),
+  });
   s.lastStatus = res.status;
   s.lastContentType = res.headers.get("content-type") ?? "";
   s.lastBody = await res.text();
   if (res.status !== 200) {
     throw new Error(
-      `precondition: GET ${url} expected 200, got ${res.status}: ${s.lastBody?.slice(0, 200)}`,
+      `precondition: GET https://web.localhost/sign-up expected 200, got ${res.status}: ${s.lastBody?.slice(0, 200)}`,
     );
   }
 });
 
 When("the user switches the locale to {string}", async ({ tenantId }, locale: string) => {
   const s = stateFor(tenantId);
+  // POST web's /api/locale (Next.js route handler) — the route writes
+  // NEXT_LOCALE as a SameSite=Lax non-httpOnly cookie. We capture the
+  // Set-Cookie header so the Then step can assert + replay it.
   const url = "https://web.localhost/api/locale";
   const res = await undiciFetch(url, {
     method: "POST",
@@ -73,6 +84,8 @@ When("the user switches the locale to {string}", async ({ tenantId }, locale: st
   });
   s.lastStatus = res.status;
   s.lastContentType = res.headers.get("content-type") ?? "";
+  // Undici exposes multi-Set-Cookie via getSetCookie() when available; we
+  // need the raw value for the cookie-assertion in the Then step.
   const setCookieHeader =
     (res.headers as Headers & { getSetCookie?: () => string[] }).getSetCookie?.() ?? [];
   s.lastBody = setCookieHeader.join("\n");
@@ -82,6 +95,7 @@ Then(
   "a NEXT_LOCALE cookie is set to {string} and the next render serves Russian copy",
   async ({ tenantId }, value: string) => {
     const s = stateFor(tenantId);
+    // Phase 10 / Plan 02 — POST /api/locale returns 204 on success.
     if (s.lastStatus !== 204) {
       throw new Error(
         `expected POST /api/locale to return 204, got ${s.lastStatus}: ${s.lastBody?.slice(0, 200)}`,
@@ -94,6 +108,10 @@ Then(
         `expected Set-Cookie to contain "${expected}"; got: ${cookies.slice(0, 400)}`,
       );
     }
+    // Now replay the same cookie on a subsequent GET to /sign-up and
+    // verify the body carries Russian copy markers. The Edge middleware
+    // reads NEXT_LOCALE first and steers i18next; the RSC render
+    // should emit Cyrillic copy somewhere on the page.
     const url = "https://web.localhost/sign-up";
     const res = await undiciFetch(url, {
       method: "GET",
@@ -106,8 +124,9 @@ Then(
       );
     }
     const body = await res.text();
-    // Cyrillic detector — U+0410..U+044F + U+0401/U+0451 Yo. Source
-    // stays ASCII via unicode escapes per english-only lint.
+    // Cyrillic detector — U+0410..U+044F basic block + U+0401/U+0451
+    // Yo. Source-only ASCII; we match by unicode code points, not
+    // literal Cyrillic letters.
     const CYRILLIC_RE = /[\u0410-\u044F\u0401\u0451]/;
     if (!CYRILLIC_RE.test(body)) {
       throw new Error(
@@ -117,13 +136,19 @@ Then(
   },
 );
 
-// Phase 19.4 / Plan 01 — @cjm-6.2 routing assertion. Identical to the
-// more specific @cjm-traefik-host-split scenario (Phase 19b) but kept
-// here for the @cjm-6.* locale-coverage cohort.
+// Phase 19.4 / Plan 01 — @cjm-6.2 was previously gated by Phase 15
+// STRUCT-05 host-split (closed by Phase 19b). The scenario now reads
+// /api/locale on api.localhost and asserts host-split routing reaches
+// the Fastify api container. Identical contract to the more specific
+// @cjm-traefik-host-split scenario but is preserved here for the
+// @cjm-6.* locale-coverage cohort.
 When("a GET to \\/api\\/locale on api.localhost is issued", async ({ tenantId }) => {
   const s = stateFor(tenantId);
   const url = "https://api.localhost/api/locale";
-  const res = await undiciFetch(url, { method: "GET", dispatcher: localhostDispatcher(url) });
+  const res = await undiciFetch(url, {
+    method: "GET",
+    dispatcher: localhostDispatcher(url),
+  });
   s.lastStatus = res.status;
   s.lastContentType = res.headers.get("content-type") ?? "";
   s.lastBody = await res.text();
