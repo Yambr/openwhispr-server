@@ -42,6 +42,7 @@ import { Agent, MockAgent, setGlobalDispatcher } from "undici";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { registerErrorHandler } from "../../../../src/error-handler.js";
 import { AuthError } from "../../../../src/errors.js";
+import { zodTypeProvider } from "../../../../src/plugins/zod-type-provider.js";
 import { buildAgentStreamRoutes } from "../../../../src/routes/agent/stream.js";
 
 const LITELLM_BASE = "http://litellm.test:4000";
@@ -104,6 +105,7 @@ async function buildTestApp(opts: TestAppOpts = {}): Promise<FastifyInstance> {
   }
   const app = Fastify({ logger: false, trustProxy: true });
   registerErrorHandler(app);
+  await app.register(zodTypeProvider);
   app.addHook("onRequest", async (req) => {
     const auth = req.headers.authorization;
     const value = Array.isArray(auth) ? auth[0] : auth;
@@ -495,6 +497,7 @@ describe("POST /api/agent/stream", () => {
     process.env.DEFAULT_AGENT_MODEL = "test-model";
     const app = Fastify({ logger: false, trustProxy: true });
     registerErrorHandler(app);
+    await app.register(zodTypeProvider);
     const logged: Array<unknown> = [];
     app.addHook("onRequest", async (req) => {
       const auth = req.headers.authorization;
@@ -562,6 +565,7 @@ describe("POST /api/agent/stream", () => {
 
     const app = Fastify({ logger: false, trustProxy: true });
     registerErrorHandler(app);
+    await app.register(zodTypeProvider);
     let capturedReq: import("fastify").FastifyRequest | null = null;
     app.addHook("onRequest", async (req) => {
       const auth = req.headers.authorization;
@@ -647,6 +651,7 @@ describe("POST /api/agent/stream", () => {
     // Custom app that wraps reply.raw.write to throw after the first chunk.
     const app = Fastify({ logger: false, trustProxy: true });
     registerErrorHandler(app);
+    await app.register(zodTypeProvider);
     const writes: string[] = [];
     app.addHook("onRequest", async (req) => {
       const auth = req.headers.authorization;
@@ -726,6 +731,7 @@ describe("POST /api/agent/stream", () => {
     // gate (T-04-AUTH defense-in-depth).
     const app = Fastify({ logger: false, trustProxy: true });
     registerErrorHandler(app);
+    await app.register(zodTypeProvider);
     app.addHook("onRequest", async (_req) => {
       // No-op — pretend dual-auth ran but a downstream bug erased req.user.
     });
@@ -902,6 +908,7 @@ describe("POST /api/agent/stream", () => {
 
     const app = Fastify({ logger: false, trustProxy: true });
     registerErrorHandler(app);
+    await app.register(zodTypeProvider);
     app.addHook("onRequest", async (req) => {
       const auth = req.headers.authorization;
       const value = Array.isArray(auth) ? auth[0] : auth;
@@ -955,6 +962,7 @@ describe("POST /api/agent/stream", () => {
 
     const app = Fastify({ logger: false, trustProxy: true });
     registerErrorHandler(app);
+    await app.register(zodTypeProvider);
     app.addHook("onRequest", async (req) => {
       const auth = req.headers.authorization;
       const value = Array.isArray(auth) ? auth[0] : auth;
