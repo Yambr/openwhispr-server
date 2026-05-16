@@ -22,7 +22,8 @@
       "lint-playwright-config",
       "lint-steps-have-unit-tests",
       "prod-edit-guard",
-      "coverage-floor"
+      "coverage-floor",
+      "smoke"
     ]
   },
   "enforce_admins": true,
