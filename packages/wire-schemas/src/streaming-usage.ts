@@ -4,25 +4,37 @@
  *
  * 14 fields per BACKEND_SPEC.md:377-412. Required: sessionId + audioDurationSeconds.
  * All other fields optional. `sendLogs` defaults to false.
+ *
+ * Phase 39 — HIGH sweep: `.strict()`, non-neg + finite numerics, bounded
+ * short-text fields, bounded `text` payload.
  */
 import { z } from "zod";
 
-export const StreamingUsageBodySchema = z.object({
-  // Required
-  sessionId: z.string(),
-  audioDurationSeconds: z.number().min(0),
-  // Optional
-  text: z.string().optional(),
-  clientType: z.string().optional(),
-  appVersion: z.string().optional(),
-  clientVersion: z.string().optional(),
-  sttProvider: z.string().optional(),
-  sttModel: z.string().optional(),
-  sttProcessingMs: z.number().optional(),
-  sttLanguage: z.string().optional(),
-  audioSizeBytes: z.number().optional(),
-  audioFormat: z.string().optional(),
-  clientTotalMs: z.number().optional(),
-  sendLogs: z.boolean().optional().default(false),
-});
+const SHORT = 256;
+const TEXT_MAX = 5 * 1024 * 1024; // 5 MB
+// sessionId acts as the idempotency-key; clients may supply opaque tokens,
+// UUIDs, or hashed composite keys up to 4 KB. Stays bounded to refuse
+// pathological multi-MB strings while accepting all real-world shapes.
+const SESSION_ID = z.string().min(1).max(4096);
+
+export const StreamingUsageBodySchema = z
+  .object({
+    // Required
+    sessionId: SESSION_ID,
+    audioDurationSeconds: z.number().nonnegative().finite(),
+    // Optional
+    text: z.string().max(TEXT_MAX).optional(),
+    clientType: z.string().max(SHORT).optional(),
+    appVersion: z.string().max(SHORT).optional(),
+    clientVersion: z.string().max(SHORT).optional(),
+    sttProvider: z.string().max(SHORT).optional(),
+    sttModel: z.string().max(SHORT).optional(),
+    sttProcessingMs: z.number().int().nonnegative().optional(),
+    sttLanguage: z.string().max(SHORT).optional(),
+    audioSizeBytes: z.number().int().nonnegative().optional(),
+    audioFormat: z.string().max(SHORT).optional(),
+    clientTotalMs: z.number().int().nonnegative().optional(),
+    sendLogs: z.boolean().optional().default(false),
+  })
+  .strict();
 export type StreamingUsageBody = z.infer<typeof StreamingUsageBodySchema>;

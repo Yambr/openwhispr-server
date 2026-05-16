@@ -9,56 +9,79 @@
  *
  * No deviation, no extras — the desktop client is the canonical "user"
  * and any divergence is a wire break.
+ *
+ * Phase 39 — HIGH sweep: `.strict()` on NoteInput, tightened primitives
+ * on CloudNote (UUID + ISO-8601 datetime), bounded long-text fields,
+ * symmetrical `note_type` enum, non-neg integer counts, `0|1` boolean-ish.
  */
 import { z } from "zod";
 
-const NoteTypeSchema = z.enum(["personal", "meeting", "upload"]);
+export const NoteTypeSchema = z.enum(["personal", "meeting", "upload"]);
+export type NoteType = z.infer<typeof NoteTypeSchema>;
 
-export const NoteInputSchema = z.object({
-  client_note_id: z.string().optional(),
-  title: z.string().nullable().optional(),
-  content: z.string().optional(),
-  enhanced_content: z.string().nullable().optional(),
-  enhancement_prompt: z.string().nullable().optional(),
-  note_type: NoteTypeSchema.optional(),
-  source_file: z.string().nullable().optional(),
-  audio_duration_seconds: z.number().nullable().optional(),
-  participants: z.string().nullable().optional(),
-  calendar_event_id: z.string().nullable().optional(),
-  diarization_enabled: z.number().nullable().optional(),
-  expected_speaker_count: z.number().nullable().optional(),
-  transcript: z.string().nullable().optional(),
-  enhanced_at_content_hash: z.string().nullable().optional(),
-  folder_id: z.string().nullable().optional(),
-  created_at: z.string().optional(),
-  updated_at: z.string().optional(),
-});
+const ISO_DATETIME = z.string().datetime({ offset: true });
+const UUID = z.string().uuid();
+const CLIENT_ID = z.string().min(1).max(128);
+
+// BACKEND_SPEC limits per HI-3:
+const CONTENT_MAX = 256 * 1024; // 256 KB
+const TRANSCRIPT_MAX = 5 * 1024 * 1024; // 5 MB
+const PROMPT_MAX = 16 * 1024; // 16 KB
+const TITLE_MAX = 1024;
+const SHORT_TEXT = 1024;
+const HASH_MAX = 128;
+
+export const NoteInputSchema = z
+  .object({
+    client_note_id: CLIENT_ID.optional(),
+    title: z.string().max(TITLE_MAX).nullable().optional(),
+    content: z.string().max(CONTENT_MAX).optional(),
+    enhanced_content: z.string().max(CONTENT_MAX).nullable().optional(),
+    enhancement_prompt: z.string().max(PROMPT_MAX).nullable().optional(),
+    note_type: NoteTypeSchema.optional(),
+    source_file: z.string().max(SHORT_TEXT).nullable().optional(),
+    audio_duration_seconds: z.number().nonnegative().finite().nullable().optional(),
+    participants: z.string().max(SHORT_TEXT).nullable().optional(),
+    calendar_event_id: z.string().max(SHORT_TEXT).nullable().optional(),
+    // diarization_enabled is a legacy `0|1` integer flag per upstream client (M-6).
+    diarization_enabled: z
+      .union([z.literal(0), z.literal(1)])
+      .nullable()
+      .optional(),
+    expected_speaker_count: z.number().int().nonnegative().max(32).nullable().optional(),
+    transcript: z.string().max(TRANSCRIPT_MAX).nullable().optional(),
+    enhanced_at_content_hash: z.string().max(HASH_MAX).nullable().optional(),
+    folder_id: z.string().max(SHORT_TEXT).nullable().optional(),
+    created_at: ISO_DATETIME.optional(),
+    updated_at: ISO_DATETIME.optional(),
+  })
+  .strict();
 export type NoteInput = z.infer<typeof NoteInputSchema>;
 
 export const CloudNoteSchema = z.object({
-  id: z.string(),
-  client_note_id: z.string().nullable(),
-  title: z.string().nullable(),
-  content: z.string(),
-  enhanced_content: z.string().nullable(),
-  note_type: z.string(),
-  enhancement_prompt: z.string().nullable(),
-  source_file: z.string().nullable(),
-  audio_duration_seconds: z.number().nullable(),
-  folder_id: z.string().nullable(),
-  transcript: z.string().nullable(),
-  enhanced_at_content_hash: z.string().nullable(),
-  participants: z.string().nullable(),
-  calendar_event_id: z.string().nullable(),
-  diarization_enabled: z.number().nullable(),
-  expected_speaker_count: z.number().nullable(),
-  deleted_at: z.string().nullable(),
-  created_at: z.string(),
-  updated_at: z.string(),
+  id: UUID,
+  client_note_id: CLIENT_ID.nullable(),
+  title: z.string().max(TITLE_MAX).nullable(),
+  content: z.string().max(CONTENT_MAX),
+  enhanced_content: z.string().max(CONTENT_MAX).nullable(),
+  note_type: NoteTypeSchema,
+  enhancement_prompt: z.string().max(PROMPT_MAX).nullable(),
+  source_file: z.string().max(SHORT_TEXT).nullable(),
+  audio_duration_seconds: z.number().nonnegative().finite().nullable(),
+  folder_id: z.string().max(SHORT_TEXT).nullable(),
+  transcript: z.string().max(TRANSCRIPT_MAX).nullable(),
+  enhanced_at_content_hash: z.string().max(HASH_MAX).nullable(),
+  participants: z.string().max(SHORT_TEXT).nullable(),
+  calendar_event_id: z.string().max(SHORT_TEXT).nullable(),
+  diarization_enabled: z.union([z.literal(0), z.literal(1)]).nullable(),
+  expected_speaker_count: z.number().int().nonnegative().max(32).nullable(),
+  deleted_at: ISO_DATETIME.nullable(),
+  created_at: ISO_DATETIME,
+  updated_at: ISO_DATETIME,
 });
 export type CloudNote = z.infer<typeof CloudNoteSchema>;
 
 export const SearchResultSchema = CloudNoteSchema.extend({
-  score: z.number(),
+  score: z.number().nonnegative().finite(),
 });
 export type SearchResult = z.infer<typeof SearchResultSchema>;
