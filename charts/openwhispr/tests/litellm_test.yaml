@@ -248,3 +248,55 @@ tests:
       - equal:
           path: spec.template.spec.topologySpreadConstraints[0].labelSelector.matchLabels["app.kubernetes.io/component"]
           value: litellm
+
+  # SR-20.5 — LiteLLM relaxed-hardening (Option A). The upstream
+  # ghcr.io/berriai/litellm:main-v1.83.14-stable image runs as uid 0 and
+  # the Prisma client writes to /app/.prisma at startup. Full hardening
+  # (runAsNonRoot + readOnlyRootFilesystem) would break LiteLLM, so we
+  # apply ONLY the container-level subset that does not interfere:
+  # allowPrivilegeEscalation=false + seccompProfile=RuntimeDefault +
+  # drop ALL caps. See .planning/deferred-items.md "LiteLLM non-root
+  # image fork" for the future-hardening tracking entry.
+  - it: LiteLLM Deployment pod-level securityContext is ABSENT (relaxed-hardening Option A)
+    template: litellm-deployment.yaml
+    set:
+      secrets:
+        mode: eso
+        external:
+          storeRef: vault-clusterstore
+    asserts:
+      - notExists:
+          path: spec.template.spec.securityContext.runAsNonRoot
+      - notExists:
+          path: spec.template.spec.securityContext.runAsUser
+      - notExists:
+          path: spec.template.spec.securityContext.fsGroup
+
+  - it: LiteLLM container readOnlyRootFilesystem is ABSENT (Prisma writes /app/.prisma)
+    template: litellm-deployment.yaml
+    set:
+      secrets:
+        mode: eso
+        external:
+          storeRef: vault-clusterstore
+    asserts:
+      - notExists:
+          path: spec.template.spec.containers[0].securityContext.readOnlyRootFilesystem
+
+  - it: LiteLLM container relaxed-hardening subset is PRESENT (SR-20.5 Option A)
+    template: litellm-deployment.yaml
+    set:
+      secrets:
+        mode: eso
+        external:
+          storeRef: vault-clusterstore
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].securityContext.allowPrivilegeEscalation
+          value: false
+      - equal:
+          path: spec.template.spec.containers[0].securityContext.seccompProfile.type
+          value: RuntimeDefault
+      - contains:
+          path: spec.template.spec.containers[0].securityContext.capabilities.drop
+          content: ALL
