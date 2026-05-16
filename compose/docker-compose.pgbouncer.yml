@@ -21,6 +21,13 @@ services:
         condition: service_healthy
     environment:
       DATABASE_URL: postgresql://${POSTGRES_APP_USER}:${POSTGRES_APP_PASSWORD}@pgbouncer:6432/${POSTGRES_DB:-openwhispr}
+    # Phase 20 / SR-20.1 + SR-20.2 — re-declare in overlay (T-20-03).
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+          cpus: "2.0"
 
   migrate:
     depends_on:
@@ -56,3 +63,9 @@ services:
       timeout: 3s
       retries: 10
       start_period: 5s
+    # Phase 20 / SR-20.1 + SR-20.2 — memory cap + auto-restart (audit A5).
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 128M

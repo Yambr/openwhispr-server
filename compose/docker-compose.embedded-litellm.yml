@@ -99,6 +99,13 @@ services:
       timeout: 3s
       retries: 10
       start_period: 10s
+    # Phase 20 / SR-20.1 + SR-20.2 — memory cap + auto-restart.
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 2G
+          cpus: "2.0"
 
   # D-02 override: edoburu/pgbouncer instead of bitnami/pgbouncer. Bitnami's
   # free Docker Hub PgBouncer image was retired in 2025 (paid Bitnami Secure
@@ -132,6 +139,12 @@ services:
       timeout: 3s
       retries: 10
       start_period: 5s
+    # Phase 20 / SR-20.1 + SR-20.2 — memory cap + auto-restart (audit A5).
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 128M
 
   valkey:
     image: valkey/valkey:8.1-alpine
@@ -147,6 +160,12 @@ services:
       interval: 5s
       timeout: 3s
       retries: 10
+    # Phase 20 / SR-20.1 + SR-20.2 — memory cap + auto-restart.
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 256M
 
   minio:
     image: minio/minio:RELEASE.2025-09-07T16-13-09Z
@@ -164,6 +183,12 @@ services:
       timeout: 3s
       retries: 10
       start_period: 10s
+    # Phase 20 / SR-20.1 + SR-20.2 — memory cap + auto-restart (audit A6).
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 512M
 
   traefik:
     image: traefik:v3.6
@@ -212,6 +237,12 @@ services:
       interval: 5s
       timeout: 3s
       retries: 5
+    # Phase 20 / SR-20.1 + SR-20.2 — memory cap + auto-restart (audit A2).
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 256M
 
   otel-collector:
     image: otel/opentelemetry-collector-contrib:0.151.0
@@ -235,6 +266,12 @@ services:
     # binary). Docker HEALTHCHECK requires an in-image executable. Dependents
     # below switch to `service_started`; the collector is itself a buffering
     # tier so partial-readiness is tolerated.
+    # Phase 20 / SR-20.1 + SR-20.2 — memory cap + auto-restart (audit A7).
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 256M
 
   loki:
     image: grafana/loki:3.5.0
@@ -248,6 +285,12 @@ services:
       timeout: 3s
       retries: 10
       start_period: 15s
+    # Phase 20 / SR-20.1 + SR-20.2 — memory cap + auto-restart (audit A7).
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 512M
 
   tempo:
     image: grafana/tempo:2.8.0
@@ -270,6 +313,12 @@ services:
       timeout: 3s
       retries: 12
       start_period: 60s
+    # Phase 20 / SR-20.1 + SR-20.2 — memory cap + auto-restart (audit A7).
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 512M
 
   mimir:
     image: grafana/mimir:2.16.0
@@ -289,6 +338,12 @@ services:
     # to `service_started` for mimir specifically; orchestration-level
     # liveness moves to Helm/K8s probes in Phase 9 where a sidecar
     # (or kubelet HTTP probe) issues the /ready check.
+    # Phase 20 / SR-20.1 + SR-20.2 — memory cap + auto-restart (audit A7).
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 512M
 
   grafana:
     image: grafana/grafana:11.6.0
@@ -326,6 +381,12 @@ services:
       # `database:starting` until the bootstrap finishes. start_period
       # budgets that one-time delay.
       start_period: 90s
+    # Phase 20 / SR-20.1 + SR-20.2 — memory cap + auto-restart (audit A7).
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 256M
 
   # Phase 2 Plan 02 — One-shot migration runner. Runs as openwhispr_owner
   # DIRECT to postgres:5432 (NOT pgbouncer). DDL through transaction-mode
@@ -421,6 +482,12 @@ services:
       retries: 5
       start_period: 30s
     restart: unless-stopped
+    # Phase 20 / SR-20.1 — memory cap.
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+          cpus: "2.0"
 
   # Phase 2 Plan 02 — API container. Closes Phase 1 D-08 / SC#1 partial:
   # the entrypoint runs check-default-secrets.cjs BEFORE node main, so
@@ -556,6 +623,12 @@ services:
       retries: 3
       start_period: 30s
     restart: unless-stopped
+    # Phase 20 / SR-20.1 — memory cap.
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+          cpus: "2.0"
 
   # Phase 03 Plan 08 — BullMQ worker that ingests LiteLLM_SpendLogs into
   # our usage_ledger every 30s (LITELLM-07 / DATA-03 / SCALE-03).
@@ -619,6 +692,12 @@ services:
       otel-collector:
         condition: service_started
     restart: unless-stopped
+    # Phase 20 / SR-20.1 — memory cap.
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: "1.0"
 
   # Phase 07.1 Plan 03 — Next.js 15 web app (WEB-IMPL-03 / D-DEPLOY-1 /
   # D-DEPLOY-2 / D-ADMIN-1 / D-ADMIN-2). Same-origin deploy behind Traefik:
@@ -694,6 +773,12 @@ services:
       retries: 3
       start_period: 30s
     restart: unless-stopped
+    # Phase 20 / SR-20.1 — memory cap (Next.js 15 standalone SSR).
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: "1.0"
     labels:
       # Phase 19b / SR-19b.2 — STRUCT-05 host-split. The canonical `web`
       # router lives in compose/traefik/dynamic.dev.yml (file provider) on

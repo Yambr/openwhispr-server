@@ -206,12 +206,13 @@ export function auditComposeResources(repoRoot: string): Violation[] {
   return out;
 }
 
-function findRepoRoot(): string {
+export function findRepoRoot(): string {
   const here = dirname(fileURLToPath(import.meta.url));
   // tools/ sits at the repo root, so the file's parent IS the root.
   return resolve(here, "..");
 }
 
+/* c8 ignore start */
 // CLI entrypoint: print violations + exit non-zero. Mirrors
 // tools/lint-traefik-routes.ts shape.
 if (import.meta.url === `file://${process.argv[1]}`) {
@@ -225,3 +226,4 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   }
   process.exit(1);
 }
+/* c8 ignore stop */
