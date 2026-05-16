@@ -134,6 +134,13 @@
       "when": 1779897600000,
       "tag": "0018_rls_fail_closed",
       "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1780502400000,
+      "tag": "0019_envelope_encrypt_secret_columns_add",
+      "breakpoints": true
     }
   ]
 }
