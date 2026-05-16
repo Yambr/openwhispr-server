@@ -442,3 +442,66 @@ tests:
       - equal:
           path: spec.template.spec.topologySpreadConstraints[0].labelSelector.matchLabels["app.kubernetes.io/component"]
           value: api
+
+  # SR-20.5 — api pod runs as non-root uid 1000 with fsGroup 1000 + RuntimeDefault
+  # seccomp; closes audit B3 (full hardening). Container drops all caps,
+  # disallows privilege escalation, runs on a read-only rootfs, and uses
+  # an emptyDir at /tmp (the only writable path the api needs).
+  - it: api Deployment pod-level securityContext is full-hardening (SR-20.5)
+    template: api-deployment.yaml
+    set:
+      secrets:
+        mode: eso
+        external:
+          storeRef: vault-clusterstore
+    asserts:
+      - equal:
+          path: spec.template.spec.securityContext.runAsNonRoot
+          value: true
+      - equal:
+          path: spec.template.spec.securityContext.runAsUser
+          value: 1000
+      - equal:
+          path: spec.template.spec.securityContext.fsGroup
+          value: 1000
+      - equal:
+          path: spec.template.spec.securityContext.seccompProfile.type
+          value: RuntimeDefault
+
+  - it: api Deployment container-level securityContext is full-hardening (SR-20.5)
+    template: api-deployment.yaml
+    set:
+      secrets:
+        mode: eso
+        external:
+          storeRef: vault-clusterstore
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].securityContext.readOnlyRootFilesystem
+          value: true
+      - equal:
+          path: spec.template.spec.containers[0].securityContext.allowPrivilegeEscalation
+          value: false
+      - contains:
+          path: spec.template.spec.containers[0].securityContext.capabilities.drop
+          content: ALL
+
+  - it: api Deployment mounts emptyDir at /tmp (SR-20.5 readOnlyRootFilesystem prerequisite)
+    template: api-deployment.yaml
+    set:
+      secrets:
+        mode: eso
+        external:
+          storeRef: vault-clusterstore
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].volumeMounts
+          content:
+            name: tmp
+            mountPath: /tmp
+      - contains:
+          path: spec.template.spec.volumes
+          content:
+            name: tmp
+            emptyDir:
+              sizeLimit: 64Mi
