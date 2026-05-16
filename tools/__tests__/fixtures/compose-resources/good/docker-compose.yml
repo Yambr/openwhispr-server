@@ -1,0 +1,20 @@
+# Synthetic GOOD fixture — every service compliant with SR-20.1 + SR-20.2.
+# Used by tools/lint-compose-resources.test.ts.
+name: good-fixture
+
+services:
+  postgres:
+    image: postgres:17.5-alpine
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 2G
+
+  valkey:
+    image: valkey/valkey:8.1-alpine
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 256M
