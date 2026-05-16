@@ -3,7 +3,14 @@
 //
 // Short-lived tokens for email verification + password reset. Tenant-
 // scoped; FORCE RLS attaches in 0001_better_auth.sql.
+//
+// Phase 33 / Plan 33-05 — the plaintext `value` column dropped by
+// migration 0020 is now envelope-encrypted at rest via 6 `bytea`
+// sidecars. The Drizzle lens
+// (`packages/data/src/encryption/lens.ts`) round-trips plaintext for
+// callers; ciphertext is the only thing stored.
 import { index, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
+import { bytea } from "./_helpers.js";
 import { tenants } from "./tenants.js";
 
 export const verifications = pgTable(
@@ -14,7 +21,16 @@ export const verifications = pgTable(
       .notNull()
       .references(() => tenants.id),
     identifier: text("identifier").notNull(),
-    value: text("value").notNull(),
+
+    // value — envelope-encrypted at rest. Plaintext column dropped
+    // by migration 0020.
+    valueDekWrapped: bytea("value_dek_wrapped"),
+    valueDekIv: bytea("value_dek_iv"),
+    valueDekAuthTag: bytea("value_dek_auth_tag"),
+    valueValueIv: bytea("value_value_iv"),
+    valueValueAuthTag: bytea("value_value_auth_tag"),
+    valueValueCiphertext: bytea("value_value_ciphertext"),
+
     expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),

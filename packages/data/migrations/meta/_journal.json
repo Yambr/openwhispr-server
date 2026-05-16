@@ -148,6 +148,13 @@
       "when": 1780588800000,
       "tag": "0019b_drop_lookup_session_by_previous_token",
       "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1780675200000,
+      "tag": "0020_envelope_encrypt_secret_columns_drop_plaintext",
+      "breakpoints": true
     }
   ]
 }

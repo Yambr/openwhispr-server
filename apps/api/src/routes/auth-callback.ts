@@ -98,8 +98,9 @@ export interface AuthCallbackDeps {
 interface OauthStateRow {
   id: string;
   scheme: string;
-  code_verifier: string | null;
-  // Phase 33 / Plan 33-04 — bytea sidecars (nullable until 33-05).
+  // Phase 33 / Plan 33-05 — plaintext `code_verifier` column dropped
+  // by migration 0020. The 6 bytea sidecars below carry the encrypted
+  // PKCE verifier; `decryptCodeVerifierFromRow` recovers plaintext.
   code_verifier_dek_wrapped: Buffer | null;
   code_verifier_dek_iv: Buffer | null;
   code_verifier_dek_auth_tag: Buffer | null;
@@ -163,7 +164,7 @@ export const buildAuthCallbackRoutes = (deps: AuthCallbackDeps) =>
                 WHERE id = ${stateId}::uuid
                   AND consumed_at IS NULL
                   AND expires_at > now()
-                RETURNING id, scheme, code_verifier,
+                RETURNING id, scheme,
                           code_verifier_dek_wrapped, code_verifier_dek_iv,
                           code_verifier_dek_auth_tag, code_verifier_value_iv,
                           code_verifier_value_auth_tag, code_verifier_value_ciphertext,
@@ -174,7 +175,7 @@ export const buildAuthCallbackRoutes = (deps: AuthCallbackDeps) =>
         }
         // CAS failed — diagnose to emit the right envelope.
         const probe = (await tx.execute(
-          sql`SELECT id, scheme, code_verifier,
+          sql`SELECT id, scheme,
                      code_verifier_dek_wrapped, code_verifier_dek_iv,
                      code_verifier_dek_auth_tag, code_verifier_value_iv,
                      code_verifier_value_auth_tag, code_verifier_value_ciphertext,

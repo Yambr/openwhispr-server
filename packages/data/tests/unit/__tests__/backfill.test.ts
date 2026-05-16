@@ -74,7 +74,19 @@ interface SeedRow {
   values: Record<string, string | null>;
 }
 
-describe("runBackfill — integration on real PG testcontainer", () => {
+// Phase 33 / Plan 33-05 — migration 0020 drops the 8 plaintext credential
+// columns this integration test seeds (it INSERTs into `account.password`,
+// `verification.value`, `sessions.token`, `oauth_state.code_verifier`, etc.).
+// Post-0020 the boot helper applies the full journal — those columns no
+// longer exist and the INSERT statements raise 42703. The backfill unit
+// itself (`runBackfill`) remains covered by its production-code TypeScript
+// suite (`packages/data/src/encryption/__tests__/backfill.test.ts` —
+// Plan 33-03), so this integration test is now redundant: the surface it
+// proves (plaintext-on-disk → ciphertext-on-disk transition) is exactly
+// the surface the Phase 33-05 atomic closure removes. Skipping is the
+// honest signal — the test asserted production behaviour that no longer
+// exists post-0020.
+describe.skip("runBackfill — integration on real PG testcontainer (obsolete post-0020)", () => {
   let boot: BootResult;
   let ownerPool: Pool;
   let provider: EnvKeyProvider;

@@ -128,18 +128,19 @@ export const buildDesktopSigninRoutes = (deps: DesktopSigninDeps) =>
       // Persist oauth_state under the default tenant (Phase 2 has no
       // multi-tenant signup — D-08).
       const tenantId = await resolveDefaultTenantId();
-      // Phase 33 / Plan 33-04 — envelope-encrypt the PKCE verifier
-      // before the INSERT. Plaintext column still populated within the
-      // 33-04 → 33-05 window (codec fallback semantics).
+      // Phase 33 / Plan 33-05 — plaintext `code_verifier` column dropped
+      // by migration 0020. Only the 6 bytea sidecars are written; the
+      // codec recovers plaintext via `decryptCodeVerifierFromRow` on the
+      // auth-callback read path.
       const sidecars = await encryptCodeVerifier(keyProvider, verifier);
       const stateId = await withTenant(db, tenantId, async (tx) => {
         const r = (await tx.execute(
-          sql`INSERT INTO oauth_state (tenant_id, provider, callback_url, scheme, code_verifier,
+          sql`INSERT INTO oauth_state (tenant_id, provider, callback_url, scheme,
                                        code_verifier_dek_wrapped, code_verifier_dek_iv,
                                        code_verifier_dek_auth_tag, code_verifier_value_iv,
                                        code_verifier_value_auth_tag, code_verifier_value_ciphertext,
                                        expires_at)
-                VALUES (${tenantId}, ${provider}, ${rawCb}, ${validation.scheme}, ${verifier},
+                VALUES (${tenantId}, ${provider}, ${rawCb}, ${validation.scheme},
                         ${sidecars.code_verifier_dek_wrapped}, ${sidecars.code_verifier_dek_iv},
                         ${sidecars.code_verifier_dek_auth_tag}, ${sidecars.code_verifier_value_iv},
                         ${sidecars.code_verifier_value_auth_tag}, ${sidecars.code_verifier_value_ciphertext},

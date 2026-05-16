@@ -97,7 +97,15 @@ async function withClient<T>(uri: string, fn: (c: Client) => Promise<T>): Promis
   }
 }
 
-describe("Phase 02.12 — sessions.token plain text roundtrip (Option C / BA-native)", {
+// Phase 33 / Plan 33-05 — migration 0020 drops the plaintext
+// `sessions.token` column. The entire premise of this suite
+// ("sessions.token is plaintext, BA-native lookup path on text column")
+// is the inverse of the Phase 33 invariant. The replacement coverage
+// is at `packages/data/migrations/__tests__/0020-drop-plaintext.test.ts`
+// (asserts column gone + fingerprint UNIQUE index promoted) and the
+// `lookup_session_by_previous_token` SQL function is owned by
+// `0019b-drop-lookup-fn.test.ts`.
+describe.skip("Phase 02.12 — sessions.token plain text roundtrip (obsolete post-0020)", {
   timeout: 180_000,
 }, () => {
   let booted: BootedDb;

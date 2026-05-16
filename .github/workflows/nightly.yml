@@ -57,6 +57,10 @@ jobs:
       - run: pnpm exec tsx tools/lint-prod-readiness.ts
       - run: pnpm exec tsx tools/lint-secret-shape-in-error.ts
       - run: pnpm exec tsx tools/lint-shell-credential-interpolation.ts
+      # Phase 33 / Plan 33-05 / LOCKER-PLAINTEXT-COLS (LOCKER-08) —
+      # BLOCKING from day one (no --warn-only flag); listed here for
+      # nightly visibility alongside the other lockers.
+      - run: pnpm exec tsx tools/lint-no-plaintext-secret-columns.ts
 
   load-test-placeholder:
     runs-on: ubuntu-24.04
