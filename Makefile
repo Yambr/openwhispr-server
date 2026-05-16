@@ -2,7 +2,7 @@
 # Phase 0: implements dev/test/lint/format/typecheck/up/down/clean/help.
 # Future-phase targets stub-fail with a phase-N pointer.
 
-.PHONY: dev test lint lint-rls lint\:lockers format typecheck up down clean clean-stack tls-trust help \
+.PHONY: dev test lint lint-rls lint-compose-resources lint\:lockers format typecheck up down clean clean-stack tls-trust help \
         contract-test contract-test-deployed contract-test-missing-keys e2e-test e2e-test-live \
         e2e-hermetic e2e-test-phase6 e2e-cjm e2e-cjm-teardown \
         load-test seed backup restore migrate migrate-rollback logs ps restart \
@@ -24,6 +24,14 @@ lint:
 
 lint-rls:
 	pnpm exec tsx tools/lint-rls.ts
+
+# Phase 20 / Plan 01 / SR-20.1 + SR-20.2 — compose resource-governance gate.
+# Asserts every long-running service in docker-compose.yml + compose/*.yml
+# declares `deploy.resources.limits.memory` (>= ROADMAP floor) and the
+# SR-20.2 services declare `restart: unless-stopped`. Wired into CI via
+# the compose-lint job (.github/workflows/ci.yml, Phase 20-03).
+lint-compose-resources:
+	pnpm exec tsx tools/lint-compose-resources.ts
 
 # Phase 31 / Plan 07 / LOCKER-08 — aggregate lockers gate.
 # Runs all six locker binaries in sequence under one Make target so
