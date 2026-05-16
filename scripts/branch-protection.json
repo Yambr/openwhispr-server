@@ -17,7 +17,12 @@
       "lint-tenant-context",
       "test-migration",
       "contract-test",
-      "verify-images"
+      "verify-images",
+      "lint-gherkin-tags",
+      "lint-playwright-config",
+      "lint-steps-have-unit-tests",
+      "prod-edit-guard",
+      "coverage-floor"
     ]
   },
   "enforce_admins": true,

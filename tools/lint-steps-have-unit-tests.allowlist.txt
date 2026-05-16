@@ -1,0 +1,29 @@
+# SPDX-License-Identifier: FSL-1.1-ALv2
+# Phase 21 / Plan 21-03 / SR-21.3 — pre-existing-debt allowlist.
+#
+# Step files listed here are exempt from the "must have a sibling
+# __tests__/<name>.test.ts" rule. The rule applies strictly to any
+# step file NOT listed here (i.e. every new file).
+#
+# Acceptance criteria for removing an entry: a Phase X.Y plan lands the
+# missing unit test under tests/e2e-cjm/steps/__tests__/<name>.test.ts
+# and deletes the entry. Phase 24..32 (CJM gap closure) are expected to
+# write new step bindings WITH their unit tests; this allowlist must not
+# grow.
+#
+# Format: one repo-relative path per line; blank lines and # comments
+# are ignored.
+
+tests/e2e-cjm/steps/admin.steps.ts
+tests/e2e-cjm/steps/auth.steps.ts
+tests/e2e-cjm/steps/byok.steps.ts
+tests/e2e-cjm/steps/error-paths.steps.ts
+tests/e2e-cjm/steps/oidc.steps.ts
+tests/e2e-cjm/steps/password-reset.steps.ts
+tests/e2e-cjm/steps/signin.steps.ts
+tests/e2e-cjm/steps/signup-extras.steps.ts
+tests/e2e-cjm/steps/sso.steps.ts
+tests/e2e-cjm/steps/tls.steps.ts
+# transcribe.steps.ts removed 2026-05-16 (post-rebase) — Phase 19.2 on main
+# shipped tests/e2e-cjm/steps/__tests__/transcribe.steps.test.ts with the
+# fetchSpy / vi.fn() boundary-mock pattern. Allowlist must shrink, not grow.
