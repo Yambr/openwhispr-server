@@ -76,6 +76,12 @@ services:
       retries: 5
       start_period: 30s
     restart: unless-stopped
+    # Phase 20 / SR-20.1 — memory cap.
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+          cpus: "2.0"
 
   # Phase 08.6-03 — point the api's /v1/audio/diarization route at the
   # local Speaches service (built from master per Task 1). Speaches
@@ -91,3 +97,10 @@ services:
     profiles: [load-test-realistic]
     environment:
       SPEACHES_DIARIZATION_URL: http://speaches:8000
+    # Phase 20 / SR-20.1 + SR-20.2 — re-declare in overlay (T-20-03).
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+          cpus: "2.0"

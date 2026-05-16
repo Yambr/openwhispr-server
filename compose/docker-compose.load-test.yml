@@ -48,6 +48,13 @@ services:
       - max_connections=500
     volumes:
       - ./compose/postgres/load-test.conf:/etc/postgresql/postgresql.conf:ro
+    # Phase 20 / SR-20.1 + SR-20.2 — re-declare in overlay (T-20-03).
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 2G
+          cpus: "2.0"
 
   # ---------------------------------------------------------------------
   # PgBouncer scale-out (D-TUNE-1 / RESEARCH §Pattern 3). Four identical
@@ -101,6 +108,12 @@ services:
       timeout: 3s
       retries: 10
       start_period: 5s
+    # Phase 20 / SR-20.1 + SR-20.2 — memory cap + auto-restart (audit A5).
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 128M
 
   pgbouncer-2:
     image: openwhispr/pgbouncer:1.25.1-p0-admin
@@ -138,6 +151,12 @@ services:
       timeout: 3s
       retries: 10
       start_period: 5s
+    # Phase 20 / SR-20.1 + SR-20.2 — memory cap + auto-restart (audit A5).
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 128M
 
   pgbouncer-3:
     image: openwhispr/pgbouncer:1.25.1-p0-admin
@@ -175,6 +194,12 @@ services:
       timeout: 3s
       retries: 10
       start_period: 5s
+    # Phase 20 / SR-20.1 + SR-20.2 — memory cap + auto-restart (audit A5).
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 128M
 
   pgbouncer-4:
     image: openwhispr/pgbouncer:1.25.1-p0-admin
@@ -212,6 +237,12 @@ services:
       timeout: 3s
       retries: 10
       start_period: 5s
+    # Phase 20 / SR-20.1 + SR-20.2 — memory cap + auto-restart (audit A5).
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 128M
 
   # ---------------------------------------------------------------------
   # Valkey: keep available under load-test profiles (api/worker depend on
@@ -221,6 +252,12 @@ services:
   # ---------------------------------------------------------------------
   valkey:
     profiles: [default, load-test-mock, load-test-realistic]
+    # Phase 20 / SR-20.1 + SR-20.2 — re-declare in overlay (T-20-03).
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 256M
 
   # ---------------------------------------------------------------------
   # api: D-TUNE-2 ulimits + OPENWHISPR_DISABLE_RATE_LIMIT=1 wiring.
@@ -231,6 +268,13 @@ services:
       nofile:
         soft: 65535
         hard: 65535
+    # Phase 20 / SR-20.1 + SR-20.2 — re-declare in overlay (T-20-03).
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+          cpus: "2.0"
     environment:
       # OPENWHISPR_DISABLE_RATE_LIMIT=1 unblocks the synthetic 1000-VU k6
       # ramp; plan 08-01 installs the bypass with explicit boot-log warning.
@@ -277,6 +321,12 @@ services:
         soft: 65535
         hard: 65535
     entrypoint: ["/usr/local/bin/fd-probe.sh", "/entrypoint.sh"]
+    # Phase 20 / SR-20.1 + SR-20.2 — re-declare in overlay (T-20-03 / audit A2).
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 256M
 
   # ---------------------------------------------------------------------
   # mimir: publish 9009 on host so k6 `--out experimental-prometheus-rw`
@@ -286,6 +336,12 @@ services:
     profiles: [default, obs-only, load-test-mock, load-test-realistic]
     ports:
       - "127.0.0.1:9009:9009"
+    # Phase 20 / SR-20.1 + SR-20.2 — re-declare in overlay (T-20-03 / audit A7).
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 512M
 
   # ---------------------------------------------------------------------
   # grafana: mount the k6 Prometheus dashboard (ID 19665) read-only into
@@ -297,6 +353,12 @@ services:
     profiles: [default, obs-only, load-test-mock, load-test-realistic]
     volumes:
       - ./compose/grafana/dashboards:/etc/grafana/dashboards/k6:ro
+    # Phase 20 / SR-20.1 + SR-20.2 — re-declare in overlay (T-20-03 / audit A7).
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 256M
 
   # ---------------------------------------------------------------------
   # litellm OVERRIDE: under load-test profiles, the real LiteLLM service
@@ -349,6 +411,12 @@ services:
       retries: 5
       start_period: 10s
     restart: unless-stopped
+    # Phase 20 / SR-20.1 — memory cap (mock-litellm mock fastify app).
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+          cpus: "2.0"
 
   # ---------------------------------------------------------------------
   # speaches: CPU-mode ASR + diarization for load-test-realistic. CPU

@@ -15,6 +15,7 @@ import { describe, expect, it } from "vitest";
 import {
   auditComposeResources,
   COMPOSE_FILES,
+  findRepoRoot,
   MEMORY_FLOORS_BYTES,
   parseMemoryString,
   SHORT_LIVED_ALLOWLIST,
@@ -49,6 +50,11 @@ describe("lint-compose-resources — SR-20.1 + SR-20.2 guard", () => {
     expect(SHORT_LIVED_ALLOWLIST.has("postgres")).toBe(false);
     expect(MEMORY_FLOORS_BYTES.postgres).toBe(2 * 1024 ** 3);
     expect(MEMORY_FLOORS_BYTES.web).toBe(384 * 1024 ** 2);
+  });
+
+  it("findRepoRoot resolves to a directory containing tools/", () => {
+    const root = findRepoRoot();
+    expect(root).toMatch(/openwhispr-server$/);
   });
 
   it("parseMemoryString accepts SI + IEC units and rejects garbage", () => {

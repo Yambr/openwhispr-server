@@ -56,6 +56,13 @@ services:
     depends_on:
       mock-realtime:
         condition: service_healthy
+    # Phase 20 / SR-20.1 + SR-20.2 — re-declare in overlay (T-20-03).
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+          cpus: "2.0"
 
   mock-realtime:
     profiles: [e2e]

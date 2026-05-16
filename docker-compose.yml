@@ -80,6 +80,15 @@ services:
       timeout: 3s
       retries: 10
       start_period: 10s
+    # Phase 20 / SR-20.1 + SR-20.2 — memory cap + auto-restart.
+    # 2G floor: CNPG + pg_partman_bgw + 100 connections × ~6 MB work_mem
+    # + shared_buffers 128 MB. Locked by ROADMAP §SR-20.1.
+    deploy:
+      resources:
+        limits:
+          memory: 2G
+          cpus: "2.0"
+    restart: unless-stopped
 
   valkey:
     image: valkey/valkey:8.1-alpine
@@ -94,6 +103,12 @@ services:
       interval: 5s
       timeout: 3s
       retries: 10
+    # Phase 20 / SR-20.1 + SR-20.2 — memory cap + auto-restart.
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+    restart: unless-stopped
 
   # Phase 2 Plan 02 — One-shot migration runner. Runs as openwhispr_owner
   # DIRECT to postgres:5432 (NOT pgbouncer — pgbouncer is overlay-only as of
@@ -186,6 +201,12 @@ services:
       retries: 5
       start_period: 30s
     restart: unless-stopped
+    # Phase 20 / SR-20.1 — memory cap. Mirrors chart limits.memory: 1Gi.
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+          cpus: "2.0"
 
   # Phase 2 Plan 02 — API container. Closes Phase 1 D-08 / SC#1 partial:
   # the entrypoint runs check-default-secrets.cjs BEFORE node main, so
@@ -308,6 +329,12 @@ services:
       retries: 3
       start_period: 30s
     restart: unless-stopped
+    # Phase 20 / SR-20.1 — memory cap. Mirrors chart limits.memory: 1Gi.
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+          cpus: "2.0"
 
   # Phase 03 Plan 08 — BullMQ worker that ingests LiteLLM_SpendLogs into
   # our usage_ledger every 30s (LITELLM-07 / DATA-03 / SCALE-03).
@@ -365,6 +392,12 @@ services:
       migrate:
         condition: service_completed_successfully
     restart: unless-stopped
+    # Phase 20 / SR-20.1 — memory cap.
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: "1.0"
 
   # Phase 07.1 Plan 03 — Next.js 15 web app (WEB-IMPL-03 / D-DEPLOY-1 /
   # D-DEPLOY-2 / D-ADMIN-1 / D-ADMIN-2).
@@ -436,6 +469,12 @@ services:
       retries: 3
       start_period: 30s
     restart: unless-stopped
+    # Phase 20 / SR-20.1 — memory cap. Next.js 15 standalone SSR.
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: "1.0"
     labels:
       # Phase 19b / SR-19b.2 — STRUCT-05 host-split. The canonical `web`
       # router lives in compose/traefik/dynamic.dev.yml (file provider) on
