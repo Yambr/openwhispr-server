@@ -35,8 +35,12 @@ describe.skipIf(!SHOULD_RUN)("WIRE-20 — Traefik HTTPS-only redirect (HTTP -> 3
     if (existsSync(envPath)) copyFileSync(envPath, ENV_BACKUP);
     writeFixtureEnv();
 
+    // Phase 14 / SLIM-03 — traefik lives only in the ingress overlay,
+    // not in the slim-core base compose. Layer the overlay so the
+    // service is resolvable.
     const r = dockerCompose(["up", "-d", "traefik"], {
       timeoutMs: 90_000,
+      composeFiles: ["compose/docker-compose.ingress.yml"],
     });
     if (r.exitCode !== 0) {
       // biome-ignore lint/suspicious/noConsole: failure-only diagnostics
@@ -47,7 +51,10 @@ describe.skipIf(!SHOULD_RUN)("WIRE-20 — Traefik HTTPS-only redirect (HTTP -> 3
   }, 120_000);
 
   afterAll(async () => {
-    dockerCompose(["down", "-v"], { timeoutMs: 60_000 });
+    dockerCompose(["down", "-v"], {
+      timeoutMs: 60_000,
+      composeFiles: ["compose/docker-compose.ingress.yml"],
+    });
     const envPath = join(ROOT, ".env");
     if (existsSync(ENV_BACKUP)) {
       copyFileSync(ENV_BACKUP, envPath);

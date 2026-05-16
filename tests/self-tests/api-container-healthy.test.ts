@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
-// Phase 2 Plan 02 — D-23 self-test: bring up postgres+pgbouncer+valkey+
-// migrate+api with `--wait` and assert the api container reaches the
-// `healthy` state.
+// Phase 2 Plan 02 — D-23 self-test: bring up postgres+valkey+migrate+api
+// with `--wait` and assert the api container reaches the `healthy`
+// state. Phase 14 / SLIM-03 moved pgbouncer into an overlay, so the
+// slim-core base used here connects api directly to postgres:5432.
 //
 // Skip-clean when Docker is unavailable or Compose < 2.20 (the plan
 // relies on `service_completed_successfully` which arrived in 2.20).
@@ -51,11 +52,13 @@ describe.skipIf(skip)("Phase 2 Plan 02 D-23 — api container reaches healthy", 
         "up",
         "-d",
         "--wait",
+        // LiteLLM cold-boot can take ~50s; 180s was the Phase 2 baseline
+        // before LiteLLM joined the chain (Phase 03). 300s gives headroom.
         "--wait-timeout",
-        "180",
+        "300",
         "postgres",
-        "pgbouncer",
         "valkey",
+        "litellm",
         "migrate",
         "api",
       ],

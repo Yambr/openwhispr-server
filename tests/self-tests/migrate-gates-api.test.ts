@@ -85,11 +85,14 @@ describe.skipIf(skip)(
           "up",
           "-d",
           "--wait",
+          // LiteLLM cold-boot can take ~50s on a fresh image pull; api waits
+          // until then via service_completed_successfully + healthcheck. 180s
+          // was a Phase 2 baseline before LiteLLM joined the chain (Phase 03).
           "--wait-timeout",
-          "180",
+          "300",
           "postgres",
-          "pgbouncer",
           "valkey",
+          "litellm",
           "migrate",
           "api",
         ],
