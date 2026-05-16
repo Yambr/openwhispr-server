@@ -641,3 +641,23 @@ key" and "not-found").
 - Backend error branches: 404 typed envelope.
 - Silent-failure modes: 200 (cross-tenant revoke leak — CVE class);
   403 (existence leak); 5xx stack trace.
+
+## 9. Per-tenant STT/LLM override (G2 closure, partial-RED)
+
+Phase 42 closes G2 from `.planning/qa-audit/2026-05-16-cjm-coverage.md`.
+`GET /api/stt-config` and `GET /api/note-recording-config` already ship
+(Phase 5 / WIRE-11..12), but no `PUT` route for tenant override exists
+yet. The CJM lands now to pin the contract; the happy path is tagged
+`@expected-red @after-phase-51-WIRE-11-PUT` until the route is added.
+
+### @cjm-9.1 Tenant admin overrides default STT model; subsequent /api/stt-config reflects the override (happy path, RED)
+
+Tagged `@expected-red @after-phase-51-WIRE-11-PUT`. PUT `/api/stt-config`
+with `{model: "whisper-large-v3-turbo"}` then GET `/api/stt-config`
+returns the overridden model.
+
+### @cjm-9.2 Unknown STT model rejected with typed envelope (negative twin)
+
+PUT `/api/stt-config` with a model id not in the allowed enum. The api
+MUST respond 400 with the typed envelope shape and the error code
+matching `invalid_model` or `validation_error`.
