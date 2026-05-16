@@ -448,6 +448,136 @@ SUITE("reconciliation-daily-check (D-R2)", () => {
     expect(_readDriftStoreForTest().size).toBe(2);
   });
 
+  // Phase 41.d / HI-3 — atomic snapshot swap. The OTel exporter fires
+  // gauge callbacks every 15s; the handler runs once/day. If the handler
+  // mid-mutates module-level driftStore (clear() at start, set() in a
+  // for-loop), exporter callbacks firing in the gap observe an empty or
+  // partial state. The fix builds a fresh local nextDriftStore inside
+  // the handler and atomically swaps it into the module-level
+  // driftStore as the LAST statement — so callbacks observe either
+  // tick N's complete state or tick N+1's complete state, never a
+  // mid-mutation void.
+  //
+  // RED detection: pause handler execution AFTER its DB queries return
+  // but BEFORE it has fully populated driftStore. With the buggy
+  // implementation, driftStore.clear() has already run -> callbacks see
+  // empty / partial state. With the fixed implementation, driftStore
+  // still holds the previous tick's complete snapshot until the final
+  // swap.
+  it("gauge callbacks observe a consistent snapshot mid-handler (no clear-then-set race)", async () => {
+    if (!h) throw new Error("harness");
+    // Tick 1: populate driftStore with a known breach.
+    await h.llPool.query(
+      `INSERT INTO "LiteLLM_SpendLogs" (request_id, "end_user", spend, "startTime") VALUES
+       ('s1', $1, 0, '2026-05-10 09:00:00+00')`,
+      [USER_A],
+    );
+    let handler = buildReconciliationDailyCheckHandler({
+      litellmPool: h.llPool,
+      appOwnerPool: h.appPool,
+      discrepancyQueue: {
+        async add() {
+          return {} as never;
+        },
+      },
+      env: () => undefined,
+    });
+    await handler(fakeJob(WIN));
+    expect(_readDriftStoreForTest().get(TENANT_A)?.drift_pct).toBe(100);
+
+    // Tick 2: install a slow appOwnerPool that yields control AFTER the
+    // user->tenant batched query returns — simulating the exporter
+    // callback firing in the gap between handler steps.
+    await h.llPool.query(`TRUNCATE "LiteLLM_SpendLogs"`);
+    await h.llPool.query(
+      `INSERT INTO "LiteLLM_SpendLogs" (request_id, "end_user", spend, "startTime") VALUES
+       ('s2', $1, 0, '2026-05-11 09:00:00+00')`,
+      [USER_B],
+    );
+    const NEXT_WIN = {
+      window_start: "2026-05-11T00:00:00Z",
+      window_end: "2026-05-12T00:00:00Z",
+    };
+
+    let midHandlerObservations: Array<[number, Record<string, string>]> = [];
+    handler = buildReconciliationDailyCheckHandler({
+      litellmPool: h.llPool,
+      appOwnerPool: h.appPool,
+      discrepancyQueue: {
+        // Hook discrepancyQueue.add — its `await` inside the inner
+        // for-loop yields control to the event loop. Simulate the OTel
+        // exporter firing during that yield: snapshot driftStore.
+        async add() {
+          const stub = {
+            observe: (v: number, attrs: Record<string, string>) =>
+              midHandlerObservations.push([v, attrs]),
+          };
+          _driftPctGaugeCallback(stub);
+          return {} as never;
+        },
+      },
+      env: () => undefined,
+    });
+    await handler(fakeJob(NEXT_WIN));
+
+    // Mid-handler, the gauge callback MUST have observed tick-1's
+    // complete snapshot (tenant A @ 100% drift). The buggy implementation
+    // had already called driftStore.clear() then begun re-populating
+    // mid-loop — so the observation would see either {} (empty) or
+    // {tenant B} (mid-mutation partial), but NEVER {tenant A}. With the
+    // fix, driftStore retains tick-1's full snapshot until the atomic
+    // swap as the handler's last statement.
+    expect(midHandlerObservations).toHaveLength(1);
+    expect(midHandlerObservations[0]?.[1].tenant_id).toBe(TENANT_A);
+    expect(midHandlerObservations[0]?.[0]).toBe(100);
+  });
+
+  it("gauge callbacks observe fresh post-tick state (no stale prior-tick leak)", async () => {
+    if (!h) throw new Error("harness");
+    // Tick 1: seed a breaching row so driftStore gets populated.
+    await h.llPool.query(
+      `INSERT INTO "LiteLLM_SpendLogs" (request_id, "end_user", spend, "startTime") VALUES
+       ('s1', $1, 0, '2026-05-10 09:00:00+00')`,
+      [USER_A],
+    );
+    const handler = buildReconciliationDailyCheckHandler({
+      litellmPool: h.llPool,
+      appOwnerPool: h.appPool,
+      discrepancyQueue: {
+        async add() {
+          return {} as never;
+        },
+      },
+      env: () => undefined,
+    });
+    await handler(fakeJob(WIN));
+    // Confirm tick-1 populated the store.
+    expect(_readDriftStoreForTest().get(TENANT_A)?.drift_pct).toBe(100);
+
+    // Tick 2: clear LiteLLM rows so no tenants are observed this tick.
+    await h.llPool.query(`TRUNCATE "LiteLLM_SpendLogs"`);
+    // The next window has zero activity for any tenant. The handler
+    // must replace driftStore with the new (empty) snapshot — NOT leave
+    // tenant A's stale 100% drift behind for the OTel exporter to
+    // re-observe on every 15s collection tick over the next 23h.
+    const NEXT_WIN = {
+      window_start: "2026-05-11T00:00:00Z",
+      window_end: "2026-05-12T00:00:00Z",
+    };
+    await handler(fakeJob(NEXT_WIN));
+    const observations: Array<[number, Record<string, string>]> = [];
+    const stub = {
+      observe: (v: number, attrs: Record<string, string>) => observations.push([v, attrs]),
+    };
+    _driftPctGaugeCallback(stub);
+    _driftUsdGaugeCallback(stub);
+    // No tenant has activity in tick 2 -> zero observations emitted.
+    // Previously the store retained tenant A from tick 1 -> two stale
+    // observations leaked.
+    expect(observations).toHaveLength(0);
+    expect(_readDriftStoreForTest().size).toBe(0);
+  });
+
   it("honors RECONCILIATION_DRIFT_USD_CENTS_THRESHOLD env override", async () => {
     if (!h) throw new Error("harness");
     await h.llPool.query(

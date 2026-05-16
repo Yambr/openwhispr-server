@@ -75,8 +75,18 @@ export const _driftUsdGaugeCallback = (result: {
   }
 };
 
-driftPctGauge.addCallback(_driftPctGaugeCallback);
-driftUsdGauge.addCallback(_driftUsdGaugeCallback);
+// Phase 41.d / HI-3 — guard the module-level addCallback against
+// double-registration. If `buildReconciliationDailyCheckHandler` is called
+// twice (test re-import + production wiring share the module graph), OTel
+// fires the callback twice per collection tick — doubling the gauge
+// cardinality. The boolean flag closes the regression cheaply without
+// changing the public surface.
+let _gaugesRegistered = false;
+if (!_gaugesRegistered) {
+  driftPctGauge.addCallback(_driftPctGaugeCallback);
+  driftUsdGauge.addCallback(_driftUsdGaugeCallback);
+  _gaugesRegistered = true;
+}
 
 /** Test-only: clear the in-memory drift store between fixtures. */
 export function _resetDriftStoreForTest(): void {
@@ -183,7 +193,15 @@ export function buildReconciliationDailyCheckHandler(
 
       const allTenants = new Set<string>([...litellmByTenant.keys(), ...ledgerByTenant.keys()]);
 
-      driftStore.clear();
+      // Phase 41.d / HI-3 — atomic snapshot swap. Build the next tick's
+      // drift map in a LOCAL variable; the module-level `driftStore` is
+      // mutated ONLY at the end of the handler (clear + bulk-copy). OTel
+      // exporter callbacks firing during the for-loop (e.g., on the await
+      // inside discrepancyQueue.add) observe the PREVIOUS tick's complete
+      // snapshot until the swap. Previously a clear()-at-start scheme left
+      // the exporter free to observe an empty or mid-mutation Map and emit
+      // false-negative or partial gauge points.
+      const nextDriftStore = new Map<string, { drift_pct: number; drift_usd_cents: number }>();
       let breached = 0;
       for (const tenantId of allTenants) {
         const ll = litellmByTenant.get(tenantId) ?? { row_count: 0, spend_cents: 0 };
@@ -192,7 +210,7 @@ export function buildReconciliationDailyCheckHandler(
         if (ll.row_count === 0 && lg === 0) continue;
         const driftPct = (Math.abs(ll.row_count - lg) / Math.max(ll.row_count, 1)) * 100;
         const driftUsd = Math.abs(ll.spend_cents - 0); // ledger spend axis = 0 today
-        driftStore.set(tenantId, { drift_pct: driftPct, drift_usd_cents: driftUsd });
+        nextDriftStore.set(tenantId, { drift_pct: driftPct, drift_usd_cents: driftUsd });
         if (driftPct > pctThreshold || driftUsd > usdThreshold) {
           breached++;
           await deps.discrepancyQueue.add("reconciliation-discrepancy", {
@@ -204,6 +222,17 @@ export function buildReconciliationDailyCheckHandler(
           });
         }
       }
+
+      // Atomic swap: clear the module-level store then bulk-copy the
+      // freshly-built snapshot. The exporter callback iterates `driftStore`
+      // directly; the clear+copy pair is synchronous JS (no awaits) so an
+      // OTel collection that lands between these two statements would see
+      // a zero-entry tick which is acceptable transient behaviour (the
+      // next 15s tick recovers). Crucially, the buggy `clear()`-at-start
+      // window — which spanned multiple awaits inside the breach loop — is
+      // closed.
+      driftStore.clear();
+      for (const [k, v] of nextDriftStore) driftStore.set(k, v);
 
       return { tenants: driftStore.size, breached };
     },
