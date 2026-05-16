@@ -479,8 +479,14 @@ services:
       test: ["CMD", "python3", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:4000/health/liveliness',timeout=2).status==200 else 1)"]
       interval: 10s
       timeout: 3s
-      retries: 5
-      start_period: 30s
+      retries: 30
+      # Phase 19.4-followup — prisma migrate deploy at cold boot pulls 118
+      # migration files and runs each against the bundled co-tenant DB.
+      # On Mac laptop CPU this can take 90-180s; the original 30s grace
+      # + 50s retry budget tripped `make e2e-cjm --wait` despite the
+      # service eventually going healthy. 240s grace + 30 retries gives
+      # the slowest observed boot a 540s ceiling without false-failing.
+      start_period: 240s
     restart: unless-stopped
     # Phase 20 / SR-20.1 — memory cap.
     deploy:
