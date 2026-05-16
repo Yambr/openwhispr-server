@@ -52,17 +52,23 @@ describe("lookupSessionByPreviousToken — Node-side fp index lookup", () => {
       opts.email,
     ]);
     const userId = userRow.rows[0]!.id;
+    // Phase 33 / Plan 33-05 — migration 0020 dropped plaintext
+    // sessions.token + sessions.previous_token columns. The canonical
+    // lookup surface is now `previous_token_fp` (SHA-256 sidecar). The
+    // bytea-envelope sidecars (token_dek_*, token_value_*) are nullable
+    // and aren't relevant to the fingerprint-only path this helper
+    // exercises, so we seed them as NULL and bind only `token_fp`
+    // (NOT NULL post-0020 UNIQUE) + `previous_token_fp` (the column the
+    // helper queries).
     await pool.query(
-      `INSERT INTO sessions (id, tenant_id, user_id, token, expires_at,
-                             previous_token, previous_token_expires_at,
-                             previous_token_fp)
+      `INSERT INTO sessions (id, tenant_id, user_id, token_fp, expires_at,
+                             previous_token_expires_at, previous_token_fp)
          VALUES (gen_random_uuid(), $1, $2, $3, now() + interval '30 days',
-                 $4, now() + ($5::text || ' minutes')::interval, $6)`,
+                 now() + ($4::text || ' minutes')::interval, $5)`,
       [
         TENANT_ID,
         userId,
-        opts.currentToken,
-        opts.previousToken,
+        sha256(opts.currentToken),
         String(opts.expiresOffsetMinutes),
         sha256(opts.previousToken),
       ],
