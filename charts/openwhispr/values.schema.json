@@ -2,6 +2,31 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "title": "openwhispr chart values",
   "type": "object",
+  "definitions": {
+    "startupProbe": {
+      "type": "object",
+      "description": "Phase 20 / SR-20.3 — per-workload startupProbe budget. failureThreshold × periodSeconds = boot budget in seconds.",
+      "properties": {
+        "failureThreshold": { "type": "integer", "minimum": 1 },
+        "periodSeconds": { "type": "integer", "minimum": 1 }
+      },
+      "additionalProperties": false
+    },
+    "topologySpread": {
+      "type": "object",
+      "description": "Phase 20 / SR-20.4 — per-workload topologySpreadConstraints. Set enabled=false to omit the block on single-node clusters.",
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "maxSkew": { "type": "integer", "minimum": 1 },
+        "topologyKey": { "type": "string", "minLength": 1 },
+        "whenUnsatisfiable": {
+          "type": "string",
+          "enum": ["DoNotSchedule", "ScheduleAnyway"]
+        }
+      },
+      "additionalProperties": false
+    }
+  },
   "properties": {
     "secrets": {
       "type": "object",
@@ -213,13 +238,25 @@
       ]
     },
     "api": {
-      "type": "object"
+      "type": "object",
+      "properties": {
+        "startupProbe": { "$ref": "#/definitions/startupProbe" },
+        "topologySpread": { "$ref": "#/definitions/topologySpread" }
+      }
     },
     "web": {
-      "type": "object"
+      "type": "object",
+      "properties": {
+        "startupProbe": { "$ref": "#/definitions/startupProbe" },
+        "topologySpread": { "$ref": "#/definitions/topologySpread" }
+      }
     },
     "worker": {
-      "type": "object"
+      "type": "object",
+      "properties": {
+        "startupProbe": { "$ref": "#/definitions/startupProbe" },
+        "topologySpread": { "$ref": "#/definitions/topologySpread" }
+      }
     },
     "host": {
       "type": "object",
@@ -292,7 +329,9 @@
       "type": "object",
       "properties": {
         "embedded": { "type": "boolean" },
-        "externalBaseUrl": { "type": "string" }
+        "externalBaseUrl": { "type": "string" },
+        "startupProbe": { "$ref": "#/definitions/startupProbe" },
+        "topologySpread": { "$ref": "#/definitions/topologySpread" }
       },
       "allOf": [
         {

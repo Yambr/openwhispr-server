@@ -170,6 +170,17 @@ spec:
             # defense. Operators add more in-cluster hostnames here.
             - name: OUTBOUND_PRIVATE_HOST_ALLOWLIST
               value: {{ printf "%s-litellm%s" (include "openwhispr.fullname" .) (ternary (printf ",%s" .Values.api.env.outboundPrivateHostAllowlist) "" (ne (default "" .Values.api.env.outboundPrivateHostAllowlist) "")) | quote }}
+          # SR-20.3 — startupProbe gives a 300s boot budget
+          # (failureThreshold 30 × periodSeconds 10). Until it
+          # succeeds, readiness + liveness probes are suspended,
+          # protecting slow-booting Node + Better Auth + drizzle
+          # init from premature kubelet kills. See plan 20-02a.
+          startupProbe:
+            httpGet:
+              path: /api/health
+              port: 3000
+            failureThreshold: {{ .Values.api.startupProbe.failureThreshold | default 30 }}
+            periodSeconds: {{ .Values.api.startupProbe.periodSeconds | default 10 }}
           readinessProbe:
             httpGet:
               path: /api/health

@@ -102,6 +102,16 @@ spec:
           # that confirms the node process is alive and connected to
           # valkey (BullMQ-internal heartbeat). Production hardening
           # could add a thin probe-only Fastify hook to the worker bundle.
+          # SR-20.3 — startupProbe gives a 300s boot budget; reuses the
+          # same pgrep exec shape as readiness/liveness.
+          startupProbe:
+            exec:
+              command:
+                - sh
+                - -c
+                - "pgrep -f 'node /app/dist/index.js' >/dev/null"
+            failureThreshold: {{ .Values.worker.startupProbe.failureThreshold | default 30 }}
+            periodSeconds: {{ .Values.worker.startupProbe.periodSeconds | default 10 }}
           readinessProbe:
             exec:
               command:
