@@ -5,7 +5,7 @@
 .PHONY: dev test lint lint-rls lint-compose-resources lint\:lockers install-gitleaks lint\:gitleaks format typecheck up down clean clean-stack tls-trust help \
         contract-test contract-test-deployed contract-test-missing-keys e2e-test e2e-test-live \
         e2e-hermetic e2e-test-phase6 e2e-cjm e2e-cjm-teardown smoke \
-        load-test seed backup restore migrate migrate-rollback logs ps restart \
+        load-test load-smoke seed backup restore migrate migrate-rollback logs ps restart \
         verify-images \
         up-with-observability up-with-storage up-with-ingress up-with-pgbouncer up-with-dev-tools up-full
 
@@ -442,6 +442,20 @@ contract-test-deployed:
 # stack-up, k6 invocation, run-output capture, and teardown.
 load-test:
 	@bash tools/load-test/scripts/run.sh $(or $(PROFILE),mock)
+
+# Phase 44 / Plan 44-01 / L3 — PR-time k6 mock load smoke (≤ 2 min).
+# Per memory feedback_loadtest_cost_discipline: PROFILE=mock ONLY; paid
+# providers gated behind OPENWHISPR_LOADTEST_ALLOW_PAID=1. Refuses to
+# run when ALLOW_PAID is set so a PR cannot accidentally bill upstream.
+# Wall-clock target: < 120 s. Full realistic-profile plateau remains
+# nightly-only.
+load-smoke:
+	@if [ "$$OPENWHISPR_LOADTEST_ALLOW_PAID" = "1" ]; then \
+		echo "load-smoke: REFUSING to run with OPENWHISPR_LOADTEST_ALLOW_PAID=1 — mock-only on PR"; \
+		exit 1; \
+	fi
+	@PROFILE=mock BASELINE_VUS=$${BASELINE_VUS:-5} BASELINE_DURATION_SUSTAIN=$${BASELINE_DURATION_SUSTAIN:-60s} \
+		bash tools/load-test/scripts/run.sh mock
 
 seed:
 	@echo "seed target lands in Phase 1"; exit 1

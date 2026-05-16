@@ -684,3 +684,43 @@ jobs:
       - name: Tear down
         if: always()
         run: docker compose down -v --remove-orphans || true
+
+  # Phase 44 / Plan 44-01 / L3 — PR-time k6 mock load smoke.
+  # Per memory feedback_loadtest_cost_discipline: PROFILE=mock ONLY.
+  # OPENWHISPR_LOADTEST_ALLOW_PAID MUST be unset on PR; the Makefile
+  # target hard-refuses if it is set.
+  load-smoke:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v5
+      - uses: pnpm/action-setup@v4
+        with: { version: 11.0.8 }
+      - uses: actions/setup-node@v5
+        with: { node-version: '24', cache: 'pnpm' }
+      - run: pnpm install --frozen-lockfile
+      - name: Install k6
+        run: |
+          sudo gpg -k
+          sudo gpg --no-default-keyring --keyring /usr/share/keyrings/k6-archive-keyring.gpg \
+            --keyserver hkp://keyserver.ubuntu.com:80 --recv-keys C5AD17C747E3415A3642D57D77C6C491D6AC1D69
+          echo "deb [signed-by=/usr/share/keyrings/k6-archive-keyring.gpg] https://dl.k6.io/deb stable main" \
+            | sudo tee /etc/apt/sources.list.d/k6.list
+          sudo apt-get update && sudo apt-get install -y k6
+      - name: Run mock load smoke (≤ 2 min)
+        env:
+          BASELINE_VUS: "5"
+          BASELINE_DURATION_SUSTAIN: "60s"
+        run: make load-smoke
+      - name: Capture compose logs on failure
+        if: failure()
+        run: docker compose logs --tail=200 --no-color > load-smoke-logs.txt || true
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4
+        if: failure()
+        with:
+          name: load-smoke-logs
+          path: load-smoke-logs.txt
+      - name: Tear down
+        if: always()
+        run: docker compose down -v --remove-orphans || true
