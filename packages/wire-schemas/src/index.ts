@@ -7,6 +7,7 @@
  * `~/openwhispr/src/services/*.ts` byte-for-byte (CONTEXT D-22).
  */
 
+export * from "./agent.js";
 export * from "./api-keys.js";
 export * from "./check-user.js";
 export * from "./conversations.js";
