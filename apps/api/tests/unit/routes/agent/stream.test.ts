@@ -201,6 +201,18 @@ function buildMultiToolCallSse(): string {
 beforeEach(() => {
   agent = new MockAgent({ connections: 10 });
   agent.disableNetConnect();
+  // Phase 41.f / HI-2 — the litellm-client now refuses any outbound
+  // request unless the global undici dispatcher carries the SSRF marker
+  // stamped by `makeSSRFDispatcher()`. The MockAgent is a hermetic
+  // network boundary so we stamp the same well-known Symbol here; the
+  // canonical pattern is mirrored from
+  // `packages/litellm-client/tests/unit/index.test.ts`.
+  Object.defineProperty(agent, Symbol.for("openwhispr.ssrf-wrapped"), {
+    value: true,
+    enumerable: false,
+    writable: false,
+    configurable: false,
+  });
   setGlobalDispatcher(agent);
 });
 
