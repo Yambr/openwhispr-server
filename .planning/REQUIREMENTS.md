@@ -644,7 +644,7 @@ Work-order: **31 → 32 → 33 → 34 → 35 → 36 → 37 → 38 → 39 → 40 
 | HIGH-FIX-WORKER | 41.d | Pending | Shared redact factory + reconciliation-daily-check bound + fresh `driftStore` + `metadata.duration` validation — Source: `worker.md` HI-1..4 |
 | HIGH-FIX-DATA | 41.e | Pending | LiteLLM-init idempotency + migration `0019` (TRUNCATE → UPSERT) + account-token TTL — Source: `data.md` HI-01..03 (HI-04 closed by Phase 32) |
 | HIGH-FIX-LITELLM | 41.f | Pending | `headersTimeout`/`bodyTimeout`/required `AbortSignal` + SSRF dispatcher assert + model-alias single-source + `streamOptions` opt-out — Source: `litellm-client.md` HI-01..04 |
-| HIGH-FIX-SMALL | 41.g | Pending | Real en/ru bundles OR i18n→stub + byok/redact parity test + `SMTP_SECURE` flexible parser — Source: `small-pkgs.md` HI-01..03 |
+| HIGH-FIX-SMALL | 41.g | Complete | i18n renamed to `-stub` (`d7e7df7`) + byok/redact parity test via fs walk (`be0f5b6`) + `SMTP_SECURE` accepts 1/true/yes/on case-insensitive (`dd444cb`) — Source: `small-pkgs.md` HI-01..03 |
 
 **v2.2 coverage:** 32/32 mapped (100%), 0 orphans, 0 duplicates.
 **v2.2 distribution:** Phase 31=9, Phase 32=1, Phase 33=1, Phase 34=1, Phase 35=3 (a/b/c), Phase 36=2 (a/b), Phase 37=1, Phase 38=1, Phase 39=4, Phase 40=3, Phase 41=7 (a/b/c/d/e/f/g) = 33 line items across 32 REQ-IDs (Phase 41 has 7 sub-plans for 7 REQ-IDs; Phase 35/36 sub-letters group multiple REQ-IDs per phase) ✓.
@@ -698,7 +698,7 @@ Driven entirely by `.planning/review/REVIEW-INDEX.md` (10 CRITICAL + 35 HIGH fro
 - [ ] **HIGH-FIX-WORKER** (Phase 41.d): bare `pino()` replaced with shared redact factory in worker `index.ts` and `ingest-litellm-spend.ts`; reconciliation-daily-check loop bound corrected; OTel gauge callbacks read fresh `driftStore`; minutes-priced model `metadata.duration` validation + warn-log + counter metric added.
 - [ ] **HIGH-FIX-DATA** (Phase 41.e): `migrate.ts` LiteLLM DB init idempotency enforced; migration `0019` replaces 0005's TRUNCATE with idempotent UPSERT; account-token TTL enforcement (post-encryption from Phase 33).
 - [ ] **HIGH-FIX-LITELLM** (Phase 41.f): `chatCompletions`, `audioTranscriptions`, `passthrough` get `headersTimeout`/`bodyTimeout`/required `AbortSignal`; SSRF dispatcher asserted at module load (throw if `getGlobalDispatcher()` is not wrapped); model alias drift fixed via single-source-of-truth read from `compose/litellm/litellm_config.yaml`; `streamOptions` spread allows caller opt-out of `include_usage`.
-- [ ] **HIGH-FIX-SMALL** (Phase 41.g): real en/ru locale bundles OR `packages/i18n` renamed to `-stub` (verify against Phase 10 coverage); CI parity test between `byok-guard` and `observability/redact` provider lists; `SMTP_SECURE` parsing accepts `1`/`true`/`yes`/`on` (case-insensitive).
+- [x] **HIGH-FIX-SMALL** (Phase 41.g): `packages/i18n` renamed to `@openwhispr/i18n-stub` (`d7e7df7`); CI parity test between `byok-guard` and `observability/redact` provider lists via node fs walk (`be0f5b6`); `SMTP_SECURE` accepts `1`/`true`/`yes`/`on` case-insensitive (`dd444cb`). 41.g closed 2026-05-16.
 
 **v2.2 coverage:** 32/32 mapped (100% — 9 LOCKER + 10 CRIT-FIX + 13 HIGH-FIX).
 **v2.2 distribution:** Phase 31=9, Phase 32=1, Phase 33=1, Phase 34=1, Phase 35=3, Phase 36=2, Phase 37=1, Phase 38=1, Phase 39=4, Phase 40=3, Phase 41=6 = 32 ✓.
