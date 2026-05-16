@@ -11,4 +11,10 @@ export { decryptValue, encryptValue } from "./envelope.js";
 export type { KeyProvider } from "./key-provider.js";
 export { selectProvider } from "./key-provider.js";
 export { KmsKeyProvider } from "./kms-key-provider.js";
+export type {
+  EncryptedColumnConfig,
+  EncryptedColumnMap,
+  FingerprintColumn,
+} from "./lens.js";
+export { wrapAdapter } from "./lens.js";
 export { VaultKeyProvider } from "./vault-key-provider.js";
