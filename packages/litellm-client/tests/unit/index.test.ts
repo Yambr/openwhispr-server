@@ -6,7 +6,12 @@
 // the wire shape that downstream Plans 04/05/06 depend on.
 
 import { Readable } from "node:stream";
-import { MockAgent, setGlobalDispatcher } from "undici";
+import {
+  type Dispatcher,
+  MockAgent,
+  setGlobalDispatcher,
+  type request as undiciRequestRef,
+} from "undici";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   BUNDLED_MODEL_PROVIDER,
@@ -339,6 +344,70 @@ describe("buildLitellmClient — audioTranscriptions", () => {
     expect(capturedPath).toMatch(/^\/v1\/audio\/transcriptions\?/);
     const qs = new URLSearchParams(capturedPath?.split("?")[1] ?? "");
     expect(qs.get("model")).toBe("whisper-large-v3");
+  });
+
+  it('prepends `name="model"` as a synthetic multipart part so LiteLLM proxy parses it (Phase 19.2)', async () => {
+    // LiteLLM proxy v1.83.x reads `model` ONLY from form data
+    // (proxy_server.py:audio_transcriptions → form_data.get("model")).
+    // The query-string param above is forward-compat; this assertion
+    // pins the field-injection contract that actually unblocks the
+    // round-trip against the canonical proxy.
+    // Inject a fake `request` function to capture the exact body the
+    // client constructs. Undici MockAgent's reply handler does not
+    // expose the body stream after pipe-completion in a way we can
+    // drain synchronously, so we bypass it for this assertion.
+    const captured: { bytes: Buffer } = { bytes: Buffer.alloc(0) };
+    const fakeRequest = async (
+      _url: unknown,
+      reqOpts: unknown,
+    ): Promise<Dispatcher.ResponseData> => {
+      const body = (reqOpts as { body: Readable }).body;
+      const chunks: Buffer[] = [];
+      await new Promise<void>((res, rej) => {
+        body.on("data", (c: Buffer | string) =>
+          chunks.push(typeof c === "string" ? Buffer.from(c, "utf8") : c),
+        );
+        body.on("end", () => res());
+        body.on("error", (err) => rej(err));
+      });
+      captured.bytes = Buffer.concat(chunks);
+      return {
+        statusCode: 200,
+        body: {
+          async json() {
+            return { text: "ok" };
+          },
+          async text() {
+            return "";
+          },
+        },
+      } as unknown as Dispatcher.ResponseData;
+    };
+
+    const client = buildLitellmClient(baseConfig(), {
+      isOverride: false,
+      request: fakeRequest as unknown as typeof undiciRequestRef,
+    });
+    const stream = Readable.from([Buffer.from("FILE_PART_BODY")]);
+    const res = await client.audioTranscriptions({
+      model: "whisper-large-v3",
+      body: stream,
+      contentType: "multipart/form-data; boundary=xyz123",
+      userId: "u1",
+      requestId: "r1",
+    });
+    expect(res.statusCode).toBe(200);
+    const capturedStr = captured.bytes.toString("utf8");
+    // Prefix MUST carry a synthetic `name="model"` part on the same
+    // boundary AND must appear BEFORE the original file payload.
+    expect(capturedStr).toMatch(/--xyz123\r\n/);
+    expect(capturedStr).toMatch(
+      /Content-Disposition: form-data; name="model"\r\n\r\nwhisper-large-v3\r\n/,
+    );
+    const modelIdx = capturedStr.indexOf('name="model"');
+    const fileIdx = capturedStr.indexOf("FILE_PART_BODY");
+    expect(modelIdx).toBeGreaterThanOrEqual(0);
+    expect(fileIdx).toBeGreaterThan(modelIdx);
   });
 
   it("throws MissingProviderKeyError when GROQ_API_KEY is unset (whisper-large-v3 -> groq)", async () => {
