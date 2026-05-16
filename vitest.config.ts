@@ -68,7 +68,7 @@ export default defineConfig({
       {
         extends: true,
         test: {
-          name: "@openwhispr/i18n",
+          name: "@openwhispr/i18n-stub",
           root: p("packages/i18n"),
           include: ["tests/**/*.test.ts"],
         },
@@ -169,7 +169,6 @@ export default defineConfig({
         "**/node_modules/**",
         "**/.stryker-tmp/**",
         "**/reports/**",
-        "packages/i18n/locales/**",
         // Phase 13 / Plan 01 / Task 02 (OQ-5 resolution) — `tools/**` is no
         // longer blanket-excluded. The new lint/teardown tools
         // (`tools/lint-weak-assertions.ts`, `tools/global-vitest-teardown.ts`)

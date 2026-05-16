@@ -1,17 +1,11 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
+// Phase 41.g / HI-01 — stub package now exports isPlaceholder() only.
+// See packages/i18n/src/index.ts header for rename rationale.
 import { describe, expect, it } from "vitest";
-import { loadLocale } from "../../src/index.js";
+import { isPlaceholder } from "../../src/index.js";
 
-describe("packages/i18n locale loader", () => {
-  it("loads the en locale and exposes the phase key", () => {
-    const en = loadLocale("en");
-    expect(en).toHaveProperty("phase");
-    expect(en.phase).toBe("phase-0-placeholder");
-  });
-
-  it("loads the ru locale and exposes the phase key", () => {
-    const ru = loadLocale("ru");
-    expect(ru).toHaveProperty("phase");
-    expect(ru.phase).toBe("phase-0-placeholder");
+describe("@openwhispr/i18n-stub", () => {
+  it("isPlaceholder returns true (Stryker mutation target)", () => {
+    expect(isPlaceholder()).toBe(true);
   });
 });
