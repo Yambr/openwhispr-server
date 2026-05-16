@@ -40,3 +40,5 @@ apps/worker/src/jobs/reconciliation-discrepancy.ts:58  # issue-31-debt-suppressi
 packages/data/src/seed/conformance.ts:241  # issue-31-debt-suppression
 packages/data/src/seed/conformance.ts:246  # issue-31-debt-suppression
 apps/api/src/routes/better-auth-handler.ts:151  # issue-19.3-ba-handler-i18n-typing — req.i18n added at runtime by i18next-http-middleware (init.ts:154); Fastify type augmentation deferred per SR-19.2 pattern
+apps/api/src/auth.ts:308  # issue-41-better-auth-adapter-cast — wrapAdapter returns the lens-wrapped adapter; Better Auth's drizzleAdapter return-type is opaque, requires cast at the Phase 33 lens boundary
+apps/api/src/auth.ts:555  # issue-41-better-auth-instance-cast — betterAuth() return type doesn't extend AuthInstance interface declared in apps/api/src/types; cast preserves the project's narrowed type
