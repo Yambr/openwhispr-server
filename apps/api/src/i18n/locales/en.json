@@ -35,6 +35,20 @@
     "BATCH_TOO_LARGE": "Batch size exceeds the per-request limit",
     "REASONING_UPSTREAM_FAILED": "Upstream reasoning provider failure",
     "WEB_SEARCH_NOT_CONFIGURED": "Web search provider is not configured",
-    "WEB_SEARCH_PROVIDER_KEY_MISSING": "Web search provider key is missing"
+    "WEB_SEARCH_PROVIDER_KEY_MISSING": "Web search provider key is missing",
+    "INVALID_EMAIL": "Invalid email address",
+    "INVALID_EMAIL_OR_PASSWORD": "Invalid email or password",
+    "PASSWORD_TOO_SHORT": "Password is too short",
+    "PASSWORD_TOO_LONG": "Password is too long",
+    "USER_ALREADY_EXISTS": "User with this email already exists",
+    "USER_ALREADY_EXISTS_USE_ANOTHER_EMAIL": "User with this email already exists. Please use another email.",
+    "FAILED_TO_CREATE_USER": "Failed to create user",
+    "FAILED_TO_UPDATE_USER": "Failed to update user",
+    "USER_NOT_FOUND": "User not found",
+    "EMAIL_NOT_VERIFIED": "Email is not verified",
+    "FAILED_TO_GET_SESSION": "Failed to get session",
+    "INVALID_TOKEN": "Invalid or expired token",
+    "ID_TOKEN_NOT_SUPPORTED": "id_token is not supported",
+    "PROVIDER_NOT_FOUND": "Provider not configured"
   }
 }

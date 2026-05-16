@@ -35,6 +35,20 @@
     "BATCH_TOO_LARGE": "Размер пакета превышает допустимый предел",
     "REASONING_UPSTREAM_FAILED": "Ошибка вышестоящего сервиса рассуждений",
     "WEB_SEARCH_NOT_CONFIGURED": "Провайдер веб-поиска не настроен",
-    "WEB_SEARCH_PROVIDER_KEY_MISSING": "Отсутствует ключ провайдера веб-поиска"
+    "WEB_SEARCH_PROVIDER_KEY_MISSING": "Отсутствует ключ провайдера веб-поиска",
+    "INVALID_EMAIL": "Некорректный адрес электронной почты",
+    "INVALID_EMAIL_OR_PASSWORD": "Неверная электронная почта или пароль",
+    "PASSWORD_TOO_SHORT": "Пароль слишком короткий",
+    "PASSWORD_TOO_LONG": "Пароль слишком длинный",
+    "USER_ALREADY_EXISTS": "Пользователь с такой электронной почтой уже зарегистрирован",
+    "USER_ALREADY_EXISTS_USE_ANOTHER_EMAIL": "Пользователь с такой электронной почтой уже зарегистрирован. Используйте другую почту.",
+    "FAILED_TO_CREATE_USER": "Не удалось создать пользователя",
+    "FAILED_TO_UPDATE_USER": "Не удалось обновить пользователя",
+    "USER_NOT_FOUND": "Пользователь не найден",
+    "EMAIL_NOT_VERIFIED": "Электронная почта не подтверждена",
+    "FAILED_TO_GET_SESSION": "Не удалось получить сессию",
+    "INVALID_TOKEN": "Недействительный или просроченный токен",
+    "ID_TOKEN_NOT_SUPPORTED": "id_token не поддерживается",
+    "PROVIDER_NOT_FOUND": "Провайдер не настроен"
   }
 }
