@@ -135,3 +135,25 @@ describe("withTenant — Phase 1 Plan 04", () => {
     );
   });
 });
+
+describe("withTenant — Phase 32 fail-closed contract", () => {
+  // Doc-presence assertion: the file MUST document the Phase 32 contract
+  // so future refactors don't strip the warning. The runtime contract is
+  // enforced at the migration level (0018_rls_fail_closed.sql) and proved
+  // by the 128-case property test in
+  // packages/data/tests/unit/__tests__/rls-fail-closed.property.test.ts.
+  it("JSDoc references Phase 32 + fail-closed + PG 42501", () => {
+    // Lazy import to avoid coupling this assertion to the import path used
+    // by the runtime helpers.
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { readFileSync } = require("node:fs") as typeof import("node:fs");
+    const { resolve } = require("node:path") as typeof import("node:path");
+    const src = readFileSync(
+      resolve(__dirname, "..", "..", "..", "src", "tenant-context.ts"),
+      "utf8",
+    );
+    expect(src).toMatch(/Phase 32/);
+    expect(src).toMatch(/fail[- ]closed/i);
+    expect(src).toMatch(/42501|permission denied/i);
+  });
+});
