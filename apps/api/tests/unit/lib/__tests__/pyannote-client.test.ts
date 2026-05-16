@@ -171,10 +171,11 @@ describe("createMediaInput", () => {
       expect(e.message).toBe("pyannote 400");
       expect(e.message).not.toContain("sk-leak-1234");
       expect(e.message).not.toContain("Authorization");
-      // Body is parked on a separate field for structured diagnostics
-      // (callers that need it can opt in explicitly; default logs of
-      // err.message are safe).
-      expect(e.bodyText).toContain("Authorization");
+      // Phase 37 / CR-9 sibling: bodyText is now private + non-enumerable
+      // (was leaking via pino's `err` serializer); JSON.stringify of the
+      // error must NOT echo the upstream secret-shaped payload.
+      expect(JSON.stringify(e)).not.toContain("sk-leak-1234");
+      expect(Object.keys(e)).not.toContain("bodyText");
     }
   });
 
@@ -198,7 +199,9 @@ describe("createMediaInput", () => {
       const e = err as PyannoteUpstreamError;
       expect(e.message).toBe("pyannote 403");
       expect(e.message).not.toContain("sig-secret");
-      expect(e.bodyText).toContain("sig-secret");
+      // Phase 37 / CR-9 sibling: bodyText is now private + non-enumerable.
+      expect(JSON.stringify(e)).not.toContain("sig-secret");
+      expect(Object.keys(e)).not.toContain("bodyText");
     }
   });
 });

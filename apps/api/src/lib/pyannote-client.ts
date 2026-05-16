@@ -65,25 +65,49 @@ export class PyannoteUnavailableError extends Error {
  */
 export class PyannoteBadRequestError extends Error {
   override name = "PyannoteBadRequestError";
-  public readonly bodyText: string;
+  // Phase 37 / CRIT-FIX-09 (CR-9 sibling). bodyText is truncated at
+  // construction, held non-enumerable so pino's `err` serializer cannot
+  // exfiltrate it. `toJSON()` below is the belt-and-braces layer.
+  private readonly bodyText: string;
   constructor(
     public readonly status: number,
     bodyText = "",
   ) {
     super(`pyannote ${status}`);
-    this.bodyText = bodyText;
+    const truncated = bodyText.slice(0, 200);
+    Object.defineProperty(this, "bodyText", {
+      value: truncated,
+      enumerable: false,
+      writable: false,
+      configurable: false,
+    });
+  }
+
+  toJSON(): { name: string; message: string; status: number } {
+    return { name: this.name, message: this.message, status: this.status };
   }
 }
 
 export class PyannoteUpstreamError extends Error {
   override name = "PyannoteUpstreamError";
-  public readonly bodyText: string;
+  // Phase 37 / CRIT-FIX-09 (CR-9 sibling). See PyannoteBadRequestError.
+  private readonly bodyText: string;
   constructor(
     public readonly status: number,
     bodyText = "",
   ) {
     super(`pyannote ${status}`);
-    this.bodyText = bodyText;
+    const truncated = bodyText.slice(0, 200);
+    Object.defineProperty(this, "bodyText", {
+      value: truncated,
+      enumerable: false,
+      writable: false,
+      configurable: false,
+    });
+  }
+
+  toJSON(): { name: string; message: string; status: number } {
+    return { name: this.name, message: this.message, status: this.status };
   }
 }
 

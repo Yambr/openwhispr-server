@@ -236,7 +236,10 @@ describe("buildLitellmClient — chatCompletions", () => {
       expect(err).toBeInstanceOf(LitellmUpstreamError);
       const e = err as LitellmUpstreamError;
       expect(e.status).toBe(502);
-      expect(e.bodyText).toContain("upstream provider unreachable");
+      // Phase 37 / CR-9: bodyText is now private + non-enumerable +
+      // truncated; the default `.message` still carries the (truncated)
+      // upstream substring for operator-actionable diagnostics.
+      expect(e.message).toContain("upstream provider unreachable");
       expect(e.message).toContain("502");
     }
   });
@@ -258,10 +261,13 @@ describe("buildLitellmClient — chatCompletions", () => {
       });
     } catch (err) {
       const e = err as LitellmUpstreamError;
-      // Default message slices to 200 chars + "LiteLLM upstream returned 500: " prefix.
-      // Full body is preserved on .bodyText for callers that want it.
-      expect(e.bodyText.length).toBe(5000);
+      // Phase 37 / CR-9: bodyText is now private + non-enumerable. The
+      // default message slices to 200 chars + "LiteLLM upstream returned
+      // 500: " prefix. Neither JSON.stringify(err) nor err.toJSON() may
+      // echo the full 5000-char payload.
       expect(e.message.length).toBeLessThan(longBody.length);
+      expect(JSON.stringify(err)).not.toContain("x".repeat(201));
+      expect(Object.keys(e)).not.toContain("bodyText");
     }
   });
 });
@@ -710,7 +716,9 @@ describe("buildLitellmClient — chatCompletionsStream", () => {
       expect(err).toBeInstanceOf(LitellmUpstreamError);
       const e = err as LitellmUpstreamError;
       expect(e.status).toBe(502);
-      expect(e.bodyText).toContain("upstream timed out");
+      // Phase 37 / CR-9: upstream substring lives on `.message` (truncated);
+      // bodyText is now private + non-enumerable.
+      expect(e.message).toContain("upstream timed out");
       expect(e.message).toContain("502");
     }
   });

@@ -28,15 +28,38 @@ export class MissingProviderKeyError extends Error {
 
 export class LitellmUpstreamError extends Error {
   public readonly status: number;
-  public readonly bodyText: string;
+  // Phase 37 / CRIT-FIX-09 (CR-9). bodyText is truncated AT CONSTRUCTION
+  // and held as a non-enumerable own property so pino's default `err`
+  // serializer (which walks own enumerable properties) cannot exfiltrate
+  // the upstream payload into Loki. Override of `toJSON()` below is the
+  // belt-and-braces second layer (pino calls `err.toJSON()` if present).
+  private readonly bodyText: string;
 
   constructor(status: number, bodyText: string, message?: string) {
     // Truncate body to 200 chars in the default message so we never echo
     // a verbose upstream payload (which could include secret-shaped
     // provider responses) into our own log surface.
-    super(message ?? `LiteLLM upstream returned ${status}: ${bodyText.slice(0, 200)}`);
+    const truncated = bodyText.slice(0, 200);
+    super(message ?? `LiteLLM upstream returned ${status}: ${truncated}`);
     this.name = "LitellmUpstreamError";
     this.status = status;
-    this.bodyText = bodyText;
+    // Non-enumerable: drops the field from JSON.stringify(err) entirely,
+    // closing the V7 STRIDE Info-Disclosure surface even if pino's err
+    // serializer is bypassed by a downstream `log.warn({ err })` call.
+    Object.defineProperty(this, "bodyText", {
+      value: truncated,
+      enumerable: false,
+      writable: false,
+      configurable: false,
+    });
+  }
+
+  /**
+   * pino's default `err` serializer calls `err.toJSON()` when present.
+   * Returning only the safe triple guarantees bodyText never reaches
+   * structured-log shipping even via that path.
+   */
+  toJSON(): { name: string; message: string; status: number } {
+    return { name: this.name, message: this.message, status: this.status };
   }
 }
