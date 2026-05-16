@@ -11,10 +11,10 @@
  * Forbidden patterns (one entry per regex):
  *   1. `as any`              — narrow the type or use a typed fallback.
  *   2. `as unknown as`       — double-cast reserved for verified boundaries.
- *   3. `// @ts-expect-error`       — convert to `@ts-expect-error issue-NNNN: <reason>`.
- *   4. `// @ts-nocheck`      — file-wide check disable; convert to per-line.
- *   5. `// @ts-expect-error` MUST carry an `issue-NNNN: <reason>` suffix.
- *      Bare or unprefixed `@ts-expect-error` is flagged as malformed.
+ *   3. ts-ignore comment     — convert to ts-expect-error issue-NNNN: <reason>.
+ *   4. ts-nocheck comment    — file-wide check disable; convert to per-line.
+ *   5. ts-expect-error comment MUST carry an `issue-NNNN: <reason>` suffix.
+ *      Bare or unprefixed ts-expect-error is flagged as malformed.
  *
  * The allowlist at `tools/lint-no-suppressions.allowlist.txt` is
  * **line-granular**: each entry pins `<posixFile>:<lineNumber>` and is
