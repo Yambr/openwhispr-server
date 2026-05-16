@@ -688,3 +688,25 @@ the canned transcript text.
 Boot api with `LITELLM_BASE_URL=http://does-not-exist:4000`. POST
 `/api/transcribe`. The api MUST respond `502` with the typed envelope;
 the body MUST NOT contain a Node.js stack trace.
+
+## billing. Subscription & billing (G10 — deferred to v3)
+
+Phase 50 closes G10 from `.planning/qa-audit/2026-05-16-cjm-coverage.md`
+as a v3 deferral marker. The billing surface (subscriptions, usage
+metering for paid tiers, Stripe webhooks, dunning) is out of scope for
+the v2.1 milestone — the audit lists it for traceability only.
+
+The `@cjm-billing-*` tag namespace is RESERVED here so a future v3
+phase can land scenarios without re-negotiating naming. No `.feature`
+file ships in Phase 50; the closure deliverable is this anchor + a
+deferred-items entry pointing at the v3 roadmap.
+
+### @cjm-billing-1.0 RESERVED — v3 milestone subscription wire surface
+
+Reserved tag namespace. When the v3 billing milestone lands, scenarios
+will populate under this header. Until then:
+- No production code, no test, no Gherkin scaffold.
+- `.planning/deferred-items.md` carries the v3 milestone reference.
+- The Phase 21 lint-gherkin-tags self-test treats a doc anchor without
+  a corresponding `@cjm-billing-*` Gherkin tag as a known intentional
+  reservation, not an orphan (anchor-only doc sections are permitted).
