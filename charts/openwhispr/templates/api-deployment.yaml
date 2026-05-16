@@ -46,6 +46,18 @@ spec:
       imagePullSecrets:
         {{- toYaml . | nindent 8 }}
       {{- end }}
+      {{- if .Values.api.topologySpread.enabled }}
+      # SR-20.4 — spread api pods across nodes so a single-node
+      # failure cannot down the whole tier. ScheduleAnyway (not
+      # DoNotSchedule) keeps single-node kind clusters bootable.
+      topologySpreadConstraints:
+        - maxSkew: {{ .Values.api.topologySpread.maxSkew | default 1 }}
+          topologyKey: {{ .Values.api.topologySpread.topologyKey | default "kubernetes.io/hostname" }}
+          whenUnsatisfiable: {{ .Values.api.topologySpread.whenUnsatisfiable | default "ScheduleAnyway" }}
+          labelSelector:
+            matchLabels:
+              {{- include "openwhispr.api.selectorLabels" . | nindent 14 }}
+      {{- end }}
       initContainers:
         {{- include "openwhispr.waitForMigrateInitContainer" . | nindent 8 }}
         - name: secret-presence-probe

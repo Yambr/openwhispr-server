@@ -299,5 +299,5 @@ tests:
           path: spec.template.spec.topologySpreadConstraints[0].whenUnsatisfiable
           value: ScheduleAnyway
       - equal:
-          path: spec.template.spec.topologySpreadConstraints[0].labelSelector.matchLabels."app.kubernetes.io/component"
+          path: spec.template.spec.topologySpreadConstraints[0].labelSelector.matchLabels["app.kubernetes.io/component"]
           value: worker

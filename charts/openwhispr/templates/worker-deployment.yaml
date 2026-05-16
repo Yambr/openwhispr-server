@@ -42,6 +42,16 @@ spec:
       imagePullSecrets:
         {{- toYaml . | nindent 8 }}
       {{- end }}
+      {{- if .Values.worker.topologySpread.enabled }}
+      # SR-20.4 — see api-deployment.yaml for rationale.
+      topologySpreadConstraints:
+        - maxSkew: {{ .Values.worker.topologySpread.maxSkew | default 1 }}
+          topologyKey: {{ .Values.worker.topologySpread.topologyKey | default "kubernetes.io/hostname" }}
+          whenUnsatisfiable: {{ .Values.worker.topologySpread.whenUnsatisfiable | default "ScheduleAnyway" }}
+          labelSelector:
+            matchLabels:
+              {{- include "openwhispr.worker.selectorLabels" . | nindent 14 }}
+      {{- end }}
       initContainers:
         {{- include "openwhispr.waitForMigrateInitContainer" . | nindent 8 }}
         - name: secret-presence-probe
