@@ -421,6 +421,17 @@ export function makeSSRFConnectGuard(
  *      `net.connect({ host: <literal>, lookup })` skips lookup entirely
  *      for IP literals.
  */
+/**
+ * Phase 41.f / HI-2 — well-known marker stamped on every Agent built by
+ * `makeSSRFDispatcher`. The litellm-client checks for this symbol on
+ * `getGlobalDispatcher()` at first call and throws
+ * `SsrfDispatcherNotInstalledError` when absent (closes the worker/CLI
+ * SSRF-bypass surface). `Symbol.for` registers in the global symbol
+ * registry so the client can compute the same symbol without importing
+ * this module (avoids the apps/api → packages/litellm-client circular).
+ */
+export const SSRF_WRAPPED_MARKER = Symbol.for("openwhispr.ssrf-wrapped");
+
 export function makeSSRFDispatcher(opts: SSRFOptions): Dispatcher {
   const ssrfLookup = makeSSRFLookup(opts);
   const ssrfGuard = makeSSRFConnectGuard(opts);
@@ -437,7 +448,17 @@ export function makeSSRFDispatcher(opts: SSRFOptions): Dispatcher {
     }
     defaultConnector(connectOptions, callback);
   };
-  return new Agent({
+  const agent = new Agent({
     connect: ssrfConnector,
   });
+  // Phase 41.f / HI-2 — stamp the wrap marker so consumers (litellm-client)
+  // can assert the global dispatcher is the SSRF-wrapped Agent. Non-enumerable
+  // so it never leaks into structured-log serializers.
+  Object.defineProperty(agent, SSRF_WRAPPED_MARKER, {
+    value: true,
+    enumerable: false,
+    writable: false,
+    configurable: false,
+  });
+  return agent;
 }
