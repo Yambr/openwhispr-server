@@ -281,7 +281,27 @@ Blast radius: ~3 LOC across 2 files + 2 tests. No compose-config edits required.
 
 **Hard-Rule INVERSION authorization:** User explicitly approved Option A production edits for Phase 19.2 under v2.1 followup batch authorization (mirrors Phase 19a/19b precedent). This entry IS the authorization receipt; closing SHAs back-filled below.
 
-**Owner:** Phase 19.2 (commit pending).
+**Closure (CLOSED 2026-05-16):** During L3 smoke the simple "Option A query-param" fix proved INSUFFICIENT — the cascade had three distinct layers:
+
+1. **Client-side query-param** (commit `1f60ff0`): added `?model=...` to the upstream URL. Forward-compat for alt LiteLLM forks but does NOT unblock the canonical proxy.
+2. **Client-side multipart-injection** (commit `9e1db63`): empirical finding — LiteLLM proxy v1.83.x reads `model` ONLY from multipart form data (`form_data.get("model")` at `proxy_server.py:audio_transcriptions`), the query-string is ignored. Prepended a synthetic `Content-Disposition: form-data; name="model"` part to the multipart body via PassThrough; streaming-no-buffering invariant preserved.
+3. **LiteLLM config provider prefix** (commit `c4a49d6`): `compose/litellm/litellm_config.yaml:41` declared `model: whisper-large-v3` without provider prefix → LiteLLM Router silently dropped the deployment at registration (`LLM Provider NOT provided. Pass in the LLM provider you are trying to call. You passed model=whisper-large-v3` at `router.py:6816`); subsequent calls returned `There are no healthy deployments for this model. Received Model Group=whisper-large-v3` → HTTP 400 → api 502 envelope. Fix: prefix with `groq/`.
+
+Layer 3 was NOT predicted from the initial halt-block diagnostic (the initial LiteLLM error logged `model=None`, masking the underlying router-registration drop). Both client-side fixes were necessary AND independently insufficient; only after the config prefix landed did `@cjm-4.1` go GREEN end-to-end.
+
+**Closing commits (atomic, ZERO `--no-verify`):**
+- `e80b047` `docs(server-errors): entry 11 — /api/transcribe missing model= query param to litellm`
+- `c2a5e79` `test(19.2-02): red — litellm-client.audioTranscriptions must forward model=`
+- `1f60ff0` `fix(19.2-02): forward model= as query param in litellm-client.audioTranscriptions` (layer 1)
+- `c5112d9` `fix(19.2-02): wire STT_MODEL into transcribe route's litellm forward`
+- `9e1db63` `fix(19.2-02b): inject model= as multipart form field for litellm /v1/audio/transcriptions` (layer 2)
+- `c4a49d6` `fix(19.2-02c): prefix whisper-large-v3 with groq/ so litellm router registers the deployment` (layer 3 + tag flip + customer-journeys.md update)
+
+**Final verification:** `E2E_CJM=1 SCENARIO="@cjm-4.1" pnpm exec playwright test --grep "@cjm-4.1" → 1 passed (1.8s)` on 2026-05-16.
+
+**Memory lesson captured:** the LiteLLM proxy's `model=None` error message is misleading — it can mask THREE distinct upstream failures (router deployment-registration drop, missing multipart form field, missing query-param). Always check `docker logs litellm` for the `Router:ERROR` deployment-creation lines BEFORE inferring client-side intent. Filed for future memory write-up if pattern recurs.
+
+**Owner:** Phase 19.2 CLOSED 2026-05-16 (see closing commits above).
 
 ---
 
