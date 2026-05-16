@@ -175,13 +175,19 @@ describe("test-only routes (NODE_ENV=test gated)", () => {
     expect(res.statusCode).toBe(200);
     expect(res.headers["set-auth-token"]).toBe("NEW_BEARER_AAA");
     expect(res.headers["set-auth-token"]).not.toBe("OLD_BEARER_xyz");
-    // Confirm an UPDATE sessions ... previous_token (plain, post-02.12)
-    // query was executed. Negative: previous_token_hash must NOT appear.
+    // Phase 33 / Plan 33-05 — plaintext `previous_token` column was
+    // dropped by migration 0020 (LOCKER-08 / envelope encryption). The
+    // 5-minute overlap CONTRACT survives via the SHA-256 fingerprint
+    // sidecar `previous_token_fp` written by `recordPreviousToken`. The
+    // assertion below was originally `previous_token` (plain) — retarget
+    // to `previous_token_fp` and assert the legacy plain column NEVER
+    // appears in the issued SQL (defense-in-depth at the call-site).
     const recordedPrev = recorded.find((q) =>
-      /UPDATE\s+sessions[\s\S]*previous_token\b/i.test(q.sql),
+      /UPDATE\s+sessions[\s\S]*previous_token_fp\b/i.test(q.sql),
     );
     expect(recordedPrev).toBeTruthy();
     expect(recordedPrev?.sql).not.toMatch(/previous_token_hash/);
+    expect(recordedPrev?.sql).not.toMatch(/\bprevious_token\s*=\s*\?/);
     await app.close();
   });
 
