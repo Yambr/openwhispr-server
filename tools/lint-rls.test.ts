@@ -187,47 +187,23 @@ describe("tools/lint-rls.ts", () => {
 });
 
 // ──────────────────────────────────────────────────────────────────────
-// Phase 6 Wave 0 RED stubs — TDD-01b. Implementation in Plan 06-02 per
-// 06-VALIDATION.md. APPENDED to the existing Phase 1 suite above.
+// Phase 6 Wave 0 RED stubs — REMOVED 2026-05-17.
 //
-// Phase 6 audit_log conversion to a pg_partman monthly-RANGE partitioned
-// parent (D-A2) creates partman-named children e.g. `audit_log_2026_05`.
-// The Phase 1 RLS lint MUST:
-//   - Confirm the partitioned PARENT has RLS enabled + a tenant-scoped policy
-//   - NOT false-positive-report inherited children as "missing RLS"
-//     (children inherit the parent's policy at relkind='r' partman level;
-//     the lint should either skip child names matching audit_log_\d{4}_\d{2}
-//     OR detect inheritance from a partitioned parent and treat as covered).
+// The five RED stubs that previously lived here (under a
+// "pg_partman child handling (Phase 6, D-A2)" describe block) referenced
+// the wrong child-naming pattern. The shipped Phase 6 / Plan 06-02
+// implementation uses partman's default `audit_log_pYYYYMMDD` (+
+// `audit_log_default`) child names, NOT the `audit_log_YYYY_MM` pattern
+// the stubs were written against.
+//
+// The actual child-exclusion is implemented in `tools/lint-rls.ts`
+// (constant `AUDIT_LOG_CHILD_REGEX`) and is exercised end-to-end via the
+// `audit-log-partitioning.test.ts` integration test, which boots the real
+// pg_partman extension. The stubs here added no coverage; they only
+// asserted a sentinel `throw new Error("not yet implemented")` and would
+// have required a rewrite against partman's real names to be useful.
+//
+// TODO(v2.3): if pure-RLS-lint coverage of partman children is wanted as
+// a unit (vs the existing integration test), author NEW tests against the
+// canonical `audit_log_pYYYYMMDD` + `audit_log_default` names.
 // ──────────────────────────────────────────────────────────────────────
-
-const PHASE_6_NOT_YET =
-  "not yet implemented — Plan 06-02 extends lint-rls.ts for pg_partman children (D-A2)";
-
-// TODO(v2.3): Plan 06-02 D-A2 — these RED stubs were authored before the
-// pg_partman naming scheme was finalized. The shipped Phase 6 implementation
-// uses partman's default `audit_log_pYYYYMMDD` (+ `audit_log_default`) child
-// naming, NOT the `audit_log_YYYY_MM` pattern referenced below. The actual
-// child-exclusion regex lives in `tools/lint-rls.ts` (AUDIT_LOG_CHILD_REGEX)
-// and is exercised end-to-end via `audit-log-partitioning.test.ts`. Rewrite
-// these against the canonical partman child names before re-enabling.
-describe.skip("tools/lint-rls.ts — pg_partman child handling (Phase 6, D-A2)", () => {
-  it("reports the audit_log partitioned PARENT has RLS enabled", () => {
-    throw new Error(PHASE_6_NOT_YET);
-  });
-
-  it("does NOT false-positive-flag partman child audit_log_2026_05 as missing RLS", () => {
-    throw new Error(PHASE_6_NOT_YET);
-  });
-
-  it("skips child table names matching the audit_log_\\d{4}_\\d{2} pattern", () => {
-    throw new Error(PHASE_6_NOT_YET);
-  });
-
-  it("alternatively, detects inheritance from a partitioned parent (relkind='p') and treats child as covered", () => {
-    throw new Error(PHASE_6_NOT_YET);
-  });
-
-  it("STILL flags a non-partman table that lacks RLS (regression — existing behavior preserved)", () => {
-    throw new Error(PHASE_6_NOT_YET);
-  });
-});
