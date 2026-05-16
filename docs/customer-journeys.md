@@ -606,3 +606,38 @@ leakage to anonymous clients).
 - Silent-failure modes: 1006 (abnormal closure — connection dropped
   silently; client cannot distinguish auth failure from network);
   upgrade accepted then idle (hang).
+
+## byok-rotation. API key rotation (G1 closure)
+
+Phase 30 closes G1 from `.planning/qa-audit/2026-05-16-cjm-coverage.md`.
+The api-keys CRUD already ships (Phase 5 / WIRE-27..29): create + list +
+revoke. There is no dedicated `/rotate` endpoint — operational rotation
+is the composed sequence (create new → revoke old). Phase 30 lands the
+CJM that pins this contract as a regression sentinel.
+
+### @cjm-byok-rotation.1 Rotation sequence: new key works, old key is revoked (happy path)
+
+A signed-in user creates an api key K_old, then creates a second key
+K_new, then revokes K_old. The api MUST:
+  - return 200 + the clear-text PAK ONCE for each `create` call;
+  - mark K_old's `revoked_at` non-null after the revoke;
+  - subsequent /list MUST show K_new with `revoked_at: null` and K_old
+    with `revoked_at: <timestamp>`.
+
+- Backend error branches: 409 if the new name duplicates K_old's name
+  while K_old is still active (D-30 unique-index gate).
+- Silent-failure modes: clear-text PAK returned for K_old on /list
+  (D-29 violation); K_old usable after revoke (revoked but auth-gate
+  did not honour revoked_at).
+
+### @cjm-byok-rotation.2 Revoking a non-existent key id is rejected (negative twin)
+
+A signed-in user POSTs `/api/v1/keys/:id/revoke` for an id that does
+not belong to their tenant (or does not exist). The api MUST respond
+4xx (preferably 404) with the typed envelope; the body MUST NOT leak
+existence of the id (no 403 distinction between "your-tenant's-revoked-
+key" and "not-found").
+
+- Backend error branches: 404 typed envelope.
+- Silent-failure modes: 200 (cross-tenant revoke leak — CVE class);
+  403 (existence leak); 5xx stack trace.
