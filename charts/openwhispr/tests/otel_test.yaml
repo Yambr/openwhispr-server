@@ -190,3 +190,38 @@ tests:
       - equal:
           path: roleRef.kind
           value: ClusterRole
+
+  # SR-20.5 — OTel Collector partial-hardening completion. The DaemonSet
+  # already declares runAsUser=0 (intentional — hostmetrics receiver needs
+  # root read on /proc + /sys), readOnlyRootFilesystem=true, and
+  # capabilities.drop=[ALL]. Phase 20-02b adds the two missing pieces:
+  # allowPrivilegeEscalation=false and seccompProfile=RuntimeDefault.
+  - it: OTel Collector container completes SR-20.5 partial-hardening (preserves runAsUser=0)
+    template: otel-collector-daemonset.yaml
+    set:
+      secrets:
+        mode: eso
+        external:
+          storeRef: vault-clusterstore
+      observability:
+        enabled: true
+        collector:
+          enabled: true
+        lgtm:
+          endpoint: https://otlp.example.com
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].securityContext.runAsUser
+          value: 0
+      - equal:
+          path: spec.template.spec.containers[0].securityContext.readOnlyRootFilesystem
+          value: true
+      - contains:
+          path: spec.template.spec.containers[0].securityContext.capabilities.drop
+          content: ALL
+      - equal:
+          path: spec.template.spec.containers[0].securityContext.allowPrivilegeEscalation
+          value: false
+      - equal:
+          path: spec.template.spec.containers[0].securityContext.seccompProfile.type
+          value: RuntimeDefault

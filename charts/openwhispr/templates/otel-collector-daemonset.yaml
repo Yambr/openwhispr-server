@@ -84,6 +84,15 @@ spec:
             readOnlyRootFilesystem: true
             capabilities:
               drop: ["ALL"]
+            # SR-20.5 (Phase 20-02b) — partial-hardening completion. The
+            # existing block already had runAsUser=0 (intentional), drop
+            # ALL, and readOnlyRootFS; we add the two missing pieces:
+            # allowPrivilegeEscalation=false (defence in depth — even with
+            # uid 0 the container can't escalate further) and the
+            # RuntimeDefault seccomp profile.
+            allowPrivilegeEscalation: false
+            seccompProfile:
+              type: RuntimeDefault
           volumeMounts:
             - name: config
               mountPath: /etc/otel

@@ -42,6 +42,10 @@ spec:
       imagePullSecrets:
         {{- toYaml . | nindent 8 }}
       {{- end }}
+      # SR-20.5 (Phase 20-02b) — full pod-level hardening. See api-deployment
+      # for rationale; worker Dockerfile uses USER 1000.
+      securityContext:
+        {{- toYaml .Values.worker.securityContext.pod | nindent 8 }}
       {{- if .Values.worker.topologySpread.enabled }}
       # SR-20.4 — see api-deployment.yaml for rationale.
       topologySpreadConstraints:
@@ -77,6 +81,9 @@ spec:
         - name: worker
           image: "{{ .Values.image.worker.repository }}:{{ $workerTag }}"
           imagePullPolicy: {{ .Values.image.pullPolicy }}
+          # SR-20.5 — container-level hardening.
+          securityContext:
+            {{- toYaml .Values.worker.securityContext.container | nindent 12 }}
           ports:
             - name: http
               containerPort: 3002
@@ -145,3 +152,11 @@ spec:
             limits:
               cpu: 1000m
               memory: 1Gi
+          # SR-20.5 — read-only rootfs needs a writable scratch path.
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir:
+            sizeLimit: 64Mi
