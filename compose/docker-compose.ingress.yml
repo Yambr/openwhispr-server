@@ -21,11 +21,25 @@ services:
     # F-01 — clear the slim-core `4000:3000` host port so the api is only
     # reachable via Traefik (`https://api.localhost`).
     ports: !reset []
+    # Phase 20 / SR-20.1 + SR-20.2 — re-declare limits/restart so overlay
+    # merge cannot drop them (T-20-03 mitigation).
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+          cpus: "2.0"
 
   web:
     # F-01 — clear the slim-core `3000:3000` host port so the web app is
     # only reachable via Traefik (`https://api.localhost`).
     ports: !reset []
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: "1.0"
 
   traefik:
     image: traefik:v3.6
@@ -85,3 +99,11 @@ services:
       interval: 5s
       timeout: 3s
       retries: 5
+    # Phase 20 / SR-20.2 — Traefik MUST auto-restart on crash (audit A2).
+    # `restart:` is top-level NOT under deploy.restart_policy (compose v2
+    # pitfall — see 20-RESEARCH §10 P2).
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 256M
