@@ -13,7 +13,16 @@
 // vitest worker on the EX_CONFIG validator (which would call process.exit).
 
 import { randomBytes } from "node:crypto";
+import { cpSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
+import { PostgreSqlContainer, type StartedPostgreSqlContainer } from "@testcontainers/postgresql";
+import { drizzle } from "drizzle-orm/node-postgres";
+import { migrate } from "drizzle-orm/node-postgres/migrator";
+import { Pool } from "pg";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { POSTGRES_PARTMAN_IMAGE, provisionPgPartman } from "../../../src/__tests__/helpers.js";
 import {
   type CliArgs,
   DEFAULT_COLUMN_MAP,
@@ -21,7 +30,10 @@ import {
   parseArgs,
   resolveOwnerUrl,
 } from "../../../src/encryption/cli/backfill-encrypt-credentials.js";
-import { type BootResult, bootMigratedPostgres } from "../../../src/__tests__/helpers.js";
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
+// packages/data/tests/unit/__tests__ -> packages/data/migrations
+const MIGRATIONS_DIR = resolve(__dirname, "..", "..", "..", "migrations");
 
 describe("parseArgs", () => {
   it("defaults to {dryRun:false, batchSize:500}", () => {
@@ -41,11 +53,9 @@ describe("parseArgs", () => {
     expect(() => parseArgs(["--what"])).toThrowError(/unknown argument/);
   });
   it("--help prints usage and exits 0", () => {
-    const exitSpy = vi
-      .spyOn(process, "exit")
-      .mockImplementation(((code?: number) => {
-        throw new Error(`__exit_${code}__`);
-      }) as never);
+    const exitSpy = vi.spyOn(process, "exit").mockImplementation(((code?: number) => {
+      throw new Error(`__exit_${code}__`);
+    }) as never);
     const writeSpy = vi.spyOn(process.stdout, "write").mockImplementation(() => true);
     try {
       expect(() => parseArgs(["--help"])).toThrowError(/__exit_0__/);
@@ -67,9 +77,7 @@ describe("resolveOwnerUrl", () => {
     ).toBe("postgres://owner@h/db");
   });
   it("falls back to DATABASE_URL", () => {
-    expect(resolveOwnerUrl({ DATABASE_URL: "postgres://app@h/db" })).toBe(
-      "postgres://app@h/db",
-    );
+    expect(resolveOwnerUrl({ DATABASE_URL: "postgres://app@h/db" })).toBe("postgres://app@h/db");
   });
   it("throws when both are unset", () => {
     expect(() => resolveOwnerUrl({})).toThrowError(/DATABASE_URL_OWNER/);
@@ -133,16 +141,102 @@ describe("main() — error paths (no testcontainer)", () => {
   }, 30_000);
 });
 
+// Phase 33 / Plan 33-03 — the backfill CLI is forward-only between
+// migrations 0019 (sidecars added) and 0020 (plaintext columns dropped).
+// Its idempotency predicate is `"<column>" IS NOT NULL AND "<column>_value_ciphertext" IS NULL`,
+// which references the plaintext column directly. After 0020 drops those
+// columns, the CLI returns 42703 on every table — by design (the operator
+// runs backfill BEFORE 0020, see CLI header comment). The "real PG"
+// describe block below therefore boots a container pinned at the
+// post-0019 / pre-0020 schema state (mirrors the pattern in
+// migrations/__tests__/0019-envelope-encrypt-secret-columns-add.test.ts +
+// 0017-setup-state.test.ts).
+async function bootPreZeroTwenty(): Promise<{
+  ownerUri: string;
+  stop: () => Promise<void>;
+}> {
+  const ownerPassword = "owner-pw-backfill";
+  const appPassword = "app-pw-backfill";
+
+  const container: StartedPostgreSqlContainer = await new PostgreSqlContainer(
+    POSTGRES_PARTMAN_IMAGE,
+  )
+    .withDatabase("openwhispr")
+    .withUsername("postgres_super")
+    .withPassword("super-pw")
+    .start();
+
+  const superUri = container.getConnectionUri();
+  const superPool = new Pool({ connectionString: superUri });
+  await superPool.query(
+    `CREATE ROLE openwhispr_owner WITH LOGIN BYPASSRLS CREATEROLE PASSWORD '${ownerPassword}'`,
+  );
+  await superPool.query(
+    `CREATE ROLE openwhispr_app   WITH LOGIN          PASSWORD '${appPassword}'`,
+  );
+  await superPool.query(`GRANT openwhispr_app TO openwhispr_owner WITH ADMIN OPTION`);
+  await superPool.query(`GRANT SET, ALTER SYSTEM ON PARAMETER "app.tenant_id" TO openwhispr_owner`);
+  await superPool.query(`ALTER DATABASE openwhispr OWNER TO openwhispr_owner`);
+  await superPool.query(`ALTER SCHEMA public OWNER TO openwhispr_owner`);
+  await provisionPgPartman(superPool);
+  await superPool.end();
+
+  const host = container.getHost();
+  const port = container.getMappedPort(5432);
+  const ownerUri = `postgres://openwhispr_owner:${ownerPassword}@${host}:${port}/openwhispr`;
+
+  const tmpMigrations = mkdtempSync(resolve(tmpdir(), "ow-pre-0020-"));
+  cpSync(MIGRATIONS_DIR, tmpMigrations, { recursive: true });
+  for (const file of [
+    "0019b_drop_lookup_session_by_previous_token.sql",
+    "0020_envelope_encrypt_secret_columns_drop_plaintext.sql",
+    "0021_safe_table_reset_helper.sql",
+    "0022_setup_state_grants.sql",
+  ]) {
+    try {
+      rmSync(resolve(tmpMigrations, file));
+    } catch {
+      // ignore — file may not exist in earlier RED state.
+    }
+  }
+  const journalPath = resolve(tmpMigrations, "meta", "_journal.json");
+  const journal = JSON.parse(readFileSync(journalPath, "utf8")) as {
+    entries: Array<{ idx: number; tag: string }>;
+  };
+  journal.entries = journal.entries.filter((e) => {
+    if (e.tag.startsWith("0019b")) return false;
+    const m = e.tag.match(/^(\d{4})/);
+    if (!m) return true;
+    return Number.parseInt(m[1]!, 10) <= 19;
+  });
+  writeFileSync(journalPath, JSON.stringify(journal, null, 2));
+
+  const ownerPool = new Pool({ connectionString: ownerUri });
+  await migrate(drizzle(ownerPool), {
+    migrationsFolder: tmpMigrations,
+    migrationsSchema: "_meta",
+    migrationsTable: "__drizzle_migrations",
+  });
+  await ownerPool.end();
+
+  return {
+    ownerUri,
+    stop: async () => {
+      await container.stop();
+    },
+  };
+}
+
 describe("main() — happy path against real PG", () => {
-  let boot: BootResult;
+  let boot: Awaited<ReturnType<typeof bootPreZeroTwenty>>;
   const kek = randomBytes(32).toString("base64url");
   const origEnv = { ...process.env };
 
   beforeAll(async () => {
-    boot = await bootMigratedPostgres();
+    boot = await bootPreZeroTwenty();
     process.env.MASTER_KEK = kek;
     process.env.DATABASE_URL_OWNER = boot.ownerUri;
-  }, 120_000);
+  }, 240_000);
 
   afterAll(async () => {
     await boot.stop();
