@@ -26,17 +26,33 @@
 // Per CLAUDE.md "no mocks of internal logic": real Postgres testcontainer,
 // real DDL — never pg-mem.
 
-import { readFileSync } from "node:fs";
+import { cpSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { PostgreSqlContainer, type StartedPostgreSqlContainer } from "@testcontainers/postgresql";
+import { drizzle } from "drizzle-orm/node-postgres";
+import { migrate } from "drizzle-orm/node-postgres/migrator";
 import { Pool } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { type BootResult, bootMigratedPostgres } from "../../src/__tests__/helpers.js";
+import { POSTGRES_PARTMAN_IMAGE, provisionPgPartman } from "../../src/__tests__/helpers.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 // packages/data/migrations/__tests__ -> packages/data/migrations
 const MIGRATIONS_DIR = resolve(__dirname, "..");
 const DOWN_SQL_PATH = resolve(MIGRATIONS_DIR, "0019_envelope_encrypt_secret_columns_add.down.sql");
+
+// Phase 33 / Plan 33-05 — migration 0020 drops the 8 plaintext credential
+// columns + sessions_token_unique index, and migration 0019b drops the
+// `lookup_session_by_previous_token` SECDEF function. This suite asserts
+// the additive invariants of 0019 specifically (plaintext + indexes
+// untouched), so it must boot a container pinned at the post-0019 /
+// pre-0019b schema state. We mirror the legacy-boot pattern from
+// 0017-setup-state.test.ts: copy the migrations folder to a tmp dir,
+// strip every migration with tag prefix > 0019, and run drizzle's
+// migrate() against the trimmed folder. The boot fixture used by other
+// suites (`bootMigratedPostgres`) replays the FULL chain through 0022
+// and would invalidate this suite's invariants.
 
 // -- Column matrix ------------------------------------------------------
 //
@@ -86,10 +102,95 @@ function sidecarColumnNames(t: CredentialTarget): string[] {
   return SIDECAR_SUFFIXES.map((suffix) => `${t.column}_${suffix}`);
 }
 
-let boot: BootResult | undefined;
+// Post-0019 / pre-0019b boot fixture. Used in place of bootMigratedPostgres()
+// so the additive-invariant + down-rescue assertions below run against the
+// real "just after 0019 landed" schema state.
+interface PinnedBoot {
+  ownerUri: string;
+  stop: () => Promise<void>;
+}
+let boot: PinnedBoot | undefined;
+let pinnedContainer: StartedPostgreSqlContainer | undefined;
+
+async function bootPostZeroNineteen(): Promise<PinnedBoot> {
+  const ownerPassword = "owner-pw-0019";
+  const appPassword = "app-pw-0019";
+
+  pinnedContainer = await new PostgreSqlContainer(POSTGRES_PARTMAN_IMAGE)
+    .withDatabase("openwhispr")
+    .withUsername("postgres_super")
+    .withPassword("super-pw")
+    .start();
+
+  const superUri = pinnedContainer.getConnectionUri();
+  const superPool = new Pool({ connectionString: superUri });
+  await superPool.query(
+    `CREATE ROLE openwhispr_owner WITH LOGIN BYPASSRLS CREATEROLE PASSWORD '${ownerPassword}'`,
+  );
+  await superPool.query(
+    `CREATE ROLE openwhispr_app   WITH LOGIN          PASSWORD '${appPassword}'`,
+  );
+  await superPool.query(`GRANT openwhispr_app TO openwhispr_owner WITH ADMIN OPTION`);
+  await superPool.query(`GRANT SET, ALTER SYSTEM ON PARAMETER "app.tenant_id" TO openwhispr_owner`);
+  await superPool.query(`ALTER DATABASE openwhispr OWNER TO openwhispr_owner`);
+  await superPool.query(`ALTER SCHEMA public OWNER TO openwhispr_owner`);
+  await provisionPgPartman(superPool);
+  await superPool.end();
+
+  const host = pinnedContainer.getHost();
+  const port = pinnedContainer.getMappedPort(5432);
+  const ownerUri = `postgres://openwhispr_owner:${ownerPassword}@${host}:${port}/openwhispr`;
+
+  // Copy migrations folder, strip every tag > 0019 so the chain stops at
+  // 0019. We keep 0019 (additive) but skip 0019b (drops the SECDEF
+  // function), 0020 (drops plaintext), 0021, 0022.
+  const tmpMigrations = mkdtempSync(resolve(tmpdir(), "ow-0019-pinned-"));
+  cpSync(MIGRATIONS_DIR, tmpMigrations, { recursive: true });
+  for (const file of [
+    "0019b_drop_lookup_session_by_previous_token.sql",
+    "0020_envelope_encrypt_secret_columns_drop_plaintext.sql",
+    "0021_safe_table_reset_helper.sql",
+    "0022_setup_state_grants.sql",
+  ]) {
+    try {
+      rmSync(resolve(tmpMigrations, file));
+    } catch {
+      // Ignore — file may not exist in earlier RED state.
+    }
+  }
+  const journalPath = resolve(tmpMigrations, "meta", "_journal.json");
+  const journal = JSON.parse(readFileSync(journalPath, "utf8")) as {
+    entries: Array<{ idx: number; tag: string }>;
+  };
+  journal.entries = journal.entries.filter((e) => {
+    // Keep everything up to and including the 0019 additive migration; drop
+    // 0019b (function-drop), 0020 (plaintext-drop), and forward.
+    if (e.tag.startsWith("0019b")) return false;
+    const m = e.tag.match(/^(\d{4})/);
+    if (!m) return true;
+    return Number.parseInt(m[1]!, 10) <= 19;
+  });
+  writeFileSync(journalPath, JSON.stringify(journal, null, 2));
+
+  const ownerPool = new Pool({ connectionString: ownerUri });
+  const ownerDb = drizzle(ownerPool);
+  await migrate(ownerDb, {
+    migrationsFolder: tmpMigrations,
+    migrationsSchema: "_meta",
+    migrationsTable: "__drizzle_migrations",
+  });
+  await ownerPool.end();
+
+  return {
+    ownerUri,
+    stop: async () => {
+      if (pinnedContainer) await pinnedContainer.stop();
+    },
+  };
+}
 
 beforeAll(async () => {
-  boot = await bootMigratedPostgres({ withPgPartman: true });
+  boot = await bootPostZeroNineteen();
 }, 240_000);
 
 afterAll(async () => {
