@@ -4,7 +4,7 @@ milestone: v2.2
 milestone_name: — Pre-OSS Security & Hygiene
 status: Pending discuss-phase 19.3
 last_updated: "2026-05-16T01:50:59.430Z"
-last_activity: "2026-05-16 — Phase 19.2 CLOSED with SERVER-ERRORS Entry 11 cascade resolved through 3 production layers (client query-param + multipart-injection + LiteLLM config `groq/` prefix). 7 commits: `8680485` / `e80b047` / `c2a5e79` / `1f60ff0` / `c5112d9` / `9e1db63` / `c4a49d6`. `@cjm-4.1` GREEN end-to-end (1.8s). Earlier 2026-05-16 — Phase 19.1 CLOSED + Phase 19a CLOSED + Phase 19b CLOSED. ROADMAP entries still pending for 19.3 (ba-i18n @cjm-1.4) and 19.4 (locale-e2e @cjm-6.1)."
+last_activity: "2026-05-16 — Quick task 260516-kya CLOSED: secret-leak hard gate landed (gitleaks pre-commit + pre-push hooks via Lefthook, .gitleaks.toml as single source of truth across L1/L2/CI, install-gitleaks.sh idempotent bootstrap, docs/security/secret-leak-runbook.md, CLAUDE.md Hard Rule #4). 5 atomic commits + worktree merge `f4090ee`; 12/12 vitest gates green; `pnpm lint:gitleaks` clean against HEAD; negative `git commit` test confirmed pre-commit blocks synthetic OpenAI-shape key. Earlier 2026-05-16 — Phase 19.2 CLOSED."
 progress:
   total_phases: 71
   completed_phases: 24
@@ -97,6 +97,12 @@ Last activity: 2026-05-16 — Phase 19.2 CLOSED with SERVER-ERRORS Entry 11 casc
 | Phase 14 P07 | 7 | 3 tasks | 7 files |
 | Phase 15-repo-refactor-fsl-relicense-history-scrub-v2 P03 | 120 | 6 tasks | 640 files |
 | Phase 31 P31-08 | 5m | 3 tasks | 7 files |
+
+### Quick Tasks Completed
+
+| # | Description | Date | Commit | Directory |
+|---|-------------|------|--------|-----------|
+| 260516-kya | Secret-leak hard gate: gitleaks pre-commit + pre-push hooks | 2026-05-16 | f4090ee | [260516-kya-implement-secret-leak-hard-gate-gitleaks](./quick/260516-kya-implement-secret-leak-hard-gate-gitleaks/) |
 
 ## Accumulated Context
 
