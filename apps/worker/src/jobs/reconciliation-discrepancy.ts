@@ -1,12 +1,24 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 // Phase 6 Plan 06-08 — reconciliation-discrepancy BullMQ job.
+// Phase 36.b (CRIT-FIX-08) — honest windowed backfill.
 //
 // D-R3 (alert + backfill): Tenant context. Child of reconciliation-daily-
-// check OR ingest-litellm-spend. Calls the existing `runIngestOnce` from
-// Phase 3 with explicit since/until args (the function was always written
-// to accept time-bounded backfill; we surface it here behind the typed
-// queue). Idempotency: ON CONFLICT (request_id) DO NOTHING in usage_ledger
-// — re-running over an already-ingested window is a no-op.
+// check OR ingest-litellm-spend. Re-ingests the LiteLLM_SpendLogs window
+// `[payload.since, payload.until)` for `payload.tenant_id` via the extended
+// `runIngestOnce(deps, { since, until, tenantId })` signature. The
+// per-window SQL path filters on `startTime BETWEEN since AND until` AND
+// joins `users` on the target `tenant_id` so cross-tenant rows are skipped.
+// Idempotency: `ON CONFLICT (request_id) DO NOTHING` in usage_ledger —
+// re-running over an already-ingested window is a no-op.
+//
+// Before Phase 36.b: this handler called runIngestOnce with no args, which
+// advanced the *global* watermark and ingested whatever was next in the
+// queue — NOT the discrepancy window, NOT scoped to the affected tenant.
+// The TS signature was masked via a double-cast (see worker.md CR-02).
+// CRIT-FIX-08 closes both:
+//   1. real windowed backfill (extended signature in ingest-litellm-spend.ts),
+//   2. honest return type — caller can destructure { rowsProcessed,
+//      rowsScanned } without the previous TypeError-on-undefined risk.
 
 import type { Pool } from "pg";
 import { z } from "zod";
@@ -29,33 +41,56 @@ export interface ReconciliationDiscrepancyDeps {
   ingestDeps: IngestDeps;
 }
 
+export interface ReconciliationDiscrepancyResult {
+  rowsProcessed: number;
+  rowsScanned: number;
+}
+
 /**
- * NOTE: `runIngestOnce` in Phase 3 advances a global watermark from Redis
- * — it does NOT yet accept since/until args. Per the plan's deviation
- * record (Wave 1 context — refactor ingest-litellm-spend body into a
- * reusable runIngest(since, until) function), Plan 06-08 invokes
- * runIngestOnce with the same deps; the since/until on the payload is
- * recorded for audit/log correlation but doesn't reshape the
- * watermark-driven loop. A future refactor (out of this plan's scope —
- * see Deferred in SUMMARY) will plumb since/until end-to-end into the
- * ingest SQL.
+ * Build the windowed-backfill handler. Returns a function compatible with
+ * BullMQ's processor signature that yields the REAL row counts from the
+ * underlying `runIngestOnce` invocation.
+ *
+ * Type-honesty: the previous implementation masked the return type over
+ * `withTenantContext`'s `Promise<void>` HOF with a double-cast. We now use
+ * a closure-captured `result` slot that the inner handler fills BEFORE
+ * returning void; the outer wrapper reads the slot. No type suppression.
  */
 export function buildReconciliationDiscrepancyHandler(
   deps: ReconciliationDiscrepancyDeps,
-): (job: import("bullmq").Job) => Promise<{ rowsProcessed: number; rowsScanned: number }> {
-  // The wrapped handler returns the runIngestOnce summary so callers (and
-  // tests) can observe how many rows the backfill touched. We keep the
-  // withTenantContext wrap so the per-tenant context is bound on the pool
-  // even though the actual SQL inside runIngestOnce uses the owner pool
-  // and bypasses RLS. The wrap is the explicit Tenant-mode opt-in.
-  return withTenantContext(reconciliationDiscrepancySchema, deps.pool, async () => {
-    const result = await runIngestOnce(deps.ingestDeps);
-    // Cast: handler body's awaited result. The HOF's outer Promise<void>
-    // contract drops the return value; for the test/observation seam we
-    // expose the count via the resolved value on the inner closure scope
-    // — kept here only as a side-effect log target for the future.
-    void result;
-  }) as unknown as (
-    job: import("bullmq").Job,
-  ) => Promise<{ rowsProcessed: number; rowsScanned: number }>;
+): (job: import("bullmq").Job) => Promise<ReconciliationDiscrepancyResult> {
+  return async (job: import("bullmq").Job): Promise<ReconciliationDiscrepancyResult> => {
+    // Closure-captured slot. `withTenantContext`'s handler is forced to
+    // `Promise<void>` by the HOF contract; the inner code assigns to
+    // `captured` before resolving, and the outer wrapper returns it.
+    // Type-safe: no double-cast, no `void result` swallow.
+    let captured: ReconciliationDiscrepancyResult | undefined;
+    const wrapped = withTenantContext(
+      reconciliationDiscrepancySchema,
+      deps.pool,
+      async (data): Promise<void> => {
+        // CRIT-FIX-08: explicit windowed backfill scoped to the affected
+        // tenant. runIngestOnce returns real {rowsProcessed, rowsScanned};
+        // we capture both so the caller / observability layer can see how
+        // many rows the backfill actually moved.
+        captured = await runIngestOnce(deps.ingestDeps, {
+          since: data.since,
+          until: data.until,
+          tenantId: data.tenant_id,
+        });
+      },
+    );
+    await wrapped(job);
+    /* c8 ignore start — defensive: `withTenantContext` either throws (schema
+       parse failure / handler throw) or runs the inner handler to completion,
+       which always assigns `captured` before returning. Reaching this branch
+       would require the HOF to swallow a throw — structurally impossible. */
+    if (!captured) {
+      throw new Error(
+        "reconciliation-discrepancy: handler completed without capturing ingest result",
+      );
+    }
+    /* c8 ignore stop */
+    return captured;
+  };
 }
