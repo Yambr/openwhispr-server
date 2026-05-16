@@ -59,6 +59,7 @@
 // `process.boot` log here is supplementary context (cause-chain pino
 // `{ err }`). Any non-BYOKGuardError is re-thrown.
 import { assertBYOKConfig, BYOKGuardError } from "@openwhispr/byok-guard";
+import { validateEncryptionBoot } from "@openwhispr/data";
 import pino from "pino";
 
 try {
@@ -71,6 +72,14 @@ try {
   }
   throw err;
 }
+
+// Phase 33 / Plan 33-04 — encryption-config boot gate. Runs AFTER the
+// BYOK guard (same loud-fail posture) and BEFORE the OTel SDK side-effect
+// import so a missing/short MASTER_KEK or an unsupported
+// OPENWHISPR_KEY_PROVIDER value exits with BSD EX_CONFIG (78) before any
+// route registers. validateEncryptionBoot writes its own stderr line and
+// calls process.exit(78) directly — no return on failure.
+validateEncryptionBoot();
 
 // Phase 6 / Plan 03 / Task 1 (D-T3 load order) — OTel SDK must start
 // BEFORE any other import resolves so `@opentelemetry/instrumentation-pino`

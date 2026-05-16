@@ -9,6 +9,7 @@
 // `BYOKGuardError`; worker entrypoint catches + logs + exits.
 // Mirrors apps/api/src/index.ts.
 import { assertBYOKConfig, BYOKGuardError } from "@openwhispr/byok-guard";
+import { validateEncryptionBoot } from "@openwhispr/data";
 import pinoBoot from "pino";
 
 try {
@@ -24,6 +25,11 @@ try {
   }
   throw err;
 }
+
+// Phase 33 / Plan 33-04 — encryption-config boot gate (mirrors api).
+// Exits 78 (BSD EX_CONFIG) when MASTER_KEK is unset / wrong-length / the
+// operator selected an unsupported KeyProvider (`vault` / `kms`).
+validateEncryptionBoot();
 
 // Phase 6 / Plan 06-12c — OTel SDK bootstrap MUST be the first executable
 // import (after the byok-guard call above) so PinoInstrumentation
