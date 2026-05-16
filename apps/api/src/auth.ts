@@ -44,6 +44,7 @@ import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import { bearer } from "better-auth/plugins/bearer";
 import { genericOAuth } from "better-auth/plugins/generic-oauth";
 import { cookieDomainConfig } from "./lib/cookie-domain.js";
+import { resolveDefaultTenantId } from "./lib/default-tenant.js";
 import { readOidcProvidersForRegistration } from "./lib/oidc-providers.js";
 
 /**
@@ -399,8 +400,14 @@ export function buildAuth(opts: BuildAuthOptions): AuthInstance {
       }) => {
         if (opts.enqueueEmail) {
           const locale: "en" | "ru" = user.locale === "ru" ? "ru" : "en";
+          // Phase 41.a / HI-03 — route the fallback through the centralised
+          // `resolveDefaultTenantId()` helper instead of duplicating the
+          // literal UUID. Closes audit-attribution drift vs every other
+          // tenant-fallback site (dual-auth, require-cookie-only,
+          // auth-callback, etc.). If/when the helper swaps to a real DB
+          // lookup, this site participates automatically.
           await opts.enqueueEmail({
-            tenant_id: user.tenantId ?? "00000000-0000-0000-0000-000000000000",
+            tenant_id: user.tenantId ?? (await resolveDefaultTenantId()),
             to: user.email,
             template_id: "password_reset",
             locale,
@@ -449,8 +456,9 @@ export function buildAuth(opts: BuildAuthOptions): AuthInstance {
       }) => {
         if (opts.enqueueEmail) {
           const locale: "en" | "ru" = user.locale === "ru" ? "ru" : "en";
+          // Phase 41.a / HI-03 — see sibling sendResetPassword note above.
           await opts.enqueueEmail({
-            tenant_id: user.tenantId ?? "00000000-0000-0000-0000-000000000000",
+            tenant_id: user.tenantId ?? (await resolveDefaultTenantId()),
             to: user.email,
             template_id: "email_verification",
             locale,
