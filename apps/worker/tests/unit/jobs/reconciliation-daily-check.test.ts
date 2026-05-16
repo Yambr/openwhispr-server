@@ -383,6 +383,71 @@ SUITE("reconciliation-daily-check (D-R2)", () => {
     expect(_readDriftStoreForTest().size).toBe(0);
   });
 
+  // Phase 41.d / HI-2 — the per-tenant aggregation loop must resolve
+  // user_id -> tenant_id in ONE batched ANY($1::uuid[]) query, not in a
+  // per-end_user serialized round-trip. With 2 tenants x 3 users each
+  // (6 distinct end_users in LiteLLM_SpendLogs), the old code issued
+  // 6 sequential `SELECT tenant_id FROM users WHERE id=$1` queries;
+  // the fix issues exactly ONE such query.
+  it("resolves user_id->tenant_id in a single batched query (not per-row)", async () => {
+    if (!h) throw new Error("harness");
+    // Seed 6 distinct end_users spanning 2 tenants.
+    const USER_A2 = "33333333-3333-4333-a333-333333333334";
+    const USER_A3 = "33333333-3333-4333-a333-333333333335";
+    const USER_B2 = "44444444-4444-4444-a444-444444444445";
+    const USER_B3 = "44444444-4444-4444-a444-444444444446";
+    await h.appPool.query(
+      `INSERT INTO users (id, tenant_id) VALUES
+       ($1, $5), ($2, $5), ($3, $6), ($4, $6)
+       ON CONFLICT (id) DO NOTHING`,
+      [USER_A2, USER_A3, USER_B2, USER_B3, TENANT_A, TENANT_B],
+    );
+    await h.llPool.query(
+      `INSERT INTO "LiteLLM_SpendLogs" (request_id, "end_user", spend, "startTime") VALUES
+       ('m1', $1, 0, '2026-05-10 10:00:00+00'),
+       ('m2', $2, 0, '2026-05-10 10:00:00+00'),
+       ('m3', $3, 0, '2026-05-10 10:00:00+00'),
+       ('m4', $4, 0, '2026-05-10 10:00:00+00'),
+       ('m5', $5, 0, '2026-05-10 10:00:00+00'),
+       ('m6', $6, 0, '2026-05-10 10:00:00+00')`,
+      [USER_A, USER_A2, USER_A3, USER_B, USER_B2, USER_B3],
+    );
+
+    // Spy on appOwnerPool to count the user->tenant resolution queries.
+    const userTenantQueryCalls: unknown[][] = [];
+    const realQuery = h.appPool.query.bind(h.appPool);
+    const spyPool: Pool = {
+      ...h.appPool,
+      // biome-ignore lint/suspicious/noExplicitAny: pg Pool overloads
+      query: (async (text: string, params?: unknown[]) => {
+        if (
+          /FROM\s+users\s+WHERE\s+id\s*=\s*ANY/i.test(text) ||
+          /FROM\s+users\s+WHERE\s+id\s*=\s*\$1/i.test(text)
+        ) {
+          userTenantQueryCalls.push(params ?? []);
+        }
+        return realQuery(text, params);
+      }) as never,
+    } as Pool;
+
+    const handler = buildReconciliationDailyCheckHandler({
+      litellmPool: h.llPool,
+      appOwnerPool: spyPool,
+      discrepancyQueue: {
+        async add() {
+          return {} as never;
+        },
+      },
+      env: () => undefined,
+    });
+    await handler(fakeJob(WIN));
+    // Exactly ONE batched user->tenant resolution query.
+    expect(userTenantQueryCalls).toHaveLength(1);
+    // Drift store iterates by DISTINCT TENANT (2 tenants), not by
+    // distinct end_user (6 users) — exactly two entries.
+    expect(_readDriftStoreForTest().size).toBe(2);
+  });
+
   it("honors RECONCILIATION_DRIFT_USD_CENTS_THRESHOLD env override", async () => {
     if (!h) throw new Error("harness");
     await h.llPool.query(

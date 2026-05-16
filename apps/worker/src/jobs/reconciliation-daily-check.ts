@@ -131,16 +131,30 @@ export function buildReconciliationDailyCheckHandler(
       );
 
       const litellmByTenant = new Map<string, { row_count: number; spend_cents: number }>();
-      // Resolve each end_user to a tenant_id (small in-loop call — bounded
-      // by tenant count, not row count; production workloads have ≤ 1000
-      // distinct tenants).
+      // Phase 41.d / HI-2 — resolve every distinct end_user -> tenant_id in
+      // ONE batched query (`WHERE id = ANY($1::uuid[])`). Previously this
+      // issued a serialized per-end_user round-trip — O(distinct users) per
+      // tick, not "bounded by tenant count" as the original comment claimed.
+      // At 10k DAU that was 10k sequential awaits per tick. The single
+      // ANY-array query produces the same user->tenant map in one round-trip
+      // and the outer aggregation iterates over the resulting distinct
+      // tenants only.
+      const distinctEndUsers = Array.from(
+        new Set(litellmRows.map((r) => r.end_user).filter((v): v is string => v !== null)),
+      );
+      const userToTenant = new Map<string, string>();
+      if (distinctEndUsers.length > 0) {
+        const mapRes = await deps.appOwnerPool.query<{ id: string; tenant_id: string }>(
+          `SELECT id::text AS id, tenant_id::text AS tenant_id
+             FROM users
+            WHERE id = ANY($1::uuid[])`,
+          [distinctEndUsers],
+        );
+        for (const r of mapRes.rows) userToTenant.set(r.id, r.tenant_id);
+      }
       for (const row of litellmRows) {
         if (!row.end_user) continue;
-        const tenantRes = await deps.appOwnerPool.query<{ tenant_id: string }>(
-          `SELECT tenant_id::text AS tenant_id FROM users WHERE id = $1::uuid LIMIT 1`,
-          [row.end_user],
-        );
-        const tid = tenantRes.rows[0]?.tenant_id;
+        const tid = userToTenant.get(row.end_user);
         if (!tid) continue;
         const existing = litellmByTenant.get(tid) ?? { row_count: 0, spend_cents: 0 };
         existing.row_count += Number(row.row_count);
