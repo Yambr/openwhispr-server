@@ -4,7 +4,7 @@
 
 .PHONY: dev test lint lint-rls lint-compose-resources lint\:lockers format typecheck up down clean clean-stack tls-trust help \
         contract-test contract-test-deployed contract-test-missing-keys e2e-test e2e-test-live \
-        e2e-hermetic e2e-test-phase6 e2e-cjm e2e-cjm-teardown \
+        e2e-hermetic e2e-test-phase6 e2e-cjm e2e-cjm-teardown smoke \
         load-test seed backup restore migrate migrate-rollback logs ps restart \
         verify-images \
         up-with-observability up-with-storage up-with-ingress up-with-pgbouncer up-with-dev-tools up-full
@@ -454,6 +454,16 @@ migrate-rollback:
 # contributor was running their own `openwhispr` project, it is `stop`'d
 # before boot and `start`'d again in the teardown. Retry-on-flake is BANNED
 # (D-12). Gated by E2E_CJM=1.
+# Phase 22 / Plan 22-01 / SR-22.1 — synthetic-transaction smoke layer.
+#
+# Runs five HTTP probes (`tests/smoke/*.smoke.test.ts`) against the live
+# stack to prove functional readiness AFTER `docker compose up --wait`
+# and BEFORE the heavier `make e2e-cjm` cycle. Wall-clock target: < 5 s.
+# Per memory `feedback_smoke_before_full_e2e` + `feedback_check_loki_after_tests`.
+smoke:
+	@echo "smoke: probing live stack at https://api.localhost + https://web.localhost"
+	@pnpm exec vitest run --config vitest.smoke.config.ts
+
 e2e-cjm:
 	@if [ "$$E2E_CJM" != "1" ]; then \
 		echo "e2e-cjm: refusing to run — set E2E_CJM=1 (this target boots a hermetic compose project and stops/restarts your local stack)"; \

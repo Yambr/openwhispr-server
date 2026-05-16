@@ -648,3 +648,39 @@ jobs:
             --summary coverage/coverage-summary.json \
             --changed /tmp/changed.txt
       - run: pnpm test:lint-coverage-floor
+
+  # Phase 22 / Plan 22-01 / SR-22.1 — smoke layer between `up --wait` and
+  # full e2e. Boots the slim-core compose stack, runs 5 HTTP probes
+  # (health, transcribe-415, realtime auth-gate, web root, traefik
+  # host-split) in under 5 s total, and on failure dumps
+  # `docker compose logs --tail=200` per memory feedback_check_loki_after_tests.
+  smoke:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+      - uses: pnpm/action-setup@v4
+        with: { version: 11.0.8 }
+      - uses: actions/setup-node@v5
+        with: { node-version: '24', cache: 'pnpm' }
+      - run: pnpm install --frozen-lockfile
+      - name: Boot slim-core stack
+        run: |
+          docker compose -f docker-compose.yml \
+            -f compose/docker-compose.embedded-litellm.yml \
+            -f compose/docker-compose.ingress.yml \
+            up -d --wait
+      - name: Run smoke probes
+        run: pnpm smoke
+      - name: Dump container logs on failure
+        if: failure()
+        run: |
+          docker compose logs --tail=200 --no-color > smoke-logs.txt || true
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4
+        if: failure()
+        with:
+          name: smoke-logs
+          path: smoke-logs.txt
+      - name: Tear down
+        if: always()
+        run: docker compose down -v --remove-orphans || true
