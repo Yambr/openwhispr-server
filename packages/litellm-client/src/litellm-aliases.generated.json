@@ -1,0 +1,18 @@
+{
+  "version": 1,
+  "aliases": [
+    "qwen3.6-plus",
+    "gemini-3-flash",
+    "gpt-4o-mini",
+    "whisper-large-v3",
+    "gpt-realtime",
+    "gpt-realtime-mini",
+    "gpt-4o-realtime-preview"
+  ],
+  "bundledProviders": {
+    "qwen3.6-plus": "openrouter",
+    "gemini-3-flash": "openrouter",
+    "gpt-4o-mini": "openrouter",
+    "whisper-large-v3": "groq"
+  }
+}

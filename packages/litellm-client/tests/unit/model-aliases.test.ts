@@ -181,3 +181,41 @@ model_list:
     expect(out).toEqual({ complete: "groq" });
   });
 });
+
+// Phase 41.f-hotfix — regression sentinel: the default code path (no
+// yamlPath argument) MUST NOT touch the yaml package, because yaml@2.x's
+// CJS bundling cannot be ESM-bundled by tsup (`Error: Dynamic require of
+// "process" is not supported` at api boot). The build-time codegen
+// (`scripts/generate-aliases.ts`) materialises the data into
+// `src/litellm-aliases.generated.json`, and the runtime path is a plain
+// JSON import. These tests prove no fs/yaml access happens by default and
+// that the JSON ships the same alias surface as the source yaml.
+describe("default code path uses build-time codegen JSON, not yaml", () => {
+  it("loadLitellmModelAliases() with no argument returns a non-empty list", () => {
+    const aliases = loadLitellmModelAliases();
+    expect(aliases.length).toBeGreaterThan(0);
+    // Repo invariant — qwen3.6-plus is the default agent model.
+    expect(aliases[0]).toBe("qwen3.6-plus");
+  });
+
+  it("getDefaultAgentModel() with no argument equals model_list[0]", () => {
+    expect(getDefaultAgentModel()).toBe("qwen3.6-plus");
+  });
+
+  it("loadBundledModelProviders() with no argument returns the bundled map", () => {
+    const providers = loadBundledModelProviders();
+    expect(providers["qwen3.6-plus"]).toBe("openrouter");
+    expect(providers["whisper-large-v3"]).toBe("groq");
+  });
+
+  it("the codegen JSON matches the canonical yaml on disk", () => {
+    // If this drifts the prebuild hook in package.json was skipped.
+    // Failing here is the desired sentinel — operator must re-run
+    // `pnpm --filter @openwhispr/litellm-client run generate-aliases`.
+    const fromYaml = loadLitellmModelAliases(
+      new URL("../../../../compose/litellm/litellm_config.yaml", import.meta.url).pathname,
+    );
+    const fromJson = loadLitellmModelAliases();
+    expect(fromJson).toEqual(fromYaml);
+  });
+});
