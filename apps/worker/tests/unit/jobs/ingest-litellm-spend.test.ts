@@ -623,6 +623,152 @@ describe("BullMQ wiring (no-redis smoke)", () => {
     expect(captured?.[4]).toBe(0);
   });
 
+  // Phase 41.d / HI-4 — for minutes-priced models (whisper-large-v3,
+  // realtime models), metadata.duration is the SOLE signal of how many
+  // billable units to insert. The legacy `extractDuration` silently
+  // coerced any non-numeric duration to 0 and inserted a usage_ledger
+  // row with units=0 — pure data loss on the revenue path. The fix
+  // validates the duration is a finite positive number; on validation
+  // failure it logs warn, increments the OTel counter
+  // `worker_billing_anomalies_total{reason="non_numeric_duration"}`,
+  // and SKIPS the insert entirely (matches the existing skip pattern for
+  // missing end_user / missing tenant).
+  it("HI-4: skips minutes-priced rows with non-numeric duration and increments anomaly counter", async () => {
+    const { _resetBillingAnomalies, _readBillingAnomalies } = await import(
+      "../../../src/jobs/ingest-litellm-spend.js"
+    );
+    _resetBillingAnomalies();
+    const fakeRedis = new FakeRedis();
+    const litellmPool = {
+      async query() {
+        return {
+          rows: [
+            {
+              request_id: "rid-bad-duration",
+              end_user: "user-1",
+              total_tokens: 0,
+              model: "whisper-large-v3",
+              startTime: new Date(),
+              metadata: { openwhispr_request_id: "ow-bad-dur", duration: "ten seconds" },
+            },
+          ],
+        };
+      },
+    } as never;
+    let insertCount = 0;
+    const appOwnerPool = {
+      async query(text: string) {
+        if (/SELECT\s+tenant_id\s+FROM\s+users/i.test(text)) {
+          return { rows: [{ tenant_id: "tenant-1" }] };
+        }
+        if (/INSERT\s+INTO\s+usage_ledger/i.test(text)) {
+          insertCount++;
+          return { rowCount: 1 };
+        }
+        return { rows: [] };
+      },
+    } as never;
+    const result = await runIngestOnce({
+      litellmPool,
+      appOwnerPool,
+      connection: {} as never,
+      redis: fakeRedis,
+    });
+    expect(result.rowsScanned).toBe(1);
+    // SKIP — no usage_ledger insert.
+    expect(result.rowsProcessed).toBe(0);
+    expect(insertCount).toBe(0);
+    // Counter incremented once with the right reason label.
+    const anomalies = _readBillingAnomalies();
+    expect(anomalies).toEqual([{ reason: "non_numeric_duration", count: 1 }]);
+  });
+
+  it("HI-4: accepts numeric durations on minutes-priced models (positive control)", async () => {
+    const { _resetBillingAnomalies, _readBillingAnomalies } = await import(
+      "../../../src/jobs/ingest-litellm-spend.js"
+    );
+    _resetBillingAnomalies();
+    const fakeRedis = new FakeRedis();
+    const litellmPool = {
+      async query() {
+        return {
+          rows: [
+            {
+              request_id: "rid-good-duration",
+              end_user: "user-1",
+              total_tokens: 0,
+              model: "whisper-large-v3",
+              startTime: new Date(),
+              metadata: { openwhispr_request_id: "ow-good-dur", duration: 90 },
+            },
+          ],
+        };
+      },
+    } as never;
+    let captured: unknown[] | undefined;
+    const appOwnerPool = {
+      async query(text: string, params?: unknown[]) {
+        if (/SELECT\s+tenant_id\s+FROM\s+users/i.test(text)) {
+          return { rows: [{ tenant_id: "tenant-1" }] };
+        }
+        if (/INSERT\s+INTO\s+usage_ledger/i.test(text)) {
+          captured = params;
+          return { rowCount: 1 };
+        }
+        return { rows: [] };
+      },
+    } as never;
+    const result = await runIngestOnce({
+      litellmPool,
+      appOwnerPool,
+      connection: {} as never,
+      redis: fakeRedis,
+    });
+    expect(result.rowsProcessed).toBe(1);
+    expect(captured?.[4]).toBe(2); // ceil(90/60)
+    expect(_readBillingAnomalies()).toEqual([]);
+  });
+
+  it("HI-4: token-priced models are unaffected by missing duration", async () => {
+    const { _resetBillingAnomalies, _readBillingAnomalies } = await import(
+      "../../../src/jobs/ingest-litellm-spend.js"
+    );
+    _resetBillingAnomalies();
+    const fakeRedis = new FakeRedis();
+    const litellmPool = {
+      async query() {
+        return {
+          rows: [
+            {
+              request_id: "rid-tokens",
+              end_user: "user-1",
+              total_tokens: 500,
+              model: "qwen3.6-plus",
+              startTime: new Date(),
+              metadata: { openwhispr_request_id: "ow-tokens" },
+            },
+          ],
+        };
+      },
+    } as never;
+    const appOwnerPool = {
+      async query(text: string) {
+        if (/SELECT\s+tenant_id\s+FROM\s+users/i.test(text)) {
+          return { rows: [{ tenant_id: "tenant-1" }] };
+        }
+        return { rowCount: 1 };
+      },
+    } as never;
+    const result = await runIngestOnce({
+      litellmPool,
+      appOwnerPool,
+      connection: {} as never,
+      redis: fakeRedis,
+    });
+    expect(result.rowsProcessed).toBe(1);
+    expect(_readBillingAnomalies()).toEqual([]);
+  });
+
   // Phase 41.d / HI-1 — the ingest-litellm-spend module-level logger MUST
   // be built via the shared `makePino` factory from
   // `@openwhispr/observability` so the canonical D-T4 redact paths apply.
