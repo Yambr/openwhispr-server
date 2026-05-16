@@ -169,7 +169,11 @@ COPY --chown=node:node --chmod=0755 apps/api/entrypoint.sh /app/entrypoint.sh
 # instead of silently degrading under load.
 COPY --chown=node:node --chmod=0755 apps/api/scripts/fd-probe.sh /app/scripts/fd-probe.sh
 
-USER node
+# SR-20.5 (Phase 20-02b) — explicit numeric uid matches K8s
+# securityContext.runAsUser: 1000 and survives image-scanner audits that
+# can't resolve named users. The `node` user in node:*-alpine is uid 1000,
+# so the change is functionally identical.
+USER 1000
 EXPOSE 3000
 
 # BusyBox wget ships in alpine — no apk add needed. Healthcheck targets
