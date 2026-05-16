@@ -18,7 +18,9 @@
 //  2. text-only fixture → text-delta lines + finish chunk vocabulary
 //  3. legacy tools translated to OpenAI shape on upstream POST body
 //  4. systemPrompt additively prepended (never replaces leading system msg)
-//  5. model default chain: body → env → 'qwen/qwen3.6-plus'
+//  5. model default chain: body → env → yaml model_list[0].model_name
+//     (Phase 41.b / HI-01 — was 'qwen/qwen3.6-plus'; now derived from
+//     compose/litellm/litellm_config.yaml so route + proxy can't drift)
 //  6. stream:true + stream_options:{include_usage:true} + user forwarded
 //  7. x-litellm-call-id captured server-side only — NEVER in wire response
 //  8. Client disconnect aborts upstream (signal.aborted within 100ms)
@@ -378,7 +380,7 @@ describe("POST /api/agent/stream", () => {
     }
   });
 
-  it("Test 5 — model default chain: body → env → 'qwen/qwen3.6-plus'", async () => {
+  it("Test 5 — model default chain: body → env → yaml model_list[0].model_name (HI-01)", async () => {
     const captures: Array<Record<string, unknown>> = [];
     for (let i = 0; i < 3; i++) {
       agent
@@ -438,7 +440,11 @@ describe("POST /api/agent/stream", () => {
     }
     expect(captures).toHaveLength(3);
     expect((captures[0] as { model: string }).model).toBe("custom-model");
-    expect((captures[1] as { model: string }).model).toBe("qwen/qwen3.6-plus");
+    // Phase 41.b / HI-01 — default is now sourced from compose/litellm/
+    // litellm_config.yaml's first model_list entry (currently
+    // 'qwen3.6-plus', NO `qwen/` prefix). The route MUST match the proxy
+    // alias verbatim or LiteLLM router 404s the request.
+    expect((captures[1] as { model: string }).model).toBe("qwen3.6-plus");
     expect((captures[2] as { model: string }).model).toBe("explicit");
   });
 

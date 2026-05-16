@@ -320,3 +320,4 @@ export {
   loadLitellmConfigFromEnv,
 } from "./config.js";
 export { LitellmUpstreamError, MissingProviderKeyError } from "./errors.js";
+export { getDefaultAgentModel, loadLitellmModelAliases } from "./model-aliases.js";

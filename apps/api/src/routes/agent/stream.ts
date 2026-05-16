@@ -44,7 +44,11 @@
 
 import { Readable } from "node:stream";
 import type { ExecutableTx, TransactionalDb } from "@openwhispr/data";
-import { type LitellmClient, LitellmUpstreamError } from "@openwhispr/litellm-client";
+import {
+  getDefaultAgentModel,
+  type LitellmClient,
+  LitellmUpstreamError,
+} from "@openwhispr/litellm-client";
 import type { FastifyInstance } from "fastify";
 import { AuthError } from "../../errors.js";
 import { type StreamChunk, sseToNdjson } from "../../lib/sse-parser.js";
@@ -74,7 +78,13 @@ interface RequestBody {
   tools?: LegacyTool[];
 }
 
-const DEFAULT_AGENT_MODEL = "qwen/qwen3.6-plus";
+// Phase 41.b / HI-01 — DEFAULT_AGENT_MODEL is now sourced from
+// compose/litellm/litellm_config.yaml `model_list[0].model_name` via the
+// shared loader so the route default cannot drift from the proxy alias.
+// Previously this was the literal string `qwen/qwen3.6-plus` which did NOT
+// match the yaml alias `qwen3.6-plus` — LiteLLM router emitted a 404 that
+// the route surfaced as a finish-chunk `upstream_error` under HTTP 200.
+const DEFAULT_AGENT_MODEL = getDefaultAgentModel();
 
 /** Resolve the upstream model per D-10: body → env → fallback. */
 function resolveModel(bodyModel: string | undefined): string {
