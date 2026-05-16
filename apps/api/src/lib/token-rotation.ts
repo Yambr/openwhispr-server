@@ -42,10 +42,17 @@ export async function recordPreviousToken(
   sessionId: string,
   oldToken: string,
 ): Promise<void> {
+  // Phase 33 / Plan 33-04 — also write `previous_token_fp = sha256(oldToken)`
+  // so `tryPreviousToken` can resolve the bearer via the partial-unique
+  // fingerprint index after Plan 33-05 drops the plaintext column. Within
+  // the 33-04 → 33-05 window both columns are populated; lookup uses fp.
+  const { createHash } = await import("node:crypto");
+  const fp = createHash("sha256").update(oldToken, "utf8").digest();
   await withTenant(db, tenantId, async (tx) => {
     await tx.execute(
       sql`UPDATE sessions
           SET previous_token = ${oldToken},
+              previous_token_fp = ${fp},
               previous_token_expires_at = now() + interval '5 minutes'
           WHERE id = ${sessionId}::uuid`,
     );
@@ -90,9 +97,27 @@ export async function tryPreviousToken(
   db: { execute(query: unknown): Promise<unknown> },
   bearerToken: string,
 ): Promise<PreviousTokenMatch | null> {
+  // Phase 33 / Plan 33-04 — the migration-0005 SECURITY DEFINER function
+  // `lookup_session_by_previous_token(text)` was dropped by migration
+  // 0019b. We now SHA-256 the plaintext bearer and SELECT against the
+  // partial unique index `sessions_previous_token_fp_idx` over the
+  // bytea(32) fingerprint column. Identical AUTH-04 5-minute overlap
+  // CONTRACT — only the lookup mechanism changed (Node-side hash + index
+  // probe replaces SECURITY DEFINER call). The `db.execute` interface
+  // here is the same `TransactionalDb` shape Plan 08 wired; we issue a
+  // single drizzle `sql` query that matches the helper in
+  // packages/data/src/sessions/lookup-by-previous-token.ts (Node-side
+  // helper exists for the integration-test fingerprint codepath without
+  // needing drizzle).
+  const { createHash } = await import("node:crypto");
+  const fp = createHash("sha256").update(bearerToken, "utf8").digest();
   const r = (await db.execute(
     sql`SELECT user_id, tenant_id
-        FROM lookup_session_by_previous_token(${bearerToken})`,
+          FROM sessions
+         WHERE previous_token_fp = ${fp}
+           AND previous_token_expires_at IS NOT NULL
+           AND previous_token_expires_at > now()
+         LIMIT 1`,
   )) as { rows: Array<{ user_id: string; tenant_id: string }> };
   const first = r.rows[0];
   if (!first) return null;

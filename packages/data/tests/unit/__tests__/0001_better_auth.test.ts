@@ -183,110 +183,15 @@ describe("0001_better_auth migration — users / sessions extensions", () => {
   });
 });
 
-describe("0001_better_auth migration — lookup_session_by_previous_token function", () => {
-  it("function exists with SECURITY DEFINER", async () => {
-    const pool = new Pool({ connectionString: booted.ownerUri });
-    try {
-      const { rows } = await pool.query<{ prosecdef: boolean; provolatile: string }>(
-        `SELECT prosecdef, provolatile FROM pg_proc
-         WHERE proname = 'lookup_session_by_previous_token'`,
-      );
-      expect(rows).toHaveLength(1);
-      expect(rows[0]?.prosecdef).toBe(true);
-    } finally {
-      await pool.end();
-    }
-  });
-
-  it("PUBLIC is REVOKEd; openwhispr_app has EXECUTE (post-0005 text signature)", async () => {
-    const pool = new Pool({ connectionString: booted.ownerUri });
-    try {
-      // Phase 02.12 — function signature is now (text), not (bytea).
-      const { rows: appRow } = await pool.query<{ has: boolean }>(
-        `SELECT has_function_privilege(
-           'openwhispr_app',
-           'lookup_session_by_previous_token(text)',
-           'EXECUTE'
-         ) AS has`,
-      );
-      expect(appRow[0]?.has).toBe(true);
-
-      const { rows: pubRow } = await pool.query<{ has: boolean }>(
-        `SELECT has_function_privilege(
-           'public',
-           'lookup_session_by_previous_token(text)',
-           'EXECUTE'
-         ) AS has`,
-      );
-      expect(pubRow[0]?.has).toBe(false);
-    } finally {
-      await pool.end();
-    }
-  });
-
-  it("returns 0 rows when previous_token_expires_at <= now() (plain-text)", async () => {
-    const pool = new Pool({ connectionString: booted.ownerUri });
-    try {
-      const tenantId = "00000000-0000-0000-0000-000000000000";
-      await pool.query(
-        `INSERT INTO users (id, tenant_id, email)
-         VALUES (gen_random_uuid(), $1, 'expired@local')
-         ON CONFLICT DO NOTHING`,
-        [tenantId],
-      );
-      const { rows: userRow } = await pool.query<{ id: string }>(
-        `SELECT id FROM users WHERE email = 'expired@local'`,
-      );
-      const userId = userRow[0]?.id;
-      const bearer = "expired-bearer-AAA";
-      await pool.query(
-        `INSERT INTO sessions (id, tenant_id, user_id, token, expires_at,
-                               previous_token, previous_token_expires_at)
-         VALUES (gen_random_uuid(), $1, $2, $3, now() + interval '30 days',
-                 $4, now() - interval '1 minute')`,
-        [tenantId, userId, "current-bearer-AAA", bearer],
-      );
-      const { rows } = await pool.query(
-        `SELECT user_id, tenant_id FROM lookup_session_by_previous_token($1)`,
-        [bearer],
-      );
-      expect(rows).toHaveLength(0);
-    } finally {
-      await pool.end();
-    }
-  });
-
-  it("returns 1 row when previous_token_expires_at > now() (plain-text)", async () => {
-    const pool = new Pool({ connectionString: booted.ownerUri });
-    try {
-      const tenantId = "00000000-0000-0000-0000-000000000000";
-      await pool.query(
-        `INSERT INTO users (id, tenant_id, email)
-         VALUES (gen_random_uuid(), $1, 'fresh@local')
-         ON CONFLICT DO NOTHING`,
-        [tenantId],
-      );
-      const { rows: userRow } = await pool.query<{ id: string }>(
-        `SELECT id FROM users WHERE email = 'fresh@local'`,
-      );
-      const userId = userRow[0]?.id;
-      const bearer = "fresh-bearer-BBB";
-      await pool.query(
-        `INSERT INTO sessions (id, tenant_id, user_id, token, expires_at,
-                               previous_token, previous_token_expires_at)
-         VALUES (gen_random_uuid(), $1, $2, $3, now() + interval '30 days',
-                 $4, now() + interval '5 minutes')`,
-        [tenantId, userId, "current-bearer-BBB", bearer],
-      );
-      const { rows } = await pool.query<{ user_id: string; tenant_id: string }>(
-        `SELECT user_id, tenant_id FROM lookup_session_by_previous_token($1)`,
-        [bearer],
-      );
-      expect(rows).toHaveLength(1);
-      expect(rows[0]?.user_id).toBe(userId);
-      expect(rows[0]?.tenant_id).toBe(tenantId);
-    } finally {
-      await pool.end();
-    }
-  });
-});
+// Phase 33 / Plan 33-04 — the `lookup_session_by_previous_token(text)`
+// SECURITY DEFINER function created in migration 0001 (and re-signed in
+// 0005 with a text parameter) was DROPPED by migration 0019b. The
+// AUTH-04 5-minute overlap contract now resolves via the Node-side
+// helper `packages/data/src/sessions/lookup-by-previous-token.ts` which
+// SHA-256-hashes the plaintext bearer and probes the partial-unique
+// index `sessions_previous_token_fp_idx`. The obsolete describe block
+// that asserted the SQL function's existence + EXECUTE grants is
+// removed here; the post-drop assertion lives in
+// `packages/data/migrations/__tests__/0019b-drop-lookup-fn.test.ts`,
+// and the helper's behavior is exercised by
+// `packages/data/tests/unit/__tests__/lookup-by-previous-token.test.ts`.

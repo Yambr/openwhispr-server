@@ -169,7 +169,7 @@ describe("tryPreviousToken (Phase 02.12 plain-text)", () => {
     expect(out?.email).toBeNull();
   });
 
-  it("calls lookup_session_by_previous_token with the plain bearer text (no hashing)", async () => {
+  it("Phase 33 / Plan 33-04 — issues a SHA-256 fingerprint probe against sessions.previous_token_fp (no SECURITY DEFINER function call)", async () => {
     const captured: { sql: string; params: unknown[] } = { sql: "", params: [] };
     const db = {
       execute: vi.fn().mockImplementation(async (q: unknown) => {
@@ -178,10 +178,18 @@ describe("tryPreviousToken (Phase 02.12 plain-text)", () => {
       }),
     };
     await tryPreviousToken(db, "rotated-token");
-    expect(captured.sql).toMatch(/lookup_session_by_previous_token/);
-    // Phase 02.12 — bearer text is bound directly; no SHA-256 hashing.
-    expect(captured.params).toContain("rotated-token");
-    // Negative: no Buffer params (the old bytea hash path is gone).
-    expect(captured.params.find((p) => p instanceof Buffer)).toBeUndefined();
+    // Migration 0019b dropped lookup_session_by_previous_token; the query
+    // now references the fp index directly.
+    expect(captured.sql).not.toMatch(/lookup_session_by_previous_token/);
+    expect(captured.sql).toMatch(/previous_token_fp/);
+    // The bearer plaintext is hashed in-process before binding — the
+    // bound param is the bytea(32) SHA-256 digest, NOT the plaintext.
+    const { createHash } = await import("node:crypto");
+    const expectedFp = createHash("sha256").update("rotated-token", "utf8").digest();
+    const bufferParam = captured.params.find((p): p is Buffer => p instanceof Buffer);
+    expect(bufferParam).toBeDefined();
+    expect(bufferParam?.equals(expectedFp)).toBe(true);
+    // The plaintext bearer must NOT appear as a query param post-33-04.
+    expect(captured.params).not.toContain("rotated-token");
   });
 });
