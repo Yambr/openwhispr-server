@@ -250,3 +250,54 @@ tests:
       - equal:
           path: data.OTEL_SERVICE_NAME
           value: openwhispr-worker
+
+  # SR-20.3 — worker Deployment must declare a startupProbe with a 300s
+  # boot budget; reuses the pgrep exec shape of its readiness/liveness
+  # probes (no HTTP server in worker — pure BullMQ consumer). Closes B1.
+  - it: worker Deployment declares startupProbe with pgrep exec + failureThreshold 30 (SR-20.3)
+    template: worker-deployment.yaml
+    set:
+      secrets:
+        mode: eso
+        external:
+          storeRef: vault-clusterstore
+    asserts:
+      - exists:
+          path: spec.template.spec.containers[0].startupProbe.exec.command
+      - notExists:
+          path: spec.template.spec.containers[0].startupProbe.httpGet
+      - matchRegex:
+          path: spec.template.spec.containers[0].startupProbe.exec.command[2]
+          pattern: "pgrep.*node /app/dist/index.js"
+      - equal:
+          path: spec.template.spec.containers[0].startupProbe.failureThreshold
+          value: 30
+      - equal:
+          path: spec.template.spec.containers[0].startupProbe.periodSeconds
+          value: 10
+
+  # SR-20.4 — worker Deployment must declare topologySpreadConstraints
+  # on kubernetes.io/hostname. Closes audit B2.
+  - it: worker Deployment declares topologySpread maxSkew 1 on hostname (SR-20.4)
+    template: worker-deployment.yaml
+    set:
+      secrets:
+        mode: eso
+        external:
+          storeRef: vault-clusterstore
+    asserts:
+      - lengthEqual:
+          path: spec.template.spec.topologySpreadConstraints
+          count: 1
+      - equal:
+          path: spec.template.spec.topologySpreadConstraints[0].maxSkew
+          value: 1
+      - equal:
+          path: spec.template.spec.topologySpreadConstraints[0].topologyKey
+          value: kubernetes.io/hostname
+      - equal:
+          path: spec.template.spec.topologySpreadConstraints[0].whenUnsatisfiable
+          value: ScheduleAnyway
+      - equal:
+          path: spec.template.spec.topologySpreadConstraints[0].labelSelector.matchLabels."app.kubernetes.io/component"
+          value: worker
