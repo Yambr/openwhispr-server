@@ -2,7 +2,7 @@
 # Phase 0: implements dev/test/lint/format/typecheck/up/down/clean/help.
 # Future-phase targets stub-fail with a phase-N pointer.
 
-.PHONY: dev test lint lint-rls lint-compose-resources lint\:lockers format typecheck up down clean clean-stack tls-trust help \
+.PHONY: dev test lint lint-rls lint-compose-resources lint\:lockers install-gitleaks lint\:gitleaks format typecheck up down clean clean-stack tls-trust help \
         contract-test contract-test-deployed contract-test-missing-keys e2e-test e2e-test-live \
         e2e-hermetic e2e-test-phase6 e2e-cjm e2e-cjm-teardown smoke \
         load-test seed backup restore migrate migrate-rollback logs ps restart \
@@ -42,6 +42,17 @@ lint-compose-resources:
 # LOCKER-04/05/06 WARN-only; the flip lands in 31-08 / 37 / 36.a).
 lint\:lockers:
 	pnpm lint:lockers
+
+# Phase 260516-kya / Plan 01 — secret-leak hard gate.
+# install-gitleaks: idempotent installer (brew on macOS, curl-tarball
+# on Linux); no-op when gitleaks >= v8.x already on PATH.
+# lint:gitleaks: scans the working tree against .gitleaks.toml (the
+# single source of truth shared by lefthook L1+L2 and CI L3).
+install-gitleaks:
+	bash tools/install-gitleaks.sh
+
+lint\:gitleaks:
+	pnpm lint:gitleaks
 
 format:
 	pnpm format

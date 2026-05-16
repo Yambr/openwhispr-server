@@ -1,0 +1,14 @@
+# .gitleaksignore — per-finding fingerprints to suppress historical
+# matches that have been audited and confirmed NOT to be live secrets.
+#
+# Phase 260516-kya / Plan 01.
+#
+# History clean as of 2026-05-16 (verified via `git log -S` on .env
+# contents). Add fingerprints here ONLY if a future audit surfaces a
+# legitimate historical match that is NOT a live secret. For
+# false-positive shapes you want to allow going forward, extend
+# `.gitleaks.toml [allowlist]` instead (so the suppression is
+# regression-tested by tools/lint-gitleaks-config.test.ts).
+#
+# Format (gitleaks v8): one fingerprint per line, of the form
+#   <commit-sha>:<file-path>:<rule-id>:<line-number>

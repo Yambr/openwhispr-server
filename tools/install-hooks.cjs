@@ -67,10 +67,37 @@ function main() {
   }
 
   if (result.status === 0) {
+    // 3. Phase 260516-kya / Plan 01 — also bootstrap the gitleaks
+    //    binary that the pre-commit (L1) and pre-push (L2) hooks
+    //    invoke. CI uses gitleaks-action and does not need the local
+    //    binary; SKIP_LEFTHOOK_INSTALL also opts out (operator gate).
+    //    Mirrors the existing defensive shape: a missing bash, missing
+    //    script, or non-zero installer exit is a WARNING, never a
+    //    `pnpm install` failure.
+    if (process.env.CI !== "true") {
+      const installer = join(repoRoot, "tools", "install-gitleaks.sh");
+      if (existsSync(installer)) {
+        const r2 = spawnSync("bash", [installer], {
+          stdio: "inherit",
+          env: process.env,
+        });
+        if (r2.error) {
+          console.warn(
+            `[install-hooks] could not invoke 'bash tools/install-gitleaks.sh': ${r2.error.message}. ` +
+              "Install gitleaks manually before committing.",
+          );
+        } else if (r2.status !== 0) {
+          console.warn(
+            "[install-hooks] tools/install-gitleaks.sh exited non-zero; " +
+              "install gitleaks manually before committing.",
+          );
+        }
+      }
+    }
     return 0;
   }
 
-  // 3. Lefthook binary not yet materialized (first-pass install, .pnpm store
+  // 4. Lefthook binary not yet materialized (first-pass install, .pnpm store
   //    not yet linked). pnpm will re-run prepare scripts on the next install;
   //    don't break this one.
   const combined = `${result.stdout ?? ""}${result.stderr ?? ""}`;

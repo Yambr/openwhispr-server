@@ -1,0 +1,13 @@
+# .gitattributes — per-path git behaviour overrides.
+#
+# Phase 260516-kya / Plan 01 — secret-leak hard gate, defense-in-depth.
+#
+# `-diff` suppresses content rendering in `git diff`, `git log -p`, and
+# the GitHub PR diff UI. Even if a `.env` file is accidentally staged,
+# the leaked content will not be displayed to a reviewer. This is a
+# belt-and-braces complement to lefthook + CI gitleaks gates: even when
+# the gate would block the COMMIT, the diff-suppression prevents the
+# secret from surfacing in render previews of staged-but-unfinalised
+# changes (e.g. IDE diff panes).
+.env*    -diff
+.env.bak -diff
