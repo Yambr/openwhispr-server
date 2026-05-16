@@ -36,9 +36,18 @@ model_list:
       api_key: os.environ/OPENROUTER_API_KEY
 
   # ---- STT (Groq Whisper — D-11) ----
+  # Phase 19.2 / Plan 02 — SERVER-ERRORS Entry 11 closure cascade. LiteLLM
+  # Router requires an explicit provider prefix on `model:` to register the
+  # deployment (`LLM Provider NOT provided. Pass in the LLM provider you are
+  # trying to call. You passed model=whisper-large-v3`). Without the prefix
+  # the deployment is silently dropped at router.py:6816 and audio
+  # transcriptions fail with `There are no healthy deployments for this
+  # model. Received Model Group=whisper-large-v3` (HTTP 400). Adding
+  # `groq/` resolves to the Groq Whisper API (`api_base` is the canonical
+  # OpenAI-compat endpoint and stays for tracing/audit).
   - model_name: whisper-large-v3
     litellm_params:
-      model: whisper-large-v3
+      model: groq/whisper-large-v3
       api_base: https://api.groq.com/openai/v1
       api_key: os.environ/GROQ_API_KEY
 

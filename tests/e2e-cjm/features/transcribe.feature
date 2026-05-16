@@ -3,7 +3,7 @@
 
 Feature: Transcribe round-trip
 
-  @cjm-4.1 @expected-red @after-phase-19.2
+  @cjm-4.1
   Scenario: Signed-in user POSTs multipart audio and gets a typed response shape
     Given a signed-in user with a valid session
     When the user POSTs the silent WAV fixture to /api/transcribe
