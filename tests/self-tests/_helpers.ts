@@ -133,12 +133,16 @@ export function fixtureSecrets(overrides: Record<string, string> = {}): Record<s
     // Phase 31 / BYOK guard rows (packages/byok-guard/src/index.ts) —
     // every overlay's required env is checked at api boot regardless of
     // NODE_ENV. The self-test stack ships the base compose without
-    // overlays, so we provide all five required env values pointing at
-    // base-compose-friendly defaults. Without these api refuses to start
-    // with `BYOKGuardError: BYOK env missing for disabled overlay`.
+    // overlays, so we provide every required env value here.
+    // OTEL has a `disabled` sentinel that short-circuits the row without
+    // bringing up the observability stack; the others require concrete
+    // (but locally fake) values.
     S3_ENDPOINT: "http://minio:9000",
+    S3_ACCESS_KEY: "fixture-access-key",
+    S3_SECRET_KEY: "fixture-secret-key-min-16chars",
+    S3_BUCKET: "fixture-bucket",
     INGRESS_BASE_URL: "https://api.localhost",
-    OTEL_EXPORTER_OTLP_ENDPOINT: "http://otel-collector:4317",
+    OTEL_EXPORTER_OTLP_ENDPOINT: "disabled",
     SMTP_HOST: "mailpit",
     // Phase 14 / SLIM-03 — pgbouncer moved into an overlay
     // (compose/docker-compose.pgbouncer.yml); the slim-core base

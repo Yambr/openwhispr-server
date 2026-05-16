@@ -199,7 +199,13 @@ services:
       interval: 10s
       timeout: 3s
       retries: 5
-      start_period: 30s
+      # Phase 33 envelope-encryption migrations (0019/0020) added ~40s to
+      # litellm's first-boot prisma migrate step on top of the Phase 03
+      # baseline. The original 30s start_period was insufficient and
+      # caused `docker compose up --wait` to mark litellm unhealthy
+      # before uvicorn finished booting, cascading to api never starting
+      # in the Phase 02 self-tests. 120s gives 1.5× empirical max.
+      start_period: 120s
     restart: unless-stopped
     # Phase 20 / SR-20.1 — memory cap. Mirrors chart limits.memory: 1Gi.
     deploy:

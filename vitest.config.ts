@@ -147,6 +147,20 @@ export default defineConfig({
           name: "tests-self-tests",
           root: p("tests/self-tests"),
           include: ["**/*.test.ts"],
+          // Self-tests own the same `openwhispr` docker-compose project
+          // exclusively — running them in parallel makes each test's
+          // `afterAll: down -v` rip out the other test's containers
+          // mid-flight, producing a 200ms cascade fail. Force a single
+          // forked worker so the docker-compose-touching tests are
+          // strictly sequential. CPU-cheap because each test is
+          // I/O-bound on `docker compose up --wait`.
+          fileParallelism: false,
+          pool: "forks",
+          poolOptions: {
+            forks: {
+              singleFork: true,
+            },
+          },
         },
       },
     ],
