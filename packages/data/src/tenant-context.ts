@@ -64,6 +64,28 @@ export interface ExecutableTx {
  *
  * The TENANT_UUID_RE pre-check rejects `''`, `undefined`, numbers, and
  * malformed strings before any wire activity.
+ *
+ * Phase 32 contract — fail-closed RLS posture (migration `0018_rls_fail_closed.sql`):
+ *
+ *   Any query executed AGAINST a tenant-scoped table OUTSIDE this helper
+ *   (i.e. without a transaction-scoped `app.tenant_id` GUC set via
+ *   `set_config`) is REFUSED by Row-Level Security as follows:
+ *
+ *     - SELECT  → returns 0 rows (silent deny-read).
+ *     - INSERT  → raises PostgreSQL error `42501` ("new row violates
+ *                 row-level security policy").
+ *     - UPDATE  → affects 0 rows (the USING predicate reduces the target
+ *                 set to empty).
+ *     - DELETE  → affects 0 rows (same reason as UPDATE).
+ *
+ *   The pre-Phase-32 fail-open fallback — Better Auth role-default
+ *   binding `app.tenant_id` to the placeholder default tenant — is
+ *   REMOVED. Calling code MUST flow through `withTenant()` (this
+ *   function) or `withSystemContext()` for system-scoped jobs that
+ *   explicitly opt out of tenant isolation via BYPASSRLS roles.
+ *
+ *   See `packages/data/tests/unit/__tests__/rls-fail-closed.property.test.ts`
+ *   for the 16-tables × 4-ops × 2-contexts = 128-case property proof.
  */
 export async function withTenant<TX extends ExecutableTx, T>(
   db: TransactionalDb<TX>,
