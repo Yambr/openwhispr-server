@@ -67,7 +67,12 @@ export const buildSetupStateRoutes = (deps: SetupStateDeps) =>
       // request that lacks a stamped session identity; this endpoint
       // is public so every request buckets on IP (correct anti-abuse
       // semantics for anonymous-only routes).
-      config: { rateLimit: { max: 30, timeWindow: "1 minute" } },
+      //
+      // Phase 35 / CR-2 (CRIT-FIX-04) — opt out of the global dualAuthHook
+      // so the wizard's pre-admin /setup RSC fetch succeeds. Without
+      // `auth: false`, the global hook short-circuits with 401 BEFORE
+      // the handler runs and the wizard never renders the claim form.
+      config: { auth: false, rateLimit: { max: 30, timeWindow: "1 minute" } },
       handler: async (_req: FastifyRequest, reply: FastifyReply) => {
         const status = await readSetupStatus(deps.db);
         const body: SetupStateResponse = { status };
