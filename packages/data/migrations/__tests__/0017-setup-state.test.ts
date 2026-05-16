@@ -96,22 +96,42 @@ async function bootLegacyPreMigration(): Promise<{
   legacyOwnerUri = ownerUri;
 
   // Build a temp migrations folder that mirrors packages/data/migrations but
-  // omits 0017 (so drizzle's migrate() applies 0000-0016 only). Copying is
-  // safer than mutating the real journal in-place across parallel tests.
+  // omits 0017 AND every migration that depends on it (Phase 41.f-hotfix
+  // 0022_setup_state_grants forward-fixes a missing GRANT on `setup_state`
+  // and crashes with 42P01 if applied while 0017 is absent). The legacy
+  // boot exercises only the 0017 v1-upgrade backfill branch, so stripping
+  // 0017+ from the journal is the cleanest reproduction of "pre-0017
+  // schema state" — applyZeroSeventeen() then replays 0017 by hand.
+  // Copying is safer than mutating the real journal in-place across
+  // parallel tests.
   const tmpMigrations = mkdtempSync(resolve(tmpdir(), "ow-0017-legacy-"));
   cpSync(MIGRATIONS_FOLDER, tmpMigrations, { recursive: true });
-  // Remove 0017 SQL file from the temp folder.
-  try {
-    rmSync(resolve(tmpMigrations, "0017_setup_state.sql"));
-  } catch {
-    // File was not in the journal yet (RED phase); ignore.
+  // Remove 0017+ SQL files from the temp folder.
+  for (const file of [
+    "0017_setup_state.sql",
+    "0018_rls_fail_closed.sql",
+    "0019_envelope_encrypt_secret_columns_add.sql",
+    "0019b_drop_lookup_session_by_previous_token.sql",
+    "0020_envelope_encrypt_secret_columns_drop_plaintext.sql",
+    "0021_safe_table_reset_helper.sql",
+    "0022_setup_state_grants.sql",
+  ]) {
+    try {
+      rmSync(resolve(tmpMigrations, file));
+    } catch {
+      // File was not in the journal yet (RED phase or future drift); ignore.
+    }
   }
-  // Strip the 0017 entry from the temp journal.
+  // Strip every 0017+ entry from the temp journal.
   const journalPath = resolve(tmpMigrations, "meta", "_journal.json");
   const journal = JSON.parse(readFileSync(journalPath, "utf8")) as {
     entries: Array<{ idx: number; tag: string }>;
   };
-  journal.entries = journal.entries.filter((e) => !e.tag.startsWith("0017"));
+  journal.entries = journal.entries.filter((e) => {
+    const m = e.tag.match(/^(\d{4})/);
+    if (!m) return true;
+    return Number.parseInt(m[1]!, 10) < 17;
+  });
   writeFileSync(journalPath, JSON.stringify(journal, null, 2));
 
   const ownerPool = new Pool({ connectionString: ownerUri });
