@@ -18,7 +18,8 @@
     "migrate": "tsx src/migrate.ts",
     "seed:conformance": "tsx src/seed/conformance.ts",
     "drizzle:generate": "drizzle-kit generate",
-    "drizzle:drop": "drizzle-kit drop"
+    "drizzle:drop": "drizzle-kit drop",
+    "data:backfill-encrypt": "tsx src/encryption/cli/backfill-encrypt-credentials.ts"
   },
   "dependencies": {
     "better-auth": "1.6.9",
