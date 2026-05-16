@@ -16,7 +16,64 @@ import { fileURLToPath } from "node:url";
 import { parse as parseYaml } from "yaml";
 
 interface RawLitellmConfig {
-  model_list?: Array<{ model_name?: unknown }>;
+  model_list?: Array<{
+    model_name?: unknown;
+    litellm_params?: { model?: unknown };
+  }>;
+}
+
+/**
+ * Phase 41.f / HI-3 — recognized provider prefixes in
+ * `litellm_params.model`. We parse the first `/`-separated token and map
+ * it to the canonical provider key. Order-insensitive — first matching
+ * prefix wins. Unknown prefixes do NOT throw (LiteLLM allows custom
+ * providers, e.g. `vertex_ai/`, `bedrock/`, ...); they are dropped from
+ * the bundled-model precheck map and fall through to upstream 4xx.
+ */
+/**
+ * Provider keys we precheck via `config.providerKeys` (see
+ * `packages/litellm-client/src/config.ts` LitellmProviderKeys). Entries in
+ * the yaml whose provider prefix is outside this set (e.g. `openai/` for
+ * realtime models) are intentionally NOT included in the precheck map —
+ * realtime auth is handled by the realtime route, not the http client.
+ */
+const KNOWN_PROVIDER_PREFIXES = ["openrouter", "groq", "pyannote"] as const;
+type KnownProvider = (typeof KNOWN_PROVIDER_PREFIXES)[number];
+
+/**
+ * Phase 41.f / HI-3 — derive the bundled-model → provider map from the
+ * same yaml that LiteLLM Router consumes. Single source of truth: any
+ * model added to `compose/litellm/litellm_config.yaml` is automatically
+ * precheck-gated by the client (no hand-maintained constant drift).
+ *
+ * Returns `Record<model_name, provider>` for entries whose
+ * `litellm_params.model` carries a recognised provider prefix
+ * (openrouter / groq / openai / pyannote). Realtime entries (mode:
+ * realtime) are included for completeness — corporate operators can map
+ * them to bundled-provider keys.
+ */
+export function loadBundledModelProviders(yamlPath?: string): Record<string, KnownProvider> {
+  const path = yamlPath ?? defaultYamlPath();
+  const raw = readFileSync(path, "utf8");
+  const doc = parseYaml(raw) as RawLitellmConfig | null;
+  const list = doc?.model_list;
+  if (!Array.isArray(list) || list.length === 0) {
+    throw new Error(
+      `LiteLLM config at ${path} has no model_list entries (top-level model_list must be a non-empty array).`,
+    );
+  }
+  const out: Record<string, KnownProvider> = {};
+  for (const entry of list) {
+    const name = typeof entry?.model_name === "string" ? entry.model_name.trim() : "";
+    const upstream =
+      typeof entry?.litellm_params?.model === "string" ? entry.litellm_params.model.trim() : "";
+    if (!name || !upstream) continue;
+    const prefix = upstream.split("/", 1)[0];
+    if (!prefix) continue;
+    const match = KNOWN_PROVIDER_PREFIXES.find((p) => p === prefix);
+    if (match) out[name] = match;
+  }
+  return out;
 }
 
 /**
