@@ -470,3 +470,38 @@ mid-stream. Asserts auth gate fires BEFORE reply.hijack().
 - Silent-failure modes: 200 with Content-Type `application/x-ndjson` and
   an `{type:"error"}` chunk (would mask the auth failure from clients
   that don't inspect chunks); 5xx (stack-trace exposure).
+
+## 13. Web search — Tavily/Yandex via mock provider (G6 closure)
+
+Phase 26 closes G6 from `.planning/qa-audit/2026-05-16-cjm-coverage.md`.
+`POST /api/agent/web-search` already ships (Phase 5) routing to Tavily or
+Yandex per `WEB_SEARCH_PROVIDER` env. Memory `project_phase5_websearch`
+locks the provider set; memory `feedback_loadtest_cost_discipline` bans
+paid-provider calls in tests unless `OPENWHISPR_LOADTEST_ALLOW_PAID=1`.
+Phase 26 lands the end-to-end CJM against a mock-provider fixture.
+
+### @cjm-13.1 Authenticated search returns a normalized result list (happy path, mock provider)
+
+`WEB_SEARCH_PROVIDER=mock` is wired. A signed-in user POSTs
+`{query: "node.js LTS", numResults: 3}`. The api MUST respond `200` with
+`{results: [{title, url, snippet}, ...]}` containing at least one item.
+Every item carries the three string fields exactly (no extras leaking
+the provider's raw response).
+
+- Backend error branches: 503 `WEB_SEARCH_PROVIDER_KEY_MISSING` if the
+  selected provider's key env is unset; 400 on schema violation.
+- Silent-failure modes: empty `results` array silently returned (would
+  mask a misconfigured adapter); raw provider JSON forwarded (PII /
+  ranking-signal leakage).
+
+### @cjm-13.2 Missing provider key → 503 typed envelope (negative twin)
+
+`WEB_SEARCH_PROVIDER=tavily` but `TAVILY_API_KEY` is unset. The api MUST
+respond `503` with the typed envelope code
+`WEB_SEARCH_PROVIDER_KEY_MISSING`. Asserts the boot-fatal D-02 stance
+does NOT silently degrade to mock fallback.
+
+- Backend error branches: 503 typed envelope; structured-log fatal
+  record naming the missing env key.
+- Silent-failure modes: 200 with mock results substituted (operator
+  thinks Tavily works); 5xx with provider key in stack trace.
