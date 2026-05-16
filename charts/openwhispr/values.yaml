@@ -229,6 +229,17 @@ litellm:
     maxSkew: 1
     topologyKey: kubernetes.io/hostname
     whenUnsatisfiable: ScheduleAnyway
+  # SR-20.5 (Phase 20-02b) — relaxed Option A. ONLY container-level subset
+  # because upstream image runs as uid 0 and Prisma writes to /app/.prisma.
+  # No pod-level securityContext, no readOnlyRootFilesystem. See deferred
+  # items for the future non-root fork tracking entry.
+  securityContext:
+    container:
+      allowPrivilegeEscalation: false
+      seccompProfile:
+        type: RuntimeDefault
+      capabilities:
+        drop: ["ALL"]
   # Finding 09.1-F11 — args is overridable so the kind smoke can swap in
   # the mock-litellm image which has no `--config` flag (it's a plain
   # node process). Default value matches the upstream LiteLLM CLI surface.

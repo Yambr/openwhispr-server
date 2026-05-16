@@ -375,7 +375,8 @@
         "embedded": { "type": "boolean" },
         "externalBaseUrl": { "type": "string" },
         "startupProbe": { "$ref": "#/definitions/startupProbe" },
-        "topologySpread": { "$ref": "#/definitions/topologySpread" }
+        "topologySpread": { "$ref": "#/definitions/topologySpread" },
+        "securityContext": { "$ref": "#/definitions/securityContextFull" }
       },
       "allOf": [
         {
