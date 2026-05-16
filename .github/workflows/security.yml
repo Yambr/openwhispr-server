@@ -18,7 +18,14 @@ jobs:
         with: { egress-policy: audit }
       - uses: actions/checkout@v5
         with: { fetch-depth: 0 }
+      # Phase 260516-kya / Plan 01 — L3 secret-leak gate.
+      # config-path explicit so CI consumes the SAME .gitleaks.toml as
+      # lefthook L1 (pre-commit) + L2 (pre-push). Single source of
+      # truth; allowlist drift between CI and local hooks is
+      # structurally impossible.
       - uses: gitleaks/gitleaks-action@ff98106e4c7b2bc287b24eaf42907196329070c7  # v2.3.9
+        with:
+          config-path: .gitleaks.toml
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 

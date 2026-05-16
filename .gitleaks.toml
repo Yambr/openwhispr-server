@@ -1,0 +1,86 @@
+# .gitleaks.toml — single-source-of-truth secret-leak ruleset.
+#
+# Phase 260516-kya / Plan 01 — defense-in-depth hard gate.
+# Consumed by:
+#   - lefthook pre-commit  (L1, `gitleaks protect --staged --config=.gitleaks.toml`)
+#   - lefthook pre-push    (L2, `gitleaks detect  --log-opts=...   --config=.gitleaks.toml`)
+#   - .github/workflows/security.yml gitleaks-action (L3, `config-path: .gitleaks.toml`)
+#   - package.json scripts `lint:gitleaks` / `lint:gitleaks:staged`
+#
+# Plan: .planning/quick/260516-kya-implement-secret-leak-hard-gate-gitleaks/260516-kya-PLAN.md
+# Approved plan: /Users/nick/.claude/plans/jolly-questing-narwhal.md
+#
+# Maintainer contract:
+#   Allowlist additions (paths or regexes) MUST land together with a
+#   matching assertion in tools/lint-gitleaks-config.test.ts. Adding a
+#   permissive entry without a regression assertion is a coverage drop
+#   and will be blocked by the verifier. See CLAUDE.md Hard Rule #4.
+
+title = "openwhispr-server gitleaks config"
+
+[extend]
+# Start from the upstream default ruleset (openai, aws, gcp, slack,
+# stripe, generic-api-key, jwt, etc.) and only LAYER ALLOWLIST on top.
+# We never weaken or override default rules.
+useDefault = true
+
+[allowlist]
+description = "Test fixtures, planning artefacts, operator-facing templates, and known-placeholder shapes."
+
+# Path-based allowlist — directories that are KNOWN to contain
+# illustrative / placeholder credentials. These never reach a runtime
+# code path.
+#
+# Regex anchored at repo root (no leading slash); gitleaks evaluates
+# against the file's path-from-source.
+paths = [
+  # All test surfaces (unit, integration, e2e, contract, smoke, fixtures).
+  '''^tests/''',
+  '''(^|/)tests/''',
+  '''(^|/)__tests__/''',
+  '''\.test\.ts$''',
+  '''\.test\.tsx$''',
+  '''\.spec\.ts$''',
+  '''\.spec\.tsx$''',
+  '''(^|/)fixtures/''',
+  # Locker fixture trees that intentionally contain hardcode/secret
+  # shapes to exercise the linters themselves.
+  '''^tools/lint-no-hardcode/fixtures/''',
+  # Apps/api vitest setup carries placeholder env values.
+  '''^apps/api/vitest\.setup\.ts$''',
+  # Operator-facing .env templates: .env.example, .env.foo.example, etc.
+  '''(^|/)\.env\..*\.example$''',
+  '''(^|/)\.env\.example$''',
+  # Planning artefacts (prose docs, redacted snippets, mock load-test
+  # summaries) — never executed.
+  '''^\.planning/''',
+  # Operator + product docs.
+  '''^docs/''',
+  '''^speaches-audio\.md$''',
+  '''^CHANGELOG\.md$''',
+  # Helm chart test fixtures (synthetic passwords for unit tests
+  # against rendered manifests).
+  '''^charts/openwhispr/tests/''',
+  # Compose-fixture trees used by lint-compose-* tools.
+  '''^compose/.*\.example$''',
+  # Helm-chart parity linter carries synthetic --set-string fake
+  # password values it injects into a dry-run render (so the chart
+  # gates pass without revealing a real secret to the renderer).
+  '''(^|/)tools/lint-compose-chart-parity\.ts$''',
+]
+
+# Regex-based allowlist — literal placeholder shapes we have
+# intentionally seeded across the codebase. Adding a new entry here
+# REQUIRES a matching assertion in tools/lint-gitleaks-config.test.ts.
+regexes = [
+  # OpenRouter placeholder used in BYOK matrix tests.
+  '''sk-or-v1-1234567890abcdef''',
+  # apps/api master-key fixture.
+  '''sk-master-x''',
+  # AWS test placeholders (the IOSFODNN7EXAMPLE shape is the AWS
+  # canonical "do not use" example key from their own docs).
+  '''AKIAIOSFODNN7EXAMPLE''',
+  '''AKIATEST''',
+  # OpenAI sk-proj test placeholder (16-hex variant).
+  '''sk-proj-1234567890abcdef''',
+]
