@@ -33,13 +33,13 @@
 // MAY route through different providers; we surface 'litellm' as the
 // generic provider when the model alias is not in our bundled table.
 
-import { ReasonRequest, type ReasonResponse } from "@openwhispr/contract-tests/schemas";
 import { type ExecutableTx, type TransactionalDb, withTenant } from "@openwhispr/data";
 import {
   type LitellmClient,
   LitellmUpstreamError,
   MissingProviderKeyError,
 } from "@openwhispr/litellm-client";
+import { ReasonRequest, type ReasonResponse } from "@openwhispr/wire-schemas";
 import { sql } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
 import { AuthError, ServiceUnavailable, UpstreamError } from "../errors.js";

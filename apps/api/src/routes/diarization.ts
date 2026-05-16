@@ -40,7 +40,7 @@
 
 import { createHash } from "node:crypto";
 import { setTimeout as sleep } from "node:timers/promises";
-import { DiarizationResponse } from "@openwhispr/contract-tests/schemas";
+import { DiarizationResponse } from "@openwhispr/wire-schemas";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { AuthError, ServiceUnavailable, UpstreamError, ValidationError } from "../errors.js";
 import {

@@ -51,8 +51,8 @@ import type { FastifyInstance } from "fastify";
 // import here is needed for compile-time augmentation in this file
 // regardless of buildApp registration order.
 import "@fastify/cookie";
-import { DeleteAccountResponse } from "@openwhispr/contract-tests/schemas";
 import { type ExecutableTx, type TransactionalDb, withTenant } from "@openwhispr/data";
+import { DeleteAccountResponse } from "@openwhispr/wire-schemas";
 import { sql } from "drizzle-orm";
 import { AuthError } from "../errors.js";
 import { auditCtxFromRequest, recordAudit } from "../lib/audit.js";

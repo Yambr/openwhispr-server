@@ -8,10 +8,15 @@
  */
 
 export * from "./api-keys.js";
+export * from "./check-user.js";
 export * from "./conversations.js";
+export * from "./delete-account.js";
+export * from "./diarization.js";
 export * from "./folders.js";
 export * from "./notes.js";
+export * from "./reason.js";
 export * from "./settings.js";
 export * from "./streaming-usage.js";
 export * from "./transcriptions.js";
+export * from "./verification-status.js";
 export * from "./web-search.js";
