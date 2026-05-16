@@ -8,6 +8,7 @@
 import { Readable } from "node:stream";
 import {
   type Dispatcher,
+  getGlobalDispatcher,
   MockAgent,
   setGlobalDispatcher,
   type request as undiciRequestRef,
@@ -21,6 +22,7 @@ import {
   LitellmUpstreamError,
   MissingProviderKeyError,
   PROVIDER_ENV_VAR,
+  SsrfDispatcherNotInstalledError,
 } from "../../src/index.js";
 
 const BASE = "http://litellm:4000";
@@ -44,6 +46,15 @@ let agent: MockAgent;
 beforeEach(() => {
   agent = new MockAgent({ connections: 1 });
   agent.disableNetConnect();
+  // Phase 41.f / HI-2 — stamp the SSRF-wrap marker on the MockAgent so the
+  // client's first-call assertion does not reject under test. Real production
+  // code stamps the same Symbol on the Agent built by `makeSSRFDispatcher`.
+  Object.defineProperty(agent, Symbol.for("openwhispr.ssrf-wrapped"), {
+    value: true,
+    enumerable: false,
+    writable: false,
+    configurable: false,
+  });
   setGlobalDispatcher(agent);
 });
 
@@ -531,6 +542,141 @@ describe("buildLitellmClient — passthrough", () => {
 //
 // D-41f-1 records the rationale. Tests use opts.request injection seam
 // because MockAgent doesn't surface bodyTimeout on intercepted descriptors.
+// Phase 41.f / HI-2 — SSRF dispatcher boot-time assertion.
+//
+// When the client is invoked without `opts.request` injected, it relies on
+// undici's global dispatcher. That dispatcher MUST be the SSRF-wrapped Agent
+// built by makeSSRFDispatcher (apps/api/src/lib/ssrf-dispatcher.ts). The
+// client checks for the Symbol.for("openwhispr.ssrf-wrapped") marker on the
+// current global dispatcher at first call to any method.
+describe("buildLitellmClient — HI-2 SSRF dispatcher assertion", () => {
+  it("throws SsrfDispatcherNotInstalledError on first call when dispatcher is unmarked", async () => {
+    // The outer beforeEach has stamped the marker on `agent`. To test the
+    // failure branch we explicitly replace the global dispatcher with a
+    // fresh unmarked MockAgent for this single case.
+    const unmarked = new MockAgent({ connections: 1 });
+    unmarked.disableNetConnect();
+    setGlobalDispatcher(unmarked);
+    try {
+      const client = buildLitellmClient(baseConfig(), { isOverride: false });
+      await expect(
+        client.chatCompletions({
+          model: "qwen3.6-plus",
+          messages: [{ role: "user", content: "hi" }],
+          userId: "u1",
+          requestId: "r1",
+        }),
+      ).rejects.toBeInstanceOf(SsrfDispatcherNotInstalledError);
+    } finally {
+      await unmarked.close();
+      // Restore the marked agent so afterEach can close cleanly.
+      setGlobalDispatcher(agent);
+    }
+  });
+
+  it("audioTranscriptions also gates on the SSRF marker", async () => {
+    const unmarked = new MockAgent({ connections: 1 });
+    unmarked.disableNetConnect();
+    setGlobalDispatcher(unmarked);
+    try {
+      const client = buildLitellmClient(baseConfig(), { isOverride: false });
+      const stream = Readable.from([Buffer.from("audio")]);
+      await expect(
+        client.audioTranscriptions({
+          body: stream,
+          contentType: "multipart/form-data",
+          userId: "u1",
+          requestId: "r1",
+        }),
+      ).rejects.toBeInstanceOf(SsrfDispatcherNotInstalledError);
+    } finally {
+      await unmarked.close();
+      setGlobalDispatcher(agent);
+    }
+  });
+
+  it("passthrough also gates on the SSRF marker", async () => {
+    const unmarked = new MockAgent({ connections: 1 });
+    unmarked.disableNetConnect();
+    setGlobalDispatcher(unmarked);
+    try {
+      const client = buildLitellmClient(baseConfig(), { isOverride: false });
+      await expect(
+        client.passthrough("/v1/health", {
+          method: "GET",
+          userId: "u1",
+          requestId: "r1",
+        }),
+      ).rejects.toBeInstanceOf(SsrfDispatcherNotInstalledError);
+    } finally {
+      await unmarked.close();
+      setGlobalDispatcher(agent);
+    }
+  });
+
+  it("chatCompletionsStream also gates on the SSRF marker", async () => {
+    const unmarked = new MockAgent({ connections: 1 });
+    unmarked.disableNetConnect();
+    setGlobalDispatcher(unmarked);
+    try {
+      const client = buildLitellmClient(baseConfig(), { isOverride: false });
+      await expect(
+        client.chatCompletionsStream({
+          model: "qwen3.6-plus",
+          messages: [{ role: "user", content: "hi" }],
+          userId: "u1",
+          requestId: "r1",
+        }),
+      ).rejects.toBeInstanceOf(SsrfDispatcherNotInstalledError);
+    } finally {
+      await unmarked.close();
+      setGlobalDispatcher(agent);
+    }
+  });
+
+  it("does NOT assert when test injects opts.request (bypass the global dispatcher path)", async () => {
+    // No marker on the global dispatcher in this test either, but because
+    // we inject `request`, the client skips the assertion entirely.
+    const unmarked = new MockAgent({ connections: 1 });
+    unmarked.disableNetConnect();
+    setGlobalDispatcher(unmarked);
+    const spy = vi.fn(async () => ({
+      statusCode: 200,
+      headers: {},
+      body: { text: async () => "{}" },
+    }));
+    try {
+      const client = buildLitellmClient(baseConfig(), {
+        isOverride: false,
+        request: spy as unknown as typeof import("undici").request,
+      });
+      const res = await client.chatCompletions({
+        model: "qwen3.6-plus",
+        messages: [{ role: "user", content: "hi" }],
+        userId: "u1",
+        requestId: "r1",
+      });
+      expect(res.statusCode).toBe(200);
+    } finally {
+      await unmarked.close();
+      setGlobalDispatcher(agent);
+    }
+  });
+
+  it("SsrfDispatcherNotInstalledError carries the documented code + name", () => {
+    const err = new SsrfDispatcherNotInstalledError();
+    expect(err.name).toBe("SsrfDispatcherNotInstalledError");
+    expect(err.code).toBe("SSRF_DISPATCHER_NOT_INSTALLED");
+    expect(err.message).toContain("SSRF");
+  });
+
+  // Sanity check: the marker stamped in beforeEach is detectable.
+  it("the SSRF marker on the test agent is discoverable via getGlobalDispatcher", () => {
+    const d = getGlobalDispatcher() as unknown as Record<symbol, unknown>;
+    expect(d[Symbol.for("openwhispr.ssrf-wrapped")]).toBe(true);
+  });
+});
+
 describe("buildLitellmClient — HI-1 timeouts + AbortSignal", () => {
   it("chatCompletions defaults to headersTimeout=30000, bodyTimeout=120000", async () => {
     const spy = vi.fn(async () => ({

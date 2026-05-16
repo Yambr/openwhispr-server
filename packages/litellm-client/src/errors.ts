@@ -14,6 +14,33 @@
 // Threat T-03-03-01 (LITELLM_MASTER_KEY in error message): bodyText is
 // truncated to 200 chars and the auth header is NEVER passed through.
 
+/**
+ * Phase 41.f / HI-2 — thrown when the LiteLLM client is invoked without
+ * the SSRF-wrapped undici dispatcher installed as the process-wide global.
+ *
+ * The client relies entirely on `setGlobalDispatcher(makeSSRFDispatcher(...))`
+ * (apps/api/src/bootstrap.ts) for SSRF allow-list / block-list defence on
+ * outbound LiteLLM traffic. A worker / CLI / future consumer that imports
+ * `buildLitellmClient` without first running the api's SSRF bootstrap would
+ * silently bypass the gate; this error fails loudly on first call instead.
+ *
+ * The dispatcher tag is a Symbol-keyed non-enumerable own property; the
+ * registry key (`Symbol.for("openwhispr.ssrf-wrapped")`) is module-scoped
+ * so the dispatcher module and the client can both compute the same symbol
+ * without a circular dep.
+ */
+export class SsrfDispatcherNotInstalledError extends Error {
+  public readonly code = "SSRF_DISPATCHER_NOT_INSTALLED";
+  constructor() {
+    super(
+      "LiteLLM client refused to send: SSRF-wrapped undici dispatcher not installed " +
+        "as the process-wide global. Call `installGlobalSSRF()` (apps/api/src/bootstrap.ts) " +
+        "or pass an explicit `request` option to buildLitellmClient before invoking any method.",
+    );
+    this.name = "SsrfDispatcherNotInstalledError";
+  }
+}
+
 export class MissingProviderKeyError extends Error {
   public readonly envVar: string;
   public readonly model: string;

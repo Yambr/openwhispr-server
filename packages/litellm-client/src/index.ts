@@ -24,9 +24,39 @@
 // (T-03-03-04 disposition: accept).
 
 import { PassThrough, type Readable } from "node:stream";
-import { type Dispatcher, request as undiciRequest } from "undici";
+import { type Dispatcher, getGlobalDispatcher, request as undiciRequest } from "undici";
 import type { LitellmClientConfig, LitellmProviderKeys } from "./config.js";
-import { LitellmUpstreamError, MissingProviderKeyError } from "./errors.js";
+import {
+  LitellmUpstreamError,
+  MissingProviderKeyError,
+  SsrfDispatcherNotInstalledError,
+} from "./errors.js";
+
+/**
+ * Phase 41.f / HI-2 — well-known marker key. The SSRF-wrapping Agent
+ * stamps this symbol (non-enumerable) on every instance built by
+ * `makeSSRFDispatcher` in apps/api/src/lib/ssrf-dispatcher.ts. We
+ * recompute the same registry-keyed symbol here without importing that
+ * module (avoids the packages → apps circular dep).
+ */
+const SSRF_WRAPPED_MARKER = Symbol.for("openwhispr.ssrf-wrapped");
+
+/**
+ * Assert the process-wide undici dispatcher is the SSRF-wrapped Agent.
+ * Called at first request from each method (not at module load) so that
+ * test files that build a client but never fire a request do not need to
+ * bootstrap SSRF.
+ *
+ * When `opts.request` was injected (test seam), the assertion is skipped
+ * because the injected function owns its own network mocking and the
+ * global dispatcher is not consulted.
+ */
+function assertSsrfInstalled(): void {
+  const dispatcher: Dispatcher & { [k: symbol]: unknown } = getGlobalDispatcher();
+  if (!dispatcher[SSRF_WRAPPED_MARKER]) {
+    throw new SsrfDispatcherNotInstalledError();
+  }
+}
 
 /**
  * Static map of bundled-default model alias -> provider-key env var.
@@ -172,7 +202,14 @@ export function buildLitellmClient(
   opts: BuildLitellmClientOptions = {},
 ): LitellmClient {
   const isOverride = opts.isOverride ?? Boolean(process.env.LITELLM_BASE_URL);
+  // Phase 41.f / HI-2 — when no test-injected `request` is supplied we are
+  // going through undici's global dispatcher; assert it carries the SSRF
+  // marker before any outbound bytes leave the process.
+  const usingGlobalDispatcher = opts.request === undefined;
   const doRequest = opts.request ?? undiciRequest;
+  function ssrfGate(): void {
+    if (usingGlobalDispatcher) assertSsrfInstalled();
+  }
 
   function checkProviderKey(model: string): void {
     // Corporate proxy owns its own auth (T-03-03-04 disposition: accept).
@@ -206,6 +243,7 @@ export function buildLitellmClient(
     baseUrl: config.baseUrl,
 
     async chatCompletions(req) {
+      ssrfGate();
       const model = req.model ?? config.defaultChatModel;
       checkProviderKey(model);
       const body = JSON.stringify({
@@ -234,6 +272,7 @@ export function buildLitellmClient(
     },
 
     async chatCompletionsStream(req) {
+      ssrfGate();
       // Phase 08.2 Plan 01: streaming variant for /api/agent/stream.
       // Returns raw Dispatcher.ResponseData (Node Readable body) — caller
       // must NOT see this method pre-consume the body on 2xx.
@@ -280,6 +319,7 @@ export function buildLitellmClient(
     },
 
     async audioTranscriptions(args) {
+      ssrfGate();
       // Phase 19.2 / Plan 02 — SERVER-ERRORS Entry 11 closure: forward
       // the model into LiteLLM's /v1/audio/transcriptions. LiteLLM
       // proxy v1.83.x reads `model` ONLY from the multipart form data
@@ -332,6 +372,7 @@ export function buildLitellmClient(
     },
 
     async passthrough(path, args) {
+      ssrfGate();
       const headers: Record<string, string> = authHeaders(args.userId, args.requestId);
       if (args.contentType) headers["content-type"] = args.contentType;
       // Phase 41.f / HI-1 — forward headersTimeout / bodyTimeout / signal.
@@ -361,5 +402,9 @@ export {
   DEFAULT_LITELLM_BASE_URL,
   loadLitellmConfigFromEnv,
 } from "./config.js";
-export { LitellmUpstreamError, MissingProviderKeyError } from "./errors.js";
+export {
+  LitellmUpstreamError,
+  MissingProviderKeyError,
+  SsrfDispatcherNotInstalledError,
+} from "./errors.js";
 export { getDefaultAgentModel, loadLitellmModelAliases } from "./model-aliases.js";
