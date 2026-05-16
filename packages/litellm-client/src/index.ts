@@ -47,6 +47,15 @@ export const PROVIDER_ENV_VAR: Record<keyof LitellmProviderKeys, string> = {
   pyannote: "PYANNOTE_API_KEY",
 };
 
+/**
+ * Phase 41.f / HI-1 — default timeouts for the three non-streaming
+ * methods. D-41f-1 picks one pair of conservative defaults that pass both
+ * the Phase 8 SLO budget and the 1000-concurrent stall-vector defence.
+ * Callers can override per-call (transcribe long audio, etc.).
+ */
+export const DEFAULT_HEADERS_TIMEOUT_MS = 30_000;
+export const DEFAULT_BODY_TIMEOUT_MS = 120_000;
+
 export interface ChatCompletionRequest {
   model?: string;
   messages: Array<{ role: string; content: string }>;
@@ -54,6 +63,12 @@ export interface ChatCompletionRequest {
   requestId: string;
   /** Pass-through additional OpenAI chat-completion params (temperature, max_tokens, ...). */
   extras?: Record<string, unknown>;
+  /** Phase 41.f / HI-1 — abort signal forwarded to undici. */
+  signal?: AbortSignal;
+  /** Phase 41.f / HI-1 — undici headersTimeout override; defaults to DEFAULT_HEADERS_TIMEOUT_MS. */
+  headersTimeout?: number;
+  /** Phase 41.f / HI-1 — undici bodyTimeout override; defaults to DEFAULT_BODY_TIMEOUT_MS. */
+  bodyTimeout?: number;
 }
 
 /**
@@ -92,6 +107,12 @@ export interface AudioTranscriptionRequest {
    * `checkProviderKey` continues to gate on the same default alias.
    */
   model?: string;
+  /** Phase 41.f / HI-1 — abort signal forwarded to undici. */
+  signal?: AbortSignal;
+  /** Phase 41.f / HI-1 — undici headersTimeout override. */
+  headersTimeout?: number;
+  /** Phase 41.f / HI-1 — undici bodyTimeout override. */
+  bodyTimeout?: number;
 }
 
 export const DEFAULT_STT_MODEL = "whisper-large-v3";
@@ -102,6 +123,12 @@ export interface PassthroughRequest {
   contentType?: string;
   userId: string;
   requestId: string;
+  /** Phase 41.f / HI-1 — abort signal forwarded to undici. */
+  signal?: AbortSignal;
+  /** Phase 41.f / HI-1 — undici headersTimeout override. */
+  headersTimeout?: number;
+  /** Phase 41.f / HI-1 — undici bodyTimeout override. */
+  bodyTimeout?: number;
 }
 
 export interface LitellmClient {
@@ -187,14 +214,22 @@ export function buildLitellmClient(
         messages: req.messages,
         user: req.userId, // D-03: per-user attribution via OpenAI-compatible field
       });
-      const res = await doRequest(`${config.baseUrl}/v1/chat/completions`, {
+      // Phase 41.f / HI-1 — forward headersTimeout / bodyTimeout / signal.
+      const reqOpts: Record<string, unknown> = {
         method: "POST",
         headers: {
           ...authHeaders(req.userId, req.requestId),
           "content-type": "application/json",
         },
         body,
-      });
+        headersTimeout: req.headersTimeout ?? DEFAULT_HEADERS_TIMEOUT_MS,
+        bodyTimeout: req.bodyTimeout ?? DEFAULT_BODY_TIMEOUT_MS,
+      };
+      if (req.signal) reqOpts.signal = req.signal;
+      const res = await doRequest(
+        `${config.baseUrl}/v1/chat/completions`,
+        reqOpts as Parameters<typeof doRequest>[1],
+      );
       return ensureOk(res);
     },
 
@@ -281,30 +316,37 @@ export function buildLitellmClient(
       }
 
       const url = `${config.baseUrl}/v1/audio/transcriptions?model=${encodeURIComponent(model)}`;
-      const res = await doRequest(url, {
+      const reqOpts: Record<string, unknown> = {
         method: "POST",
         headers: {
           ...authHeaders(args.userId, args.requestId),
           "content-type": args.contentType,
         },
         body,
-      });
+        headersTimeout: args.headersTimeout ?? DEFAULT_HEADERS_TIMEOUT_MS,
+        bodyTimeout: args.bodyTimeout ?? DEFAULT_BODY_TIMEOUT_MS,
+      };
+      if (args.signal) reqOpts.signal = args.signal;
+      const res = await doRequest(url, reqOpts as Parameters<typeof doRequest>[1]);
       return ensureOk(res);
     },
 
     async passthrough(path, args) {
       const headers: Record<string, string> = authHeaders(args.userId, args.requestId);
       if (args.contentType) headers["content-type"] = args.contentType;
-      const reqOpts: {
-        method: Dispatcher.HttpMethod;
-        headers: Record<string, string>;
-        body?: Readable | string | Buffer;
-      } = {
+      // Phase 41.f / HI-1 — forward headersTimeout / bodyTimeout / signal.
+      const reqOpts: Record<string, unknown> = {
         method: args.method as Dispatcher.HttpMethod,
         headers,
+        headersTimeout: args.headersTimeout ?? DEFAULT_HEADERS_TIMEOUT_MS,
+        bodyTimeout: args.bodyTimeout ?? DEFAULT_BODY_TIMEOUT_MS,
       };
       if (args.body !== undefined) reqOpts.body = args.body;
-      const res = await doRequest(`${config.baseUrl}${path}`, reqOpts);
+      if (args.signal) reqOpts.signal = args.signal;
+      const res = await doRequest(
+        `${config.baseUrl}${path}`,
+        reqOpts as Parameters<typeof doRequest>[1],
+      );
       return ensureOk(res);
     },
   };

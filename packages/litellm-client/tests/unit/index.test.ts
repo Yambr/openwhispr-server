@@ -522,6 +522,134 @@ describe("buildLitellmClient — passthrough", () => {
   });
 });
 
+// Phase 41.f / HI-1 — timeouts + AbortSignal on 3 methods.
+//
+// chatCompletions / audioTranscriptions / passthrough must:
+//   * default headersTimeout to 30_000 and bodyTimeout to 120_000;
+//   * accept per-call overrides for both;
+//   * forward AbortSignal when supplied.
+//
+// D-41f-1 records the rationale. Tests use opts.request injection seam
+// because MockAgent doesn't surface bodyTimeout on intercepted descriptors.
+describe("buildLitellmClient — HI-1 timeouts + AbortSignal", () => {
+  it("chatCompletions defaults to headersTimeout=30000, bodyTimeout=120000", async () => {
+    const spy = vi.fn(async () => ({
+      statusCode: 200,
+      headers: {},
+      body: { text: async () => "{}" },
+    }));
+    const client = buildLitellmClient(baseConfig(), {
+      isOverride: false,
+      request: spy as unknown as typeof import("undici").request,
+    });
+    await client.chatCompletions({
+      model: "qwen3.6-plus",
+      messages: [{ role: "user", content: "hi" }],
+      userId: "u1",
+      requestId: "r1",
+    });
+    const opts = spy.mock.calls[0][1] as Record<string, unknown>;
+    expect(opts.headersTimeout).toBe(30_000);
+    expect(opts.bodyTimeout).toBe(120_000);
+  });
+
+  it("chatCompletions honors per-call headersTimeout + bodyTimeout overrides", async () => {
+    const spy = vi.fn(async () => ({
+      statusCode: 200,
+      headers: {},
+      body: { text: async () => "{}" },
+    }));
+    const client = buildLitellmClient(baseConfig(), {
+      isOverride: false,
+      request: spy as unknown as typeof import("undici").request,
+    });
+    await client.chatCompletions({
+      model: "qwen3.6-plus",
+      messages: [{ role: "user", content: "hi" }],
+      userId: "u1",
+      requestId: "r1",
+      headersTimeout: 5_000,
+      bodyTimeout: 60_000,
+    });
+    const opts = spy.mock.calls[0][1] as Record<string, unknown>;
+    expect(opts.headersTimeout).toBe(5_000);
+    expect(opts.bodyTimeout).toBe(60_000);
+  });
+
+  it("chatCompletions forwards AbortSignal when supplied", async () => {
+    const spy = vi.fn(async () => ({
+      statusCode: 200,
+      headers: {},
+      body: { text: async () => "{}" },
+    }));
+    const ac = new AbortController();
+    const client = buildLitellmClient(baseConfig(), {
+      isOverride: false,
+      request: spy as unknown as typeof import("undici").request,
+    });
+    await client.chatCompletions({
+      model: "qwen3.6-plus",
+      messages: [{ role: "user", content: "hi" }],
+      userId: "u1",
+      requestId: "r1",
+      signal: ac.signal,
+    });
+    const opts = spy.mock.calls[0][1] as Record<string, unknown>;
+    expect(opts.signal).toBe(ac.signal);
+  });
+
+  it("audioTranscriptions defaults headersTimeout/bodyTimeout and forwards signal", async () => {
+    const spy = vi.fn(async () => ({
+      statusCode: 200,
+      headers: {},
+      body: { text: async () => "{}" },
+    }));
+    const ac = new AbortController();
+    const client = buildLitellmClient(baseConfig(), {
+      isOverride: false,
+      request: spy as unknown as typeof import("undici").request,
+    });
+    const stream = Readable.from([Buffer.from("audio")]);
+    await client.audioTranscriptions({
+      model: "whisper-large-v3",
+      body: stream,
+      contentType: "multipart/form-data; boundary=zzz",
+      userId: "u1",
+      requestId: "r1",
+      signal: ac.signal,
+      headersTimeout: 10_000,
+    });
+    const opts = spy.mock.calls[0][1] as Record<string, unknown>;
+    expect(opts.headersTimeout).toBe(10_000);
+    expect(opts.bodyTimeout).toBe(120_000); // default retained when override omitted
+    expect(opts.signal).toBe(ac.signal);
+  });
+
+  it("passthrough defaults headersTimeout/bodyTimeout and forwards signal", async () => {
+    const spy = vi.fn(async () => ({
+      statusCode: 200,
+      headers: {},
+      body: { text: async () => "{}" },
+    }));
+    const ac = new AbortController();
+    const client = buildLitellmClient(baseConfig(), {
+      isOverride: false,
+      request: spy as unknown as typeof import("undici").request,
+    });
+    await client.passthrough("/v1/health", {
+      method: "GET",
+      userId: "u1",
+      requestId: "r1",
+      signal: ac.signal,
+      bodyTimeout: 7_500,
+    });
+    const opts = spy.mock.calls[0][1] as Record<string, unknown>;
+    expect(opts.headersTimeout).toBe(30_000);
+    expect(opts.bodyTimeout).toBe(7_500);
+    expect(opts.signal).toBe(ac.signal);
+  });
+});
+
 describe("buildLitellmClient — surface", () => {
   it("exposes baseUrl as a readonly property (Plan 06 wsUpstream needs it)", () => {
     const client = buildLitellmClient(baseConfig({ baseUrl: "http://litellm:4000" }), {
