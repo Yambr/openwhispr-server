@@ -82,6 +82,14 @@ spec:
         - name: litellm
           image: "{{ .Values.litellm.image.repository }}:{{ .Values.litellm.image.tag }}"
           imagePullPolicy: {{ .Values.image.pullPolicy }}
+          # SR-20.5 (Phase 20-02b) — Option A relaxed-hardening. The upstream
+          # ghcr.io/berriai/litellm image runs as uid 0 and Prisma writes to
+          # /app/.prisma at startup; full hardening (runAsNonRoot +
+          # readOnlyRootFilesystem) would break LiteLLM, so we apply ONLY
+          # the safe subset. Future fork tracked in
+          # .planning/deferred-items.md "LiteLLM non-root image fork".
+          securityContext:
+            {{- toYaml .Values.litellm.securityContext.container | nindent 12 }}
           ports:
             - name: http
               containerPort: 4000

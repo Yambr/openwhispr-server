@@ -185,3 +185,77 @@ tests:
       - equal:
           path: spec.template.spec.topologySpreadConstraints[0].labelSelector.matchLabels["app.kubernetes.io/component"]
           value: web
+
+  # SR-20.5 — web Deployment full-hardening. Same pod+container hardening
+  # as api, plus a 256Mi emptyDir at /app/apps/web/.next/cache because the
+  # Next.js standalone server writes the runtime ISR cache there (would
+  # crash with EROFS on a read-only rootfs without an explicit writable mount).
+  - it: web Deployment pod-level securityContext is full-hardening (SR-20.5)
+    template: web-deployment.yaml
+    set:
+      secrets:
+        mode: eso
+        external:
+          storeRef: vault-clusterstore
+    asserts:
+      - equal:
+          path: spec.template.spec.securityContext.runAsNonRoot
+          value: true
+      - equal:
+          path: spec.template.spec.securityContext.runAsUser
+          value: 1000
+      - equal:
+          path: spec.template.spec.securityContext.fsGroup
+          value: 1000
+      - equal:
+          path: spec.template.spec.securityContext.seccompProfile.type
+          value: RuntimeDefault
+
+  - it: web Deployment container-level securityContext is full-hardening (SR-20.5)
+    template: web-deployment.yaml
+    set:
+      secrets:
+        mode: eso
+        external:
+          storeRef: vault-clusterstore
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].securityContext.readOnlyRootFilesystem
+          value: true
+      - equal:
+          path: spec.template.spec.containers[0].securityContext.allowPrivilegeEscalation
+          value: false
+      - contains:
+          path: spec.template.spec.containers[0].securityContext.capabilities.drop
+          content: ALL
+
+  - it: web Deployment mounts emptyDir at /tmp + /app/apps/web/.next/cache (SR-20.5)
+    template: web-deployment.yaml
+    set:
+      secrets:
+        mode: eso
+        external:
+          storeRef: vault-clusterstore
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].volumeMounts
+          content:
+            name: tmp
+            mountPath: /tmp
+      - contains:
+          path: spec.template.spec.containers[0].volumeMounts
+          content:
+            name: next-cache
+            mountPath: /app/apps/web/.next/cache
+      - contains:
+          path: spec.template.spec.volumes
+          content:
+            name: tmp
+            emptyDir:
+              sizeLimit: 64Mi
+      - contains:
+          path: spec.template.spec.volumes
+          content:
+            name: next-cache
+            emptyDir:
+              sizeLimit: 256Mi
