@@ -111,11 +111,15 @@ ENV PORT=3000
 ENV HOSTNAME=0.0.0.0
 ENV NEXT_TELEMETRY_DISABLED=1
 
-# Dedicated non-root user (uid 1001). The default `node` user (uid 1000)
-# already exists in node:*-alpine; we use a separate uid so file ownership
-# can never collide with bind-mounted dev artifacts created by uid 1000.
-RUN addgroup -S nodejs -g 1001 \
- && adduser  -S nextjs -G nodejs -u 1001
+# SR-20.5 (Phase 20-02b) — uid 1000 to match K8s securityContext.runAsUser
+# and api/worker images. node:24-alpine already ships a `node` user at uid
+# 1000 / gid 1000, so we REUSE it rather than creating a parallel nextjs
+# user (a fresh addgroup -g 1000 would collide with "gid '1000' in use").
+# The .next/cache directory is pre-created BEFORE the chown sweep so the
+# Next.js standalone ISR cache writer (which Next.js 15 expects to be
+# writable even though we run on a read-only K8s rootfs — see SR-20.5
+# emptyDir mount) inherits uid 1000 ownership.
+RUN mkdir -p /app/apps/web/.next/cache
 
 # Next.js standalone output layout (monorepo root mode):
 #   apps/web/.next/standalone/  — self-contained server + pruned node_modules
@@ -125,11 +129,16 @@ RUN addgroup -S nodejs -g 1001 \
 #     └── package.json
 # We copy the entire standalone tree to /app, then drop .next/static and
 # public/ at the conventional paths the standalone server reads from.
-COPY --from=build --chown=nextjs:nodejs /app/apps/web/.next/standalone ./
-COPY --from=build --chown=nextjs:nodejs /app/apps/web/.next/static     ./apps/web/.next/static
-COPY --from=build --chown=nextjs:nodejs /app/apps/web/public           ./apps/web/public
+COPY --from=build --chown=1000:1000 /app/apps/web/.next/standalone ./
+COPY --from=build --chown=1000:1000 /app/apps/web/.next/static     ./apps/web/.next/static
+COPY --from=build --chown=1000:1000 /app/apps/web/public           ./apps/web/public
 
-USER nextjs
+# Final ownership sweep so the pre-created .next/cache directory + everything
+# under /app is owned by uid 1000. Numeric form survives multi-stage builds
+# where the named user may not exist in intermediate layers.
+RUN chown -R 1000:1000 /app
+
+USER 1000
 EXPOSE 3000
 
 # BusyBox wget ships in alpine — no apk add needed. Healthcheck targets
