@@ -29,7 +29,11 @@ jobs:
   lint-english:
     runs-on: ubuntu-24.04
     steps:
+      # fetch-depth: 0 — needed by Phase 31 / Plan 07 LOCKER-09's
+      # allowlist-diff CI step (below) so `git show origin/<base>:<path>`
+      # resolves against the PR base branch.
       - uses: actions/checkout@v5
+        with: { fetch-depth: 0 }
       - uses: pnpm/action-setup@v4
         with: { version: 11.0.8 }
       - uses: actions/setup-node@v5
@@ -39,6 +43,24 @@ jobs:
       - run: pnpm lint:colocated-tests
       - run: pnpm lint:phase-tag-comments
       - run: pnpm lint:dockerfile-tls
+      # Phase 31 / Plan 07 / LOCKER-08 — aggregate lockers gate.
+      # `make lint:lockers` fans out to all six locker binaries via the
+      # `lint:lockers` aggregate package.json script. LOCKER-04/05/06
+      # ship --warn-only on landing (Phase 31); they flip to BLOCKING in
+      # 31-08 / 37 / 36.a final commits.
+      - run: make lint:lockers
+      # Phase 31 / Plan 07 / LOCKER-09 — allowlist-diff CI gate.
+      # Refuses net additions to any of the six locker allowlist files
+      # unless the commit body or PR body carries
+      # `Allowlist-grow-approved: issue-NNNN`. Pulls the base ref via
+      # GITHUB_BASE_REF (set by actions/checkout for PRs); the env
+      # passthrough below makes the commit message + PR body available
+      # to the diff tool. fetch-depth: 0 is required so `git show
+      # origin/<base>:<path>` resolves.
+      - run: pnpm lint:lockers-allowlist-diff
+        env:
+          COMMIT_MESSAGE: ${{ github.event.head_commit.message }}
+          PR_BODY: ${{ github.event.pull_request.body }}
 
   commitlint:
     if: github.event_name == 'pull_request'

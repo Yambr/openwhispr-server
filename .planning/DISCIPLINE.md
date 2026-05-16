@@ -33,6 +33,16 @@
 
 10. **Audit trail.** Every phase MUST ship: PLAN.md, SUMMARY.md, REVIEW.md (code-review agent), VERIFICATION.md (verifier agent), and a coverage delta report (`<phase>-COVERAGE.md`) showing per-file before / after on the four axes. Missing any of these → `gaps_found`.
 
+11. **No NODE_ENV branches in runtime paths.** `process.env.NODE_ENV` and `NODE_ENV` comparisons MAY appear ONLY in `bootstrap.ts`, `config/*.ts`, `otel-bootstrap.ts`, `*.config.ts`. Anywhere else in `apps/**/src/**` + `packages/**/src/**` is REFUSED. Enforced by `tools/lint-no-env-branches.ts` (LOCKER-01).
+
+12. **No type-suppression.** `as any`, `as unknown as`, `@ts-ignore`, `@ts-nocheck` are REFUSED in production code. `@ts-expect-error` is permitted ONLY in the format `@ts-expect-error issue-NNNN: <reason>`. Allowlist exists for pre-existing debt; net additions REFUSE the PR. Enforced by `tools/lint-no-suppressions.ts` (LOCKER-02). The related defence-in-depth invariant — Error subclasses MUST truncate `bodyText|responseBody|upstreamPayload|response|body` string fields at construction — is enforced by `tools/lint-secret-shape-in-error.ts` (LOCKER-05).
+
+13. **No hardcoded localhost / UUID / test-token shapes.** `localhost`, `127.0.0.1`, ports `:3000|:4000|:8080`, UUID literals, and secret-shape literals (`sk-…`, `sk-ant-…`, `AIza…`, `AKIA…`, `Bearer ey…`) are REFUSED outside `tests/`, `.env.*.example`, `compose/`, `docs/`, `charts/`, `tools/`. The canonical `DEFAULT_TENANT_ID = '00000000-0000-0000-0000-000000000000'` is permanently allowlisted. Enforced by `tools/lint-no-hardcode.ts` (LOCKER-03).
+
+14. **Production-readiness invariants.** Every Fastify route declaration (`app.route|get|post|put|patch|delete`) MUST carry `schema: { body|querystring|params: <ZodSchema> }` AND `config: { rateLimit: ... }`. `rateLimit: false` is permitted ONLY for `/api/health|/api/ready|/api/healthz|/api/_test/*` URLs. Every exported symbol MUST have at least one non-test importer. The related defence-in-depth invariant — `child_process.spawn('bash', ['-c', ...])` / `execSync` / `exec` / `execFileSync` MUST NOT interpolate template-literal credentials referencing `*_URL|*_KEY|*_PASSWORD|*_SECRET|*_TOKEN` bindings — is enforced by `tools/lint-shell-credential-interpolation.ts` (LOCKER-06). Use argv-array form `spawn(cmd, [arg, ...], { shell: false })` instead. Enforced by `tools/lint-prod-readiness.ts` (LOCKER-04) + LOCKER-06.
+
+**Locker WARN→BLOCKING ledger.** LOCKER-04 ships WARN-only-on-land; flips to BLOCKING in the closing commit of phase 31-08 (bulk-fix). LOCKER-05 ships WARN-only-on-land; flips in the closing commit of Phase 37 (CRIT-FIX-09). LOCKER-06 ships WARN-only-on-land; flips in the closing commit of Phase 36.a (CRIT-FIX-05). LOCKER-01/02/03 ship BLOCKING from day one. The integration gate (lefthook + `make lint:lockers` + ci.yml + nightly.yml + Makefile + DISCIPLINE.md/CLAUDE.md mirror + `tools/lockers-allowlist-diff.ts`) ships in the SINGLE atomic commit of Phase 31 / Plan 31-07 (LOCKER-07/08/09) — verifier rejects splits.
+
 ## Retroactive enforcement
 
 Phases completed before this document existed (all phases up to and including 03 at the time of writing) are subject to a **discipline back-fill pass**:
