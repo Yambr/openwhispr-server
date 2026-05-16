@@ -164,7 +164,11 @@ export function extractFeatureTags(text: string): FeatureTags {
       }
     }
     if (tokens.includes("@expected-red")) {
-      const phaseTok = tokens.find((t) => /^@after-phase-\d+(\.\d+)?$/.test(t));
+      // Phase 28+ — accept optional `-DESCRIPTOR` suffix on @after-phase-N
+      // tags (e.g. `@after-phase-44-MOCK-CORP-LITELLM`). The descriptor is
+      // freeform alphanumeric+hyphen; the numeric component is still
+      // required and remains the canonical sort key.
+      const phaseTok = tokens.find((t) => /^@after-phase-\d+(\.\d+)?(-[A-Za-z0-9-]+)?$/.test(t));
       // Sub-phase tags `@after-phase-19.1` admitted alongside `@after-phase-19`
       // (Phase 18.1 / Plan 05; per D-29). `afterPhase` records the major
       // numeric component only — minor is preserved in `raw` for downstream
