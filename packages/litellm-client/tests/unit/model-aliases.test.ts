@@ -10,7 +10,11 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { getDefaultAgentModel, loadLitellmModelAliases } from "../../src/model-aliases.js";
+import {
+  getDefaultAgentModel,
+  loadBundledModelProviders,
+  loadLitellmModelAliases,
+} from "../../src/model-aliases.js";
 
 let tmpDir: string;
 let yamlPath: string;
@@ -100,5 +104,80 @@ model_list:
   it("returns a string never carrying a provider-prefix slash", () => {
     // Negative regression — the bug class HI-01 closes is a slashed alias.
     expect(getDefaultAgentModel()).not.toMatch(/^[a-z0-9]+\//);
+  });
+});
+
+describe("loadBundledModelProviders (HI-3 / ME-01)", () => {
+  it("derives the provider map from litellm_params.model prefix", () => {
+    writeFileSync(
+      yamlPath,
+      `
+model_list:
+  - model_name: alpha
+    litellm_params:
+      model: openrouter/foo/alpha
+      api_key: os.environ/OPENROUTER_API_KEY
+  - model_name: beta
+    litellm_params:
+      model: groq/whisper-large-v3
+      api_key: os.environ/GROQ_API_KEY
+`,
+      "utf8",
+    );
+    expect(loadBundledModelProviders(yamlPath)).toEqual({
+      alpha: "openrouter",
+      beta: "groq",
+    });
+  });
+
+  it("drops entries whose provider prefix is outside the known set (openai realtime)", () => {
+    writeFileSync(
+      yamlPath,
+      `
+model_list:
+  - model_name: gpt-realtime
+    litellm_params:
+      model: openai/gpt-realtime
+      mode: realtime
+  - model_name: alpha
+    litellm_params:
+      model: openrouter/foo/alpha
+`,
+      "utf8",
+    );
+    const out = loadBundledModelProviders(yamlPath);
+    expect(out).toEqual({ alpha: "openrouter" });
+    expect(out["gpt-realtime"]).toBeUndefined();
+  });
+
+  it("matches the repo yaml: qwen3.6-plus -> openrouter, whisper-large-v3 -> groq", () => {
+    const out = loadBundledModelProviders();
+    expect(out["qwen3.6-plus"]).toBe("openrouter");
+    expect(out["gemini-3-flash"]).toBe("openrouter");
+    expect(out["gpt-4o-mini"]).toBe("openrouter");
+    expect(out["whisper-large-v3"]).toBe("groq");
+  });
+
+  it("throws when model_list is missing", () => {
+    writeFileSync(yamlPath, "general_settings: {}\n", "utf8");
+    expect(() => loadBundledModelProviders(yamlPath)).toThrow(/model_list/);
+  });
+
+  it("skips entries with missing model_name or missing litellm_params.model", () => {
+    writeFileSync(
+      yamlPath,
+      `
+model_list:
+  - model_name: complete
+    litellm_params:
+      model: groq/whisper-large-v3
+  - model_name: partial
+  - litellm_params:
+      model: openrouter/foo/bar
+`,
+      "utf8",
+    );
+    const out = loadBundledModelProviders(yamlPath);
+    expect(out).toEqual({ complete: "groq" });
   });
 });

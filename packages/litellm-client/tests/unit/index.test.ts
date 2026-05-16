@@ -811,6 +811,18 @@ describe("buildLitellmClient — surface", () => {
     expect(BUNDLED_MODEL_PROVIDER["whisper-large-v3"]).toBe("groq");
   });
 
+  it("Phase 41.f / HI-3 — BUNDLED_MODEL_PROVIDER is derived from the yaml (single source of truth)", async () => {
+    // Import the loader directly to confirm the constant IS the derivation,
+    // not a hand-maintained mirror. Any drift between this assertion's
+    // expectation and the actual constant means the source of truth has
+    // forked again.
+    const { loadBundledModelProviders } = await import("../../src/model-aliases.js");
+    const derived = loadBundledModelProviders();
+    // The constant exposed by the index module MUST match the yaml-derived
+    // map byte-for-byte (key set + values).
+    expect({ ...BUNDLED_MODEL_PROVIDER }).toEqual(derived);
+  });
+
   it("PROVIDER_ENV_VAR maps every provider key to the documented env var", () => {
     expect(PROVIDER_ENV_VAR.openrouter).toBe("OPENROUTER_API_KEY");
     expect(PROVIDER_ENV_VAR.groq).toBe("GROQ_API_KEY");

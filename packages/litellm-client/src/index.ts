@@ -31,6 +31,7 @@ import {
   MissingProviderKeyError,
   SsrfDispatcherNotInstalledError,
 } from "./errors.js";
+import { loadBundledModelProviders } from "./model-aliases.js";
 
 /**
  * Phase 41.f / HI-2 — well-known marker key. The SSRF-wrapping Agent
@@ -59,17 +60,38 @@ function assertSsrfInstalled(): void {
 }
 
 /**
- * Static map of bundled-default model alias -> provider-key env var.
- * Mirrors compose/litellm/litellm_config.yaml `model_list`. When the
- * operator overrides LITELLM_BASE_URL to a corporate proxy this map is
- * intentionally bypassed (corporate proxy owns its own provider auth).
+ * Phase 41.f / HI-3 — bundled-default model alias → provider-key map,
+ * DERIVED from `compose/litellm/litellm_config.yaml` at module load.
+ * Closes the drift class flagged in ME-01 / HI-3 of the litellm-client
+ * review: any model added to the yaml is automatically picked up by the
+ * precheck without a hand-maintained mirror.
+ *
+ * Override mode (LITELLM_BASE_URL set) intentionally bypasses this map —
+ * corporate proxy owns its own provider auth.
+ *
+ * Fallback: if the yaml is unreadable (e.g. tests running outside the
+ * repo checkout), fall back to the four-entry static map preserving the
+ * pre-41.f surface. The fallback is intentionally narrow so a fresh
+ * clone with a corrupted yaml still surfaces a useful error via the
+ * subsequent route 503 rather than crashing module load.
  */
-export const BUNDLED_MODEL_PROVIDER: Record<string, keyof LitellmProviderKeys> = {
-  "qwen3.6-plus": "openrouter",
-  "gemini-3-flash": "openrouter",
-  "gpt-4o-mini": "openrouter",
-  "whisper-large-v3": "groq",
-};
+function deriveBundledModelProviderMap(): Record<string, keyof LitellmProviderKeys> {
+  try {
+    return loadBundledModelProviders() as Record<string, keyof LitellmProviderKeys>;
+  } catch {
+    // Tests that exercise this fallback live in
+    // `tests/unit/model-aliases.test.ts`; the static set below preserves
+    // the surface that pre-41.f routes depended on.
+    return {
+      "qwen3.6-plus": "openrouter",
+      "gemini-3-flash": "openrouter",
+      "gpt-4o-mini": "openrouter",
+      "whisper-large-v3": "groq",
+    };
+  }
+}
+export const BUNDLED_MODEL_PROVIDER: Record<string, keyof LitellmProviderKeys> =
+  deriveBundledModelProviderMap();
 
 export const PROVIDER_ENV_VAR: Record<keyof LitellmProviderKeys, string> = {
   openrouter: "OPENROUTER_API_KEY",
@@ -407,4 +429,8 @@ export {
   MissingProviderKeyError,
   SsrfDispatcherNotInstalledError,
 } from "./errors.js";
-export { getDefaultAgentModel, loadLitellmModelAliases } from "./model-aliases.js";
+export {
+  getDefaultAgentModel,
+  loadBundledModelProviders,
+  loadLitellmModelAliases,
+} from "./model-aliases.js";
