@@ -205,17 +205,17 @@ apps/api/src/routes/tokens/_call-provider.ts:69  # issue-31-04-debt-LOCKER-04-de
 apps/web/src/app/(admin)/admin/config/page.tsx:18  # issue-31-04-debt-LOCKER-04-dead-export-phase-38
 apps/web/src/app/(admin)/admin/observability/page.tsx:15  # issue-31-04-debt-LOCKER-04-dead-export-phase-38
 apps/web/src/app/(admin)/admin/page.tsx:14  # issue-31-04-debt-LOCKER-04-dead-export-phase-38
-apps/web/src/app/(admin)/layout.tsx:12  # issue-31-04-debt-LOCKER-04-dead-export-phase-38
+apps/web/src/app/(admin)/layout.tsx:38  # issue-31-04-debt-LOCKER-04-dead-export-phase-38 (line drifted 12 -> 38 by 41-c HI-1 admin role guard)
 apps/web/src/app/(auth)/app/account/page.tsx:16  # issue-31-04-debt-LOCKER-04-dead-export-phase-38
-apps/web/src/app/(auth)/app/conversations/[id]/page.tsx:29  # issue-31-04-debt-LOCKER-04-dead-export-phase-38
-apps/web/src/app/(auth)/app/conversations/page.tsx:26  # issue-31-04-debt-LOCKER-04-dead-export-phase-38
+apps/web/src/app/(auth)/app/conversations/[id]/page.tsx:26  # issue-31-04-debt-LOCKER-04-dead-export-phase-38 (line drifted 29 -> 26 by 41-c HI-2 PLAYWRIGHT_DISABLE_SSR_PREFETCH removal)
+apps/web/src/app/(auth)/app/conversations/page.tsx:23  # issue-31-04-debt-LOCKER-04-dead-export-phase-38 (line drifted 26 -> 23 by 41-c HI-2)
 apps/web/src/app/(auth)/app/conversations/search/page.tsx:13  # issue-31-04-debt-LOCKER-04-dead-export-phase-38
 apps/web/src/app/(auth)/app/notes/[id]/page.tsx:19  # issue-31-04-debt-LOCKER-04-dead-export-phase-38
-apps/web/src/app/(auth)/app/notes/page.tsx:26  # issue-31-04-debt-LOCKER-04-dead-export-phase-38
+apps/web/src/app/(auth)/app/notes/page.tsx:23  # issue-31-04-debt-LOCKER-04-dead-export-phase-38 (line drifted 26 -> 23 by 41-c HI-2)
 apps/web/src/app/(auth)/app/notes/search/page.tsx:10  # issue-31-04-debt-LOCKER-04-dead-export-phase-38
-apps/web/src/app/(auth)/app/page.tsx:39  # issue-31-04-debt-LOCKER-04-dead-export-phase-38
+apps/web/src/app/(auth)/app/page.tsx:28  # issue-31-04-debt-LOCKER-04-dead-export-phase-38 (line drifted 39 -> 28 by 41-c HI-2)
 apps/web/src/app/(auth)/app/transcriptions/[id]/page.tsx:25  # issue-31-04-debt-LOCKER-04-dead-export-phase-38
-apps/web/src/app/(auth)/app/transcriptions/page.tsx:26  # issue-31-04-debt-LOCKER-04-dead-export-phase-38
+apps/web/src/app/(auth)/app/transcriptions/page.tsx:23  # issue-31-04-debt-LOCKER-04-dead-export-phase-38 (line drifted 26 -> 23 by 41-c HI-2)
 apps/web/src/app/(auth)/layout.tsx:17  # issue-31-04-debt-LOCKER-04-dead-export-phase-38
 apps/web/src/app/(public)/layout.tsx:13  # issue-31-04-debt-LOCKER-04-dead-export-phase-38
 apps/web/src/app/(public)/setup/page.tsx:53  # issue-31-04-debt-LOCKER-04-dead-export-phase-38

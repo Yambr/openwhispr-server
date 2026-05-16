@@ -753,12 +753,9 @@ services:
       # apps/api on the internal bridge (no Traefik hop). The browser-side
       # fetches go through Traefik via relative `/api/*` paths.
       INTERNAL_API_URL: http://api:3000
-      # Phase 07.1 / Plan 13.2 — Playwright SSR-prefetch escape hatch.
-      # When set to "1", every RSC page that would otherwise call
-      # `queryClient.prefetchQuery` skips the prefetch so the Client subtree
-      # issues the same useQuery against /api/* in the browser, where
-      # `page.route()` can intercept. Production deploys leave this unset.
-      PLAYWRIGHT_DISABLE_SSR_PREFETCH: ${PLAYWRIGHT_DISABLE_SSR_PREFETCH:-}
+      # Phase 41 / Plan 41-c (HI-2) — PLAYWRIGHT_DISABLE_SSR_PREFETCH removed.
+      # The test-only env branch in RSC pages was deleted; passing this var
+      # through the web container is now a no-op.
       # /admin/observability deep-links (Phase 07.1 A2). Empty defaults hide
       # the links gracefully; operators populate per environment.
       NEXT_PUBLIC_GRAFANA_BASE_URL: ${NEXT_PUBLIC_GRAFANA_BASE_URL:-}
