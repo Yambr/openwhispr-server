@@ -40,30 +40,116 @@ function localhostDispatcher(url: string): Agent | undefined {
   return undefined;
 }
 
+// Phase 19.4 / Plan 01 — @cjm-6.1 real bindings against the live web +
+// api stack via Traefik. The flow exercises the wire-level localization
+// chain: GET public sign-up (proves web shell reachable), POST web's
+// /api/locale to flip the NEXT_LOCALE cookie (Phase 10 / Plan 02 —
+// apps/web/src/app/api/locale/route.ts), then re-fetch sign-up with
+// the new cookie and assert Russian copy via the unicode Cyrillic
+// regex. We do NOT spin a browser — the wire-level chain is the
+// minimal evidence the LanguageSwitcher contract holds.
 Given("the user is on the public sign-up page", async ({ tenantId }) => {
-  stateFor(tenantId);
-  throw new Error("locale UI ships in Phase 15 — @cjm-6.1 stays @expected-red");
+  const s = stateFor(tenantId);
+  const url = "https://web.localhost/sign-up";
+  const res = await undiciFetch(url, { method: "GET", dispatcher: localhostDispatcher(url) });
+  s.lastStatus = res.status;
+  s.lastContentType = res.headers.get("content-type") ?? "";
+  s.lastBody = await res.text();
+  if (res.status !== 200) {
+    throw new Error(
+      `precondition: GET ${url} expected 200, got ${res.status}: ${s.lastBody?.slice(0, 200)}`,
+    );
+  }
 });
 
-When("the user switches the locale to {string}", async ({ tenantId }, _locale: string) => {
-  void tenantId;
-  throw new Error("locale toggle UI ships in Phase 15 — @cjm-6.1 stays @expected-red");
+When("the user switches the locale to {string}", async ({ tenantId }, locale: string) => {
+  const s = stateFor(tenantId);
+  const url = "https://web.localhost/api/locale";
+  const res = await undiciFetch(url, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ locale }),
+    dispatcher: localhostDispatcher(url),
+  });
+  s.lastStatus = res.status;
+  s.lastContentType = res.headers.get("content-type") ?? "";
+  const setCookieHeader =
+    (res.headers as Headers & { getSetCookie?: () => string[] }).getSetCookie?.() ?? [];
+  s.lastBody = setCookieHeader.join("\n");
 });
 
 Then(
   "a NEXT_LOCALE cookie is set to {string} and the next render serves Russian copy",
-  async ({ tenantId }, _value: string) => {
-    void tenantId;
-    throw new Error("locale toggle UI ships in Phase 15 — @cjm-6.1 stays @expected-red");
+  async ({ tenantId }, value: string) => {
+    const s = stateFor(tenantId);
+    if (s.lastStatus !== 204) {
+      throw new Error(
+        `expected POST /api/locale to return 204, got ${s.lastStatus}: ${s.lastBody?.slice(0, 200)}`,
+      );
+    }
+    const cookies = s.lastBody ?? "";
+    const expected = `NEXT_LOCALE=${value}`;
+    if (!cookies.includes(expected)) {
+      throw new Error(
+        `expected Set-Cookie to contain "${expected}"; got: ${cookies.slice(0, 400)}`,
+      );
+    }
+    const url = "https://web.localhost/sign-up";
+    const res = await undiciFetch(url, {
+      method: "GET",
+      headers: { cookie: `NEXT_LOCALE=${value}` },
+      dispatcher: localhostDispatcher(url),
+    });
+    if (res.status !== 200) {
+      throw new Error(
+        `GET ${url} with cookie NEXT_LOCALE=${value} expected 200, got ${res.status}`,
+      );
+    }
+    const body = await res.text();
+    // Cyrillic detector — U+0410..U+044F + U+0401/U+0451 Yo. Source
+    // stays ASCII via unicode escapes per english-only lint.
+    const CYRILLIC_RE = /[\u0410-\u044F\u0401\u0451]/;
+    if (!CYRILLIC_RE.test(body)) {
+      throw new Error(
+        `subsequent GET with NEXT_LOCALE=${value} produced English-only body — locale not steering RSC render. First 300 chars: ${body.slice(0, 300)}`,
+      );
+    }
   },
 );
 
-When("a GET to \\/api\\/locale on api.localhost is issued", async () => {
-  throw new Error("/api/locale endpoint ships in Phase 15 — @cjm-6.2 stays @expected-red");
+// Phase 19.4 / Plan 01 — @cjm-6.2 routing assertion. Identical to the
+// more specific @cjm-traefik-host-split scenario (Phase 19b) but kept
+// here for the @cjm-6.* locale-coverage cohort.
+When("a GET to \\/api\\/locale on api.localhost is issued", async ({ tenantId }) => {
+  const s = stateFor(tenantId);
+  const url = "https://api.localhost/api/locale";
+  const res = await undiciFetch(url, { method: "GET", dispatcher: localhostDispatcher(url) });
+  s.lastStatus = res.status;
+  s.lastContentType = res.headers.get("content-type") ?? "";
+  s.lastBody = await res.text();
+  try {
+    s.lastJson = JSON.parse(s.lastBody);
+  } catch {
+    s.lastJson = undefined;
+  }
 });
 
-Then("the host-split routing returns 200 and a JSON locale body", async () => {
-  throw new Error("/api/locale endpoint ships in Phase 15 — @cjm-6.2 stays @expected-red");
+Then("the host-split routing returns 200 and a JSON locale body", ({ tenantId }) => {
+  const s = stateFor(tenantId);
+  if (s.lastStatus !== 200) {
+    throw new Error(
+      `expected 200, got ${s.lastStatus}: body=${s.lastBody?.slice(0, 200)}; ct=${s.lastContentType}`,
+    );
+  }
+  if (!s.lastContentType?.includes("application/json")) {
+    throw new Error(`expected content-type application/json, got "${s.lastContentType}"`);
+  }
+  const locale = (s.lastJson as { locale?: string } | undefined)?.locale;
+  if (typeof locale !== "string") {
+    throw new Error(
+      `expected JSON body with string "locale" field; got ${s.lastBody?.slice(0, 200)}`,
+    );
+  }
 });
 
 // Phase 15 / Plan 02 / Task 1 — @cjm-traefik-host-split scenarios.

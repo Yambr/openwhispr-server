@@ -3,13 +3,13 @@
 
 Feature: Locale switch
 
-  @cjm-6.1 @expected-red @after-phase-19.4
+  @cjm-6.1
   Scenario: Switching locale to ru persists via cookie and renders Russian copy
     Given the user is on the public sign-up page
     When the user switches the locale to "ru"
     Then a NEXT_LOCALE cookie is set to "ru" and the next render serves Russian copy
 
-  @cjm-6.2 @after-docker-up @expected-red
+  @cjm-6.2 @after-docker-up
   Scenario: /api/locale routes via api.localhost host split, not via web.localhost
     When a GET to /api/locale on api.localhost is issued
     Then the host-split routing returns 200 and a JSON locale body
