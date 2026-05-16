@@ -103,7 +103,7 @@ Given("a signed-in user", async function (this, ctx) {
 });
 
 When(
-  "the user POSTs to /api/agent/stream with prompt {string}",
+  "the user POSTs to \\/api\\/agent\\/stream with prompt {string}",
   async function (this, ctx, prompt: string) {
     const { apiBaseURL, tenantId } = ctx as { apiBaseURL: string; tenantId: string };
     const s = stateFor(tenantId);
@@ -114,7 +114,7 @@ When(
   },
 );
 
-When("an unauthenticated POST to /api/agent/stream is issued", async function (this, ctx) {
+When("an unauthenticated POST to \\/api\\/agent\\/stream is issued", async function (this, ctx) {
   const { apiBaseURL, tenantId } = ctx as { apiBaseURL: string; tenantId: string };
   const s = stateFor(tenantId);
   const res = await postAgentStream(apiBaseURL, undefined, "ignored");

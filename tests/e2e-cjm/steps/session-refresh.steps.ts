@@ -155,7 +155,7 @@ When(
   },
 );
 
-When("the user issues an authenticated GET to /api/health", async function (this, ctx) {
+When("the user issues an authenticated GET to \\/api\\/health", async function (this, ctx) {
   const { apiBaseURL, tenantId } = ctx as { apiBaseURL: string; tenantId: string };
   const s = stateFor(tenantId);
   const res = await authenticatedGet(apiBaseURL, "/api/health", s.cookie ?? "");

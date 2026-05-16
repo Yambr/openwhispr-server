@@ -91,7 +91,7 @@ Given("a signed-in user", async function (this, ctx) {
   s.cookie = await signedInAs(apiBaseURL, mailpitApiUrl, freshTenant(tenantId));
 });
 
-When("the user POSTs a wav fixture to /api/transcribe", async function (this, ctx) {
+When("the user POSTs a wav fixture to \\/api\\/transcribe", async function (this, ctx) {
   const { apiBaseURL, tenantId } = ctx as { apiBaseURL: string; tenantId: string };
   const s = stateFor(tenantId);
   // 64-byte silent WAV stub — Phase 19.2 wired transcribe end-to-end

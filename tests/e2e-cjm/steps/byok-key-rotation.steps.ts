@@ -157,15 +157,18 @@ When("the user revokes the first key", async function (this, ctx) {
   s.list = list.body.data ?? [];
 });
 
-When("the user POSTs /api/v1/keys/:id/revoke with an unknown uuid", async function (this, ctx) {
-  const { apiBaseURL, tenantId } = ctx as { apiBaseURL: string; tenantId: string };
-  const s = stateFor(tenantId);
-  const fakeId = randomUUID();
-  const res = await revokeKey(apiBaseURL, s.cookie ?? "", fakeId);
-  s.lastStatus = res.status;
-  s.lastBody = res.body;
-  s.lastRawText = res.rawText;
-});
+When(
+  "the user POSTs \\/api\\/v1\\/keys\\/:id\\/revoke with an unknown uuid",
+  async function (this, ctx) {
+    const { apiBaseURL, tenantId } = ctx as { apiBaseURL: string; tenantId: string };
+    const s = stateFor(tenantId);
+    const fakeId = randomUUID();
+    const res = await revokeKey(apiBaseURL, s.cookie ?? "", fakeId);
+    s.lastStatus = res.status;
+    s.lastBody = res.body;
+    s.lastRawText = res.rawText;
+  },
+);
 
 Then("the response status for the revoke is {int}", async function (this, ctx, expected: number) {
   const { tenantId } = ctx as { tenantId: string };
