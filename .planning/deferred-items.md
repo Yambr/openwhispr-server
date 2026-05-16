@@ -302,3 +302,17 @@ If port-exhaustion recurs after Plans 03-05 land, revisit via Vitest `projects` 
 
 **Production code untouched:** confirmed. No migration SQL, route handlers, or schemas edited.
 
+
+## G10 — Billing & subscription CJM (deferred to v3)
+
+**Source:** `.planning/qa-audit/2026-05-16-cjm-coverage.md` G10.
+**Phase 50 closure:** doc-anchor only at `docs/customer-journeys.md`
+"## billing. Subscription & billing (G10 — deferred to v3)" reserves
+the `@cjm-billing-*` tag namespace.
+**v3 deliverable:** subscription wire surface (Stripe webhooks, usage
+metering for paid tiers, dunning) + `@cjm-billing-1.x` Gherkin
+scenarios. Until v3 lands, no code, no tests, no `.feature` file.
+**Why deferred:** Phase 13 + Phase 14 froze v2.1 scope at the
+self-host / BYOK matrix; billing requires a payment provider
+integration that is out of scope for the OSS quickstart and not in
+the corporate BYOK story either.
