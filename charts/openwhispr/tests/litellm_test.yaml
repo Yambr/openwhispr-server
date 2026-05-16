@@ -197,3 +197,54 @@ tests:
     asserts:
       - hasDocuments:
           count: 0
+
+  # SR-20.3 — LiteLLM Deployment must declare a startupProbe with a 300s
+  # boot budget on /health/liveliness:4000 (matches existing readiness
+  # probe target; LiteLLM's real /health/readiness path is unavailable on
+  # mock-litellm so liveliness is reused). Closes audit B1.
+  - it: LiteLLM Deployment declares startupProbe failureThreshold 30 + period 10s on /health/liveliness (SR-20.3)
+    template: litellm-deployment.yaml
+    set:
+      secrets:
+        mode: eso
+        external:
+          storeRef: vault-clusterstore
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].startupProbe.httpGet.path
+          value: /health/liveliness
+      - equal:
+          path: spec.template.spec.containers[0].startupProbe.httpGet.port
+          value: 4000
+      - equal:
+          path: spec.template.spec.containers[0].startupProbe.failureThreshold
+          value: 30
+      - equal:
+          path: spec.template.spec.containers[0].startupProbe.periodSeconds
+          value: 10
+
+  # SR-20.4 — LiteLLM Deployment must declare topologySpreadConstraints
+  # on kubernetes.io/hostname. Closes audit B2.
+  - it: LiteLLM Deployment declares topologySpread maxSkew 1 on hostname (SR-20.4)
+    template: litellm-deployment.yaml
+    set:
+      secrets:
+        mode: eso
+        external:
+          storeRef: vault-clusterstore
+    asserts:
+      - lengthEqual:
+          path: spec.template.spec.topologySpreadConstraints
+          count: 1
+      - equal:
+          path: spec.template.spec.topologySpreadConstraints[0].maxSkew
+          value: 1
+      - equal:
+          path: spec.template.spec.topologySpreadConstraints[0].topologyKey
+          value: kubernetes.io/hostname
+      - equal:
+          path: spec.template.spec.topologySpreadConstraints[0].whenUnsatisfiable
+          value: ScheduleAnyway
+      - equal:
+          path: spec.template.spec.topologySpreadConstraints[0].labelSelector.matchLabels."app.kubernetes.io/component"
+          value: litellm
