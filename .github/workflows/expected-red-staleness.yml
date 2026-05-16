@@ -1,0 +1,62 @@
+# SPDX-License-Identifier: FSL-1.1-ALv2
+# Phase 49 / Plan 49-01 / L8 — weekly @expected-red staleness alert.
+#
+# Every Monday at 09:07 UTC (off-mark per fleet-load advice) the cron job
+# walks tests/e2e-cjm/features/**/*.feature, finds @expected-red scenarios
+# whose @after-phase-N tag references a phase ROADMAP marks as CLOSED for
+# >= 7 days, and opens (or updates) a tracking issue labelled
+# `staleness-report` with the offenders.
+#
+# Idempotent: if an open issue with the label already exists, the workflow
+# updates its body instead of creating a duplicate.
+
+name: expected-red-staleness
+
+on:
+  schedule:
+    - cron: "7 9 * * 1"  # Monday 09:07 UTC, off-mark
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  staleness-check:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v5
+      - uses: pnpm/action-setup@v4
+        with: { version: 11.0.8 }
+      - uses: actions/setup-node@v5
+        with: { node-version: '24', cache: 'pnpm' }
+      - run: pnpm install --frozen-lockfile
+
+      - name: Run staleness check
+        id: check
+        run: |
+          set +e
+          pnpm exec tsx tools/check-expected-red-staleness.ts > /tmp/staleness-report.md
+          echo "exit_code=$?" >> "$GITHUB_OUTPUT"
+
+      - name: Open or update tracking issue
+        if: steps.check.outputs.exit_code == '1'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          BODY=$(cat /tmp/staleness-report.md)
+          # Find an existing open issue labelled `staleness-report`.
+          EXISTING=$(gh issue list --label staleness-report --state open --json number --jq '.[0].number' || echo "")
+          if [ -n "$EXISTING" ]; then
+            gh issue edit "$EXISTING" --body "$BODY"
+            echo "Updated existing tracking issue #$EXISTING"
+          else
+            gh issue create \
+              --title "Stale @expected-red scenarios" \
+              --label "staleness-report" \
+              --body "$BODY"
+          fi
+
+      - name: Print report (always)
+        run: cat /tmp/staleness-report.md
