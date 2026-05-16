@@ -25,6 +25,47 @@
         }
       },
       "additionalProperties": false
+    },
+    "securityContextFull": {
+      "type": "object",
+      "description": "Phase 20 / SR-20.5 — full-hardening per-workload securityContext (pod + container subobjects). Used by api/web/worker.",
+      "properties": {
+        "pod": {
+          "type": "object",
+          "properties": {
+            "runAsNonRoot": { "type": "boolean" },
+            "runAsUser": { "type": "integer", "minimum": 0 },
+            "runAsGroup": { "type": "integer", "minimum": 0 },
+            "fsGroup": { "type": "integer", "minimum": 0 },
+            "seccompProfile": {
+              "type": "object",
+              "properties": {
+                "type": { "type": "string" }
+              }
+            }
+          }
+        },
+        "container": {
+          "type": "object",
+          "properties": {
+            "readOnlyRootFilesystem": { "type": "boolean" },
+            "allowPrivilegeEscalation": { "type": "boolean" },
+            "capabilities": {
+              "type": "object",
+              "properties": {
+                "drop": { "type": "array", "items": { "type": "string" } },
+                "add": { "type": "array", "items": { "type": "string" } }
+              }
+            },
+            "seccompProfile": {
+              "type": "object",
+              "properties": {
+                "type": { "type": "string" }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "properties": {
@@ -241,21 +282,24 @@
       "type": "object",
       "properties": {
         "startupProbe": { "$ref": "#/definitions/startupProbe" },
-        "topologySpread": { "$ref": "#/definitions/topologySpread" }
+        "topologySpread": { "$ref": "#/definitions/topologySpread" },
+        "securityContext": { "$ref": "#/definitions/securityContextFull" }
       }
     },
     "web": {
       "type": "object",
       "properties": {
         "startupProbe": { "$ref": "#/definitions/startupProbe" },
-        "topologySpread": { "$ref": "#/definitions/topologySpread" }
+        "topologySpread": { "$ref": "#/definitions/topologySpread" },
+        "securityContext": { "$ref": "#/definitions/securityContextFull" }
       }
     },
     "worker": {
       "type": "object",
       "properties": {
         "startupProbe": { "$ref": "#/definitions/startupProbe" },
-        "topologySpread": { "$ref": "#/definitions/topologySpread" }
+        "topologySpread": { "$ref": "#/definitions/topologySpread" },
+        "securityContext": { "$ref": "#/definitions/securityContextFull" }
       }
     },
     "host": {

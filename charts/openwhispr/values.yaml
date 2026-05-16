@@ -260,6 +260,21 @@ api:
     maxSkew: 1
     topologyKey: kubernetes.io/hostname
     whenUnsatisfiable: ScheduleAnyway
+  # SR-20.5 (Phase 20-02b) — full hardening. pod runs as non-root uid 1000;
+  # container drops all caps, refuses privilege escalation, runs on a
+  # read-only rootfs (paired with emptyDir at /tmp in the Deployment).
+  securityContext:
+    pod:
+      runAsNonRoot: true
+      runAsUser: 1000
+      fsGroup: 1000
+      seccompProfile:
+        type: RuntimeDefault
+    container:
+      readOnlyRootFilesystem: true
+      allowPrivilegeEscalation: false
+      capabilities:
+        drop: ["ALL"]
   autoscaling:
     enabled: true
     minReplicas: 2
@@ -304,6 +319,20 @@ web:
     maxSkew: 1
     topologyKey: kubernetes.io/hostname
     whenUnsatisfiable: ScheduleAnyway
+  # SR-20.5 — full hardening. Paired with emptyDir mounts at /tmp +
+  # /app/apps/web/.next/cache (Next.js 15 standalone writes ISR cache).
+  securityContext:
+    pod:
+      runAsNonRoot: true
+      runAsUser: 1000
+      fsGroup: 1000
+      seccompProfile:
+        type: RuntimeDefault
+    container:
+      readOnlyRootFilesystem: true
+      allowPrivilegeEscalation: false
+      capabilities:
+        drop: ["ALL"]
   env:
     nodeEnv: production
     # Server-side fetches stay in-cluster; browser fetches go via Traefik.
@@ -321,6 +350,19 @@ worker:
     maxSkew: 1
     topologyKey: kubernetes.io/hostname
     whenUnsatisfiable: ScheduleAnyway
+  # SR-20.5 — full hardening; emptyDir at /tmp paired in Deployment.
+  securityContext:
+    pod:
+      runAsNonRoot: true
+      runAsUser: 1000
+      fsGroup: 1000
+      seccompProfile:
+        type: RuntimeDefault
+    container:
+      readOnlyRootFilesystem: true
+      allowPrivilegeEscalation: false
+      capabilities:
+        drop: ["ALL"]
   autoscaling:
     enabled: true
     minReplicas: 1
