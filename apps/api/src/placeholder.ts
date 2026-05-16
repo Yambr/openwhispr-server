@@ -1,6 +1,0 @@
-// SPDX-License-Identifier: FSL-1.1-ALv2
-// Phase 0 placeholder — replaced by real wiring in later phases.
-// Kept as a Stryker mutation target so the harness has a real function to mutate.
-export function isPlaceholder(): boolean {
-  return true;
-}
