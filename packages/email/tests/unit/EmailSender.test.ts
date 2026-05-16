@@ -244,6 +244,56 @@ describe("createEmailSender — SMTP_SECURE env override (T5)", () => {
       expect.objectContaining({ port: 465, secure: false }),
     );
   });
+
+  // Phase 41.g / HI-03 — strict-string parser. Operators commonly write `1`,
+  // `TRUE`, `yes`, `on` for boolean env flags; strict `=== "true"` silently
+  // rejects them and falls back to the port heuristic — exactly the kind of
+  // misconfiguration that lands plaintext SMTP in production.
+  it.each([
+    ["1"],
+    ["true"],
+    ["TRUE"],
+    ["True"],
+    ["yes"],
+    ["YES"],
+    ["on"],
+    ["ON"],
+    ["  true  "],
+  ])("SMTP_SECURE=%j parses as truthy (port=587 + secure=true)", (value) => {
+    createEmailSender({
+      log: makeLog(),
+      env: {
+        SMTP_HOST: "smtp.example.com",
+        SMTP_PORT: "587",
+        SMTP_SECURE: value,
+      },
+    });
+    expect(createTransportMock).toHaveBeenLastCalledWith(
+      expect.objectContaining({ port: 587, secure: true }),
+    );
+  });
+
+  it.each([
+    ["0"],
+    ["false"],
+    ["FALSE"],
+    ["no"],
+    ["off"],
+    [""],
+    ["bogus"],
+  ])("SMTP_SECURE=%j parses as falsy (port=465 + secure=false)", (value) => {
+    createEmailSender({
+      log: makeLog(),
+      env: {
+        SMTP_HOST: "smtp.example.com",
+        SMTP_PORT: "465",
+        SMTP_SECURE: value,
+      },
+    });
+    expect(createTransportMock).toHaveBeenLastCalledWith(
+      expect.objectContaining({ port: 465, secure: false }),
+    );
+  });
 });
 
 describe("createEmailSender — SMTP_REJECT_UNAUTHORIZED env (T6)", () => {
