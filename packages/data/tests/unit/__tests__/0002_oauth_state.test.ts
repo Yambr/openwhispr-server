@@ -31,9 +31,22 @@ describe("0002_oauth_state migration", () => {
       expect(cols).toContain("provider");
       expect(cols).toContain("callback_url");
       expect(cols).toContain("scheme");
-      expect(cols).toContain("code_verifier");
       expect(cols).toContain("expires_at");
       expect(cols).toContain("consumed_at");
+      // Phase 33 / Plan 33-05 — migration 0020 dropped plaintext
+      // oauth_state.code_verifier; the PKCE verifier is now stored as
+      // a 6-bytea envelope-encrypted sidecar tuple (LOCKER-08).
+      for (const suffix of [
+        "_dek_wrapped",
+        "_dek_iv",
+        "_dek_auth_tag",
+        "_value_iv",
+        "_value_auth_tag",
+        "_value_ciphertext",
+      ]) {
+        expect(cols).toContain(`code_verifier${suffix}`);
+      }
+      expect(cols).not.toContain("code_verifier");
     } finally {
       await pool.end();
     }
