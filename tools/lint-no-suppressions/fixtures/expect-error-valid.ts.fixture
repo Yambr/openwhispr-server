@@ -1,0 +1,14 @@
+// SPDX-License-Identifier: FSL-1.1-ALv2
+// Phase 31 / LOCKER-02 — fixture: one valid issue-NNNN suppression plus
+// one legit `as unknown as` cast that the linter still flags as
+// `as-unknown-as`. The test only asserts that NO `expect-error-malformed`
+// row is emitted (so comment narrative must avoid the `at-s-expect-error`
+// substring outside the valid suppression line itself).
+const s = 42 as unknown as string;
+
+export function lyingTypes(): string {
+  // @ts-expect-error issue-1234: drizzle's column type is null-able but the runtime guarantees a value
+  return null;
+}
+
+export { s };

@@ -1,0 +1,5 @@
+// SPDX-License-Identifier: FSL-1.1-ALv2
+// Phase 31 / LOCKER-02 — clean fixture: zero forbidden patterns.
+export function add(a: number, b: number): number {
+  return a + b;
+}

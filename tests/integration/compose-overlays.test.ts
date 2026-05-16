@@ -323,7 +323,12 @@ describe("Phase 14 / Plan 14-03 — pgbouncer overlay", () => {
     expect(doc.services?.pgbouncer).toBeTruthy();
   });
 
-  it("re-injects api.depends_on.pgbouncer: service_healthy and DATABASE_URL pointing at pgbouncer:6432", () => {
+  it("re-injects api.depends_on.pgbouncer: service_healthy and DATABASE_URL pointing at pgbouncer:5432", () => {
+    // Phase 41.f-hotfix-2 (commit 3df1060): the pgbouncer container's
+    // internal listen_port is 5432 (see compose/pgbouncer/pgbouncer.ini),
+    // matching the healthcheck `pg_isready -h 127.0.0.1 -p 5432`. The
+    // earlier `:6432` in this assertion shadowed a real production break
+    // where the api ECONNREFUSED'd through the overlay.
     const doc = loadYaml(path);
     const api = doc.services?.api;
     expect(api).toBeTruthy();
@@ -331,7 +336,7 @@ describe("Phase 14 / Plan 14-03 — pgbouncer overlay", () => {
     const dep = dependsOnMap(api);
     expect(dep.pgbouncer?.condition).toBe("service_healthy");
     const env = envMap(api);
-    expect(env.DATABASE_URL).toMatch(/pgbouncer:6432/);
+    expect(env.DATABASE_URL).toMatch(/pgbouncer:5432/);
   });
 
   it("re-injects migrate.depends_on.pgbouncer: service_healthy (sequencing barrier)", () => {
