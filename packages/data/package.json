@@ -21,6 +21,7 @@
     "drizzle:drop": "drizzle-kit drop"
   },
   "dependencies": {
+    "better-auth": "1.6.9",
     "drizzle-orm": "0.45.2",
     "pg": "8.20.0"
   },
