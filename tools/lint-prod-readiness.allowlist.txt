@@ -7,7 +7,6 @@
 
 # ─── Route-shape debt (cleared by bulk-fix commits in 31-08) ───
 apps/api/src/routes/__test/fetch.ts:65  # issue-31-04-debt-LOCKER-04-route-bulkfix-31-08
-apps/api/src/routes/agent/stream.ts:109  # issue-31-04-debt-LOCKER-04-route-bulkfix-31-08
 apps/api/src/routes/agent/web-search.ts:74  # issue-31-04-debt-LOCKER-04-route-bulkfix-31-08
 apps/api/src/routes/auth-callback.ts:102  # issue-31-04-debt-LOCKER-04-route-bulkfix-31-08
 apps/api/src/routes/auth-providers.ts:73  # issue-31-04-debt-LOCKER-04-route-bulkfix-31-08
@@ -55,6 +54,7 @@ apps/api/src/routes/v1/keys/list.ts:76  # issue-31-04-debt-LOCKER-04-route-bulkf
 apps/api/src/routes/v1/keys/revoke.ts:43  # issue-31-04-debt-LOCKER-04-route-bulkfix-31-08
 
 # ─── Dead-export debt (most concentrate in @openwhispr/auth — retired by Phase 38) ───
+packages/litellm-client/src/index.ts:323  # issue-31-04-debt-LOCKER-04-dead-export-phase-41-f
 apps/api/src/auth.ts:146  # issue-31-04-debt-LOCKER-04-dead-export-phase-38
 apps/api/src/auth.ts:172  # issue-31-04-debt-LOCKER-04-dead-export-phase-38
 apps/api/src/auth.ts:477  # issue-31-04-debt-LOCKER-04-dead-export-phase-38

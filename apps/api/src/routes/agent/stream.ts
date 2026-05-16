@@ -112,6 +112,31 @@ export const buildAgentStreamRoutes = (deps: AgentStreamDeps) =>
     app.route({
       method: "POST",
       url: "/api/agent/stream",
+      schema: {
+        // Phase 41.b / HI-02 — declarative schema reference required by
+        // LOCKER-04. The route still calls .parse() manually inside the
+        // handler because zod-type-provider's auto-400 path runs AFTER
+        // Fastify's body parser but the route's hijack must happen with
+        // a validated body — manual parse keeps the order explicit and
+        // routes ZodError through registerErrorHandler.
+        body: AgentStreamRequestSchema,
+      },
+      config: {
+        // Phase 41.b / HI-03 — authed-only route; skip the IP-tier
+        // onRequest hook on anonymous traffic to avoid `owrl:ip:*` bucket
+        // creation pre-auth (mirrors tokens/openai-realtime.ts).
+        authRequired: true,
+        // /api/agent/stream is the most expensive endpoint in the codebase
+        // (paid LLM, streaming). Per-user bucket (D-2 in 41-b-DECISIONS):
+        // 20/min/user. Below token-mint (30/min) because a single stream
+        // can run > 30s and burn N tokens; above admin keys (5/hour)
+        // because operators run legitimate batches.
+        rateLimit: {
+          max: 20,
+          timeWindow: "1 minute",
+          keyGenerator: (req) => req.user?.id ?? req.ip,
+        },
+      },
       handler: async (req, reply) => {
         // (1) Defensive auth re-check. dualAuthHook should have populated
         //     req.user — if not, throw BEFORE hijack so the centralized
