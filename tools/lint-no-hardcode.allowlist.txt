@@ -1,0 +1,83 @@
+# SPDX-License-Identifier: FSL-1.1-ALv2
+# Phase 31 / Plan 03 — LOCKER-03 allowlist (DISCIPLINE Rule 13).
+# Format: one `<posix-path>:<line>` per line, optional trailing `# rationale`.
+# Blank lines and `#`-prefixed lines ignored. Entries fall in two buckets:
+#
+#   (a) PERMANENT — `# canonical-default-tenant` markers for the 8 UUID-zero
+#       sentinels (`DEFAULT_TENANT_ID = "00000000-0000-0000-0000-000000000000"`).
+#       These are the canonical default-tenant constant, NOT migration debt;
+#       NEVER remove them. A 9th UUID-zero hit at a NEW file:line will still
+#       fire BLOCKING — that's the intent.
+#
+#   (b) MIGRATION DEBT — `# issue-31-debt-...` markers for port/localhost
+#       literals slated for env-driven defaults. Apps/web port hardcodes
+#       target Phase 41.c; apps/api debt targets a future targeted phase.
+#       New entries in this bucket require an `Allowlist-grow-approved:`
+#       trailer in the commit body (LOCKER-09's CI step, lands 31-07).
+
+# --- (a) PERMANENT — canonical DEFAULT_TENANT_ID sentinel (DO NOT REMOVE) ---
+apps/api/src/middleware/tenant.ts:44  # canonical-default-tenant
+apps/api/src/auth.ts:330  # canonical-default-tenant
+apps/api/src/auth.ts:380  # canonical-default-tenant
+apps/api/src/lib/default-tenant.ts:5  # canonical-default-tenant
+apps/api/src/lib/default-tenant.ts:19  # canonical-default-tenant
+apps/api/src/routes/setup-admin.ts:55  # canonical-default-tenant
+packages/data/src/seed/conformance.ts:35  # canonical-default-tenant
+packages/data/src/schema/tenants.ts:4  # canonical-default-tenant
+
+# --- (b) MIGRATION DEBT — port / localhost literals (target Phase 41.c / future) ---
+apps/api/src/auth.ts:237  # issue-31-debt-hardcode-localhost-3000
+apps/api/src/routes/test-only.ts:181  # issue-31-debt-hardcode-localhost-3000
+apps/api/src/routes/better-auth-handler.ts:49  # issue-31-debt-hardcode-localhost
+apps/api/src/index.ts:656  # issue-31-debt-hardcode-litellm-port-4000
+apps/web/src/app/(auth)/app/page.tsx:16  # issue-31-debt-hardcode-port-3000
+apps/web/src/app/(auth)/app/notes/page.tsx:14  # issue-31-debt-hardcode-port-3000
+apps/web/src/app/(auth)/app/transcriptions/page.tsx:14  # issue-31-debt-hardcode-port-3000
+apps/web/src/app/(auth)/app/conversations/page.tsx:14  # issue-31-debt-hardcode-port-3000
+apps/web/src/app/(auth)/app/conversations/[id]/page.tsx:17  # issue-31-debt-hardcode-port-3000
+apps/web/src/lib/auth-actions.ts:22  # issue-31-debt-hardcode-port-3000
+apps/web/src/lib/auth-server.ts:47  # issue-31-debt-hardcode-port-3000
+packages/litellm-client/src/config.ts:29  # issue-31-debt-hardcode-litellm-port-4000
+
+# --- (c) DOCUMENTED FALSE POSITIVES — comment-only hits ---
+# The locker is intentionally regex-line-based (no AST comment-strip) per
+# 31-03 RESEARCH Risks: "Acceptable false-positive rate; comment-strip pass
+# deferred to refactor if needed". Each entry below is a JSDoc / `//` /
+# `/* ... */` comment that narrates the env-driven default, the routing
+# pattern, or the security boundary — it is NOT a runtime literal. Removing
+# the prose would degrade self-documenting source.
+apps/api/src/auth.ts:241  # comment-only-narrative-issue-31-fp
+apps/api/src/auth.ts:242  # comment-only-narrative-issue-31-fp
+apps/api/src/lib/audit.ts:88  # comment-only-narrative-issue-31-fp
+apps/api/src/lib/cookie-domain.ts:21  # comment-only-narrative-issue-31-fp
+apps/api/src/lib/cookie-domain.ts:34  # comment-only-narrative-issue-31-fp
+apps/api/src/lib/cookie-domain.ts:41  # comment-only-narrative-issue-31-fp
+apps/api/src/otel-bootstrap.ts:42  # comment-only-narrative-issue-31-fp
+apps/api/src/routes/index.ts:239  # comment-only-narrative-issue-31-fp
+apps/api/src/routes/locale.ts:10  # comment-only-narrative-issue-31-fp
+apps/api/src/routes/reason.ts:27  # comment-only-narrative-issue-31-fp
+apps/api/src/routes/tokens/_call-provider.ts:34  # comment-only-jsdoc-timeout-ms-not-port-issue-31-fp
+apps/web/src/lib/auth-client.ts:5  # comment-only-narrative-issue-31-fp
+apps/worker/src/otel-bootstrap.ts:19  # comment-only-narrative-issue-31-fp
+packages/contract-tests/src/env.ts:6  # comment-only-narrative-issue-31-fp
+packages/contract-tests/src/env.ts:15  # comment-only-narrative-issue-31-fp
+packages/contract-tests/src/env.ts:24  # comment-only-narrative-issue-31-fp
+packages/contract-tests/src/env.ts:41  # comment-only-narrative-issue-31-fp
+packages/data/src/seed/conformance.ts:21  # comment-only-narrative-issue-31-fp
+
+# --- (d) PERMANENT — canonical seed fixture UUIDs + default api.localhost ---
+# `packages/contract-tests/**` and `packages/data/src/seed/conformance.ts` are
+# the canonical conformance-test fixtures consumed by mock-litellm + e2e + RLS
+# property tests. The SEED_* UUIDs are stable identifiers used across the
+# fixture surface (mirrors the role of DEFAULT_TENANT_ID); api.localhost is
+# the canonical Traefik host. Both are out-of-scope of the migration-debt
+# bucket — they are intentional fixture infrastructure.
+packages/contract-tests/src/env.ts:13  # canonical-fixture-api-localhost
+packages/contract-tests/src/negative-matrix.ts:98  # canonical-fixture-uuid
+packages/data/src/seed/conformance.ts:29  # canonical-fixture-seed-uuid
+packages/data/src/seed/conformance.ts:30  # canonical-fixture-seed-uuid
+packages/data/src/seed/conformance.ts:31  # canonical-fixture-seed-uuid
+packages/data/src/seed/conformance.ts:32  # canonical-fixture-seed-uuid
+packages/data/src/seed/conformance.ts:33  # canonical-fixture-seed-uuid
+packages/data/src/seed/conformance.ts:34  # canonical-fixture-seed-uuid
+packages/data/src/seed/conformance.ts:123  # canonical-fixture-api-localhost
