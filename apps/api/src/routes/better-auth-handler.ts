@@ -216,9 +216,23 @@ export const buildBetterAuthHandlerRoutes = (deps: BetterAuthHandlerDeps) =>
         const webRes = await handler(webReq);
 
         // Forward status + headers. Web Headers may have multiple Set-Cookie
-        // values; iterate so each one is appended individually.
+        // values; iterate Set-Cookie via getSetCookie() so each cookie is
+        // appended INDIVIDUALLY (the WHATWG `Headers.forEach` iterator may
+        // combine same-named entries with ", " — RFC 6265 forbids
+        // comma-separated cookies, and browsers/jars then store only the
+        // first value or reject the response, silently breaking session
+        // establishment when Better Auth emits BOTH `openwhispr.session_token`
+        // and `openwhispr.session_data` cookies at sign-in).
+        //
+        // Phase 35 / CR-3 (CRIT-FIX-05). `Headers.getSetCookie()` is part
+        // of the WHATWG Fetch spec and present on Node 20+ undici-backed
+        // Headers (the runtime here is Node 24 LTS).
         reply.status(webRes.status);
+        for (const cookie of webRes.headers.getSetCookie()) {
+          reply.header("set-cookie", cookie);
+        }
         webRes.headers.forEach((value: string, key: string) => {
+          if (key.toLowerCase() === "set-cookie") return;
           reply.header(key, value);
         });
 
