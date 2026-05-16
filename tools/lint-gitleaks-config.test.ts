@@ -94,11 +94,14 @@ describe("gitleaks config contract (.gitleaks.toml)", () => {
     if (!GITLEAKS) return;
     const dir = mkdtempSync(join(tmpdir(), "gitleaks-pos-"));
     try {
-      // 56 hex/alpha chars after `sk-proj-` — matches default gitleaks
-      // openai-api-key / generic-api-key shapes.
+      // High-entropy synthetic shape — gitleaks default generic-api-key
+      // rule enforces an entropy floor (~3.5) plus shape match. The
+      // all-letters AAAA...NNNN variant scores below the floor; a mixed
+      // alnum/case string clears it. This is still synthetic (not a
+      // real key) — see RuleID="generic-api-key" coverage.
       writeFileSync(
         join(dir, "live.ts"),
-        'const KEY = "sk-proj-AAAABBBBCCCCDDDDEEEEFFFFGGGGHHHHIIIIJJJJKKKKLLLLMMMMNNNN";\n',
+        'const KEY = "SYNTH9xY2vW8nP1jL5kRgD7sM6cF0hX3uZbN0qE4tR7wA1bSYNTH";\n',
       );
       const r = runGitleaks(dir);
       expect(r.status, `expected non-zero; output:\n${r.output}`).not.toBe(0);
@@ -168,13 +171,31 @@ describe("gitleaks config contract (.gitleaks.toml)", () => {
     }
   });
 
+  it("ALLOWS tools/lint-compose-chart-parity.ts (helm-render fixture file)", () => {
+    if (!GITLEAKS) return;
+    const dir = mkdtempSync(join(tmpdir(), "gitleaks-chartparity-"));
+    try {
+      mkdirSync(join(dir, "tools"), { recursive: true });
+      // Mirrors the synthetic --set-string masterKek value used by the
+      // helm-chart parity linter (a high-entropy fake password).
+      writeFileSync(
+        join(dir, "tools", "lint-compose-chart-parity.ts"),
+        'export const X = "secrets.masterKek=v5ux8tbIGXCoCeqi16dtiRVMVDvR4mRTojqRlL2lV-w";\n',
+      );
+      const r = runGitleaks(dir);
+      expect(r.status, `expected 0; output:\n${r.output}`).toBe(0);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
   it("ALLOWS .env.example by path (operator-facing template)", () => {
     if (!GITLEAKS) return;
     const dir = mkdtempSync(join(tmpdir(), "gitleaks-envex-"));
     try {
       writeFileSync(
         join(dir, ".env.example"),
-        "OPENAI_API_KEY=sk-proj-AAAABBBBCCCCDDDDEEEEFFFFGGGGHHHHIIIIJJJJKKKKLLLLMMMMNNNN\n",
+        "OPENAI_API_KEY=SYNTH9xY2vW8nP1jL5kRgD7sM6cF0hX3uZbN0qE4tR7wA1bSYNTH\n",
       );
       const r = runGitleaks(dir);
       expect(r.status, `expected 0; output:\n${r.output}`).toBe(0);
