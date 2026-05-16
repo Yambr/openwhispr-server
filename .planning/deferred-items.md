@@ -342,3 +342,11 @@ Once the upstream build is fixed the runtime check will pass.
 small targeted Dockerfile-fix plan that adds `COPY packages/data/package.json`
 + `COPY packages/data packages/data` to the worker builder stage, mirroring
 the api Dockerfile pattern. Tracking issue: TBD.
+
+### LiteLLM non-root image fork
+
+Phase 20-02b adopted Option A (relaxed hardening) for `ghcr.io/berriai/litellm:main-v1.83.14-stable` because:
+1. Upstream image runs as uid 0
+2. Prisma client writes to `/app/.prisma` at startup — incompatible with readOnlyRootFilesystem
+
+Future hardening phase may revisit by either (a) building a fork with `USER 1000` + writable PVC for Prisma cache, or (b) waiting for upstream to add non-root support. Tracking issue: TBD.
