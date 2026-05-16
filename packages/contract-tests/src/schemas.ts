@@ -24,24 +24,20 @@ import { z } from "zod";
 export const ErrorEnvelope = z.object({ error: z.string().min(1) }).strict();
 export type ErrorEnvelope = z.infer<typeof ErrorEnvelope>;
 
-// POST /api/check-user
-export const CheckUserRequest = z.object({ email: z.string().email() }).strict();
-export type CheckUserRequest = z.infer<typeof CheckUserRequest>;
-
-export const CheckUserResponse = z.object({ exists: z.boolean() });
-export type CheckUserResponse = z.infer<typeof CheckUserResponse>;
-
-// GET /api/auth/verification-status?email=<urlencoded>
-export const VerificationStatusQuery = z.object({ email: z.string().email() }).strict();
-export type VerificationStatusQuery = z.infer<typeof VerificationStatusQuery>;
-
-export const VerificationStatusResponse = z.object({ verified: z.boolean() });
-export type VerificationStatusResponse = z.infer<typeof VerificationStatusResponse>;
-
-// DELETE /api/auth/delete-account — passthrough so the handler may attach
-// audit metadata in a future phase without breaking the contract.
-export const DeleteAccountResponse = z.object({}).passthrough();
-export type DeleteAccountResponse = z.infer<typeof DeleteAccountResponse>;
+// Phase 40 / Sub-fix 40.a — schemas consumed by production route
+// handlers moved to `@openwhispr/wire-schemas` to break the
+// package-boundary inversion (HIGH-FIX-BYOK-01). Re-exported here so
+// existing contract tests keep their import paths.
+export {
+  CheckUserRequest,
+  CheckUserResponse,
+  DeleteAccountResponse,
+  DiarizationResponse,
+  ReasonRequest,
+  ReasonResponse,
+  VerificationStatusQuery,
+  VerificationStatusResponse,
+} from "@openwhispr/wire-schemas";
 
 // GET /api/health
 //
@@ -92,44 +88,8 @@ export const TranscribeResponse = z.object({
 });
 export type TranscribeResponse = z.infer<typeof TranscribeResponse>;
 
-// POST /api/reason
-export const ReasonRequest = z
-  .object({
-    text: z.string().min(1),
-    model: z.string().optional(),
-    provider: z.string().optional(),
-    promptMode: z.string().optional(),
-    matchType: z.string().optional(),
-  })
-  .strict();
-export type ReasonRequest = z.infer<typeof ReasonRequest>;
-
-export const ReasonResponse = z.object({
-  text: z.string(),
-  model: z.string(),
-  provider: z.string(),
-  promptMode: z.string(),
-  matchType: z.string(),
-});
-export type ReasonResponse = z.infer<typeof ReasonResponse>;
-
-// Diarization — shape per docs/wire-contracts-phase-3.md "Diarization"
-// section (locked in Plan 01). Two-step pyannote shape OR single-hop
-// wrapped shape; Plan 01 records which one. Permissive `passthrough()`
-// because the upstream pyannote payload may carry additional fields
-// (e.g. confidence scores per segment) we forward without validation.
-export const DiarizationResponse = z
-  .object({
-    segments: z.array(
-      z.object({
-        start: z.number(),
-        end: z.number(),
-        speaker: z.string(),
-      }),
-    ),
-  })
-  .passthrough();
-export type DiarizationResponse = z.infer<typeof DiarizationResponse>;
+// Phase 40 — ReasonRequest, ReasonResponse, DiarizationResponse moved
+// to `@openwhispr/wire-schemas` (re-exported above for compat).
 
 // ---------------------------------------------------------------------
 // Phase 4 — Streaming + realtime token mints. Source of truth:

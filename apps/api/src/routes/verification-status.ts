@@ -15,11 +15,8 @@
 // Rate limit (D-28): 30/min keyed on (ip, email) — the desktop polls
 // during onboarding; busy fixtures must not DoS each other.
 
-import {
-  VerificationStatusQuery,
-  VerificationStatusResponse,
-} from "@openwhispr/contract-tests/schemas";
 import { type ExecutableTx, type TransactionalDb, withTenant } from "@openwhispr/data";
+import { VerificationStatusQuery, VerificationStatusResponse } from "@openwhispr/wire-schemas";
 import { sql } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
 import { AuthError } from "../errors.js";

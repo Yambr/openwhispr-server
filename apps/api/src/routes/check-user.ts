@@ -19,8 +19,8 @@
 // D-09 / T-02-03-03 (email enumeration): documented and accepted for
 // v1; rate limit on top mitigates the abuse surface.
 
-import { CheckUserRequest, CheckUserResponse } from "@openwhispr/contract-tests/schemas";
 import { type ExecutableTx, type TransactionalDb, withTenant } from "@openwhispr/data";
+import { CheckUserRequest, CheckUserResponse } from "@openwhispr/wire-schemas";
 import { sql } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
 import { resolveDefaultTenantId } from "../lib/default-tenant.js";
