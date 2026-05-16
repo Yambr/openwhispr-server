@@ -51,10 +51,30 @@ describe("0001_better_auth migration — Better Auth tables", () => {
       expect(cols).toContain("user_id");
       expect(cols).toContain("provider_id");
       expect(cols).toContain("account_id");
-      expect(cols).toContain("password");
-      expect(cols).toContain("access_token");
-      expect(cols).toContain("refresh_token");
-      expect(cols).toContain("id_token");
+      // Phase 33 / Plan 33-05 — migration 0020 dropped the 4 plaintext
+      // credential columns (access_token / refresh_token / id_token /
+      // password) and replaced each with the 6-bytea envelope-encrypted
+      // sidecar tuple (+ optional fp). Assert the post-0020 invariant:
+      // each credential MUST carry its 6 bytea sidecars at rest. The
+      // sidecar shape is enforced by LOCKER-08 in
+      // tools/lint-no-plaintext-secret-columns.ts.
+      for (const cred of ["password", "access_token", "refresh_token", "id_token"]) {
+        for (const suffix of [
+          "_dek_wrapped",
+          "_dek_iv",
+          "_dek_auth_tag",
+          "_value_iv",
+          "_value_auth_tag",
+          "_value_ciphertext",
+        ]) {
+          expect(cols).toContain(`${cred}${suffix}`);
+        }
+      }
+      // Plaintext columns MUST NOT exist post-0020.
+      expect(cols).not.toContain("password");
+      expect(cols).not.toContain("access_token");
+      expect(cols).not.toContain("refresh_token");
+      expect(cols).not.toContain("id_token");
     } finally {
       await pool.end();
     }
@@ -71,8 +91,21 @@ describe("0001_better_auth migration — Better Auth tables", () => {
       const cols = rows.map((r) => r.column_name);
       expect(cols).toContain("tenant_id");
       expect(cols).toContain("identifier");
-      expect(cols).toContain("value");
       expect(cols).toContain("expires_at");
+      // Phase 33 / Plan 33-05 — migration 0020 dropped verification.value
+      // (plaintext credential) and replaced it with the 6-bytea
+      // envelope-encrypted sidecar tuple. Assert the post-0020 invariant.
+      for (const suffix of [
+        "_dek_wrapped",
+        "_dek_iv",
+        "_dek_auth_tag",
+        "_value_iv",
+        "_value_auth_tag",
+        "_value_ciphertext",
+      ]) {
+        expect(cols).toContain(`value${suffix}`);
+      }
+      expect(cols).not.toContain("value");
     } finally {
       await pool.end();
     }
