@@ -138,6 +138,17 @@ export default defineConfig({
           include: ["**/*.test.ts"],
         },
       },
+      // Phase 44 / Plan 44-01 — self-tests project entry. Same drift as
+      // tests/integration above: no project entry post-v3 migration, so
+      // the new load-smoke-cost-discipline self-test was undiscovered.
+      {
+        extends: true,
+        test: {
+          name: "tests-self-tests",
+          root: p("tests/self-tests"),
+          include: ["**/*.test.ts"],
+        },
+      },
     ],
     coverage: {
       provider: "v8",
