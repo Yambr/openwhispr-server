@@ -333,6 +333,37 @@ to an explicit `deferred` row with a remediation phase.
 
 ---
 
+## 11. RLS posture (Phase 32)
+
+Closes review finding CR-7 (`.planning/review/data.md` CR-01 + HI-04).
+
+**Before Phase 32 — FAIL-OPEN.** Migration `0003_better_auth_tenant_defaults.sql:43-57` bound `app.tenant_id` to the placeholder default tenant at the `openwhispr_app` role level (rolconfig) AND added GUC-bound column DEFAULTs on the four Better Auth tables (`users`, `sessions`, `account`, `verification`). Every PgBouncer-leased connection inherited the default-tenant binding at backend-connect time; any query escaping `withTenant()` silently bound to that default tenant — including writes. This violated the constitutional "no row from tenant A is ever visible to a request running under tenant B" invariant for any code path that forgot to wrap a query in `withTenant()`.
+
+**After Phase 32 — FAIL-CLOSED.** Migration `0018_rls_fail_closed.sql` does three things atomically:
+
+1. `ALTER ROLE openwhispr_app RESET app.tenant_id` — the role no longer pre-binds the GUC at backend-connect time.
+2. `ALTER COLUMN tenant_id DROP DEFAULT` on `users`, `sessions`, `account`, `verification` — the GUC-bound column DEFAULTs are removed.
+3. Every tenant-scoped table's RLS policy USING and WITH CHECK bodies are rewritten to `tenant_id = NULLIF(current_setting('app.tenant_id', true), '')::uuid`. When the GUC is unset, `NULLIF('', '')` returns `NULL`, the cast yields `NULL`, and the comparison evaluates to `NULL` (treated as false for both USING and WITH CHECK).
+
+Semantics per (op, context) cell after migration 0018:
+
+| op     | with-context (correct UUID) | without-context (GUC unset or empty)       |
+| ------ | --------------------------- | ------------------------------------------ |
+| SELECT | returns matching rows       | returns 0 rows (**silent deny-read**)      |
+| INSERT | row admitted iff WITH CHECK passes | raises PG `42501` (**raise on write**) |
+| UPDATE | rowCount === N              | rowCount === 0 (USING reduces target to ∅) |
+| DELETE | rowCount === N              | rowCount === 0 (USING reduces target to ∅) |
+
+**Why silent-deny-read rather than raise-everywhere.** Variant (b) `missing_ok=false` would surface dozens of pre-existing routes that legitimately read empty result sets (e.g., a public bootstrap endpoint querying its own tenant before the tenant context is established). The route-level audit is Phase 41 content; Phase 32 keeps the multi-tenant invariant strict without holding the migration hostage to that route inventory.
+
+**Coverage.** The 16-table × 4-op × 2-context = **128-case** property test on a real Postgres testcontainer is at `packages/data/tests/unit/__tests__/rls-fail-closed.property.test.ts`. The migration test at `packages/data/migrations/__tests__/0018-rls-fail-closed.test.ts` proves the role-default is cleared, the four column DEFAULTs are dropped, every policy body contains a `NULLIF(current_setting(...)` cast, and squawk lint exits 0.
+
+**Operator note.** `withTenant()` (`packages/data/src/tenant-context.ts`) is the only sanctioned entry into a tenant-scoped query. System jobs that legitimately need to span tenants connect via the `openwhispr_owner` role (BYPASSRLS); see `packages/data/src/system-context.ts` and the BullMQ `withSystemContext()` wrapper for the codified pattern.
+
+**Threat IDs closed.** TM-RLS-DEFAULT (default-tenant leakage). Registry entry in section 9.
+
+---
+
 ## 10. Related documentation
 
 - [`architecture.md`](./architecture.md) — components, request hot
