@@ -436,3 +436,37 @@ The happy-path control. T_A's authenticated session issues `GET
 /api/transcribe/jobs/{J_A.id}` where J_A is T_A-owned. Response is 200
 with the job record. Asserts the negative twin (@cjm-15.1) is not
 testing a degenerate "everything 404s" stack.
+
+## 12. Agent stream — NDJSON wire shape (G5 closure)
+
+Phase 25 closes G5 from `.planning/qa-audit/2026-05-16-cjm-coverage.md`.
+`/api/agent/stream` already ships (Phase 4 / D-02), but no end-user CJM
+asserted the NDJSON wire shape end-to-end against the bundled mock-litellm
+SSE upstream. Phase 25 lands that sentinel.
+
+### @cjm-12.1 Agent stream yields NDJSON event sequence (happy path)
+
+A signed-in user POSTs to `/api/agent/stream` with a small prompt. The
+response Content-Type MUST be `application/x-ndjson` (NOT `text/event-stream`).
+Every line MUST parse as a JSON object with a `type` field; the stream
+MUST contain at least one `{type:"text-delta"}` and end with `{type:"finish"}`.
+Validates the SSE→NDJSON transcoder (`apps/api/src/lib/sse-parser.ts`) is
+wired end-to-end through Traefik + Fastify reply.hijack().
+
+- Backend error branches: 500 if upstream LiteLLM refuses; 401 if session
+  cookie missing.
+- Silent-failure modes: Content-Type drifts to `text/event-stream` (clients
+  built against NDJSON break); the stream closes without a `finish` chunk
+  (clients hang on EOF); newline framing fails (each chunk is two events
+  glued together).
+
+### @cjm-12.2 Missing auth → 401 typed envelope, NO stream opened (negative twin)
+
+Unauthenticated POST to `/api/agent/stream`. The api MUST respond `401`
+with the typed envelope, NOT a 200 with an NDJSON error event embedded
+mid-stream. Asserts auth gate fires BEFORE reply.hijack().
+
+- Backend error branches: 401 typed envelope `{ error: { code, message } }`.
+- Silent-failure modes: 200 with Content-Type `application/x-ndjson` and
+  an `{type:"error"}` chunk (would mask the auth failure from clients
+  that don't inspect chunks); 5xx (stack-trace exposure).
