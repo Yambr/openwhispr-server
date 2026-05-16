@@ -25,10 +25,10 @@ progress:
 
 ## Current Position
 
-Phase: Phase 19.2 stt-fixture (@cjm-4.1) — discuss-phase queued. v2.1 milestone RE-OPENED 2026-05-16 for downstream cjm-tag flips (19.2 / 19.3 / 19.4); v2.2 (Pre-OSS Security and Hygiene) work pauses until v2.1 final closure.
+Phase: Phase 19.3 ba-i18n (@cjm-1.4) — discuss-phase queued. v2.1 milestone RE-OPENED 2026-05-16 for downstream cjm-tag flips; v2.2 (Pre-OSS Security and Hygiene) work pauses until v2.1 final closure.
 Plan: —
-Status: Pending discuss-phase 19.2
-Last activity: 2026-05-16 — Phase 19.1 CLOSED (Plan 01 hook landed earlier; e2e GREEN proven through Phase 19b cascade) + Phase 19a CLOSED + Phase 19b CLOSED (5 commits b2ebf24 → d9ce0ec). ROADMAP entries seeded for 19.2 (stt-fixture @cjm-4.1), 19.3 (ba-i18n @cjm-1.4), 19.4 (locale-e2e @cjm-6.1). v2.1 milestone formally re-opened for batch close-out. After all 4 phases complete, milestone re-closure audit captures clean-CLOSED state.
+Status: Pending discuss-phase 19.3
+Last activity: 2026-05-16 — Phase 19.2 CLOSED with SERVER-ERRORS Entry 11 cascade resolved through 3 production layers (client query-param + multipart-injection + LiteLLM config `groq/` prefix). 7 commits: `8680485` / `e80b047` / `c2a5e79` / `1f60ff0` / `c5112d9` / `9e1db63` / `c4a49d6`. `@cjm-4.1` GREEN end-to-end (1.8s). Earlier 2026-05-16 — Phase 19.1 CLOSED + Phase 19a CLOSED + Phase 19b CLOSED. ROADMAP entries still pending for 19.3 (ba-i18n @cjm-1.4) and 19.4 (locale-e2e @cjm-6.1).
 
 ## Performance Metrics
 
