@@ -136,6 +136,13 @@ export interface ChatCompletionsStreamRequest extends ChatCompletionRequest {
   signal?: AbortSignal;
   /** Optional override; defaults to 0 (no body timeout — long-lived SSE). */
   bodyTimeout?: number;
+  /**
+   * Phase 41.f / HI-4 — first-class `stream_options` opt-out. Wins over
+   * any `extras.stream_options` and over the `include_usage: true`
+   * default. Pass `{ include_usage: false }` to drop the per-stream
+   * usage chunk (eliminates the small billing-line overhead).
+   */
+  streamOptions?: Record<string, unknown>;
 }
 
 export interface AudioTranscriptionRequest {
@@ -300,16 +307,26 @@ export function buildLitellmClient(
       // must NOT see this method pre-consume the body on 2xx.
       const model = req.model ?? config.defaultChatModel;
       checkProviderKey(model);
-      const callerStreamOptions =
+      // Phase 41.f / HI-4 — merge order (later wins):
+      //   1. default `{ include_usage: true }`
+      //   2. `extras.stream_options` (legacy surface)
+      //   3. explicit `streamOptions` param (first-class, can opt OUT)
+      // Stripped from extras spread to avoid the literal-overwrite trap.
+      const extrasStreamOptions =
         (req.extras as { stream_options?: Record<string, unknown> } | undefined)?.stream_options ??
         {};
+      const mergedStreamOptions: Record<string, unknown> = {
+        include_usage: true,
+        ...extrasStreamOptions,
+        ...(req.streamOptions ?? {}),
+      };
       const body = JSON.stringify({
         ...req.extras,
         model,
         messages: req.messages,
         user: req.userId, // D-03
         stream: true,
-        stream_options: { include_usage: true, ...callerStreamOptions },
+        stream_options: mergedStreamOptions,
       });
       // T-08.2-01: NO per-call dispatcher option — rely on the process-wide
       // SSRF agent set via setGlobalDispatcher. Forward signal + bodyTimeout.

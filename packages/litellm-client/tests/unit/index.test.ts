@@ -1049,6 +1049,62 @@ describe("buildLitellmClient — chatCompletionsStream", () => {
     expect(bodyJsonCalled).toBe(false);
   });
 
+  it("Phase 41.f / HI-4 — caller can opt OUT of include_usage via streamOptions param", async () => {
+    let capturedBody: string | undefined;
+    agent
+      .get(BASE)
+      .intercept({ path: "/v1/chat/completions", method: "POST" })
+      .reply((opts) => {
+        capturedBody = String(opts.body);
+        return {
+          statusCode: 200,
+          data: "data: [DONE]\n\n",
+          responseOptions: { headers: { "content-type": "text/event-stream" } },
+        };
+      });
+
+    const client = buildLitellmClient(baseConfig(), { isOverride: false });
+    await client.chatCompletionsStream({
+      model: "qwen3.6-plus",
+      messages: [{ role: "user", content: "hi" }],
+      userId: "u1",
+      requestId: "r1",
+      streamOptions: { include_usage: false },
+    });
+    const body = JSON.parse(capturedBody ?? "{}");
+    expect(body.stream_options).toEqual({ include_usage: false });
+  });
+
+  it("Phase 41.f / HI-4 — explicit streamOptions overrides extras.stream_options", async () => {
+    let capturedBody: string | undefined;
+    agent
+      .get(BASE)
+      .intercept({ path: "/v1/chat/completions", method: "POST" })
+      .reply((opts) => {
+        capturedBody = String(opts.body);
+        return {
+          statusCode: 200,
+          data: "data: [DONE]\n\n",
+          responseOptions: { headers: { "content-type": "text/event-stream" } },
+        };
+      });
+
+    const client = buildLitellmClient(baseConfig(), { isOverride: false });
+    await client.chatCompletionsStream({
+      model: "qwen3.6-plus",
+      messages: [{ role: "user", content: "hi" }],
+      userId: "u1",
+      requestId: "r1",
+      extras: { stream_options: { include_usage: true, custom_flag: 1 } },
+      streamOptions: { include_usage: false },
+    });
+    const body = JSON.parse(capturedBody ?? "{}");
+    // streamOptions param wins over extras.stream_options for the same key.
+    expect(body.stream_options.include_usage).toBe(false);
+    // Unrelated keys from extras still flow through.
+    expect(body.stream_options.custom_flag).toBe(1);
+  });
+
   it("Test G — does NOT pass a `dispatcher` key to undici.request (T-08.2-01 mitigation)", async () => {
     const spy = vi.fn(async () => ({
       statusCode: 200,
