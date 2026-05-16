@@ -1,0 +1,26 @@
+-- Phase 33 / Plan 33-04 — drop migration 0005's
+-- `lookup_session_by_previous_token(text)` SECURITY DEFINER function.
+--
+-- Replacement: Node-side helper
+-- `packages/data/src/sessions/lookup-by-previous-token.ts`, which:
+--   1. SHA-256-hashes the plaintext bearer.
+--   2. SELECTs against `sessions.previous_token_fp` (bytea(32)) via the
+--      partial index `sessions_previous_token_fp_idx` (migration 0019).
+--   3. Filters by `previous_token_expires_at > now()` — identical
+--      AUTH-04 5-minute overlap contract.
+--
+-- Why drop the SQL function NOW (before Plan 33-05 drops the plaintext
+-- `previous_token` text column):
+--   - The function's body (`WHERE s.previous_token = p_token`) would
+--     start returning 0 rows the moment Plan 33-05 drops the column,
+--     silently breaking the AUTH-04 overlap.
+--   - Dropping it now forces every caller to migrate to the Node helper
+--     before that column disappears (caught at integration-test time,
+--     not in production).
+--
+-- IDEMPOTENT: `DROP FUNCTION IF EXISTS` is safe to re-apply. REVOKE is
+-- implicit when the function is dropped. The replacement helper does NOT
+-- need any new GRANT — it uses the owner pool that already has SELECT on
+-- `sessions` (BYPASSRLS), so no role privilege adjustment is required.
+
+DROP FUNCTION IF EXISTS lookup_session_by_previous_token(text);

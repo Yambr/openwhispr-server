@@ -141,6 +141,13 @@
       "when": 1780502400000,
       "tag": "0019_envelope_encrypt_secret_columns_add",
       "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1780588800000,
+      "tag": "0019b_drop_lookup_session_by_previous_token",
+      "breakpoints": true
     }
   ]
 }
