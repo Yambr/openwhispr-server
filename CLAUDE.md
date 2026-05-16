@@ -108,6 +108,8 @@ It is built to enterprise standards for **1000 concurrent active users** in one 
    
    **Trust but verify** from `~/.claude/CLAUDE.md` global rules is INHERITED HERE as constitutional. The cheapest failure mode is the orchestrator parroting a sub-agent's optimistic summary verbatim and the user discovering the lie via their IDE.
 
+4. **NEVER bypass the gitleaks pre-commit / pre-push hooks.** `git commit --no-verify` and `git push --no-verify` are prohibited for any commit that adds or modifies files containing potential credential shapes. The hooks (lefthook pre-commit + pre-push using `.gitleaks.toml`) are defense-in-depth Layer 1 + 2; CI gitleaks-action (`.github/workflows/security.yml`) is Layer 3 — by the time CI fires, the secret is already on GitHub remote and ROTATION is mandatory. If a hook fires on a legitimate test placeholder, the fix is to extend `.gitleaks.toml` allowlist + add a regression assertion in `tools/lint-gitleaks-config.test.ts` — NEVER to bypass. Runbook: `docs/security/secret-leak-runbook.md`.
+
 ### Tactical conventions
 
 Conventions not yet otherwise established. Will populate as patterns emerge.
