@@ -231,9 +231,62 @@ export const buildSetupAdminRoutes = (deps: SetupAdminDeps) =>
 
         // 4. Flip role server-side. Raw SQL because users.role is not
         //    declared in the drizzle schema TS (migration-only column).
-        await ownerPool.query(`UPDATE users SET role = 'admin' WHERE id = $1`, [
-          signUpResult.data.user.id,
-        ]);
+        //
+        // Phase 35 / CR-4 (CRIT-FIX-06) — compensating rollback when the
+        // role flip fails (transient pool error / statement timeout / net
+        // blip). Without this guard, a step-4 throw left setup_state at
+        // 'completed' AND a non-admin user row, which then made every
+        // subsequent POST short-circuit to `alreadyCompleted: true` with
+        // `admin: { email: undefined }` (the SELECT WHERE role='admin'
+        // returns zero rows) and the instance was wedged. The fix:
+        //   (a) DELETE the half-created user (so the next attempt has a
+        //       clean slate against the email-unique index),
+        //   (b) UPDATE setup_state SET status='pending', completed_at=NULL
+        //       (re-opens the claim gate, exactly as the signUpEmail
+        //       compensating branch on lines 213-217 does),
+        //   (c) return 503 ADMIN_CREATE_FAILED so the wizard surfaces a
+        //       retryable error instead of a "setup already done" lie.
+        // Cleanup queries themselves are best-effort — on a cascading
+        // outage the operator still reaches a recoverable state on the
+        // next request after the transient condition clears.
+        try {
+          await ownerPool.query(`UPDATE users SET role = 'admin' WHERE id = $1`, [
+            signUpResult.data.user.id,
+          ]);
+        } catch (err) {
+          req.log.error(
+            { err, userId: signUpResult.data.user.id },
+            "role_flip_failed_rolling_back_setup_admin",
+          );
+          // (a) DELETE the half-created user. CASCADE removes any
+          //     Better-Auth-emitted session/account rows tied to the id.
+          try {
+            await ownerPool.query(`DELETE FROM users WHERE id = $1`, [signUpResult.data.user.id]);
+          } catch (cleanupErr) {
+            req.log.warn(
+              { err: cleanupErr, userId: signUpResult.data.user.id },
+              "role_flip_cleanup_user_delete_failed",
+            );
+          }
+          // (b) Re-open the setup_state gate.
+          try {
+            await db.transaction(async (tx) => {
+              await tx.execute(sql`
+                UPDATE setup_state SET status='pending', completed_at=NULL WHERE id = 1
+              `);
+            });
+          } catch (cleanupErr) {
+            req.log.warn({ err: cleanupErr }, "role_flip_cleanup_setup_state_rollback_failed");
+          }
+          // (c) Recoverable error envelope (NOT `alreadyCompleted: true`).
+          return reply.code(503).send({
+            error: {
+              code: "ADMIN_CREATE_FAILED",
+              message: "admin role assignment failed; please retry",
+              requestId: req.id,
+            },
+          });
+        }
 
         // 5. Best-effort tenant rename (RESEARCH Q1).
         //    Failure does NOT roll back the admin — that would block
