@@ -114,6 +114,47 @@ async function emailAlreadyRegistered(
   return exists;
 }
 
+/**
+ * Phase 19.3 / Plan 01 — translate the `message` field of a Better Auth
+ * JSON error envelope using `req.i18n` (i18next instance steered by
+ * Accept-Language).
+ *
+ * Better Auth emits its own envelope shape `{message, code}` from inside
+ * its universal handler; the response bypasses our Fastify
+ * error-handler (which only catches THROWN errors). Closing UICONF-03
+ * requires surfacing localized copy at the wire, not just in-process.
+ *
+ * Strategy: when status >= 400, the body parses as JSON, and contains a
+ * stable `code` field, look up `errors.<code>` via `req.i18n.t(...)`.
+ * The i18next middleware fires its preHandler BEFORE the BA route
+ * handler so `req.i18n` is populated. If the code is unknown, the
+ * `defaultValue` fallback preserves Better Auth's original English
+ * `message` (no silent string-key leak).
+ *
+ * Non-string codes, unknown codes, malformed JSON, missing `req.i18n` —
+ * each short-circuits to the original `text` so every existing
+ * pass-through case in better-auth-handler.test.ts stays GREEN.
+ *
+ * Exported for direct unit-testing without spinning a real Better Auth
+ * handler.
+ */
+export function maybeLocalizeBetterAuthError(req: FastifyRequest, text: string): string {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(text);
+  } catch {
+    return text;
+  }
+  if (parsed === null || typeof parsed !== "object") return text;
+  const obj = parsed as { message?: unknown; code?: unknown };
+  if (typeof obj.code !== "string" || typeof obj.message !== "string") return text;
+  const i18n = (req as unknown as { i18n?: { t(k: string, o?: object): string } }).i18n;
+  if (!i18n?.t) return text;
+  const localized = i18n.t(`errors.${obj.code}`, { defaultValue: obj.message });
+  if (localized === obj.message) return text;
+  return JSON.stringify({ ...obj, message: localized });
+}
+
 export const buildBetterAuthHandlerRoutes = (deps: BetterAuthHandlerDeps) =>
   async function betterAuthHandlerRoutes(app: FastifyInstance): Promise<void> {
     const { auth, db } = deps;
@@ -184,6 +225,14 @@ export const buildBetterAuthHandlerRoutes = (deps: BetterAuthHandlerDeps) =>
         // Body: pass through as-is. Better Auth typically returns JSON;
         // text() handles JSON, redirects (empty), and cookie-only responses.
         const text = await webRes.text();
+
+        // Phase 19.3 / Plan 01 — localize the `message` field on Better
+        // Auth error envelopes per Accept-Language (UICONF-03 closure).
+        // See maybeLocalizeBetterAuthError above for the contract.
+        if (webRes.status >= 400 && text) {
+          const localized = maybeLocalizeBetterAuthError(req, text);
+          return reply.send(localized);
+        }
         return reply.send(text || undefined);
       },
     );
