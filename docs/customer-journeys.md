@@ -661,3 +661,30 @@ returns the overridden model.
 PUT `/api/stt-config` with a model id not in the allowed enum. The api
 MUST respond 400 with the typed envelope shape and the error code
 matching `invalid_model` or `validation_error`.
+
+## byok-litellm. Corporate LITELLM_BASE_URL override (G9 closure)
+
+Phase 43 closes G9 from `.planning/qa-audit/2026-05-16-cjm-coverage.md`.
+`@cjm-byok-storage.2` already covers boot-time acceptance of a corporate
+`S3_ENDPOINT`; this CJM does the equivalent for `LITELLM_BASE_URL`.
+Tagged `@expected-red @after-phase-44-MOCK-CORP-LITELLM` until a second
+mock-litellm container at a different port lands in compose overlays.
+
+### @cjm-byok-litellm.1 Transcribe routes through a corporate LITELLM_BASE_URL override (happy path)
+
+Boot api with `LITELLM_BASE_URL=http://mock-corp-litellm:4000`. POST
+`/api/transcribe` with a wav fixture. The mock-corp-litellm container
+MUST observe exactly one inbound request; the response body MUST contain
+the canned transcript text.
+
+- Backend error branches: 502 if the corporate URL is unreachable; 503
+  with `BYOK_PROVIDER_KEY_MISSING` if a downstream LiteLLM key env is
+  required and unset.
+- Silent-failure modes: api falls back to bundled LiteLLM
+  (`http://litellm:4000`) — defeats the BYOK override.
+
+### @cjm-byok-litellm.2 Unreachable LITELLM_BASE_URL surfaces typed 502, not a stack leak (negative twin)
+
+Boot api with `LITELLM_BASE_URL=http://does-not-exist:4000`. POST
+`/api/transcribe`. The api MUST respond `502` with the typed envelope;
+the body MUST NOT contain a Node.js stack trace.
