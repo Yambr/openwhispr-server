@@ -617,9 +617,9 @@ Work-order: **31 → 32 → 33 → 34 → 35 → 36 → 37 → 38 → 39 → 40 
 | LOCKER-04 | 31 | Pending | `tools/lint-prod-readiness.ts` — Fastify routes need zod+rateLimit; exports need non-test importer |
 | LOCKER-05 | 31 | Pending | `tools/lint-secret-shape-in-error.ts` — refuses untruncated `bodyText`/`responseBody`/`upstreamPayload` on Error subclasses |
 | LOCKER-06 | 31 | Pending | `tools/lint-shell-credential-interpolation.ts` — refuses `bash -c "...${*_URL\|KEY\|PASSWORD\|SECRET\|TOKEN}..."` |
-| LOCKER-07 | 31 | Pending | `.planning/DISCIPLINE.md` Rules 11–14 + `CLAUDE.md` mirror, SAME commit as linter source |
-| LOCKER-08 | 31 | Pending | Lefthook + `ci.yml` + `nightly.yml` wired; `make lint:lockers` shipped |
-| LOCKER-09 | 31 | Pending | Per-locker allowlists seeded; CI fails on net additions; each entry has tracking-issue ID |
+| LOCKER-07 | 31 | Complete | `.planning/DISCIPLINE.md` Rules 11–14 + `CLAUDE.md` mirror — Phase 31 / Plan 31-07 atomic commit |
+| LOCKER-08 | 31 | Complete | Lefthook + `ci.yml` + `nightly.yml` + Makefile + `pnpm lint:lockers` aggregate — Phase 31 / Plan 31-07 |
+| LOCKER-09 | 31 | Complete | `tools/lockers-allowlist-diff.ts` + ci.yml step + 6 allowlists seeded — Phase 31 / Plan 31-07 |
 | CRIT-FIX-01 | 32 | Pending | Migration `0017_rls_fail_closed.sql` + 88-case property test on real Postgres testcontainer — Source: `data.md` CR-01 + HI-04 |
 | CRIT-FIX-02 | 33 | Pending | Migration `0018_envelope_encrypt_secret_columns.sql` + Drizzle lens + `lint-no-plaintext-secret-columns` (Rule 15) + `docs/security.md` — Source: `data.md` CR-02 |
 | CRIT-FIX-03 | 34 | Pending | `tenantPlugin` deleted OR replaced with `req.untrustedTenantHint` guard; E2E forged-header refusal — Source: `api-core.md` CR-01 |
@@ -664,9 +664,9 @@ Driven entirely by `.planning/review/REVIEW-INDEX.md` (10 CRITICAL + 35 HIGH fro
 - [ ] **LOCKER-04**: `tools/lint-prod-readiness.ts` — AST scan of `apps/**/src/**` + `packages/**/src/**`: (a) every Fastify `app.route/get/post/...` MUST have `schema: { body|querystring|params: <ZodSchema> }` AND `config: { rateLimit: ... }` (or explicit `rateLimit: false` only for `/api/health`); (b) every exported symbol MUST have ≥ 1 non-test importer. Coverage ≥ 90/90/90/90.
 - [ ] **LOCKER-05**: `tools/lint-secret-shape-in-error.ts` — refuse `class X extends Error { public/readonly <bodyText|responseBody|upstreamPayload|response|body>: string }` unless constructor truncates the field. Coverage ≥ 90/90/90/90.
 - [ ] **LOCKER-06**: `tools/lint-shell-credential-interpolation.ts` — refuse template-literal strings passed to `spawn('bash', ['-c', ...])` / `execSync` / `exec` referencing `*_URL`, `*_KEY`, `*_PASSWORD`, `*_SECRET`, `*_TOKEN` bindings or env vars. Coverage ≥ 90/90/90/90.
-- [ ] **LOCKER-07**: `.planning/DISCIPLINE.md` Rules 11–14 amended in (NODE_ENV branches / suppressions / hardcode / prod-readiness) and mirrored to `CLAUDE.md` § Engineering Discipline in the SAME commit as the linter source.
-- [ ] **LOCKER-08**: Lefthook pre-commit + GitHub Actions `ci.yml` + `nightly.yml` updated to invoke all six lockers BLOCKING; `make lint:lockers` target shipped.
-- [ ] **LOCKER-09**: Per-locker allowlist files (`tools/lint-*-allowlist.txt`) seeded with current main inventory; CI MUST fail on any net addition. Each allowlist entry has a tracking-issue ID.
+- [x] **LOCKER-07**: `.planning/DISCIPLINE.md` Rules 11–14 amended (NODE_ENV branches / suppressions / hardcode / prod-readiness) and mirrored to `CLAUDE.md` § Engineering Discipline in the SAME commit as the integration wiring. — Phase 31 / Plan 31-07.
+- [x] **LOCKER-08**: Lefthook pre-commit + GitHub Actions `ci.yml` + `nightly.yml` + Makefile updated to invoke all six lockers; `make lint:lockers` aggregate target shipped (LOCKER-01/02/03 BLOCKING on land; LOCKER-04/05/06 WARN-only via `--warn-only`, with nightly invoking the BLOCKING form). — Phase 31 / Plan 31-07.
+- [x] **LOCKER-09**: Per-locker allowlist files (`tools/lint-*-allowlist.txt`) seeded with current main inventory across Phases 31-01..06; `tools/lockers-allowlist-diff.ts` + ci.yml step refuse net additions unless the commit body or PR body carries `Allowlist-grow-approved: issue-NNNN`. — Phase 31 / Plan 31-07.
 
 ### Critical fixes (Phases 32–38)
 

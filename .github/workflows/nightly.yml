@@ -19,6 +19,45 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm test:mutation
 
+  # Phase 31 / Plan 07 / LOCKER-08 — nightly BLOCKING locker sweep.
+  #
+  # The pre-commit + per-PR ci.yml lockers job invokes the package.json
+  # `lint:lockers` aggregate which preserves each binary's --warn-only
+  # flag where set (LOCKER-04/05/06 ship WARN-only on landing during
+  # Phase 31; flip to BLOCKING in 31-08 / 37 / 36.a final commits).
+  # Nightly is the early-warning channel: invoke each binary WITHOUT
+  # --warn-only so findings against the WARN-only-on-land lockers
+  # surface as a nightly failure even before their phase-X flip lands.
+  #
+  # When this job fails, the developer-on-call inspects the stderr log
+  # and (a) lands the fix into the appropriate phase-X bulk-fix queue
+  # (31-08 for LOCKER-04, Phase 37 for LOCKER-05, Phase 36.a for
+  # LOCKER-06) or (b) adds the offending file:line to the per-locker
+  # allowlist with an `# issue-NNNN` rationale (governed by LOCKER-09's
+  # allowlist-diff PR gate on the eventual commit).
+  lockers-nightly:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+        with: { fetch-depth: 0 }
+      - uses: pnpm/action-setup@v4
+        with: { version: 11.0.8 }
+      - uses: actions/setup-node@v5
+        with: { node-version: '24', cache: 'pnpm' }
+      - run: pnpm install --frozen-lockfile
+      # LOCKER-01/02/03 are BLOCKING from landing — invoke their
+      # package.json scripts directly (no --warn-only to drop).
+      - run: pnpm lint:no-env-branches
+      - run: pnpm lint:no-suppressions
+      - run: pnpm lint:no-hardcode
+      # LOCKER-04/05/06 ship WARN-only-on-land — invoke the binary
+      # directly (NOT the package.json script) so the --warn-only flag
+      # set in package.json is not applied. Nightly sees the BLOCKING
+      # form.
+      - run: pnpm exec tsx tools/lint-prod-readiness.ts
+      - run: pnpm exec tsx tools/lint-secret-shape-in-error.ts
+      - run: pnpm exec tsx tools/lint-shell-credential-interpolation.ts
+
   load-test-placeholder:
     runs-on: ubuntu-24.04
     steps:

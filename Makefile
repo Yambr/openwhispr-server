@@ -2,7 +2,7 @@
 # Phase 0: implements dev/test/lint/format/typecheck/up/down/clean/help.
 # Future-phase targets stub-fail with a phase-N pointer.
 
-.PHONY: dev test lint lint-rls format typecheck up down clean clean-stack tls-trust help \
+.PHONY: dev test lint lint-rls lint\:lockers format typecheck up down clean clean-stack tls-trust help \
         contract-test contract-test-deployed contract-test-missing-keys e2e-test e2e-test-live \
         e2e-hermetic e2e-test-phase6 e2e-cjm e2e-cjm-teardown \
         load-test seed backup restore migrate migrate-rollback logs ps restart \
@@ -24,6 +24,16 @@ lint:
 
 lint-rls:
 	pnpm exec tsx tools/lint-rls.ts
+
+# Phase 31 / Plan 07 / LOCKER-08 — aggregate lockers gate.
+# Runs all six locker binaries in sequence under one Make target so
+# lefthook + ci.yml + nightly.yml + Makefile share one source of truth.
+# The aggregate runs `pnpm lint:lockers` which chains the per-locker
+# package.json scripts (LOCKER-01..06 in landing order). The script
+# preserves each binary's --warn-only flag where set (Phase 31 ships
+# LOCKER-04/05/06 WARN-only; the flip lands in 31-08 / 37 / 36.a).
+lint\:lockers:
+	pnpm lint:lockers
 
 format:
 	pnpm format

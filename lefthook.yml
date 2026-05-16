@@ -33,6 +33,15 @@ pre-commit:
     dockerfile-tls:
       glob: "**/Dockerfile"
       run: pnpm lint:dockerfile-tls
+    # Phase 31 / Plan 07 / LOCKER-08 — fail-fast on any locker violation.
+    # The six lockers (LOCKER-01..06) fan out under `make lint:lockers` so
+    # lefthook + ci.yml + nightly.yml + Makefile share one source of truth.
+    # LOCKER-01/02/03 are BLOCKING from landing; LOCKER-04/05/06 are
+    # WARN-only-on-land (flipped to BLOCKING in 31-08 / 37 / 36.a final
+    # commits — see DISCIPLINE.md "Locker WARN→BLOCKING ledger").
+    lockers:
+      glob: "{apps,packages}/*/src/**/*.{ts,tsx}"
+      run: make lint:lockers
     # Phase 6 / Plan 06-09 / D-W4 layer 1 — fail-fast if any BullMQ job
     # handler is not wrapped in withTenantContext / withSystemContext.
     # The scan is ~1s against 8 job files; fast enough for pre-commit.
