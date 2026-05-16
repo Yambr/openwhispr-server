@@ -505,3 +505,38 @@ does NOT silently degrade to mock fallback.
   record naming the missing env key.
 - Silent-failure modes: 200 with mock results substituted (operator
   thinks Tavily works); 5xx with provider key in stack trace.
+
+## 14. Session refresh — set-auth-token rotation (G7 closure)
+
+Phase 27 closes G7 from `.planning/qa-audit/2026-05-16-cjm-coverage.md`.
+Better Auth's bearer plugin (Phase 2) emits a `set-auth-token` response
+header when the underlying session token is rotated; clients MUST pick
+up the new token for subsequent requests. No end-user CJM previously
+asserted this round-trip — a silent regression where the header is
+absent would surface only as 401 storms in production. Phase 27 lands
+the regression sentinel.
+
+### @cjm-14.1 Authenticated request close to rotation threshold emits set-auth-token (happy path)
+
+A signed-in user issues an authenticated request whose underlying
+session is at-or-past the rotation threshold. The api MUST emit a
+`set-auth-token` response header carrying a non-empty token string that
+decodes to the same user id as the inbound bearer.
+
+- Backend error branches: header absent (rotation missed); token
+  encodes a different user (cross-session leak — CVE class).
+- Silent-failure modes: client never picks up the new token, falls
+  back to the now-rotated old token, hits 401 storms.
+
+### @cjm-14.2 Expired session → 401 + cleared cookie, NO set-auth-token (negative twin)
+
+A signed-in user's session is past its absolute expiry. The api MUST
+respond `401` with the typed envelope, MUST NOT emit `set-auth-token`,
+and SHOULD instruct the client to clear the session cookie (via
+`Set-Cookie` with `Max-Age=0`).
+
+- Backend error branches: 401 typed envelope; `Set-Cookie` clears the
+  session cookie; no `set-auth-token`.
+- Silent-failure modes: server silently re-issues a token for an
+  expired session (session-lifetime bypass — CVE class); 5xx with the
+  expired token in a stack trace.
