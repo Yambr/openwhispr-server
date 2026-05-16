@@ -46,6 +46,12 @@ spec:
       imagePullSecrets:
         {{- toYaml . | nindent 8 }}
       {{- end }}
+      # SR-20.5 (Phase 20-02b) — full pod-level hardening. Container image
+      # apps/api/Dockerfile uses USER 1000 so runAsNonRoot+runAsUser are
+      # satisfied; fsGroup ensures emptyDir mounts inherit the uid; seccomp
+      # blocks the unsafe syscall set.
+      securityContext:
+        {{- toYaml .Values.api.securityContext.pod | nindent 8 }}
       {{- if .Values.api.topologySpread.enabled }}
       # SR-20.4 — spread api pods across nodes so a single-node
       # failure cannot down the whole tier. ScheduleAnyway (not
@@ -109,6 +115,11 @@ spec:
         - name: api
           image: "{{ .Values.image.api.repository }}:{{ $apiTag }}"
           imagePullPolicy: {{ .Values.image.pullPolicy }}
+          # SR-20.5 — container-level hardening. readOnlyRootFilesystem
+          # requires the /tmp emptyDir mount below (the api writes scratch
+          # files only there).
+          securityContext:
+            {{- toYaml .Values.api.securityContext.container | nindent 12 }}
           ports:
             - name: http
               containerPort: 3000
@@ -212,3 +223,11 @@ spec:
             limits:
               cpu: 1000m
               memory: 1Gi
+          # SR-20.5 — read-only rootfs needs a writable scratch path.
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir:
+            sizeLimit: 64Mi
