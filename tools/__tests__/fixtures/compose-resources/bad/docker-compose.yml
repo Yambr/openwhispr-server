@@ -1,0 +1,25 @@
+# Synthetic BAD fixture — exercises R1 + R2 + R3 violation codes for
+# tools/lint-compose-resources.ts. Used by lint-compose-resources.test.ts.
+name: bad-fixture
+
+services:
+  postgres:
+    image: postgres:17.5-alpine
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 64M   # R3: below the 2G ROADMAP floor for postgres
+
+  traefik:
+    image: traefik:v3.6
+    # R1: no deploy.resources.limits block.
+    # R2: no restart: policy at all.
+
+  api:
+    image: openwhispr/api:dev
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 1G    # at-or-above the 1G api floor — clean
