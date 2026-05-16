@@ -446,8 +446,13 @@ describe("encryption lens — Phase 33 Plan 02", () => {
     it("new writes after rotation use the head (current) provider", async () => {
       process.env.MASTER_KEK = makeKek();
       const v1 = new EnvKeyProvider();
+      // Prime v1's KEK cache before rotating the env var — otherwise
+      // its first getKek() call would read whatever MASTER_KEK is set
+      // to at call time, defeating the rotation simulation.
+      await v1.getKek();
       process.env.MASTER_KEK = makeKek();
       const v2 = new EnvKeyProvider();
+      await v2.getKek();
       const { adapter, store } = makeMockAdapter();
       const wrapped = wrapAdapter(adapter, [v2, v1], COLUMN_MAP);
 
@@ -654,6 +659,42 @@ describe("encryption lens — Phase 33 Plan 02", () => {
       const wrapped = wrapAdapter(adapter, provider, COLUMN_MAP);
       const rows = await wrapped.findMany<any>({ model: "account" });
       expect(rows).toEqual([]);
+    });
+
+    it("empty provider array is rejected at construction time", () => {
+      const { adapter } = makeMockAdapter();
+      expect(() => wrapAdapter(adapter, [], COLUMN_MAP)).toThrowError(
+        /at least one KeyProvider required/,
+      );
+    });
+
+    it("non-string plaintext on an encrypted column raises a typed error", async () => {
+      const provider = new EnvKeyProvider();
+      const { adapter } = makeMockAdapter();
+      const wrapped = wrapAdapter(adapter, provider, COLUMN_MAP);
+      await expect(
+        wrapped.create({
+          model: "account",
+          data: { id: "bad", access_token: 12345 as unknown as string, user_id: "u" },
+        }),
+      ).rejects.toThrow(/account\.access_token must be a string/);
+    });
+
+    it("inner.create returning a non-object is passed through unchanged", async () => {
+      // Some Better-Auth adapters return falsy/scalars on no-op create.
+      // The lens must NOT crash when trying to decryptRow a non-object.
+      const provider = new EnvKeyProvider();
+      const innerAdapter: DBAdapter = {
+        ...makeMockAdapter().adapter,
+        // biome-ignore lint/suspicious/noExplicitAny: deliberately exercising a non-object return
+        create: (async () => null) as any,
+      };
+      const wrapped = wrapAdapter(innerAdapter, provider, COLUMN_MAP);
+      const r = await wrapped.create({
+        model: "account",
+        data: { id: "x", access_token: "secret", user_id: "u" },
+      });
+      expect(r).toBeNull();
     });
   });
 });
