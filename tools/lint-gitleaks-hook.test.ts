@@ -40,14 +40,18 @@ const REPO_GITLEAKS_CFG = join(REPO_ROOT, ".gitleaks.toml");
 const SYNTH_LEAK = "SYNTH9xY2vW8nP1jL5kRgD7sM6cF0hX3uZbN0qE4tR7wA1bSYNTH";
 
 function which(bin: string): string | null {
+  // Prefer the repo's local bin first — `which lefthook` in a pnpm
+  // workspace returns the RELATIVE path `./node_modules/.bin/lefthook`,
+  // which silently fails when spawnSync sets cwd to a tmpdir. Resolve
+  // to an absolute path so the test's tmp-cwd cannot lose the binary.
+  const local = resolve(REPO_ROOT, "node_modules", ".bin", bin);
+  if (existsSync(local)) return local;
   const r = spawnSync("which", [bin], { encoding: "utf8" });
-  if (r.status === 0 && r.stdout.trim()) return r.stdout.trim();
-  // Fallback: try via pnpm exec (lefthook is in node_modules/.bin).
-  const r2 = spawnSync("pnpm", ["exec", "which", bin], {
-    encoding: "utf8",
-    cwd: REPO_ROOT,
-  });
-  if (r2.status === 0 && r2.stdout.trim()) return r2.stdout.trim();
+  if (r.status === 0 && r.stdout.trim()) {
+    const got = r.stdout.trim();
+    // Only accept an absolute path; reject `./` relative forms.
+    if (got.startsWith("/")) return got;
+  }
   return null;
 }
 
@@ -117,7 +121,9 @@ describe("gitleaks lefthook integration (L1 pre-commit + L2 pre-push)", () => {
       // (biome, english, lockers) need the full monorepo tree.
       // `lefthook run pre-commit --commands gitleaks` scopes to the
       // single command under test.
-      const r = run(LEFTHOOK, ["run", "pre-commit", "--commands", "gitleaks"], dir);
+      // --no-tty forces lefthook to write to stdout/stderr rather than
+      // the controlling terminal, so spawnSync captures the output.
+      const r = run(LEFTHOOK, ["run", "pre-commit", "--command", "gitleaks", "--no-tty"], dir);
       expect(r.status, `expected non-zero; output:\n${r.output}`).not.toBe(0);
       // Reasonable evidence the failure was the gitleaks gate, not
       // a missing-config or other plumbing error.
@@ -142,7 +148,7 @@ describe("gitleaks lefthook integration (L1 pre-commit + L2 pre-push)", () => {
       });
       expect(c.status).toBe(0);
       // Now invoke the pre-push gate.
-      const r = run(LEFTHOOK, ["run", "pre-push", "--commands", "gitleaks"], dir);
+      const r = run(LEFTHOOK, ["run", "pre-push", "--command", "gitleaks", "--no-tty"], dir);
       expect(r.status, `expected non-zero; output:\n${r.output}`).not.toBe(0);
       expect(r.output.toLowerCase()).toMatch(/gitleaks|leaks found|secret/);
     } finally {
