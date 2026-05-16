@@ -75,7 +75,15 @@ export const buildAuthProvidersRoutes = (deps: AuthProvidersDeps = {}) =>
       url: "/api/auth/providers",
       // T-12.02-03 — DoS mitigation. Better Auth default budget for
       // unauthenticated discovery endpoints (RESEARCH §4).
-      config: { rateLimit: { max: 60, timeWindow: "1 minute" } },
+      //
+      // Phase 35 / CR-2 (CRIT-FIX-04) — opt out of the global dualAuthHook
+      // so this discovery route is genuinely public. Without `auth: false`,
+      // the wizard's pre-sign-in fetch + the desktop's provider probe both
+      // 401 in production. The route doc comment has always asserted
+      // "Public — no auth guard"; the missing flag was a Phase 12 wiring
+      // bug that unit-tests masked (they register the route on a bare
+      // Fastify without dualAuthHook installed).
+      config: { auth: false, rateLimit: { max: 60, timeWindow: "1 minute" } },
       handler: async (req: FastifyRequest, reply: FastifyReply) => {
         const env = deps.env ?? process.env;
         const body = buildResponseBody(env);
