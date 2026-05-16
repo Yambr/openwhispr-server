@@ -9,7 +9,8 @@
 //      the lint is designed to catch.
 //   3. Synthetic GOOD fixture — post-fix shape; clean.
 
-import { dirname, resolve } from "node:path";
+import { existsSync } from "node:fs";
+import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import {
@@ -53,8 +54,15 @@ describe("lint-compose-resources — SR-20.1 + SR-20.2 guard", () => {
   });
 
   it("findRepoRoot resolves to a directory containing tools/", () => {
+    // The function returns dirname(__filename)/.. — i.e. the parent of
+    // the `tools/` directory the linter lives in. The assertion is on
+    // the structural invariant (parent of `tools/` exists and contains
+    // a `tools/` subdir), NOT on the literal repo-name suffix. The
+    // suffix-match was worktree-hostile (worktrees nest the path under
+    // `.claude/worktrees/...`).
     const root = findRepoRoot();
-    expect(root).toMatch(/openwhispr-server$/);
+    expect(existsSync(join(root, "tools"))).toBe(true);
+    expect(existsSync(join(root, "tools", "lint-compose-resources.ts"))).toBe(true);
   });
 
   it("parseMemoryString accepts SI + IEC units and rejects garbage", () => {
