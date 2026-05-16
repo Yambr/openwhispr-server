@@ -113,6 +113,34 @@ export function resolveAdminUrl(env: NodeJS.ProcessEnv = process.env): string | 
 }
 
 /**
+ * HI-01 (Phase 41.e) — operator escape hatch for the LiteLLM-DB
+ * auto-create step. Returns `true` iff `SKIP_LITELLM_DB_AUTOCREATE` is
+ * the string `"1"` or `"true"` (case-insensitive). Anything else
+ * (unset / `"0"` / `"false"` / arbitrary value) returns `false`,
+ * preserving the production default of auto-create-on-boot.
+ *
+ * When this returns `true` the migrate runner skips BOTH
+ * `resolveAdminUrl()` (so an operator without `POSTGRES_ADMIN_URL` /
+ * `DATABASE_URL_OWNER` can still run migrate against the openwhispr
+ * database) AND `ensureLitellmDatabase()` (so a pre-existing or
+ * externally-managed LiteLLM database is not touched). The downstream
+ * Drizzle `migrate()` call against the openwhispr database is
+ * unaffected.
+ *
+ * Mirrors the established opt-out pattern from
+ * `OPENWHISPR_DISABLE_RATE_LIMIT` (Phase 8) and
+ * `OPENWHISPR_DISABLE_EMAIL_VERIFICATION` (Phase 8-07).
+ */
+export function shouldSkipLitellmDbAutocreate(
+  env: NodeJS.ProcessEnv | Record<string, string | undefined>,
+): boolean {
+  const raw = env.SKIP_LITELLM_DB_AUTOCREATE;
+  if (typeof raw !== "string") return false;
+  const lowered = raw.toLowerCase();
+  return lowered === "1" || lowered === "true";
+}
+
+/**
  * Resolve the owner role name from the connection URL. Used by the
  * migrate runner to pass the OWNER for `CREATE DATABASE litellm OWNER ...`
  * without requiring an extra env var.
@@ -156,16 +184,28 @@ async function main(): Promise<void> {
   // HIGH-1: ensure the LiteLLM database exists BEFORE Drizzle migrate
   // (which connects to the `openwhispr` database). Failure to resolve
   // an admin URL is fail-fast — we never silently skip.
-  const adminUrl = resolveAdminUrl();
-  if (!adminUrl) {
+  //
+  // Phase 41.e / HI-01 escape hatch: operators with a pre-existing or
+  // externally-managed LiteLLM database can set
+  // `SKIP_LITELLM_DB_AUTOCREATE=1` to bypass both the admin-URL
+  // resolution AND the ensureLitellmDatabase call. Documented in README.
+  if (shouldSkipLitellmDbAutocreate(process.env)) {
     // biome-ignore lint/suspicious/noConsole: one-shot CLI script
-    console.error(
-      "migrate: cannot derive admin URL for litellm-DB auto-create. Set POSTGRES_ADMIN_URL or ensure DATABASE_URL_OWNER is well-formed.",
+    console.log(
+      "migrate: SKIP_LITELLM_DB_AUTOCREATE=1 — skipping litellm-DB auto-create (operator opt-out).",
     );
-    process.exit(4);
+  } else {
+    const adminUrl = resolveAdminUrl();
+    if (!adminUrl) {
+      // biome-ignore lint/suspicious/noConsole: one-shot CLI script
+      console.error(
+        "migrate: cannot derive admin URL for litellm-DB auto-create. Set POSTGRES_ADMIN_URL or ensure DATABASE_URL_OWNER is well-formed, or set SKIP_LITELLM_DB_AUTOCREATE=1 to opt out.",
+      );
+      process.exit(4);
+    }
+    const owner = ownerFromUrl(url);
+    await ensureLitellmDatabase(adminUrl, owner);
   }
-  const owner = ownerFromUrl(url);
-  await ensureLitellmDatabase(adminUrl, owner);
 
   const pool = new Pool({ connectionString: url, max: 2 });
   try {
