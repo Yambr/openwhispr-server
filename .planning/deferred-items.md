@@ -302,3 +302,43 @@ If port-exhaustion recurs after Plans 03-05 land, revisit via Vitest `projects` 
 
 **Production code untouched:** confirmed. No migration SQL, route handlers, or schemas edited.
 
+
+## From Plan 20-02b (Phase 20)
+
+### Worker Dockerfile broken — missing packages/data COPY (Phase 33-04 cascade)
+
+**Discovered:** 2026-05-16 during Plan 20-02b Task 2 (USER 1000 change).
+
+**Symptom:** `docker build -f apps/worker/Dockerfile .` fails at the
+`pnpm --filter @openwhispr/worker build` step with:
+
+```
+src/index.ts:12:39: ERROR: Could not resolve "@openwhispr/data"
+[ERR_PNPM_RECURSIVE_RUN_FIRST_FAIL] @openwhispr/worker@0.0.0 build: tsup
+```
+
+**Root cause:** Commit `e038481` (`feat(33-04): green — validateEncryptionBoot
+wired into api + worker entries`) added an `import { validateEncryptionBoot }
+from "@openwhispr/data"` to `apps/worker/src/index.ts` but never updated
+`apps/worker/Dockerfile` to COPY the `packages/data` source tree + manifest
+into the builder stage. tsup's `noExternal` pattern needs the source tree
+present at build time to inline the workspace package. apps/api/Dockerfile
+has the matching COPY pair (lines 41–42 + 71); apps/worker/Dockerfile does
+NOT.
+
+**Scope boundary:** Phase 20-02b only touches the `USER` directive at the
+runtime stage; the build failure is upstream of that change and reproduces
+on the pre-edit baseline (verified via `git stash` + rebuild). Per CLAUDE.md
+Hard Rule #1, Phase 20-02b does NOT modify the worker Dockerfile beyond its
+SR-20.5 mandate.
+
+**Verification gap:** Plan 20-02b Task 2's `docker run --rm
+openwhispr-worker:test20-02b -c 'id -u'` check could not run. The USER 1000
+directive itself is syntactically valid (identical pattern as
+apps/api/Dockerfile which built+ran successfully and returned uid 1000).
+Once the upstream build is fixed the runtime check will pass.
+
+**Recommended owner:** Phase 33 (envelope-encryption) follow-up plan OR a
+small targeted Dockerfile-fix plan that adds `COPY packages/data/package.json`
++ `COPY packages/data packages/data` to the worker builder stage, mirroring
+the api Dockerfile pattern. Tracking issue: TBD.

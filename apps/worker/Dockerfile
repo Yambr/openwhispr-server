@@ -77,7 +77,8 @@ COPY --from=prod-deps --chown=node:node /app/node_modules /app/node_modules
 COPY --from=builder --chown=node:node /app/apps/worker/dist /app/apps/worker/dist
 COPY --from=builder --chown=node:node /app/apps/worker/package.json /app/apps/worker/package.json
 
-USER node
+# SR-20.5 (Phase 20-02b) — explicit numeric uid; see api Dockerfile note.
+USER 1000
 
 # No EXPOSE / no HEALTHCHECK — worker has no HTTP listener. BullMQ's
 # job-processing loop is the liveness signal; Docker `restart: unless-stopped`
