@@ -158,6 +158,8 @@ const IGNORED_DIRS = new Set([
   ".next",
   ".stryker-tmp",
   ".pnpm-store",
+  ".claude", // git worktrees + agent-scratch dirs; not part of main tree
+  ".git",
 ]);
 
 function walk(dir: string, predicate: (full: string, name: string) => boolean): string[] {
