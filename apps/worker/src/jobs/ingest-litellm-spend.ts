@@ -87,34 +87,111 @@ export async function ensureScheduler(queue: Queue): Promise<void> {
 }
 
 /**
+ * Optional explicit-window arguments for `runIngestOnce`. Used by the
+ * reconciliation-discrepancy handler (Phase 36.b / CRIT-FIX-08) to
+ * backfill a specific time range for a specific tenant WITHOUT touching
+ * the live watermark.
+ *
+ * - `since` / `until`: ISO datetime bounds (inclusive `since`, exclusive
+ *   `until`). When provided, the SQL filters on `[since, until)` instead
+ *   of the redis watermark, and the watermark is NEVER written.
+ * - `tenantId`: when provided, restricts the LiteLLM_SpendLogs scan to
+ *   rows whose `end_user` belongs to the named tenant — so a discrepancy
+ *   fired for tenant T over window W ingests ONLY tenant T's rows.
+ */
+export interface RunIngestOptions {
+  since?: string;
+  until?: string;
+  tenantId?: string;
+}
+
+/**
  * Process one ingestion tick. Returns the number of usage_ledger rows
  * actually inserted (skipped rows — missing user, missing tenant, ON
  * CONFLICT — are NOT counted toward `rowsProcessed`).
  *
- * Watermark semantics:
- *   - Read from redis (key WATERMARK_KEY). If unset: start from `now -
- *     INITIAL_LOOKBACK_MS` so a fresh deploy ingests the last 5 minutes.
- *   - Advance only AFTER the loop completes successfully — replay-safe
- *     (T-03-08-02). On crash mid-batch the next tick re-reads the same
- *     window; ON CONFLICT DO NOTHING keeps the ledger row count stable.
+ * Two operating modes:
+ *
+ * 1. **Watermark mode** (default, `opts` omitted/empty): read watermark
+ *    from redis (key WATERMARK_KEY); if unset, start from `now -
+ *    INITIAL_LOOKBACK_MS`. SQL filters on `startTime > watermark`.
+ *    Advance the watermark AFTER the loop completes successfully —
+ *    replay-safe (T-03-08-02). On crash mid-batch the next tick re-reads
+ *    the same window; ON CONFLICT DO NOTHING keeps ledger count stable.
+ *
+ * 2. **Windowed mode** (`opts.since` + `opts.until` provided, optionally
+ *    `opts.tenantId`): explicit `[since, until)` filter on `startTime`.
+ *    When `tenantId` is set, the LiteLLM_SpendLogs scan is restricted to
+ *    `end_user IN (users for that tenant)` via a subquery on the owner
+ *    pool — protects against cross-tenant data motion. The watermark is
+ *    NEVER written in windowed mode (don't poison the live tick).
  */
 export async function runIngestOnce(
   deps: JobDeps,
+  opts: RunIngestOptions = {},
 ): Promise<{ rowsProcessed: number; rowsScanned: number }> {
-  const watermark =
-    (await deps.redis.get(WATERMARK_KEY)) ??
-    new Date(Date.now() - INITIAL_LOOKBACK_MS).toISOString();
+  const windowed = opts.since !== undefined && opts.until !== undefined;
 
-  const { rows } = await deps.litellmPool.query<SpendLogRow>(
-    `
-      SELECT request_id, "end_user", total_tokens, model, "startTime", metadata
-      FROM "LiteLLM_SpendLogs"
-      WHERE "startTime" > $1
-      ORDER BY "startTime" ASC
-      LIMIT ${BATCH_SIZE}
-    `,
-    [watermark],
-  );
+  let rows: SpendLogRow[];
+  if (windowed) {
+    // Windowed mode — explicit [since, until). When tenantId is set,
+    // restrict end_user to the tenant's users. We resolve the user IDs
+    // up-front on the owner pool so the SpendLogs scan stays single-query.
+    let allowedUserIds: string[] | null = null;
+    if (opts.tenantId !== undefined) {
+      const ures = await deps.appOwnerPool.query<{ id: string }>(
+        `SELECT id::text AS id FROM users WHERE tenant_id = $1::uuid`,
+        [opts.tenantId],
+      );
+      allowedUserIds = ures.rows.map((r) => r.id);
+      if (allowedUserIds.length === 0) {
+        // No users for this tenant — windowed scan would return 0 anyway,
+        // and the empty-array branch of ANY($1::text[]) is correctly empty,
+        // but skip the SQL round-trip.
+        return { rowsProcessed: 0, rowsScanned: 0 };
+      }
+    }
+    const res =
+      allowedUserIds === null
+        ? await deps.litellmPool.query<SpendLogRow>(
+            `
+              SELECT request_id, "end_user", total_tokens, model, "startTime", metadata
+              FROM "LiteLLM_SpendLogs"
+              WHERE "startTime" >= $1 AND "startTime" < $2
+              ORDER BY "startTime" ASC
+              LIMIT ${BATCH_SIZE}
+            `,
+            [opts.since, opts.until],
+          )
+        : await deps.litellmPool.query<SpendLogRow>(
+            `
+              SELECT request_id, "end_user", total_tokens, model, "startTime", metadata
+              FROM "LiteLLM_SpendLogs"
+              WHERE "startTime" >= $1 AND "startTime" < $2
+                AND "end_user" = ANY($3::text[])
+              ORDER BY "startTime" ASC
+              LIMIT ${BATCH_SIZE}
+            `,
+            [opts.since, opts.until, allowedUserIds],
+          );
+    rows = res.rows;
+  } else {
+    const watermark =
+      (await deps.redis.get(WATERMARK_KEY)) ??
+      new Date(Date.now() - INITIAL_LOOKBACK_MS).toISOString();
+
+    const res = await deps.litellmPool.query<SpendLogRow>(
+      `
+        SELECT request_id, "end_user", total_tokens, model, "startTime", metadata
+        FROM "LiteLLM_SpendLogs"
+        WHERE "startTime" > $1
+        ORDER BY "startTime" ASC
+        LIMIT ${BATCH_SIZE}
+      `,
+      [watermark],
+    );
+    rows = res.rows;
+  }
 
   let processed = 0;
   for (const r of rows) {
@@ -158,7 +235,10 @@ export async function runIngestOnce(
     }
   }
 
-  if (rows.length > 0) {
+  // Watermark is owned by the live tick. Windowed-backfill callers
+  // (reconciliation-discrepancy) MUST NOT advance it — doing so would
+  // skip rows in the live ingestion stream.
+  if (!windowed && rows.length > 0) {
     const last = rows[rows.length - 1];
     if (last) {
       const ts =
