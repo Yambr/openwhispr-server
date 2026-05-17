@@ -35,7 +35,9 @@ export function AdminShell({ children }: { children: ReactNode }): React.JSX.Ele
   return (
     <div className="flex min-h-screen bg-bg text-text">
       <aside className="flex w-64 flex-col border-r border-border bg-panel">
-        <div className="px-4 py-5 font-semibold text-lg">OpenWhispr — Admin</div>
+        <div className="px-4 py-5 font-semibold text-lg">
+          {t("common:common.brand.admin.title.label")}
+        </div>
         <Separator />
         <ScrollArea className="flex-1 px-2 py-3">
           <nav aria-label="Admin" className="flex flex-col gap-1">
@@ -60,7 +62,9 @@ export function AdminShell({ children }: { children: ReactNode }): React.JSX.Ele
       </aside>
       <div className="flex flex-1 flex-col">
         <header className="flex h-14 items-center justify-end gap-2 border-b border-border px-4">
-          <span className="text-text-muted text-xs uppercase tracking-wide">Admin mode</span>
+          <span className="text-text-muted text-xs uppercase tracking-wide">
+            {t("common:common.brand.mode.admin.label")}
+          </span>
           <ThemeSwitcher />
         </header>
         <main className="flex-1 overflow-auto p-6">{children}</main>

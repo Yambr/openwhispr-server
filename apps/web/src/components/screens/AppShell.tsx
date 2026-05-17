@@ -48,7 +48,9 @@ export function AppShell({ children }: { children: ReactNode }): React.JSX.Eleme
   return (
     <div className="flex min-h-screen bg-bg text-text">
       <aside className="flex w-64 flex-col border-r border-border bg-panel">
-        <div className="px-4 py-5 font-semibold text-lg">OpenWhispr</div>
+        <div className="px-4 py-5 font-semibold text-lg">
+          {t("common:common.brand.app.title.label")}
+        </div>
         <Separator />
         <ScrollArea className="flex-1 px-2 py-3">
           <nav aria-label="Primary" className="flex flex-col gap-1">

@@ -51,7 +51,9 @@ export function AuthShell({
             W
           </div>
           <div>
-            <div className="font-semibold tracking-tight">OpenWhispr Server</div>
+            <div className="font-semibold tracking-tight">
+              {t("common:common.brand.auth.title.label")}
+            </div>
             <div className="text-muted-foreground text-xs uppercase tracking-wider">{kicker}</div>
           </div>
         </div>

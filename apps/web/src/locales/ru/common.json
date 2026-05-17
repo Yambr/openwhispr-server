@@ -3,7 +3,21 @@
     "action": {
       "cancel": { "label": "Отмена" },
       "confirm": { "label": "Подтвердить" },
-      "copy": { "label": "Копировать" }
+      "copy": { "label": "Копировать" },
+      "yes": { "label": "Да" },
+      "no": { "label": "Нет" }
+    },
+    "brand": {
+      "app": { "title": { "label": "OpenWhispr" } },
+      "admin": { "title": { "label": "OpenWhispr — Админ" } },
+      "auth": { "title": { "label": "OpenWhispr Server" } },
+      "mode": { "admin": { "label": "Режим администратора" } }
+    },
+    "session": {
+      "thisDevice": { "label": "это устройство" }
+    },
+    "placeholder": {
+      "untitled": { "label": "(без названия)" }
     },
     "error": {
       "boundary": {

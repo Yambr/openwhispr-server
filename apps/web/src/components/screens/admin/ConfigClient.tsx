@@ -244,7 +244,9 @@ export function ConfigClient(): React.JSX.Element {
                         data-testid="config-note-diarization"
                         variant={note.data.diarizationEnabled ? "default" : "outline"}
                       >
-                        {note.data.diarizationEnabled ? "Yes" : "No"}
+                        {note.data.diarizationEnabled
+                          ? t("common:common.action.yes.label")
+                          : t("common:common.action.no.label")}
                       </Badge>
                     </TableCell>
                   </TableRow>
