@@ -47,13 +47,39 @@ function isCredentialParam(name: string): boolean {
   return false;
 }
 
-/** Bearer-token shapes embedded in path segments. */
+/**
+ * Bearer-token shapes embedded in path segments / query values / hash fragments.
+ *
+ * Phase 51 / Plan 51-02 (REVIEW-INDEX CR-10):
+ *   * Added JWT three-part shape `eyJ<base64url>.eyJ<base64url>.<base64url>`.
+ *     Better Auth session tokens, OAuth2 ID tokens, and most realtime
+ *     ephemeral bearers (OpenAI, AssemblyAI, Deepgram) fit this shape.
+ *     The first segment MUST start with `eyJ` because the header is
+ *     `{"alg":"…","typ":"JWT"}` which base64url-encodes to that prefix
+ *     in 100% of practical cases.
+ */
 const BEARER_SHAPES: RegExp[] = [
   /sk-ant-[A-Za-z0-9_-]{20,}/g,
   /sk-[A-Za-z0-9_-]{20,}/g,
   /AIza[A-Za-z0-9_-]{35,}/g,
   /AKIA[A-Z0-9]{16,}/g,
+  // JWT — strict three-part match starting with the canonical `eyJ`
+  // header. The third segment may be empty for unsigned tokens (rare),
+  // but we require it for the redactor (one-token, opaque body).
+  /eyJ[A-Za-z0-9_-]+\.eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+/g,
 ];
+
+/**
+ * Apply BEARER_SHAPES sweep to an opaque string slot (path / query value /
+ * hash). Returns the redacted string.
+ */
+function sweepBearerShapes(input: string): string {
+  let out = input;
+  for (const re of BEARER_SHAPES) {
+    out = out.replace(re, "***");
+  }
+  return out;
+}
 
 /**
  * Mask credential-bearing components of a URL string to "***" before logging.
@@ -77,8 +103,10 @@ export function redactUrl(raw: string): string {
     if (u.password) {
       u.password = "***";
     }
-    // Query-string sweep — iterate keys once, replace credential values.
-    // `URL.searchParams` is reused (toString() reads from it).
+    // Query-string sweep — iterate keys once, replace credential values
+    // (by name) AND apply BEARER_SHAPES to every value (so a JWT or
+    // sk-…-shape carried in `?next=…` etc. is masked even though the
+    // param name is innocuous; CR-10 / byok-guard CR-01).
     const params = u.searchParams;
     const keys = [...params.keys()];
     for (const k of keys) {
@@ -87,16 +115,40 @@ export function redactUrl(raw: string): string {
         // log redaction (we don't echo the URL back into a signing
         // pipeline; we only render it for an operator).
         params.set(k, "***");
+        continue;
       }
+      const v = params.get(k);
+      if (v === null) continue;
+      const swept = sweepBearerShapes(v);
+      if (swept !== v) params.set(k, swept);
     }
     // Bearer-shape sweep on the pathname. We apply each shape in
     // order (sk-ant- before sk-, longest-prefix-first so we don't
     // partially mask the ant-prefixed key).
-    let pathname = u.pathname;
-    for (const re of BEARER_SHAPES) {
-      pathname = pathname.replace(re, "***");
+    u.pathname = sweepBearerShapes(u.pathname);
+
+    // Phase 51 / Plan 51-02 (REVIEW CR-10 / byok-guard CR-02) — URL
+    // fragment. OAuth2 implicit-flow access tokens live here
+    // (`#access_token=…`) and were preserved verbatim by the pre-fix
+    // implementation. Strategy: if the fragment looks like a
+    // `&`-separated key/value list, mask credential-named keys; then
+    // run the bearer-shape sweep over what remains (handles opaque
+    // tokens deposited in the fragment without a key=value form).
+    if (u.hash) {
+      // u.hash includes the leading "#".
+      const raw = u.hash.slice(1);
+      const parts = raw.split("&").map((kv) => {
+        const eq = kv.indexOf("=");
+        if (eq < 0) return sweepBearerShapes(kv);
+        const key = kv.slice(0, eq);
+        const val = kv.slice(eq + 1);
+        if (isCredentialParam(decodeURIComponent(key))) {
+          return `${key}=***`;
+        }
+        return `${key}=${sweepBearerShapes(val)}`;
+      });
+      u.hash = `#${parts.join("&")}`;
     }
-    u.pathname = pathname;
     return u.toString();
   } catch {
     return "<unparseable-url>";
