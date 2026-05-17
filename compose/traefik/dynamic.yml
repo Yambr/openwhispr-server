@@ -25,7 +25,7 @@ http:
     # their own router so the Phase 6 e2e harness + external monitoring
     # can hit them via the canonical https://api.localhost ingress.
     api-probes:
-      rule: "Host(`api.localhost`) && (Path(`/livez`) || Path(`/readyz`) || Path(`/startupz`) || Path(`/healthz`))"
+      rule: "Host(`api.localhost`) && (Path(`/livez`) || Path(`/readyz`) || Path(`/startupz`) || Path(`/healthz`) || PathPrefix(`/__test`))"
       service: api-svc
       entryPoints: [websecure]
       tls: {}

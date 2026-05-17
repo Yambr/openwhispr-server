@@ -55,9 +55,15 @@ export function buildDebugFetchRoutes(deps: DebugFetchDeps = {}) {
   return async function debugFetchRoutes(app: FastifyInstance): Promise<void> {
     // Belt-and-suspenders gate at registration time: if a future caller
     // wires this plugin unconditionally (e.g. forgets the index.ts
-    // NODE_ENV gate), the registration becomes a no-op so production
-    // bundles cannot accidentally expose the route.
-    if (!TEST_NODE_ENVS.has(process.env.NODE_ENV ?? "")) {
+    // gate), the registration becomes a no-op so production bundles
+    // cannot accidentally expose the route. Plan 51-25 — also accept
+    // the explicit `OPENWHISPR_TEST_ROUTES=true` env flag so the
+    // compose contract-test stack (which runs NODE_ENV=production)
+    // can drive this route without flipping NODE_ENV.
+    const gated =
+      TEST_NODE_ENVS.has(process.env.NODE_ENV ?? "") ||
+      process.env.OPENWHISPR_TEST_ROUTES === "true";
+    if (!gated) {
       return;
     }
     const fetchImpl = deps.fetchImpl ?? globalThis.fetch;

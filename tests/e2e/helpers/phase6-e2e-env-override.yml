@@ -1,0 +1,16 @@
+# tests/e2e/helpers/phase6-e2e-env-override.yml
+#
+# Plan 51-25 — additional env propagated to the api service for the
+# phase-6 e2e suite. Variables shell-set by HERMETIC_ENV that are NOT
+# declared in `docker-compose.yml` environment: block need explicit
+# interpolation forwarding to land inside the container.
+#
+# Production safety: this file is loaded ONLY by phase-6 e2e helpers.
+
+services:
+  api:
+    environment:
+      OPENWHISPR_DISABLE_RATE_LIMIT: ${OPENWHISPR_DISABLE_RATE_LIMIT:-}
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
+      RATE_LIMIT_GLOBAL_USER_MAX: ${RATE_LIMIT_GLOBAL_USER_MAX:-}
+      RATE_LIMIT_GLOBAL_IP_CEILING: ${RATE_LIMIT_GLOBAL_IP_CEILING:-}
