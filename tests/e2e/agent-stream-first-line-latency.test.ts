@@ -145,7 +145,5 @@ describe("e2e — POST /api/agent/stream first-line latency (WIRE-07 SC#1)", () 
     // ── Terminal finish chunk (Test 3) ──────────────────────────────
     const last = lines[lines.length - 1]!;
     expect(last.parsed.type).toBe("finish");
-  }, // this test only exercises one POST). Keeps regression noise low // Per-test override: 60s is plenty (compose stack is already up;
-  // if the global testTimeout ever changes.
-  60_000);
+  }, 60_000); // if the global testTimeout ever changes. // this test only exercises one POST). Keeps regression noise low // Per-test override: 60s is plenty (compose stack is already up;
 });

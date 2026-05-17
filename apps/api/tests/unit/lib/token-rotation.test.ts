@@ -84,9 +84,7 @@ describe("recordPreviousToken (Phase 02.12 plain-text)", () => {
     // params include the 32-byte SHA-256 fingerprint (Buffer) of oldToken.
     const { createHash } = await import("node:crypto");
     const expectedFp = createHash("sha256").update(oldToken, "utf8").digest();
-    const hasFp = (update?.params ?? []).some(
-      (p) => Buffer.isBuffer(p) && p.equals(expectedFp),
-    );
+    const hasFp = (update?.params ?? []).some((p) => Buffer.isBuffer(p) && p.equals(expectedFp));
     expect(hasFp).toBe(true);
     expect(update?.params).toContain(SESSION_UUID);
     // Plaintext bearer MUST NOT be bound as a param.

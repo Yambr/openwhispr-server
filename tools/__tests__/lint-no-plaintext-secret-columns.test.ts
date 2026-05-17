@@ -50,7 +50,7 @@ function touchSchema(rel: string, content: string): string {
 const HEAD = `import { pgTable, text, varchar, char, bytea } from "drizzle-orm/pg-core";\n`;
 
 describe("scanFile — direct AST inspection", () => {
-  it("flags `text(\"access_token\")` as a violation", () => {
+  it('flags `text("access_token")` as a violation', () => {
     const f = touchSchema(
       "accounts.ts",
       `${HEAD}export const accounts = pgTable("account", {\n  accessToken: text("access_token"),\n});\n`,
@@ -61,7 +61,7 @@ describe("scanFile — direct AST inspection", () => {
     expect(v[0]?.fn).toBe("text");
   });
 
-  it("flags `text(\"password\")` as a violation", () => {
+  it('flags `text("password")` as a violation', () => {
     const f = touchSchema(
       "accounts.ts",
       `${HEAD}export const accounts = pgTable("account", {\n  password: text("password"),\n});\n`,
@@ -71,7 +71,7 @@ describe("scanFile — direct AST inspection", () => {
     expect(v[0]?.column).toBe("password");
   });
 
-  it("flags `varchar(\"value\", { length: 256 })` as a violation", () => {
+  it('flags `varchar("value", { length: 256 })` as a violation', () => {
     const f = touchSchema(
       "verifications.ts",
       `${HEAD}export const verifications = pgTable("verification", {\n  value: varchar("value", { length: 256 }),\n});\n`,
@@ -82,7 +82,7 @@ describe("scanFile — direct AST inspection", () => {
     expect(v[0]?.fn).toBe("varchar");
   });
 
-  it("flags `char(\"token\", { length: 32 })` as a violation", () => {
+  it('flags `char("token", { length: 32 })` as a violation', () => {
     const f = touchSchema(
       "sessions.ts",
       `${HEAD}export const sessions = pgTable("sessions", {\n  token: char("token", { length: 32 }),\n});\n`,

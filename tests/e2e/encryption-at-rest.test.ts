@@ -47,101 +47,100 @@ const REPO_ROOT = resolve(__dirname, "..", "..");
 const LOCKER_BIN = resolve(REPO_ROOT, "tools/lint-no-plaintext-secret-columns.ts");
 
 // Smoke section (4th truth) — does not need Docker.
-describe.skipIf(process.env.E2E !== "1")("encryption-at-rest e2e — LOCKER fixture subprocess", () => {
-  let fixtureRoot: string;
+describe.skipIf(process.env.E2E !== "1")(
+  "encryption-at-rest e2e — LOCKER fixture subprocess",
+  () => {
+    let fixtureRoot: string;
 
-  beforeAll(() => {
-    fixtureRoot = mkdtempSync(join(tmpdir(), "encryption-at-rest-locker-"));
-  });
+    beforeAll(() => {
+      fixtureRoot = mkdtempSync(join(tmpdir(), "encryption-at-rest-locker-"));
+    });
 
-  afterAll(() => {
-    rmSync(fixtureRoot, { recursive: true, force: true });
-  });
+    afterAll(() => {
+      rmSync(fixtureRoot, { recursive: true, force: true });
+    });
 
-  it("the locker exits non-zero on a fixture that reintroduces `text(\"password\")`", () => {
-    // Synthesize the schema-root layout the locker walks:
-    //   <fixtureRoot>/packages/data/src/schema/accounts.ts
-    const schemaDir = join(fixtureRoot, "packages/data/src/schema");
-    mkdirSync(schemaDir, { recursive: true });
-    writeFileSync(
-      join(schemaDir, "accounts.ts"),
-      [
-        `import { pgTable, text } from "drizzle-orm/pg-core";`,
-        `export const accounts = pgTable("account", {`,
-        `  password: text("password"),`,
-        `});`,
-        "",
-      ].join("\n"),
-      "utf8",
-    );
-
-    let exitCode = 0;
-    let stderr = "";
-    try {
-      execFileSync(
-        "pnpm",
-        ["exec", "tsx", LOCKER_BIN],
-        {
-          cwd: REPO_ROOT,
-          env: {
-            ...process.env,
-            LINT_NO_PLAINTEXT_SECRET_COLUMNS_ROOT: fixtureRoot,
-          },
-          stdio: ["ignore", "pipe", "pipe"],
-        },
-      );
-    } catch (err) {
-      // execFileSync throws on non-zero exit; the error object carries
-      // status + stderr Buffer per node docs.
-      const e = err as { status?: number; stderr?: Buffer };
-      exitCode = e.status ?? -1;
-      stderr = e.stderr?.toString("utf8") ?? "";
-    }
-
-    expect(exitCode).toBe(1);
-    expect(stderr).toMatch(/password/);
-    expect(stderr).toMatch(/LOCKER-PLAINTEXT-COLS|plaintext/i);
-  });
-
-  it("the locker exits 0 against a clean fixture (bytea-only schema)", () => {
-    const cleanRoot = mkdtempSync(join(tmpdir(), "encryption-at-rest-clean-"));
-    try {
-      const schemaDir = join(cleanRoot, "packages/data/src/schema");
+    it('the locker exits non-zero on a fixture that reintroduces `text("password")`', () => {
+      // Synthesize the schema-root layout the locker walks:
+      //   <fixtureRoot>/packages/data/src/schema/accounts.ts
+      const schemaDir = join(fixtureRoot, "packages/data/src/schema");
       mkdirSync(schemaDir, { recursive: true });
       writeFileSync(
         join(schemaDir, "accounts.ts"),
         [
-          `import { customType, pgTable } from "drizzle-orm/pg-core";`,
-          `const bytea = customType<{ data: Uint8Array }>({ dataType: () => "bytea" });`,
+          `import { pgTable, text } from "drizzle-orm/pg-core";`,
           `export const accounts = pgTable("account", {`,
-          `  passwordValueCiphertext: bytea("password_value_ciphertext"),`,
+          `  password: text("password"),`,
           `});`,
           "",
         ].join("\n"),
         "utf8",
       );
 
-      // Should exit 0; no try/catch wrap needed except defensively.
       let exitCode = 0;
+      let stderr = "";
       try {
         execFileSync("pnpm", ["exec", "tsx", LOCKER_BIN], {
           cwd: REPO_ROOT,
           env: {
             ...process.env,
-            LINT_NO_PLAINTEXT_SECRET_COLUMNS_ROOT: cleanRoot,
+            LINT_NO_PLAINTEXT_SECRET_COLUMNS_ROOT: fixtureRoot,
           },
           stdio: ["ignore", "pipe", "pipe"],
         });
       } catch (err) {
-        const e = err as { status?: number };
+        // execFileSync throws on non-zero exit; the error object carries
+        // status + stderr Buffer per node docs.
+        const e = err as { status?: number; stderr?: Buffer };
         exitCode = e.status ?? -1;
+        stderr = e.stderr?.toString("utf8") ?? "";
       }
-      expect(exitCode).toBe(0);
-    } finally {
-      rmSync(cleanRoot, { recursive: true, force: true });
-    }
-  });
-});
+
+      expect(exitCode).toBe(1);
+      expect(stderr).toMatch(/password/);
+      expect(stderr).toMatch(/LOCKER-PLAINTEXT-COLS|plaintext/i);
+    });
+
+    it("the locker exits 0 against a clean fixture (bytea-only schema)", () => {
+      const cleanRoot = mkdtempSync(join(tmpdir(), "encryption-at-rest-clean-"));
+      try {
+        const schemaDir = join(cleanRoot, "packages/data/src/schema");
+        mkdirSync(schemaDir, { recursive: true });
+        writeFileSync(
+          join(schemaDir, "accounts.ts"),
+          [
+            `import { customType, pgTable } from "drizzle-orm/pg-core";`,
+            `const bytea = customType<{ data: Uint8Array }>({ dataType: () => "bytea" });`,
+            `export const accounts = pgTable("account", {`,
+            `  passwordValueCiphertext: bytea("password_value_ciphertext"),`,
+            `});`,
+            "",
+          ].join("\n"),
+          "utf8",
+        );
+
+        // Should exit 0; no try/catch wrap needed except defensively.
+        let exitCode = 0;
+        try {
+          execFileSync("pnpm", ["exec", "tsx", LOCKER_BIN], {
+            cwd: REPO_ROOT,
+            env: {
+              ...process.env,
+              LINT_NO_PLAINTEXT_SECRET_COLUMNS_ROOT: cleanRoot,
+            },
+            stdio: ["ignore", "pipe", "pipe"],
+          });
+        } catch (err) {
+          const e = err as { status?: number };
+          exitCode = e.status ?? -1;
+        }
+        expect(exitCode).toBe(0);
+      } finally {
+        rmSync(cleanRoot, { recursive: true, force: true });
+      }
+    });
+  },
+);
 
 // Truths 1-3 are exercised by the existing real-PG integration suite at
 // `apps/api/tests/unit/__tests__/better-auth-encryption.integration.test.ts`
@@ -162,14 +161,17 @@ describe.skipIf(process.env.E2E !== "1")("encryption-at-rest e2e — LOCKER fixt
 // password-reset / OAuth assertions live alongside their respective
 // flow-owning suites under apps/api/tests/integration where the
 // shared testcontainer fixture is already provisioned.
-describe.skipIf(process.env.E2E !== "1")("encryption-at-rest e2e — schema-side guarantees pointer", () => {
-  it("schema-side ciphertext-on-disk is exercised by apps/api integration suite (Phase 33-04 § D-05 → Phase 33-05 closure)", () => {
-    // Pointer-only assertion: the production-side proof lives in
-    // `apps/api/tests/unit/__tests__/better-auth-encryption.integration.test.ts`
-    // which the apps/api test target runs alongside this suite. This
-    // describe block exists so the e2e harness reports a positive
-    // signal (vs. silently skipping) and so the file's name appears in
-    // CI logs as evidence the closure was wired.
-    expect(true).toBe(true);
-  });
-});
+describe.skipIf(process.env.E2E !== "1")(
+  "encryption-at-rest e2e — schema-side guarantees pointer",
+  () => {
+    it("schema-side ciphertext-on-disk is exercised by apps/api integration suite (Phase 33-04 § D-05 → Phase 33-05 closure)", () => {
+      // Pointer-only assertion: the production-side proof lives in
+      // `apps/api/tests/unit/__tests__/better-auth-encryption.integration.test.ts`
+      // which the apps/api test target runs alongside this suite. This
+      // describe block exists so the e2e harness reports a positive
+      // signal (vs. silently skipping) and so the file's name appears in
+      // CI logs as evidence the closure was wired.
+      expect(true).toBe(true);
+    });
+  },
+);

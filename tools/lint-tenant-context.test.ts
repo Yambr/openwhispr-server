@@ -256,7 +256,6 @@ describe("lint-tenant-context direct API (coverage)", () => {
     const stdoutBuf: string[] = [];
     const stderrBuf: string[] = [];
     const code = runMain({
-      // biome-ignore lint/suspicious/noExplicitAny: deliberately wrong type
       root: 42 as any,
       stdout: { write: (s) => stdoutBuf.push(s) },
       stderr: { write: (s) => stderrBuf.push(s) },

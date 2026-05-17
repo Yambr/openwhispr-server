@@ -209,10 +209,7 @@ export function runCli(input: RunCliInput): never {
   const prBody = input.env.PR_BODY ?? "";
   const result = run({ baseAllowlists, headAllowlists, commitMessage, prBody });
   if (result.code === 0) {
-    const total = Object.values(result.netAdditions).reduce(
-      (n, arr) => n + arr.length,
-      0,
-    );
+    const total = Object.values(result.netAdditions).reduce((n, arr) => n + arr.length, 0);
     if (total > 0) {
       input.io.writeStderr(
         `lockers-allowlist-diff: ${total} net addition(s) approved via Allowlist-grow-approved trailer\n`,

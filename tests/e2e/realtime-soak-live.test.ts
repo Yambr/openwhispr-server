@@ -289,8 +289,6 @@ describe.skipIf(!process.env.OPENAI_API_KEY)(
       );
       expect(pingRtts.length).toBeGreaterThanOrEqual(100);
       expect(percentile(pingRtts, 0.95)).toBeLessThan(1000);
-    }, // close drain + assertion overhead. Stays under the workflow // 70-min ceiling — covers the 3905s soak + connection setup +
-    // job timeout-minutes: 90.
-    4_200_000);
+    }, 4_200_000); // job timeout-minutes: 90. // close drain + assertion overhead. Stays under the workflow // 70-min ceiling — covers the 3905s soak + connection setup +
   },
 );
