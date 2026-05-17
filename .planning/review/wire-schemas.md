@@ -1,134 +1,113 @@
-# Review: wire-schemas (packages/wire-schemas)
+# Review: wire-schemas
+Branch: main @ 13f0864
+Files reviewed: 15 (`packages/wire-schemas/src/*.ts` — 570 LOC)
 
-Branch: main @ 1832f28
-Scope: packages/wire-schemas/src/** (9 files)
-Reviewer: gsd-code-reviewer (adversarial)
+> Note: a prior review of this package against `main @ 1832f28` lived at this path. That commit predates the Phase 39 HIGH sweep and Phase 40 / Sub-fix 40.a (which moved `check-user`, `delete-account`, `diarization`, `reason`, `verification-status` here from `@openwhispr/contract-tests`). Most of the older review's HIGH findings (no `.strict()`, permissive primitives, unbounded long-text, dead-code on output schemas, scope/status/format/diarization-int issues, `NoteTypeSchema` export) have been fixed in the interim. This review is a fresh adversarial pass against the current 15-file tree and only the **remaining** defects.
 
 ## Summary
-
-- Files reviewed: 9 (api-keys, conversations, folders, notes, settings, streaming-usage, transcriptions, web-search, index)
-- Findings: **CRITICAL=0  HIGH=6  MEDIUM=7  LOW=4**
+- CRITICAL: 1 / HIGH: 4 / MEDIUM: 5 / LOW: 4
 - Top 3 production risks:
-  1. **No input schema uses `.strict()`** — every `POST /api/...` route persists the parsed body into Postgres, but `NoteInputSchema`, `FolderInputSchema`, `ConversationInputSchema`, `TranscriptionInputSchema`, `StreamingUsageBodySchema`, `WebSearchRequestSchema`, `CreateApiKeyOptionsSchema` silently accept any unknown keys. Combined with `Record<string, unknown>` insert-builders in `apps/api/src/routes/**/create.ts`, this is a non-rejecting attack surface (enumeration, undocumented-field probing, future spec drift). Zod default is `strip` — unknown keys are dropped silently with no log, so neither client mistakes nor adversarial probes leave a trace. The lone `.strict()` in `ApiKeySchema` (api-keys.ts:25) proves the team knows the option; absence everywhere else is the bug.
-  2. **Permissive primitives across every output schema** — `id`, `created_at`, `updated_at`, `expires_at`, `last_used_at`, `deleted_at`, `archived_at`, `client_*_id`, and `url` (WebSearchResultSchema) are all `z.string()`. The package presents itself as the canonical wire contract (D-22, byte-for-byte) but in practice will validate `"not-a-uuid"`, `""`, and `"not-an-iso-timestamp"`. Type-level "string" is not a contract; the desktop client expects ISO-8601 + UUID + URL shapes per BACKEND_SPEC. Risk: server can ship malformed data and tests pass.
-  3. **Substantial dead code in the public barrel** — at least 8 exported output schemas (`CloudConversationSchema`, `CloudMessageSchema`, `CloudConversationWithMessagesSchema`, `CloudFolderSchema`, `CloudNoteSchema`, `SearchResultSchema`, `CloudTranscriptionSchema`, `WebSearchResultSchema`, `WebSearchResponseSchema`, `V1Response`, `V1ListApiKeysResponseSchema`, `V1CreateApiKeyResponseSchema`, `CreateApiKeyResponseSchema`, `CreateApiKeyOptionsSchema`, `ApiKeySchema`) are not imported by any production file under `apps/**/src/**` — only by `tests/` and `contract-tests`. Routes hand-roll `rowToCloud*` mappers (e.g. `apps/api/src/routes/notes/shape.ts`) without ever validating the response against the package schema. Net effect: the package advertises wire enforcement but enforces only the request side, and ships unused surface that drifts from the actual response code.
+  1. **`ReasonRequest.text` has no `.max()` cap** — unbounded user-controlled prompt forwarded to LiteLLM. Cost-multiplier / DOS via multi-MB strings. This is the exact class of bug Phase 41.b created `AgentStreamRequestSchema` to fix; `reason.ts` was left behind by the Phase 39 / Phase 41.b cap pass.
+  2. **`ReasonRequest.{provider,promptMode,matchType,model}` are free-form `z.string()` with no enum and no length cap.** The server echoes `promptMode` and `matchType` verbatim back into the canonical `ReasonResponse`, so a client can poison documented wire fields with arbitrary content (log injection, terminal-escape payloads, drift from `BACKEND_SPEC.md §/api/reason`).
+  3. **`.passthrough()` on `DiarizationResponse` and `DeleteAccountResponse`** — these are response schemas; permissiveness here defeats the package's stated purpose (lock the wire surface byte-for-byte). Justifications in the source comments ("future audit metadata", "confidence scores per segment") describe future spec changes, not properly-modelled current shape.
 
-## Findings (by severity)
+## Findings
 
-### HIGH
+### [CRITICAL] CR-01: ReasonRequest.text is unbounded — cost-multiplier / DOS
+- File: `packages/wire-schemas/src/reason.ts:7-15`
+- Every other input schema in the package (`agent.ts`, `streaming-usage.ts`, `notes.ts`, `transcriptions.ts`, `web-search.ts`, `conversations.ts`, `folders.ts`, `api-keys.ts`) bounds string lengths with explicit documented caps. `reason.ts` ships:
+  ```ts
+  text: z.string().min(1),
+  model: z.string().optional(),
+  provider: z.string().optional(),
+  promptMode: z.string().optional(),
+  matchType: z.string().optional(),
+  ```
+- `text` is the user prompt forwarded directly to `litellm.chatCompletions` in `apps/api/src/routes/reason.ts:98-111` (`messages: [{ role: "user", content: body.text }]`). A client posting `{"text": "<10 MB string>"}` passes validation, hits LiteLLM, is billed against the tenant's quota, and locks a Fastify worker for the duration of the upstream call — *before* any token-budget check applies.
+- Same bug that Phase 41.b explicitly carved as HI-02 for `/api/agent/stream`; the same fix discipline (documented cap, `.strict()` already in place) must be applied here.
+- Fix: add `.max(MESSAGE_CONTENT_MAX)` aligned with the 256 KB cap used in `conversations.ts:38`, or a smaller domain-specific bound (16 KB matches `agent.ts`'s `systemPrompt`).
 
-**H-1  No `.strict()` on input schemas — unknown fields silently stripped**
-- Files: `notes.ts:17` (NoteInputSchema), `folders.ts:8` (FolderInputSchema), `conversations.ts:10` (ConversationInputSchema), `transcriptions.ts:8` (TranscriptionInputSchema), `streaming-usage.ts:10` (StreamingUsageBodySchema), `web-search.ts:10` (WebSearchRequestSchema), `api-keys.ts:40` (CreateApiKeyOptionsSchema)
-- Issue: Zod's default `strip` behaviour drops unknown keys without error. Combined with `route → schema.parse → insertValues: Record<string, unknown>` flow in `apps/api/src/routes/notes/create.ts:37-60`, a misbehaving / hostile client gets a 200 for any request whose required keys exist, with extraneous content silently absorbed. The fact that `ApiKeySchema` (api-keys.ts:25) calls `.strict()` proves the codebase considers strictness intentional — its absence here is inconsistency.
-- Fix: `.strict()` on every input schema; for nested objects (`ConversationInputSchema.messages[]`) also strict.
+### [HIGH] HI-01: ReasonRequest enum-shaped fields drift from spec
+- File: `packages/wire-schemas/src/reason.ts:11-13`
+- `provider`, `promptMode`, `matchType` are typed `z.string().optional()`. Per `BACKEND_SPEC.md §/api/reason` and the server logic at `apps/api/src/routes/reason.ts:146-152`, these are enum-shaped (server keeps a hardcoded `MODEL_PROVIDER` map and defaults of `"default"`). The server **echoes the client's `promptMode` and `matchType` verbatim** into `ReasonResponse`, so any arbitrary string a client sends becomes part of the canonical response — including log-injection sequences, terminal escapes, or attacker-controlled values that downstream UI / analytics consume.
+- Fix: convert to closed `z.enum([...])` matching the canonical set in `apps/api/src/routes/reason.ts` (`MODEL_PROVIDER` keys for `provider`; named modes for `promptMode`/`matchType`). At absolute minimum, cap length and constrain charset.
 
-**H-2  Permissive `z.string()` where shape is known (UUID, ISO-8601 datetime, URL, email)**
-- Files: `api-keys.ts:17,21-23,28-35`; `conversations.ts:27-34,38-42,45`; `folders.ts:16-24`; `notes.ts:38-58`; `transcriptions.ts:21-35`; `web-search.ts:17-19` (`url: z.string()` — must be `.url()`).
-- Issue: Every `id`/`*_at`/`*_id`/`url` field is unbounded `z.string()`. The schemas claim to mirror the upstream client byte-for-byte, but the client expects UUIDs and ISO-8601 timestamps. Tests passing `""` or `"foo"` would not fail validation; downstream consumers do not get the contract they think they get.
-- Fix: `z.string().uuid()` for ids, `z.string().datetime({ offset: true })` for timestamps, `z.string().url()` for `WebSearchResult.url`. If the upstream client allows non-UUID legacy ids, document that as a comment and pick `.min(1)` at minimum.
+### [HIGH] HI-02: `.passthrough()` on DiarizationResponse + unbounded segment numbers
+- File: `packages/wire-schemas/src/diarization.ts:10-21`
+- Two defects in one schema:
+  1. `.passthrough()` — `wire-schemas` is the source of truth and should fully model the upstream pyannote payload. The comment ("upstream pyannote payload may carry additional fields (e.g. confidence scores per segment)") describes a known field the schema should declare optional, not a license to leave the shape open.
+  2. `start` and `end` are bare `z.number()` — accepts `NaN`, `±Infinity`, negatives, and `end < start`. These flow to clients that may use them as array indices, time offsets, or chart bounds.
+- Fix: replace `.passthrough()` with `.strict()` and add the optional fields explicitly; constrain `start: z.number().nonnegative().finite()`, `end: z.number().nonnegative().finite()`, and add `.refine(s => s.end >= s.start)`.
 
-**H-3  Unbounded `z.string()` on body fields persisted to Postgres**
-- Files: `notes.ts:19-22,30-31` (`content`, `enhanced_content`, `enhancement_prompt`, `transcript`); `transcriptions.ts:10-12` (`text`, `raw_text`); `conversations.ts:18-19` (message `content`); `streaming-usage.ts:15` (`text`).
-- Issue: No `.max(N)`. The only protection is Fastify's global body limit. A single 50 MB string in `content` flows straight into a TEXT column. Wire schemas are the right place to cap user-influenced text fields.
-- Fix: `.max(...)` on every long-text input (`content` ≈ 256 KB cap recommended; `transcript`/`text` ≈ 5 MB; `enhancement_prompt` ≈ 16 KB).
+### [HIGH] HI-03: `.passthrough()` on DeleteAccountResponse (validates nothing)
+- File: `packages/wire-schemas/src/delete-account.ts:10`
+- `z.object({}).passthrough()` validates literally any object. The comment says "the handler may attach audit metadata in a future phase without breaking the contract" — but adding fields to a response IS a contract change by definition, and clients are entitled to know the shape they will receive. Today this schema gives a false sense of validation; tomorrow a leak of internal audit fields (request IDs, internal user IDs, timing data) ships unnoticed.
+- Fix: change to `z.object({}).strict()` (the current server returns literally `{}`). When the handler genuinely needs to add fields, amend the schema as part of the same change.
 
-**H-4  `metadata: z.record(z.string(), z.unknown())` accepted unbounded**
-- File: `conversations.ts:20`, `conversations.ts:43`.
-- Issue: Both `ConversationInput.messages[].metadata` and `CloudMessage.metadata` accept arbitrary JSON of arbitrary depth/size. No max keys, no max nested depth, no size cap. This lands in a JSONB column. Combined with H-1 (no `.strict()` on the enclosing message object), a hostile payload could embed multi-MB structures or deeply nested objects (Postgres jsonb has a hard depth limit but well above what should be allowed at the API boundary).
-- Fix: cap with `.refine` (max stringified bytes), enumerate the known metadata keys if any are known, or move to a typed sub-schema.
+### [HIGH] HI-04: Email schemas lack `.max()`
+- Files: `packages/wire-schemas/src/check-user.ts:11`, `packages/wire-schemas/src/verification-status.ts:7`
+- `z.string().email()` accepts arbitrarily long strings as long as the regex matches. RFC 5321 caps practical email at 254 chars. Without `.max()` a client can submit a multi-MB email and force the server into expensive downstream lookups (`SELECT … WHERE email = $1`) — and `check-user` is by design an *unauthenticated* probe endpoint, so this is exploitable without credentials.
+- Fix: `.max(254)`. Apply to both schemas. Add a regression test asserting a 10 KB email is rejected.
 
-**H-5  Schema/output type mismatch for `note_type`**
-- Files: `notes.ts:15` (input enum `["personal","meeting","upload"]`) vs `notes.ts:44` (output `z.string()`).
-- Issue: The wire surface treats the same field strictly on the way in and permissively on the way out. Either DB persists non-enum values (then input enum lies) or output should also be the enum. The drift is a contract bug regardless of direction.
-- Fix: `CloudNoteSchema.note_type: NoteTypeSchema` (same enum); also export `NoteTypeSchema`.
+### [MEDIUM] ME-01: AgentChatMessage.content / AgentLegacyTool.parameters are `z.unknown()` without size bound
+- File: `packages/wire-schemas/src/agent.ts:26, 40`
+- The rationale comment ("desktop ships string content BUT the OpenAI multi-modal shape allows arrays of parts; we only assert presence + the structural envelope") is reasonable, but the matching size cap is missing. The route accepts up to 50 messages × unbounded `content` × Fastify's global body limit. If global body-limit is the only protection, document it; otherwise constrain `content` to `z.union([z.string().max(N), z.array(z.unknown()).max(M)])` so the spec at least bounds the obvious shapes. Same for `parameters` (caller-supplied JSON schema for tool definitions).
+- Fix: tighten to a bounded union, OR add an inline comment pointing at the Fastify body-limit guarantee + a contract test that asserts an oversize body is rejected.
 
-**H-6  Numeric fields accept negatives and floats where domain is non-neg int**
-- Files: `folders.ts:12` (`sort_order: z.number()`), `notes.ts:25,28-29,53-54` (`audio_duration_seconds`, `diarization_enabled`, `expected_speaker_count`), `transcriptions.ts:15,26` (`audio_duration_ms`, `word_count`), `streaming-usage.ts:21-25` (`sttProcessingMs`, `audioSizeBytes`, `clientTotalMs`), `web-search.ts:12` (`numResults` is correctly `.int().min(1).max(10)` — the lone good example).
-- Issue: `z.number()` accepts `-1`, `NaN`, `1.5`, `Infinity`. `word_count: -3` parses and lands in Postgres.
-- Fix: `.int().nonnegative()` (or `.int().min(0).max(...)`) on every count/duration; `expected_speaker_count` should also have a sensible max (≤ 32 say).
+### [MEDIUM] ME-02: ReasonResponse fields unbounded `z.string()` (response side)
+- File: `packages/wire-schemas/src/reason.ts:18-25`
+- All five fields are bare `z.string()`. `text` is filled from `upstreamJson.choices?.[0]?.message?.content` (`apps/api/src/routes/reason.ts:147`) — an LLM output that could be megabytes if upstream misbehaves. Contract tests using this schema cannot detect a server bug that lets unbounded completions through. Same enum-shape mismatch as HI-01 applies to `provider`, `promptMode`, `matchType` on the response side.
+- Fix: `.max(TEXT_MAX)` on `text`; enums on `provider`, `promptMode`, `matchType`.
 
-### MEDIUM
+### [MEDIUM] ME-03: AgentStreamRequest.messages allows empty array
+- File: `packages/wire-schemas/src/agent.ts:57`
+- `z.array(...).min(0).max(50)`: `.min(0)` is the Zod default and adds no constraint. An empty `messages` array is unambiguously a client bug — the route forwards to LiteLLM which returns a 400 anyway. Reject at the wire boundary instead of round-tripping to the upstream and burning a request slot.
+- Fix: `.min(1).max(50)`.
 
-**M-1  Dead exports — no production importer**
-- Files: `api-keys.ts:15,28,40,48,51,54` (ApiKeySchema, CreateApiKeyResponseSchema, CreateApiKeyOptionsSchema, V1Response, V1ListApiKeysResponseSchema, V1CreateApiKeyResponseSchema); `conversations.ts:8,27,38,48` (ConversationRoleSchema, CloudConversationSchema, CloudMessageSchema, CloudConversationWithMessagesSchema); `folders.ts:16` (CloudFolderSchema); `notes.ts:38,61` (CloudNoteSchema, SearchResultSchema); `settings.ts:10,17` (SttConfigResponseSchema, NoteRecordingConfigResponseSchema); `transcriptions.ts:21` (CloudTranscriptionSchema); `web-search.ts:16,23` (WebSearchResultSchema, WebSearchResponseSchema).
-- Issue: Grep across `apps/**/src/**` returns zero hits for any of these (only `tests/**` and `packages/contract-tests/**`). Routes use hand-rolled `rowToCloud*` mappers and do not validate responses through the package. Either the response side needs to start enforcing these schemas (and the schemas need to be correct — see H-2) or these exports should be removed from the barrel to stop signalling false coverage.
-- Fix: Either (a) add `Schema.parse(payload)` (or `.passthrough().safeParse` for logging) to every send-site, or (b) drop the unused exports and document the response side as "encoded by `rowToCloud*` in apps/api".
+### [MEDIUM] ME-04: ConversationInput.metadata refine runs `JSON.stringify` per parse, no key-count cap
+- File: `packages/wire-schemas/src/conversations.ts:21-25`
+- The 4 KB stringified-size refine fires *after* zod has already validated every key/value pair in `z.record(...)`. A payload with thousands of valid-by-themselves keys hits the refine only at the end. In a batched route (`notes/batch-create.ts` parses `NoteInputSchema` per element; the conversations equivalent does the same for messages) the validator work multiplies. Performance is out-of-scope per the brief, but the missing key-count guard also enables resource amplification.
+- Fix: prefix the existing refine with `.refine(meta => Object.keys(meta).length <= 32)` so the cheap check runs first.
 
-**M-2  `V1Response` helper unused by production code**
-- File: `api-keys.ts:48-55`.
-- Issue: The `V1Response` generic and its two instances are declared, exported, and never imported outside the package's own file. The two `/v1/keys/*` route handlers (`apps/api/src/routes/v1/keys/{list,revoke,create}.ts`) hand-construct `{ data: ... }` directly. Same pattern as M-1 but for the v1 envelope specifically; arguably a bigger smell because D-28 envelope correctness is wire-critical.
-- Fix: Use `V1Response(...)` as a Fastify response schema (or `.parse` before `reply.send`) in `apps/api/src/routes/v1/keys/*.ts`.
+### [MEDIUM] ME-05: `.email()` policy is not pinned (IDN / Unicode behaviour will drift with Zod upgrades)
+- Files: `packages/wire-schemas/src/check-user.ts:11`, `verification-status.ts:7`
+- Zod v4's built-in `.email()` regex does not accept IDN/Unicode local parts. If `BACKEND_SPEC.md` claims internationalized email support, this is silent spec drift; if it doesn't, the behaviour is fine today but unpinned for future Zod upgrades. No test in the package asserts what the email policy actually is.
+- Fix: either pin via `.regex(EMAIL_RE)` with an anchored, audited regex in the schema, OR add explicit accept/reject test cases (IDN, plus-addressing, quoted local part, trailing dot) so the policy is locked.
 
-**M-3  `scopes: z.array(z.string())` — no enum**
-- Files: `api-keys.ts:20,33,42`.
-- Issue: API-key scopes are a finite known set (per BACKEND_SPEC / OAUTH_SPEC). Accepting `z.string()` lets `["foo:bar"]` round-trip; on the create-options side this could even let a client request an unrecognized scope which then gets persisted.
-- Fix: Define `ApiKeyScopeSchema = z.enum([...])` matching the canonical scope list (likely in `packages/auth` or `packages/byok-guard`) and reuse.
+### [LOW] LO-01: Three primitive enums exported but only used internally
+- Files: `packages/wire-schemas/src/conversations.ts:19` (`ConversationRoleSchema`), `settings.ts:13` (`SttProviderSchema`), `settings.ts:16` (`AudioFormatSchema`)
+- All three are composed inside their own file (and the `SttProvider`/`AudioFormat` type aliases are exported), but no external app or package imports the schema constants. Not strictly dead, but the public-API surface is wider than the actual consumers need. Likely the web client redeclares these enums locally and would benefit from importing them.
+- Fix: either wire downstream consumers to import these (preferred) or drop the `export` keyword on the schema constant while keeping the inferred type alias public.
 
-**M-4  `availableProviders: z.array(z.string())` and `allowedFormats: z.array(z.string())`**
-- Files: `settings.ts:13,20`.
-- Issue: Same as M-3 — these are operator-controlled enums in practice (`openai`, `groq`, `speaches`, etc. and `wav`/`webm`/`mp3`/`m4a`/`flac`). Leaving as free `z.string()` means a misconfigured server can publish nonsense providers/formats and clients silently accept.
-- Fix: Enumerate; reject unknowns at boot.
+### [LOW] LO-02: `notes.ts` mixes `0|1` and `z.boolean()` conventions
+- Files: `packages/wire-schemas/src/notes.ts:46-50, 76` (`diarization_enabled` as `0|1`) vs `folders.ts:27` (`is_default: z.boolean()`) vs `settings.ts:30` (`diarizationEnabled: z.boolean()`)
+- Comment justifies the legacy `0|1` shape per upstream desktop client (M-6). The convention is legitimate but a footgun for future contributors who will reach for `z.boolean()` by reflex.
+- Fix: add a comment block on the `notes.ts` `diarization_enabled` field linking to the upstream desktop file that pins this. Consider a shared `LegacyBoolFlag` schema constant so the asymmetry is named once and referenced.
 
-**M-5  `status: z.string().optional()` on TranscriptionInput**
-- File: `transcriptions.ts:16`.
-- Issue: `status` ultimately lands in Postgres as the row's lifecycle column (route defaults to `"completed"`). No enum, no validation — `status: "pwned"` accepted.
-- Fix: `z.enum(["pending","processing","completed","failed"])` (or whatever the canonical set is — verify against `packages/data/src/schema`).
+### [LOW] LO-03: `CreateApiKeyOptionsSchema.expiresInDays` allows 0 ambiguously
+- File: `packages/wire-schemas/src/api-keys.ts:43`
+- `z.number().int().nonnegative().nullable().optional()` accepts `0`. Is 0 "expires today / immediately" or "never expires" (the `null` semantic)? The schema is ambiguous and the server route has to disambiguate, which means any callers reading the schema for documentation will guess wrong.
+- Fix: either `.positive()` (forbid 0) and reserve `null` for never-expires, or add an explicit doc-comment.
 
-**M-6  `diarization_enabled` typed as `z.number().nullable()`**
-- Files: `notes.ts:27,52`.
-- Issue: Domain is boolean ({0,1}). Schema lets `42` through and the route writes it raw (`notes/create.ts:55`). Comment near the top of the file calls this deliberate, but it allows the obvious anti-shape. If desktop legacy really demands int, constrain to `z.union([z.literal(0), z.literal(1)])`.
-- Fix: tighten to `0|1` (or migrate to `z.boolean()` if the upstream client now emits booleans).
-
-**M-7  `NoteTypeSchema` not exported**
-- File: `notes.ts:15` — declared `const NoteTypeSchema` but never re-exported (the barrel only re-exports `* from "./notes.js"` so it is exported, but tests/contract code can't reuse it semantically because the constant is the only NoteType source of truth and there is no type alias).
-- Fix: Add `export const NoteTypeSchema = ...` and `export type NoteType = z.infer<typeof NoteTypeSchema>` for downstream use.
-
-### LOW
-
-**L-1  `.default(false)` and `.default(5)` mutate the wire surface invisibly**
-- Files: `streaming-usage.ts:26` (`sendLogs`), `web-search.ts:13` (`numResults`).
-- Issue: With Zod `.default()`, omitted-by-client values are materialised post-parse. If a downstream caller serializes the parsed object back over the wire, the value `5`/`false` is now present where the client sent nothing. Minor, but a contract-fidelity wart.
-- Fix: Either document the inflation, or move defaulting to the route handler (`body.numResults ?? 5`) so the parsed object preserves "client did not send this".
-
-**L-2  Repeated literal schema between `ApiKey` and `CreateApiKeyResponse`**
-- File: `api-keys.ts:15-25` vs `28-37`.
-- Issue: The two schemas share seven fields. Today they happen to match; tomorrow one drifts. The intended invariant is "CreateApiKeyResponse = ApiKey + { key }".
-- Fix: `CreateApiKeyResponseSchema = ApiKeySchema.extend({ key: z.string() }).strict()`. (Note: also fixes the missing `.strict()` on the create response.)
-
-**L-3  `ConversationInput.messages[].metadata` allows `null` but the field is `.optional()` — three-state**
-- File: `conversations.ts:20`.
-- Issue: `z.record(...).nullable().optional()` allows undefined / null / object. Pick one (per upstream client TS, optional or nullable, not both).
-- Fix: align to the desktop client's `metadata?: Record<string,unknown>` (drop `.nullable()`).
-
-**L-4  File-level header references "Phase 5 / Plan 01" — stale labelling**
-- All 9 files. Not a bug, but for an FSL-released package the planning-doc co-ordinates are noise to external readers.
-- Fix: replace with a stable one-line description and a link to BACKEND_SPEC.
+### [LOW] LO-04: `streaming-usage.ts` sessionId cap of 4096 is excessive
+- File: `packages/wire-schemas/src/streaming-usage.ts:18`
+- 4 KB for an idempotency key is two orders of magnitude above any plausible use (UUID = 36 chars; SHA-256 hex = 64; signed JWT idempotency key ≈ 600). Comment cites "hashed composite keys" but no real-world composite reaches 4 KB.
+- Fix: tighten to `.max(512)` unless a specific consumer documents otherwise.
 
 ## Dead code
-
-| Export | File | Production importer? |
-|---|---|---|
-| `ApiKeySchema`, `ApiKey` | api-keys.ts:15 | none |
-| `CreateApiKeyResponseSchema`, `CreateApiKeyResponse` | api-keys.ts:28 | none |
-| `CreateApiKeyOptionsSchema`, `CreateApiKeyOptions` | api-keys.ts:40 | none |
-| `V1Response<T>`, `V1ListApiKeysResponseSchema`, `V1CreateApiKeyResponseSchema` | api-keys.ts:48-55 | none |
-| `ConversationRoleSchema` | conversations.ts:8 | none (internal use only) |
-| `CloudConversationSchema`, `CloudMessageSchema`, `CloudConversationWithMessagesSchema` | conversations.ts:27-48 | none |
-| `CloudFolderSchema` | folders.ts:16 | none |
-| `CloudNoteSchema`, `SearchResultSchema` | notes.ts:38,61 | none |
-| `SttConfigResponseSchema`, `NoteRecordingConfigResponseSchema` | settings.ts:10,17 | tests only |
-| `CloudTranscriptionSchema` | transcriptions.ts:21 | none |
-| `WebSearchResultSchema`, `WebSearchResponseSchema` | web-search.ts:16,23 | none |
-
-Recommendation: either wire the output schemas into `reply.send` in the corresponding route handlers (preferred — closes the response-side contract gap exposed in M-1/M-2), or remove from the barrel.
+- No fully-dead exports. Three exports (`ConversationRoleSchema`, `SttProviderSchema`, `AudioFormatSchema`) have zero external importers but are composed internally — flagged LO-01.
+- No `TODO|FIXME|HACK|XXX|TEMP|WORKAROUND|kludge` markers anywhere in the 15 files.
+- Output schemas (`CloudNoteSchema`, `CloudFolderSchema`, etc.) that were dead in the prior `1832f28` review now have ≥ 5 external importers each — the response-side gap from that review has been closed.
 
 ## Suppressed warnings
-
-None found. No `@ts-ignore`, `@ts-expect-error`, `eslint-disable`, `biome-ignore`, `as any`, or `as unknown as` in any of the 9 files. No `TODO`/`FIXME`/`HACK`/`XXX`/`TEMP`/`WORKAROUND` markers. Clean on this dimension.
+None. No `@ts-ignore`, no `@ts-expect-error`, no `as any`, no `as unknown as` anywhere in `packages/wire-schemas/src/**`. Clean against LOCKER-02.
 
 ## Notes
-
-- The package consistently uses SPDX header, ESM `.js` extensions in imports, and zod v3 record syntax (`z.record(z.string(), z.unknown())`). Style is uniform; the defects are systematic (no strictness, no primitive refinement) rather than scattered.
-- The single `.strict()` in `api-keys.ts:25` shows the team is aware of strictness and chose it deliberately for the list shape. The asymmetry — input schemas not strict despite landing in SQL — is the central bug pattern of this package.
-- BACKEND_SPEC.md / OAUTH_SPEC.md / SELF_HOSTING.md are referenced throughout the source comments but not present in the repo at the documented paths. Cannot verify byte-for-byte spec compliance without those files; downgraded what would otherwise be CRITICAL spec-divergence findings to HIGH (the strictness + permissive-primitive issues are bugs against any reasonable spec).
-- The output schemas, if adopted at send-time, would catch real divergences today: `rowToCloudNote` and friends in `apps/api/src/routes/**/shape.ts` are not currently validated against `CloudNoteSchema`, so a row-mapper bug shipping the wrong field name would not be caught by any schema check.
+- Strengths worth preserving:
+  - Every input schema uses `.strict()` (the central HIGH defect from the prior review at `1832f28` — fixed).
+  - UUID + ISO-8601 + bounded length applied uniformly across `notes.ts`, `folders.ts`, `conversations.ts`, `transcriptions.ts`, `api-keys.ts`.
+  - No custom regex anywhere → zero ReDoS surface introduced by this package.
+  - `agent.ts` and `streaming-usage.ts` explicitly document Phase 41.b / Phase 39 cap rationale per field — exemplary; same treatment is missing from `reason.ts` (CR-01).
+- Recommended single follow-up phase: bring `reason.ts` + the two `.passthrough()` response schemas + the unbounded `.email()` schemas in line with the Phase 39 HIGH-sweep / Phase 41.b cap discipline. That closes CR-01, HI-01, HI-02, HI-03, HI-04 in one TDD pair.
+- Wire-spec verification gap: the canonical `ErrorEnvelope` (`z.object({ error: z.string().min(1) }).strict()`) lives in `packages/contract-tests/src/schemas.ts:24`, not in `wire-schemas`. Sub-fix 40.a moved five schemas here to break that exact boundary inversion (`check-user`, `delete-account`, `diarization`, `reason`, `verification-status`); `ErrorEnvelope` should follow. Not a defect in the current files — a scope gap for the next phase.
+- Missing wire shapes per the brief: no `set-auth-token` rotation token schema, no NDJSON streaming envelope schema, no channel-scheme echo schema present in this package. If `BACKEND_SPEC.md` / `OAUTH_SPEC.md` define these (per the brief they do), their absence means the package's "source of truth" claim is incomplete — gap, not defect, but worth tracking before the OSS publication so external integrators don't have to reverse-engineer the wire surface from `apps/api/src/**`.
