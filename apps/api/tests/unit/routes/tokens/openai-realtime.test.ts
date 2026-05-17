@@ -177,6 +177,11 @@ describe("POST /api/openai-realtime-token", () => {
   });
 
   it("returns 400 when streams is not 1 or 2", async () => {
+    // Phase 51 / Plan 51-08 (REVIEW CR-2) — zod validates the body and
+    // the centralized 400 envelope now matches the rest of the wire
+    // surface: `{ error: { code, message, requestId } }`. zod's
+    // message surfaces the offending field path so desktop debugging
+    // stays useful.
     const app = await buildTestApp({ bearerMap: { "Bearer ok-u1": "u1" } });
     try {
       const r = await app.inject({
@@ -186,8 +191,9 @@ describe("POST /api/openai-realtime-token", () => {
         payload: { streams: 3 },
       });
       expect(r.statusCode).toBe(400);
-      const body = r.json() as { error: string };
-      expect(body.error).toContain("streams must be 1 or 2");
+      const body = r.json() as { error: { code: string; message: string; requestId?: string } };
+      expect(body.error.code).toBe("INVALID_BODY");
+      expect(body.error.message.toLowerCase()).toMatch(/streams|invalid/);
     } finally {
       await app.close();
     }

@@ -33,19 +33,15 @@
 //     integer-overflow / negative / array attacks expanding the parallel
 //     fan-out beyond the intended 2.
 
+import { OpenAIRealtimeTokenRequest } from "@openwhispr/wire-schemas";
 import type { FastifyInstance } from "fastify";
-import { ServiceUnavailable, ValidationError } from "../../errors.js";
+import { ServiceUnavailable } from "../../errors.js";
 import { callProvider } from "./_call-provider.js";
 
 const DEFAULT_MODEL = "gpt-realtime";
 const PROVIDER_LABEL = "OpenAI Realtime";
 const ENV_VAR_NAME = "OPENAI_API_KEY";
 const UPSTREAM_URL = "https://api.openai.com/v1/realtime/client_secrets";
-
-interface RequestBody {
-  streams?: number;
-  model?: string;
-}
 
 export const buildOpenAIRealtimeTokenRoutes = () =>
   async function openAIRealtimeTokenRoutes(app: FastifyInstance): Promise<void> {
@@ -76,13 +72,30 @@ export const buildOpenAIRealtimeTokenRoutes = () =>
         }
       },
       handler: async (req, reply) => {
-        const body = (req.body ?? {}) as RequestBody;
-        const streams = body.streams ?? 1;
-        // D-17 + T-04-INPUT: explicit allowlist, no Number coercion.
-        if (streams !== 1 && streams !== 2) {
-          throw new ValidationError("INVALID_STREAMS_COUNT", "streams must be 1 or 2");
+        // Phase 51 / Plan 51-08 (REVIEW CR-2) — strict zod validation.
+        // The pre-fix code used a bare `(req.body ?? {}) as RequestBody`
+        // cast, which let multi-MB `model` strings and arbitrary extra
+        // keys flow through to an outbound POST to the paid OpenAI
+        // realtime token endpoint — authed-user amplification primitive.
+        //
+        // We safeParse inside the handler (not via `schema:`) because
+        // the test harnesses for this route surface do not install the
+        // zod-type-provider; safeParse keeps the route portable while
+        // still enforcing the contract. The 400 envelope mirrors the
+        // pre-fix `streams ∈ {1,2}` rejection so the desktop client
+        // observes the same status-code contract.
+        const parsed = OpenAIRealtimeTokenRequest.safeParse(req.body ?? {});
+        if (!parsed.success) {
+          return reply.code(400).send({
+            error: {
+              code: "INVALID_BODY",
+              message: parsed.error.message,
+              requestId: req.id,
+            },
+          });
         }
-        const model = body.model ?? DEFAULT_MODEL;
+        const streams = parsed.data.streams ?? 1;
+        const model = parsed.data.model ?? DEFAULT_MODEL;
 
         const mintOne = () =>
           callProvider({
