@@ -50,10 +50,16 @@ function formatDate(value: string | Date | null | undefined): string {
 }
 
 export interface SessionsTableProps {
-  currentSessionToken: string | null;
+  /**
+   * Phase 51 / Plan 51-04 (REVIEW CR-4) — was `currentSessionToken`
+   * (a Better Auth bearer). The bearer was serialized into the JS
+   * heap. Now we receive the session ID (safe, opaque identifier)
+   * and compare against `row.id` instead of `row.token`.
+   */
+  currentSessionId: string;
 }
 
-export function SessionsTable({ currentSessionToken }: SessionsTableProps): React.JSX.Element {
+export function SessionsTable({ currentSessionId }: SessionsTableProps): React.JSX.Element {
   const { t } = useTranslation(["end-user"]);
   const queryClient = useQueryClient();
 
@@ -169,7 +175,8 @@ export function SessionsTable({ currentSessionToken }: SessionsTableProps): Reac
         </TableHeader>
         <TableBody>
           {rows.map((row) => {
-            const isCurrent = currentSessionToken !== null && row.token === currentSessionToken;
+            // Phase 51 / Plan 51-04 — was `row.token === currentSessionToken`.
+            const isCurrent = row.id === currentSessionId;
             return (
               <TableRow key={row.id}>
                 <TableCell>

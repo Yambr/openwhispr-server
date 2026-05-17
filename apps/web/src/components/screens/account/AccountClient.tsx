@@ -27,7 +27,13 @@ export interface AccountUser {
 
 export interface AccountClientProps {
   user: AccountUser;
-  currentSessionToken: string | null;
+  /**
+   * Phase 51 / Plan 51-04 (REVIEW CR-4) — was `currentSessionToken`
+   * (a Better Auth bearer). Renamed to the safe session identifier
+   * because the bearer was being serialized into __NEXT_DATA__ /
+   * the JS heap, defeating HttpOnly cookie protection.
+   */
+  currentSessionId: string;
 }
 
 function formatCreatedAt(value: string | Date | null | undefined): string {
@@ -37,10 +43,7 @@ function formatCreatedAt(value: string | Date | null | undefined): string {
   return format(d, "yyyy-MM-dd");
 }
 
-export function AccountClient({
-  user,
-  currentSessionToken,
-}: AccountClientProps): React.JSX.Element {
+export function AccountClient({ user, currentSessionId }: AccountClientProps): React.JSX.Element {
   const { t } = useTranslation(["end-user"]);
   return (
     <div className="space-y-6">
@@ -90,7 +93,7 @@ export function AccountClient({
 
       <Card>
         <CardContent className="pt-6">
-          <SessionsTable currentSessionToken={currentSessionToken} />
+          <SessionsTable currentSessionId={currentSessionId} />
         </CardContent>
       </Card>
 

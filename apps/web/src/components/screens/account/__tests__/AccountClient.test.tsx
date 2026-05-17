@@ -89,7 +89,7 @@ describe("AccountClient (Phase 07.1 / Plan 08)", () => {
         emailVerified: true,
         createdAt: "2025-08-12T10:00:00.000Z",
       },
-      currentSessionToken: "tok-1",
+      currentSessionId: "sess-1",
     });
     expect(screen.getByText("Alice Operator")).toBeInTheDocument();
     expect(screen.getByText("alice@example.com")).toBeInTheDocument();
@@ -107,7 +107,7 @@ describe("AccountClient (Phase 07.1 / Plan 08)", () => {
         emailVerified: false,
         createdAt: "2025-08-12T10:00:00.000Z",
       },
-      currentSessionToken: "tok-1",
+      currentSessionId: "sess-1",
     });
     expect(screen.getByText(/^Profile$/)).toBeInTheDocument();
     // Phase 18.1 F7 GREEN (Plan 04): heading-scoped query mirrors the analog at
@@ -129,7 +129,7 @@ describe("AccountClient (Phase 07.1 / Plan 08)", () => {
         emailVerified: false,
         createdAt: "2025-08-12T10:00:00.000Z",
       },
-      currentSessionToken: "tok-1",
+      currentSessionId: "sess-1",
     });
     expect(screen.queryByTestId("profile-verified-badge")).not.toBeInTheDocument();
   });
@@ -143,7 +143,7 @@ describe("AccountClient (Phase 07.1 / Plan 08)", () => {
         emailVerified: true,
         createdAt: null,
       },
-      currentSessionToken: "tok-1",
+      currentSessionId: "sess-1",
     });
     expect(screen.getByTestId("profile-created-value")).toHaveTextContent("—");
   });
@@ -157,7 +157,7 @@ describe("AccountClient (Phase 07.1 / Plan 08)", () => {
         emailVerified: true,
         createdAt: "2025-08-12T10:00:00.000Z",
       },
-      currentSessionToken: "tok-1",
+      currentSessionId: "sess-1",
     });
     // name=null → 1 em-dash for the name cell. createdAt is valid so the
     // created date cell renders the formatted year, not an em-dash.
@@ -173,7 +173,7 @@ describe("AccountClient (Phase 07.1 / Plan 08)", () => {
         emailVerified: true,
         createdAt: "not-a-real-date",
       },
-      currentSessionToken: "tok-1",
+      currentSessionId: "sess-1",
     });
     expect(screen.getByTestId("profile-created-value")).toHaveTextContent("—");
   });
@@ -187,7 +187,7 @@ describe("AccountClient (Phase 07.1 / Plan 08)", () => {
         emailVerified: true,
         createdAt: new Date("2025-08-12T10:00:00.000Z"),
       },
-      currentSessionToken: "tok-1",
+      currentSessionId: "sess-1",
     });
     expect(screen.getByTestId("profile-created-value")).toHaveTextContent("2025-08-12");
   });
