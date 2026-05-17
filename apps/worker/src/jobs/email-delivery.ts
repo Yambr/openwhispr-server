@@ -23,6 +23,12 @@
 // NOT retry-de-dupe at the application layer; SMTP-side dedupe is the
 // operator's responsibility.
 
+// Phase 51 / Plan 51-17 (REVIEW small-pkgs HIGH) — `EmailSender` is now
+// re-exported from `@openwhispr/email`, the canonical source. Pre-fix
+// this file declared a parallel `interface EmailSender` that could
+// drift from the package shape (and did — the package's interface has
+// an extra `from?` field).
+import type { EmailSender as EmailSenderPkg } from "@openwhispr/email";
 import type { Pool } from "pg";
 import { z } from "zod";
 import { withTenantContext } from "../lib/with-tenant-context.js";
@@ -40,18 +46,12 @@ export const emailDeliverySchema = z.object({
 export type EmailDeliveryPayload = z.infer<typeof emailDeliverySchema>;
 
 /**
- * Minimal interface the email-delivery job needs from the SMTP transport.
- * `apps/api/src/email.ts` exports a compatible `EmailService` shape — the
- * worker can wrap it (or any equivalent) into a `EmailSender`.
+ * Phase 51 / Plan 51-17 — `EmailSender` re-exported from
+ * `@openwhispr/email` (single source of truth). Pre-fix this file
+ * declared a parallel interface that had already drifted from the
+ * package shape.
  */
-export interface EmailSender {
-  send(args: {
-    to: string;
-    subject: string;
-    text: string;
-    html?: string;
-  }): Promise<{ delivered: boolean; reason?: string }>;
-}
+export type EmailSender = EmailSenderPkg;
 
 /** Template renderer — production wires this to apps/api's i18n + template lookup. */
 export interface TemplateRenderer {
