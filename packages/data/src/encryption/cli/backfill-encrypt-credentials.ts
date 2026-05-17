@@ -21,13 +21,11 @@
 //   78 — EX_CONFIG (MASTER_KEK missing/malformed, unsupported provider).
 
 import { Pool } from "pg";
+// Phase 51 / Plan 51-14 — TLS-by-default pool builder.
+import { buildPoolConfig } from "../../client.js";
+import { type BackfillColumnMap, type BackfillReport, runBackfill } from "../backfill.js";
 import { validateEncryptionBoot } from "../boot.js";
 import { selectProvider } from "../key-provider.js";
-import {
-  type BackfillColumnMap,
-  type BackfillReport,
-  runBackfill,
-} from "../backfill.js";
 
 /**
  * Canonical column-map for the 8 Better-Auth credential columns +
@@ -129,7 +127,7 @@ export async function main(argv: readonly string[] = process.argv.slice(2)): Pro
   }
 
   const provider = selectProvider();
-  const pool = new Pool({ connectionString: ownerUrl });
+  const pool = new Pool(buildPoolConfig(ownerUrl));
   let report: BackfillReport;
   try {
     report = await runBackfill({

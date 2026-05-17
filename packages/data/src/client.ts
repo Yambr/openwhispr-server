@@ -14,11 +14,36 @@
 // to RLS-subject app code, and any `SET LOCAL app.tenant_id` that leaks
 // across pooled physical connections would silently breach tenant boundaries.
 import { drizzle, type NodePgDatabase } from "drizzle-orm/node-postgres";
-import { Pool } from "pg";
+import { Pool, type PoolConfig } from "pg";
 import * as schema from "./schema/index.js";
 
 export type AppDb = NodePgDatabase<typeof schema>;
 export type OwnerDb = NodePgDatabase<typeof schema>;
+
+/**
+ * Phase 51 / Plan 51-14 (REVIEW-INDEX HI-03 / data) — build a pg
+ * `PoolConfig` with TLS enabled by default. The operator opts OUT by
+ * adding `?sslmode=disable` to the DATABASE_URL (the canonical pg
+ * libpq escape hatch). Anything else — `sslmode=require`, missing
+ * `sslmode=*`, or any other value — turns on TLS. `rejectUnauthorized`
+ * stays `false` so self-signed certs (the OSS quickstart's traefik
+ * mkcert chain) keep working; production operators flip
+ * `PGSSL_REJECT_UNAUTHORIZED=1` to enforce verification end-to-end.
+ *
+ * Pre-fix, every `new Pool({ connectionString })` deferred entirely
+ * to libpq's default, which is `prefer` — server speaks plaintext if
+ * TLS handshake fails. Credentials + tenant rows therefore traveled
+ * unencrypted whenever the server was misconfigured.
+ */
+export function buildPoolConfig(
+  connectionString: string,
+  overrides: Partial<PoolConfig> = {},
+): PoolConfig {
+  const hasDisable = /[?&]sslmode=disable\b/i.test(connectionString);
+  const rejectUnauth = process.env.PGSSL_REJECT_UNAUTHORIZED === "1";
+  const tls = hasDisable ? false : { rejectUnauthorized: rejectUnauth };
+  return { connectionString, ssl: tls, ...overrides };
+}
 
 /**
  * Application database client.
@@ -35,7 +60,7 @@ export function makeAppDb(): { db: AppDb; pool: Pool } {
   if (!url) {
     throw new Error("makeAppDb: DATABASE_URL not set");
   }
-  const pool = new Pool({ connectionString: url, max: 20 });
+  const pool = new Pool(buildPoolConfig(url, { max: 20 }));
   const db = drizzle(pool, { schema });
   return { db, pool };
 }
@@ -60,7 +85,7 @@ export function makeOwnerDb(): { db: OwnerDb; pool: Pool } {
   if (!url) {
     throw new Error("makeOwnerDb: DATABASE_URL_OWNER not set — refusing to run as owner");
   }
-  const pool = new Pool({ connectionString: url, max: 2 });
+  const pool = new Pool(buildPoolConfig(url, { max: 2 }));
   const db = drizzle(pool, { schema });
   return { db, pool };
 }
