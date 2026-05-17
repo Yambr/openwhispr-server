@@ -6,7 +6,7 @@
         contract-test contract-test-deployed contract-test-missing-keys e2e-test e2e-test-live \
         e2e-hermetic e2e-test-phase6 e2e-cjm e2e-cjm-teardown smoke \
         load-test load-smoke seed backup restore migrate migrate-rollback logs ps restart \
-        verify-images \
+        verify-images verify release-gate \
         up-with-observability up-with-storage up-with-ingress up-with-pgbouncer up-with-dev-tools up-full
 
 help:
@@ -533,3 +533,105 @@ e2e-cjm-teardown:
 		docker compose -p openwhispr start; \
 	fi
 	-@rm -f .e2e-cjm-user-was-running
+
+# ---------------------------------------------------------------------------
+# Phase 51 / Plan 51-aux — release sweep entrypoints
+# ---------------------------------------------------------------------------
+#
+# Two canonical aggregate targets — one for the dev/PR loop, one for the
+# pre-tag gate. Both fail-fast (the cheaper steps run first); both echo
+# a "STAGE n/N" banner before each step so the operator can tell at a
+# glance where a run died.
+#
+#   make verify        — no docker, no network. ~3–5 min on M-class. The
+#                        canonical "I'm about to push a branch" loop.
+#                        Runs:  lockers → biome → typecheck → unit +
+#                        integration tests (testcontainers do spin up
+#                        Postgres, so docker daemon must be reachable,
+#                        but no docker-compose stack is touched).
+#
+#   make release-gate  — everything `verify` does + the full live-stack
+#                        suite (contract → compose up → smoke → e2e-cjm →
+#                        load-smoke). Tear-down is guaranteed via the
+#                        e2e-cjm teardown helper. ~30–45 min on M-class.
+#                        Run this before tagging a release or merging a
+#                        PR that touches compose/, charts/, or the wire
+#                        surface.
+#
+# Both targets honour `-k`/`--keep-going` so partial failures still print
+# every red signal in one pass (useful in CI). For local "fix until
+# green" loops, run the failing stage in isolation (e.g. `make e2e-cjm`).
+
+# `verify` — fast feedback. No live stack required.
+verify:
+	@echo
+	@echo "==[ STAGE 1/4 ]== lint:lockers (constitutional gates)"
+	@$(MAKE) -s lint:lockers
+	@echo
+	@echo "==[ STAGE 2/4 ]== lint (biome + english-only)"
+	@$(MAKE) -s lint
+	@echo
+	@echo "==[ STAGE 3/4 ]== typecheck (tsc -b across all workspaces)"
+	@$(MAKE) -s typecheck
+	@echo
+	@echo "==[ STAGE 4/4 ]== test (unit + integration via testcontainers)"
+	@$(MAKE) -s test
+	@echo
+	@echo "verify: OK"
+
+# `release-gate` — full pre-tag sweep. Boots a real compose stack.
+#
+# Step ordering rationale:
+#   1–4  verify (fast)            — bail before paying docker cost.
+#   5    contract-test            — wire-surface sanity (mock-LiteLLM,
+#                                    no full stack yet).
+#   6    compose down -v + up     — clean slate; --wait blocks until
+#                                    every service is healthy or migrate
+#                                    has exited 0.
+#   7    smoke                    — vitest smoke probe against
+#                                    https://api.localhost + web.localhost.
+#                                    Fails fast on TLS / DNS / nginx-
+#                                    label / startup-probe regressions.
+#   8    e2e-cjm                  — Playwright + Cucumber against the
+#                                    booted stack. Tears down its own
+#                                    project on EXIT.
+#   9    load-smoke               — ≤5 VU × ≤60 s k6 plateau (Speaches +
+#                                    mock-LiteLLM only; paid providers
+#                                    gated by OPENWHISPR_LOADTEST_ALLOW_PAID).
+#  10    down -v                  — best-effort teardown.
+release-gate:
+	@echo
+	@echo "==[ release-gate 1/10 ]== verify (lockers + lint + typecheck + tests)"
+	@$(MAKE) -s verify
+	@echo
+	@echo "==[ release-gate 2/10 ]== contract-test"
+	@$(MAKE) -s contract-test
+	@echo
+	@echo "==[ release-gate 3/10 ]== docker compose down -v (clean slate)"
+	-@docker compose -p openwhispr down -v --remove-orphans 2>/dev/null
+	@echo
+	@echo "==[ release-gate 4/10 ]== docker compose build (multi-arch images)"
+	@docker compose build
+	@echo
+	@echo "==[ release-gate 5/10 ]== docker compose up -d --wait (full slim+overlays)"
+	@docker compose -f docker-compose.yml \
+		-f compose/docker-compose.storage.yml \
+		-f compose/docker-compose.ingress.yml \
+		up -d --wait --wait-timeout 300
+	@echo
+	@echo "==[ release-gate 6/10 ]== smoke (vitest live-stack probes)"
+	@$(MAKE) -s smoke
+	@echo
+	@echo "==[ release-gate 7/10 ]== e2e-cjm (Playwright + Cucumber)"
+	@E2E_CJM=1 $(MAKE) -s e2e-cjm
+	@echo
+	@echo "==[ release-gate 8/10 ]== load-smoke (≤5 VU × ≤60 s plateau)"
+	@$(MAKE) -s load-smoke
+	@echo
+	@echo "==[ release-gate 9/10 ]== verify-images (image-digest pin check)"
+	@$(MAKE) -s verify-images
+	@echo
+	@echo "==[ release-gate 10/10 ]== docker compose down -v (teardown)"
+	-@docker compose -p openwhispr down -v --remove-orphans 2>/dev/null
+	@echo
+	@echo "release-gate: OK — repository is ready to tag."
