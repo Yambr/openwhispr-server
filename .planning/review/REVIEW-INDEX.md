@@ -5,7 +5,38 @@ Date: 2026-05-17
 Reviewers: 11 parallel `gsd-code-reviewer` agents
 Scope: production source in `apps/**/src/**` + `packages/**/src/**`. Tests, tools, docs, compose, charts out of scope.
 
-## Fix status (Phase 51)
+## Fix status (Phase 51 + Phase 52)
+
+**Phase 51 (REVIEW fix-cycle):** 12/12 CRITICAL + 36/39 HIGH (92%) → DONE.
+**Phase 52 (pre-existing typecheck + biome debt):** 11 plans landed, `make typecheck` exits 0, biome 0 errors / 109 non-blocking warnings → DONE.
+
+## Phase 52 closure summary
+
+Phase 52 closed the residual stage 2/3 debt that `make verify` surfaced after Phase 51 finalized. The pre-existing-Phase-51 baseline was: tsc errors short-circuiting at packages/litellm-client + 30 biome errors. Plans landed:
+
+| Plan | Commit | Scope |
+|---|---|---|
+| 52-01 | `6372986` | litellm-client typecheck — undici 7.x `ResponseData<unknown>` generic + Dispatcher exactOptional narrowing + bodyText `declare` |
+| 52-02 | `07ff0a4` | data lens.ts — better-auth@1.6.9 dropped CleanedWhere export; import from `@better-auth/core/db/adapter`, drop dead `cleanedToWhere` helper |
+| 52-03 | `db47a32` | worker typed-queue Awaited<> + with-tenant-context tenantId String() coercion |
+| 52-04 | `938d410` | api pyannote-client `declare bodyText` + Readable type + argon2 `ARGON2_ID = 2 as const` mirror |
+| 52-05 | `8ea1dc2` | api auth.ts FallbackLog interface (breaks `typeof fallbackLog` self-ref) + oidcProviders spread |
+| 52-06 | `6209994` | agent/stream zod-inferred body type + LegacyTool description `\| undefined` + content JSON.stringify boundary coercion |
+| 52-04b | `d3b4a16` | api routes cascade — `createOrReturnExisting<T extends object>` constraint relax (closed 7 cascading TS2344); locale `?? ""`; realtime `@ts-expect-error issue-52:` for fastify-http-proxy 11.4.4 ws-types drift; tokens conditional body spread |
+| 52-07 | `e18ec38` | tests/e2e await-arrow batch (8 sites) + tenant-isolation @ts-expect-error + mock-realtime vitest v4 `all` removal |
+| 52-08 | `d53c00e` | load-test k6 `http.file(bytes.buffer as ArrayBuffer)` + strictNullChecks spy call guard |
+| 52-09 | `dac52c4` | biome 2.x stale suppression cleanup + opts.db! → opts.db && guard + allowlist drift (+21 lines auth.ts; +1 line index.ts) |
+| 52-10 | `fecf0ae` | biome 2.x stale suppressions (6 files) + bulk safe-fix pass (18 files) + noExportsInTest explicit suppression for sso-step-drift cross-test util |
+
+**Architecture advisor (`gsd-advisor-researcher`)** locked 5 grey-area decisions ahead of execution (see `.planning/phases/52-pre-existing-typecheck-debt/52-DECISIONS.md`): hybrid per-package cascade, fix-at-source for undici, structural-only Cyrillic assertions, single biome auto-fix commit, local `ARGON2_ID` mirror.
+
+**Verify pipeline post-52:**
+  - Stage 1 lockers: PASSED
+  - Stage 2 biome: 0 errors (was 30) / 109 non-blocking warnings (was 147 — all style hints)
+  - Stage 3 typecheck: PASSED (was 6+21 cascade errors)
+  - Stage 4 tests: pre-existing infra failures only (docker prune concurrency, helm-unittest fixture missing, pg_dump auth) — same class as the 11 diarization fails carved out from Phase 51
+
+---
 
 **12/12 CRITICAL closed. 36/39 HIGH closed (92%). Phase 51 → DONE.**
 
