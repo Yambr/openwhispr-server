@@ -100,12 +100,15 @@ describe("ReasonRequest", () => {
   });
 
   it("accepts text + all optional fields", () => {
+    // Plan 51-07 (REVIEW wire-schemas HIGH) — promptMode / matchType /
+    // provider are now bound to documented enum values; pre-fix the
+    // route echoed arbitrary client strings back into the response.
     const result = ReasonRequest.safeParse({
       text: "rewrite this email",
       model: "qwen3.6-plus",
       provider: "openrouter",
-      promptMode: "polish",
-      matchType: "stylistic",
+      promptMode: "cleanup",
+      matchType: "cleanup",
     });
     expect(result.success).toBe(true);
   });
@@ -160,12 +163,16 @@ describe("DiarizationResponse", () => {
     expect(result.success).toBe(false);
   });
 
-  it("passthrough — preserves upstream pyannote extras (confidence etc.)", () => {
+  it("strict — rejects upstream pyannote extras (Plan 51-07 dropped .passthrough())", () => {
+    // Plan 51-07 (REVIEW wire-schemas HIGH) — .passthrough() removed.
+    // Extra keys (durationSec, diarizationModel, etc.) are now refused
+    // at the wire boundary so a malformed upstream cannot smuggle
+    // arbitrary fields into the client.
     const result = DiarizationResponse.safeParse({
       segments: [{ start: 0, end: 1, speaker: "SPEAKER_00" }],
       diarizationModel: "pyannote/speaker-diarization-3.1",
       durationSec: 1.0,
     });
-    expect(result.success).toBe(true);
+    expect(result.success).toBe(false);
   });
 });

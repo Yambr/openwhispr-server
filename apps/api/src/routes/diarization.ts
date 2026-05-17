@@ -70,9 +70,15 @@ export const POLL_CEILING_MS = 300_000;
 /** Mount path locked by docs/wire-contracts-phase-3.md (Plan 01 D-09). */
 export const DIARIZATION_MOUNT_PATH = "/v1/audio/diarization";
 
-/** MOCK_DIARIZATION fixture response — contract-test profile only. */
+/**
+ * MOCK_DIARIZATION fixture response — contract-test profile only.
+ *
+ * Plan 51-07 dropped `duration` and `.passthrough()` from DiarizationResponse;
+ * the wire shape is now strict (only `segments`). The fixture mirrors that
+ * shape so MOCK_DIARIZATION=true does not regress to a 400 envelope at
+ * runtime.
+ */
 const MOCK_RESPONSE = {
-  duration: 5.0,
   segments: [{ start: 0.0, end: 5.0, speaker: "SPEAKER_00" }],
 };
 
