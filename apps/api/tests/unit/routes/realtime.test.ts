@@ -169,14 +169,21 @@ describe("WSS /v1/realtime route — D-27 wsClientOptions tightening (Phase 04 P
     }
   });
 
-  it("registers @fastify/http-proxy with wsReconnect=false (D-27 — let client handle reconnect)", async () => {
+  it("registers @fastify/http-proxy with wsReconnect omitted (D-27 — reconnect off by default in 11.4.4+)", async () => {
+    // Phase 53 — `@fastify/http-proxy@11.4.4` narrowed `wsReconnect` from
+    // `boolean` to `WebSocketReconnectOptions` (object) AND made it
+    // optional. The canonical "disable reconnect" posture is now to omit
+    // the property — auto-reconnect is OFF by default when absent. The
+    // T-04-RECONNECT-LOOP intent is preserved without forcing a boolean.
+    // The pin shifted from "literal false" to "absent" (Plan 52-04b
+    // dropped the literal false; this test follows production).
     const upstream = await startUpstream();
     try {
       const app = Fastify({ logger: false });
       registerErrorHandler(app);
       const captured: Array<Record<string, unknown>> = [];
       const origRegister = app.register.bind(app);
-      // @ts-expect-error — runtime monkey-patch for test introspection.
+      // @ts-expect-error issue-53: runtime monkey-patch for test introspection.
       app.register = (plugin: unknown, opts?: Record<string, unknown>) => {
         if (opts && typeof opts === "object") captured.push(opts);
         return origRegister(plugin as never, opts as never);
@@ -186,10 +193,9 @@ describe("WSS /v1/realtime route — D-27 wsClientOptions tightening (Phase 04 P
       await app.ready();
       const proxyOpts = captured.find((o) => typeof o.wsUpstream === "string");
       expect(proxyOpts).toBeDefined();
-      // wsReconnect MUST be explicitly false at the top level of the
-      // register options (sibling of wsClientOptions, NOT nested inside
-      // it — per @fastify/http-proxy v11 API).
-      expect(proxyOpts).toHaveProperty("wsReconnect", false);
+      // wsReconnect MUST be absent (undefined). Adding a literal `false`
+      // would now fail typecheck under @fastify/http-proxy@11.4.4 types.
+      expect(proxyOpts?.wsReconnect).toBeUndefined();
       await app.close();
     } finally {
       await upstream.close();

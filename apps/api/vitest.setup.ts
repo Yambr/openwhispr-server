@@ -43,6 +43,11 @@ process.env.INGRESS_BASE_URL ??= "https://api.test.example.com";
 // boots with TLS enabled in unit scope.
 process.env.INGRESS_TLS_CERT_PATH ??= "/tmp/test-ingress-cert.pem";
 process.env.DATABASE_URL ??= "postgres://test/test";
+// Phase 53 — Plan 51-03 cascade: BETTER_AUTH_SECRET boot validation
+// landed in Plan 51-03 (fatal exit 78 if missing). Set canonical 32-char
+// placeholder so vitest workers reaching the bootstrap path don't trip
+// BetterAuthSecretMissingError.EXIT_CODE.
+process.env.BETTER_AUTH_SECRET ??= "test-secret-32-chars-long-xxxxxxxxx";
 
 // Phase 33 / Plan 33-04 — MASTER_KEK default for vitest workers so
 // EnvKeyProvider.getKek() does not throw at module-load time when the
