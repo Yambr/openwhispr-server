@@ -135,26 +135,27 @@ export const buildWebSearchRoutes = (deps: WebSearchDeps) =>
 
         // D-06 — ledger debit. units=1 per call; kind carries the provider
         // name so cross-kind SUM in /api/usage (D-14) attributes correctly.
+        //
+        // Phase 51 / Plan 51-12tx3 (HI-5) — ledger insert is now in the
+        // request critical path. Pre-fix the catch arm logged and
+        // returned 200 anyway, producing successful HTTP responses with
+        // NO billing record during a brief Postgres outage — a revenue-
+        // attribution + audit-trail bug surface. Match the established
+        // transcribe.ts convention: let the central setErrorHandler
+        // emit a 500 envelope on ledger failure. ON CONFLICT (request_id)
+        // DO NOTHING keeps the call idempotent on client retry, so a
+        // retried request that already wrote the ledger row succeeds.
         const tenantId = req.tenant;
         const userId = req.user.id;
         const requestId = req.id;
         const ledgerKind = `web-search.${provider.name}`;
-        try {
-          await withTenant(deps.db, tenantId, async (tx) => {
-            await tx.execute(sql`
-              INSERT INTO usage_ledger (tenant_id, user_id, request_id, kind, units)
-              VALUES (${tenantId}::uuid, ${userId}::uuid, ${requestId}, ${ledgerKind}, 1)
-              ON CONFLICT (request_id) DO NOTHING
-            `);
-          });
-        } catch (e) {
-          // Ledger failure must not deny the user their results — the
-          // search is already paid for upstream. Log but return success.
-          req.log.warn(
-            { provider: provider.name, requestId, err: (e as Error).message },
-            "usage_ledger insert failed; continuing",
-          );
-        }
+        await withTenant(deps.db, tenantId, async (tx) => {
+          await tx.execute(sql`
+            INSERT INTO usage_ledger (tenant_id, user_id, request_id, kind, units)
+            VALUES (${tenantId}::uuid, ${userId}::uuid, ${requestId}, ${ledgerKind}, 1)
+            ON CONFLICT (request_id) DO NOTHING
+          `);
+        });
 
         return reply.code(200).send(result);
       },

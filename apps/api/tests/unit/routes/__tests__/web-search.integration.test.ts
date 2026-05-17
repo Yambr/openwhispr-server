@@ -304,7 +304,14 @@ describe("POST /api/agent/web-search", () => {
     ErrorEnvelope.parse(res.json());
   });
 
-  it("ledger insert failure does NOT 5xx — user still receives results", async () => {
+  it("ledger insert failure surfaces as 500 — accounting invariant preserved (Plan 51-12tx3 / HI-5)", async () => {
+    // Pre-Plan-51-12tx3 the route swallowed the ledger error and
+    // returned 200 with results anyway — producing successful HTTP
+    // responses with NO billing record during a Postgres outage.
+    // Match the transcribe.ts convention: ledger insert is in the
+    // request critical path; central setErrorHandler emits 500 on
+    // failure so the client can retry (ON CONFLICT DO NOTHING keeps
+    // it idempotent).
     const { db } = makeFakeDb({ failOnInsert: true });
     const provider = makeFakeProvider("tavily", {});
     app = await buildApp({ db, provider });
@@ -314,9 +321,8 @@ describe("POST /api/agent/web-search", () => {
       headers: { "content-type": "application/json" },
       payload: JSON.stringify({ query: "x" }),
     });
-    expect(res.statusCode).toBe(200);
-    const body = res.json() as { results: unknown[] };
-    expect(body.results).toHaveLength(1);
+    expect(res.statusCode).toBe(500);
+    ErrorEnvelope.parse(res.json());
   });
 
   it("kind label carries the provider's name (regression: web-search.yandex distinct from web-search.tavily)", async () => {
