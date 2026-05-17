@@ -42,7 +42,14 @@
 // model + column name. envelope.ts already zeroizes DEKs in `finally`;
 // the lens does not re-introduce them anywhere.
 import { createHash } from "node:crypto";
-import type { CleanedWhere, DBAdapter, Where } from "better-auth";
+import type { CleanedWhere } from "@better-auth/core/db/adapter";
+// Phase 52 / Plan 52-02 — better-auth@1.6.9 re-exports `Where` and
+// `DBAdapter` but NOT `CleanedWhere`; the latter lives in
+// `@better-auth/core/db/adapter` (peer of better-auth) as
+// `Required<Where>`. Import each from its actual public surface to
+// keep the lens typecheck-green and preserve nominal identity with the
+// upstream Better Auth adapter contract.
+import type { DBAdapter, Where } from "better-auth";
 import { decryptValue, type EncryptedRow, encryptValue } from "./envelope.js";
 import type { KeyProvider } from "./key-provider.js";
 
@@ -272,11 +279,6 @@ function rewriteWhere(
   });
 }
 
-/** Convert a CleanedWhere[] to Where[] (subtype — CleanedWhere = Required<Where>). */
-function cleanedToWhere(where: readonly CleanedWhere[] | undefined): Where[] | undefined {
-  return where ? where.map((w) => ({ ...w })) : undefined;
-}
-
 /**
  * Wrap a Better-Auth `DBAdapter` with transparent envelope-encryption
  * for the columns declared in `columnMap`. The returned adapter is a
@@ -343,11 +345,7 @@ export function wrapAdapter(
     update: async (args) => {
       const update = { ...(args.update as Record<string, unknown>) };
       await encryptColumns(args.model, update);
-      const where = rewriteWhere(
-        args.model,
-        cleanedToWhere(args.where),
-        columnMap,
-      ) as CleanedWhere[];
+      const where = rewriteWhere(args.model, args.where, columnMap) as CleanedWhere[];
       const updated = (await inner.update({ ...args, where, update })) as Record<
         string,
         unknown
@@ -361,20 +359,12 @@ export function wrapAdapter(
     updateMany: async (args) => {
       const update = { ...(args.update as Record<string, unknown>) };
       await encryptColumns(args.model, update);
-      const where = rewriteWhere(
-        args.model,
-        cleanedToWhere(args.where),
-        columnMap,
-      ) as CleanedWhere[];
+      const where = rewriteWhere(args.model, args.where, columnMap) as CleanedWhere[];
       return inner.updateMany({ ...args, where, update });
     },
 
     findOne: async (args) => {
-      const where = rewriteWhere(
-        args.model,
-        cleanedToWhere(args.where),
-        columnMap,
-      ) as CleanedWhere[];
+      const where = rewriteWhere(args.model, args.where, columnMap) as CleanedWhere[];
       const row = (await inner.findOne({ ...args, where })) as Record<string, unknown> | null;
       if (row && typeof row === "object") {
         await decryptRow(args.model, row);
@@ -383,9 +373,7 @@ export function wrapAdapter(
     },
 
     findMany: async (args) => {
-      const where = rewriteWhere(args.model, cleanedToWhere(args.where), columnMap) as
-        | CleanedWhere[]
-        | undefined;
+      const where = rewriteWhere(args.model, args.where, columnMap) as CleanedWhere[] | undefined;
       const rows = (await inner.findMany({ ...args, where })) as Record<string, unknown>[];
       for (const r of rows) {
         await decryptRow(args.model, r);
@@ -394,27 +382,17 @@ export function wrapAdapter(
     },
 
     count: async (args) => {
-      const where = rewriteWhere(args.model, cleanedToWhere(args.where), columnMap) as
-        | CleanedWhere[]
-        | undefined;
+      const where = rewriteWhere(args.model, args.where, columnMap) as CleanedWhere[] | undefined;
       return inner.count({ ...args, where });
     },
 
     delete: async (args) => {
-      const where = rewriteWhere(
-        args.model,
-        cleanedToWhere(args.where),
-        columnMap,
-      ) as CleanedWhere[];
+      const where = rewriteWhere(args.model, args.where, columnMap) as CleanedWhere[];
       return inner.delete({ ...args, where });
     },
 
     deleteMany: async (args) => {
-      const where = rewriteWhere(
-        args.model,
-        cleanedToWhere(args.where),
-        columnMap,
-      ) as CleanedWhere[];
+      const where = rewriteWhere(args.model, args.where, columnMap) as CleanedWhere[];
       return inner.deleteMany({ ...args, where });
     },
 
