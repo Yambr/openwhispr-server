@@ -8,15 +8,10 @@
 import { dehydrate, HydrationBoundary } from "@tanstack/react-query";
 import { headers } from "next/headers";
 import { TranscriptionsListClient } from "@/components/screens/transcriptions/TranscriptionsListClient";
+// Plan 51-11b — INTERNAL_API_URL helper centralised (REVIEW web HIGH HI-03).
+import { internalApiUrl } from "@/lib/internal-api";
 import { makeServerQueryClient } from "@/lib/query-client-server";
 import { queryKeys } from "@/lib/query-keys";
-
-const DEFAULT_INTERNAL_API_URL = "http://api:3000";
-
-function internalApiUrl(): string {
-  const raw = process.env.INTERNAL_API_URL;
-  return raw && raw.length > 0 ? raw : DEFAULT_INTERNAL_API_URL;
-}
 
 // Phase 41 / Plan 41-c (HI-2) — removed PLAYWRIGHT_DISABLE_SSR_PREFETCH env branch.
 

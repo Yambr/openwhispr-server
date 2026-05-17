@@ -66,26 +66,16 @@ export function SignInForm(): React.JSX.Element {
     setSubmitting(true);
     setState({ kind: "idle" });
     try {
-      const result = (await (
-        authClient.signIn as unknown as {
-          email: (args: {
-            email: string;
-            password: string;
-            rememberMe?: boolean;
-            callbackURL: string;
-          }) => Promise<{
-            data: unknown;
-            error: { code?: string; message?: string } | null;
-          }>;
-        }
-      ).email({
+      // Plan 51-11b — typed access via ExtendedAuthClient
+      // (eliminates the local double-cast at the call site).
+      const result = await authClient.signIn.email({
         email: values.email,
         password: values.password,
         // D-21: pass-through to Better Auth.
         rememberMe: values.rememberDevice,
         // Open-redirect mitigation: hardcoded — never read ?next= from URL.
         callbackURL: "/app",
-      })) as { data: unknown; error: { code?: string; message?: string } | null };
+      });
       if (result.error) {
         if (result.error.code === "EMAIL_NOT_VERIFIED") {
           setState({ kind: "error-unverified", resend: "idle" });
@@ -106,13 +96,8 @@ export function SignInForm(): React.JSX.Element {
     if (state.kind !== "error-unverified") return;
     setState({ kind: "error-unverified", resend: "sending" });
     try {
-      await (
-        authClient as unknown as {
-          sendVerificationEmail: (args: {
-            email: string;
-          }) => Promise<{ data: unknown; error: unknown }>;
-        }
-      ).sendVerificationEmail({ email: form.getValues("email") });
+      // Plan 51-11b — typed access via ExtendedAuthClient.
+      await authClient.sendVerificationEmail({ email: form.getValues("email") });
       setState({ kind: "error-unverified", resend: "sent" });
     } catch {
       setState({ kind: "error-generic" });
