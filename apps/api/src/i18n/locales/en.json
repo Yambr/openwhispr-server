@@ -17,6 +17,7 @@
     "API_KEY_NOT_FOUND": "API key not found",
     "API_KEY_NAME_TAKEN": "An API key with that name already exists",
     "INVALID_ID": "Invalid id",
+    "INVALID_QUERY": "Invalid query",
     "INVALID_STREAMS_COUNT": "streams must be 1 or 2",
     "QUERY_REQUIRED": "Query must be non-empty",
     "MULTIPART_REQUIRED": "Expected multipart/form-data audio upload",

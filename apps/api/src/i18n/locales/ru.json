@@ -17,6 +17,7 @@
     "API_KEY_NOT_FOUND": "API-ключ не найден",
     "API_KEY_NAME_TAKEN": "API-ключ с таким именем уже существует",
     "INVALID_ID": "Некорректный идентификатор",
+    "INVALID_QUERY": "Некорректный поисковый запрос",
     "INVALID_STREAMS_COUNT": "Параметр streams должен быть 1 или 2",
     "QUERY_REQUIRED": "Поисковый запрос не может быть пустым",
     "MULTIPART_REQUIRED": "Ожидается загрузка аудио в формате multipart/form-data",
