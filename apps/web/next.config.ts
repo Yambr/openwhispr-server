@@ -16,40 +16,13 @@
 import path from "node:path";
 import type { NextConfig } from "next";
 
-// Next.js 15 App Router emits inline <script> tags for RSC payload hydration
-// (the `self.__next_f.push(...)` bootstrap). A `script-src 'self'` policy
-// blocks every one of these, leaving the hydrated DOM empty even though the
-// initial HTML rendered. We therefore allow 'unsafe-inline' for scripts in
-// both CSP buckets. Long-term we should switch to per-request nonces via
-// middleware (Next 15 supports this), but that requires a middleware-level
-// rewrite that is outside Plan 13's scope (Phase 07.1 / Plan 13 deviation —
-// Rule 1 fix: unblock hydration so e2e + cross-screen smoke can run).
-//
-// 'unsafe-eval' is NOT added — Next.js production builds do not use eval.
-// 'unsafe-inline' for style-src remains (required for Tailwind/shadcn
-// runtime style injection).
-const STRICT_AUTH_CSP =
-  "default-src 'self'; " +
-  "script-src 'self' 'unsafe-inline'; " +
-  "style-src 'self' 'unsafe-inline'; " +
-  "img-src 'self' data:; " +
-  "font-src 'self'; " +
-  "connect-src 'self'; " +
-  "frame-ancestors 'none'; " +
-  "base-uri 'self'; " +
-  "form-action 'self'";
-
-const APP_CSP =
-  "default-src 'self'; " +
-  "script-src 'self' 'unsafe-inline'; " +
-  "style-src 'self' 'unsafe-inline'; " +
-  "img-src 'self' data: blob:; " +
-  "font-src 'self'; " +
-  "connect-src 'self'; " +
-  "frame-ancestors 'none'; " +
-  "base-uri 'self'; " +
-  "form-action 'self'";
-
+// Phase 51 / Plan 51-04 (REVIEW CR-5) — Content-Security-Policy moved
+// to middleware.ts so it can carry a per-request `nonce-<value>` in
+// `script-src`. The old `'unsafe-inline'` allowance (rationale: Next 15
+// emits an inline hydration bootstrap) is gone — Next 15 stamps the
+// middleware-supplied nonce onto every script tag it emits when the
+// `x-nonce` request header is set. `headers()` here continues to emit
+// the constant security headers (HSTS, frame-options, referrer, etc.).
 const COMMON_HEADERS = [
   { key: "Strict-Transport-Security", value: "max-age=31536000; includeSubDomains; preload" },
   { key: "X-Frame-Options", value: "DENY" },
@@ -68,27 +41,13 @@ const nextConfig: NextConfig = {
   poweredByHeader: false,
   typedRoutes: true,
   async headers() {
-    // Two mutually exclusive source patterns so the auth bucket and the app
-    // bucket never both match a single request. The auth bucket is exact-
-    // matched on its three paths; the app bucket uses a regex negative
-    // lookahead to exclude them. This keeps each response carrying exactly
-    // one Content-Security-Policy header.
+    // Phase 51 / Plan 51-04 — CSP now lives in middleware.ts (per-
+    // request nonce). The constants below are the security headers
+    // that don't vary per request.
     return [
       {
-        source: "/sign-in",
-        headers: [...COMMON_HEADERS, { key: "Content-Security-Policy", value: STRICT_AUTH_CSP }],
-      },
-      {
-        source: "/sign-up",
-        headers: [...COMMON_HEADERS, { key: "Content-Security-Policy", value: STRICT_AUTH_CSP }],
-      },
-      {
-        source: "/verify-email",
-        headers: [...COMMON_HEADERS, { key: "Content-Security-Policy", value: STRICT_AUTH_CSP }],
-      },
-      {
-        source: "/:path((?!sign-in$|sign-up$|verify-email$).*)",
-        headers: [...COMMON_HEADERS, { key: "Content-Security-Policy", value: APP_CSP }],
+        source: "/:path*",
+        headers: COMMON_HEADERS,
       },
     ];
   },
