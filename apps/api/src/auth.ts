@@ -210,7 +210,23 @@ const noop = (): void => {
   /* fallback log methods are intentional no-ops */
 };
 
-export const fallbackLog = {
+// Phase 52 / Plan 52-05 — explicit interface breaks the
+// `typeof fallbackLog` self-reference in `child()`'s return type that
+// tripped TS7022 (implicit-any-on-self-initializer). FastifyBaseLogger-
+// conformance is preserved structurally.
+interface FallbackLog {
+  info(): void;
+  warn(): void;
+  error(): void;
+  fatal(): void;
+  trace(): void;
+  debug(): void;
+  silent(): void;
+  level: "info";
+  child(): FallbackLog;
+}
+
+export const fallbackLog: FallbackLog = {
   info: noop,
   warn: noop,
   error: noop,
@@ -218,8 +234,8 @@ export const fallbackLog = {
   trace: noop,
   debug: noop,
   silent: noop,
-  level: "info" as const,
-  child(): typeof fallbackLog {
+  level: "info",
+  child(): FallbackLog {
     return fallbackLog;
   },
 };
@@ -276,7 +292,12 @@ export function buildAuth(opts: BuildAuthOptions): AuthInstance {
           genericOAuth({
             // Plan 05 wires onSuccess for the channel-scheme custom-protocol
             // redirect. Until then the plugin runs with default behavior.
-            config: oidcProviders,
+            // Phase 52 / Plan 52-05 — `oidcProviders` is
+            // `readonly OidcProviderRegistration[]` but Better Auth's
+            // `genericOAuth.config` parameter is the mutable shape
+            // `GenericOAuthConfig[]`. Spread into a fresh array to drop
+            // the readonly modifier without copying any element semantics.
+            config: [...oidcProviders],
           }),
         ]
       : []),
