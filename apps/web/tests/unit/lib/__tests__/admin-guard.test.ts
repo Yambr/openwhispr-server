@@ -24,9 +24,15 @@ const sessionWithoutRole: ServerSession = {
   user: { id: "u-3" /* no role field at all */ },
 };
 
-describe("checkAdminAccess (Phase 41.c HI-1)", () => {
-  it("allows anonymous (null session) — Traefik basic-auth is the primary gate", () => {
-    expect(checkAdminAccess(null)).toBe("allow");
+describe("checkAdminAccess (Phase 41.c HI-1, Phase 51-04 fail-closed)", () => {
+  it("forbids anonymous (null session) by default — Phase 51 / Plan 51-04 fail-closed", () => {
+    // Phase 51 / Plan 51-04 (REVIEW CR-6) — was "allow" pre-fix.
+    // Operators relying on Traefik basic-auth pass edgeAuthEnforced=true.
+    expect(checkAdminAccess(null)).toBe("forbidden");
+  });
+
+  it("allows anonymous when edgeAuthEnforced=true (Traefik basic-auth deployment)", () => {
+    expect(checkAdminAccess(null, true)).toBe("allow");
   });
 
   it("allows signed-in admin (role === 'admin')", () => {
