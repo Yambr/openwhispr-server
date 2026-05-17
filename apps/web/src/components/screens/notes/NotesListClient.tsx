@@ -104,7 +104,7 @@ function wordCount(text: string | null | undefined): number {
 }
 
 export function NotesListClient(): React.JSX.Element {
-  const { t } = useTranslation(["end-user"]);
+  const { t } = useTranslation(["end-user", "common"]);
   const router = useRouter();
   const searchParams = useSearchParams();
   const queryClient = useQueryClient();
@@ -264,7 +264,9 @@ export function NotesListClient(): React.JSX.Element {
                               </AlertDialogDescription>
                             </AlertDialogHeader>
                             <AlertDialogFooter>
-                              <AlertDialogCancel>Cancel</AlertDialogCancel>
+                              <AlertDialogCancel>
+                                {t("common:common.action.cancel.label")}
+                              </AlertDialogCancel>
                               <AlertDialogAction onClick={() => del.mutate(row.id)}>
                                 {t("end-user:end-user.notes-list.row.action-delete.label")}
                               </AlertDialogAction>

@@ -71,7 +71,7 @@ export interface ConversationDetailClientProps {
 export function ConversationDetailClient({
   conversationId,
 }: ConversationDetailClientProps): React.JSX.Element {
-  const { t } = useTranslation(["end-user"]);
+  const { t } = useTranslation(["end-user", "common"]);
   const router = useRouter();
   const queryClient = useQueryClient();
   const [before, setBefore] = useState<string | undefined>(undefined);
@@ -224,7 +224,7 @@ export function ConversationDetailClient({
                 </AlertDialogDescription>
               </AlertDialogHeader>
               <AlertDialogFooter>
-                <AlertDialogCancel>Cancel</AlertDialogCancel>
+                <AlertDialogCancel>{t("common:common.action.cancel.label")}</AlertDialogCancel>
                 <AlertDialogAction onClick={() => del.mutate()}>
                   {t("end-user:end-user.conv-detail.action.delete.label")}
                 </AlertDialogAction>
