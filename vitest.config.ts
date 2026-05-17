@@ -154,13 +154,14 @@ export default defineConfig({
           // forked worker so the docker-compose-touching tests are
           // strictly sequential. CPU-cheap because each test is
           // I/O-bound on `docker compose up --wait`.
+          // Vitest 4 flattened `poolOptions.forks.singleFork` into the
+          // top-level `singleFork` flag (migration: vitest.dev/guide/
+          // migration#pool-rework). The deprecated nested form here
+          // emitted DEPRECATED at startup and cascaded to a file-level
+          // `not ok` result even when every contained `it()` passed.
           fileParallelism: false,
           pool: "forks",
-          poolOptions: {
-            forks: {
-              singleFork: true,
-            },
-          },
+          singleFork: true,
         },
       },
     ],

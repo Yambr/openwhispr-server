@@ -694,7 +694,46 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
+      - uses: step-security/harden-runner@a5ad31d6a139d249332a2605b85202e8c0b78450  # v2.19.1
+        with: { egress-policy: audit }
       - uses: actions/checkout@v5
+        with: { fetch-depth: 0 }
+      - uses: pnpm/action-setup@v4
+        with: { version: 11.0.8 }
+      - uses: actions/setup-node@v5
+        with: { node-version: '24', cache: 'pnpm' }
+      - run: pnpm install --frozen-lockfile
+      - name: Bootstrap fixture .env (env interpolation source)
+        run: |
+          cp .env.slim.example .env
+          if [ -x tools/bootstrap.sh ]; then
+            tools/bootstrap.sh --ci || true
+          fi
+      - name: Install k6
+        run: |
+          sudo gpg -k
+          sudo gpg --no-default-keyring --keyring /usr/share/keyrings/k6-archive-keyring.gpg \
+            --keyserver hkp://keyserver.ubuntu.com:80 --recv-keys C5AD17C747E3415A3642D57D77C6C491D6AC1D69
+          echo "deb [signed-by=/usr/share/keyrings/k6-archive-keyring.gpg] https://dl.k6.io/deb stable main" \
+            | sudo tee /etc/apt/sources.list.d/k6.list
+          sudo apt-get update && sudo apt-get install -y k6
+      - name: Run mock load smoke (≤ 2 min)
+        env:
+          BASELINE_VUS: "5"
+          BASELINE_DURATION_SUSTAIN: "60s"
+        run: make load-smoke
+      - name: Capture compose logs on failure
+        if: failure()
+        run: docker compose logs --tail=200 --no-color > load-smoke-logs.txt || true
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4
+        if: failure()
+        with:
+          name: load-smoke-logs
+          path: load-smoke-logs.txt
+      - name: Tear down
+        if: always()
+        run: docker compose down -v --remove-orphans || true
+
   # ────────────────────────────────────────────────────────────────
   # Phase 20 / Plan 20-03 / SR-20.6 — compose-config gate.
   # Validates compose YAML + env interpolation across 8 profile
@@ -753,35 +792,6 @@ jobs:
         with: { egress-policy: audit }
       - uses: actions/checkout@v5
         with: { fetch-depth: 0 }
-      - uses: pnpm/action-setup@v4
-        with: { version: 11.0.8 }
-      - uses: actions/setup-node@v5
-        with: { node-version: '24', cache: 'pnpm' }
-      - run: pnpm install --frozen-lockfile
-      - name: Install k6
-        run: |
-          sudo gpg -k
-          sudo gpg --no-default-keyring --keyring /usr/share/keyrings/k6-archive-keyring.gpg \
-            --keyserver hkp://keyserver.ubuntu.com:80 --recv-keys C5AD17C747E3415A3642D57D77C6C491D6AC1D69
-          echo "deb [signed-by=/usr/share/keyrings/k6-archive-keyring.gpg] https://dl.k6.io/deb stable main" \
-            | sudo tee /etc/apt/sources.list.d/k6.list
-          sudo apt-get update && sudo apt-get install -y k6
-      - name: Run mock load smoke (≤ 2 min)
-        env:
-          BASELINE_VUS: "5"
-          BASELINE_DURATION_SUSTAIN: "60s"
-        run: make load-smoke
-      - name: Capture compose logs on failure
-        if: failure()
-        run: docker compose logs --tail=200 --no-color > load-smoke-logs.txt || true
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4
-        if: failure()
-        with:
-          name: load-smoke-logs
-          path: load-smoke-logs.txt
-      - name: Tear down
-        if: always()
-        run: docker compose down -v --remove-orphans || true
       - name: Bootstrap fixture .env (env interpolation source)
         run: |
           # Use the canonical slim-OSS template (90-key reference);

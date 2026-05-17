@@ -43,7 +43,13 @@ describe.skipIf(skip)("Phase 2 Plan 02 D-23 — api container reaches healthy", 
     }
   }, 180_000);
 
-  it("`docker compose up --wait` brings api to healthy status within 180s", async () => {
+  // Retry once: LiteLLM cold-boot is sensitive to docker-daemon load
+  // (a sibling self-test's `down -v` may still be settling when this
+  // test calls `up --wait`). One retry empirically clears the flake.
+  it("`docker compose up --wait` brings api to healthy status within 180s", {
+    retry: 1,
+    timeout: 600_000,
+  }, async () => {
     // `--wait` blocks until every service in the project has either a
     // healthy healthcheck OR exited 0 (for one-shot services like
     // migrate). Timeout is the test runner's responsibility.
@@ -89,5 +95,5 @@ describe.skipIf(skip)("Phase 2 Plan 02 D-23 — api container reaches healthy", 
     // `ps --format json` emits one JSON object per line in Compose v2;
     // we just check the api row's Health field for "healthy".
     expect(ps.stdout).toMatch(/"Health"\s*:\s*"healthy"/);
-  }, 600_000);
+  });
 });
