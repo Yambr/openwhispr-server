@@ -149,7 +149,14 @@ export const buildSetupAdminRoutes = (deps: SetupAdminDeps) =>
       // T-12.03-02 — anti-spam floor; 5/min/IP. Plan 12-03 RESEARCH §15(b).
       // Distinct from /api/setup-state's 30/min/IP — that endpoint is a
       // cheap polled read; THIS endpoint mutates state.
-      config: { rateLimit: { max: 5, timeWindow: "1 minute" } },
+      //
+      // Phase 51 / Plan 51-01 (REVIEW-INDEX CR-3) — `auth: false` opt-out
+      // of the global dualAuthHook. The wizard runs BEFORE any admin
+      // exists, so the global hook would 401 every claim before the
+      // handler could create the first user. Same opt-out pattern as the
+      // sister route /api/setup-state (Phase 35 / CRIT-FIX-04). Anti-abuse
+      // is preserved by the per-IP rateLimit above.
+      config: { auth: false, rateLimit: { max: 5, timeWindow: "1 minute" } },
       handler: async (req: FastifyRequest, reply: FastifyReply) => {
         // 1. Parse + validate. Unknown extra keys (e.g. `role:'admin'`)
         //    are silently dropped — Zod's default behaviour is "strip
