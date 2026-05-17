@@ -1,22 +1,28 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 // Phase 41 / Plan 41-c — HI-1 admin route role-check guard.
+// Phase 51 / Plan 51-04 — REVIEW CR-6 fail-closed hardening.
 //
-// Defense-in-depth role gate layered on top of Traefik basic-auth
-// (D-ADMIN-1). Traefik basic-auth remains the primary gate; this helper
-// only acts when a Better Auth session is present. Three branches:
+// Defense-in-depth role gate. Pre-Phase-51 the guard returned "allow"
+// on a null session because Traefik basic-auth at the edge was treated
+// as the primary gate. That assumption holds in production deployments
+// but NOT in the OSS quickstart where Traefik basic-auth is optional —
+// a forged or missing session cookie would fall through to "allow"
+// and the admin layout would render full operator content.
 //
-//   - session === null  → "allow"     (operator runbook: ops engineer
-//                                      with basic-auth credentials but
-//                                      no OpenWhispr account passes
-//                                      through; Traefik already
-//                                      authorised them).
-//   - session.user.role === "admin" → "allow"      (authorised admin).
-//   - otherwise          → "forbidden" (signed-in NON-admin user — the
-//                                      defense-in-depth surface this
-//                                      guard exists for; closes the
-//                                      `web.md` HI-1 case "any signed-in
-//                                      user gains operator config
-//                                      visibility").
+// Post-Phase-51 the guard fails CLOSED by default. Operators who DO
+// deploy Traefik basic-auth opt into the historical behaviour via the
+// `edgeAuthEnforced` flag (sourced from `ADMIN_EDGE_AUTH_ENFORCED=1`
+// at the layout layer).
+//
+// Four branches:
+//
+//   - session === null && !edgeAuthEnforced → "forbidden"  (DEFAULT)
+//   - session === null && edgeAuthEnforced  → "allow"      (operator
+//                                                            runbook:
+//                                                            Traefik is
+//                                                            the gate)
+//   - session.user.role === "admin"         → "allow"
+//   - otherwise (signed-in non-admin)       → "forbidden"
 //
 // The helper is pure (no I/O, no headers/redirect side-effects) so it
 // is unit-testable. The RSC layout consumes it and renders an inline
@@ -29,14 +35,23 @@ export type AdminAccessDecision = "allow" | "forbidden";
  * Decide whether a session may access /admin/*.
  *
  * @param session  the resolved Better Auth session, or `null` for
- *                 anonymous visitors (Traefik basic-auth covers this
- *                 case at the edge).
+ *                 anonymous visitors.
+ * @param edgeAuthEnforced  when `true`, anonymous visitors are allowed
+ *                 through (Traefik basic-auth at the edge is the
+ *                 canonical operator gate). When `false` (the default),
+ *                 the guard fails CLOSED — a missing/forged cookie
+ *                 cannot bypass the admin surface.
  * @returns `"allow"` when the request may proceed to the admin layout;
  *          `"forbidden"` when the layout MUST render a 403 surface
  *          instead of admin content.
  */
-export function checkAdminAccess(session: ServerSession | null): AdminAccessDecision {
-  if (session === null) return "allow";
+export function checkAdminAccess(
+  session: ServerSession | null,
+  edgeAuthEnforced: boolean = false,
+): AdminAccessDecision {
+  if (session === null) {
+    return edgeAuthEnforced ? "allow" : "forbidden";
+  }
   const role = (session.user as { role?: unknown }).role;
   if (role === "admin") return "allow";
   return "forbidden";
