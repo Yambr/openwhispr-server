@@ -23,7 +23,14 @@ export interface FetchResult {
 }
 
 export async function fetchAndParse(url: string, init?: RequestInit): Promise<FetchResult> {
-  const res = await fetch(url, init);
+  // Phase 51 / Plan 51-16b (REVIEW byok-guard-contract-tests HIGH HI-06):
+  // default `redirect: "error"` so a stale BACKEND_URL emitting a
+  // Traefik 308 plaintext→HTTPS rewrite raises loudly instead of
+  // silently following to the wrong target (where the request body may
+  // be lost and contract assertions run against the wrong response).
+  // Callers can still opt in to redirect-following by passing
+  // `redirect: "follow"` explicitly.
+  const res = await fetch(url, { redirect: "error", ...init });
   const text = await res.text();
   let parsed: unknown;
   let parsedOk = false;
