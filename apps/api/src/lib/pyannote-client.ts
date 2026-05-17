@@ -26,6 +26,7 @@
 //   - PyannoteUpstreamError (presigned PUT non-2xx, etc.) → Route surfaces
 //                                                            502.
 
+import type { Readable } from "node:stream";
 import { type Dispatcher, request } from "undici";
 
 export class MissingPyannoteKeyError extends Error {
@@ -68,7 +69,7 @@ export class PyannoteBadRequestError extends Error {
   // Phase 37 / CRIT-FIX-09 (CR-9 sibling). bodyText is truncated at
   // construction, held non-enumerable so pino's `err` serializer cannot
   // exfiltrate it. `toJSON()` below is the belt-and-braces layer.
-  private readonly bodyText: string;
+  private declare readonly bodyText: string;
   constructor(
     public readonly status: number,
     bodyText = "",
@@ -91,7 +92,7 @@ export class PyannoteBadRequestError extends Error {
 export class PyannoteUpstreamError extends Error {
   override name = "PyannoteUpstreamError";
   // Phase 37 / CRIT-FIX-09 (CR-9 sibling). See PyannoteBadRequestError.
-  private readonly bodyText: string;
+  private declare readonly bodyText: string;
   constructor(
     public readonly status: number,
     bodyText = "",
@@ -131,12 +132,16 @@ export interface PyannoteJob {
 export interface PyannoteClient {
   /** POST /v1/media/input → returns presigned PUT URL + media:// URI for /v1/diarize. */
   createMediaInput(): Promise<{ url: string; mediaUri: string }>;
-  /** PUT binary bytes to a presigned URL returned by createMediaInput(). */
-  uploadToPresignedUrl(
-    url: string,
-    body: NodeJS.ReadableStream | Buffer,
-    contentType: string,
-  ): Promise<void>;
+  /**
+   * PUT binary bytes to a presigned URL returned by createMediaInput().
+   *
+   * Phase 52 / Plan 52-04 — body narrowed from `NodeJS.ReadableStream |
+   * Buffer` to `Readable | Buffer` (node:stream `Readable` instead of
+   * the ambient `NodeJS.ReadableStream`). undici 7.x's `request()` body
+   * union dropped the ambient type; the concrete `Readable` is what
+   * `fs.createReadStream(...)` and friends actually return.
+   */
+  uploadToPresignedUrl(url: string, body: Readable | Buffer, contentType: string): Promise<void>;
   /** POST /v1/diarize {url: mediaUri} → returns jobId. */
   submitDiarize(mediaUri: string): Promise<string>;
   /** GET /v1/jobs/{jobId} → returns full job payload; supports AbortSignal. */
