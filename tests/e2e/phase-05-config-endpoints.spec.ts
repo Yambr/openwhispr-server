@@ -66,10 +66,10 @@ describe("e2e — GET /api/stt-config + GET /api/note-recording-config (real com
   it("returns 401 envelope on both routes without a session cookie", async () => {
     const stt = await fetch(`${BACKEND_URL}/api/stt-config`);
     expect(stt.status).toBe(401);
-    expect(() => ErrorEnvelope.parse(await stt.json())).not.toThrow();
+    expect(async () => ErrorEnvelope.parse(await stt.json())).not.toThrow();
 
     const note = await fetch(`${BACKEND_URL}/api/note-recording-config`);
     expect(note.status).toBe(401);
-    expect(() => ErrorEnvelope.parse(await note.json())).not.toThrow();
+    expect(async () => ErrorEnvelope.parse(await note.json())).not.toThrow();
   });
 });

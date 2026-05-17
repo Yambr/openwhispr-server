@@ -18,7 +18,9 @@ export default defineConfig({
       provider: "v8",
       reporter: ["text", "json-summary", "json", "lcov"],
       reportsDirectory: "./coverage",
-      all: true,
+      // Phase 52 / Plan 52-07 — vitest v4 removed `all: true` coverage
+      // flag (now controlled by include/exclude only). The
+      // `include: ["server.ts"]` below already enforces the same scope.
       include: ["server.ts"],
       exclude: ["**/*.test.ts", "dist/**", "node_modules/**"],
       thresholds: {
