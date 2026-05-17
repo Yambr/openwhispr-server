@@ -1,0 +1,21 @@
+-- Phase 51 / Plan 51-14 (REVIEW-INDEX HI-01 / data) — drop stale
+-- `session_lookup_by_token(text)` SECURITY DEFINER function.
+--
+-- The function was created in migration 0005 to support a plaintext
+-- `sessions.token` lookup. Migration 0020 then dropped the underlying
+-- `sessions.token` column (Phase 33 envelope encryption + SHA-256
+-- fingerprint) but left the function in place. Every grantee in
+-- `openwhispr_app` can still EXECUTE it, but the function body
+-- references a column that no longer exists — any caller hits
+-- SQLSTATE 42703 (undefined column) at runtime.
+--
+-- This migration drops the function (idempotent — `IF EXISTS` so a
+-- replay against a fresh database is a no-op). Down migration
+-- re-creates the function with a body that throws an exception
+-- instead of trying to query the dropped column, so a rollback to a
+-- pre-0023 state at least surfaces a clear error rather than the
+-- silent 42703 we had before.
+--
+-- Hard Rule 1 honored: this is a NEW migration, not an edit to 0005.
+
+DROP FUNCTION IF EXISTS public.session_lookup_by_token(text);

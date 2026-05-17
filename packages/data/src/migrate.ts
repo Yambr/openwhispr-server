@@ -20,6 +20,11 @@ import { fileURLToPath } from "node:url";
 import { drizzle } from "drizzle-orm/node-postgres";
 import { migrate } from "drizzle-orm/node-postgres/migrator";
 import { Pool } from "pg";
+// Phase 51 / Plan 51-14 (REVIEW HI-03) — TLS-by-default pool builder.
+// Eliminates the `sslmode=prefer` fallback that left credentials and
+// tenant rows traversing plaintext when the server happened to
+// reject the TLS handshake.
+import { buildPoolConfig } from "./client.js";
 
 // Resolve script directory across both runtimes:
 //   - tsx (ESM, dev / vitest) — import.meta.url is set.
@@ -71,7 +76,7 @@ export async function ensureLitellmDatabase(
   },
 ): Promise<void> {
   const safeOwner = pgIdent(owner);
-  const admin = new Pool({ connectionString: adminUrl, max: 1 });
+  const admin = new Pool(buildPoolConfig(adminUrl, { max: 1 }));
   try {
     const { rows } = await admin.query<{ exists: number }>(
       `SELECT 1 AS exists FROM pg_database WHERE datname = 'litellm'`,
@@ -207,7 +212,7 @@ async function main(): Promise<void> {
     await ensureLitellmDatabase(adminUrl, owner);
   }
 
-  const pool = new Pool({ connectionString: url, max: 2 });
+  const pool = new Pool(buildPoolConfig(url, { max: 2 }));
   try {
     const db = drizzle(pool);
     await migrate(db, {
