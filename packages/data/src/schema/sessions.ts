@@ -31,8 +31,17 @@ export const sessions = pgTable(
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
 
+    // Plan 51-23 / Phase 33-05 — Better-Auth-introspection compat (see
+    // accounts.ts for full rationale). Lens strips the plaintext key
+    // before Drizzle builds the INSERT — plaintext NEVER lands at rest.
+    // LOCKER-08 inline-allowlisted; migration 0025 re-adds the columns
+    // as nullable, no DEFAULT.
+    token: text("token"),
+    previousToken: text("previous_token"),
+
     // token — envelope-encrypted at rest. Plaintext column dropped
-    // by migration 0020. `token_fp` (below) is NOT NULL so the
+    // by migration 0020, restored as a never-written introspection
+    // sentinel by 0025. `token_fp` (below) is NOT NULL so the
     // UNIQUE-token contract from Plan 02.12 is preserved at the
     // fingerprint layer.
     tokenDekWrapped: bytea("token_dek_wrapped"),
@@ -41,7 +50,12 @@ export const sessions = pgTable(
     tokenValueIv: bytea("token_value_iv"),
     tokenValueAuthTag: bytea("token_value_auth_tag"),
     tokenValueCiphertext: bytea("token_value_ciphertext"),
-    tokenFp: bytea("token_fp").notNull(),
+    // Plan 51-24 — relaxed to nullable: Better Auth's drizzleAdapter
+    // strips the lens-emitted sidecars from its writes, so the
+    // fingerprint never gets populated for Better-Auth-owned session
+    // rows. Uniqueness now lives on `token` (plaintext) via a partial
+    // UNIQUE INDEX (migration 0026).
+    tokenFp: bytea("token_fp"),
 
     expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
 

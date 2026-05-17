@@ -218,10 +218,14 @@ describe("encryption lens — Phase 33 Plan 02", () => {
       // account (account.access_token has no fingerprint config).
       const raw = store.get("account")?.get("acc-1") as any;
       expect(raw).toBeDefined();
-      expect(raw.access_token).toBeNull();
-      expect(raw.refresh_token).toBeNull();
-      expect(raw.id_token).toBeNull();
-      expect(raw.password).toBeNull();
+      // Plan 51-23 — lens now DELETEs the plaintext key (it used to
+      // set it to null). The DB column exists as a never-written
+      // introspection-compat sentinel; the lens guarantees the row
+      // payload Drizzle sees has no plaintext key at all.
+      expect(raw.access_token).toBeUndefined();
+      expect(raw.refresh_token).toBeUndefined();
+      expect(raw.id_token).toBeUndefined();
+      expect(raw.password).toBeUndefined();
       for (const col of ["access_token", "refresh_token", "id_token", "password"]) {
         for (const sc of SIDECAR_KEYS) {
           const key = `${col}_${sc}`;
@@ -271,8 +275,9 @@ describe("encryption lens — Phase 33 Plan 02", () => {
 
       const raw = store.get("sessions")?.get("sess-1") as any;
       expect(raw).toBeDefined();
-      expect(raw.token).toBeNull();
-      expect(raw.previous_token).toBeNull();
+      // Plan 51-23 — lens deletes plaintext key (was: set to null).
+      expect(raw.token).toBeUndefined();
+      expect(raw.previous_token).toBeUndefined();
       const tokenFp = createHash("sha256").update("plaintext-session-token").digest();
       const prevFp = createHash("sha256").update("prev-plaintext-token").digest();
       expect(Buffer.isBuffer(raw.token_fp)).toBe(true);
@@ -340,7 +345,8 @@ describe("encryption lens — Phase 33 Plan 02", () => {
         update: { access_token: "new-token" },
       });
       const raw = store.get("account")?.get("a1") as any;
-      expect(raw.access_token).toBeNull();
+      // Plan 51-23 — lens deletes plaintext key (was: set to null).
+      expect(raw.access_token).toBeUndefined();
       expect((raw.access_token_value_ciphertext as Buffer).equals(Buffer.from("new-token"))).toBe(
         false,
       );
