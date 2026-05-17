@@ -122,41 +122,55 @@ export const buildRealtimeRoutes = (deps: RealtimeDeps) =>
     // would land outside the validated set and we want to fail loud here.
     const upstreamWs = httpToWsScheme(upstreamHttp);
 
-    // @ts-expect-error issue-52: fastify-http-proxy@11.4.4 dropped
-    // `wsClientOptions.rewriteRequestHeaders` from its types (replaced
-    // with `wsHooks.onConnect` shape that doesn't expose pre-upgrade
-    // header rewriting). Runtime behaviour is unchanged — the plugin
-    // still honors the old field at runtime per Phase 08.5 e2e proof.
-    // Tracked for architectural follow-up in a separate phase.
+    // Phase 53 — `@fastify/http-proxy@11.4.4` narrowed its
+    // `wsClientOptions` type to plain `ws.ClientOptions`, which does
+    // NOT declare `rewriteRequestHeaders`. The plugin's RUNTIME still
+    // honours `wsClientOptions.rewriteRequestHeaders` per the
+    // Phase 08.5 e2e proof (verified again post-53-06 with
+    // `make e2e-test` boot-up — see commit 3bcc879). The closure-arg
+    // shape mirrors the legacy contract: `(headers, request) =>
+    // newHeaders`. Until upstream re-adds the field to types (or we
+    // migrate to a pre-upgrade hook), encode the legacy field via a
+    // typed local extension instead of `@ts-expect-error` so the
+    // suppression is localised and reviewable. LOCKER-02 prefers a
+    // narrow `as` cast on a *typed* extension to a blanket
+    // `@ts-expect-error` on a sprawling plugin-options block.
+    type LegacyWsClientOptions = NonNullable<
+      Parameters<typeof fastifyHttpProxy>[1]
+    >["wsClientOptions"] & {
+      rewriteRequestHeaders?: (
+        headers: Record<string, string | string[] | undefined>,
+        request: { id?: string; user?: { id?: string } },
+      ) => Record<string, string>;
+    };
+    const wsClientOptions: LegacyWsClientOptions = {
+      // Strip the desktop's opaque bearer; inject the LiteLLM master
+      // key + spend-logs metadata so LiteLLM authenticates us AND tags
+      // the resulting spend rows with our request_id + user_id. The
+      // closure is built by buildRewriteRequestHeaders so it can be
+      // unit-tested in isolation (Stage B back-fill).
+      rewriteRequestHeaders: buildRewriteRequestHeaders(deps.masterKey),
+      // Phase 04 / Plan 07 / D-27 — 10s handshake ceiling. Without
+      // this, a stuck-connecting client (TCP up, WS upgrade never
+      // completes) would hold an ingress slot indefinitely on the
+      // dedicated :8443 entrypoint (Plan 04-05). 10000ms is generous
+      // for healthy upstreams (loopback < 10ms, cross-region < 500ms)
+      // and a tight cap for pathological cases (T-04-02 mitigation).
+      handshakeTimeout: 10000,
+    };
     await app.register(fastifyHttpProxy, {
       upstream: upstreamHttp,
       wsUpstream: upstreamWs,
       prefix: "/v1/realtime",
       rewritePrefix: "/v1/realtime",
       websocket: true,
-      // Phase 04 / Plan 07 / D-27 — tighten WS upgrade behavior:
-      //
       // Phase 52 / Plan 52-04b — `@fastify/http-proxy` newer versions
       // narrowed `wsReconnect` from `boolean` to `WebSocketReconnectOptions`
       // (object) and ALSO made it optional. Omitting the field is the
       // canonical "disable reconnect" posture — auto-reconnect is off
       // by default when the property is absent, matching the original
       // T-04-RECONNECT-LOOP intent without forcing a boolean.
-      wsClientOptions: {
-        // Strip the desktop's opaque bearer; inject the LiteLLM master
-        // key + spend-logs metadata so LiteLLM authenticates us AND tags
-        // the resulting spend rows with our request_id + user_id. The
-        // closure is built by buildRewriteRequestHeaders so it can be
-        // unit-tested in isolation (Stage B back-fill).
-        rewriteRequestHeaders: buildRewriteRequestHeaders(deps.masterKey),
-        // Phase 04 / Plan 07 / D-27 — 10s handshake ceiling. Without
-        // this, a stuck-connecting client (TCP up, WS upgrade never
-        // completes) would hold an ingress slot indefinitely on the
-        // dedicated :8443 entrypoint (Plan 04-05). 10000ms is generous
-        // for healthy upstreams (loopback < 10ms, cross-region < 500ms)
-        // and a tight cap for pathological cases (T-04-02 mitigation).
-        handshakeTimeout: 10000,
-      },
+      wsClientOptions,
       preHandler: async (req, _reply) => {
         // dualAuthHook is the global onRequest hook and is responsible
         // for populating req.user. Defensive re-check here so we never
