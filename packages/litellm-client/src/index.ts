@@ -26,6 +26,10 @@
 import { PassThrough, type Readable } from "node:stream";
 import { type Dispatcher, getGlobalDispatcher, request as undiciRequest } from "undici";
 import type { LitellmClientConfig, LitellmProviderKeys } from "./config.js";
+// Phase 51 / Plan 51-15 — needed at runtime for the
+// `config.baseUrl !== DEFAULT_LITELLM_BASE_URL` override-detection
+// branch (REVIEW HI-3).
+import { DEFAULT_LITELLM_BASE_URL } from "./config.js";
 import {
   LitellmUpstreamError,
   MissingProviderKeyError,
@@ -281,7 +285,16 @@ export function buildLitellmClient(
   config: LitellmClientConfig,
   opts: BuildLitellmClientOptions = {},
 ): LitellmClient {
-  const isOverride = opts.isOverride ?? Boolean(process.env.LITELLM_BASE_URL);
+  // Phase 51 / Plan 51-15 (REVIEW HIGH) — derive `isOverride` from the
+  // ACTUAL `config.baseUrl` (vs the default), not from `process.env`.
+  // Pre-fix the two sources could disagree (dotenv timing, test
+  // injection, future worker), producing spurious MissingProviderKeyError
+  // → 503 in corporate deployments. The env-based path is still honored
+  // as the FALLBACK when the caller does not explicitly pass `isOverride`
+  // AND `config.baseUrl` equals the default.
+  const isOverride =
+    opts.isOverride ??
+    (config.baseUrl !== DEFAULT_LITELLM_BASE_URL || Boolean(process.env.LITELLM_BASE_URL));
   // Phase 41.f / HI-2 — when no test-injected `request` is supplied we are
   // going through undici's global dispatcher; assert it carries the SSRF
   // marker before any outbound bytes leave the process.
@@ -302,6 +315,19 @@ export function buildLitellmClient(
   }
 
   function authHeaders(userId: string, requestId: string): Record<string, string> {
+    // Phase 51 / Plan 51-15 (REVIEW HIGH) — defence-in-depth CR/LF
+    // rejection on caller-supplied header values. Production callsites
+    // (apps/api routes) source these from `req.user.id` (UUID) and
+    // `req.id` (ulid), so a CR/LF cannot reach this point through
+    // normal flow — but a misimplementation of a future route would
+    // produce undici-internal errors with confusing 500 envelopes
+    // rather than a clean rejection here.
+    if (/[\r\n]/.test(userId)) {
+      throw new Error("litellm-client: userId must not contain CR/LF");
+    }
+    if (/[\r\n]/.test(requestId)) {
+      throw new Error("litellm-client: requestId must not contain CR/LF");
+    }
     return {
       authorization: `Bearer ${config.masterKey}`,
       "x-litellm-end-user-id": userId,
@@ -446,6 +472,18 @@ export function buildLitellmClient(
         const through = new PassThrough();
         through.write(prefix);
         args.body.on("error", (err) => through.destroy(err));
+        // Phase 51 / Plan 51-15 (REVIEW HIGH) — bidirectional teardown.
+        // Pre-fix only the source->destination error direction was
+        // wired. If undici aborted mid-upload, the source Readable
+        // kept reading from disk/socket until GC, producing an fd /
+        // memory leak per failed upload. Forward destination close +
+        // error to the source so the file descriptor (or socket) is
+        // released immediately.
+        const destroySource = (err?: Error): void => {
+          if (!args.body.destroyed) args.body.destroy(err);
+        };
+        through.on("close", () => destroySource());
+        through.on("error", (err) => destroySource(err));
         args.body.pipe(through);
         body = through;
       }
