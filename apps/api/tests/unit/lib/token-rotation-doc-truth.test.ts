@@ -31,10 +31,13 @@ describe("Plan 51-13 — token-rotation narrative truth", () => {
     // The recPrev call site must no longer carry the stale
     // "store the old bearer plain-text" comment; it should reference
     // the fingerprint-only reality.
-    const m = src.match(/await recPrev\(opts\.db!/);
+    // Phase 52 / Plan 52-09 — replaced `opts.db!` non-null assertion
+    // with explicit `opts.db &&` guard; call site now reads
+    // `await recPrev(opts.db, …)` without the `!` operator.
+    const m = src.match(/await recPrev\(opts\.db,/);
     expect(m, "recPrev call site not found").toBeTruthy();
     // Grab a 700-char window around the call to inspect comments.
-    const idx = src.indexOf("await recPrev(opts.db!");
+    const idx = src.indexOf("await recPrev(opts.db,");
     const window = src.slice(Math.max(0, idx - 700), idx);
     expect(/store the old bearer plain-text/i.test(window)).toBe(false);
     expect(/fingerprint/i.test(window)).toBe(true);
