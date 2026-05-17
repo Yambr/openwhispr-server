@@ -181,9 +181,28 @@ export const buildAgentStreamRoutes = (deps: AgentStreamDeps) =>
         }
 
         // (3) AbortController wired to client disconnect (T-04-DISCONNECT).
+        // Plan 51-12tx4 (HI-3) — also forcibly destroy() the upstream
+        // Readable on client close. Pre-fix the route relied solely on
+        // `Readable.toWeb(...).cancel()` propagation to terminate the
+        // undici socket; the live forensic finding (08.2-RESEARCH.md
+        // candidate #4) showed this does NOT abort the in-flight request
+        // under our SSRF-wrapped Agent in undici 7.25, so a client that
+        // opened+disconnected mid-stream continued burning paid LLM
+        // tokens until LiteLLM itself finished. Holding a mutable
+        // reference to the body lets the close-handler explicitly
+        // destroy the source Readable AFTER the upstream resolves.
         const abort = new AbortController();
+        let upstreamBodyRef: Readable | null = null;
         req.raw.once("close", () => {
           abort.abort();
+          if (upstreamBodyRef !== null && !upstreamBodyRef.destroyed) {
+            try {
+              upstreamBodyRef.destroy();
+              /* v8 ignore next 3 -- defensive: already-destroyed race */
+            } catch {
+              // already torn down — nothing to do.
+            }
+          }
         });
 
         // (4) Issue the upstream POST via the shared litellm-client. The
@@ -268,7 +287,12 @@ export const buildAgentStreamRoutes = (deps: AgentStreamDeps) =>
         //     Readable body → Web ReadableStream<Uint8Array> via the Node
         //     stdlib Readable.toWeb helper (zero-copy; cancel propagation
         //     destroys the source Readable on consumer break).
-        const webBody = Readable.toWeb(upstream.body as Readable) as ReadableStream<Uint8Array>;
+        // Plan 51-12tx4 — capture body Readable so the client-close
+        // handler can destroy() it directly (kills the undici socket
+        // even when toWeb.cancel() propagation under the wrapped Agent
+        // doesn't, see HI-3 forensic above).
+        upstreamBodyRef = upstream.body as Readable;
+        const webBody = Readable.toWeb(upstreamBodyRef) as ReadableStream<Uint8Array>;
         const acc = createToolCallAccumulator();
         try {
           for await (const chunk of sseToNdjson({ body: webBody, acc })) {
