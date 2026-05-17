@@ -183,7 +183,9 @@ async function bootPreZeroTwenty(): Promise<{
 
   const host = container.getHost();
   const port = container.getMappedPort(5432);
-  const ownerUri = `postgres://openwhispr_owner:${ownerPassword}@${host}:${port}/openwhispr`;
+  // Plan 51-14 made TLS default-on in buildPoolConfig; testcontainers PG
+  // doesn't support SSL, so we opt out via the canonical libpq escape hatch.
+  const ownerUri = `postgres://openwhispr_owner:${ownerPassword}@${host}:${port}/openwhispr?sslmode=disable`;
 
   const tmpMigrations = mkdtempSync(resolve(tmpdir(), "ow-pre-0020-"));
   cpSync(MIGRATIONS_DIR, tmpMigrations, { recursive: true });
