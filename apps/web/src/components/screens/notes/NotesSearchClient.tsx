@@ -36,6 +36,14 @@ interface SearchResponse {
 
 const MIN_QUERY_LENGTH = 2;
 const SEARCH_LIMIT = 20;
+// Plan 51-11c (REVIEW web HIGH HI-05) — defence-in-depth UUID-shape
+// guard on the client boundary. The API only ever returns UUID ids
+// (see packages/data/src/schema/notes.ts), but pinning the contract
+// here means a malformed id from a compromised upstream cannot reach
+// the rendered href verbatim. Items whose `id` does not match are
+// dropped from the rendered list (the noneEmpty state is preferred
+// over rendering a broken anchor).
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export function NotesSearchClient(): React.JSX.Element {
   const { t } = useTranslation(["end-user"]);
@@ -80,7 +88,10 @@ export function NotesSearchClient(): React.JSX.Element {
   const showTypeEmpty = !enabled;
   const showLoading = enabled && search.isPending;
   const showError = enabled && search.isError;
-  const items = search.data?.notes ?? [];
+  // Plan 51-11c — narrow to safe-id rows before render.
+  const rawItems = search.data?.notes ?? [];
+  const safeItems = rawItems.filter((row) => UUID_RE.test(row.id));
+  const items = safeItems;
   const showNoneEmpty = enabled && !search.isPending && !search.isError && items.length === 0;
   const showResults = enabled && !search.isPending && !search.isError && items.length > 0;
 
@@ -154,7 +165,7 @@ export function NotesSearchClient(): React.JSX.Element {
               key={row.id}
               className="flex items-center justify-between rounded-md border border-border bg-panel p-3"
             >
-              <a className="hover:underline" href={`/app/notes/${row.id}`}>
+              <a className="hover:underline" href={`/app/notes/${encodeURIComponent(row.id)}`}>
                 {row.title ?? "(untitled)"}
               </a>
               <Badge
