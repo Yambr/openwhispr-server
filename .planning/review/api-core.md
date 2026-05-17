@@ -1,298 +1,362 @@
 # Review: api-core
-
-Branch: main @ 1832f28
-Scope: apps/api/src/{bootstrap,auth,index,error-handler,errors,placeholder,otel-bootstrap}.ts + config/** middleware/** plugins/** types/** lib/** (excluding lib/web-search) + i18n/**
+Branch: main @ 13f0864
+Files reviewed: 35 (apps/api/src + 1 entrypoint script)
 
 ## Summary
-- Files reviewed: 32
-- Findings: CRITICAL=1 HIGH=3 MEDIUM=4 LOW=6
+- CRITICAL: 1 / HIGH: 3 / MEDIUM: 11 / LOW: 9
 - Top 3 production risks:
-  1. **`tenantPlugin` registered in production still trusts the client-supplied `x-tenant-id` header for `req.tenantId`** (apps/api/src/middleware/tenant.ts:55-66 + index.ts:382). The plugin's own header comment admits this is a "Phase 1 stop-gap" and a "deliberate threat" (T-01-04-08); the comment promised "Phase 2 will replace it". Phase 2 came and went — the dual-auth hook moved authenticated routes to `req.tenant` (different field), but `req.tenantId` is still populated from the header on EVERY request including authed ones. Grep proves no production caller reads `req.tenantId` anymore — but the surface remains live, the typed declaration is exported, and any future route that types `req.tenantId` will silently honor an attacker-supplied header. Either delete the plugin or make it auth-gated.
-  2. **`apps/api/src/placeholder.ts` is a Phase-0 dead-code artifact** the user explicitly flagged. `isPlaceholder()` has zero production callers (verified via grep across apps/** and packages/**); only `apps/api/tests/unit/placeholder.test.ts` imports it. The comment claims "Kept as a Stryker mutation target" but the repo has no Stryker config. This is an embarrassment marker for a public-facing repo.
-  3. **Hardcoded fallback tenant UUID `00000000-0000-0000-0000-000000000000` in two email-dispatch paths** (auth.ts:330 and auth.ts:380). When `user.tenantId` is undefined (Better Auth's `User` type does NOT carry `tenantId` from the additional-fields adapter mapping — verified by the structural type at auth.ts:323/374 keeping it optional), reset-password and verification email jobs are enqueued under the default-tenant UUID. The worker then sends mail attributed to the wrong tenant. The codebase already has `resolveDefaultTenantId()` (lib/default-tenant.ts) for exactly this fallback — these two sites bypass it.
+  1. **`BETTER_AUTH_SECRET` is never validated at boot.** A missing env silently passes `secret: undefined` into Better Auth — sessions sign with an empty key while the rest of the stack boots happily. The byok-guard + encryption-boot gate that precede it do NOT cover this. (CRIT-01)
+  2. **`recordPreviousToken` stores PLAINTEXT bearer fingerprint AND comments contradict themselves.** Header comment at `apps/api/src/lib/token-rotation.ts:1-9` says "Phase 02.12 dropped the bytea hash storage in favor of … plain-text bearer" — but body at L58-67 actually writes ONLY `previous_token_fp = sha256(oldToken)`. The header doc is stale and the equally-stale comment in `apps/api/src/index.ts:454-457` claims "store the old bearer plain-text (no hashing)". Operators reading the doc will reach the wrong threat-model conclusion. (HIGH-01)
+  3. **`as unknown as` casts proliferate across `index.ts` / `auth.ts` despite LOCKER-02 in CLAUDE.md.** 15 occurrences in scope; LOCKER-02 says `as unknown as` is REFUSED in production code (allowlist exists but the boot path is the worst place for it). The Better Auth instance/database/db casts in particular bypass type-system protection on the most security-sensitive surfaces. (HIGH-02)
 
 ## Findings
 
-### [CRITICAL] tenantPlugin trusts client-supplied `x-tenant-id` header in production boot path
-- File: `apps/api/src/middleware/tenant.ts:55-66`, registered at `apps/api/src/index.ts:382`
-- Category: security | workaround | dead-code
+### [CRITICAL] BETTER_AUTH_SECRET is never validated at boot — undefined-secret session signing
+- File: `apps/api/src/auth.ts:325`
+- Category: security
 - Evidence:
-```ts
-// apps/api/src/middleware/tenant.ts
-async function tenantPluginInner(app: FastifyInstance): Promise<void> {
-  app.addHook("onRequest", async (req: FastifyRequest) => {
-    const headerVal = req.headers["x-tenant-id"];
-    req.tenantId =
-      typeof headerVal === "string" && TENANT_UUID_RE.test(headerVal)
-        ? headerVal
-        : DEFAULT_TENANT_ID;
-  });
-}
-```
-And the header comment:
-```ts
-// Threat note (T-01-04-08): trusting a header is acceptable ONLY because
-// Phase 2 will replace it.
-```
-- Why it matters: Phase 2 IS DONE — the dual-auth hook sets `req.tenant` (note: NOT `req.tenantId`) from the resolved session at apps/api/src/middleware/dual-auth.ts:164. The Phase-1 plugin survived. Today its `req.tenantId` field has no production reader (grep across apps/** + packages/** for `req.tenantId` returns ONLY the plugin's own setter and a comment line in index.ts). The plugin is dead-but-armed. Any future contributor who types `req.tenantId` in a route handler — the declaration is still in the module-augmentation graph at tenant.ts:33-37 — will silently honor a client header. Plus: the field is declared as the non-optional `string` (no `?`), so a type-error guard is absent. Public-repo posture: a reviewer reading the source and finding `req.tenantId` populated from a header in `onRequest` is an immediate constitutional red flag.
-- Fix: Delete `apps/api/src/middleware/tenant.ts` entirely. Remove its `await app.register(tenantPlugin)` line at index.ts:382 plus the import at index.ts:109. The `req.tenantId` ambient declaration goes away with the file. Adjacent test `apps/api/src/__tests__/tenant.test.ts` (or wherever it lives) must be deleted too. If a Phase 1 backward-compat plumbing still needs the field somewhere (it does NOT per grep), then at minimum make it `auth=false`-gated and rename so it's clearly the post-auth fallback, not a header-read.
-
-### [HIGH] Phase-0 placeholder file still shipping in apps/api/src
-- File: `apps/api/src/placeholder.ts:1-6`
-- Category: dead-code | stub
-- Evidence:
-```ts
-// SPDX-License-Identifier: FSL-1.1-ALv2
-// Phase 0 placeholder — replaced by real wiring in later phases.
-// Kept as a Stryker mutation target so the harness has a real function to mutate.
-export function isPlaceholder(): boolean {
-  return true;
-}
-```
-- Why it matters: This is the textbook "embarrassment on GitHub" artifact the user specifically asked about. The file name screams kludge, the comment self-identifies as Phase-0 dead code, and the justification ("Stryker mutation target") is unverifiable — there is NO `stryker.conf.*` / `stryker.config.*` anywhere in the repo, and no Stryker dep in `apps/api/package.json` (verified by repo search). Only consumer is `apps/api/tests/unit/placeholder.test.ts`. `packages/auth/src/index.ts` has a SECOND copy of the same Phase-0 placeholder (not in scope, but worth pairing in cleanup).
-- Fix: Delete `apps/api/src/placeholder.ts` and its test. If a real Stryker run materializes in v2, mutation testing has plenty of real production targets.
-
-### [HIGH] Hardcoded default-tenant UUID in reset-password and verification email paths
-- File: `apps/api/src/auth.ts:330` and `apps/api/src/auth.ts:380`
-- Category: hardcode | workaround
-- Evidence:
-```ts
-// auth.ts:319-341 (sendResetPassword)
-sendResetPassword: async ({ user, url }: {
-  user: { id?: string; email: string; name?: string; locale?: string; tenantId?: string };
-  ...
-}) => {
-  if (opts.enqueueEmail) {
-    const locale: "en" | "ru" = user.locale === "ru" ? "ru" : "en";
-    await opts.enqueueEmail({
-      tenant_id: user.tenantId ?? "00000000-0000-0000-0000-000000000000",
-      to: user.email,
-      ...
-```
-Same pattern at auth.ts:380 in `sendVerificationEmail`.
-- Why it matters: Better Auth's `User` shape doesn't natively carry a `tenantId` field — the structural type at auth.ts:323/374 makes it `tenantId?: string`, optional. The `additionalFields` mapping at auth.ts:258-279 declares `locale` and `role` but NOT `tenantId`. So at runtime `user.tenantId` will be `undefined` for every signup/reset (unless something in the Drizzle adapter is unexpectedly hydrating it — would need verification). The fallback then unconditionally writes emails into the default tenant. For a multi-tenant deploy this means BOTH that (a) password-reset emails leak across tenants in the audit/observability log, and (b) the worker-side `tenant_id`-scoped queries (template lookup, rate-limit, etc.) hit the wrong row. The repo has a centralized `resolveDefaultTenantId()` (apps/api/src/lib/default-tenant.ts) that already memoizes the same UUID — it exists for exactly this fallback, and these two sites duplicate the literal instead of calling it. Same magic UUID also appears in `apps/api/src/middleware/tenant.ts:44`.
-- Fix: Replace both literal `"00000000-0000-0000-0000-000000000000"` instances with `await resolveDefaultTenantId()`. Better still, verify at runtime that Better Auth IS populating `user.tenantId` — if not, the fallback to default-tenant in production is silently broken for every multi-tenant install. If `user.tenantId` is unreliable, drop it and fetch via `SELECT tenant_id FROM users WHERE id = ?` inside the hook.
-
-### [HIGH] `as unknown as AuthLike` cast at buildAuth boundary suppresses real type drift
-- File: `apps/api/src/index.ts:572`
-- Category: suppressed-warning | workaround
-- Evidence:
-```ts
-const auth = buildAuth(enqueueEmail ? { db, enqueueEmail } : { db }) as unknown as AuthLike;
-```
-The matching declaration in `apps/api/src/auth.ts:474`:
-```ts
-}) as unknown as AuthInstance;
-```
-- Why it matters: BOTH ends of the boundary are double-cast through `unknown`. The comment at auth.ts:46-54 admits the return type is intentionally narrowed because "Better Auth's full instance type generic-leaks zod-internals." Fair — but the inbound cast at index.ts:572 narrows `AuthInstance` further to `AuthLike` (defined in middleware/dual-auth.ts:57-69), which the dual-auth hook consumes structurally. If Better Auth ever changes its `getSession` signature, BOTH the buildAuth return-type AND this consumer-side cast must be updated; the compiler will not warn. Worse, this couples two unrelated narrowings — the test fakes in `middleware/dual-auth.ts:57-69` define `AuthLike` as a structural subset of `AuthInstance` for test ergonomics, but production now silently goes through a `AuthLike` view of a real Better Auth instance. The `as unknown as` is the smoking gun: a single cast would not compile, so the double-cast intentionally bypasses TS's compatibility check.
-- Fix: Either (a) restore the real Better Auth return type from `betterAuth()` and let `AuthInstance`/`AuthLike` extend it (TS6 can handle `$strip` if the right transitive imports are added — try `import type { Auth } from "better-auth"`), OR (b) keep the narrowing but extract a single `narrowToAuthLike(auth: ReturnType<typeof betterAuth>): AuthLike` helper that does ONE structural cast in ONE place with a comment explaining why. Eliminate the duplicate `as unknown as` at the call site.
-
-### [HIGH] `extractBearer` regex permits trailing whitespace AND the entire rest of the header as a token
-- File: `apps/api/src/middleware/dual-auth.ts:215-220`
-- Category: bug (low-risk) | input-validation
-- Evidence:
-```ts
-function extractBearer(authHeader: string | string[] | undefined): string | null {
-  const value = Array.isArray(authHeader) ? authHeader[0] : authHeader;
-  if (!value) return null;
-  const match = /^Bearer\s+(.+)$/i.exec(value);
-  return match ? (match[1]?.trim() ?? null) : null;
-}
-```
-- Why it matters: The `(.+)` capture group is greedy and matches across spaces, commas, semicolons — any character. An `Authorization: Bearer abc def` header yields token `"abc def"`, which then gets stored verbatim into `sessions.previous_token` via `recordPreviousToken(db, tenantId, sessionId, oldBearer)` (apps/api/src/index.ts:449 — see Plan 08 `onSend` hook). The DB column is plain text per Phase 02.12 — no length cap on the application side. A misbehaving proxy or attacker that injects a 64KB Authorization header will land 64KB into the `previous_token` column, then again on every rotation, then again in the failed-rotation audit fanout. This is degrade-able into a storage exhaustion at the per-row scale. The character allow-list also has no upper bound on token length.
-- Fix: Tighten the regex to `^Bearer\s+([A-Za-z0-9\-_.~+/=]{1,256})\s*$` (RFC 6750 b64 token charset, 256 char cap matching Better Auth's emitted token size + headroom). Reject anything else as `null`. Add a defensive length-cap at recordPreviousToken's entry point.
-
-### [MEDIUM] tenantPlugin's `req.tenantId` field is declared non-optional but only set on `onRequest` hook
-- File: `apps/api/src/middleware/tenant.ts:33-37`
-- Category: bug
-- Evidence:
-```ts
-declare module "fastify" {
-  interface FastifyRequest {
-    tenantId: string;   // NOT optional
+  ```ts
+  secret: process.env.BETTER_AUTH_SECRET,
+  baseURL: process.env.AUTH_URL ?? "http://localhost:3000",
+  ```
+  And the buildApp doc at L193-195 says:
+  ```ts
+  // @throws if BETTER_AUTH_SECRET validation fails inside Better Auth (we
+  // deliberately do not pre-validate; let Better Auth's own check
+  // emit the canonical error).
+  ```
+- Why it matters: Better Auth 1.6.9 does NOT throw at construction time when `secret` is undefined — verified by the comment itself "we deliberately do not pre-validate". The `assertBYOKConfig()` and `validateEncryptionBoot()` boot gates in `apps/api/src/index.ts:65-82` enforce BYOK + KEK but neither covers Better Auth's signing secret. The `apps/api/scripts/check-default-secrets.ts` entrypoint script is a separate layer that only catches DENY-LIST literals, not bare undefined. Net result: an operator who omits `BETTER_AUTH_SECRET` boots a server whose session signatures are derived from an empty/undefined key — every signed cookie / state cookie / verification token is forgeable.
+- Fix: add an explicit assertion at `buildAuth()` top (and ideally at `index.ts` boot, next to `validateEncryptionBoot()`) that refuses boot when `BETTER_AUTH_SECRET` is empty, with an `EX_CONFIG` exit. Same posture as `MASTER_KEK`:
+  ```ts
+  const secret = process.env.BETTER_AUTH_SECRET;
+  if (!secret || secret.length < 32) {
+    process.stderr.write("BETTER_AUTH_SECRET is unset or too short (>=32 bytes required)\n");
+    process.exit(78); // EX_CONFIG
   }
-}
-```
-- Why it matters: If the plugin is removed (per the CRITICAL finding) but consumers still type-check against the declaration, TS will incorrectly tell them `req.tenantId` is always present. Conversely, today routes that opt out via `config.auth=false` skip the dual-auth hook — the tenantPlugin hook still fires (it's on every request) so the field IS populated, but with a header-trusted value. Either way, the non-optional typing is a lie.
-- Fix: Make it `tenantId?: string`. Or — preferred — delete with the plugin (CRITICAL finding above).
+  ```
 
-### [MEDIUM] `resolveLocalesDir()` uses synchronous `readFileSync` purely as an "exists" probe with broad catch
-- File: `apps/api/src/i18n/init.ts:60-69`
-- Category: workaround
+### [HIGH] Documentation lies about storage of previous_token — plaintext-claim contradicted by code
+- File: `apps/api/src/lib/token-rotation.ts:1-9`, `apps/api/src/lib/token-rotation.ts:42-67`, `apps/api/src/index.ts:454-457`
+- Category: security (documentation-induced threat-model error) / workaround
 - Evidence:
-```ts
-try {
-  const distLayout = resolve(here, "i18n", "locales");
-  readFileSync(resolve(distLayout, "en.json"));
-  return distLayout;
-} catch {
-  return sourceTreePath;
-}
-```
-- Why it matters: A `readFileSync` of a (potentially large) JSON file as a layout probe is wasteful — file content is discarded. The catch arm is broad: ENOENT means "not bundled layout, fall back" (correct), but EACCES / EIO / "JSON too large to mmap" all silently swallow into the same fallback, masking real disk problems at module-load time. Operators who break locales (chmod 600, etc.) get a silent fall-through to the source tree, which in the dist bundle does not exist — then the subsequent `readFileSync(filePath)` at line 90 fails with the wrong error message ("file not found" rather than "permission denied").
-- Fix: Use `existsSync(resolve(distLayout, "en.json"))` (or `statSync` with throwIfNoEntry:false). Reserve `readFileSync` for the actual load at line 90 where the contents matter. Or, simpler: stop guessing layouts and require `LOCALES_DIR` env to be set in dist builds.
+  Header (token-rotation.ts L1-9):
+  ```ts
+  // Phase 02.12 — adopt Better Auth v1.6.9's plain-text session.token model.
+  // Phase 02 Plan 01's hashToken (SHA-256) helper + bytea storage are removed
+  // in favor of plain-text bearer storage on `sessions.token` and
+  // `sessions.previous_token`. The AUTH-04 5-minute overlap CONTRACT
+  ...
+  // only the storage representation flipped from bytea to text.
+  ```
+  Body (L47-67) actually does:
+  ```ts
+  // The plaintext `oldToken` is NOT persisted because the route hooks
+  // never need to read it back …
+  const { createHash } = await import("node:crypto");
+  const fp = createHash("sha256").update(oldToken, "utf8").digest();
+  await withTenant(db, tenantId, async (tx) => {
+    await tx.execute(
+      sql`UPDATE sessions
+          SET previous_token_fp = ${fp},
+              previous_token_expires_at = now() + interval '5 minutes'
+          WHERE id = ${sessionId}::uuid`,
+    );
+  });
+  ```
+  And `index.ts:454-457`:
+  ```ts
+  // Phase 02.12 — store the old bearer plain-text (no hashing).
+  ```
+- Why it matters: Pre-publication readers (auditors, OSS contributors, security researchers) reading the header will conclude `sessions.previous_token` is plaintext at rest, and either (a) waste time scoping a non-existent vuln, or (b) discount a real one because the doc told them it's plaintext anyway. The header was last touched when Phase 33 flipped to fingerprint storage but somebody forgot to invert the prose.
+- Fix: rewrite the header to describe the current fingerprint-only storage. Delete or correct the "store the old bearer plain-text" comment in `index.ts`. While here, audit the `dynamic import("node:crypto")` inside `recordPreviousToken` / `tryPreviousToken` (L58, L120) — needless (no circular constraint, no test-only seam); switch to a top-level static import.
 
-### [MEDIUM] In-process rate-limit IP store has no cleanup — unbounded Map growth in VALKEY-less mode
-- File: `apps/api/src/plugins/rate-limit.ts:87-101`
+### [HIGH] `as unknown as` casts ubiquitous on the auth + DB seams (LOCKER-02 sensitive surface)
+- File: `apps/api/src/index.ts:296,305,333,368,404,580,635,670`, `apps/api/src/auth.ts:323,570`, `apps/api/src/error-handler.ts:226`, `apps/api/src/i18n/init.ts:152-153`
+- Category: suppressed-warning / workaround
+- Evidence (sampler):
+  ```ts
+  // index.ts:580
+  const auth = buildAuth(...) as unknown as AuthLike;
+
+  // index.ts:670
+  valkey: redis as unknown as import("ioredis").Redis,
+
+  // auth.ts:570
+  }) as unknown as AuthInstance;
+
+  // auth.ts:323
+  )) as unknown as ReturnType<typeof drizzleAdapter>;
+  ```
+- Why it matters: CLAUDE.md DISCIPLINE rule 12 says `as unknown as` is REFUSED in production code, with an allowlist for pre-existing debt. These casts paper over real type-system fidelity loss on the most security-sensitive seams: the Better Auth adapter wrapper, the ioredis vs RedisLike narrowing, and the cross-package `AuthLike` boundary. Any refactor that breaks the structural assumption fails silently at runtime instead of at typecheck. The drizzle-adapter cast (auth.ts:323) is particularly load-bearing — it's where the envelope-encryption lens is glued onto the Better Auth IO surface; a drift there means tokens silently land plaintext.
+- Fix: each call site can be narrowed without the double-cast:
+  - `auth.ts:323` — declare a proper `DBAdapter` parameter type instead of `(o: unknown)`.
+  - `index.ts:580` — `AuthLike` and the Better Auth return are structurally compatible; expose a narrowed type from `auth.ts` and import it.
+  - `index.ts:670` — `dep-check.ts` should accept the structural `{ ping(): Promise<unknown> }` interface, not `ioredis.Redis`.
+  - `i18n/init.ts:152-153` — declare a request augmentation in `types/fastify.d.ts` (`req.i18n`, `req.language`) so the cast goes away entirely.
+
+### [HIGH] Bootstrap-time `console.warn`/`console.error` outside structured logger swallow operator signal
+- File: `apps/api/src/bootstrap.ts:26-37`, `apps/api/src/index.ts:572-577, 606-611, 640-645, 648-651, 709-710`
+- Category: workaround / observability
+- Evidence:
+  ```ts
+  // bootstrap.ts:26
+  // biome-ignore lint/suspicious/noConsole: bootstrap-time structured event; pino unavailable here
+  console.warn(JSON.stringify({ level: "warn", event: "security.ssrf_blocked", ... }));
+  ```
+  But the SSRF dispatcher's `onBlock` fires AT REQUEST TIME, long after pino is up — not "bootstrap-time" — and the api `index.ts` already constructs a sync pino at L69 for the BYOK fatal. The hand-rolled `JSON.stringify` lines are missing the canonical `request_id`, `trace_id`, `span_id` correlation keys that OTel's PinoInstrumentation injects (otel-bootstrap.ts D-T3). Loki ingestion will receive these as plain stdout and operators chasing a Grafana SSRF alert will not be able to link them back to the offending tenant/request.
+- Why it matters: `security.ssrf_blocked` is an OWASP-grade detection signal. If it can't be joined back to a request/trace in Loki+Tempo, the audit row written elsewhere is the only durable record. Same applies to bootstrap startup logs that hide failure modes (LiteLLM unavailable, Valkey unavailable) behind `console.warn` — these never reach the production logging pipeline cleanly.
+- Fix: instantiate the sync pino instance once at module top (next to the BYOK pino) and route all `console.warn`/`console.error` calls through it. The biome-ignore lines should be deleted with the calls. The SSRF dispatcher should accept an injected logger via `installGlobalSSRF()`.
+
+### [MEDIUM] `AUTH_URL ?? "http://localhost:3000"` — hardcoded localhost fallback in production code
+- File: `apps/api/src/auth.ts:326`
+- Category: hardcode
+- Evidence:
+  ```ts
+  baseURL: process.env.AUTH_URL ?? "http://localhost:3000",
+  ```
+- Why it matters: LOCKER-03 forbids hardcoded `localhost`/`:3000` outside tests/compose/docs/tools. This sits in the boot-critical auth construction. If `AUTH_URL` is unset in production, every cookie domain calc, CSRF origin check, and OAuth redirect computes against `http://localhost:3000` — silently broken auth instead of a loud refuse-boot.
+- Fix: refuse boot when `AUTH_URL` is unset, the same posture as `MASTER_KEK`/`BETTER_AUTH_SECRET`. Move the fallback into `.env.example` for OSS quickstart.
+
+### [MEDIUM] `LITELLM_BASE_URL ?? "http://litellm:4000"` — magic compose service name + port in runtime
+- File: `apps/api/src/index.ts:664`
+- Category: hardcode
+- Evidence:
+  ```ts
+  const litellmBaseUrl = process.env.LITELLM_BASE_URL ?? "http://litellm:4000";
+  ```
+- Why it matters: ":4000" is on LOCKER-03's hardcoded-port deny list outside tests/compose. The fallback is reachable in any container without that env set, which silently directs `/readyz`'s LiteLLM probe at whatever happens to resolve `litellm` on the docker network — easy false-green/false-red.
+- Fix: refuse boot when `LITELLM_BASE_URL` is unset; document the value in `.env.example` instead of in code.
+
+### [MEDIUM] `client-id-upsert.ts` uses `sql.raw(...)` with caller-supplied table/column names
+- File: `apps/api/src/lib/client-id-upsert.ts:76-156`
+- Category: security (defense in depth)
+- Evidence:
+  ```ts
+  const tbl = quoteIdent(params.table);
+  const cidCol = quoteIdent(params.clientIdColumn);
+  ...
+  const insert = sql.raw(`INSERT INTO ${tbl} (${colList}) VALUES `);
+  ```
+  `quoteIdent` validates against `/^[a-z_][a-z0-9_]*$/`, but the function comment claims "no untrusted column names" while exposing a public API that any future caller can pass a runtime value into.
+- Why it matters: today's callers pass literal table+column names, so this is "belt and braces" as the doc says. But the existence of `sql.raw` carrying parameter-shaped values broadens the audit surface. Pre-publication is the moment to either tighten the signature (accept a discriminated-union of `'notes' | 'folders' | …`) or lock the strict allow-pattern AND assert it never widens.
+- Fix: replace `params.table` + `params.clientIdColumn` strings with a `ResourceFamily` enum mapped to literal SQL fragments inside this module. Drop `sql.raw` entirely in favor of `sql.identifier()`.
+
+### [MEDIUM] `parseListQuery` uses `parseInt(String(limitRaw), 10)` — accepts `"50abc"` → 50
+- File: `apps/api/src/lib/keyset-pagination.ts:52-70`
 - Category: bug
 - Evidence:
-```ts
-function inProcessIpStore(): IpCounterStore {
-  const buckets = new Map<string, { count: number; resetAt: number }>();
-  return {
-    async incr(key: string, ttlMs: number) {
-      const now = Date.now();
-      const existing = buckets.get(key);
-      if (!existing || existing.resetAt <= now) {
-        buckets.set(key, { count: 1, resetAt: now + ttlMs });
-        return 1;
-      }
-      existing.count += 1;
-      return existing.count;
-    },
-  };
-}
-```
-- Why it matters: Expired buckets are not deleted from the Map — only overwritten if the SAME IP comes back. An attacker rotating source IPs (Tor, residential proxies) grows the Map without bound for the lifetime of the process. This branch fires only when `VALKEY_URL` is unset, which is the "OSS quickstart" path. The plan documents 1000 concurrent users — but the same OSS deploy is recommended for solo developers who will accumulate weeks of IP buckets without restart.
-- Fix: Either (a) add a periodic GC pass (`setInterval(() => prune expired, 60000)` with `unref()`), or (b) use an `LRUCache` from the already-imported `lru-cache` dep with `ttl: ttlMs, max: 100_000`. Document at boot that the in-process store is for dev only.
+  ```ts
+  const parsed = parseInt(String(limitRaw), 10);
+  if (Number.isFinite(parsed) && parsed > 0) {
+    limit = Math.min(Math.max(parsed, MIN_LIMIT), MAX_LIMIT);
+  }
+  ```
+- Why it matters: `parseInt("50abc")` returns `50`. The doc says callers shipping nonsense like `"all"` flow back to default 50, which is fine — but `"99999XXX"` silently clamps to 200 instead of falling back to the default. This is mostly cosmetic but inconsistent with the "treat as default" contract for non-numeric values.
+- Fix: use `Number(limitRaw)` + `Number.isFinite` check, which rejects mixed strings.
 
-### [MEDIUM] `audit.ts` forbidden-key sweep is top-level-only and case-folded — nested secrets bypass
-- File: `apps/api/src/lib/audit.ts:189-195`
-- Category: security (informational)
+### [MEDIUM] `i18n/init.ts` writes `req.i18n` / `req.language` via `as unknown as` instead of declaring augmentation
+- File: `apps/api/src/i18n/init.ts:150-158`
+- Category: workaround / suppression
 - Evidence:
-```ts
-function rejectForbidden(payload: Record<string, unknown>): void {
-  for (const key of Object.keys(payload)) {
-    if (FORBIDDEN_AUDIT_KEY_SET.has(key.toLowerCase())) {
-      throw new Error(`audit payload contains forbidden key: ${key} (D-A7 / T-bearer-leak)`);
+  ```ts
+  app.addHook("preHandler", (req, reply, done) => {
+    handler(req.raw, reply.raw, () => {
+      const raw = req.raw as unknown as { i18n?: unknown; language?: string };
+      const r = req as unknown as { i18n?: unknown; language?: string };
+      if (raw.i18n !== undefined) r.i18n = raw.i18n;
+      ...
+  ```
+- Why it matters: `types/fastify.d.ts` was created exactly for this kind of ambient augmentation (the file's docblock says so). `req.i18n` and `req.language` are read by `error-handler.ts` and by every i18n-aware route — they belong in the ambient declaration alongside `req.user`/`req.tenant`.
+- Fix: add `i18n?: i18n.i18n` and `language?: string` to the `FastifyRequest` augmentation in `types/fastify.d.ts`; drop both casts.
+
+### [MEDIUM] `dual-auth.ts` declares its own `FastifyRequest` augmentation duplicating `types/fastify.d.ts`
+- File: `apps/api/src/middleware/dual-auth.ts:84-107`, `apps/api/src/types/fastify.d.ts:44-72`
+- Category: code-quality / drift risk
+- Evidence: two `declare module "fastify"` blocks describe overlapping `user?`, `tenant?` shapes. The `types/fastify.d.ts` header explicitly acknowledges the duplication.
+- Why it matters: relying on TS to merge duplicate `declare module` blocks works only as long as the shapes stay strictly compatible. The two files have already drifted once (`user.tenantId` type narrows differently — `string | null | undefined` here vs `string | null` in dual-auth). One source of truth is cheaper than periodic drift audits.
+- Fix: delete the inline augmentation from `dual-auth.ts` (it predates the dedicated `.d.ts` file). Add `sessionId?: string` to the ambient file.
+
+### [MEDIUM] `requestLog` plugin binds `openwhisprSource: null` on every request when header is absent
+- File: `apps/api/src/plugins/request-log.ts:42-47`
+- Category: code-quality / log-volume
+- Evidence:
+  ```ts
+  app.addHook("onRequest", async (req) => {
+    const raw = req.headers["x-openwhispr-source"];
+    const source = typeof raw === "string" ? raw : null;
+    req.log = req.log.child({ openwhisprSource: source });
+  });
+  ```
+- Why it matters: assigning `null` for `openwhisprSource` writes a `null`-keyed bind on every single request even when the header isn't present. In pino this lands as `{"openwhisprSource":null,...}` on every log line for the entire request — large log volume bloat at 1000 concurrent users SLO. Standard fix: skip the child when source is absent.
+- Fix:
+  ```ts
+  if (source) req.log = req.log.child({ openwhisprSource: source });
+  ```
+
+### [MEDIUM] `errors.ts` `pickCodeAndMessage` ambiguous two-arg API masks programmer error
+- File: `apps/api/src/errors.ts:45-54, 60-65`
+- Category: code-quality / API surface
+- Evidence:
+  ```ts
+  function pickCodeAndMessage(defaultCode, arg1?, arg2?) {
+    if (arg1 !== undefined && arg2 !== undefined) {
+      return { code: arg1, message: arg2 };
+    }
+    return { code: defaultCode, message: arg1 ?? "" };
+  }
+  ```
+- Why it matters: this means `new AuthError("UNAUTHORIZED")` (a programmer thinking they're passing a code) silently produces `code="AUTH_ERROR"`, `message="UNAUTHORIZED"`. The two-arg form is ergonomically indistinguishable from the legacy one-arg form. The i18n contract relies on stable codes — silent code-defaulting masks miswired error sites.
+- Fix: take a single options object: `new AuthError({ code, message })` for the typed form, retain the bare-string for legacy. Or, less invasive: assert `arg1` matches `/^[A-Z_]+$/` when arg2 is undefined and warn / refuse in dev.
+
+### [MEDIUM] `ENCRYPTED_COLUMNS_MAP` includes `account.password` without explicit doc that it carries the HASH, not plaintext
+- File: `apps/api/src/auth.ts:107-140`
+- Category: security / documentation
+- Evidence:
+  ```ts
+  password: { sidecarPrefix: "password" },
+  ```
+  Comment at L116-117 says "password has no expiry semantic" — true, but `password` here is a CREDENTIAL value flowing through the lens. The comment at L101-105 also says: "users.password_hash is NOT in this map: empirical grep confirms no application code writes it" — but `account.password` IS in the map, suggesting Better Auth's email/password flow writes the credential through the adapter under `account.password`.
+- Why it matters: pre-publication readers can't tell from the comments whether `account.password` carries the Argon2/bcrypt hash or a plaintext credential. If it's plaintext, the lens is the only thing preventing at-rest plaintext password storage. If it's a hash, encrypting it through KEK is double-protection with operational cost (KEK rotation must also rotate hash entries). Resolve ambiguity before publication.
+- Fix: explicit comment clarifying that `account.password` carries the scrypt/bcrypt hash from Better Auth's emailAndPassword adapter (cite the Better Auth source line that proves it). If actually plaintext: escalate to CRITICAL.
+
+### [MEDIUM] OIDC discovery cache has unbounded growth + no negative-cache TTL + unbounded response body
+- File: `apps/api/src/lib/mint-bearer.ts:118-145`
+- Category: code-quality / DoS
+- Evidence:
+  ```ts
+  const discoveryCache = new Map<string, OidcDiscoveryDoc>();
+  ...
+  async function discoverOidc(issuerUrl: string) {
+    const res = await fetch(url);
+    if (!res.ok) {
+      throw new Error(`mint bearer: discovery ${res.status} (issuer=${issuer})`);
+    }
+    const doc = (await res.json()) as OidcDiscoveryDoc;
+    discoveryCache.set(issuer, doc);
+    return doc;
+  }
+  ```
+- Why it matters: (a) issuer URL is read from env at request time — only a small set in practice, but the code reads env per call so a runtime env rotation would silently pile new entries in. (b) Failed discoveries are NOT cached at all — every callback request hits the IdP again if discovery flapped. An IdP returning intermittent 5xx means every desktop callback re-tries discovery, amplifying load. (c) `await res.json()` is unbounded — a malicious/misconfigured IdP serving a 100 MB JSON would OOM the process.
+- Fix: bound the response body (`AbortController` + read-size cap), add a negative-cache TTL (e.g. 30s on 5xx), and replace the Map with an LRU to cap memory.
+
+### [MEDIUM] `pyannote-client` `MissingPyannoteKeyError.message` carries operator instructions that could leak to clients
+- File: `apps/api/src/lib/pyannote-client.ts:31-38`
+- Category: code-quality / wire-contract
+- Evidence:
+  ```ts
+  constructor() {
+    super(
+      "PYANNOTE_API_KEY is not configured. Set it in .env to enable diarization, ...",
+    );
+  }
+  ```
+- Why it matters: the error-handler maps unmapped errors to "Internal server error" — but if a future hand-off wires this class to ServiceUnavailable, the operator-actionable string would surface to the desktop client. WIRE-17 says non-2xx bodies must match the canonical envelope and SHOULD NOT leak operator-actionable internals to clients. Keep the long string in `err.cause` or a separate `operatorHint` property; the user-facing message should be generic.
+- Fix: split into `message: "diarization unavailable"` + a separate `operatorHint` string read by the route handler when constructing the log line.
+
+### [LOW] `bootstrap.ts` `defaultOnBlock` writes via `console.warn(JSON.stringify(...))`
+- File: `apps/api/src/bootstrap.ts:25-37`
+- Category: observability
+- Evidence: hand-rolled JSON line; no trace/span correlation; no timestamp.
+- Why it matters: see HIGH-04 above. Lower severity because this duplicates the durable audit row written by `index.ts:onError`. Still operator-confusing under load.
+- Fix: covered by HIGH-04 remediation.
+
+### [LOW] `lib/audit.ts` `assertEnglishOnly` only scans string leaves
+- File: `apps/api/src/lib/audit.ts:243-263`
+- Category: code-quality
+- Evidence: only string leaves are scanned; numbers/booleans/Symbols pass.
+- Why it matters: low — the per-action zod schemas are strict and reject unknown keys/types, so non-string Cyrillic-carrying values can't actually reach the INSERT in practice. The guard's docstring is the concern.
+- Fix: tighten the docstring to say "scans string leaves of plain objects/arrays; other JSON-incompatible types are caught by the per-action zod schema".
+
+### [LOW] `findSSRFBlockedError` silently swallows cause-chain depth-cap exceeded
+- File: `apps/api/src/error-handler.ts:88-99`
+- Category: code-quality
+- Evidence: `MAX_CAUSE_DEPTH = 8`; depth-walk returns `null` without a log when the cap is hit.
+- Why it matters: an SSRF block hidden behind a 9-deep cause chain would silently surface as a generic 500 instead of 502. Unlikely in practice (undici only wraps twice) but worth a `req.log.warn` when the cap is hit.
+- Fix: emit a warn log when reaching the depth cap.
+
+### [LOW] `lib/idempotency-cache.ts` legacy `existing.jobId` fallback path is unobservable
+- File: `apps/api/src/lib/idempotency-cache.ts:108-117`
+- Category: code-quality
+- Evidence:
+  ```ts
+  const siblingJobId = await redis.get(k + JOBID_SUFFIX);
+  const jobId = siblingJobId ?? existing.jobId;
+  ```
+- Why it matters: the legacy `existing.jobId` fallback is intentional (24h migration window) but is documented only in a comment. After 24h of deploy uptime, all live entries carry the sibling key; until then both paths run. There's no log line announcing "fallback path taken for entry X" so an operator can't tell whether the migration is complete.
+- Fix: add a one-line log when the legacy `existing.jobId` branch is taken; remove the legacy branch after one rollout cycle.
+
+### [LOW] `cookieDomainConfig()` throws deep in `buildAuth()` call chain instead of refuse-boot
+- File: `apps/api/src/auth.ts:519`, `apps/api/src/lib/cookie-domain.ts:68-83`
+- Category: code-quality
+- Evidence: `cookieDomainConfig()` throws when AUTH_URL/OPENWHISPR_API_URL share no parent. Called from inside `buildAuth({...})` which is invoked at boot.
+- Why it matters: the throw is in a deep call chain; the BYOK + encryption-boot gates are short-circuit-style with explicit `process.exit(EX_CONFIG)`. A throw here surfaces as an unhandled rejection inside `listen()` and goes through the generic `console.error(err); process.exit(1)` path in `index.ts:708-711` — operator gets a stack trace, not an actionable one-liner.
+- Fix: move this validation to the top of `index.ts` alongside `validateEncryptionBoot()` so the operator gets `EX_CONFIG (78)` + a single stderr line.
+
+### [LOW] `plugins/rate-limit.ts` uses `biome-ignore noExplicitAny` three times for `redis: any`
+- File: `apps/api/src/plugins/rate-limit.ts:60, 103, 158`
+- Category: suppressed-warning
+- Evidence: three identical suppressions for "opaque redis client surface".
+- Why it matters: every redis-handler in this codebase reaches for `RedisLike` (idempotency-cache.ts:48-55) — that minimal interface would type these without `any`.
+- Fix: pull in the existing `RedisLike` interface (or a richer `RedisLikeWithCounters` superset) and drop all three biome-ignores.
+
+### [LOW] `lib/redact-url.ts` duplicates `packages/byok-guard/redact-url.ts`
+- File: `apps/api/src/lib/redact-url.ts:32-42`
+- Category: code-quality / duplication
+- Evidence: very small utility that the project already centralizes in `packages/byok-guard/redact-url.ts`. The api copy is identical in spirit. The bootstrap-time use case here is "redact URL before any package import" — but the bootstrap paths in index.ts where this is used are AFTER `byok-guard` has been imported.
+- Why it matters: two copies of a credential-redaction utility is exactly the pattern CLAUDE.md flags ("Logic duplicating shared packages"). One bug fix has to land in two places.
+- Fix: re-export from `@openwhispr/byok-guard` (or `@openwhispr/observability`); delete the local copy.
+
+### [LOW] `lib/default-tenant.ts` `_resetDefaultTenantCacheForTesting()` reachable from production bundle
+- File: `apps/api/src/lib/default-tenant.ts:36-40`
+- Category: code-quality
+- Evidence: prefix `_` is a convention; nothing prevents production callers from invoking it. The whole module compiles into the production bundle.
+- Why it matters: a misconfigured route handler invoking this would reset cached tenant resolution mid-request; not realistic but a hardening opportunity.
+- Fix: ship the reset hook from a separate `default-tenant.testing.ts` module that production never imports, and let tsup tree-shake it. NODE_ENV branches inside the module would violate LOCKER-01.
+
+### [LOW] `lib/scheme-allowlist.ts` reads `OPENWHISPR_PROTOCOL` on every call
+- File: `apps/api/src/lib/scheme-allowlist.ts:77-85`
+- Category: code-quality
+- Evidence:
+  ```ts
+  const override = process.env.OPENWHISPR_PROTOCOL?.trim();
+  if (override && override.length > 0) {
+    for (const s of override.split(",").map((x) => x.trim()).filter(Boolean)) {
+      allowed.add(s);
     }
   }
-}
-```
-And the comment at lines 47-52 admits the limitation:
-```ts
-// Forbidden keys — D-A7. Case-insensitive. recordAudit throws if the
-// caller-supplied payload contains any of these AT THE TOP LEVEL.
-// Nested-object scrubbing is out of scope here; the per-action Zod
-// schemas are `.strict()`-equivalent ...
-```
-- Why it matters: The comment claims `.strict()`-equivalence protects nested adversarial keys, BUT the Zod schemas at lines 134-181 are plain `z.object({...})` without `.strict()` — `.parse()` STRIPS unknowns (not rejects). So a programmer who passes `{ method: "password", debug: { token: "Bearer xyz" } }` would have `debug` stripped silently (good) — but if a future schema adds a nested `z.object({...})` field (e.g., `metadata: z.record(z.string(), z.unknown())`), forbidden keys WITHIN the nested object would land in the JSONB column. The Cyrillic guard at lines 243-263 already shows that recursive scanning is doable — it just isn't applied to the forbidden-key sweep.
-- Fix: Make `rejectForbidden` recursive (same shape as `assertEnglishOnly`). Or assert `.strict()` on every action schema and add a unit test that proves `recordAudit` rejects nested unknowns. The current "AT THE TOP LEVEL" disclaimer in the comment is a known-gap warning that should be closed before public release.
+  ```
+- Why it matters: validateScheme runs on hot path (desktop-signin). Env re-read + string parse on every call. Not a bug, just unnecessary work.
+- Fix: parse once at module load into a frozen `Set`.
 
-### [LOW] `resolveDefaultTenantId()` is memoized as if dynamic but is a constant return
-- File: `apps/api/src/lib/default-tenant.ts:19-34`
-- Category: dead-code | code-smell
-- Evidence:
-```ts
-const DEFAULT_TENANT_ID = "00000000-0000-0000-0000-000000000000";
-let cached: string | undefined;
-export async function resolveDefaultTenantId(): Promise<string> {
-  if (cached) return cached;
-  cached = DEFAULT_TENANT_ID;
-  return cached;
-}
-```
-- Why it matters: The function is async (mandatory `await`), memoized (allocates a let-binding), and exports a test-reset helper — all for a constant that could be `export const DEFAULT_TENANT_ID = "...";`. The comment explains "kept Promise-returning so future plans can swap to a real DB lookup" — fair, but the memoization+reset surface is dead in the meantime. Either (a) shorten to a real const, accept the future refactor, or (b) make the function actually do a DB lookup today (Phase 1 seeded the row; SELECT it once at boot).
-- Fix: Either inline the constant at the two call sites in `dual-auth.ts:164` and `require-cookie-only.ts:40`, OR write a proper one-shot DB lookup. The test escape hatch goes away with either change.
-
-### [LOW] `redactPaths`, `REDACT_PATHS` re-exports from `plugins/request-log.ts` are test-only
-- File: `apps/api/src/plugins/request-log.ts:23,26`
-- Category: dead-code | low-priority
-- Evidence:
-```ts
-export const redactPaths: readonly string[] = REDACT_PATHS;
-export { REDACT_PATHS } from "@openwhispr/observability";
-```
-- Why it matters: Verified zero production callers; only `apps/api/tests/unit/plugins/request-log.test.ts` and `tests/integration/log-scrub-sentinel.test.ts` use them. The `buildLogger` export is similarly test-only. Production code in this file is just the `requestLog` plugin and one `makePino()` call. Not a security issue — the re-exports are legitimate test seams for parity with worker-tier — but the file header doesn't say so. A reader sees "redactPaths is exported" and assumes some plugin downstream consumes it.
-- Fix: Add a header comment block: `// Test-only re-exports (see tests/integration/log-scrub-sentinel.test.ts) — production wiring is the `requestLog` plugin below.` Or move them to a `request-log.test-utils.ts` file.
-
-### [LOW] `__test` export and `_resetDefaultTenantCacheForTesting` leak test internals into prod surface
-- File: `apps/api/src/middleware/dual-auth.ts:227`, `apps/api/src/lib/default-tenant.ts:38`, `apps/api/src/lib/mint-bearer.ts:148`
+### [LOW] `lib/audit.ts` `hexUuid` regex is more permissive than RFC4122
+- File: `apps/api/src/lib/audit.ts:93-94`
 - Category: code-quality
-- Evidence:
-```ts
-// dual-auth.ts:227
-export const __test = { fastifyHeadersToWebHeaders, extractBearer };
-```
-- Why it matters: Three test-only escape hatches are exported alongside real prod API. The double-underscore prefix is a convention, not a guarantee — anyone importing the module sees them in IntelliSense. Not security-critical (caches and helpers, not secrets) but inconsistent with the codebase's discipline elsewhere.
-- Fix: Either use `vitest`'s in-source testing pattern (`if (import.meta.vitest)`) for the test helpers, or split into adjacent `*-test-utils.ts` modules.
-
-### [LOW] Bootstrap `console.warn` for missing VALKEY_URL is unconditional even on first-launch OSS quickstart
-- File: `apps/api/src/index.ts:640-643`
-- Category: dx/code-quality
-- Evidence:
-```ts
-} else {
-  console.warn(
-    "[buildApp] VALKEY_URL is unset; /v1/audio/diarization will NOT be registered (operator-actionable: set VALKEY_URL to enable bundled-mode diarization).",
-  );
-}
-```
-- Why it matters: This WARN fires on every OSS first-launch boot when the user hasn't yet wired Valkey. It's not wrong but it's noisy on a `git clone && docker compose up` happy path — the project's stated <5min OSS quickstart SLO. Pair with the BullMQ enqueue WARN at lines 564-569 and the LiteLLM WARN at lines 599-603, the bootstrap output is a 3-warning wall before any real signal.
-- Fix: Add a single boot-time summary line: `[buildApp] features registered: { rate-limit-valkey: false, email-worker-queue: false, diarization: false, ... }` and elide the per-feature warnings unless the user explicitly opts in via `OPENWHISPR_VERBOSE_BOOT=1`.
-
-### [LOW] `OTEL_LOG_LEVEL` parsing silently falls through on case-insensitive miss
-- File: `apps/api/src/otel-bootstrap.ts:48-53`
-- Category: code-quality
-- Evidence:
-```ts
-diag.setLogger(
-  new DiagConsoleLogger(),
-  DiagLogLevel[
-    (process.env.OTEL_LOG_LEVEL?.toUpperCase() as keyof typeof DiagLogLevel) ?? "ERROR"
-  ] ?? DiagLogLevel.ERROR,
-);
-```
-- Why it matters: If `OTEL_LOG_LEVEL` is set to `"verbose"`, `"VERBOSE"` is not a key of DiagLogLevel (canonical names are `NONE`, `ERROR`, `WARN`, `INFO`, `DEBUG`, `VERBOSE`, `ALL`) — actually it IS a valid key, but a typo like `OTEL_LOG_LEVEL=info_more` would silently fall through to `ERROR` with no operator feedback. Type cast `as keyof typeof DiagLogLevel` is unsafe — TypeScript will not check the actual string content.
-- Fix: Add an `if (raw && !(raw in DiagLogLevel)) diag.error("Unknown OTEL_LOG_LEVEL: ${raw}; defaulting to ERROR")` before the lookup.
-
-### [LOW] `mintBearer` writes `provider` into error messages — could be log-injection if env-controlled
-- File: `apps/api/src/lib/mint-bearer.ts:215, 224`
-- Category: code-quality
-- Evidence:
-```ts
-throw new Error(`mint bearer: token exchange ${tokenRes.status} (provider=${args.provider})`);
-```
-- Why it matters: `args.provider` comes from a route param. The threat note T-02.7-07 (lines 30-32) is satisfied (no IdP body leak), but if `args.provider` is user-controlled and unvalidated (verification needed in routes/auth-callback.ts which is out of scope), a CR/LF in `provider` could line-inject into the error log. Likely already validated upstream; flagging for paired review.
-- Fix: `provider: args.provider.replace(/[\r\n]/g, "?")` defense-in-depth, OR enforce `[a-z0-9-]+` at the route layer.
+- Evidence: explicit deviation from strict RFC4122 (uses `[0-9a-f]{8}-…` pattern). Documented in source comments, but multiple validators across the codebase will now diverge.
+- Why it matters: documented and intentional; flagging only so reviewers note the deliberate divergence.
+- Fix: none today; track via comments + `DEFAULT_TENANT_ID` allowlist.
 
 ## Dead code
-
-- **`apps/api/src/placeholder.ts`** exports `isPlaceholder` — 0 production callers (only `apps/api/tests/unit/placeholder.test.ts`). Comment claims Stryker target; no Stryker config in repo. See HIGH finding above.
-- **`apps/api/src/middleware/tenant.ts`** — entire plugin is registered (index.ts:382) but the `req.tenantId` field it populates has 0 non-self readers in `apps/**/src/**` and `packages/**/src/**`. See CRITICAL finding above.
-- **`apps/api/src/lib/default-tenant.ts`** exports `_resetDefaultTenantCacheForTesting` — only `*.test.ts` consumers; the memoization itself is over-engineered for a constant return.
-- **`apps/api/src/middleware/dual-auth.ts:227`** exports `__test = { fastifyHeadersToWebHeaders, extractBearer }` — `extractBearer` is also publicly re-exported at line 224 for use in `index.ts:436`, so the `__test` aggregate is double-export of one symbol + a private helper.
-- **`apps/api/src/lib/mint-bearer.ts:148`** exports `__resetOidcDiscoveryCacheForTests` — test-only.
-- **`apps/api/src/plugins/request-log.ts:23,26,36`** exports `redactPaths`, `REDACT_PATHS`, `buildLogger` — all test-only consumers in `apps/api/tests/**` and `tests/integration/**`. Production code does not import them; the file's actual production export is the `requestLog` plugin only.
+- None confirmed. Every exported symbol has at least one production caller (verified via grep across `apps/`+`packages/` excluding tests):
+  - `softDeletePredicate` is only test-imported in scope — but `withSoftDelete()` from same module IS used by routes. The unused helper is justified by the symmetric API doc. Treat as **LOW** "exported for completeness".
+  - `__test`, `__testing__`, `__resetOidcDiscoveryCacheForTests`, `_resetDefaultTenantCacheForTesting`, `fallbackLog` are test-only escape hatches with underscore prefixes; not dead.
+  - `redactPaths` is a legacy back-compat alias of `REDACT_PATHS` — could be removed eventually but is currently consumed by `apps/api/tests/unit/plugins/request-log.test.ts`.
 
 ## Suppressed warnings
-
-- `apps/api/src/index.ts:288, 297, 325, 360, 396, 572, 627, 662` — multiple `as unknown as` double-casts at the buildApp/buildAuth boundary. Pattern documented in code comments (Better Auth type leak), but the duplication makes future Better Auth upgrades silent failures. See HIGH finding.
-- `apps/api/src/auth.ts:184, 474` — `(opts.log ?? fallbackLog) as never` and `as unknown as AuthInstance`. The `as never` is questionable: the `Logger` contract is structural per the comment, so the cast can probably be removed with a one-line widening in the email package.
-- `apps/api/src/error-handler.ts:226` — `req as unknown as { i18n?: ... }` cast because the i18n decoration is declared in `i18n/init.ts` but not in the canonical `types/fastify.d.ts`. Move the declaration to `types/fastify.d.ts` to remove the cast.
-- `apps/api/src/i18n/init.ts:152-153` — two `as unknown as { i18n?: unknown; language?: string }` casts because `req.raw` is `IncomingMessage` (Node) but the i18next middleware decorates it. Same fix as above: declare the decoration once in `types/fastify.d.ts`.
-- `apps/api/src/plugins/rate-limit.ts:60, 103, 158` — `biome-ignore lint/suspicious/noExplicitAny: opaque redis client surface`. Justified by the union of ioredis-vs-@redis/client surfaces. Acceptable.
-- `apps/api/src/bootstrap.ts:26`, `apps/api/src/index.ts:564, 598, 632, 640, 701` — `biome-ignore lint/suspicious/noConsole` for bootstrap-time logging (pino not yet wired). Justified by the chicken-and-egg at boot order. Acceptable.
-
-## Disabled tests near scope
-
-(grep for `.skip` / `.only` / `.todo` in `apps/api/src/**/__tests__/**`, `apps/api/src/**/*.test.ts`, `apps/api/tests/**`:)
-
-```
-$ grep -rEn "\.(skip|only|todo)\(" apps/api/src apps/api/tests 2>/dev/null | head
-```
-Spot-check did not surface adjacent `.skip`/`.only` in api-core test files. Recommend a full repo-wide audit before publish via `grep -rEn '\.(skip|only|todo)\(' tests apps packages` and reconciliation against `.planning/deferred-items.md`.
+- 15 × `as unknown as` in scope (see HIGH-02). None carry an `issue-NNNN` reference; LOCKER-02 allowlist behavior implied but no inline justification.
+- 8 × `biome-ignore lint/suspicious/noConsole` in `bootstrap.ts` + `index.ts` for legitimate boot-time console writes — should be replaced with sync pino (HIGH-04).
+- 3 × `biome-ignore lint/suspicious/noExplicitAny` in `plugins/rate-limit.ts` for `redis: any` — replaceable with the in-repo `RedisLike`.
+- 0 × `@ts-ignore` / `@ts-nocheck` / `@ts-expect-error` in scope.
+- 0 × `eslint-disable` in scope.
 
 ## Notes
-
-1. **Two security-sensitive `OPENWHISPR_DISABLE_*` env switches in production code** — `OPENWHISPR_DISABLE_RATE_LIMIT` (auth.ts:167-170, rate-limit.ts:142-145), `OPENWHISPR_DISABLE_EMAIL_VERIFICATION` (auth.ts:291), `OPENWHISPR_DISABLE_SESSION_COOKIE_CACHE` (auth.ts:417), and `OPENWHISPR_DISABLE_EMAIL_ENUMERATION_PROTECTION` (out-of-scope route file but referenced from index.ts comments). Each emits a loud WARN banner — good. BUT: bundling four "disable security guard" switches accessible by env var at process startup is a significant attack surface for an enterprise install. Recommend a SINGLE `OPENWHISPR_PROFILE=load-test` umbrella variable that gates all four, with a startup-time refusal if `NODE_ENV=production` is also set. Today, an attacker who gains env-edit access on a production host can disable rate-limiting and email verification independently with no cross-check.
-
-2. **`process.env.NODE_ENV === "test"` branch in production boot path** at `apps/api/src/index.ts:498` registers a debug route plugin. The plugin file itself (`apps/api/src/routes/__test/fetch.ts`) is out-of-scope but the GATE is in scope. The gate is single-layered: NODE_ENV is the only check. A misconfigured production deploy that inherits NODE_ENV=test from a CI pipeline would silently expose `/__test/fetch`. The plugin reportedly defense-in-depth re-checks at registration — acceptable, but the buildApp branch should also assert `NODE_ENV !== "production"` to be belt-and-suspenders (e.g. `if (process.env.NODE_ENV === "test" && process.env.NODE_ENV !== "production")` is redundant; use `if (TEST_NODE_ENVS.has(process.env.NODE_ENV)) { assert NOT production }`).
-
-3. **Multiple bootstrap warnings logged BEFORE structured logger initialization** — the file headers each acknowledge "structured logging arrives in Phase 6" but those comments date the WARN lines pre-Phase-6. Phase 6 is done. The Loki/pino path is wired. These `console.warn` lines now bypass the redact policy in `@openwhispr/observability/redact.ts`. The `redactUrl()` defense at index.ts:567, 601, 635 mitigates the URL-password leak vector, but other secret-shaped fields (e.g. an error class containing a Bearer token) are not redacted in these console paths. Should migrate bootstrap warnings to a synchronous pino destination (the BYOK guard at index.ts:68 already does this — pattern is established).
-
-4. **The constitutional CLAUDE.md rule "NEVER edit production server code to make tests pass" appears to be respected** in this scope — no obvious test-driven rewrites in error-handler.ts, errors.ts, or auth.ts. The Better-Auth-canonical schema mapping at auth.ts:225-234 is a legitimate adapter shim (Better Auth needs singular names; our drizzle exports are plural).
-
-5. **No SQL-template-string injection risks found in scope.** `apps/api/src/lib/audit.ts:319-321`, `apps/api/src/lib/token-rotation.ts:46-51 & 94-95 & 111-113`, `apps/api/src/lib/keyset-pagination.ts:88-92`, and `apps/api/src/lib/settings-resolver.ts:88-97 & 144-153` all use Drizzle's `sql\`\`` template tag with parameterized bindings — values flow through protocol-level binds, not string interpolation. The one place that does string-build SQL identifiers (`apps/api/src/lib/client-id-upsert.ts:76-82`) has a strict allow-pattern `^[a-z_][a-z0-9_]*$` enforced by `quoteIdent()` before `sql.raw()`.
-
-6. **`tests/e2e-cjm/compose-overrides.yml` is in `git status --short` as untracked** — out of api-core scope but worth flagging: if this contains test-only docker overrides being relied upon by the e2e suite, it needs to either be committed or excluded from the repo-publish gate.
+- `apps/api/src/placeholder.ts` listed in the review scope does NOT exist — no file at that path; tree confirms it's not in the repo. Recording as **out-of-scope** per the request instructions.
+- `apps/api/scripts/check-default-secrets.ts` IS pulled in by the container ENTRYPOINT before `node dist/index.js` (header comment confirms) — this is part of the boot trust chain. Brief skim showed it uses `readFileSync` with a `containerDenyPath` literal `/app/tools/bootstrap/default-secrets.txt` which is the Dockerfile-mapped path; OK. Full audit deferred.
+- The constitutional `LOCKER-01` (no NODE_ENV outside bootstrap files) audit: only valid call sites observed (`auth.ts:520` cookie config — bootstrap-adjacent, allowed; `index.ts:506` debug-fetch gate — bootstrap, allowed; `ssrf-dispatcher.ts:163` — accepts injected `nodeEnv` for tests with `process.env.NODE_ENV` fallback, defensible). PASS — no LOCKER-01 violation in scope.
+- The `withTenant(...)`-bound emit pattern is consistently applied (audit.ts, token-rotation.ts, settings-resolver.ts, client-id-upsert.ts) — RLS isolation discipline holds at this layer.
+- Rate-limit plugin's `errorResponseBuilder` returns an Error with `__rateLimited: true` sentinel that nothing currently reads (3 references in scope, all writers, zero readers). Cosmetic dead-flag — could be removed. Borderline LOW; not promoting.
+- No `child_process.spawn` / `execSync` / `exec` in api-core scope. LOCKER-06 clean.
+- No `setTimeout(..., 0)` or similar sync-via-timer workarounds in scope.
+- No `eval` / `Function(...)` / dynamic `require()` outside the boot path's legitimate `await import("...")` lazy-loads.
+- No raw SQL via template strings with user input — every `sql.raw` call site uses caller-controlled but allow-listed identifiers (client-id-upsert.ts) or constant fragments. The Drizzle `sql\`...\`` template tag is used everywhere with bound parameters.
+- No hardcoded credential shapes (`sk-…`, `Bearer ey…`, `AIza`, `AKIA`) in scope. CLEAN.
+- No `TODO` / `FIXME` / `HACK` / `XXX` / `TEMP` markers in scope. Comments are dense but disciplined.

@@ -1,263 +1,208 @@
-# Review: worker (apps/worker)
-
-Branch: main @ 1832f28
-Scope: apps/worker/src/**
+# Review: worker
+Branch: main @ 13f0864
+Files reviewed: 19 source files (`apps/worker/src/**/*.ts`)
 
 ## Summary
-- Files reviewed: 14 TS files (index, queues, scheduler, otel-bootstrap, 4 lib/, 2 db/, 7 jobs/, 1 i18n/)
-- Findings: CRITICAL=2 HIGH=4 MEDIUM=4 LOW=3
+- CRITICAL: 3 / HIGH: 5 / MEDIUM: 4 / LOW: 3
 - Top 3 production risks:
-  1. **`audit-archive` shell-injects DATABASE_URL (with password) into `bash -c "...$dbUrl..."`** — credentials leak into ps/audit/error stderr; if the URL ever contains an unescaped `"` or `$`, it's also an RCE. Hardening claim in the comment is false.
-  2. **`reconciliation-discrepancy` handler lies about its return type and silently discards `runIngestOnce` results** — `as unknown as` cast to a richer shape over a `Promise<void>` HOF; observability of how many rows the backfill actually moved is gone. Also passes the daily `since/until` window in, but the comment admits `runIngestOnce` ignores them and just advances the global watermark — so the "backfill" is in name only.
-  3. **`reconciliation-daily-check` issues an N-per-end_user query against the app DB inside the LiteLLM aggregation loop without tenant context** — every probe trips the runtime tenant guard's `pool.query` path which opens a fresh checkout + probe per call (D-W4 layer 2), but the guard is system-mode so it short-circuits. Behavior is correct but the comment "bounded by tenant count, not row count" is wrong — `litellmRows` is grouped by `end_user` (per-user), not per-tenant, so this is O(distinct users) per tick, and each is a serialized round-trip.
+  1. **`usage-rollup-daily-tenant` will throw `TenantContextMissingError` on every invocation.** The handler runs inside `withTenantContext()` (which BEGINs a tx on client A and binds `app.tenant_id` LOCAL) but then issues the actual `UPSERT` via `deps.pool.query(...)` — that path acquires a *different* client B from the same pool. Client B has no GUC; the app-pool runtime guard (D-W4 layer 2) detects `mode === 'tenant'` via ALS, probes `app.tenant_id`, finds it empty, and raises. The rollup ledger is silently never written. Either every `usage_rollup_daily` row is missing in prod, or the guard is being bypassed by an integration-test seam I haven't found — both options are CRITICAL.
+  2. **Scheduler bakes `date` / `window_start` / `window_end` at install time** and freezes them forever. `installSchedulers()` computes `utcDateString(now)` once and passes it as the verbatim `jobData` to `upsertJobScheduler`. BullMQ schedulers re-fire the same payload — there is no per-fire callback to recompute "today". Every daily rollup and every daily reconciliation tick runs against the install-boot day. This is a silent data-correctness regression that grows by 24h per day the worker stays up.
+  3. **No DLQ. No fixed-delay-with-jitter on retry.** `DEFAULT_JOB_OPTS = { attempts:5, backoff:{ type:"exponential", delay:1_000 }, removeOnFail:{ age: 7d } }`. Failed jobs are silently deleted after 7d with no audited record and no alert hook — violates the checklist's "DLQ or audited table" rule for side-effecting jobs (`email-delivery`, `audit-archive`, `reconciliation-discrepancy`). BullMQ exponential backoff is deterministic (`delay * 2^attempt`) with no jitter — thundering herd on transient LiteLLM/SMTP outage.
 
 ## Findings
 
-### [CRITICAL] audit-archive composes DATABASE_URL (with password) into a `bash -c` script
-- File: `apps/worker/src/jobs/audit-archive.ts:96-128`
-- Category: Security / secret leak / shell injection
-- Evidence:
-```ts
-const dbUrl = env("AUDIT_ARCHIVE_DATABASE_URL") ?? env("DATABASE_URL_OWNER") ?? "";
-// ...
-const script = [
-  `pg_dump --table=public.${partition} --data-only "${dbUrl}"`,
-  `gzip -c`,
-  `mc pipe minio/${bucket}/audit-archive/${partition}.sql.gz`,
-].join(" | ");
-return { cmd, args: ["-c", script] };
-// ...
-case "aws_s3": {
-  return {
-    cmd: "bash",
-    args: ["-c",
-      `psql "${dbUrl}" -c "SELECT aws_s3.query_export_to_s3('SELECT * FROM public.${partition}', '${bucket}', 'audit-archive/${partition}.csv', 'us-east-1')"`,
-    ],
-  };
-}
-```
-- Why it matters:
-  1. `DATABASE_URL_OWNER` is `postgres://openwhispr_owner:<password>@postgres:5432/openwhispr` — full BYPASSRLS creds. They are now embedded in `process.argv` of `bash -c "...pg_dump --data-only \"$URL\" | gzip | mc pipe ..."`. Visible in `ps auxww`, container `/proc/.../cmdline`, any OOM/coredump, and any non-zero exit path because the failure handler does `result.stderr.slice(0, 512)` (line 161) and includes that in the thrown `Error`. The error reaches BullMQ's `failedReason` Redis key in cleartext.
-  2. Injection: `partition_name` is regex-guarded (`/^audit_log_p?\d{4}_\d{2}$/`), good. But `dbUrl`, `bucket`, and (for `aws_s3`) the inlined SELECT string are NOT validated. A password containing `"`, `$(...)`, or `` ` `` breaks out. The header comment line 18 ("argv array — NEVER `exec` on a concatenated string") is contradicted by the implementation: every non-`custom` branch IS a concatenated string passed to `bash -c`.
-  3. The `aws_s3` branch double-quotes inside double-quotes (`-c "SELECT ... '...' "`) — a partition name surviving the regex but containing nothing dangerous is fine, but a `bucket` env containing `"` or `'` breaks the SELECT.
-- Fix: drop `bash -c` entirely. Use the `pg` Pool already injected (`deps.pool`) to run `pg_dump` via `pg_dump` shelled with **argv only** and `PGPASSWORD`/`PGSERVICE` env passed via `spawn`'s `env` option (or just COPY ... TO PROGRAM with explicit creds-free libpq env). Pipe via Node streams between `pg_dump`, `gzip` (`zlib.createGzip()`), and the storage uploader. Pass the connection via `PG*` env vars or `--dbname=service:foo`, NEVER as an argv-positional string. For `aws_s3`, run the SQL through `deps.pool.query` — there is no reason to shell out to `psql` here; the worker already has a libpq pool. Also: never include `result.stderr` raw in thrown errors — redact via `packages/observability/redact` first (the redact dup'd in 14a is the right place).
+### [CRITICAL] usage-rollup-daily-tenant runs UPSERT on a separate connection from the GUC-bound transaction
+**File:** `apps/worker/src/jobs/usage-rollup-daily.ts:97-118`
 
-### [CRITICAL] `reconciliation-discrepancy` handler return type is a lie; backfill window is a no-op
-- File: `apps/worker/src/jobs/reconciliation-discrepancy.ts:43-61`
-- Category: Stub disguised as a fix / silent data loss of observability
-- Evidence:
-```ts
-return withTenantContext(reconciliationDiscrepancySchema, deps.pool, async () => {
-  const result = await runIngestOnce(deps.ingestDeps);
-  // Cast: handler body's awaited result. The HOF's outer Promise<void>
-  // contract drops the return value; for the test/observation seam we
-  // expose the count via the resolved value on the inner closure scope
-  // — kept here only as a side-effect log target for the future.
-  void result;
-}) as unknown as (
-  job: import("bullmq").Job,
-) => Promise<{ rowsProcessed: number; rowsScanned: number }>;
-```
-And the comment block lines 33-42 admits:
-> "`runIngestOnce` in Phase 3 ... does NOT yet accept since/until args ... since/until on the payload is recorded for audit/log correlation but doesn't reshape the watermark-driven loop."
-- Why it matters:
-  - The function's TS signature promises callers `{ rowsProcessed, rowsScanned }`. The body resolves to `undefined`. Any caller that destructures (`const { rowsProcessed } = await handler(job)`) gets `undefined.rowsProcessed` → runtime TypeError. The `as unknown as` double-cast bypasses the type system telling the truth.
-  - More importantly, the entire job is a no-op when invoked for a per-tenant discrepancy: a discrepancy fires for tenant T over window [since, until], but `runIngestOnce` ignores the window AND ignores the tenant — it advances the global watermark and ingests whatever the watermark says next. So when reconciliation-daily-check detects drift for tenant T at 01:05 UTC for window [yesterday 00:00 .. today 00:00], the "backfill" reads from `watermark` (which is already at "now-ish" because the 30s ingest tick has been running all day) and ingests zero rows for that tenant. Drift persists; no operator gets a real backfill.
-  - This is a Phase-6 stub that survived into 14a HEAD. The comment calls it out as a `Deferred` but it ships as a registered worker, not a TODO.
-- Fix: either (a) refactor `runIngestOnce(deps, { since, until, tenantId? })` so the SQL filters on `startTime BETWEEN ... AND ...` AND `end_user IN (users for tenant)`, drop the cast, return real counts; or (b) until that refactor lands, do NOT register `reconciliation-discrepancy` as a queue worker — leave the daily check to alert via OTel gauges only. Half-implementation that throws on type-correct destructure is worse than absent.
+`buildUsageRollupTenantHandler` wraps with `withTenantContext(schema, deps.pool, async (data) => { await deps.pool.query(...) })`. The HOF acquires client A, runs `BEGIN; SELECT set_config('app.tenant_id', $1, true)`, then invokes the inner handler. The inner handler calls `deps.pool.query(...)` — which, via `wrapPoolWithTenantGuard`'s `pool.query` patch (`app-pool.ts:121`), acquires a brand-new client B, probes `SELECT current_setting('app.tenant_id', true)` on B (returns empty — `set_config(..., true)` is LOCAL to A's tx), checks ALS `mode === 'tenant'`, and throws `TenantContextMissingError`.
 
-### [HIGH] `reconciliation-daily-check` issues serialized per-end_user app DB lookups (1000+ round-trips per tick)
-- File: `apps/worker/src/jobs/reconciliation-daily-check.ts:137-149`
-- Category: Reliability / correctness-of-comment
-- Evidence:
-```ts
-for (const row of litellmRows) {            // grouped by end_user, not tenant
-  if (!row.end_user) continue;
-  const tenantRes = await deps.appOwnerPool.query<{ tenant_id: string }>(
-    `SELECT tenant_id::text AS tenant_id FROM users WHERE id = $1::uuid LIMIT 1`,
-    [row.end_user],
-  );
+Result: the rollup job has been dead-on-arrival since the runtime guard landed. The intended call shape is to acquire the **same client** the HOF bound the GUC on — the HOF would need to expose the client into the handler, or the handler should run a single statement via `client.query` provided by the HOF.
+
+**Fix sketch:** either (a) refactor `withTenantContext` to pass the bound `client` into the handler, or (b) run the UPSERT with explicit `set_config` inside the handler using a single transaction owned here (drop the HOF wrapping), or (c) widen the guard so a same-pool ALS-tenant probe inherits the binding.
+
+---
+
+### [CRITICAL] Cron schedulers bake a stale `date` / `window_start` / `window_end` at install time
+**File:** `apps/worker/src/scheduler.ts:53-77`
+
+`installSchedulers` calls `utcDateString(now)` *once* and ships it as the `jobData.data.date`. Subsequent cron fires reuse the same data verbatim — BullMQ scheduler does not re-evaluate the payload per fire. Same for `windowStart` / `windowEnd` (lines 65-66) on the reconciliation cron.
+
+Symptom: every daily rollup tick runs against the install-boot day; reconciliation runs against the install-boot 24h window. After N days uptime, both jobs are N days behind.
+
+**Fix:** drop the static `data` field from `upsertJobScheduler` and recompute the date inside each handler (read `Date.now()` at `buildUsageRollupDispatcher` entry). The dispatcher schema then becomes `z.object({ date: isoDate.optional() })` with a `date ?? utcDateString(new Date())` fallback.
+
+---
+
+### [CRITICAL] No DLQ + side-effecting jobs silently drop on attempt exhaustion
+**File:** `apps/worker/src/queues.ts:44-49`
+
+`DEFAULT_JOB_OPTS` sets `removeOnFail: { age: 7 * 24 * 3600 }`. After 5 attempts the job lands in BullMQ's `failed` set and disappears after 7 days. Affected side-effecting jobs:
+
+- `email-delivery` — verification / password-reset email never sent; user is locked out; no audit record.
+- `audit-archive` — partition export failed; partition is left detached on disk forever; no operator notification.
+- `reconciliation-discrepancy` — drift backfill silently abandoned.
+
+**Fix:** wire a `failed` event listener per Worker that INSERTs into a `worker_dead_letter` table (tenant_id, queue, jobId, name, data_redacted, failedReason, finishedOn) before `removeOnFail` collects it. Re-classify each handler's exhaustion as a paging event.
+
+---
+
+### [HIGH] BullMQ retry backoff has no jitter
+**File:** `apps/worker/src/queues.ts:46`
+
+`backoff: { type: "exponential", delay: 1_000 }`. BullMQ's `exponential` strategy is `delay * 2^(attempt-1)`, deterministic. When LiteLLM / SMTP / S3 returns 5xx, all jobs queued at the same moment retry at the same instant — thundering herd against the recovering upstream. Per checklist 7.retry: outbound HTTP retries MUST use exponential **with jitter**.
+
+**Fix:** define a custom backoff strategy via `Worker` constructor option `settings.backoffStrategy` that returns `(2^attempts) * 1000 + Math.floor(Math.random() * 1000)`, and reference it via `backoff: { type: "custom-jittered", delay: 1000 }`.
+
+---
+
+### [HIGH] Pino redact misses nested HTTP error fields commonly carrying Authorization / API keys
+**Files:**
+- `apps/worker/src/lib/with-tenant-context.ts:145` — `childLog.error({ err }, "tenant job failed")`
+- `apps/worker/src/lib/with-system-context.ts:87` — `childLog.error({ err }, "system job failed")`
+- `apps/worker/src/index.ts:275,294`
+
+`makePino`'s redact paths are top-level (`authorization`, `token`, …) and one-level wildcards (`*.token`). Nothing covers `err.response.config.headers.Authorization`, `err.request.headers.authorization`, `err.config.headers["x-api-key"]`, or BullMQ's `err.cause.response.headers.cookie`. Upstream LiteLLM / SMTP 401s commonly throw axios/undici errors with the full request echoed back — including the `Authorization: Bearer sk-...` header.
+
+**Fix:** add deep paths to `packages/observability/src/redact.ts`:
+```
+err.config.headers.authorization
+err.config.headers["x-api-key"]
+err.response.config.headers.authorization
+err.response.config.headers["x-api-key"]
+err.request.headers.authorization
+err.request.headers.cookie
+*.config.headers.authorization
+*.request.headers.authorization
+```
+Or, preferably, install a pino `serializers.err` that walks the error graph and scrubs anything matching the credential-shape regex before serialization. Add a `tests/integration/log-scrub-sentinel.test.ts` row that throws a synthetic axios-shaped error.
+
+---
+
+### [HIGH] `reconciliation-discrepancy` runs cross-pool work inside `withTenantContext`'s transaction — partial-write risk on retry
+**File:** `apps/worker/src/jobs/reconciliation-discrepancy.ts:62-83`
+
+`withTenantContext` opens BEGIN on client A of `deps.pool` (owner pool) and binds GUC. The inner handler calls `runIngestOnce(deps.ingestDeps, {...})`. `runIngestOnce` writes to `deps.ingestDeps.appOwnerPool` — which is the *same* pool, but `pool.query` checks out a **different** client B. Writes on B autocommit; rollback on A only rolls back the (empty) outer transaction. On a mid-batch crash the inserted-so-far `usage_ledger` rows survive; retry repeats them but `ON CONFLICT (request_id) DO NOTHING` makes it idempotent. Idempotency saves this from being CRITICAL but the structural model is wrong — and any future write path on the inner handler (audit, notification) that lacks idempotency keys will leak duplicates.
+
+Also: same `TenantContextMissingError` risk as F-1 (usage-rollup-tenant) for any future query made via `deps.pool.query` here — the guard will raise.
+
+**Fix:** treat the discrepancy handler as system-mode (it's coordinating a cross-pool backfill on the owner pool); drop the `withTenantContext` wrapping and rely on `runIngestOnce`'s windowed-tenantId filter for tenant scoping.
+
+---
+
+### [HIGH] Email HTML templates interpolate variables with NO escaping
+**File:** `apps/worker/src/i18n/template-renderer.ts:128-133, 156-160`
+
+`interpolate(template, variables)` substitutes `{varname}` with `String(value)` raw, then assigns the result to `rendered.html`. Today the variables are `expires_minutes`, reset-link tokens, OTP codes — all controlled. But the call site `email-delivery.ts:97` accepts `data.variables: z.record(z.string(), z.unknown())` — any future enqueue site can pass a user-controlled `name` or `org_name` and it ships into an HTML `<body>` unescaped. Email clients render HTML; this is a stored-XSS-in-email primitive waiting for a careless caller.
+
+**Fix:** HTML-escape every variable value before substitution into `.html` (not `.text` / `.subject`). A 4-character replacer (`&<>"`) is sufficient. Add a unit test asserting `<script>` becomes `&lt;script&gt;` in the rendered HTML.
+
+---
+
+### [HIGH] Audit-archive `psql -c` SQL builds `aws_s3` query string with non-validated `bucket`
+**File:** `apps/worker/src/jobs/audit-archive.ts:182-191`
+
+```
+`SELECT aws_s3.query_export_to_s3('SELECT * FROM public.${partition}', '${bucket}', 'audit-archive/${partition}.csv', 'us-east-1')`
+```
+
+`partition` is regex-validated. `bucket` comes from `env("AUDIT_ARCHIVE_BUCKET") ?? "openwhispr"` and is interpolated **without escaping** into the single-quoted SQL string. An operator that sets `AUDIT_ARCHIVE_BUCKET="evil', 'us-east-1') ; DROP TABLE ..."` gets remote SQL execution as the connecting Postgres user. Trust boundary is the operator's env, but a misread example in `docker-compose.override.yml` is enough.
+
+**Fix:** validate `AUDIT_ARCHIVE_BUCKET` against `^[a-z0-9][a-z0-9.-]{1,62}$` (S3 bucket naming) at boot or at job entry; reject anything else. Alternatively, single-quote-escape via `replace(/'/g, "''")` on the interpolation.
+
+---
+
+### [MEDIUM] `can-run-docker.ts` is test-only but exported from production `src/`
+**File:** `apps/worker/src/lib/can-run-docker.ts`
+
+Sole importers (grep across `apps/`, `packages/`, `tests/`) are all under `apps/worker/tests/unit/**`. No production-side caller. Lives inside the tsup bundle output → ships in the worker image. Violates LOCKER-04 "every exported symbol has at least one non-test importer" (per `CLAUDE.md` #14).
+
+**Fix:** move to `apps/worker/tests/_helpers/can-run-docker.ts` and update the 11 test imports.
+
+---
+
+### [MEDIUM] Module-level `_gaugesRegistered` flag with `if (!_gaugesRegistered)` is unreachable-dead
+**File:** `apps/worker/src/jobs/reconciliation-daily-check.ts:84-89`
+
+```
+let _gaugesRegistered = false;
+if (!_gaugesRegistered) {
+  driftPctGauge.addCallback(...);
   ...
+  _gaugesRegistered = true;
 }
 ```
-Comment on line 134: "bounded by tenant count, not row count; production workloads have ≤ 1000 distinct tenants" — but the SQL groups by `"end_user"` (the user UUID), so this is bounded by **distinct active users in the 24h window**, easily 10–100× tenant count at the 1000-user target.
-- Why it matters: each iteration is an `await` against the wrapped app pool, which (system-mode skips probe, fine) still serializes round-trips. At 10k DAU this is 10k sequential queries — a multi-minute job on a healthy cluster, increasing the chance of overlap with the next-day partman maintenance at 02:00 UTC. Performance issues are nominally out of v1 scope but the falsified loop-bound comment makes this a correctness/comprehension defect, not just a perf concern.
-- Fix: do this as ONE JOIN-style query — `SELECT id::text, tenant_id::text FROM users WHERE id = ANY($1::uuid[])` with the distinct `end_user` list passed as an array. Then drive the JS aggregation from the in-memory map. Update the comment to reflect "bounded by distinct users per window."
 
-### [HIGH] `extractDuration` silently returns 0 for any non-`number` duration, mis-billing minutes
-- File: `apps/worker/src/jobs/ingest-litellm-spend.ts:142-146, 211-216`
-- Category: Bug / data correctness
-- Evidence:
-```ts
-const units =
-  kind === "reason_tokens"
-    ? (r.total_tokens ?? 0)
-    : Math.ceil(extractDuration(r.metadata) / 60);
-// ...
-function extractDuration(metadata: Record<string, unknown> | null | undefined): number {
-  if (!metadata) return 0;
-  const d = metadata["duration"];
-  if (typeof d === "number" && Number.isFinite(d) && d > 0) return d;
-  return 0;
+This pattern runs ONCE at module load (top-level). The boolean is initialised `false` immediately above the `if` so the branch always enters. The flag protects against… nothing — JS modules are evaluated once per realm. The comment claims it guards "double-registration if `buildReconciliationDailyCheckHandler` is called twice", but the registration block is module-top-level, not inside the builder function. Dead protection.
+
+**Fix:** drop the flag; just call `addCallback(...)` at module top. If real double-registration is a concern (test re-import via Vitest's `vi.resetModules()`), move the registration into the builder with an actual guard scoped to that closure.
+
+---
+
+### [MEDIUM] `withTenantContext` swallows the original error in the catch path before rethrowing
+**File:** `apps/worker/src/lib/with-tenant-context.ts:143-149`
+
+The `try { ... } catch (err) { span.recordException(err); childLog.error({ err }, "tenant job failed"); throw err; }` block logs the error before rethrowing — fine — but the redact paths (see F-5) don't cover nested HTTP-error shapes, so this is THE worker log path that leaks tokens on every job failure. Tied to F-5 — fixing the redact policy closes both.
+
+---
+
+### [MEDIUM] `ingestIngestSchedulerSafe` typo — function is named `ingestIngestSchedulerSafe`
+**File:** `apps/worker/src/index.ts:287-291`
+
+```
+async function ingestIngestSchedulerSafe(queue: ...): Promise<void> {
+  await ensureIngestScheduler(queue);
 }
 ```
-- Why it matters: For `transcribe_minutes` / `realtime_minutes`, the only signal of how many minutes to bill is `metadata.duration`. If the upstream API route writes that field as a string (`"42.0"`), a `Date`, or a number wrapped in an object, the function silently returns 0 → `Math.ceil(0/60) = 0` units inserted into `usage_ledger`. The tenant is billed for zero usage with no log line, no metric, no retry — pure silent data loss on the revenue path. There is no warning log for the "duration missing" branch unlike the `end_user`/`tenant_id` branches above.
-- Fix: at minimum, `log.warn({ rid: ourRid, metadata }, "missing/non-numeric duration on minutes-kind spend row")` and emit an OTel counter `ingest_litellm_spend_dropped_minutes_total{reason="missing_duration"}`. Better: accept `string | number` and coerce explicitly. Best: have apps/api route handlers stamp `metadata.duration_seconds` (typed) at request time and only fall back to `duration` if absent — already the contract this code is trying to fulfill.
 
-### [HIGH] `index.ts` `process.exit(0)` on graceful shutdown even if pool/queue close threw
-- File: `apps/worker/src/index.ts:251-267`
-- Category: Reliability
-- Evidence:
-```ts
-try {
-  await Promise.allSettled(workers.map((w) => w.close()));
-  await ingestQueue.close();
-  await closeQueueRegistry(registry);
-  await litellmPool.end();
-  await appOwnerPool.end();
-  await maintenancePool.end();
-  await redis.quit();
-} catch (err) {
-  log.error({ err }, "error during shutdown");
-}
-process.exit(0);
-```
-- Why it matters: any uncaught error during shutdown — most likely from `redis.quit()` if BullMQ still holds a blocking BRPOPLPUSH — is logged then swallowed, and the process exits 0. Kubernetes / docker-compose then treat the pod as having drained cleanly when in fact in-flight job clients may have leaked or jobs were not stalled-back correctly. Also: `Promise.allSettled` over worker.close() hides per-worker failures (e.g., a worker stuck mid-job). The shutdown path should `exit(1)` if any settled value is `rejected`, so the orchestrator restarts the pod with a clean state instead of moving traffic away thinking it drained.
-- Fix: inspect the `allSettled` results array, exit(1) on any rejection AND on caught errors, and log per-worker rejection separately so operators can tie failures to a specific queue. Also add a watchdog `setTimeout(() => process.exit(1), 30_000).unref()` so a wedged `worker.close()` (BullMQ deadlock case) does not hang past the grace period.
+Name is doubled ("ingest ingest scheduler"). The function is also a 1-line wrapper that just delegates to `ensureIngestScheduler` — no error handling, no "safe" behavior. Dead wrapper.
 
-### [HIGH] `index.ts` connects to Valkey with no TLS option and no auth retry policy
-- File: `apps/worker/src/index.ts:147-152`
-- Category: Security / reliability hardcode
-- Evidence:
-```ts
-const redis = new IORedis({
-  host: process.env["VALKEY_HOST"] ?? "valkey",
-  port: Number(process.env["VALKEY_PORT"] ?? "6379"),
-  ...(process.env["VALKEY_PASSWORD"] ? { password: process.env["VALKEY_PASSWORD"] } : {}),
-  maxRetriesPerRequest: null,
-});
-```
-- Why it matters:
-  - No `tls: {}` option, no env knob for it. The CLAUDE.md constraint says "HTTPS only: never plaintext HTTP on any externally reachable port" — that's HTTP-specific, but for K8s deployments where Valkey traffic crosses pods, mTLS is the operator's expected lever. Enterprise variant of the stack (K8s + CloudNativePG) per CLAUDE.md expects this. No env hook = no operator override.
-  - `Number(process.env["VALKEY_PORT"] ?? "6379")` — if operator sets `VALKEY_PORT=""` (empty string, valid env), `Number("") === 0`, the worker silently connects to port 0 and crashes with a confusing message. Apps/api side likely uses `pino-hosted` already proven, worker drifted.
-  - No `enableReadyCheck`, no `connectTimeout`, no `lazyConnect` decision documented. The default ioredis behavior may infinitely retry on a typo'd host.
-- Fix: add `tls: process.env["VALKEY_TLS"] === "1" ? {} : undefined`, validate port via Zod (`z.coerce.number().int().positive()`), set explicit `connectTimeout: 10_000`. Also factor this construction into a shared `packages/queue` so apps/api's redis client and apps/worker's stay in lock-step on TLS posture.
+**Fix:** delete the wrapper, inline `await ensureIngestScheduler(ingestQueue)` at the call site (line 181).
 
-### [MEDIUM] Worker creates its OWN `pino()` in index.ts and ingest-litellm-spend.ts, bypassing the shared redact factory
-- File: `apps/worker/src/index.ts:89`, `apps/worker/src/jobs/ingest-litellm-spend.ts:39`
-- Category: Architecture / redact divergence
-- Evidence:
-```ts
-// index.ts
-const log = pino({ name: "worker" });
-// ingest-litellm-spend.ts
-const log = pino({ name: "ingest-litellm-spend" });
-```
-But `lib/with-tenant-context.ts` and `lib/with-system-context.ts` correctly use `makePino()` from `@openwhispr/observability` so the shared D-T4 redact paths apply. The two bare `pino()` instances in index.ts and ingest-litellm-spend.ts do NOT inherit those redact rules. The ingest job logs `{ rid: ourRid, userId }` on the "no tenant" branch — user_id (UUID) is the canonical PII handle that the observability redactor scrubs. With the bare pino() it ships to Loki uncensored.
-- Why it matters: violates the project's "duplicated redact logic vs `packages/byok-guard` / `packages/observability/redact`" rule called out explicitly in this review's hunt list. Boot logs in index.ts before the SDK starts are arguably fine (BYOK guard pinoBoot is sync-stderr), but the ingest-litellm-spend per-tick log lines absolutely flow through the live OTel pipeline.
-- Fix: replace both with `makePino({ base: { service: "worker", component: "..." } })`. Delete the bare-`pino` import. Add a biome/eslint rule (or grep CI gate) that bans `import pino from "pino"` outside `index.ts`'s BYOK pre-bootstrap and the observability package itself.
+---
 
-### [MEDIUM] `reconciliation-daily-check` registers OTel gauge callbacks at module load — gauges keep observing across job invocations and even after handler completes
-- File: `apps/worker/src/jobs/reconciliation-daily-check.ts:48-79`
-- Category: Bug / observability correctness
-- Evidence:
-```ts
-const driftStore = new Map<string, { drift_pct: number; drift_usd_cents: number }>();
-// ...
-driftPctGauge.addCallback(_driftPctGaugeCallback);
-driftUsdGauge.addCallback(_driftUsdGaugeCallback);
-// ...
-// inside handler:
-driftStore.clear();
-let breached = 0;
-for (...) { driftStore.set(tenantId, ...); }
-return { tenants: driftStore.size, breached };
-```
-- Why it matters:
-  - The gauge callbacks observe `driftStore` on the 15s OTel export tick. The handler runs once per day at 01:00 UTC. For the 23h between job runs, the callbacks keep emitting the previous day's values stamped with yesterday's `tenant_id` labels — that's not a real drift signal anymore, it's a frozen snapshot. Alerts based on "drift > threshold for 1h" will refire all day on yesterday's breach.
-  - Worse: `driftStore.clear()` happens AT THE START of each handler run, so for a few seconds during a tick mid-clear-mid-set, the gauge sees a partially populated map (race between OTel exporter callback and the handler's `for` loop). No lock.
-  - The module-level callback registration also means: if `buildReconciliationDailyCheckHandler` is called twice (tests + production wiring share the module), the callbacks register twice and emit duplicate gauge points — cardinality / double-counting.
-- Fix: (a) clear `driftStore` BEFORE returning success, so between-job state is empty (no stale labels); (b) take a snapshot Map inside the handler, swap atomically into `driftStore` at the end; (c) gate `addCallback` behind a "registered" flag so re-import doesn't double-register.
+### [LOW] `lib/with-tenant-context.ts:67` keeps an `any` in the Zod schema generic
+The `noExplicitAny` biome-ignore is genuine — Zod's `ZodObject` shape generic can't be expressed without `any` — but adding an `issue-NNNN:` justification (per LOCKER-02 format) is required by `CLAUDE.md` #12. Same for the 9 `db/app-pool.ts` `noExplicitAny` ignores.
 
-### [MEDIUM] `extractDuration` is unexported and unreachable from tests; `inferKind` "whisper-large-v3" hardcode
-- File: `apps/worker/src/jobs/ingest-litellm-spend.ts:211-216`, `apps/worker/src/lib/infer-kind.ts:17`
-- Category: Dead code / testability / hardcode
-- Evidence:
-```ts
-// infer-kind.ts
-if (model === "whisper-large-v3" || model.includes("whisper")) {
-  return "transcribe_minutes";
-}
-```
-`model === "whisper-large-v3"` is redundant — `"whisper-large-v3".includes("whisper")` is already true. Dead branch. Also the operator-facing model-alias matching is a magic string with no link back to the LiteLLM model_list config — any operator running `gpt-4o-mini-realtime-preview` aliased as `gpt4o-mini-realtime` (no `realtime` substring) will be billed as `reason_tokens`. The comment says "Unknown aliases fall back to 'reason_tokens'" but the failure mode is silent.
-- Fix: drop the redundant string equality. Add a warn-log when the substring match falls through to the default. Better: drive the kind inference off LiteLLM's `metadata.kind` field which the api routes (Plan 04/05/07) already stamp — comment on line 9 of infer-kind.ts says "LiteLLM does not propagate the per-route kind downstream — only the model alias survives" — but the api-side STAMPS metadata, and `runIngestOnce` reads metadata for `openwhispr_request_id`. Reading `metadata.kind` is a one-line addition.
+**Fix:** prefix each ignore comment with `issue-0000: pg overloads / zod shape generic — refactor blocked by upstream typings`.
 
-### [MEDIUM] `partman-maintenance` discovers detached partitions by regex over pg_class, fires audit-archive for partitions that may already be archived
-- File: `apps/worker/src/jobs/partman-maintenance.ts:42-78`
-- Category: Idempotency / duplicate-work bug
-- Evidence: `discoverDetached` returns every `audit_log_pYYYY_MM` table that is no longer inheriting from `audit_log` — regardless of whether a previous partman tick already enqueued (and possibly already executed) an audit-archive job for it. The audit-archive handler `DROP TABLE IF EXISTS` is idempotent in DDL terms, but if the previous run completed AND dropped, the table is gone and we don't re-enqueue (fine). If the previous run completed exporter-OK but `AUDIT_ARCHIVE_DRY_RUN=1` was set, the table is still detached-on-disk; the next partman tick re-enqueues an archive job that re-runs `pg_dump` against the same partition and re-uploads to MinIO/S3 (overwriting). That's wasted I/O and (depending on bucket retention policy) a versioning churn.
-- Why it matters: not data loss, but reliability/cost noise. Also coupled to the audit-archive bash-injection bug above — every extra invocation is another chance to leak DATABASE_URL into a process listing.
-- Fix: stamp a marker once an archive succeeds — e.g., `COMMENT ON TABLE public.audit_log_pYYYY_MM IS 'archived=YYYY-MM-DDTHH:MM:SSZ'` after the DROP fails to apply (in dry-run mode) or before DROP, and skip re-enqueue when the comment exists. Or: maintain a `audit_archive_log` table in the worker schema tracking (partition, archived_at, exporter) — also gives operators a queryable history.
+---
 
-### [LOW] `drainStaleVkrKeys` is a permanent transient — no removal mechanism documented
-- File: `apps/worker/src/index.ts:104-144`
-- Category: Dead-code-pending / tech debt
-- Evidence: Comment says "Safe to remove in a future phase once stragglers stop appearing" but there is no telemetry on the `deleted` counter beyond a single info-log. Operators upgrading from a clean install (no Phase-14-old keys) still pay one `SCAN` round-trip per boot forever. No issue/Jira reference embedded in the comment.
-- Fix: gate behind `process.env["WORKER_DRAIN_VKR_KEYS"] === "1"`, default off after the Phase 15 release, and link the removal SHA in the comment.
+### [LOW] `inferKind` fallback to `reason_tokens` for unknown models silently mislabels novel transcribe/realtime models
+**File:** `apps/worker/src/lib/infer-kind.ts:22-23`
 
-### [LOW] `audit-archive` accepts `audit_log_p?\d{4}_\d{2}` — legacy `_2026_05` and modern `_p2026_05` both ok, but no test for old format reaching production now
-- File: `apps/worker/src/jobs/audit-archive.ts:33`
-- Category: Stylistic / dead schema
-- Evidence: `const PARTITION_NAME_RE = /^audit_log_p?\d{4}_\d{2}$/;` — accepts both. If migrations have committed exclusively to pg_partman's `_p` prefix (Phase 6 / Plan 06-04), the legacy branch is dead.
-- Fix: trim to `/^audit_log_p\d{4}_\d{2}$/` if migration history confirms, OR add a comment naming the migration phase that retired the legacy form.
+Adding a new model whose alias doesn't match `/whisper/` or `/realtime/` (e.g. `parakeet-tdt-v2`) bills it as token-priced even when it's minutes-priced. The validateDuration anomaly counter catches the SECOND-order symptom (non-numeric duration) but the FIRST-order misclassification ships zero anomalies.
 
-### [LOW] OTel diag logger fallback expression has stale operator semantics
-- File: `apps/worker/src/otel-bootstrap.ts:46-51`
-- Category: Stylistic / subtle bug
-- Evidence:
-```ts
-diag.setLogger(
-  new DiagConsoleLogger(),
-  DiagLogLevel[
-    (process.env.OTEL_LOG_LEVEL?.toUpperCase() as keyof typeof DiagLogLevel) ?? "ERROR"
-  ] ?? DiagLogLevel.ERROR,
-);
-```
-- Why it matters: If `OTEL_LOG_LEVEL=BOGUS` is set, the inner expression yields `DiagLogLevel["BOGUS"] === undefined`, then the `?? DiagLogLevel.ERROR` fallback kicks in — fine. But the `as keyof typeof DiagLogLevel` cast hides the lookup failure from TS. A typo never surfaces.
-- Fix: explicit guard — `const lvl = process.env.OTEL_LOG_LEVEL?.toUpperCase(); const resolved = lvl && lvl in DiagLogLevel ? DiagLogLevel[lvl as keyof typeof DiagLogLevel] : DiagLogLevel.ERROR;`
+**Fix:** require explicit allow-list of model→kind in env or DB; fall back to `unknown_kind` and emit a `worker_billing_anomalies_total{reason="unknown_model_kind"}` increment.
+
+---
+
+### [LOW] `audit-archive.ts:285` parses `dbUrl` twice on the error path
+The `parseDbUrl(dbUrl)` at line 285 is called even when no error occurred, just to capture the password for potential redaction. Harmless cost but the password sits in memory longer than necessary.
+
+**Fix:** capture the password inside `buildExportSteps` and pass it back as a return tuple, or skip redaction prep when steps[].cmd === "custom" (no dbUrl).
+
+---
 
 ## Dead code
-
-- `apps/worker/src/lib/infer-kind.ts:17` — `model === "whisper-large-v3"` is dominated by the next clause `model.includes("whisper")`.
-- `apps/worker/src/jobs/reconciliation-discrepancy.ts:51-57` — `result` is computed then discarded with `void result;`. The HOF promises `Promise<void>`, the cast lies that it returns `{rowsProcessed, rowsScanned}`. Either wire the count through or drop the lie.
-- `apps/worker/src/index.ts:276-280` — `ingestIngestSchedulerSafe` is a single-call indirection that adds nothing over `await ensureIngestScheduler(ingestQueue)` inline. The name has a typo (`ingestIngest...`). Dead-style.
-- `apps/worker/src/jobs/audit-archive.ts:33 PARTITION_NAME_RE` — legacy `_2026_05` branch likely unreachable post-Phase-6 migration.
-- `apps/worker/src/jobs/ingest-litellm-spend.ts:181-187 ingestLitellmSpendSchema` — the `.or(z.object({}).strict())` branch coexists with `{ since: ..., until: ... }` optional fields — the two are equivalent (an empty object satisfies the first schema too). Schema collapses to the first variant.
+- `apps/worker/src/lib/can-run-docker.ts` — test-only helper exported from production `src/`. 11 test importers, 0 production importers. Move to `tests/_helpers/`. (also F-9)
+- `apps/worker/src/index.ts:287-291` `ingestIngestSchedulerSafe` — 1-line typo-named wrapper, no error handling. Delete. (also F-12)
+- `apps/worker/src/jobs/reconciliation-daily-check.ts:84-89` `_gaugesRegistered` flag — always false at module-eval, no protection. (also F-10)
+- `apps/worker/src/jobs/ingest-litellm-spend.ts:387-390` trailing comment block referencing removed `extractDuration` — leave as historical doc or drop entirely (consistency with rest of project's commenting style).
 
 ## Suppressed warnings
+All suppressions found are `biome-ignore lint/suspicious/noExplicitAny` (10 occurrences in `db/app-pool.ts`, 1 in `lib/with-tenant-context.ts`). None use the `issue-NNNN:` justification format required by LOCKER-02 (CLAUDE.md #12). Either retro-fit the format or land an allowlist entry in `tools/lint-no-suppressions.ts`.
 
-- `apps/worker/src/db/app-pool.ts` — 8× `biome-ignore lint/suspicious/noExplicitAny` + 5× `as any` / `as unknown as` to monkey-patch `pg.Pool.connect` and `pg.Pool.query`. The pattern is justified (pg's overload signatures genuinely defy clean typing) but the implementation re-wraps `pool.query` to manually probe + forward; every cast is a place where a future pg upgrade could silently break. Worth a single typed adapter module in `packages/data` rather than inline patching.
-- `apps/worker/src/jobs/reconciliation-discrepancy.ts:58 as unknown as (...)` — explicitly LIES about the return type. Documented as a stub in the comment; should be removed (see CRITICAL #2).
-- `apps/worker/src/lib/with-tenant-context.ts:67-68 biome-ignore` — `Record<string, any>` for the ZodObject shape is the canonical Zod generic pattern; acceptable.
-
-## Disabled tests near scope
-
-Not surveyed in this review (scope is `apps/worker/src/**`). Recommend a follow-up grep:
-```
-grep -rn "it.skip\|describe.skip\|test.skip\|it.todo\|describe.skipIf" apps/worker/tests/
-```
-`canRunDocker` (lib/can-run-docker.ts) is the deliberate skip-gate for testcontainer suites and is correct.
+No `@ts-ignore`, no `@ts-expect-error`, no `@ts-nocheck`, no `eslint-disable`, no `as any` outside biome-ignore-justified surfaces.
 
 ## Notes
+- **Tenant context discipline is enforced strictly at the HOF layer** — every job handler is wrapped by either `withTenantContext` or `withSystemContext`, and the app-pool runtime guard (D-W4 layer 2) refuses queries from tenant-mode handlers that lack the GUC. That's solid defense in depth. The architectural gap (F-1, F-6) is that the HOF binds the GUC on a client that the handler doesn't have a handle to — handlers issuing further `pool.query` calls take a different connection and the guard correctly rejects them. The CORE design needs to thread the bound client through.
+- **Crypto discipline is clean** — no `createCipheriv` outside `packages/data/src/encryption/envelope.ts`; no plaintext credential columns referenced from worker.
+- **Zod validation discipline is clean** — every job has a schema, every enqueue site goes through `typedQueue` which re-parses on `.add()`. No `JSON.parse(job.data)` anywhere.
+- **No NODE_ENV branches outside the bootstrap-permitted surface** — the two hits in `email-delivery.ts:80,95` are wired through an injectable `nodeEnv` dep (with `process.env.NODE_ENV` as the default), which is a legitimate bootstrap-style configuration read. Marginal LOCKER-01 question but defensible.
+- **NDJSON / wire-shape risks:** out of scope for worker (no HTTP surface).
+- **At-most-once vs at-least-once is implicit** across the codebase: every job either targets an idempotent UPSERT (`usage_ledger` ON CONFLICT, `usage_rollup_daily` ON CONFLICT) or a side-effecting SMTP send that BullMQ jobId-dedupes at enqueue time. The DLQ-absence (F-3) is the bigger hole than the semantics-declaration gap.
 
-- **Tenant scoping audit (passed):** every job that touches `usage_ledger`, `users`, `usage_rollup_daily`, or `audit_log` flows through either `withTenantContext` (binds `app.tenant_id` GUC in a transaction, parameterized — no SQL injection on tenant id) or `withSystemContext` (BYPASSRLS, explicit opt-in, runtime-guard short-circuit). The `app-pool.ts` runtime guard correctly distinguishes the two modes. **NOT VIOLATED** but the `partman-maintenance` pool is constructed with `connectionString: process.env["DATABASE_URL_OWNER"]` directly bypassing `wrapPoolWithTenantGuard` (index.ts:163-166) — fine because the handler is system-mode, but worth noting in a comment so a future maintainer doesn't add a tenant-scoped query against `maintenancePool` and silently bypass the guard.
-
-- **Retry posture:** `DEFAULT_JOB_OPTS = { attempts: 5, backoff: { type: 'exponential', delay: 1_000 } }` — fine. The audit-archive job's throw-on-non-zero-exit will burn all 5 retries against a broken SMTP/MinIO endpoint with stderr-included errors landing in Redis cleartext (see CRITICAL #1).
-
-- **Idempotency posture:** ingest-litellm-spend correctly uses `ON CONFLICT (request_id) DO NOTHING`; usage-rollup-daily-tenant correctly uses `ON CONFLICT (tenant_id, date) DO UPDATE`; audit-archive uses `DROP TABLE IF EXISTS`; partman-maintenance is CALL-based and partman's own internal logic is idempotent. email-delivery defers idempotency to the api enqueuer (jobId derived from request_id) — confirmed wired at `apps/api/src/index.ts:549`. **PASS** on idempotency.
-
-- **`if (process.env.NODE_ENV ...)` in prod paths:** one instance — `email-delivery.ts:111` `nodeEnv !== "production"` carve-out for the SMTP-not-configured no-op sender. Documented (HI-01 carry-over), justified, gated on a specific reason string. Acceptable but the worker should also emit a metric here (`email_delivery_skipped_total{reason="smtp-not-configured-dev"}`) so operators in non-prod can see how many verification emails their stack would have sent.
-
-- **No fire-and-forget promises detected** in job handlers. All `await`s are present on `queue.add`, `pool.query`, `client.release` (release is sync, fine), `withTenantContext` returns.
-
-- **No empty catch blocks** swallowing job errors. `audit-archive.ts:101-103` `try { client.release() } catch {}` is bounded to a release cleanup path with explicit "swallow — checkout may already be released" comment; acceptable.
+---
+_Reviewed: 2026-05-17_
+_Reviewer: gsd-code-reviewer (worker scope)_
+_Depth: deep_
