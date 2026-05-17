@@ -108,6 +108,17 @@ export const PROVIDER_ENV_VAR: Record<keyof LitellmProviderKeys, string> = {
 export const DEFAULT_HEADERS_TIMEOUT_MS = 30_000;
 export const DEFAULT_BODY_TIMEOUT_MS = 120_000;
 
+/**
+ * Phase 51 / Plan 51-06 (REVIEW CR-12) — bound on the non-2xx error-body
+ * drain in `chatCompletionsStream`. The 2xx path keeps `bodyTimeout: 0`
+ * because SSE streams are long-lived; the same flag on a slow-rolled
+ * upstream error body produces an unbounded wait that burns a fastify
+ * handler + leaks a dispatcher slot. 15s is empirically wide enough
+ * for any reasonable upstream error message and short enough to avoid
+ * event-loop starvation at the 1000-VU SLO.
+ */
+export const ERROR_DRAIN_TIMEOUT_MS = 15_000;
+
 export interface ChatCompletionRequest {
   model?: string;
   messages: Array<{ role: string; content: string }>;
@@ -224,6 +235,46 @@ function parseMultipartBoundary(contentType: string): string | null {
   if (!contentType.toLowerCase().includes("multipart/form-data")) return null;
   const match = contentType.match(/boundary=("?)([^";]+)\1/i);
   return match ? (match[2] ?? null) : null;
+}
+
+/**
+ * Phase 51 / Plan 51-06 (REVIEW CR-12) — drain an undici response body
+ * under a hard timeout. The 2xx path keeps `bodyTimeout: 0` (long-lived
+ * SSE), so on the non-2xx error path we cannot rely on undici to bound
+ * `res.body.text()`. This helper races the drain against a setTimeout
+ * and, on timeout, destroys the body so the dispatcher slot does not
+ * leak. The returned string carries `"<drain-timeout-after-Nms>"` so
+ * the LitellmUpstreamError surfaces the operator-visible marker.
+ *
+ * Inputs:
+ *   * `body` — anything with `text(): Promise<string>` + an optional
+ *     `destroy()` (undici response body and Node Readable both qualify).
+ *   * `timeoutMs` — finite positive bound.
+ *
+ * Output: the upstream body text, OR the timeout marker.
+ */
+async function drainWithTimeout(
+  body: { text(): Promise<string>; destroy?(err?: Error): void },
+  timeoutMs: number,
+): Promise<string> {
+  let timer: NodeJS.Timeout | undefined;
+  const timeoutPromise = new Promise<string>((resolve) => {
+    timer = setTimeout(() => {
+      try {
+        body.destroy?.(new Error(`drain-timeout-after-${timeoutMs}ms`));
+      } catch {
+        /* best-effort: stream may already be settled */
+      }
+      resolve(`<drain-timeout-after-${timeoutMs}ms>`);
+    }, timeoutMs);
+    // Allow process exit if every other handle is closed.
+    timer.unref?.();
+  });
+  try {
+    return await Promise.race([body.text(), timeoutPromise]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
 }
 
 export function buildLitellmClient(
@@ -347,11 +398,16 @@ export function buildLitellmClient(
       );
       // Inline non-2xx → LitellmUpstreamError mapping. We do NOT call
       // ensureOk because we MUST NOT touch res.body on the 2xx path (the
-      // caller streams it). On non-2xx we drain body.text() once to
-      // populate the error, mirroring ensureOk's behaviour for parity
-      // with the other client methods.
+      // caller streams it). On non-2xx we drain body.text() ONCE under a
+      // bound (Phase 51 / Plan 51-06 / REVIEW CR-12) — a slow-rolled
+      // upstream error body would otherwise hang the handler forever
+      // because `bodyTimeout: 0` is the 2xx-path default. The bound is
+      // `ERROR_DRAIN_TIMEOUT_MS`; on timeout we discard whatever bytes
+      // arrived and surface the upstream error envelope with an
+      // explicit "drain-timeout" marker so operators can disambiguate
+      // upstream-broken from upstream-slow in logs.
       if (res.statusCode >= 400) {
-        const bodyText = await res.body.text();
+        const bodyText = await drainWithTimeout(res.body, ERROR_DRAIN_TIMEOUT_MS);
         throw new LitellmUpstreamError(res.statusCode, bodyText);
       }
       return res;
