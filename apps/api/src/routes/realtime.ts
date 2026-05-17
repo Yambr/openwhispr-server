@@ -157,7 +157,7 @@ export const buildRealtimeRoutes = (deps: RealtimeDeps) =>
         // upgrade for an unauthenticated request — throwing AuthError
         // routes through the centralized error handler which emits the
         // canonical 401 envelope BEFORE the WS upgrade completes.
-        const user = (req as unknown as { user?: { id?: string } }).user;
+        const user = req.user;
         if (!user || !user.id) {
           throw new AuthError("unauthorized");
         }

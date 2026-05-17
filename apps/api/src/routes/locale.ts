@@ -50,7 +50,7 @@ function isSupported(value: string): value is SupportedLocale {
  * Fastify wiring. Tests against the live route exercise the full path.
  */
 export function resolveLocale(req: FastifyRequest): SupportedLocale {
-  const lang = (req as unknown as { language?: string }).language;
+  const lang = req.language;
   if (typeof lang === "string") {
     // i18next-http-middleware may return a fully-qualified tag like
     // `ru-RU`; squash to the primary subtag before checking.

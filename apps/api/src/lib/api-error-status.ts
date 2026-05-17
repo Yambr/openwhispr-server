@@ -17,9 +17,9 @@
 //
 // We intentionally read `.status` rather than `.statusCode` because the
 // CONTEXT D-02 spec + RESEARCH §D-02 STATUS_MAP both pin behavior on
-// `.status`. The narrow `as unknown as { status?: unknown }` cast is
-// justified because the public Better Auth type does not stably expose
-// the `.status` field type across minor versions (Assumption A1).
+// `.status`. A narrow probe-cast is justified because the public Better
+// Auth type does not stably expose the `.status` field type across minor
+// versions (Assumption A1).
 import type { APIError } from "better-auth/api";
 
 /** Symbolic-name → numeric HTTP status map (RESEARCH §D-02 STATUS_MAP). */

@@ -68,6 +68,19 @@ declare module "fastify" {
      * Fastify hook-scope ambiguity).
      */
     tenant?: string;
+
+    /**
+     * Phase 51 / Plan 51-13c — augmentation for `i18n` and `language`
+     * decorators populated at runtime by `i18nPlugin` (src/i18n/init.ts).
+     * The plugin adapts i18next-http-middleware's Connect handler to a
+     * Fastify preHandler hook; the middleware mutates `req.raw.i18n` /
+     * `req.raw.language`, then the plugin mirrors them onto the Fastify
+     * request so route handlers can read `req.i18n` without dereferencing
+     * `.raw`. Typed minimally as the `t()` surface the error-handler +
+     * better-auth-handler call sites need.
+     */
+    i18n?: { t(key: string, opts?: object): string };
+    language?: string;
   }
 }
 
