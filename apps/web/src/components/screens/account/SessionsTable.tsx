@@ -60,7 +60,7 @@ export interface SessionsTableProps {
 }
 
 export function SessionsTable({ currentSessionId }: SessionsTableProps): React.JSX.Element {
-  const { t } = useTranslation(["end-user"]);
+  const { t } = useTranslation(["end-user", "common"]);
   const queryClient = useQueryClient();
 
   const sessions = useQuery({
@@ -187,7 +187,7 @@ export function SessionsTable({ currentSessionId }: SessionsTableProps): React.J
                       data-testid="session-row-this-device"
                       variant="secondary"
                     >
-                      this device
+                      {t("common:common.session.thisDevice.label")}
                     </Badge>
                   ) : null}
                 </TableCell>

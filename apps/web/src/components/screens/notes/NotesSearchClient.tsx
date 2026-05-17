@@ -46,7 +46,7 @@ const SEARCH_LIMIT = 20;
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export function NotesSearchClient(): React.JSX.Element {
-  const { t } = useTranslation(["end-user"]);
+  const { t } = useTranslation(["end-user", "common"]);
   const router = useRouter();
   const searchParams = useSearchParams();
   const urlQ = searchParams.get("q") ?? "";
@@ -166,7 +166,7 @@ export function NotesSearchClient(): React.JSX.Element {
               className="flex items-center justify-between rounded-md border border-border bg-panel p-3"
             >
               <a className="hover:underline" href={`/app/notes/${encodeURIComponent(row.id)}`}>
-                {row.title ?? "(untitled)"}
+                {row.title ?? t("common:common.placeholder.untitled.label")}
               </a>
               <Badge
                 variant="secondary"

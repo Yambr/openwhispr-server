@@ -3,7 +3,21 @@
     "action": {
       "cancel": { "label": "Cancel" },
       "confirm": { "label": "Confirm" },
-      "copy": { "label": "Copy" }
+      "copy": { "label": "Copy" },
+      "yes": { "label": "Yes" },
+      "no": { "label": "No" }
+    },
+    "brand": {
+      "app": { "title": { "label": "OpenWhispr" } },
+      "admin": { "title": { "label": "OpenWhispr — Admin" } },
+      "auth": { "title": { "label": "OpenWhispr Server" } },
+      "mode": { "admin": { "label": "Admin mode" } }
+    },
+    "session": {
+      "thisDevice": { "label": "this device" }
+    },
+    "placeholder": {
+      "untitled": { "label": "(untitled)" }
     },
     "error": {
       "boundary": {
