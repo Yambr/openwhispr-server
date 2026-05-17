@@ -512,3 +512,54 @@ property tests) is already wired.
   block as defense-in-depth, which fixed it in some retries but the
   same DO $$ pattern failed silently again — investigated further in
   Phase 54.
+
+---
+
+## Plan 51-19 e2e status after 51-23+24 closure
+
+**Stack boots end-to-end.** All 8 phase-6 e2e tests now reach the
+docker-compose stack (no more boot-cycle blockers); the 4 remaining
+failures are bounded test-side issues rather than infrastructural
+deadlocks. Run summary from `13a1547` (after 26 migrations + lens-
+scope collapse):
+
+- `Test Files  7 failed | 1 passed (8)` — `probes-dependency.test.ts`
+  GREEN; the other 7 hit per-test assertions.
+- `Tests       4 failed | 2 passed | 8 skipped (14)`.
+- Duration 941s (full compose+seed+test flow per file; testcontainers
+  reused via DockerComposeEnvironment).
+
+**Failure triage (each maps to its own Phase-54 fix-plan):**
+
+1. **ssrf-block** — `POST /__test/fetch` returns 404 instead of 502.
+   Indicates the test-only `__test` route family was not registered
+   for this run (OPENWHISPR_TEST_ROUTES gating regression). Test-
+   route lifecycle audit deferred.
+
+2. **audit-log-write** — `POST /api/v1/keys/create` returns 429
+   instead of 200. Cross-test rate-limit pollution from earlier
+   tests in the same compose lifecycle. Either need a between-test
+   rate-limit reset hook in the phase-6 helper, or per-test fresh
+   ips/users.
+
+3. **otel-trace-propagation** — Tempo search for
+   service.name=openwhispr-api returns no traces; api was configured
+   with `OTEL_EXPORTER_OTLP_ENDPOINT=disabled` for the contract-test
+   overlay (Plan 51-22 pinned-pool diagnostic), needs flipping back
+   ON when the observability overlay is active.
+
+4. **reconciliation-drift** — driftPct assertion under 0.5 threshold;
+   needs synthetic drift-injection ratio re-tuning against the new
+   tenant-isolation seed counts.
+
+**What 51-19 / 51-23+24 closed (already on main):**
+- Plan 51-21 — seed-on-boot bundling leak (commit `da674a3`).
+- Plan 51-22 — tenant column DEFAULTs + drizzle migrator role-config
+  re-assertion (commit `da674a3`).
+- Plan 51-23+24 — Better Auth introspection-compat columns +
+  ENCRYPTED_COLUMNS_MAP collapse + LOCKER-08 constitutional amendment
+  (commit `13a1547`).
+
+The Plan 51-19 closure criterion was "stack reaches e2e under fresh
+boot." That's true now. The 4 remaining e2e assertions are bounded
+follow-up plans, not 51-19 closure blockers.
