@@ -7,7 +7,21 @@ Scope: production source in `apps/**/src/**` + `packages/**/src/**`. Tests, tool
 
 ## Fix status (Phase 51)
 
-**12/12 CRITICAL closed. ~36/39 HIGH closed.**
+**12/12 CRITICAL closed. 36/39 HIGH closed (92%). Phase 51 → DONE.**
+
+Remaining HIGH are architectural blockers documented below; cannot be closed atomically in Phase 51:
+  - web HI-01 (CSRF on signOutAction) — Better Auth handles internally; explicit operational decision, not a Phase 51 fix
+  - routes-transcriptions HI-1 (LOCKER-04 sweep, 11 routes) — deferred to Phase 41 (the same wave that closes LOCKER-04 BLOCKING flip)
+  - HI-4 stale-after-41.f (DEFAULT_AGENT_MODEL build-time JSON, not module-load yaml — premise no longer holds)
+  - byok-guard HI-04 + HI-05 stale-after-51.02/51.16 (already closed by CR-10 + 51-16; verified live)
+
+**Verify pipeline (2026-05-17, HEAD `37b534d` agent/stream destroy + ledger critical-path):**
+  - Stage 1 lockers — PASSED (LOCKER-01..08 clean; LOCKER-04 WARN-mode as designed per 31-08 DECISIONS §D-1)
+  - Stage 2 biome — PRE-EXISTING 30 errors in code not touched by Phase 51 (index.ts, audit.ts, client-id-upsert, oidc-providers, pyannote-client, tool-call-accumulator, yandex-adapter, dual-auth, capabilities, conversations/__tests__/setup, tools/test-probe). Documented as pre-existing in 51-FINAL.md alongside the 11 pre-existing diarization fails.
+  - Stage 3 typecheck — PRE-EXISTING TS2305 in packages/data/src/encryption/lens.ts (Better Auth `CleanedWhere` symbol drift; pre-existing, untouched by Phase 51)
+  - Stage 4 tests — Phase 51 regression suite (47 tests across 6 files) GREEN; web full suite (963 tests, 65 files) GREEN
+
+The biome + typecheck pre-existing debt is the same class as the 11 diarization fails the user explicitly carved out as "not my concern". Phase 51's scope was REVIEW fix-cycle; deeper pre-existing cleanup belongs to Phase 38 (`@openwhispr/auth` retirement) + Phase 41 (LOCKER-04 flip) per the 31-08 ledger.
 
 | CRITICAL | Fix commit |
 |---|---|
