@@ -28,6 +28,53 @@ import acceptLanguageParser from "accept-language-parser";
 import { getSessionCookie } from "better-auth/cookies";
 import { type NextRequest, NextResponse } from "next/server";
 
+/**
+ * Phase 51 / Plan 51-04 (REVIEW CR-5) — per-request CSP nonce.
+ *
+ * Pre-fix, `apps/web/next.config.ts` shipped `script-src 'self'
+ * 'unsafe-inline'` globally because Next.js 15 emits an inline
+ * `self.__next_f.push(...)` hydration bootstrap. The fix:
+ *
+ *   1. Middleware generates 16 fresh bytes per request, base64url-encodes
+ *      them, and forwards as `x-nonce` on the downstream RSC request.
+ *   2. Middleware sets `Content-Security-Policy` on the response with
+ *      `script-src 'self' 'nonce-<value>' 'strict-dynamic'`. The
+ *      `'strict-dynamic'` keyword lets a script with the nonce load
+ *      further scripts without each one needing its own nonce — this
+ *      matches Next.js's own canonical CSP recipe.
+ *   3. `next.config.ts` headers() emits everything EXCEPT
+ *      Content-Security-Policy; middleware CSP wins because the
+ *      headers run later in the response chain.
+ *   4. Next.js 15 detects the per-request nonce via the `headers()`
+ *      RSC accessor reading `x-nonce` and emits `<script nonce=...>`
+ *      tags automatically (documented in next.js.org/docs/app/building-
+ *      your-application/configuring/content-security-policy).
+ */
+function buildCsp(nonce: string): string {
+  return (
+    `default-src 'self'; ` +
+    `script-src 'self' 'nonce-${nonce}' 'strict-dynamic'; ` +
+    `style-src 'self' 'unsafe-inline'; ` +
+    `img-src 'self' data: blob:; ` +
+    `font-src 'self'; ` +
+    `connect-src 'self'; ` +
+    `frame-ancestors 'none'; ` +
+    `base-uri 'self'; ` +
+    `form-action 'self'`
+  );
+}
+
+function generateNonce(): string {
+  // crypto.getRandomValues is available in the Edge runtime
+  // unconditionally; 16 bytes is the CSP-recipe canonical width.
+  const bytes = new Uint8Array(16);
+  crypto.getRandomValues(bytes);
+  // base64url-encode without Node `Buffer` (Edge runtime lacks it).
+  let s = "";
+  for (const b of bytes) s += String.fromCharCode(b);
+  return btoa(s).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+}
+
 // MUST mirror `apps/api/src/auth.ts` advanced.cookiePrefix. If these drift,
 // the middleware silently fails open (treats every request as
 // unauthenticated, mass-redirect to /sign-in). Covered by the unit suite.
@@ -83,14 +130,21 @@ export function middleware(req: NextRequest): NextResponse {
     }
   }
 
-  // Forward `x-locale` to downstream RSC handlers. Setting it through the
-  // `request.headers` init on NextResponse.next() is the documented Next.js
-  // pattern — Next surfaces the overrides as the `x-middleware-override-
-  // headers` + per-header `x-middleware-request-x-locale` response headers,
-  // and rewrites the actual request headers before the route handler runs.
+  // Phase 51 / Plan 51-04 (REVIEW CR-5) — per-request CSP nonce.
+  const nonce = generateNonce();
+  const csp = buildCsp(nonce);
+
+  // Forward `x-locale` AND `x-nonce` to downstream RSC handlers. Setting
+  // headers through the `request.headers` init on NextResponse.next() is
+  // the documented Next.js pattern — Next 15 also reads x-nonce here
+  // and stamps it onto every `<script>` tag it emits, retiring the need
+  // for `'unsafe-inline'` in script-src.
   const requestHeaders = new Headers(req.headers);
   requestHeaders.set("x-locale", locale);
-  return NextResponse.next({ request: { headers: requestHeaders } });
+  requestHeaders.set("x-nonce", nonce);
+  const res = NextResponse.next({ request: { headers: requestHeaders } });
+  res.headers.set("Content-Security-Policy", csp);
+  return res;
 }
 
 export const config = {
