@@ -162,8 +162,13 @@ services:
       # bundled `litellm` co-tenant DB created by
       # packages/data/migrations/init/01-litellm-database.sh; operators
       # who already export LITELLM_DATABASE_URL keep their override.
-      LITELLM_DATABASE_URL: ${LITELLM_DATABASE_URL:-postgres://${POSTGRES_OWNER_USER}:${POSTGRES_OWNER_PASSWORD}@postgres:5432/litellm}
-      DATABASE_URL: ${LITELLM_DATABASE_URL:-postgres://${POSTGRES_OWNER_USER}:${POSTGRES_OWNER_PASSWORD}@postgres:5432/litellm}
+      # Phase 53 — Plan 51-14 made `buildPoolConfig` default-on TLS;
+      # the bundled docker-compose postgres does NOT support SSL, so the
+      # connection string MUST opt out via `?sslmode=disable` (canonical
+      # libpq escape hatch). LiteLLM's own Python pg client respects the
+      # same flag.
+      LITELLM_DATABASE_URL: ${LITELLM_DATABASE_URL:-postgres://${POSTGRES_OWNER_USER}:${POSTGRES_OWNER_PASSWORD}@postgres:5432/litellm?sslmode=disable}
+      DATABASE_URL: ${LITELLM_DATABASE_URL:-postgres://${POSTGRES_OWNER_USER}:${POSTGRES_OWNER_PASSWORD}@postgres:5432/litellm?sslmode=disable}
       # Provider keys — `:-` so a fresh clone with empty keys does NOT
       # block container boot. Endpoints whose backing key is missing
       # surface 503 envelopes at request time (per Plan 03/04/07
@@ -378,7 +383,7 @@ services:
       # owner credentials used by the migrate runner; an operator can set
       # LITELLM_READ_DATABASE_URL explicitly to point at a different
       # cluster.
-      LITELLM_READ_DATABASE_URL: ${LITELLM_READ_DATABASE_URL:-postgres://${POSTGRES_OWNER_USER}:${POSTGRES_OWNER_PASSWORD}@postgres:5432/litellm}
+      LITELLM_READ_DATABASE_URL: ${LITELLM_READ_DATABASE_URL:-postgres://${POSTGRES_OWNER_USER}:${POSTGRES_OWNER_PASSWORD}@postgres:5432/litellm?sslmode=disable}
       # DATABASE_URL_OWNER is already in .env (Phase 1).
       # Phase 14 / Plan 14-01 (SLIM-01): OTEL_EXPORTER_OTLP_ENDPOINT has
       # NO default fallback (slim-core ships without otel-collector). See

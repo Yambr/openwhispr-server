@@ -141,7 +141,14 @@ export function fixtureSecrets(overrides: Record<string, string> = {}): Record<s
     S3_ACCESS_KEY: "fixture-access-key",
     S3_SECRET_KEY: "fixture-secret-key-min-16chars",
     S3_BUCKET: "fixture-bucket",
-    INGRESS_BASE_URL: "https://api.localhost",
+    // Phase 51 / Plan 51-16 — BYOK ingress row demands INGRESS_TLS_CERT_PATH
+    // when the base URL uses the https scheme. Self-tests run against the
+    // base compose without the ingress overlay (no Traefik TLS chain
+    // available), so the fixture base URL stays on http — which satisfies
+    // the guard without forcing a stub cert path that no file actually
+    // backs. Operators wiring real TLS still go through the ingress
+    // overlay + acme/cert-manager.
+    INGRESS_BASE_URL: "http://api.localhost",
     OTEL_EXPORTER_OTLP_ENDPOINT: "disabled",
     SMTP_HOST: "mailpit",
     // Phase 14 / SLIM-03 — pgbouncer moved into an overlay
