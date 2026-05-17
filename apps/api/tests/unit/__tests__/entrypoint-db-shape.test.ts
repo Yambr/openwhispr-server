@@ -168,6 +168,12 @@ beforeAll(() => {
   process.env.S3_BUCKET = "openwhispr-test";
   process.env.OTEL_EXPORTER_OTLP_ENDPOINT = "http://otel-test.invalid:4317";
   process.env.INGRESS_BASE_URL = "https://api.test.example.com";
+  // Phase 53 — Plan 51-16 cascade: when INGRESS_BASE_URL is https://, the
+  // byok-guard now also requires INGRESS_TLS_CERT_PATH (no NODE_ENV gate).
+  // Set to a placeholder path so the guard returns void; the bootstrap
+  // never reads the file because TLS is not enabled at the listen level
+  // in this dynamic-import test (fastify is mocked above).
+  process.env.INGRESS_TLS_CERT_PATH = "/tmp/test-ingress-cert.pem";
   process.argv[1] = indexPath;
 });
 
