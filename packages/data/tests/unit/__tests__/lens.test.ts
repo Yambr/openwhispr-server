@@ -567,7 +567,7 @@ describe("encryption lens — Phase 33 Plan 02", () => {
 
     it("updateMany delegates", async () => {
       const provider = new EnvKeyProvider();
-      const { adapter, store } = makeMockAdapter();
+      const { adapter } = makeMockAdapter();
       const wrapped = wrapAdapter(adapter, provider, COLUMN_MAP);
       await wrapped.create({
         model: "account",
@@ -686,7 +686,6 @@ describe("encryption lens — Phase 33 Plan 02", () => {
       const provider = new EnvKeyProvider();
       const innerAdapter: DBAdapter = {
         ...makeMockAdapter().adapter,
-        // biome-ignore lint/suspicious/noExplicitAny: deliberately exercising a non-object return
         create: (async () => null) as any,
       };
       const wrapped = wrapAdapter(innerAdapter, provider, COLUMN_MAP);

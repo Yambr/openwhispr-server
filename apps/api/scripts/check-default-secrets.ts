@@ -24,14 +24,15 @@ import { fileURLToPath } from "node:url";
 //   - tsup --format cjs strips import.meta; we fall back to __dirname which
 //     CJS provides natively at runtime (and which the bundle injects).
 // Using a typeof guard keeps both paths first-class.
+// Phase 52 / Plan 52-09 — biome 2.x flagged the old `biome-ignore`
+// comments as unused because the underlying rules no longer fire on
+// this construct (biome handles `globalThis.__dirname` and the
+// `typeof __dirname !== "undefined"` guard natively). Strip the
+// stale suppressions; runtime behaviour identical.
 const here =
   typeof import.meta?.url === "string"
     ? dirname(fileURLToPath(import.meta.url))
-    : // biome-ignore lint/correctness/noUndeclaredVariables: __dirname is a CJS runtime global
-      // biome-ignore lint/style/noNonNullAssertion: CJS bundle guarantees __dirname
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      ((globalThis as unknown as { __dirname?: string }).__dirname ??
-      // biome-ignore lint/correctness/noUndeclaredVariables: CJS-only fallback
+    : ((globalThis as { __dirname?: string }).__dirname ??
       (typeof __dirname !== "undefined" ? __dirname : ""));
 
 // In the container image the deny-list ships at /app/tools/bootstrap/default-secrets.txt

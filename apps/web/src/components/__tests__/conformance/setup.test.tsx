@@ -53,7 +53,6 @@ function Wrap({ children }: { children: React.ReactNode }) {
 
 beforeEach(() => {
   // Minimal IntersectionObserver stub for happy-dom (the API is absent there).
-  // biome-ignore lint/suspicious/noExplicitAny: minimal IO shim
   (globalThis as any).IntersectionObserver = class {
     observe(): void {}
     disconnect(): void {}

@@ -10,9 +10,9 @@ apps/api/src/index.ts:321  # issue-51-13c-audit-ctx — FastifyRequest → audit
 apps/api/src/index.ts:349  # issue-51-13c-tx-bridge-ssrf — same TransactionalDb narrowing for ssrf-audit path
 apps/api/src/index.ts:384  # issue-51-13c-audit-ctx-ssrf — same audit-ctx narrowing on ssrf path
 apps/api/src/index.ts:420  # issue-51-13c-db-execute-shape — opts.db.execute() structural surface for licensing probe
-apps/api/src/index.ts:607  # issue-51-13c-auth-like — buildAuth() returns AuthInstance; dual-auth-hook consumes AuthLike (api.getSession+handler); structural-compat cast at the boundary
-apps/api/src/index.ts:663  # issue-51-13c-redis-narrow — ioredis client → RedisLike narrow subset (get/set only)
-apps/api/src/index.ts:700  # issue-51-13c-valkey-widen — RedisLike → ioredis.Redis for sched plugin; load-bearing on the dep-check structural typing
+apps/api/src/index.ts:608  # issue-51-13c-auth-like — buildAuth() returns AuthInstance; dual-auth-hook consumes AuthLike (api.getSession+handler); structural-compat cast at the boundary
+apps/api/src/index.ts:664  # issue-51-13c-redis-narrow — ioredis client → RedisLike narrow subset (get/set only)
+apps/api/src/index.ts:701  # issue-51-13c-valkey-widen — RedisLike → ioredis.Redis for sched plugin; load-bearing on the dep-check structural typing
 apps/api/src/lib/api-error-status.ts:52  # issue-51-13c-api-error-status — better-auth APIError.status field type drifts across minors (string-name vs number); narrow probe documented at L18-22
 apps/web/src/components/screens/account/SessionsTable.tsx:10  # issue-31-debt-suppression
 apps/web/src/lib/form-utils.ts:34  # issue-31-debt-suppression
@@ -30,6 +30,6 @@ apps/worker/src/db/app-pool.ts:142  # issue-31-debt-suppression-pg-typing
 apps/worker/src/jobs/reconciliation-discrepancy.ts:58  # issue-31-debt-suppression
 packages/data/src/seed/conformance.ts:241  # issue-31-debt-suppression
 packages/data/src/seed/conformance.ts:246  # issue-31-debt-suppression
-apps/api/src/auth.ts:323  # issue-41-better-auth-adapter-cast — wrapAdapter returns the lens-wrapped adapter; Better Auth's drizzleAdapter return-type is opaque, requires cast at the Phase 33 lens boundary (line drifted 308 → 323 by 41-e ENCRYPTED_COLUMNS_MAP comment expansion)
-apps/api/src/auth.ts:570  # issue-41-better-auth-instance-cast — betterAuth() return type doesn't extend AuthInstance interface declared in apps/api/src/types; cast preserves the project's narrowed type (line drifted 555 → 570 by 41-e)
+apps/api/src/auth.ts:344  # issue-41-better-auth-adapter-cast — wrapAdapter returns the lens-wrapped adapter; Better Auth's drizzleAdapter return-type is opaque, requires cast at the Phase 33 lens boundary (line drifted 308 → 323 → 344 by 41-e ENCRYPTED_COLUMNS_MAP + 52-05 FallbackLog interface)
+apps/api/src/auth.ts:591  # issue-41-better-auth-instance-cast — betterAuth() return type doesn't extend AuthInstance interface declared in apps/api/src/types; cast preserves the project's narrowed type (line drifted 555 → 570 → 591 by 41-e + 52-05)
 apps/web/src/lib/auth-client.ts:75  # issue-51-11b-extended-auth-client-centralised — single double-cast that unifies the 4 previously-scattered call-site casts via ExtendedAuthClient

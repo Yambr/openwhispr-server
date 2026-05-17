@@ -102,7 +102,6 @@ const ENCRYPTED_MAP: EncryptedColumnMap = {
 
 let container: StartedPostgreSqlContainer;
 let ownerPool: Pool;
-// biome-ignore lint/suspicious/noExplicitAny: Better-Auth instance type leaks zod-internals
 let auth: any;
 
 beforeAll(async () => {
@@ -154,12 +153,7 @@ beforeAll(async () => {
   const keyProvider = new EnvKeyProvider();
   auth = betterAuth({
     database: ((options: unknown) =>
-      wrapAdapter(
-        // biome-ignore lint/suspicious/noExplicitAny: factory return type leaks Better-Auth internals
-        (factory as any)(options),
-        keyProvider,
-        ENCRYPTED_MAP,
-      )) as never,
+      wrapAdapter((factory as any)(options), keyProvider, ENCRYPTED_MAP)) as never,
     secret: process.env.BETTER_AUTH_SECRET,
     baseURL: "http://localhost:3000",
     emailAndPassword: { enabled: true, requireEmailVerification: false },

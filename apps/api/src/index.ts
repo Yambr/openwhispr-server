@@ -457,8 +457,9 @@ export const buildApp = async (opts: BuildAppOptions = {}): Promise<FastifyInsta
             : Array.isArray(newBearerHeader)
               ? String(newBearerHeader[0] ?? "")
               : "";
-        const oldBearer = extractBearer(req.headers["authorization"]);
+        const oldBearer = extractBearer(req.headers.authorization);
         if (
+          opts.db &&
           newBearer.length > 0 &&
           oldBearer &&
           newBearer !== oldBearer &&
@@ -475,7 +476,7 @@ export const buildApp = async (opts: BuildAppOptions = {}): Promise<FastifyInsta
             // overlap CONTRACT is preserved across the three storage
             // shapes the project shipped (bytea-SHA256 → plaintext →
             // fingerprint-only).
-            await recPrev(opts.db!, req.tenant, req.sessionId, oldBearer);
+            await recPrev(opts.db, req.tenant, req.sessionId, oldBearer);
           } catch (err) {
             req.log?.warn?.({ err }, "recordPreviousToken failed (Plan 08 onSend hook)");
           }

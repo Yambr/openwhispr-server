@@ -41,14 +41,6 @@ export interface ReconciliationDailyCheckDeps {
   env?: (key: string) => string | undefined;
 }
 
-interface DriftRow {
-  tenant_id: string;
-  litellm_rows: number;
-  litellm_spend_cents: number;
-  ledger_rows: number;
-  ledger_spend_cents: number;
-}
-
 const meter = metrics.getMeter("worker.reconciliation");
 const driftStore = new Map<string, { drift_pct: number; drift_usd_cents: number }>();
 

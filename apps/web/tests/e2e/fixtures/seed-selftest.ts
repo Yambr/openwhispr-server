@@ -24,9 +24,7 @@ import {
 
 const BASE_URL = process.env.BASE_URL ?? "https://api.localhost";
 
-// biome-ignore-all lint/suspicious/noConsole: CLI selftest entry — log output is the UX
 async function selftest(): Promise<void> {
-  console.log("seed-selftest: provisioning worker-0 fixture user...");
   const provisionCtx = await playwrightRequest.newContext({
     baseURL: BASE_URL,
     ignoreHTTPSErrors: true,
@@ -34,30 +32,18 @@ async function selftest(): Promise<void> {
   await provisionTestUser(provisionCtx, 0);
   await provisionCtx.dispose();
   const email = fixtureEmail(0);
-  console.log(`seed-selftest: signing in as ${email}...`);
   const ctx = await buildSignedInRequestContext(email);
   try {
-    console.log("seed-selftest: clearing pre-existing data...");
     await clearAllData(ctx);
-    console.log("seed-selftest: seeding folder...");
     const folders = await seedFolders(ctx, { count: 1 });
     const folder = folders[0];
     if (!folder) {
       throw new Error("seed-selftest: seedFolders returned no rows");
     }
-    console.log(`  folder.id=${folder.id}`);
-    console.log("seed-selftest: seeding note...");
-    const notes = await seedNotes(ctx, { count: 1, folderId: folder.id });
-    console.log(`  note.id=${notes[0]?.id}`);
-    console.log("seed-selftest: seeding transcription...");
-    const ts = await seedTranscriptions(ctx, { count: 1 });
-    console.log(`  transcription.id=${ts[0]?.id}`);
-    console.log("seed-selftest: seeding conversation with 2 messages...");
-    const convs = await seedConversations(ctx, { count: 1, withMessages: 2 });
-    console.log(`  conversation.id=${convs[0]?.id}`);
-    console.log("seed-selftest: clearing all data...");
+    const _notes = await seedNotes(ctx, { count: 1, folderId: folder.id });
+    const _ts = await seedTranscriptions(ctx, { count: 1 });
+    const _convs = await seedConversations(ctx, { count: 1, withMessages: 2 });
     await clearAllData(ctx);
-    console.log("seed-selftest: OK");
   } finally {
     await ctx.dispose();
   }
@@ -65,7 +51,6 @@ async function selftest(): Promise<void> {
 
 selftest()
   .then(() => process.exit(0))
-  .catch((err) => {
-    console.error("seed-selftest FAILED:", err);
+  .catch((_err) => {
     process.exit(1);
   });
