@@ -102,7 +102,7 @@ function k6Adapter(): HttpClient {
     // verbatim — k6's http.request will switch encoding on type
     // identity alone.
     httpFile(bytes: Uint8Array, filename: string, contentType: string) {
-      return http.file(bytes, filename, contentType) as unknown as ReturnType<
+      return http.file(bytes.buffer as ArrayBuffer, filename, contentType) as unknown as ReturnType<
         HttpClient["httpFile"]
       >;
     },

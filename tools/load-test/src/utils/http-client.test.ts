@@ -63,6 +63,11 @@ describe("createK6Adapter()", () => {
       adapter.ws("wss://example/test", params, () => undefined);
       expect(spy).toHaveBeenCalledTimes(1);
       const call = spy.mock.calls[0];
+      // Phase 52 / Plan 52-08 — `spy.mock.calls[0]` is typed
+      // `unknown[] | undefined` under strictNullChecks; we just
+      // asserted toHaveBeenCalledTimes(1) so it's non-null. Narrow
+      // explicitly so the subsequent `call[N]` indexes typecheck.
+      if (!call) throw new Error("expected spy call");
       expect(call[0]).toBe("wss://example/test");
       // The protocols slot MUST be null — not the params object.
       expect(call[1]).toBeNull();

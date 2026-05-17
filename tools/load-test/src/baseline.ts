@@ -82,7 +82,7 @@ function k6Adapter(): HttpClient {
       return { status: 101 };
     },
     httpFile(bytes: Uint8Array, filename: string, contentType: string) {
-      return http.file(bytes, filename, contentType) as unknown as ReturnType<
+      return http.file(bytes.buffer as ArrayBuffer, filename, contentType) as unknown as ReturnType<
         HttpClient["httpFile"]
       >;
     },
