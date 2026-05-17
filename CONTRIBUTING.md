@@ -47,17 +47,34 @@ The English-only rule applies to all committed source artifacts (code, docs, com
 
 ## Running the suite
 
+Two canonical aggregate targets. Prefer these over chaining the
+sub-targets manually — they enforce the same ordering CI uses.
+
 ```bash
-make lint         # biome + lint-english
-make typecheck    # tsc -p (every workspace)
-make test         # vitest run --coverage (>= 85% lines / >= 80% branches)
+make verify        # fast PR loop (~3–5 min): lockers + lint + typecheck + tests
+make release-gate  # full pre-tag sweep (~30–45 min): verify + contracts +
+                   # compose up + smoke + e2e-cjm + load-smoke
+```
+
+Sub-targets (for fix-until-green loops on a single failing stage):
+
+```bash
+make lint                 # biome + lint-english
+make typecheck            # tsc -p (every workspace)
+make test                 # vitest run --coverage (>= 85% lines / >= 80% branches)
+make contract-test        # wire-surface contracts (mock-LiteLLM)
+make smoke                # vitest probes against live https://*.localhost
+make e2e-cjm              # Playwright + Cucumber on a hermetic compose project
+make load-smoke           # k6 plateau (Speaches + mock-LiteLLM, ≤5 VU × ≤60 s)
 pnpm test:mutation:incremental   # Stryker against changed files
 ```
 
 ## PR checklist
 
 - [ ] Tests written first
-- [ ] All `make test` checks pass locally
+- [ ] `make verify` passes locally
+- [ ] `make release-gate` passes locally for PRs touching compose/,
+      charts/, wire-schemas, or any auth-related route
 - [ ] PR template "Tests First Checklist" filled
 - [ ] No Cyrillic outside `packages/i18n/locales/ru/**`
 - [ ] Conventional Commit messages
