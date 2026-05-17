@@ -19,6 +19,16 @@ http:
       service: api-svc
       entryPoints: [websecure]
       tls: {}
+    # Phase 53 — auth-free Fastify probes (Plan 06-04). The base `api`
+    # router is constrained to /api/* so bare-root /livez, /readyz,
+    # /startupz, /healthz fall outside its match. Re-expose them via
+    # their own router so the Phase 6 e2e harness + external monitoring
+    # can hit them via the canonical https://api.localhost ingress.
+    api-probes:
+      rule: "Host(`api.localhost`) && (Path(`/livez`) || Path(`/readyz`) || Path(`/startupz`) || Path(`/healthz`))"
+      service: api-svc
+      entryPoints: [websecure]
+      tls: {}
     grafana:
       rule: "Host(`grafana.localhost`)"
       service: grafana-svc

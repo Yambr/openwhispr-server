@@ -78,7 +78,21 @@ export const HERMETIC_ENV: Record<string, string> = {
   MOCK_DIARIZATION: "true",
 };
 
-const COMPOSE_FILE = "docker-compose.yml";
+// Phase 53 — Plan 14 moved observability (grafana, loki, otel-collector,
+// tempo, mimir) into the `compose/docker-compose.observability.yml`
+// overlay. Phase 6 e2e helpers (`phase6BringStackUp` + `forwardThrough*`)
+// still rely on `grafana` being part of the spawned stack to validate
+// log/trace propagation, so the canonical phase 6 file list layers the
+// observability overlay on top of the slim-core base file.
+// Phase 14 / Plan 14-03 moved Traefik (with its `https://api.localhost`
+// + `:8443` realtime entrypoint TLS termination) to the ingress overlay.
+// Phase 6 e2e harness asserts against BACKEND_URL=https://api.localhost
+// so we layer the ingress overlay alongside observability into the base.
+const COMPOSE_FILES = [
+  "docker-compose.yml",
+  "compose/docker-compose.observability.yml",
+  "compose/docker-compose.ingress.yml",
+];
 
 /**
  * Default boot timeout. The api healthcheck depends on PG + Valkey +
@@ -270,8 +284,8 @@ export async function phase6BringStackUp(
   // recreation cost (~10-20s extra per boot).
   const composeFiles: string | string[] =
     opts.overrideComposeFiles && opts.overrideComposeFiles.length > 0
-      ? [COMPOSE_FILE, ...opts.overrideComposeFiles]
-      : COMPOSE_FILE;
+      ? [...COMPOSE_FILES, ...opts.overrideComposeFiles]
+      : COMPOSE_FILES;
   const env = await new DockerComposeEnvironment(REPO_ROOT, composeFiles)
     .withProjectName(projectName)
     .withProfiles("default")
@@ -313,6 +327,9 @@ export async function phase6BringStackUp(
   // Belt-and-suspenders: poll Traefik → /livez until 200 so the api
   // is actually serving (the docker HEALTHCHECK guarantees the
   // container reports healthy but Traefik routing may still settle).
+  //
+  // Phase 53 — Traefik dynamic config gained an `api-probes` router that
+  // exposes /livez, /readyz, /startupz, /healthz alongside /api/*.
   await pollUrl(`${BACKEND_URL}/livez`, {
     expectStatus: 200,
     deadlineMs: 60_000,
@@ -337,7 +354,10 @@ export async function phase6BringStackUp(
     // `/__test/fetch` debug route.  This caused the 12d-deferred
     // ssrf-block test to 404 on the test surface despite the api
     // healthcheck passing.
-    const seedFileArgs: string[] = ["-f", COMPOSE_FILE];
+    const seedFileArgs: string[] = [];
+    for (const f of COMPOSE_FILES) {
+      seedFileArgs.push("-f", f);
+    }
     for (const f of opts.overrideComposeFiles ?? []) {
       seedFileArgs.push("-f", f);
     }
