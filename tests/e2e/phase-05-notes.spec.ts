@@ -109,7 +109,7 @@ describe("e2e — /api/notes/* full lifecycle (real compose stack)", () => {
       body: JSON.stringify({ query: "" }),
     });
     expect(emptySearch.status).toBe(400);
-    expect(() => ErrorEnvelope.parse(await emptySearch.json())).not.toThrow();
+    expect(async () => ErrorEnvelope.parse(await emptySearch.json())).not.toThrow();
 
     // Soft-delete idB.
     const del = await jar.fetch(`${BACKEND_URL}/api/notes/delete`, {
@@ -161,7 +161,7 @@ describe("e2e — /api/notes/* full lifecycle (real compose stack)", () => {
       }
       const res = await fetch(`${BACKEND_URL}${p.url}`, init);
       expect(res.status, `${p.method} ${p.url}`).toBe(401);
-      expect(() => ErrorEnvelope.parse(await res.json())).not.toThrow();
+      expect(async () => ErrorEnvelope.parse(await res.json())).not.toThrow();
     }
   });
 });

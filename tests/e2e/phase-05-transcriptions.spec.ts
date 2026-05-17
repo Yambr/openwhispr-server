@@ -131,7 +131,7 @@ describe("e2e — /api/transcriptions/* full lifecycle (real compose stack)", ()
       }),
     });
     expect(ghost.status).toBe(404);
-    expect(() => ErrorEnvelope.parse(await ghost.json())).not.toThrow();
+    expect(async () => ErrorEnvelope.parse(await ghost.json())).not.toThrow();
   });
 
   it("401 envelope on every transcriptions route when unauthenticated", async () => {
@@ -150,7 +150,7 @@ describe("e2e — /api/transcriptions/* full lifecycle (real compose stack)", ()
       }
       const res = await fetch(`${BACKEND_URL}${p.url}`, init);
       expect(res.status, `${p.method} ${p.url}`).toBe(401);
-      expect(() => ErrorEnvelope.parse(await res.json())).not.toThrow();
+      expect(async () => ErrorEnvelope.parse(await res.json())).not.toThrow();
     }
   });
 });

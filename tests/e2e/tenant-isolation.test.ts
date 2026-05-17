@@ -45,6 +45,11 @@ async function buildProbeApp(): Promise<FastifyInstance> {
   // expected to fail (module deleted) — the test's `beforeEach` catches
   // the ENOENT and registers nothing, simulating the post-delete state.
   try {
+    // @ts-expect-error issue-52-07-deleted-module: tenant.js was deleted
+    // in Phase 34 (variant a / per-route opt-in). This test deliberately
+    // probes the post-delete runtime state; TS sees the absent module
+    // statically and reports TS2307. The runtime try/catch handles the
+    // ENOENT / ERR_MODULE_NOT_FOUND and registers nothing.
     const mod = await import("../../apps/api/src/middleware/tenant.js");
     await app.register(mod.tenantPlugin);
   } catch (err) {
