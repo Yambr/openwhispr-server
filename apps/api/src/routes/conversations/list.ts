@@ -18,6 +18,7 @@
 import { type ExecutableTx, type TransactionalDb, withTenant } from "@openwhispr/data";
 import { sql } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
+import { z } from "zod";
 import { AuthError } from "../../errors.js";
 import {
   buildKeysetOrderLimit,
@@ -36,12 +37,16 @@ export interface ConversationsListDeps {
   db: TransactionalDb<ExecutableTx>;
 }
 
-interface ListQuery {
-  limit?: string;
-  before?: string;
-  since?: string;
-  include?: string;
-}
+// Plan 51-12c — explicit querystring schema for LOCKER-04 invariant 14.
+const ListQuerySchema = z
+  .object({
+    limit: z.string().optional(),
+    before: z.string().optional(),
+    since: z.string().optional(),
+    include: z.string().optional(),
+  })
+  .strict();
+type ListQuery = z.infer<typeof ListQuerySchema>;
 
 interface ConversationWithMessagesRow extends CloudConversationRow {
   messages: CloudMessageRow[] | null;
@@ -52,6 +57,8 @@ export const buildConversationsListRoutes = (deps: ConversationsListDeps) =>
     app.route({
       method: "GET",
       url: "/api/conversations/list",
+      // Plan 51-12c — schema:querystring for LOCKER-04.
+      schema: { querystring: ListQuerySchema },
       config: { rateLimit: { max: 120, timeWindow: "1 minute" } },
       handler: async (req, reply) => {
         if (!req.user || !req.tenant) {

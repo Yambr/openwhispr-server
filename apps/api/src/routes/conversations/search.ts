@@ -42,6 +42,8 @@ export const buildConversationsSearchRoutes = (deps: ConversationsSearchDeps) =>
     app.route({
       method: "POST",
       url: "/api/conversations/search",
+      // Plan 51-12c — schema:body for LOCKER-04.
+      schema: { body: SearchRequestSchema },
       config: { rateLimit: { max: 60, timeWindow: "1 minute" } },
       handler: async (req, reply) => {
         if (!req.user || !req.tenant) {

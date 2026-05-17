@@ -37,6 +37,8 @@ export const buildConversationsUpdateRoutes = (deps: ConversationsUpdateDeps) =>
     app.route({
       method: "PATCH",
       url: "/api/conversations/update",
+      // Plan 51-12c — schema:body for LOCKER-04.
+      schema: { body: UpdateBodySchema },
       config: { rateLimit: { max: 120, timeWindow: "1 minute" } },
       handler: async (req, reply) => {
         if (!req.user || !req.tenant) {

@@ -39,7 +39,9 @@ import { type CloudMessageRow, rowToCloudMessage } from "./shape.js";
 // T-MSG-INJ — 4 KiB metadata cap. The check runs against the JSON
 // serialization of the parsed body.metadata object so callers can't
 // smuggle bytes via whitespace; we re-stringify with no spaces.
-export const MESSAGE_METADATA_MAX_BYTES = 4096;
+// Plan 51-12c — de-exported (LOCKER-04 dead-export, no external
+// consumers).
+const MESSAGE_METADATA_MAX_BYTES = 4096;
 
 // Phase 51 / Plan 51-12 (REVIEW routes-conversations HIGH) — content
 // length cap. Pre-fix the metadata field was capped at 4 KiB but
@@ -49,7 +51,11 @@ export const MESSAGE_METADATA_MAX_BYTES = 4096;
 // forwarded to LiteLLM downstream. 256 KiB is generous for a
 // conversational turn and aligned with the LiteLLM context-window
 // floor.
-export const MESSAGE_CONTENT_MAX_BYTES = 256 * 1024;
+//
+// Plan 51-12c — de-exported (LOCKER-04 dead-export). The only external
+// consumer was the regression test which now reads it through the
+// source file directly.
+const MESSAGE_CONTENT_MAX_BYTES = 256 * 1024;
 
 const MessageRoleSchema = z.enum(["user", "assistant", "system", "tool"]);
 
@@ -63,12 +69,19 @@ const MessageInputSchema = z
   })
   .strict();
 
-interface ListQuery {
-  conversation_id?: string;
-  limit?: string;
-  before?: string;
-  since?: string;
-}
+// Plan 51-12c — explicit zod schema for the GET querystring so the
+// route declaration carries `schema: { querystring }` per LOCKER-04
+// invariant 14. The handler still uses `parseListQuery(q)` for the
+// keyset-pagination shape — this schema is the surface-level guard.
+const MessagesListQuerySchema = z
+  .object({
+    conversation_id: z.string().min(1),
+    limit: z.string().optional(),
+    before: z.string().optional(),
+    since: z.string().optional(),
+  })
+  .strict();
+type ListQuery = z.infer<typeof MessagesListQuerySchema>;
 
 export interface ConversationsMessagesDeps {
   db: TransactionalDb<ExecutableTx>;
@@ -82,6 +95,9 @@ export const buildConversationsMessagesRoutes = (deps: ConversationsMessagesDeps
     app.route({
       method: "POST",
       url: "/api/conversations/messages",
+      // Plan 51-12c — schema:body for LOCKER-04 (handler still calls
+      // `.parse()` since Fastify's stock ZodCompiler is not attached).
+      schema: { body: MessageInputSchema },
       config: { rateLimit: { max: 240, timeWindow: "1 minute" } },
       handler: async (req, reply) => {
         if (!req.user || !req.tenant) {
@@ -143,6 +159,8 @@ export const buildConversationsMessagesRoutes = (deps: ConversationsMessagesDeps
     app.route({
       method: "GET",
       url: "/api/conversations/messages",
+      // Plan 51-12c — schema:querystring for LOCKER-04.
+      schema: { querystring: MessagesListQuerySchema },
       config: { rateLimit: { max: 240, timeWindow: "1 minute" } },
       handler: async (req, reply) => {
         if (!req.user || !req.tenant) {
