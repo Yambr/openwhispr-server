@@ -72,10 +72,17 @@ function readOidcEnv(): OidcEnv | null {
 function extractEmbeddedProtocol(rawCb: string): string | undefined {
   const m = /[?&]protocol=([^&]+)/.exec(rawCb);
   if (!m || !m[1]) return undefined;
+  // Phase 51 / Plan 51-10 (REVIEW api-routes-rest HIGH HR-03) —
+  // pre-fix the swallowed decode error returned the RAW encoded
+  // value, which then bypassed the scheme allowlist (the allowlist
+  // expected decoded `openwhispr-app://` etc., not `openwhispr-app%3A//`).
+  // The strict contract is: decode succeeds → return decoded; else
+  // return `undefined` so the caller falls back to the documented
+  // default protocol.
   try {
     return decodeURIComponent(m[1]);
   } catch {
-    return m[1];
+    return undefined;
   }
 }
 

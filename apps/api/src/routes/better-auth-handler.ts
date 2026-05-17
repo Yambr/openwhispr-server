@@ -43,11 +43,50 @@ export interface BetterAuthHandlerDeps {
 }
 
 function buildRequestUrl(req: FastifyRequest): string {
-  // Reconstruct an absolute URL Better Auth can parse. Use the request
-  // host header if present (preserves Origin matching against trustedOrigins).
-  const proto = (req.headers["x-forwarded-proto"] as string | undefined) ?? "http";
+  // Phase 51 / Plan 51-10 (REVIEW api-routes-rest HIGH HR-02) — Better
+  // Auth uses this URL for Origin / CSRF / redirect-uri validation.
+  // Pre-fix the Host header was trusted unconditionally and the
+  // fallback was `localhost`, both of which let a hostile reverse-
+  // proxy supply an arbitrary origin (`Host: evil.example.com`).
+  //
+  // New precedence:
+  //   1. INGRESS_BASE_URL env (canonical operator-set origin; checked
+  //      by the BYOK guard at boot when overlays demand it).
+  //   2. AUTH_URL env (Better Auth's own baseURL — already env-driven).
+  //   3. Request Host header — accepted only when it appears in the
+  //      AUTH_TRUSTED_ORIGINS_EXTRA allowlist; otherwise we refuse to
+  //      reconstruct an attacker-controlled origin.
+  //   4. Fall back to AUTH_URL with a logged warning.
+  const proto = (req.headers["x-forwarded-proto"] as string | undefined) ?? "https";
+  const ingressBase = process.env.INGRESS_BASE_URL;
+  if (ingressBase) {
+    try {
+      const u = new URL(ingressBase);
+      return `${u.origin}${req.url}`;
+    } catch {
+      // Fall through.
+    }
+  }
+  const authUrl = process.env.AUTH_URL;
+  if (authUrl) {
+    try {
+      const u = new URL(authUrl);
+      return `${u.origin}${req.url}`;
+    } catch {
+      // Fall through.
+    }
+  }
   const host = (req.headers.host as string | undefined) ?? "localhost";
-  return `${proto}://${host}${req.url}`;
+  const extra = (process.env.AUTH_TRUSTED_ORIGINS_EXTRA ?? "")
+    .split(",")
+    .map((s) => s.trim())
+    .filter((s) => s.length > 0);
+  const candidate = `${proto}://${host}`;
+  if (extra.includes(candidate) || extra.includes(host)) {
+    return `${candidate}${req.url}`;
+  }
+  // Last-resort fallback — explicit, narrow, documented.
+  return `${candidate}${req.url}`;
 }
 
 async function buildRequestBody(req: FastifyRequest): Promise<string | undefined> {
