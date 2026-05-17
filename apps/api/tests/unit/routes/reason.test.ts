@@ -343,7 +343,12 @@ describe("POST /api/reason", () => {
     }
   });
 
-  it("echoes custom promptMode and matchType verbatim", async () => {
+  it("echoes custom promptMode and matchType verbatim (from documented enum)", async () => {
+    // Phase 51 / Plan 51-07 — promptMode and matchType are now bounded
+    // to the documented enum (default | cleanup | agent), and the
+    // handler still echoes the caller's value verbatim. Using
+    // `cleanup` + `agent` exercises the same echo contract without
+    // accepting wire-poison values.
     const { db } = makeFakeDb();
     const calls: ChatCompletionRequest[] = [];
     const litellm = makeFakeLitellm({ calls });
@@ -354,14 +359,30 @@ describe("POST /api/reason", () => {
       headers: { "content-type": "application/json" },
       payload: JSON.stringify({
         text: "x",
-        promptMode: "concise",
-        matchType: "literal",
+        promptMode: "cleanup",
+        matchType: "agent",
       }),
     });
     expect(res.statusCode).toBe(200);
     const parsed = ReasonResponse.parse(res.json());
-    expect(parsed.promptMode).toBe("concise");
-    expect(parsed.matchType).toBe("literal");
+    expect(parsed.promptMode).toBe("cleanup");
+    expect(parsed.matchType).toBe("agent");
+  });
+
+  it("rejects non-enum promptMode (Plan 51-07 / REVIEW wire-schemas HIGH)", async () => {
+    const { db } = makeFakeDb();
+    const litellm = makeFakeLitellm({ calls: [] });
+    app = buildApp({ db, litellm });
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/reason",
+      headers: { "content-type": "application/json" },
+      payload: JSON.stringify({
+        text: "x",
+        promptMode: "wire-poison-attempt",
+      }),
+    });
+    expect(res.statusCode).toBe(400);
   });
 
   it("falls back to provider='litellm' when model alias is unknown to bundled table", async () => {

@@ -5,10 +5,15 @@
 // rather than a test-helper package.
 //
 // Source of truth: BACKEND_SPEC.md §/api/check-user.
+//
+// Phase 51 / Plan 51-07 (REVIEW wire-schemas HIGH): the email field now
+// enforces RFC-5321 maximum length (254 bytes). This endpoint is
+// UNAUTHENTICATED — the pre-fix schema accepted multi-MB emails that
+// triggered an indexed-LIKE DB lookup per request.
 import { z } from "zod";
 
 // POST /api/check-user
-export const CheckUserRequest = z.object({ email: z.string().email() }).strict();
+export const CheckUserRequest = z.object({ email: z.string().email().max(254) }).strict();
 export type CheckUserRequest = z.infer<typeof CheckUserRequest>;
 
 export const CheckUserResponse = z.object({ exists: z.boolean() });
