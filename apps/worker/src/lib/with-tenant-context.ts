@@ -104,7 +104,12 @@ export function withTenantContext<S extends TenantJobSchema>(
     // so bad-shape jobs fail fast with a clear error and no resource
     // acquisition. `parse` throws `ZodError` on failure.
     const data = schema.parse(job.data) as z.infer<S>;
-    const tenantId = data.tenant_id;
+    // Phase 52 / Plan 52-03 — `z.infer<ZodTypeAny>.tenant_id` resolves to
+    // `unknown` (the schema generic isn't constrained at this seam).
+    // Coerce to string so the span attribute (OTel AttributeValue) +
+    // ALS slot (TenantContext.tenantId: string) shapes match. Runtime
+    // guard: caller schemas always include `tenant_id: z.string().uuid()`.
+    const tenantId: string = String(data.tenant_id);
     const jobId = job.id ?? "unknown";
 
     // Step 2: open span before MDC + ALS so the handler's logs land inside

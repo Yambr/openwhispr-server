@@ -23,13 +23,20 @@ export interface TypedQueue<S extends z.ZodTypeAny> {
   /** The underlying BullMQ Queue, for advanced operations. */
   readonly underlying: Queue;
   /** Schema-validated enqueue. Throws ZodError if `data` doesn't match. */
-  add(jobName: string, data: z.infer<S>, jobsOpts?: JobsOptions): Promise<ReturnType<Queue["add"]>>;
+  // Phase 52 / Plan 52-03 — `Awaited<>` unwraps `ReturnType<Queue["add"]>`
+  // which is itself `Promise<Job>` (BullMQ 5.x), so the surrounding
+  // `Promise<>` wrapper doesn't double up to `Promise<Promise<Job>>`.
+  add(
+    jobName: string,
+    data: z.infer<S>,
+    jobsOpts?: JobsOptions,
+  ): Promise<Awaited<ReturnType<Queue["add"]>>>;
   /** Schema-validated `upsertJobScheduler`. Parses the inner job data when present. */
   upsertJobScheduler(
     schedulerId: string,
     repeatOpts: Parameters<Queue["upsertJobScheduler"]>[1],
     jobData?: { name: string; data: z.infer<S> },
-  ): Promise<ReturnType<Queue["upsertJobScheduler"]>>;
+  ): Promise<Awaited<ReturnType<Queue["upsertJobScheduler"]>>>;
   /** Close the underlying queue (BullMQ teardown). */
   close(): Promise<void>;
 }
