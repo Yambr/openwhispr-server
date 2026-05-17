@@ -47,11 +47,19 @@ export const buildNotesDeleteAllRoutes = (deps: NotesDeleteAllDeps) =>
         const result = await withTenant(deps.db, tenantId, async (tx) => {
           // Count first — surface 400 BEFORE any DELETE runs.
           // 1000-row cap per Open Q#6.
+          // Phase 51 / Plan 51-12 (REVIEW routes-conversations HIGH) —
+          // count MUST cover the same rowset the DELETE will purge.
+          // Pre-fix the count filtered `deleted_at IS NULL` (only live
+          // rows) but the DELETE below is total (live + tombstones).
+          // A user could soft-delete N rows via /notes/delete and then
+          // trigger an unbounded hard-purge that bypassed the
+          // MAX_INLINE_PURGE gate. The fix removes the `deleted_at IS
+          // NULL` predicate from the count so the gate accounts for
+          // tombstones too.
           const countRes = (await tx.execute(sql`
             SELECT COUNT(*)::int AS n
               FROM "notes"
              WHERE "user_id" = ${userId}::uuid
-               AND "deleted_at" IS NULL
           `)) as { rows?: { n: number | string }[] };
           const count = Number(countRes.rows?.[0]?.n ?? 0);
           if (count > MAX_INLINE_PURGE) {
