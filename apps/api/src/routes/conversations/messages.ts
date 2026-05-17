@@ -41,13 +41,23 @@ import { type CloudMessageRow, rowToCloudMessage } from "./shape.js";
 // smuggle bytes via whitespace; we re-stringify with no spaces.
 export const MESSAGE_METADATA_MAX_BYTES = 4096;
 
+// Phase 51 / Plan 51-12 (REVIEW routes-conversations HIGH) — content
+// length cap. Pre-fix the metadata field was capped at 4 KiB but
+// `content` was unconstrained (`z.string()`); the asymmetry meant
+// every message INSERT was bounded only by Fastify's global
+// bodyLimit, producing a cost-multiplier vector when content is
+// forwarded to LiteLLM downstream. 256 KiB is generous for a
+// conversational turn and aligned with the LiteLLM context-window
+// floor.
+export const MESSAGE_CONTENT_MAX_BYTES = 256 * 1024;
+
 const MessageRoleSchema = z.enum(["user", "assistant", "system", "tool"]);
 
 const MessageInputSchema = z
   .object({
     conversation_id: z.string().uuid(),
     role: MessageRoleSchema,
-    content: z.string(),
+    content: z.string().max(MESSAGE_CONTENT_MAX_BYTES),
     metadata: z.record(z.string(), z.unknown()).nullable().optional(),
     client_message_id: z.string().optional(),
   })
