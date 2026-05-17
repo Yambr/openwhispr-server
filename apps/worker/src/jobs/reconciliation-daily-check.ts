@@ -21,10 +21,14 @@ import type { TypedQueue } from "../lib/typed-queue.js";
 import { withSystemContext } from "../lib/with-system-context.js";
 import type { reconciliationDiscrepancySchema } from "./reconciliation-discrepancy.js";
 
+// Phase 51 / Plan 51-05 (REVIEW CR-8) — both window fields OPTIONAL.
+// Scheduler no longer freezes them at install time; the handler
+// derives the 24-hour window from `job.timestamp` if absent. Explicit
+// backfill jobs may still pass the window.
 export const reconciliationDailyCheckSchema = z
   .object({
-    window_start: z.string().datetime(),
-    window_end: z.string().datetime(),
+    window_start: z.string().datetime().optional(),
+    window_end: z.string().datetime().optional(),
   })
   .strict();
 export type ReconciliationDailyCheckPayload = z.infer<typeof reconciliationDailyCheckSchema>;
@@ -121,6 +125,17 @@ export function buildReconciliationDailyCheckHandler(
       const pctThreshold = readThreshold(env, "RECONCILIATION_DRIFT_PCT_THRESHOLD", 0.5);
       const usdThreshold = readThreshold(env, "RECONCILIATION_DRIFT_USD_CENTS_THRESHOLD", 1);
 
+      // Phase 51 / Plan 51-05 (REVIEW CR-8) — the scheduler now ships
+      // empty payloads. Fall back to the last full UTC day [yesterday
+      // 00:00, today 00:00). Explicit window from a backfill job wins.
+      const utcMidnight = new Date(
+        Date.UTC(new Date().getUTCFullYear(), new Date().getUTCMonth(), new Date().getUTCDate()),
+      );
+      const fallbackEnd = utcMidnight.toISOString();
+      const fallbackStart = new Date(utcMidnight.getTime() - 24 * 60 * 60 * 1000).toISOString();
+      const windowStart = data.window_start ?? fallbackStart;
+      const windowEnd = data.window_end ?? fallbackEnd;
+
       // LiteLLM side: count + sum spend per tenant via end_user → users mapping.
       // We aggregate in two passes (LiteLLM DB, then app DB) and merge in JS
       // — simpler than a cross-DB FDW (we deliberately avoid postgres_fdw
@@ -137,7 +152,7 @@ export function buildReconciliationDailyCheckHandler(
           WHERE "startTime" >= $1::timestamptz
             AND "startTime" <  $2::timestamptz
           GROUP BY "end_user"`,
-        [data.window_start, data.window_end],
+        [windowStart, windowEnd],
       );
 
       const litellmByTenant = new Map<string, { row_count: number; spend_cents: number }>();
@@ -186,7 +201,7 @@ export function buildReconciliationDailyCheckHandler(
           WHERE created_at >= $1::timestamptz
             AND created_at <  $2::timestamptz
           GROUP BY tenant_id`,
-        [data.window_start, data.window_end],
+        [windowStart, windowEnd],
       );
       const ledgerByTenant = new Map<string, number>();
       for (const r of ledgerRows) ledgerByTenant.set(r.tenant_id, Number(r.row_count));
@@ -215,8 +230,8 @@ export function buildReconciliationDailyCheckHandler(
           breached++;
           await deps.discrepancyQueue.add("reconciliation-discrepancy", {
             tenant_id: tenantId,
-            since: data.window_start,
-            until: data.window_end,
+            since: windowStart,
+            until: windowEnd,
             drift_pct: driftPct,
             drift_usd_cents: driftUsd,
           });

@@ -26,7 +26,7 @@ apps/web/src/components/screens/auth/SignInForm.tsx:110  # issue-31-debt-suppres
 apps/web/src/components/screens/auth/VerifyEmailClient.tsx:82  # issue-31-debt-suppression
 apps/web/src/lib/form-utils.ts:34  # issue-31-debt-suppression
 apps/web/src/lib/form-utils.ts:35  # issue-31-debt-suppression
-apps/web/src/middleware.ts:60  # issue-31-debt-suppression
+apps/web/src/middleware.ts:107  # issue-31-debt-suppression
 apps/worker/src/db/app-pool.ts:61  # issue-31-debt-suppression-pg-typing
 apps/worker/src/db/app-pool.ts:70  # issue-31-debt-suppression-pg-typing
 apps/worker/src/db/app-pool.ts:74  # issue-31-debt-suppression-pg-typing

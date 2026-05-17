@@ -31,7 +31,7 @@ import { AsyncLocalStorage } from "node:async_hooks";
 import { trace } from "@opentelemetry/api";
 import { makePino } from "@openwhispr/observability";
 import type { Job } from "bullmq";
-import type { Pool } from "pg";
+import type { Pool, PoolClient } from "pg";
 import type { Logger } from "pino";
 import type { z } from "zod";
 
@@ -81,12 +81,21 @@ export interface WithTenantContextOptions {
  *               passes the owner pool (BYPASSRLS); tests can inject a
  *               testcontainer-backed pool.
  * @param handler Async function invoked with the parsed payload inside the
- *                transaction. May throw to trigger ROLLBACK.
+ *                transaction. Receives `(data, client)` where `client` is
+ *                the same `pg.PoolClient` the GUC was bound on; handlers
+ *                MUST run their tenant-scoped SQL through this client (or
+ *                through transactions started on it) so `app.tenant_id`
+ *                travels with the query. Reusing `pool.query()` from the
+ *                outer pool checks out a DIFFERENT connection without the
+ *                GUC and trips the app-pool RLS guard
+ *                (`TenantContextMissingError`). Plan 51-05 (REVIEW CR-7)
+ *                fix.
+ *                May throw to trigger ROLLBACK.
  */
 export function withTenantContext<S extends TenantJobSchema>(
   schema: S,
   pool: Pool,
-  handler: (data: z.infer<S>) => Promise<void>,
+  handler: (data: z.infer<S>, client: PoolClient) => Promise<void>,
   options: WithTenantContextOptions = {},
 ): (job: Job) => Promise<void> {
   const log = options.logger ?? baseLog;
@@ -130,7 +139,7 @@ export function withTenantContext<S extends TenantJobSchema>(
           // the SQL string. T-06-14 mitigation.
           await client.query("SELECT set_config('app.tenant_id', $1, true)", [tenantId]);
           try {
-            await handler(data);
+            await handler(data, client);
             await client.query("COMMIT");
           } catch (handlerErr) {
             await client.query("ROLLBACK");
