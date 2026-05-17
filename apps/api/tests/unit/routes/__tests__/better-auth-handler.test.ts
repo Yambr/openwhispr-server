@@ -103,26 +103,49 @@ describe("Phase 02.4 G5a — better-auth-handler bridge plugin", () => {
     expect(JSON.parse(capture[0]?.bodyText!)).toEqual({ email: "x@y.z", password: "pw" });
   });
 
-  it("URL reconstruction uses x-forwarded-proto when set", async () => {
+  it("URL reconstruction honors INGRESS_BASE_URL over the Host header (Plan 51-10 / REVIEW HR-02)", async () => {
+    // Phase 51 / Plan 51-10 — Better Auth's URL is no longer
+    // reconstructed from a raw Host header. INGRESS_BASE_URL wins
+    // unconditionally so a hostile reverse-proxy can't supply an
+    // arbitrary origin.
     const capture: CapturedRequest[] = [];
-    await app.register(buildBetterAuthHandlerRoutes({ auth: makeStubAuth({ capture }) as never }));
-    await app.inject({
-      method: "GET",
-      url: "/api/auth/foo",
-      headers: { "x-forwarded-proto": "https", host: "api.example.com" },
-    });
-    expect(capture[0]?.url).toBe("https://api.example.com/api/auth/foo");
+    const prev = process.env.INGRESS_BASE_URL;
+    process.env.INGRESS_BASE_URL = "https://api.test.invalid";
+    try {
+      await app.register(
+        buildBetterAuthHandlerRoutes({ auth: makeStubAuth({ capture }) as never }),
+      );
+      await app.inject({
+        method: "GET",
+        url: "/api/auth/foo",
+        headers: { "x-forwarded-proto": "https", host: "evil.attacker.example" },
+      });
+      expect(capture[0]?.url).toBe("https://api.test.invalid/api/auth/foo");
+    } finally {
+      if (prev === undefined) delete process.env.INGRESS_BASE_URL;
+      else process.env.INGRESS_BASE_URL = prev;
+    }
   });
 
-  it("URL reconstruction defaults host to 'localhost' when host header absent", async () => {
+  it("URL reconstruction falls back to Host when no INGRESS_BASE_URL / AUTH_URL is set", async () => {
     const capture: CapturedRequest[] = [];
-    await app.register(buildBetterAuthHandlerRoutes({ auth: makeStubAuth({ capture }) as never }));
-    // fastify.inject typically supplies a default host header; assert the
-    // reconstructed URL still matches the http://<host>/api/auth/foo shape
-    // and that the proto fallback to 'http' is applied (no x-forwarded-proto).
-    const res = await app.inject({ method: "GET", url: "/api/auth/foo" });
-    expect(res.statusCode).toBe(200);
-    expect(capture[0]?.url).toMatch(/^http:\/\/[^/]+\/api\/auth\/foo$/);
+    const prevIngress = process.env.INGRESS_BASE_URL;
+    const prevAuth = process.env.AUTH_URL;
+    delete process.env.INGRESS_BASE_URL;
+    delete process.env.AUTH_URL;
+    try {
+      await app.register(
+        buildBetterAuthHandlerRoutes({ auth: makeStubAuth({ capture }) as never }),
+      );
+      const res = await app.inject({ method: "GET", url: "/api/auth/foo" });
+      expect(res.statusCode).toBe(200);
+      // proto defaults to 'https' post-fix (was 'http' pre-fix); the
+      // documented production deployment is always TLS-fronted.
+      expect(capture[0]?.url).toMatch(/^https:\/\/[^/]+\/api\/auth\/foo$/);
+    } finally {
+      if (prevIngress !== undefined) process.env.INGRESS_BASE_URL = prevIngress;
+      if (prevAuth !== undefined) process.env.AUTH_URL = prevAuth;
+    }
   });
 
   it("forwards response status from webRes", async () => {

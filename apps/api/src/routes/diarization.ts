@@ -445,8 +445,21 @@ function handleSpeachesDiarization(deps: DiarizationDeps) {
       throw new ValidationError("FILE_TOO_LARGE", "file exceeds size limit");
     }
     const fileBuffer = Buffer.concat(chunks);
-    const fileMime = filePart.mimetype || "application/octet-stream";
-    const fileName = filePart.filename || "audio.wav";
+    // Phase 51 / Plan 51-10 (REVIEW api-routes-rest HIGH HR-01) —
+    // sanitize multipart-forwarded filename + content-type. Pre-fix
+    // these values were interpolated verbatim into the Content-
+    // Disposition / Content-Type headers of the outbound multipart
+    // body; a client supplying a CR/LF in the filename could smuggle
+    // an arbitrary request into the trusted Speaches upstream. Both
+    // values are now narrowed to a conservative character class
+    // BEFORE the multipart head is built.
+    const rawMime = filePart.mimetype || "application/octet-stream";
+    const fileMime = /^[a-zA-Z0-9.+\-/]+$/.test(rawMime) ? rawMime : "application/octet-stream";
+    const rawName = filePart.filename || "audio.wav";
+    // Strip everything that isn't an ASCII alnum / dot / dash / underscore.
+    // Result is always >=1 char (the fallback applies to empty results).
+    const safeNameCandidate = rawName.replace(/[^A-Za-z0-9._-]/g, "_").slice(0, 128);
+    const fileName = safeNameCandidate.length > 0 ? safeNameCandidate : "audio.wav";
 
     // Build the outgoing multipart envelope. We construct the body
     // explicitly (rather than via FormData) so the body type stays as
