@@ -97,10 +97,14 @@ export async function callProvider(opts: CallProviderOptions): Promise<CallProvi
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), TOTAL_TIMEOUT_MS);
   try {
+    // Phase 52 / Plan 52-04b — `exactOptionalPropertyTypes: true`
+    // refuses `body: undefined` (RequestInit's body is optional, must
+    // be omitted entirely when not present). Conditional spread keeps
+    // the call shape clean.
     const res = await fetch(opts.url, {
       method: opts.method,
       headers: opts.headers,
-      body: opts.body,
+      ...(opts.body !== undefined ? { body: opts.body } : {}),
       signal: ctrl.signal,
     });
 

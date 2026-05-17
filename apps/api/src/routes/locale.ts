@@ -54,7 +54,10 @@ export function resolveLocale(req: FastifyRequest): SupportedLocale {
   if (typeof lang === "string") {
     // i18next-http-middleware may return a fully-qualified tag like
     // `ru-RU`; squash to the primary subtag before checking.
-    const primary = lang.toLowerCase().split(/[-_]/)[0];
+    // Phase 52 / Plan 52-04b — `String.split()[0]` is `string | undefined`
+    // under `noUncheckedIndexedAccess`. Default to empty string so
+    // `isSupported("")` returns false and we fall through to `"en"`.
+    const primary = lang.toLowerCase().split(/[-_]/)[0] ?? "";
     if (isSupported(primary)) return primary;
   }
   return "en";

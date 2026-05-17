@@ -86,7 +86,14 @@ function quoteIdent(name: string): string {
  * Returns `{row, created}` where created=true iff the INSERT produced
  * a RETURNING row.
  */
-export async function createOrReturnExisting<T extends Record<string, unknown>>(
+// Phase 52 / Plan 52-04b — `T extends Record<string, unknown>` was
+// purely cosmetic (the function never indexes T; T only flows through
+// as the RETURNING row type). The constraint refused
+// `CloudConversationRow` / `CloudNoteRow` / etc. because their
+// typed-property-bag shape doesn't auto-satisfy `Record<string,
+// unknown>` (TS index-signature rule). Relax to `object` — still
+// rejects `string | number | boolean`, still types the return row.
+export async function createOrReturnExisting<T extends object>(
   tx: ExecutableTx,
   params: UpsertParams,
 ): Promise<UpsertResult<T>> {
