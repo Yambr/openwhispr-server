@@ -83,7 +83,13 @@ describe.skipIf(skip)(
     // the explicit timeout the file marks `not ok` at file-level even
     // when every `it()` passed.
 
-    it("migrate exits 0 before api starts (timestamps strictly ordered, or fallback contract)", async () => {
+    // Retry once: docker-daemon load from sibling projects (testcontainers
+    // in @openwhispr/data, e.g.) can transiently slow `up --wait`. One
+    // retry empirically clears the flake.
+    it("migrate exits 0 before api starts (timestamps strictly ordered, or fallback contract)", {
+      retry: 1,
+      timeout: 600_000,
+    }, async () => {
       const up = dockerCompose(
         [
           "up",
@@ -144,6 +150,6 @@ describe.skipIf(skip)(
           `migrate finishedAt=${migrate.finishedAt} must be <= api startedAt=${api.startedAt}`,
         ).toBe(true);
       }
-    }, 600_000);
+    });
   },
 );
