@@ -7,7 +7,7 @@ Scope: production source in `apps/**/src/**` + `packages/**/src/**`. Tests, tool
 
 ## Fix status (Phase 51)
 
-**12/12 CRITICAL closed. ~29/39 HIGH closed.**
+**12/12 CRITICAL closed. ~30/39 HIGH closed.**
 
 | CRITICAL | Fix commit |
 |---|---|
@@ -35,10 +35,10 @@ Scope: production source in `apps/**/src/**` + `packages/**/src/**`. Tests, tool
 - small-pkgs (1): EmailSender dedup (51-17)
 - web (4): observability javascript: vector (51-11) + INTERNAL_API_URL dedup (51-11b) + ExtendedAuthClient unification (51-11b) + notes-search href UUID guard (51-11c)
 - routes-conversations (3): notes-delete-all bypass + messages.content 256 KiB cap (51-12) + LOCKER-04 sweep conversations slice (51-12c)
-- api-core (2): token-rotation doc-truth (51-13) + console.warn bootstrap → pino (51-13b)
+- api-core (3): token-rotation doc-truth (51-13) + console.warn bootstrap → pino (51-13b) + as-unknown-as cluster 17→12 (51-13c)
 - redact MASTER_KEK + BETTER_AUTH_SECRET (51-09)
 
-**HIGH remaining** (~10): web 2 (CSRF, locale parity); routes-conversations 0 (conversations slice done; notes/folders LOCKER-04 sweep deferred to Phase 41 sweep); routes-transcriptions 5 (agent-stream AbortSignal forward, etc.); api-core 1 (as-unknown-as cluster); byok-guard 1 (bearer-in-query-value — partially covered by CR-10 fix); web 1 (CSRF deferred — Better Auth handles internally).
+**HIGH remaining** (~9): web 2 (CSRF, locale parity); routes-conversations 0 (conversations slice done; notes/folders LOCKER-04 sweep deferred to Phase 41 sweep); routes-transcriptions 5 (agent-stream AbortSignal forward, etc.); api-core 0 (51-13c closed the as-unknown-as cluster); byok-guard 1 (bearer-in-query-value — partially covered by CR-10 fix); web 1 (CSRF deferred — Better Auth handles internally).
 
 ## Aggregate counts
 
