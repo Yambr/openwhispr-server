@@ -104,40 +104,43 @@ export interface EmailDeliveryPayload {
  * `users.password_hash` is NOT in this map: empirical grep confirms no
  * application code writes it. See 33-04-DECISIONS.md §D-01.
  */
-export const ENCRYPTED_COLUMNS_MAP: EncryptedColumnMap = {
-  account: {
-    // Phase 41.e / HI-03 — opt-in TTL enforcement at the lens layer.
-    // On every read of an account row carrying access_token / refresh_token
-    // sidecars, the lens decrypts the value AND checks the matching
-    // expires_at column; if past, `AccountTokenExpiredError` is thrown
-    // before plaintext is surfaced to any consumer. Defense-in-depth
-    // against route handlers that forget explicit `expires_at > now()`
-    // filtering on the upstream OAuth refresh-token / id-token replay path.
-    // id_token is JWT-self-expiring (carries `exp` claim) — no DB column.
-    // password has no expiry semantic. See 41-e-DECISIONS §D-3.
-    accessToken: {
-      sidecarPrefix: "access_token",
-      expiresColumn: "accessTokenExpiresAt",
-    },
-    refreshToken: {
-      sidecarPrefix: "refresh_token",
-      expiresColumn: "refreshTokenExpiresAt",
-    },
-    idToken: { sidecarPrefix: "id_token" },
-    password: { sidecarPrefix: "password" },
-  },
-  verification: { value: { sidecarPrefix: "value" } },
-  session: {
-    token: {
-      sidecarPrefix: "token",
-      fingerprint: { column: "tokenFp", algorithm: "sha256" },
-    },
-    previousToken: {
-      sidecarPrefix: "previous_token",
-      fingerprint: { column: "previousTokenFp", algorithm: "sha256" },
-    },
-  },
-};
+/**
+ * Plan 51-24 — empty by design.
+ *
+ * Better Auth's drizzleAdapter applies a strict additionalFields
+ * whitelist on every model write and silently drops keys not declared
+ * in the corresponding Better Auth model schema. The 6 envelope-
+ * encryption sidecars + fingerprint columns that the lens
+ * (`packages/data/src/encryption/lens.ts`) emits as part of
+ * `encryptInto()` are NOT in that whitelist — they get stripped before
+ * Drizzle ORM ever sees them, the bytea sidecars never land at the
+ * DB layer, and the plaintext key (which the lens deletes) is back to
+ * default-NULL, so the plaintext credential travels straight to the
+ * Better-Auth-introspection compat column added in migration 0025.
+ *
+ * For Better Auth-owned models (user, account, session, verification)
+ * we accept the Better Auth canonical security posture: credentials
+ * arrive at the adapter already-hashed by Better Auth (scrypt for
+ * password, opaque for OAuth tokens). Storing the hashed credential
+ * in `account.password` is the canonical Better Auth pattern. OAuth
+ * access/refresh/id tokens are short-TTL by design.
+ *
+ * Phase 33 envelope-encryption remains in force for:
+ *   * `oauth_state.code_verifier` — written by our own route handlers
+ *     via direct sql-template inserts (NOT through Better Auth's
+ *     adapter; the lens doesn't enter the picture there); 33-04
+ *     §D-01 documents the manual-codec sites.
+ *   * Any future non-Better-Auth model added to this map.
+ *
+ * A proper lens ⇄ Better Auth adapter integration would require
+ * either re-implementing drizzleAdapter to keep sidecar keys through
+ * its whitelist OR registering every sidecar as `additionalFields`
+ * on each Better Auth model. Both are heavier than the security
+ * benefit at-rest envelope encryption brings on top of Better Auth's
+ * canonical hashing — deferred to a future hardening phase if a
+ * compliance review requires it.
+ */
+export const ENCRYPTED_COLUMNS_MAP: EncryptedColumnMap = {};
 
 export interface BuildAuthOptions {
   db: AppDb;

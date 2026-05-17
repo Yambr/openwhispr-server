@@ -212,33 +212,75 @@ describe("runMain — CLI entrypoint shape", () => {
   });
 
   it("returns 1 and diagnostics on stderr when a violation is present", () => {
+    // Plan 51-23 / 51-24 amended LOCKER-08 to inline-allowlist the 7
+    // Better-Auth-introspection-compat columns under the canonical
+    // schema paths. Use `code_verifier` — a FORBIDDEN_COLUMN that is
+    // NOT in LENS_INTROSPECTION_COMPAT — so the locker fires as
+    // expected.
     touchSchema(
-      "accounts.ts",
-      `${HEAD}export const accounts = pgTable("account", {\n  password: text("password"),\n});\n`,
+      "oauth_state.ts",
+      `${HEAD}export const oauthState = pgTable("oauth_state", {\n  codeVerifier: text("code_verifier"),\n});\n`,
     );
     const bufs = makeBuffers();
     const code = runMain({ root, stdout: bufs.stdout, stderr: bufs.stderr });
     expect(code).toBe(1);
-    expect(bufs.stderr.out).toMatch(/password/);
+    expect(bufs.stderr.out).toMatch(/code_verifier/);
     expect(bufs.stderr.out).toMatch(/text/);
     expect(bufs.stderr.out).toMatch(/LOCKER-PLAINTEXT-COLS|plaintext/i);
   });
 
   it("returns 1 listing every offender across multiple files", () => {
+    // Plan 51-23 / 51-24 — use forbidden columns that are NOT inline-
+    // allowlisted as Better-Auth-introspection-compat sentinels.
     touchSchema(
-      "accounts.ts",
-      `${HEAD}export const a = pgTable("account", {\n  accessToken: text("access_token"),\n  password: text("password"),\n});\n`,
+      "oauth_state.ts",
+      `${HEAD}export const o = pgTable("oauth_state", {\n  codeVerifier: text("code_verifier"),\n});\n`,
     );
     touchSchema(
-      "sessions.ts",
-      `${HEAD}export const s = pgTable("sessions", {\n  token: text("token"),\n});\n`,
+      "other.ts",
+      `${HEAD}export const x = pgTable("other", {\n  value: text("value"),\n});\n`,
     );
     const bufs = makeBuffers();
     const code = runMain({ root, stdout: bufs.stdout, stderr: bufs.stderr });
     expect(code).toBe(1);
-    expect(bufs.stderr.out).toMatch(/access_token/);
+    expect(bufs.stderr.out).toMatch(/code_verifier/);
+    expect(bufs.stderr.out).toMatch(/value/);
+    expect(bufs.stderr.out).toMatch(/(other.*value|value.*other)/s);
+  });
+
+  it("Plan 51-23/24 amendment — allowlists the 7 Better-Auth-introspection-compat columns", () => {
+    // The constitutional amendment lets exactly these 7 file:column
+    // tuples through the locker. Any other plaintext credential column
+    // declaration (or these 7 at a different path) still BLOCKs.
+    touchSchema(
+      "accounts.ts",
+      `${HEAD}export const accounts = pgTable("account", {\n  password: text("password"),\n  accessToken: text("access_token"),\n  refreshToken: text("refresh_token"),\n  idToken: text("id_token"),\n});\n`,
+    );
+    touchSchema(
+      "sessions.ts",
+      `${HEAD}export const sessions = pgTable("sessions", {\n  token: text("token"),\n  previousToken: text("previous_token"),\n});\n`,
+    );
+    touchSchema(
+      "verifications.ts",
+      `${HEAD}export const verifications = pgTable("verification", {\n  value: text("value"),\n});\n`,
+    );
+    const bufs = makeBuffers();
+    const code = runMain({ root, stdout: bufs.stdout, stderr: bufs.stderr });
+    expect(code).toBe(0);
+    expect(bufs.stdout.out).toMatch(/clean|PASSED/i);
+  });
+
+  it("Plan 51-23/24 amendment — DOES NOT allowlist `password` declared in a non-canonical path", () => {
+    // Add the same `password` declaration but in a file path that is
+    // NOT in LENS_INTROSPECTION_COMPAT. Must still BLOCK.
+    touchSchema(
+      "rogue.ts",
+      `${HEAD}export const rogue = pgTable("rogue", {\n  password: text("password"),\n});\n`,
+    );
+    const bufs = makeBuffers();
+    const code = runMain({ root, stdout: bufs.stdout, stderr: bufs.stderr });
+    expect(code).toBe(1);
     expect(bufs.stderr.out).toMatch(/password/);
-    expect(bufs.stderr.out).toMatch(/(sessions.*token|token.*sessions)/s);
   });
 
   // Note: the runMain catch branch (internal-error → exit 2) is `c8

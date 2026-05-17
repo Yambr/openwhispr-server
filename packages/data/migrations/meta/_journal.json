@@ -183,6 +183,20 @@
       "when": 1781020800000,
       "tag": "0024_better_auth_tenant_id_defaults",
       "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "7",
+      "when": 1781107200000,
+      "tag": "0025_better_auth_account_plaintext_compat",
+      "breakpoints": true
+    },
+    {
+      "idx": 27,
+      "version": "7",
+      "when": 1781193600000,
+      "tag": "0026_better_auth_session_token_fp_nullable",
+      "breakpoints": true
     }
   ]
 }

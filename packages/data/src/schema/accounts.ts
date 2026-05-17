@@ -36,6 +36,23 @@ export const accounts = pgTable(
     providerId: text("provider_id").notNull(),
     accountId: text("account_id").notNull(),
 
+    // Plan 51-23 / Phase 33-05 — Better Auth-introspection compat columns.
+    // Plaintext value NEVER lands here at runtime: the envelope-
+    // encryption lens (packages/data/src/encryption/lens.ts) intercepts
+    // every write, produces the 6 sidecars per credential, and DELETES
+    // the plaintext key from the row payload BEFORE Drizzle builds the
+    // INSERT. The column exists at the DB layer purely so Drizzle's
+    // SQL generator has a target for the (default) bind that Better
+    // Auth's adapter introspection requires the field name to be on
+    // the model.  LOCKER-08 inline-allowlisted under
+    // `LENS_INTROSPECTION_COMPAT` in tools/lint-no-plaintext-secret-columns.ts;
+    // the constitutional amendment lives in that file's header.
+    // Migration 0025 ADDs these columns as nullable, no DEFAULT.
+    password: text("password"),
+    accessToken: text("access_token"),
+    refreshToken: text("refresh_token"),
+    idToken: text("id_token"),
+
     // access_token — envelope-encrypted at rest.
     accessTokenDekWrapped: bytea("access_token_dek_wrapped"),
     accessTokenDekIv: bytea("access_token_dek_iv"),

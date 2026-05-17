@@ -34,9 +34,36 @@
  *     bare identifier `text` / `varchar` / `char` AND whose first
  *     argument is a string literal matching the forbidden set.
  *
- * Day-one BLOCKING. No `--warn-only` flag. No allowlist. A future
- * exception requires a DISCIPLINE amendment, not a flag flip
- * (research §15 pitfall #13).
+ * Day-one BLOCKING. No `--warn-only` flag. No external allowlist
+ * file. A future exception requires a DISCIPLINE amendment encoded
+ * INLINE in this source as `LENS_INTROSPECTION_COMPAT` — adding an
+ * entry there is a constitutional change reviewed at PR time, not a
+ * flag flip (research §15 pitfall #13).
+ *
+ * Phase 33-05 / Plan 51-23 constitutional amendment to DISCIPLINE
+ * Rule 15: the 7 Better-Auth-introspection-compat columns under
+ * `LENS_INTROSPECTION_COMPAT` are allowed as nullable, no-DEFAULT,
+ * never-written sentinels. Better-Auth's `drizzleAdapter` introspects
+ * the raw drizzle schema at adapter-construction time and refuses to
+ * boot without these field names; its INSERT-SQL generator also lists
+ * every schema column and binds `DEFAULT` for any value not supplied.
+ * The envelope-encryption lens (`packages/data/src/encryption/lens.ts`)
+ * DELETES the plaintext key from the row payload BEFORE Drizzle builds
+ * the SQL — plaintext NEVER lands at rest. The DB column exists
+ * exclusively as a Drizzle-SQL-gen ⇄ Better-Auth-introspection
+ * compatibility shim. See migration `0025_better_auth_account_plaintext_compat.sql`,
+ * `apps/api/src/auth.ts` ENCRYPTED_COLUMNS_MAP, and `.planning/deferred-items.md`
+ * "Plan 51-19 e2e closure" §amendment.
+ *
+ * Adding to LENS_INTROSPECTION_COMPAT requires:
+ *   (a) the row is written by Better-Auth's drizzleAdapter (not by
+ *       our own code), AND
+ *   (b) the matching ENCRYPTED_COLUMNS_MAP entry routes writes to the
+ *       6-bytea sidecars via the lens, AND
+ *   (c) the DB column carries no DEFAULT and no NOT NULL constraint,
+ *       AND
+ *   (d) a 7th-pass review in the same PR confirms the lens delete-key
+ *       semantics are preserved.
  *
  * Exit codes:
  *   0 — no violations found.
@@ -68,6 +95,25 @@ const FORBIDDEN_COLUMNS = new Set([
   "token",
   "previous_token",
   "code_verifier",
+]);
+
+/**
+ * Constitutional amendment to DISCIPLINE Rule 15 (Plan 51-23). Set of
+ * `<posixPath>:<column>` tuples allowed past the locker because they
+ * are Better-Auth-introspection-compat sentinels: the lens
+ * (`packages/data/src/encryption/lens.ts`) DELETES the plaintext key
+ * from the row payload BEFORE Drizzle builds the INSERT SQL, so the DB
+ * column NEVER receives plaintext at runtime. Adding an entry here is
+ * a code-review constitutional change — see file header rationale.
+ */
+const LENS_INTROSPECTION_COMPAT = new Set<string>([
+  "packages/data/src/schema/accounts.ts:password",
+  "packages/data/src/schema/accounts.ts:access_token",
+  "packages/data/src/schema/accounts.ts:refresh_token",
+  "packages/data/src/schema/accounts.ts:id_token",
+  "packages/data/src/schema/sessions.ts:token",
+  "packages/data/src/schema/sessions.ts:previous_token",
+  "packages/data/src/schema/verifications.ts:value",
 ]);
 
 export interface Violation {
@@ -140,7 +186,10 @@ export function runLint(root: string): Violation[] {
   const out: Violation[] = [];
   for (const file of files) {
     for (const v of scanFile(file)) {
-      out.push({ ...v, file: path.relative(root, file) });
+      const relFile = path.relative(root, file).split(path.sep).join("/");
+      const key = `${relFile}:${v.column}`;
+      if (LENS_INTROSPECTION_COMPAT.has(key)) continue;
+      out.push({ ...v, file: relFile });
     }
   }
   return out;

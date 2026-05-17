@@ -22,8 +22,14 @@ export const verifications = pgTable(
       .references(() => tenants.id),
     identifier: text("identifier").notNull(),
 
-    // value — envelope-encrypted at rest. Plaintext column dropped
-    // by migration 0020.
+    // Plan 51-23 / Phase 33-05 — Better-Auth-introspection compat (see
+    // accounts.ts for full rationale). Lens strips the plaintext key
+    // before Drizzle builds the INSERT. LOCKER-08 inline-allowlisted.
+    value: text("value"),
+
+    // value — envelope-encrypted at rest. Plaintext column dropped by
+    // migration 0020, restored as a never-written introspection
+    // sentinel by 0025.
     valueDekWrapped: bytea("value_dek_wrapped"),
     valueDekIv: bytea("value_dek_iv"),
     valueDekAuthTag: bytea("value_dek_auth_tag"),

@@ -124,8 +124,39 @@ const SIDECAR_KEYS = [
   "value_ciphertext",
 ] as const satisfies readonly (keyof EncryptedRow)[];
 
+/**
+ * Convert `snake_case` to `camelCase`. Used to emit sidecar keys in the
+ * shape Better Auth's drizzleAdapter expects on its input (`data` keys
+ * are matched against the drizzle schema's TS field names, which are
+ * camelCase). Without this conversion the sidecar keys
+ * (`password_dek_wrapped`, etc.) are silently dropped by the adapter's
+ * field-translation step and plaintext leaks into the never-written
+ * compat column (Plan 51-23 / 51-24).
+ */
+function toCamel(snake: string): string {
+  return snake.replace(/_([a-z])/g, (_m, c: string) => c.toUpperCase());
+}
+
+/**
+ * The SQL-column form of a sidecar field (`password_dek_wrapped`).
+ * Used by readers that introspect raw rows returned from the driver
+ * (e.g. mock-store assertions in lens.test.ts that bypass Drizzle's
+ * field-translation step).
+ */
 function sidecarFieldName(prefix: string, key: (typeof SIDECAR_KEYS)[number]): string {
   return `${prefix}_${key}`;
+}
+
+/**
+ * The TS-field form of a sidecar field (`passwordDekWrapped`). This is
+ * the key Better Auth's drizzleAdapter expects on its `data` input — it
+ * matches against the drizzle schema's TS field declarations
+ * (camelCase). Without emitting this form on writes the sidecar bytes
+ * are silently dropped by field-translation and plaintext leaks into
+ * the never-written introspection-compat column (Plan 51-23 / 51-24).
+ */
+function sidecarFieldNameCamel(prefix: string, key: (typeof SIDECAR_KEYS)[number]): string {
+  return toCamel(`${prefix}_${key}`);
 }
 
 function fingerprintBytes(plaintext: string, algorithm: "sha256"): Buffer {
@@ -134,10 +165,13 @@ function fingerprintBytes(plaintext: string, algorithm: "sha256"): Buffer {
 
 /**
  * Encrypt one plaintext value and merge the 6 sidecars (+ optional
- * fingerprint) into `target`. The plaintext key is set to `null` —
- * Phase 33-05 drops the plaintext columns, after which this no-op'd
- * null assignment becomes a column the schema doesn't have (Drizzle
- * silently ignores unknown columns on insert).
+ * fingerprint) into `target`. The plaintext key is DELETED from the
+ * row payload (Plan 51-23): the DB carries the column purely as a
+ * Better-Auth-introspection-compat sentinel — nullable, no DEFAULT —
+ * and the lens guarantees plaintext NEVER lands at rest by stripping
+ * the key here. A naive `target[column] = null` would still emit
+ * `(..., column, ...) VALUES (..., NULL, ...)` and that's an
+ * unnecessary write to a sentinel column we treat as never-touched.
  */
 async function encryptInto(
   target: Record<string, unknown>,
@@ -148,12 +182,22 @@ async function encryptInto(
 ): Promise<void> {
   const row = await encryptValue(provider, Buffer.from(plaintext, "utf8"));
   for (const key of SIDECAR_KEYS) {
+    // Plan 51-24 — emit both snake_case (SQL column name; matches direct
+    // pg-driver consumers + lens.test.ts mock-store assertions) and
+    // camelCase (drizzle TS field name; Better Auth's drizzleAdapter
+    // field-translates against this form before INSERT). Identical
+    // value, so downstream readers can pick either shape without a
+    // semantic difference. The duplicated key disappears at the SQL
+    // layer because Drizzle drops keys it doesn't recognise on the
+    // schema. The pg driver receives only the camelCase-mapped
+    // sidecar columns.
     target[sidecarFieldName(config.sidecarPrefix, key)] = row[key];
+    target[sidecarFieldNameCamel(config.sidecarPrefix, key)] = row[key];
   }
   if (config.fingerprint) {
     target[config.fingerprint.column] = fingerprintBytes(plaintext, config.fingerprint.algorithm);
   }
-  target[column] = null;
+  delete target[column];
 }
 
 /**
