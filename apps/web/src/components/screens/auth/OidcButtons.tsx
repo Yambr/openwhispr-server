@@ -53,11 +53,8 @@ export function OidcButtons({ namespace }: OidcButtonsProps): React.JSX.Element 
       // better-auth/react's `signIn.social` triggers a full-page redirect on
       // success; the awaited promise still resolves so we can clear pending
       // on the (unlikely) inline-result branch.
-      await (
-        authClient.signIn as unknown as {
-          social: (args: { provider: string; callbackURL?: string }) => Promise<unknown>;
-        }
-      ).social({ provider, callbackURL: "/app" });
+      // Plan 51-11b — typed access via ExtendedAuthClient.
+      await authClient.signIn.social({ provider, callbackURL: "/app" });
     } finally {
       setPending(null);
     }

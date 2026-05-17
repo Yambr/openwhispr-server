@@ -46,11 +46,6 @@ apps/api/src/routes/test-only.ts:181  # issue-31-debt-hardcode-localhost-3000
 apps/api/src/routes/better-auth-handler.ts:49  # comment-only-narrative-issue-31-fp (Plan 51-10 fix rationale comment references the old localhost fallback)
 apps/api/src/routes/better-auth-handler.ts:79  # issue-31-debt-hardcode-localhost
 apps/api/src/index.ts:694  # issue-31-debt-hardcode-litellm-port-4000 (33-04 +9; 34 -1; 51-02 +5; 51-03 +10; 51-13b +10)
-apps/web/src/app/(auth)/app/page.tsx:16  # issue-31-debt-hardcode-port-3000-phase-41c
-apps/web/src/app/(auth)/app/notes/page.tsx:14  # issue-31-debt-hardcode-port-3000-phase-41c
-apps/web/src/app/(auth)/app/transcriptions/page.tsx:14  # issue-31-debt-hardcode-port-3000-phase-41c
-apps/web/src/app/(auth)/app/conversations/page.tsx:14  # issue-31-debt-hardcode-port-3000-phase-41c
-apps/web/src/app/(auth)/app/conversations/[id]/page.tsx:17  # issue-31-debt-hardcode-port-3000-phase-41c
 
 # --- (c) DOCUMENTED FALSE POSITIVES — comment-only hits ---
 # The locker is intentionally regex-line-based (no AST comment-strip) per
@@ -106,6 +101,7 @@ packages/data/src/seed/conformance.ts:123  # canonical-fixture-api-localhost
 # users. Retagged in Phase 31 / Plan 31-08 (was previously in bucket (b)
 # MIGRATION-DEBT, which was a mis-classification — these are intentional
 # defaults, not migration debt). See 31-08-DECISIONS.md §D-2.
-apps/web/src/lib/auth-actions.ts:22  # permanent-docker-compose-internal-url
-apps/web/src/lib/auth-server.ts:47  # permanent-docker-compose-internal-url
 packages/litellm-client/src/config.ts:29  # permanent-docker-compose-internal-url
+apps/web/src/lib/internal-api.ts:11  # issue-51-11b-internal-api-doc — :3000 in module docstring (centralised from 7 duplicates)
+apps/web/src/lib/internal-api.ts:13  # issue-51-11b-internal-api-doc — :3000 in module docstring (centralised from 7 duplicates)
+apps/web/src/lib/internal-api.ts:22  # issue-51-11b-internal-api-default — :3000 docker-compose internal-network fallback (centralised from 7 duplicates)

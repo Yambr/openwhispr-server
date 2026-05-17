@@ -7,7 +7,7 @@ Scope: production source in `apps/**/src/**` + `packages/**/src/**`. Tests, tool
 
 ## Fix status (Phase 51)
 
-**12/12 CRITICAL closed. ~24/39 HIGH closed.**
+**12/12 CRITICAL closed. ~26/39 HIGH closed.**
 
 | CRITICAL | Fix commit |
 |---|---|
@@ -32,19 +32,19 @@ Scope: production source in `apps/**/src/**` + `packages/**/src/**`. Tests, tool
 - byok-guard (4): whitespace + sentinel-case + NODE_ENV-case + INGRESS-cascade (51-16)
 - litellm-client (4): override-source + audio-leak + CR/LF (51-15) + dead-export @internal-tag (51-15b)
 - small-pkgs (1): EmailSender dedup (51-17)
-- web (1): observability javascript: vector (51-11)
+- web (3): observability javascript: vector (51-11) + INTERNAL_API_URL dedup (51-11b) + ExtendedAuthClient unification (51-11b)
 - routes-conversations (2): notes-delete-all bypass + messages.content 256 KiB cap (51-12)
 - api-core (2): token-rotation doc-truth (51-13) + console.warn bootstrap → pino (51-13b)
 - redact MASTER_KEK + BETTER_AUTH_SECRET (51-09)
 
-**HIGH remaining** (~15): web 5 (CSRF, locales, INTERNAL_API_URL dedup, list/search href, as-unknown-as cluster); routes-conversations 1 (LOCKER-04 sweep — multi-commit work); routes-transcriptions 5 (agent-stream AbortSignal forward, etc.); api-core 1 (as-unknown-as cluster); byok-guard 2 (bearer-in-query-value — partially covered by CR-10 fix; fetchAndParse redirect default); web 1 (as-unknown-as cluster).
+**HIGH remaining** (~13): web 3 (CSRF, locales, list/search href); routes-conversations 1 (LOCKER-04 sweep — multi-commit work); routes-transcriptions 5 (agent-stream AbortSignal forward, etc.); api-core 1 (as-unknown-as cluster); byok-guard 2 (bearer-in-query-value — partially covered by CR-10 fix; fetchAndParse redirect default).
 
 ## Aggregate counts
 
 | Severity | Count |
 |---|---|
 | CRITICAL | 12 (closed) |
-| HIGH     | 39 (~24 closed) |
+| HIGH     | 39 (~26 closed) |
 | MEDIUM   | 50 (Plan 51-18 cleanup) |
 | LOW      | 41 (Plan 51-18 cleanup) |
 

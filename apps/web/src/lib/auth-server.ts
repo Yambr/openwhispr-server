@@ -28,6 +28,8 @@
 // fast path inside the api process. Mitigation deferred — flag for the
 // verifier and Plan 07 (sign-in flow) e2e.
 import { headers } from "next/headers";
+// Plan 51-11b — INTERNAL_API_URL helper centralised (REVIEW web HIGH HI-03).
+import { internalApiUrl } from "@/lib/internal-api";
 
 export interface ServerSession {
   session: {
@@ -42,13 +44,6 @@ export interface ServerSession {
     name?: string;
     [key: string]: unknown;
   };
-}
-
-const DEFAULT_INTERNAL_API_URL = "http://api:3000";
-
-function internalApiUrl(): string {
-  const raw = process.env.INTERNAL_API_URL;
-  return raw && raw.length > 0 ? raw : DEFAULT_INTERNAL_API_URL;
 }
 
 /**

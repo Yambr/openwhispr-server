@@ -20,10 +20,6 @@ apps/api/src/lib/api-error-status.ts:52  # issue-31-debt-suppression
 apps/api/src/routes/locale.ts:53  # issue-31-debt-suppression
 apps/api/src/routes/realtime.ts:160  # issue-31-debt-suppression
 apps/web/src/components/screens/account/SessionsTable.tsx:10  # issue-31-debt-suppression
-apps/web/src/components/screens/auth/OidcButtons.tsx:57  # issue-31-debt-suppression
-apps/web/src/components/screens/auth/SignInForm.tsx:70  # issue-31-debt-suppression
-apps/web/src/components/screens/auth/SignInForm.tsx:110  # issue-31-debt-suppression
-apps/web/src/components/screens/auth/VerifyEmailClient.tsx:82  # issue-31-debt-suppression
 apps/web/src/lib/form-utils.ts:34  # issue-31-debt-suppression
 apps/web/src/lib/form-utils.ts:35  # issue-31-debt-suppression
 apps/web/src/middleware.ts:107  # issue-31-debt-suppression
@@ -42,3 +38,4 @@ packages/data/src/seed/conformance.ts:246  # issue-31-debt-suppression
 apps/api/src/routes/better-auth-handler.ts:190  # issue-19.3-ba-handler-i18n-typing — req.i18n added at runtime by i18next-http-middleware (init.ts:154); Fastify type augmentation deferred per SR-19.2 pattern
 apps/api/src/auth.ts:323  # issue-41-better-auth-adapter-cast — wrapAdapter returns the lens-wrapped adapter; Better Auth's drizzleAdapter return-type is opaque, requires cast at the Phase 33 lens boundary (line drifted 308 → 323 by 41-e ENCRYPTED_COLUMNS_MAP comment expansion)
 apps/api/src/auth.ts:570  # issue-41-better-auth-instance-cast — betterAuth() return type doesn't extend AuthInstance interface declared in apps/api/src/types; cast preserves the project's narrowed type (line drifted 555 → 570 by 41-e)
+apps/web/src/lib/auth-client.ts:75  # issue-51-11b-extended-auth-client-centralised — single double-cast that unifies the 4 previously-scattered call-site casts via ExtendedAuthClient

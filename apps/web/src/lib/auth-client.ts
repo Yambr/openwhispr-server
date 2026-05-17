@@ -30,16 +30,49 @@ const baseClient = createAuthClient({
 // These aren't in the inferred plugin-keyed type but ARE in the 1.6.9
 // surface — verified by the OQ4 smoke test in this plan's commit body.
 // We extend the type minimally so TypeScript matches the runtime reality.
+//
+// Plan 51-11b (REVIEW web HIGH HI-06) — extended with the three other
+// runtime-Proxy methods that the SignInForm / OidcButtons /
+// VerifyEmailClient used to reach via local double-cast at every call
+// site. Centralising the shape here eliminates the LOCKER-02-violating
+// casts (CLAUDE.md DISCIPLINE rule 12) and gives a single edit point if
+// Better Auth tightens the inferred surface in a future release.
 type AccountDeletion = (data?: {
   password?: string;
   callbackURL?: string;
 }) => Promise<{ data: unknown; error: unknown }>;
 
-type ExtendedAuthClient = typeof baseClient & {
-  deleteAccount: AccountDeletion;
+type SignInEmail = (args: {
+  email: string;
+  password: string;
+  rememberMe?: boolean;
+  callbackURL?: string;
+}) => Promise<{ data: unknown; error: { code?: string; message?: string } | null }>;
+
+type SignInSocial = (args: { provider: string; callbackURL?: string }) => Promise<unknown>;
+
+type SendVerificationEmail = (args: {
+  email: string;
+  callbackURL?: string;
+}) => Promise<{ data: unknown; error: unknown }>;
+
+type VerifyEmailFn = (args: {
+  query: { token: string };
+}) => Promise<{ data: unknown; error: { message?: string } | null }>;
+
+type ExtendedSignIn = typeof baseClient.signIn & {
+  email: SignInEmail;
+  social: SignInSocial;
 };
 
-export const authClient = baseClient as ExtendedAuthClient;
+type ExtendedAuthClient = Omit<typeof baseClient, "signIn"> & {
+  signIn: ExtendedSignIn;
+  deleteAccount: AccountDeletion;
+  sendVerificationEmail: SendVerificationEmail;
+  verifyEmail: VerifyEmailFn;
+};
+
+export const authClient = baseClient as unknown as ExtendedAuthClient;
 
 // Named re-exports for ergonomic Client Component imports
 // (e.g. `import { useSession } from '@/lib/auth-client'`).

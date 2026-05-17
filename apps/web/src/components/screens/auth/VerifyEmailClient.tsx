@@ -78,13 +78,11 @@ export function VerifyEmailClient({ token }: VerifyEmailClientProps): React.JSX.
     let cancelled = false;
     (async () => {
       try {
-        const result = (await (
-          authClient as unknown as {
-            verifyEmail: (args: {
-              query: { token: string };
-            }) => Promise<{ data: unknown; error: { message?: string } | null }>;
-          }
-        ).verifyEmail({ query: { token } })) ?? { data: null, error: { message: "no response" } };
+        // Plan 51-11b — typed access via ExtendedAuthClient.
+        const result = (await authClient.verifyEmail({ query: { token } })) ?? {
+          data: null,
+          error: { message: "no response" },
+        };
         if (cancelled) return;
         if (result.error) {
           setStatus("error");
