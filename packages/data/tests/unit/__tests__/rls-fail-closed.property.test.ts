@@ -17,7 +17,7 @@
 //   UPDATE  rowCount === 1                  rowCount === 0 (silent deny)
 //   DELETE  rowCount === 1                  rowCount === 0 (silent deny)
 
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { Pool, type PoolClient } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { type BootResult, bootMigratedPostgres } from "../../../src/__tests__/helpers.js";
@@ -65,9 +65,17 @@ function buildInsert(
         params: [randomUUID(), tenantId, `user-${nonce}@test.local`],
       };
     case "sessions":
+      // Plan 33-05 — plaintext `token` column dropped by migration 0020.
+      // Seed only the SHA-256 fingerprint (`token_fp`, NOT NULL); the
+      // plaintext bearer is never persisted post-0020.
       return {
-        sql: `INSERT INTO sessions (id, tenant_id, user_id, token, expires_at) VALUES ($1::uuid, $2::uuid, $3::uuid, $4, now() + interval '1 hour') RETURNING id`,
-        params: [randomUUID(), tenantId, userId, `tok-${nonce}`],
+        sql: `INSERT INTO sessions (id, tenant_id, user_id, token_fp, expires_at) VALUES ($1::uuid, $2::uuid, $3::uuid, $4, now() + interval '1 hour') RETURNING id`,
+        params: [
+          randomUUID(),
+          tenantId,
+          userId,
+          createHash("sha256").update(`tok-${nonce}`, "utf8").digest(),
+        ],
       };
     case "audit_log":
       return {
@@ -85,14 +93,21 @@ function buildInsert(
         params: [randomUUID(), tenantId, userId, `acct-${nonce}`],
       };
     case "verification":
+      // Plan 33-05 — plaintext `value` column dropped by migration 0020;
+      // every encryption sidecar is nullable. The RLS property test only
+      // needs a row that passes the tenant_id WITH CHECK, so we omit
+      // the ciphertext sidecars entirely.
       return {
-        sql: `INSERT INTO verification (id, tenant_id, identifier, value, expires_at) VALUES ($1::uuid, $2::uuid, $3, $4, now() + interval '1 hour') RETURNING id`,
-        params: [randomUUID(), tenantId, `ident-${nonce}`, `val-${nonce}`],
+        sql: `INSERT INTO verification (id, tenant_id, identifier, expires_at) VALUES ($1::uuid, $2::uuid, $3, now() + interval '1 hour') RETURNING id`,
+        params: [randomUUID(), tenantId, `ident-${nonce}`],
       };
     case "oauth_state":
+      // Plan 33-05 — plaintext `code_verifier` column dropped by 0020;
+      // every encryption sidecar is nullable. Seed without the verifier
+      // payload — RLS isolation is column-agnostic.
       return {
-        sql: `INSERT INTO oauth_state (id, tenant_id, provider, callback_url, scheme, code_verifier, expires_at) VALUES ($1::uuid, $2::uuid, 'google', 'https://x', 'pkce', $3, now() + interval '1 hour') RETURNING id`,
-        params: [randomUUID(), tenantId, `cv-${nonce}`],
+        sql: `INSERT INTO oauth_state (id, tenant_id, provider, callback_url, scheme, expires_at) VALUES ($1::uuid, $2::uuid, 'google', 'https://x', 'pkce', now() + interval '1 hour') RETURNING id`,
+        params: [randomUUID(), tenantId],
       };
     case "tenant_settings":
       // PK is tenant_id (singleton). The seed pass for (tenant_settings, A)
