@@ -127,7 +127,7 @@ function makeFakePyannote(opts: FakePyannoteOpts): PyannoteClient {
           jobId,
           status: "succeeded",
           output: {
-            duration: 5,
+            // Plan 51-07 — DiarizationResponse is now .strict(); no `duration` key.
             segments: [{ start: 0, end: 5, speaker: "SPEAKER_00" }],
           },
         }
@@ -208,7 +208,7 @@ describe("POST /v1/audio/diarization", () => {
           jobId: "job-1",
           status: "succeeded",
           output: {
-            duration: 12.5,
+            // Plan 51-07 — DiarizationResponse is now .strict(); no `duration` key.
             segments: [
               { start: 0, end: 4.2, speaker: "SPEAKER_00" },
               { start: 4.2, end: 12.5, speaker: "SPEAKER_01" },
@@ -1279,7 +1279,7 @@ describe("POST /v1/audio/diarization", () => {
           jobId,
           status: "succeeded",
           output: {
-            duration: 1,
+            // Plan 51-07 — DiarizationResponse is now .strict(); no `duration` key.
             segments: [{ start: 0, end: 1, speaker: "SPEAKER_00" }],
           },
         };
@@ -1369,7 +1369,7 @@ describe("POST /v1/audio/diarization", () => {
         }
         return new Response(
           JSON.stringify({
-            duration: 7.25,
+            // Plan 51-07 — DiarizationResponse is now .strict(); no `duration` key.
             segments: [
               { start: 0.0, end: 3.1, speaker: "SPEAKER_00" },
               { start: 3.1, end: 7.25, speaker: "SPEAKER_01" },
@@ -1390,7 +1390,7 @@ describe("POST /v1/audio/diarization", () => {
         expect(res.statusCode).toBe(200);
         const parsed = DiarizationResponse.parse(res.json());
         expect(parsed.segments).toHaveLength(2);
-        expect(parsed.duration).toBe(7.25);
+        // Plan 51-07 dropped `duration` from the canonical wire shape (strict mode).
         expect(speachesFetch).toHaveBeenCalledTimes(1);
         expect(captured.url).toBe("http://speaches.internal.test:8000/v1/audio/diarization");
         expect(captured.method).toBe("POST");
@@ -1412,7 +1412,7 @@ describe("POST /v1/audio/diarization", () => {
           (init?.headers as Record<string, string> | undefined)?.["content-type"] ?? null;
         return new Response(
           JSON.stringify({
-            duration: 1.0,
+            // Plan 51-07 — DiarizationResponse is now .strict(); no `duration` key.
             segments: [{ start: 0, end: 1, speaker: "SPEAKER_00" }],
           }),
           { status: 200, headers: { "content-type": "application/json" } },
@@ -1527,7 +1527,7 @@ describe("POST /v1/audio/diarization", () => {
       const speachesFetch = async () =>
         new Response(
           JSON.stringify({
-            duration: 0.5,
+            // Plan 51-07 — DiarizationResponse is now .strict(); no `duration` key.
             segments: [{ start: 0, end: 0.5, speaker: "SPEAKER_00" }],
           }),
           { status: 200, headers: { "content-type": "application/json" } },
