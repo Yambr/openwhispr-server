@@ -49,7 +49,11 @@ async function bootBareCluster(): Promise<Booted> {
   // maintenance database to issue CREATE DATABASE. CREATEDB granted above
   // is the minimum production POSTGRES_ADMIN_URL pattern (no superuser
   // requirement).
-  const adminUri = `postgres://openwhispr_owner:${ownerPassword}@${host}:${port}/postgres`;
+  // Plan 51-14 made TLS the default in `buildPoolConfig` — the
+  // testcontainer postgres image doesn't support SSL, so the connection
+  // string must opt out via `sslmode=disable` (the canonical libpq
+  // escape hatch the production helper honours).
+  const adminUri = `postgres://openwhispr_owner:${ownerPassword}@${host}:${port}/postgres?sslmode=disable`;
 
   return {
     container,
