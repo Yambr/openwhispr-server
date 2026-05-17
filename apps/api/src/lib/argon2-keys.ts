@@ -26,7 +26,16 @@
 // Fastify's main thread (unlike the pure-JS `argon2` package).
 
 import { randomBytes } from "node:crypto";
-import { Algorithm, hash, verify } from "@node-rs/argon2";
+import { hash, verify } from "@node-rs/argon2";
+
+// Phase 52 / Plan 52-04 — `@node-rs/argon2` exports `Algorithm` as an
+// ambient const enum; TS's `verbatimModuleSyntax: true` refuses
+// access because const-enum values are erased at compile-time
+// (TS2748). The argon2 wire format is fixed by RFC 9106 §3.1
+// (Argon2id = 2), so a local literal-typed mirror is the safest
+// type-system-only fix — runtime behaviour identical, no upstream
+// dependency on the enum being preserved.
+const ARGON2_ID = 2 as const;
 
 /**
  * OWASP 2026 password-storage Argon2id parameters. Module-level constant
@@ -35,7 +44,7 @@ import { Algorithm, hash, verify } from "@node-rs/argon2";
  * rewrite the persisted hash itself.
  */
 const ARGON2_PARAMS = {
-  algorithm: Algorithm.Argon2id,
+  algorithm: ARGON2_ID,
   memoryCost: 65536,
   timeCost: 3,
   parallelism: 1,
