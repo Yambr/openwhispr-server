@@ -20,6 +20,17 @@ export default mergeConfig(
       // SIGINT/SIGTERM hook so an interrupted packages/data test run prunes
       // orphan postgres containers like apps/api + apps/worker.
       setupFiles: ["../../tools/testcontainer-reaper-setup.ts"],
+      // Phase 53 / Plan 53-10 — testcontainer postgres tests in this
+      // package collide on Docker container teardown when run in parallel
+      // (Dockerd HTTP 409 `removal already in progress`); the Ryuk reaper
+      // races with vitest's afterAll cleanups across worker forks.
+      // fileParallelism=false + singleFork forces strictly-sequential
+      // execution within the package. Every test boots its own ephemeral
+      // container regardless of pool, so the runtime cost is bounded and
+      // the tradeoff is determinism over wall-clock seconds.
+      fileParallelism: false,
+      pool: "forks",
+      singleFork: true,
       coverage: {
         include: ["src/**/*.ts"],
         thresholds: {
