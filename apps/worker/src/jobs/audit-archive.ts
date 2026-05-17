@@ -128,6 +128,39 @@ function resolveExporter(env: (k: string) => string | undefined): Exporter {
  * The connection password is passed via PGPASSWORD env. PGHOST/PGPORT/
  * PGUSER/PGDATABASE are likewise env-side. NEVER argv-side.
  */
+/**
+ * Phase 51 / Plan 51-09 (REVIEW worker HIGH on audit-archive SQL
+ * interpolation). Pre-fix, `AUDIT_ARCHIVE_BUCKET` was interpolated
+ * verbatim into both an `aws_s3.query_export_to_s3('…', '${bucket}',
+ * …)` SQL literal AND `s3://${bucket}/…` URL forms. A malicious env
+ * value like `; DROP TABLE audit_log;--` (operator-set, not user-set,
+ * but the threat model includes a compromised env injection point)
+ * would have escaped the SQL string literal. Validate at the boundary
+ * with a strict pattern.
+ *
+ * S3 bucket-name spec: 3..63 chars, lowercase alphanumeric, dots and
+ * hyphens. MinIO accepts the same shape. We allow dots even though
+ * RFC-1123 forbids them in DNS labels — many MinIO setups use them.
+ */
+const BUCKET_RE = /^[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]$/;
+const PARTITION_RE = /^[a-z][a-z0-9_]{0,62}$/;
+
+function assertSafeBucket(bucket: string): void {
+  if (!BUCKET_RE.test(bucket)) {
+    throw new Error(
+      `AUDIT_ARCHIVE_BUCKET rejected: must match ${BUCKET_RE.source} (S3 bucket spec). got: ${JSON.stringify(bucket)}`,
+    );
+  }
+}
+
+function assertSafePartition(partition: string): void {
+  if (!PARTITION_RE.test(partition)) {
+    throw new Error(
+      `partition name rejected: must match ${PARTITION_RE.source} (Postgres-safe identifier). got: ${JSON.stringify(partition)}`,
+    );
+  }
+}
+
 export function buildExportSteps(
   exporter: Exporter,
   partition: string,
@@ -135,6 +168,11 @@ export function buildExportSteps(
 ): PipelineStep[] {
   const dbUrl = env("AUDIT_ARCHIVE_DATABASE_URL") ?? env("DATABASE_URL_OWNER") ?? "";
   const bucket = env("AUDIT_ARCHIVE_BUCKET") ?? "openwhispr";
+  // Phase 51 / Plan 51-09 — validate every value that ends up
+  // interpolated into a SQL literal or a shell argument BEFORE we
+  // start spawning processes.
+  assertSafeBucket(bucket);
+  assertSafePartition(partition);
 
   if (exporter === "custom") {
     const script = env("AUDIT_ARCHIVE_CUSTOM_SCRIPT");
