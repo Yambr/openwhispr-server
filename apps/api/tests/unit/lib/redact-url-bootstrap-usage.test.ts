@@ -32,11 +32,14 @@ describe("apps/api/src/index.ts bootstrap warn redaction (HI-02)", () => {
   });
 
   it("the BullMQ email-delivery catch arm calls redactUrl with VALKEY_URL", () => {
-    // Slice the file around the BullMQ warn message and assert the
-    // redactor wraps the env access.
+    // Plan 51-13b restructured the bootstrap warns: the structured log
+    // object (with `valkey_url: redactUrl(...)`) now precedes the message
+    // arg in pino's two-arg `bootLog.warn(obj, msg)` form. Window slice
+    // straddles ±400 chars around the message anchor to cover both the
+    // pre-message structured fields and any tail context.
     const idx = INDEX_SRC.indexOf("BullMQ email-delivery queue not constructed");
     expect(idx).toBeGreaterThan(0);
-    const window = INDEX_SRC.slice(idx, idx + 600);
+    const window = INDEX_SRC.slice(Math.max(0, idx - 400), idx + 400);
     expect(window).toContain("redactUrl(process.env.VALKEY_URL");
     // Negative: the literal `err.message` / `(err as Error).message` must
     // not appear in this window.
@@ -46,7 +49,7 @@ describe("apps/api/src/index.ts bootstrap warn redaction (HI-02)", () => {
   it("the LiteLLM client catch arm calls redactUrl with LITELLM_BASE_URL", () => {
     const idx = INDEX_SRC.indexOf("LiteLLM client not constructed");
     expect(idx).toBeGreaterThan(0);
-    const window = INDEX_SRC.slice(idx, idx + 700);
+    const window = INDEX_SRC.slice(Math.max(0, idx - 400), idx + 400);
     expect(window).toContain("redactUrl(process.env.LITELLM_BASE_URL");
     expect(window).not.toMatch(/\(err as Error\)\.message/);
   });
@@ -54,7 +57,7 @@ describe("apps/api/src/index.ts bootstrap warn redaction (HI-02)", () => {
   it("the Valkey/Redis client catch arm calls redactUrl with VALKEY_URL", () => {
     const idx = INDEX_SRC.indexOf("Valkey client not constructed");
     expect(idx).toBeGreaterThan(0);
-    const window = INDEX_SRC.slice(idx, idx + 700);
+    const window = INDEX_SRC.slice(Math.max(0, idx - 400), idx + 400);
     expect(window).toContain("redactUrl(process.env.VALKEY_URL");
     expect(window).not.toMatch(/\(err as Error\)\.message/);
   });
