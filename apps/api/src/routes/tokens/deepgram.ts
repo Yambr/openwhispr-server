@@ -17,6 +17,7 @@
 import type { FastifyInstance } from "fastify";
 import { ServiceUnavailable } from "../../errors.js";
 import { callProvider } from "./_call-provider.js";
+import { parseTtlSeconds } from "./_parse-ttl.js";
 
 /** Default token TTL in seconds when DEEPGRAM_TOKEN_TTL is not set. */
 const DEFAULT_TTL_SECONDS = 30;
@@ -45,8 +46,13 @@ export const buildDeepgramTokenRoutes = () =>
           });
         }
       },
-      handler: async (_req, reply) => {
-        const ttl = Number(process.env.DEEPGRAM_TOKEN_TTL ?? DEFAULT_TTL_SECONDS);
+      handler: async (req, reply) => {
+        const ttl = parseTtlSeconds(
+          process.env.DEEPGRAM_TOKEN_TTL,
+          DEFAULT_TTL_SECONDS,
+          "DEEPGRAM_TOKEN_TTL",
+          req.log,
+        );
         const r = await callProvider({
           url: "https://api.deepgram.com/v1/auth/grant",
           method: "POST",
