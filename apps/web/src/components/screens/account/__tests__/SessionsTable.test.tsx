@@ -7,7 +7,7 @@
 // Asserts:
 //   - Skeleton rows while authClient.listSessions() pending
 //   - rows render with userAgent + ipAddress columns
-//   - "this device" badge on the row whose token matches the current session
+//   - "this device" badge on the row whose id matches the current session
 //   - per-row Revoke button calls authClient.revokeSession({ token })
 //   - header "Revoke all other sessions" button calls authClient.revokeOtherSessions()
 //   - Alert + Retry on rejected fetch
@@ -89,7 +89,7 @@ describe("SessionsTable (Phase 07.1 / Plan 08)", () => {
 
   it("renders Skeleton rows while pending", () => {
     listSessionsMock.mockImplementation(() => new Promise(() => {}));
-    const { container } = renderWithProviders(<SessionsTable currentSessionToken="tok-1" />);
+    const { container } = renderWithProviders(<SessionsTable currentSessionId="s1" />);
     expect(
       container.querySelectorAll('[data-testid="sessions-skeleton-row"]').length,
     ).toBeGreaterThan(0);
@@ -103,7 +103,7 @@ describe("SessionsTable (Phase 07.1 / Plan 08)", () => {
       ],
       error: null,
     });
-    renderWithProviders(<SessionsTable currentSessionToken="tok-1" />);
+    renderWithProviders(<SessionsTable currentSessionId="s1" />);
     await waitFor(() => {
       expect(screen.getByText(/Chrome\/120 on macOS/)).toBeInTheDocument();
       expect(screen.getByText(/Firefox\/130 on Linux/)).toBeInTheDocument();
@@ -112,7 +112,7 @@ describe("SessionsTable (Phase 07.1 / Plan 08)", () => {
     });
   });
 
-  it("marks the row whose token matches currentSessionToken with 'this device' badge", async () => {
+  it("marks the row whose id matches currentSessionId with 'this device' badge", async () => {
     listSessionsMock.mockResolvedValue({
       data: [
         row({ id: "s1", token: "tok-1", userAgent: "current ua" }),
@@ -120,7 +120,7 @@ describe("SessionsTable (Phase 07.1 / Plan 08)", () => {
       ],
       error: null,
     });
-    renderWithProviders(<SessionsTable currentSessionToken="tok-1" />);
+    renderWithProviders(<SessionsTable currentSessionId="s1" />);
     await waitFor(() => {
       expect(screen.getByTestId("session-row-this-device")).toBeInTheDocument();
     });
@@ -134,7 +134,7 @@ describe("SessionsTable (Phase 07.1 / Plan 08)", () => {
       error: null,
     });
     revokeSessionMock.mockResolvedValue({ data: { status: true }, error: null });
-    renderWithProviders(<SessionsTable currentSessionToken="tok-1" />);
+    renderWithProviders(<SessionsTable currentSessionId="s1" />);
     const revokeBtns = await screen.findAllByRole("button", { name: /^Revoke$/i });
     // Two rows → two per-row Revoke buttons.
     expect(revokeBtns).toHaveLength(2);
@@ -152,7 +152,7 @@ describe("SessionsTable (Phase 07.1 / Plan 08)", () => {
       error: null,
     });
     revokeOtherSessionsMock.mockResolvedValue({ data: { status: true }, error: null });
-    renderWithProviders(<SessionsTable currentSessionToken="tok-1" />);
+    renderWithProviders(<SessionsTable currentSessionId="s1" />);
     const btn = await screen.findByRole("button", { name: /Revoke all other sessions/i });
     await user.click(btn);
     await waitFor(() => {
@@ -165,7 +165,7 @@ describe("SessionsTable (Phase 07.1 / Plan 08)", () => {
       data: [row({ id: "s1", token: "tok-1" })],
       error: null,
     });
-    renderWithProviders(<SessionsTable currentSessionToken="tok-1" />);
+    renderWithProviders(<SessionsTable currentSessionId="s1" />);
     await waitFor(() => {
       expect(
         screen.queryByRole("button", { name: /Revoke all other sessions/i }),
@@ -175,7 +175,7 @@ describe("SessionsTable (Phase 07.1 / Plan 08)", () => {
 
   it("renders Alert + Retry on rejected fetch", async () => {
     listSessionsMock.mockRejectedValue(new Error("boom"));
-    renderWithProviders(<SessionsTable currentSessionToken="tok-1" />);
+    renderWithProviders(<SessionsTable currentSessionId="s1" />);
     await waitFor(() => {
       expect(screen.getByText(/Could not load account/i)).toBeInTheDocument();
     });
@@ -184,7 +184,7 @@ describe("SessionsTable (Phase 07.1 / Plan 08)", () => {
 
   it("renders Alert on Better Auth error envelope (error !== null)", async () => {
     listSessionsMock.mockResolvedValue({ data: null, error: { message: "boom" } });
-    renderWithProviders(<SessionsTable currentSessionToken="tok-1" />);
+    renderWithProviders(<SessionsTable currentSessionId="s1" />);
     await waitFor(() => {
       expect(screen.getByText(/Could not load account/i)).toBeInTheDocument();
     });
@@ -192,7 +192,7 @@ describe("SessionsTable (Phase 07.1 / Plan 08)", () => {
 
   it("falls back to default error message when error.message is undefined", async () => {
     listSessionsMock.mockResolvedValue({ data: null, error: {} });
-    renderWithProviders(<SessionsTable currentSessionToken="tok-1" />);
+    renderWithProviders(<SessionsTable currentSessionId="s1" />);
     await waitFor(() => {
       expect(screen.getByText(/Could not load account/i)).toBeInTheDocument();
     });
@@ -200,7 +200,7 @@ describe("SessionsTable (Phase 07.1 / Plan 08)", () => {
 
   it("treats null data as empty session list", async () => {
     listSessionsMock.mockResolvedValue({ data: null, error: null });
-    renderWithProviders(<SessionsTable currentSessionToken="tok-1" />);
+    renderWithProviders(<SessionsTable currentSessionId="s1" />);
     await waitFor(() => {
       expect(
         screen.queryByRole("button", { name: /Revoke all other sessions/i }),
@@ -217,7 +217,7 @@ describe("SessionsTable (Phase 07.1 / Plan 08)", () => {
       if (attempt === 1) return Promise.reject(new Error("boom"));
       return Promise.resolve({ data: [], error: null });
     });
-    renderWithProviders(<SessionsTable currentSessionToken="tok-1" />);
+    renderWithProviders(<SessionsTable currentSessionId="s1" />);
     await waitFor(() => {
       expect(screen.getByText(/Could not load account/i)).toBeInTheDocument();
     });
@@ -241,7 +241,7 @@ describe("SessionsTable (Phase 07.1 / Plan 08)", () => {
       ],
       error: null,
     });
-    renderWithProviders(<SessionsTable currentSessionToken="tok-1" />);
+    renderWithProviders(<SessionsTable currentSessionId="s1" />);
     await waitFor(() => {
       // 4 null fields (userAgent / ipAddress / createdAt / expiresAt) →
       // exactly 4 em-dash placeholders for the single row.
@@ -261,7 +261,7 @@ describe("SessionsTable (Phase 07.1 / Plan 08)", () => {
       ],
       error: null,
     });
-    renderWithProviders(<SessionsTable currentSessionToken="tok-1" />);
+    renderWithProviders(<SessionsTable currentSessionId="s1" />);
     await waitFor(() => {
       // 2 invalid date strings (createdAt + expiresAt → formatDate NaN
       // branch) → exactly 2 em-dashes. userAgent / ipAddress fields use
@@ -279,7 +279,7 @@ describe("SessionsTable (Phase 07.1 / Plan 08)", () => {
       error: null,
     });
     revokeSessionMock.mockResolvedValue({ data: null, error: { message: "revoke boom" } });
-    renderWithProviders(<SessionsTable currentSessionToken="tok-1" />);
+    renderWithProviders(<SessionsTable currentSessionId="s1" />);
     const revokeBtns = await screen.findAllByRole("button", { name: /^Revoke$/i });
     await user.click(revokeBtns[1] as HTMLElement);
     await waitFor(() => {
@@ -295,7 +295,7 @@ describe("SessionsTable (Phase 07.1 / Plan 08)", () => {
       error: null,
     });
     revokeOtherSessionsMock.mockResolvedValue({ data: null, error: { message: "boom" } });
-    renderWithProviders(<SessionsTable currentSessionToken="tok-1" />);
+    renderWithProviders(<SessionsTable currentSessionId="s1" />);
     const btn = await screen.findByRole("button", { name: /Revoke all other sessions/i });
     await user.click(btn);
     await waitFor(() => {
@@ -308,7 +308,7 @@ describe("SessionsTable (Phase 07.1 / Plan 08)", () => {
       data: [row({ id: "s1", token: "tok-1" })],
       error: null,
     });
-    renderWithProviders(<SessionsTable currentSessionToken={null} />);
+    renderWithProviders(<SessionsTable currentSessionId="not-matching-any-row" />);
     await waitFor(() => {
       expect(screen.getByRole("button", { name: /^Revoke$/i })).toBeInTheDocument();
     });
