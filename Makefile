@@ -414,6 +414,7 @@ e2e-test-phase6:
 	  OPENWHISPR_TEST_ROUTES=true MOCK_DIARIZATION=true \
 	  NODE_TLS_REJECT_UNAUTHORIZED=0 \
 	  TESTCONTAINERS_RYUK_DISABLED=true \
+	  OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4317 \
 	  pnpm exec vitest run --config tests/e2e/vitest.e2e.config.ts \
 	    tests/e2e/probes-dependency.test.ts \
 	    tests/e2e/audit-log-write.test.ts \

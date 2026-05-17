@@ -76,6 +76,26 @@ export const HERMETIC_ENV: Record<string, string> = {
   LITELLM_CONFIG_FILE: "litellm_config.contract.yaml",
   OPENWHISPR_TEST_ROUTES: "true",
   MOCK_DIARIZATION: "true",
+  // Plan 51-25 — explicitly route OTel spans through the collector
+  // bundled by the observability overlay. The local `.env` may carry
+  // `OTEL_EXPORTER_OTLP_ENDPOINT=disabled` (slim-core default); without
+  // this override the api boots with OTel disabled and
+  // otel-trace-propagation.test.ts finds no traces in Tempo.
+  OTEL_EXPORTER_OTLP_ENDPOINT: "http://otel-collector:4317",
+  // Plan 51-25 — raise per-route limiter ceilings to non-limit-tripping
+  // levels for the e2e suite. The audit-log-write test signs in then
+  // calls /api/v1/keys/create exactly once and gets 429 in the wild —
+  // the 5/hour route ceiling collides with seed-container traffic on
+  // shared compose Valkey buckets keyed on req.ip. Tests that
+  // explicitly exercise rate-limit semantics (rate-limit-layered.test)
+  // override these to assert the production posture.
+  RATE_LIMIT_GLOBAL_USER_MAX: "10000",
+  RATE_LIMIT_GLOBAL_IP_CEILING: "10000",
+  // The per-route hardcoded 5/hour on /api/v1/keys/create collides
+  // with the seed container's shared-IP traffic; disable the limiter
+  // entirely for e2e. rate-limit-layered.test brings up its own stack
+  // with the limiter ON and asserts the production posture.
+  OPENWHISPR_DISABLE_RATE_LIMIT: "true",
 };
 
 // Phase 53 — Plan 14 moved observability (grafana, loki, otel-collector,
@@ -92,6 +112,7 @@ const COMPOSE_FILES = [
   "docker-compose.yml",
   "compose/docker-compose.observability.yml",
   "compose/docker-compose.ingress.yml",
+  "tests/e2e/helpers/phase6-e2e-env-override.yml",
   // Phase 53 — Plan 14 also moved the `seed` service (conformance
   // fixture loader) into compose/docker-compose.contract-test.yml.
   // Phase 6 e2e helper calls `docker compose run --rm seed` so we
@@ -745,9 +766,18 @@ export async function phase6BringStackUpScaled(opts: {
   const projectName = opts.projectName ?? "openwhispr";
   const timeoutMs = opts.timeoutMs ?? 180_000;
 
-  // Compose the `-f docker-compose.yml -f <override1> -f <override2>`
-  // argument list.  Override files are paths relative to REPO_ROOT.
-  const fileArgs: string[] = ["-f", "docker-compose.yml"];
+  // Compose the `-f docker-compose.yml -f <ingress> -f <override...>`
+  // argument list. Override files are paths relative to REPO_ROOT.
+  // Plan 51-25 — layer the ingress overlay (which defines the
+  // `traefik` service) BEFORE the override files: the scale-override
+  // adjusts `traefik.volumes` and needs the base traefik definition
+  // already in scope.
+  const fileArgs: string[] = [
+    "-f",
+    "docker-compose.yml",
+    "-f",
+    "compose/docker-compose.ingress.yml",
+  ];
   for (const f of opts.overrideComposeFiles) {
     fileArgs.push("-f", f);
   }

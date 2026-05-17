@@ -32,3 +32,7 @@ services:
       NODE_ENV: test
       OPENWHISPR_TEST_ROUTES: "true"
       RATE_LIMIT_GLOBAL_IP_CEILING: "30"
+      # Plan 51-25 — explicitly UNSET the global hermetic-env disable
+      # so this test asserts the production rate-limit posture.
+      OPENWHISPR_DISABLE_RATE_LIMIT: ""
+      RATE_LIMIT_GLOBAL_USER_MAX: ""
