@@ -34,9 +34,10 @@ import {
 } from "../../../src/lib/audit.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-// apps/api/src/lib -> packages/data/migrations
+// apps/api/tests/unit/lib -> packages/data/migrations (5 levels up to repo root)
 const MIGRATIONS_FOLDER = resolve(
   __dirname,
+  "..",
   "..",
   "..",
   "..",
