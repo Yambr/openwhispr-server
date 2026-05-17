@@ -15,6 +15,7 @@ export * from "./delete-account.js";
 export * from "./diarization.js";
 export * from "./folders.js";
 export * from "./notes.js";
+export * from "./openai-realtime-token.js";
 export * from "./reason.js";
 export * from "./settings.js";
 export * from "./streaming-usage.js";
