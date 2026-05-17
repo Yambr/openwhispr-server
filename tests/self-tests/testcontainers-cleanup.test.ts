@@ -52,7 +52,10 @@ function listOrphanTestcontainers(): string[] {
       ],
       { encoding: "utf8", timeout: 10_000 },
     );
-    return stdout.split("\n").map((s) => s.trim()).filter((s) => s.length > 0);
+    return stdout
+      .split("\n")
+      .map((s) => s.trim())
+      .filter((s) => s.length > 0);
   } catch {
     return [];
   }
@@ -114,13 +117,7 @@ describe("testcontainers cleanup (Phase 46 / L5)", () => {
       expect(() =>
         execFileSync(
           "docker",
-          [
-            "container",
-            "prune",
-            "-f",
-            "--filter",
-            "label=org.testcontainers=true",
-          ],
+          ["container", "prune", "-f", "--filter", "label=org.testcontainers=true"],
           { stdio: ["ignore", "pipe", "pipe"], timeout: 15_000 },
         ),
       ).not.toThrow();

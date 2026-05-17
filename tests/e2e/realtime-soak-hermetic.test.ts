@@ -219,7 +219,5 @@ describe("e2e — WSS /v1/realtime 5-min hermetic soak (SCALE-05)", () => {
     );
     expect(pingRtts.length).toBeGreaterThanOrEqual(10);
     expect(percentile(pingRtts, 0.95)).toBeLessThan(1000);
-  }, // + assertion overhead. Stays under the 600_000 vitest.e2e.config // 6 minutes — covers the 305s soak + connection setup + close drain
-  // ceiling.
-  360_000);
+  }, 360_000); // ceiling. // + assertion overhead. Stays under the 600_000 vitest.e2e.config // 6 minutes — covers the 305s soak + connection setup + close drain
 });

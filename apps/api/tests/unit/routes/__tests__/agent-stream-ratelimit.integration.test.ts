@@ -12,10 +12,7 @@
 // per-route rate-limit override as cost-exposure.
 
 import { ErrorEnvelope } from "@openwhispr/contract-tests/schemas";
-import {
-  buildLitellmClient,
-  type LitellmClient,
-} from "@openwhispr/litellm-client";
+import { buildLitellmClient, type LitellmClient } from "@openwhispr/litellm-client";
 import Fastify, { type FastifyInstance } from "fastify";
 import { Agent, MockAgent, setGlobalDispatcher } from "undici";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -84,9 +81,7 @@ async function buildApp(bearerMap: Record<string, string>): Promise<FastifyInsta
       email: `${userId}@test.local`,
     };
   });
-  await app.register(
-    buildAgentStreamRoutes({ db: fakeDb() as never, litellm: fakeLitellm() }),
-  );
+  await app.register(buildAgentStreamRoutes({ db: fakeDb() as never, litellm: fakeLitellm() }));
   await app.ready();
   return app;
 }

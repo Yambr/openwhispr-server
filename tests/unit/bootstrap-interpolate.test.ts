@@ -111,7 +111,6 @@ describe("Phase 02.4 G1 — bootstrap.sh three-way value semantics", () => {
     }
   });
 
-  // biome-ignore lint/suspicious/noTemplateCurlyInString: literal "${SECRET_A}" is the
   //   bash-shell placeholder syntax under test — must remain a plain string, not a JS template.
   it("interpolates ${SECRET_A} inside DATABASE_URL composite", () => {
     const { root, envPath } = setupRoot();
@@ -120,7 +119,6 @@ describe("Phase 02.4 G1 — bootstrap.sh three-way value semantics", () => {
       const env = parseEnv(readFileSync(envPath, "utf8"));
       expect(env.SECRET_A).toBeDefined();
       expect(env.DATABASE_URL).toBe(`postgres://app:${env.SECRET_A}@db:5432/openwhispr`);
-      // biome-ignore lint/suspicious/noTemplateCurlyInString: asserting the literal bash
       //   placeholder "${SECRET_A}" is absent from the rendered output (i.e. interpolation ran).
       expect(env.DATABASE_URL).not.toContain("${SECRET_A}");
     } finally {

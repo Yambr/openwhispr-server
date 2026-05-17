@@ -157,9 +157,7 @@ export async function runBackfill(opts: RunBackfillOpts): Promise<BackfillReport
 
           // Build the UPDATE statement once per column — same shape for all
           // rows in this batch. Set 6 sidecars + optional fingerprint.
-          const setFragments = SIDECAR_SUFFIXES.map(
-            (suf, i) => `"${column}_${suf}" = $${i + 1}`,
-          );
+          const setFragments = SIDECAR_SUFFIXES.map((suf, i) => `"${column}_${suf}" = $${i + 1}`);
           let paramOffset = SIDECAR_SUFFIXES.length;
           if (cfg.fingerprintColumn) {
             paramOffset += 1;

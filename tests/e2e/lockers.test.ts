@@ -54,15 +54,11 @@ function runLocker(
 ): { code: number; stderr: string; stdout: string } {
   const scriptAbs = join(REPO_ROOT, scriptRelPath);
   try {
-    const stdout = execFileSync(
-      "pnpm",
-      ["exec", "tsx", scriptAbs, ...extraArgv, rootDir],
-      {
-        cwd: REPO_ROOT,
-        encoding: "utf8",
-        stdio: ["ignore", "pipe", "pipe"],
-      },
-    );
+    const stdout = execFileSync("pnpm", ["exec", "tsx", scriptAbs, ...extraArgv, rootDir], {
+      cwd: REPO_ROOT,
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "pipe"],
+    });
     return { code: 0, stdout, stderr: "" };
   } catch (err: unknown) {
     const e = err as { status: number | null; stderr?: Buffer; stdout?: Buffer };
@@ -102,10 +98,7 @@ describe("LOCKER-08 — six locker binaries refuse violations end-to-end", () =>
   });
 
   it("LOCKER-03 (lint-no-hardcode) — refuses hardcoded localhost+port", () => {
-    const root = stageFixture(
-      'const URL_X = "http://localhost:3000";\n',
-      "bad.ts",
-    );
+    const root = stageFixture('const URL_X = "http://localhost:3000";\n', "bad.ts");
     const { code, stderr } = runLocker("tools/lint-no-hardcode.ts", root);
     expect(code).toBe(1);
     expect(stderr).toMatch(/localhost-string|port-literal/);
@@ -139,10 +132,7 @@ describe("LOCKER-08 — six locker binaries refuse violations end-to-end", () =>
       "errors.ts",
     );
     // Invoke WITHOUT --warn-only — nightly.yml invokes the BLOCKING form.
-    const { code, stderr } = runLocker(
-      "tools/lint-secret-shape-in-error.ts",
-      root,
-    );
+    const { code, stderr } = runLocker("tools/lint-secret-shape-in-error.ts", root);
     expect(code).toBe(1);
     expect(stderr).toMatch(/secret-shape-in-error|bodyText/);
   });
@@ -158,10 +148,7 @@ describe("LOCKER-08 — six locker binaries refuse violations end-to-end", () =>
       "audit.ts",
     );
     // Invoke WITHOUT --warn-only.
-    const { code, stderr } = runLocker(
-      "tools/lint-shell-credential-interpolation.ts",
-      root,
-    );
+    const { code, stderr } = runLocker("tools/lint-shell-credential-interpolation.ts", root);
     expect(code).toBe(1);
     expect(stderr).toMatch(/shell-credential-interpolation|DATABASE_URL/);
   });
@@ -169,10 +156,7 @@ describe("LOCKER-08 — six locker binaries refuse violations end-to-end", () =>
 
 describe("LOCKER-07 — DISCIPLINE Rules 11–14 mirrored to CLAUDE.md", () => {
   it("DISCIPLINE.md contains Rule 11 / 12 / 13 / 14 prose", () => {
-    const text = readFileSync(
-      join(REPO_ROOT, ".planning", "DISCIPLINE.md"),
-      "utf8",
-    );
+    const text = readFileSync(join(REPO_ROOT, ".planning", "DISCIPLINE.md"), "utf8");
     expect(text).toMatch(/11\.\s+\*\*No NODE_ENV branches/);
     expect(text).toMatch(/12\.\s+\*\*No type-suppression/);
     expect(text).toMatch(/13\.\s+\*\*No hardcoded localhost/);

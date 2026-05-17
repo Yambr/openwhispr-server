@@ -942,7 +942,6 @@ describe("buildLitellmClient — chatCompletionsStream", () => {
     }));
     const client = buildLitellmClient(baseConfig(), {
       isOverride: false,
-      // biome-ignore lint: spy stand-in matches doRequest shape sufficiently for option assertions.
       request: spy as unknown as typeof import("undici").request,
     });
     await client.chatCompletionsStream({

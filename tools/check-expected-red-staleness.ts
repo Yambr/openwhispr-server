@@ -140,10 +140,7 @@ export function parseRoadmapClosures(roadmapText: string): Map<string, string> {
 }
 
 /** Match a scenario's phase tag (may carry a `-SUFFIX`) to a ROADMAP closure. */
-function findClosureFor(
-  closures: Map<string, string>,
-  phaseId: string,
-): string | undefined {
+function findClosureFor(closures: Map<string, string>, phaseId: string): string | undefined {
   // Exact match first.
   const direct = closures.get(phaseId);
   if (direct) return direct;

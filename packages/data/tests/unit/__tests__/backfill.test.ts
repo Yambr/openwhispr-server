@@ -31,14 +31,14 @@
 import { createHash, randomBytes } from "node:crypto";
 import { Pool } from "pg";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
-import { EnvKeyProvider } from "../../../src/encryption/env-key-provider.js";
-import { decryptValue, type EncryptedRow } from "../../../src/encryption/envelope.js";
+import { type BootResult, bootMigratedPostgres } from "../../../src/__tests__/helpers.js";
 import {
   type BackfillColumnMap,
   type BackfillReport,
   runBackfill,
 } from "../../../src/encryption/backfill.js";
-import { type BootResult, bootMigratedPostgres } from "../../../src/__tests__/helpers.js";
+import { EnvKeyProvider } from "../../../src/encryption/env-key-provider.js";
+import { decryptValue, type EncryptedRow } from "../../../src/encryption/envelope.js";
 
 // Canonical column-map for the 8 Better-Auth credential columns. Mirrors
 // the lens column-map (33-02) but in the backfill shape: tables/columns
@@ -187,13 +187,7 @@ describe.skip("runBackfill — integration on real PG testcontainer (obsolete po
               ("tenant_id", "provider", "callback_url", "scheme", "code_verifier", "expires_at")
              VALUES ($1,$2,$3,$4,$5, now() + interval '10 minutes')
              RETURNING "id"`,
-            [
-              tenantId,
-              "google",
-              "https://example.test/cb",
-              "openwhispr",
-              `verifier-pt-${t}-${u}`,
-            ],
+            [tenantId, "google", "https://example.test/cb", "openwhispr", `verifier-pt-${t}-${u}`],
           )
         ).rows[0]!.id;
         seeded.push({
@@ -278,7 +272,9 @@ describe.skip("runBackfill — integration on real PG testcontainer (obsolete po
     }
     // Fingerprint = sha256(plaintext)
     expect(Buffer.isBuffer(r.token_fp)).toBe(true);
-    expect((r.token_fp as Buffer).equals(createHash("sha256").update(sample.values.token!).digest())).toBe(true);
+    expect(
+      (r.token_fp as Buffer).equals(createHash("sha256").update(sample.values.token!).digest()),
+    ).toBe(true);
     // Decrypt round-trips
     const enc: EncryptedRow = {
       dek_wrapped: r.token_dek_wrapped,

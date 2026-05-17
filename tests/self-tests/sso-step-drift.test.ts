@@ -35,6 +35,7 @@ function readFeature(): string {
  * `Given("…", …)`, `When("…", …)`, `Then("…", …)`. Cucumber expression
  * params `{string}` / `{int}` are preserved as-is.
  */
+// biome-ignore lint/suspicious/noExportsInTest: helper consumed by sibling tests via path import
 export function extractStepBindings(source: string): string[] {
   const out: string[] = [];
   const re = /\b(?:Given|When|Then)\(\s*(?:`([^`]+)`|"((?:[^"\\]|\\.)+)")/g;
@@ -54,14 +55,13 @@ export function extractStepBindings(source: string): string[] {
  * step file binding `"name {string}"` matches a feature line
  * `name "Alice"`.
  */
+// biome-ignore lint/suspicious/noExportsInTest: helper consumed by sibling tests via path import
 export function extractFeatureSteps(source: string): string[] {
   const out: string[] = [];
   for (const raw of source.split("\n")) {
     const m = /^\s*(Given|When|Then|And|But)\s+(.+?)\s*$/.exec(raw);
     if (!m) continue;
-    const text = m[2]
-      .replace(/"[^"]*"/g, "{string}")
-      .replace(/\b\d+\b/g, "{int}");
+    const text = m[2].replace(/"[^"]*"/g, "{string}").replace(/\b\d+\b/g, "{int}");
     out.push(text);
   }
   return out;

@@ -57,22 +57,16 @@ describe("AgentStreamRequestSchema", () => {
       name: `t${i}`,
       parameters: {},
     }));
-    expect(
-      AgentStreamRequestSchema.safeParse({ messages: [], tools }).success,
-    ).toBe(false);
+    expect(AgentStreamRequestSchema.safeParse({ messages: [], tools }).success).toBe(false);
   });
 
   it("rejects oversize systemPrompt (> 16_384 chars)", () => {
     const systemPrompt = "x".repeat(16_385);
-    expect(
-      AgentStreamRequestSchema.safeParse({ messages: [], systemPrompt }).success,
-    ).toBe(false);
+    expect(AgentStreamRequestSchema.safeParse({ messages: [], systemPrompt }).success).toBe(false);
   });
 
   it("rejects empty model string (min 1)", () => {
-    expect(
-      AgentStreamRequestSchema.safeParse({ messages: [], model: "" }).success,
-    ).toBe(false);
+    expect(AgentStreamRequestSchema.safeParse({ messages: [], model: "" }).success).toBe(false);
   });
 
   it("rejects oversize model name (> 128 chars)", () => {
@@ -113,23 +107,19 @@ describe("AgentChatMessageSchema", () => {
   });
 
   it("rejects unknown keys (strict)", () => {
-    expect(
-      AgentChatMessageSchema.safeParse({ role: "user", content: "x", extra: 1 }).success,
-    ).toBe(false);
+    expect(AgentChatMessageSchema.safeParse({ role: "user", content: "x", extra: 1 }).success).toBe(
+      false,
+    );
   });
 });
 
 describe("AgentLegacyToolSchema", () => {
   it("accepts the minimal name + parameters shape", () => {
-    expect(
-      AgentLegacyToolSchema.safeParse({ name: "search", parameters: {} }).success,
-    ).toBe(true);
+    expect(AgentLegacyToolSchema.safeParse({ name: "search", parameters: {} }).success).toBe(true);
   });
 
   it("rejects empty name", () => {
-    expect(
-      AgentLegacyToolSchema.safeParse({ name: "", parameters: {} }).success,
-    ).toBe(false);
+    expect(AgentLegacyToolSchema.safeParse({ name: "", parameters: {} }).success).toBe(false);
   });
 
   it("rejects unknown keys (strict)", () => {

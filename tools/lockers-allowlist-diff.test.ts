@@ -11,12 +11,14 @@
 // + `isApproved(commitMessage, prBody)`. The CLI runner is exercised via a
 // thin `run({ baseAllowlists, headAllowlists, commitMessage, prBody })`
 // dependency-injection seam so the test suite avoids spawning git.
-import { mkdtempSync, mkdirSync, writeFileSync } from "node:fs";
+
+import { execFileSync } from "node:child_process";
+import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { execFileSync } from "node:child_process";
 import { describe, expect, it } from "vitest";
 import {
+  type CliIo,
   computeNetAdditions,
   defaultCliIo,
   defaultReadAtHead,
@@ -26,7 +28,6 @@ import {
   resolveBaseRef,
   run,
   runCli,
-  type CliIo,
 } from "./lockers-allowlist-diff.ts";
 
 describe("parseAllowlist", () => {
@@ -39,10 +40,7 @@ describe("parseAllowlist", () => {
       "  # indented comment",
       "",
     ].join("\n");
-    expect(parseAllowlist(text)).toEqual([
-      "apps/api/src/a.ts:10",
-      "apps/api/src/b.ts:20",
-    ]);
+    expect(parseAllowlist(text)).toEqual(["apps/api/src/a.ts:10", "apps/api/src/b.ts:20"]);
   });
 
   it("returns an empty array on empty / whitespace-only input", () => {
@@ -79,13 +77,13 @@ describe("computeNetAdditions", () => {
 
 describe("isApproved", () => {
   it("accepts `Allowlist-grow-approved: issue-1234` in commit body", () => {
-    expect(
-      isApproved("feat(x): something\n\nAllowlist-grow-approved: issue-1234", ""),
-    ).toBe(true);
+    expect(isApproved("feat(x): something\n\nAllowlist-grow-approved: issue-1234", "")).toBe(true);
   });
 
   it("accepts the trailer in PR body when commit body lacks it", () => {
-    expect(isApproved("plain commit", "PR description\nAllowlist-grow-approved: issue-9999\n")).toBe(true);
+    expect(
+      isApproved("plain commit", "PR description\nAllowlist-grow-approved: issue-9999\n"),
+    ).toBe(true);
   });
 
   it("rejects when neither carries the trailer", () => {
@@ -309,4 +307,3 @@ describe("runCli", () => {
     expect(out.stderr).toMatch(/Allowlist-grow-approved: issue-NNNN/);
   });
 });
-

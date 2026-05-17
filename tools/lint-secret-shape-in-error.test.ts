@@ -432,7 +432,6 @@ describe("runMain — CLI entry + --warn-only", () => {
     const stderrBuf: string[] = [];
     const stdoutBuf: string[] = [];
     const code = runMain({
-      // biome-ignore lint/suspicious/noExplicitAny: deliberately wrong type
       argv: [42 as any],
       stdout: { write: (s) => stdoutBuf.push(s) },
       stderr: { write: (s) => stderrBuf.push(s) },

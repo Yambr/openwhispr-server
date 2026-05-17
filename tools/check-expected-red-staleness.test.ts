@@ -6,9 +6,9 @@ import {
   extractRedScenarios,
   findStale,
   parseRoadmapClosures,
+  type RedScenario,
   renderReport,
   run,
-  type RedScenario,
 } from "./check-expected-red-staleness";
 
 describe("extractRedScenarios", () => {
