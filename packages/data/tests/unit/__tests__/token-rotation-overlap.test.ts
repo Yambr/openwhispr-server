@@ -54,11 +54,15 @@ beforeAll(async () => {
        ON CONFLICT DO NOTHING`,
       [USER_ID, DEFAULT_TENANT_ID],
     );
+    // Phase 33 / Plan 33-05 — plaintext `token` column dropped by migration
+    // 0020; envelope-encryption sidecars are nullable, only `token_fp` is
+    // NOT NULL. Seed the current session with the SHA-256 fingerprint of
+    // the current bearer; the plaintext bearer never lands on disk.
     await ownerPool.query(
-      `INSERT INTO sessions (id, tenant_id, user_id, token, expires_at)
+      `INSERT INTO sessions (id, tenant_id, user_id, token_fp, expires_at)
        VALUES ($1, $2, $3, $4, now() + interval '30 days')
        ON CONFLICT DO NOTHING`,
-      [SESSION_ID, DEFAULT_TENANT_ID, USER_ID, "current-token-T2"],
+      [SESSION_ID, DEFAULT_TENANT_ID, USER_ID, sha256("current-token-T2")],
     );
   } finally {
     await ownerPool.end();
@@ -78,13 +82,14 @@ describe("AUTH-04 token-rotation overlap (real Postgres, fingerprint-index looku
       try {
         await client.query("BEGIN");
         await client.query(`SELECT set_config('app.tenant_id', $1, true)`, [DEFAULT_TENANT_ID]);
+        // Plan 33-05 — plaintext `previous_token` column dropped by 0020.
+        // The fp + expires_at pair is the canonical AUTH-04 overlap state.
         await client.query(
           `UPDATE sessions
-           SET previous_token = $1,
-               previous_token_fp = $2,
+           SET previous_token_fp = $1,
                previous_token_expires_at = now() + interval '5 minutes'
-           WHERE id = $3`,
-          [oldToken, sha256(oldToken), SESSION_ID],
+           WHERE id = $2`,
+          [sha256(oldToken), SESSION_ID],
         );
         await client.query("COMMIT");
       } finally {
@@ -97,13 +102,13 @@ describe("AUTH-04 token-rotation overlap (real Postgres, fingerprint-index looku
     // Verify under owner connection (BYPASSRLS).
     const ownerPool = new Pool({ connectionString: booted.ownerUri });
     try {
+      // Plan 33-05 — the plaintext `previous_token` column was dropped
+      // by 0020. Only the fp and expiry window remain on the row.
       const { rows } = await ownerPool.query<{
-        previous_token: string | null;
         previous_token_fp: Buffer | null;
         in_window: boolean;
       }>(
-        `SELECT previous_token,
-                previous_token_fp,
+        `SELECT previous_token_fp,
                 (previous_token_expires_at > now()
                  AND previous_token_expires_at <= now() + interval '5 minutes 1 second') AS in_window
          FROM sessions WHERE id = $1`,
@@ -111,7 +116,6 @@ describe("AUTH-04 token-rotation overlap (real Postgres, fingerprint-index looku
       );
       const row = rows[0];
       expect(row).toBeDefined();
-      expect(row?.previous_token).toBe(oldToken);
       expect(row?.previous_token_fp).toEqual(sha256(oldToken));
       expect(row?.in_window).toBe(true);
     } finally {
