@@ -36,6 +36,7 @@
 import type { FastifyInstance } from "fastify";
 import { ServiceUnavailable } from "../../errors.js";
 import { callProvider } from "./_call-provider.js";
+import { parseTtlSeconds } from "./_parse-ttl.js";
 
 /** Default token TTL in seconds when ASSEMBLYAI_TOKEN_TTL is not set. */
 const DEFAULT_TTL_SECONDS = 60;
@@ -75,8 +76,18 @@ export const buildAssemblyAITokenRoutes = () =>
           });
         }
       },
-      handler: async (_req, reply) => {
-        const ttl = Number(process.env.ASSEMBLYAI_TOKEN_TTL ?? DEFAULT_TTL_SECONDS);
+      handler: async (req, reply) => {
+        // Plan 51-12tx2 (HI-6) — refuse to send NaN to upstream when
+        // ASSEMBLYAI_TOKEN_TTL is set to a non-numeric value. The
+        // helper falls back to DEFAULT_TTL_SECONDS and warn-logs the
+        // misconfiguration via req.log so operators see it in Loki
+        // instead of debugging a misleading 503.
+        const ttl = parseTtlSeconds(
+          process.env.ASSEMBLYAI_TOKEN_TTL,
+          DEFAULT_TTL_SECONDS,
+          "ASSEMBLYAI_TOKEN_TTL",
+          req.log,
+        );
         const r = await callProvider({
           url: `https://streaming.assemblyai.com/v3/token?expires_in_seconds=${ttl}`,
           method: "GET",
