@@ -31,6 +31,8 @@ export const buildConversationsDeleteRoutes = (deps: ConversationsDeleteDeps) =>
     app.route({
       method: "DELETE",
       url: "/api/conversations/delete",
+      // Plan 51-12c — schema:body for LOCKER-04.
+      schema: { body: DeleteBodySchema },
       config: { rateLimit: { max: 120, timeWindow: "1 minute" } },
       handler: async (req, reply) => {
         if (!req.user || !req.tenant) {

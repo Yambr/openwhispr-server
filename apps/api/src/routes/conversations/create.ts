@@ -29,6 +29,8 @@ export const buildConversationsCreateRoutes = (deps: ConversationsCreateDeps) =>
     app.route({
       method: "POST",
       url: "/api/conversations/create",
+      // Plan 51-12c — schema:body for LOCKER-04.
+      schema: { body: ConversationInputSchema },
       config: { rateLimit: { max: 120, timeWindow: "1 minute" } },
       handler: async (req, reply) => {
         if (!req.user || !req.tenant) {
