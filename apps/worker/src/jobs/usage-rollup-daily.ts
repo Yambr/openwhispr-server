@@ -25,10 +25,18 @@ import { withTenantContext } from "../lib/with-tenant-context.js";
 /** YYYY-MM-DD UTC bucket. */
 const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "expected YYYY-MM-DD");
 
-/** Dispatcher payload — fires per cron tick. */
+/**
+ * Dispatcher payload — fires per cron tick.
+ *
+ * Phase 51 / Plan 51-05 (REVIEW CR-8) — `date` is OPTIONAL. The
+ * scheduler no longer freezes the date at install time; handlers
+ * derive the day from `job.timestamp` via `dateStringForJob()`.
+ * Operators can still enqueue a one-off backfill job with an explicit
+ * `date` and the handler will use it as-is.
+ */
 export const usageRollupDispatcherSchema = z
   .object({
-    date: isoDate,
+    date: isoDate.optional(),
   })
   .strict();
 export type UsageRollupDispatcherPayload = z.infer<typeof usageRollupDispatcherSchema>;
@@ -58,17 +66,23 @@ export function buildUsageRollupDispatcher(
   return withSystemContext(
     usageRollupDispatcherSchema,
     async (data): Promise<{ tenants: number }> => {
+      // Phase 51 / Plan 51-05 (REVIEW CR-8) — the scheduler now ships
+      // empty payloads on every tick. Fall back to "yesterday UTC" so
+      // a midnight-cron fire rolls up the day that just closed.
+      // Explicit `data.date` (e.g. for backfill) wins.
+      const date =
+        data.date ?? new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
       const { rows } = await deps.ownerPool.query<{ tenant_id: string }>(
         `SELECT DISTINCT tenant_id::text AS tenant_id
          FROM usage_ledger
         WHERE created_at >= ($1::date)
           AND created_at <  ($1::date + INTERVAL '1 day')`,
-        [data.date],
+        [date],
       );
       for (const row of rows) {
         await deps.childQueue.add("usage-rollup-daily-tenant", {
           tenant_id: row.tenant_id,
-          date: data.date,
+          date,
         });
       }
       return { tenants: rows.length };
@@ -94,8 +108,14 @@ export interface UsageRollupTenantDeps {
 export function buildUsageRollupTenantHandler(
   deps: UsageRollupTenantDeps,
 ): (job: import("bullmq").Job) => Promise<void> {
-  return withTenantContext(usageRollupTenantSchema, deps.pool, async (data) => {
-    await deps.pool.query(
+  // Phase 51 / Plan 51-05 (REVIEW CR-7) — run the UPSERT against the
+  // bound client (which has `app.tenant_id` set via set_config), NOT
+  // against `deps.pool.query(...)` which would check out a different
+  // connection without the GUC and trip the app-pool runtime guard
+  // (`TenantContextMissingError`). The handler now signature-takes
+  // (data, client).
+  return withTenantContext(usageRollupTenantSchema, deps.pool, async (data, client) => {
+    await client.query(
       `WITH per_kind AS (
          SELECT kind, SUM(units)::int AS units_sum
            FROM usage_ledger

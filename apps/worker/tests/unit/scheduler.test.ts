@@ -47,7 +47,11 @@ function makeRegistry() {
 }
 
 describe("installSchedulers (Phase 6 Plan 06-08)", () => {
-  it("upserts the usage-rollup-daily-dispatcher cron at 5 0 * * *", async () => {
+  it("upserts the usage-rollup-daily-dispatcher cron at 5 0 * * * (Plan 51-05: empty payload)", async () => {
+    // Phase 51 / Plan 51-05 (REVIEW CR-8) — pre-fix the scheduler
+    // froze `date` into the payload at install time, so every cron
+    // tick re-fired the same boot-day. Now the payload is empty and
+    // handlers derive the date from `job.timestamp` themselves.
     const r = makeRegistry();
     await installSchedulers(r as any, {}, new Date("2026-05-11T00:00:00Z"));
     expect(r.usageRollupDispatcher.captures).toHaveLength(1);
@@ -55,19 +59,19 @@ describe("installSchedulers (Phase 6 Plan 06-08)", () => {
       pattern: "5 0 * * *",
       tz: "UTC",
     });
-    expect((r.usageRollupDispatcher.captures[0]?.jobData as any).data.date).toBe("2026-05-11");
+    expect((r.usageRollupDispatcher.captures[0]?.jobData as any).data).toEqual({});
   });
 
-  it("upserts reconciliation-daily-check at 0 1 * * * with a 24h window", async () => {
+  it("upserts reconciliation-daily-check at 0 1 * * * with empty payload (Plan 51-05)", async () => {
+    // Phase 51 / Plan 51-05 — same fix as above; handler derives the
+    // 24-hour window from job.timestamp at execution time.
     const r = makeRegistry();
     await installSchedulers(r as any, {}, new Date("2026-05-11T12:00:00Z"));
     expect(r.reconciliationDailyCheck.captures[0]?.repeat).toMatchObject({
       pattern: "0 1 * * *",
       tz: "UTC",
     });
-    const data = (r.reconciliationDailyCheck.captures[0]?.jobData as any).data;
-    expect(data.window_start).toBe("2026-05-10T00:00:00.000Z");
-    expect(data.window_end).toBe("2026-05-11T00:00:00.000Z");
+    expect((r.reconciliationDailyCheck.captures[0]?.jobData as any).data).toEqual({});
   });
 
   it("upserts partman-maintenance at 0 2 * * * with empty payload", async () => {

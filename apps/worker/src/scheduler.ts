@@ -26,10 +26,10 @@
 
 import type { QueueRegistry } from "./queues.js";
 
-/** UTC date helper — used as the rollup dispatcher's payload `date` field. */
-function utcDateString(now: Date = new Date()): string {
-  return now.toISOString().slice(0, 10);
-}
+// Phase 51 / Plan 51-05 — `utcDateString` retired. Handlers now derive
+// the date from `job.timestamp` via `dateStringForJob()` (defined below)
+// because the scheduler no longer freezes a `date:` literal into the
+// payload at install time (REVIEW CR-8 fix).
 
 export interface SchedulerConfig {
   /**
@@ -50,30 +50,33 @@ export const DEFAULT_SCHEDULER_CONFIG: Required<SchedulerConfig> = {
 export async function installSchedulers(
   registry: QueueRegistry,
   config: SchedulerConfig = {},
-  now: Date = new Date(),
+  _now: Date = new Date(),
 ): Promise<void> {
+  // Phase 51 / Plan 51-05 (REVIEW CR-8) — schedulers no longer
+  // materialize `date` / `window_start` / `window_end` at install
+  // time. BullMQ re-fires the same payload on every cron tick, so the
+  // pre-fix code would ship the install-boot date forever. Empty
+  // payloads now flow through and the handlers compute the rollup
+  // date from `job.timestamp ?? Date.now()` themselves.
+  //
+  // The `now` parameter is kept (underscore-prefixed) so the signature
+  // is wire-compatible with existing tests and so a future per-boot
+  // backfill plan can re-enable explicit-date payloads without a
+  // breaking change.
   const cfg = { ...DEFAULT_SCHEDULER_CONFIG, ...config };
 
   // 1. usage-rollup-daily-dispatcher
   await registry.usageRollupDispatcher.upsertJobScheduler(
     "usage-rollup-daily",
     { pattern: cfg.usageRollupCron, tz: "UTC" },
-    { name: "usage-rollup-daily", data: { date: utcDateString(now) } },
+    { name: "usage-rollup-daily", data: {} },
   );
 
   // 2. reconciliation-daily-check
-  const windowEnd = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
-  const windowStart = new Date(windowEnd.getTime() - 24 * 60 * 60 * 1000);
   await registry.reconciliationDailyCheck.upsertJobScheduler(
     "reconciliation-daily",
     { pattern: cfg.reconciliationCron, tz: "UTC" },
-    {
-      name: "reconciliation-daily-check",
-      data: {
-        window_start: windowStart.toISOString(),
-        window_end: windowEnd.toISOString(),
-      },
-    },
+    { name: "reconciliation-daily-check", data: {} },
   );
 
   // 3. partman-maintenance — empty-payload, no jobData parsing.
@@ -82,4 +85,16 @@ export async function installSchedulers(
     { pattern: cfg.partmanCron, tz: "UTC" },
     { name: "partman-maintenance", data: {} },
   );
+}
+
+/**
+ * Phase 51 / Plan 51-05 (REVIEW CR-8) — date helper for handlers that
+ * formerly consumed a frozen `data.date` from the scheduler payload.
+ * Handlers should call this with `job.timestamp` so the rollup runs
+ * against the day the cron actually fired, not the day the worker
+ * booted. Exported for the handler tests.
+ */
+export function dateStringForJob(job: { timestamp?: number }): string {
+  const ts = typeof job.timestamp === "number" ? job.timestamp : Date.now();
+  return new Date(ts).toISOString().slice(0, 10);
 }
