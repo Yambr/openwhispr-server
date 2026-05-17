@@ -466,9 +466,14 @@ export const buildApp = async (opts: BuildAppOptions = {}): Promise<FastifyInsta
           req.sessionId
         ) {
           try {
-            // Phase 02.12 — store the old bearer plain-text (no hashing).
-            // The AUTH-04 5-minute overlap CONTRACT is preserved; only
-            // the storage representation flipped from bytea(SHA-256) to text.
+            // Phase 51 / Plan 51-13 (REVIEW api-core HIGH HI-01) —
+            // header rewritten. recordPreviousToken now persists ONLY
+            // a SHA-256 fingerprint of the old bearer (`previous_token_fp`
+            // sidecar; the plaintext column was dropped in migration
+            // 0020 / Phase 33 / Plan 33-05). The AUTH-04 5-minute
+            // overlap CONTRACT is preserved across the three storage
+            // shapes the project shipped (bytea-SHA256 → plaintext →
+            // fingerprint-only).
             await recPrev(opts.db!, req.tenant, req.sessionId, oldBearer);
           } catch (err) {
             req.log?.warn?.({ err }, "recordPreviousToken failed (Plan 08 onSend hook)");

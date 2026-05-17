@@ -45,7 +45,7 @@ apps/api/src/auth.ts:326  # issue-31-debt-hardcode-localhost-3000 (33-04 shifted
 apps/api/src/routes/test-only.ts:181  # issue-31-debt-hardcode-localhost-3000
 apps/api/src/routes/better-auth-handler.ts:49  # comment-only-narrative-issue-31-fp (Plan 51-10 fix rationale comment references the old localhost fallback)
 apps/api/src/routes/better-auth-handler.ts:79  # issue-31-debt-hardcode-localhost
-apps/api/src/index.ts:679  # issue-31-debt-hardcode-litellm-port-4000 (33-04 +9; 34 -1; 51-02 +5; 51-03 +10)
+apps/api/src/index.ts:684  # issue-31-debt-hardcode-litellm-port-4000 (33-04 +9; 34 -1; 51-02 +5; 51-03 +10)
 apps/web/src/app/(auth)/app/page.tsx:16  # issue-31-debt-hardcode-port-3000-phase-41c
 apps/web/src/app/(auth)/app/notes/page.tsx:14  # issue-31-debt-hardcode-port-3000-phase-41c
 apps/web/src/app/(auth)/app/transcriptions/page.tsx:14  # issue-31-debt-hardcode-port-3000-phase-41c
