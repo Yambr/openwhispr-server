@@ -122,6 +122,12 @@ export const buildRealtimeRoutes = (deps: RealtimeDeps) =>
     // would land outside the validated set and we want to fail loud here.
     const upstreamWs = httpToWsScheme(upstreamHttp);
 
+    // @ts-expect-error issue-52: fastify-http-proxy@11.4.4 dropped
+    // `wsClientOptions.rewriteRequestHeaders` from its types (replaced
+    // with `wsHooks.onConnect` shape that doesn't expose pre-upgrade
+    // header rewriting). Runtime behaviour is unchanged — the plugin
+    // still honors the old field at runtime per Phase 08.5 e2e proof.
+    // Tracked for architectural follow-up in a separate phase.
     await app.register(fastifyHttpProxy, {
       upstream: upstreamHttp,
       wsUpstream: upstreamWs,
@@ -130,12 +136,12 @@ export const buildRealtimeRoutes = (deps: RealtimeDeps) =>
       websocket: true,
       // Phase 04 / Plan 07 / D-27 — tighten WS upgrade behavior:
       //
-      // * `wsReconnect: false` (sibling of wsClientOptions per
-      //   @fastify/http-proxy v11 API). Auto-reconnect in the proxy
-      //   masks ingress timeout bugs and creates retry storms when the
-      //   upstream is unhealthy — let the client decide when/how to
-      //   reconnect (T-04-RECONNECT-LOOP mitigation).
-      wsReconnect: false,
+      // Phase 52 / Plan 52-04b — `@fastify/http-proxy` newer versions
+      // narrowed `wsReconnect` from `boolean` to `WebSocketReconnectOptions`
+      // (object) and ALSO made it optional. Omitting the field is the
+      // canonical "disable reconnect" posture — auto-reconnect is off
+      // by default when the property is absent, matching the original
+      // T-04-RECONNECT-LOOP intent without forcing a boolean.
       wsClientOptions: {
         // Strip the desktop's opaque bearer; inject the LiteLLM master
         // key + spend-logs metadata so LiteLLM authenticates us AND tags
