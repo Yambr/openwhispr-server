@@ -81,6 +81,16 @@ try {
 // calls process.exit(78) directly — no return on failure.
 validateEncryptionBoot();
 
+// Phase 51 / Plan 51-03 (REVIEW CR-1) — Better Auth secret boot gate.
+// Better Auth 1.6.9 does NOT validate `secret` at construction; missing
+// or short BETTER_AUTH_SECRET silently signs session tokens with
+// `undefined`. Same EX_CONFIG (78) loud-fail posture as
+// validateEncryptionBoot — operators get one consistent signal for any
+// boot-time secret-config error.
+import { validateBetterAuthSecretBoot } from "./lib/better-auth-secret-boot.js";
+
+validateBetterAuthSecretBoot();
+
 // Phase 6 / Plan 03 / Task 1 (D-T3 load order) — OTel SDK must start
 // BEFORE any other import resolves so `@opentelemetry/instrumentation-pino`
 // patches the `pino` module at require time. This import is intentionally
