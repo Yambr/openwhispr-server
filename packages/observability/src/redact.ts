@@ -87,6 +87,28 @@ export const REDACT_PATHS: readonly string[] = [
   "*.YANDEX_API_KEY",
   "*.LITELLM_VIRTUAL_KEY",
   "*.LITELLM_MASTER_KEY",
+  // ── Phase 51 / Plan 51-09 (REVIEW worker HIGH + small-pkgs MEDIUM)
+  // Boot-time secrets (encryption KEK, Better-Auth signing key).
+  "MASTER_KEK",
+  "BETTER_AUTH_SECRET",
+  "*.MASTER_KEK",
+  "*.BETTER_AUTH_SECRET",
+  // Nested HTTP-error shapes (axios + fetch wrapper). The pre-fix
+  // `*.foo` wildcard only matches one level deep, so the bearer in
+  // `err.response.config.headers.Authorization` leaked verbatim on
+  // every upstream-401 job failure. Pin the exact paths surfaced by
+  // axios + the SSRF-dispatcher response wrappers.
+  "err.response.config.headers.Authorization",
+  "err.response.headers.Authorization",
+  "err.config.headers.Authorization",
+  "err.request.headers.Authorization",
+  // Additional inbound request-header shapes. Pino wildcards do NOT
+  // match bracket-style keys; we list each explicitly.
+  'req.headers["x-api-key"]',
+  'req.headers["x-auth-token"]',
+  'req.headers["x-amz-signature"]',
+  'req.headers["x-amz-credential"]',
+  'req.headers["x-amz-security-token"]',
 ];
 
 /** Literal censor token emitted in place of any redacted value. */

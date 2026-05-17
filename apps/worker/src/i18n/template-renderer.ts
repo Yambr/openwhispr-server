@@ -118,17 +118,56 @@ function loadAll(): Bundles {
 }
 
 /**
- * Single-pass `{var}` interpolation. No nesting, no escapes — the
- * templates are operator-controlled and never carry user-supplied
- * source text. Undefined values render as the literal `{var}` token so
- * an accidental omission shows up loudly in QA rather than rendering as
- * `undefined`. Values are coerced via String() so numbers (e.g.
- * expires_minutes) interpolate cleanly.
+ * Single-pass `{var}` interpolation. Templates themselves are
+ * operator-controlled, but the VARIABLES may contain user-supplied
+ * values (display names, workspace labels, etc.). Phase 51 / Plan
+ * 51-09 (REVIEW worker HIGH) added the `escape` parameter:
+ *
+ *   * `escape: false` (default) — used for subject + plain-text
+ *     bodies. SMTP headers are CR/LF-sensitive but `{var}` cannot
+ *     introduce them through normal interpolation; the upstream
+ *     nodemailer transport rejects literal CR/LF in headers anyway.
+ *   * `escape: true` — used for HTML bodies. Escapes the 5 critical
+ *     HTML entities so a future enqueue site passing user-controlled
+ *     content cannot inject `<script>` tags or break out of an
+ *     attribute. Pre-fix the renderer interpolated raw values into
+ *     `tpl.html` directly — a stored-XSS waiting to happen.
+ *
+ * Undefined values render as the literal `{var}` token so an accidental
+ * omission shows up loudly in QA. Values are coerced via String().
  */
-function interpolate(template: string, variables: Record<string, unknown>): string {
+function escapeHtmlEntity(c: string): string {
+  switch (c) {
+    case "&":
+      return "&amp;";
+    case "<":
+      return "&lt;";
+    case ">":
+      return "&gt;";
+    case '"':
+      return "&quot;";
+    case "'":
+      return "&#39;";
+    default:
+      return c;
+  }
+}
+
+function escapeHtml(s: string): string {
+  return s.replace(/[&<>"']/g, escapeHtmlEntity);
+}
+
+function interpolate(
+  template: string,
+  variables: Record<string, unknown>,
+  options: { htmlEscape?: boolean } = {},
+): string {
+  const shouldEscape = options.htmlEscape ?? false;
   return template.replace(/\{([a-zA-Z_][a-zA-Z0-9_]*)\}/g, (match, key: string) => {
     const value = variables[key];
-    return value === undefined ? match : String(value);
+    if (value === undefined) return match;
+    const s = String(value);
+    return shouldEscape ? escapeHtml(s) : s;
   });
 }
 
@@ -156,7 +195,8 @@ export class WorkerTemplateRenderer implements TemplateRendererInterface {
       text: interpolate(tpl.text, variables),
     };
     if (tpl.html !== undefined) {
-      rendered.html = interpolate(tpl.html, variables);
+      // Phase 51 / Plan 51-09 — HTML context interpolation MUST escape.
+      rendered.html = interpolate(tpl.html, variables, { htmlEscape: true });
     }
     return rendered;
   }
