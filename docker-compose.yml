@@ -195,7 +195,13 @@ services:
       # does NOT ship wget or curl. Use the venv'd python3 (always present
       # since LiteLLM is a Python service) with urllib to probe liveliness.
       # urllib raises non-zero on non-2xx, satisfying healthcheck contract.
-      test: ["CMD", "python3", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:4000/health/liveliness',timeout=2).status==200 else 1)"]
+      # Phase 53 — bind to 127.0.0.1 (IPv4 loopback) not `localhost`.
+      # On Docker Desktop / macOS the resolver inside the container can
+      # return ::1 first; LiteLLM uvicorn binds to 0.0.0.0:4000 (IPv4
+      # only), so the IPv6 probe fails with `OSError: [Errno 99]
+      # Cannot assign requested address` and the container never reaches
+      # healthy state. The IPv4 literal sidesteps the dual-stack lottery.
+      test: ["CMD", "python3", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:4000/health/liveliness',timeout=2).status==200 else 1)"]
       interval: 10s
       timeout: 3s
       retries: 5
@@ -329,7 +335,7 @@ services:
       valkey:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:3000/api/health"]
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://127.0.0.1:3000/api/health"]
       interval: 10s
       timeout: 3s
       retries: 3
@@ -468,7 +474,7 @@ services:
       api:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:3000/api/health"]
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://127.0.0.1:3000/api/health"]
       interval: 10s
       timeout: 3s
       retries: 3
