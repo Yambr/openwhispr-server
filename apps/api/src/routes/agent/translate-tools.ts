@@ -20,9 +20,13 @@
 // Additive prepend is the least-surprising semantic and lets multi-tool
 // agents stack guidance without losing the upstream prompt.
 
+// Phase 52 / Plan 52-06 — explicit `| undefined` on the optional
+// matches the wire-schema's zod inference under
+// `exactOptionalPropertyTypes: true`. Same observable behaviour;
+// downstream `tool.description ?? "..."` consumers unchanged.
 export interface LegacyTool {
   name: string;
-  description?: string;
+  description?: string | undefined;
   parameters: unknown;
 }
 

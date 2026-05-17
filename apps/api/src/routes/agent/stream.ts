@@ -150,12 +150,13 @@ export const buildAgentStreamRoutes = (deps: AgentStreamDeps) =>
         // instead of being swallowed into a synthetic stream_error finish
         // chunk post-hijack. The schema enforces messages/tools cap +
         // structural shape; downstream code can rely on the narrowed types.
-        const body: {
-          messages: AgentChatMessage[];
-          model?: string;
-          systemPrompt?: string;
-          tools?: AgentLegacyTool[];
-        } = AgentStreamRequestSchema.parse(req.body ?? {});
+        // Phase 52 / Plan 52-06 — `exactOptionalPropertyTypes: true`
+        // rejects the previous explicit annotation because zod's
+        // `.optional()` produces `T | undefined` while the annotation
+        // wrote bare `T?`. Let TS infer the body type directly from
+        // `parse()`; downstream `body.model` / `body.tools` consumers
+        // are unchanged (still `T | undefined`).
+        const body = AgentStreamRequestSchema.parse(req.body ?? {});
 
         // (2) Set headers, hijack, flush, disable Nagle (D-02 / D-04).
         // Use raw.setHeader directly so light-my-request preserves them
@@ -246,9 +247,20 @@ export const buildAgentStreamRoutes = (deps: AgentStreamDeps) =>
         // related to openclaw/openclaw#19147 / #46685 / #61448).
         let upstream: Awaited<ReturnType<typeof deps.litellm.chatCompletionsStream>>;
         try {
+          // Phase 52 / Plan 52-06 — the desktop's wire shape allows
+          // `content: unknown` (multimodal parts arrays planned for
+          // Phase 12+), but the litellm-client interface narrows to
+          // `content: string`. Stringify non-string content here at the
+          // boundary so the typing matches without widening every
+          // consumer; the upstream OpenAI / LiteLLM proxy accepts both
+          // forms — JSON-serialised parts are unambiguous.
+          const llmMessages = messages.map((m) => ({
+            role: m.role,
+            content: typeof m.content === "string" ? m.content : JSON.stringify(m.content),
+          }));
           upstream = await deps.litellm.chatCompletionsStream({
             model: resolveModel(body.model),
-            messages,
+            messages: llmMessages,
             userId,
             requestId: req.id,
             extras,
