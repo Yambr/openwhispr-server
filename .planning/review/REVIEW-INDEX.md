@@ -7,7 +7,7 @@ Scope: production source in `apps/**/src/**` + `packages/**/src/**`. Tests, tool
 
 ## Fix status (Phase 51)
 
-**12/12 CRITICAL closed. ~33/39 HIGH closed.**
+**12/12 CRITICAL closed. ~34/39 HIGH closed.**
 
 | CRITICAL | Fix commit |
 |---|---|
@@ -34,12 +34,12 @@ Scope: production source in `apps/**/src/**` + `packages/**/src/**`. Tests, tool
 - contract-tests (1): fetchAndParse default redirect:'error' (51-16b)
 - litellm-client (4): override-source + audio-leak + CR/LF (51-15) + dead-export @internal-tag (51-15b)
 - small-pkgs (1): EmailSender dedup (51-17)
-- web (5): observability javascript: vector (51-11) + INTERNAL_API_URL dedup (51-11b) + ExtendedAuthClient unification (51-11b) + notes-search href UUID guard (51-11c) + AlertDialogCancel i18n wiring (51-11d, HI-02 partial)
+- web (6): observability javascript: vector (51-11) + INTERNAL_API_URL dedup (51-11b) + ExtendedAuthClient unification (51-11b) + notes-search href UUID guard (51-11c) + AlertDialogCancel i18n wiring (51-11d) + locale parity full sweep (51-11e: brand titles, this-device, untitled, yes/no — error-boundary carve-out documented)
 - routes-conversations (3): notes-delete-all bypass + messages.content 256 KiB cap (51-12) + LOCKER-04 sweep conversations slice (51-12c)
 - api-core (3): token-rotation doc-truth (51-13) + console.warn bootstrap → pino (51-13b) + as-unknown-as cluster 17→12 (51-13c)
 - redact MASTER_KEK + BETTER_AUTH_SECRET (51-09)
 
-**HIGH remaining** (~6): web 2 (CSRF deferred — Better Auth handles internally; locale parity remaining 6 sites — titles, "(untitled)", yes/no, error-boundary — need new locale keys, lower-traffic than the AlertDialog surface 51-11d closed); routes-transcriptions 3 (HI-1 LOCKER-04 sweep deferred to Phase 41; HI-3 agent-stream AbortSignal — known undici architectural blocker, P0 follow-up; HI-5 web-search ledger swallow — needs 503 vs BullMQ retry-queue decision); routes-transcriptions stale (HI-4 DEFAULT_AGENT_MODEL — STALE-AFTER-41.f since the yaml→JSON build-time generation makes module-load capture moot); byok-guard 2 STALE-AFTER-51.02/51.16 (HI-04 bearer-in-query-value already swept by `sweepBearerShapes` at redact-url.ts:120-123 from CR-10; HI-05 INGRESS cascade already enforced at ingressRow:239-250 from 51-16); api-core 0 (51-13c closed the as-unknown-as cluster).
+**HIGH remaining** (~5): web 1 (CSRF deferred — Better Auth handles internally); routes-transcriptions 3 (HI-1 LOCKER-04 sweep deferred to Phase 41; HI-3 agent-stream AbortSignal — known undici architectural blocker, P0 follow-up; HI-5 web-search ledger swallow — needs 503 vs BullMQ retry-queue decision); routes-transcriptions stale (HI-4 DEFAULT_AGENT_MODEL — STALE-AFTER-41.f since the yaml→JSON build-time generation makes module-load capture moot); byok-guard 2 STALE-AFTER-51.02/51.16 (HI-04 bearer-in-query-value already swept by `sweepBearerShapes` at redact-url.ts:120-123 from CR-10; HI-05 INGRESS cascade already enforced at ingressRow:239-250 from 51-16); api-core 0 (51-13c closed the as-unknown-as cluster).
 
 ## Aggregate counts
 
