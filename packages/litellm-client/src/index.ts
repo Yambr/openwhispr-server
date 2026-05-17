@@ -94,9 +94,18 @@ function deriveBundledModelProviderMap(): Record<string, keyof LitellmProviderKe
     };
   }
 }
+/**
+ * @internal — Plan 51-15b (REVIEW HIGH HI-4). Module-private constant
+ * used by routes within this package; the only external consumers are
+ * this package's own tests. NOT a stable public API surface — production
+ * callers MUST NOT depend on it; the contract may change without notice.
+ */
 export const BUNDLED_MODEL_PROVIDER: Record<string, keyof LitellmProviderKeys> =
   deriveBundledModelProviderMap();
 
+/**
+ * @internal — Plan 51-15b (REVIEW HIGH HI-4). See BUNDLED_MODEL_PROVIDER.
+ */
 export const PROVIDER_ENV_VAR: Record<keyof LitellmProviderKeys, string> = {
   openrouter: "OPENROUTER_API_KEY",
   groq: "GROQ_API_KEY",
@@ -109,7 +118,14 @@ export const PROVIDER_ENV_VAR: Record<keyof LitellmProviderKeys, string> = {
  * the Phase 8 SLO budget and the 1000-concurrent stall-vector defence.
  * Callers can override per-call (transcribe long audio, etc.).
  */
+/**
+ * @internal — Plan 51-15b (REVIEW HIGH HI-4). Module-private timeout
+ * defaults used by chat/transcribe/diarization callers within this
+ * package. Exposed via `export` solely for the package's own tests;
+ * production callers MUST NOT depend on these names.
+ */
 export const DEFAULT_HEADERS_TIMEOUT_MS = 30_000;
+/** @internal — see DEFAULT_HEADERS_TIMEOUT_MS. */
 export const DEFAULT_BODY_TIMEOUT_MS = 120_000;
 
 /**
@@ -189,6 +205,11 @@ export interface AudioTranscriptionRequest {
   bodyTimeout?: number;
 }
 
+/**
+ * @internal — Plan 51-15b (REVIEW HIGH HI-4). Default Whisper model
+ * for `audioTranscriptions`; exposed via `export` only for the package's
+ * own test suite. Production callers MUST NOT depend on this name.
+ */
 export const DEFAULT_STT_MODEL = "whisper-large-v3";
 
 export interface PassthroughRequest {
