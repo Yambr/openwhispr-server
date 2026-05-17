@@ -60,7 +60,10 @@ export class LitellmUpstreamError extends Error {
   // serializer (which walks own enumerable properties) cannot exfiltrate
   // the upstream payload into Loki. Override of `toJSON()` below is the
   // belt-and-braces second layer (pino calls `err.toJSON()` if present).
-  private readonly bodyText: string;
+  // Phase 52 / Plan 52-01 — `declare` because the property is installed
+  // via Object.defineProperty (non-enumerable, see ctor body); TS can't
+  // see that initializer. Behaviour unchanged; type-system-only fix.
+  private declare readonly bodyText: string;
 
   constructor(status: number, bodyText: string, message?: string) {
     // Truncate body to 200 chars in the default message so we never echo

@@ -57,7 +57,11 @@ const SSRF_WRAPPED_MARKER = Symbol.for("openwhispr.ssrf-wrapped");
  * global dispatcher is not consulted.
  */
 function assertSsrfInstalled(): void {
-  const dispatcher: Dispatcher & { [k: symbol]: unknown } = getGlobalDispatcher();
+  // Phase 52 / Plan 52-01 — `exactOptionalPropertyTypes: true` in tsconfig
+  // refuses the direct annotation form because Dispatcher's symbol-indexer
+  // is `unknown | undefined` (optional). Single `as` (LOCKER-02 clean)
+  // narrows the assignment without changing runtime behaviour.
+  const dispatcher = getGlobalDispatcher() as Dispatcher & { [k: symbol]: unknown };
   if (!dispatcher[SSRF_WRAPPED_MARKER]) {
     throw new SsrfDispatcherNotInstalledError();
   }
@@ -227,10 +231,18 @@ export interface PassthroughRequest {
 }
 
 export interface LitellmClient {
-  chatCompletions(req: ChatCompletionRequest): Promise<Dispatcher.ResponseData>;
-  chatCompletionsStream(req: ChatCompletionsStreamRequest): Promise<Dispatcher.ResponseData>;
-  audioTranscriptions(args: AudioTranscriptionRequest): Promise<Dispatcher.ResponseData>;
-  passthrough(path: string, args: PassthroughRequest): Promise<Dispatcher.ResponseData>;
+  // Phase 52 / Plan 52-01 — undici 7.x default-changed
+  // `Dispatcher.ResponseData` from `ResponseData<any>` to
+  // `ResponseData<null>`. `undiciRequest()` returns `ResponseData<unknown>`,
+  // so each return type is pinned explicitly to `<unknown>` to match the
+  // runtime shape (the body is a `Readable`, not parsed JSON; opaque to
+  // the client).
+  chatCompletions(req: ChatCompletionRequest): Promise<Dispatcher.ResponseData<unknown>>;
+  chatCompletionsStream(
+    req: ChatCompletionsStreamRequest,
+  ): Promise<Dispatcher.ResponseData<unknown>>;
+  audioTranscriptions(args: AudioTranscriptionRequest): Promise<Dispatcher.ResponseData<unknown>>;
+  passthrough(path: string, args: PassthroughRequest): Promise<Dispatcher.ResponseData<unknown>>;
   /** Test seam: lets routes derive ws:// URLs from baseUrl for Plan 06 wsUpstream. */
   readonly baseUrl: string;
 }
@@ -358,7 +370,9 @@ export function buildLitellmClient(
     };
   }
 
-  async function ensureOk(res: Dispatcher.ResponseData): Promise<Dispatcher.ResponseData> {
+  async function ensureOk(
+    res: Dispatcher.ResponseData<unknown>,
+  ): Promise<Dispatcher.ResponseData<unknown>> {
     if (res.statusCode >= 400) {
       const bodyText = await res.body.text();
       throw new LitellmUpstreamError(res.statusCode, bodyText);
