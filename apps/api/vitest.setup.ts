@@ -36,6 +36,12 @@ process.env.S3_BUCKET ??= "openwhispr-test";
 // at default load, which is incompatible with the sentinel.
 process.env.OTEL_EXPORTER_OTLP_ENDPOINT ??= "http://otel-test.invalid:4317";
 process.env.INGRESS_BASE_URL ??= "https://api.test.example.com";
+// Phase 53 — Plan 51-16 cascade: when INGRESS_BASE_URL is https://, the
+// byok-guard also requires INGRESS_TLS_CERT_PATH (no NODE_ENV gate).
+// Set to a placeholder path so the guard returns void; production tests
+// never read the file because fastify is mocked or the listener never
+// boots with TLS enabled in unit scope.
+process.env.INGRESS_TLS_CERT_PATH ??= "/tmp/test-ingress-cert.pem";
 process.env.DATABASE_URL ??= "postgres://test/test";
 
 // Phase 33 / Plan 33-04 — MASTER_KEK default for vitest workers so
