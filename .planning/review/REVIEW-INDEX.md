@@ -5,14 +5,46 @@ Date: 2026-05-17
 Reviewers: 11 parallel `gsd-code-reviewer` agents
 Scope: production source in `apps/**/src/**` + `packages/**/src/**`. Tests, tools, docs, compose, charts out of scope.
 
+## Fix status (Phase 51)
+
+**12/12 CRITICAL closed. ~20/39 HIGH closed.**
+
+| CRITICAL | Fix commit |
+|---|---|
+| CR-1 BETTER_AUTH_SECRET boot | `6d82f3a` Plan 51-03 |
+| CR-2 openai-realtime zod | `907150f` Plan 51-08 |
+| CR-3 setup-admin auth | `2b3ad2e` Plan 51-01 |
+| CR-4 session-token RSC→client leak | `747a195` Plan 51-04b |
+| CR-5 CSP nonce | `e0f06f5` Plan 51-04c |
+| CR-6 admin-guard fail-closed | `9f6f9e1` Plan 51-04a |
+| CR-7 usage-rollup tenant-context | `57741e7` Plan 51-05 |
+| CR-8 scheduler date freeze | `57741e7` Plan 51-05 |
+| CR-9 DLQ silent loss | `57741e7` Plan 51-05 |
+| CR-10 redactUrl collapse + JWT + hash | `9ee28d7` Plan 51-02 |
+| CR-11 wire-schemas .max() + enums | `10b8c19` Plan 51-07 |
+| CR-12 litellm error-drain timeout | `cc4cd4a` Plan 51-06 |
+
+**HIGH closed** (20):
+- worker (5): redact-nested + email-escape + audit-archive-SQL + retry-jitter + DLQ-aux (51-09 + 51-05)
+- api-routes-rest (3): diarization smuggle + better-auth origin + desktop-signin decode (51-10)
+- data (2): stale-fn-drop + TLS-by-default (51-14)
+- wire-schemas (4): all enum/max (51-07)
+- byok-guard (4): whitespace + sentinel-case + NODE_ENV-case + INGRESS-cascade (51-16)
+- litellm-client (3): override-source + audio-leak + CR/LF (51-15)
+- small-pkgs (1): EmailSender dedup (51-17)
+- web (1): observability javascript: vector (51-11)
+- redact MASTER_KEK + BETTER_AUTH_SECRET (51-09)
+
+**HIGH remaining** (~19): web 5 (CSRF, locales, INTERNAL_API_URL dedup, list/search href, as-unknown-as cluster); routes-conversations 3 (notes-delete-all bypass, messages-content cap, LOCKER-04 sweep); routes-transcriptions 5 (agent-stream AbortSignal forward, etc.); api-core 3 (as-unknown-as cluster, console.warn bootstrap, token-rotation doc-lie); byok-guard 2 (bearer-in-query-value — partially covered by CR-10 fix; fetchAndParse redirect default).
+
 ## Aggregate counts
 
 | Severity | Count |
 |---|---|
-| CRITICAL | 12 |
-| HIGH     | 39 |
-| MEDIUM   | 50 |
-| LOW      | 41 |
+| CRITICAL | 12 (closed) |
+| HIGH     | 39 (~20 closed) |
+| MEDIUM   | 50 (Plan 51-18 cleanup) |
+| LOW      | 41 (Plan 51-18 cleanup) |
 
 Spot-checked by orchestrator (Hard Rule 3 — trust but verify): byok CR-03, routes-rest CR-01, api-core CRIT-01, wire CR-01, worker C-3+C-3-usage, web CR-01. All confirmed against live code at HEAD.
 
