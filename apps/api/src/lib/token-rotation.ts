@@ -1,14 +1,31 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
-// Phase 02.12 — adopt Better Auth v1.6.9's plain-text session.token model.
-// Phase 02 Plan 01's hashToken (SHA-256) helper + bytea storage are removed
-// in favor of plain-text bearer storage on `sessions.token` and
-// `sessions.previous_token`. The AUTH-04 5-minute overlap CONTRACT
-// (recordPreviousToken + tryPreviousToken behavior) is preserved unchanged
-// at the API level — only the storage representation flipped from bytea
-// to text. At-rest hardening is deferred to v2 (column-level pgcrypto or
-// Postgres TDE — ADR placeholder in `.planning/STATE.md` Roadmap Evolution).
+// Phase 51 / Plan 51-13 (REVIEW api-core HIGH HI-01) — header rewritten.
 //
-// Source of truth (rev): 02.12-CONTEXT.md D-02 (simplify token-rotation.ts).
+// Storage shape evolution:
+//   * Phase 02 Plan 01 — bytea(SHA-256) hashed bearer storage.
+//   * Phase 02.12 — adopted Better Auth v1.6.9's plain-text
+//     `session.token` model; bearers stored verbatim on
+//     `sessions.token` + `sessions.previous_token` (text columns).
+//   * Phase 33 / Plan 33-05 (migration 0020) — plaintext columns
+//     DROPPED. Only the SHA-256 fingerprint sidecar
+//     `previous_token_fp` (bytea, partial-unique index) is persisted.
+//     `tryPreviousToken` resolves the bearer by fingerprinting the
+//     candidate and looking up the matching session row.
+//
+// Current state (post-Phase-33): there is NO plaintext bearer at rest.
+// The header on this file used to advertise "plaintext bearer storage"
+// — that is the storage shape we left behind in Phase 33. The body of
+// the file (recordPreviousToken / tryPreviousToken) correctly stores
+// only the fingerprint and resolves via the same shape. Pre-Phase-51,
+// an auditor reading the header would form the wrong conclusion;
+// fixed in this rewrite (REVIEW api-core HIGH HI-01).
+//
+// The AUTH-04 5-minute overlap CONTRACT (recordPreviousToken +
+// tryPreviousToken behavior) is preserved across all three phases —
+// only the storage representation changed.
+//
+// Source of truth (rev): 02.12-CONTEXT.md D-02 (simplify
+// token-rotation.ts) + 33-05-PLAN.md (envelope-encryption land).
 //
 // AUTH-A3 finding (2026-05-09) preserved verbatim:
 //   Better Auth 1.6.9's bearer plugin (node_modules/better-auth/dist/

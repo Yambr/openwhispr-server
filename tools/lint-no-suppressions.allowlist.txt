@@ -12,9 +12,9 @@ apps/api/src/index.ts:320  # issue-31-debt-suppression (33-04 +9; 34 -1)
 apps/api/src/index.ts:348  # issue-31-debt-suppression (33-04 +9; 34 -1)
 apps/api/src/index.ts:383  # issue-31-debt-suppression (33-04 +9; 34 -1)
 apps/api/src/index.ts:419  # issue-31-debt-suppression (33-04 +9; 34 -1)
-apps/api/src/index.ts:595  # issue-31-debt-suppression (33-04 +9; 34 -1)
-apps/api/src/index.ts:650  # issue-31-debt-suppression (33-04 +9; 34 -1)
-apps/api/src/index.ts:685  # issue-31-debt-suppression (33-04 +9; 34 -1)
+apps/api/src/index.ts:600  # issue-31-debt-suppression (33-04 +9; 34 -1)
+apps/api/src/index.ts:655  # issue-31-debt-suppression (33-04 +9; 34 -1)
+apps/api/src/index.ts:690  # issue-31-debt-suppression (33-04 +9; 34 -1)
 apps/api/src/lib/api-error-status.ts:20  # issue-31-debt-suppression
 apps/api/src/lib/api-error-status.ts:52  # issue-31-debt-suppression
 apps/api/src/routes/locale.ts:53  # issue-31-debt-suppression
