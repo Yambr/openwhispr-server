@@ -60,6 +60,7 @@
 // `{ err }`). Any non-BYOKGuardError is re-thrown.
 import { assertBYOKConfig, BYOKGuardError } from "@openwhispr/byok-guard";
 import { validateEncryptionBoot } from "@openwhispr/data";
+import { makePino } from "@openwhispr/observability";
 import pino from "pino";
 
 try {
@@ -547,6 +548,11 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   // "minimal mode" gap from 02-VERIFICATION.md.
   const { makeAppDb } = await import("@openwhispr/data/client");
   const { buildAuth } = await import("./auth.js");
+  // Phase 51 / Plan 51-13b (REVIEW api-core HIGH HI-02) — boot pino.
+  // Phase 6 has shipped `makePino()` with the canonical REDACT_PATHS
+  // policy; replaces the historical `console.warn` calls (which carried
+  // credential-bearing strings through unscrubbed stdout to Loki).
+  const bootLog = makePino({ base: { name: "api-boot" } });
   // Phase 02.6 / D-01 — destructure the {db, pool} wrapper. Passing the
   // wrapper instead of the bare Drizzle instance was the root cause of
   // the Phase 02.5-04 contract-test failure (`TypeError: db.select is
@@ -583,17 +589,18 @@ if (import.meta.url === `file://${process.argv[1]}`) {
         });
       };
     } catch (err) {
-      // Phase 13 review HI-02: NEVER log `err.message` here — both
-      // `new URL(...)` and ioredis/BullMQ embed the credential-bearing
-      // URL into thrown error messages, which would leak the Valkey
-      // password through stdout to Loki. We log the redacted URL + the
-      // error class name; operators get an actionable diagnostic without
-      // the secret.
-      // biome-ignore lint/suspicious/noConsole: server bootstrap warning; structured logging arrives in Phase 6
-      console.warn(
-        "[buildApp] BullMQ email-delivery queue not constructed; verification emails fall back to inline SMTP:",
-        redactUrl(process.env.VALKEY_URL ?? ""),
-        (err as Error).name,
+      // Phase 13 review HI-02 / Plan 51-13b: NEVER log `err.message` —
+      // both `new URL(...)` and ioredis/BullMQ embed the credential-
+      // bearing URL into thrown error messages. We log the redacted URL
+      // + error class name via pino (REDACT_PATHS scrubs any residual
+      // secret-shape field). Phase 51 retired the console.warn path.
+      bootLog.warn(
+        {
+          event: "bullmq.email_queue.unavailable",
+          valkey_url: redactUrl(process.env.VALKEY_URL ?? ""),
+          err_name: (err as Error).name,
+        },
+        "BullMQ email-delivery queue not constructed; verification emails fall back to inline SMTP",
       );
     }
   }
@@ -618,16 +625,17 @@ if (import.meta.url === `file://${process.argv[1]}`) {
     // above, so they can never drift out of sync at boot.
     litellmMasterKey = litellmConfig.masterKey;
   } catch (err) {
-    // Phase 13 review HI-02: do NOT log `err.message` — `loadLitellmConfigFromEnv`
-    // can embed LITELLM_BASE_URL (potentially with embedded credentials)
-    // into its thrown error message. Log the redacted base URL + error
-    // class name so operators see which endpoint failed without exposing
-    // any password component to Loki.
-    // biome-ignore lint/suspicious/noConsole: server bootstrap warning; structured logging arrives in Phase 6
-    console.warn(
-      "[buildApp] LiteLLM client not constructed; LITELLM-backed routes (transcribe, reason, diarization, realtime) will not be registered:",
-      redactUrl(process.env.LITELLM_BASE_URL ?? ""),
-      (err as Error).name,
+    // Phase 13 review HI-02 / Plan 51-13b: do NOT log `err.message` —
+    // `loadLitellmConfigFromEnv` can embed LITELLM_BASE_URL (potentially
+    // with embedded credentials). Pino + REDACT_PATHS scrubs residual
+    // secret-shape fields.
+    bootLog.warn(
+      {
+        event: "litellm.client.unavailable",
+        litellm_base_url: redactUrl(process.env.LITELLM_BASE_URL ?? ""),
+        err_name: (err as Error).name,
+      },
+      "LiteLLM client not constructed; LITELLM-backed routes (transcribe, reason, diarization, realtime) will not be registered",
     );
   }
   // Phase 03 / Plan 06 (CR-01) + e2e fix: construct the Valkey/Redis
@@ -654,20 +662,22 @@ if (import.meta.url === `file://${process.argv[1]}`) {
       });
       redis = client as unknown as RedisLike;
     } catch (err) {
-      // Phase 13 review HI-02: ioredis throws errors whose `.message`
-      // embeds the offending URL verbatim ("Invalid URL: redis://user:secret@host:6379").
-      // Log the redacted URL + error class name instead.
-      // biome-ignore lint/suspicious/noConsole: server bootstrap warning; structured logging arrives in Phase 6
-      console.warn(
-        "[buildApp] Valkey client not constructed; /v1/audio/diarization will NOT be registered. Set VALKEY_URL to enable diarization:",
-        redactUrl(process.env.VALKEY_URL ?? ""),
-        (err as Error).name,
+      // Phase 13 review HI-02 / Plan 51-13b: ioredis throws errors whose
+      // `.message` embeds the offending URL verbatim. Pino path scrubs
+      // any residual secret-shape via REDACT_PATHS.
+      bootLog.warn(
+        {
+          event: "valkey.client.unavailable",
+          valkey_url: redactUrl(process.env.VALKEY_URL ?? ""),
+          err_name: (err as Error).name,
+        },
+        "Valkey client not constructed; /v1/audio/diarization will NOT be registered. Set VALKEY_URL to enable diarization",
       );
     }
   } else {
-    // biome-ignore lint/suspicious/noConsole: server bootstrap warning; structured logging arrives in Phase 6
-    console.warn(
-      "[buildApp] VALKEY_URL is unset; /v1/audio/diarization will NOT be registered (operator-actionable: set VALKEY_URL to enable bundled-mode diarization).",
+    bootLog.warn(
+      { event: "valkey.url.unset" },
+      "VALKEY_URL is unset; /v1/audio/diarization will NOT be registered (operator-actionable: set VALKEY_URL to enable bundled-mode diarization)",
     );
   }
   const mockDiarization = process.env.MOCK_DIARIZATION === "true";
@@ -726,8 +736,7 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   const app = await buildApp(buildOpts);
   const port = Number(process.env.PORT ?? 3000);
   app.listen({ port, host: "0.0.0.0" }).catch((err) => {
-    // biome-ignore lint/suspicious/noConsole: server bootstrap fatal-error logger; structured logging arrives in Phase 6 (OBS-03)
-    console.error(err);
+    bootLog.fatal({ err }, "fastify listen failed; exiting");
     process.exit(1);
   });
 }
