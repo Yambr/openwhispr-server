@@ -43,7 +43,7 @@ apps/api/src/auth.ts:359  # issue-31-debt-hardcode-localhost-3000 (33-04 +73; 41
 apps/api/src/routes/test-only.ts:181  # issue-31-debt-hardcode-localhost-3000
 apps/api/src/routes/better-auth-handler.ts:49  # comment-only-narrative-issue-31-fp (Plan 51-10 fix rationale comment references the old localhost fallback)
 apps/api/src/routes/better-auth-handler.ts:79  # issue-31-debt-hardcode-localhost
-apps/api/src/index.ts:695  # issue-31-debt-hardcode-litellm-port-4000 (33-04 +9; 34 -1; 51-02 +5; 51-03 +10; 51-13b +10; 52-09 +1 opts.db guard)
+apps/api/src/index.ts:696  # issue-31-debt-hardcode-litellm-port-4000 (33-04 +9; 34 -1; 51-02 +5; 51-03 +10; 51-13b +10; 52-09 +1; 51-25 +1)
 
 # --- (c) DOCUMENTED FALSE POSITIVES — comment-only hits ---
 # The locker is intentionally regex-line-based (no AST comment-strip) per

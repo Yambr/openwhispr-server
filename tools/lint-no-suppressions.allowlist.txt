@@ -8,9 +8,9 @@ apps/api/src/index.ts:321  # issue-51-13c-audit-ctx — FastifyRequest → audit
 apps/api/src/index.ts:349  # issue-51-13c-tx-bridge-ssrf — same TransactionalDb narrowing for ssrf-audit path
 apps/api/src/index.ts:384  # issue-51-13c-audit-ctx-ssrf — same audit-ctx narrowing on ssrf path
 apps/api/src/index.ts:420  # issue-51-13c-db-execute-shape — opts.db.execute() structural surface for licensing probe
-apps/api/src/index.ts:608  # issue-51-13c-auth-like — buildAuth() returns AuthInstance; dual-auth-hook consumes AuthLike (api.getSession+handler); structural-compat cast at the boundary
-apps/api/src/index.ts:664  # issue-51-13c-redis-narrow — ioredis client → RedisLike narrow subset (get/set only)
-apps/api/src/index.ts:701  # issue-51-13c-valkey-widen — RedisLike → ioredis.Redis for sched plugin; load-bearing on the dep-check structural typing
+apps/api/src/index.ts:609  # issue-51-13c-auth-like — buildAuth() returns AuthInstance; dual-auth-hook consumes AuthLike (api.getSession+handler); structural-compat cast at the boundary (51-25 +1)
+apps/api/src/index.ts:665  # issue-51-13c-redis-narrow — ioredis client → RedisLike narrow subset (get/set only) (51-25 +1)
+apps/api/src/index.ts:702  # issue-51-13c-valkey-widen — RedisLike → ioredis.Redis for sched plugin; load-bearing on the dep-check structural typing (51-25 +1)
 apps/api/src/lib/api-error-status.ts:52  # issue-51-13c-api-error-status — better-auth APIError.status field type drifts across minors (string-name vs number); narrow probe documented at L18-22
 apps/web/src/components/screens/account/SessionsTable.tsx:10  # issue-31-debt-suppression
 apps/web/src/lib/form-utils.ts:34  # issue-31-debt-suppression
