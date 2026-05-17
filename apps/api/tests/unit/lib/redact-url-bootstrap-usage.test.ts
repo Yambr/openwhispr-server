@@ -23,8 +23,12 @@ if (!existsSync(INDEX_PATH)) throw new Error(`source-contract path moved: ${INDE
 const INDEX_SRC = readFileSync(INDEX_PATH, "utf-8");
 
 describe("apps/api/src/index.ts bootstrap warn redaction (HI-02)", () => {
-  it("imports `redactUrl` from ./lib/redact-url.js", () => {
-    expect(INDEX_SRC).toMatch(/import\s*\{\s*redactUrl\s*\}\s*from\s*"\.\/lib\/redact-url\.js"/);
+  it("imports `redactUrl` from @openwhispr/byok-guard (post-Phase 51 / Plan 51-02)", () => {
+    // Phase 51 / Plan 51-02 — collapsed two redactUrl impls into one;
+    // apps/api now consumes byok-guard's canonical version (which also
+    // masks JWTs + URL hash fragments). The old `./lib/redact-url.js`
+    // module was deleted.
+    expect(INDEX_SRC).toMatch(/import\s*\{\s*redactUrl\s*\}\s*from\s*"@openwhispr\/byok-guard"/);
   });
 
   it("the BullMQ email-delivery catch arm calls redactUrl with VALKEY_URL", () => {
@@ -66,7 +70,7 @@ describe("apps/api/src/index.ts bootstrap warn redaction (HI-02)", () => {
     // If a future change loosens redactUrl this test fails before the
     // bootstrap warn ever runs in CI.
     // We re-import here (not at module top) to keep this test self-contained.
-    return import("../../../src/lib/redact-url").then(({ redactUrl }) => {
+    return import("@openwhispr/byok-guard").then(({ redactUrl }) => {
       const sample = "redis://default:supersecret-valkey-pw@valkey.internal:6379";
       const redacted = redactUrl(sample);
       expect(redacted).not.toContain("supersecret-valkey-pw");

@@ -96,6 +96,12 @@ installGlobalSSRF();
 
 import fastifyCookie from "@fastify/cookie";
 import fastifyMultipart from "@fastify/multipart";
+// Phase 51 / Plan 51-02 (REVIEW CR-10) — switched from the old
+// `./lib/redact-url.js` (URL.password-only stub) to the canonical
+// byok-guard implementation, which also masks JWTs, bearer-shape query
+// values, and OAuth2 implicit-flow hash fragments. The legacy file was
+// deleted in the same commit.
+import { redactUrl } from "@openwhispr/byok-guard";
 import type { ExecutableTx, TransactionalDb } from "@openwhispr/data";
 import type { LitellmClient } from "@openwhispr/litellm-client";
 import Fastify, { type FastifyInstance } from "fastify";
@@ -104,7 +110,6 @@ import { i18nPlugin } from "./i18n/init.js";
 import { type DepCheck, makeDepCheck } from "./lib/dep-check.js";
 import type { RedisLike } from "./lib/idempotency-cache.js";
 import { buildMintBearer } from "./lib/mint-bearer.js";
-import { redactUrl } from "./lib/redact-url.js";
 import {
   recordPreviousToken as recordPreviousTokenLib,
   tryPreviousToken as tryPreviousTokenLib,

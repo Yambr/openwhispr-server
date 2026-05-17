@@ -13,8 +13,8 @@
 # Seed (current-main inventory at Phase 31 Plan 01 land — DO NOT bulk-fix
 # in this plan; targeted fix phases follow).
 apps/api/src/auth.ts:520  # issue-31-boundary-better-auth-cookies (line drifted 497 → 505 → 520 by Phases 33-04 + 41-a/b + 41-e; cookie-secure flag is a legitimate bootstrap-time env read at the Better Auth boundary)
-apps/api/src/index.ts:502  # issue-31-debt-NODE_ENV-shortcircuit (33-04 shifted +9 lines; 34 shifted -1)
-apps/api/src/index.ts:506  # issue-31-debt-NODE_ENV-shortcircuit (33-04 shifted +9 lines; 34 shifted -1)
+apps/api/src/index.ts:507  # issue-31-debt-NODE_ENV-shortcircuit (33-04 shifted +9 lines; 34 shifted -1; 51-02 +5 lines for redactUrl comment)
+apps/api/src/index.ts:511  # issue-31-debt-NODE_ENV-shortcircuit (33-04 shifted +9 lines; 34 shifted -1; 51-02 +5 lines for redactUrl comment)
 apps/api/src/lib/ssrf-dispatcher.ts:59  # issue-31-DI-fallback-jsdoc
 apps/api/src/lib/ssrf-dispatcher.ts:163  # issue-31-DI-fallback
 apps/api/src/routes/index.ts:474  # issue-31-debt-NODE_ENV-shortcircuit
@@ -23,6 +23,6 @@ apps/api/src/routes/test-only.ts:122  # issue-31-debt-test-only-jsdoc
 apps/api/src/routes/test-only.ts:128  # issue-31-debt-test-only-gate
 apps/worker/src/jobs/email-delivery.ts:80  # issue-31-DI-fallback-jsdoc
 apps/worker/src/jobs/email-delivery.ts:95  # issue-31-DI-fallback
-packages/byok-guard/src/index.ts:221  # issue-31-boundary-check
+packages/byok-guard/src/index.ts:230  # issue-31-boundary-check (drifted 221 → 230 in Phase 51 / Plan 51-02 after re-export of redactUrl)
 packages/email/src/EmailSender.ts:7  # issue-31-boundary-check-jsdoc
 packages/email/src/EmailSender.ts:87  # issue-31-boundary-check (line drifted 79 → 87 over time; pre-OSS review caught the drift, correcting in Phase 51)

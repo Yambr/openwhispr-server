@@ -52,6 +52,15 @@ import pino, { type Logger } from "pino";
 import { redactUrl } from "./redact-url.js";
 
 /**
+ * Phase 51 / Plan 51-02 (REVIEW-INDEX CR-10) — re-export `redactUrl` so
+ * `apps/api` and `apps/worker` consume the single canonical
+ * implementation. The previous dual implementation in
+ * `apps/api/src/lib/redact-url.ts` was a `URL.password`-only stub that
+ * leaked JWTs, query-value bearer shapes, and hash-fragment tokens.
+ */
+export { redactUrl } from "./redact-url.js";
+
+/**
  * Phase 19 / Plan 02 (SR-19.3, D-09) — error thrown when an overlay's
  * BYOK env contract is unsatisfied. The library logs the structured
  * fatal record (via the boot pino) and THROWS this typed error;
