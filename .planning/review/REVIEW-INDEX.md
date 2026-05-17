@@ -7,7 +7,7 @@ Scope: production source in `apps/**/src/**` + `packages/**/src/**`. Tests, tool
 
 ## Fix status (Phase 51)
 
-**12/12 CRITICAL closed. ~20/39 HIGH closed.**
+**12/12 CRITICAL closed. ~23/39 HIGH closed.**
 
 | CRITICAL | Fix commit |
 |---|---|
@@ -24,7 +24,7 @@ Scope: production source in `apps/**/src/**` + `packages/**/src/**`. Tests, tool
 | CR-11 wire-schemas .max() + enums | `10b8c19` Plan 51-07 |
 | CR-12 litellm error-drain timeout | `cc4cd4a` Plan 51-06 |
 
-**HIGH closed** (20):
+**HIGH closed** (23):
 - worker (5): redact-nested + email-escape + audit-archive-SQL + retry-jitter + DLQ-aux (51-09 + 51-05)
 - api-routes-rest (3): diarization smuggle + better-auth origin + desktop-signin decode (51-10)
 - data (2): stale-fn-drop + TLS-by-default (51-14)
@@ -33,16 +33,18 @@ Scope: production source in `apps/**/src/**` + `packages/**/src/**`. Tests, tool
 - litellm-client (3): override-source + audio-leak + CR/LF (51-15)
 - small-pkgs (1): EmailSender dedup (51-17)
 - web (1): observability javascript: vector (51-11)
+- routes-conversations (2): notes-delete-all bypass + messages.content 256 KiB cap (51-12)
+- api-core (2): token-rotation doc-truth (51-13) + console.warn bootstrap → pino (51-13b)
 - redact MASTER_KEK + BETTER_AUTH_SECRET (51-09)
 
-**HIGH remaining** (~19): web 5 (CSRF, locales, INTERNAL_API_URL dedup, list/search href, as-unknown-as cluster); routes-conversations 3 (notes-delete-all bypass, messages-content cap, LOCKER-04 sweep); routes-transcriptions 5 (agent-stream AbortSignal forward, etc.); api-core 3 (as-unknown-as cluster, console.warn bootstrap, token-rotation doc-lie); byok-guard 2 (bearer-in-query-value — partially covered by CR-10 fix; fetchAndParse redirect default).
+**HIGH remaining** (~16): web 5 (CSRF, locales, INTERNAL_API_URL dedup, list/search href, as-unknown-as cluster); routes-conversations 1 (LOCKER-04 sweep — multi-commit work); routes-transcriptions 5 (agent-stream AbortSignal forward, etc.); api-core 1 (as-unknown-as cluster); byok-guard 2 (bearer-in-query-value — partially covered by CR-10 fix; fetchAndParse redirect default); litellm-client 1 (dead-export internalize HI-4); web 1 (as-unknown-as cluster).
 
 ## Aggregate counts
 
 | Severity | Count |
 |---|---|
 | CRITICAL | 12 (closed) |
-| HIGH     | 39 (~20 closed) |
+| HIGH     | 39 (~23 closed) |
 | MEDIUM   | 50 (Plan 51-18 cleanup) |
 | LOW      | 41 (Plan 51-18 cleanup) |
 

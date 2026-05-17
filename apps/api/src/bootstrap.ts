@@ -11,9 +11,16 @@
 // Yandex web-search adapters, pyannote.ai, and any future user-URL
 // fetching feature goes through the gate.
 
+import { makePino } from "@openwhispr/observability";
 import { setGlobalDispatcher } from "undici";
 import { loadSSRFConfig, type SSRFConfig } from "./config/ssrf.js";
 import { makeSSRFDispatcher, type SSRFBlockContext } from "./lib/ssrf-dispatcher.js";
+
+// Phase 51 / Plan 51-13b (REVIEW api-core HIGH HI-02) — bootstrap pino
+// logger. `makePino()` applies the canonical REDACT_PATHS policy so any
+// accidental credential-shaped field in the SSRF block context is
+// scrubbed before it reaches Loki.
+const ssrfLog = makePino({ base: { name: "ssrf.guard" } });
 
 /**
  * Default audit hook — emits a structured WARN line per D-S5. The
@@ -23,16 +30,15 @@ import { makeSSRFDispatcher, type SSRFBlockContext } from "./lib/ssrf-dispatcher
  * pathway from a follow-up route-level hook in Wave 1.
  */
 export function defaultOnBlock(ctx: SSRFBlockContext): void {
-  // biome-ignore lint/suspicious/noConsole: bootstrap-time structured event; pino unavailable here
-  console.warn(
-    JSON.stringify({
-      level: "warn",
+  ssrfLog.warn(
+    {
       event: "security.ssrf_blocked",
       target_url_host: ctx.host,
       ip: ctx.ip,
       rule: ctx.rule,
       mode: ctx.mode,
-    }),
+    },
+    "outbound request blocked by SSRF guard",
   );
 }
 
