@@ -11,7 +11,8 @@
 import { type ExecutableTx, type TransactionalDb, withTenant } from "@openwhispr/data";
 import { sql } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
-import { AuthError } from "../../errors.js";
+import { z } from "zod";
+import { AuthError, ValidationError } from "../../errors.js";
 import {
   buildKeysetOrderLimit,
   buildKeysetWhere,
@@ -24,17 +25,26 @@ export interface TranscriptionsListDeps {
   db: TransactionalDb<ExecutableTx>;
 }
 
-interface ListQuery {
-  limit?: string;
-  before?: string;
-  since?: string;
-}
+// Plan 51-12tx — explicit querystring zod schema for LOCKER-04
+// invariant 14 (route declaration must carry `schema: {...}`). The
+// handler still calls `parseListQuery(q)` for the keyset-pagination
+// shape — this schema is the surface-level guard.
+const ListQuerySchema = z
+  .object({
+    limit: z.string().optional(),
+    before: z.string().optional(),
+    since: z.string().optional(),
+  })
+  .strict();
+type ListQuery = z.infer<typeof ListQuerySchema>;
 
 export const buildTranscriptionsListRoutes = (deps: TranscriptionsListDeps) =>
   async function transcriptionsListRoutes(app: FastifyInstance): Promise<void> {
     app.route({
       method: "GET",
       url: "/api/transcriptions/list",
+      // Plan 51-12tx — schema:querystring for LOCKER-04.
+      schema: { querystring: ListQuerySchema },
       config: { rateLimit: { max: 120, timeWindow: "1 minute" } },
       handler: async (req, reply) => {
         if (!req.user || !req.tenant) {
@@ -47,9 +57,12 @@ export const buildTranscriptionsListRoutes = (deps: TranscriptionsListDeps) =>
         try {
           parsed = parseListQuery((req.query ?? {}) as ListQuery);
         } catch (err) {
-          return reply
-            .code(400)
-            .send({ error: err instanceof Error ? err.message : "invalid query" });
+          // Plan 51-12tx (HI-2) — bypass-free error path. The raw
+          // parseListQuery message can echo user-supplied cursor/ISO
+          // strings; route those through the centralized handler with
+          // a fixed-code envelope instead of leaking to the wire.
+          req.log.warn({ err }, "transcriptions/list: invalid query");
+          throw new ValidationError("INVALID_QUERY", "invalid query");
         }
 
         const keysetWhere = buildKeysetWhere(parsed);
