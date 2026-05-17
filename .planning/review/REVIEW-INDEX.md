@@ -7,7 +7,7 @@ Scope: production source in `apps/**/src/**` + `packages/**/src/**`. Tests, tool
 
 ## Fix status (Phase 51)
 
-**12/12 CRITICAL closed. ~30/39 HIGH closed.**
+**12/12 CRITICAL closed. ~32/39 HIGH closed.**
 
 | CRITICAL | Fix commit |
 |---|---|
@@ -27,6 +27,7 @@ Scope: production source in `apps/**/src/**` + `packages/**/src/**`. Tests, tool
 **HIGH closed** (23):
 - worker (5): redact-nested + email-escape + audit-archive-SQL + retry-jitter + DLQ-aux (51-09 + 51-05)
 - api-routes-rest (3): diarization smuggle + better-auth origin + desktop-signin decode (51-10)
+- api-routes-transcriptions (2): list.ts central error envelope (51-12tx) + tokens NaN TTL hardening (51-12tx2)
 - data (2): stale-fn-drop + TLS-by-default (51-14)
 - wire-schemas (4): all enum/max (51-07)
 - byok-guard (4): whitespace + sentinel-case + NODE_ENV-case + INGRESS-cascade (51-16)
@@ -38,7 +39,7 @@ Scope: production source in `apps/**/src/**` + `packages/**/src/**`. Tests, tool
 - api-core (3): token-rotation doc-truth (51-13) + console.warn bootstrap → pino (51-13b) + as-unknown-as cluster 17→12 (51-13c)
 - redact MASTER_KEK + BETTER_AUTH_SECRET (51-09)
 
-**HIGH remaining** (~9): web 2 (CSRF, locale parity); routes-conversations 0 (conversations slice done; notes/folders LOCKER-04 sweep deferred to Phase 41 sweep); routes-transcriptions 5 (agent-stream AbortSignal forward, etc.); api-core 0 (51-13c closed the as-unknown-as cluster); byok-guard 1 (bearer-in-query-value — partially covered by CR-10 fix); web 1 (CSRF deferred — Better Auth handles internally).
+**HIGH remaining** (~7): web 2 (CSRF, locale parity); routes-conversations 0 (conversations slice done; notes/folders LOCKER-04 sweep deferred to Phase 41 sweep); routes-transcriptions 3 (HI-1 LOCKER-04 sweep deferred to Phase 41; HI-3 agent-stream AbortSignal — known undici architectural blocker, P0 follow-up; HI-4 DEFAULT_AGENT_MODEL frozen — STALE-AFTER-41.f since the yaml→JSON build-time generation makes module-load capture moot; HI-5 web-search ledger swallow — needs 503 vs BullMQ retry-queue decision); api-core 0 (51-13c closed the as-unknown-as cluster); byok-guard 1 (bearer-in-query-value — partially covered by CR-10 fix); web 1 (CSRF deferred — Better Auth handles internally).
 
 ## Aggregate counts
 
