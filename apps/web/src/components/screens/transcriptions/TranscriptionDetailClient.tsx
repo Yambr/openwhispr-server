@@ -105,7 +105,7 @@ export interface TranscriptionDetailClientProps {
 export function TranscriptionDetailClient({
   transcriptionId,
 }: TranscriptionDetailClientProps): React.JSX.Element {
-  const { t } = useTranslation(["end-user"]);
+  const { t } = useTranslation(["end-user", "common"]);
   const router = useRouter();
   const queryClient = useQueryClient();
 
@@ -231,7 +231,7 @@ export function TranscriptionDetailClient({
                   </AlertDialogDescription>
                 </AlertDialogHeader>
                 <AlertDialogFooter>
-                  <AlertDialogCancel>Cancel</AlertDialogCancel>
+                  <AlertDialogCancel>{t("common:common.action.cancel.label")}</AlertDialogCancel>
                   <AlertDialogAction onClick={() => del.mutate()}>
                     {t("end-user:end-user.trx-detail.action.delete.label")}
                   </AlertDialogAction>

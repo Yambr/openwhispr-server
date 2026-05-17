@@ -104,7 +104,7 @@ export interface NoteDetailClientProps {
 }
 
 export function NoteDetailClient({ noteId }: NoteDetailClientProps): React.JSX.Element {
-  const { t } = useTranslation(["end-user"]);
+  const { t } = useTranslation(["end-user", "common"]);
   const router = useRouter();
   const queryClient = useQueryClient();
 
@@ -251,7 +251,7 @@ export function NoteDetailClient({ noteId }: NoteDetailClientProps): React.JSX.E
                   </AlertDialogDescription>
                 </AlertDialogHeader>
                 <AlertDialogFooter>
-                  <AlertDialogCancel>Cancel</AlertDialogCancel>
+                  <AlertDialogCancel>{t("common:common.action.cancel.label")}</AlertDialogCancel>
                   <AlertDialogAction onClick={() => del.mutate()}>
                     {t("end-user:end-user.note-detail.action.delete.label")}
                   </AlertDialogAction>

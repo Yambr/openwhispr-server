@@ -99,7 +99,7 @@ export function DeleteAccountDialog({ userEmail }: DeleteAccountDialogProps): Re
           />
         </div>
         <AlertDialogFooter>
-          <AlertDialogCancel>Cancel</AlertDialogCancel>
+          <AlertDialogCancel>{t("common:common.action.cancel.label")}</AlertDialogCancel>
           <AlertDialogAction
             data-testid="delete-account-confirm"
             disabled={!confirmed || pending}

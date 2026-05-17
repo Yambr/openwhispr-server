@@ -71,7 +71,7 @@ function buildListUrl(cursor: ListCursor): string {
 }
 
 export function ConversationsListClient(): React.JSX.Element {
-  const { t } = useTranslation(["end-user"]);
+  const { t } = useTranslation(["end-user", "common"]);
   const queryClient = useQueryClient();
   const [cursor] = useState<ListCursor>({ limit: PAGE_LIMIT });
 
@@ -209,7 +209,9 @@ export function ConversationsListClient(): React.JSX.Element {
                         <AlertDialogDescription>{titleDisplay}</AlertDialogDescription>
                       </AlertDialogHeader>
                       <AlertDialogFooter>
-                        <AlertDialogCancel>Cancel</AlertDialogCancel>
+                        <AlertDialogCancel>
+                          {t("common:common.action.cancel.label")}
+                        </AlertDialogCancel>
                         <AlertDialogAction onClick={() => del.mutate(row.id)}>
                           {t("end-user:end-user.conv-list.row.action-delete.label")}
                         </AlertDialogAction>
