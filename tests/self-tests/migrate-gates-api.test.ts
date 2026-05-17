@@ -77,7 +77,11 @@ describe.skipIf(skip)(
       } else if (existsSync(envPath)) {
         rmSync(envPath, { force: true });
       }
-    });
+    }, 180_000);
+    // ^^^ vitest default hook timeout is 10s; `docker compose down -v`
+    // for the full slim+litellm stack routinely takes 15-30s. Without
+    // the explicit timeout the file marks `not ok` at file-level even
+    // when every `it()` passed.
 
     it("migrate exits 0 before api starts (timestamps strictly ordered, or fallback contract)", async () => {
       const up = dockerCompose(
