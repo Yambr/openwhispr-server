@@ -222,11 +222,7 @@ export function registerErrorHandler(app: FastifyInstance): void {
     // i18next using `req.i18n` (steered by Accept-Language). When code
     // is undefined (non-typed errors) OR req.i18n is missing (legacy
     // boot), `message` flows through untouched.
-    const localized = localize(
-      req as unknown as { i18n?: { t(k: string, o?: object): string } },
-      code,
-      message,
-    );
+    const localized = localize(req, code, message);
     reply.status(status).type(JSON_CT).send({ error: localized });
   });
 }

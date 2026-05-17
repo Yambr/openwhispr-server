@@ -4,21 +4,16 @@
 # Add a new line ONLY with a one-line rationale in the same commit.
 apps/api/src/auth.ts:307  # issue-33-04-wrap-adapter-factory-cast — wrapAdapter+drizzle factory composition narrow cast
 apps/api/src/auth.ts:547  # issue-31-debt-suppression (33-04 shifted +73 lines)
-apps/api/src/error-handler.ts:226  # issue-31-debt-suppression
-apps/api/src/i18n/init.ts:152  # issue-31-debt-suppression
-apps/api/src/i18n/init.ts:153  # issue-31-debt-suppression
-apps/api/src/index.ts:312  # issue-31-debt-suppression-tx-bridge (33-04 +9; 34 -1; 51-13b drift)
-apps/api/src/index.ts:321  # issue-31-debt-suppression (33-04 +9; 34 -1; 51-13b drift)
-apps/api/src/index.ts:349  # issue-31-debt-suppression (33-04 +9; 34 -1; 51-13b drift)
-apps/api/src/index.ts:384  # issue-31-debt-suppression (33-04 +9; 34 -1; 51-13b drift)
-apps/api/src/index.ts:420  # issue-31-debt-suppression (33-04 +9; 34 -1; 51-13b drift)
-apps/api/src/index.ts:607  # issue-31-debt-suppression (33-04 +9; 34 -1; 51-13b drift)
-apps/api/src/index.ts:663  # issue-31-debt-suppression (33-04 +9; 34 -1; 51-13b drift)
-apps/api/src/index.ts:700  # issue-31-debt-suppression (33-04 +9; 34 -1; 51-13b drift)
-apps/api/src/lib/api-error-status.ts:20  # issue-31-debt-suppression
-apps/api/src/lib/api-error-status.ts:52  # issue-31-debt-suppression
-apps/api/src/routes/locale.ts:53  # issue-31-debt-suppression
-apps/api/src/routes/realtime.ts:160  # issue-31-debt-suppression
+apps/api/src/i18n/init.ts:155  # issue-51-13c-i18n-raw-bridge — IncomingMessage mutated by i18next-http-middleware; framework-boundary narrow cast (req side now uses fastify.d.ts augmentation)
+apps/api/src/index.ts:312  # issue-51-13c-tx-bridge — TransactionalDb<ExecutableTx> structural narrowing across db-package opt boundary
+apps/api/src/index.ts:321  # issue-51-13c-audit-ctx — FastifyRequest → auditCtxFromRequest structural shape (id/ip/headers)
+apps/api/src/index.ts:349  # issue-51-13c-tx-bridge-ssrf — same TransactionalDb narrowing for ssrf-audit path
+apps/api/src/index.ts:384  # issue-51-13c-audit-ctx-ssrf — same audit-ctx narrowing on ssrf path
+apps/api/src/index.ts:420  # issue-51-13c-db-execute-shape — opts.db.execute() structural surface for licensing probe
+apps/api/src/index.ts:607  # issue-51-13c-auth-like — buildAuth() returns AuthInstance; dual-auth-hook consumes AuthLike (api.getSession+handler); structural-compat cast at the boundary
+apps/api/src/index.ts:663  # issue-51-13c-redis-narrow — ioredis client → RedisLike narrow subset (get/set only)
+apps/api/src/index.ts:700  # issue-51-13c-valkey-widen — RedisLike → ioredis.Redis for sched plugin; load-bearing on the dep-check structural typing
+apps/api/src/lib/api-error-status.ts:52  # issue-51-13c-api-error-status — better-auth APIError.status field type drifts across minors (string-name vs number); narrow probe documented at L18-22
 apps/web/src/components/screens/account/SessionsTable.tsx:10  # issue-31-debt-suppression
 apps/web/src/lib/form-utils.ts:34  # issue-31-debt-suppression
 apps/web/src/lib/form-utils.ts:35  # issue-31-debt-suppression
@@ -35,7 +30,6 @@ apps/worker/src/db/app-pool.ts:142  # issue-31-debt-suppression-pg-typing
 apps/worker/src/jobs/reconciliation-discrepancy.ts:58  # issue-31-debt-suppression
 packages/data/src/seed/conformance.ts:241  # issue-31-debt-suppression
 packages/data/src/seed/conformance.ts:246  # issue-31-debt-suppression
-apps/api/src/routes/better-auth-handler.ts:190  # issue-19.3-ba-handler-i18n-typing — req.i18n added at runtime by i18next-http-middleware (init.ts:154); Fastify type augmentation deferred per SR-19.2 pattern
 apps/api/src/auth.ts:323  # issue-41-better-auth-adapter-cast — wrapAdapter returns the lens-wrapped adapter; Better Auth's drizzleAdapter return-type is opaque, requires cast at the Phase 33 lens boundary (line drifted 308 → 323 by 41-e ENCRYPTED_COLUMNS_MAP comment expansion)
 apps/api/src/auth.ts:570  # issue-41-better-auth-instance-cast — betterAuth() return type doesn't extend AuthInstance interface declared in apps/api/src/types; cast preserves the project's narrowed type (line drifted 555 → 570 by 41-e)
 apps/web/src/lib/auth-client.ts:75  # issue-51-11b-extended-auth-client-centralised — single double-cast that unifies the 4 previously-scattered call-site casts via ExtendedAuthClient

@@ -187,7 +187,7 @@ export function maybeLocalizeBetterAuthError(req: FastifyRequest, text: string):
   if (parsed === null || typeof parsed !== "object") return text;
   const obj = parsed as { message?: unknown; code?: unknown };
   if (typeof obj.code !== "string" || typeof obj.message !== "string") return text;
-  const i18n = (req as unknown as { i18n?: { t(k: string, o?: object): string } }).i18n;
+  const i18n = req.i18n;
   if (!i18n?.t) return text;
   const localized = i18n.t(`errors.${obj.code}`, { defaultValue: obj.message });
   if (localized === obj.message) return text;

@@ -26,7 +26,7 @@
 import { readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import type { FastifyInstance, FastifyPluginAsync } from "fastify";
+import type { FastifyInstance, FastifyPluginAsync, FastifyRequest } from "fastify";
 import fp from "fastify-plugin";
 import i18next, { type i18n as I18nInstance } from "i18next";
 import Backend from "i18next-fs-backend";
@@ -149,10 +149,12 @@ const i18nPluginInner: FastifyPluginAsync = async (app: FastifyInstance) => {
   const handler = i18nMiddleware.handle(i18n);
   app.addHook("preHandler", (req, reply, done) => {
     handler(req.raw, reply.raw, () => {
-      const raw = req.raw as unknown as { i18n?: unknown; language?: string };
-      const r = req as unknown as { i18n?: unknown; language?: string };
-      if (raw.i18n !== undefined) r.i18n = raw.i18n;
-      if (raw.language !== undefined) r.language = raw.language;
+      // i18next-http-middleware mutates Node's raw IncomingMessage; the
+      // narrow cast pierces the framework boundary. Mirror onto the
+      // Fastify request which is already augmented (types/fastify.d.ts).
+      const raw = req.raw as unknown as { i18n?: FastifyRequest["i18n"]; language?: string };
+      if (raw.i18n !== undefined) req.i18n = raw.i18n;
+      if (raw.language !== undefined) req.language = raw.language;
       done();
     });
   });
