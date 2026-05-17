@@ -364,3 +364,71 @@ Phase 20-02b adopted Option A (relaxed hardening) for `ghcr.io/berriai/litellm:m
 2. Prisma client writes to `/app/.prisma` at startup — incompatible with readOnlyRootFilesystem
 
 Future hardening phase may revisit by either (a) building a fork with `USER 1000` + writable PVC for Prisma cache, or (b) waiting for upstream to add non-root support. Tracking issue: TBD.
+
+---
+
+## Phase 53 — Plan 51-19 e2e seed RLS violation (NEW)
+
+**Symptom:** `make e2e-test` reaches the conformance-seed stage (after
+the 53-13/53-14 compose fixes brought the full stack to healthy) and
+fails with:
+
+```
+Error: seed: signUp(fixture@conformance.test) failed: HTTP 422
+body={"message":"Failed to create user","code":"FAILED_TO_CREATE_USER"}
+```
+
+The api-side log shows:
+
+```
+ERROR [Better Auth]: Failed to create user DrizzleQueryError:
+  insert into "users" ... values (default, default, $1, ...) returning ...
+  cause: error: new row violates row-level security policy for table "users"
+```
+
+**Root cause hypothesis:** Better Auth's `createUser` path runs OUTSIDE
+the per-request tenant-context plugin that sets the `app.tenant_id` GUC
+RLS policies key off. The INSERT supplies `tenant_id = default` (which
+hits the `DEFAULT_TENANT_ID` column default), but the `app` role's
+RLS WITH CHECK clause demands `tenant_id = current_setting('app.tenant_id')`,
+which is NULL inside the Better Auth route handler.
+
+This regressed after Plan 51-05 (worker tenant-context refactor +
+Plan 51-14 stale-fn drop). Phase 02.6 / Plan 02.12 originally piped
+the GUC through better-auth's drizzle adapter; that wiring is now
+broken on the sign-up path specifically.
+
+**Why deferred:** Plan 51-19's scope was "full e2e + coverage gate +
+phase-close", not "diagnose and fix a multi-phase tenant-context
+regression in Better Auth's createUser path." The fix likely involves
+either:
+  (a) Wrapping better-auth's `database.beforeUpdate` / sign-up hooks
+      in `withTenantContext()` so the GUC is set on the same pg connection
+      that Better Auth's drizzle adapter uses, OR
+  (b) Loosening the users-table RLS WITH CHECK clause to allow
+      `tenant_id IS NULL` and letting the post-insert trigger backfill
+      from DEFAULT_TENANT_ID, OR
+  (c) A dedicated `SECURITY DEFINER` sign-up RPC that owns the tenant
+      assignment server-side.
+
+Each path touches the security boundary and demands its own RED→GREEN
+test + RLS property regression. Out-of-scope for Plan 51-19's "just
+get e2e green" gate; tracked here for a dedicated future phase.
+
+**Recommended owner:** Phase 54 (or a 51-20 fix-plan) — better-auth
+tenant-context wiring audit + sign-up RLS regression coverage.
+
+**Recent progress on Plan 51-19 e2e infra (Phase 53 wave 2):**
+- 53-06: docker-compose healthchecks bind 127.0.0.1 (was localhost,
+  IPv6 lottery on docker desktop).
+- 53-13: `.env` + 3 example envs + 3 inline compose URLs get
+  `?sslmode=disable` for Plan 51-14 default-on-TLS cascade.
+- 53-14: phase-6 compose helper layers observability + ingress +
+  contract-test overlays so grafana / traefik / seed services exist.
+- 53-14: Traefik dynamic config gains `api-probes` router on
+  `Host(api.localhost) && Path(/livez|/readyz|/startupz|/healthz)`.
+- Verified: `tests/e2e/probes-dependency.test.ts` 4/4 GREEN.
+
+The remaining 7 phase-6 e2e files all share the same seed-RLS blocker
+above. Once the tenant-context fix lands, `make e2e-test` is expected
+to advance to the per-test assertions.
