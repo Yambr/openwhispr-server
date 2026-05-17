@@ -25,4 +25,4 @@ apps/worker/src/jobs/email-delivery.ts:80  # issue-31-DI-fallback-jsdoc
 apps/worker/src/jobs/email-delivery.ts:95  # issue-31-DI-fallback
 packages/byok-guard/src/index.ts:221  # issue-31-boundary-check
 packages/email/src/EmailSender.ts:7  # issue-31-boundary-check-jsdoc
-packages/email/src/EmailSender.ts:79  # issue-31-boundary-check
+packages/email/src/EmailSender.ts:87  # issue-31-boundary-check (line drifted 79 → 87 over time; pre-OSS review caught the drift, correcting in Phase 51)
