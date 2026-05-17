@@ -63,6 +63,9 @@ function happyEnv(): NodeJS.ProcessEnv {
     S3_BUCKET: "openwhispr-prod",
     OTEL_EXPORTER_OTLP_ENDPOINT: "https://otel.corp.example.com:4317",
     INGRESS_BASE_URL: "https://api.corp.example.com",
+    // Phase 51 / Plan 51-16 — INGRESS_BASE_URL=https://… now requires
+    // the TLS cert path cascade (was a silent gap pre-fix).
+    INGRESS_TLS_CERT_PATH: "/etc/ssl/certs/openwhispr.pem",
     DATABASE_URL: "postgres://app:hunter2@db:5432/openwhispr",
     SMTP_HOST: "smtp.corp.example.com",
     NODE_ENV: "production",
@@ -319,7 +322,7 @@ describe("assertBYOKConfig (Phase 14 / Plan 04 / Task 1; Phase 19 / Plan 02 thro
       ).toThrow(BYOKGuardError);
     });
 
-    it("Test 2 — thrown error carries the fatal record's `msg` string", () => {
+    it("Test 2 — thrown error carries the fatal record's `msg` string + overlay/missing detail", () => {
       let thrown: unknown;
       try {
         assertBYOKConfig({} as NodeJS.ProcessEnv, { logger: makeSilentLogger() });
@@ -327,14 +330,15 @@ describe("assertBYOKConfig (Phase 14 / Plan 04 / Task 1; Phase 19 / Plan 02 thro
         thrown = err;
       }
       expect(thrown).toBeInstanceOf(BYOKGuardError);
-      // The current contract is that the thrown message matches the pino
-      // record's `msg` (the fixed "BYOK env missing for disabled overlay;
-      // refusing to start" string). Operators get the structured record
-      // via the pino fatal line; the error message is the same human
-      // signal for any `instanceof BYOKGuardError` catch handler.
-      expect((thrown as BYOKGuardError).message).toBe(
-        "BYOK env missing for disabled overlay; refusing to start",
-      );
+      // Phase 51 / Plan 51-16 — error message now appends
+      // `(overlay=..., missing=...)` so log readers can disambiguate
+      // WHICH env failed without parsing the structured pino record.
+      // We still require the original fixed prefix so any catch
+      // handler that pattern-matches on it keeps working.
+      const msg = (thrown as BYOKGuardError).message;
+      expect(msg.startsWith("BYOK env missing for disabled overlay; refusing to start")).toBe(true);
+      expect(/overlay=/.test(msg)).toBe(true);
+      expect(/missing=/.test(msg)).toBe(true);
     });
 
     it("Test 3 — valid env does not throw", () => {

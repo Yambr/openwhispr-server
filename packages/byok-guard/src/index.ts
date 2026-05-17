@@ -61,6 +61,33 @@ import { redactUrl } from "./redact-url.js";
 export { redactUrl } from "./redact-url.js";
 
 /**
+ * Phase 51 / Plan 51-16 (REVIEW byok-guard HIGH cluster) — env-value
+ * normalization helpers.
+ *
+ * Pre-fix the guard treated any non-empty env value as "present" via
+ * a bare `if (!env.X)` check. Whitespace-only values (a common
+ * .env-file accident, or an operator pasting a key with a trailing
+ * newline) therefore passed the gate AND broke downstream consumers
+ * with a non-canonical error. Same shape for case-sensitive sentinel
+ * checks: `=disabled` accepted ONLY the lowercase literal, so
+ * `=Disabled` or `=DISABLED` (operator equivalents) silently fell
+ * through to "missing".
+ */
+function normEnv(value: string | undefined): string | undefined {
+  if (value === undefined) return undefined;
+  const t = value.trim();
+  return t.length === 0 ? undefined : t;
+}
+
+function isSentinelDisabled(value: string | undefined): boolean {
+  return normEnv(value)?.toLowerCase() === "disabled";
+}
+
+function normNodeEnv(value: string | undefined): string {
+  return (normEnv(value) ?? "").toLowerCase();
+}
+
+/**
  * Phase 19 / Plan 02 (SR-19.3, D-09) — error thrown when an overlay's
  * BYOK env contract is unsatisfied. The library logs the structured
  * fatal record (via the boot pino) and THROWS this typed error;
@@ -144,7 +171,7 @@ function buildHint(overlay: BYOKOverlay, redactedEcho?: string): string {
  * No NODE_ENV gate (loud-fail unconditional per CONTEXT.md decision 2).
  */
 const storageRow: RowEvaluator = (env) => {
-  const endpoint = env.S3_ENDPOINT;
+  const endpoint = normEnv(env.S3_ENDPOINT);
   if (!endpoint) {
     return {
       event: "byok.required",
@@ -157,7 +184,7 @@ const storageRow: RowEvaluator = (env) => {
   // ENDPOINT set — partner keys must also be set, or the operator has
   // configured S3 partially and the upload path would crash at runtime.
   const partnerKeys = ["S3_ACCESS_KEY", "S3_SECRET_KEY", "S3_BUCKET"] as const;
-  const missing = partnerKeys.filter((k) => !env[k]);
+  const missing = partnerKeys.filter((k) => !normEnv(env[k]));
   if (missing.length > 0) {
     return {
       event: "byok.required",
@@ -176,8 +203,11 @@ const storageRow: RowEvaluator = (env) => {
  */
 const observabilityRow: RowEvaluator = (env) => {
   const otlp = env.OTEL_EXPORTER_OTLP_ENDPOINT;
-  if (otlp === "disabled") return null; // sentinel — otel-bootstrap handles no-op
-  if (!otlp) {
+  // Phase 51 / Plan 51-16 — case-insensitive + whitespace-tolerant
+  // sentinel. Pre-fix `=Disabled` / `= DISABLED ` fell through to
+  // "missing".
+  if (isSentinelDisabled(otlp)) return null;
+  if (!normEnv(otlp)) {
     return {
       event: "byok.required",
       code: "BYOK_OBSERVABILITY_REQUIRED",
@@ -191,7 +221,13 @@ const observabilityRow: RowEvaluator = (env) => {
 
 /** Ingress row: INGRESS_BASE_URL. No NODE_ENV gate. */
 const ingressRow: RowEvaluator = (env) => {
-  if (!env.INGRESS_BASE_URL) {
+  // Phase 51 / Plan 51-16 — whitespace-tolerant + cascade for TLS.
+  // When INGRESS_BASE_URL is `https://…` and INGRESS_TLS_CERT_PATH is
+  // unset, refuse to boot — the operator paired TLS scheme with no
+  // cert path, and Traefik will fail to load the ingress chain at
+  // runtime with a far less actionable error.
+  const base = normEnv(env.INGRESS_BASE_URL);
+  if (!base) {
     return {
       event: "byok.required",
       code: "BYOK_INGRESS_REQUIRED",
@@ -199,6 +235,18 @@ const ingressRow: RowEvaluator = (env) => {
       missing: ["INGRESS_BASE_URL"],
       hint: buildHint("ingress"),
     };
+  }
+  if (base.startsWith("https://")) {
+    const certPath = normEnv(env.INGRESS_TLS_CERT_PATH);
+    if (!certPath) {
+      return {
+        event: "byok.required",
+        code: "BYOK_INGRESS_REQUIRED",
+        overlay: "ingress",
+        missing: ["INGRESS_TLS_CERT_PATH"],
+        hint: buildHint("ingress", redactUrl(base)),
+      };
+    }
   }
   return null;
 };
@@ -209,7 +257,7 @@ const ingressRow: RowEvaluator = (env) => {
  * a downstream pg "missing config" error.
  */
 const pgbouncerRow: RowEvaluator = (env) => {
-  if (!env.DATABASE_URL) {
+  if (!normEnv(env.DATABASE_URL)) {
     return {
       event: "byok.required",
       code: "BYOK_DATABASE_REQUIRED",
@@ -227,8 +275,11 @@ const pgbouncerRow: RowEvaluator = (env) => {
  * packages/email/src/EmailSender.ts:74-91.
  */
 const devToolsRow: RowEvaluator = (env) => {
-  if (env.NODE_ENV !== "production") return null;
-  if (!env.SMTP_HOST) {
+  // Phase 51 / Plan 51-16 — case-insensitive NODE_ENV compare so
+  // `Production` (capital-P, a common CI / Helm-chart typo) doesn't
+  // bypass the gate.
+  if (normNodeEnv(env.NODE_ENV) !== "production") return null;
+  if (!normEnv(env.SMTP_HOST)) {
     return {
       event: "byok.required",
       code: "BYOK_SMTP_REQUIRED",
@@ -276,6 +327,13 @@ export function assertBYOKConfig(
     // Entrypoints (apps/api, apps/worker) catch BYOKGuardError, log via
     // their own logger, and call process.exit(1). Library is now pure;
     // exit-code decision lives at the process boundary.
-    throw new BYOKGuardError(msg);
+    //
+    // Phase 51 / Plan 51-16 — thread the missing-key list into the
+    // error message so tests + log readers can disambiguate WHICH
+    // env failed without parsing the structured log. The original
+    // pino.fatal record is still the canonical machine-readable
+    // surface; this string is a human convenience.
+    const detail = `${msg} (overlay=${record.overlay}, missing=${record.missing.join(",")})`;
+    throw new BYOKGuardError(detail);
   }
 }
