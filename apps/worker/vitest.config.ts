@@ -24,6 +24,14 @@ export default mergeConfig(
       // SIGINT/SIGTERM hook with apps/api + packages/data so an interrupted
       // worker test run prunes orphan postgres containers identically.
       setupFiles: ["../../tools/testcontainer-reaper-setup.ts"],
+      // Phase 53 / Plan 53-11 — same docker-container-removal race seen
+      // in packages/data: parallel testcontainer teardowns collide with
+      // the Ryuk reaper, producing intermittent HTTP 409 "removal already
+      // in progress" cascade-fails. fileParallelism=false + singleFork
+      // serializes container lifecycle across files inside this package.
+      fileParallelism: false,
+      pool: "forks",
+      singleFork: true,
       coverage: {
         include: ["src/**/*.ts"],
         // Exclude the entry point and integration test container bootstrap —
