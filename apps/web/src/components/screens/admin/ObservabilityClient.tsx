@@ -68,13 +68,34 @@ const DASHBOARDS: DashboardCard[] = [
   },
 ];
 
-function trimSlash(s: string): string {
-  return s.endsWith("/") ? s.slice(0, -1) : s;
+/**
+ * Phase 51 / Plan 51-11 (REVIEW web HIGH) — narrow href candidates to
+ * http(s) only. Pre-fix any `NEXT_PUBLIC_*_BASE_URL` env value flowed
+ * straight into `<a href={…}>`; an operator (or a misconfigured
+ * Helm chart) that supplied `javascript:alert(1)` would ship a
+ * stored-XSS into the admin observability page. Now we accept only
+ * `http://` and `https://` URLs that parse cleanly. The helper also
+ * strips a trailing slash so callers don't need a separate trim
+ * pass — `trimSlash()` was retired in this commit.
+ */
+function safeExternalHref(raw: string | undefined | null): string | null {
+  if (!raw) return null;
+  try {
+    const u = new URL(raw);
+    if (u.protocol === "http:" || u.protocol === "https:") {
+      return u.toString().replace(/\/$/, "");
+    }
+    return null;
+  } catch {
+    return null;
+  }
 }
 
 export function ObservabilityClient({ env }: { env: ObservabilityEnv }): React.JSX.Element {
   const { t } = useTranslation(["admin", "common"]);
-  const grafana = env.grafana ? trimSlash(env.grafana) : "";
+  // Phase 51 / Plan 51-11 — sanitize once, reuse. safeExternalHref
+  // both validates the http(s) scheme AND strips a trailing slash.
+  const grafana = safeExternalHref(env.grafana) ?? "";
 
   if (!grafana) {
     return (
@@ -95,9 +116,13 @@ export function ObservabilityClient({ env }: { env: ObservabilityEnv }): React.J
     );
   }
 
-  const tempo = env.tempo ? trimSlash(env.tempo) : grafana;
-  const mimir = env.mimir ? trimSlash(env.mimir) : grafana;
-  const loki = env.loki ? trimSlash(env.loki) : grafana;
+  // Phase 51 / Plan 51-11 — validate each external URL against the
+  // http(s) allowlist before rendering an <a href={…}>. A
+  // `javascript:` payload supplied via env falls through to the
+  // sanitized grafana default.
+  const tempo = safeExternalHref(env.tempo) ?? grafana;
+  const mimir = safeExternalHref(env.mimir) ?? grafana;
+  const loki = safeExternalHref(env.loki) ?? grafana;
 
   return (
     <div className="flex flex-col gap-6">
