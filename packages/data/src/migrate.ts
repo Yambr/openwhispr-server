@@ -237,7 +237,6 @@ async function main(): Promise<void> {
 function isCliEntry(): boolean {
   // CommonJS path (tsup --format cjs).
   if (typeof require !== "undefined" && typeof module !== "undefined") {
-    // biome-ignore lint/style/noNonNullAssertion: CJS context guarantees module.
     return require.main === module;
   }
   // ESM path.

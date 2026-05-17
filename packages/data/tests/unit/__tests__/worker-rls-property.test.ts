@@ -275,7 +275,6 @@ SUITE("worker-tier RLS property (D-W4 layer 3, fast-check)", () => {
   // Wrapped in `false &&` to satisfy fast-check's chained generic signature
   // without invoking the runtime. The actual coverage gap is logged in the
   // Phase-32 DEFERRED ledger.
-  // biome-ignore lint/correctness/noConstantCondition: intentional gate
   false &&
     test.prop(
       {

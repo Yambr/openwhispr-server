@@ -418,7 +418,6 @@ SUITE("reconciliation-daily-check (D-R2)", () => {
     const realQuery = h.appPool.query.bind(h.appPool);
     const spyPool: Pool = {
       ...h.appPool,
-      // biome-ignore lint/suspicious/noExplicitAny: pg Pool overloads
       query: (async (text: string, params?: unknown[]) => {
         if (
           /FROM\s+users\s+WHERE\s+id\s*=\s*ANY/i.test(text) ||
@@ -499,7 +498,7 @@ SUITE("reconciliation-daily-check (D-R2)", () => {
       window_end: "2026-05-12T00:00:00Z",
     };
 
-    let midHandlerObservations: Array<[number, Record<string, string>]> = [];
+    const midHandlerObservations: Array<[number, Record<string, string>]> = [];
     handler = buildReconciliationDailyCheckHandler({
       litellmPool: h.llPool,
       appOwnerPool: h.appPool,

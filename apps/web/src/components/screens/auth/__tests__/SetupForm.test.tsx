@@ -198,7 +198,6 @@ beforeEach(() => {
   // Minimal IntersectionObserver stub for happy-dom (lacks the API).
   // The component's effect calls .observe + cleanup .disconnect; no
   // test asserts on `currentStep` flips driven by the observer.
-  // biome-ignore lint/suspicious/noExplicitAny: minimal IO shim
   (globalThis as any).IntersectionObserver = class {
     observe() {}
     disconnect() {}
