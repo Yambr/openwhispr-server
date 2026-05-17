@@ -20,7 +20,7 @@ import { defineConfig } from "tsup";
 export default defineConfig({
   entry: {
     migrate: "src/migrate.ts",
-    "seed-conformance": "src/seed/conformance.ts",
+    "seed-conformance": "src/bin/seed-conformance.ts",
   },
   format: ["cjs"],
   target: "node24",

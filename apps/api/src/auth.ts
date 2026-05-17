@@ -324,6 +324,15 @@ export function buildAuth(opts: BuildAuthOptions): AuthInstance {
     // sidecar keys produced by the lens currently fall through to NULL
     // until Plan 33-05's schema-side additionalFields declarations land.
     database: (() => {
+      // Plan 51-22 — Better Auth's single-tenant bridge is migration-level:
+      // 0003_better_auth_tenant_defaults.sql sets `ALTER ROLE openwhispr_app
+      // SET app.tenant_id TO '<DEFAULT_TENANT_ID>'` so every app-role
+      // backend connect lands with the GUC pre-bound, and 0024_*.sql
+      // installs `ALTER COLUMN tenant_id SET DEFAULT current_setting(...)`
+      // on the 4 Better Auth tables (0024 patches the plural-table drift
+      // 0003 missed). With those in place the bare `INSERT (default, ...)`
+      // drizzleAdapter issues resolves to the default tenant — no
+      // app-side wrap required.
       const factory = drizzleAdapter(db, {
         provider: "pg",
         // Better Auth canonical model names (left) ↔ our pluralized drizzle

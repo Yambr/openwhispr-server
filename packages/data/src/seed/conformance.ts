@@ -230,39 +230,8 @@ export async function seedPhase5Resources(pool: Pool): Promise<void> {
   );
 }
 
-// CLI entry point.
-// Phase 02.3 — dual ESM/CJS detect: tsx (ESM dev mode) sets import.meta.url,
-// while the tsup CJS bundle for the compose `seed` service has no
-// import.meta and falls back to the require.main check. Wrapping import.meta
-// access in a typeof guard avoids ReferenceError under CJS evaluation.
-const isEsmEntry =
-  typeof import.meta !== "undefined" &&
-  // biome-ignore lint/suspicious/noExplicitAny: import.meta typing differs across module systems
-  (import.meta as any).url === `file://${process.argv[1]}`;
-const isCjsEntry =
-  typeof require !== "undefined" &&
-  typeof module !== "undefined" &&
-  // biome-ignore lint/suspicious/noExplicitAny: require typing differs across module systems
-  (require as any).main === module;
-
-/* v8 ignore start */
-// CLI bootstrap — unreachable from in-process test runners. Functional
-// behavior is exercised by the docker-compose `seed` service in CI, not
-// by unit tests. Same rationale as packages/data/src/migrate.ts CLI tail.
-if (isEsmEntry || isCjsEntry) {
-  seedConformanceFixtures()
-    .then((results) => {
-      // eslint-disable-next-line no-console
-      console.log("seed: conformance fixtures complete");
-      for (const r of results) {
-        // eslint-disable-next-line no-console
-        console.log(`  ${r.email} created=${r.created} verifiedPatched=${r.verifiedPatched}`);
-      }
-    })
-    .catch((err: unknown) => {
-      // eslint-disable-next-line no-console
-      console.error(err);
-      process.exit(1);
-    });
-}
-/* v8 ignore stop */
+// CLI entry point lives in `packages/data/src/bin/seed-conformance.ts`.
+// Plan 51-21 — keeping the `if (isEsmEntry || isCjsEntry)` gate here
+// caused the api Docker image to silently fire seed-on-boot whenever
+// the bundler inlined this file via an `import {...}` from another
+// package; see `bin/seed-conformance.ts` for the why.

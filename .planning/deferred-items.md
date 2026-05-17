@@ -432,3 +432,83 @@ tenant-context wiring audit + sign-up RLS regression coverage.
 The remaining 7 phase-6 e2e files all share the same seed-RLS blocker
 above. Once the tenant-context fix lands, `make e2e-test` is expected
 to advance to the per-test assertions.
+
+---
+
+## Plan 51-19 e2e closure — Phase 33-05 password-lens debt blocks seed
+
+**Status:** Plan 51-21 (seed-on-boot bundling) + Plan 51-22 (better-auth
+tenant_id column default + plural-table migration drift) cleared two
+upstream blockers; the remaining failure is well-understood
+architectural debt explicitly deferred at the lens-design stage.
+
+**What works now after 51-21 + 51-22:**
+- `docker compose -f ... up -d` boots the full stack (api + worker +
+  migrate + grafana + traefik + seed + contract-test-runner).
+- All 26 migrations apply clean against fresh postgres (0024 included).
+- Migration 0024 verifies in `information_schema.columns`:
+  `users / sessions / account / verification.tenant_id` carry
+  `(current_setting('app.tenant_id', true))::uuid` DEFAULT.
+- Manual `ALTER ROLE openwhispr_app SET app.tenant_id` makes the
+  pre-bound GUC visible on every new `openwhispr_app` connect.
+- Better Auth sign-up advances past the RLS gate — `users` rows land
+  with the default tenant.
+
+**What still blocks `make e2e-test`:**
+Better Auth's `account` table credential flow needs a plaintext
+`password` field declared on the drizzle schema. Our `accounts` schema
+only declares the 6 envelope-encrypted `password_*` bytea sidecars
+(per Phase 33's lens design); the runtime lens (`wrapAdapter`) DOES
+transform `data.password` → ciphertext on write, but Better Auth
+introspects the **raw drizzle schema** at adapter-construction time
+and bails:
+
+> `BetterAuthError: The field "password" does not exist in the
+> "account" Drizzle schema.`
+
+The lens cannot intercept that introspection step — it sees the
+post-construction `DBAdapter` instance, not the schema object Better
+Auth feeds through `field-translation`. This was identified at Phase
+33-04 design time and tagged in
+`apps/api/src/auth.ts:323-326` as deferred to **Plan 33-05** —
+"Better-Auth's adapter-factory strips unknown keys during
+field-translation, so the 6 bytea sidecar keys produced by the lens
+currently fall through to NULL until Plan 33-05's schema-side
+additionalFields declarations land."
+
+**Remediation paths (any one closes the seed flow):**
+
+(a) Declare `password` as a `additionalFields` entry under
+    `user: { additionalFields: { ... } }` AND a `text("password")`
+    column in `accounts.ts` (Drizzle-only — no migration). Better
+    Auth's introspection finds it; the lens then needs to recognize
+    this column as the SOURCE field on the write path and produce
+    the 6 sidecars. This is the canonical Plan 33-05 work.
+
+(b) Pre-`betterAuth()` shim: monkey-patch the drizzle adapter's
+    schema introspection result to advertise `password` as a virtual
+    field while keeping it absent from the actual table. Fragile;
+    couples to Better Auth internals.
+
+(c) Drop the lens entirely for `account.password` and let Better
+    Auth's bcrypt-hashed value land in a single `text("password")`
+    column. Functional but downgrades the envelope-encryption-at-rest
+    posture for credentials; would need a security-review sign-off.
+
+**Recommended owner:** dedicated Plan 33-05 (lens schema-side
+additionalFields) — the issue is well-bounded, the design is already
+locked in 33-04 DECISIONS, and the test surface (e2e seed + RLS
+property tests) is already wired.
+
+**Also surfaced during 51-22 diagnosis:**
+- Migration 0003's `DO $$ BEGIN ... ALTER ROLE openwhispr_app SET
+  app.tenant_id ... END $$` block applies cleanly when run manually
+  via `psql -U openwhispr_owner` but did NOT persist into
+  `pg_db_role_setting` when run inside drizzle migrator's tx. Root
+  cause not yet pinpointed (drizzle-orm 0.45 migrator, postgres 17).
+  Suspected: the EXECUTE-via-DO indirection interacts with drizzle's
+  per-statement subtransactions in a way that loses the ALTER ROLE
+  visibility. Plan 51-22's `0024_*.sql` re-asserts the ALTER ROLE
+  block as defense-in-depth, which fixed it in some retries but the
+  same DO $$ pattern failed silently again — investigated further in
+  Phase 54.

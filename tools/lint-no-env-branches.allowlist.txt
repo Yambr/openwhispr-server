@@ -12,7 +12,7 @@
 #
 # Seed (current-main inventory at Phase 31 Plan 01 land — DO NOT bulk-fix
 # in this plan; targeted fix phases follow).
-apps/api/src/auth.ts:541  # issue-31-boundary-better-auth-cookies (line drifted 497 → 505 → 520 → 541 by Phases 33-04 + 41-a/b + 41-e + 52-05 FallbackLog interface; cookie-secure flag is a legitimate bootstrap-time env read at the Better Auth boundary)
+apps/api/src/auth.ts:550  # issue-31-boundary-better-auth-cookies (line drifted 497 → 505 → 520 → 541 → 553 → 550 by Phases 33-04 + 41-a/b + 41-e + 52-05 + 51-20 + 51-22 wrap-removal; cookie-secure flag is a legitimate bootstrap-time env read at the Better Auth boundary)
 apps/api/src/index.ts:524  # issue-31-debt-NODE_ENV-shortcircuit (33-04 shifted +9 lines; 34 -1; 51-02 +5; 51-03 +10; 52-09 +1 opts.db guard)
 apps/api/src/index.ts:528  # issue-31-debt-NODE_ENV-shortcircuit (33-04 shifted +9 lines; 34 -1; 51-02 +5; 51-03 +10; 52-09 +1 opts.db guard)
 apps/api/src/lib/ssrf-dispatcher.ts:59  # issue-31-DI-fallback-jsdoc

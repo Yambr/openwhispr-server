@@ -92,6 +92,12 @@ const COMPOSE_FILES = [
   "docker-compose.yml",
   "compose/docker-compose.observability.yml",
   "compose/docker-compose.ingress.yml",
+  // Phase 53 — Plan 14 also moved the `seed` service (conformance
+  // fixture loader) into compose/docker-compose.contract-test.yml.
+  // Phase 6 e2e helper calls `docker compose run --rm seed` so we
+  // layer this overlay too. The seed service `restart: "no"` keeps
+  // it inert until explicitly invoked.
+  "compose/docker-compose.contract-test.yml",
 ];
 
 /**
