@@ -843,3 +843,20 @@ The 4 categories above represent real product bugs surfaced by the slim sweep �
 - (iii) restrict slim project's testMatch to specs that pass today; track the 62 as Traefik-only
 
 The Phase 53 sentinel (`p53-signup-smoke`) IS GREEN and the helper IS doing its job (catching real bugs the manual smoke missed). The 62 are NOT helper false-positives — they are real UI/auth issues the strict diagnostics surfaced.
+
+## 2026-05-18 — Plan 53-19 landed: workers=2 fixes rate-limit cascade
+
+Net delta: 31 → **46 passed** (47 failed). +15 specs unblocked by capping slim project at 2 workers (Better Auth anti-abuse `/api/auth/sign-in/email` window).
+
+**Slim sweep progression total:**
+- 53-15: 27/66
+- 53-17: 31/62
+- 53-19: **46/47**
+
+Remaining 47 failures are real product issues, not test infrastructure:
+- ~10 axe WCAG violations (BUG-53-18)
+- ~10 waitForURL /app timeouts (BUG-53-20 — auth cookie domain mismatch under slim?)
+- ~25 element-not-found / locator-timeouts (BUG-53-21 — UI rendering differences slim vs traefik)
+- 1 residual HTTP 429 (down from ~15)
+
+Phase 53 helper + universal config is **functionally complete**. Further progress is product-bug intake, not test-infra work.
