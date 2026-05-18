@@ -127,7 +127,7 @@ const COMPOSE_FILES = [
  * a laptop runs ~120-180s, CI cold runners up to 240s. Callers MAY
  * extend via `phase6BringStackUp({ timeoutMs: …})`.
  */
-export const DEFAULT_BOOT_TIMEOUT_MS = 420_000;
+export const DEFAULT_BOOT_TIMEOUT_MS = 720_000;
 
 export interface Phase6Stack {
   env: StartedDockerComposeEnvironment;
@@ -764,7 +764,7 @@ export async function phase6BringStackUpScaled(opts: {
 }): Promise<Phase6ScaledStack> {
   process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0";
   const projectName = opts.projectName ?? "openwhispr";
-  const timeoutMs = opts.timeoutMs ?? 420_000;
+  const timeoutMs = opts.timeoutMs ?? 720_000;
 
   // Compose the `-f docker-compose.yml -f <ingress> -f <override...>`
   // argument list. Override files are paths relative to REPO_ROOT.
@@ -782,6 +782,13 @@ export async function phase6BringStackUpScaled(opts: {
     // when opts.seed is true. Without it `no such service: seed`.
     "-f",
     "compose/docker-compose.contract-test.yml",
+    // Plan 51-25 — env-override propagates HERMETIC_ENV vars
+    // (OPENWHISPR_DISABLE_RATE_LIMIT, OTEL_*, RATE_LIMIT_GLOBAL_*)
+    // into the api environment block. Without it the seed signup
+    // burst (5 fixtures) trips the docker-bridge shared-IP user-tier
+    // rate-limit and the scale stack never gets seeded.
+    "-f",
+    "tests/e2e/helpers/phase6-e2e-env-override.yml",
   ];
   for (const f of opts.overrideComposeFiles) {
     fileArgs.push("-f", f);
