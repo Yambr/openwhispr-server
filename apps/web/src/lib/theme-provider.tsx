@@ -11,6 +11,15 @@
 // throughout.
 "use client";
 
+// Phase 53 / Plan 53-10 — side-effect import inside the FIRST client
+// boundary the tree mounts. Calls z.config({ jitless: true }) on the
+// browser-side zod instance so client schemas don't emit
+// `new Function(...)` bodies that CSP `script-src` blocks (see
+// `apps/web/src/middleware.ts` and `apps/web/src/lib/zod-config.ts`).
+// Placed in theme-provider because it wraps every page via the root
+// layout — a single import here guarantees every client bundle has
+// the config call before any zod schema instantiation.
+import "@/lib/zod-config";
 import { ThemeProvider as NextThemesProvider } from "next-themes";
 import type { ReactNode } from "react";
 
