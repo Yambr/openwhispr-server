@@ -61,7 +61,11 @@ test.describe("AuthShell visual regression (Phase 18.1.1 / Plan 05)", () => {
       test.skip(true, "setup already completed — skipping visual regression");
       return;
     }
-    await page.getByText(/set up your openwhispr server/i).waitFor({ timeout: 15_000 });
+    // Phase 53 / Plan 53-30 — disambiguate the heading vs card-title (both
+    // render the same text on /setup); strict-mode rejects the bare getByText.
+    await page
+      .getByRole("heading", { level: 2, name: /set up your openwhispr server/i })
+      .waitFor({ timeout: 15_000 });
     await expect(page).toHaveScreenshot("setup.png", {
       mask: MASKS(page),
       maxDiffPixelRatio: 0.01,
