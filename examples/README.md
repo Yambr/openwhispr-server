@@ -112,6 +112,59 @@ The corporate LiteLLM MUST honour the wire contract documented in
 `docs/litellm-target-spec.md` (model alias namespace, virtual-key
 auth, spend-logs metadata, streaming-passthrough headers).
 
+## Quick start — Variant C (local Speaches, GPU operators)
+
+Variant C is for operators who want fully self-contained transcription
++ diarization with no third-party Whisper API in the loop. It layers a
+Speaches service (built from upstream master per Phase 08.6 so the
+diarization router is present) on top of Variant A's embedded
+LiteLLM, then rewires the `whisper-large-v3` and `pyannote-3.1`
+LiteLLM aliases to point at `http://speaches:8000` inside the docker
+network.
+
+> ⚠️ **GPU strongly recommended.** First boot downloads ~3 GB of
+> weights (Whisper + pyannote). CPU inference works for development —
+> Whisper-large-v3 runs at ~0.5 RTF on a recent M-class chip — but is
+> NOT suitable for the 1000-concurrent-user production SLO. GPU
+> operators set `SPEACHES_BASE_IMAGE=nvidia/cuda:12.6.3-base-ubuntu24.04`
+> in `.env` AND install nvidia-container-runtime on the host BEFORE
+> `docker compose up --wait`.
+>
+> ⚠️ **HF_TOKEN required.** The pyannote diarization model is gated;
+> the Speaches container refuses to start without HF_TOKEN. Request a
+> token at https://huggingface.co/settings/tokens with `read` access to
+> `pyannote/speaker-diarization-community-1`. Operators who only need
+> transcription should use Variant A (hosted Whisper API) instead.
+
+### Docker Compose path
+
+```bash
+cp .env.local-speaches.example .env
+# edit .env — set HF_TOKEN (required) plus the Variant A keys
+# (LITELLM_MASTER_KEY, OPENROUTER_API_KEY, OPENAI_API_KEY,
+#  BETTER_AUTH_SECRET, MASTER_KEK, postgres + valkey passwords)
+docker compose \
+  -f compose/docker-compose.embedded-litellm.yml \
+  -f examples/docker-compose.local-speaches.yml \
+  up -d --wait
+# First boot pulls + builds the Speaches master image (~10 min) AND
+# downloads ~3 GB of weights — be patient. The healthcheck has a
+# 600 s start_period for this reason.
+```
+
+### Helm / kind / cloud path
+
+```bash
+helm install openwhispr ./charts/openwhispr \
+  -f ./charts/openwhispr/examples/values-local-speaches.yaml \
+  --set bundledAi.speaches.image=speaches/speaches:master-cuda-12.6.3
+# GPU operators MUST install the NVIDIA device plugin on the cluster
+# (helm install nvidia-device-plugin nvidia/k8s-device-plugin) BEFORE
+# scheduling the Speaches workload; the chart's resource requests
+# include nvidia.com/gpu: 1 when bundledAi.speaches.image carries the
+# cuda tag.
+```
+
 ## See also
 
 - `charts/openwhispr/examples/` — every chart overlay (Variant A/B/C, kind

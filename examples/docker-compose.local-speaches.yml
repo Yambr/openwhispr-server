@@ -1,0 +1,95 @@
+# SPDX-License-Identifier: FSL-1.1-ALv2
+# Phase 11 / Plan 11-03 — Variant C compose overlay (local Speaches).
+#
+# Layers on top of compose/docker-compose.embedded-litellm.yml to add a
+# Speaches container running locally for ASR + diarization. Variant C
+# is the GPU-or-CPU-fallback path for operators who want fully
+# self-contained inference without routing transcription out to a
+# hosted Whisper API.
+#
+# Usage:
+#   cp .env.local-speaches.example .env
+#   # Edit .env — at minimum set HF_TOKEN (gated pyannote weights)
+#   docker compose \
+#     -f compose/docker-compose.embedded-litellm.yml \
+#     -f examples/docker-compose.local-speaches.yml \
+#     up -d --wait
+#
+# What this overlay does on top of embedded-litellm:
+#   - Adds `speaches:` service built from upstream master (CPU mode by
+#     default via BASE_IMAGE=ubuntu:24.04; GPU operators flip to
+#     BASE_IMAGE=nvidia/cuda:12.6.3-base-ubuntu24.04 in their .env).
+#   - Mounts a Variant-C-specific LiteLLM config that routes
+#     `whisper-large-v3` + `pyannote-3.1` model aliases to the in-cluster
+#     `http://speaches:8000` endpoint instead of a hosted provider.
+#   - Persists Speaches model weights to a named volume to avoid
+#     re-downloading ~3 GB on every boot.
+#
+# WARNING: GPU is STRONGLY RECOMMENDED for production Variant C. CPU
+# inference on Whisper-large-v3 runs at ~0.5 RTF (1 s of audio takes ~2 s
+# to transcribe) on a recent M-class chip — fine for development, NOT
+# suitable for 1000-concurrent-user production. The CPU default lets
+# operators boot Variant C on Docker Desktop / WSL without
+# nvidia-container-runtime; production GPU operators override BASE_IMAGE
+# in `.env`.
+#
+# Compose-chart parity: this overlay's contract is mirrored 1:1 by the
+# Helm chart at `charts/openwhispr/examples/values-local-speaches.yaml`.
+# `tools/lint-compose-chart-parity.ts` carries a VARIANT_C fixture pair
+# pinning the parity invariant.
+
+services:
+  speaches:
+    # Phase 08.6-01 — build from upstream master because the released
+    # latest-cpu tag (v0.8.2) does NOT expose /v1/audio/diarization
+    # (memory: feedback_speaches_diarization_build_from_main). The
+    # diarization router lives on master and ships POST
+    # /v1/audio/diarization returning the {duration, segments[]} shape
+    # the rest of the stack expects.
+    build:
+      context: https://github.com/speaches-ai/speaches.git#master
+      dockerfile: Dockerfile
+      args:
+        # CPU default — GPU operators override in `.env`:
+        #   SPEACHES_BASE_IMAGE=nvidia/cuda:12.6.3-base-ubuntu24.04
+        BASE_IMAGE: ${SPEACHES_BASE_IMAGE:-ubuntu:24.04}
+    networks: [openwhispr_internal]
+    environment:
+      # Phase 08.6-01 — pydantic-settings list parsing requires JSON
+      # array shape (comma-separated strings throw SettingsError).
+      PRELOAD_MODELS: '["Systran/faster-whisper-large-v3","pyannote/speaker-diarization-community-1"]'
+      # Gated pyannote weights — HF_TOKEN required.
+      HF_TOKEN: ${HF_TOKEN:?HF_TOKEN is required for Variant C — request a token at https://huggingface.co/settings/tokens with read access to pyannote/speaker-diarization-community-1}
+      ENABLE_UI: "false"
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "-o", "/dev/null", "http://localhost:8000/health"]
+      interval: 10s
+      timeout: 3s
+      retries: 30
+      # First boot downloads ~3 GB of weights (Whisper + pyannote). On
+      # CPU + a slow link this can exceed 5 minutes; GPU + warm cache
+      # boots in < 60 s.
+      start_period: 600s
+    volumes:
+      - speaches_models:/root/.cache/huggingface
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 4G
+          cpus: "4.0"
+
+  # LiteLLM rewires to use the Variant C config (whisper-large-v3 →
+  # speaches:8000) by mounting a different config file. Everything else
+  # in the embedded-litellm overlay's litellm service is preserved.
+  litellm:
+    volumes:
+      - ./compose/litellm/litellm_config.local-speaches.yaml:/app/litellm_config.yaml:ro
+    depends_on:
+      speaches:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+
+volumes:
+  speaches_models:
