@@ -47,7 +47,7 @@ desktop ──HTTPS──▶ Traefik ──▶ api (Fastify) ──▶ corporate
                                        └──▶ pyannote.ai (still bundled Fastify route in v1)
 ```
 
-- Operator sets `LITELLM_BASE_URL=https://litellm.corp.example.com` and `LITELLM_MASTER_KEY=<their-master-key>` in `.env`.
+- Operator sets `LITELLM_BASE_URL=https://litellm.corp.example.com` and `LITELLM_MASTER_KEY=<their-master-key>` in `.env`. Note: `LITELLM_MASTER_KEY` is enforced at boot — see `docs/security.md` §13 (`validateLitellmBoot`). Missing / empty / set to the well-known dev-overlay default exits 78 in production.
 - Bundled `litellm` container can be disabled (`docker compose --profile default up -d --scale litellm=0` or by removing it from a compose override).
 - Models (chat, transcription, realtime) are served by the corporate proxy under whichever names operators configure. The api container does not assume specific aliases.
 - `speaches-audio.md` is the canonical corporate example (Speaches CUDA image, internal pyannote nginx pass-through, 3600s realtime ingress timeouts).
