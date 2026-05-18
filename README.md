@@ -8,6 +8,47 @@
 A drop-in OpenWhispr backend any organization can self-host — open-source
 out of the box, corporate-LiteLLM-ready by env override.
 
+## 30-second smoke (fresh clone)
+
+If you just want to confirm the repo boots before reading anything else:
+
+```bash
+git clone https://github.com/openwhispr/openwhispr-server.git
+cd openwhispr-server
+make up-with-dev-tools                                  # bring stack up
+curl -sk http://localhost:4000/readyz | jq              # expect ok=true for postgres, valkey, litellm
+open http://localhost:3000                              # web UI lands at /sign-up
+```
+
+The dev-tools overlay seeds a working `LITELLM_MASTER_KEY`, opens the
+internal SSRF allow-list for compose hostnames, and disables Better
+Auth's per-IP rate limit. Production operators set their own `.env`
+values per [`docs/security.md`](./docs/security.md); the overlay is
+NOT applied in production deployments.
+
+To run the e2e suite against the running stack:
+
+```bash
+cd apps/web
+OPENWHISPR_TOPOLOGY=slim pnpm exec playwright test --project=slim
+# expect: 69 passed | 0 failed | 24 skipped, ~27s
+```
+
+The 24 skipped specs are RSC-prefetch-wall cases that need MSW
+node-server to intercept server-side fetches; tracked in
+`.planning/deferred-items.md`. Everything else is green.
+
+If `pnpm test` is what you reach for, note: package-filtered runs
+use `--project=<name>` to avoid pulling unrelated workspace projects:
+
+```bash
+pnpm --filter @openwhispr/api    test   # 147 files / 1299 tests, ~98s
+pnpm --filter @openwhispr/worker test   # ~20s
+pnpm --filter @openwhispr/web    test   # 65 files / 963 tests, ~15s
+```
+
+---
+
 ## Install the Helm chart
 
 OpenWhispr Server ships an in-repo Helm chart at `charts/openwhispr/`.

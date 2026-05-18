@@ -69,6 +69,23 @@ make load-smoke           # k6 plateau (Speaches + mock-LiteLLM, ≤5 VU × ≤6
 pnpm test:mutation:incremental   # Stryker against changed files
 ```
 
+Per-package filtered runs use `--project=<name>` so workspace-wide
+projects (tests/integration, tests/self-tests, …) don't get pulled
+into a package run:
+
+```bash
+pnpm --filter @openwhispr/api    test   # 147 files / 1299 tests, ~98s
+pnpm --filter @openwhispr/worker test   # ~20s
+pnpm --filter @openwhispr/web    test   # 65 files / 963 tests, ~15s
+pnpm --filter @openwhispr/data   test   # testcontainers, ~minutes
+```
+
+If the dev compose stack is up (`make up-with-dev-tools`), three
+docker-touching self-tests in `tests/self-tests/` auto-skip with a
+clear "Test Files 3 skipped" report — they need exclusive host ports
+that the dev stack already owns. Stop the dev stack first if you need
+the self-tests to actually run.
+
 ## PR checklist
 
 - [ ] Tests written first
