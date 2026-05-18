@@ -908,3 +908,28 @@ Mostly **test isolation issues** (specs assume clean DB state but other specs se
 Concrete sample: `u8-notes-list "empty state — friendly empty card after clearAllData"` — spec NAME says clearAllData but spec body does NOT actually call it. Polluted DB from prior specs (seedNotes etc) leaks in. Each populated-list spec has similar isolation gap.
 
 **Recommendation for Phase 54+:** dedicated "spec isolation" plan that audits each spec's `beforeEach` to enforce `seed.clearAllData()` before tests that assume empty state. Outside Phase 53 helper scope.
+
+## 2026-05-18 — Plan 53-23: catch-all /api/* rewrite + seed via web origin
+
+Closed in this iteration:
+- Catch-all rewrite in apps/web/next.config.ts proxies ALL /api/* via web origin. Previously only /api/auth/* + /api/locale* were proxied; everything else (notes/conversations/folders/transcriptions/usage) hit api directly under slim, sending no cookies.
+- apps/web/tests/e2e/fixtures/seed.ts BASE_URL fallback now resolves to webOrigin so seed traffic rides cookies via the proxy.
+
+**Sweep delta: 51/42 -> 55/38** (+4 specs).
+
+### Remaining ~38 failures buckets
+
+1. **a2-observability + a3-config (8 specs):** loading state + dashboard cards. Probably need same loadingFor/errorFor route-glob audit since they're all admin-views.
+2. **u4-usage / u11-conv-list / u12-conv-detail loading+error (6 specs):** `data-testid="usage-skeleton"` not visible. Either route-glob doesn't match (page.route URL mismatch under proxy) OR React renders past skeleton too fast OR real testid missing.
+3. **u-setup axe + auth-shell-visual setup baseline (2 specs):** setup wizard renders the auth shell differently when DB has been used. Need clearAllData equivalent for setup_state.
+4. **u2 sign-up "duplicate email Alert" (1 spec):** real UI alert string missing in slim render.
+5. **p53-signup-smoke sentinel (1 spec):** Phase 53 sentinel — needs re-look, may be flake from rebuild churn.
+6. **Misc remaining ~20:** mostly populated-list specs that depend on seed; cascade.
+
+### Phase 53 closure proposal
+
+Phase 53 was scoped: helper + universal config + sentinel. All three are done. The remaining 38 failures are:
+- Real UI/product bugs (axe partial, missing testids, alert strings, route-glob mismatches)
+- Test-isolation gaps (specs make wrong assumptions about state)
+
+Suggest: declare Phase 53 closed at the next user check-in. Each remaining failure cluster is a separate Phase 54+ targeted plan.
