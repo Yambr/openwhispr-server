@@ -19,13 +19,15 @@ test.describe("U5 — account (Phase 07.1 / Plan 08)", () => {
   // path still has to call signInAs in a second browser context — sign-in
   // (vs sign-up) has a higher rate-limit ceiling and is unavoidable here.
 
-  // Phase 53 / Plan 53-32 — revoke any *other* sessions before each test.
+  // Phase 53 / Plan 53-32 — revoke any *other* sessions before each test
+  // EXCEPT the "two sessions" success path which actively needs >1 session.
   // u1-sign-in "success state" + 99-cross-screen-smoke create extra Better
-  // Auth session rows on the fixture user; the "empty state — single
-  // session" assertion then fails because the bulk-revoke button is
-  // rendered. The /api/auth/revoke-other-sessions endpoint requires the
-  // current password — the canonical FIXTURE_PASSWORD covers that.
-  test.beforeEach(async ({ page }) => {
+  // Auth session rows; the "empty state — single session" assertion
+  // would otherwise fail because the bulk-revoke button is rendered.
+  test.beforeEach(async ({ page }, testInfo) => {
+    if (testInfo.title.startsWith("success state — two sessions")) {
+      return; // this test seeds an extra session itself
+    }
     await page.request
       .post("/api/auth/revoke-other-sessions", {
         headers: { "content-type": "application/json" },
