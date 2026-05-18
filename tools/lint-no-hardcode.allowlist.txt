@@ -39,7 +39,7 @@ packages/data/src/schema/tenants.ts:4  # canonical-default-tenant
 # bucket (e) PERMANENT docker-compose-internal-url, because they are the
 # canonical docker-compose service-address defaults the CLAUDE.md OOB-boot
 # rule depends on.
-apps/api/src/auth.ts:359  # issue-31-debt-hardcode-localhost-3000 (33-04 +73; 41-e +15; 52-05 +21; 51-20 +12; 51-22 -12; 51-24 +3 ENCRYPTED_COLUMNS_MAP docstring)
+apps/api/src/auth.ts:363  # issue-31-debt-hardcode-localhost-3000 (33-04 +73; 41-e +15; 52-05 +21; 51-20 +12; 51-22 -12; 51-24 +3; 53-22 +4 import)
 apps/api/src/routes/test-only.ts:181  # issue-31-debt-hardcode-localhost-3000
 apps/api/src/routes/better-auth-handler.ts:49  # comment-only-narrative-issue-31-fp (Plan 51-10 fix rationale comment references the old localhost fallback)
 apps/api/src/routes/better-auth-handler.ts:79  # issue-31-debt-hardcode-localhost
@@ -52,8 +52,8 @@ apps/api/src/index.ts:696  # issue-31-debt-hardcode-litellm-port-4000 (33-04 +9;
 # `/* ... */` comment that narrates the env-driven default, the routing
 # pattern, or the security boundary — it is NOT a runtime literal. Removing
 # the prose would degrade self-documenting source.
-apps/api/src/auth.ts:363  # comment-only-narrative-issue-31-fp (41-a/b +1; 41-e +15; 52-05 +21; 51-20 +12; 51-22 -12; 51-24 +3)
-apps/api/src/auth.ts:364  # comment-only-narrative-issue-31-fp (41-a/b +1; 41-e +15; 52-05 +21; 51-20 +12; 51-22 -12; 51-24 +3)
+apps/api/src/auth.ts:367  # comment-only-narrative-issue-31-fp (41-a/b +1; 41-e +15; 52-05 +21; 51-20 +12; 51-22 -12; 51-24 +3; 53-22 +4 import)
+apps/api/src/auth.ts:368  # comment-only-narrative-issue-31-fp (41-a/b +1; 41-e +15; 52-05 +21; 51-20 +12; 51-22 -12; 51-24 +3; 53-22 +4 import)
 apps/api/src/lib/audit.ts:88  # comment-only-narrative-issue-31-fp
 apps/api/src/lib/cookie-domain.ts:21  # comment-only-narrative-issue-31-fp
 apps/api/src/lib/cookie-domain.ts:34  # comment-only-narrative-issue-31-fp

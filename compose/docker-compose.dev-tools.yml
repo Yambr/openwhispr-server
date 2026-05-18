@@ -20,6 +20,17 @@ services:
   api:
     environment:
       SMTP_PORT: "1025"
+      # Phase 53 / Plan 53-22 — dev-tools overlay drops NODE_ENV from
+      # production to development so the boot-time auth guard
+      # (config/auth.ts:validateAuthBoot) admits HTTP AUTH_URL. In
+      # production deployments the overlay is NOT applied → NODE_ENV
+      # stays "production" → HTTP AUTH_URL REFUSES boot. That is the
+      # MITM safety guarantee: development-only HTTP, production-
+      # mandatory HTTPS. See config/auth.ts for the guard logic.
+      NODE_ENV: development
+      AUTH_URL: http://localhost:4000
+      OPENWHISPR_API_URL: http://localhost:4000
+      AUTH_TRUSTED_ORIGINS_EXTRA: "http://localhost:3000,http://localhost:4000,http://api:3000"
   worker:
     environment:
       SMTP_PORT: "1025"
