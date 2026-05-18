@@ -9,7 +9,6 @@
 //   - DeleteAccountDialog (typed-email confirm + Better Auth deleteAccount)
 "use client";
 
-import { format } from "date-fns";
 import { useTranslation } from "react-i18next";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -40,7 +39,13 @@ function formatCreatedAt(value: string | Date | null | undefined): string {
   if (!value) return "—";
   const d = value instanceof Date ? value : new Date(value);
   if (Number.isNaN(d.getTime())) return "—";
-  return format(d, "yyyy-MM-dd");
+  // BUG-53-40: was `format(d, "yyyy-MM-dd")` from date-fns, which uses
+  // the local timezone. SSR (Docker UTC) and the client browser
+  // (e.g. America/Los_Angeles) disagree at midnight UTC, producing a
+  // React #418 text-content hydration mismatch on `/app/account`.
+  // Use the UTC ISO date slice — same approach as SessionsTable's
+  // formatDate — so SSR and client always render identical strings.
+  return d.toISOString().slice(0, 10);
 }
 
 export function AccountClient({ user, currentSessionId }: AccountClientProps): React.JSX.Element {

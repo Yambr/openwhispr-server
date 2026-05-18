@@ -1470,3 +1470,18 @@ Error from u5:90:
 3. `cd apps/web && OPENWHISPR_TOPOLOGY=slim pnpm exec playwright test --project=slim --reporter=line` → 4 specs fail on React #418
 
 **Fix recommendation:** investigate whether u5 "two sessions" test seeds the second session via DB INSERT (suspicious — would bypass SSR cache) or via a real /api/auth/sign-in (proper). The 53-32c fix introduced DB-direct cleanup; check if it also introduced DB-direct seeding that bypasses SSR.
+
+**Update 2026-05-19 (same loop tick): root cause found — `apps/web/src/components/screens/account/AccountClient.tsx:43` used `format(d, "yyyy-MM-dd")` from `date-fns` for the "Member since" date.**
+
+`date-fns format()` uses the local timezone. SSR (Docker UTC) and the client browser (e.g. Europe/Moscow UTC+3) produce different day strings for dates near midnight UTC — exactly when a freshly-provisioned fixture user gets `createdAt = NOW()` and the test is running just past UTC midnight. React text-content mismatch fires #418.
+
+**Fix applied:** swapped `format(d, "yyyy-MM-dd")` → `d.toISOString().slice(0, 10)`. Same UTC-stable approach used by `SessionsTable.tsx:49`. Removed unused `date-fns` import.
+
+**Verification:**
+- `apps/web` AccountClient + SessionsTable + DeleteAccountDialog unit tests: 44/44 pass (no regression).
+- Web container rebuilt (`docker compose build web`) → new image picked up.
+- Slim e2e sweep: 69/0/24 in 27.5s — BACK TO BASELINE.
+
+**BUG-53-40 STATUS: ✅ FIXED.** Commit pending (only `apps/web/src/components/screens/account/AccountClient.tsx`).
+
+**Note on the re-flake observed during verification:** between the web rebuild and the re-sweep, the api container was restarted without the dev-tools overlay env (`OPENWHISPR_DISABLE_RATE_LIMIT=1` was lost). The first sweep after the rebuild reported 62/7/24 with HTTP 429 cascade on /api/auth/sign-in/email. Re-applied the overlay (`make up-with-dev-tools`) → 69/0/24. This is operational guidance, not a new bug: always re-apply the dev-tools overlay after rebuilding ANY service. Documented for future tickers — also documented in CLAUDE.md if/when this is codified.
