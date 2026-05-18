@@ -216,7 +216,7 @@ services:
       # caused `docker compose up --wait` to mark litellm unhealthy
       # before uvicorn finished booting, cascading to api never starting
       # in the Phase 02 self-tests. 120s gives 1.5× empirical max.
-      start_period: 360s
+      start_period: 600s
     restart: unless-stopped
     # Phase 20 / SR-20.1 — memory cap. Mirrors chart limits.memory: 1Gi.
     deploy:

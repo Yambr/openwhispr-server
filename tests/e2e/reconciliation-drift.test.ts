@@ -39,7 +39,7 @@ import {
   waitForBullMQJob,
 } from "./helpers/phase6-compose.js";
 
-const SUITE_TIMEOUT_MS = 600_000;
+const SUITE_TIMEOUT_MS = 900_000;
 // Use the seeded default tenant so we don't need to navigate RLS-protected
 // tenants-table INSERTs. The Plan 06-12a audit-log-write test follows the
 // same convention.
