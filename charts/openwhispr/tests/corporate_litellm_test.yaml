@@ -1,0 +1,106 @@
+suite: corporate-litellm — Variant B negative-render + env wiring (Plan 11-02)
+templates:
+  - litellm-deployment.yaml
+  - litellm-service.yaml
+  - configmap-litellm.yaml
+  - api-deployment.yaml
+  - worker-deployment.yaml
+  - externalsecret.yaml
+tests:
+  # ─── Negative-render lock — Plan 11-02 must-have #1 + #2 ────────────────
+  - it: ZERO Deployment/openwhispr-litellm documents render when litellm.embedded=false
+    template: litellm-deployment.yaml
+    set:
+      secrets:
+        mode: eso
+        external:
+          storeRef: vault-clusterstore
+      litellm:
+        embedded: false
+        externalBaseUrl: https://litellm.corp.internal/
+    asserts:
+      - hasDocuments:
+          count: 0
+
+  - it: ZERO Service/openwhispr-litellm documents render when litellm.embedded=false
+    template: litellm-service.yaml
+    set:
+      secrets:
+        mode: eso
+        external:
+          storeRef: vault-clusterstore
+      litellm:
+        embedded: false
+        externalBaseUrl: https://litellm.corp.internal/
+    asserts:
+      - hasDocuments:
+          count: 0
+
+  - it: ZERO ConfigMap/openwhispr-litellm documents render when litellm.embedded=false
+    template: configmap-litellm.yaml
+    set:
+      secrets:
+        mode: eso
+        external:
+          storeRef: vault-clusterstore
+      litellm:
+        embedded: false
+        externalBaseUrl: https://litellm.corp.internal/
+    asserts:
+      - hasDocuments:
+          count: 0
+
+  # ─── api/worker LITELLM_BASE_URL wiring — Plan 11-02 must-have #3 + #4 ──
+  - it: api Deployment env LITELLM_BASE_URL == .Values.litellm.externalBaseUrl when embedded=false
+    template: api-deployment.yaml
+    set:
+      secrets:
+        mode: eso
+        external:
+          storeRef: vault-clusterstore
+      litellm:
+        embedded: false
+        externalBaseUrl: https://litellm.corp.internal/
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: LITELLM_BASE_URL
+            value: https://litellm.corp.internal/
+
+  - it: worker Deployment env LITELLM_BASE_URL == .Values.litellm.externalBaseUrl when embedded=false
+    template: worker-deployment.yaml
+    set:
+      secrets:
+        mode: eso
+        external:
+          storeRef: vault-clusterstore
+      litellm:
+        embedded: false
+        externalBaseUrl: https://litellm.corp.internal/
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: LITELLM_BASE_URL
+            value: https://litellm.corp.internal/
+
+  # ─── Schema enforces externalBaseUrl when embedded=false (Plan 09-07) ───
+  # Note: the helper `openwhispr.litellmBaseUrl` ALSO carries a
+  # `required` directive as defence-in-depth, but the schema rejects
+  # bad values at `helm install`/`helm template` time before the
+  # template renders. This test pins the schema-gate behaviour for
+  # Variant B operators — a future schema relax would unmask the
+  # helper-side required-directive as the only remaining check.
+  - it: schema rejects empty externalBaseUrl at embedded=false (Plan 09-07)
+    template: api-deployment.yaml
+    set:
+      secrets:
+        mode: eso
+        external:
+          storeRef: vault-clusterstore
+      litellm:
+        embedded: false
+        externalBaseUrl: ""
+    asserts:
+      - failedTemplate: {}

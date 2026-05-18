@@ -10,7 +10,7 @@ scenarios.
 | Variant | Compose entrypoint | Chart values overlay | AI plane | When to pick |
 |---|---|---|---|---|
 | **A** | `compose/docker-compose.embedded-litellm.yml` | `charts/openwhispr/examples/values-embedded-litellm.yaml` | Embedded LiteLLM Proxy, hosted providers via `.env` keys (OpenRouter / OpenAI) | Default OSS self-host. No GPU; relies on hosted APIs. |
-| **B** | base `docker-compose.yml` with `LITELLM_BASE_URL=` override | `charts/openwhispr/examples/values-corporate-litellm.yaml` | External corporate LiteLLM (Bedrock proxy, vLLM, internal gateway) | Enterprise operator pointing at an existing on-prem LiteLLM. |
+| **B** | `docker-compose.external-litellm.yml` | `charts/openwhispr/examples/values-external-litellm.yaml` (canonical; `values-corporate-litellm.yaml` retained as deprecated alias) | External corporate LiteLLM (Bedrock proxy, vLLM, internal gateway) | Enterprise operator pointing at an existing on-prem LiteLLM. |
 | **C** | Variant A overlay + Speaches container (Plan 11-03) | values overlay with `bundledAi.enabled=true` | Embedded LiteLLM + local Speaches (gated pyannote weights) | GPU-equipped operators wanting fully-offline transcription + diarization. |
 
 ## Quick start — Variant A
@@ -70,6 +70,47 @@ Upgrade safety is verified empirically by the kind-cluster upgrade test
 authored in Plan 11-05 (asserts that operators upgrading from a pre-11
 chart with a populated HF_TOKEN value do not lose any of the other 12
 required keys when the new chart drops HF_TOKEN from the required list).
+
+## Quick start — Variant B (external/corporate LiteLLM)
+
+Variant B is for enterprise operators with an existing internal LiteLLM
+Proxy (Bedrock proxy, vLLM gateway, in-house LiteLLM, etc.). The
+OpenWhispr server brings up api + web + worker + infra (postgres +
+valkey + migrate) WITHOUT a bundled LiteLLM service — every model call
+routes to your corporate LiteLLM via `LITELLM_BASE_URL`.
+
+### Docker Compose path
+
+```bash
+cp .env.external.example .env
+# edit .env — at minimum set LITELLM_BASE_URL to the corporate LiteLLM
+# URL (e.g. https://litellm.corp.internal/) and LITELLM_VIRTUAL_KEY if
+# the corporate proxy requires per-tenant virtual keys per
+# docs/litellm-target-spec.md §2.
+docker compose -f docker-compose.external-litellm.yml up -d --wait
+# https://api.localhost serves the api + web stack via Traefik
+```
+
+### Helm / kind / cloud path
+
+```bash
+helm install openwhispr ./charts/openwhispr \
+  -f ./charts/openwhispr/examples/values-external-litellm.yaml \
+  --set litellm.externalBaseUrl=https://litellm.corp.internal/
+```
+
+The `litellm.embedded: false` toggle in the values overlay
+short-circuits both `Deployment/openwhispr-litellm` AND
+`Service/openwhispr-litellm` render — verified by helm-unittest
+negative-render assertions in
+`charts/openwhispr/tests/corporate_litellm_test.yaml`. The
+`bundledAi.enabled: false` toggle (also set in the overlay) further
+strips `HF_TOKEN` from the ExternalSecret data block since corporate
+operators do NOT run local pyannote weights.
+
+The corporate LiteLLM MUST honour the wire contract documented in
+`docs/litellm-target-spec.md` (model alias namespace, virtual-key
+auth, spend-logs metadata, streaming-passthrough headers).
 
 ## See also
 

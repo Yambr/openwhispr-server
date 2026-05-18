@@ -1,11 +1,7 @@
-# DEPRECATED ALIAS — Plan 11-02 (2026-05-18) renamed this overlay to
-# `values-external-litellm.yaml` as the canonical Variant B name.
-# This file is preserved 1:1 for backward compatibility with any
-# pre-existing operator scripts that still reference the old filename;
-# new bundles should consume `values-external-litellm.yaml`.
-#
-# Corporate overlay — chart points the api at an external LiteLLM Proxy
-# (operator's internal gateway, e.g. Bedrock proxy, vLLM, in-house LiteLLM).
+# Variant B — external LiteLLM overlay. Chart points api+worker at an
+# external LiteLLM Proxy (operator's internal gateway, e.g. Bedrock proxy,
+# vLLM, in-house LiteLLM). Canonical name for this overlay; the older
+# `values-corporate-litellm.yaml` is retained as a deprecated alias.
 #
 # Defaults:
 #   - secrets.mode=eso (External Secrets Operator pulls from Vault/AWS/etc.)
