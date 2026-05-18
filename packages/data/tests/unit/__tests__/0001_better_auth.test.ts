@@ -54,10 +54,14 @@ describe("0001_better_auth migration — Better Auth tables", () => {
       // Phase 33 / Plan 33-05 — migration 0020 dropped the 4 plaintext
       // credential columns (access_token / refresh_token / id_token /
       // password) and replaced each with the 6-bytea envelope-encrypted
-      // sidecar tuple (+ optional fp). Assert the post-0020 invariant:
-      // each credential MUST carry its 6 bytea sidecars at rest. The
-      // sidecar shape is enforced by LOCKER-08 in
-      // tools/lint-no-plaintext-secret-columns.ts.
+      // sidecar tuple (+ optional fp). Plan 51-23 RESTORED the 4
+      // plaintext columns as nullable, no-DEFAULT Better-Auth-
+      // introspection compat sentinels under the LOCKER-08
+      // LENS_INTROSPECTION_COMPAT allowlist; the sidecar tuple is
+      // unchanged (defence-in-depth at rest for any non-Better-Auth
+      // write path that routes through the encryption lens).
+      // The post-amendment invariant: BOTH the 6 sidecars AND the
+      // plaintext compat column MUST coexist.
       for (const cred of ["password", "access_token", "refresh_token", "id_token"]) {
         for (const suffix of [
           "_dek_wrapped",
@@ -69,12 +73,10 @@ describe("0001_better_auth migration — Better Auth tables", () => {
         ]) {
           expect(cols).toContain(`${cred}${suffix}`);
         }
+        // Plan 51-23 compat sentinel — plaintext column coexists with
+        // its sidecars under named LENS_INTROSPECTION_COMPAT allowlist.
+        expect(cols).toContain(cred);
       }
-      // Plaintext columns MUST NOT exist post-0020.
-      expect(cols).not.toContain("password");
-      expect(cols).not.toContain("access_token");
-      expect(cols).not.toContain("refresh_token");
-      expect(cols).not.toContain("id_token");
     } finally {
       await pool.end();
     }
@@ -94,7 +96,10 @@ describe("0001_better_auth migration — Better Auth tables", () => {
       expect(cols).toContain("expires_at");
       // Phase 33 / Plan 33-05 — migration 0020 dropped verification.value
       // (plaintext credential) and replaced it with the 6-bytea
-      // envelope-encrypted sidecar tuple. Assert the post-0020 invariant.
+      // envelope-encrypted sidecar tuple. Plan 51-23 RESTORED the
+      // plaintext `value` column as a nullable, no-DEFAULT Better-Auth-
+      // introspection compat sentinel. Post-amendment invariant: BOTH
+      // the sidecars AND the plaintext compat column coexist.
       for (const suffix of [
         "_dek_wrapped",
         "_dek_iv",
@@ -105,7 +110,8 @@ describe("0001_better_auth migration — Better Auth tables", () => {
       ]) {
         expect(cols).toContain(`value${suffix}`);
       }
-      expect(cols).not.toContain("value");
+      // Plan 51-23 compat sentinel.
+      expect(cols).toContain("value");
     } finally {
       await pool.end();
     }
