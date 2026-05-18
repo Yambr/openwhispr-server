@@ -31,28 +31,6 @@ the top 10 files. Per-file fix is typically <50 LOC of vitest.
 
 ---
 
-## Test-architecture debt
-
-### BUG-53-41-remaining — defense-in-depth for LiteLLM-backed routes
-
-DX vector closed via dev-tools overlay seeding `LITELLM_MASTER_KEY`.
-Part (a) closed by `validateLitellmBoot()` in `apps/api/src/config/litellm.ts`
-— production now refuses to boot with missing key or the dev-overlay
-default. Still open:
-
-- (b) **Register-as-503 fallback:** when client construct fails for
-  ANY reason (not just missing key — could be `LITELLM_BASE_URL`
-  unreachable, TLS handshake failure, etc.), register the 4 routes
-  with a 503 handler that surfaces
-  `"LiteLLM client failed at boot: <reason>"` instead of bare 404
-  "Not found". Useful in production after the boot guard accepts but
-  the upstream goes sideways during the api process lifetime.
-- (c) **/api/health surface:** add `litellm_ready: boolean` to the
-  health response. Wire-contract change — needs BACKEND_SPEC.md
-  alignment review first.
-
----
-
 ## Documentation refresh
 
 ### DOC-refresh — sweep all `*.md` for accuracy after recent fixes + friendly OOB start
