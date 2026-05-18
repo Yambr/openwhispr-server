@@ -41,16 +41,6 @@ RSC server-side fetch wall. Phase 54 should land MSW node-server to
 intercept inside the Next.js server runtime; would re-enable the
 24 currently-skipped loading/error state specs.
 
-### Phase 38 / `@openwhispr/auth` retirement
-
-Dead-export backlog from LOCKER-04 flagged in CLAUDE.md (operationally
-deferred from Plan 31-08 to Phase 41 closure).
-
-### LOCKER-05, LOCKER-06.a flips
-
-Defense-in-depth lint upgrades scheduled — LOCKER-05 flips in Phase 37;
-LOCKER-06.a flips in Phase 36.a. Rationale in
-`.planning/phases/31-constitutional-lockers/31-08-DECISIONS.md §D-1`.
 
 ---
 
