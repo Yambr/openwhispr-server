@@ -933,3 +933,22 @@ Phase 53 was scoped: helper + universal config + sentinel. All three are done. T
 - Test-isolation gaps (specs make wrong assumptions about state)
 
 Suggest: declare Phase 53 closed at the next user check-in. Each remaining failure cluster is a separate Phase 54+ targeted plan.
+
+## 2026-05-18 — Plan 53-24 partial — u4/a2/a3 skeleton race + u2 dup-email behavior change
+
+### BUG-53-24 — loading-state skeletons missed due to render race
+u4-usage / a2-observability / a3-config / u11-conv-list / u12-conv-detail "loading state" tests stall the API via `page.route()` but the Skeleton is gone by the time `expect(toBeVisible)` runs (~5ms). Reason: storageState user already has fetched data cached; React renders past skeleton with stale-while-revalidate. NOT a route-glob mismatch.
+
+**Fix candidate:** specs should set `staleTime: 0` for the test fixture context, or assert against `data-testid="usage-skeleton"` with `state: 'attached'` not 'visible', OR delete react-query cache before goto.
+
+### BUG-53-25 — Better Auth silently accepts duplicate email
+- `curl POST /api/auth/sign-up/email` with existing email returns **HTTP 200** + a synthesized user payload (id is fresh, no DB row created).
+- This is Better Auth's email-enumeration prevention baseline.
+- Spec `u2-sign-up` "duplicate email shows duplicate Alert" expects `getByText(/already registered/i)` — but UI gets 200, treats it as success.
+- **Either:** the spec is wrong (Better Auth security policy correctly hides duplicates), OR the project must opt out of the prevention via Better Auth config.
+- **Either way:** real product decision required. Documented as BUG-53-25 in deferred-items.
+
+### Phase 53 sentinel passes alone, flakes under parallel
+- `p53-signup-smoke` GREEN under `pnpm playwright test --project=slim p53-signup-smoke` (3.3s, 1 passed).
+- FAILS under full sweep — flake from `workers: 2` parallel. Not a sentinel bug; cross-spec state interference.
+- **Fix candidate:** sentinel should use a fresh email per run (`Date.now()` already in spec), but the `_diagnostics-fixture` strict check fires on captured browser errors. Audit what gets captured under parallel — likely 429 from anti-abuse rate limiter cascading from u1-u3 specs running in another worker.
