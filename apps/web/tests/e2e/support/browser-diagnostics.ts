@@ -142,6 +142,50 @@ export async function attachBrowserDiagnostics(page: Page): Promise<void> {
   // every spec inherits the same baseline without per-spec ceremony.
   allowlistStore.set(page, [...DEFAULT_ALLOWLIST]);
 
+  // Phase 53 / Plan 53-17 — wrap `page.route` so deliberate 4xx/5xx
+  // stubs from negative-path specs are auto-allowlisted. When a spec
+  // calls `route.fulfill({ status: 401, ... })`, the page also fires
+  // `response`/`console.error` events; without this wrapper they'd
+  // be captured as real browser errors and fail PHASE53_STRICT_
+  // DIAGNOSTICS. We intercept the `fulfill` call and, when the spec
+  // ships a 4xx/5xx status, push matching network + console patterns
+  // into the per-page allowlist.
+  const pageWithRoute = page as Page & {
+    route: Page["route"];
+  };
+  const originalRoute = pageWithRoute.route.bind(pageWithRoute) as Page["route"];
+  pageWithRoute.route = ((
+    url: Parameters<Page["route"]>[0],
+    handler: Parameters<Page["route"]>[1],
+    options?: Parameters<Page["route"]>[2],
+  ) => {
+    const wrappedHandler: typeof handler = async (route, request) => {
+      const routeWithFulfill = route as typeof route & {
+        fulfill: (typeof route)["fulfill"];
+      };
+      const originalFulfill = routeWithFulfill.fulfill.bind(routeWithFulfill);
+      routeWithFulfill.fulfill = async (fulfillOpts) => {
+        const status =
+          typeof fulfillOpts === "object" && fulfillOpts !== null
+            ? (fulfillOpts.status ?? 200)
+            : 200;
+        if (status >= 400 && status < 600) {
+          const reqUrl = request.url();
+          // Escape URL for regex literal use; match METHOD url → status.
+          const escapedUrl = reqUrl.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+          allowBrowserErrors(page, [
+            new RegExp(`[A-Z]+ ${escapedUrl} → ${status}\\b`),
+            new RegExp(`Failed to load resource:.*\\b${status}\\b`),
+          ]);
+        }
+        return originalFulfill(fulfillOpts);
+      };
+      // Delegate to the spec's handler with the augmented route.
+      return handler(route, request);
+    };
+    return originalRoute(url, wrappedHandler, options);
+  }) as Page["route"];
+
   // 1. console — log / info / warn / error
   page.on("console", (msg: unknown) => {
     const m = msg as {
