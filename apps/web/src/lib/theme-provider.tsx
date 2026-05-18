@@ -14,13 +14,25 @@
 import { ThemeProvider as NextThemesProvider } from "next-themes";
 import type { ReactNode } from "react";
 
-export function ThemeProvider({ children }: { children: ReactNode }): React.JSX.Element {
+interface ThemeProviderProps {
+  children: ReactNode;
+  /** Phase 53 / Plan 53-07 — CSP nonce forwarded from the request
+   *  middleware so next-themes' theme-init inline script carries
+   *  `nonce=<value>` and passes the `script-src 'self' 'nonce-…'
+   *  'strict-dynamic'` directive emitted by `middleware.ts`. Pre-fix
+   *  the inline script was nonce-less and fired
+   *  SecurityPolicyViolationEvent on every page load. */
+  nonce?: string;
+}
+
+export function ThemeProvider({ children, nonce }: ThemeProviderProps): React.JSX.Element {
   return (
     <NextThemesProvider
       attribute="data-theme"
       defaultTheme="system"
       enableSystem
       storageKey="theme"
+      {...(nonce !== undefined ? { nonce } : {})}
     >
       {children}
     </NextThemesProvider>

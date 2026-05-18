@@ -43,6 +43,11 @@ export default async function RootLayout({
   const requestHeaders = await headers();
   const rawLocale = requestHeaders.get("x-locale");
   const lng = rawLocale === "ru" ? "ru" : "en";
+  // Phase 53 / Plan 53-07 — per-request CSP nonce forwarded by
+  // `src/middleware.ts`. Pass to next-themes' ThemeProvider so its
+  // theme-init inline `<script>` tag carries the nonce and passes
+  // the CSP `script-src 'self' 'nonce-…' 'strict-dynamic'` gate.
+  const cspNonce = requestHeaders.get("x-nonce") ?? undefined;
   const i18n = await getServerI18n(lng, ["admin", "end-user", "common"]);
   // Plain serialisable snapshot of the resource store for the Client
   // provider (Pitfall 1 — RSC→Client serialization boundary).
@@ -56,7 +61,7 @@ export default async function RootLayout({
   return (
     <html lang={lng} suppressHydrationWarning>
       <body>
-        <ThemeProvider>
+        <ThemeProvider {...(cspNonce !== undefined ? { nonce: cspNonce } : {})}>
           <I18nProvider lng={lng} resources={resources}>
             <QueryProvider>
               <TooltipProvider>
