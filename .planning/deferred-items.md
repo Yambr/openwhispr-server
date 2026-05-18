@@ -878,3 +878,18 @@ User was right. Plan 53-20 derived `useSecureCookies` from `AUTH_URL.startsWith(
 **dev-tools overlay:** sets `NODE_ENV: development` for api so HTTP AUTH_URL admits under slim. Production deploys DO NOT apply this overlay → guard stays active → HTTPS mandatory.
 
 **Outstanding:** rebuild blocked by transient `docker pull node:24-alpine` TLS handshake timeout (external network). Code lands at commit `c04613c`; container picks up new guard on next successful rebuild.
+
+## 2026-05-18 — Plan 53-18 partial: color-contrast fix
+
+Closed: `--color-muted-foreground #71717a → #52525b` in apps/web/src/app/globals.css. Light-mode WCAG AA contrast on AuthShell aside (text on bg-muted) fixed.
+
+Slim sweep: 46/47 → **49/44** (+3 axe specs on /sign-in, /sign-up, /verify-email).
+
+### BUG-53-18-residual — populated-list axe violations (~7 specs)
+Specs still failing axe scan on populated content:
+- u6-trx-list, u8-notes-list, u9-note-detail, u11-conv-list, u12-conv-detail, u13-conv-search, u5-account, a2-observability, a3-config (intermixed with locator-not-found cascades)
+
+Most populated-list axe failures are actually locator-not-found timeouts in BEFORE the axe scan reaches — they don't get to the WCAG step. Need to fix BUG-53-21 (locator cascade) first, then re-evaluate which specs still have real axe violations.
+
+## docker registry transient outage 2026-05-18 ~18:30-19:30 MSK
+api rebuild was blocked by `docker pull node:24-alpine: TLS handshake timeout` — unrelated to our code, external network. Plan 53-22 boot guard code is committed (`c04613c`); container picks it up on next successful rebuild. Tested via vitest unit (9/9 GREEN).
