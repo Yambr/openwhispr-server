@@ -25,8 +25,23 @@ type StateFixture = {
 };
 
 export const test = base.extend<StateFixture>({
-  loadingFor: async ({ page }, use) => {
+  loadingFor: async ({ page }, use, testInfo) => {
     await use(async (urlPattern) => {
+      // Phase 53 / Plan 53-33 — under slim the RSC pages prefetch via
+      // internalApiUrl() (api:3000 inside the docker network). The
+      // fetch fires server-side, BEFORE the spec gets a chance to
+      // attach page.route(). The Skeleton never renders. Until a
+      // server-side intercept lands (BUG-53-27), auto-skip these tests
+      // under the slim project. Traefik project routes /api/* through
+      // the same ingress as the browser, so page.route still wins
+      // there. Caller can opt out by setting OPENWHISPR_FORCE_RSC=1.
+      if (
+        testInfo.project.metadata.topology === "slim" &&
+        process.env.OPENWHISPR_FORCE_RSC !== "1"
+      ) {
+        testInfo.skip(true, "loading-state spec needs server-side intercept under slim");
+        return;
+      }
       await page.route(urlPattern, async (route) => {
         // 30s — exceeds any reasonable per-test timeout. The UI stays in its
         // loading state for the entire assertion window.
@@ -35,8 +50,16 @@ export const test = base.extend<StateFixture>({
       });
     });
   },
-  errorFor: async ({ page }, use) => {
+  errorFor: async ({ page }, use, testInfo) => {
     await use(async (urlPattern, status = 500) => {
+      // Phase 53 / Plan 53-33 — same RSC prefetch reason as loadingFor.
+      if (
+        testInfo.project.metadata.topology === "slim" &&
+        process.env.OPENWHISPR_FORCE_RSC !== "1"
+      ) {
+        testInfo.skip(true, "error-state spec needs server-side intercept under slim");
+        return;
+      }
       await page.route(urlPattern, (route) =>
         route.fulfill({
           status,
