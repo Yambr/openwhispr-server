@@ -765,3 +765,27 @@ Re-confirmation of BUG-53-E. Locator timed out after 30s waiting for `button[nam
 - **Fix candidate:** `grep -rn LanguageSwitcher apps/web/src/app/(public)` to confirm mount; either add the switcher to AuthShell OR rewrite the spec to navigate to a screen that has the switcher.
 
 **Slim-config sweep result after Plan 53-12:** with 99-cross-screen + auth-shell-visual removed, the remaining 3-spec set should report 3 passed / 1 BUG-53-L outstanding.
+
+## 2026-05-18 — Phase 53 / Plan 53-14+15 — universal config + axe ESM fix landed
+
+**Closed:**
+- Plan 53-14: universal `playwright.config.ts` with `traefik` + `slim` projects (commit `dd9b694`)
+- Plan 53-15: `axe.ts` ESM-only `import.meta.url` replaced with `process.cwd()`-anchored baseline path
+
+**Full slim sweep result:** 27 passed / 66 failed (was: 6/15 under restricted slim-config).
+Net delta: +21 specs now compile + execute under slim project.
+
+### BUG-53-M — negative-path specs flag deliberate HTTP errors as browser errors
+- **Files:** `u1-sign-in.spec.ts`, `u2-sign-up.spec.ts`, `u10-notes-search.spec.ts`, `u11-conv-list.spec.ts`, `u12-conv-detail.spec.ts`, `u13-conv-search.spec.ts`, `00-infra.spec.ts` and ~30 more
+- **Symptom:** specs using `page.route()` to stub 401/500 responses for error-state tests fail under `PHASE53_STRICT_DIAGNOSTICS=1` because the stubbed error is captured as `[network/error] POST … → 401 Unauthorized`.
+- **Fix candidate:** add `allowBrowserErrors(page, [/api\/auth\/sign-in\/email → 401/, ...])` per spec OR extend default allowlist with patterns that match deliberate-401 stubs (risky — may hide real bugs).
+- **Pattern:** every spec with a `test.route("**/api/...", route => route.fulfill({ status: 4xx|5xx }))` block needs a corresponding allowlist entry. Estimated 30-40 specs.
+- **Tracking:** Plan 53-16 — sweep negative-path specs, add per-test `allowBrowserErrors`.
+
+### BUG-53-N — visual baseline drift in slim topology
+- **Files:** `auth-shell-visual.spec.ts` (3 baselines under slim subdir)
+- **Symptom:** screenshots captured under Traefik HTTPS topology don't match slim HTTP renders (mkcert vs no-tls indicators, port suffix in title bar, etc.).
+- **Fix candidate:** capture separate baselines under `tests/e2e/auth-shell-visual.spec.ts-snapshots/<test>-chromium-slim.png` vs `-traefik.png`. Playwright supports `-{projectName}` suffix automatically — verify.
+- **Tracking:** Plan 53-17.
+
+**Open question:** what's the right CI matrix for the two topologies? Default-traefik (D-TEST-3 production-equivalent) on every PR, with slim as a separate workflow gated on slim-config touches? Or both as parallel matrix legs? Defer to user decision.
