@@ -30,7 +30,16 @@ test.describe("infra smoke (WEB-IMPL-03)", () => {
     expect([200, 307]).toContain(res.status());
   });
 
-  test("GET /admin/observability without auth → 401", async ({ request }) => {
+  test("GET /admin/observability without auth → 401", async ({ request }, testInfo) => {
+    // Phase 53 / Plan 53-31 — Traefik-only test. Under slim there is no
+    // basic-auth middleware on the web container, so anonymous GET to
+    // /admin/observability returns 200 with the 403 role-gate fallback
+    // instead of 401. The 401 contract is meaningful only under the
+    // ingress overlay topology.
+    if (testInfo.project.metadata.topology !== "traefik") {
+      testInfo.skip(true, "basic-auth gate is traefik-only");
+      return;
+    }
     const res = await request.get("/admin/observability", { maxRedirects: 0 });
     expect(res.status()).toBe(401);
   });
