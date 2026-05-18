@@ -1,0 +1,174 @@
+suite: speaches — Deployment + Service + PVC (Variant C, Plan 11-03b)
+templates:
+  - speaches-deployment.yaml
+tests:
+  # ─── Negative-render lock — Variant A / B operators see no Speaches ─────
+  - it: ZERO documents render when bundledAi.enabled=false (default)
+    set:
+      secrets:
+        mode: eso
+        external:
+          storeRef: vault-clusterstore
+      litellm:
+        externalBaseUrl: https://litellm.test/
+      bundledAi:
+        enabled: false
+    asserts:
+      - hasDocuments:
+          count: 0
+
+  # ─── Variant C — full render: Deployment + Service + PVC ───────────────
+  - it: renders Deployment + Service + PVC when bundledAi.enabled=true (3 docs)
+    set:
+      secrets:
+        mode: eso
+        external:
+          storeRef: vault-clusterstore
+      litellm:
+        externalBaseUrl: https://litellm.test/
+      bundledAi:
+        enabled: true
+    asserts:
+      - hasDocuments:
+          count: 3
+
+  - it: Deployment carries Variant C container shape (image, port 8000, PRELOAD_MODELS env)
+    set:
+      secrets:
+        mode: eso
+        external:
+          storeRef: vault-clusterstore
+      litellm:
+        externalBaseUrl: https://litellm.test/
+      bundledAi:
+        enabled: true
+    documentIndex: 0
+    asserts:
+      - isKind:
+          of: Deployment
+      - equal:
+          path: spec.template.spec.containers[0].name
+          value: speaches
+      - equal:
+          path: spec.template.spec.containers[0].image
+          value: ghcr.io/speaches-ai/speaches:master-cuda-12.6.3
+      - equal:
+          path: spec.template.spec.containers[0].ports[0].containerPort
+          value: 8000
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: PRELOAD_MODELS
+            value: '["Systran/faster-whisper-large-v3","pyannote/speaker-diarization-community-1"]'
+
+  - it: Deployment startupProbe budget = failureThreshold 60 × periodSeconds 10 = 600s
+    set:
+      secrets:
+        mode: eso
+        external:
+          storeRef: vault-clusterstore
+      litellm:
+        externalBaseUrl: https://litellm.test/
+      bundledAi:
+        enabled: true
+    documentIndex: 0
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].startupProbe.failureThreshold
+          value: 60
+      - equal:
+          path: spec.template.spec.containers[0].startupProbe.periodSeconds
+          value: 10
+
+  - it: Deployment strategy is Recreate (Plan 11-03b — avoid GPU double-footprint on rolling update)
+    set:
+      secrets:
+        mode: eso
+        external:
+          storeRef: vault-clusterstore
+      litellm:
+        externalBaseUrl: https://litellm.test/
+      bundledAi:
+        enabled: true
+    documentIndex: 0
+    asserts:
+      - equal:
+          path: spec.strategy.type
+          value: Recreate
+
+  - it: Service exposes :8000 (matches in-cluster http://<release>-speaches:8000 LiteLLM target)
+    set:
+      secrets:
+        mode: eso
+        external:
+          storeRef: vault-clusterstore
+      litellm:
+        externalBaseUrl: https://litellm.test/
+      bundledAi:
+        enabled: true
+    documentIndex: 1
+    asserts:
+      - isKind:
+          of: Service
+      - equal:
+          path: spec.ports[0].port
+          value: 8000
+
+  - it: PVC renders with 20Gi default size + ReadWriteOnce
+    set:
+      secrets:
+        mode: eso
+        external:
+          storeRef: vault-clusterstore
+      litellm:
+        externalBaseUrl: https://litellm.test/
+      bundledAi:
+        enabled: true
+    documentIndex: 2
+    asserts:
+      - isKind:
+          of: PersistentVolumeClaim
+      - equal:
+          path: spec.accessModes[0]
+          value: ReadWriteOnce
+      - equal:
+          path: spec.resources.requests.storage
+          value: 20Gi
+
+  - it: PVC omitted when persistence.enabled=false (only Deployment + Service, count=2)
+    set:
+      secrets:
+        mode: eso
+        external:
+          storeRef: vault-clusterstore
+      litellm:
+        externalBaseUrl: https://litellm.test/
+      bundledAi:
+        enabled: true
+        persistence:
+          enabled: false
+    asserts:
+      - hasDocuments:
+          count: 2
+
+  - it: GPU node-selector + toleration carried through to pod spec
+    set:
+      secrets:
+        mode: eso
+        external:
+          storeRef: vault-clusterstore
+      litellm:
+        externalBaseUrl: https://litellm.test/
+      bundledAi:
+        enabled: true
+    documentIndex: 0
+    asserts:
+      - equal:
+          path: spec.template.spec.nodeSelector["nvidia.com/gpu.present"]
+          value: "true"
+      - contains:
+          path: spec.template.spec.tolerations
+          content:
+            key: nvidia.com/gpu
+            operator: Exists
+            effect: NoSchedule
