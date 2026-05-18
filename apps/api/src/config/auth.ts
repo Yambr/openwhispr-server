@@ -50,8 +50,24 @@ export function validateAuthBoot(
 ): AuthBootValidation {
   const authUrl = env.AUTH_URL ?? "";
   const isProduction = env.NODE_ENV === "production";
+  // Phase 53 / Plan 53-37 — vitest sets NODE_ENV=test. Existing
+  // buildAuth() unit tests (apps/api/tests/unit/__tests__/auth-*.test.ts)
+  // construct the Better Auth instance without populating AUTH_URL /
+  // BETTER_AUTH_SECRET — the production-boot validators would refuse
+  // those harnesses. Treat test env as "permissive" and return safe
+  // defaults; the dedicated `apps/api/tests/unit/config/auth.test.ts`
+  // suite still exercises the strict accept/refuse matrix by
+  // injecting its own env snapshot.
+  const isTest = env.NODE_ENV === "test";
   const isHttps = authUrl.startsWith("https://");
   const isHttp = authUrl.startsWith("http://");
+
+  if (isTest) {
+    return {
+      useSecureCookies: isHttps,
+      authUrl: isHttps || isHttp ? authUrl : "http://localhost:4000",
+    };
+  }
 
   if (!isHttps && !isHttp) {
     onFail(

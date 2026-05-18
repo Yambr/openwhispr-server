@@ -87,6 +87,18 @@ describe("validateAuthBoot", () => {
     expect(result?.useSecureCookies).toBe(false);
   });
 
+  // Phase 53 / Plan 53-37 — when NODE_ENV=test, the guard is fully
+  // permissive: existing buildAuth() unit tests construct the Better
+  // Auth instance without populating AUTH_URL or BETTER_AUTH_SECRET,
+  // and the production-boot validators must not refuse those harnesses.
+  it("accepts NODE_ENV=test with empty config + safe defaults", () => {
+    const { result } = callValidate({ NODE_ENV: "test" });
+    expect(result).toEqual({
+      useSecureCookies: false,
+      authUrl: "http://localhost:4000",
+    });
+  });
+
   it("REFUSES missing AUTH_URL", () => {
     const { failure } = callValidate({
       NODE_ENV: "development",
