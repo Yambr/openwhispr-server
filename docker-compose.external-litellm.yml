@@ -1,0 +1,186 @@
+# SPDX-License-Identifier: FSL-1.1-ALv2
+# Phase 11 / Plan 11-02 — Variant B compose (external/corporate LiteLLM).
+#
+# Stand-alone compose: brings up api + web + worker + infra (postgres +
+# valkey + migrate) WITHOUT the embedded LiteLLM service. Operators set
+# `LITELLM_BASE_URL` in `.env` to point at their corporate LiteLLM
+# (Bedrock proxy, in-house LiteLLM, vLLM gateway — see
+# `docs/litellm-target-spec.md`).
+#
+# Usage:
+#   cp .env.external.example .env
+#   # Edit .env — set LITELLM_BASE_URL + LITELLM_VIRTUAL_KEY at minimum
+#   docker compose -f docker-compose.external-litellm.yml up -d --wait
+#
+# This file is intentionally NOT a layered overlay on
+# docker-compose.yml — Compose v2.23 (the project's pinned floor)
+# does NOT support `!override` on depends_on, so a layered overlay
+# would UNION the base's `litellm: service_healthy` depends_on into
+# api+worker even with the litellm service profiled-out, causing
+# `up --wait` to hang waiting for a never-rendered service. Compose
+# v2.24+ adds `!override` for clean replacement; once the project pins
+# v2.24+, this file can be slimmed down to an overlay. For now it is
+# stand-alone (duplicates the slim-core base inline; future polish
+# task to extract a shared yaml-anchor block).
+
+services:
+  postgres:
+    image: postgres:17.6
+    container_name: openwhispr-postgres-1
+    networks: [openwhispr_internal]
+    env_file: .env
+    environment:
+      POSTGRES_USER: ${POSTGRES_OWNER_USER:-openwhispr_owner}
+      POSTGRES_PASSWORD: ${POSTGRES_OWNER_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB:-openwhispr}
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 30s
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./init:/docker-entrypoint-initdb.d:ro
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+          cpus: "2.0"
+
+  valkey:
+    image: valkey/valkey:8.0
+    container_name: openwhispr-valkey-1
+    networks: [openwhispr_internal]
+    command: ["valkey-server", "--requirepass", "${VALKEY_PASSWORD}", "--appendonly", "yes"]
+    healthcheck:
+      test: ["CMD-SHELL", "valkey-cli -a $$VALKEY_PASSWORD ping | grep PONG"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    environment:
+      VALKEY_PASSWORD: ${VALKEY_PASSWORD}
+    volumes:
+      - valkey_data:/data
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: "1.0"
+
+  migrate:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    networks: [openwhispr_internal]
+    restart: "no"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    env_file: .env
+    command: ["node", "/app/packages/data/dist/migrate.cjs"]
+
+  api:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    networks: [openwhispr_internal]
+    ports:
+      - "4000:3000"
+    env_file: .env
+    environment:
+      NODE_ENV: production
+      # External-LiteLLM contract — LITELLM_BASE_URL MUST be set in .env
+      # to point at the operator's corporate LiteLLM.
+      LITELLM_BASE_URL: ${LITELLM_BASE_URL:?LITELLM_BASE_URL is required for Variant B — set it in .env to the corporate LiteLLM URL}
+      LITELLM_VIRTUAL_KEY: ${LITELLM_VIRTUAL_KEY:-}
+      OPENWHISPR_API_URL: ${OPENWHISPR_API_URL:-https://api.localhost}
+      AUTH_URL: ${AUTH_URL:-https://api.localhost}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      valkey:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD-SHELL", "node -e \"require('http').get('http://127.0.0.1:3000/api/health',r=>process.exit(r.statusCode===200?0:1)).on('error',()=>process.exit(1))\""]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+      start_period: 60s
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+          cpus: "2.0"
+
+  worker:
+    build:
+      context: .
+      dockerfile: apps/worker/Dockerfile
+    networks: [openwhispr_internal]
+    env_file: .env
+    environment:
+      NODE_ENV: production
+      VALKEY_HOST: valkey
+      VALKEY_PORT: "6379"
+      VALKEY_PASSWORD: ${VALKEY_PASSWORD}
+      LITELLM_BASE_URL: ${LITELLM_BASE_URL:?LITELLM_BASE_URL is required for Variant B — set it in .env to the corporate LiteLLM URL}
+      LITELLM_VIRTUAL_KEY: ${LITELLM_VIRTUAL_KEY:-}
+      LOCALES_DIR: /app/locales
+    volumes:
+      - ./apps/worker/src/i18n/locales:/app/locales:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+      valkey:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: "1.0"
+
+  web:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+    networks: [openwhispr_internal]
+    ports:
+      - "3000:3000"
+    env_file: .env
+    environment:
+      NODE_ENV: production
+      OPENWHISPR_API_URL: ${OPENWHISPR_API_URL:-https://api.localhost}
+    depends_on:
+      api:
+        condition: service_healthy
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: "1.0"
+
+# Note: Traefik is NOT bundled here. Operators wanting TLS termination
+# layer in `compose/docker-compose.ingress.yml`:
+#   docker compose -f docker-compose.external-litellm.yml \
+#     -f compose/docker-compose.ingress.yml up -d --wait
+# Corporate operators with an external ingress (Traefik / nginx / Envoy
+# running on the host) skip the overlay and reach api directly on
+# api:3000 inside the docker network OR via the host port 4000.
+
+networks:
+  openwhispr_internal:
+    driver: bridge
+
+volumes:
+  postgres_data:
+  valkey_data:
