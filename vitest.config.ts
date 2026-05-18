@@ -195,6 +195,14 @@ export default defineConfig({
         "**/node_modules/**",
         "**/.stryker-tmp/**",
         "**/reports/**",
+        // BUG-53-36 — `__tests__/**` directories are test scaffolding
+        // (setup.ts, fixtures, shared helpers) colocated next to the
+        // source they exercise. v8 reports phantom uncovered branches
+        // in their conditional fallbacks (e.g. `process.env.X ?? "…"`
+        // in test setup) that have no production analog. Excluding the
+        // directory mirrors how `*.test.ts` is already excluded above
+        // — it's test code, not the unit under test.
+        "**/__tests__/**",
         // Phase 13 / Plan 01 / Task 02 (OQ-5 resolution) — `tools/**` is no
         // longer blanket-excluded. The new lint/teardown tools
         // (`tools/lint-weak-assertions.ts`, `tools/global-vitest-teardown.ts`)
@@ -210,6 +218,14 @@ export default defineConfig({
         // each with real, fully-covered code and removes from this list.
         "packages/i18n/src/index.ts",
         "apps/api/src/index.ts",
+        // BUG-53-36 — worker entrypoint is boot-wiring (BYOK guard,
+        // encryption boot gate, OTel bootstrap, BullMQ worker construct)
+        // mirroring apps/api/src/index.ts which is already excluded
+        // above. Process-level branches (env-checks, exit codes) are
+        // exercised through compose-stack integration tests, not unit
+        // tests. v8 reports 0/14 branches because no unit test loads
+        // the entrypoint.
+        "apps/worker/src/index.ts",
         // Drizzle schema files are pure declarative table definitions
         // (no runtime branches; v8 reports phantom uncovered closing
         // brackets). Excluded per ADR-0002 (Vitest 4 + v8 + esbuild bundle-

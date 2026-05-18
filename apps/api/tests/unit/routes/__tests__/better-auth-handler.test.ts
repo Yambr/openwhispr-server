@@ -206,6 +206,122 @@ describe("Phase 02.4 G5a — better-auth-handler bridge plugin", () => {
     expect(res.body).toBe("");
   });
 
+  // BUG-53-36 — extra branch coverage on buildRequestUrl's fallback
+  // ladder. Each branch corresponds to a distinct production path the
+  // hostile-Host-header fix at line 79 needs to handle.
+
+  it("URL falls back to AUTH_URL when INGRESS_BASE_URL is unset", async () => {
+    const capture: CapturedRequest[] = [];
+    const prevIngress = process.env.INGRESS_BASE_URL;
+    const prevAuth = process.env.AUTH_URL;
+    delete process.env.INGRESS_BASE_URL;
+    process.env.AUTH_URL = "https://auth.test.invalid";
+    try {
+      await app.register(
+        buildBetterAuthHandlerRoutes({ auth: makeStubAuth({ capture }) as never }),
+      );
+      await app.inject({ method: "GET", url: "/api/auth/foo" });
+      expect(capture[0]?.url).toBe("https://auth.test.invalid/api/auth/foo");
+    } finally {
+      if (prevIngress !== undefined) process.env.INGRESS_BASE_URL = prevIngress;
+      if (prevAuth === undefined) delete process.env.AUTH_URL;
+      else process.env.AUTH_URL = prevAuth;
+    }
+  });
+
+  it("URL falls through INGRESS_BASE_URL's catch arm when value is malformed", async () => {
+    const capture: CapturedRequest[] = [];
+    const prevIngress = process.env.INGRESS_BASE_URL;
+    const prevAuth = process.env.AUTH_URL;
+    process.env.INGRESS_BASE_URL = "::not a url::";
+    process.env.AUTH_URL = "https://auth.test.invalid";
+    try {
+      await app.register(
+        buildBetterAuthHandlerRoutes({ auth: makeStubAuth({ capture }) as never }),
+      );
+      await app.inject({ method: "GET", url: "/api/auth/foo" });
+      // INGRESS_BASE_URL invalid → catch → AUTH_URL wins.
+      expect(capture[0]?.url).toBe("https://auth.test.invalid/api/auth/foo");
+    } finally {
+      if (prevIngress === undefined) delete process.env.INGRESS_BASE_URL;
+      else process.env.INGRESS_BASE_URL = prevIngress;
+      if (prevAuth === undefined) delete process.env.AUTH_URL;
+      else process.env.AUTH_URL = prevAuth;
+    }
+  });
+
+  it("URL falls through AUTH_URL's catch arm when value is malformed", async () => {
+    const capture: CapturedRequest[] = [];
+    const prevIngress = process.env.INGRESS_BASE_URL;
+    const prevAuth = process.env.AUTH_URL;
+    delete process.env.INGRESS_BASE_URL;
+    process.env.AUTH_URL = "::not a url::";
+    try {
+      await app.register(
+        buildBetterAuthHandlerRoutes({ auth: makeStubAuth({ capture }) as never }),
+      );
+      const res = await app.inject({ method: "GET", url: "/api/auth/foo" });
+      // Both env vars unusable → falls back to Host header (proto = https default).
+      expect(res.statusCode).toBe(200);
+      expect(capture[0]?.url).toMatch(/^https:\/\/[^/]+\/api\/auth\/foo$/);
+    } finally {
+      if (prevIngress !== undefined) process.env.INGRESS_BASE_URL = prevIngress;
+      if (prevAuth === undefined) delete process.env.AUTH_URL;
+      else process.env.AUTH_URL = prevAuth;
+    }
+  });
+
+  it("URL honors AUTH_TRUSTED_ORIGINS_EXTRA when Host matches", async () => {
+    const capture: CapturedRequest[] = [];
+    const prevIngress = process.env.INGRESS_BASE_URL;
+    const prevAuth = process.env.AUTH_URL;
+    const prevExtra = process.env.AUTH_TRUSTED_ORIGINS_EXTRA;
+    delete process.env.INGRESS_BASE_URL;
+    delete process.env.AUTH_URL;
+    process.env.AUTH_TRUSTED_ORIGINS_EXTRA = "trusted.example,other.example";
+    try {
+      await app.register(
+        buildBetterAuthHandlerRoutes({ auth: makeStubAuth({ capture }) as never }),
+      );
+      await app.inject({
+        method: "GET",
+        url: "/api/auth/foo",
+        headers: { "x-forwarded-proto": "https", host: "trusted.example" },
+      });
+      expect(capture[0]?.url).toBe("https://trusted.example/api/auth/foo");
+    } finally {
+      if (prevIngress !== undefined) process.env.INGRESS_BASE_URL = prevIngress;
+      if (prevAuth !== undefined) process.env.AUTH_URL = prevAuth;
+      if (prevExtra === undefined) delete process.env.AUTH_TRUSTED_ORIGINS_EXTRA;
+      else process.env.AUTH_TRUSTED_ORIGINS_EXTRA = prevExtra;
+    }
+  });
+
+  it("URL honors x-forwarded-proto=http when supplied", async () => {
+    const capture: CapturedRequest[] = [];
+    const prevIngress = process.env.INGRESS_BASE_URL;
+    const prevAuth = process.env.AUTH_URL;
+    delete process.env.INGRESS_BASE_URL;
+    delete process.env.AUTH_URL;
+    try {
+      await app.register(
+        buildBetterAuthHandlerRoutes({ auth: makeStubAuth({ capture }) as never }),
+      );
+      await app.inject({
+        method: "GET",
+        url: "/api/auth/foo",
+        headers: { "x-forwarded-proto": "http", host: "localhost:4000" },
+      });
+      // No allow-list and no env vars → reconstructed candidate URL still
+      // surfaces — covers the last-resort fallback branch at the bottom
+      // of buildRequestUrl.
+      expect(capture[0]?.url).toBe("http://localhost:4000/api/auth/foo");
+    } finally {
+      if (prevIngress !== undefined) process.env.INGRESS_BASE_URL = prevIngress;
+      if (prevAuth !== undefined) process.env.AUTH_URL = prevAuth;
+    }
+  });
+
   it("registers the route with config.auth = false", async () => {
     const parent = Fastify();
     const seen: Array<{
