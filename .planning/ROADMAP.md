@@ -646,7 +646,7 @@ Plans:
   5. Coverage on new mock-litellm code ≥ 90/90/90/90.
   6. Tests written first (TDD); all CI checks green; Plan 08-08 receives the complete 4-endpoint SLO baseline.
 **Plans**: 1 plan (Wave 1)
-- [ ] 08.3-01 — mock-litellm realtime echo + Run 4 (Wave 1)
+- [x] 08.3-01 — CLOSED. `compose/mock-litellm/src/realtime.ts` + `realtime.test.ts` shipped (Phase 08.3 / Plan 01). Run 4 superseded by Run 5 in Phase 08.4 closure (commit `a5e5920` 4-endpoint mock baseline complete). Tick reconciled 2026-05-18.
 **UI hint**: no
 
 ### Phase 08.4: realtime ws proxy frame-forwarding fix
@@ -706,7 +706,7 @@ Plans:
   3. ROADMAP Phase 8 + REQUIREMENTS.md SCALE rows tick "SLOs published".
   4. Coverage on docs not applicable; verify English-only + commitlint hooks pass.
 **Plans**: 1 plan (08-08)
-- [ ] 08-08 — operations.md + SLO publication + closure (Wave 4)
+- [x] 08-08 — CLOSED. `docs/operations.md` carries "Published SLO budgets — mock profile" + "Published SLO budgets — realistic profile" sections sourced from Run 5 (commit `a5e5920`, 2026-05-13) with SLO = observed p95 × 1.20 per D-SLO-1. Tick reconciled 2026-05-18.
 **UI hint**: no
 
 ### Phase 9: Helm Chart & Cloud Deploy
