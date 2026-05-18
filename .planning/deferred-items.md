@@ -1401,3 +1401,72 @@ The slim e2e re-sweep launched in parallel hit `ECONNREFUSED ::1:4000` on `provi
 The data-loss vector (silent dev-stack teardown) is closed via project isolation.
 The misleading-failure vector (port conflict when dev stack up) is closed via the precheck.
 A future operator running `pnpm test` while `make up-with-dev-tools` is active now sees: 3 skipped, dev stack survives.
+
+### BUG-53-39 — `tests/integration/**` (testcontainers via @testcontainers/postgresql) also kills dev compose stack (CRITICAL, 2026-05-19, loop-tick)
+
+**Observed:** with BUG-53-37 fix in place + dev stack up (7 containers healthy 20+ min), ran `pnpm vitest run tests/integration --reporter=default`. Tests passed 149/0/5 in 52s, exit 0. After completion: `docker compose ps` returned EMPTY rows. Every `openwhispr-*` dev container REMOVED (not stopped — REMOVED). Only `frosty_almeida` (unrelated testcontainers leftover) survived.
+
+**Critical distinction from BUG-53-37:** the BUG-53-37 fix only isolated `tests/self-tests/_helpers.ts`. `tests/integration/**` is a DIFFERENT path using `@testcontainers/postgresql`:
+- `tests/integration/backup-restore.test.ts` — `new PostgreSqlContainer("postgres:17-alpine")`
+- `tests/integration/postgres-roles-idempotent.test.ts` — `new PostgreSqlContainer("postgres:17.5-alpine")`
+- `tests/integration/email-lowercase-normalize.test.ts` — testcontainers
+- (others)
+
+**Root cause hypothesis:**
+Testcontainers spawns a **Ryuk** reaper container that auto-cleans containers/networks/volumes matching `org.testcontainers.session-id` label on test process exit. The dev stack containers carry the docker-compose-managed labels (`com.docker.compose.project=openwhispr`), which should NOT collide with Ryuk's session label — but something is causing Ryuk (or a manual `afterAll`) to sweep them.
+
+Possible mechanisms:
+1. Testcontainers' default network is named `bridge` but it may also attach to the project's `openwhispr_internal` network if it sees a matching label
+2. A test's `afterAll` runs `docker network prune` or `docker container prune` (label-broad)
+3. `Ryuk` is started with privileged docker.sock access and a network-broad cleanup label
+
+**Why it matters:** this is the actual root cause behind `feedback_testcontainers_cleanup_audit` memory. Every prior loop-tick assumed BUG-53-37 closed the issue — it only closed half of it. Both `tests/self-tests/**` AND `tests/integration/**` independently teardown the dev stack.
+
+**Fix recommendation:**
+1. **Short term:** add `devStackUp()`-equivalent precheck to `tests/integration/**` testcontainers-using specs. Skip them when dev stack is up. (Same pattern as the BUG-53-37 fix; can lift `devStackUp()` from `tests/self-tests/_helpers.ts` into a shared `tests/_shared/docker.ts`.)
+2. **Medium term:** audit testcontainers config for explicit `withReuse(false)` + `withLabels({ session: unique })` patterns to prevent Ryuk cross-contamination.
+3. **Long term:** investigate whether testcontainers Ryuk version + docker daemon combination is leaky on macOS Docker Desktop 26.3 (this host).
+
+**Reproducer:**
+1. `make up-with-dev-tools` — wait for 7/7 healthy
+2. `pnpm vitest run tests/integration --reporter=default` — exits 0 in ~52s
+3. `docker compose ps -a` — empty.
+
+**Triage:** CRITICAL — same blast radius as BUG-53-37 but on a different code path. Until fixed, the loop-mode workflow must avoid running ANY `tests/integration/**` while the dev stack is up.
+
+**Linked memory:** `feedback_testcontainers_cleanup_audit` — promoted from "low-priority audit" to "active CRITICAL bug" by this observation.
+
+**Update 2026-05-19 (same loop tick): root cause found NOT to be testcontainers Ryuk — actually `tests/integration/observability-stack-up.test.ts`.**
+That test uses `execFileSync("docker", ["compose", "-f docker-compose.yml -f compose/docker-compose.observability.yml", "down", "-v", "--remove-orphans"])` in beforeAll AND afterAll. Without `-p` it targets the default project `openwhispr`. `down -v --remove-orphans` removes the `openwhispr_internal` network, which cascades to every attached `openwhispr-*` dev container. This is the SAME root-cause shape as BUG-53-37 (compose-driving test in the wrong project namespace), just in a different file.
+
+**Fix applied:**
+- `tests/integration/observability-stack-up.test.ts` — pin `COMPOSE_PROJECT = "openwhispr-obs-smoke"`; prepend `-p ${COMPOSE_PROJECT}` to every compose call; add `devStackUp()` precheck to skip when dev stack is up.
+- `tests/_shared/dev-stack-guard.ts` — new shared module exporting `devStackUp()` for both self-tests and integration tests.
+- `tests/integration/backup-restore.test.ts`, `tests/integration/postgres-roles-idempotent.test.ts`, `tests/integration/email-lowercase-normalize.test.ts` — also wired to `devStackUp()` precheck as defense-in-depth (testcontainers does NOT in fact tear down the dev stack on macOS Docker Desktop 26.3 — verified by toggling the precheck on/off; the testcontainers Ryuk hypothesis was wrong).
+
+**Verification:**
+- `pnpm vitest run tests/integration` with dev stack up → 130 passed / 24 skipped (4 test files skipped) in 1.19s.
+- Dev stack ALL 7 containers survived (verified `docker compose ps` immediately after).
+- Slim e2e sweep: 65 passed / 4 failed / 24 skipped — the 4 failures are React #418 hydration mismatch on /app/account "two sessions render" success state, NOT regression from this fix (see BUG-53-40 below).
+
+### BUG-53-40 — React #418 hydration mismatch on /app/account success-two-sessions (NEW, 2026-05-19, loop-tick)
+
+Surfaced after stack-recovery loop tick re-ran slim e2e. Failing specs:
+- `u5-account.spec.ts:83` error state — Alert + Retry when list-sessions returns 500
+- `u5-account.spec.ts:90` success state — two sessions render
+- `u5-account.spec.ts:110` axe — WCAG 2.2 AA clean on populated account screen
+- `99-cross-screen-smoke.spec.ts` cross-screen flow → account leg
+
+Error from u5:90:
+> [pageerror/error] Minified React error #418
+
+**Hypothesis (not yet verified):** likely the same family as BUG-53-30 (timezone hydration) — SSR sees an empty session list while client-after-hydration sees the seeded second session, triggering text-content mismatch.
+
+**Triage:** medium — may be a flaky state-mismatch rather than a real regression. Phase 53 sweep used to be stable 69/0/24; now it's 65/4/24 after stack-volume wipe. Possible the test was relying on a long-lived DB state that survived prior runs but isn't re-seeded on a fresh DB.
+
+**Reproducer:**
+1. `make down -v` (wipe volumes)
+2. `make up-with-dev-tools` (fresh stack)
+3. `cd apps/web && OPENWHISPR_TOPOLOGY=slim pnpm exec playwright test --project=slim --reporter=line` → 4 specs fail on React #418
+
+**Fix recommendation:** investigate whether u5 "two sessions" test seeds the second session via DB INSERT (suspicious — would bypass SSR cache) or via a real /api/auth/sign-in (proper). The 53-32c fix introduced DB-direct cleanup; check if it also introduced DB-direct seeding that bypasses SSR.

@@ -25,7 +25,15 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 // services; they live in `compose/docker-compose.observability.yml`.
 // Replace the `--profile obs-only` selector with the explicit overlay
 // chain so this smoke still exercises the 4-service obs core.
+//
+// BUG-53-39: pin to a distinct project name so `down -v` cannot reach
+// into the developer's `openwhispr` dev stack. The shared
+// `openwhispr_internal` network would otherwise cascade-kill every
+// attached dev container when this suite tears down.
+const COMPOSE_PROJECT = "openwhispr-obs-smoke";
 const COMPOSE_PROFILE = [
+  "-p",
+  COMPOSE_PROJECT,
   "-f",
   "docker-compose.yml",
   "-f",
@@ -66,7 +74,18 @@ function dockerAvailable(): boolean {
   return run(["version", "--format", "{{.Server.Version}}"]).code === 0;
 }
 
-const skipIfNoDocker = dockerAvailable() ? describe : describe.skip;
+// BUG-53-39: skip when the developer's `openwhispr` dev stack is up.
+// Even with the isolated project name above, the dev stack's
+// `openwhispr_internal` network and any host-port collisions on
+// 3000/3100/9009/etc. would make this smoke flake. Surface the cause
+// in the test runner output instead.
+function devStackUp(): boolean {
+  const r = run(["compose", "-p", "openwhispr", "ps", "--quiet", "--status=running"]);
+  return r.code === 0 && r.stdout.trim().length > 0;
+}
+
+const SHOULD_RUN = dockerAvailable() && !devStackUp();
+const skipIfNoDocker = SHOULD_RUN ? describe : describe.skip;
 
 skipIfNoDocker("Phase 02.4 G4 — observability stack-up smoke", () => {
   beforeAll(() => {

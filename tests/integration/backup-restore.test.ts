@@ -30,6 +30,7 @@ import { join } from "node:path";
 import { PostgreSqlContainer, type StartedPostgreSqlContainer } from "@testcontainers/postgresql";
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { devStackUp } from "../_shared/dev-stack-guard.js";
 
 const REPO_ROOT = process.cwd();
 const BACKUP_SCRIPT = join(REPO_ROOT, "scripts", "backup", "make-backup.sh");
@@ -50,12 +51,16 @@ function pgClientToolsOnPath(): boolean {
 
 const AGE_AVAILABLE = ageOnPath();
 const PG_TOOLS_AVAILABLE = pgClientToolsOnPath();
-const SHOULD_SKIP = !AGE_AVAILABLE || !PG_TOOLS_AVAILABLE;
+// BUG-53-39: testcontainers Ryuk cleanup can tear down the dev compose
+// stack on test exit. Skip when the dev stack is up — the operator
+// must `make down` first.
+const DEV_STACK_UP = devStackUp();
+const SHOULD_SKIP = !AGE_AVAILABLE || !PG_TOOLS_AVAILABLE || DEV_STACK_UP;
 
 if (SHOULD_SKIP) {
   // biome-ignore lint/suspicious/noConsole: integration-test diagnostic
   console.warn(
-    `[backup-restore.test.ts] Skipping suite — missing tooling. age=${AGE_AVAILABLE} pg-tools=${PG_TOOLS_AVAILABLE}. Install with: brew install age postgresql@17 (macOS) or apt install age postgresql-client-17 (debian/ubuntu).`,
+    `[backup-restore.test.ts] Skipping suite — age=${AGE_AVAILABLE} pg-tools=${PG_TOOLS_AVAILABLE} dev-stack-up=${DEV_STACK_UP}. Install tooling with: brew install age postgresql@17 (macOS) or apt install age postgresql-client-17 (debian/ubuntu). If dev-stack-up=true, stop it first with: make down`,
   );
 }
 
