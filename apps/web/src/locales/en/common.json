@@ -51,7 +51,7 @@
     "language": {
       "label": { "label": "Language" },
       "english": { "label": "English" },
-      "russian": { "label": "Russian" }
+      "russian": { "label": "Русский" }
     },
     "loading": { "label": "Loading…" },
     "signout": { "label": "Sign out" },

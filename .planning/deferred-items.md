@@ -745,3 +745,23 @@ Re-confirmation of BUG-53-D under stricter conditions. Captured: `locator resolv
 Re-confirmation of BUG-53-E. Locator timed out after 30s waiting for `button[name=/Русский/]`. Either: (a) component LanguageSwitcher not mounted on auth pages, (b) the button text differs from the spec regex, or (c) language switcher is rendered server-side under the wrong locale. Linked to BUG-53-I — if the page renders in `en`, the switcher likely shows "Russian" rather than "Русский".
 
 **Sweep result:** Plan 53-10 closed the zod CSP cascade. The 5 remaining slim-config failures are split between visual baseline drift (BUG-53-B), setup-wizard state assumptions (BUG-53-C), ESM loader gap (BUG-53-A), and the i18n cluster (BUG-53-D/E/I/J). i18n cluster is the next biggest leverage point — fixing language negotiation would close 2 of 5 specs at once.
+
+### 2026-05-18 — Plan 53-12 progress + new BUG-53-K
+
+**Closed by Plan 53-12 (this iteration):**
+- **BUG-53-A (ESM loader gap)** — root cause was `await import("../support/browser-diagnostics.js")` dynamic-import in `apps/web/tests/e2e/fixtures/auth.ts:303`. Replaced with static `import` at file top so Playwright's loader applies the `.js → .ts` remap statically. Closes BUG-53-A across all specs.
+- **Slim playwright.slim.config.ts BASE_URL/WEB_ORIGIN defaults** — set in config-init so the slim sweep no longer requires per-invocation env-prefix incantation.
+
+### BUG-53-K — host-split-only specs cannot run under slim-core
+- **Files:** `99-cross-screen-smoke.spec.ts`, `auth-shell-visual.spec.ts:58` (setup branch)
+- **Symptom:** seed.ts mints `storageState` with cookies bound to `api.localhost` domain; clearAllData() returns HTTP 401 against slim-core because cookies do not cross origins.
+- **Decision:** these specs are Traefik-only by construction (D-TEST-3 requires the same routing stack as production for storageState gating). Removed from `playwright.slim.config.ts` testMatch in this iteration. Specs continue to run under main `playwright.config.ts` (Traefik host-split topology) where they were originally written.
+- **Open question / not a bug:** slim-core is an OSS-quickstart topology; the host-split topology is the canonical production target. Phase 53 sentinel `p53-signup-smoke` is the only spec the slim sweep needs to gate; the broader 22-spec suite remains a Traefik-only contract.
+
+### BUG-53-L — language switcher button not mounted on auth pages
+- **File:** `apps/web/tests/e2e/i18n-russian.spec.ts:56` (`language switcher persists locale across reload`)
+- **Symptom:** spec waits 30s for `getByRole('button', { name: /Русский/ })` on `/sign-in` — never appears.
+- **Likely cause:** `LanguageSwitcher` component is mounted only under the `(auth)` shell routes (e.g. `/app/*`), not on the public auth pages. Spec assumption is wrong OR a Phase 10 regression removed the switcher from the AuthShell.
+- **Fix candidate:** `grep -rn LanguageSwitcher apps/web/src/app/(public)` to confirm mount; either add the switcher to AuthShell OR rewrite the spec to navigate to a screen that has the switcher.
+
+**Slim-config sweep result after Plan 53-12:** with 99-cross-screen + auth-shell-visual removed, the remaining 3-spec set should report 3 passed / 1 BUG-53-L outstanding.
