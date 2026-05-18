@@ -135,7 +135,7 @@ Work-order: **21 (lockers) → 22 (smoke) → 23 (BYOK matrix) → 24..29 (paral
 - [x] 00-03-PLAN.md — tools/lint-english.ts, lint-tdd.ts, Makefile, docker-compose placeholder, branch-protection script (Wave 1)
 - [x] 00-04-PLAN.md — GHA workflows (ci.yml, security.yml, nightly.yml, release.yml) + dependabot + PR template (Wave 2)
 - [x] 00-05-PLAN.md — Constitutional self-tests + harness-self-check CI job (Wave 2)
-- [ ] 00-06-PLAN.md — README/CONTRIBUTING/SECURITY/COC/operations + ADRs 0000-0003 + integration smoke (Wave 3)
+- [x] 00-06-PLAN.md — CLOSED (SUMMARY at .planning/phases/00-repo-bootstrap-constitutional-ci/00-06-SUMMARY.md); README/CONTRIBUTING/SECURITY/COC/operations + ADRs 0000-0003 + integration smoke (Wave 3). Tick reconciled 2026-05-18.
 **UI hint**: no
 
 ### Phase 1: Core Infra & Multi-Tenant Data
@@ -166,7 +166,7 @@ Work-order: **21 (lockers) → 22 (smoke) → 23 (BYOK matrix) → 24..29 (paral
 **Plans:** 0 plans
 
 Plans:
-- [ ] TBD (run /gsd-plan-phase 01.2 to break down)
+- [x] CLOSED — phase 01.2 shipped (SUMMARY at .planning/phases/01.2-*/01.2-01-SUMMARY.md); TBD sub-plan entry was a roadmapper INSERTED-phase artifact. Tick reconciled 2026-05-18.
 
 ### Phase 2: Auth + Wire-API Skeleton + Conformance Harness
 **Goal**: A desktop client can complete the full auth lifecycle (sign-up / sign-in / verification-poll / delete-account) against the server over any channel scheme it presents, receive opaque bearer tokens that rotate cleanly without logging the user out, and the wire-contract conformance suite (CONTRACT-01) is the canonical regression net for everything subsequent phases add.
@@ -208,7 +208,7 @@ Plans:
 **Plans:** 0 plans
 
 Plans:
-- [ ] TBD (run /gsd-plan-phase 02.21 to break down)
+- [x] CLOSED — phase 02.21 shipped (SUMMARY at .planning/phases/02.21-*/02.21-SUMMARY.md); TBD sub-plan entry was a roadmapper INSERTED-phase artifact, never expanded. Tick reconciled 2026-05-18.
 
 ### Phase 02.20: Group I — verification-status test for unverified user; signInFixture verified:false branch flips email_verified=true via owner pool, signs in to get real BA cookie, flips back to false in try/finally; exploits BA getSession not re-checking emailVerified; preserves prod requireEmailVerification:true posture (INSERTED)
 
@@ -218,7 +218,7 @@ Plans:
 **Plans:** 0 plans
 
 Plans:
-- [ ] TBD (run /gsd-plan-phase 02.20 to break down)
+- [x] CLOSED — phase 02.20 shipped (SUMMARY at .planning/phases/02.20-*/02.20-SUMMARY.md); TBD sub-plan entry was a roadmapper INSERTED-phase artifact, never expanded. Tick reconciled 2026-05-18.
 
 ### Phase 02.19: Group F E2E closure — configure Traefik forwardedHeaders.trustedIPs for openwhispr_internal docker network so contract-test runner-injected X-Forwarded-For survives the edge to Better Auth rate-limiter; Phase 02.18 unit fix is correct, this enables E2E delivery (INSERTED)
 
@@ -228,7 +228,7 @@ Plans:
 **Plans:** 0 plans
 
 Plans:
-- [ ] TBD (run /gsd-plan-phase 02.19 to break down)
+- [x] CLOSED — phase 02.19 shipped (SUMMARY at .planning/phases/02.19-*/02.19-SUMMARY.md); TBD sub-plan entry was a roadmapper INSERTED-phase artifact, never expanded. Tick reconciled 2026-05-18.
 
 ### Phase 02.18: Group F — Better Auth rate-limiter cant see client IP behind Traefik (real prod security defect: WARN log Rate limiting skipped); recommended Option B: configure advanced.ipAddress.ipAddressHeaders + per-fixture unique X-Forwarded-For in signInFixture; fixes prod abuse hole AND unblocks 2 verification-status tests (INSERTED)
 
@@ -238,7 +238,7 @@ Plans:
 **Plans:** 0 plans
 
 Plans:
-- [ ] TBD (run /gsd-plan-phase 02.18 to break down)
+- [x] CLOSED — phase 02.18 shipped (SUMMARY at .planning/phases/02.18-*/02.18-SUMMARY.md); TBD sub-plan entry was a roadmapper INSERTED-phase artifact, never expanded. Tick reconciled 2026-05-18.
 
 ### Phase 02.17: Group E variant — mycorp-whispr scheme test 400 because OPENWHISPR_PROTOCOL accepts only single override; extend parser to comma-list + add mycorp-whispr to contract-test compose env (INSERTED)
 
@@ -248,7 +248,7 @@ Plans:
 **Plans:** 0 plans
 
 Plans:
-- [ ] TBD (run /gsd-plan-phase 02.17 to break down)
+- [x] CLOSED — phase 02.17 shipped (SUMMARY at .planning/phases/02.17-*/02.17-SUMMARY.md); TBD sub-plan entry was a roadmapper INSERTED-phase artifact, never expanded. Tick reconciled 2026-05-18.
 
 ### Phase 02.16: Group H NEW — api OAuth callback completion 500 (3 oauth-redirect tests); Group G transport closed but server-side handler errors; likely Better Auth genericOAuth token-exchange against fixture-idp /token shape mismatch OR mintBearer issue; needs api debug log capture + diagnosis (INSERTED)
 
@@ -258,7 +258,7 @@ Plans:
 **Plans:** 0 plans
 
 Plans:
-- [ ] TBD (run /gsd-plan-phase 02.16 to break down)
+- [x] CLOSED — phase 02.16 shipped (SUMMARY at .planning/phases/02.16-*/02.16-SUMMARY.md); TBD sub-plan entry was a roadmapper INSERTED-phase artifact, never expanded. Tick reconciled 2026-05-18.
 
 ### Phase 02.15: Group G — api 302s to https://api.localhost from inside cluster ECONNREFUSED; advisor recommends Option B network-alias variant: add aliases:[api.localhost,auth.localhost] to traefik service network block + mount cert + update-ca-certificates in runner image + flip runner BACKEND_URL/AUTH_URL to https://api.localhost; preserves canonical-public URL byte-for-byte (INSERTED)
 
@@ -268,7 +268,7 @@ Plans:
 **Plans:** 0 plans
 
 Plans:
-- [ ] TBD (run /gsd-plan-phase 02.15 to break down)
+- [x] CLOSED — phase 02.15 shipped (SUMMARY at .planning/phases/02.15-*/02.15-SUMMARY.md); TBD sub-plan entry was a roadmapper INSERTED-phase artifact, never expanded. Tick reconciled 2026-05-18.
 
 ### Phase 02.14: Group E — host-side contract-test runner cant resolve docker-internal fixture-idp DNS; advisor research recommends Option C: contract-test runner inside compose network (mirror Phase 02.3 seed pattern); one URL one issuer no /etc/hosts mutation (INSERTED)
 
@@ -278,7 +278,7 @@ Plans:
 **Plans:** 0 plans
 
 Plans:
-- [ ] TBD (run /gsd-plan-phase 02.14 to break down)
+- [x] CLOSED — phase 02.14 shipped (SUMMARY at .planning/phases/02.14-*/02.14-SUMMARY.md); TBD sub-plan entry was a roadmapper INSERTED-phase artifact, never expanded. Tick reconciled 2026-05-18.
 
 ### Phase 02.13: OIDC env provisioning for contract-test profile — apps/api auth.ts silently disables genericOAuth when OIDC_ISSUER_URL/CLIENT_ID/CLIENT_SECRET unset; contract-test profile fixture-idp running on http://fixture-idp:9000 but api container has no env vars pointing at it; result: 5 OAuth contract tests get 503; mechanical fix: add OIDC_* env vars to api service in contract-test profile context (INSERTED)
 
@@ -288,7 +288,7 @@ Plans:
 **Plans:** 0 plans
 
 Plans:
-- [ ] TBD (run /gsd-plan-phase 02.13 to break down)
+- [x] CLOSED — phase 02.13 shipped (SUMMARY at .planning/phases/02.13-*/02.13-SUMMARY.md); TBD sub-plan entry was a roadmapper INSERTED-phase artifact, never expanded. Tick reconciled 2026-05-18.
 
 ### Phase 02.12: Better Auth session.token field missing — Phase 02 Plan 01 designed sessions.tokenHash bytea (AUTH-04) but BA v1.6.9 expects plain session.token text; advisor research recommends Option C (drop tokenHash, use plain token, defer hash-only to v2 hardening); preserves AUTH-04 5-min overlap contract (INSERTED)
 
@@ -298,7 +298,7 @@ Plans:
 **Plans:** 0 plans
 
 Plans:
-- [ ] TBD (run /gsd-plan-phase 02.12 to break down)
+- [x] CLOSED — phase 02.12 shipped (SUMMARY at .planning/phases/02.12-*/02.12-SUMMARY.md); TBD sub-plan entry was a roadmapper INSERTED-phase artifact, never expanded. Tick reconciled 2026-05-18.
 
 ### Phase 02.10: Group A — signInFixture helper missing Origin header → 403 MISSING_OR_NULL_ORIGIN on 4 contract tests; mirror seed-time origin: baseUrl pattern from Phase 02.3 conformance.ts; TDD per TDD-01b (INSERTED)
 
@@ -308,7 +308,7 @@ Plans:
 **Plans:** 0 plans
 
 Plans:
-- [ ] TBD (run /gsd-plan-phase 02.10 to break down)
+- [x] CLOSED — phase 02.10 shipped (SUMMARY at .planning/phases/02.10-*/02.10-SUMMARY.md); TBD sub-plan entry was a roadmapper INSERTED-phase artifact, never expanded. Tick reconciled 2026-05-18.
 
 ### Phase 02.9: Better Auth email-validator rejects @local fixtures — packages/data/src/seed/conformance.ts uses rotation-test@local + similar @local addresses; Better Auth v1.6.9 hardened email validator rejects (no TLD per RFC 5321/5322); surfaced by Phase 02.8 contract-test E2E after UUID mismatch closed. Trivial fix: rewrite 3 fixture emails to @example.com (RFC 2606 reserved TLD for examples). TDD: extend seed-signup-non-2xx-loud test or add fixture-email-rfc-compliance test (INSERTED)
 
@@ -318,7 +318,7 @@ Plans:
 **Plans:** 0 plans
 
 Plans:
-- [ ] TBD (run /gsd-plan-phase 02.9 to break down)
+- [x] CLOSED — phase 02.9 shipped (SUMMARY at .planning/phases/02.9-*/02.9-SUMMARY.md); TBD sub-plan entry was a roadmapper INSERTED-phase artifact, never expanded. Tick reconciled 2026-05-18.
 
 ### Phase 02.8: Better Auth ID type vs Postgres uuid mismatch — Better Auth v1.6.9 default generateId emits 32-char base32 strings (e.g. '04xaRzi0ScgyXxWRtKwGG74OkqNZb0yO') but users.id (and likely sessions.id, account.id, verification.id) are Postgres uuid columns → 22P02 parse error → 422 from /api/auth/sign-up/email; surfaced by Phase 02.7-04 loud-fail discipline + 02.7-06 E2E. Discuss-phase + research-first required: A) advanced.generateId override in auth.ts, B) schema migration uuid→text on all 4 BA tables incl FK cascade, C) defensive create-user hook (rejected as workaround). Need investigation of related id columns (sessions, account, verification, oauth_state) before locking. BLOCKS Phase 02.7 plan 06+07 closure (INSERTED)
 
@@ -328,7 +328,7 @@ Plans:
 **Plans:** 0 plans
 
 Plans:
-- [ ] TBD (run /gsd-plan-phase 02.8 to break down)
+- [x] CLOSED — phase 02.8 shipped (SUMMARY at .planning/phases/02.8-*/02.8-SUMMARY.md); TBD sub-plan entry was a roadmapper INSERTED-phase artifact, never expanded. Tick reconciled 2026-05-18.
 
 ### Phase 02.7: Phase 02 contract-test conformance gaps — 13/26 contract tests RED after Phase 02.5+02.6 unblocked the auth surface; new architectural defects in signInFixture (HTTP 404 — endpoint missing or path mismatch), Bearer-invalid handling (returns 500 instead of contract-spec 401), OAuth final-redirect (returns 200 instead of channel-scheme custom-protocol — was deferred per 02.5 D-06 / Phase 02 Plan 05 territory), check-user contract (exists:true returning false — likely RLS visibility issue), AND Makefile test harness uses BACKEND_URL=http:// against Traefik HTTPS-only ingress causing 308→silent-skip; full discuss-phase + research-first plan required (no yolo) (INSERTED)
 
@@ -354,7 +354,7 @@ Plans:
 **Plans:** 0 plans
 
 Plans:
-- [ ] TBD (run /gsd-plan-phase 02.6 to break down)
+- [x] CLOSED — phase 02.6 shipped (SUMMARY at .planning/phases/02.6-*/02.6-SUMMARY.md); TBD sub-plan entry was a roadmapper INSERTED-phase artifact, never expanded. Tick reconciled 2026-05-18.
 
 ### Phase 02.5: Better Auth drizzle schema — drizzleAdapter missing schema option AND @openwhispr/data lacks Better Auth required tables (user/session/account/verification — singular names per Better Auth convention vs our pluralized users/sessions/accounts/verifications); add tables, pass schema to drizzleAdapter(db, {provider:pg, schema}), re-run drizzle migrate, make contract-test passes end-to-end → 02-HUMAN-UAT.md Item 1 finally flippable; TDD per CLAUDE.md TDD-01b (≥90% on touched files) (INSERTED)
 
@@ -367,8 +367,8 @@ Plans:
 - [x] 02.5-01-PLAN.md — Wave 1: RED tests (auth-schema-mapping unit + 0003 testcontainer integration) + contract-test RED baseline capture
 - [x] 02.5-02-PLAN.md — Wave 2: migration 0003_better_auth_tenant_defaults.sql (D-02 ALTER ROLE + D-03 column DEFAULTs) + journal append; turns Plan 01 integration test GREEN
 - [x] 02.5-03-PLAN.md — Wave 2: apps/api/src/auth.ts explicit schema map (D-01); turns Plan 01 unit test GREEN; coverage ≥90%
-- [ ] 02.5-04-PLAN.md — Wave 3: end-to-end `make contract-test` run + capture GREEN witness
-- [ ] 02.5-05-PLAN.md — Wave 3: SUMMARY + 3-scenario reverse-patch evidence + 02-HUMAN-UAT.md Item 1 flip
+- [x] 02.5-04-PLAN.md — CLOSED (SUMMARY at .planning/phases/02.5-*/02.5-04-SUMMARY.md); Wave 3: end-to-end `make contract-test` run + capture GREEN witness. Tick reconciled 2026-05-18.
+- [x] 02.5-05-PLAN.md — CLOSED-PARTIAL (parent phase 02.5 closure status: CLOSED-PARTIAL 2026-05-09 per .planning/phases/02.5-*/02.5-SUMMARY.md; Item 1 flipped to "pass-partial" with documented 11/26 contract pass + 13/26 carry-over to Phase 02.7); SUMMARY + 3-scenario reverse-patch evidence + UAT flip. Tick reconciled 2026-05-18.
 
 ### Phase 02.4: Backfill TDD test coverage for Phase 02.x Yolo cascade — 6 production fixes (commits 451e9b3, 26eaa69, 7ccb8bb, 059b948, 5f274e6) shipped without per-fix tests, violating constitutional ≥90% per-phase coverage floor; test-only phase (no production code changes); aggregate coverage on touched files must reach ≥90%; vitest+CI green; MUST land before Phase 02.5 better-auth drizzle schema (INSERTED)
 
@@ -380,10 +380,10 @@ Plans:
 Plans:
 - [x] 02.4-01-PLAN.md — G1: tools/bootstrap.sh interpolate + three-way value semantics (Wave 1)
 - [x] 02.4-02-PLAN.md — G3: api Dockerfile no-pnpm-deploy + tsup external pg/pg-native/better-auth (Wave 1)
-- [ ] 02.4-03-PLAN.md — G5a + G5b: better-auth handler bridge + AUTH_TRUSTED_ORIGINS_EXTRA (Wave 1)
+- [x] 02.4-03-PLAN.md — CLOSED (parent phase SUMMARY at .planning/phases/02.4-*/02.4-SUMMARY.md aggregates Wave 1 completion); G5a + G5b: better-auth handler bridge + AUTH_TRUSTED_ORIGINS_EXTRA (Wave 1). Tick reconciled 2026-05-18.
 - [x] 02.4-04-PLAN.md — G2: postgres role init idempotency via testcontainer (Wave 2)
 - [x] 02.4-05-PLAN.md — G4: docker compose obs-only stack-up smoke (Wave 2)
-- [ ] 02.4-06-PLAN.md — Aggregate coverage report + reverse-patch verification + atomic commit + SUMMARY (Wave 3)
+- [x] 02.4-06-PLAN.md — CLOSED (parent phase SUMMARY at .planning/phases/02.4-*/02.4-SUMMARY.md); Aggregate coverage report + reverse-patch verification + atomic commit + SUMMARY (Wave 3). Tick reconciled 2026-05-18.
 
 ### Phase 02.3: Add seed compose service for contract-test — make contract-test seed:conformance step runs from host shell with internal-only postgres hostname; needs in-network compose service like migrate (INSERTED)
 
@@ -393,7 +393,7 @@ Plans:
 **Plans:** 0 plans
 
 Plans:
-- [ ] TBD (run /gsd-plan-phase 02.3 to break down)
+- [x] CLOSED — phase 02.3 shipped (SUMMARY at .planning/phases/02.3-*/02.3-01-SUMMARY.md); TBD sub-plan entry was a roadmapper INSERTED-phase artifact, never expanded. Tick reconciled 2026-05-18.
 
 ### Phase 02.2: Externalize pg native module from api tsup bundle — Phase 02.1 noExternal pulled pg in via drizzle and broke ESM (INSERTED)
 
@@ -403,7 +403,7 @@ Plans:
 **Plans:** 0 plans
 
 Plans:
-- [ ] TBD (run /gsd-plan-phase 02.2 to break down)
+- [x] CLOSED — phase 02.2 shipped (SUMMARY at .planning/phases/02.2-*/02.2-01-SUMMARY.md); TBD sub-plan entry was a roadmapper INSERTED-phase artifact, never expanded. Tick reconciled 2026-05-18.
 
 ### Phase 02.1: Fix apps/api/Dockerfile pnpm v10 ERR_PNPM_DEPLOY_NONINJECTED_WORKSPACE — replace broken pnpm deploy with proper enterprise fix (NOT --legacy); inject-workspace-packages or multi-stage Dockerfile; api+migrate images build clean, full stack up --wait succeeds, no workspace regressions, unblocks Phase 01.1 Plan 05 (INSERTED)
 
@@ -413,7 +413,7 @@ Plans:
 **Plans:** 0 plans
 
 Plans:
-- [ ] TBD (run /gsd-plan-phase 02.1 to break down)
+- [x] CLOSED — phase 02.1 shipped (SUMMARY at .planning/phases/02.1-*/02.1-01-SUMMARY.md); TBD sub-plan entry was a roadmapper INSERTED-phase artifact, never expanded. Tick reconciled 2026-05-18.
 
 ### Phase 3: LiteLLM Integration + Bundled OSS Models
 **Goal**: Out of the box, an OSS operator gets a working `/api/transcribe` and `/api/reason` against bundled open-source models (faster-whisper + pyannote + Speaches-compatible realtime image) via a bundled LiteLLM Proxy ≥1.83.7; a corporate operator overrides `LITELLM_BASE_URL` + `LITELLM_VIRTUAL_KEY` and hits the same wire surface against their internal LiteLLM (the shape described in `speaches-audio.md`) with zero code changes.
@@ -515,7 +515,7 @@ Plans:
 - [x] 06-09-PLAN.md — Wave 2: Layered IP+user rate-limit + per-route rpm matrix + X-RateLimit-* headers + tools/lint-tenant-context.ts GHA gate (SCALE-04, SCALE-03 layer 1)
 - [x] 06-10-PLAN.md — Wave 2: Log scrubbing finalization across api + worker tier + sentinel-token sweep integration test (OBS-03)
 - [x] 06-11-PLAN.md — Wave 2: 4 Grafana dashboards (RED+sat, per-tenant usage, LiteLLM spend, reconciliation drift) + reconciliation alert rule + docs/observability.md (OBS-01, OBS-02, OBS-04)
-- [ ] 06-12-PLAN.md — Wave 3: 8 e2e tests flipped GREEN (horizontal-scale, ssrf-block, audit-log-write, reconciliation-drift, log-scrub-sentinel, probes-dependency, rate-limit-layered, otel-trace-propagation) + coverage ≥90/90/90/90 gate + nightly CI
+- [x] 06-12-PLAN.md — CLOSED via 12a/b/c/d split (SUMMARYs at .planning/phases/06-*/06-12{a,b,c,d}-SUMMARY.md); Wave 3: 8 e2e tests flipped GREEN + coverage gate + nightly CI. Plan 51-19 (this session) re-proved e2e 14/14 via make e2e-test-phase6 exit 0. Tick reconciled 2026-05-18.
 **UI hint**: no
 
 ### Phase 06.1: Add tempo + mimir minimal filesystem-backed configs — both crash on default empty backend; uncovered after Phase 02.2 brought api healthy (INSERTED)
@@ -526,7 +526,7 @@ Plans:
 **Plans:** 15/16 plans executed
 
 Plans:
-- [ ] TBD (run /gsd-plan-phase 06.1 to break down)
+- [x] CLOSED — phase 06.1 shipped (SUMMARY at .planning/phases/06.1-*/06.1-01-SUMMARY.md); TBD sub-plan entry was a roadmapper INSERTED-phase artifact. Tick reconciled 2026-05-18.
 
 ### Phase 7: Frontend UI-SPEC
 **Goal**: An operator (or downstream code-generation agent) reads two markdown specs and can implement the admin console + end-user self-service UI in Next.js 15 + shadcn/ui v2 without ambiguity — every screen, component, design token, and accessibility requirement is enumerated.
@@ -750,7 +750,7 @@ Plans:
 - [x] 10-01-PLAN.md — Server i18n (API + Worker): i18next + ICU + http-middleware, error-envelope translation at setErrorHandler, worker TemplateRenderer (3 templates), users.locale column, TEST-I18N-01 gate
 - [x] 10-02-PLAN.md — Web Russian translations + locale negotiation: NEXT_LOCALE cookie + Edge middleware + RSC layout, 200+ key ru bundles, language switcher, /api/locale route
 - [x] 10-03-PLAN.md — Docs suite: docs/architecture.md, docs/i18n.md, docs/security.md (new); README + operations.md + auth.md + wire-contract.md + litellm-target-spec.md extensions
-- [ ] 10-04-PLAN.md — OSS housekeeping: SPDX header codemod + CI gate, CODEOWNERS, ISSUE_TEMPLATE, CoC 2.1 audit, CONTRIBUTING/SECURITY extension, ADRs 0004-0011 (LICENSE/NOTICE already shipped in bd81d82)
+- [x] 10-04-PLAN.md — CLOSED (SUMMARY at .planning/phases/10-*/10-04-SUMMARY.md); OSS housekeeping: SPDX header codemod + CI gate, CODEOWNERS, ISSUE_TEMPLATE, CoC 2.1 audit, CONTRIBUTING/SECURITY extension, ADRs 0004-0011. Tick reconciled 2026-05-18.
 **UI hint**: no
 
 
