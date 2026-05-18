@@ -14,12 +14,18 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
   COMPOSE_PROJECT,
   composeAtLeast,
+  devStackUp,
   dockerAvailable,
   dockerCompose,
   fixtureSecrets,
 } from "./_helpers.js";
 
-const skip = !dockerAvailable || !composeAtLeast(2, 20);
+// BUG-53-37 follow-up: skip when the developer's `openwhispr` dev stack
+// is already up. Even though COMPOSE_PROJECT is isolated, both stacks
+// bind the same host ports (5432, 4000, etc.) and the self-test stack
+// loses the race for them. Skipping with a clear log line beats a
+// misleading exit-1 in `compose up --wait`.
+const skip = !dockerAvailable || !composeAtLeast(2, 20) || devStackUp();
 
 const ROOT = process.cwd();
 const ENV_BACKUP = join(ROOT, ".env.bak-02-02-gates");
