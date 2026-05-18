@@ -48,9 +48,9 @@ function makeMockPage(): {
 }
 
 describe("Plan 53 — browser-diagnostics helper (4 sentinel dimensions)", () => {
-  it("captures console.error messages", () => {
+  it("captures console.error messages", async () => {
     const { page, fire } = makeMockPage();
-    attachBrowserDiagnostics(page);
+    await attachBrowserDiagnostics(page);
     fire("console", {
       type: () => "error",
       text: () => "deliberate console.error from sentinel",
@@ -63,9 +63,9 @@ describe("Plan 53 — browser-diagnostics helper (4 sentinel dimensions)", () =>
     expect(err?.message).toContain("deliberate console.error from sentinel");
   });
 
-  it("captures pageerror (uncaught exception) entries", () => {
+  it("captures pageerror (uncaught exception) entries", async () => {
     const { page, fire } = makeMockPage();
-    attachBrowserDiagnostics(page);
+    await attachBrowserDiagnostics(page);
     fire("pageerror", new Error("deliberate uncaught: boom"));
     const entries = getCapturedDiagnostics(page);
     const pe = entries.find((e) => e.kind === "pageerror");
@@ -74,9 +74,9 @@ describe("Plan 53 — browser-diagnostics helper (4 sentinel dimensions)", () =>
     expect(pe?.message).toContain("deliberate uncaught: boom");
   });
 
-  it("captures network responses with status >= 400", () => {
+  it("captures network responses with status >= 400", async () => {
     const { page, fire } = makeMockPage();
-    attachBrowserDiagnostics(page);
+    await attachBrowserDiagnostics(page);
     fire("response", {
       url: () => "http://web/api/auth/sign-up/email",
       status: () => 404,
@@ -91,9 +91,9 @@ describe("Plan 53 — browser-diagnostics helper (4 sentinel dimensions)", () =>
     expect(net?.message).toContain("/api/auth/sign-up/email");
   });
 
-  it("captures CSP violations forwarded by the injected init script", () => {
+  it("captures CSP violations forwarded by the injected init script", async () => {
     const { page, fire, initScripts } = makeMockPage();
-    attachBrowserDiagnostics(page);
+    await attachBrowserDiagnostics(page);
 
     // The 53-02 GREEN implementation installs an addInitScript that
     // wires document.addEventListener('securitypolicyviolation', ...)
@@ -120,24 +120,24 @@ describe("Plan 53 — browser-diagnostics helper (4 sentinel dimensions)", () =>
     expect(csp?.message).toContain("script-src");
   });
 
-  it("expectNoBrowserErrors throws when an error entry is present", () => {
+  it("expectNoBrowserErrors throws when an error entry is present", async () => {
     const { page, fire } = makeMockPage();
-    attachBrowserDiagnostics(page);
+    await attachBrowserDiagnostics(page);
     fire("pageerror", new Error("must surface"));
     expect(() => expectNoBrowserErrors(page)).toThrow(/must surface/);
   });
 
-  it("expectNoBrowserErrors passes when allowlist matches the only error", () => {
+  it("expectNoBrowserErrors passes when allowlist matches the only error", async () => {
     const { page, fire } = makeMockPage();
-    attachBrowserDiagnostics(page);
+    await attachBrowserDiagnostics(page);
     allowBrowserErrors(page, [/deliberate negative-twin/]);
     fire("pageerror", new Error("deliberate negative-twin: bad password"));
     expect(() => expectNoBrowserErrors(page)).not.toThrow();
   });
 
-  it("expectNoBrowserErrors ignores non-error severity entries", () => {
+  it("expectNoBrowserErrors ignores non-error severity entries", async () => {
     const { page, fire } = makeMockPage();
-    attachBrowserDiagnostics(page);
+    await attachBrowserDiagnostics(page);
     fire("console", {
       type: () => "warning",
       text: () => "just a warning",
