@@ -860,3 +860,21 @@ Remaining 47 failures are real product issues, not test infrastructure:
 - 1 residual HTTP 429 (down from ~15)
 
 Phase 53 helper + universal config is **functionally complete**. Further progress is product-bug intake, not test-infra work.
+
+## 2026-05-18 — Plan 53-22: closed Secure-cookie security hole
+
+**User-flagged security review (verbatim):** "Какие без секур это не костыль? не дыра?"
+
+User was right. Plan 53-20 derived `useSecureCookies` from `AUTH_URL.startsWith("https://")` directly in apps/api/src/auth.ts — a LOCKER-01 violation (auth.ts not in env-branch allowlist) AND a real MITM exposure surface: operator misconfigures production with HTTP AUTH_URL → cookies emit without `Secure` → plaintext session capture.
+
+**Fix:** `apps/api/src/config/auth.ts` + `validateAuthBoot()` (commit `c04613c`):
+- REFUSES boot (exit 78 EX_CONFIG) when `NODE_ENV=production` AND `AUTH_URL` is non-HTTPS
+- REFUSES missing AUTH_URL or non-http/https scheme
+- REFUSES `BETTER_AUTH_SECRET` < 32 chars
+- Returns validated `useSecureCookies` for buildAuth() to consume — single source of truth
+
+**Coverage:** 9/9 vitest tests covering accept + REFUSE paths across NODE_ENV × AUTH_URL × secret-length matrix.
+
+**dev-tools overlay:** sets `NODE_ENV: development` for api so HTTP AUTH_URL admits under slim. Production deploys DO NOT apply this overlay → guard stays active → HTTPS mandatory.
+
+**Outstanding:** rebuild blocked by transient `docker pull node:24-alpine` TLS handshake timeout (external network). Code lands at commit `c04613c`; container picks up new guard on next successful rebuild.
