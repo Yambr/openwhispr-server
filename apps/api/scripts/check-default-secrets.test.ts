@@ -2,7 +2,8 @@
 import { execFileSync } from "node:child_process";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 
 // DATA-06 defense-in-depth self-test: apps/api/scripts/check-default-secrets.ts
@@ -15,7 +16,13 @@ import { describe, expect, it } from "vitest";
 //   4. honor a DENY_LIST_PATH env override so operators can extend the
 //      deny-list without rebuilding the image
 
-const SCRIPT = join(process.cwd(), "apps", "api", "scripts", "check-default-secrets.ts");
+// Resolve the script path relative to THIS test file (not process.cwd()) —
+// vitest workspaces invoke per-package vitest from `apps/api`, so joining
+// against `process.cwd()` produced the duplicated path
+// `apps/api/apps/api/scripts/check-default-secrets.ts`. Bug previously
+// hidden under "Stage 4 fails" before Plan 51-26 inverted-mutation sweep.
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const SCRIPT = resolve(__dirname, "check-default-secrets.ts");
 
 const REQUIRED_KEYS = [
   "POSTGRES_OWNER_PASSWORD",

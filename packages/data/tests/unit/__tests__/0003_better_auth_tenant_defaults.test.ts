@@ -2,27 +2,40 @@
 // Phase 33 / Plan 33-05 — net-effect replacement test for the historical
 // 0003 + 0018 + 0020 migration trio.
 //
-// The original 5 cases in this file (1 rolconfig assertion + 4 INSERT-
-// default-tenant assertions) were written under the Phase 02.5
-// FAIL-OPEN posture: they verified that migration 0003 bound
-// `app.tenant_id` to the placeholder default tenant at the role level
-// AND added GUC-bound column DEFAULTs on `users` / `sessions` /
-// `account` / `verification`. Phase 32 (migration 0018) EXPLICITLY
-// reverses both: rolconfig is RESET; column DEFAULTs are DROPPED; RLS
-// policy bodies rewritten to NULLIF form for fail-closed semantics
-// (Phase 32 32-SUMMARY.md). Phase 33 (migration 0020) further drops the
-// 8 plaintext credential columns those tests' INSERTs depended on
-// (account.password / sessions.token are now bytea-only) — the test
-// INSERTs would now fail with 42703 "column does not exist" before
-// reaching the GUC-default assertion they were trying to verify.
+// Plan 51-22/23 amendment — migrations 0024/0025 RESTORED a subset of
+// what 0018 + 0020 had dropped, scoped narrowly to make Better Auth's
+// drizzleAdapter introspection + `INSERT ... VALUES (default, ...)`
+// SQL-gen pattern work:
 //
-// Deleted per Phase 32 32-DEFERRED.md Category A (the 5-case set
-// explicitly named as obsolete + further-broken under Phase 33's
-// bytea schema) and Plan 33-05 Task 8.
+//   0024 restored:
+//     • `ALTER ROLE openwhispr_app SET app.tenant_id` (rolconfig bind)
+//     • per-column `SET DEFAULT current_setting('app.tenant_id', true)::uuid`
+//       on users / sessions / account / verification
 //
-// Net-effect replacement: a 3-introspection check confirming the
-// Phase 32 + 33 invariants that the historical tests were
-// inverse-asserting. Owning phase: Phase 33 (closing) / Plan 33-05.
+//   0025 restored as nullable, no-DEFAULT compat sentinels:
+//     • account.{password, access_token, refresh_token, id_token}
+//     • verification.value
+//     • sessions.{token, previous_token}
+//     (7 columns total — the 8th, oauth_state.code_verifier, STAYS DROPPED)
+//
+// What this 3-case suite now asserts (the FINAL post-amendment shape):
+//
+//   1. openwhispr_app rolconfig DOES carry `app.tenant_id=00000000-...`
+//      (Plan 51-22 / migration 0024).
+//
+//   2. Each of the 4 Better Auth tables HAS a column DEFAULT on
+//      tenant_id that resolves to `current_setting('app.tenant_id',
+//      true)::uuid` (Plan 51-22 / migration 0024).
+//
+//   3. EXACTLY 7 plaintext credential columns survive across the 4
+//      target tables (Plan 51-23 LENS_INTROSPECTION_COMPAT allowlist
+//      members). `oauth_state.code_verifier` is the lone plaintext
+//      target that REMAINS dropped (not in allowlist).
+//
+// Inverted-mutation validation: this test must STILL FAIL if a future
+// refactor (a) drops the rolconfig binding, (b) drops any of the 4
+// column DEFAULTs, (c) re-introduces `oauth_state.code_verifier`, or
+// (d) drops any of the 7 LENS_INTROSPECTION_COMPAT plaintext columns.
 
 import { Pool } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -38,21 +51,23 @@ afterAll(async () => {
   if (booted) await booted.stop();
 }, 60_000);
 
-describe("Phase 32 + 33 net effect — fail-closed RLS + envelope encryption", () => {
-  it("openwhispr_app role has NO rolconfig binding for app.tenant_id (Phase 32 / migration 0018)", async () => {
+describe("Plan 51-22/23 net effect — Better Auth-compatible single-tenant bridge", () => {
+  it("openwhispr_app role rolconfig pins app.tenant_id to the default-tenant UUID (Plan 51-22 / migration 0024)", async () => {
     const ownerPool = new Pool({ connectionString: booted.ownerUri, max: 1 });
     try {
       const r = await ownerPool.query<{ rolconfig: string[] | null }>(
         `SELECT rolconfig FROM pg_roles WHERE rolname = 'openwhispr_app'`,
       );
       const cfg = r.rows[0]?.rolconfig ?? [];
-      expect(cfg.some((entry) => entry.startsWith("app.tenant_id="))).toBe(false);
+      const bindings = cfg.filter((entry) => entry.startsWith("app.tenant_id="));
+      expect(bindings).toHaveLength(1);
+      expect(bindings[0]).toBe("app.tenant_id=00000000-0000-0000-0000-000000000000");
     } finally {
       await ownerPool.end();
     }
   });
 
-  it("Better Auth tables have NO column DEFAULT on tenant_id (Phase 32 / migration 0018)", async () => {
+  it("Better Auth tables HAVE a column DEFAULT resolving to current_setting('app.tenant_id', true)::uuid (Plan 51-22 / migration 0024)", async () => {
     const ownerPool = new Pool({ connectionString: booted.ownerUri, max: 1 });
     try {
       const r = await ownerPool.query<{ table_name: string; column_default: string | null }>(
@@ -64,14 +79,16 @@ describe("Phase 32 + 33 net effect — fail-closed RLS + envelope encryption", (
       );
       expect(r.rows).toHaveLength(4);
       for (const row of r.rows) {
-        expect(row.column_default).toBeNull();
+        expect(row.column_default, `${row.table_name}.tenant_id default`).toBeTruthy();
+        expect(row.column_default ?? "").toMatch(/current_setting\(['"]app\.tenant_id['"]/i);
+        expect(row.column_default ?? "").toMatch(/::uuid/i);
       }
     } finally {
       await ownerPool.end();
     }
   });
 
-  it("credential columns are bytea-only — plaintext access_token / password / token / value / code_verifier are gone (Phase 33 / migration 0020)", async () => {
+  it("EXACTLY the 7 LENS_INTROSPECTION_COMPAT plaintext columns survive; oauth_state.code_verifier remains dropped (Plan 51-23 / migration 0025)", async () => {
     const ownerPool = new Pool({ connectionString: booted.ownerUri, max: 1 });
     try {
       const r = await ownerPool.query<{ count: string }>(
@@ -85,8 +102,19 @@ describe("Phase 32 + 33 net effect — fail-closed RLS + envelope encryption", (
               OR (table_name='oauth_state' AND column_name='code_verifier')
             )`,
       );
-      // All 8 plaintext columns dropped — count must be 0.
-      expect(r.rows[0]!.count).toBe("0");
+      // 7 LENS_INTROSPECTION_COMPAT columns coexist with their sidecars;
+      // oauth_state.code_verifier (the 8th) stays dropped — total 7.
+      expect(r.rows[0]!.count).toBe("7");
+
+      // Defence-in-depth: assert oauth_state.code_verifier is the
+      // specific drop (not some other combination of 7).
+      const dropped = await ownerPool.query<{ count: string }>(
+        `SELECT count(*)::text AS count
+           FROM information_schema.columns
+          WHERE table_schema='public'
+            AND table_name='oauth_state' AND column_name='code_verifier'`,
+      );
+      expect(dropped.rows[0]!.count).toBe("0");
     } finally {
       await ownerPool.end();
     }
