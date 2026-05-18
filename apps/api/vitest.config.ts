@@ -23,6 +23,11 @@ export default mergeConfig(
   rootConfig,
   defineConfig({
     test: {
+      // BUG-vitest-workspace-load — explicit project name so `pnpm test`
+      // from this package (`pnpm exec vitest run --project=api`) can
+      // filter to ONLY this project's tests instead of all workspace
+      // projects inherited from the root config's `projects:` array.
+      name: "api",
       // Phase 13 / Plan 01 / Task 02 — install SIGINT/SIGTERM handlers that
       // prune leaked testcontainers when a vitest run is interrupted. See
       // tools/global-vitest-teardown.ts and `.planning/deferred-items.md §1`.

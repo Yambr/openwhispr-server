@@ -20,6 +20,11 @@ export default mergeConfig(
   rootConfig,
   defineConfig({
     test: {
+      // BUG-vitest-workspace-load — explicit project name so `pnpm test`
+      // from this package can filter to ONLY this project's tests via
+      // `--project=worker`, not all workspace projects inherited from
+      // the root config's `projects:` array.
+      name: "worker",
       // D-08 (Phase 18.1.1 / Plan 03) — share the testcontainer-reaper
       // SIGINT/SIGTERM hook with apps/api + packages/data so an interrupted
       // worker test run prunes orphan postgres containers identically.

@@ -12,7 +12,7 @@
     "./seed/conformance": "./src/seed/conformance.ts"
   },
   "scripts": {
-    "test": "vitest run",
+    "test": "vitest run --project=data",
     "build": "tsup",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "migrate": "tsx src/migrate.ts",
