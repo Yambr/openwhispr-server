@@ -810,6 +810,50 @@ export async function phase6BringStackUpScaled(opts: {
   // The non-scaled `phase6BringStackUp` already takes this posture
   // via testcontainers' per-container wait strategy; we mirror it for
   // the shell-driven scaled path.
+  // Plan 51-25 — pre-bring up the dependency tree (everything except
+  // api/worker/web/seed) so litellm reaches healthy BEFORE the scale-up
+  // step requests 2 api replicas in parallel. Without this, docker
+  // compose v2's default dep-wait window (~150s) trips on the litellm
+  // prisma migrate when host CPU is under contention from the scaled
+  // api boots happening simultaneously.
+  const depUpCode = await runCmd(
+    "docker",
+    [
+      "compose",
+      "-p",
+      projectName,
+      ...fileArgs,
+      "--profile",
+      "default",
+      "up",
+      "-d",
+      "--no-build",
+      "--pull",
+      "never",
+      "--wait",
+      "--wait-timeout",
+      "900",
+      "postgres",
+      "valkey",
+      "migrate",
+      "litellm",
+      "traefik",
+    ],
+    { env: { ...HERMETIC_ENV } },
+  );
+  if (depUpCode !== 0) {
+    await runCmd(
+      "docker",
+      ["compose", "-p", projectName, ...fileArgs, "down", "-v", "--remove-orphans"],
+      { quiet: true },
+    ).catch(() => {});
+    throw new Error(
+      `phase6BringStackUpScaled: dependency \`docker compose up\` exit=${depUpCode}; \`docker compose ps\` for triage`,
+    );
+  }
+
+  // Now bring up the api/worker tier scaled. litellm is already healthy
+  // so compose's dependency wait is a no-op.
   const upCode = await runCmd(
     "docker",
     [
@@ -826,14 +870,6 @@ export async function phase6BringStackUpScaled(opts: {
       "never",
       "--scale",
       `api=${opts.apiScale}`,
-      // Plan 51-25 — give compose's depends_on resolver enough budget
-      // for litellm's 600s start_period under Mac host contention.
-      // Default compose dep-wait is ~150s; bumping to 15min lets the
-      // prisma migrate finish before compose considers the dependency
-      // failed.
-      "--wait",
-      "--wait-timeout",
-      "900",
     ],
     { env: { ...HERMETIC_ENV } },
   );
