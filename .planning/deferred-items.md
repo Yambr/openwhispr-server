@@ -1073,3 +1073,22 @@ Net **+41 specs** unblocked through infrastructure fixes. 25 remaining = ~10 RSC
 - Boot security guard (`validateAuthBoot`) operational
 
 Phase 53 declared COMPLETE. Remaining 22 fail = Phase 54+ scope (RSC architectural decision + product bug intake).
+
+## 2026-05-18 — Plan 53-30: u-setup spec strict-mode fix + React #418 found
+
+**Closed (spec-side):** u-setup spec `getByText` matched both `<h2>` and Card title — replaced with role-scoped `getByRole("heading", { level: 2 })`. Spec now passes without strict diagnostics. With `PHASE53_STRICT_DIAGNOSTICS=1` still fails on captured pageerror.
+
+### BUG-53-30 — React #418 hydration mismatch on /setup
+
+**Symptom:** Every page load of /setup logs React error #418 ("Hydration failed because the server rendered text didn't match the client") to browser console.
+
+**Likely cause:** SSR vs client locale divergence. The /setup RSC reads `x-locale` from headers() (Edge middleware-resolved value). The Client `<SetupForm>` mounts and i18next re-reads locale from cookie / browser. If the two differ even briefly during hydration, React panics.
+
+**Where to look:**
+- `apps/web/src/components/screens/auth/SetupForm.tsx` (Client component)
+- `apps/web/src/middleware.ts` (locale resolution)
+- `apps/web/src/lib/i18n-client.tsx` (client provider)
+
+**Impact:** Visual flash + every page hydration burns extra render cycle. Not user-blocking but logged on every visit. Real prod bug surfaced by Phase 53 strict-diagnostics — exactly the kind of issue Phase 53 was built for.
+
+**Tracking:** Phase 54+ targeted plan.
