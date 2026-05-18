@@ -118,7 +118,12 @@
   --color-secondary: #f4f4f5;
   --color-secondary-foreground: #18181b;
   --color-muted: #f4f4f5;
-  --color-muted-foreground: #71717a;
+  /* Phase 53 / Plan 53-18 — bumped from zinc-500 #71717a (4.39:1, fails
+   * WCAG 2 AA min 4.5:1 on #f4f4f5 bg-muted) to zinc-600 #52525b which
+   * gives ~7:1 contrast and clears AAA too. Caught by axe e2e on
+   * /sign-in, /sign-up, /verify-email — every AuthShell <aside> rendered
+   * `text-muted-foreground` on `bg-muted`. */
+  --color-muted-foreground: #52525b;
   /* --color-accent already declared in the Appendix A block (line 23) */
   --color-accent-foreground: #ffffff;
   /* Phase 07.1 / Plan 13.2 — WCAG 2.2 AA contrast on `text-destructive`.
