@@ -1018,3 +1018,33 @@ Sweep delta: 66/27 → 67/26 (commit pending).
 - Could be: server-side fetch to internalApiUrl() failing silently inside RSC, OR streaming pipe broken under slim topology, OR the cookies-from-headers() pass-through breaks when there is no session cookie.
 - **Repro:** curl http://localhost:3000/setup with no Authorization header. Expected: HTML containing AuthShell + form. Actual: empty body.
 - Tracking: Plan 54+ investigation. u-setup axe spec WILL fail until fixed.
+
+## 2026-05-18 — Plan 53-28: /setup helper + a2/a3 admin storageState
+
+**Closed:**
+- /setup page swapped resolveSetupStateUrl() for the canonical internalApiUrl() helper (commit 42438c1). Prior code returned a relative `/api/setup-state` URL when web container env didn't have OPENWHISPR_API_URL (it didn't — that var lives on api). RSC fetch with relative URL throws → "initializing" error copy rendered on every visit. **Real production bug — operators could not complete first-time setup under slim.** Awaiting docker registry to rebuild binary.
+- a2-observability + a3-config specs now import from fixtures/auth.js so admin storageState rides along (commit f045a91). Without this they hit /admin/* anonymously → 403 fallback.
+
+### BUG-53-29 — a2/a3 "success" specs require NEXT_PUBLIC_GRAFANA_BASE_URL
+Specs expect 6 dashboard cards + Grafana button to render. Component renders "Grafana endpoint not configured" alert when the env var is missing. Slim base does NOT bundle the observability overlay so the var is always empty.
+
+**Fix candidates:**
+- (a) Skip these tests under slim via `test.skip(!process.env.NEXT_PUBLIC_GRAFANA_BASE_URL, ...)`.
+- (b) Move them to the observability overlay's own e2e config.
+- (c) Add NEXT_PUBLIC_GRAFANA_BASE_URL=http://localhost:3001 placeholder to slim's dev-tools overlay so the cards render even if Grafana isn't actually up.
+
+Probably (a) — these are observability-specific specs that don't make sense on the slim quickstart.
+
+### Sweep progression (cumulative):
+- 53-15 (axe ESM): 27/66
+- 53-17 (auto-allowlist): 31/62
+- 53-19 (workers=2): 46/47
+- 53-18 (color-contrast): 49/44
+- 53-21 (cookie scope): 51/42
+- 53-23 (catch-all rewrite): 55/38
+- 53-25 (admin role): 63/30
+- 53-26 (workers=1): 66/27
+- 53-27 (u2 dup-email policy): flake band
+- **53-28 (a2/a3 + /setup): 68/25**
+
+Net **+41 specs** unblocked through infrastructure fixes. 25 remaining = ~10 RSC prefetch wall (BUG-53-27) + ~3 observability env scoping (BUG-53-29) + ~2 /setup empty body cascade (waits on rebuild) + ~10 mixed product UI bugs.
