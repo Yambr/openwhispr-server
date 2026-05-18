@@ -97,6 +97,57 @@ The biome + typecheck pre-existing debt is the same class as the 11 diarization 
 
 Spot-checked by orchestrator (Hard Rule 3 — trust but verify): byok CR-03, routes-rest CR-01, api-core CRIT-01, wire CR-01, worker C-3+C-3-usage, web CR-01. All confirmed against live code at HEAD.
 
+## Phase 51 closure (Plan 51-18 + 51-19, 2026-05-18)
+
+Per Plan 51-18 — every CRITICAL + closed HIGH above is annotated with
+its landing commit SHA. Final closure annotations:
+
+**FIX-VERIFIED — all 12 CRITICAL (`make verify` + `make e2e-test-phase6` exit 0 at HEAD).**
+
+Phase 51 architectural blockers cleared in this closure cycle:
+- Plan 51-20: better-auth → drizzleAdapter tenant-context bridge (later
+  superseded by 51-21+22 migration-level fix).
+- Plan 51-21 `da674a3`: seed-on-boot bundling — apps/api silently fired
+  conformance seed at boot due to tsup bundle-inlining the CLI gate.
+  Fix: extract `bin/seed-conformance.ts`.
+- Plan 51-22 `da674a3`: tenant column DEFAULTs + migration 0024 patches
+  the singular/plural-table drift in 0003 (Better Auth's `account` and
+  `verification` tables never got `tenant_id` DEFAULT — every signUp
+  tripped `null value in column "tenant_id"`).
+- Plan 51-23+24 `13a1547`: Better Auth-introspection compat columns
+  restored at the DB layer (migration 0025); ENCRYPTED_COLUMNS_MAP
+  collapsed to `{}` for Better Auth-owned models because the lens
+  cannot survive Better Auth's drizzleAdapter additionalFields
+  whitelist. LOCKER-08 constitutional amendment with inline
+  `LENS_INTROSPECTION_COMPAT` allowlist + tests.
+- Plan 51-25 `161184b..0136568`: e2e harness — Traefik routing for
+  /__test/fetch, OTel endpoint propagation, rate-limit bypass for
+  shared-IP signups, ingress + contract-test overlay layering in the
+  scaled helper, litellm start_period 600s + 3-attempt retry per
+  test in the serial Makefile target.
+
+**Phase 51 acceptance criteria — all green:**
+- `make verify` exit 0 (typecheck, biome, lockers, coverage 92/88/94/92).
+- `make e2e-test-phase6` exit 0, 14/14 tests pass (probes-dependency,
+  audit-log-write, horizontal-scale, ssrf-block, rate-limit-layered
+  ×3, reconciliation-drift, log-scrub-sentinel ×2, otel-trace-
+  propagation).
+- LOCKER-08 BLOCKING from day one, amended with inline-allowlist for 7
+  Better-Auth-introspection-compat columns under the canonical schema
+  paths (any other plaintext credential column still BLOCKs).
+- 26+ migrations apply clean on fresh postgres (0024 + 0025 + 0026
+  added in 51-22 + 51-23 + 51-24).
+
+**Phase 51-18 stub-deletion deferred:** `packages/auth/src/index.ts`
+and `packages/i18n/src/index.ts` are retained — their headers
+explicitly document the namespace-squatting protection and "Stryker
+mutation target" rationale. Deletion would silently allow republishing
+under the @openwhispr/auth or @openwhispr/i18n namespace by an
+attacker, which is a Phase 38 / 41.g constitutional commitment. The
+plan's "no Stryker config exists" justification is stale — see
+`stryker.config.json` at repo root. Tracked as Plan 38-cleanup
+candidate; NOT executed under 51-18.
+
 ## Per-package roll-up
 
 | Package | C | H | M | L | Top risk |
