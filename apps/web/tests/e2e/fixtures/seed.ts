@@ -26,9 +26,15 @@
 //   seeds one of each resource, then runs clearAllData() and exits 0.
 import type { APIRequestContext, BrowserContext } from "@playwright/test";
 import { request as playwrightRequest } from "@playwright/test";
+// Phase 53 / Plan 53-14 — universal topology helper. Replaces the
+// previous `BASE_URL` env-string with a typed origins object derived
+// from the active Playwright project's metadata (--project=traefik|slim).
+// `BASE_URL` env still honored as a backstop for legacy callers /
+// global-setup which runs before TestInfo is bound.
+import { getProcessOrigins } from "../support/topology.js";
 import { FIXTURE_PASSWORD, fixtureEmail, provisionTestUser } from "./auth.js";
 
-const BASE_URL = process.env.BASE_URL ?? "https://api.localhost";
+const BASE_URL = process.env.BASE_URL ?? getProcessOrigins().apiOrigin;
 
 export interface SeedFolderArgs {
   count?: number;

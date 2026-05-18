@@ -9,29 +9,22 @@
 //   4. Captures the browser console and fails on any React hydration
 //      mismatch error.
 import { expect, test } from "./_diagnostics-fixture.js";
-
-// Phase 53 / Plan 53-11 — derive cookie domain from WEB_ORIGIN so the
-// spec runs against both Traefik host-split (https://web.localhost)
-// and slim-core (http://localhost:3000) without code changes. Default
-// matches the host-split topology that pre-Phase-53 specs assumed.
-const COOKIE_DOMAIN = (() => {
-  const origin = process.env.WEB_ORIGIN ?? "https://api.localhost";
-  try {
-    return new URL(origin).hostname;
-  } catch {
-    return "api.localhost";
-  }
-})();
+import { getOrigins } from "./support/topology.js";
 
 test.describe("i18n — Russian rendering", () => {
-  test("renders /sign-in in Russian with no hydration mismatch", async ({ context, page }) => {
-    // Inject NEXT_LOCALE cookie before the first navigation so middleware
-    // resolves x-locale=ru on the initial request.
+  test("renders /sign-in in Russian with no hydration mismatch", async ({
+    context,
+    page,
+  }, testInfo) => {
+    // Phase 53 / Plan 53-14 — topology-aware cookie domain (slim →
+    // "localhost", traefik → "api.localhost"). Inject NEXT_LOCALE
+    // cookie before the first navigation so middleware resolves
+    // x-locale=ru on the initial request.
     await context.addCookies([
       {
         name: "NEXT_LOCALE",
         value: "ru",
-        domain: COOKIE_DOMAIN,
+        domain: getOrigins(testInfo).cookieDomain,
         path: "/",
         sameSite: "Lax",
       },
