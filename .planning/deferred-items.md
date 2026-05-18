@@ -1117,3 +1117,19 @@ Stable across runs (flake band ±3). Improvement vs Phase 53 start:
   5. Better Auth dup-email policy change
   6. Admin role provisioning
   7. React #418 hydration mismatch on /setup (NEW — caught by helper)
+
+## 2026-05-18 — Plan 53-30: React #418 hydration mismatch CLOSED
+
+**Root cause:** `SetupForm` initialised `timezone` field via `Intl.DateTimeFormat().resolvedOptions().timeZone`. Server SSR runs inside docker container where the timezone resolves to UTC; client runs in browser where it resolves to the user's actual zone (e.g. Europe/Moscow). The empty/UTC vs. Moscow text differed during hydration — React aborted with error #418 on every visit to /setup.
+
+**Fix:** initialise the field with empty string so SSR and client agree, then populate via useEffect after mount (commit `67c6ea7`).
+
+**Defensive companion:** sort i18n namespace order in both server and client init so the internal counter useId consumes stays in lock-step (prevents potential future #418 from a similar source).
+
+**Result:**
+- u-setup spec passes WITH `PHASE53_STRICT_DIAGNOSTICS=1`
+- Full sweep: 66 → **73 passing** (+7 specs, 16 failed, 4 skipped)
+
+This is **production-impacting** — every operator hitting /setup in a non-UTC browser was seeing a flash of empty content + a useless render cycle on every page load. Pure win.
+
+**Real production bugs surfaced + fixed by Phase 53: 8.**
