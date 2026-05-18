@@ -1202,3 +1202,32 @@ Binary search shows the cascade is NOT from a single neighbour spec (u8+u11, u1+
 ### Phase 53 specs unblocked: 33 → 60 passing (+27 absolute, of which +33 specs moved from failing→passing/skipped counted differently)
 ### Phase 53 specs properly categorized as skipped (not failed): 24
 ### Phase 53 specs still failing (test-isolation cascade, bounded scope): 9
+
+## 2026-05-18 — Plan 53-34: 99-cross-screen-smoke afterEach storage refresh
+
+**Closed (partial):** the spec's final sign-out step revoked alice's Better Auth session row, orphaning the per-worker storageState file. Added afterEach hook that signs back in via a fresh APIRequestContext and overwrites the storageState file (commit `7c452d7`).
+
+**Status:** code lands but Playwright BrowserContext reads storageState at creation time, and the order in which subsequent specs open their browser contexts vs. when this afterEach writes the file races in full sweep — the 8 u11/u12/u13 cascade failures remain bounded but not eliminated.
+
+### BUG-53-34 — Stale storageState across spec files under one worker
+
+Playwright reuses the per-worker storage state file across all spec files in a single sweep. When one spec's afterEach overwrites the file, subsequent specs MAY or MAY NOT pick it up depending on context creation ordering.
+
+**Real fix candidates (Phase 54+):**
+- (a) Use UNIQUE fixture user per-describe block (alice+<hash>) so 99-cross-screen-smoke's sign-out only affects its own user.
+- (b) Replace the actual sign-out call in 99-* with a "navigate to /sign-out URL but cancel before the cookie revoke completes" — preserves the cross-screen contract being tested while leaving the session intact.
+- (c) Use Playwright's `dependencies` to force re-init of storageState after the 99 spec.
+
+(a) is the most-deterministic, fully isolated approach. ~50 specs share alice+0 today; per-describe alice+<sha-of-describe-title> would be O(50) one-time provision cost with permanent isolation gain.
+
+### Phase 53 ABSOLUTE FINAL (53-34 closure):
+- **slim sweep: 60 passed / 9 failed / 24 skipped**
+- 9 fail = stable bounded cascade from 99-sign-out → storageState orphan
+- Net gain from start of Phase 53: +33 passing, +24 properly skipped, -57 no longer failing
+- Production bugs surfaced + fixed: 9
+- Plans landed in session: 34
+
+Phase 53 OFFICIALLY CLOSED at 60/9/24. Phase 54+ owns:
+1. Server-side fetch intercept (BUG-53-27) — re-enables 24 skipped specs
+2. Per-describe fixture user (BUG-53-34) — closes the 9 cascade
+3. /setup React #418 deeper SSR investigation if it resurfaces
