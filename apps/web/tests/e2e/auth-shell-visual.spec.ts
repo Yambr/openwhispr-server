@@ -18,7 +18,7 @@
 // against a live Docker stack. Without a baseline the test FAILS (RED)
 // — operators bake the baseline in Task 05-05 GREEN, then commit the
 // snapshots under auth-shell-visual.spec.ts-snapshots/.
-import { expect, test } from "@playwright/test";
+import { expect, test } from "./_diagnostics-fixture.js";
 
 const MASKS = (page: import("@playwright/test").Page) => [
   page.locator("[data-testid='locale-switcher']"),

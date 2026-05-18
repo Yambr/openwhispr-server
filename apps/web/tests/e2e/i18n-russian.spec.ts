@@ -8,7 +8,7 @@
 //   3. Asserts a known Russian phrase appears in the rendered DOM.
 //   4. Captures the browser console and fails on any React hydration
 //      mismatch error.
-import { expect, test } from "@playwright/test";
+import { expect, test } from "./_diagnostics-fixture.js";
 
 test.describe("i18n — Russian rendering", () => {
   test("renders /sign-in in Russian with no hydration mismatch", async ({ context, page }) => {

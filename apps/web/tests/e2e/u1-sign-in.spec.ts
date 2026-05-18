@@ -4,7 +4,7 @@
 // D-TEST-1 state matrix (loading, empty, error, success) + axe-core scan.
 // D-TEST-3: route() ONLY for loading + error; success + empty hit real
 // Better Auth via the seeded fixture user (apps/web/tests/e2e/fixtures/auth.ts).
-import { expect, test } from "@playwright/test";
+import { expect, test } from "./_diagnostics-fixture.js";
 import { FIXTURE_PASSWORD, fixtureEmail } from "./fixtures/auth.js";
 import { runAxe } from "./fixtures/axe.js";
 

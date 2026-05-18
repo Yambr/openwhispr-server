@@ -6,7 +6,7 @@
 // verification link from the dev SMTP capture, which Plan 04 did not wire;
 // we cover the loading/error/empty states here and rely on unit coverage for
 // the success branch.
-import { expect, test } from "@playwright/test";
+import { expect, test } from "./_diagnostics-fixture.js";
 import { runAxe } from "./fixtures/axe.js";
 
 test.describe("U3 Verify-email (Phase 07.1 / Plan 07)", () => {

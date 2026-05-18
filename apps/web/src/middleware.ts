@@ -51,9 +51,19 @@ import { type NextRequest, NextResponse } from "next/server";
  *      your-application/configuring/content-security-policy).
  */
 function buildCsp(nonce: string): string {
+  // Phase 53 / Plan 53-08 — `'wasm-unsafe-eval'` admits the
+  // `Function(...)` constructor calls Next.js 15's compiled chunks
+  // emit (amphtml-validator, lodash internals, pretty-format, etc.
+  // — bundled deps that pre-date the Function()-free era). Without
+  // it the browser blocks the chunk and the page renders blank.
+  // `'wasm-unsafe-eval'` is the narrowest CSP keyword that admits
+  // WASM-compatible Function construction without opening up
+  // `eval()` (the broader `'unsafe-eval'`). Verified via
+  // `grep "return Function(" node_modules/.pnpm/next@*` —
+  // every occurrence is in compiled-dep code, not user code.
   return (
     `default-src 'self'; ` +
-    `script-src 'self' 'nonce-${nonce}' 'strict-dynamic'; ` +
+    `script-src 'self' 'nonce-${nonce}' 'strict-dynamic' 'wasm-unsafe-eval'; ` +
     `style-src 'self' 'unsafe-inline'; ` +
     `img-src 'self' data: blob:; ` +
     `font-src 'self'; ` +

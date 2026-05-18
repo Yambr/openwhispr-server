@@ -9,7 +9,7 @@
 // Endpoint constraints (D-S1): only existing GET /api/stt-config and
 // GET /api/note-recording-config are used by this screen. We mutate
 // responses via `page.route(...)` to exercise loading / error states.
-import { expect, test } from "@playwright/test";
+import { expect, test } from "./_diagnostics-fixture.js";
 import { runAxe } from "./fixtures/axe";
 
 const ADMIN_BASIC_USER = "admin";

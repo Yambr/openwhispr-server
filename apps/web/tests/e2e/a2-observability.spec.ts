@@ -20,7 +20,7 @@
 //   - loading → N/A (no async fetch — explicitly called out as N/A by spec)
 //   - empty   → N/A (static list)
 //   - a11y    → axe scan
-import { expect, test } from "@playwright/test";
+import { expect, test } from "./_diagnostics-fixture.js";
 import { runAxe } from "./fixtures/axe";
 
 const ADMIN_BASIC_USER = "admin";

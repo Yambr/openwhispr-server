@@ -672,3 +672,56 @@ sentinel regression is the only outstanding gap.
 **Tracking phase:** `Phase 51.26` (proposed name: "LOCKER-08-amendment sentinel
 reconciliation") — awaits user `/gsd-discuss-phase 51.26` decision on
 posture (option a vs option b above).
+
+## 2026-05-18 — Phase 53 / Plan 53-03 sweep backlog — 8 e2e failures captured
+
+**Discovered:** 2026-05-18, `pnpm --filter @openwhispr/web exec playwright test --config=playwright.slim.config.ts`. Sweep ran 5 spec files against slim-core topology (http://localhost:3000 + http://localhost:4000, no Traefik). Helper attached via `_diagnostics-fixture.ts` + auth fixture auto:true block. Stats: 3 passed / 8 unexpected / 0 flaky / 56.8s duration.
+
+**Failures captured (each is a separate backlog item — Plan 53-08/09/10/...):**
+
+### BUG-53-A — `99-cross-screen-smoke.spec.ts` — exports-in-ESM-scope loader error
+Test: `sign-in → /app → notes → transcriptions → conversations → account → sign-out` 
+Error: `ReferenceError: exports is not defined in ES module scope`
+Likely cause: spec imports fixture that uses CJS-style `exports.foo = ...`; Playwright loader treats apps/web subtree as ESM via inherited `tsconfig.json`. Same family as the axe.ts ESM gap.
+Fix candidate: identify the offending CJS file, port to ESM `export const foo = ...`.
+
+### BUG-53-B — `auth-shell-visual.spec.ts` — missing baseline screenshots (×3)
+Tests: `sign-in / sign-up / verify-email error branch matches the AuthShell baseline`
+Error: `A snapshot doesn't exist at apps/web/tests/e2e/auth-shell-visual.spec.ts-snapshots/<name>-chromium-darwin.png, writing actual.`
+Likely cause: baselines were captured under Traefik topology (https://api.localhost); slim-core topology renders subtly differently → first slim-core run writes new baselines, second would compare. Expected behaviour, not a real bug.
+Fix candidate: regenerate baselines under slim-core OR exclude visual specs from slim-config sweep AND add a baseline-warmup step.
+
+### BUG-53-C — `u-setup.spec.ts` — setup wizard not rendered at root
+Test: `setup matches the AuthShell baseline`
+Error: `TimeoutError: locator.waitFor: Timeout 15000ms exceeded. waiting for getByText(/set up your openwhispr server/i) to be visible`
+Likely cause: `/setup` route gated by `setup_state` enum (Phase 12 ADMIN); spec assumes setup wizard appears at `/` but a fixture user is already provisioned in slim-core, so setup_state moved past 'pending'.
+Fix candidate: spec should hit `/setup` directly OR reset `setup_state` in beforeEach.
+
+### BUG-53-D — `i18n-russian.spec.ts` — html lang attribute missing
+Test: `renders /sign-in in Russian with no hydration mismatch`
+Error: `expect(locator('html')).toHaveAttribute('lang', 'ru'). Expected: <empty>`
+Likely cause: i18n middleware not setting `lang` attribute on the HTML root in slim-core. Maybe the `x-locale` header forwarding only works through Traefik forwarded-for headers.
+Fix candidate: investigate slim-core HTML root rendering; ensure layout.tsx pulls `x-locale` correctly even without Traefik.
+
+### BUG-53-E — `i18n-russian.spec.ts` — locale switcher persistence timeout
+Test: `language switcher persists locale across reload`
+Error: `Test timeout of 30000ms exceeded`
+Likely cause: locale switcher UI flow times out, possibly because the `/api/locale` rewrite is wired (Plan 53-06) but the POST response shape changed OR the cookie path is wrong.
+Fix candidate: trace the `/api/locale` flow in DevTools; check Set-Cookie domain.
+
+### BUG-53-F — `p53-signup-smoke.spec.ts` — CSP `eval` violation
+Test: `sign-up form submit returns 200 and surfaces 'check your email' block`
+Error: `[csp/error] CSP_VIOLATION blockedURI=eval violatedDirective=script-src sourceFile=…/_next/static/chunks/6616-*.js:62`
+Likely cause: Next.js chunk uses `eval()` blocked by `script-src 'self' 'nonce-…' 'strict-dynamic'` (Plan 53-07 only fixed inline-script nonce, not eval).
+Fix candidate: identify chunk 6616 source; either replace the eval-using dep OR add `'wasm-unsafe-eval'` to the CSP if canonical Next 15 output. Track as Plan 53-08.
+
+### BUG-53-G — `p53-signup-smoke.spec.ts` — RSC prefetch aborted
+Test: same as F (second captured entry)
+Error: `[network/error] GET /sign-in?_rsc=… FAILED: net::ERR_ABORTED`
+Likely cause: Next.js RSC pre-fetch on `/sign-in` aborted when sign-up success block triggers follow-up navigation. Likely benign (RSC abort on navigation is expected) but the diagnostics helper has no notion of "expected abort" yet.
+Fix candidate: helper allowlist entry `[/_rsc=.*FAILED: net::ERR_ABORTED/]` OR investigate the navigation sequencing. Track as Plan 53-09.
+
+### BUG-53-H — worker mailpit DNS spam
+**Container-log scan (separate from spec failures):** `worker` emits 6+ `getaddrinfo ENOTFOUND mailpit` errors per sign-up because slim-core base does not include the mailpit overlay. Fixed in this session by bringing up `compose/docker-compose.dev-tools.yml` mailpit overlay; longer-term fix is to make the slim-core default either bundle mailpit OR have the `EmailSender` gracefully detect the missing host (currently it only checks `SMTP_HOST` env presence, not DNS reachability).
+
+**All 8 items tracked as Plan 53-08..53-17 candidates.** Sentinel `p53-signup-smoke.spec.ts` deliberately stays RED until 53-08 + 53-09 land — that is the constitutional "catch latent bugs" outcome Phase 53 was opened for.
