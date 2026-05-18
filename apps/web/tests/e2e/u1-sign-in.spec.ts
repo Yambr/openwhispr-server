@@ -7,6 +7,7 @@
 import { expect, test } from "./_diagnostics-fixture.js";
 import { FIXTURE_PASSWORD, fixtureEmail } from "./fixtures/auth.js";
 import { runAxe } from "./fixtures/axe.js";
+import { allowDeliberateRouteStub } from "./support/browser-diagnostics.js";
 
 test.describe("U1 Sign-in (Phase 07.1 / Plan 07)", () => {
   test("empty state — form renders pristine with no error alert", async ({ page }) => {
@@ -36,6 +37,10 @@ test.describe("U1 Sign-in (Phase 07.1 / Plan 07)", () => {
   });
 
   test("error state — invalid credentials show the error Alert", async ({ page }) => {
+    // Phase 53 / Plan 53-16 — the route() stub returns 401 deliberately;
+    // PHASE53_STRICT_DIAGNOSTICS would otherwise flag the captured 401
+    // as a real browser bug. The 401 IS the test subject.
+    allowDeliberateRouteStub(page, /\/api\/auth\/sign-in\/email/, 401);
     // Use route() per D-TEST-3 — the alternative (sending bad creds to the
     // real backend) hits Better Auth's anti-abuse rate limiter on retries.
     await page.route("**/api/auth/sign-in/email", (route) =>
