@@ -777,6 +777,11 @@ export async function phase6BringStackUpScaled(opts: {
     "docker-compose.yml",
     "-f",
     "compose/docker-compose.ingress.yml",
+    // Plan 51-25 — the contract-test overlay defines the `seed`
+    // service the scaled helper invokes via `compose run --rm seed`
+    // when opts.seed is true. Without it `no such service: seed`.
+    "-f",
+    "compose/docker-compose.contract-test.yml",
   ];
   for (const f of opts.overrideComposeFiles) {
     fileArgs.push("-f", f);
