@@ -42,6 +42,8 @@ packages/data/src/schema/tenants.ts:4  # canonical-default-tenant
 apps/api/src/auth.ts:363  # issue-31-debt-hardcode-localhost-3000 (33-04 +73; 41-e +15; 52-05 +21; 51-20 +12; 51-22 -12; 51-24 +3; 53-22 +4 import)
 apps/api/src/routes/test-only.ts:181  # issue-31-debt-hardcode-localhost-3000
 apps/api/src/routes/better-auth-handler.ts:49  # comment-only-narrative-issue-31-fp (Plan 51-10 fix rationale comment references the old localhost fallback)
+apps/web/src/app/(public)/setup/page.tsx:35  # 53-28-comment-narrative-fp — JSDoc references http://api:3000 fallback resolved by internalApiUrl()
+apps/web/src/app/(public)/setup/page.tsx:40  # 53-28-comment-narrative-fp — JSDoc references INTERNAL_API_URL=http://api:3000 contract
 apps/api/src/routes/better-auth-handler.ts:79  # issue-31-debt-hardcode-localhost
 apps/api/src/index.ts:696  # issue-31-debt-hardcode-litellm-port-4000 (33-04 +9; 34 -1; 51-02 +5; 51-03 +10; 51-13b +10; 52-09 +1; 51-25 +1)
 
