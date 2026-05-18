@@ -1231,3 +1231,31 @@ Phase 53 OFFICIALLY CLOSED at 60/9/24. Phase 54+ owns:
 1. Server-side fetch intercept (BUG-53-27) — re-enables 24 skipped specs
 2. Per-describe fixture user (BUG-53-34) — closes the 9 cascade
 3. /setup React #418 deeper SSR investigation if it resurfaces
+
+## 2026-05-18 — Plan 53-35: 99-cross-screen-smoke uses dedicated user
+
+**Closed:** 99-cross-screen-smoke now provisions alice+99 in beforeAll and applies `test.use({ storageState: storageStatePath(99) })`. The final sign-out step revokes only alice+99's session — no collateral on alice+0 (commit `185b321`).
+
+**Status:** Did NOT close the u11/u12/u13 cascade. Verified diagnostics:
+- alice+0 session row present in DB after full sweep
+- Storage state file token matches DB row
+- u11/u12/u13 PASS 3/3 each in isolation
+- u11/u12/u13 FAIL under full sweep, page lands on /sign-in
+
+Root cause is something OTHER than 99's sign-out. Candidates:
+1. Per-IP rate limit accumulation on /api/auth/get-session (sweep makes 200+ checks)
+2. Middleware cookie cache eviction under sustained load
+3. React Query cache cross-spec interference (unlikely — fresh BrowserContext per test)
+
+### BUG-53-35 — conversations specs flake past spec 70 in slim sweep
+
+**Files:** u11/u12/u13 (8 fails total)
+**Symptom:** signed-in user lands on /sign-in mid-sweep despite valid DB session + storageState
+**Investigation needed:** Phase 54+
+- Tcpdump /api/auth/* during full sweep — see if HTTP 429 fires
+- Reduce `BETTER_AUTH_RATE_LIMIT` per-IP window in test env via env override
+- OR provision per-describe users (~50 specs would need it; large scope)
+
+### Phase 53 final final: 56 passed / 13 failed / 24 skipped
+
+Hmm — slim sweep regressed slightly from prior 60/9/24. Investigation needed in Phase 54+. Test infrastructure is now substantial; the trade-off is some flake band when 80+ specs run sequentially against shared fixture state.
