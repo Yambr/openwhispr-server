@@ -147,7 +147,15 @@ async function patchEmailVerifiedExternal(email: string): Promise<void> {
 
 async function patchEmailVerified(email: string): Promise<void> {
   // openwhispr_owner role bypasses RLS for the UPDATE.
-  const sql = `UPDATE users SET email_verified=true, email_verified_at=now() WHERE email='${email.replace(/'/g, "''")}'`;
+  // Phase 53 / Plan 53-25 — also flip role='admin' so /admin/* specs
+  // (a2-observability, a3-config) clear the 403 gate. Under Traefik,
+  // admin surfaces are double-gated by basic-auth + the role check;
+  // slim relies on the role check alone, so the fixture user must
+  // be promoted. Both updates land in a single SQL statement to
+  // keep the docker exec round-trip count constant.
+  const sql =
+    `UPDATE users SET email_verified=true, email_verified_at=now(), role='admin' ` +
+    `WHERE email='${email.replace(/'/g, "''")}'`;
   await execFileAsync("docker", [
     "compose",
     "exec",
