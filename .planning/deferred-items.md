@@ -982,3 +982,25 @@ This is **flake from parallel state interference**, not bugs in specs or helpers
 **Net: +36 specs unblocked through infrastructure fixes.**
 
 Remaining 30 = ~10 parallel-flake + ~10 RSC loading race + ~5 dup-email policy + ~5 misc UI. Phase 54+ scope.
+
+## 2026-05-18 — Plan 53-26 closure: workers=1 + RSC prefetch wall
+
+Closed: slim project workers=1 — eliminates parallel-flake (~3 specs). Sweep 63/30 → **66/27**.
+
+### BUG-53-27 — loading/error state specs broken by RSC prefetch (architectural)
+
+**Affected specs (~15):** u4-usage, u6-trx-list, u7-trx-detail, u8-notes-list, u9-note-detail, u10-notes-search, u11-conv-list, u12-conv-detail, u13-conv-search, a2-observability, a3-config "loading state — Skeleton..." + "error state — Alert..." tests.
+
+**Why:** five RSC pages (apps/web/src/app/(auth)/app/{,notes,transcriptions,conversations,conversations/[id]}/page.tsx) prefetch their data via `internalApiUrl()` server-side, then dehydrate the query cache into HydrationBoundary. Client renders with the prefetched data already in cache — skeleton **never** shows, error fallback **never** fires (RSC falls back to empty array on non-200 instead of propagating).
+
+`page.route()` intercepts only browser-side network. Server-side INTERNAL_API_URL fetch (api:3000 inside compose) is invisible to Playwright.
+
+**Why not just re-add PLAYWRIGHT_DISABLE_SSR_PREFETCH:** Phase 41-c (`9e6afeb`) deleted it as a CLAUDE.md Hard-Rule #1 violation (no test-only env branches in prod RSC). Re-adding regresses that closure.
+
+**Real fix paths (Phase 54+):**
+- (a) Playwright `--proxy-server` pointing at a node-side proxy that re-routes api:3000 traffic. Heavy infra.
+- (b) MSW node-server hooked into apps/web's Next.js boot during e2e — intercepts server-side fetch without env branches.
+- (c) Rewrite specs to assert against the **error-fallback rendering** (empty list + retry button on 500), not the transient skeleton. Smaller scope, but specs lose state-matrix coverage.
+- (d) Make the RSC prefetch defer to client when a `Cookie: e2e-test=1` is present (still a env-of-sorts but cookie-scoped, not process-wide).
+
+User decision needed on which path. Defer Phase 54.
