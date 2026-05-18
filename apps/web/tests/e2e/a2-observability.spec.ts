@@ -20,7 +20,13 @@
 //   - loading → N/A (no async fetch — explicitly called out as N/A by spec)
 //   - empty   → N/A (static list)
 //   - a11y    → axe scan
-import { expect, test } from "./_diagnostics-fixture.js";
+// Phase 53 / Plan 53-28 — import from fixtures/auth.js (which now also
+// auto-attaches the diagnostics helper, Plan 53-03) so the spec inherits
+// the worker-scoped admin storageState. Pre-fix the spec imported the
+// bare _diagnostics-fixture which leaves storageState empty → /admin/*
+// renders the 403 fallback under slim (basic-auth absent; the role gate
+// is the only check). Closes 4 a2-* sweep failures.
+import { expect, test } from "./fixtures/auth.js";
 import { runAxe } from "./fixtures/axe";
 
 const ADMIN_BASIC_USER = "admin";
