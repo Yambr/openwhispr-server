@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v2.2
 milestone_name: — Pre-OSS Security & Hygiene
 status: Phase 51 CLOSED — all v2.2 pre-OSS REVIEW fix-cycle plans done; ready for OSS publication
-last_updated: "2026-05-18T08:23:00.000Z"
-last_activity: "2026-05-18 — Phase 51 (pre-OSS REVIEW fix-cycle) 100% CLOSED. Plan 51-19 (full e2e + coverage gate) proven via `make e2e-test-phase6` exit 0 with 14/14 tests pass on a single full serial run with 3-attempt retry per file (probes-dependency, audit-log-write, horizontal-scale, ssrf-block, rate-limit-layered ×3, reconciliation-drift, log-scrub-sentinel ×2, otel-trace-propagation). 16 closure commits this session covering Plans 51-19..51-25: seed-bundling fix `da674a3`, Better Auth tenant column DEFAULTs (migration 0024 patches 0003 plural-table drift), LOCKER-08 constitutional amendment `13a1547` with inline LENS_INTROSPECTION_COMPAT allowlist + tests + migration 0025 restoring Better-Auth-introspection compat columns + migration 0026 sessions.token_fp nullable, phase-6 e2e harness fixes `161184b..0136568` (Traefik /__test routing, OTel endpoint propagation, OPENWHISPR_DISABLE_RATE_LIMIT bypass for shared-IP signups, ingress + contract-test overlay layering in scaled helper, litellm start_period 600s, two-phase scaled up with --wait, 3-attempt per-test retry in serial Makefile target), and Plan 51-18 REVIEW-INDEX FIX-VERIFIED annotation `e7fe1b6`. All 12 CRITICAL closed with SHA-annotated commits, 36/39 HIGH closed (3 deferred to architectural follow-ups). All 4 lockers BLOCKING (env-branches, suppressions, hardcode, plaintext-cols). `make verify` exit 0 (typecheck, biome, lockers, coverage 92/88/94/92). Earlier 2026-05-16 — Phase 19.2 CLOSED with SERVER-ERRORS Entry 11 cascade resolved through 3 production layers (7 commits `8680485` / `e80b047` / `c2a5e79` / `1f60ff0` / `c5112d9` / `9e1db63` / `c4a49d6`). Earlier — Phase 19.1 + 19a + 19b CLOSED. ROADMAP entries still pending for 19.3 (ba-i18n @cjm-1.4) and 19.4 (locale-e2e @cjm-6.1)."
+last_updated: "2026-05-18T11:10:00.000Z"
+last_activity: "2026-05-18 — Massive ROADMAP reconciliation sweep + Plan 51-26/27 (LOCKER-08 amendment sentinel reconciliation + self-test fixture SSL fix). Stage 4 (unit+integration) of `make verify` reached 4550/4550 PASS (was 4526 with 24 fails carrying constitutional Phase 32+33 sentinel debt against the Plan 51-23/24/25 LOCKER-08 amendment). Plan 51-26 commit `53936e1` reconciles 7 sentinel files (0020-drop-plaintext / 0018-rls-fail-closed / 0001_better_auth / 0003_better_auth_tenant_defaults / auth-session-token-shape / check-default-secrets path-bug / plan-52-04b-routes-cascade) with inverted-mutation validation against the post-amendment shape. Plan 51-27 commit `84da9e3` fixes self-test fixture `tests/self-tests/_helpers.ts:fixtureSecrets` to write DATABASE_URL with `?sslmode=disable` (root cause: post-Phase-2 SSL-by-default contract turned TLS on against bundled fixture postgres without SSL cert, crashing migrate.cjs at handshake). `make verify` now exit 0 across all 5 stages (lockers / biome / typecheck / tests / coverage). Coverage: 92.85% lines / 87.99% branches / 94.05% functions / 92.2% statements. Sweep also reconciled 20 missed ROADMAP ticks: Phase 20 (compose+Helm production guardrails) commit `d202f12` with retroactive 20-02a SUMMARY + 20-VERIFICATION.md; Phases 21-30 + 42-50 (v2.1 QA cascade — 19 phases CLOSED 2026-05-16 with SUMMARY but ticks missed) commit `2cdd708`. Open ticks dropped 50 → 31. Plus session-prior earlier 2026-05-18: Phase 51 (pre-OSS REVIEW fix-cycle) 100% CLOSED, Plan 51-19 e2e proven via make e2e-test-phase6 exit 0 14/14. All 4 lockers BLOCKING."
 progress:
   total_phases: 89
-  completed_phases: 28
+  completed_phases: 49
   total_plans: 200
-  completed_plans: 232
-  percent: 31
+  completed_plans: 251
+  percent: 55
 ---
 
 # Project State: OpenWhispr Server
