@@ -9,8 +9,8 @@
     "services": ["traefik", "loki", "tempo", "mimir", "grafana", "prometheus"]
   },
   "bundled-ai-conditional": {
-    "_comment": "Chart renders only when bundledAi.enabled=true; OFF in values-ci.yaml (T-09-08).",
-    "services": ["speaches"]
+    "_comment": "Plan 11-03b landed charts/openwhispr/templates/speaches-deployment.yaml (Deployment + Service + PVC gated on bundledAi.enabled). Parity lint DEFAULT_HELM_ARGS sets bundledAi.enabled=true so speaches now resolves as a chart resource rather than an allowlist entry. Allowlist retained as empty per-category for future bundled-AI workloads.",
+    "services": []
   },
   "load-test-only": {
     "_comment": "docker-compose.load-test.yml horizontal-scale-out artifacts; production scale-out happens via HPA + Pooler CRD instead.",
