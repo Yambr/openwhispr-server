@@ -12,7 +12,7 @@
 //     compose stack is up, OR a passthrough/404 from Next.js if running
 //     against a non-Traefik baseURL. Either way: NOT a 30x to /sign-in.
 //  3. Visiting `/sign-in` while signed-out does not redirect (no loop).
-import { expect, test } from "@playwright/test";
+import { expect, test } from "./_diagnostics-fixture.js";
 
 test.describe("Phase 07.1 / Plan 05 — middleware gate", () => {
   test("signed-out /app/* redirects to /sign-in with ?from=", async ({ request }) => {

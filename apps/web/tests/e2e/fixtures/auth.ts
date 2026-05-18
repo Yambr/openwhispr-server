@@ -289,7 +289,33 @@ export function emptyStorageStatePath(): string {
  * here; they keep using `@playwright/test`'s base `test` (default empty
  * storage state).
  */
-export const test = baseTest.extend({
+export const test = baseTest.extend<{ _attachDiagnostics: void }>({
+  // Phase 53 / Plan 53-03 — auto-attach browser-diagnostics helper to
+  // every spec that imports `test` from this fixture. The auto:true
+  // flag triggers eager evaluation per-test without the spec needing
+  // to destructure the fixture name. After the test body, the captured
+  // diagnostics are attached to testInfo for postmortem. When the env
+  // gate PHASE53_STRICT_DIAGNOSTICS=1 is set, any error-severity
+  // captured entry FAILS the test (per Phase 53 contract).
+  _attachDiagnostics: [
+    async ({ page }, use, testInfo) => {
+      const { attachBrowserDiagnostics, expectNoBrowserErrors, getCapturedDiagnostics } =
+        await import("../support/browser-diagnostics.js");
+      await attachBrowserDiagnostics(page);
+      await use();
+      const diag = getCapturedDiagnostics(page);
+      if (diag.length > 0) {
+        await testInfo.attach("browser-diagnostics.json", {
+          body: JSON.stringify(diag, null, 2),
+          contentType: "application/json",
+        });
+      }
+      if (process.env.PHASE53_STRICT_DIAGNOSTICS === "1") {
+        expectNoBrowserErrors(page);
+      }
+    },
+    { auto: true },
+  ],
   // Override the built-in `storageState` fixture so every test inherits
   // the per-slot signed-in cookie jar written by global-setup.ts.
   //

@@ -8,7 +8,7 @@
 // is already initialised the page is redirected before the assertion,
 // in which case the test logs and skips; this keeps the spec
 // non-flaky regardless of stack state.
-import { expect, test } from "@playwright/test";
+import { expect, test } from "./_diagnostics-fixture.js";
 import { runAxe } from "./fixtures/axe.js";
 
 test.describe("U-setup (Phase 18.1.1 / Plan 05)", () => {

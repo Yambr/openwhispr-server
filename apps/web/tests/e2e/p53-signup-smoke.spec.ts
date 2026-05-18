@@ -15,35 +15,27 @@
 // baseURL (https://api.localhost) and hit the web origin directly via
 // page.goto absolute URL so the rewrite path is exercised.
 
-import { expect, test } from "@playwright/test";
-import {
-  attachBrowserDiagnostics,
-  expectNoBrowserErrors,
-  getCapturedDiagnostics,
-} from "../../../../tests/e2e-cjm/support/browser-diagnostics.js";
+import { expect, test } from "./_diagnostics-fixture.js";
+// Helper auto-attach happens via the fixture's auto:true hook; the
+// spec asserts business invariants and lets _attachDiagnostics handle
+// the diagnostics flush + (gated by PHASE53_STRICT_DIAGNOSTICS) the
+// zero-errors assertion.
+import { allowBrowserErrors, expectNoBrowserErrors } from "./support/browser-diagnostics.js";
 
 const WEB_ORIGIN = process.env.WEB_ORIGIN ?? "http://localhost:3000";
 
 test.describe("@cjm-web-signup-1 — sign-up via web UI form", () => {
-  test.beforeEach(async ({ page }) => {
-    await attachBrowserDiagnostics(page);
-  });
-
-  test.afterEach(async ({ page }, testInfo) => {
-    // Surface every captured browser-side log as a Playwright
-    // attachment for postmortem before the assertion may fire.
-    const diag = getCapturedDiagnostics(page);
-    if (diag.length > 0) {
-      await testInfo.attach("browser-diagnostics.json", {
-        body: JSON.stringify(diag, null, 2),
-        contentType: "application/json",
-      });
-    }
-  });
-
+  // Diagnostics attach + flush happens in `_diagnostics-fixture.ts` via
+  // an auto:true fixture — no per-spec hooks needed.
   test("sign-up form submit returns 200 and surfaces 'check your email' block — zero browser errors", async ({
     page,
   }) => {
+    // Plan 53-09 — RSC pre-fetch aborts on navigation are expected
+    // and not user-visible. Next.js cancels in-flight `_rsc=` requests
+    // when the user moves off the page. Allowlist the abort error so
+    // the helper does not flag it as a real bug.
+    allowBrowserErrors(page, [/_rsc=.*FAILED: net::ERR_ABORTED/, /sign-in\?_rsc=.*FAILED/]);
+
     // 1. Load the sign-up page. Plan 53-06 rewrites() proxies
     //    /api/auth/providers (called by useAuthProviders on render) to
     //    the api; pre-fix that hook 404'd and rendered zero OIDC buttons.

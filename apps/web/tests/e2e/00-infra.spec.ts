@@ -14,7 +14,7 @@
 // D-TEST-3: no internal-logic mocks — every assertion goes through the
 // real Traefik + Next.js + api stack.
 import AxeBuilder from "@axe-core/playwright";
-import { expect, test } from "@playwright/test";
+import { expect, test } from "./_diagnostics-fixture.js";
 
 const ADMIN_BASIC_USER = "admin";
 const ADMIN_BASIC_PASS = "testpw123";
