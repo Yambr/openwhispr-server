@@ -21,9 +21,14 @@ test.describe("U-setup (Phase 18.1.1 / Plan 05)", () => {
       test.skip(true, "setup already completed — skipping axe scan");
       return;
     }
-    await expect(page.getByText(/set up your openwhispr server/i)).toBeVisible({
-      timeout: 15_000,
-    });
+    // Phase 53 / Plan 53-30 — strict-mode disambiguation. The wizard
+    // renders the title in BOTH the AuthShell side panel (<h2>) AND
+    // the Card title — getByText() resolves to 2 elements and Playwright
+    // 1.60+ strict mode rejects ambiguity. Target the side-panel <h2>
+    // explicitly via role+level.
+    await expect(
+      page.getByRole("heading", { level: 2, name: /set up your openwhispr server/i }),
+    ).toBeVisible({ timeout: 15_000 });
     await runAxe(page, "u-setup");
   });
 });
