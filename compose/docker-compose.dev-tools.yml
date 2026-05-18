@@ -48,6 +48,16 @@ services:
       # the full route surface. Production operators set their own
       # master key in their .env; this default is dev-tools-only.
       LITELLM_MASTER_KEY: ${LITELLM_MASTER_KEY:-sk-dev-master-key-do-not-use-in-prod}
+      # BUG-readyz-litellm-ssrf — without these allow-lists the
+      # /readyz dep-check hits the SSRF guard and reports
+      # litellm.ok=false → HTTP 503 → kubelet/probes treat the pod
+      # as unready. The base compose ships an empty default (locked
+      # by design); the dev-tools overlay opens the internal
+      # compose-network hostnames so OOB `make up-with-dev-tools`
+      # passes /readyz. Production operators set their own values
+      # in their .env per docs/security.md.
+      OUTBOUND_ALLOWED_HOSTS: ${OUTBOUND_ALLOWED_HOSTS:-litellm,mailpit,valkey,postgres}
+      OUTBOUND_PRIVATE_HOST_ALLOWLIST: ${OUTBOUND_PRIVATE_HOST_ALLOWLIST:-litellm,mailpit,valkey,postgres}
   worker:
     environment:
       SMTP_PORT: "1025"
