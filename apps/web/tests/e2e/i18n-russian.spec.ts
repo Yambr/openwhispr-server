@@ -10,6 +10,19 @@
 //      mismatch error.
 import { expect, test } from "./_diagnostics-fixture.js";
 
+// Phase 53 / Plan 53-11 — derive cookie domain from WEB_ORIGIN so the
+// spec runs against both Traefik host-split (https://web.localhost)
+// and slim-core (http://localhost:3000) without code changes. Default
+// matches the host-split topology that pre-Phase-53 specs assumed.
+const COOKIE_DOMAIN = (() => {
+  const origin = process.env.WEB_ORIGIN ?? "https://api.localhost";
+  try {
+    return new URL(origin).hostname;
+  } catch {
+    return "api.localhost";
+  }
+})();
+
 test.describe("i18n — Russian rendering", () => {
   test("renders /sign-in in Russian with no hydration mismatch", async ({ context, page }) => {
     // Inject NEXT_LOCALE cookie before the first navigation so middleware
@@ -18,7 +31,7 @@ test.describe("i18n — Russian rendering", () => {
       {
         name: "NEXT_LOCALE",
         value: "ru",
-        domain: "api.localhost",
+        domain: COOKIE_DOMAIN,
         path: "/",
         sameSite: "Lax",
       },

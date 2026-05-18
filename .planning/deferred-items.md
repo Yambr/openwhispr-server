@@ -725,3 +725,23 @@ Fix candidate: helper allowlist entry `[/_rsc=.*FAILED: net::ERR_ABORTED/]` OR i
 **Container-log scan (separate from spec failures):** `worker` emits 6+ `getaddrinfo ENOTFOUND mailpit` errors per sign-up because slim-core base does not include the mailpit overlay. Fixed in this session by bringing up `compose/docker-compose.dev-tools.yml` mailpit overlay; longer-term fix is to make the slim-core default either bundle mailpit OR have the `EmailSender` gracefully detect the missing host (currently it only checks `SMTP_HOST` env presence, not DNS reachability).
 
 **All 8 items tracked as Plan 53-08..53-17 candidates.** Sentinel `p53-signup-smoke.spec.ts` deliberately stays RED until 53-08 + 53-09 land — that is the constitutional "catch latent bugs" outcome Phase 53 was opened for.
+
+### 2026-05-18 status update — Plan 53-10 GREEN
+
+- **BUG-53-F (CSP eval violation)** — **CLOSED** by Plan 53-10 (commit `21a94eb`). Root cause was zod 4.4.3 JIT compiler, not Next.js chunks. Fix: `apps/web/src/instrumentation-client.ts` calls `z.config({ jitless: true })` before any schema chunk evaluates. Sentinel `p53-signup-smoke.spec.ts` now GREEN.
+- **BUG-53-G (RSC abort)** — **CLOSED** by Plan 53-09 (commit `8352807`). Added `allowBrowserErrors([/_rsc=.*FAILED: net::ERR_ABORTED/])` to the sentinel.
+- **BUG-53-H (mailpit DNS spam)** — **CLOSED** in-session by bringing up `compose/docker-compose.dev-tools.yml` mailpit overlay.
+
+Remaining open: BUG-53-A (ESM loader), BUG-53-B (visual baselines), BUG-53-C (setup wizard), BUG-53-D (i18n lang attr), BUG-53-E (locale switcher button).
+
+### 2026-05-18 — New observations from second strict-diagnostics sweep
+
+After Plan 53-10 landed, re-running the slim-config sweep with PHASE53_STRICT_DIAGNOSTICS=1 produced 6 passed / 5 failed. Net delta vs. the first sweep: +3 passes (zod fix unblocked 99-cross-screen-smoke and two auth-shell variants from CSP-induced cascades). The remaining 5 failures are pre-existing functional bugs, not Phase 53 net-new noise:
+
+### BUG-53-I — `i18n-russian.spec.ts:33` html lang stays "en" (14 retries observed)
+Re-confirmation of BUG-53-D under stricter conditions. Captured: `locator resolved to <html lang="en" data-theme="light">` 14 times. The `/sign-in` Accept-Language: ru-RU negotiation returns the page with `lang="en"`. Need to trace: (a) middleware.ts `resolveLocale()` — does it actually see Accept-Language? (b) layout.tsx — does it read `x-locale` header from `headers()`? (c) RSC render — does it use the negotiated locale at the html tag?
+
+### BUG-53-J — language switcher button `Русский` not present on /sign-in
+Re-confirmation of BUG-53-E. Locator timed out after 30s waiting for `button[name=/Русский/]`. Either: (a) component LanguageSwitcher not mounted on auth pages, (b) the button text differs from the spec regex, or (c) language switcher is rendered server-side under the wrong locale. Linked to BUG-53-I — if the page renders in `en`, the switcher likely shows "Russian" rather than "Русский".
+
+**Sweep result:** Plan 53-10 closed the zod CSP cascade. The 5 remaining slim-config failures are split between visual baseline drift (BUG-53-B), setup-wizard state assumptions (BUG-53-C), ESM loader gap (BUG-53-A), and the i18n cluster (BUG-53-D/E/I/J). i18n cluster is the next biggest leverage point — fixing language negotiation would close 2 of 5 specs at once.
