@@ -608,3 +608,67 @@ is local-only.
 
 All 4 architectural deadlocks (seed bundling, tenant migration drift,
 Better Auth introspection, LOCKER-08 amendment) cleared.
+
+## 2026-05-18 — 24 unit-test failures after Plan 51-23/24/25 LOCKER-08 amendment
+
+**Discovered:** 2026-05-18 during full `make verify` re-run post Plan 51-19 closure.
+
+**Status:** Stage 1-3 of `make verify` PASS clean. Stage 4 (unit tests) reports
+**24 failed / 4526 passed / 194 skipped** across 7 test files.
+
+**Cited commits (this session + prior):**
+- `2db89ed` 2026-05-18 — LOCKER-06 allowlist line drift fix (NOT the source)
+- Plan 51-23/24/25 commits — `13a1547` LOCKER-08 amendment + migration 0024 (tenant_id DEFAULTs restore) + 0025 (Better-Auth compat plaintext columns restore) + 0026 (sessions.token_fp nullable + partial UNIQUE on plaintext token)
+
+**Failing files + categorization:**
+
+| File | Fails | Category |
+|---|---|---|
+| `packages/data/migrations/__tests__/0020-drop-plaintext.test.ts` | 9 | Phase 33 constitutional sentinel: asserts plaintext credential columns ARE GONE. 0025/0026 partially reverted 0020 for Better Auth introspection compat → assertions inverted. |
+| `packages/data/migrations/__tests__/0018-rls-fail-closed.test.ts` | 5 | Phase 32 sentinel: asserts `app.tenant_id` not pre-bound at rolconfig AND no tenant_id column DEFAULTs. 0024 restored DEFAULTs (Better Auth singular→plural drift fix) → assertions inverted. |
+| `packages/data/tests/unit/__tests__/0001_better_auth.test.ts` | 2 | account/verification table+column existence checks; drift from singular→plural. |
+| `packages/data/tests/unit/__tests__/0003_better_auth_tenant_defaults.test.ts` | 3 | Phase 32 sentinel: asserts NO column DEFAULTs + plaintext columns gone. 0024+0025 inverted. |
+| `apps/api/tests/unit/__tests__/auth-session-token-shape.test.ts` | 2 | Phase 33 schema sentinel: `sessions.token` MUST be undefined. 0025 restored it. |
+| `apps/api/scripts/check-default-secrets.test.ts` | 4 | Unrelated to LOCKER-08 — separate triage needed. |
+| `apps/api/tests/unit/plan-52-04b-routes-cascade.test.ts` | 1 | Stale assertion about `@ts-expect-error issue-52` text in realtime.ts. |
+
+**Why this is constitutional, not "stale test":**
+
+The 0020-drop-plaintext + 0018-rls-fail-closed + 0003-better-auth-tenant-defaults
+test trio are the **defence-in-depth sentinels** Phase 32+33 explicitly created
+to PREVENT exactly the kind of regression Plan 51-23/24/25 introduced (plaintext
+columns + DEFAULTs reappearing). LOCKER-08 was amended with an inline
+`LENS_INTROSPECTION_COMPAT` allowlist, but the corresponding unit-test sentinels
+were NOT updated in the same atomic commit — a TDD-rule violation that this
+deferred-items entry now formalizes.
+
+**Per CLAUDE.md Hard Rule #2** ("Surface costly architectural decisions as
+deferred-items, not in-flight rewrites"), I am NOT rewriting these sentinels
+unilaterally — they encode the Phase 32/33 constitutional posture, and changing
+their assertions to match 0025/0026 requires explicit user approval of the
+new compromise posture (plaintext-coexist-with-sidecars under named allowlist).
+
+**Per CLAUDE.md Hard Rule #1** ("NEVER edit production server code to make
+tests pass") — the inverse also holds here in spirit: NEVER rewrite a sentinel
+test to make a production-code regression "pass". The sentinels ARE WORKING
+AS DESIGNED — they caught the regression. The next step is a user-approved
+phase to either:
+  (a) accept the new posture and rewrite sentinels with inverted-mutation
+      validation (a sentinel that still catches accidental LENS_INTROSPECTION_COMPAT
+      allowlist removal), OR
+  (b) revert 0025/0026 + LOCKER-08 amendment and find a different solution
+      for Better Auth introspection compat (e.g., custom drizzleAdapter,
+      Better Auth version pin, or schema-introspection lens wrapper).
+
+**Phase 51-19 closure mis-report (Hard Rule #3 violation, acknowledged):**
+
+In the prior session I reported "make verify exit 0" for Plan 51-19. That was
+incorrect — Stage 4 (tests) was already failing at that point, but I parsed
+only the tail of the output and missed the failure block. This deferred-items
+entry formalizes the correction. The e2e suite (`make e2e-test-phase6`) does
+remain GREEN (14/14) — that part of the Plan 51-19 closure stands; the unit
+sentinel regression is the only outstanding gap.
+
+**Tracking phase:** `Phase 51.26` (proposed name: "LOCKER-08-amendment sentinel
+reconciliation") — awaits user `/gsd-discuss-phase 51.26` decision on
+posture (option a vs option b above).
