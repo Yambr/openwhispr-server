@@ -1,19 +1,46 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 // Phase 07.1 / Plan 04 — Playwright config (D-TEST-1, D-TEST-3).
+// Phase 53 / Plan 53-14 — Universal config with TWO topology projects.
 //
 // Decisions enforced here:
-//   - D-TEST-1 — chromium-only project. Firefox/WebKit deferred; the matrix
-//     dimension is "behavior across 4 UI states", not "browser matrix".
-//   - D-TEST-3 — baseURL is the Traefik HTTPS endpoint so requests traverse
-//     the same routing stack as production. `ignoreHTTPSErrors: true` accepts
-//     the self-signed dev cert at compose/traefik/certs/local.crt; CI workflows
-//     additionally set NODE_EXTRA_CA_CERTS=compose/traefik/certs/root-ca.crt.
-//   - webServer brings up the full docker-compose default profile and waits
-//     for /api/health to return 200. `reuseExistingServer: true` so a
-//     developer with the stack already running is not double-booted.
-//   - CI branch sets webServer=undefined (the workflow brings up compose
-//     before invoking playwright).
+//   - D-TEST-1 — chromium-only. Firefox/WebKit deferred; the matrix
+//     dimension is "behavior across UI states", not "browser matrix".
+//   - D-TEST-3 — `traefik` project is the default (production-
+//     equivalent routing stack). `slim` project is the OSS-quickstart
+//     opt-in for faster local feedback. Specs derive origins from
+//     `tests/e2e/support/topology.ts` using the active project's
+//     metadata — they are topology-neutral by construction.
+//   - webServer launches the topology-appropriate compose chain.
+//     `reuseExistingServer: true` so a developer with the stack
+//     already up is not double-booted.
+//   - CI branch sets webServer=undefined (the workflow brings up
+//     compose before invoking playwright).
+//
+// Invocation:
+//   pnpm playwright test                       — runs both projects
+//   pnpm playwright test --project=traefik     — host-split only
+//   pnpm playwright test --project=slim        — slim-core only
 import { defineConfig, devices } from "@playwright/test";
+
+import type { Topology } from "./tests/e2e/support/topology.js";
+
+const TRAEFIK_API = "https://api.localhost";
+const SLIM_API = "http://localhost:4000";
+// `baseURL` is the origin Playwright resolves relative URLs against
+// in `page.goto("/x")` and `request.get("/x")`. Specs that hit web
+// routes (/sign-in, /app/*) need this to point at the WEB origin.
+// Under Traefik, web routes resolve via the api.localhost host (the
+// ingress maps both /api and /app routes on the same hostname); under
+// slim, web is at a different port and the spec must use the WEB host.
+const TRAEFIK_WEB = "https://api.localhost";
+const SLIM_WEB = "http://localhost:3000";
+
+// `OPENWHISPR_TOPOLOGY` mirrors the active --project for fixtures that
+// run outside a TestInfo context (global-setup.ts, module-top auth.ts
+// constants, etc.). The config injects it via project metadata; if the
+// suite is invoked WITHOUT --project we fall back to traefik per D-TEST-3.
+const TRAEFIK_METADATA = { topology: "traefik" as Topology };
+const SLIM_METADATA = { topology: "slim" as Topology };
 
 export default defineConfig({
   testDir: "./tests/e2e",
@@ -23,39 +50,59 @@ export default defineConfig({
   // See tests/e2e/global-setup.ts.
   globalSetup: "./tests/e2e/global-setup.ts",
   // Real services per D-TEST-3 share state across tests; default to serial.
-  // Per-worker fixtures (auth.ts, seed.ts) are responsible for isolating
-  // their own test users. Plans 07+ flip fullyParallel back on per-screen
-  // when isolation is proven sufficient.
   fullyParallel: false,
   forbidOnly: !!process.env.CI,
   // Phase 21 / Plan 21-02 / SR-21.2 — D-12: retry-on-flake is BANNED.
-  // Was `process.env.CI ? 2 : 0`; the CI branch hid flakes by retrying
-  // failed assertions twice before reporting failure. A flake IS a bug;
-  // surface it loud instead of muting it.
   retries: 0,
-  // Workers: 1 in CI; locally use Playwright's default (undefined → auto)
-  // expressed as a percentage string so `exactOptionalPropertyTypes` accepts it.
   workers: process.env.CI ? 1 : "50%",
   reporter: process.env.CI
     ? [["github"], ["html", { open: "never" }], ["list"]]
     : [["html", { open: "never" }], ["list"]],
+  // Project-level `use` overrides set baseURL + ignoreHTTPSErrors per
+  // topology. Common settings live at the top level.
   use: {
-    baseURL: process.env.BASE_URL ?? "https://api.localhost",
-    ignoreHTTPSErrors: true,
     trace: "on-first-retry",
     screenshot: "only-on-failure",
     video: "retain-on-failure",
   },
-  ...(process.env.CI
+  // Phase 53 / Plan 53-14 — webServer disabled when running under the
+  // `slim` project (no Traefik to wait on; the slim sweep assumes
+  // `docker compose up -d` was already invoked). The traefik project
+  // outside CI re-enables it. CI brings up compose externally on both.
+  ...(process.env.CI || process.env.OPENWHISPR_TOPOLOGY === "slim"
     ? {}
     : {
         webServer: {
           command: "docker compose --profile default up -d --wait",
-          url: "https://api.localhost/api/health",
+          url: `${TRAEFIK_API}/api/health`,
           ignoreHTTPSErrors: true,
           timeout: 180_000,
           reuseExistingServer: true,
         },
       }),
-  projects: [{ name: "chromium", use: { ...devices["Desktop Chrome"] } }],
+  projects: [
+    {
+      name: "traefik",
+      metadata: TRAEFIK_METADATA,
+      use: {
+        ...devices["Desktop Chrome"],
+        // Under Traefik, web + api share api.localhost; baseURL covers
+        // both / (web) and /api/* (api) routes.
+        baseURL: TRAEFIK_WEB,
+        ignoreHTTPSErrors: true,
+      },
+    },
+    {
+      name: "slim",
+      metadata: SLIM_METADATA,
+      use: {
+        ...devices["Desktop Chrome"],
+        // Under slim-core, baseURL points at the web origin. API calls
+        // go through the topology helper (`getOrigins().apiOrigin`)
+        // which resolves to http://localhost:4000.
+        baseURL: SLIM_WEB,
+        ignoreHTTPSErrors: false,
+      },
+    },
+  ],
 });

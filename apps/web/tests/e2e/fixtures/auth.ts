@@ -43,6 +43,7 @@ import {
   expectNoBrowserErrors,
   getCapturedDiagnostics,
 } from "../support/browser-diagnostics.js";
+import { getProcessOrigins } from "../support/topology.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -68,7 +69,7 @@ export async function provisionTestUser(
   workerIndex: number,
 ): Promise<string> {
   const email = fixtureEmail(workerIndex);
-  const baseUrl = process.env.BASE_URL ?? "https://api.localhost";
+  const baseUrl = process.env.BASE_URL ?? getProcessOrigins().apiOrigin;
   const res = await request.post(`${baseUrl}/api/auth/sign-up/email`, {
     headers: {
       "content-type": "application/json",
@@ -178,7 +179,7 @@ export async function signIn(
   email: string,
   password: string = FIXTURE_PASSWORD,
 ): Promise<SignInResult> {
-  const baseUrl = process.env.BASE_URL ?? "https://api.localhost";
+  const baseUrl = process.env.BASE_URL ?? getProcessOrigins().apiOrigin;
   const res = await page.request.post(`${baseUrl}/api/auth/sign-in/email`, {
     headers: { "content-type": "application/json", origin: baseUrl },
     data: { email, password },
@@ -221,7 +222,7 @@ export function ensureStorageStateDir(): void {
  */
 export async function provisionUserOnce(workerIndex: number): Promise<string> {
   ensureStorageStateDir();
-  const baseUrl = process.env.BASE_URL ?? "https://api.localhost";
+  const baseUrl = process.env.BASE_URL ?? getProcessOrigins().apiOrigin;
   const email = fixtureEmail(workerIndex);
   // Fresh APIRequestContext — no inherited cookies.
   const ctx = await playwrightRequest.newContext({

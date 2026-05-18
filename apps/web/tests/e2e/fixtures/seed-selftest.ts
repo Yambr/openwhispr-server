@@ -12,6 +12,8 @@
 //
 // Exits 0 on success, 1 on any seed/clear failure.
 import { request as playwrightRequest } from "@playwright/test";
+// Phase 53 / Plan 53-14 — topology-aware fallback.
+import { getProcessOrigins } from "../support/topology.js";
 import { fixtureEmail, provisionTestUser } from "./auth.js";
 import {
   buildSignedInRequestContext,
@@ -22,7 +24,7 @@ import {
   seedTranscriptions,
 } from "./seed.js";
 
-const BASE_URL = process.env.BASE_URL ?? "https://api.localhost";
+const BASE_URL = process.env.BASE_URL ?? getProcessOrigins().apiOrigin;
 
 async function selftest(): Promise<void> {
   const provisionCtx = await playwrightRequest.newContext({

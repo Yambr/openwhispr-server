@@ -21,25 +21,27 @@ import { expect, test } from "./_diagnostics-fixture.js";
 // the diagnostics flush + (gated by PHASE53_STRICT_DIAGNOSTICS) the
 // zero-errors assertion.
 import { allowBrowserErrors, expectNoBrowserErrors } from "./support/browser-diagnostics.js";
-
-const WEB_ORIGIN = process.env.WEB_ORIGIN ?? "http://localhost:3000";
+import { getOrigins } from "./support/topology.js";
 
 test.describe("@cjm-web-signup-1 — sign-up via web UI form", () => {
   // Diagnostics attach + flush happens in `_diagnostics-fixture.ts` via
   // an auto:true fixture — no per-spec hooks needed.
   test("sign-up form submit returns 200 and surfaces 'check your email' block — zero browser errors", async ({
     page,
-  }) => {
+  }, testInfo) => {
     // Plan 53-09 — RSC pre-fetch aborts on navigation are expected
     // and not user-visible. Next.js cancels in-flight `_rsc=` requests
     // when the user moves off the page. Allowlist the abort error so
     // the helper does not flag it as a real bug.
     allowBrowserErrors(page, [/_rsc=.*FAILED: net::ERR_ABORTED/, /sign-in\?_rsc=.*FAILED/]);
 
-    // 1. Load the sign-up page. Plan 53-06 rewrites() proxies
-    //    /api/auth/providers (called by useAuthProviders on render) to
-    //    the api; pre-fix that hook 404'd and rendered zero OIDC buttons.
-    await page.goto(`${WEB_ORIGIN}/sign-up`, { waitUntil: "networkidle" });
+    // Phase 53 / Plan 53-14 — topology-aware web origin (slim → :3000,
+    // traefik → https://web.localhost). 1. Load the sign-up page.
+    // Plan 53-06 rewrites() proxies /api/auth/providers (called by
+    // useAuthProviders on render) to the api; pre-fix that hook 404'd.
+    await page.goto(`${getOrigins(testInfo).webOrigin}/sign-up`, {
+      waitUntil: "networkidle",
+    });
 
     // 2. Fill the form. Field names match the i18n labels rendered by
     //    apps/web/src/app/(public)/sign-up/page.tsx.

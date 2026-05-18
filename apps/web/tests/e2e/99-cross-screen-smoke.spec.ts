@@ -13,6 +13,7 @@
 
 import { expect, FIXTURE_PASSWORD, fixtureEmail, test } from "./fixtures/auth.js";
 import { bindToContext } from "./fixtures/seed.js";
+import { getOrigins } from "./support/topology.js";
 
 test.describe("99 — cross-screen smoke (Phase 07.1 / Plan 13)", () => {
   // Plan 13.1 — auth provisioned by global-setup.ts; per-worker storageState
@@ -59,7 +60,8 @@ test.describe("99 — cross-screen smoke (Phase 07.1 / Plan 13)", () => {
     await expect(page.getByText(fixtureEmail(info.parallelIndex))).toBeVisible();
 
     // 6) Sign out — Better Auth /api/auth/sign-out clears the session cookie.
-    const baseUrl = process.env.BASE_URL ?? "https://api.localhost";
+    // Phase 53 / Plan 53-14 — topology-aware API origin.
+    const baseUrl = process.env.BASE_URL ?? getOrigins(info).apiOrigin;
     const signOut = await page.request.post(`${baseUrl}/api/auth/sign-out`, {
       headers: { "content-type": "application/json", origin: baseUrl },
       data: {},
