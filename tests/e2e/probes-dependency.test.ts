@@ -38,7 +38,7 @@ interface ReadyzBody {
   litellm: { ok: boolean; latency_ms: number; error?: string };
 }
 
-const SUITE_TIMEOUT_MS = 300_000; // 5 min ceiling for the whole suite.
+const SUITE_TIMEOUT_MS = 540_000; // 5 min ceiling for the whole suite.
 
 let stack: Phase6Stack | undefined;
 

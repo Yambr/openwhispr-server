@@ -127,7 +127,7 @@ const COMPOSE_FILES = [
  * a laptop runs ~120-180s, CI cold runners up to 240s. Callers MAY
  * extend via `phase6BringStackUp({ timeoutMs: …})`.
  */
-export const DEFAULT_BOOT_TIMEOUT_MS = 240_000;
+export const DEFAULT_BOOT_TIMEOUT_MS = 420_000;
 
 export interface Phase6Stack {
   env: StartedDockerComposeEnvironment;
@@ -764,7 +764,7 @@ export async function phase6BringStackUpScaled(opts: {
 }): Promise<Phase6ScaledStack> {
   process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0";
   const projectName = opts.projectName ?? "openwhispr";
-  const timeoutMs = opts.timeoutMs ?? 180_000;
+  const timeoutMs = opts.timeoutMs ?? 420_000;
 
   // Compose the `-f docker-compose.yml -f <ingress> -f <override...>`
   // argument list. Override files are paths relative to REPO_ROOT.

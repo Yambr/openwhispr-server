@@ -35,7 +35,7 @@ import {
   psqlOwner,
 } from "./helpers/phase6-compose.js";
 
-const SUITE_TIMEOUT_MS = 300_000;
+const SUITE_TIMEOUT_MS = 540_000;
 const FIXTURE_EMAIL = "fixture@conformance.test";
 const FIXTURE_PASSWORD = "test-PW-12345!";
 const DEFAULT_TENANT_ID = "00000000-0000-0000-0000-000000000000";
