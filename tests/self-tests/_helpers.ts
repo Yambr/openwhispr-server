@@ -50,7 +50,16 @@ export function composeAtLeast(major: number, minor: number): boolean {
   return v[1] >= minor;
 }
 
-export const COMPOSE_PROJECT = "openwhispr";
+// BUG-53-37: self-tests previously ran with the same default project name
+// (`openwhispr`, derived from cwd) as the developer's running dev compose
+// stack — `dockerCompose(["down", "-v"])` in `afterAll` would silently
+// remove every dev container. Isolate the self-test project so test
+// teardown can only touch test-owned resources.
+//
+// Override via `COMPOSE_PROJECT_NAME` env if a CI matrix needs a unique
+// project per run; the env var natively takes precedence over `-p` in
+// docker compose.
+export const COMPOSE_PROJECT = "openwhispr-self-test";
 
 export interface RunResult {
   exitCode: number;
@@ -80,7 +89,12 @@ export function dockerCompose(
       fileFlags.push("-f", f);
     }
   }
-  const r = spawnSync("docker", ["compose", ...fileFlags, ...args], {
+  // BUG-53-37: always pin the project name so `down -v` in test teardown
+  // cannot touch the developer's `openwhispr` dev stack. The shell env's
+  // `COMPOSE_PROJECT_NAME` natively overrides `-p` if a CI matrix sets
+  // it, so this is safe to apply unconditionally.
+  const projectFlags = ["-p", COMPOSE_PROJECT];
+  const r = spawnSync("docker", ["compose", ...projectFlags, ...fileFlags, ...args], {
     encoding: "utf8",
     env: { ...process.env, ...(opts.env ?? {}) },
     timeout: opts.timeoutMs ?? 240_000,
