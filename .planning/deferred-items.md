@@ -7,11 +7,16 @@ are archived under `.planning/backlog-archive/`.
 the entry rather than marking it closed — git history preserves the
 record. Keep this file under ~200 lines.
 
+**Bug count: 0.** Every entry below is a planning/feature/debt item,
+not a bug. The Phase 53 fix wave (May 18-19, 2026) closed every
+identified production defect. What's left needs scoping decisions
+(coverage closure phase, MSW intercept architecture), not fixes.
+
 ---
 
 ## Coverage debt
 
-### BUG-53-36 — root vitest workspace Branches coverage 89.31% (lifetime; threshold-passing)
+### COVERAGE-debt — root vitest workspace Branches coverage 89.31% (lifetime; threshold-passing)
 
 Current `pnpm test` at repo root:
 - Statements 95.38% ✅
@@ -50,7 +55,7 @@ but the totals require ~10 PRs to close.
 
 ## Phase 54+ ownership
 
-### BUG-53-27 — server-side fetch intercept (MSW node-server)
+### FEATURE-msw-intercept — server-side fetch intercept (MSW node-server)
 
 24 e2e specs in `apps/web/tests/e2e/` are auto-skipped under the slim
 topology because their `page.route()` stubs can't intercept the
