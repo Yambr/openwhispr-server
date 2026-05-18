@@ -253,3 +253,11 @@ Common envFrom secret reference block, used by api / worker / litellm pods.
 - secretRef:
     name: {{ include "openwhispr.fullname" . }}-secrets
 {{- end }}
+
+{{/*
+Selector labels for the Speaches workload (Plan 11-03b / Variant C).
+*/}}
+{{- define "openwhispr.speaches.selectorLabels" -}}
+{{ include "openwhispr.selectorLabels" . }}
+app.kubernetes.io/component: speaches
+{{- end }}

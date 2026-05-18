@@ -1,0 +1,155 @@
+{{/*
+Speaches Deployment + Service + PVC — Phase 11 / Plan 11-03b
+(Variant C — local Speaches for self-contained transcription +
+diarization).
+
+Renders ONLY when `bundledAi.enabled=true` (Variant C). The default
+Variant A (embedded LiteLLM + hosted Whisper) leaves bundledAi.enabled
+at false and this template emits zero documents.
+
+Image default is the GPU variant (master-cuda-12.6.3); CPU operators
+override `bundledAi.image` to the master-cpu tag. nodeSelector +
+tolerations target GPU nodes by default and can be overridden for
+CPU-only clusters.
+
+ConfigMap for HF_TOKEN propagation lives in the same Secret block the
+api / worker pods consume (`{{ include "openwhispr.fullname" . }}-secrets`)
+so the ExternalSecret already covers it when bundledAi.enabled=true
+(per Plan 11-01 ESO data-block conditional on bundledAi.enabled).
+
+PVC persists Hugging Face model weights across pod restarts; without
+it every restart re-downloads ~3 GB of weights.
+*/}}
+{{- if .Values.bundledAi.enabled -}}
+{{- $fullname := include "openwhispr.fullname" . -}}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $fullname }}-speaches
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "openwhispr.labels" . | nindent 4 }}
+    app.kubernetes.io/component: speaches
+spec:
+  replicas: {{ .Values.bundledAi.replicas | default 1 }}
+  strategy:
+    # Speaches loads ~3 GB of model weights on startup; rolling-update
+    # surge would briefly double the GPU footprint. Recreate is cheaper
+    # for a Variant-C operator who accepts a ~60 s warm-cache outage
+    # during chart upgrades.
+    type: Recreate
+  selector:
+    matchLabels:
+      {{- include "openwhispr.speaches.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "openwhispr.speaches.selectorLabels" . | nindent 8 }}
+    spec:
+      serviceAccountName: {{ include "openwhispr.serviceAccountName" . }}
+      {{- with .Values.image.pullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.bundledAi.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.bundledAi.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: speaches
+          image: {{ .Values.bundledAi.image | quote }}
+          imagePullPolicy: {{ .Values.image.pullPolicy | default "IfNotPresent" }}
+          ports:
+            - name: http
+              containerPort: 8000
+              protocol: TCP
+          env:
+            - name: PRELOAD_MODELS
+              value: '["Systran/faster-whisper-large-v3","pyannote/speaker-diarization-community-1"]'
+            - name: ENABLE_UI
+              value: "false"
+            # HF_TOKEN is delivered via envFrom from the shared secret
+            # the api / worker consume — ExternalSecret data block
+            # (Plan 11-01) includes HF_TOKEN ref ONLY when
+            # bundledAi.enabled=true, so this binding is safe.
+          envFrom:
+            {{- include "openwhispr.secretEnvFrom" . | nindent 12 }}
+          # Generous startupProbe — first boot downloads ~3 GB of
+          # weights on a fresh PVC. failureThreshold × periodSeconds
+          # = 60 × 10 = 600 s budget (matches the compose overlay's
+          # 600 s start_period).
+          startupProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            failureThreshold: 60
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            periodSeconds: 10
+            timeoutSeconds: 3
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            periodSeconds: 30
+            timeoutSeconds: 5
+          resources:
+            {{- toYaml (.Values.bundledAi.resources | default dict) | nindent 12 }}
+          volumeMounts:
+            - name: hf-cache
+              mountPath: /root/.cache/huggingface
+      volumes:
+        - name: hf-cache
+          {{- if and .Values.bundledAi.persistence .Values.bundledAi.persistence.enabled }}
+          persistentVolumeClaim:
+            claimName: {{ $fullname }}-speaches-hf-cache
+          {{- else }}
+          emptyDir:
+            sizeLimit: 25Gi
+          {{- end }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $fullname }}-speaches
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "openwhispr.labels" . | nindent 4 }}
+    app.kubernetes.io/component: speaches
+spec:
+  type: ClusterIP
+  ports:
+    - name: http
+      port: 8000
+      targetPort: http
+      protocol: TCP
+  selector:
+    {{- include "openwhispr.speaches.selectorLabels" . | nindent 4 }}
+{{- if and .Values.bundledAi.persistence .Values.bundledAi.persistence.enabled }}
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ $fullname }}-speaches-hf-cache
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "openwhispr.labels" . | nindent 4 }}
+    app.kubernetes.io/component: speaches
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: {{ .Values.bundledAi.persistence.size | default "20Gi" }}
+  {{- with .Values.bundledAi.persistence.storageClass }}
+  storageClassName: {{ . | quote }}
+  {{- end }}
+{{- end }}
+{{- end -}}

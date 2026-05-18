@@ -86,6 +86,22 @@ bundledAi:
     - key: nvidia.com/gpu
       operator: Exists
       effect: NoSchedule
+  # Plan 11-03b — resource requests + limits. GPU operators add
+  # `nvidia.com/gpu: 1` under resources.limits when scheduling on
+  # NVIDIA-device-plugin clusters. CPU-only operators keep the defaults.
+  resources:
+    requests:
+      cpu: "2"
+      memory: 4Gi
+    limits:
+      cpu: "4"
+      memory: 8Gi
+  # PVC for Hugging Face weight cache. Without persistence every pod
+  # restart re-downloads ~3 GB.
+  persistence:
+    enabled: true
+    size: 20Gi
+    storageClass: ""
 
 # Observability. Per A3 the LGTM stack is a cluster prerequisite. Chart ships
 # ServiceMonitor / PodMonitor / OTel Collector DaemonSet+RBAC+ConfigMap only.
