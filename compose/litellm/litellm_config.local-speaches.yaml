@@ -1,0 +1,126 @@
+# Phase 11 / Plan 11-03 — LiteLLM proxy config for Variant C
+# (local Speaches) operators.
+#
+# Mounted into the LiteLLM container by
+# examples/docker-compose.local-speaches.yml. Routes whisper-large-v3 +
+# pyannote-3.1 to the in-cluster `http://speaches:8000` endpoint
+# instead of a hosted provider; LLM model aliases (reason / agent-stream
+# routes) continue to resolve to the operator's hosted catalog via
+# OPENROUTER_API_KEY / OPENAI_API_KEY as in Variant A.
+#
+# Derived 1:1 from compose/litellm/litellm_config.realistic.yaml
+# (Phase 08.5-01) which proved out the same wiring under the
+# load-test-realistic profile.
+#
+# Provenance: mirrors compose/litellm/litellm_config.yaml verbatim EXCEPT
+# the `whisper-large-v3` entry which is swapped from the bundled-default
+# upstream STT provider to
+# `openai/Systran/faster-whisper-large-v3 @ http://speaches:8000/v1`.
+# See 08.5-RESEARCH.md §G2 + speaches-audio.md Section 1 for the
+# canonical wiring shape.
+#
+# LLM aliases (OpenRouter — D-10) carry over unchanged: the audio plane
+# is what this profile demonstrates; LLM/realtime stays on public
+# providers because we don't host a local LLM container in OSS default.
+# Operators with on-prem LLM gateways override LITELLM_BASE_URL.
+#
+# Diarization (pass_through_endpoints) is wired here matching
+# speaches-audio.md Section 2 — even though the Mac smoke skips
+# diarization (08.5-RESEARCH §G7 / §3), having the pass-through in
+# the config is correct topology and free of cost (no warm hit unless
+# k6 invokes it).
+
+model_list:
+  # ---- LLMs (OpenRouter — unchanged from bundled litellm_config.yaml) ----
+  - model_name: qwen3.6-plus
+    litellm_params:
+      model: openrouter/qwen/qwen3.6-plus
+      api_key: os.environ/OPENROUTER_API_KEY
+
+  - model_name: gemini-3-flash
+    litellm_params:
+      model: openrouter/google/gemini-3.1-flash-lite
+      api_key: os.environ/OPENROUTER_API_KEY
+
+  - model_name: gpt-4o-mini
+    litellm_params:
+      model: openrouter/openai/gpt-4o-mini
+      api_key: os.environ/OPENROUTER_API_KEY
+
+  # ---- STT (Speaches via OpenAI-compatible STT — swap from bundled Groq) ----
+  # 08.5-RESEARCH §G2: api code at apps/api/src/routes/transcribe.ts
+  # POSTs to ${LITELLM_BASE_URL}/v1/audio/transcriptions with
+  # model=whisper-large-v3 (k6 flow uses the same alias). LiteLLM
+  # resolves this alias to the Speaches OpenAI-compatible STT endpoint
+  # below. `api_key: speaches-dummy` because Speaches accepts any
+  # bearer (speaches-audio.md Section 1).
+  - model_name: whisper-large-v3
+    litellm_params:
+      model: openai/Systran/faster-whisper-large-v3
+      api_base: http://speaches:8000/v1
+      api_key: "speaches-dummy"
+
+  # ---- Realtime (Speaches local — mirrors speaches-audio.md §3) ----
+  #
+  # Canonical corporate setup per speaches-audio.md §3:
+  #   wss://<lite-llm>/v1/realtime?model=<realtime-model-alias>
+  #   LiteLLM v1.82.0+ proxies the WS bidirectionally with `mode: realtime`.
+  #
+  # For Mac plateau cost-discipline (user 2026-05-13 — memory:
+  # loadtest-cost-discipline + speaches-full-local-coverage) we route ALL
+  # realtime aliases to Speaches local. Speaches Realtime docs:
+  # https://speaches.ai/usage/realtime-api — uses Whisper-CT2 for the
+  # transcription intent (no LLM upstream needed, plateau-cheap).
+  #
+  # Mac CPU numbers will be SLOW per frame; that's the expected baseline
+  # shape — operator H100 re-run substitutes numbers, NOT wiring.
+  #
+  # For real OpenAI Realtime smoke (≤10 calls proof-of-wiring), see
+  # the realistic-smoke-paid mode flag.
+  - model_name: gpt-realtime
+    litellm_params:
+      model: openai/speaches-realtime
+      api_base: http://speaches:8000/v1
+      api_key: "speaches-dummy"
+      mode: realtime
+
+  # k6 realtime-ws flow sends model=speaches-realtime in the WS query
+  # param (`wss://.../v1/realtime?model=speaches-realtime`), so alias
+  # this name explicitly to the same Speaches upstream.
+  - model_name: speaches-realtime
+    litellm_params:
+      model: openai/speaches-realtime
+      api_base: http://speaches:8000/v1
+      api_key: "speaches-dummy"
+      mode: realtime
+
+  - model_name: gpt-realtime-mini
+    litellm_params:
+      model: openai/speaches-realtime
+      api_base: http://speaches:8000/v1
+      api_key: "speaches-dummy"
+      mode: realtime
+
+  - model_name: gpt-4o-realtime-preview
+    litellm_params:
+      model: openai/speaches-realtime
+      api_base: http://speaches:8000/v1
+      api_key: "speaches-dummy"
+      mode: realtime
+
+general_settings:
+  master_key: os.environ/LITELLM_MASTER_KEY
+  database_url: os.environ/LITELLM_DATABASE_URL
+  store_model_in_db: True
+  # NOTE: pass_through_endpoints with `auth: true` requires LiteLLM
+  # Enterprise license — startup crashes without it. speaches-audio.md
+  # §2 uses this in production (corporate operators have Enterprise),
+  # but Mac OSS load-test runs use community LiteLLM. Diarization is
+  # not exercised by the load-test smoke OR plateau, so we omit the
+  # pass-through entirely. Operators who run realistic against
+  # Enterprise LiteLLM should re-add the pass_through_endpoints block
+  # per speaches-audio.md §2.
+
+litellm_settings:
+  drop_params: True
+  set_verbose: True

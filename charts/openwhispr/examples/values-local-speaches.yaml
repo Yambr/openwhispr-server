@@ -1,0 +1,66 @@
+# Variant C — local Speaches chart overlay (Plan 11-03).
+#
+# GPU-equipped operators wanting fully self-contained transcription +
+# diarization run this overlay on top of the chart defaults. It:
+#   - flips bundledAi.enabled=true so the chart renders the Speaches
+#     workload (Deployment + Service + PVC) in addition to the embedded
+#     LiteLLM
+#   - sets bundledAi.requireHfToken=true so the boot gate refuses to
+#     start without HF_TOKEN (gated pyannote weights)
+#   - swaps the embedded LiteLLM model alias for whisper-large-v3 to
+#     point at the in-cluster Speaches Service instead of routing out
+#     to a hosted provider
+#
+# WARNING: GPU is STRONGLY RECOMMENDED. Per-pod resource requests assume
+# at least 8 GiB GPU memory + 4 CPU cores. CPU fallback works for dev
+# but Whisper-large-v3 on CPU runs at ~0.5 RTF — not production-grade
+# at the 1000-concurrent-user SLO.
+
+secrets:
+  mode: eso
+  external:
+    storeRef: vault-clusterstore
+    storeKind: ClusterSecretStore
+    path: openwhispr
+    refreshInterval: 1h
+
+# Keep the embedded LiteLLM — Variant C routes through it, with the
+# whisper-large-v3 alias rewired to the in-cluster Speaches Service.
+litellm:
+  embedded: true
+
+# Variant C-defining toggle — bundled AI (Speaches) ON.
+bundledAi:
+  enabled: true
+  # HF_TOKEN is gated weight-download credential for the pyannote
+  # diarization model. Without it, the diarization endpoint surfaces 503;
+  # transcription still works (Whisper weights are ungated). Operators
+  # who only need transcription can set this to false AND drop HF_TOKEN
+  # from .env / ESO, BUT must also disable the diarization route at the
+  # api layer (see docs/operations.md §Variant C).
+  requireHfToken: true
+  speaches:
+    # GPU operators override: image: speaches/speaches:master-cuda-12.6.3
+    # Default CPU build mirrors the compose overlay's BASE_IMAGE shape.
+    image: speaches/speaches:master-cpu
+    resources:
+      requests:
+        cpu: "2"
+        memory: 4Gi
+      limits:
+        cpu: "4"
+        memory: 8Gi
+    persistence:
+      enabled: true
+      size: 20Gi
+      # Variant C ships a PVC keyed to the operator's StorageClass. The
+      # named volume in compose maps 1:1 onto this PVC at chart-render
+      # time.
+
+# OpenWhispr docs cross-reference: see
+# `examples/README.md#quick-start--variant-c-local-speaches` for the
+# matching compose overlay + bats smoke.
+observability:
+  embedded: false
+  serviceMonitor:
+    enabled: true
