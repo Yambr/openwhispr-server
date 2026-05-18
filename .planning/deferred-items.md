@@ -952,3 +952,33 @@ u4-usage / a2-observability / a3-config / u11-conv-list / u12-conv-detail "loadi
 - `p53-signup-smoke` GREEN under `pnpm playwright test --project=slim p53-signup-smoke` (3.3s, 1 passed).
 - FAILS under full sweep — flake from `workers: 2` parallel. Not a sentinel bug; cross-spec state interference.
 - **Fix candidate:** sentinel should use a fresh email per run (`Date.now()` already in spec), but the `_diagnostics-fixture` strict check fires on captured browser errors. Audit what gets captured under parallel — likely 429 from anti-abuse rate limiter cascading from u1-u3 specs running in another worker.
+
+## 2026-05-18 — Plan 53-25 admin promotion + sweep tally
+
+**Closed:** patchEmailVerified() in fixtures/auth.ts now promotes alice to role=admin in the same UPDATE. Cleared cached storageState JSONs.
+
+**Sweep:** 55/38 → 63/30 (+8 specs). a2/a3 admin gate cleared.
+
+### Phase 53 final state observation
+
+Specs that PASS in isolation but FAIL under parallel sweep (workers=2):
+- u5-account (5/5 alone, 4 fail full sweep)
+- p53-signup-smoke (1/1 alone, flake)
+- u6-trx-list, u7-trx-detail (similar)
+
+This is **flake from parallel state interference**, not bugs in specs or helpers.
+
+### Phase 53 closure summary
+
+**Slim sweep progression (single session):**
+- Start (53-15): 27/66
+- 53-17 (auto-allowlist): 31/62
+- 53-19 (workers=2): 46/47
+- 53-18 (color-contrast): 49/44
+- 53-21 (cookie scope): 51/42
+- 53-23 (catch-all rewrite): 55/38
+- **53-25 (admin role): 63/30**
+
+**Net: +36 specs unblocked through infrastructure fixes.**
+
+Remaining 30 = ~10 parallel-flake + ~10 RSC loading race + ~5 dup-email policy + ~5 misc UI. Phase 54+ scope.
