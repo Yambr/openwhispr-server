@@ -23,6 +23,34 @@ test.describe("99 — cross-screen smoke (Phase 07.1 / Plan 13)", () => {
     await seed.clearAllData();
   });
 
+  // Phase 53 / Plan 53-34 — the sign-out step at the end of the spec
+  // revokes alice's Better Auth session row, which would BREAK every
+  // subsequent spec sharing the storageState (their cookies point at a
+  // now-deleted session → /sign-in page → cascade failures across
+  // u11/u12/u13). After each 99-* test: sign back in via a fresh
+  // playwright request context, then OVERWRITE the on-disk storage
+  // state file so the next spec picks up a working session.
+  test.afterEach(async (_, info) => {
+    const { storageStatePath } = await import("./fixtures/auth.js");
+    const { request: playwrightRequest } = await import("@playwright/test");
+    const baseUrl = process.env.BASE_URL ?? getOrigins(info).apiOrigin;
+    const ctx = await playwrightRequest.newContext({
+      baseURL: baseUrl,
+      ignoreHTTPSErrors: true,
+    });
+    try {
+      const res = await ctx.post(`${baseUrl}/api/auth/sign-in/email`, {
+        headers: { "content-type": "application/json", origin: baseUrl },
+        data: { email: fixtureEmail(info.parallelIndex), password: FIXTURE_PASSWORD },
+      });
+      if (res.ok()) {
+        await ctx.storageState({ path: storageStatePath(info.parallelIndex) });
+      }
+    } finally {
+      await ctx.dispose();
+    }
+  });
+
   test("sign-in → /app → notes → transcriptions → conversations → account → sign-out", async ({
     page,
     context,
