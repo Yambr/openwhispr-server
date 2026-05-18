@@ -108,6 +108,48 @@ test suite locally:
    `.github/workflows/ci.yml::test` — `TESTCONTAINERS_RYUK_DISABLED=true`
    + `if: always()` sweep step) for parity between local and CI runs.
 
+6. **Per-package `--project=<name>` filter.** `pnpm --filter @openwhispr/api test`
+   et al. inherit the root config's `projects:` array via mergeConfig,
+   which would otherwise pull `tests/integration`, `tests/self-tests`,
+   `tools`, and other workspace projects into the run. Package
+   `package.json` test scripts pin the filter:
+
+   ```bash
+   pnpm --filter @openwhispr/api    test   # 147 files / 1299 tests, ~98s
+   pnpm --filter @openwhispr/worker test   # ~20s
+   pnpm --filter @openwhispr/web    test   # 65 files / 963 tests, ~15s
+   pnpm --filter @openwhispr/data   test   # testcontainers, ~minutes
+   ```
+
+   If a contributor adds a new workspace package with its own
+   `vitest.config.ts` that uses `mergeConfig(rootConfig, …)`, they
+   MUST add `name: "<pkg>"` + update the `test` script to
+   `vitest run --project=<pkg>` so the same isolation applies.
+
+7. **Self-tests skip cleanly with the dev stack up.** Three
+   docker-compose-touching self-tests in `tests/self-tests/`
+   (`migrate-gates-api`, `api-container-healthy`, `traefik-https-only`)
+   auto-skip via `devStackUp()` precheck (`tests/_shared/dev-stack-guard.ts`)
+   when an `openwhispr-*` container is running. They need exclusive
+   ownership of host ports 5432 / 4000 / 80 / 443. Stop the dev
+   stack first if you need them to actually run:
+
+   ```bash
+   make down                                         # tears down the dev stack
+   pnpm vitest run tests/self-tests/migrate-gates-api.test.ts
+   make up-with-dev-tools                            # bring the stack back
+   ```
+
+   **Historical note (BUG-53-37 / BUG-53-39):** before the precheck
+   landed, three different test files ran `docker compose down -v`
+   against the default `openwhispr` project without `-p`, silently
+   tearing down every dev container mid-test-run. The fix
+   (commits cd5f669, 5e83094, bf95b65) isolates the self-test and
+   obs-smoke compose projects under distinct names
+   (`openwhispr-self-test`, `openwhispr-obs-smoke`) and gates each
+   on `devStackUp()`. If you're on a clone older than May 2026 and
+   `pnpm test` removed your dev containers, update to current main.
+
 ## Air-gap mkcert installation
 
 Operators without internet access cannot pull mkcert from upstream
