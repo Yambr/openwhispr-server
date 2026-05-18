@@ -11,13 +11,17 @@
 // violations against WCAG 2.0 A + AA and WCAG 2.2 AA. The combined tag
 // list is what @axe-core/playwright recommends for the AA goal.
 import path from "node:path";
-import { fileURLToPath } from "node:url";
 import AxeBuilder from "@axe-core/playwright";
 import { expect, type Page } from "@playwright/test";
 import { compareOrWriteBaseline } from "../../../src/lib/axe-baseline";
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
+// Phase 53 / Plan 53-15 — removed `import.meta.url` (ESM-only) which
+// caused `ReferenceError: exports is not defined in ES module scope`
+// when Playwright's loader transpiles axe.ts under the CJS interpretation
+// of apps/web (no `"type": "module"` in package.json). Baselines live
+// at a stable path relative to process.cwd() (always apps/web when
+// invoked via `pnpm playwright test`), so we anchor there.
+const BASELINES_DIR = path.resolve(process.cwd(), "tests/e2e/__axe-baselines__");
 
 /**
  * Run axe-core against the current page state and assert zero violations.
@@ -33,7 +37,7 @@ export async function runAxe(page: Page, screenId?: string): Promise<void> {
     .analyze();
   expect(results.violations).toEqual([]);
   if (screenId && process.env.AXE_BASELINE === "1") {
-    const file = path.join(__dirname, "..", "__axe-baselines__", `${screenId}.json`);
+    const file = path.join(BASELINES_DIR, `${screenId}.json`);
     await compareOrWriteBaseline({
       file,
       live: {
