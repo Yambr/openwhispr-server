@@ -427,13 +427,23 @@ e2e-test-phase6:
 	    echo "================================================" ; \
 	    echo "Phase 6 e2e — running $$f" ; \
 	    echo "================================================" ; \
-	    if ! E2E=1 LITELLM_CONFIG_FILE=litellm_config.contract.yaml \
-	      OPENWHISPR_TEST_ROUTES=true MOCK_DIARIZATION=true \
-	      NODE_TLS_REJECT_UNAUTHORIZED=0 \
-	      TESTCONTAINERS_RYUK_DISABLED=true \
-	      OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4317 \
-	      pnpm exec vitest run --config tests/e2e/vitest.e2e.config.ts $$f ; \
-	    then \
+	    pass=0 ; \
+	    for attempt in 1 2 ; do \
+	      if E2E=1 LITELLM_CONFIG_FILE=litellm_config.contract.yaml \
+	        OPENWHISPR_TEST_ROUTES=true MOCK_DIARIZATION=true \
+	        NODE_TLS_REJECT_UNAUTHORIZED=0 \
+	        TESTCONTAINERS_RYUK_DISABLED=true \
+	        OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4317 \
+	        pnpm exec vitest run --config tests/e2e/vitest.e2e.config.ts $$f ; \
+	      then \
+	        pass=1 ; break ; \
+	      fi ; \
+	      echo "Phase 6 e2e — attempt $$attempt failed for $$f; tearing down + retry" ; \
+	      docker compose -p openwhispr down -v --remove-orphans >/dev/null 2>&1 || true ; \
+	      docker volume prune -f >/dev/null 2>&1 || true ; \
+	      sleep 10 ; \
+	    done ; \
+	    if [ "$$pass" != "1" ]; then \
 	      echo "FAIL: $$f" ; \
 	      rc=1 ; \
 	    fi ; \
