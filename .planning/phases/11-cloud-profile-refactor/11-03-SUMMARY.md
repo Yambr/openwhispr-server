@@ -68,26 +68,35 @@ a Variant-C-specific hint when unset. `litellm` service's volumes block
 correctly mounts `compose/litellm/litellm_config.local-speaches.yaml`
 into the container at `/app/litellm_config.yaml`.
 
-## Deferred — Plan 11-03b (proposed)
+## Follow-ups SHIPPED in this same 2026-05-18 session
 
-A follow-up sub-plan should land:
+  * **Plan 11-03b** — `charts/openwhispr/templates/speaches-deployment.yaml`
+    (Deployment + Service + PVC gated on `bundledAi.enabled`) +
+    `charts/openwhispr/tests/local_speaches_test.yaml` (9 helm-unittest
+    assertions). Commit `250b611`. helm-unittest total 190 → 199.
+  * **Plan 11-03c parity-lint half** — `speaches` graduated from the
+    parity-lint allowlist to a recognized chart resource. Commit
+    `0e8493c`. 36/36 parity-lint test cases pass.
+  * **Plan 11-03c bats half** — `examples/test-local-speaches.sh` +
+    `examples/test-local-speaches.bats` shipped as operator-runnable
+    artifacts (this commit). The smoke itself runs only with `bats`
+    installed + `.env` with `HF_TOKEN` populated + Docker host with
+    sufficient resources to build the Speaches master image — those
+    are operator-environment prerequisites, not author-time work. The
+    `.sh` wrapper carries pre-flight gates that fail clean with
+    exit 2 (no bats) or exit 3 (missing HF_TOKEN) so operators learn
+    the prerequisite before any compose `up` is attempted.
 
-1. `charts/openwhispr/templates/speaches-deployment.yaml` — the
-   actual Speaches workload Deployment + Service + PVC, gated on
-   `.Values.bundledAi.enabled`.
-2. `charts/openwhispr/tests/local_speaches_test.yaml` — helm-unittest
-   assertions for the new template (hasDocuments count=1 when
-   enabled=true; count=0 when enabled=false).
-3. `tools/lint-compose-chart-parity.ts` VARIANT_C fixture pair pinning
-   1:1 parity between `examples/docker-compose.local-speaches.yml`
-   and `values-local-speaches.yaml`.
-4. `examples/test-local-speaches.sh` + `.bats` — live smoke against a
-   built Speaches container (requires CI runner with GPU OR
-   self-hosted CPU runner with patience for the 10-minute build +
-   3 GB weight download).
+## Remaining genuinely-deferred work
 
-These are real, executable work — the deferral is scoped to "needs a
-GPU runner OR a long-running self-hosted CI lane", not "stale ticket".
+Only the **live runtime invocation** of the bats smoke against a real
+GPU runner (or a patient CPU runner accepting ~10 min build + 3 GB
+weight download + ~120 s per transcribe call) remains environmental.
+This is operator-driven, not author-time work — operators with the
+right host run `examples/test-local-speaches.sh` and report results;
+the CI lane that does this lives outside the scope of Plan 11-03/03b/
+03c per the original CONTEXT decision to keep Variant C bundling
+opt-in.
 
 ## Phase 11 progress after this commit
 
