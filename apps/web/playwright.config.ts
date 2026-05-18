@@ -54,7 +54,10 @@ export default defineConfig({
   forbidOnly: !!process.env.CI,
   // Phase 21 / Plan 21-02 / SR-21.2 — D-12: retry-on-flake is BANNED.
   retries: 0,
-  workers: process.env.CI ? 1 : "50%",
+  // Phase 53 / Plan 53-19 — slim topology caps workers at 2 to stay
+  // under Better Auth's anti-abuse rate limit (~3 parallel sign-ins per
+  // IP). Traefik project + CI keep their established limits.
+  workers: process.env.CI ? 1 : process.env.OPENWHISPR_TOPOLOGY === "slim" ? 2 : "50%",
   reporter: process.env.CI
     ? [["github"], ["html", { open: "never" }], ["list"]]
     : [["html", { open: "never" }], ["list"]],
