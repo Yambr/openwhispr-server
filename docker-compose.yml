@@ -259,7 +259,15 @@ services:
       # the contract-test seed service POST-ing http://api:3000/api/auth/sign-up).
       # Comma-separated list parsed by apps/api/src/auth.ts; in addition to
       # AUTH_URL + OPENWHISPR_API_URL, NOT a replacement.
-      AUTH_TRUSTED_ORIGINS_EXTRA: "http://api:3000"
+      # Phase 53 / Plan 53-06 — web origin http://localhost:3000 added
+      # for slim-core (no Traefik) operator topology: Better Auth runs on
+      # the api side and validates the request Origin header against
+      # AUTH_TRUSTED_ORIGINS; the rewrites() in next.config.ts preserves
+      # the original Origin (http://localhost:3000) when proxying to the
+      # api, so without an explicit allowlist entry Better Auth would
+      # reject every browser-originated sign-up/sign-in with 403
+      # "Invalid origin".
+      AUTH_TRUSTED_ORIGINS_EXTRA: "http://api:3000,http://localhost:3000,http://localhost:4000"
       # Phase 02.21 / Residual C — opt-in flag for the test-only routes
       # plugin (/api/_test/force-rotate, /api/_test/health-authed) needed
       # by the AUTH-04 token-rotation contract test. Default OFF — the

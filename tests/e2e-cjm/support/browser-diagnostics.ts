@@ -134,7 +134,7 @@ export async function attachBrowserDiagnostics(page: Page): Promise<void> {
       kind: isCsp ? "csp" : "console",
       severity: isCsp ? "error" : classifyConsoleSeverity(type),
       message: text,
-      detail: m.location ? { location: m.location() } : undefined,
+      ...(m.location ? { detail: { location: m.location() } } : {}),
     });
   });
 
