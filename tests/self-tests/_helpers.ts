@@ -158,8 +158,14 @@ export function fixtureSecrets(overrides: Record<string, string> = {}): Record<s
     // connect direct to `postgres:5432`. Overriding to `pgbouncer:5432`
     // earlier caused `no such service: pgbouncer` and a 168 ms early-exit
     // on every self-test that exercised `docker compose up --wait api`.
-    DATABASE_URL: `postgres://openwhispr_app:${overrides.POSTGRES_APP_PASSWORD ?? strong("POSTGRES_APP_PASSWORD")}@postgres:5432/openwhispr`,
-    DATABASE_URL_OWNER: `postgres://openwhispr_owner:${overrides.POSTGRES_OWNER_PASSWORD ?? strong("POSTGRES_OWNER_PASSWORD")}@postgres:5432/openwhispr`,
+    // `?sslmode=disable` is the canonical libpq escape-hatch that
+    // `buildPoolConfig()` (packages/data/src/client.ts) matches to
+    // produce `ssl: false`. WITHOUT it, the post-Phase-2 SSL-by-default
+    // contract turns TLS on, and the bundled fixture postgres (slim-
+    // core base, no SSL cert) returns `error: The server does not
+    // support SSL connections` at handshake — Phase 51.27 root cause.
+    DATABASE_URL: `postgres://openwhispr_app:${overrides.POSTGRES_APP_PASSWORD ?? strong("POSTGRES_APP_PASSWORD")}@postgres:5432/openwhispr?sslmode=disable`,
+    DATABASE_URL_OWNER: `postgres://openwhispr_owner:${overrides.POSTGRES_OWNER_PASSWORD ?? strong("POSTGRES_OWNER_PASSWORD")}@postgres:5432/openwhispr?sslmode=disable`,
     ...overrides,
   };
 }
