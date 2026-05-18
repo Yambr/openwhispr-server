@@ -61,6 +61,35 @@ export function composeAtLeast(major: number, minor: number): boolean {
 // docker compose.
 export const COMPOSE_PROJECT = "openwhispr-self-test";
 
+// BUG-53-37 (follow-up): even with isolated project names, host ports
+// 5432 (postgres), 4000 (api), and a few others are bound exclusively
+// by whichever project boots first. When the developer's `openwhispr`
+// dev stack is up, the self-test stack's `compose up --wait` fails on
+// port allocation and the test reports a misleading "exit 1" with no
+// hint that the dev stack is the actual blocker.
+//
+// `devStackUp()` returns true when ANY `openwhispr-*` container in the
+// default `openwhispr` project is currently running. Self-tests gate
+// their `describe.skipIf(...)` predicate on this so the suite skips
+// cleanly with a clear log line instead of failing on port conflict.
+//
+// We probe by listing running container names in the `openwhispr`
+// project — NOT the self-test project — so this never races with our
+// own teardown.
+export function devStackUp(): boolean {
+  try {
+    const r = spawnSync(
+      "docker",
+      ["compose", "-p", "openwhispr", "ps", "--quiet", "--status=running"],
+      { encoding: "utf8", timeout: 5_000 },
+    );
+    if (r.status !== 0) return false;
+    return r.stdout.trim().length > 0;
+  } catch {
+    return false;
+  }
+}
+
 export interface RunResult {
   exitCode: number;
   stdout: string;

@@ -9,9 +9,20 @@
 import { copyFileSync, existsSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { composeAtLeast, dockerAvailable, dockerCompose, fixtureSecrets } from "./_helpers.js";
+import {
+  composeAtLeast,
+  devStackUp,
+  dockerAvailable,
+  dockerCompose,
+  fixtureSecrets,
+} from "./_helpers.js";
 
-const skip = !dockerAvailable || !composeAtLeast(2, 20);
+// BUG-53-37 follow-up: skip when the developer's `openwhispr` dev stack
+// is already up. The self-test needs exclusive ownership of host ports
+// 5432/4000/etc — otherwise `compose up --wait` exits 1 on port
+// allocation with no useful signal. The explicit guard surfaces the
+// real reason in the test runner output instead of a confusing exit.
+const skip = !dockerAvailable || !composeAtLeast(2, 20) || devStackUp();
 
 const ROOT = process.cwd();
 const ENV_BACKUP = join(ROOT, ".env.bak-02-02-healthy");

@@ -16,9 +16,19 @@
 import { copyFileSync, existsSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { composeAtLeast, dockerAvailable, dockerCompose, fixtureSecrets } from "./_helpers.js";
+import {
+  composeAtLeast,
+  devStackUp,
+  dockerAvailable,
+  dockerCompose,
+  fixtureSecrets,
+} from "./_helpers.js";
 
-const SHOULD_RUN = dockerAvailable && composeAtLeast(2, 20);
+// BUG-53-37 follow-up: skip when the developer's `openwhispr` dev stack
+// is up. If the dev stack runs the ingress overlay, host ports 80/443
+// are taken and the traefik self-test fails on bind. The precheck
+// surfaces the real cause in test output.
+const SHOULD_RUN = dockerAvailable && composeAtLeast(2, 20) && !devStackUp();
 
 const ROOT = process.cwd();
 const ENV_BACKUP = join(ROOT, ".env.bak-02-04-wire20");
