@@ -111,6 +111,19 @@ const CSP_LISTENER_INIT_SCRIPT = `
  * forwarder init script. Safe to call multiple times on the same page —
  * listeners are idempotent because the storage is keyed per-Page.
  */
+/**
+ * Phase 53 / Plan 53-11 — default allowlist applied to every page that
+ * calls `attachBrowserDiagnostics`. Captures patterns that are
+ * structurally part of the framework and not real bugs:
+ *   - `_rsc=*` GET aborts on navigation: Next.js cancels in-flight RSC
+ *     pre-fetches when the user moves off the page; the browser surfaces
+ *     this as `net::ERR_ABORTED`. Documented framework behaviour.
+ *
+ * Per-spec `allowBrowserErrors(page, [...])` calls still stack on top
+ * of these defaults — the lists are additive.
+ */
+const DEFAULT_ALLOWLIST: readonly RegExp[] = [/_rsc=[^ ]+ → FAILED: net::ERR_ABORTED/];
+
 export async function attachBrowserDiagnostics(page: Page): Promise<void> {
   if (diagnosticsStore.has(page)) {
     // Already attached — skip the duplicate listener setup.
@@ -118,6 +131,9 @@ export async function attachBrowserDiagnostics(page: Page): Promise<void> {
   }
   const entries: BrowserDiagnosticEntry[] = [];
   diagnosticsStore.set(page, entries);
+  // Seed the per-page allowlist with framework-level expected aborts so
+  // every spec inherits the same baseline without per-spec ceremony.
+  allowlistStore.set(page, [...DEFAULT_ALLOWLIST]);
 
   // 1. console — log / info / warn / error
   page.on("console", (msg: unknown) => {

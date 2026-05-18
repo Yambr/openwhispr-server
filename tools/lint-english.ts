@@ -56,6 +56,13 @@ const IGNORE = [
   "**/.stryker-tmp/**",
   "**/reports/**",
   "**/.git/**",
+  // Phase 53 / Plan 53-11 — Playwright run artifacts (screenshots, traces,
+  // error-context.md) embed verbatim spec text. The i18n-russian spec is
+  // allowlisted upstream; its trace artifacts inherit that rationale. The
+  // artifacts are gitignored — they only land locally during a test run —
+  // so the lint scan can safely skip them everywhere.
+  "**/test-results/**",
+  "**/playwright-report/**",
   "**/pnpm-lock.yaml",
   "packages/i18n/locales/**",
   "tests/fixtures/i18n/**",
