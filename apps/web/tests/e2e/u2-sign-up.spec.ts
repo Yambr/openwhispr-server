@@ -30,24 +30,31 @@ test.describe("U2 Sign-up (Phase 07.1 / Plan 07)", () => {
     });
   });
 
-  test("error state — duplicate email shows duplicate Alert", async ({ page }, info) => {
-    // Plan 13.1 — the global-setup hook (tests/e2e/global-setup.ts) has
-    // already provisioned `alice+<workerIndex>@test.local` via the real
-    // Better Auth sign-up + Postgres email-verified flip. Submitting the
-    // sign-up form with that same email triggers USER_ALREADY_EXISTS from
-    // real Better Auth — no internal mock, no extra /api/auth/sign-up
-    // request beyond the form submit itself.
+  test("duplicate email — silent generic response prevents enumeration", async ({ page }, info) => {
+    // Phase 53 / Plan 53-27 — Better Auth ≥ 1.6 returns a synthetic-200
+    // for duplicate email submissions when `requireEmailVerification`
+    // is enabled (our default). The handler hashes the password to
+    // equalise timing and returns a fake user payload; no DB row is
+    // created. This is anti-enumeration baseline per Better Auth's
+    // security model. The UI must render the SAME "check your email"
+    // success block as for a fresh sign-up — exposing an "already
+    // registered" Alert would itself be an enumeration oracle.
+    //
+    // Prior wording of this spec asserted `/already registered/i` Alert
+    // — that contract was valid only when Better Auth returned 422
+    // USER_ALREADY_EXISTS, which it no longer does with verification
+    // required. See deferred-items.md BUG-53-25 for the policy trail.
     const existingEmail = fixtureEmail(info.parallelIndex);
     await page.goto("/sign-up");
     await page.getByLabel(/name/i).fill("Alice");
     await page.getByLabel(/email/i).fill(existingEmail);
     await page.getByLabel(/^password$/i).fill(FIXTURE_PASSWORD);
     await page.getByRole("button", { name: /^sign up$/i }).click();
-    // Plan 13.2 — the Alert renders the same copy in both AlertTitle and
-    // AlertDescription, so `getByText` resolves to two nodes. `.first()`
-    // picks the title; the duplicate-email Alert is considered visible
-    // either way.
-    await expect(page.getByText(/already registered/i).first()).toBeVisible({ timeout: 15_000 });
+    // Same success block as fresh sign-up — that's the whole point of
+    // the generic response.
+    await expect(page.getByText(/check your email/i).first()).toBeVisible({ timeout: 15_000 });
+    // Negative invariant — duplicate-disclosure copy must NOT appear.
+    await expect(page.getByText(/already registered/i)).toHaveCount(0);
   });
 
   test("success state — new email shows verification message", async ({ page }) => {

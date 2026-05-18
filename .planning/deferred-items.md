@@ -1004,3 +1004,17 @@ Closed: slim project workers=1 — eliminates parallel-flake (~3 specs). Sweep 6
 - (d) Make the RSC prefetch defer to client when a `Cookie: e2e-test=1` is present (still a env-of-sorts but cookie-scoped, not process-wide).
 
 User decision needed on which path. Defer Phase 54.
+
+## 2026-05-18 — Plan 53-27: u2 dup-email spec rewrite
+
+**Closed:** rewrote `u2-sign-up "error state — duplicate email"` to match Better Auth ≥ 1.6 anti-enumeration policy. Now asserts that duplicate submission produces the SAME "check your email" UI as fresh sign-up + negative invariant `/already registered/` MUST NOT appear. Closes BUG-53-25.
+
+Sweep delta: 66/27 → 67/26 (commit pending).
+
+### BUG-53-28 — /setup page renders empty body under curl (slim)
+- `curl http://localhost:3000/setup` returns 200 + HTML, but `<body>` contains only `<div hidden=""><!--$--><!--/$--></div>` (empty RSC stream marker).
+- `/api/setup-state` returns `{"status":"pending"}` so the redirect-to-/sign-in branch is NOT triggered.
+- Wizard ("Set up your OpenWhispr server.") should render, but visible DOM is empty.
+- Could be: server-side fetch to internalApiUrl() failing silently inside RSC, OR streaming pipe broken under slim topology, OR the cookies-from-headers() pass-through breaks when there is no session cookie.
+- **Repro:** curl http://localhost:3000/setup with no Authorization header. Expected: HTML containing AuthShell + form. Actual: empty body.
+- Tracking: Plan 54+ investigation. u-setup axe spec WILL fail until fixed.
