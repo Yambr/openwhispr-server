@@ -36,8 +36,17 @@ export function I18nProvider({
     i.use(ICU);
     i.init({
       lng,
+      // Phase 53 / Plan 53-30 — mirror server's fallbackLng to avoid
+      // hydration mismatch (React error #418) when a key is missing
+      // from the active-locale bundle. Server returns the EN fallback
+      // string; client without fallback returned the key literal —
+      // even one such divergence triggers React's hydration panic.
+      // `ns` order is sorted to stabilise i18next's internal counter
+      // (any nondeterminism in Object.keys insertion order would
+      // shift useId() outputs across server/client).
+      fallbackLng: "en",
       resources: { [lng]: resources },
-      ns: Object.keys(resources),
+      ns: Object.keys(resources).sort(),
       defaultNS: "common",
       interpolation: { escapeValue: false },
     });
