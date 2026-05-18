@@ -121,6 +121,17 @@ export default defineConfig({
           include: ["__tests__/*.test.ts"],
         },
       },
+      // Phase 53 / Plan 53-01 — browser-diagnostics helper unit tests.
+      // Sibling to the Gherkin step modules; picks up *.test.ts files
+      // colocated with the helper module in tests/e2e-cjm/support/.
+      {
+        extends: true,
+        test: {
+          name: "tests-e2e-cjm-support",
+          root: p("tests/e2e-cjm/support"),
+          include: ["*.test.ts"],
+        },
+      },
       // Phase 23 / Plan 23-01 / SR-23.1 — tests/integration/ surface.
       // Pre-Phase-23 these files (docs-operations-byok-matrix.test.ts,
       // compose-overlays.test.ts, env-slim-example.test.ts, …) had NO
