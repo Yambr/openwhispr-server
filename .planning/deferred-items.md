@@ -1333,3 +1333,64 @@ All Phase 53-touched test surfaces: **ZERO failures** across **4005 passing test
 - BUG-53-27: server-side fetch intercept (MSW node-server) — re-enables 24 RSC-prefetch-wall specs
 
 Phase 53 = COMPLETE SUCCESS. The original ask ("каждый тест должен ловить браузерные ошибки") delivered the helper that found 10 production bugs the manual smoke missed.
+
+### BUG-53-36 — root unit coverage Branches axis below 90% floor (2026-05-18, loop-tick)
+
+`pnpm test` at repo root (vitest workspace, coverage-v8) reports:
+- Statements 92.18% (5264/5710) ✅
+- Branches  **88.08% (2958/3358)** ❌ ( -1.92 below DISCIPLINE floor )
+- Functions 93.97% (1030/1096) ✅
+- Lines     92.82% (5016/5404) ✅
+
+DISCIPLINE rule (CLAUDE.md): `Per-phase coverage floor ≥ 90% on lines/branches/functions/statements`. The Branches axis is the only one underfloor.
+
+**Triage:**
+- Pre-existing — NOT a Phase 53 regression. Phase 53 surface is apps/web (Playwright + apps/web vitest), not the root unit suite.
+- The 90/90/90/90 floor is per-phase on diff, not lifetime total — Phase 53 diff-coverage still passes the verifier. The lifetime 88% is debt, not a Phase 53 BLOCKER.
+- 400 uncovered branches concentrated where — not yet localised; needs `coverage/lcov-report/index.html` sweep. Likely sinks: `apps/api/src/lib/**` conditional fallbacks, `apps/api/src/routes/v1/keys/**` BYOK error envelopes, `packages/data/src/encryption` catch arms.
+
+**Why it matters in prod:** under-covered branches are usually `catch` arms, `if (env.X)` fallbacks, and error envelopes that fire when an upstream goes sideways — exactly the paths integration tests don't reach.
+
+**Fix recommendation:** future "branch coverage closure" phase. Spawn `gsd-code-reviewer` against `coverage/lcov-report/index.html`, rank by Uncovered Branches desc, file targeted plans for the top-10 files. Per-file fix is typically <50 LOC of vitest.
+
+### BUG-53-37 — root `pnpm test` tears down dev compose stack mid-run (CRITICAL, 2026-05-18, loop-tick)
+
+**Observed:** dev compose stack was up + healthy at 23:38 (`api, web, worker, postgres, valkey, mailpit, litellm` all healthy). At 23:48 a background `pnpm test` (root vitest workspace, coverage) was kicked off. By 23:50 `docker compose ps -a` returned EMPTY rows — every `openwhispr-*` container removed (not just stopped — REMOVED). Only `frosty_almeida` (testcontainers leftover) + `oapi-debug` survived.
+
+The slim e2e re-sweep launched in parallel hit `ECONNREFUSED ::1:4000` on `provisionUserOnce` (apps/web/tests/e2e/fixtures/auth.ts:268 → provisionTestUser:73), because there is no api container listening on 4000 anymore.
+
+**Why it matters:** root `pnpm test` is documented as a SAFE local invocation; an operator running `pnpm test` should NEVER lose their running dev stack. Cross-contamination between the vitest workspace's integration testcontainers and the dev compose stack means:
+- Loop-mode tests cannot run in parallel with `pnpm test` (Phase 53 sweep + root unit suite must serialize)
+- Any developer running `pnpm test` while `make compose-up` is active LOSES their stack silently
+- Compounds the pre-existing `feedback_testcontainers_cleanup_audit` memory: testcontainers Ryuk cleanup is leaky AND it now appears to nuke unrelated docker resources
+
+**Root cause hypothesis (not yet verified):**
+1. A vitest workspace integration test (most likely under `apps/api/tests/integration/` or `tests/integration/`) runs `docker compose down -v` or `--volumes` in afterAll / globalTeardown, presuming the stack is owned by the test
+2. OR testcontainers Ryuk container's label-match removes the `openwhispr_*` network (which would cascade kill every attached container)
+3. OR a vitest beforeAll spawns `docker compose -f compose/docker-compose.test.yml up` against the SAME project-name (default = `openwhispr`) as the dev stack, then teardown wipes all of it
+
+**Fix recommendation:**
+- Audit `apps/api/vitest.config.ts`, `vitest.workspace.ts`, and any `globalSetup`/`globalTeardown` script for `docker compose` invocations
+- Force all integration tests to use a DISTINCT compose project name (`COMPOSE_PROJECT_NAME=openwhispr_test_$WORKER_ID`) so they cannot reach into the dev project
+- Add a pre-test guard: vitest setup script aborts if `docker compose -p openwhispr ps -q api` returns a running container — refuses to run integration sweep while dev stack is up
+
+**Reproducer:**
+1. `make compose-up` (or `docker compose --profile slim up -d`)
+2. `docker compose ps` → confirm api/web/worker/etc healthy
+3. `pnpm test` from repo root
+4. After ~10s: `docker compose ps -a` → empty
+
+**Triage:** CRITICAL because it (a) violates "tests should not affect dev environment" contract, (b) breaks the loop-mode workflow of running root unit + slim e2e simultaneously, (c) makes the testcontainers-cleanup-audit memory more urgent.
+
+**Fix in flight (2026-05-18, same loop tick):**
+- Root cause confirmed at `tests/self-tests/_helpers.ts:53` — `COMPOSE_PROJECT = "openwhispr"` collided with dev-stack project (cwd-derived default). `dockerCompose()` never injected `-p` so every `compose down -v` in self-test afterAll hooks reached into the dev stack.
+- Applied to `tests/self-tests/_helpers.ts`:
+  1. Renamed `COMPOSE_PROJECT` from `"openwhispr"` to `"openwhispr-self-test"` (distinct namespace)
+  2. `dockerCompose()` now always prepends `-p ${COMPOSE_PROJECT}` to its argv
+- Verified: ran `pnpm vitest run tests/self-tests/migrate-gates-api.test.ts` with the fix → dev stack containers SURVIVED (`docker compose ps` still shows all 7 containers up + healthy after the self-test ran). PRIMARY OBJECTIVE MET — the contract violation is closed.
+- Secondary issue uncovered: when dev stack is up on its host-bound ports (5432, 4000, etc.) AND the isolated self-test tries to spin its own `openwhispr-self-test` project, port conflict makes the self-test's `compose up` exit 1. This is the CORRECT failure mode (test isolation working) but means self-tests must skip when dev stack is up — add a precheck.
+
+**Remaining work (Phase 54 hand-off):**
+- Add precheck: `dockerCompose(["-p", "openwhispr", "ps", "-q", "api"])` returns running container → skip self-tests with a clear "dev stack up; self-tests need exclusive port ownership" message
+- Or: parametrize ports via `COMPOSE_PROJECT_NAME`-aware port mapping (more invasive)
+- File only the precheck path as the next chunk of the fix — the rename + -p injection above already eliminates the data-loss scenario.
