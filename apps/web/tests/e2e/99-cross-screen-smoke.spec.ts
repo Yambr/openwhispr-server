@@ -11,44 +11,37 @@
 // real /api/notes, /api/transcriptions, /api/conversations endpoints, real
 // Postgres state. Seeded resources are torn down before the spec runs.
 
-import { expect, FIXTURE_PASSWORD, fixtureEmail, test } from "./fixtures/auth.js";
+import {
+  expect,
+  FIXTURE_PASSWORD,
+  fixtureEmail,
+  provisionUserOnce,
+  storageStatePath,
+  test,
+} from "./fixtures/auth.js";
 import { bindToContext } from "./fixtures/seed.js";
 import { getOrigins } from "./support/topology.js";
 
+// Phase 53 / Plan 53-35 — 99-cross-screen-smoke uses its OWN fixture
+// user (alice+99) so the final sign-out step revokes only that user's
+// session and never touches the alice+0 storage state that u11/u12/u13
+// (and ~30 other specs) share. Provisioning the dedicated user runs at
+// import time before any test executes; the per-spec storageState
+// override below applies the dedicated cookie jar to every test in
+// this file.
+const DEDICATED_INDEX = 99;
+const dedicatedReady = (async () => {
+  await provisionUserOnce(DEDICATED_INDEX);
+})();
+test.beforeAll(async () => {
+  await dedicatedReady;
+});
+test.use({ storageState: storageStatePath(DEDICATED_INDEX) });
+
 test.describe("99 — cross-screen smoke (Phase 07.1 / Plan 13)", () => {
-  // Plan 13.1 — auth provisioned by global-setup.ts; per-worker storageState
-  // applied via the auth-extended `test`. Only data state is reset here.
   test.beforeEach(async ({ context }) => {
     const seed = bindToContext(context);
     await seed.clearAllData();
-  });
-
-  // Phase 53 / Plan 53-34 — the sign-out step at the end of the spec
-  // revokes alice's Better Auth session row, which would BREAK every
-  // subsequent spec sharing the storageState (their cookies point at a
-  // now-deleted session → /sign-in page → cascade failures across
-  // u11/u12/u13). After each 99-* test: sign back in via a fresh
-  // playwright request context, then OVERWRITE the on-disk storage
-  // state file so the next spec picks up a working session.
-  test.afterEach(async (_, info) => {
-    const { storageStatePath } = await import("./fixtures/auth.js");
-    const { request: playwrightRequest } = await import("@playwright/test");
-    const baseUrl = process.env.BASE_URL ?? getOrigins(info).apiOrigin;
-    const ctx = await playwrightRequest.newContext({
-      baseURL: baseUrl,
-      ignoreHTTPSErrors: true,
-    });
-    try {
-      const res = await ctx.post(`${baseUrl}/api/auth/sign-in/email`, {
-        headers: { "content-type": "application/json", origin: baseUrl },
-        data: { email: fixtureEmail(info.parallelIndex), password: FIXTURE_PASSWORD },
-      });
-      if (res.ok()) {
-        await ctx.storageState({ path: storageStatePath(info.parallelIndex) });
-      }
-    } finally {
-      await ctx.dispose();
-    }
   });
 
   test("sign-in → /app → notes → transcriptions → conversations → account → sign-out", async ({
@@ -85,7 +78,7 @@ test.describe("99 — cross-screen smoke (Phase 07.1 / Plan 13)", () => {
     // 5) /app/account — profile card shows the fixture email.
     await page.goto("/app/account");
     await expect(page).toHaveURL(/\/app\/account$/);
-    await expect(page.getByText(fixtureEmail(info.parallelIndex))).toBeVisible();
+    await expect(page.getByText(fixtureEmail(DEDICATED_INDEX))).toBeVisible();
 
     // 6) Sign out — Better Auth /api/auth/sign-out clears the session cookie.
     // Phase 53 / Plan 53-14 — topology-aware API origin.
@@ -113,6 +106,10 @@ test.describe("99 — cross-screen smoke (Phase 07.1 / Plan 13)", () => {
     // cookies back to the same path keeps the shared fixture user state
     // valid for downstream specs (u4, u13, etc.). Step 6's sign-out
     // assertion above remains the canonical proof that sign-out works.
+    // Phase 53 / Plan 53-35 — refresh OWN dedicated user's storageState,
+    // not the shared alice+0 jar (info.parallelIndex). The dedicated
+    // user is provisioned per-spec-file and not touched by any other
+    // spec, so this keeps the 99 spec self-contained across re-runs.
     const freshContext = await page.context().browser()!.newContext({
       baseURL: baseUrl,
       ignoreHTTPSErrors: true,
@@ -120,12 +117,11 @@ test.describe("99 — cross-screen smoke (Phase 07.1 / Plan 13)", () => {
     try {
       const signInRes = await freshContext.request.post(`${baseUrl}/api/auth/sign-in/email`, {
         headers: { "content-type": "application/json", origin: baseUrl },
-        data: { email: fixtureEmail(info.parallelIndex), password: FIXTURE_PASSWORD },
+        data: { email: fixtureEmail(DEDICATED_INDEX), password: FIXTURE_PASSWORD },
         ignoreHTTPSErrors: true,
       });
       expect(signInRes.ok()).toBe(true);
-      const { storageStatePath } = await import("./fixtures/auth.js");
-      await freshContext.storageState({ path: storageStatePath(info.parallelIndex) });
+      await freshContext.storageState({ path: storageStatePath(DEDICATED_INDEX) });
     } finally {
       await freshContext.close();
     }
