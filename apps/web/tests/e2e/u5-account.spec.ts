@@ -19,26 +19,48 @@ test.describe("U5 — account (Phase 07.1 / Plan 08)", () => {
   // path still has to call signInAs in a second browser context — sign-in
   // (vs sign-up) has a higher rate-limit ceiling and is unavoidable here.
 
-  // Phase 53 / Plan 53-32 — revoke any *other* sessions before each test
-  // EXCEPT the "two sessions" success path which actively needs >1 session.
-  // u1-sign-in "success state" + 99-cross-screen-smoke create extra Better
-  // Auth session rows; the "empty state — single session" assertion
-  // would otherwise fail because the bulk-revoke button is rendered.
-  test.beforeEach(async ({ page }, testInfo) => {
+  // Phase 53 / Plan 53-32c — DB-direct delete of OTHER sessions, preserving
+  // the one whose token matches the storageState cookie. The earlier
+  // strategy "keep oldest by updated_at" silently dropped the storageState
+  // session whenever another spec's sign-in produced a stale-updated row
+  // ahead of it — every subsequent spec started signed-out, cascading into
+  // u11/12/13 failures.
+  test.beforeEach(async ({ context }, testInfo) => {
     if (testInfo.title.startsWith("success state — two sessions")) {
       return; // this test seeds an extra session itself
     }
-    await page.request
-      .post("/api/auth/revoke-other-sessions", {
-        headers: { "content-type": "application/json" },
-        data: { password: "Pwa9!#testStrong" },
-        ignoreHTTPSErrors: true,
-        failOnStatusCode: false,
-      })
-      .catch(() => {
-        // best-effort cleanup; ignore network errors so the spec body
-        // surfaces the real assertion failure instead of a fixture throw.
-      });
+    // Pull the active session token from the BrowserContext cookies
+    // (host-scoped to web origin). Better Auth stores it as
+    // `<cookiePrefix>.session_token`, raw value is the public token.
+    const cookies = await context.cookies();
+    const tokenCookie = cookies.find((c) => c.name === "openwhispr.session_token");
+    if (!tokenCookie) return; // nothing to preserve / clean
+    const currentToken = decodeURIComponent(tokenCookie.value).split(".")[0];
+    if (!currentToken) return;
+    const email = `alice+${testInfo.parallelIndex}@test.local`;
+    const sql =
+      `DELETE FROM sessions WHERE user_id = (SELECT id FROM users WHERE email = '${email}') ` +
+      `AND token <> '${currentToken.replace(/'/g, "''")}'`;
+    const { execFile } = await import("node:child_process");
+    const { promisify } = await import("node:util");
+    const exec = promisify(execFile);
+    await exec("docker", [
+      "compose",
+      "exec",
+      "-T",
+      "-e",
+      "PGPASSWORD=43xs40WHCc2NFVWYsJfhk_8FSoBr4JDrH3u8Txbuy3Q",
+      "postgres",
+      "psql",
+      "-U",
+      "openwhispr_owner",
+      "-d",
+      "openwhispr",
+      "-c",
+      sql,
+    ]).catch(() => {
+      // best-effort; swallow so the spec body surfaces real assertion failures
+    });
   });
 
   test("loading state — Skeleton rows while list-sessions is stalled", async ({
