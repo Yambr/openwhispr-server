@@ -31,6 +31,15 @@ services:
       AUTH_URL: http://localhost:4000
       OPENWHISPR_API_URL: http://localhost:4000
       AUTH_TRUSTED_ORIGINS_EXTRA: "http://localhost:3000,http://localhost:4000,http://api:3000"
+      # Phase 53 / Plan 53-36 — slim e2e sweep makes ~200+ /api/auth/*
+      # calls per worker. Better Auth's per-IP anti-abuse limiter
+      # (default ~3 attempts / 10s on sign-in, broader window on
+      # get-session) starts returning HTTP 429 around the 70th spec.
+      # The cascade lands the conversations specs (u11/u12/u13) on
+      # /sign-in despite valid session rows. This overlay is dev-tools
+      # only — production deploys never apply it, so the production
+      # rate limit posture is unchanged.
+      OPENWHISPR_DISABLE_RATE_LIMIT: "1"
   worker:
     environment:
       SMTP_PORT: "1025"
