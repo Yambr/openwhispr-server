@@ -234,6 +234,34 @@ export function allowBrowserErrors(page: Page, patterns: readonly RegExp[]): voi
 }
 
 /**
+ * Phase 53 / Plan 53-16 — convenience allowlist seeder for the common
+ * "negative-path spec that stubs a 4xx/5xx response via page.route()"
+ * pattern. The captured `[network/error] METHOD url → status` and the
+ * companion `[console/error] Failed to load resource: ... status` are
+ * both seeded so a single call covers both diagnostic kinds.
+ *
+ * Example:
+ *
+ *   test("error state — invalid creds", async ({ page }) => {
+ *     allowDeliberateRouteStub(page, /\/api\/auth\/sign-in\/email/, 401);
+ *     await page.route("**\/api/auth/sign-in/email", route =>
+ *       route.fulfill({ status: 401, ... }));
+ *     // ... rest of spec
+ *   });
+ */
+export function allowDeliberateRouteStub(page: Page, urlPattern: RegExp, status: number): void {
+  // The URL pattern from the spec may be a `/api/...` slug or a full URL;
+  // strip leading slashes / origin parts and reuse the trailing segment.
+  const source = urlPattern.source;
+  allowBrowserErrors(page, [
+    // network/error message shape: `POST http://… → 401 Unauthorized`
+    new RegExp(`[A-Z]+ [^ ]*${source}[^ ]* → ${status}\\b`),
+    // console/error message shape: `Failed to load resource: … 401 (…)`
+    new RegExp(`Failed to load resource:.*\\b${status}\\b`),
+  ]);
+}
+
+/**
  * Assert that the captured diagnostics for a page contain ZERO entries
  * with `severity === "error"` (after subtracting any allowlist matches).
  * Throws an AssertionError listing every offending entry on failure.
