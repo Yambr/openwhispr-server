@@ -72,6 +72,14 @@ const nextConfig: NextConfig = {
       // legacy /api/locale path is owned by api, not web.
       { source: "/api/locale", destination: `${apiOrigin}/api/locale` },
       { source: "/api/locale/:path*", destination: `${apiOrigin}/api/locale/:path*` },
+      // Phase 53 / Plan 53-23 — proxy ALL remaining /api/* paths so
+      // browser fetches (notes, conversations, folders, transcriptions,
+      // sessions, …) are same-origin under both topologies. Under
+      // Traefik the ingress routes /api/* by host so Next never sees
+      // these requests; under slim this rewrite is the only path. The
+      // catch-all stays last; the specific auth/locale routes above
+      // win because Next.js evaluates the array in order.
+      { source: "/api/:path*", destination: `${apiOrigin}/api/:path*` },
     ];
   },
 };
