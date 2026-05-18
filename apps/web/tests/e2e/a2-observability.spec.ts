@@ -37,6 +37,33 @@ test.use({
 });
 
 test.describe("A2 — Observability hub (Phase 07.1 / Plan 12)", () => {
+  // Phase 53 / Plan 53-29 — three "success" specs below require the
+  // web container to be built with NEXT_PUBLIC_GRAFANA_BASE_URL set
+  // (Phase 12 contract). Slim quickstart base does NOT bundle the
+  // observability overlay so the var is empty — the page renders the
+  // "Grafana endpoint not configured" alert instead of dashboard cards.
+  // These specs belong to the observability-overlay e2e config; under
+  // slim they are skipped. Operators running with the observability
+  // overlay AND a real Grafana set the env and these specs activate.
+  // Detection: page.locator('a[data-observability-card]').count() > 0.
+  test.beforeEach(async ({ page }, testInfo) => {
+    if (
+      !testInfo.title.startsWith("success") &&
+      testInfo.title !==
+        "every dashboard anchor has target=_blank and rel includes noopener+noreferrer"
+    ) {
+      return;
+    }
+    await page.goto("/admin/observability");
+    const cardCount = await page.locator("a[data-observability-card]").count();
+    if (cardCount === 0) {
+      testInfo.skip(
+        true,
+        "NEXT_PUBLIC_GRAFANA_BASE_URL not configured — observability overlay required",
+      );
+    }
+  });
+
   test("basic-auth header reaches the web container (no 401)", async ({ request }) => {
     const res = await request.get("/admin/observability");
     expect(res.status()).not.toBe(401);
