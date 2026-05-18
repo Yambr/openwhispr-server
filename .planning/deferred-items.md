@@ -893,3 +893,18 @@ Most populated-list axe failures are actually locator-not-found timeouts in BEFO
 
 ## docker registry transient outage 2026-05-18 ~18:30-19:30 MSK
 api rebuild was blocked by `docker pull node:24-alpine: TLS handshake timeout` — unrelated to our code, external network. Plan 53-22 boot guard code is committed (`c04613c`); container picks it up on next successful rebuild. Tested via vitest unit (9/9 GREEN).
+
+## 2026-05-18 — Plan 53-21 partial: cookie host scoping
+
+Closed: provisionUserOnce now signs in via web origin so the resulting cookie jar matches what specs use. Cross-origin cookie issue under slim resolved (cookies host-only to api:4000 -> web:3000 mismatch).
+
+**Slim sweep total progression:**
+- 27 passed (53-15) -> 31 (53-17) -> 46 (53-19) -> 49 (53-18) -> **51 (53-21)** / 42 failed
+
+### Remaining ~42 failures bucket
+
+Mostly **test isolation issues** (specs assume clean DB state but other specs seed data without cleanup) + **real product UI bugs** (`No notes yet` empty state Card not rendering when expected). NOT helper infrastructure failures.
+
+Concrete sample: `u8-notes-list "empty state — friendly empty card after clearAllData"` — spec NAME says clearAllData but spec body does NOT actually call it. Polluted DB from prior specs (seedNotes etc) leaks in. Each populated-list spec has similar isolation gap.
+
+**Recommendation for Phase 54+:** dedicated "spec isolation" plan that audits each spec's `beforeEach` to enforce `seed.clearAllData()` before tests that assume empty state. Outside Phase 53 helper scope.
