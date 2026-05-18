@@ -826,6 +826,14 @@ export async function phase6BringStackUpScaled(opts: {
       "never",
       "--scale",
       `api=${opts.apiScale}`,
+      // Plan 51-25 — give compose's depends_on resolver enough budget
+      // for litellm's 600s start_period under Mac host contention.
+      // Default compose dep-wait is ~150s; bumping to 15min lets the
+      // prisma migrate finish before compose considers the dependency
+      // failed.
+      "--wait",
+      "--wait-timeout",
+      "900",
     ],
     { env: { ...HERMETIC_ENV } },
   );
