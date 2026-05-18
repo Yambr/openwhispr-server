@@ -448,6 +448,12 @@ services:
         NEXT_PUBLIC_MIMIR_BASE_URL: ${NEXT_PUBLIC_MIMIR_BASE_URL:-}
         NEXT_PUBLIC_LOKI_BASE_URL: ${NEXT_PUBLIC_LOKI_BASE_URL:-}
         NEXT_PUBLIC_OIDC_PROVIDERS: ${NEXT_PUBLIC_OIDC_PROVIDERS:-google,github,oidc}
+        # Phase 53 / Plan 53-06 — Next.js rewrites() destination for
+        # the `/api/auth/*` and `/api/locale*` proxy paths. Inside this
+        # compose network the api Service is reachable as `api:3000`;
+        # operators on a non-docker host override `NEXT_PUBLIC_API_URL`
+        # in `.env` to `http://localhost:4000` before `docker compose up`.
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://api:3000}
     networks: [openwhispr_internal]
     ports:
       - "3000:3000"
