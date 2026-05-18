@@ -64,22 +64,65 @@ this as a long-standing issue.
 ### BUG-53-41-remaining — defense-in-depth for LiteLLM-backed routes
 
 DX vector closed via dev-tools overlay seeding `LITELLM_MASTER_KEY`.
-Still open:
+Part (a) closed by `validateLitellmBoot()` in `apps/api/src/config/litellm.ts`
+— production now refuses to boot with missing key or the dev-overlay
+default. Still open:
 
-- (a) **Boot fail-loud in production:** when `LITELLM_MASTER_KEY` is
-  missing AND `NODE_ENV === "production"`, EX_CONFIG-exit at boot.
-  Mirror the `validateAuthBoot` pattern in `apps/api/src/config/auth.ts`.
 - (b) **Register-as-503 fallback:** when client construct fails for
-  ANY reason (not just missing key), register the 4 routes with a 503
-  handler that surfaces `"LiteLLM client failed at boot: <reason>"`
-  instead of bare 404 "Not found".
+  ANY reason (not just missing key — could be `LITELLM_BASE_URL`
+  unreachable, TLS handshake failure, etc.), register the 4 routes
+  with a 503 handler that surfaces
+  `"LiteLLM client failed at boot: <reason>"` instead of bare 404
+  "Not found". Useful in production after the boot guard accepts but
+  the upstream goes sideways during the api process lifetime.
 - (c) **/api/health surface:** add `litellm_ready: boolean` to the
   health response. Wire-contract change — needs BACKEND_SPEC.md
   alignment review first.
 
-Currently 4 LiteLLM-backed routes (transcribe, reason, diarization,
-realtime) silently 404 if the key is unset and the operator missed
-the boot-time warning.
+---
+
+## Documentation refresh
+
+### DOC-refresh — sweep all `*.md` for accuracy after recent fixes + friendly OOB start
+
+After the recent fix wave (BUG-53-37/39/40/41 + the precheck/overlay
+work), most repo docs are stale on:
+- How to run tests safely with the dev stack up (precheck behavior).
+- The `LITELLM_MASTER_KEY` overlay default + when the prod boot guard
+  exits 78.
+- The `openwhispr-self-test` / `openwhispr-obs-smoke` compose project
+  namespaces.
+- The slim vs traefik topology toggle in playwright projects.
+
+**Goal:** sweep every `*.md` under the repo root + `docs/`. Every
+command in code-fences must actually work as-is on a fresh clone.
+The OOB start path (`git clone && make up-with-dev-tools && open
+http://localhost:3000`) must be the FIRST thing a new user reads.
+
+**Specifically:**
+- `README.md` — top-of-file QUICKSTART that fits in a screen and gets
+  the user to a working browser tab in <5 minutes. Include `.env`
+  template, what to copy from `.env.example`, and the one-line
+  test command (`pnpm test` filtered or `pnpm vitest run apps/web`).
+- `SELF_HOSTING.md` — operator-facing. Production `.env` checklist
+  must call out `LITELLM_MASTER_KEY` is REQUIRED + the boot guard
+  will exit 78 if missing or set to the dev default.
+- `docs/security.md` — already has §12 (KEK) and §3 (auth boot guard);
+  add a §13 for the LiteLLM boot guard with the same shape.
+- `docs/operator-runbook.md` (or equivalent) — recovery instructions
+  for "I ran `pnpm test` and my dev stack vanished" → "no longer
+  possible, but here's how to recover an OLDER clone before the fix".
+- All `docs/litellm-*.md` — verify env-override path still matches
+  the dev-tools overlay seeding.
+
+**Friendly OOB minimums:** the user (or any OSS contributor) should
+be able to verify the install works in ≤2 commands AFTER `make up`:
+1. `curl http://localhost:4000/api/health` → `{"status":"ok"}`
+2. `cd apps/web && OPENWHISPR_TOPOLOGY=slim pnpm exec playwright test
+   --project=slim` → 69/0/24
+
+These two minimal checks are the contract. README must surface them
+front-and-center.
 
 ---
 
