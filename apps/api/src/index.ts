@@ -613,6 +613,14 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   // simply not registered (404 on unconfigured surfaces, not 503 — the
   // operator gets a clear "you forgot to set LITELLM_MASTER_KEY" signal
   // distinct from a per-provider 503 emitted from inside the route).
+  // BUG-53-41-remaining (a) — production guard: refuse to boot when
+  // NODE_ENV=production and LITELLM_MASTER_KEY is missing or set to
+  // the well-known dev-tools overlay default. Without this guard the
+  // catch arm below silently drops 4 routes (transcribe, reason,
+  // diarization, realtime) while /api/health still returns ok. Mirror
+  // of validateAuthBoot's EX_CONFIG exit-78 pattern.
+  const { validateLitellmBoot } = await import("./config/litellm.js");
+  validateLitellmBoot();
   let litellm: LitellmClient | undefined;
   let litellmMasterKey: string | undefined;
   try {
