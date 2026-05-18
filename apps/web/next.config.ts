@@ -51,6 +51,29 @@ const nextConfig: NextConfig = {
       },
     ];
   },
+  async rewrites() {
+    // Phase 53 / Plan 53-06 (DECISIONS §A) — proxy `/api/auth/*` and
+    // other api-owned paths from the web origin to the Fastify backend
+    // so Better Auth's same-origin client just works without CORS /
+    // `SameSite=None` / cross-subdomain-cookie complications.
+    //
+    // The destination resolves from the build-arg env var
+    // `NEXT_PUBLIC_API_URL` (Phase 07.1 / Plan 13.3 plumbing). Inside
+    // docker-compose this is `http://api:3000` (docker-internal
+    // hostname); on a non-docker dev box operators set
+    // `NEXT_PUBLIC_API_URL=http://localhost:4000`. A safe default of
+    // `http://api:3000` covers the canonical container case.
+    const apiOrigin = process.env.NEXT_PUBLIC_API_URL ?? "http://api:3000";
+    return [
+      // Better Auth canonical surface — sign-up / sign-in / providers /
+      // verify-email / session / OIDC callbacks.
+      { source: "/api/auth/:path*", destination: `${apiOrigin}/api/auth/:path*` },
+      // Locale negotiation lives on api (Phase 10 / Plan 10-02). The
+      // legacy /api/locale path is owned by api, not web.
+      { source: "/api/locale", destination: `${apiOrigin}/api/locale` },
+      { source: "/api/locale/:path*", destination: `${apiOrigin}/api/locale/:path*` },
+    ];
+  },
 };
 
 // Bundle analyzer is opt-in via ANALYZE=true. Loaded lazily so a missing

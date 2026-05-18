@@ -93,11 +93,18 @@ ARG NEXT_PUBLIC_TEMPO_BASE_URL=""
 ARG NEXT_PUBLIC_MIMIR_BASE_URL=""
 ARG NEXT_PUBLIC_LOKI_BASE_URL=""
 ARG NEXT_PUBLIC_OIDC_PROVIDERS=""
+# Phase 53 / Plan 53-06 — rewrites() destination for /api/auth/* +
+# /api/locale* proxy paths. Docker-compose passes `http://api:3000`
+# (docker-internal hostname); non-docker dev overrides to
+# `http://localhost:4000`. Empty default would break the rewrite, so
+# default to the docker-internal URL.
+ARG NEXT_PUBLIC_API_URL="http://api:3000"
 ENV NEXT_PUBLIC_GRAFANA_BASE_URL=${NEXT_PUBLIC_GRAFANA_BASE_URL}
 ENV NEXT_PUBLIC_TEMPO_BASE_URL=${NEXT_PUBLIC_TEMPO_BASE_URL}
 ENV NEXT_PUBLIC_MIMIR_BASE_URL=${NEXT_PUBLIC_MIMIR_BASE_URL}
 ENV NEXT_PUBLIC_LOKI_BASE_URL=${NEXT_PUBLIC_LOKI_BASE_URL}
 ENV NEXT_PUBLIC_OIDC_PROVIDERS=${NEXT_PUBLIC_OIDC_PROVIDERS}
+ENV NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL}
 RUN pnpm --filter @openwhispr/web build
 
 # ----- runner: minimal image, non-root, healthcheck -----
