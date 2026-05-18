@@ -410,12 +410,10 @@ e2e-test-phase6:
 	  exit 1 ; \
 	fi
 	@test -f .env || (echo "Refusing to run: .env not found at repo root. Run tools/bootstrap.sh first." && exit 1)
-	E2E=1 LITELLM_CONFIG_FILE=litellm_config.contract.yaml \
-	  OPENWHISPR_TEST_ROUTES=true MOCK_DIARIZATION=true \
-	  NODE_TLS_REJECT_UNAUTHORIZED=0 \
-	  TESTCONTAINERS_RYUK_DISABLED=true \
-	  OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4317 \
-	  pnpm exec vitest run --config tests/e2e/vitest.e2e.config.ts \
+	@echo "Phase 6 e2e — serial mode (Plan 51-25). Each test gets a clean compose lifecycle + a volume/network prune between runs so litellm boot + observability stack don't compete for Mac host resources."
+	@set -e ; \
+	  rc=0 ; \
+	  for f in \
 	    tests/e2e/probes-dependency.test.ts \
 	    tests/e2e/audit-log-write.test.ts \
 	    tests/e2e/horizontal-scale.test.ts \
@@ -423,7 +421,26 @@ e2e-test-phase6:
 	    tests/e2e/rate-limit-layered.test.ts \
 	    tests/e2e/reconciliation-drift.test.ts \
 	    tests/e2e/log-scrub-sentinel.test.ts \
-	    tests/e2e/otel-trace-propagation.test.ts
+	    tests/e2e/otel-trace-propagation.test.ts ; \
+	  do \
+	    echo "" ; \
+	    echo "================================================" ; \
+	    echo "Phase 6 e2e — running $$f" ; \
+	    echo "================================================" ; \
+	    if ! E2E=1 LITELLM_CONFIG_FILE=litellm_config.contract.yaml \
+	      OPENWHISPR_TEST_ROUTES=true MOCK_DIARIZATION=true \
+	      NODE_TLS_REJECT_UNAUTHORIZED=0 \
+	      TESTCONTAINERS_RYUK_DISABLED=true \
+	      OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4317 \
+	      pnpm exec vitest run --config tests/e2e/vitest.e2e.config.ts $$f ; \
+	    then \
+	      echo "FAIL: $$f" ; \
+	      rc=1 ; \
+	    fi ; \
+	    docker compose -p openwhispr down -v --remove-orphans >/dev/null 2>&1 || true ; \
+	    docker volume prune -f >/dev/null 2>&1 || true ; \
+	  done ; \
+	  exit $$rc
 
 # Run the conformance suite against an arbitrary deployed backend.
 # `make contract-test-deployed BACKEND_URL=https://api.customer.com AUTH_URL=...`
