@@ -33,34 +33,6 @@ the top 10 files. Per-file fix is typically <50 LOC of vitest.
 
 ## Test-architecture debt
 
-### BUG-vitest-workspace-load — `pnpm --filter @openwhispr/api test` reports 104 file-load failures (NOT test failures)
-
-`pnpm --filter @openwhispr/api test` exit 1 but:
-- **Tests: 3296 passed, 188 skipped, 0 functional failures**
-- **Test Files: 104 FAILED TO LOAD, 313 passed, 32 skipped (449 total)**
-
-The 104 failures are workspace auto-pulled projects (`tests-self-tests`,
-`tests-e2e-cjm-support`, `tests-integration`) that fail to initialize
-under the `@openwhispr/api` scope context. Each fail is a load error,
-not a test assertion. Running the same files individually passes —
-e.g. `pnpm vitest run tests/integration/email-lowercase-normalize.test.ts`
-returns 7/7 GREEN in ~5s.
-
-**Why it matters:** CI exit code is 1 even when every test passes.
-Operators reading `pnpm test` output have to filter out 104 phantom
-fails to see the 3296 real passes. Confuses gsd-verifier coverage
-checks.
-
-**Fix recommendation:** audit `vitest.workspace.ts` + each
-package-local `vitest.config.ts`. Either (a) make workspace projects
-opt-in by package filter, or (b) provide per-project `extends:`
-that resolves correctly under cross-package scope.
-
-**Linked memory:** `feedback_testcontainers_cleanup_audit` notes
-this as a long-standing issue.
-
----
-
 ### BUG-53-41-remaining — defense-in-depth for LiteLLM-backed routes
 
 DX vector closed via dev-tools overlay seeding `LITELLM_MASTER_KEY`.
