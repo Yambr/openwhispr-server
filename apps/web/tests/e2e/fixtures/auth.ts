@@ -32,6 +32,17 @@ import {
   type Page,
   request as playwrightRequest,
 } from "@playwright/test";
+// Phase 53 / Plan 53-12 — static import (instead of dynamic await import())
+// so Playwright's loader resolves the `.js → .ts` remap statically. The
+// prior dynamic-import form tripped a `SyntaxError: Unexpected token
+// 'export'` on every spec that goes through the auth fixture because
+// Playwright's runtime dynamic-import path does not apply the same
+// transformation pipeline the static-import path does.
+import {
+  attachBrowserDiagnostics,
+  expectNoBrowserErrors,
+  getCapturedDiagnostics,
+} from "../support/browser-diagnostics.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -299,8 +310,6 @@ export const test = baseTest.extend<{ _attachDiagnostics: void }>({
   // captured entry FAILS the test (per Phase 53 contract).
   _attachDiagnostics: [
     async ({ page }, use, testInfo) => {
-      const { attachBrowserDiagnostics, expectNoBrowserErrors, getCapturedDiagnostics } =
-        await import("../support/browser-diagnostics.js");
       await attachBrowserDiagnostics(page);
       await use();
       const diag = getCapturedDiagnostics(page);

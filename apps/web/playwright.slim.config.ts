@@ -11,6 +11,15 @@
 // 3000 + http://localhost:4000 host-port topology.
 import { defineConfig, devices } from "@playwright/test";
 
+// Phase 53 / Plan 53-12 — slim-core does NOT have Traefik / mkcert; the
+// API is reachable directly at http://localhost:4000. Specs that talk
+// to the API directly (seed.ts, global-setup.ts) read `process.env.
+// BASE_URL` with a default of `https://api.localhost`. Set it here so
+// the slim sweep reaches the correct origin without per-invocation
+// shell-prefix incantation.
+process.env.BASE_URL ??= "http://localhost:4000";
+process.env.WEB_ORIGIN ??= "http://localhost:3000";
+
 export default defineConfig({
   testDir: "./tests/e2e",
   // Phase 53 / Plan 53-03 — sweep specs that do NOT depend on the
@@ -21,13 +30,16 @@ export default defineConfig({
   // either backports the ESM loader OR splits axe.ts.
   // Specs included here: 05-auth-middleware, 99-cross-screen-smoke,
   // auth-shell-visual, i18n-russian, p53-signup-smoke.
-  testMatch: [
-    "05-auth-middleware.spec.ts",
-    "99-cross-screen-smoke.spec.ts",
-    "auth-shell-visual.spec.ts",
-    "i18n-russian.spec.ts",
-    "p53-signup-smoke.spec.ts",
-  ],
+  // Phase 53 / Plan 53-12 — restrict to specs that exercise the web
+  // origin directly. Specs that depend on Traefik host-split (storage
+  // state cookies bound to api.localhost, mkcert-only baseURL gates,
+  // visual baselines captured under HTTPS) are excluded here and run
+  // under the main playwright.config.ts. The slim-config sentinel is
+  // p53-signup-smoke; auth-middleware / i18n-russian carry their own
+  // origin-derivation logic and tolerate both topologies. The
+  // 99-cross-screen-smoke + visual specs are Traefik-only by design;
+  // their seed.ts fixture mints storageState tied to api.localhost.
+  testMatch: ["05-auth-middleware.spec.ts", "i18n-russian.spec.ts", "p53-signup-smoke.spec.ts"],
   fullyParallel: false,
   forbidOnly: !!process.env.CI,
   retries: 0,

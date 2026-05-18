@@ -122,7 +122,14 @@ const CSP_LISTENER_INIT_SCRIPT = `
  * Per-spec `allowBrowserErrors(page, [...])` calls still stack on top
  * of these defaults — the lists are additive.
  */
-const DEFAULT_ALLOWLIST: readonly RegExp[] = [/_rsc=[^ ]+ → FAILED: net::ERR_ABORTED/];
+const DEFAULT_ALLOWLIST: readonly RegExp[] = [
+  /_rsc=[^ ]+ → FAILED: net::ERR_ABORTED/,
+  // Phase 53 / Plan 53-12 — POST /api/locale aborts when router.refresh()
+  // immediately re-renders the page after a successful locale change.
+  // The persistence write happened (Set-Cookie landed); the abort is a
+  // framework-level navigation race, not a user-visible bug.
+  /POST [^ ]+\/api\/locale → FAILED: net::ERR_ABORTED/,
+];
 
 export async function attachBrowserDiagnostics(page: Page): Promise<void> {
   if (diagnosticsStore.has(page)) {
