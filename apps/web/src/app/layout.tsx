@@ -22,10 +22,11 @@ import { getServerI18n } from "@/lib/i18n";
 import { I18nProvider } from "@/lib/i18n-client";
 import { QueryProvider } from "@/lib/query-client";
 import { ThemeProvider } from "@/lib/theme-provider";
-// Phase 53 / Plan 53-10 — import-for-side-effect: disables zod 4 JIT
-// (z.config({ jitless: true })) so client bundles don't emit
-// new Function(...) bodies blocked by the strict CSP in middleware.ts.
-import "@/lib/zod-config";
+// Phase 53 / Plan 53-10 — zod jitless config moved to
+// `apps/web/src/instrumentation-client.ts` so it runs BEFORE any
+// chunk evaluates schemas. Keeping the import here would be a no-op
+// for client bundles (RSC and client zod instances differ) and would
+// also tempt readers to think layout.tsx controls client-side zod.
 import "./globals.css";
 
 export const metadata: Metadata = {
