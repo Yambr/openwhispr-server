@@ -9,7 +9,9 @@
 // Endpoint constraints (D-S1): only existing GET /api/stt-config and
 // GET /api/note-recording-config are used by this screen. We mutate
 // responses via `page.route(...)` to exercise loading / error states.
-import { expect, test } from "./_diagnostics-fixture.js";
+// Phase 53 / Plan 53-28 — import from fixtures/auth.js so admin
+// storageState rides along (same rationale as a2-observability).
+import { expect, test } from "./fixtures/auth.js";
 import { runAxe } from "./fixtures/axe";
 
 const ADMIN_BASIC_USER = "admin";
