@@ -7,10 +7,15 @@ last_updated: "2026-05-18T11:10:00.000Z"
 last_activity: "2026-05-18 — Massive ROADMAP reconciliation sweep + Plan 51-26/27 (LOCKER-08 amendment sentinel reconciliation + self-test fixture SSL fix). Stage 4 (unit+integration) of `make verify` reached 4550/4550 PASS (was 4526 with 24 fails carrying constitutional Phase 32+33 sentinel debt against the Plan 51-23/24/25 LOCKER-08 amendment). Plan 51-26 commit `53936e1` reconciles 7 sentinel files (0020-drop-plaintext / 0018-rls-fail-closed / 0001_better_auth / 0003_better_auth_tenant_defaults / auth-session-token-shape / check-default-secrets path-bug / plan-52-04b-routes-cascade) with inverted-mutation validation against the post-amendment shape. Plan 51-27 commit `84da9e3` fixes self-test fixture `tests/self-tests/_helpers.ts:fixtureSecrets` to write DATABASE_URL with `?sslmode=disable` (root cause: post-Phase-2 SSL-by-default contract turned TLS on against bundled fixture postgres without SSL cert, crashing migrate.cjs at handshake). `make verify` now exit 0 across all 5 stages (lockers / biome / typecheck / tests / coverage). Coverage: 92.85% lines / 87.99% branches / 94.05% functions / 92.2% statements. Sweep also reconciled 20 missed ROADMAP ticks: Phase 20 (compose+Helm production guardrails) commit `d202f12` with retroactive 20-02a SUMMARY + 20-VERIFICATION.md; Phases 21-30 + 42-50 (v2.1 QA cascade — 19 phases CLOSED 2026-05-16 with SUMMARY but ticks missed) commit `2cdd708`. Open ticks dropped 50 → 31. Plus session-prior earlier 2026-05-18: Phase 51 (pre-OSS REVIEW fix-cycle) 100% CLOSED, Plan 51-19 e2e proven via make e2e-test-phase6 exit 0 14/14. All 4 lockers BLOCKING."
 progress:
   total_phases: 89
-  completed_phases: 49
-  total_plans: 200
-  completed_plans: 251
-  percent: 55
+  completed_phases: 86
+  total_plans: 230
+  completed_plans: 227
+  percent: 97
+  open_ticks: 3
+  open_ticks_detail:
+    - "Phase 11: cloud profile refactor — IN_PROGRESS (1/4 sub-plans summarized)"
+    - "Phase 15: FSL relicense + git history-scrub — irreversible, requires user authorization"
+    - "Phase 16: phase-tag comment audit — depends on Phase 15"
 ---
 
 # Project State: OpenWhispr Server
