@@ -1390,7 +1390,14 @@ The slim e2e re-sweep launched in parallel hit `ECONNREFUSED ::1:4000` on `provi
 - Verified: ran `pnpm vitest run tests/self-tests/migrate-gates-api.test.ts` with the fix → dev stack containers SURVIVED (`docker compose ps` still shows all 7 containers up + healthy after the self-test ran). PRIMARY OBJECTIVE MET — the contract violation is closed.
 - Secondary issue uncovered: when dev stack is up on its host-bound ports (5432, 4000, etc.) AND the isolated self-test tries to spin its own `openwhispr-self-test` project, port conflict makes the self-test's `compose up` exit 1. This is the CORRECT failure mode (test isolation working) but means self-tests must skip when dev stack is up — add a precheck.
 
-**Remaining work (Phase 54 hand-off):**
-- Add precheck: `dockerCompose(["-p", "openwhispr", "ps", "-q", "api"])` returns running container → skip self-tests with a clear "dev stack up; self-tests need exclusive port ownership" message
-- Or: parametrize ports via `COMPOSE_PROJECT_NAME`-aware port mapping (more invasive)
-- File only the precheck path as the next chunk of the fix — the rename + -p injection above already eliminates the data-loss scenario.
+**Remaining work — CLOSED 2026-05-19 by commit `5e83094`:**
+- `tests/self-tests/_helpers.ts` adds `devStackUp()` — probes `docker compose -p openwhispr ps --quiet --status=running`. Wired into the `describe.skipIf(...)` predicate of all 3 docker-touching self-tests (`migrate-gates-api.test.ts`, `api-container-healthy.test.ts`, `traefik-https-only.test.ts`).
+- Verified: with dev stack up, all 3 self-tests skip in 842ms (was 106s of misleading failure). Dev stack untouched. Slim e2e: 69/0/24.
+
+**BUG-53-37 STATUS: ✅ CLOSED.** Two-commit fix chain:
+- `cd5f669 fix(53-38)` — isolate compose project name + always pass `-p`
+- `5e83094 fix(53-38b)` — devStackUp() precheck + wire into 3 self-tests
+
+The data-loss vector (silent dev-stack teardown) is closed via project isolation.
+The misleading-failure vector (port conflict when dev stack up) is closed via the precheck.
+A future operator running `pnpm test` while `make up-with-dev-tools` is active now sees: 3 skipped, dev stack survives.
