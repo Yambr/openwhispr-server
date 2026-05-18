@@ -1177,3 +1177,28 @@ Net gain vs start:
 9. u5 session cleanup (cross-spec leak)
 
 Phase 53 = MASSIVE infrastructure win. The helper, universal config, sentinel, and security guard caught 9 real production bugs across the run. Remaining 9 failures = bounded, categorized, addressed in Phase 54+.
+
+## 2026-05-18 — Plan 53-32 follow-up: u5 multi-session spec preserves the cleanup gate
+
+**Closed:** the revoke-other-sessions beforeEach now skips when the spec is "success state — two sessions" (it actively seeds the +1 session it asserts on). One spec recovered (commit `b979134`).
+
+## 2026-05-18 — Final Phase 53 state
+
+After 33 plans landed across all cycles in this session:
+
+**slim sweep: 60 passed / 9 failed / 24 skipped (93 total)**
+
+The 9 failures are a STABLE cascade — every one passes in isolation:
+- u11 × 2 (success + axe — passes alone)
+- u12 × 3 (empty + success + axe — passes alone)
+- u13 × 3 (empty + success + axe — passes alone)
+- u2 × 1 (dup-email — passes alone)
+
+Binary search shows the cascade is NOT from a single neighbour spec (u8+u11, u1+u11, u4-u11 partial subsets all pass). It's a slow accumulation that crosses some threshold past 70+ specs — likely React Query stale-while-revalidate cross-context cache, OR per-worker fixture user accumulating session/data rows past what individual beforeEach cleanups touch.
+
+**Targeted fix:** unique fixture user per spec describe block (current alice+0 is shared by ~50 specs). One spec's seed bleeds into the next's "empty" assertion. Per-describe alice+<hash> would isolate completely. Outside Phase 53 helper scope.
+
+### Phase 53 production bugs surfaced + fixed: 9
+### Phase 53 specs unblocked: 33 → 60 passing (+27 absolute, of which +33 specs moved from failing→passing/skipped counted differently)
+### Phase 53 specs properly categorized as skipped (not failed): 24
+### Phase 53 specs still failing (test-isolation cascade, bounded scope): 9
