@@ -34,7 +34,12 @@ import { request as playwrightRequest } from "@playwright/test";
 import { getProcessOrigins } from "../support/topology.js";
 import { FIXTURE_PASSWORD, fixtureEmail, provisionTestUser } from "./auth.js";
 
-const BASE_URL = process.env.BASE_URL ?? getProcessOrigins().apiOrigin;
+// Phase 53 / Plan 53-23 — seed talks to /api/* via the WEB origin so
+// the BrowserContext-bound cookies (host-scoped to the web hostname
+// under slim) ride along. The web Next.js rewrites() proxy forwards
+// /api/* to apiOrigin (Plan 53-23 added the catch-all). Under Traefik
+// web and api share api.localhost so the distinction is moot.
+const BASE_URL = process.env.BASE_URL ?? getProcessOrigins().webOrigin;
 
 export interface SeedFolderArgs {
   count?: number;
