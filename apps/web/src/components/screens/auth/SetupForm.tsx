@@ -123,10 +123,26 @@ export function SetupForm(): React.JSX.Element {
       password: "",
       name: "",
       workspace: "",
-      timezone: defaultTimezone(),
+      // Phase 53 / Plan 53-30 — defaultTimezone() returns the browser's
+      // Intl-resolved zone, which differs between server SSR (UTC inside
+      // the docker container) and the client (e.g. Europe/Moscow). The
+      // mismatch hydrated as React error #418 on every /setup load.
+      // Hydrate with empty string here; useEffect below populates the
+      // real browser zone AFTER hydration, when client and server agree
+      // on the initial render.
+      timezone: "",
     },
     mode: "onSubmit",
   });
+
+  // Phase 53 / Plan 53-30 — post-hydration timezone resolution. Runs
+  // exactly once on the client; server SSR sees the empty default and
+  // the markup matches.
+  useEffect(() => {
+    form.setValue("timezone", defaultTimezone(), { shouldDirty: false });
+    // form is stable across renders; eslint exhaustive-deps satisfied
+    // by intent — we want this to run once on mount.
+  }, [form]);
 
   // Single IntersectionObserver watches all three sections. The most-
   // intersecting target sets `currentStep`. ref is kept to a stable

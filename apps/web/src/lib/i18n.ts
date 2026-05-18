@@ -32,7 +32,11 @@ export async function getServerI18n(lng: string, ns: string[]): Promise<i18n> {
     .init({
       lng,
       fallbackLng: "en",
-      ns,
+      // Phase 53 / Plan 53-30 — sort ns so server and client both
+      // initialise i18next with the same order. The internal id
+      // counter that useId() depends on consumes ns in init order;
+      // any divergence between server/client triggers React #418.
+      ns: [...ns].sort(),
       defaultNS: "common",
       interpolation: { escapeValue: false },
     });
