@@ -30,24 +30,21 @@ import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { SetupForm } from "@/components/screens/auth/SetupForm";
 import { getServerI18n } from "@/lib/i18n";
+// Phase 53 / Plan 53-28 — use the canonical internalApiUrl() helper
+// (apps/web/src/lib/internal-api.ts) which resolves to
+// `http://api:3000` inside compose. The prior ad-hoc resolver fell
+// back to a relative `/api/setup-state` URL when neither
+// `OPENWHISPR_API_URL` nor `NEXT_PUBLIC_API_BASE_URL` was set in the
+// web container — and neither IS set in the web service env block
+// (only the api service has OPENWHISPR_API_URL; web has
+// INTERNAL_API_URL=http://api:3000). The RSC `fetch()` with a
+// relative URL has no origin to resolve against and throws — every
+// visit to /setup rendered the "initializing" error copy instead of
+// the wizard. Caught by Phase 53 strict-diagnostics e2e sweep.
+import { internalApiUrl } from "@/lib/internal-api";
 
 interface SetupStateResponse {
   readonly status: "pending" | "completed" | "skipped_legacy";
-}
-
-/**
- * Resolve the absolute URL of the public setup-state endpoint. Same
- * origin as the RSC fetch (deployed alongside the API on the Traefik
- * router). In dev / test environments without an absolute origin, fall
- * back to the empty-base relative path that Next 15's fetch resolves
- * against the request origin.
- */
-function resolveSetupStateUrl(): string {
-  // Compose / production deploys set NEXT_PUBLIC_API_BASE_URL or
-  // OPENWHISPR_API_URL; the operator-facing override.
-  const base = process.env.OPENWHISPR_API_URL ?? process.env.NEXT_PUBLIC_API_BASE_URL ?? "";
-  if (base) return `${base.replace(/\/+$/, "")}/api/setup-state`;
-  return "/api/setup-state";
 }
 
 export default async function SetupPage(): Promise<React.JSX.Element> {
@@ -58,7 +55,7 @@ export default async function SetupPage(): Promise<React.JSX.Element> {
 
   let status: SetupStateResponse["status"] | "error" = "error";
   try {
-    const res = await fetch(resolveSetupStateUrl(), { cache: "no-store" });
+    const res = await fetch(`${internalApiUrl()}/api/setup-state`, { cache: "no-store" });
     if (res.ok) {
       const body = (await res.json()) as SetupStateResponse;
       status = body.status;
