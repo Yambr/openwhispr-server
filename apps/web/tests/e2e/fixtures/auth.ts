@@ -222,9 +222,27 @@ export function ensureStorageStateDir(): void {
  */
 export async function provisionUserOnce(workerIndex: number): Promise<string> {
   ensureStorageStateDir();
-  const baseUrl = process.env.BASE_URL ?? getProcessOrigins().apiOrigin;
+  // Phase 53 / Plan 53-21 — provisioning must happen through the WEB
+  // origin so the resulting Set-Cookie lands on the hostname the spec
+  // pages will use. Under Traefik both origins share api.localhost so
+  // the distinction is moot; under slim, web=localhost:3000 and
+  // api=localhost:4000 are cross-origin — cookies set on :4000 do not
+  // travel to :3000. The web Next.js rewrites() proxy forwards
+  // /api/auth/* through to the api container, so we can hit the
+  // sign-in endpoint via the web origin and inherit cookies on the
+  // correct hostname.
+  const origins = getProcessOrigins();
+  const baseUrl = process.env.BASE_URL ?? origins.webOrigin;
+  const apiUrl = process.env.BASE_URL ?? origins.apiOrigin;
   const email = fixtureEmail(workerIndex);
-  // Fresh APIRequestContext — no inherited cookies.
+  // Fresh APIRequestContext — no inherited cookies. baseURL is the
+  // origin where the storageState cookies should land (web origin
+  // under slim, api.localhost under traefik). The sign-up call below
+  // goes directly to apiUrl because the web rewrites only cover
+  // /api/auth/* — direct sign-up/sign-in via apiUrl is fine because
+  // the global-setup runs Server-Side and is not subject to browser
+  // cookie scoping; storageState saved against baseURL gets re-loaded
+  // into a browser context that targets the same baseURL.
   const ctx = await playwrightRequest.newContext({
     baseURL: baseUrl,
     ignoreHTTPSErrors: true,
