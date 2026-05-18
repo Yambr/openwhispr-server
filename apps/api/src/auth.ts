@@ -43,6 +43,10 @@ import { betterAuth } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import { bearer } from "better-auth/plugins/bearer";
 import { genericOAuth } from "better-auth/plugins/generic-oauth";
+// Phase 53 / Plan 53-22 — boot-time auth security guard. REFUSES
+// production boots with non-HTTPS AUTH_URL (would emit cookies
+// without Secure flag → MITM exposure). See config/auth.ts.
+import { validateAuthBoot } from "./config/auth.js";
 import { cookieDomainConfig } from "./lib/cookie-domain.js";
 import { resolveDefaultTenantId } from "./lib/default-tenant.js";
 import { readOidcProvidersForRegistration } from "./lib/oidc-providers.js";
@@ -550,7 +554,13 @@ export function buildAuth(opts: BuildAuthOptions): AuthInstance {
     advanced: {
       cookiePrefix: "openwhispr",
       crossSubDomainCookies: cookieDomainConfig(),
-      useSecureCookies: process.env.NODE_ENV === "production",
+      // Phase 53 / Plan 53-22 — `useSecureCookies` is resolved at boot
+      // by `config/auth.ts:validateAuthBoot()`. That function REFUSES
+      // to start the process when NODE_ENV=production and AUTH_URL is
+      // non-HTTPS (MITM hole). By the time buildAuth() runs, the
+      // returned `useSecureCookies` is guaranteed safe. The boot guard
+      // is the single source of truth — no env read here.
+      useSecureCookies: validateAuthBoot().useSecureCookies,
       // Phase 02.8 / D-01 — Better Auth UUID mode.
       //
       // Resolution chain (verified at v1.6.9 pin):
