@@ -57,7 +57,16 @@ export default defineConfig({
   // Phase 53 / Plan 53-19 — slim topology caps workers at 2 to stay
   // under Better Auth's anti-abuse rate limit (~3 parallel sign-ins per
   // IP). Traefik project + CI keep their established limits.
-  workers: process.env.CI ? 1 : process.env.OPENWHISPR_TOPOLOGY === "slim" ? 2 : "50%",
+  // Phase 53 / Plan 53-26 — slim topology drops to workers=1.
+  // Was workers=2 (53-19 to stay under Better Auth's anti-abuse limit),
+  // but cross-worker state interference still produced ~10 specs that
+  // pass in isolation and fail under parallel sweep (u5-account,
+  // p53-signup-smoke, u6-trx-list, u7-trx-detail). Slim is the OSS
+  // quickstart topology — runtime trade-off (~2x slower) for
+  // deterministic passes is correct. Traefik project keeps 50%
+  // because per-worker fixture users + tighter compose isolation
+  // hold under higher parallelism in production-equivalent layout.
+  workers: process.env.CI ? 1 : process.env.OPENWHISPR_TOPOLOGY === "slim" ? 1 : "50%",
   reporter: process.env.CI
     ? [["github"], ["html", { open: "never" }], ["list"]]
     : [["html", { open: "never" }], ["list"]],
