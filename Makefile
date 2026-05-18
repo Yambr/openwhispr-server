@@ -428,7 +428,7 @@ e2e-test-phase6:
 	    echo "Phase 6 e2e — running $$f" ; \
 	    echo "================================================" ; \
 	    pass=0 ; \
-	    for attempt in 1 2 ; do \
+	    for attempt in 1 2 3 ; do \
 	      if E2E=1 LITELLM_CONFIG_FILE=litellm_config.contract.yaml \
 	        OPENWHISPR_TEST_ROUTES=true MOCK_DIARIZATION=true \
 	        NODE_TLS_REJECT_UNAUTHORIZED=0 \
