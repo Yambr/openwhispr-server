@@ -40,9 +40,29 @@ services:
       # only — production deploys never apply it, so the production
       # rate limit posture is unchanged.
       OPENWHISPR_DISABLE_RATE_LIMIT: "1"
+      # Phase 53 / BUG-53-41 — without LITELLM_MASTER_KEY the api boot
+      # path silently drops 4 routes (transcribe, reason, diarization,
+      # realtime) because loadLitellmConfigFromEnv() throws and the
+      # catch arm registers nothing. The dev-tools overlay seeds a
+      # well-known dev value so OOB `docker compose up` boots with
+      # the full route surface. Production operators set their own
+      # master key in their .env; this default is dev-tools-only.
+      LITELLM_MASTER_KEY: ${LITELLM_MASTER_KEY:-sk-dev-master-key-do-not-use-in-prod}
   worker:
     environment:
       SMTP_PORT: "1025"
+      # BUG-53-41 — worker constructs the litellm client too (BullMQ
+      # ingestion). Mirror the api seed so both halves see the same
+      # default in OOB dev.
+      LITELLM_MASTER_KEY: ${LITELLM_MASTER_KEY:-sk-dev-master-key-do-not-use-in-prod}
+
+  # BUG-53-41 — litellm itself needs the same key its clients use; the
+  # base compose references ${LITELLM_MASTER_KEY} with no default, so
+  # we seed it here. Production operators set their own .env value;
+  # this override only fires when both .env AND host env are unset.
+  litellm:
+    environment:
+      LITELLM_MASTER_KEY: ${LITELLM_MASTER_KEY:-sk-dev-master-key-do-not-use-in-prod}
 
   mailpit:
     image: axllent/mailpit:v1.29
