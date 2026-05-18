@@ -514,6 +514,28 @@ The linter runs in lefthook pre-commit, CI `lint-english` job, and the nightly `
 
 ---
 
+## 13. LiteLLM boot guard
+
+The api refuses to boot when `NODE_ENV=production` and any of the following holds:
+
+1. `LITELLM_MASTER_KEY` is unset or empty.
+2. `LITELLM_MASTER_KEY === "sk-dev-master-key-do-not-use-in-prod"` — the dev-tools overlay default. Anti-footgun: an operator who copy-pastes the dev `.env` into production must not silently end up with a routable proxy.
+
+Behavior: `validateLitellmBoot()` writes a `FATAL litellm-boot: …` line to stderr and exits with status code 78 (`EX_CONFIG`, matching `validateAuthBoot` in §3 and `validateEncryptionBoot` in §12).
+
+Without this guard, the api would catch `loadLitellmConfigFromEnv()`'s throw, log a single `litellm.client.unavailable` line at warn level, and silently skip registering the four LiteLLM-backed routes (`/api/transcribe`, `/api/reason`, `/v1/audio/diarization`, `/v1/realtime`). `/api/health` would still return `{"status":"ok"}` — the breakage is invisible until an operator hits a 404.
+
+In `NODE_ENV=development` or `NODE_ENV=test` the guard is permissive (the dev-tools overlay seeds the default key; vitest never wires the var). The catch-and-warn path remains for those environments so a developer running without a real key sees the 404 envelope on those routes (the right operator UX, distinct from a transient-looking 503 on a registered-but-dead route).
+
+Source: `apps/api/src/config/litellm.ts`. Tests: `apps/api/tests/unit/config/litellm.test.ts`.
+
+### 13.1 Threat IDs mitigated
+
+- T-PROD-001 — production deploy with silently-dropped LiteLLM surface.
+- T-PROD-002 — operator copy-paste of dev `.env` shipping the well-known dev master key to a public deployment.
+
+---
+
 ## 10. Related documentation
 
 - [`architecture.md`](./architecture.md) — components, request hot

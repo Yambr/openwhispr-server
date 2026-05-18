@@ -106,6 +106,43 @@ K8s / Helm (Phase 9 +, not yet wired):
 - Wire the keys via your secret manager of choice (Vault / sealed
   secrets / external-secrets) into the `api` `Deployment`'s `envFrom`.
 
+## Production .env checklist
+
+The api enforces boot-time guards on three configs. Missing or invalid
+values cause `process.exit(78)` (`EX_CONFIG`) with a `FATAL` line on
+stderr. The guards are bypassed in `NODE_ENV=development` / `test` so
+the dev-tools overlay can short-circuit them.
+
+| Env var | Required (prod) | Boot guard |
+|---|---|---|
+| `BETTER_AUTH_SECRET` | yes, ≥32 chars | `apps/api/src/config/auth.ts` (`validateAuthBoot`) |
+| `AUTH_URL` | yes, must start with `https://` | `validateAuthBoot` |
+| `MASTER_KEK` | yes, base64-encoded ≥32 bytes | `packages/data/src/encryption/envelope.ts` (`validateEncryptionBoot`) |
+| `LITELLM_MASTER_KEY` | yes, ≠ `sk-dev-master-key-do-not-use-in-prod` | `apps/api/src/config/litellm.ts` (`validateLitellmBoot`) |
+
+The `LITELLM_MASTER_KEY` anti-footgun check refuses the well-known
+dev-tools overlay value so an operator who copy-pastes the dev `.env`
+into production can't silently end up running a routable LLM proxy
+with a published master key. Generate a real value:
+
+```bash
+openssl rand -base64 48
+```
+
+For SSRF allow-lists in compose deployments, set:
+
+```bash
+OUTBOUND_ALLOWED_HOSTS=litellm,mailpit,valkey,postgres,…your-real-upstreams…
+OUTBOUND_PRIVATE_HOST_ALLOWLIST=litellm,mailpit,valkey,postgres,…
+```
+
+Without these the `/readyz` dep-check probes are rejected by the
+SSRF dispatcher (`host_not_allowed`), the api never goes ready,
+and kubelet / load balancers won't route traffic to the pod. The
+dev-tools overlay (`compose/docker-compose.dev-tools.yml`) seeds
+sane defaults for local development; production `.env` must list
+the real internal hostnames explicitly.
+
 ## Cross-references
 
 - Wire shapes (byte-for-byte authoritative): `BACKEND_SPEC.md`
