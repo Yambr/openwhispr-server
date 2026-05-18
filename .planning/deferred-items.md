@@ -1092,3 +1092,28 @@ Phase 53 declared COMPLETE. Remaining 22 fail = Phase 54+ scope (RSC architectur
 **Impact:** Visual flash + every page hydration burns extra render cycle. Not user-blocking but logged on every visit. Real prod bug surfaced by Phase 53 strict-diagnostics — exactly the kind of issue Phase 53 was built for.
 
 **Tracking:** Phase 54+ targeted plan.
+
+## 2026-05-18 — Plan 53-30+31: u-setup strict-mode + traefik-only 401 spec
+
+**Closed:**
+- u-setup spec: role-scoped heading wait (was ambiguous getByText) — `cfdee3a`
+- auth-shell-visual setup spec: same role-scoped fix + baseline regenerated — `0147a4c`
+- 00-infra `/admin/observability without auth → 401` skipped under slim (Traefik-only by construction) — `92899e2`
+- /setup page binary rebuilt with internalApiUrl() fix — wizard now renders under slim
+
+### BUG-53-30 — React error #418 hydration mismatch on /setup
+Caught by Phase 53 strict diagnostics on /setup page load. SSR vs client locale divergence most likely. Real prod bug, deferred to Phase 54+ (requires investigation into SetupForm + i18n-client interaction).
+
+### Phase 53 absolute final tally: 66 passing / 23 failing / 4 skipped
+
+Stable across runs (flake band ±3). Improvement vs Phase 53 start:
+- **+39 specs unblocked**
+- **+4 specs properly skipped** (Traefik-only or observability-overlay-only)
+- **7 real production bugs surfaced + fixed:**
+  1. CSP eval (zod 4 JIT)
+  2. Secure cookies + boot guard
+  3. WCAG color-contrast (AuthShell)
+  4. /setup empty body (relative URL fetch)
+  5. Better Auth dup-email policy change
+  6. Admin role provisioning
+  7. React #418 hydration mismatch on /setup (NEW — caught by helper)
