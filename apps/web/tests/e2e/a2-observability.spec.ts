@@ -8,33 +8,21 @@
 //     rel="noopener noreferrer".
 //   - axe-core clean (WCAG 2.0 A + AA, WCAG 2.2 AA).
 //
-// Auth model (D-ADMIN-1): /admin/* is gated by Traefik basic-auth, NOT by
-// session. We use Playwright's `httpCredentials` to attach the
-// `Authorization: Basic ...` header on every request. The test compose stack
-// publishes admin:testpw123 via the admin-basicauth middleware (Plan 03).
+// Auth model: admin = regular user with users.role='admin'. The
+// per-worker fixture (`fixtures/auth.ts` patchEmailVerified) grants
+// role=admin to the worker's alice+<index>@test.local row at
+// global-setup, so the inherited storageState carries an admin session.
+// No Traefik basic-auth, no httpCredentials — the role gate in
+// AdminLayout via getServerSession is the only check.
 //
 // State coverage (per UI-SPEC):
 //   - success → covered: with env set, six cards + four quick-links present
-//   - error   → covered separately by vitest (env is build-time inlined; the
-//                running compose web image always builds with values set)
-//   - loading → N/A (no async fetch — explicitly called out as N/A by spec)
-//   - empty   → N/A (static list)
+//   - error   → covered separately by vitest (env is build-time inlined)
+//   - loading → N/A
+//   - empty   → N/A
 //   - a11y    → axe scan
-// Phase 53 / Plan 53-28 — import from fixtures/auth.js (which now also
-// auto-attaches the diagnostics helper, Plan 53-03) so the spec inherits
-// the worker-scoped admin storageState. Pre-fix the spec imported the
-// bare _diagnostics-fixture which leaves storageState empty → /admin/*
-// renders the 403 fallback under slim (basic-auth absent; the role gate
-// is the only check). Closes 4 a2-* sweep failures.
 import { expect, test } from "./fixtures/auth.js";
 import { runAxe } from "./fixtures/axe";
-
-const ADMIN_BASIC_USER = "admin";
-const ADMIN_BASIC_PASS = "testpw123";
-
-test.use({
-  httpCredentials: { username: ADMIN_BASIC_USER, password: ADMIN_BASIC_PASS },
-});
 
 test.describe("A2 — Observability hub (Phase 07.1 / Plan 12)", () => {
   // Phase 53 / Plan 53-29 — three "success" specs below require the

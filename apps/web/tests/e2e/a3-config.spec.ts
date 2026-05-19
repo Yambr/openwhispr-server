@@ -3,26 +3,18 @@
 //
 // Validates the four UI states + axe-core clean for the admin Config view.
 //
-// Auth model (D-ADMIN-1): /admin/* is gated by Traefik basic-auth, NOT by
-// session. We use Playwright `httpCredentials` to attach the Basic header.
+// Auth model: admin = regular user with users.role='admin'. The
+// per-worker fixture grants role at global-setup; the inherited
+// storageState carries an admin session. No Traefik basic-auth, no
+// httpCredentials.
 //
 // Endpoint constraints (D-S1): only existing GET /api/stt-config and
-// GET /api/note-recording-config are used by this screen. We mutate
-// responses via `page.route(...)` to exercise loading / error states.
-// Phase 53 / Plan 53-28 — import from fixtures/auth.js so admin
-// storageState rides along (same rationale as a2-observability).
+// GET /api/note-recording-config are used by this screen.
 import { expect, test } from "./fixtures/auth.js";
 import { runAxe } from "./fixtures/axe";
 
-const ADMIN_BASIC_USER = "admin";
-const ADMIN_BASIC_PASS = "testpw123";
-
-test.use({
-  httpCredentials: { username: ADMIN_BASIC_USER, password: ADMIN_BASIC_PASS },
-});
-
 test.describe("A3 — Config view (Phase 07.1 / Plan 12)", () => {
-  test("basic-auth header reaches the web container (no 401)", async ({ request }) => {
+  test("admin session can reach /admin/config (no 401)", async ({ request }) => {
     const res = await request.get("/admin/config");
     expect(res.status()).not.toBe(401);
     expect(res.status()).toBeLessThan(500);

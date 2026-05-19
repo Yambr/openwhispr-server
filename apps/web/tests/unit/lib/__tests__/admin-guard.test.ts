@@ -1,10 +1,9 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
-// Phase 41 / Plan 41-c — HI-1 admin role-guard unit tests.
+// Admin role-guard unit tests.
 //
-// Three branches × one assertion each, all-100% coverage on
-// `lib/admin-guard.ts`. See `.planning/phases/41-residual-high-sweep/41-c-DECISIONS.md`
-// D-1 for the chosen UX (inline 403 for signed-in non-admin; allow
-// for anonymous so Traefik basic-auth remains the primary gate).
+// Three branches × one assertion each. Admin = users.role='admin';
+// anonymous + non-admin signed-in users both forbidden. No
+// edgeAuthEnforced / Traefik bypass — auth is in-app only.
 import { describe, expect, it } from "vitest";
 import { checkAdminAccess } from "@/lib/admin-guard";
 import type { ServerSession } from "@/lib/auth-server";
@@ -24,15 +23,9 @@ const sessionWithoutRole: ServerSession = {
   user: { id: "u-3" /* no role field at all */ },
 };
 
-describe("checkAdminAccess (Phase 41.c HI-1, Phase 51-04 fail-closed)", () => {
-  it("forbids anonymous (null session) by default — Phase 51 / Plan 51-04 fail-closed", () => {
-    // Phase 51 / Plan 51-04 (REVIEW CR-6) — was "allow" pre-fix.
-    // Operators relying on Traefik basic-auth pass edgeAuthEnforced=true.
+describe("checkAdminAccess", () => {
+  it("forbids anonymous (null session)", () => {
     expect(checkAdminAccess(null)).toBe("forbidden");
-  });
-
-  it("allows anonymous when edgeAuthEnforced=true (Traefik basic-auth deployment)", () => {
-    expect(checkAdminAccess(null, true)).toBe("allow");
   });
 
   it("allows signed-in admin (role === 'admin')", () => {

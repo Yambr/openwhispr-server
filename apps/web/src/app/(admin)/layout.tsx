@@ -41,16 +41,10 @@ export default async function AdminLayout({
   children: ReactNode;
 }): Promise<React.JSX.Element> {
   const session = await getServerSession();
-  // Phase 51 / Plan 51-04 (REVIEW CR-6) — fail-closed by default. The
-  // pre-fix code treated null sessions as "allow" on the assumption
-  // that Traefik basic-auth is the primary gate, but Traefik
-  // basic-auth is OPTIONAL in the OSS quickstart. Operators who DO
-  // deploy Traefik basic-auth opt back into anonymous-allow via
-  // `ADMIN_EDGE_AUTH_ENFORCED=1` (read here at the layout boundary,
-  // not inside the pure guard, so the locker's no-NODE_ENV-branches
-  // rule does not apply — this is a bootstrap-time env read).
-  const edgeAuthEnforced = process.env.ADMIN_EDGE_AUTH_ENFORCED === "1";
-  if (checkAdminAccess(session, edgeAuthEnforced) === "forbidden") {
+  // Fail-closed admin gate. Admin = regular user with users.role='admin'
+  // (granted by the first /setup wizard completion via POST
+  // /api/setup/admin). No Traefik basic-auth, no edge-auth env flag.
+  if (checkAdminAccess(session) === "forbidden") {
     return <AdminForbidden />;
   }
   return <AdminShell>{children}</AdminShell>;

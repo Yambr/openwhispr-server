@@ -11,16 +11,14 @@
 //   UC-GUARD-SIGNED-OUT-SIGNIN-NO-LOOP — middleware.ts (no auth gate on
 //     /sign-in): visiting /sign-in signed-out renders normally; the
 //     auth-gate matcher only intercepts paths starting with "/app/".
-//   UC-GUARD-SIGNED-OUT-ADMIN-NO-MIDDLEWARE-REDIRECT — middleware.ts
-//     comment-block lines 22-25 + the literal `startsWith("/app/")`
-//     filter at line 133: /admin is EXPLICITLY NOT widened (D-ADMIN-1
-//     keeps Traefik basic-auth authoritative for admin). On slim,
-//     Traefik is absent — the AdminLayout defense-in-depth at
-//     `apps/web/src/app/(admin)/layout.tsx` then renders an inline
-//     "403 — Forbidden" surface because `checkAdminAccess(null, false)`
-//     returns "forbidden" (post-Phase-51 CR-6 fail-closed default).
-//     The HTTP response itself is 200 with the 403-shape HTML body —
-//     the spec asserts on the visible heading, not status.
+//   UC-GUARD-SIGNED-OUT-ADMIN-NO-MIDDLEWARE-REDIRECT — middleware
+//     does NOT redirect /admin paths (the auth gate only matches /app
+//     and /app/*). /admin is gated by AdminLayout at
+//     `apps/web/src/app/(admin)/layout.tsx` via `checkAdminAccess(session)`
+//     — anonymous visitors see the inline "403 — Forbidden" surface.
+//     HTTP response is 200 with the 403-shape HTML body — the spec
+//     asserts on the visible heading, not status. No Traefik basic-auth,
+//     no edge-auth env flag.
 //
 // Slim-only by design (mirrors all other 100-acceptance specs) —
 // production-equivalent routing is covered by the Phase 53 u1..u13
@@ -93,12 +91,11 @@ test.describe("@phase55-acceptance @long-form — auth middleware guard (slim)",
 
     await test.step("step 4 — signed-out /admin reaches the AdminLayout 403 surface (no middleware redirect)", async () => {
       const response = await page.goto(`${WEB_BASE}/admin`);
-      // Middleware does NOT redirect /admin (D-ADMIN-1). The
-      // AdminLayout fail-closed defense-in-depth renders the inline
-      // "403 — Forbidden" page when the session is null and
-      // ADMIN_EDGE_AUTH_ENFORCED is unset (which is the slim default).
-      // Critically: final URL is /admin, NOT /sign-in. HTTP status is
-      // 200 because the layout returns JSX, not a 4xx response.
+      // Middleware does NOT redirect /admin (the auth gate only fires
+      // on /app and /app/*). AdminLayout's role check renders the
+      // inline 403 page when session is null. Final URL is /admin
+      // (no redirect). HTTP status is 200 because the layout returns
+      // JSX, not a 4xx response.
       await expect(page).toHaveURL(/\/admin$/);
       expect(response?.status()).toBe(200);
       await expect(page.getByRole("heading", { name: /403 — Forbidden/i })).toBeVisible();
