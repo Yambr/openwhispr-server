@@ -6,8 +6,11 @@
 //
 //   POST  /api/conversations/messages
 //     body  { conversation_id: uuid, role, content, metadata?, client_message_id? }
-//     200   CloudMessage   (single-message only per v1 — D-22 +
-//                           Claude's Discretion documented in 05-CONTEXT.md)
+//     201   CloudMessage   (single-message only per v1 — D-22 +
+//                           Claude's Discretion documented in 05-CONTEXT.md).
+//                           Phase 56 / Plan 56-04 — R10 client contract
+//                           conformance, flipped 200 → 201 Created.
+//                           Idempotent replay also returns 201.
 //     400   metadata exceeds 4 KiB envelope (T-MSG-INJ mitigation)
 //     400   conversation_id missing / unknown role
 //     404   conversation_id not found / cross-tenant invisible
@@ -149,7 +152,7 @@ export const buildConversationsMessagesRoutes = (deps: ConversationsMessagesDeps
         if (!result) {
           throw new NotFoundError("CONVERSATION_NOT_FOUND", "conversation not found");
         }
-        return reply.code(200).send(rowToCloudMessage(result));
+        return reply.code(201).send(rowToCloudMessage(result));
       },
     });
 
