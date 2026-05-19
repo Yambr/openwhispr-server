@@ -7,7 +7,27 @@ are archived under `.planning/backlog-archive/`.
 the entry rather than marking it closed — git history preserves the
 record. Keep this file under ~200 lines.
 
-**Bug count: 0.**
+**Bug count: 1.**
+
+---
+
+## BUG-55-03-c-FROM-PARAM-LOST — middleware drops `?from=` on /app guard redirects
+
+**Surfaced by:** Plan 55-03-c spec (`apps/web/tests/e2e/100-acceptance/auth-middleware-guard.spec.ts`) on 2026-05-19.
+
+**Repro:**
+- Sign out, visit `http://localhost:3000/app` (bare) OR `http://localhost:3000/app/` (trailing slash) OR `http://localhost:3000/app/notes/some-id`.
+- Observed: redirect to `/sign-in` (no `?from=` query param).
+- Expected per `apps/web/src/middleware.ts:138`: `?from=%2Fapp...`.
+
+**Evidence:**
+- `middleware.ts:133` checks `startsWith("/app/")` — should match `/app/` and `/app/notes/...` but apparently next.js's matcher on the slim Next 15 build skips middleware entirely for these paths.
+- The `(auth)/layout.tsx` server-side guard then catches the unauthenticated session and `redirect("/sign-in")`s without preserving the original path.
+- UX impact: post-sign-in routing cannot recover the target screen — users always land on `/app` after auth instead of the deep link they tried to open.
+
+**Fix candidate:** widen the matcher in `middleware.ts` (line 133) — verify Next 15 matcher config in `next.config.ts`. May also need to move the `from=` capture into the `(auth)/layout.tsx` guard so both paths preserve it.
+
+**Owner:** unassigned. **Not a security bug** (redirect to `/sign-in` always happens). UX regression only.
 
 ---
 
