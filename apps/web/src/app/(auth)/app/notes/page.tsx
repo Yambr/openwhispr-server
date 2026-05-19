@@ -28,7 +28,13 @@ export default async function NotesPage(): Promise<React.JSX.Element> {
           headers: { cookie: cookieHeader },
           cache: "no-store",
         });
-        if (!res.ok) return { notes: [] };
+        // Phase 55-06-batch (BUG-55-06-a-RSC-FETCH-WALL): on non-2xx, throw so
+        // the dehydrated cache hydrates Client useQuery's `isError=true` branch
+        // (NotesListClient.tsx renders Alert + Retry). The previous fallback
+        // returned empty defaults which silently masked real outages.
+        if (!res.ok) {
+          throw new Error(`/api/notes/list ${res.status}`);
+        }
         return (await res.json()) as { notes: unknown[] };
       },
     }),
@@ -39,7 +45,10 @@ export default async function NotesPage(): Promise<React.JSX.Element> {
           headers: { cookie: cookieHeader },
           cache: "no-store",
         });
-        if (!res.ok) return { folders: [] };
+        // Phase 55-06-batch — propagate 5xx; see notes/list throw above.
+        if (!res.ok) {
+          throw new Error(`/api/folders/list ${res.status}`);
+        }
         return (await res.json()) as { folders: unknown[] };
       },
     }),

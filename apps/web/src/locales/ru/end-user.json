@@ -113,6 +113,9 @@
         },
         "loadearlier": {
           "label": "Загрузить более ранние сообщения"
+        },
+        "refresh": {
+          "label": "Обновить"
         }
       },
       "empty": {
@@ -155,6 +158,9 @@
       "action": {
         "loadmore": {
           "label": "Загрузить ещё"
+        },
+        "refresh": {
+          "label": "Обновить"
         },
         "search": {
           "label": "Поиск диалогов"
@@ -324,6 +330,9 @@
       "action": {
         "loadmore": {
           "label": "Загрузить ещё"
+        },
+        "refresh": {
+          "label": "Обновить"
         },
         "search": {
           "label": "Поиск заметок"
@@ -795,6 +804,9 @@
       "action": {
         "loadmore": {
           "label": "Загрузить ещё"
+        },
+        "refresh": {
+          "label": "Обновить"
         }
       },
       "empty": {

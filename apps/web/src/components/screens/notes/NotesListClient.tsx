@@ -161,19 +161,28 @@ export function NotesListClient(): React.JSX.Element {
           <h1 className="font-semibold text-2xl">
             {t("end-user:end-user.notes-list.title.heading.text")}
           </h1>
-          <form onSubmit={handleSearchSubmit} className="flex gap-2">
-            <Input
-              type="search"
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              placeholder={t("end-user:end-user.notes-list.action.search.label")}
-              aria-label={t("end-user:end-user.notes-list.action.search.label")}
-              className="w-64"
-            />
-            <Button type="submit" size="sm" variant="outline">
-              {t("end-user:end-user.notes-list.action.search.label")}
+          <div className="flex flex-wrap items-center gap-2">
+            <form onSubmit={handleSearchSubmit} className="flex gap-2">
+              <Input
+                type="search"
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                placeholder={t("end-user:end-user.notes-list.action.search.label")}
+                aria-label={t("end-user:end-user.notes-list.action.search.label")}
+                className="w-64"
+              />
+              <Button type="submit" size="sm" variant="outline">
+                {t("end-user:end-user.notes-list.action.search.label")}
+              </Button>
+            </form>
+            <Button
+              onClick={() => queryClient.invalidateQueries({ queryKey: ["notes", "list"] })}
+              size="sm"
+              variant="outline"
+            >
+              {t("end-user:end-user.notes-list.action.refresh.label")}
             </Button>
-          </form>
+          </div>
         </header>
         <p className="text-text-muted text-sm">
           {t("end-user:end-user.notes-list.subtitle.body.text")}

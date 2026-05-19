@@ -202,6 +202,17 @@ export function ConversationDetailClient({
           {t("end-user:end-user.conv-detail.title.heading.text")}
         </h1>
         <div className="flex flex-wrap gap-2">
+          <Button
+            onClick={() =>
+              queryClient.invalidateQueries({
+                queryKey: ["conversations", "messages", conversationId],
+              })
+            }
+            size="sm"
+            variant="outline"
+          >
+            {t("end-user:end-user.conv-detail.action.refresh.label")}
+          </Button>
           <Button onClick={handleCopy} size="sm" variant="outline">
             {t("end-user:end-user.conv-detail.action.copy.label")}
           </Button>
