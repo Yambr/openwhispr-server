@@ -1,21 +1,13 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
-// Phase 07.1 / Plan 06 — Admin route group layout (D-ADMIN-1).
-// Phase 41 / Plan 41-c (HI-1) — defense-in-depth role gate added.
+// Admin route group layout.
 //
-// Auth model:
-//   - PRIMARY GATE — Traefik basic-auth at the edge (D-ADMIN-1). The
-//     `ADMIN_BASIC_AUTH_USERS` env variable on the web service governs
-//     operator access; this is the canonical runbook gate.
-//   - DEFENSE-IN-DEPTH — `checkAdminAccess(session)`. When a Better
-//     Auth session IS present we additionally require
-//     `session.user.role === "admin"`. A signed-in user with a
-//     non-admin role sees a 403 surface instead of admin content. An
-//     anonymous (no-session) visitor passes through unchanged so the
-//     ops-engineer workflow (basic-auth credentials, no OpenWhispr
-//     account) keeps working as documented.
-//
-// See `.planning/phases/41-residual-high-sweep/41-c-DECISIONS.md` D-1
-// for the decision matrix and rejected alternatives.
+// Auth model: admin = regular user with `users.role='admin'`. The first
+// user to complete the in-product /setup wizard (POST /api/setup/admin)
+// is granted role='admin' automatically. AdminLayout calls
+// checkAdminAccess(session) — anonymous + non-admin signed-in visitors
+// see the inline 403 surface. No Traefik basic-auth, no edge-auth env
+// flag — auth is in-app via Better Auth cookies regardless of
+// deployment topology (slim or traefik).
 import type { ReactNode } from "react";
 import { AdminShell } from "@/components/screens/AdminShell";
 import { checkAdminAccess } from "@/lib/admin-guard";

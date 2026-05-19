@@ -705,29 +705,13 @@ services:
           memory: 512M
           cpus: "1.0"
 
-  # Phase 07.1 Plan 03 — Next.js 15 web app (WEB-IMPL-03 / D-DEPLOY-1 /
-  # D-DEPLOY-2 / D-ADMIN-1 / D-ADMIN-2). Same-origin deploy behind Traefik:
-  # router `web` (priority 1, PathPrefix `/`) handles every non-/api/* path;
-  # router `web-admin` (priority 100, PathPrefix `/admin`) attaches the
-  # `admin-basicauth` Traefik middleware so /admin/* is gated at the edge
-  # without an application-level role check (Phase 7 A4 refutation: Better
-  # Auth v1.6.9 has no `role` column).
+  # Next.js 15 web app — same-origin deploy behind Traefik. /admin/* is
+  # gated by users.role='admin' in the AdminLayout (Better Auth session +
+  # checkAdminAccess). No Traefik basic-auth middleware.
   #
-  # Routing precedence: the existing `api` router (Host(api.localhost), file
-  # provider) ranks above `web` for /api/* because Traefik scores rules
-  # primarily by specificity, and we explicitly set `web.priority=1` to keep
-  # web the absolute fallback. `web-admin.priority=100` outranks `web` so
-  # /admin/* always engages basic-auth first.
-  #
-  # Network: openwhispr_internal only — no host port. Traefik discovers the
-  # service via the docker provider added in compose/traefik/traefik.yml
-  # (read-only socket mount above on the traefik service).
-  #
-  # ADMIN_BASIC_AUTH_USERS: htpasswd-format `user:hash` entries, comma-
-  # separated. Bcrypt hashes contain `$` which docker-compose interpolates;
-  # operators MUST escape each `$` as `$$` in their `.env` (documented in
-  # .env.example). The label below interpolates the value at compose-up
-  # time; Traefik then sees the un-escaped htpasswd line.
+  # Network: openwhispr_internal only — no host port. Traefik discovers
+  # the service via the docker provider added in
+  # compose/traefik/traefik.yml.
   web:
     build:
       context: .
@@ -783,31 +767,16 @@ services:
           memory: 512M
           cpus: "1.0"
     labels:
-      # Phase 19b / SR-19b.2 — STRUCT-05 host-split. The canonical `web`
-      # router lives in compose/traefik/dynamic.dev.yml (file provider) on
-      # Host(`web.localhost`). The earlier catch-all on Host(`api.localhost`)
-      # shadowed the file-provider api router for any path outside /api
-      # (sign-up via Better Auth, root liveness probes, /admin) and made
-      # @cjm-3.1 and @cjm-traefik-host-split impossible to validate. Only
-      # `web-admin` stays here because its admin-basicauth middleware reads
-      # ${ADMIN_BASIC_AUTH_USERS} via docker env interpolation.
+      # /admin/* routing — auth is in-app (users.role='admin'); no
+      # Traefik basic-auth middleware. Canonical `web` router lives in
+      # compose/traefik/dynamic.dev.yml (file provider).
       - "traefik.enable=true"
-      # Admin router: PathPrefix(/admin) + basic-auth middleware on the
-      # web host. priority=100 keeps /admin/* engaging the gate ahead of
-      # any other web.localhost matcher.
       - "traefik.http.routers.web-admin.rule=Host(`web.localhost`) && PathPrefix(`/admin`)"
       - "traefik.http.routers.web-admin.priority=100"
       - "traefik.http.routers.web-admin.entrypoints=websecure"
       - "traefik.http.routers.web-admin.tls=true"
       - "traefik.http.routers.web-admin.service=web-svc"
-      - "traefik.http.routers.web-admin.middlewares=admin-basicauth@docker"
-      # Backend service: Next.js standalone listens on PORT=3000
-      # (apps/web/Dockerfile:110).
       - "traefik.http.services.web-svc.loadbalancer.server.port=3000"
-      # admin-basicauth middleware definition. ADMIN_BASIC_AUTH_USERS in
-      # .env MUST escape each bcrypt `$` as `$$` (compose interpolation);
-      # Traefik receives the un-escaped htpasswd line.
-      - "traefik.http.middlewares.admin-basicauth.basicauth.users=${ADMIN_BASIC_AUTH_USERS}"
 
   # Phase 2 Plan 02 — Mailpit dev SMTP catch-all.
   # Phase 07.1 / Plan 13.3 — promoted to `default` profile so the bundled

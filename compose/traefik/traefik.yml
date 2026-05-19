@@ -122,15 +122,10 @@ providers:
   file:
     directory: /etc/traefik/dynamic
     watch: true
-  # Phase 07.1 Plan 03 (WEB-IMPL-03 / D-DEPLOY-1) — docker provider added
-  # alongside the file provider so the `web` compose service can declare
-  # its routers and the `admin-basicauth` middleware via labels. Both
-  # providers coexist: file remains primary for api / grafana / minio /
-  # mailpit / api-realtime; docker carries only the web service's
-  # router+middleware set. `exposedByDefault: false` means containers
-  # MUST opt in with `traefik.enable=true`. `network` pins which docker
-  # network Traefik routes traffic on for label-resolved backends — must
-  # match the internal bridge the web container attaches to.
+  # Docker provider — `web` compose service declares its routers via
+  # labels. File provider remains primary for api / grafana / minio /
+  # mailpit / api-realtime. `exposedByDefault: false` means containers
+  # MUST opt in with `traefik.enable=true`.
   docker:
     exposedByDefault: false
     # Docker Compose v2 prefixes user-defined networks with the project name
