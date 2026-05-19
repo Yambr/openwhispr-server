@@ -102,6 +102,7 @@ interface FastifyValidationLike {
   validation?: unknown;
   statusCode?: number;
   message?: string;
+  code?: string;
 }
 
 export function registerErrorHandler(app: FastifyInstance): void {
@@ -132,6 +133,19 @@ export function registerErrorHandler(app: FastifyInstance): void {
       status = 400;
       const first = err.issues[0];
       message = first?.message ?? "Invalid request";
+    } else if (typeof fv.code === "string" && fv.code.startsWith("FST_ERR_CTP_")) {
+      // BUG-55-01-b-05 — Fastify content-type-parser errors
+      // (FST_ERR_CTP_EMPTY_JSON_BODY, FST_ERR_CTP_INVALID_MEDIA_TYPE,
+      // FST_ERR_CTP_INVALID_CONTENT_LENGTH, etc.) are client-side
+      // malformed-body conditions, not server faults. Without this
+      // branch they fall through to the default 500 catch-all (root
+      // cause of the delete-account 500 surfaced by the Phase 55-01-b
+      // e2e). Map to the canonical 400 envelope with VALIDATION_ERROR
+      // code so i18n localization picks up `errors.VALIDATION_ERROR`
+      // ("Invalid request").
+      status = 400;
+      message = "Invalid request";
+      code = "VALIDATION_ERROR";
     } else if (fv.validation !== undefined) {
       // Fastify's own schema-validation failures arrive with `validation`.
       status = 400;
