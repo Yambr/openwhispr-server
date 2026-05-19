@@ -87,6 +87,12 @@ const IGNORE = [
   // i18n-russian.spec.ts above. This source file (lint-english.ts)
   // remains ASCII-clean; the Russian strings live only in the spec.
   "apps/web/tests/e2e/100-acceptance/full-flow.spec.ts",
+  // Phase 55-02-a — Password strength meter long-form acceptance spec.
+  // Defensive RU locale-leakage guards: case-insensitive regex unions
+  // list both EN and Cyrillic band labels verbatim so the assertion still
+  // matches if a prior spec leaks an i18n cookie. Same i18n-surface
+  // rationale as full-flow.spec.ts.
+  "apps/web/tests/e2e/100-acceptance/password-strength-meter.spec.ts",
   // Phase 33 — CJM signup-extras step unit tests own a Cyrillic-detection
   // regex (the literal source uses the U+0410..U+044F + U+0401 + U+0451
   // codepoint range) as the assertion subject under test. The regex must
