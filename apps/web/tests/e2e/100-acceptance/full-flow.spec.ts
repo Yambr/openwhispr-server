@@ -108,7 +108,34 @@ test.describe("@phase54-acceptance @long-form — full flow (slim OOB)", () => {
     });
 
     await test.step("step 5 — walk every authed screen with empty-state assertions", async () => {
-      expect(false).toBe(true);
+      // /app dashboard — KPI card is the stable smoke landmark (matches 99-cross-screen-smoke).
+      await page.goto(`${WEB_BASE}/app`);
+      await expect(page).toHaveURL(/\/app$/);
+      await expect(page.getByTestId("kpi-words-used")).toBeVisible();
+      expectNoBrowserErrors(page);
+
+      // /app/transcriptions — empty-state user; heading is the stable landmark.
+      await page.goto(`${WEB_BASE}/app/transcriptions`);
+      await expect(page).toHaveURL(/\/app\/transcriptions$/);
+      await expect(page.getByRole("heading", { name: /transcriptions/i })).toBeVisible();
+      expectNoBrowserErrors(page);
+
+      // /app/notes — heading visible on empty state.
+      await page.goto(`${WEB_BASE}/app/notes`);
+      await expect(page).toHaveURL(/\/app\/notes$/);
+      await expect(page.getByRole("heading", { name: /notes/i })).toBeVisible();
+      expectNoBrowserErrors(page);
+
+      // /app/conversations — heading visible on empty state.
+      await page.goto(`${WEB_BASE}/app/conversations`);
+      await expect(page).toHaveURL(/\/app\/conversations$/);
+      await expect(page.getByRole("heading", { name: /conversations/i })).toBeVisible();
+      expectNoBrowserErrors(page);
+
+      // /app/account — profile card carries the freshly signed-up email.
+      await page.goto(`${WEB_BASE}/app/account`);
+      await expect(page).toHaveURL(/\/app\/account$/);
+      await expect(page.getByText(uniq).first()).toBeVisible();
       expectNoBrowserErrors(page);
     });
 
