@@ -50,6 +50,20 @@ export interface SeedNoteArgs {
   title?: string;
   content?: string;
   folderId?: string;
+  /**
+   * Optional transcript body to attach to the seeded note. POST
+   * /api/notes/create accepts `transcript` (apps/api/src/routes/notes/
+   * create.ts:61). When set, the NoteDetailClient renders the Transcript
+   * tab (NoteDetailClient.tsx:269-273, 285-291). Plan 55-15-a.
+   */
+  transcript?: string;
+  /**
+   * Optional enhanced markdown body. POST /api/notes/create accepts
+   * `enhanced_content` (apps/api/src/routes/notes/create.ts:53). When
+   * set, the NoteDetailClient renders the Enhanced tab
+   * (NoteDetailClient.tsx:274-278, 292-301). Plan 55-15-a.
+   */
+  enhancedContent?: string;
 }
 export interface SeedTranscriptionArgs {
   count?: number;
