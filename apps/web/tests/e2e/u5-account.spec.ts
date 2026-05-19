@@ -10,6 +10,7 @@
 import { fixtureEmail, signInAs } from "./fixtures/auth.js";
 import { runAxe } from "./fixtures/axe.js";
 import { expect, test } from "./fixtures/states.js";
+import { attachBrowserDiagnostics, expectNoBrowserErrors } from "./support/browser-diagnostics.js";
 
 const LIST_ROUTE = "**/api/auth/list-sessions";
 
@@ -25,7 +26,8 @@ test.describe("U5 — account (Phase 07.1 / Plan 08)", () => {
   // session whenever another spec's sign-in produced a stale-updated row
   // ahead of it — every subsequent spec started signed-out, cascading into
   // u11/12/13 failures.
-  test.beforeEach(async ({ context }, testInfo) => {
+  test.beforeEach(async ({ context, page }, testInfo) => {
+    await attachBrowserDiagnostics(page);
     if (testInfo.title.startsWith("success state — two sessions")) {
       return; // this test seeds an extra session itself
     }
@@ -70,6 +72,7 @@ test.describe("U5 — account (Phase 07.1 / Plan 08)", () => {
     await loadingFor(LIST_ROUTE);
     await page.goto("/app/account");
     await expect(page.locator('[data-testid="sessions-skeleton-row"]').first()).toBeVisible();
+    expectNoBrowserErrors(page);
   });
 
   test("empty state — single session hides 'Revoke all other sessions'", async ({ page }, info) => {
@@ -78,6 +81,7 @@ test.describe("U5 — account (Phase 07.1 / Plan 08)", () => {
     await expect(page.getByText(fixtureEmail(info.parallelIndex))).toBeVisible();
     // Only the current session — header bulk-revoke button should be absent
     await expect(page.getByRole("button", { name: /Revoke all other sessions/i })).toHaveCount(0);
+    expectNoBrowserErrors(page);
   });
 
   test("error state — Alert + Retry when list-sessions returns 500", async ({ page, errorFor }) => {
@@ -85,6 +89,7 @@ test.describe("U5 — account (Phase 07.1 / Plan 08)", () => {
     await page.goto("/app/account");
     await expect(page.getByText(/Could not load account/i)).toBeVisible();
     await expect(page.getByRole("button", { name: /Retry/i })).toBeVisible();
+    expectNoBrowserErrors(page);
   });
 
   test("success state — two sessions render and 'Revoke all other sessions' is visible", async ({
@@ -105,11 +110,13 @@ test.describe("U5 — account (Phase 07.1 / Plan 08)", () => {
     await expect(revokeButtons.first()).toBeVisible();
 
     await secondCtx.close();
+    expectNoBrowserErrors(page);
   });
 
   test("axe — WCAG 2.2 AA clean on populated account screen", async ({ page }, info) => {
     await page.goto("/app/account");
     await expect(page.getByText(fixtureEmail(info.parallelIndex))).toBeVisible();
     await runAxe(page);
+    expectNoBrowserErrors(page);
   });
 });

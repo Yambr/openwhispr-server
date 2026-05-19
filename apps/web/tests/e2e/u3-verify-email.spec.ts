@@ -8,11 +8,17 @@
 // the success branch.
 import { expect, test } from "./_diagnostics-fixture.js";
 import { runAxe } from "./fixtures/axe.js";
+import { attachBrowserDiagnostics, expectNoBrowserErrors } from "./support/browser-diagnostics.js";
 
 test.describe("U3 Verify-email (Phase 07.1 / Plan 07)", () => {
+  test.beforeEach(async ({ page }) => {
+    await attachBrowserDiagnostics(page);
+  });
+
   test("empty state — visiting without ?token= renders error variant", async ({ page }) => {
     await page.goto("/verify-email");
     await expect(page.getByText(/verification failed/i)).toBeVisible();
+    expectNoBrowserErrors(page);
   });
 
   test("loading state — request hanging keeps the loading body visible", async ({ page }) => {
@@ -22,6 +28,7 @@ test.describe("U3 Verify-email (Phase 07.1 / Plan 07)", () => {
     });
     await page.goto("/verify-email?token=abcDEF123");
     await expect(page.getByText(/verifying your email/i)).toBeVisible({ timeout: 5_000 });
+    expectNoBrowserErrors(page);
   });
 
   test("error state — invalid token renders error variant", async ({ page }) => {
@@ -34,6 +41,7 @@ test.describe("U3 Verify-email (Phase 07.1 / Plan 07)", () => {
     );
     await page.goto("/verify-email?token=invalidTokenXYZ");
     await expect(page.getByText(/verification failed/i)).toBeVisible();
+    expectNoBrowserErrors(page);
   });
 
   test("success state — verify-email returns success", async ({ page }) => {
@@ -47,11 +55,13 @@ test.describe("U3 Verify-email (Phase 07.1 / Plan 07)", () => {
     await page.goto("/verify-email?token=goodTokenABC");
     await expect(page.getByText(/email verified/i)).toBeVisible();
     await expect(page.getByRole("link", { name: /^sign in$/i })).toBeVisible();
+    expectNoBrowserErrors(page);
   });
 
   test("axe — WCAG 2.2 AA scan on /verify-email", async ({ page }) => {
     await page.goto("/verify-email");
     await page.getByText(/verification failed/i).waitFor();
     await runAxe(page, "u3-verify-email");
+    expectNoBrowserErrors(page);
   });
 });

@@ -7,15 +7,24 @@
 import { expect, test } from "./_diagnostics-fixture.js";
 import { FIXTURE_PASSWORD, fixtureEmail } from "./fixtures/auth.js";
 import { runAxe } from "./fixtures/axe.js";
-import { allowDeliberateRouteStub } from "./support/browser-diagnostics.js";
+import {
+  allowDeliberateRouteStub,
+  attachBrowserDiagnostics,
+  expectNoBrowserErrors,
+} from "./support/browser-diagnostics.js";
 
 test.describe("U1 Sign-in (Phase 07.1 / Plan 07)", () => {
+  test.beforeEach(async ({ page }) => {
+    await attachBrowserDiagnostics(page);
+  });
+
   test("empty state — form renders pristine with no error alert", async ({ page }) => {
     await page.goto("/sign-in");
     await expect(page.getByLabel(/email/i)).toHaveValue("");
     await expect(page.getByLabel(/password/i)).toHaveValue("");
     await expect(page.getByRole("button", { name: /^sign in$/i })).toBeVisible();
     await expect(page.getByText(/sign-in failed/i)).toHaveCount(0);
+    expectNoBrowserErrors(page);
   });
 
   test("loading state — submit while /api/auth/sign-in/email is in flight keeps button disabled", async ({
@@ -34,6 +43,7 @@ test.describe("U1 Sign-in (Phase 07.1 / Plan 07)", () => {
     await expect(page.getByRole("button", { name: /sign in|loading/i })).toBeDisabled({
       timeout: 5_000,
     });
+    expectNoBrowserErrors(page);
   });
 
   test("error state — invalid credentials show the error Alert", async ({ page }) => {
@@ -55,6 +65,7 @@ test.describe("U1 Sign-in (Phase 07.1 / Plan 07)", () => {
     await page.getByLabel(/password/i).fill("Pwa9!testStrong");
     await page.getByRole("button", { name: /^sign in$/i }).click();
     await expect(page.getByText(/sign-in failed/i)).toBeVisible();
+    expectNoBrowserErrors(page);
   });
 
   test("success state — valid credentials redirect to /app", async ({ page }, info) => {
@@ -66,11 +77,13 @@ test.describe("U1 Sign-in (Phase 07.1 / Plan 07)", () => {
     await page.getByRole("button", { name: /^sign in$/i }).click();
     await page.waitForURL(/\/app(\/|$)/, { timeout: 15_000 });
     expect(page.url()).toMatch(/\/app(\/|$)/);
+    expectNoBrowserErrors(page);
   });
 
   test("axe — WCAG 2.2 AA scan on /sign-in", async ({ page }) => {
     await page.goto("/sign-in");
     await page.getByRole("button", { name: /^sign in$/i }).waitFor();
     await runAxe(page, "u1-sign-in");
+    expectNoBrowserErrors(page);
   });
 });

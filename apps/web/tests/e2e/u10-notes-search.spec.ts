@@ -6,13 +6,15 @@
 import { runAxe } from "./fixtures/axe.js";
 import { bindToContext } from "./fixtures/seed.js";
 import { expect, test } from "./fixtures/states.js";
+import { attachBrowserDiagnostics, expectNoBrowserErrors } from "./support/browser-diagnostics.js";
 
 const SEARCH_ROUTE = "**/api/notes/search";
 
 test.describe("U10 — notes search (Phase 07.1 / Plan 10)", () => {
   // Plan 13.1 — auth provisioned by global-setup.ts; storageState is
   // applied per worker via the auth-extended `test`. Reset data state only.
-  test.beforeEach(async ({ context }) => {
+  test.beforeEach(async ({ context, page }) => {
+    await attachBrowserDiagnostics(page);
     const seed = bindToContext(context);
     await seed.clearAllData();
   });
@@ -24,22 +26,26 @@ test.describe("U10 — notes search (Phase 07.1 / Plan 10)", () => {
     await loadingFor(SEARCH_ROUTE);
     await page.goto("/app/notes/search?q=roadmap");
     await expect(page.locator('[data-testid="notes-search-skeleton"]')).toBeVisible();
+    expectNoBrowserErrors(page);
   });
 
   test("empty state (type) — guidance copy when q is empty", async ({ page }) => {
     await page.goto("/app/notes/search");
     await expect(page.getByText(/Type a query to search your notes/i)).toBeVisible();
+    expectNoBrowserErrors(page);
   });
 
   test("empty state (none) — no-matches copy when query yields zero rows", async ({ page }) => {
     await page.goto("/app/notes/search?q=zzzzzzzz_no_match_zzzzz");
     await expect(page.getByText(/No notes match this query/i)).toBeVisible();
+    expectNoBrowserErrors(page);
   });
 
   test("error state — Alert when search endpoint returns 500", async ({ page, errorFor }) => {
     await errorFor(SEARCH_ROUTE, 500);
     await page.goto("/app/notes/search?q=roadmap");
     await expect(page.getByText(/Search failed/i)).toBeVisible();
+    expectNoBrowserErrors(page);
   });
 
   test("success state — seeded matching note appears in results", async ({ page, context }) => {
@@ -51,6 +57,7 @@ test.describe("U10 — notes search (Phase 07.1 / Plan 10)", () => {
     });
     await page.goto("/app/notes/search?q=roadmap");
     await expect(page.getByText(/Quarterly roadmap/i)).toBeVisible();
+    expectNoBrowserErrors(page);
   });
 
   test("axe — WCAG 2.2 AA clean on populated search results", async ({ page, context }) => {
@@ -63,5 +70,6 @@ test.describe("U10 — notes search (Phase 07.1 / Plan 10)", () => {
     await page.goto("/app/notes/search?q=roadmap");
     await expect(page.getByText(/axe roadmap/i)).toBeVisible();
     await runAxe(page);
+    expectNoBrowserErrors(page);
   });
 });

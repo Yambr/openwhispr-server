@@ -8,6 +8,7 @@
 import { runAxe } from "./fixtures/axe.js";
 import { bindToContext } from "./fixtures/seed.js";
 import { expect, test } from "./fixtures/states.js";
+import { attachBrowserDiagnostics, expectNoBrowserErrors } from "./support/browser-diagnostics.js";
 
 const ROUTE = "**/api/transcriptions/list**";
 const TRANSCRIPT_TEXT =
@@ -16,7 +17,8 @@ const TRANSCRIPT_TEXT =
 test.describe("U7 — transcription detail (Phase 07.1 / Plan 09)", () => {
   // Plan 13.1 — auth provisioned by global-setup.ts; storageState is
   // applied per worker via the auth-extended `test`. Reset data state only.
-  test.beforeEach(async ({ context }) => {
+  test.beforeEach(async ({ context, page }) => {
+    await attachBrowserDiagnostics(page);
     const seed = bindToContext(context);
     await seed.clearAllData();
   });
@@ -28,17 +30,20 @@ test.describe("U7 — transcription detail (Phase 07.1 / Plan 09)", () => {
     await loadingFor(ROUTE);
     await page.goto("/app/transcriptions/00000000-0000-0000-0000-000000000000");
     await expect(page.locator('[data-testid="trx-detail-skeleton"]')).toBeVisible();
+    expectNoBrowserErrors(page);
   });
 
   test("empty state — not-found UI for id missing from list", async ({ page }) => {
     await page.goto("/app/transcriptions/00000000-0000-0000-0000-000000000000");
     await expect(page.getByText(/Transcription not found/i)).toBeVisible();
+    expectNoBrowserErrors(page);
   });
 
   test("error state — Alert when list endpoint returns 500", async ({ page, errorFor }) => {
     await errorFor(ROUTE, 500);
     await page.goto("/app/transcriptions/00000000-0000-0000-0000-000000000000");
     await expect(page.getByText(/Could not load transcription/i)).toBeVisible();
+    expectNoBrowserErrors(page);
   });
 
   test("success state — metadata + flat paragraphs render, NO timecodes in body", async ({
@@ -57,6 +62,7 @@ test.describe("U7 — transcription detail (Phase 07.1 / Plan 09)", () => {
       await page.locator('[data-testid="trx-paragraph"]').allTextContents()
     ).join(" ");
     expect(paragraphsText).not.toMatch(/\d{1,2}:\d{2}/);
+    expectNoBrowserErrors(page);
   });
 
   test("axe — WCAG 2.2 AA clean on populated detail", async ({ page, context }) => {
@@ -66,5 +72,6 @@ test.describe("U7 — transcription detail (Phase 07.1 / Plan 09)", () => {
     await page.goto(`/app/transcriptions/${id}`);
     await expect(page.getByText(/First paragraph/i)).toBeVisible();
     await runAxe(page);
+    expectNoBrowserErrors(page);
   });
 });
