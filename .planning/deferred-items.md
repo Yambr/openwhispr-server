@@ -3,6 +3,39 @@
 Items discovered during execution that are still actionable. Closed items
 are archived under `.planning/backlog-archive/`.
 
+---
+
+## BUG-55-02-b-slim-api-localhost — long-form acceptance specs assume traefik routing on slim
+
+**Discovered:** Plan 55-02-b execution (2026-05-19) — running the full
+slim 100-acceptance sweep surfaces four pre-existing failures:
+
+- `100-acceptance/full-flow.spec.ts`
+- `100-acceptance/delete-account.spec.ts`
+- `100-acceptance/password-reset.spec.ts`
+- `100-acceptance/revoke-sessions.spec.ts`
+
+All four fail with `ECONNREFUSED ::1:443` against `https://api.localhost`
+— the traefik-fronted API host. The slim topology does not ship traefik;
+the API listens on `http://localhost:4000` instead. Reproduced via
+`git stash --include-untracked` on the Plan 55-02-b worktree and
+re-running each spec → identical 4/4 failures, confirming pre-existence.
+
+Plan 55-02-b spec (`100-acceptance/password-eye-toggle.spec.ts`) and the
+Plan 55-02-a spec (`100-acceptance/password-strength-meter.spec.ts`) both
+target the web origin only and pass cleanly on slim — they document the
+correct host-handling pattern for slim specs.
+
+**Suggested fix:** introduce a per-project API base helper (mirror
+`topology.ts` Phase 53 pattern) so the four specs above resolve to
+`http://localhost:4000` on slim and `https://api.localhost` on traefik.
+Land as a dedicated cohort plan under Phase 55 (e.g. 55-03 slim-host
+parity) — out of scope for 55-02-b which is constrained to the eye-toggle
+wire-up.
+
+**Owner:** unassigned. Re-surface in next Phase 55 audit pass.
+
+
 **Triage convention:** any item below is OPEN. When a fix lands, delete
 the entry rather than marking it closed — git history preserves the
 record. Keep this file under ~200 lines.
