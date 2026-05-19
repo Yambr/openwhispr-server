@@ -11,6 +11,38 @@ record. Keep this file under ~200 lines.
 
 ---
 
+## Phase 57 — data:CR-01 + data:CR-03 — Better Auth credentials remain at rest as plaintext
+
+**Discovered:** Phase 57 Track A execution attempt, 2026-05-20. **Status:** HALT pending architectural decision.
+
+**WHY:** The plan's `data:CR-01` GREEN step ("populate `ENCRYPTED_COLUMNS_MAP` in `apps/api/src/auth.ts:160`") does NOT, by itself, encrypt Better-Auth credentials at rest. Empirical evidence captured via the RED test (`apps/api/tests/integration/better-auth-envelope-at-rest.test.ts`, commit `c672e1f`) + a tracer on `wrapAdapter.create`:
+
+1. **The lens never sees `model=account` writes during sign-up.** sign-up.mjs:141 wraps the entire flow in `runWithTransaction(ctx.context.adapter, ...)` (better-auth/dist/api/routes/sign-up.mjs). `runWithTransaction` (better-auth/core context/transaction.mjs:52-78) calls `adapter.transaction(cb)`, which in our wrap delegates to `inner.transaction.bind(inner)` (packages/data/src/encryption/lens.ts:443). The inner adapter is the un-wrapped factory output; `als.run({ adapter: trx, ... }, fn)` binds `getCurrentAdapter()` to that un-wrapped adapter for the entire sign-up. Every `createWithHooks` inside the transaction (createUser, linkAccount, createSession) bypasses the lens.
+
+2. **Even if the lens fires (e.g. for the session row outside the transaction in our test), `transformInput` strips the sidecar keys.** Better Auth's adapter-factory `transformInput` (better-auth/core dist/db/adapter/factory.mjs:98-140) iterates ONLY `schema[model].fields` and silently drops any key not declared in the canonical Better Auth model schema. The 6 sidecar keys per encrypted column (`password_dek_wrapped` … plus their camelCase twins) are unknown → dropped before they reach drizzle's INSERT.
+
+So Plan 51-23/24's empty map was correct for *its* set of working assumptions; Plan 57 Track A's "just populate the map" cannot achieve GREEN without two coordinated additional fixes:
+
+**Required follow-ups (Phase 58 candidate):**
+
+- **Fix A — lens transaction wrapping (production change in `packages/data/src/encryption/lens.ts:443`).** Replace `transaction: inner.transaction.bind(inner)` with a wrapper that re-wraps the `trx` adapter:
+  ```ts
+  transaction: (cb) => inner.transaction((trx) =>
+    cb(wrapAdapter(trx, providers, columnMap))
+  )
+  ```
+  This makes the lens fire inside `runWithTransaction` scopes. Add a regression test (real Postgres testcontainer) that signs up + asserts every `createWithHooks`-scoped model goes through the lens.
+
+- **Fix B — declare sidecars as `additionalFields` on every Better-Auth model in `apps/api/src/auth.ts`.** ~44 entries total: 4 account columns × 6 sidecars (24) + 2 session columns × (6 sidecars + 1 fp) (14) + 1 verification column × 6 sidecars (6). Each entry needs `{ type: "string", required: false, input: false }` so Better Auth's `transformInput` accepts them through and routes them to the inner adapter. The 33-04 §D-05 decision rejected this as "heavier than the security benefit"; Phase 57 CR-01 reverses that decision — encryption at rest is a v1 ship-blocker.
+
+- **Fix C — keep migration 0025 compat-sentinel columns (no schema change).** After A+B, the lens DELETES the plaintext key before INSERT, so `account.password` / `sessions.token` / `verification.value` always land NULL. LOCKER-08's `LENS_INTROSPECTION_COMPAT` allowlist (tools/lint-no-plaintext-secret-columns.ts:109-117) stays — it now correctly describes the post-fix reality. The plan's "revert the LOCKER-08 amendment rationale" task is deferred until A+B land, because without them the existing rationale comment ("populated only as NULL post-lens-write") would be a lie.
+
+**Test left in tree:** `apps/api/tests/integration/better-auth-envelope-at-rest.test.ts` is the canonical RED reproduction. It boots Postgres via testcontainers + buildAuth() + lens, signs up a user, and asserts `account.password IS NULL` + 6 bytea sidecars populated + sign-in round-trip works. Currently RED on `main` @ `c672e1f`. Fix A + Fix B together should turn it GREEN; the round-trip assertion validates the lens decrypts correctly on sign-in.
+
+**Why HALT not workaround:** CLAUDE.md Hard Rule 1 + Phase 57 Track A risk-handling block. The required production-code edits (lens.ts transaction wrapper + 44 additionalFields in auth.ts) constitute a non-trivial architectural change that the plan's Track A scope did not anticipate. The lens-transaction-wrap fix in particular changes a fundamental adapter contract and warrants its own RED/GREEN/REFACTOR cycle with full coverage of the transaction-bypass regression test surface.
+
+---
+
 ## Coverage debt
 
 ### COVERAGE-debt — root vitest workspace Branches coverage 89.31% (lifetime; threshold-passing)
