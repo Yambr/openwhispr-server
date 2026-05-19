@@ -45,7 +45,8 @@ const SearchResponse = z.object({
 const MessagesListResponse = z.object({
   messages: z.array(CloudMessageShape),
 });
-const DeleteResponse = z.object({ ok: z.boolean() });
+// Phase 56 / Plan 56-04 R10 — delete responds 204 No Content; no body
+// to parse. DeleteResponse retired (was `{ ok: boolean }`).
 
 function rnd(prefix: string): string {
   return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
@@ -62,12 +63,13 @@ describe.skipIf(!REACHABLE)("WIRE-24 + WIRE-25 — /api/conversations/* (6 route
         title: "contract create",
       }),
     });
-    expect(res.status).toBe(200);
+    // Phase 56 / Plan 56-04 R10 — create returns 201 Created.
+    expect(res.status).toBe(201);
     const body = await res.json();
     expect(() => CloudConversationShape.parse(body)).not.toThrow();
   });
 
-  it("POST /api/conversations/create idempotent on same client_conversation_id (200, not 409)", async () => {
+  it("POST /api/conversations/create idempotent on same client_conversation_id (201, not 409)", async () => {
     const jar = await signInFixture("fixture@conformance.test");
     const clientId = rnd("idem");
     const r1 = await jar.fetch(`${BACKEND_URL}/api/conversations/create`, {
@@ -80,8 +82,9 @@ describe.skipIf(!REACHABLE)("WIRE-24 + WIRE-25 — /api/conversations/* (6 route
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ client_conversation_id: clientId, title: "second" }),
     });
-    expect(r1.status).toBe(200);
-    expect(r2.status).toBe(200);
+    // Phase 56 / Plan 56-04 R10 — create + idempotent replay both 201.
+    expect(r1.status).toBe(201);
+    expect(r2.status).toBe(201);
     expect(r2.status).not.toBe(409);
     const j1 = CloudConversationShape.parse(await r1.json());
     const j2 = CloudConversationShape.parse(await r2.json());
@@ -110,7 +113,9 @@ describe.skipIf(!REACHABLE)("WIRE-24 + WIRE-25 — /api/conversations/* (6 route
     expect(updated.title).toBe("after");
   });
 
-  it("DELETE /api/conversations/delete returns { ok: true }", async () => {
+  it("DELETE /api/conversations/delete returns 204 No Content (empty body)", async () => {
+    // Phase 56 / Plan 56-04 R10 — flipped from 200 + {ok:true} to 204
+    // No Content; body MUST be empty per RFC 9110 §15.3.5.
     const jar = await signInFixture("fixture@conformance.test");
     const created = await jar.fetch(`${BACKEND_URL}/api/conversations/create`, {
       method: "POST",
@@ -126,9 +131,9 @@ describe.skipIf(!REACHABLE)("WIRE-24 + WIRE-25 — /api/conversations/* (6 route
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ id }),
     });
-    expect(del.status).toBe(200);
-    const delBody = await del.json();
-    expect(() => DeleteResponse.parse(delBody)).not.toThrow();
+    expect(del.status).toBe(204);
+    const delBody = await del.text();
+    expect(delBody).toBe("");
   });
 
   it("GET /api/conversations/list returns { conversations: CloudConversation[] }", async () => {
@@ -210,7 +215,8 @@ describe.skipIf(!REACHABLE)("WIRE-24 + WIRE-25 — /api/conversations/* (6 route
         client_message_id: rnd("cm"),
       }),
     });
-    expect(res.status).toBe(200);
+    // Phase 56 / Plan 56-04 R10 — messages POST returns 201 Created.
+    expect(res.status).toBe(201);
     const msgBody = await res.json();
     expect(() => CloudMessageShape.parse(msgBody)).not.toThrow();
   });

@@ -3,15 +3,23 @@
 //
 // Wire shape:
 //   Request:  { id: string }
-//   Success:  200 { ok: true }
+//   Success:  204 No Content (empty body)   ← Phase 56 / Plan 56-04 R10
+//             (flipped from 200 + {ok:true} for client contract
+//             conformance; matches ConversationsService.deleteConversation
+//             which discards the response and the SERVER-REQUIREMENTS.md
+//             §R10 table.)
 //   404:      not found / cross-tenant
 //
-// D-23 — soft delete. Sets deleted_at = NOW() on the conversation.
-// Messages remain in their table; ON DELETE CASCADE only fires on HARD
-// delete of the parent conversation (which never happens in this route).
-// Messages remain physically present but become unreachable via the
-// /api/conversations/messages routes because GET filters by the
-// conversation's existence under withSoftDelete().
+// D-23 — soft delete. Sets deleted_at = NOW() on the conversation AND
+// cascades soft-delete to all of its messages in the same transaction
+// (Phase 56 / Plan 56-04 R10 — messages cannot survive without their
+// parent conversation; cascade keeps the messages.deleted_at filter
+// in sync with the conversation's lifecycle). The original D-23
+// rationale (no HARD delete → preserve audit trail) still holds; we
+// add a tombstone to each child row rather than physically removing
+// it. GET /api/conversations/messages already gates on the parent
+// conversation's existence under withSoftDelete(), so this cascade
+// is defence-in-depth, not the primary visibility mechanism.
 import { type ExecutableTx, type TransactionalDb, withTenant } from "@openwhispr/data";
 import { sql } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
@@ -51,13 +59,27 @@ export const buildConversationsDeleteRoutes = (deps: ConversationsDeleteDeps) =>
                AND "deleted_at" IS NULL
              RETURNING "id"
           `)) as { rows?: { id: string }[] };
-          return result.rows?.[0];
+          const row = result.rows?.[0];
+          if (!row) return undefined;
+          // Phase 56 / Plan 56-04 R10 — cascade soft-delete to messages
+          // in the SAME txn so the conversation + its children flip
+          // atomically. Filter on deleted_at IS NULL so re-delete of an
+          // already-deleted conversation (if it ever raced past the
+          // guard above) wouldn't overwrite earlier tombstones.
+          await tx.execute(sql`
+            UPDATE "messages"
+               SET "deleted_at" = NOW()
+             WHERE "conversation_id" = ${body.id}::uuid
+               AND "user_id" = ${userId}::uuid
+               AND "deleted_at" IS NULL
+          `);
+          return row;
         });
 
         if (!updated) {
           throw new NotFoundError("CONVERSATION_NOT_FOUND", "conversation not found");
         }
-        return reply.code(200).send({ ok: true });
+        return reply.code(204).send();
       },
     });
   };

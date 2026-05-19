@@ -81,7 +81,10 @@ describe("integration — conversations CRUD (real Postgres + RLS)", () => {
         title: "Quarterly Roadmap",
       }),
     });
-    expect(res.statusCode).toBe(200);
+    // Phase 56 / Plan 56-04 — R10 contract conformance: POST .../create
+    // returns 201 Created (was 200; client expects 201 per
+    // SERVER-REQUIREMENTS.md §R10 + ConversationsService.ts).
+    expect(res.statusCode).toBe(201);
     const body = res.json() as Record<string, unknown>;
     const required = [
       "id",
@@ -99,14 +102,18 @@ describe("integration — conversations CRUD (real Postgres + RLS)", () => {
     expect(body.deleted_at).toBeNull();
   });
 
-  it("create — same client_conversation_id on retry returns EXISTING row (200, D-24)", async () => {
+  it("create — same client_conversation_id on retry returns EXISTING row (201, D-24)", async () => {
     const r1 = await appA.inject({
       method: "POST",
       url: "/api/conversations/create",
       headers: { "content-type": "application/json" },
       payload: JSON.stringify({ client_conversation_id: "idem-c", title: "first" }),
     });
-    expect(r1.statusCode).toBe(200);
+    // Phase 56 / Plan 56-04 — R10: idempotent replay still returns 201
+    // (we keep the verb consistent across all POST .../create code paths;
+    // RFC 9110 permits 200 or 201 for idempotent replays and the upstream
+    // client treats any 2xx as success).
+    expect(r1.statusCode).toBe(201);
     const id1 = (r1.json() as { id: string }).id;
 
     const r2 = await appA.inject({
@@ -118,7 +125,7 @@ describe("integration — conversations CRUD (real Postgres + RLS)", () => {
         title: "SECOND — ignored",
       }),
     });
-    expect(r2.statusCode).toBe(200);
+    expect(r2.statusCode).toBe(201);
     const body2 = r2.json() as { id: string; title: string };
     expect(body2.id).toBe(id1);
     expect(body2.title).toBe("first");
@@ -137,8 +144,9 @@ describe("integration — conversations CRUD (real Postgres + RLS)", () => {
       headers: { "content-type": "application/json" },
       payload: JSON.stringify({ title: "no-client-id-B" }),
     });
-    expect(r1.statusCode).toBe(200);
-    expect(r2.statusCode).toBe(200);
+    // Phase 56 / Plan 56-04 — R10: both inserts return 201 Created.
+    expect(r1.statusCode).toBe(201);
+    expect(r2.statusCode).toBe(201);
     expect((r1.json() as { id: string }).id).not.toBe((r2.json() as { id: string }).id);
   });
 
@@ -180,7 +188,14 @@ describe("integration — conversations CRUD (real Postgres + RLS)", () => {
     expect(res.statusCode).toBe(404);
   });
 
-  it("delete — soft-deletes and subsequent list excludes the row", async () => {
+  it("delete — soft-deletes, returns 204 no body, and cascades to contained messages", async () => {
+    // Phase 56 / Plan 56-04 — R10 client contract conformance:
+    //   * DELETE /api/conversations/delete returns 204 No Content
+    //     (was 200 + {ok:true}); response body MUST be empty.
+    //   * Deleting a conversation cascades soft-delete to its messages
+    //     so GET /api/conversations/messages?conversation_id=... no
+    //     longer surfaces them via either the conversation-not-found
+    //     guard OR the messages.deleted_at filter (defence in depth).
     const c = await appA.inject({
       method: "POST",
       url: "/api/conversations/create",
@@ -188,21 +203,46 @@ describe("integration — conversations CRUD (real Postgres + RLS)", () => {
       payload: JSON.stringify({ title: "to-delete" }),
     });
     const { id } = c.json() as { id: string };
+
+    // Seed two messages inside the conversation.
+    for (const content of ["msg-A", "msg-B"]) {
+      const m = await appA.inject({
+        method: "POST",
+        url: "/api/conversations/messages",
+        headers: { "content-type": "application/json" },
+        payload: JSON.stringify({ conversation_id: id, role: "user", content }),
+      });
+      expect(m.statusCode).toBe(201);
+    }
+
     const d = await appA.inject({
       method: "DELETE",
       url: "/api/conversations/delete",
       headers: { "content-type": "application/json" },
       payload: JSON.stringify({ id }),
     });
-    expect(d.statusCode).toBe(200);
-    expect(d.json()).toEqual({ ok: true });
-    // Row still exists physically.
-    const { rows } = await pool.query<{ deleted_at: Date }>(
+    expect(d.statusCode).toBe(204);
+    // 204 No Content — body MUST be empty (RFC 9110 §15.3.5).
+    expect(d.body).toBe("");
+
+    // Conversation row still exists physically with deleted_at set.
+    const { rows: convRows } = await pool.query<{ deleted_at: Date }>(
       `SELECT deleted_at FROM conversations WHERE id = $1`,
       [id],
     );
-    expect(rows[0]?.deleted_at).not.toBeNull();
-    // But list does not see it.
+    expect(convRows[0]?.deleted_at).not.toBeNull();
+
+    // Cascade — both messages now soft-deleted in the same txn.
+    const { rows: msgRows } = await pool.query<{ deleted_at: Date | null }>(
+      `SELECT deleted_at FROM messages WHERE conversation_id = $1`,
+      [id],
+    );
+    expect(msgRows).toHaveLength(2);
+    for (const r of msgRows) {
+      expect(r.deleted_at).not.toBeNull();
+    }
+
+    // List does not see the conversation.
     const l = await appA.inject({ method: "GET", url: "/api/conversations/list" });
     expect(l.statusCode).toBe(200);
     expect((l.json() as { conversations: unknown[] }).conversations).toHaveLength(0);
@@ -259,7 +299,8 @@ describe("integration — conversations CRUD (real Postgres + RLS)", () => {
         title: "TenantB-own",
       }),
     });
-    expect(cB.statusCode).toBe(200);
+    // Phase 56 / Plan 56-04 — R10: cross-tenant create still returns 201.
+    expect(cB.statusCode).toBe(201);
     expect((cB.json() as { id: string }).id).not.toBe(idA);
 
     // Tenant B's list does not see Tenant A's conversation.

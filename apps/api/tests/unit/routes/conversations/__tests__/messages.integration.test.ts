@@ -79,7 +79,9 @@ describe("integration — WIRE-25 /api/conversations/messages POST", () => {
         client_message_id: "client-msg-1",
       }),
     });
-    expect(res.statusCode).toBe(200);
+    // Phase 56 / Plan 56-04 — R10 client contract conformance: POST
+    // /api/conversations/messages returns 201 Created (was 200).
+    expect(res.statusCode).toBe(201);
     const body = res.json() as Record<string, unknown>;
     for (const k of ["id", "conversation_id", "role", "content", "metadata", "created_at"]) {
       expect(body).toHaveProperty(k);
@@ -90,7 +92,7 @@ describe("integration — WIRE-25 /api/conversations/messages POST", () => {
     expect(body.metadata).toEqual({ foo: "bar" });
   });
 
-  it("idempotent — same client_message_id returns the existing row (200, not 409)", async () => {
+  it("idempotent — same client_message_id returns the existing row (201, not 409)", async () => {
     const cid = await createConversation(appA, "idem-conv");
     const payload = {
       conversation_id: cid,
@@ -110,8 +112,10 @@ describe("integration — WIRE-25 /api/conversations/messages POST", () => {
       headers: { "content-type": "application/json" },
       payload: JSON.stringify({ ...payload, content: "SECOND ignored" }),
     });
-    expect(r1.statusCode).toBe(200);
-    expect(r2.statusCode).toBe(200);
+    // Phase 56 / Plan 56-04 — R10: 201 on both initial create and
+    // idempotent replay (verb-consistent across the create code path).
+    expect(r1.statusCode).toBe(201);
+    expect(r2.statusCode).toBe(201);
     const id1 = (r1.json() as { id: string }).id;
     const id2 = (r2.json() as { id: string; content: string }).id;
     expect(id2).toBe(id1);

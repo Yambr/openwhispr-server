@@ -3,7 +3,9 @@
 //
 // Wire shape (matches ~/openwhispr/src/services/ConversationsService.ts):
 //   Request:  ConversationInput
-//   Success:  200 CloudConversation
+//   Success:  201 CloudConversation  (Phase 56 / Plan 56-04 — R10 client
+//             contract conformance, flipped from 200 → 201 Created.
+//             Idempotent replay also returns 201 for verb consistency.)
 //
 // D-24 — same client_conversation_id on retry returns the existing row
 //        (200, NOT 409). Pattern 1 — createOrReturnExisting() from
@@ -58,7 +60,7 @@ export const buildConversationsCreateRoutes = (deps: ConversationsCreateDeps) =>
           return row;
         });
 
-        return reply.code(200).send(rowToCloudConversation(row));
+        return reply.code(201).send(rowToCloudConversation(row));
       },
     });
   };
