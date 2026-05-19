@@ -25,7 +25,10 @@ import { defineConfig, devices } from "@playwright/test";
 import type { Topology } from "./tests/e2e/support/topology.js";
 
 const TRAEFIK_API = "https://api.localhost";
-const SLIM_API = "http://localhost:4000";
+// SLIM_API kept for documentation parity; specs derive the API origin
+// via `getOrigins(testInfo)` from tests/e2e/support/topology.ts which
+// embeds the same `http://localhost:4000` per-project metadata.
+const _SLIM_API = "http://localhost:4000";
 // `baseURL` is the origin Playwright resolves relative URLs against
 // in `page.goto("/x")` and `request.get("/x")`. Specs that hit web
 // routes (/sign-in, /app/*) need this to point at the WEB origin.
@@ -81,7 +84,22 @@ export default defineConfig({
   // `slim` project (no Traefik to wait on; the slim sweep assumes
   // `docker compose up -d` was already invoked). The traefik project
   // outside CI re-enables it. CI brings up compose externally on both.
-  ...(process.env.CI || process.env.OPENWHISPR_TOPOLOGY === "slim"
+  //
+  // BUG-53-50: when the dev-tools overlay is already up (operator ran
+  // `make up-with-dev-tools` before invoking playwright), webServer must
+  // NOT shell out to `docker compose --profile default up` — that path
+  // forgets the dev-tools overlay and rebuilds api/web/litellm without
+  // LITELLM_MASTER_KEY / OUTBOUND_ALLOWED_HOSTS / rate-limit disable
+  // → litellm goes unhealthy → entire stack vanishes mid-run.
+  //
+  // The traefik project's webServer is intentionally only useful in CI
+  // with a clean checkout. For local dev, set
+  // PLAYWRIGHT_SKIP_WEBSERVER=1 OR use `--project=slim` which already
+  // skips it. Future Phase 54+ work can wire a smart probe that detects
+  // an already-running stack and skips the bootstrap automatically.
+  ...(process.env.CI ||
+  process.env.OPENWHISPR_TOPOLOGY === "slim" ||
+  process.env.PLAYWRIGHT_SKIP_WEBSERVER === "1"
     ? {}
     : {
         webServer: {
