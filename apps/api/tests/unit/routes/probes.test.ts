@@ -199,11 +199,21 @@ describe("/api/health alias (back-compat with apps/api/src/health.test.ts)", () 
     await app.close();
   });
 
-  it("emits RFC 8594 Deprecation + Link successor-version headers", async () => {
+  // Phase 56 / Plan 56-08 (R4): /api/health and /livez are both
+  // first-class endpoints serving different audiences (Electron client
+  // per BACKEND_SPEC vs kubelet). Neither is a "successor" of the other,
+  // so the server MUST NOT emit RFC 8594 Deprecation / Link successor-
+  // version headers on /api/health.
+  it("does NOT emit Deprecation or Link successor-version headers (R4)", async () => {
     const app = await makeApp();
     const res = await app.inject({ method: "GET", url: "/api/health" });
-    expect(res.headers.deprecation).toBe("true");
-    expect(res.headers.link).toBe('</livez>; rel="successor-version"');
+    expect(res.headers.deprecation).toBeUndefined();
+    // No `link` header at all, or at minimum no successor-version rel.
+    const link = res.headers.link;
+    if (link !== undefined) {
+      const linkStr = Array.isArray(link) ? link.join(", ") : link;
+      expect(linkStr).not.toMatch(/rel\s*=\s*"?successor-version"?/i);
+    }
     await app.close();
   });
 
@@ -264,12 +274,18 @@ describe("/api/health migrations_completed (Plan 13-01 / Task 13-01-05)", () => 
     await app.close();
   });
 
-  it("still emits Deprecation + Link headers when migrationsCheck is wired", async () => {
+  // Phase 56 / Plan 56-08 (R4): Deprecation/Link headers removed
+  // regardless of whether migrationsCheck is wired.
+  it("does NOT emit Deprecation or Link successor-version headers when migrationsCheck is wired (R4)", async () => {
     const migrationsCheck = async (): Promise<boolean> => true;
     const app = await makeAppWithMigrationsCheck(migrationsCheck);
     const res = await app.inject({ method: "GET", url: "/api/health" });
-    expect(res.headers.deprecation).toBe("true");
-    expect(res.headers.link).toBe('</livez>; rel="successor-version"');
+    expect(res.headers.deprecation).toBeUndefined();
+    const link = res.headers.link;
+    if (link !== undefined) {
+      const linkStr = Array.isArray(link) ? link.join(", ") : link;
+      expect(linkStr).not.toMatch(/rel\s*=\s*"?successor-version"?/i);
+    }
     await app.close();
   });
 });
