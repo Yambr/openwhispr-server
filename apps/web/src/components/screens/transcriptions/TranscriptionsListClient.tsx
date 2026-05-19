@@ -171,9 +171,18 @@ export function TranscriptionsListClient(): React.JSX.Element {
   if (items.length === 0) {
     return (
       <div className="space-y-4">
-        <h1 className="font-semibold text-2xl">
-          {t("end-user:end-user.trx-list.title.heading.text")}
-        </h1>
+        <header className="flex items-center justify-between gap-2">
+          <h1 className="font-semibold text-2xl">
+            {t("end-user:end-user.trx-list.title.heading.text")}
+          </h1>
+          <Button
+            onClick={() => queryClient.invalidateQueries({ queryKey: ["transcriptions", "list"] })}
+            size="sm"
+            variant="outline"
+          >
+            {t("end-user:end-user.trx-list.action.refresh.label")}
+          </Button>
+        </header>
         <p className="text-text-muted text-sm">
           {t("end-user:end-user.trx-list.subtitle.body.text")}
         </p>
@@ -190,9 +199,18 @@ export function TranscriptionsListClient(): React.JSX.Element {
 
   return (
     <div className="space-y-4">
-      <h1 className="font-semibold text-2xl">
-        {t("end-user:end-user.trx-list.title.heading.text")}
-      </h1>
+      <header className="flex items-center justify-between gap-2">
+        <h1 className="font-semibold text-2xl">
+          {t("end-user:end-user.trx-list.title.heading.text")}
+        </h1>
+        <Button
+          onClick={() => queryClient.invalidateQueries({ queryKey: ["transcriptions", "list"] })}
+          size="sm"
+          variant="outline"
+        >
+          {t("end-user:end-user.trx-list.action.refresh.label")}
+        </Button>
+      </header>
       <p className="text-text-muted text-sm">
         {t("end-user:end-user.trx-list.subtitle.body.text")}
       </p>

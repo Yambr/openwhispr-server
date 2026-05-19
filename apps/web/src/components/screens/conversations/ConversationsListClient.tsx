@@ -148,9 +148,18 @@ export function ConversationsListClient(): React.JSX.Element {
   if (items.length === 0) {
     return (
       <div className="space-y-4">
-        <h1 className="font-semibold text-2xl">
-          {t("end-user:end-user.conv-list.title.heading.text")}
-        </h1>
+        <header className="flex items-center justify-between gap-2">
+          <h1 className="font-semibold text-2xl">
+            {t("end-user:end-user.conv-list.title.heading.text")}
+          </h1>
+          <Button
+            onClick={() => queryClient.invalidateQueries({ queryKey: ["conversations", "list"] })}
+            size="sm"
+            variant="outline"
+          >
+            {t("end-user:end-user.conv-list.action.refresh.label")}
+          </Button>
+        </header>
         <p className="text-text-muted text-sm">
           {t("end-user:end-user.conv-list.subtitle.body.text")}
         </p>
@@ -167,9 +176,18 @@ export function ConversationsListClient(): React.JSX.Element {
 
   return (
     <div className="space-y-4">
-      <h1 className="font-semibold text-2xl">
-        {t("end-user:end-user.conv-list.title.heading.text")}
-      </h1>
+      <header className="flex items-center justify-between gap-2">
+        <h1 className="font-semibold text-2xl">
+          {t("end-user:end-user.conv-list.title.heading.text")}
+        </h1>
+        <Button
+          onClick={() => queryClient.invalidateQueries({ queryKey: ["conversations", "list"] })}
+          size="sm"
+          variant="outline"
+        >
+          {t("end-user:end-user.conv-list.action.refresh.label")}
+        </Button>
+      </header>
       <p className="text-text-muted text-sm">
         {t("end-user:end-user.conv-list.subtitle.body.text")}
       </p>

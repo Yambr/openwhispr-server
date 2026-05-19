@@ -113,6 +113,9 @@
         },
         "loadearlier": {
           "label": "Load earlier messages"
+        },
+        "refresh": {
+          "label": "Refresh"
         }
       },
       "empty": {
@@ -155,6 +158,9 @@
       "action": {
         "loadmore": {
           "label": "Load more"
+        },
+        "refresh": {
+          "label": "Refresh"
         },
         "search": {
           "label": "Search conversations"
@@ -324,6 +330,9 @@
       "action": {
         "loadmore": {
           "label": "Load more"
+        },
+        "refresh": {
+          "label": "Refresh"
         },
         "search": {
           "label": "Search notes"
@@ -793,6 +802,9 @@
       "action": {
         "loadmore": {
           "label": "Load more"
+        },
+        "refresh": {
+          "label": "Refresh"
         }
       },
       "empty": {

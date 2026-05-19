@@ -27,7 +27,12 @@ export default async function ConversationsPage(): Promise<React.JSX.Element> {
         headers: { cookie: cookieHeader },
         cache: "no-store",
       });
-      if (!res.ok) return { conversations: [] };
+      // Phase 55-06-batch (BUG-55-06-a-RSC-FETCH-WALL): on non-2xx, throw so
+      // the dehydrated cache hydrates Client useQuery's `isError=true` branch
+      // (ConversationsListClient.tsx:127-143 renders Alert + Retry).
+      if (!res.ok) {
+        throw new Error(`/api/conversations/list ${res.status}`);
+      }
       return (await res.json()) as { conversations: unknown[] };
     },
   });

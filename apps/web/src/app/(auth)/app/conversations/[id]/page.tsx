@@ -39,7 +39,12 @@ export default async function ConversationDetailPage({
         headers: { cookie: cookieHeader },
         cache: "no-store",
       });
-      if (!res.ok) return { messages: [] };
+      // Phase 55-06-batch (BUG-55-06-a-RSC-FETCH-WALL): on non-2xx, throw so
+      // the dehydrated cache hydrates Client useQuery's `isError=true` branch
+      // (ConversationDetailClient.tsx:139-150 renders Alert + Retry).
+      if (!res.ok) {
+        throw new Error(`/api/conversations/messages ${res.status}`);
+      }
       return (await res.json()) as { messages: unknown[] };
     },
   });
