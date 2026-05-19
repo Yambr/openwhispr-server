@@ -40,22 +40,20 @@ const resources = {
           body: { text: "Pick a new password and confirm it to finish." },
         },
         form: {
-          newPassword: { label: "New password" },
-          confirmPassword: { label: "Confirm new password" },
+          "new-password": { label: "New password" },
+          "confirm-password": { label: "Confirm new password" },
           submit: { label: "Set new password" },
         },
-        error: {
-          generic: {
-            title: { text: "Reset failed" },
-            body: { text: "Could not reset your password. Request a fresh link and try again." },
-          },
-          missingToken: {
-            title: { text: "Reset link is invalid" },
-            body: { text: "This reset link is missing or expired. Request a new one." },
-          },
+        "error-generic": {
+          title: { text: "Reset failed" },
+          body: { text: "Could not reset your password. Request a fresh link and try again." },
+        },
+        "error-missing-token": {
+          title: { text: "Reset link is invalid" },
+          body: { text: "This reset link is missing or expired. Request a new one." },
         },
         action: {
-          backToForgot: { label: "Request a new reset link" },
+          "back-to-forgot": { label: "Request a new reset link" },
         },
         validation: {
           mismatch: { text: "Passwords do not match." },

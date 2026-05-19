@@ -65,9 +65,11 @@ const resources = {
           sent: { text: "Verification email sent. Check your inbox." },
         },
         action: {
+          // Phase 55-01-a — D-UX2 reversed; muted-text key replaced by
+          // active CTA label.
           forgotPassword: {
             link: {
-              disabled: `${signInInventory.forgotLink} — coming soon, contact your operator.`,
+              label: signInInventory.forgotLink,
             },
           },
           "signup-link": { label: `Don't have an account? ${signInInventory.footerLink}` },
@@ -179,17 +181,17 @@ describe("SignInForm conformance vs screens-user.jsx:7-94", () => {
     expect(link).toHaveAttribute("href", "/sign-up");
   });
 
-  it("renders forgot-password copy (screens-user.jsx:76-78)", async () => {
+  it("renders forgot-password link (Phase 55-01-a — D-UX2 reversed)", async () => {
     const { SignInForm } = await import("@/components/screens/auth/SignInForm");
     render(
       <Wrap>
         <SignInForm />
       </Wrap>,
     );
-    // Production renders the copy as muted static text (D-UX2). The oracle's
-    // "Forgot password?" prefix must survive as a substring.
-    await waitFor(() => {
-      expect(screen.getByText(/forgot password/i)).toBeInTheDocument();
-    });
+    // Phase 55-01-a — D-UX2 reversed with user authorisation. The
+    // oracle's "Forgot password?" label now lives on a live anchor
+    // that navigates to /forgot-password.
+    const link = await screen.findByRole("link", { name: /forgot password/i });
+    expect(link).toHaveAttribute("href", "/forgot-password");
   });
 });
