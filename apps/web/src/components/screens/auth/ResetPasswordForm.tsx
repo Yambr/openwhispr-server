@@ -23,17 +23,10 @@ import { useTranslation } from "react-i18next";
 import { z } from "zod";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
-import {
-  Form,
-  FormControl,
-  FormField,
-  FormItem,
-  FormLabel,
-  FormMessage,
-} from "@/components/ui/form";
-import { Input } from "@/components/ui/input";
+import { Form, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { useZodForm } from "@/lib/form-utils";
 import { AuthShell } from "./AuthShell";
+import { PasswordInputWithToggle } from "./PasswordInputWithToggle";
 
 // Better Auth 1.6.9 canonical wire path. Verified by the CJM step at
 // tests/e2e-cjm/steps/password-reset.steps.ts:118. We POST raw JSON
@@ -152,14 +145,20 @@ export function ResetPasswordForm(props: ResetPasswordFormProps): React.JSX.Elem
               render={({ field }) => (
                 <FormItem>
                   <FormLabel>{t("end-user.reset-password.form.new-password.label")}</FormLabel>
-                  <FormControl>
-                    <Input
-                      type="password"
-                      autoComplete="new-password"
-                      disabled={submitting}
-                      {...field}
-                    />
-                  </FormControl>
+                  {/*
+                    Phase 55-02-b — eye-toggle via shared building block.
+                    See PasswordInputWithToggle.tsx header for the FormControl
+                    embedding rationale (component owns FormControl internally
+                    so Radix Slot forwards id/aria-describedby to <Input>, not
+                    the wrapper div).
+                  */}
+                  <PasswordInputWithToggle
+                    autoComplete="new-password"
+                    disabled={submitting}
+                    togglePasswordShowLabel={t("end-user.common.action.togglePassword.show.label")}
+                    togglePasswordHideLabel={t("end-user.common.action.togglePassword.hide.label")}
+                    {...field}
+                  />
                   <FormMessage />
                 </FormItem>
               )}
@@ -170,14 +169,19 @@ export function ResetPasswordForm(props: ResetPasswordFormProps): React.JSX.Elem
               render={({ field }) => (
                 <FormItem>
                   <FormLabel>{t("end-user.reset-password.form.confirm-password.label")}</FormLabel>
-                  <FormControl>
-                    <Input
-                      type="password"
-                      autoComplete="new-password"
-                      disabled={submitting}
-                      {...field}
-                    />
-                  </FormControl>
+                  {/*
+                    Phase 55-02-b — eye-toggle via shared building block.
+                    Each PasswordInputWithToggle instance keeps its OWN
+                    internal showPassword useState, so the two fields toggle
+                    independently (verified by Plan 55-02-b spec step 3).
+                  */}
+                  <PasswordInputWithToggle
+                    autoComplete="new-password"
+                    disabled={submitting}
+                    togglePasswordShowLabel={t("end-user.common.action.togglePassword.show.label")}
+                    togglePasswordHideLabel={t("end-user.common.action.togglePassword.hide.label")}
+                    {...field}
+                  />
                   <FormMessage />
                 </FormItem>
               )}

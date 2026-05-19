@@ -43,6 +43,17 @@ vi.mock("@/lib/auth-client", () => ({
 const resources = {
   "end-user": {
     "end-user": {
+      // Phase 55-02-b — shared togglePassword keys consumed by the
+      // PasswordInputWithToggle building block. Sign-in, sign-up, and
+      // reset-password forms all read these same keys.
+      common: {
+        action: {
+          togglePassword: {
+            show: { label: "Show password" },
+            hide: { label: "Hide password" },
+          },
+        },
+      },
       signin: {
         title: { heading: { text: "Sign in to OpenWhispr" } },
         subtitle: { body: { text: "Use your email or your organization SSO." } },

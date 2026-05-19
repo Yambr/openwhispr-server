@@ -85,6 +85,18 @@
         }
       }
     },
+    "common": {
+      "action": {
+        "togglePassword": {
+          "hide": {
+            "label": "Скрыть пароль"
+          },
+          "show": {
+            "label": "Показать пароль"
+          }
+        }
+      }
+    },
     "conv-detail": {
       "action": {
         "back": {
