@@ -56,6 +56,12 @@ test.describe("@phase55-acceptance @long-form — delete account round-trip (sli
     // in DEFAULT_ALLOWLIST — not a real bug.
     allowBrowserErrors(page, [
       /GET [^ ]+\/_next\/static\/chunks\/[^ ]+ → FAILED: net::ERR_ABORTED/,
+      // BUG-55-01-b-01 follow-up: step 10 deliberately re-tries
+      // sign-in with the deleted credentials and expects Better Auth to
+      // reject with 401 INVALID_EMAIL_OR_PASSWORD. The network + console
+      // entries are the intended verification, not a real bug.
+      /POST [^ ]+\/api\/auth\/sign-in\/email[^ ]* → 401\b/,
+      /Failed to load resource:.*\b401\b/,
     ]);
   });
 
