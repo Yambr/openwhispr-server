@@ -103,7 +103,10 @@ describe("apps/web/tests/e2e/support/mailpit", () => {
   });
 
   it("fetchVerificationLink THROWS after timeoutMs when mailpit returns empty list", async () => {
-    fetchMock.mockResolvedValue(jsonResponse(listBody([])));
+    // Each call must return a fresh Response (the body of a Response
+    // can only be consumed once; reusing the same instance across
+    // polls would surface as "Body has already been used").
+    fetchMock.mockImplementation(() => Promise.resolve(jsonResponse(listBody([]))));
 
     await expect(
       fetchVerificationLink(TEST_EMAIL, {
