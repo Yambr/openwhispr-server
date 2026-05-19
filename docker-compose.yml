@@ -435,11 +435,6 @@ services:
   # routing through `api.localhost` activates and the host port still
   # works alongside it.
   #
-  # ADMIN_BASIC_AUTH_USERS: htpasswd-format `user:hash` entries, comma-
-  # separated. Bcrypt hashes contain `$` which docker-compose interpolates;
-  # operators MUST escape each `$` as `$$` in their `.env` (documented in
-  # .env.example). The label below interpolates the value at compose-up
-  # time; Traefik then sees the un-escaped htpasswd line.
   web:
     build:
       context: .
@@ -506,19 +501,14 @@ services:
           memory: 512M
           cpus: "1.0"
     labels:
-      # Phase 19b / SR-19b.2 — STRUCT-05 host-split. The canonical `web`
-      # router lives in compose/traefik/dynamic.dev.yml (file provider) on
-      # Host(`web.localhost`); only `web-admin` stays here because its
-      # admin-basicauth middleware needs ${ADMIN_BASIC_AUTH_USERS} env
-      # interpolation, which the docker provider gives us ergonomically.
-      # HARMLESS without the edge overlay loaded; picked up by the docker
-      # provider when traefik is layered on top.
+      # /admin/* routing — auth is in-app (users.role='admin'); no
+      # Traefik basic-auth middleware. Canonical `web` router lives in
+      # compose/traefik/dynamic.dev.yml (file provider). HARMLESS without
+      # the edge overlay loaded.
       - "traefik.enable=true"
       - "traefik.http.routers.web-admin.rule=Host(`web.localhost`) && PathPrefix(`/admin`)"
       - "traefik.http.routers.web-admin.priority=100"
       - "traefik.http.routers.web-admin.entrypoints=websecure"
       - "traefik.http.routers.web-admin.tls=true"
       - "traefik.http.routers.web-admin.service=web-svc"
-      - "traefik.http.routers.web-admin.middlewares=admin-basicauth@docker"
       - "traefik.http.services.web-svc.loadbalancer.server.port=3000"
-      - "traefik.http.middlewares.admin-basicauth.basicauth.users=${ADMIN_BASIC_AUTH_USERS}"
