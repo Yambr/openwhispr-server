@@ -58,7 +58,8 @@ describe("integration — POST /api/notes/batch-create", () => {
         ],
       }),
     });
-    expect(res.statusCode).toBe(200);
+    // Phase 56-02 / R8 — batch-create returns 201 Created.
+    expect(res.statusCode).toBe(201);
     const body = res.json() as {
       created: { client_note_id: string; id: string }[];
     };
@@ -77,7 +78,8 @@ describe("integration — POST /api/notes/batch-create", () => {
         { client_note_id: "arr-2", title: "y" },
       ]),
     });
-    expect(res.statusCode).toBe(200);
+    // Phase 56-02 / R8 — batch-create returns 201 Created.
+    expect(res.statusCode).toBe(201);
     const { created } = res.json() as { created: { client_note_id: string }[] };
     expect(created.map((c) => c.client_note_id)).toEqual(["arr-1", "arr-2"]);
   });
@@ -95,7 +97,8 @@ describe("integration — POST /api/notes/batch-create", () => {
       headers: { "content-type": "application/json" },
       payload,
     });
-    expect(r1.statusCode).toBe(200);
+    // Phase 56-02 / R8 — batch-create returns 201 Created.
+    expect(r1.statusCode).toBe(201);
     const ids1 = (r1.json() as { created: { client_note_id: string; id: string }[] }).created.map(
       (c) => c.id,
     );
@@ -111,7 +114,8 @@ describe("integration — POST /api/notes/batch-create", () => {
         ],
       }),
     });
-    expect(r2.statusCode).toBe(200);
+    // Phase 56-02 / R8 — idempotent retry also returns 201.
+    expect(r2.statusCode).toBe(201);
     const ids2 = (r2.json() as { created: { client_note_id: string; id: string }[] }).created.map(
       (c) => c.id,
     );
@@ -156,7 +160,8 @@ describe("integration — POST /api/notes/batch-create", () => {
       headers: { "content-type": "application/json" },
       payload: JSON.stringify({ notes }),
     });
-    expect(res.statusCode).toBe(200);
+    // Phase 56-02 / R8 — batch-create returns 201 Created.
+    expect(res.statusCode).toBe(201);
     const body = res.json() as { created: { client_note_id: string }[] };
     expect(body.created).toHaveLength(500);
   });

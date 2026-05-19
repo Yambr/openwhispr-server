@@ -3,7 +3,9 @@
 //
 // Wire shape (matches ~/openwhispr/src/services/NotesService.ts.batchCreate):
 //   Request:  { notes: NoteInput[] }   (length 1..500 per D-30)
-//   Success:  200 { created: { client_note_id: string, id: string }[] }
+//   Success:  201 { created: { client_note_id: string, id: string }[] }
+//             (Phase 56-02 / R8 — flipped from 200; resource-creation
+//             route returns Created.)
 //   400:      batch size exceeds 500
 //
 // Deviation from plan <behavior>: plan says "Array<CloudNote> in input
@@ -110,7 +112,7 @@ export const buildNotesBatchCreateRoutes = (deps: NotesBatchCreateDeps) =>
           return results;
         });
 
-        return reply.code(200).send({ created });
+        return reply.code(201).send({ created });
       },
     });
   };
