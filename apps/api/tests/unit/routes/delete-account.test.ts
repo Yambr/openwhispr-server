@@ -185,6 +185,34 @@ describe("DELETE /api/auth/delete-account (cookie-only, cascade)", () => {
     await app.close();
   });
 
+  // BUG-55-01-b-04 (RED) — empty body + `Content-Type: application/json`
+  // trips Fastify's JSON parser with FST_ERR_CTP_EMPTY_JSON_BODY which,
+  // un-mapped, surfaces as a 500 via the default catch-all in
+  // error-handler.ts. The canonical envelope for a malformed-body request
+  // is 400 (VALIDATION_ERROR). This test pins the contract so the parser
+  // exception can never silently 500 again. Triggers on UNAUTHENTICATED
+  // requests too because content-type parsing happens BEFORE the route's
+  // preHandler — so we don't need a valid cookie.
+  it("DELETE with empty body + json content-type returns 400 envelope (not 500)", async () => {
+    const { db } = makeFakeDb();
+    const auth = makeAuth(async () => ({
+      user: { id: USER_ID, email: "del@b.test", tenantId: TENANT_A },
+    }));
+    const app = await buildApp({ db, auth });
+    const res = await app.inject({
+      method: "DELETE",
+      url: "/api/auth/delete-account",
+      headers: {
+        cookie: `${SESSION_COOKIE_NAME}=valid`,
+        "content-type": "application/json",
+      },
+      payload: "",
+    });
+    expect(res.statusCode).toBe(400);
+    expect(() => ErrorEnvelope.parse(res.json())).not.toThrow();
+    await app.close();
+  });
+
   // Phase 6 / Plan 05 — the canonical `account.delete` payload is
   // `{}` per D-A7 (no per-action keys; ctx-attached request_id, ip,
   // user_agent cover correlation). The pre-Plan-05 test asserted an
