@@ -7,7 +7,43 @@ are archived under `.planning/backlog-archive/`.
 the entry rather than marking it closed — git history preserves the
 record. Keep this file under ~200 lines.
 
-**Bug count: 1.**
+**Bug count: 2.**
+
+---
+
+## BUG-55-05-SETUP-ADMIN-ROUTE-UNWIRED — `POST /api/setup/admin` is 404 in every deployed api binary
+
+**Surfaced by:** Plan 55-05 spec (`apps/web/tests/e2e/100-acceptance/setup-wizard-happy-path.spec.ts`) on 2026-05-19.
+
+**Repro:**
+- Bring up dev-tools stack: `make up-with-dev-tools`.
+- POST `/api/_test/reset-setup` to flip `setup_state` back to `pending`.
+- POST `/api/setup/admin` with the valid wizard payload.
+- Observed: HTTP 404 `{"error":"Not found"}`.
+- Expected: 201 (fresh) or 200 with `alreadyCompleted:true` (race-loser) per the handler at `apps/api/src/routes/setup-admin.ts:201,324`.
+
+**Root cause:**
+- `apps/api/src/routes/index.ts:391-400` registers `buildSetupAdminRoutes` only when `deps.setupAdmin` is supplied.
+- `apps/api/src/index.ts:492-505` (the production bootstrap call to `buildAllRoutes`) NEVER passes `setupAdmin`. The handler exists but is never registered.
+- The wizard UI (`SetupForm.tsx`) POSTs to `/api/setup/admin`, gets a 404 envelope, falls into its `setErrorKind("generic")` branch, and never redirects to `/admin` — the operator sees the canonical "Setup failed" alert with no way forward.
+
+**Impact:**
+- The /setup wizard is **fully dead-ended** in every dev / staging / production deploy of openwhispr-server. The slim docker instance only "appears" to have completed setup because the row is inserted by migration 0017 + manual UPDATE; the UI path that's supposed to create the first admin user has never worked end-to-end against the deployed binary.
+- Blocks 1 of the 8 MISSING UCs from Plan 55-05 (UC-SETUP-WIZARD-SUBMIT-201 + UC-SETUP-WIZARD-REDIRECT-ADMIN). The remaining 6 UI-layer UCs (load, identity-fill, stepper-advance, workspace-fill, review-mirror, zero-browser-errors) are covered by the Plan 55-05 spec without crossing the submit boundary.
+
+**Proposed fix (NEEDS A DEDICATED PLAN — production change, NOT a Phase 55-05 deviation):**
+1. Wire `setupAdmin` in `apps/api/src/index.ts` alongside the existing `litellm` / `redis` / `mockDiarization` deps:
+   - Provide an `ownerPool` (the postgres pool with owner-role grants needed to bypass RLS for the singleton UPSERT).
+   - Provide a `signUpEmail` callable — likely `auth.api.signUpEmail.bind(auth.api)`.
+   - Optionally provide `renameTenant` (best-effort tenant rename — UICONF warning surfaces on failure).
+2. Add a build-app integration test asserting `app.printRoutes()` contains `POST /api/setup/admin` whenever the production wiring is exercised (defense in depth — same pattern as `build-app-diarization-wiring.test.ts`).
+3. Re-enable Plan 55-05's step 6 (submit) + step 7 (redirect) in the long-form acceptance spec once GREEN.
+
+**Why deferred:**
+- Production server code change (route wiring + dep plumbing). CLAUDE.md hard rule #1 forbids editing production code "to make tests pass." The wiring decision involves architectural choices (ownerPool naming, signUpEmail binding, renameTenant adapter) that warrant their own phase-level decision register, not a quick patch buried in an acceptance spec.
+- Suggested home: a dedicated Phase 55-05.b plan ("wire /api/setup/admin in production bootstrap") with full TDD coverage: RED (build-app integration test asserting the route is registered), GREEN (wire in index.ts), refactor as needed, then re-enable the Plan 55-05 spec's submit + redirect steps.
+
+**Owner:** unassigned. Re-surface in next phase planning cycle.
 
 ---
 
