@@ -14,12 +14,16 @@
 //                     entrypoint after `app.ready()` + first successful PG
 //                     SELECT 1. Allows slow-init pods to escape the
 //                     liveness-probe failure window during cold boot.
-//   - GET /api/health: back-compat alias for /livez. Plan 02 wired the
-//                     original `/api/health` route; this plan replaces it
-//                     in-place (Plan 02's health.ts is dropped from
-//                     registration) so old contract tests still pass.
-//                     Carries `Deprecation: true` + `Link: </livez>;
-//                     rel="successor-version"` per RFC 8594.
+//   - GET /api/health: first-class endpoint for the Electron client per
+//                     BACKEND_SPEC.md § `GET /api/health`. Plan 02 wired
+//                     the original `/api/health` route; this plan
+//                     replaces it in-place (Plan 02's health.ts is
+//                     dropped from registration). Phase 56 / Plan 56-08
+//                     (R4) removed the RFC 8594 Deprecation + Link
+//                     successor-version headers: /api/health and /livez
+//                     are both first-class endpoints serving different
+//                     audiences (Electron client vs kubelet); neither is
+//                     a successor of the other.
 //
 // All four routes are `config.auth=false` (no dual-auth hook) and
 // `config.rateLimit=false` (kubelet probes at periodSeconds=10 across 1000
@@ -122,11 +126,12 @@ export const registerProbes = async (
     url: "/api/health",
     config: { auth: false, rateLimit: false },
     handler: async (_req, reply) => {
-      reply.header("Deprecation", "true");
-      reply.header("Link", '</livez>; rel="successor-version"');
+      // Phase 56 / Plan 56-08 (R4): no Deprecation or Link
+      // successor-version headers — see route docblock above.
+      //
       // Plan 13-01 / Task 13-01-05 — surface the migrations_completed
       // signal. When migrationsCheck is unwired OR throws, default to
-      // `false`: /api/health is /livez-aliased and MUST stay 200, but the
+      // `false`: /api/health is first-class but MUST stay 200, but the
       // field truthfully reports that no positive migration confirmation
       // was obtained (operator/harness reads this to gate a readiness
       // decision; kubelet does not consult /api/health for restart).
