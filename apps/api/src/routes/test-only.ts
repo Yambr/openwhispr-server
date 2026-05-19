@@ -236,6 +236,48 @@ export function buildTestOnlyRoutes(deps: TestOnlyDeps) {
       const tree = app.printRoutes({ commonPrefix: false });
       return { tree };
     });
+
+    // Phase 55 / Plan 55-05 — setup-wizard e2e reset seam.
+    //
+    // Flips the singleton `setup_state` row back to 'pending' so the
+    // /setup wizard re-renders. The slim docker instance bootstraps
+    // with status='completed' (migration 0017 + first /api/setup/admin
+    // POST), so without this seam the wizard 302s to /admin and the
+    // long-form acceptance spec at
+    // apps/web/tests/e2e/100-acceptance/setup-wizard-happy-path.spec.ts
+    // can never exercise the IntersectionObserver-driven 3-section flow.
+    //
+    // Idempotent — safe to call repeatedly. UPSERT pattern mirrors the
+    // helper at apps/api/src/routes/__tests__/setup.ts:213-230 (re-
+    // implemented inline because production code cannot import from
+    // __tests__/ per LOCKER-04 + the project hard rule).
+    //
+    // Unauthenticated by design — the wizard runs while signed-out so
+    // any bearer gate here would defeat the seam. Safety is provided by
+    // the OPENWHISPR_TEST_ROUTES + NODE_ENV gate above (production
+    // 404s the path entirely; the env knob is operator-controlled and
+    // documented as test-only).
+    //
+    // Does NOT truncate the users table — concurrent specs share the
+    // alice+N fixture pool and a blanket TRUNCATE would orphan their
+    // sessions. The /api/setup/admin handler is idempotent over the
+    // admin user row (race-loser branch returns 200 + alreadyCompleted).
+    app.post("/api/_test/reset-setup", { config: { rateLimit: false } }, async () => {
+      // setup_state is a singleton (id=1, no tenant_id column —
+      // packages/data/src/schema/setup_state.ts) so we do NOT need
+      // withTenant. A plain transaction is enough; Drizzle commits on
+      // resolve and rolls back on reject.
+      await db.transaction(async (tx) => {
+        await tx.execute(sql`
+          INSERT INTO setup_state (id, status, completed_at)
+          VALUES (1, 'pending'::setup_state_status, NULL)
+          ON CONFLICT (id) DO UPDATE
+            SET status = 'pending',
+                completed_at = NULL
+        `);
+      });
+      return { ok: true };
+    });
   };
 }
 
