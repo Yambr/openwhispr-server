@@ -68,7 +68,14 @@ export interface CallProviderOptions {
 
 export type CallProviderResult =
   | { ok: true; json: unknown }
-  | { ok: false; status: 503; message: string };
+  | { ok: false; status: 503; message: string }
+  // Phase 56 / Plan 56-07 (R3 / D-2) — surface upstream 400 so callers
+  // can choose to propagate the rejection instead of masking it as a
+  // generic 503. Used by openai-realtime.ts to honor the contract that
+  // an invalid `language` returned by OpenAI MUST reach the client as
+  // a 400 (not get rewritten to a confusing "upstream error" 503). All
+  // other 4xx statuses (401, 403) keep their existing 503 mapping.
+  | { ok: false; status: 400; upstreamBody: unknown };
 
 /**
  * Build the canonical 503 message for a given failure category. Centralized
@@ -121,6 +128,26 @@ export async function callProvider(opts: CallProviderOptions): Promise<CallProvi
         status: 503,
         message: buildMessage(opts.providerLabel, opts.envVarName, "upstream-error"),
       };
+    }
+
+    // Phase 56 / Plan 56-07 (R3 / D-2) — upstream 400 surfaces as a
+    // first-class result so the caller can propagate it (e.g. invalid
+    // `language` on OpenAI's session.create). Body is read best-effort:
+    // on JSON parse failure we still emit a 400 variant carrying the
+    // raw text so the caller can shape the client envelope without a
+    // separate malformed branch.
+    if (res.status === 400) {
+      let upstreamBody: unknown;
+      try {
+        upstreamBody = await res.json();
+      } catch {
+        try {
+          upstreamBody = await res.text();
+        } catch {
+          upstreamBody = null;
+        }
+      }
+      return { ok: false, status: 400, upstreamBody };
     }
 
     let json: unknown;

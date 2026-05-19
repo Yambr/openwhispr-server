@@ -43,6 +43,17 @@ const PROVIDER_LABEL = "OpenAI Realtime";
 const ENV_VAR_NAME = "OPENAI_API_KEY";
 const UPSTREAM_URL = "https://api.openai.com/v1/realtime/client_secrets";
 
+// Phase 56 / Plan 56-07 (R3 / D-2) — Whisper model used for the upstream
+// `session.input_audio_transcription.model` field when the client supplies
+// a `language`. Chosen as "whisper-1" to mirror the established repo
+// convention (apps/api/src/lib/settings-resolver.ts:106 defaults to
+// "whisper-1" for sttModel). The constant is intentionally a route-local
+// invariant rather than env-driven: OpenAI's Realtime API contract for
+// `input_audio_transcription.model` accepts a fixed set of Whisper-family
+// model IDs, and operator-supplied values would be a forwards-compat
+// liability without coordinated upstream support.
+const WHISPER_TRANSCRIPTION_MODEL = "whisper-1";
+
 export const buildOpenAIRealtimeTokenRoutes = () =>
   async function openAIRealtimeTokenRoutes(app: FastifyInstance): Promise<void> {
     app.route({
@@ -96,6 +107,29 @@ export const buildOpenAIRealtimeTokenRoutes = () =>
         }
         const streams = parsed.data.streams ?? 1;
         const model = parsed.data.model ?? DEFAULT_MODEL;
+        const language = parsed.data.language;
+
+        // Phase 56 / Plan 56-07 (R3 / D-2) — Build the upstream session
+        // payload with a conditional `input_audio_transcription` block:
+        //   * language present → emit {model: whisper-1, language: <tag>}
+        //   * language absent  → OMIT the block entirely so OpenAI's
+        //     Whisper auto-detects from the audio stream (per OpenAI
+        //     Realtime Sessions docs).
+        // The SAME upstream body string is reused for every parallel
+        // mint (streams=2 contract: both ephemeral sessions hear the
+        // same language).
+        const sessionPayload: {
+          type: string;
+          model: string;
+          input_audio_transcription?: { model: string; language: string };
+        } = { type: "realtime", model };
+        if (language !== undefined) {
+          sessionPayload.input_audio_transcription = {
+            model: WHISPER_TRANSCRIPTION_MODEL,
+            language,
+          };
+        }
+        const upstreamBody = JSON.stringify({ session: sessionPayload });
 
         const mintOne = () =>
           callProvider({
@@ -107,7 +141,7 @@ export const buildOpenAIRealtimeTokenRoutes = () =>
               authorization: `Bearer ${process.env.OPENAI_API_KEY as string}`,
               "content-type": "application/json",
             },
-            body: JSON.stringify({ session: { type: "realtime", model } }),
+            body: upstreamBody,
             envVarName: ENV_VAR_NAME,
             providerLabel: PROVIDER_LABEL,
           });
@@ -120,11 +154,34 @@ export const buildOpenAIRealtimeTokenRoutes = () =>
         const calls = Array.from({ length: streams }, mintOne);
         const results = await Promise.all(calls);
 
+        // Phase 56 / Plan 56-07 (R3 / D-2) — if ANY parallel mint
+        // returned an upstream 400 (e.g. invalid language), propagate
+        // the 400 to the client BEFORE the 503 fail-fast path. Mirrors
+        // T-04-01: never serialize a sibling's successful secret on
+        // partial failure. The first 400 wins; subsequent 400s/503s in
+        // the same wave are dropped (the client only needs one
+        // actionable rejection).
+        const upstream400 = results.find(
+          (r): r is Extract<typeof r, { status: 400 }> => !r.ok && r.status === 400,
+        );
+        if (upstream400) {
+          return reply.code(400).send({
+            error: {
+              code: "UPSTREAM_REJECTED",
+              message: `${PROVIDER_LABEL} rejected the request`,
+              upstream: upstream400.upstreamBody,
+              requestId: req.id,
+            },
+          });
+        }
+
         // T-04-01 mitigation site: scan for ANY failure and 503 BEFORE
         // touching results.map. The first successful secret is never
         // serialized when any sibling failed.
-        const failed = results.find((r) => !r.ok);
-        if (failed && !failed.ok) {
+        const failed = results.find(
+          (r): r is Extract<typeof r, { status: 503 }> => !r.ok && r.status === 503,
+        );
+        if (failed) {
           throw new ServiceUnavailable(failed.message);
         }
 

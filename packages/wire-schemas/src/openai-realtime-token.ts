@@ -17,6 +17,12 @@
 //   * `streams`: optional, integer in {1, 2}.
 //   * `model`: optional, non-empty, max 128 chars (OpenAI model IDs are
 //     short; multi-MB strings are abuse).
+//   * `language`: optional, 2..8 chars — BCP-47 short tag (e.g. "en",
+//     "ru", "en-US", "pt-BR"). When present, the route maps it to
+//     `session.input_audio_transcription.language` on the upstream
+//     OpenAI session.create payload (Phase 56 / Plan 56-07, R3 / D-2).
+//     When absent, the route OMITS `input_audio_transcription` so
+//     OpenAI's Whisper auto-detects.
 //   * `.strict()` — no extra keys.
 
 import { z } from "zod";
@@ -25,6 +31,7 @@ export const OpenAIRealtimeTokenRequest = z
   .object({
     streams: z.union([z.literal(1), z.literal(2)]).optional(),
     model: z.string().min(1).max(128).optional(),
+    language: z.string().min(2).max(8).optional(),
   })
   .strict();
 export type OpenAIRealtimeTokenRequest = z.infer<typeof OpenAIRealtimeTokenRequest>;
