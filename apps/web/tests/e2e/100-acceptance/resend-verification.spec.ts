@@ -69,6 +69,15 @@ test.describe("@phase55-acceptance @long-form — resend verification round-trip
     // DEFAULT_ALLOWLIST — not a real bug. Mirrors revoke-sessions.spec.ts.
     allowBrowserErrors(page, [
       /GET [^ ]+\/_next\/static\/chunks\/[^ ]+ → FAILED: net::ERR_ABORTED/,
+      // Phase 55-02-c: step 2 deliberately submits credentials of an
+      // unverified user; Better Auth rejects with 403 EMAIL_NOT_VERIFIED
+      // (the very signal that drives the unverified-Alert + resend-CTA
+      // render this spec asserts). The network + console entries are
+      // the intended verification, not a real bug. Same allowlist
+      // pattern as delete-account.spec.ts:59-64 for the deliberate 401
+      // INVALID_EMAIL_OR_PASSWORD signal there.
+      /POST [^ ]+\/api\/auth\/sign-in\/email[^ ]* → 403\b/,
+      /Failed to load resource:.*\b403\b/,
     ]);
   });
 
