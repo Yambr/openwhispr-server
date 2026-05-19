@@ -47,6 +47,10 @@ const SLIM_METADATA = { topology: "slim" as Topology };
 
 export default defineConfig({
   testDir: "./tests/e2e",
+  // Phase 54 / Plan 54-01 — `tests/e2e/**/__tests__/**` houses vitest
+  // unit tests for the e2e support helpers (mailpit.ts etc.). Playwright
+  // must not try to load them — vitest owns those files.
+  testIgnore: ["**/__tests__/**"],
   // Plan 13.1 — provisions ONE Better Auth user per worker up front so
   // spec `beforeEach` no longer hits /api/auth/sign-up/email (which was
   // tripping the anti-abuse rate limiter at 57/85 e2e specs in Plan 13).
