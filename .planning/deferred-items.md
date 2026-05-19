@@ -83,6 +83,29 @@ intercept inside the Next.js server runtime; would re-enable the
 
 ---
 
+## Locker candidates
+
+### LOCKER-AUTH-DELETE-CLIENT — ban `authClient.deleteAccount` / `authClient.deleteUser` when server plugin disabled
+
+**Surfaced by:** Phase 55-01-b advisor decision (Option B), 2026-05-19.
+
+**Repro / evidence:**
+- `apps/web/src/components/screens/account/DeleteAccountDialog.tsx` previously called `authClient.deleteAccount({callbackURL})` (Better Auth runtime Proxy → POST `/api/auth/delete-account`).
+- Server route `apps/api/src/routes/delete-account.ts` is DELETE-method-only.
+- Better Auth `user.deleteUser` plugin is intentionally NOT enabled in `apps/api/src/auth.ts` user block (cascade contract lives in our hand-rolled route).
+- Result: the dialog silently 404'd in production until 55-01-b landed the fetch-DELETE migration. RED commit `9c55cac`, GREEN commit (this plan).
+
+**Proposed lint rule:**
+- `tools/lint-no-betterauth-delete-when-disabled.ts` — scan `apps/web/src/**` for `authClient.deleteAccount` / `authClient.deleteUser` AST nodes, and `apps/api/src/auth.ts` for an enabled `user.deleteUser` block. If the server plugin is disabled, every client-side reference REFUSES.
+- Wire into the LOCKER-series in `tools/run-lockers.ts` + CI security.yml.
+
+**Why deferred:** Plan 55-01-b scope is the wire fix + acceptance e2e; new linters land in their own phase per Strict-TDD discipline (RED for the linter, GREEN linter passing, etc). Suggested home: Phase 36.a (LOCKER-06 flip cohort) or a dedicated mini-plan once the Phase 55-02 wire-contract.md drift register is published — the linter shape may generalise to other `authClient.*` calls whose corresponding server plugin is unwired.
+
+**Owner:** unassigned. Re-surface once Phase 55-02 audit identifies sibling wire mismatches.
+
+
+---
+
 ## Historical (pre-Phase 53)
 
 Older items from Phases 14, 18, 20, 31, 33, 51 live in

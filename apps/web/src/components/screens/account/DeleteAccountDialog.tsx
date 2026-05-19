@@ -1,10 +1,14 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 // Phase 07.1 / Plan 08 — U5 DeleteAccountDialog (Client Component).
+// Phase 55-01-b — Hand-rolled DELETE /api/auth/delete-account per
+// wire-contract.md WIRE-03 — Better Auth's /delete-user plugin is
+// intentionally NOT enabled (see auth.ts user block); see
+// apps/api/src/routes/delete-account.ts for the cascade contract.
 //
-// AlertDialog gated by a typed-email confirmation Input. Calls
-// `authClient.deleteAccount()` (Better Auth catch-all DELETE /api/auth/delete-account)
-// then `authClient.signOut()` (defensive — clears any client-side cache)
-// and `router.push('/sign-in')` on success. Stays open on error so the
+// AlertDialog gated by a typed-email confirmation Input. Fetches
+// DELETE /api/auth/delete-account (cookies via credentials: "include"),
+// then `authClient.signOut()` (defensive — flushes client-side cache)
+// and `router.push('/sign-in')` on success. Stays open on non-2xx so the
 // user can retry or close manually.
 "use client";
 
@@ -27,11 +31,6 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { authClient } from "@/lib/auth-client";
 
-interface BetterAuthEnvelope {
-  data: unknown;
-  error: { message?: string } | null;
-}
-
 export interface DeleteAccountDialogProps {
   userEmail: string;
 }
@@ -50,16 +49,18 @@ export function DeleteAccountDialog({ userEmail }: DeleteAccountDialogProps): Re
     // point is naturally serialised — no extra in-flight guard needed.
     setPending(true);
     try {
-      const res = (await authClient.deleteAccount({
-        callbackURL: "/sign-in",
-      })) as BetterAuthEnvelope;
-      if (res.error) {
+      const res = await fetch("/api/auth/delete-account", {
+        method: "DELETE",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+      });
+      if (!res.ok) {
         // Stay open on error.
         return;
       }
-      // Defensive sign-out (best-effort) — Better Auth's deleteAccount
-      // server-side already clears the cookie; we call signOut to flush
-      // any client-side cache / useSession subscribers.
+      // Defensive sign-out (best-effort) — the server route already
+      // invalidates sessions + clears the cookie; we call signOut to
+      // flush any client-side cache / useSession subscribers.
       try {
         await authClient.signOut();
       } catch {

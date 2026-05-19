@@ -11,7 +11,7 @@
 //   signUp=function     signUp.email=function
 //   signOut=function    useSession=function       verifyEmail=function
 //   revokeSession=function  revokeOtherSessions=function
-//   deleteAccount=function  listSessions=function
+//   listSessions=function
 // Every method the U1..U13 + A2..A3 screens consume is present.
 //
 // Security: NO localStorage (D-SEC-2). Better Auth uses HttpOnly cookies
@@ -26,21 +26,24 @@ const baseClient = createAuthClient({
 });
 
 // Better Auth's React client exposes some endpoints only via the runtime
-// Proxy (e.g. `deleteAccount`, which hits POST /api/auth/delete-account).
-// These aren't in the inferred plugin-keyed type but ARE in the 1.6.9
-// surface — verified by the OQ4 smoke test in this plan's commit body.
-// We extend the type minimally so TypeScript matches the runtime reality.
+// Proxy. These aren't in the inferred plugin-keyed type but ARE in the
+// 1.6.9 surface — verified by the OQ4 smoke test in this plan's commit
+// body. We extend the type minimally so TypeScript matches the runtime
+// reality.
 //
-// Plan 51-11b (REVIEW web HIGH HI-06) — extended with the three other
-// runtime-Proxy methods that the SignInForm / OidcButtons /
-// VerifyEmailClient used to reach via local double-cast at every call
-// site. Centralising the shape here eliminates the LOCKER-02-violating
-// casts (CLAUDE.md DISCIPLINE rule 12) and gives a single edit point if
-// Better Auth tightens the inferred surface in a future release.
-type AccountDeletion = (data?: {
-  password?: string;
-  callbackURL?: string;
-}) => Promise<{ data: unknown; error: unknown }>;
+// Plan 51-11b (REVIEW web HIGH HI-06) — extended with the runtime-Proxy
+// methods that the SignInForm / OidcButtons / VerifyEmailClient used to
+// reach via local double-cast at every call site. Centralising the
+// shape here eliminates the LOCKER-02-violating casts (CLAUDE.md
+// DISCIPLINE rule 12) and gives a single edit point if Better Auth
+// tightens the inferred surface in a future release.
+//
+// Phase 55-01-b — `deleteAccount` removed from this surface. Better
+// Auth's deleteAccount() hits POST /api/auth/delete-account, but the
+// server route is DELETE-method-only (apps/api/src/routes/delete-account.ts)
+// because the Better Auth `user.deleteUser` plugin is intentionally NOT
+// enabled (see apps/api/src/auth.ts user block). DeleteAccountDialog
+// now uses a hand-rolled fetch DELETE per wire-contract.md WIRE-03.
 
 type SignInEmail = (args: {
   email: string;
@@ -67,7 +70,6 @@ type ExtendedSignIn = typeof baseClient.signIn & {
 
 type ExtendedAuthClient = Omit<typeof baseClient, "signIn"> & {
   signIn: ExtendedSignIn;
-  deleteAccount: AccountDeletion;
   sendVerificationEmail: SendVerificationEmail;
   verifyEmail: VerifyEmailFn;
 };
@@ -83,5 +85,4 @@ export const useSession = authClient.useSession;
 export const verifyEmail = authClient.verifyEmail;
 export const revokeSession = authClient.revokeSession;
 export const revokeOtherSessions = authClient.revokeOtherSessions;
-export const deleteAccount = authClient.deleteAccount;
 export const listSessions = authClient.listSessions;

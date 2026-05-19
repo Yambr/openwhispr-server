@@ -15,7 +15,6 @@
 import { describe, expect, it } from "vitest";
 import {
   authClient,
-  deleteAccount,
   listSessions,
   revokeOtherSessions,
   revokeSession,
@@ -63,9 +62,9 @@ describe("auth-client (Phase 07.1 / Plan 05)", () => {
     expect(typeof authClient.revokeOtherSessions).toBe("function");
   });
 
-  it("authClient.deleteAccount is a function (U5 danger zone)", () => {
-    expect(typeof authClient.deleteAccount).toBe("function");
-  });
+  // Phase 55-01-b — `authClient.deleteAccount` removed from the typed
+  // surface. DeleteAccountDialog now uses hand-rolled fetch DELETE
+  // /api/auth/delete-account (POST/DELETE wire mismatch fix, WIRE-03).
 
   it("authClient.listSessions is a function (U5 device list)", () => {
     expect(typeof authClient.listSessions).toBe("function");
@@ -91,10 +90,9 @@ describe("auth-client (Phase 07.1 / Plan 05)", () => {
     expect(typeof verifyEmail).toBe("function");
   });
 
-  it("named re-exports revokeSession/revokeOtherSessions/deleteAccount/listSessions are functions", () => {
+  it("named re-exports revokeSession/revokeOtherSessions/listSessions are functions", () => {
     expect(typeof revokeSession).toBe("function");
     expect(typeof revokeOtherSessions).toBe("function");
-    expect(typeof deleteAccount).toBe("function");
     expect(typeof listSessions).toBe("function");
   });
 });

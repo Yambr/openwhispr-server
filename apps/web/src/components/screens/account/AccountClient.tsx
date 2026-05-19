@@ -6,7 +6,7 @@
 // resolved the session via getServerSession). Composes:
 //   - ProfileCard      (read-only profile data)
 //   - SessionsTable    (Better Auth list/revoke flows)
-//   - DeleteAccountDialog (typed-email confirm + Better Auth deleteAccount)
+//   - DeleteAccountDialog (typed-email confirm + DELETE /api/auth/delete-account)
 "use client";
 
 import { useTranslation } from "react-i18next";
