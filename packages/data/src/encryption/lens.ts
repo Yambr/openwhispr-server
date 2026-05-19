@@ -440,7 +440,38 @@ export function wrapAdapter(
       return inner.deleteMany({ ...args, where });
     },
 
-    transaction: inner.transaction.bind(inner),
+    // Phase 57 / Track A.1 — RESEARCH.md §5 Option A1: re-wrap the trx
+    // adapter Better Auth's `runWithTransaction` binds into AsyncLocalStorage.
+    // The previous direct bind-forward of inner's transaction forwarded the inner
+    // un-lensed adapter to cb, so every CRUD invoked through
+    // `getCurrentAdapter()` inside the transaction bypassed the lens
+    // (§3.1 "Decorator-bypassed-by-transaction" antipattern). Wrapping the
+    // trx with the SAME `providers` + `columnMap` closure captured at
+    // outer-`wrapAdapter()` call time restores decorator totality (doctrine
+    // rules 1+2). Works for both `transaction: false` (drizzle default,
+    // `createAsIsTransaction` path: cb receives the inner adapter itself)
+    // and `transaction: true` (real BEGIN/COMMIT: cb receives a fresh
+    // factory adapter built over the trx-bound `tx`).
+    //
+    // Type bridge: Better Auth's trx is typed `DBTransactionAdapter =
+    // Omit<DBAdapter, "transaction">` (nested transactions are not part
+    // of the contract — BA never calls trx.transaction). To satisfy
+    // wrapAdapter's `DBAdapter` parameter, synthesise a refusing
+    // `transaction` on the trx; the resulting wrapped object is still
+    // shape-compatible with `DBTransactionAdapter` (excess `transaction`
+    // property is permitted by structural assignability into an Omit).
+    transaction: (cb) =>
+      inner.transaction(async (trx) => {
+        const trxWithRefusal: DBAdapter = {
+          ...trx,
+          transaction: () => {
+            throw new Error(
+              "lens: nested transactions are not supported by Better Auth's adapter contract",
+            );
+          },
+        };
+        return cb(wrapAdapter(trxWithRefusal, providers, columnMap));
+      }),
     createSchema: inner.createSchema?.bind(inner),
     options: inner.options,
   };
