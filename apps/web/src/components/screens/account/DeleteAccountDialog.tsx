@@ -49,10 +49,12 @@ export function DeleteAccountDialog({ userEmail }: DeleteAccountDialogProps): Re
     // point is naturally serialised — no extra in-flight guard needed.
     setPending(true);
     try {
+      // BUG-55-01-b-01: omit Content-Type — Fastify's JSON parser throws
+      // FST_ERR_CTP_EMPTY_JSON_BODY on empty body + json content-type.
+      // A body-less DELETE has no payload to declare, so we send no headers.
       const res = await fetch("/api/auth/delete-account", {
         method: "DELETE",
         credentials: "include",
-        headers: { "Content-Type": "application/json" },
       });
       if (!res.ok) {
         // Stay open on error.

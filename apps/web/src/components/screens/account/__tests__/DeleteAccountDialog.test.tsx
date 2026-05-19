@@ -120,11 +120,15 @@ describe("DeleteAccountDialog (Phase 07.1 / Plan 08, wire-migrated Phase 55-01-b
     const confirmBtn = screen.getByTestId("delete-account-confirm");
     await user.click(confirmBtn);
     await waitFor(() => {
+      // BUG-55-01-b-01: assert NO Content-Type header is sent. A body-less
+      // DELETE with `Content-Type: application/json` trips Fastify's
+      // FST_ERR_CTP_EMPTY_JSON_BODY → 500 envelope (regression guard).
       expect(fetchMock).toHaveBeenCalledWith("/api/auth/delete-account", {
         method: "DELETE",
         credentials: "include",
-        headers: { "Content-Type": "application/json" },
       });
+      const callArgs = fetchMock.mock.calls[0] as [string, RequestInit];
+      expect(callArgs[1].headers).toBeUndefined();
     });
     await waitFor(() => {
       expect(pushMock).toHaveBeenCalledWith("/sign-in");
