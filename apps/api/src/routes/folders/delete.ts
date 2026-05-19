@@ -1,15 +1,21 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
+// Cascade semantic (Phase 56-03 / R9): hard-delete the folder row;
+// contained notes detach to folder_id = NULL via the FK ON DELETE SET
+// NULL declared on notes.folder_id. Notes are first-class survivors —
+// the folder is purely organizational.
+//
 // Phase 05 / Plan 06 / Task 1 — DELETE /api/folders/delete (WIRE-23).
 //
 // Wire shape (matches ~/openwhispr/src/services/FoldersService.ts.deleteFolder):
 //   Request:  { id: string } (body)
-//   Success:  200 { ok: true }
-//   404:      folder not found
+//   Success:  204 No Content (Phase 56-03 / R9 — was 200 {ok:true})
+//   404:      folder not found (no row matched user_id + id)
 //
-// D-23 — soft delete. Sets deleted_at = NOW(); the row stays in the
-// table. The `notes.folder_id` FK is ON DELETE SET NULL but soft-delete
-// does NOT trigger that — children stay attached, will be re-parented if
-// the folder is restored. This matches upstream desktop semantics.
+// Phase 56-03 supersedes D-23's soft-delete decision for folders: the
+// upstream client wire (FoldersService.deleteFolder) expects 204, and
+// the organizational nature of folders means there is no value in
+// preserving a soft-deleted folder shell once its notes have detached.
+// Notes themselves retain their own independent soft-delete lifecycle.
 import { type ExecutableTx, type TransactionalDb, withTenant } from "@openwhispr/data";
 import { sql } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
@@ -38,23 +44,22 @@ export const buildFoldersDeleteRoutes = (deps: FoldersDeleteDeps) =>
         const tenantId = req.tenant;
         const userId = req.user.id;
 
-        const updated = await withTenant(deps.db, tenantId, async (tx) => {
-          // deleted_at = NOW() — soft delete per D-23.
+        const deleted = await withTenant(deps.db, tenantId, async (tx) => {
+          // Hard delete — contained notes detach to folder_id = NULL via
+          // FK ON DELETE SET NULL (notes.folder_id, schema/notes.ts:26).
           const result = (await tx.execute(sql`
-            UPDATE "folders"
-               SET "deleted_at" = NOW()
+            DELETE FROM "folders"
              WHERE "id" = ${body.id}::uuid
                AND "user_id" = ${userId}::uuid
-               AND "deleted_at" IS NULL
              RETURNING "id"
           `)) as { rows?: { id: string }[] };
           return result.rows?.[0];
         });
 
-        if (!updated) {
+        if (!deleted) {
           throw new NotFoundError("FOLDER_NOT_FOUND", "folder not found");
         }
-        return reply.code(200).send({ ok: true });
+        return reply.code(204).send();
       },
     });
   };

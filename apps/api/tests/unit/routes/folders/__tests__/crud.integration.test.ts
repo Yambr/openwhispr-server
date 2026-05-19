@@ -56,6 +56,10 @@ afterAll(async () => {
 }, 60_000);
 
 beforeEach(async () => {
+  // notes first — they reference folders via ON DELETE SET NULL, but
+  // we want a clean per-test slate including any rows seeded for the
+  // cascade-detach test (Phase 56-03 / R9).
+  await pool.query(`DELETE FROM notes`);
   await pool.query(`DELETE FROM folders`);
 });
 
@@ -72,7 +76,8 @@ describe("integration — folders CRUD (real Postgres + RLS)", () => {
         sort_order: 5,
       }),
     });
-    expect(res.statusCode).toBe(200);
+    // Phase 56-03 / R9 — POST /api/folders/create MUST return 201 Created.
+    expect(res.statusCode).toBe(201);
     const body = res.json() as Record<string, unknown>;
     const required = [
       "id",
@@ -103,7 +108,8 @@ describe("integration — folders CRUD (real Postgres + RLS)", () => {
       headers: { "content-type": "application/json" },
       payload,
     });
-    expect(r1.statusCode).toBe(200);
+    // Phase 56-03 / R9 — 201 on first create AND on idempotent replay.
+    expect(r1.statusCode).toBe(201);
     const id1 = (r1.json() as { id: string }).id;
 
     const r2 = await appA.inject({
@@ -112,7 +118,7 @@ describe("integration — folders CRUD (real Postgres + RLS)", () => {
       headers: { "content-type": "application/json" },
       payload: JSON.stringify({ client_folder_id: "idem-f", name: "SECOND — ignored" }),
     });
-    expect(r2.statusCode).toBe(200);
+    expect(r2.statusCode).toBe(201);
     expect(r2.statusCode).not.toBe(409);
     const body2 = r2.json() as { id: string; name: string };
     expect(body2.id).toBe(id1);
@@ -155,7 +161,8 @@ describe("integration — folders CRUD (real Postgres + RLS)", () => {
         ],
       }),
     });
-    expect(res.statusCode).toBe(200);
+    // Phase 56-03 / R9 — batch-create returns 201 Created.
+    expect(res.statusCode).toBe(201);
     const body = res.json() as {
       created: { id: string; name: string; client_folder_id: string }[];
     };
@@ -178,7 +185,8 @@ describe("integration — folders CRUD (real Postgres + RLS)", () => {
         { client_folder_id: "bare-2", name: "y" },
       ]),
     });
-    expect(res.statusCode).toBe(200);
+    // Phase 56-03 / R9 — batch-create returns 201 Created.
+    expect(res.statusCode).toBe(201);
     const body = res.json() as { created: unknown[] };
     expect(body.created).toHaveLength(2);
   });
@@ -244,7 +252,11 @@ describe("integration — folders CRUD (real Postgres + RLS)", () => {
     expect(res.statusCode).toBe(404);
   });
 
-  it("delete — sets deleted_at; list excludes", async () => {
+  it("delete — returns 204 no body; folder row removed; list excludes", async () => {
+    // Phase 56-03 / R9 — DELETE /api/folders/delete returns 204 No
+    // Content. Body MUST be empty. Folder row is hard-deleted (the
+    // organizational "folder" is purely structural; notes survive
+    // via FK ON DELETE SET NULL — covered by the next test).
     const create = await appA.inject({
       method: "POST",
       url: "/api/folders/create",
@@ -258,18 +270,68 @@ describe("integration — folders CRUD (real Postgres + RLS)", () => {
       headers: { "content-type": "application/json" },
       payload: JSON.stringify({ id }),
     });
-    expect(del.statusCode).toBe(200);
-    expect((del.json() as { ok: boolean }).ok).toBe(true);
+    expect(del.statusCode).toBe(204);
+    // 204 must carry no body.
+    expect(del.body).toBe("");
 
-    const { rows } = await pool.query<{ deleted_at: Date | null }>(
-      `SELECT deleted_at FROM folders WHERE id = $1`,
+    // Hard delete — row is gone.
+    const { rows } = await pool.query<{ n: string }>(
+      `SELECT count(*)::text AS n FROM folders WHERE id = $1`,
       [id],
     );
-    expect(rows[0]?.deleted_at).not.toBeNull();
+    expect(rows[0]?.n).toBe("0");
 
     const list = await appA.inject({ method: "GET", url: "/api/folders/list" });
     const listBody = list.json() as { folders: { id: string }[] };
     expect(listBody.folders.find((f) => f.id === id)).toBeUndefined();
+  });
+
+  it("delete — cascade semantic: contained notes detach (folder_id = NULL), notes survive", async () => {
+    // Phase 56-03 / R9 — cascade decision: folders are organizational.
+    // Deleting a folder MUST NOT delete the notes it contains. Notes are
+    // first-class survivors of folder deletion, with folder_id set to
+    // NULL. Enforced by the FK ON DELETE SET NULL on notes.folder_id
+    // (packages/data/src/schema/notes.ts:26) — hard-deleting the folder
+    // row triggers the cascade automatically.
+    const create = await appA.inject({
+      method: "POST",
+      url: "/api/folders/create",
+      headers: { "content-type": "application/json" },
+      payload: JSON.stringify({ client_folder_id: "del-cascade", name: "parent" }),
+    });
+    const { id: folderId } = create.json() as { id: string };
+
+    // Seed a note directly inside the folder (notes routes aren't
+    // wired into this folders-only test app — SQL is the boundary).
+    const noteIns = await pool.query<{ id: string }>(
+      `INSERT INTO notes (tenant_id, user_id, folder_id, content)
+       VALUES ($1, $2, $3, $4) RETURNING id`,
+      [TENANT_A, userA, folderId, "survives the folder delete"],
+    );
+    const noteId = noteIns.rows[0]!.id;
+
+    const del = await appA.inject({
+      method: "DELETE",
+      url: "/api/folders/delete",
+      headers: { "content-type": "application/json" },
+      payload: JSON.stringify({ id: folderId }),
+    });
+    expect(del.statusCode).toBe(204);
+
+    // (a) folder gone.
+    const f = await pool.query<{ n: string }>(
+      `SELECT count(*)::text AS n FROM folders WHERE id = $1`,
+      [folderId],
+    );
+    expect(f.rows[0]?.n).toBe("0");
+
+    // (b) note survives, with folder_id detached to NULL.
+    const n = await pool.query<{ folder_id: string | null; content: string }>(
+      `SELECT folder_id, content FROM notes WHERE id = $1`,
+      [noteId],
+    );
+    expect(n.rows[0]?.folder_id).toBeNull();
+    expect(n.rows[0]?.content).toBe("survives the folder delete");
   });
 
   it("delete — unknown id returns 404", async () => {
@@ -322,7 +384,8 @@ describe("integration — folders CRUD (real Postgres + RLS)", () => {
       headers: { "content-type": "application/json" },
       payload: JSON.stringify({ client_folder_id: "a-private", name: "B own" }),
     });
-    expect(bCreate.statusCode).toBe(200);
+    // Phase 56-03 / R9 — create returns 201.
+    expect(bCreate.statusCode).toBe(201);
 
     // A's original row still has original name.
     const aList = await appA.inject({ method: "GET", url: "/api/folders/list" });
