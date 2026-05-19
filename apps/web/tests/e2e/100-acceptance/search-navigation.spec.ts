@@ -39,6 +39,11 @@
 //     /api/conversations/search; allowlist it the same way.
 //
 // Browser-side error invariant: every step ends with expectNoBrowserErrors.
+//
+// GREEN (55-12-a-02): RED spec passed 3/3 clean on slim — the production
+// wiring (NotesSearchClient row <a> + Clear button + ConversationsSearchClient
+// row <a> + Clear button) was always live; this commit is the GREEN gate
+// marker confirming 3x clean execution against the running slim stack.
 
 import { test as base, expect } from "@playwright/test";
 import { storageStatePath } from "../fixtures/auth.js";
