@@ -174,6 +174,12 @@ export async function seedNotes(
       title: args.title ?? `Seed Note ${i}`,
       content: args.content ?? "seed content",
       folder_id: args.folderId,
+      // Plan 55-15-a — pass-through for optional long-form fields so the
+      // note-detail tab specs can exercise the Transcript / Enhanced tab
+      // branches (NoteDetailClient.tsx:269-301). Wire fields are already
+      // accepted by apps/api/src/routes/notes/create.ts:53,61.
+      transcript: args.transcript,
+      enhanced_content: args.enhancedContent,
     })) as { id: string };
     out.push(note);
   }
