@@ -9,9 +9,14 @@
 //   4. Captures the browser console and fails on any React hydration
 //      mismatch error.
 import { expect, test } from "./_diagnostics-fixture.js";
+import { attachBrowserDiagnostics, expectNoBrowserErrors } from "./support/browser-diagnostics.js";
 import { getOrigins } from "./support/topology.js";
 
 test.describe("i18n — Russian rendering", () => {
+  test.beforeEach(async ({ page }) => {
+    await attachBrowserDiagnostics(page);
+  });
+
   test("renders /sign-in in Russian with no hydration mismatch", async ({
     context,
     page,
@@ -42,6 +47,7 @@ test.describe("i18n — Russian rendering", () => {
 
     const hydrationErrors = consoleErrors.filter((e) => /hydrat/i.test(e));
     expect(hydrationErrors, hydrationErrors.join("\n")).toEqual([]);
+    expectNoBrowserErrors(page);
   });
 
   test("language switcher persists locale across reload", async ({ context, page }) => {
@@ -57,5 +63,6 @@ test.describe("i18n — Russian rendering", () => {
 
     await page.reload();
     await expect(page.locator("html")).toHaveAttribute("lang", "ru");
+    expectNoBrowserErrors(page);
   });
 });

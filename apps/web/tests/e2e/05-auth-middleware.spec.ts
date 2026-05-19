@@ -13,17 +13,24 @@
 //     against a non-Traefik baseURL. Either way: NOT a 30x to /sign-in.
 //  3. Visiting `/sign-in` while signed-out does not redirect (no loop).
 import { expect, test } from "./_diagnostics-fixture.js";
+import { attachBrowserDiagnostics, expectNoBrowserErrors } from "./support/browser-diagnostics.js";
 
 test.describe("Phase 07.1 / Plan 05 — middleware gate", () => {
-  test("signed-out /app/* redirects to /sign-in with ?from=", async ({ request }) => {
+  test.beforeEach(async ({ page }) => {
+    await attachBrowserDiagnostics(page);
+  });
+
+  test("signed-out /app/* redirects to /sign-in with ?from=", async ({ page, request }) => {
     const res = await request.get("/app/usage", { maxRedirects: 0 });
     expect([301, 302, 307, 308]).toContain(res.status());
     const location = res.headers().location ?? "";
     expect(location).toContain("/sign-in");
     expect(location).toContain("from=%2Fapp%2Fusage");
+    expectNoBrowserErrors(page);
   });
 
   test("signed-out /admin/* does NOT redirect to /sign-in (Traefik gates admin)", async ({
+    page,
     request,
   }) => {
     const res = await request.get("/admin/observability", { maxRedirects: 0 });
@@ -37,11 +44,13 @@ test.describe("Phase 07.1 / Plan 05 — middleware gate", () => {
     } else {
       expect(status).not.toBe(307);
     }
+    expectNoBrowserErrors(page);
   });
 
-  test("signed-out /sign-in renders the page (no redirect loop)", async ({ request }) => {
+  test("signed-out /sign-in renders the page (no redirect loop)", async ({ page, request }) => {
     const res = await request.get("/sign-in", { maxRedirects: 0 });
     expect(res.status()).toBeLessThan(400);
     expect([301, 302, 307, 308]).not.toContain(res.status());
+    expectNoBrowserErrors(page);
   });
 });
