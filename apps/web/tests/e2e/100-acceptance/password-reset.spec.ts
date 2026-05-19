@@ -19,7 +19,11 @@
 // cookie jar (RESEARCH risk #4 in Phase 55-01-a-PLAN.md).
 
 import { test as base, expect } from "@playwright/test";
-import { attachBrowserDiagnostics, expectNoBrowserErrors } from "../support/browser-diagnostics.js";
+import {
+  allowBrowserErrors,
+  attachBrowserDiagnostics,
+  expectNoBrowserErrors,
+} from "../support/browser-diagnostics.js";
 import { fetchPasswordResetLink, fetchVerificationLink } from "../support/mailpit.js";
 
 const WEB_BASE = "http://localhost:3000";
@@ -36,6 +40,15 @@ test.describe("@phase55-acceptance @long-form — password reset round-trip (sli
       "Phase 55-01-a acceptance suite runs against slim topology only — traefik path covered by Phase 19a CJM suite",
     );
     await attachBrowserDiagnostics(page);
+    // Multi-navigation flow: sign-in -> /forgot-password -> reset URL
+    // -> /reset-password (server redirect) -> /sign-in -> /app. Each
+    // hop cancels in-flight Next.js chunk prefetches that the browser
+    // surfaces as `GET /_next/static/chunks/<hash>.js -> net::ERR_ABORTED`.
+    // Same framework-level abort class as the `_rsc=…` entries already
+    // in DEFAULT_ALLOWLIST — not a real bug.
+    allowBrowserErrors(page, [
+      /GET [^ ]+\/_next\/static\/chunks\/[^ ]+ → FAILED: net::ERR_ABORTED/,
+    ]);
   });
 
   test("registers, requests password reset, follows mailpit link, sets new password, signs in successfully — zero browser errors", async ({
@@ -105,18 +118,20 @@ test.describe("@phase55-acceptance @long-form — password reset round-trip (sli
         since: resetCursor,
         timeoutMs: 15_000,
       });
-      expect(resetLink).toMatch(/\/reset-password\?[^\s"'<>]*token=[^\s"'<>&]+/);
+      // Better Auth 1.6.9 embeds /api/auth/reset-password/<token>?callbackURL=...
+      // The GET handler validates the token then 302s the browser to
+      // <callbackURL>?token=<token>. The spec navigates to the email
+      // URL as-is and follows the redirect to /reset-password?token=…
+      // on the web origin.
+      expect(resetLink).toMatch(/\/(?:api\/auth\/)?reset-password/);
       expectNoBrowserErrors(page);
     });
 
-    await test.step("step 6 — open /reset-password, set new password, land on /sign-in", async () => {
-      // The mailpit link is an absolute URL pointing at the configured
-      // public host (likely web.localhost via Traefik). We strip down
-      // to the path+query so the spec exercises the slim-mode
-      // localhost:3000 host instead of routing through Traefik.
-      const url = new URL(resetLink);
-      const localReset = `${WEB_BASE}${url.pathname}${url.search}`;
-      await page.goto(localReset);
+    await test.step("step 6 — open reset URL, set new password, land on /sign-in", async () => {
+      await page.goto(resetLink);
+      // Better Auth's GET handler redirects to /reset-password?token=…
+      // on the configured web origin. Wait for the form to render.
+      await page.waitForURL(/\/reset-password\?[^\s]*token=/, { timeout: 15_000 });
       await expect(page.getByLabel(/^new password$/i)).toBeVisible();
       await page.getByLabel(/^new password$/i).fill(newPassword);
       await page.getByLabel(/confirm new password/i).fill(newPassword);
