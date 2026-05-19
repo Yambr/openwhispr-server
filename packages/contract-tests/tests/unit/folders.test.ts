@@ -30,7 +30,8 @@ const ListResponse = z.object({ folders: z.array(CloudFolderShape) });
 const BatchCreateResponse = z.object({
   created: z.array(CloudFolderShape),
 });
-const DeleteResponse = z.object({ ok: z.boolean() });
+// Phase 56-03 / R9 — DELETE returns 204 No Content (empty body); the
+// {ok:true} envelope is retired.
 
 function rnd(prefix: string): string {
   return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
@@ -47,7 +48,8 @@ describe.skipIf(!REACHABLE)("WIRE-23 — /api/folders/* (5 routes)", () => {
         name: "contract create",
       }),
     });
-    expect(res.status).toBe(200);
+    // Phase 56-03 / R9 — create returns 201.
+    expect(res.status).toBe(201);
     const body = await res.json();
     expect(() => CloudFolderShape.parse(body)).not.toThrow();
   });
@@ -65,8 +67,9 @@ describe.skipIf(!REACHABLE)("WIRE-23 — /api/folders/* (5 routes)", () => {
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ client_folder_id: clientId, name: "idem second" }),
     });
-    expect(r1.status).toBe(200);
-    expect(r2.status).toBe(200);
+    // Phase 56-03 / R9 — both creates (incl. idempotent replay) return 201.
+    expect(r1.status).toBe(201);
+    expect(r2.status).toBe(201);
     expect(r2.status).not.toBe(409);
     const j1 = CloudFolderShape.parse(await r1.json());
     const j2 = CloudFolderShape.parse(await r2.json());
@@ -86,7 +89,8 @@ describe.skipIf(!REACHABLE)("WIRE-23 — /api/folders/* (5 routes)", () => {
         ],
       }),
     });
-    expect(res.status).toBe(200);
+    // Phase 56-03 / R9 — batch-create returns 201.
+    expect(res.status).toBe(201);
     const parsed = BatchCreateResponse.parse(await res.json());
     expect(parsed.created).toHaveLength(2);
   });
@@ -109,7 +113,9 @@ describe.skipIf(!REACHABLE)("WIRE-23 — /api/folders/* (5 routes)", () => {
     expect(updated.name).toBe("after");
   });
 
-  it("DELETE /api/folders/delete returns { ok: true }", async () => {
+  it("DELETE /api/folders/delete returns 204 No Content (R9)", async () => {
+    // Phase 56-03 / R9 — DELETE returns 204 with empty body. The
+    // {ok:true} envelope is retired.
     const jar = await signInFixture("fixture@conformance.test");
     const created = await jar.fetch(`${BACKEND_URL}/api/folders/create`, {
       method: "POST",
@@ -122,9 +128,9 @@ describe.skipIf(!REACHABLE)("WIRE-23 — /api/folders/* (5 routes)", () => {
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ id }),
     });
-    expect(del.status).toBe(200);
-    const delBody = await del.json();
-    expect(() => DeleteResponse.parse(delBody)).not.toThrow();
+    expect(del.status).toBe(204);
+    const delBody = await del.text();
+    expect(delBody).toBe("");
   });
 
   it("GET /api/folders/list returns { folders: CloudFolder[] }", async () => {

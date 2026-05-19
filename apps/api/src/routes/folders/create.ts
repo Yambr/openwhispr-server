@@ -3,11 +3,14 @@
 //
 // Wire shape (matches ~/openwhispr/src/services/FoldersService.ts):
 //   Request:  FolderInput (validated by FolderInputSchema)
-//   Success:  200 CloudFolder
+//   Success:  201 CloudFolder (Phase 56-03 / R9 — was 200 pre-56-03)
 //
-// D-24 — same client_folder_id on retry returns the existing row (200,
+// D-24 — same client_folder_id on retry returns the existing row (201,
 //        NOT 409). Pattern 1 — createOrReturnExisting() from
-//        apps/api/src/lib/client-id-upsert.ts.
+//        apps/api/src/lib/client-id-upsert.ts. The 201 is consistent
+//        whether the row was just inserted or already existed — the
+//        client's POST is conceptually a "create" each time, and the
+//        body carries the canonical CloudFolder either way.
 //
 // All DB activity under withTenant(deps.db, tenantId, ...) so FORCE-RLS
 // is in force (tenant_id GUC bound for the transaction).
@@ -56,7 +59,7 @@ export const buildFoldersCreateRoutes = (deps: FoldersCreateDeps) =>
           return row;
         });
 
-        return reply.code(200).send(rowToCloudFolder(row));
+        return reply.code(201).send(rowToCloudFolder(row));
       },
     });
   };

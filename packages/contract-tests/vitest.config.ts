@@ -14,11 +14,11 @@ import { defineConfig } from "vitest/config";
 export default defineConfig({
   test: {
     // Phase 15 / Plan 02 (STRUCT-01) — tests live under tests/unit/ post-move.
-    // Phase 56 / Plan 05 (R11) — additionally pick up CONTRACT-01 wire-
-    // shape test colocated under src/ per the plan's explicit
-    // src/transcriptions-shape.test.ts deliverable path. Additive change
-    // (no existing src/**/*.test.ts files), no regression on the historic
-    // tests/ surface.
+    // Phase 56 (R9 folders, R11 transcriptions, R8 notes) — per-resource
+    // CONTRACT-01 wire-shape tests colocated under src/ are also picked
+    // up (e.g. folders-shape.test.ts, transcriptions-shape.test.ts,
+    // notes-shape.test.ts). They assert zod-schema + status-code
+    // invariants without needing a live BACKEND_URL.
     include: ["tests/**/*.test.ts", "src/**/*.test.ts"],
     reporters: ["dot"],
     testTimeout: 60_000,

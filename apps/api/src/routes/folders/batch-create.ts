@@ -3,7 +3,8 @@
 //
 // Wire shape (matches ~/openwhispr/src/services/FoldersService.ts.batchCreate):
 //   Request:  { folders: FolderInput[] } (length 1..500 per D-30)
-//   Success:  200 { created: CloudFolder[] }   (FULL CloudFolder per row,
+//   Success:  201 { created: CloudFolder[] }   (Phase 56-03 / R9 —
+//             was 200 pre-56-03; FULL CloudFolder per row,
 //             NOT the {client_folder_id, id} minimal pair that
 //             notes/batch-create returns — upstream FoldersService is
 //             explicit about returning the full shape)
@@ -83,7 +84,7 @@ export const buildFoldersBatchCreateRoutes = (deps: FoldersBatchCreateDeps) =>
           return results;
         });
 
-        return reply.code(200).send({ created });
+        return reply.code(201).send({ created });
       },
     });
   };
