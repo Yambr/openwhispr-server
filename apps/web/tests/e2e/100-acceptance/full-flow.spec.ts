@@ -57,31 +57,53 @@ test.describe("@phase54-acceptance @long-form — full flow (slim OOB)", () => {
     const uniq = `flow54+${Date.now()}@local.test`;
     const password = "correct-horse-battery-staple-9";
     const cursor = new Date();
-    void uniq;
-    void password;
-    void cursor;
-    void context;
-    void WEB_BASE;
-    void API_BASE;
-    void fetchVerificationLink;
 
     await test.step("step 1 — sign-up via UI", async () => {
-      expect(false).toBe(true);
+      await page.goto(`${WEB_BASE}/sign-up`);
+      await expect(page).toHaveURL(/\/sign-up$/);
+      await page.getByLabel(/^Name/i).fill("Flow54 User");
+      await page.getByLabel(/^Email/i).fill(uniq);
+      await page.getByLabel(/^Password/i).fill(password);
+      const confirm = page.getByLabel(/Confirm password/i);
+      if (await confirm.isVisible().catch(() => false)) {
+        await confirm.fill(password);
+      }
+      const terms = page.getByRole("checkbox", { name: /terms/i });
+      if (await terms.isVisible().catch(() => false)) {
+        await terms.check();
+      }
+      await page.getByRole("button", { name: /sign up|create account|register/i }).click();
+      await page.waitForLoadState("networkidle");
+      const checkEmailVisible = await page
+        .getByText(/check your email|verify|verification/i)
+        .first()
+        .isVisible()
+        .catch(() => false);
+      const onSignIn = page.url().endsWith("/sign-in") || page.url().includes("/sign-in?");
+      expect(checkEmailVisible || onSignIn).toBe(true);
       expectNoBrowserErrors(page);
     });
 
+    let verifyLink = "";
     await test.step("step 2 — verification email arrives in mailpit", async () => {
-      expect(false).toBe(true);
+      verifyLink = await fetchVerificationLink(uniq, { since: cursor, timeoutMs: 15_000 });
+      expect(verifyLink).toMatch(/token=/);
       expectNoBrowserErrors(page);
     });
 
     await test.step("step 3 — verify link returns 200/302/303", async () => {
-      expect(false).toBe(true);
+      const verifyRes = await context.request.get(verifyLink);
+      expect([200, 302, 303]).toContain(verifyRes.status());
       expectNoBrowserErrors(page);
     });
 
     await test.step("step 4 — sign-in via UI lands on /app", async () => {
-      expect(false).toBe(true);
+      await page.goto(`${WEB_BASE}/sign-in`);
+      await page.getByLabel(/^Email/i).fill(uniq);
+      await page.getByLabel(/^Password/i).fill(password);
+      await page.getByRole("button", { name: /sign in|log in/i }).click();
+      await page.waitForURL(/\/app(\/.*)?$/, { timeout: 15_000 });
+      await expect(page).toHaveURL(/\/app(\/.*)?$/);
       expectNoBrowserErrors(page);
     });
 
