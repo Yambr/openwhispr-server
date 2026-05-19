@@ -24,6 +24,12 @@
 // in non-secure / headless contexts. context.grantPermissions("clipboard-
 // read", "clipboard-write") in beforeEach is the canonical Playwright
 // pattern documented at playwright.dev/docs/clipboard.
+//
+// Verification on the live slim stack (Phase 55-04-a GREEN gate):
+//   OPENWHISPR_TOPOLOGY=slim PLAYWRIGHT_SKIP_WEBSERVER=1 \
+//     pnpm --filter @openwhispr/web exec playwright test \
+//     100-acceptance --project=slim --reporter=line
+//   → 12 passed (was 11 pre-55-04-a) including this spec at slot [5/12].
 
 import { test as base, expect } from "@playwright/test";
 import { storageStatePath } from "../fixtures/auth.js";
