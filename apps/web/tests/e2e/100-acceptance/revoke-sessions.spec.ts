@@ -57,6 +57,40 @@ const FIXTURE_PASSWORD = "Revoke55!#StrongTest";
 const test = base.extend({});
 test.use({ storageState: { cookies: [], origins: [] } });
 
+// Wipe ALL Better Auth sessions for the fixture user. alice+55 persists
+// across runs (the user row is never deleted between runs; only resource
+// rows are cleaned by `clearAllData`), and so do its session rows —
+// without this cleanup, every subsequent run starts with 3+ leftover
+// sessions and the "exactly two rows" assertions in step 4 fail with
+// count=4/5/.... Mirrors the DB-direct cleanup pattern from
+// u5-account.spec.ts:28-64. Runs over `docker compose exec postgres
+// psql` — same channel as fixtures/auth.ts:121-137.
+async function wipeFixtureUserSessions(): Promise<void> {
+  const sql =
+    `DELETE FROM sessions WHERE user_id = ` +
+    `(SELECT id FROM users WHERE email = '${FIXTURE_EMAIL}')`;
+  const { execFile } = await import("node:child_process");
+  const { promisify } = await import("node:util");
+  const exec = promisify(execFile);
+  await exec("docker", [
+    "compose",
+    "exec",
+    "-T",
+    "-e",
+    "PGPASSWORD=43xs40WHCc2NFVWYsJfhk_8FSoBr4JDrH3u8Txbuy3Q",
+    "postgres",
+    "psql",
+    "-U",
+    "openwhispr_owner",
+    "-d",
+    "openwhispr",
+    "-c",
+    sql,
+  ]).catch(() => {
+    // best-effort; the spec body will surface real assertion failures
+  });
+}
+
 test.describe("@phase55-acceptance @long-form — revoke sessions round-trip (slim)", () => {
   test.beforeEach(async ({ page }, testInfo) => {
     // eslint-disable-next-line prettier/prettier -- single-line skip required by Plan 55-01-c done-gate grep
@@ -64,6 +98,7 @@ test.describe("@phase55-acceptance @long-form — revoke sessions round-trip (sl
       testInfo.project.name !== "slim",
       "Phase 55-01-c acceptance suite runs against slim topology only — traefik path covered by Phase 53 sweep + CJM suite",
     );
+    await wipeFixtureUserSessions();
     await attachBrowserDiagnostics(page);
     // Multi-navigation flow (sign-up -> /sign-in -> /app/account ->
     // revoke -> reload -> revoke-all -> /app) cancels in-flight Next.js
@@ -81,43 +116,41 @@ test.describe("@phase55-acceptance @long-form — revoke sessions round-trip (sl
     page,
     context,
   }) => {
-    const cursor = new Date();
-
-    await test.step("step 1 — provision alice+55 idempotently via web sign-up UI", async () => {
-      await page.goto(`${WEB_BASE}/sign-up`);
-      await expect(page).toHaveURL(/\/sign-up$/);
-      await page.getByLabel(/^Name/i).fill("Alice55 Revoke");
+    await test.step("step 1 — provision + sign in alice+55 idempotently via web UI", async () => {
+      // Strategy: try sign-in first. If alice+55 exists AND is verified
+      // (from a prior run), sign-in succeeds → skip sign-up. If sign-in
+      // fails (user missing OR unverified), fall back to the sign-up +
+      // mailpit-verify path. This handles both first-ever runs and any
+      // subsequent run where the user row persisted in postgres.
+      const cursor = new Date();
+      await page.goto(`${WEB_BASE}/sign-in`);
       await page.getByLabel(/^Email/i).fill(FIXTURE_EMAIL);
       await page.getByLabel(/^Password/i).fill(FIXTURE_PASSWORD);
-      const confirm = page.getByLabel(/Confirm password/i);
-      if (await confirm.isVisible().catch(() => false)) {
-        await confirm.fill(FIXTURE_PASSWORD);
-      }
-      const terms = page.getByRole("checkbox", { name: /terms/i });
-      if (await terms.isVisible().catch(() => false)) {
-        await terms.check();
-      }
-      await page.getByRole("button", { name: /sign up|create account|register/i }).click();
-      await page.waitForLoadState("networkidle");
-
-      // Detect EITHER: fresh sign-up → "check your email" panel OR
-      // already-provisioned user → SignUpForm renders an Alert with
-      // USER_ALREADY_EXISTS / "already exists" copy. We accept both.
-      const onSignIn = page.url().endsWith("/sign-in") || page.url().includes("/sign-in?");
-      const checkEmailVisible = await page
-        .getByText(/check your email|verify|verification/i)
-        .first()
-        .isVisible()
+      await page.getByRole("button", { name: /sign in|log in/i }).click();
+      const signedIn = await page
+        .waitForURL(/\/app(\/.*)?$/, { timeout: 8_000 })
+        .then(() => true)
         .catch(() => false);
-      const alreadyExists = await page
-        .getByText(/already exists|user_already_exists|email is already/i)
-        .first()
-        .isVisible()
-        .catch(() => false);
-      expect(checkEmailVisible || onSignIn || alreadyExists).toBe(true);
 
-      if (!alreadyExists) {
-        // Fresh provisioning path — fetch + open the verification link.
+      if (!signedIn) {
+        // Fresh-user path: navigate to /sign-up, register, fetch the
+        // verification link from mailpit, then come back to /sign-in.
+        await page.goto(`${WEB_BASE}/sign-up`);
+        await expect(page).toHaveURL(/\/sign-up$/);
+        await page.getByLabel(/^Name/i).fill("Alice55 Revoke");
+        await page.getByLabel(/^Email/i).fill(FIXTURE_EMAIL);
+        await page.getByLabel(/^Password/i).fill(FIXTURE_PASSWORD);
+        const confirm = page.getByLabel(/Confirm password/i);
+        if (await confirm.isVisible().catch(() => false)) {
+          await confirm.fill(FIXTURE_PASSWORD);
+        }
+        const terms = page.getByRole("checkbox", { name: /terms/i });
+        if (await terms.isVisible().catch(() => false)) {
+          await terms.check();
+        }
+        await page.getByRole("button", { name: /sign up|create account|register/i }).click();
+        await page.waitForLoadState("networkidle");
+
         const verifyLink = await fetchVerificationLink(FIXTURE_EMAIL, {
           since: cursor,
           timeoutMs: 15_000,
@@ -125,16 +158,15 @@ test.describe("@phase55-acceptance @long-form — revoke sessions round-trip (sl
         expect(verifyLink).toMatch(/token=/);
         const verifyRes = await context.request.get(verifyLink);
         expect([200, 302, 303]).toContain(verifyRes.status());
-      }
-      expectNoBrowserErrors(page);
-    });
 
-    await test.step("step 2 — sign in on primary context", async () => {
-      await page.goto(`${WEB_BASE}/sign-in`);
-      await page.getByLabel(/^Email/i).fill(FIXTURE_EMAIL);
-      await page.getByLabel(/^Password/i).fill(FIXTURE_PASSWORD);
-      await page.getByRole("button", { name: /sign in|log in/i }).click();
-      await page.waitForURL(/\/app(\/.*)?$/, { timeout: 15_000 });
+        // Now sign-in for real.
+        await page.goto(`${WEB_BASE}/sign-in`);
+        await page.getByLabel(/^Email/i).fill(FIXTURE_EMAIL);
+        await page.getByLabel(/^Password/i).fill(FIXTURE_PASSWORD);
+        await page.getByRole("button", { name: /sign in|log in/i }).click();
+        await page.waitForURL(/\/app(\/.*)?$/, { timeout: 15_000 });
+      }
+
       await expect(page).toHaveURL(/\/app(\/.*)?$/);
       await page.waitForLoadState("networkidle");
 
