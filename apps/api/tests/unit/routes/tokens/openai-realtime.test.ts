@@ -360,6 +360,169 @@ describe("POST /api/openai-realtime-token", () => {
     }
   });
 
+  // Phase 56 / Plan 56-07 — R3 / D-2: language plumb-through.
+  //
+  // Per SERVER-REQUIREMENTS.md §R3 and Phase 56 CONTEXT D-2, the route
+  // accepts an optional `language` field (BCP-47 short tag, 2..8 chars)
+  // and maps it to OpenAI's session.input_audio_transcription.language
+  // on the upstream session.create payload. When absent, the upstream
+  // payload OMITS input_audio_transcription entirely so OpenAI's
+  // Whisper auto-detects. When upstream rejects an invalid language
+  // with 400, the server propagates the 400 to the client (does NOT
+  // mask as 503). For streams=2, BOTH parallel mints carry the same
+  // input_audio_transcription block.
+  //
+  // The whisper-default for input_audio_transcription.model is
+  // "whisper-1" (the established repo convention, see
+  // apps/api/src/lib/settings-resolver.ts:106).
+  describe("R3 / Plan 56-07 — language plumb-through", () => {
+    const WHISPER_DEFAULT = "whisper-1";
+
+    const captureReply =
+      (capturedRef: Array<Record<string, unknown>>, value: string) =>
+      (opts: { body?: unknown }) => {
+        const raw = typeof opts.body === "string" ? opts.body : String(opts.body ?? "");
+        try {
+          capturedRef.push(JSON.parse(raw) as Record<string, unknown>);
+        } catch {
+          capturedRef.push({});
+        }
+        return makeFixtureWithValue(value);
+      };
+
+    it("language='ru' maps to session.input_audio_transcription={model:'whisper-1', language:'ru'} on upstream", async () => {
+      const captured: Array<Record<string, unknown>> = [];
+      agent
+        .get(OPENAI_HOST)
+        .intercept({ path: "/v1/realtime/client_secrets", method: "POST" })
+        .reply(200, captureReply(captured, "ek_ru"));
+
+      const app = await buildTestApp({ bearerMap: { "Bearer ok-u1": "u1" } });
+      try {
+        const r = await app.inject({
+          method: "POST",
+          url: "/api/openai-realtime-token",
+          headers: { authorization: "Bearer ok-u1", "content-type": "application/json" },
+          payload: { language: "ru" },
+        });
+        expect(r.statusCode).toBe(200);
+        const body = r.json() as { clientSecret: string; clientSecrets: string[] };
+        expect(body.clientSecret).toBe("ek_ru");
+        expect(body.clientSecrets).toEqual(["ek_ru"]);
+        expect(captured).toHaveLength(1);
+        const session = captured[0].session as {
+          type: string;
+          model: string;
+          input_audio_transcription?: { model?: string; language?: string };
+        };
+        expect(session.type).toBe("realtime");
+        expect(session.input_audio_transcription).toEqual({
+          model: WHISPER_DEFAULT,
+          language: "ru",
+        });
+      } finally {
+        await app.close();
+      }
+    });
+
+    it("language absent OMITS session.input_audio_transcription on upstream (Whisper auto-detect)", async () => {
+      const captured: Array<Record<string, unknown>> = [];
+      agent
+        .get(OPENAI_HOST)
+        .intercept({ path: "/v1/realtime/client_secrets", method: "POST" })
+        .reply(200, captureReply(captured, "ek_auto"));
+
+      const app = await buildTestApp({ bearerMap: { "Bearer ok-u1": "u1" } });
+      try {
+        const r = await app.inject({
+          method: "POST",
+          url: "/api/openai-realtime-token",
+          headers: { authorization: "Bearer ok-u1", "content-type": "application/json" },
+          payload: {},
+        });
+        expect(r.statusCode).toBe(200);
+        expect(captured).toHaveLength(1);
+        const session = captured[0].session as Record<string, unknown>;
+        // Contract choice: omit the block entirely when language is absent.
+        expect(session).not.toHaveProperty("input_audio_transcription");
+      } finally {
+        await app.close();
+      }
+    });
+
+    it("upstream 400 (invalid language) propagates as client 400 — NOT masked as 503", async () => {
+      agent
+        .get(OPENAI_HOST)
+        .intercept({ path: "/v1/realtime/client_secrets", method: "POST" })
+        .reply(
+          400,
+          {
+            error: {
+              message: "Invalid language code 'xx-nonexistent'",
+              type: "invalid_request_error",
+            },
+          },
+          { headers: { "content-type": "application/json" } },
+        );
+
+      const app = await buildTestApp({ bearerMap: { "Bearer ok-u1": "u1" } });
+      try {
+        const r = await app.inject({
+          method: "POST",
+          url: "/api/openai-realtime-token",
+          headers: { authorization: "Bearer ok-u1", "content-type": "application/json" },
+          payload: { language: "xx-nonexistent" },
+        });
+        expect(r.statusCode).toBe(400);
+        // Body MUST be a 400, not a 503; do not assert exact envelope
+        // shape beyond the status code so the route can pick the most
+        // honest representation of the upstream rejection.
+        const text = r.body;
+        expect(text).not.toContain("token mint upstream error");
+        expect(text).not.toContain("malformed response");
+      } finally {
+        await app.close();
+      }
+    });
+
+    it("streams=2 + language fans the SAME input_audio_transcription block into BOTH parallel mints", async () => {
+      const captured: Array<Record<string, unknown>> = [];
+      agent
+        .get(OPENAI_HOST)
+        .intercept({ path: "/v1/realtime/client_secrets", method: "POST" })
+        .reply(200, captureReply(captured, "ek_aaa"));
+      agent
+        .get(OPENAI_HOST)
+        .intercept({ path: "/v1/realtime/client_secrets", method: "POST" })
+        .reply(200, captureReply(captured, "ek_bbb"));
+
+      const app = await buildTestApp({ bearerMap: { "Bearer ok-u1": "u1" } });
+      try {
+        const r = await app.inject({
+          method: "POST",
+          url: "/api/openai-realtime-token",
+          headers: { authorization: "Bearer ok-u1", "content-type": "application/json" },
+          payload: { streams: 2, language: "ru" },
+        });
+        expect(r.statusCode).toBe(200);
+        const body = r.json() as { clientSecret: string; clientSecrets: string[] };
+        expect(body.clientSecrets).toHaveLength(2);
+        expect(captured).toHaveLength(2);
+        for (const payload of captured) {
+          const session = payload.session as {
+            input_audio_transcription?: { model?: string; language?: string };
+          };
+          expect(session.input_audio_transcription).toEqual({
+            model: WHISPER_DEFAULT,
+            language: "ru",
+          });
+        }
+      } finally {
+        await app.close();
+      }
+    });
+  });
+
   it("returns 401 on missing bearer BEFORE consuming rate-limit bucket (T-04-04 mitigation)", async () => {
     const app = await buildTestApp({ bearerMap: { "Bearer ok-u1": "u1" } });
     try {

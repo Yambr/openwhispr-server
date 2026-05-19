@@ -109,6 +109,15 @@ test.describe("@phase55-acceptance @long-form — usage dashboard refresh + limi
       // so the visual signal is what UI-SPEC asks for, not just the text.
       const badge = limitReachedCard.getByText("Yes", { exact: true });
       await expect(badge).toHaveClass(/bg-destructive/);
+      // Cross-card invariant — the stubbed payload propagated to every KPI,
+      // not just limit-reached. wordsUsed=100 and plan=free prove the
+      // post-Refresh data replaced the RSC-prefetched values (which would
+      // have been wordsUsed=0 + plan=unlimited from the real /api/usage).
+      // This upgrades UC-USAGE-REFRESH-BUTTON from "request fired" to
+      // "request resolved + state updated" — the actual user-visible effect
+      // the Refresh button promises.
+      await expect(page.getByTestId("kpi-words-used")).toContainText("100");
+      await expect(page.getByTestId("kpi-plan")).toContainText("free");
       expectNoBrowserErrors(page);
     });
   });
