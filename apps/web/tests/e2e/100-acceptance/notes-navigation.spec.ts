@@ -27,7 +27,11 @@
 import { test as base, expect } from "@playwright/test";
 import { storageStatePath } from "../fixtures/auth.js";
 import { bindToContext } from "../fixtures/seed.js";
-import { attachBrowserDiagnostics, expectNoBrowserErrors } from "../support/browser-diagnostics.js";
+import {
+  allowBrowserErrors,
+  attachBrowserDiagnostics,
+  expectNoBrowserErrors,
+} from "../support/browser-diagnostics.js";
 
 const WEB_BASE = "http://localhost:3000";
 
@@ -41,12 +45,22 @@ const test = base.extend({
 });
 
 test.describe("@phase55-acceptance @long-form — notes list navigation (slim)", () => {
-  test.beforeEach(async ({ page }, testInfo) => {
+  test.beforeEach(async ({ page, context }, testInfo) => {
     test.skip(
       testInfo.project.name !== "slim",
       "Phase 55-09 acceptance suite runs against slim topology only",
     );
     await attachBrowserDiagnostics(page);
+    // Per-worker fixture user accumulates rows across re-runs; clear so the
+    // strict-mode `getByRole("link", { name: noteTitle })` resolves to exactly
+    // one match.
+    const seed = bindToContext(context);
+    await seed.clearAllData();
+    // /app/notes/search auto-fires POST /api/notes/search on mount via
+    // React Query; navigating away (step 3 `goto /app/notes`) aborts that
+    // in-flight POST with net::ERR_ABORTED. Framework-level expected
+    // behaviour — allowlist the specific aborted endpoint.
+    allowBrowserErrors(page, [/POST [^ ]+\/api\/notes\/search → FAILED: net::ERR_ABORTED/]);
   });
 
   test("notes navigation: search submit + row click + folder filter + All notes clear — zero browser errors", async ({
