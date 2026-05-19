@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 // Phase 55-05 — Long-form acceptance: /setup wizard happy path.
 //
-// Closes 6 of the 8 MISSING UCs from RESEARCH.md §"/setup" (SetupForm.tsx,
+// Closes all 8 MISSING UCs from RESEARCH.md §"/setup" (SetupForm.tsx,
 // 416 LOC, IntersectionObserver-driven 3-section single-page wizard):
 //
 //   UC-SETUP-WIZARD-IDENTITY-VISIBLE — identity section first on load
@@ -15,27 +15,17 @@
 //   UC-SETUP-WIZARD-SUBMIT-ENABLED   — submit button enables once the form
 //                                      is fully filled (the wizard relies
 //                                      on RHF + zod validation gating it)
+//   UC-SETUP-WIZARD-SUBMIT-201       — POST /api/setup/admin returns 201/200
+//   UC-SETUP-WIZARD-REDIRECT-ADMIN   — successful submit pushes /admin
 //   UC-SETUP-WIZARD-NO-BROWSER-ERR   — every step ends zero-error
 //
-// Two MISSING UCs are EXPLICITLY DEFERRED to Phase 55-05.b
-// (BUG-55-05-SETUP-ADMIN-ROUTE-UNWIRED in `.planning/deferred-items.md`):
-//
-//   UC-SETUP-WIZARD-SUBMIT-201 — POST /api/setup/admin returns 201/200
-//   UC-SETUP-WIZARD-REDIRECT-ADMIN — successful submit pushes /admin
-//
-// Root cause for the defer: `apps/api/src/index.ts:492-505` (the
-// production bootstrap call to `buildAllRoutes`) NEVER passes the
-// `setupAdmin` dep. The route handler exists at
-// `apps/api/src/routes/setup-admin.ts` but is conditionally registered
-// (apps/api/src/routes/index.ts:391) and the condition is always false
-// in the deployed api binary. Clicking submit in the wizard reliably
-// 404s and the UI surfaces "Setup failed" instead of redirecting. The
-// fix is a production-server-code change (wire the dep, including
-// `ownerPool` + `signUpEmail` plumbing) and warrants its own plan with
-// build-app integration tests — out of scope for Phase 55-05 per the
-// CLAUDE.md hard rule "NEVER edit production server code to make tests
-// pass". Once Phase 55-05.b lands the wiring, re-enable step 6 + step
-// 7 here to close the remaining 2 UCs.
+// Phase 55-05b closure: previously the spec stopped at the "submit
+// enabled" assertion because BUG-55-05-SETUP-ADMIN-ROUTE-UNWIRED
+// (apps/api/src/index.ts never threading `setupAdmin` into
+// `buildAllRoutes`) made every submit 404. The 55-05b GREEN commit
+// wires the dep through (production bootstrap constructs an owner pool
+// + `signUpEmail` adapter against the real Better Auth instance), so
+// step 6 now performs the full submit + /admin redirect flow.
 //
 // Slim-only by design (mirrors apps/web/tests/e2e/100-acceptance/
 // full-flow.spec.ts + revoke-sessions.spec.ts) — production-equivalent
@@ -191,20 +181,42 @@ test.describe("@phase55-acceptance @long-form — setup wizard happy path (slim)
       // .submit.label). SetupForm.tsx:406 disables it only while
       // `submitting === true`; at form-idle the button must be enabled
       // once all four fields have valid values per setupSchema.
-      //
-      // We DO NOT click submit here — see the file header comment:
-      // BUG-55-05-SETUP-ADMIN-ROUTE-UNWIRED is the open production-
-      // server bug that prevents the redirect from firing. Submitting
-      // would land the wizard on its `setErrorKind("generic")` branch
-      // and surface a UICONF-03 error envelope. The Phase 55-05.b plan
-      // will close the wiring; this step will be promoted to the full
-      // submit + waitForURL("/admin") flow at that time.
       const submit = page.getByRole("button", { name: /Create admin and finish setup/i });
       await expect(submit).toBeVisible();
       await expect(submit).toBeEnabled();
       // The "Setup failed" alert must NOT be present at form-idle —
       // confirms the wizard has not encountered a validation error so
       // far. (en-end-user.setup.error.generic.title.text.)
+      await expect(page.getByText(/Setup failed/i)).toHaveCount(0);
+      expectNoBrowserErrors(page);
+    });
+
+    await test.step("step 7 — click submit, observe 201/200 from /api/setup/admin, land on /admin", async () => {
+      // Phase 55-05b closure (BUG-55-05-SETUP-ADMIN-ROUTE-UNWIRED).
+      // The production bootstrap now wires `setupAdmin` into
+      // buildAllRoutes (apps/api/src/index.ts), so POST
+      // /api/setup/admin reaches the real handler at
+      // routes/setup-admin.ts.
+      //
+      // Idempotency contract (see file header): both 201 (fresh) and
+      // 200 (race-loser, alreadyCompleted:true) are success; we accept
+      // either. The deterministic admin email means subsequent runs
+      // hit the 200 branch — assertion is on the redirect, not the
+      // status-code shape.
+      const submit = page.getByRole("button", { name: /Create admin and finish setup/i });
+      const responsePromise = page.waitForResponse(
+        (res) => res.url().endsWith("/api/setup/admin") && res.request().method() === "POST",
+      );
+      await submit.click();
+      const response = await responsePromise;
+      expect(
+        [200, 201].includes(response.status()),
+        `expected 200 or 201 from /api/setup/admin, got ${response.status()}`,
+      ).toBe(true);
+      // SetupForm.tsx:194 — both 201 and 200 trigger router.push('/admin').
+      await page.waitForURL(/\/admin(\/|$)/, { timeout: 10_000 });
+      // Defensive: the "Setup failed" alert must NOT be present after
+      // the redirect lands.
       await expect(page.getByText(/Setup failed/i)).toHaveCount(0);
       expectNoBrowserErrors(page);
     });
