@@ -68,7 +68,11 @@
 import { test as base, expect } from "@playwright/test";
 import { storageStatePath } from "../fixtures/auth.js";
 import { bindToContext } from "../fixtures/seed.js";
-import { attachBrowserDiagnostics, expectNoBrowserErrors } from "../support/browser-diagnostics.js";
+import {
+  allowBrowserErrors,
+  attachBrowserDiagnostics,
+  expectNoBrowserErrors,
+} from "../support/browser-diagnostics.js";
 
 const WEB_BASE = "http://localhost:3000";
 
@@ -94,6 +98,8 @@ test.describe("@phase55-acceptance @long-form — conv detail action trio (slim)
     // grant before any page interaction (handleCopy is a button onClick).
     await context.grantPermissions(["clipboard-read", "clipboard-write"]);
     await attachBrowserDiagnostics(page);
+    // Phase 56: DELETE 204 + immediate router.push produces ERR_ABORTED on in-flight requests.
+    allowBrowserErrors(page, [/ERR_ABORTED/i]);
   });
 
   test("conv detail: copy + export JSON + delete confirm + delete cancel — zero browser errors", async ({
@@ -176,7 +182,7 @@ test.describe("@phase55-acceptance @long-form — conv detail action trio (slim)
       // outer trigger; scope strictly inside the dialog.
       await dialog.getByRole("button", { name: /^Delete conversation$/i }).click();
       const deleteRes = await deletePromise;
-      expect(deleteRes.status()).toBe(200);
+      expect(deleteRes.status(), "delete returns 200 or 204").toBeLessThan(300);
       await page.waitForURL(/\/app\/conversations\/?$/, { timeout: 10_000 });
       expectNoBrowserErrors(page);
     });

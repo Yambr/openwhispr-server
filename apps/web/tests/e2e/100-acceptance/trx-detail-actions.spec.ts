@@ -46,7 +46,11 @@
 import { test as base, expect } from "@playwright/test";
 import { storageStatePath } from "../fixtures/auth.js";
 import { bindToContext } from "../fixtures/seed.js";
-import { attachBrowserDiagnostics, expectNoBrowserErrors } from "../support/browser-diagnostics.js";
+import {
+  allowBrowserErrors,
+  attachBrowserDiagnostics,
+  expectNoBrowserErrors,
+} from "../support/browser-diagnostics.js";
 
 const WEB_BASE = "http://localhost:3000";
 
@@ -72,6 +76,8 @@ test.describe("@phase55-acceptance @long-form — trx detail action trio (slim)"
     // grant before any page interaction (handleCopy is a button onClick).
     await context.grantPermissions(["clipboard-read", "clipboard-write"]);
     await attachBrowserDiagnostics(page);
+    // Phase 56: DELETE 204 + immediate router.push produces ERR_ABORTED on in-flight requests.
+    allowBrowserErrors(page, [/ERR_ABORTED/i]);
   });
 
   test("trx detail: copy + export JSON + export MD + delete confirm + delete cancel — zero browser errors", async ({
@@ -170,7 +176,7 @@ test.describe("@phase55-acceptance @long-form — trx detail action trio (slim)"
       // strictly inside the dialog. This is the alertdialog-scoped one.
       await dialog.getByRole("button", { name: /^Delete$/i }).click();
       const deleteRes = await deletePromise;
-      expect(deleteRes.status()).toBe(200);
+      expect(deleteRes.status(), "delete returns 200 or 204").toBeLessThan(300);
       await page.waitForURL(/\/app\/transcriptions\/?$/, { timeout: 10_000 });
       expectNoBrowserErrors(page);
     });
