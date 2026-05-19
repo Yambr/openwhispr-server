@@ -45,9 +45,46 @@ export const CreateApiKeyOptionsSchema = z
   .strict();
 export type CreateApiKeyOptions = z.infer<typeof CreateApiKeyOptionsSchema>;
 
-/** Generic V1Response envelope per D-28: `{ data: T }`. */
-export const V1Response = <T extends z.ZodTypeAny>(inner: T) => z.object({ data: inner });
-export type V1Response<T> = { data: T };
+/**
+ * Phase 56-06 / D-3 — V1Response envelope flipped from the legacy
+ * `{ data: T }` literal to a discriminated union of success/failure
+ * variants.
+ *
+ *   success: { success: true, data: T }
+ *   failure: { success: false, error: string, code?: string }
+ *
+ * Both variants are `.strict()` so callers cannot smuggle extra keys
+ * (a `data` field on a failure body would be a contract violation
+ * because it implies success). The HTTP status code stays truthful —
+ * the envelope duplicates the success bit, it does NOT mask it
+ * (i.e. failure envelopes NEVER come back with HTTP 200).
+ *
+ * Mirrors the spec in `/Users/nick/openwhispr/.planning/phases/
+ * 08-client-server-audit/SERVER-REQUIREMENTS.md` §R12. The discriminator
+ * is `success` (literal boolean) so Zod's discriminatedUnion produces
+ * a tight error message on legacy payloads (`{ data: T }` with no
+ * `success` flag is rejected — the prior `V1Response<T>` contract).
+ */
+export const V1Success = <T extends z.ZodTypeAny>(inner: T) =>
+  z
+    .object({
+      success: z.literal(true),
+      data: inner,
+    })
+    .strict();
+
+export const V1Failure = z
+  .object({
+    success: z.literal(false),
+    error: z.string().min(1),
+    code: z.string().min(1).optional(),
+  })
+  .strict();
+export type V1Failure = z.infer<typeof V1Failure>;
+
+export const V1Response = <T extends z.ZodTypeAny>(inner: T) =>
+  z.discriminatedUnion("success", [V1Success(inner), V1Failure]);
+export type V1Response<T> = { success: true; data: T } | V1Failure;
 
 export const V1ListApiKeysResponseSchema = V1Response(z.object({ keys: z.array(ApiKeySchema) }));
 export type V1ListApiKeysResponse = z.infer<typeof V1ListApiKeysResponseSchema>;

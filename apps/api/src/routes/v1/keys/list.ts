@@ -22,6 +22,7 @@ import { type ExecutableTx, type TransactionalDb, withTenant } from "@openwhispr
 import { sql } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
 import { AuthError } from "../../../errors.js";
+import { withV1Envelope } from "./v1-envelope.js";
 
 export interface KeysListDeps {
   db: TransactionalDb<ExecutableTx>;
@@ -72,7 +73,7 @@ export function rowToApiKey(row: ApiKeyRow): ApiKeyWire {
 }
 
 export const buildKeysListRoutes = (deps: KeysListDeps) =>
-  async function keysListRoutes(app: FastifyInstance): Promise<void> {
+  withV1Envelope(async function keysListRoutes(app: FastifyInstance): Promise<void> {
     app.route({
       method: "GET",
       url: "/api/v1/keys/list",
@@ -98,10 +99,10 @@ export const buildKeysListRoutes = (deps: KeysListDeps) =>
           return result.rows ?? [];
         });
 
-        // V1Response envelope per D-28: { data: { keys: ApiKey[] } }.
-        return reply.code(200).send({ data: { keys: rows.map(rowToApiKey) } });
+        // Phase 56-06 D-3 — V1Response success envelope.
+        return reply.code(200).send({ success: true, data: { keys: rows.map(rowToApiKey) } });
       },
     });
-  };
+  });
 
 export default buildKeysListRoutes;
