@@ -36,7 +36,7 @@
 
 import { expect, test } from "@playwright/test";
 import {
-  allowBrowserErrors,
+  allowDeliberateRouteStub,
   attachBrowserDiagnostics,
   expectNoBrowserErrors,
 } from "../support/browser-diagnostics.js";
@@ -96,7 +96,13 @@ test.describe("@phase55-acceptance @long-form — auth cross-link navigation (sl
     // channel so expectNoBrowserErrors below remains meaningful for any
     // *other* unexpected error.
     // ────────────────────────────────────────────────────────────────
-    allowBrowserErrors(page, [/verify-email.*4\d\d/i]);
+    // The captured diagnostic for the deliberate 401 lives in two
+    // shapes — `[network/error] GET … → 401` and `[console/error]
+    // Failed to load resource: … 401` — with the URL parked in the
+    // entry's `detail` field, not the message body. allowDeliberateRouteStub
+    // seeds both shapes so expectNoBrowserErrors below stays meaningful
+    // for any OTHER unexpected error.
+    allowDeliberateRouteStub(page, /\/api\/auth\/verify-email/, 401);
 
     await page.goto(`${WEB_BASE}/verify-email?token=bad-token-spec-55-11`);
     await expect(page.getByRole("heading", { name: /Verify your email/i })).toBeVisible();
