@@ -30,9 +30,12 @@ export default defineConfig({
     environment: "happy-dom",
     setupFiles: ["./vitest.setup.ts"],
     globals: false,
-    // Playwright owns tests/e2e/**; vitest must not load those files (their
-    // `test.describe` is the @playwright/test runner, not the vitest one).
-    exclude: ["**/node_modules/**", "**/dist/**", "**/.next/**", "tests/e2e/**"],
+    // Playwright owns tests/e2e/**/*.spec.ts; vitest must not load those
+    // files (their `test.describe` is the @playwright/test runner, not the
+    // vitest one). Unit tests for the playwright support helpers live in
+    // `tests/e2e/**/__tests__/*.test.ts` (Phase 54 / Plan 54-01) — they
+    // mock the HTTP boundary and run under vitest.
+    exclude: ["**/node_modules/**", "**/dist/**", "**/.next/**", "tests/e2e/**/*.spec.ts"],
     coverage: {
       provider: "v8",
       reporter: ["text", "lcov"],
