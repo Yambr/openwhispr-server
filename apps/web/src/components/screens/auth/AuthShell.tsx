@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 "use client";
 
-import Link from "next/link";
 import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 
@@ -66,15 +65,30 @@ export function AuthShell({
         <div className="relative z-10 flex items-center gap-3 text-muted-foreground text-xs">
           <span className="font-mono">v1.0.4</span>
           <span aria-hidden="true">·</span>
-          <Link href="#" className="hover:text-foreground">
+          <a
+            href="https://github.com/openwhispr/openwhispr-server/actions"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="hover:text-foreground"
+          >
             {t("common.auth.shell.footer.status.text")}
-          </Link>
-          <Link href="#" className="hover:text-foreground">
+          </a>
+          <a
+            href="https://github.com/openwhispr/openwhispr-server#readme"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="hover:text-foreground"
+          >
             {t("common.auth.shell.footer.docs.text")}
-          </Link>
-          <Link href="#" className="hover:text-foreground">
+          </a>
+          <a
+            href="https://github.com/openwhispr/openwhispr-server"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="hover:text-foreground"
+          >
             {t("common.auth.shell.footer.github.text")}
-          </Link>
+          </a>
         </div>
       </aside>
       <div className="flex items-center justify-center p-6 lg:p-10">
