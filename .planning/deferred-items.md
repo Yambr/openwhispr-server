@@ -7,35 +7,7 @@ are archived under `.planning/backlog-archive/`.
 the entry rather than marking it closed — git history preserves the
 record. Keep this file under ~200 lines.
 
-**Bug count: 1.**
-
----
-
-## BUG-55-18-LEGACY-ADMIN-AUTH-ANTIPATTERN — remove Traefik basic-auth + edge-auth gates
-
-**Surfaced by:** user feedback on 2026-05-19 after Phase 55-18 landed. Quote: "Все должно работать из без Траефика че за антипаттернты назуярил".
-
-**Antipatterns currently in the codebase:**
-
-1. `apps/web/tests/e2e/a2-observability.spec.ts:36` + `a3-config.spec.ts:21` — Playwright `httpCredentials: { username: ADMIN_BASIC_USER, password: ADMIN_BASIC_PASS }` for basic-auth challenge.
-2. `apps/web/tests/e2e/00-infra.spec.ts:9` — references `admin:testpw123` basic auth in a smoke comment.
-3. `ADMIN_BASIC_AUTH_USERS` env (compose warning when not set).
-4. `ADMIN_EDGE_AUTH_ENFORCED` env read in `apps/web/src/app/(admin)/layout.tsx`.
-5. Any Traefik `admin-basicauth` middleware in `compose/traefik/*`.
-
-**Correct model (memory `feedback_no_traefik_antipatterns`):** self-host must work WITHOUT Traefik. Admin = regular user with `users.role='admin'`. Auth = Better Auth cookies. No basic-auth challenge, no edge gates, no ingress-level auth coupling.
-
-**Why it persists:** Phase 13.x ingress work introduced Traefik basic-auth as a defense-in-depth layer for production. Tests inherited the pattern. Slim topology was added later as an OSS-friendly fallback but the admin-flow specs were never migrated off basic-auth.
-
-**Fix plan (separate phase 57+):**
-1. Drop `httpCredentials` from `a2-observability` + `a3-config` specs; sign in as a regular user with `users.role='admin'` (mirror the Phase 55-18 pattern using `storageStatePath(workerIndex)` with the existing fixture admin-role grant).
-2. Remove `ADMIN_EDGE_AUTH_ENFORCED` branch from `(admin)/layout.tsx` — role check via `getServerSession` IS the gate. Defense-in-depth is fine but ENV flag should not gate primary access.
-3. Drop `ADMIN_BASIC_AUTH_USERS` from compose. If Traefik basic-auth middleware still exists, remove it.
-4. Update docs / SELF_HOSTING.md / BACKEND_SPEC.md if they reference basic-auth.
-
-**Phase 55-18's `apps/web/tests/e2e/100-acceptance/admin-pages.spec.ts` already follows the correct model** — it does NOT use httpCredentials, only the role-on-fixture pattern. It serves as the reference for the migration.
-
-**Owner:** unassigned. Surface to Phase 57+ ingress-decoupling work.
+**Bug count: 0.**
 
 ---
 
