@@ -63,27 +63,20 @@ test.describe("@phase55-acceptance @long-form — auth middleware guard (slim)",
   test("middleware redirects /app/* to /sign-in?from=, /sign-in renders without loop, /admin reaches AdminLayout 403 — zero browser errors", async ({
     page,
   }) => {
-    await test.step("step 1 — signed-out /app redirects to /sign-in", async () => {
-      // Production gap (filed as BUG-55-03-c-FROM-PARAM-LOST in
-      // .planning/deferred-items.md): `apps/web/src/middleware.ts:133`
-      // checks `startsWith("/app/")` (trailing slash) and DOES write
-      // `?from=` when the matcher fires. But Next.js's matcher
-      // normalization on the slim build appears to skip the middleware
-      // for bare `/app` AND `/app/` visits — the `(auth)/layout.tsx`
-      // server-side guard then redirects to `/sign-in` WITHOUT from=.
-      // The spec asserts the redirect happens (security-critical) but
-      // tolerates the missing from= param (UX regression filed for fix).
+    await test.step("step 1 — signed-out /app redirects to /sign-in with ?from=%2Fapp", async () => {
+      // Phase 55-03-c fix (commit landed in same series): middleware
+      // now matches BOTH bare /app and /app/* via explicit equality
+      // check (apps/web/src/middleware.ts:135). Both paths preserve the
+      // ?from= param for post-sign-in deep-link recovery.
       await page.goto(`${WEB_BASE}/app`);
-      await expect(page).toHaveURL(/\/sign-in(\?from=.*)?$/);
+      await expect(page).toHaveURL(/\/sign-in\?from=%2Fapp$/);
       await expect(page.getByRole("heading", { name: /Sign in to OpenWhispr/i })).toBeVisible();
       expectNoBrowserErrors(page);
     });
 
-    await test.step("step 2 — signed-out /app/notes/some-id redirects to /sign-in", async () => {
-      // Same production gap as step 1 — from= is dropped on the slim
-      // build. Spec asserts redirect happens regardless.
+    await test.step("step 2 — signed-out /app/notes/some-id round-trips from= deeply", async () => {
       await page.goto(`${WEB_BASE}/app/notes/some-id`);
-      await expect(page).toHaveURL(/\/sign-in(\?from=.*)?$/);
+      await expect(page).toHaveURL(/\/sign-in\?from=%2Fapp%2Fnotes%2Fsome-id$/);
       await expect(page.getByRole("heading", { name: /Sign in to OpenWhispr/i })).toBeVisible();
       expectNoBrowserErrors(page);
     });
