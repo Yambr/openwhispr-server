@@ -68,6 +68,15 @@ services:
       OIDC_ISSUER_URL: ""
       OIDC_CLIENT_ID: ""
       OIDC_CLIENT_SECRET: ""
+      # Phase 55 / Plan 55-05 — expose the `/api/_test/*` test seam in
+      # dev-tools so the long-form acceptance e2e specs (setup-wizard
+      # happy-path et al.) can hermetically reset stateful singletons
+      # (setup_state, etc.) between runs. Production deployments NEVER
+      # apply the dev-tools overlay, so the production gate stays
+      # closed (base docker-compose.yml defaults the env to "false"
+      # and registerRoutes() only registers the test-only plugin when
+      # this env equals the literal string "true").
+      OPENWHISPR_TEST_ROUTES: "true"
   worker:
     environment:
       SMTP_PORT: "1025"
