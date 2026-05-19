@@ -3,8 +3,15 @@
 // tests against real Postgres + RLS.
 //
 // Covers: batch-delete happy path (returns deleted: string[]), 501-item
-// rejection, already-deleted rows excluded, cross-tenant invisibility,
-// empty ids array.
+// rejection, already-deleted rows cause rollback (atomic semantics),
+// cross-tenant invisibility causes rollback, empty ids array.
+//
+// Phase 56 / Plan 05 (R11) — batch-delete is now ATOMIC (all-or-none).
+// Per SERVER-REQUIREMENTS.md §R11 and Phase 56 CONTEXT.md atomicity
+// decision: if any id in the batch fails to match (not found, already-
+// deleted, RLS-hidden), the WHOLE batch rolls back and the route returns
+// 404 TRANSCRIPTION_NOT_FOUND. Previously the route silently returned
+// partial-success — that semantic is removed.
 
 import type { FastifyInstance } from "fastify";
 import type { Pool } from "pg";
@@ -105,7 +112,10 @@ describe("integration — transcriptions batch-delete (real Postgres + RLS)", ()
     expect(listBody.transcriptions).toHaveLength(0);
   });
 
-  it("batch-delete — already-deleted rows excluded from deleted[]", async () => {
+  it("batch-delete — atomic: any already-deleted id → 404 + WHOLE batch rolled back", async () => {
+    // Phase 56 / Plan 05 (R11) atomic semantics — if id1 is already
+    // soft-deleted, the batch UPDATE matches only 1 of 2 ids → the
+    // transaction MUST roll back and the route MUST 404. id2 stays live.
     const id1 = await createTx(appA, "ad-1");
     const id2 = await createTx(appA, "ad-2");
     // Soft-delete id1 first.
@@ -122,10 +132,18 @@ describe("integration — transcriptions batch-delete (real Postgres + RLS)", ()
       headers: { "content-type": "application/json" },
       payload: JSON.stringify({ ids: [id1, id2] }),
     });
-    expect(res.statusCode).toBe(200);
-    const body = res.json() as { deleted: string[] };
-    // id1 was already deleted → NOT in the returned array; only id2.
-    expect(body.deleted).toEqual([id2]);
+    expect(res.statusCode).toBe(404);
+    const body = res.json() as { error: string };
+    // Envelope error is the i18n-localized message for the
+    // TRANSCRIPTION_NOT_FOUND code → "Transcription not found" (en).
+    expect(body.error).toMatch(/transcription not found/i);
+
+    // ATOMICITY — id2 was NOT soft-deleted (whole tx rolled back).
+    const { rows } = await pool.query<{ deleted_at: Date | null }>(
+      `SELECT deleted_at FROM transcriptions WHERE id = $1`,
+      [id2],
+    );
+    expect(rows[0]?.deleted_at).toBeNull();
   });
 
   it("batch-delete — 501 ids → 400 envelope (D-30)", async () => {
@@ -144,16 +162,14 @@ describe("integration — transcriptions batch-delete (real Postgres + RLS)", ()
     expect(body.error).toMatch(/500/);
   });
 
-  it("batch-delete — 500 ids boundary success (within cap)", async () => {
-    // Seed 3 real rows; bulk request with 500 IDs (mostly fake UUIDs).
-    const id1 = await createTx(appA, "bd500-1");
-    const id2 = await createTx(appA, "bd500-2");
-    const id3 = await createTx(appA, "bd500-3");
-    const fakes = Array.from(
-      { length: 497 },
-      (_, i) => `${String(i + 1).padStart(8, "0")}-9999-4999-8999-999999999999`,
-    );
-    const ids = [id1, id2, id3, ...fakes];
+  it("batch-delete — 500 ids boundary, all-real: full success at cap", async () => {
+    // Phase 56 / Plan 05 (R11) atomic semantics — boundary success requires
+    // every id in the batch to match a live row. Seed 500 real rows and
+    // delete them as a single atomic batch.
+    const ids: string[] = [];
+    for (let i = 0; i < 500; i++) {
+      ids.push(await createTx(appA, `bd500-${i}`));
+    }
     expect(ids).toHaveLength(500);
 
     const res = await appA.inject({
@@ -164,8 +180,41 @@ describe("integration — transcriptions batch-delete (real Postgres + RLS)", ()
     });
     expect(res.statusCode).toBe(200);
     const body = res.json() as { deleted: string[] };
-    // Only the 3 real ones get reported.
-    expect(new Set(body.deleted)).toEqual(new Set([id1, id2, id3]));
+    expect(new Set(body.deleted)).toEqual(new Set(ids));
+  });
+
+  it("batch-delete — atomic: mix of real + fake UUIDs → 404 + WHOLE batch rolled back", async () => {
+    // Phase 56 / Plan 05 (R11) atomic semantics — 3 real + 497 fakes does
+    // NOT partially-succeed. Whole tx rolls back; real rows stay live.
+    const id1 = await createTx(appA, "bdmix-1");
+    const id2 = await createTx(appA, "bdmix-2");
+    const id3 = await createTx(appA, "bdmix-3");
+    const fakes = Array.from(
+      { length: 497 },
+      (_, i) => `${String(i + 1).padStart(8, "0")}-9999-4999-8999-999999999999`,
+    );
+    const ids = [id1, id2, id3, ...fakes];
+
+    const res = await appA.inject({
+      method: "POST",
+      url: "/api/transcriptions/batch-delete",
+      headers: { "content-type": "application/json" },
+      payload: JSON.stringify({ ids }),
+    });
+    expect(res.statusCode).toBe(404);
+    const body = res.json() as { error: string };
+    // Envelope error is the i18n-localized message for the
+    // TRANSCRIPTION_NOT_FOUND code → "Transcription not found" (en).
+    expect(body.error).toMatch(/transcription not found/i);
+
+    // All 3 real rows STILL live (atomicity).
+    const { rows } = await pool.query<{ id: string; deleted_at: Date | null }>(
+      `SELECT id, deleted_at FROM transcriptions WHERE id = ANY($1::uuid[])`,
+      [[id1, id2, id3]],
+    );
+    for (const row of rows) {
+      expect(row.deleted_at).toBeNull();
+    }
   });
 
   it("batch-delete — empty ids array returns { deleted: [] }", async () => {
@@ -180,7 +229,10 @@ describe("integration — transcriptions batch-delete (real Postgres + RLS)", ()
     expect(body.deleted).toEqual([]);
   });
 
-  it("RLS — tenant B's batch-delete on tenant A's ids → empty deleted[]", async () => {
+  it("RLS — tenant B's batch-delete on tenant A's ids → 404 + A's rows live (atomic)", async () => {
+    // Phase 56 / Plan 05 (R11) atomic semantics — RLS hides A's rows from
+    // B's UPDATE → matched 0 rows for B → atomic rollback → 404. A's rows
+    // remain live (already live; this confirms no leakage either way).
     const id1 = await createTx(appA, "rls-1");
     const id2 = await createTx(appA, "rls-2");
 
@@ -190,10 +242,9 @@ describe("integration — transcriptions batch-delete (real Postgres + RLS)", ()
       headers: { "content-type": "application/json" },
       payload: JSON.stringify({ ids: [id1, id2] }),
     });
-    expect(bDel.statusCode).toBe(200);
-    const bBody = bDel.json() as { deleted: string[] };
-    // RLS hides A's rows from B's UPDATE — nothing soft-deleted.
-    expect(bBody.deleted).toEqual([]);
+    expect(bDel.statusCode).toBe(404);
+    const bBody = bDel.json() as { error: string };
+    expect(bBody.error).toMatch(/transcription not found/i);
 
     // A's rows still live, undeleted.
     const aList = await appA.inject({

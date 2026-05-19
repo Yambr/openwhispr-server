@@ -5,7 +5,10 @@
 // Wire shape (matches
 // ~/openwhispr/src/services/TranscriptionsService.ts.batchCreate):
 //   Request:  { transcriptions: TranscriptionInput[] } (length 1..500)
-//   Success:  200 { created: CloudTranscription[] }
+//   Success:  201 { created: CloudTranscription[] } — Phase 56 Plan 05
+//             (R11) flipped from 200 to 201 per SERVER-REQUIREMENTS.md
+//             §R11 (standard REST POST-creates-resource — applies to
+//             batch wrapper too).
 //   400:      batch size exceeds 500 (D-30)
 //
 // Each row goes through createOrReturnExisting() — same idempotency
@@ -89,7 +92,7 @@ export const buildTranscriptionsBatchCreateRoutes = (deps: TranscriptionsBatchCr
           return results;
         });
 
-        return reply.code(200).send({ created });
+        return reply.code(201).send({ created });
       },
     });
   };

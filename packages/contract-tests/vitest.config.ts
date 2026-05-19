@@ -14,7 +14,12 @@ import { defineConfig } from "vitest/config";
 export default defineConfig({
   test: {
     // Phase 15 / Plan 02 (STRUCT-01) — tests live under tests/unit/ post-move.
-    include: ["tests/**/*.test.ts"],
+    // Phase 56 / Plan 05 (R11) — additionally pick up CONTRACT-01 wire-
+    // shape test colocated under src/ per the plan's explicit
+    // src/transcriptions-shape.test.ts deliverable path. Additive change
+    // (no existing src/**/*.test.ts files), no regression on the historic
+    // tests/ surface.
+    include: ["tests/**/*.test.ts", "src/**/*.test.ts"],
     reporters: ["dot"],
     testTimeout: 60_000,
     hookTimeout: 60_000,
