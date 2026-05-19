@@ -67,6 +67,19 @@ export interface AuthInstance {
   readonly options: {
     plugins?: ReadonlyArray<{ id: string }>;
   };
+  /**
+   * Phase 55-05b / BUG-55-05 — Better Auth's typed-endpoint surface.
+   * Narrowed here to the single method the production setup-admin
+   * wiring calls; widening this further is reserved for whichever
+   * downstream consumer needs the extra shape so the public type
+   * stays a leaf rather than re-exporting Better Auth's entire
+   * generated API.
+   */
+  readonly api: {
+    signUpEmail: (call: {
+      body: { email: string; password: string; name?: string };
+    }) => Promise<{ user?: { id?: string; email?: string } }>;
+  };
 }
 
 /**

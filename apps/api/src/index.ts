@@ -139,6 +139,7 @@ import { buildDebugFetchRoutes } from "./routes/__test/fetch.js";
 import type { MintBearer } from "./routes/auth-callback.js";
 import { buildAllRoutes } from "./routes/index.js";
 import { markStartupComplete, registerProbes } from "./routes/probes.js";
+import type { SetupAdminRenameTenant, SetupAdminSignUpEmail } from "./routes/setup-admin.js";
 
 /** Signature of the recordPreviousToken library function (for tests). */
 type RecordPreviousToken = typeof recordPreviousTokenLib;
@@ -247,6 +248,28 @@ export interface BuildAppOptions {
    * probe cadence). Tests inject fakes.
    */
   migrationsCheck?: () => Promise<boolean>;
+  /**
+   * Phase 55-05b / BUG-55-05-SETUP-ADMIN-ROUTE-UNWIRED — production
+   * wiring for the first-run admin bootstrap route. When supplied,
+   * `buildAllRoutes` registers POST /api/setup/admin (via the
+   * `deps.setupAdmin` branch in routes/index.ts); when omitted, the
+   * route is NOT registered and the wizard's submit step 404s. The
+   * entrypoint constructs:
+   *   - `ownerPool`: a `pg.Pool` bound to `DATABASE_URL_OWNER` (reuses
+   *     the probe pool with `max≥2` so the singleton UPSERT + UPDATE
+   *     do not starve the kubelet migrations probe).
+   *   - `signUpEmail`: a thin adapter wrapping `auth.api.signUpEmail`
+   *     that converts Better Auth's throw-on-error contract into the
+   *     `{data, error}` envelope the route handler expects.
+   *   - `renameTenant` (optional): defaults to the raw-SQL impl inside
+   *     routes/setup-admin.ts; tests override to exercise the
+   *     warnings-array branch.
+   */
+  setupAdmin?: {
+    ownerPool: import("pg").Pool;
+    signUpEmail: SetupAdminSignUpEmail;
+    renameTenant?: SetupAdminRenameTenant;
+  };
 }
 
 export const buildApp = async (opts: BuildAppOptions = {}): Promise<FastifyInstance> => {
@@ -502,6 +525,10 @@ export const buildApp = async (opts: BuildAppOptions = {}): Promise<FastifyInsta
       // dropped the route in every prod boot.
       ...(opts.redis ? { redis: opts.redis } : {}),
       ...(opts.mockDiarization !== undefined ? { mockDiarization: opts.mockDiarization } : {}),
+      // Phase 55-05b / BUG-55-05 — without this thread-through,
+      // routes/index.ts gates POST /api/setup/admin on
+      // `deps.setupAdmin` being truthy and silently drops the route.
+      ...(opts.setupAdmin ? { setupAdmin: opts.setupAdmin } : {}),
     });
     for (const plugin of routes) {
       await app.register(plugin);
@@ -606,7 +633,14 @@ if (import.meta.url === `file://${process.argv[1]}`) {
       );
     }
   }
-  const auth = buildAuth(enqueueEmail ? { db, enqueueEmail } : { db }) as unknown as AuthLike;
+  // Phase 55-05b — capture the raw Better Auth instance separately so
+  // the setup-admin signUpEmail adapter below can call
+  // `auth.api.signUpEmail` without re-widening the AuthLike type (which
+  // would either force a fresh `as unknown as` cast — LOCKER-02 cap —
+  // or pollute the AuthLike interface with a signUpEmail field every
+  // existing fake would need to stub).
+  const authRaw = buildAuth(enqueueEmail ? { db, enqueueEmail } : { db });
+  const auth = authRaw as unknown as AuthLike;
   // Phase 03 / Plan 04: construct the shared LiteLLM client when
   // LITELLM_MASTER_KEY is configured. Missing key -> log a one-line
   // warning and skip; transcribe/reason/diarization/realtime routes are
@@ -728,7 +762,13 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   // falsely reports "ready" during a DB hiccup.
   const { Pool: PgPool } = await import("pg");
   const ownerUrl = process.env.DATABASE_URL_OWNER;
-  const probeOwnerPool = ownerUrl ? new PgPool({ connectionString: ownerUrl, max: 1 }) : undefined;
+  // Phase 55-05b / BUG-55-05 — bumped max from 1 → 4 so the singleton
+  // POST /api/setup/admin UPSERT + UPDATE path (one connection each)
+  // does not starve the kubelet `migrations_completed` probe running
+  // on the same pool. Setup-admin fires once per instance lifetime;
+  // the upper bound is set defensively for the worst-case interleave
+  // (probe + retry + admin UPSERT + tenant UPDATE).
+  const probeOwnerPool = ownerUrl ? new PgPool({ connectionString: ownerUrl, max: 4 }) : undefined;
   buildOpts.migrationsCheck = async (): Promise<boolean> => {
     if (!probeOwnerPool) return false;
     try {
@@ -743,6 +783,70 @@ if (import.meta.url === `file://${process.argv[1]}`) {
       return false;
     }
   };
+  // Phase 55-05b / BUG-55-05-SETUP-ADMIN-ROUTE-UNWIRED — wire the
+  // first-run admin bootstrap route. Without this block, the wizard's
+  // submit step POSTs to /api/setup/admin and gets a 404 envelope
+  // because routes/index.ts only registers the handler when
+  // `deps.setupAdmin` is supplied.
+  //
+  // Adapter: Better Auth's `auth.api.signUpEmail` throws an APIError
+  // on failure and returns the user/session directly on success. The
+  // route handler expects the `{data, error}` envelope shape
+  // (SetupAdminSignUpResult); we convert the throw-on-error contract
+  // into that envelope here so the handler's compensating-rollback
+  // branch (UPDATE setup_state SET status='pending') fires correctly.
+  //
+  // Pool reuse: probeOwnerPool already runs as DATABASE_URL_OWNER (the
+  // RLS-bypass role required for the raw-SQL writes against
+  // users.role and tenants.name); see the inline rationale on the
+  // probeOwnerPool definition above for the max:4 sizing.
+  if (probeOwnerPool && auth) {
+    const setupAdminSignUpEmail: SetupAdminSignUpEmail = async (call) => {
+      try {
+        // Better Auth's `signUpEmail` endpoint accepts `{body}` and
+        // returns `{user, token, ...}` on success / throws APIError on
+        // failure. We pin only the fields the route handler reads
+        // (`user.id`, `user.email`) via a narrow return-shape type;
+        // the `as` cast on the call result is single-step (NOT `as
+        // unknown as`) because authRaw retains its full inferred type.
+        const result = await authRaw.api.signUpEmail({ body: call.body });
+        const user = (result as { user?: { id?: string; email?: string } }).user;
+        if (!user?.id || !user.email) {
+          return {
+            data: null,
+            error: { code: "SIGN_UP_NO_USER", message: "sign-up returned no user" },
+          };
+        }
+        return {
+          data: { user: { id: user.id, email: user.email } },
+          error: null,
+        };
+      } catch (err) {
+        const e = err as { body?: { code?: string; message?: string }; message?: string };
+        const code = e.body?.code;
+        return {
+          data: null,
+          error: {
+            ...(code ? { code } : {}),
+            message: e.body?.message ?? e.message ?? "admin sign-up failed",
+          },
+        };
+      }
+    };
+    buildOpts.setupAdmin = {
+      ownerPool: probeOwnerPool,
+      signUpEmail: setupAdminSignUpEmail,
+    };
+  } else {
+    bootLog.warn(
+      {
+        event: "setup_admin.wiring.skipped",
+        has_owner_pool: Boolean(probeOwnerPool),
+        has_auth: Boolean(auth),
+      },
+      "POST /api/setup/admin will NOT be registered (DATABASE_URL_OWNER unset or auth not constructed)",
+    );
+  }
   const app = await buildApp(buildOpts);
   const port = Number(process.env.PORT ?? 3000);
   app.listen({ port, host: "0.0.0.0" }).catch((err) => {
