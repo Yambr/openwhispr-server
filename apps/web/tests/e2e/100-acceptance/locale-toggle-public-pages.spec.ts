@@ -49,7 +49,11 @@
 // bound is small enough to not impact suite duration materially.
 
 import { test as base, expect } from "@playwright/test";
-import { attachBrowserDiagnostics, expectNoBrowserErrors } from "../support/browser-diagnostics.js";
+import {
+  allowBrowserErrors,
+  attachBrowserDiagnostics,
+  expectNoBrowserErrors,
+} from "../support/browser-diagnostics.js";
 
 const WEB_BASE = "http://localhost:3000";
 
@@ -98,6 +102,9 @@ test.describe("@phase55-acceptance @long-form — locale toggle on public pages 
       "Phase 55-03-a acceptance suite runs against slim topology only — traefik path covered by Phase 53 sweep + CJM suite",
     );
     await attachBrowserDiagnostics(page);
+    // /api/auth/providers ERR_ABORTED is a known OidcButtons race on slim
+    // (no OIDC providers configured → fetch aborted as component unmounts).
+    allowBrowserErrors(page, [/\/api\/auth\/providers.*ERR_ABORTED/i]);
   });
 
   test("language switcher visible + aria-pressed correct + en-active no-op + cookie persists across navigations — zero browser errors", async ({
