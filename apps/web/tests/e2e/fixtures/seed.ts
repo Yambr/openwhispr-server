@@ -108,7 +108,12 @@ async function originPost(
       `seed: POST ${pathSuffix} failed: HTTP ${res.status()} body=${body.slice(0, 300)}`,
     );
   }
-  return res.json();
+  // Phase 56 r8 may return 201 with body or 204 without body for some
+  // endpoints; defensively handle empty.
+  if (res.status() === 204) return null;
+  const text = await res.text();
+  if (!text) return null;
+  return JSON.parse(text);
 }
 
 async function originDelete(
@@ -128,7 +133,12 @@ async function originDelete(
       `seed: DELETE ${pathSuffix} failed: HTTP ${res.status()} body=${body.slice(0, 300)}`,
     );
   }
-  return res.json();
+  // Phase 56 r8 / r9 flip DELETE to 204 + no body; res.json() throws
+  // SyntaxError on empty payload. Detect by status (204) OR body length.
+  if (res.status() === 204) return null;
+  const text = await res.text();
+  if (!text) return null;
+  return JSON.parse(text);
 }
 
 async function originGet(ctx: APIRequestContext, pathSuffix: string): Promise<unknown> {

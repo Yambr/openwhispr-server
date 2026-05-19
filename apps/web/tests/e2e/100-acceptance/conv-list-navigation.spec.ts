@@ -37,7 +37,11 @@
 import { test as base, expect } from "@playwright/test";
 import { storageStatePath } from "../fixtures/auth.js";
 import { bindToContext } from "../fixtures/seed.js";
-import { attachBrowserDiagnostics, expectNoBrowserErrors } from "../support/browser-diagnostics.js";
+import {
+  allowBrowserErrors,
+  attachBrowserDiagnostics,
+  expectNoBrowserErrors,
+} from "../support/browser-diagnostics.js";
 
 const WEB_BASE = "http://localhost:3000";
 
@@ -55,6 +59,8 @@ test.describe("@phase55-acceptance @long-form — conv list navigation (slim)", 
       "Phase 55-10 acceptance suite runs against slim topology only",
     );
     await attachBrowserDiagnostics(page);
+    // Phase 56: DELETE 204 + immediate router.push produces ERR_ABORTED on in-flight requests.
+    allowBrowserErrors(page, [/ERR_ABORTED/i]);
     // Per-worker fixture user accumulates rows across re-runs; clear so
     // the seeded-row count assertion in step 4 is deterministic.
     const seed = bindToContext(context);
@@ -127,7 +133,7 @@ test.describe("@phase55-acceptance @long-form — conv list navigation (slim)", 
       );
       await dialog.getByRole("button", { name: /^Delete$/ }).click();
       const deleteRes = await deletePromise;
-      expect(deleteRes.status()).toBe(200);
+      expect(deleteRes.status(), "delete returns 200 or 204").toBeLessThan(300);
       // Row drops out after list invalidates + refetches.
       await expect(page.getByRole("link", { name: delTitle })).toHaveCount(0, { timeout: 10_000 });
       // The other seeded row (nav target) survives.

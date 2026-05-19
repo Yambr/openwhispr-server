@@ -37,7 +37,11 @@
 import { test as base, expect } from "@playwright/test";
 import { storageStatePath } from "../fixtures/auth.js";
 import { bindToContext } from "../fixtures/seed.js";
-import { attachBrowserDiagnostics, expectNoBrowserErrors } from "../support/browser-diagnostics.js";
+import {
+  allowBrowserErrors,
+  attachBrowserDiagnostics,
+  expectNoBrowserErrors,
+} from "../support/browser-diagnostics.js";
 
 const WEB_BASE = "http://localhost:3000";
 
@@ -55,6 +59,8 @@ test.describe("@phase55-acceptance @long-form — trx list navigation (slim)", (
       "Phase 55-10 acceptance suite runs against slim topology only",
     );
     await attachBrowserDiagnostics(page);
+    // Phase 56: DELETE 204 + immediate router.push produces ERR_ABORTED on in-flight requests.
+    allowBrowserErrors(page, [/ERR_ABORTED/i]);
     const seed = bindToContext(context);
     await seed.clearAllData();
   });
@@ -114,7 +120,7 @@ test.describe("@phase55-acceptance @long-form — trx list navigation (slim)", (
       );
       await dialog.getByRole("button", { name: /^Delete$/ }).click();
       const deleteRes = await deletePromise;
-      expect(deleteRes.status()).toBe(200);
+      expect(deleteRes.status(), "delete returns 200 or 204").toBeLessThan(300);
       await expect(page.getByRole("link", { name: delText })).toHaveCount(0, { timeout: 10_000 });
       await expect(page.getByRole("link", { name: navText })).toBeVisible();
       expectNoBrowserErrors(page);

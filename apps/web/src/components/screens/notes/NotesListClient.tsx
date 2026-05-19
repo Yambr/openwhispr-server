@@ -176,7 +176,9 @@ export function NotesListClient(): React.JSX.Element {
               </Button>
             </form>
             <Button
-              onClick={() => queryClient.invalidateQueries({ queryKey: ["notes", "list"] })}
+              onClick={() =>
+                queryClient.invalidateQueries({ queryKey: queryKeys.notes.list(cursor) })
+              }
               size="sm"
               variant="outline"
             >

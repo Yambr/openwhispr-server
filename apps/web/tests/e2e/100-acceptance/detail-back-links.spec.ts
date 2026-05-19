@@ -52,7 +52,11 @@
 import { test as base, expect } from "@playwright/test";
 import { storageStatePath } from "../fixtures/auth.js";
 import { bindToContext } from "../fixtures/seed.js";
-import { attachBrowserDiagnostics, expectNoBrowserErrors } from "../support/browser-diagnostics.js";
+import {
+  allowBrowserErrors,
+  attachBrowserDiagnostics,
+  expectNoBrowserErrors,
+} from "../support/browser-diagnostics.js";
 
 const WEB_BASE = "http://localhost:3000";
 const NONEXISTENT_NOTE_ID = "11111111-2222-3333-4444-555555555555";
@@ -71,6 +75,8 @@ test.describe("@phase55-acceptance @long-form — detail back links (slim)", () 
       "Phase 55-12 acceptance suite runs against slim topology only",
     );
     await attachBrowserDiagnostics(page);
+    // Phase 56: DELETE 204 + immediate router.push produces ERR_ABORTED on in-flight requests.
+    allowBrowserErrors(page, [/ERR_ABORTED/i]);
     // Per-worker fixture user accumulates rows across re-runs; clear so the
     // empty-state branch in step 2 fires deterministically (no leaked
     // messages from prior runs flipping it into populated mode).

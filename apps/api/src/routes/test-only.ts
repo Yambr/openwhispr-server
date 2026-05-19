@@ -308,7 +308,7 @@ export function buildTestOnlyRoutes(deps: TestOnlyDeps) {
     // alice+N fixture pool and a blanket TRUNCATE would orphan their
     // sessions. The /api/setup/admin handler is idempotent over the
     // admin user row (race-loser branch returns 200 + alreadyCompleted).
-    app.post("/api/_test/reset-setup", { config: { rateLimit: false } }, async () => {
+    app.post("/api/_test/reset-setup", { config: { rateLimit: false, auth: false } }, async () => {
       // setup_state is a singleton (id=1, no tenant_id column —
       // packages/data/src/schema/setup_state.ts) so we do NOT need
       // withTenant. A plain transaction is enough; Drizzle commits on
