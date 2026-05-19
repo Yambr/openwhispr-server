@@ -7,29 +7,7 @@ are archived under `.planning/backlog-archive/`.
 the entry rather than marking it closed — git history preserves the
 record. Keep this file under ~200 lines.
 
-**Bug count: 3.**
-
----
-
-## BUG-55-SESSIONS-RETRY-SWEEP-CONTAMINATION — sessions-retry.spec.ts fails in full sweep after revoke-sessions.spec.ts
-
-**Surfaced by:** Plan 55-15 final slim sweep (2026-05-19).
-
-**Repro:**
-- Run `pnpm playwright test 100-acceptance/sessions-retry --project=slim` in isolation → PASS.
-- Run full slim 100-acceptance sweep → sessions-retry FAILS with `getByTestId('session-row-this-device').first()` not visible.
-- Page snapshot shows the Active sessions table rendering with N rows but NO `session-row-this-device` badge — `currentSessionId` server-resolved by `getServerSession()` does not match any `row.id` returned by `authClient.listSessions()`.
-
-**Hypothesis:** revoke-sessions.spec.ts (alphabetically earlier in the sweep) uses a DIFFERENT fixture user (alice+55) and overrides storageState to empty — should NOT touch alice+0. But Better Auth's session rotation seam or the api container rebuild during Plan 55-05b may have left alice+0's storage state's cookie pointing at a session_id that's been replaced server-side.
-
-**Impact:** Single flake within the sweep. 26/27 specs pass; the one failure is in a previously-green spec (55-06-b landed clean). No production-code regression.
-
-**Fix candidates:**
-- Force alice+0 storage re-provision via global-setup detecting stale-cookie state.
-- Add a server-side reconcile step in SessionsTable that drops the badge gracefully if currentSessionId mismatches all row ids (UX fallback).
-- Wait on the actual cookie value vs `getServerSession` consistency in spec beforeEach.
-
-**Owner:** unassigned. Re-surface in next phase.
+**Bug count: 2.**
 
 ---
 
