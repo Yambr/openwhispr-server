@@ -28,6 +28,16 @@ vi.mock("@/lib/auth-client", () => ({
 const resources = {
   "end-user": {
     "end-user": {
+      // Phase 55-02-b — shared togglePassword keys consumed by the
+      // PasswordInputWithToggle building block.
+      common: {
+        action: {
+          togglePassword: {
+            show: { label: "Show password" },
+            hide: { label: "Hide password" },
+          },
+        },
+      },
       signup: {
         title: { heading: { text: "Create your OpenWhispr account" } },
         subtitle: { body: { text: "A confirmation email is sent to verify your address." } },

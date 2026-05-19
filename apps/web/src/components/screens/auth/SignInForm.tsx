@@ -30,7 +30,6 @@
 // Open-redirect mitigation: post-signin redirect is HARDCODED to "/app".
 "use client";
 
-import { Eye, EyeOff } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
@@ -52,6 +51,7 @@ import { useZodForm } from "@/lib/form-utils";
 import { signInSchema } from "@/lib/schemas/auth";
 import { AuthShell } from "./AuthShell";
 import { OidcButtons } from "./OidcButtons";
+import { PasswordInputWithToggle } from "./PasswordInputWithToggle";
 
 type SignInState =
   | { kind: "idle" }
@@ -63,7 +63,6 @@ export function SignInForm(): React.JSX.Element {
   const router = useRouter();
   const [submitting, setSubmitting] = useState(false);
   const [state, setState] = useState<SignInState>({ kind: "idle" });
-  const [showPassword, setShowPassword] = useState(false);
 
   const form = useZodForm({
     schema: signInSchema,
@@ -116,10 +115,6 @@ export function SignInForm(): React.JSX.Element {
       setState({ kind: "error-generic" });
     }
   }
-
-  const togglePasswordLabel = showPassword
-    ? t("end-user.signin.action.togglePassword.hide.label")
-    : t("end-user.signin.action.togglePassword.show.label");
 
   return (
     <AuthShell>
@@ -198,42 +193,22 @@ export function SignInForm(): React.JSX.Element {
                 <FormItem>
                   <FormLabel>{t("end-user.signin.form.password.label")}</FormLabel>
                   {/*
-                    The eye-toggle button is rendered as an absolute sibling
-                    of FormControl (NOT inside it) because FormControl is a
-                    Radix Slot that forwards `id` + `aria-describedby` to a
-                    SINGLE direct child. Wrapping the Input in a <div>
-                    would cause getByLabelText to bind the FormLabel to the
-                    wrapper div instead of the input (D-23 regression).
+                    Phase 55-02-b — inline eye-toggle block extracted to
+                    `PasswordInputWithToggle.tsx`. The component renders the
+                    same <div className="relative"> wrapper + <FormControl>
+                    + absolutely-positioned <button> as the original D-23
+                    inline pattern (DOM-equivalent → no visual-baseline
+                    drift). FormControl lives INSIDE the component so the
+                    Radix Slot forwards id/aria-describedby to <Input>, not
+                    the wrapper div (see PasswordInputWithToggle.tsx header).
                   */}
-                  <div className="relative">
-                    <FormControl>
-                      <Input
-                        type={showPassword ? "text" : "password"}
-                        autoComplete="current-password"
-                        disabled={submitting}
-                        {...field}
-                      />
-                    </FormControl>
-                    {/*
-                      D-23 eye toggle. lucide-react Eye/EyeOff already in
-                      deps (D-44). Toggle label exposed via visually-hidden
-                      <span> rather than aria-label so the toggle button's
-                      accessible name does not collide with the password
-                      input's FormLabel.
-                    */}
-                    <button
-                      type="button"
-                      onClick={() => setShowPassword((v) => !v)}
-                      className="absolute top-1/2 right-2 grid -translate-y-1/2 size-7 place-items-center rounded-md text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                    >
-                      <span className="sr-only">{togglePasswordLabel}</span>
-                      {showPassword ? (
-                        <EyeOff aria-hidden="true" className="size-4" />
-                      ) : (
-                        <Eye aria-hidden="true" className="size-4" />
-                      )}
-                    </button>
-                  </div>
+                  <PasswordInputWithToggle
+                    autoComplete="current-password"
+                    disabled={submitting}
+                    togglePasswordShowLabel={t("end-user.common.action.togglePassword.show.label")}
+                    togglePasswordHideLabel={t("end-user.common.action.togglePassword.hide.label")}
+                    {...field}
+                  />
                   <FormMessage />
                 </FormItem>
               )}

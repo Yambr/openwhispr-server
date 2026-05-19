@@ -33,6 +33,16 @@ const fetchSpy = vi.fn();
 const resources = {
   "end-user": {
     "end-user": {
+      // Phase 55-02-b — shared togglePassword keys consumed by the
+      // PasswordInputWithToggle building block.
+      common: {
+        action: {
+          togglePassword: {
+            show: { label: "Show password" },
+            hide: { label: "Hide password" },
+          },
+        },
+      },
       "reset-password": {
         title: { heading: { text: "Set a new password" } },
         subtitle: {

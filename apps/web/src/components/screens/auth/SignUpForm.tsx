@@ -35,6 +35,7 @@ import { useZodForm } from "@/lib/form-utils";
 import { signUpSchema } from "@/lib/schemas/auth";
 import { AuthShell } from "./AuthShell";
 import { OidcButtons } from "./OidcButtons";
+import { PasswordInputWithToggle } from "./PasswordInputWithToggle";
 
 type ErrorKind = "duplicate" | "generic" | null;
 
@@ -201,18 +202,26 @@ export function SignUpForm(): React.JSX.Element {
               render={({ field }) => (
                 <FormItem>
                   <FormLabel>{t("end-user.signup.form.password.label")}</FormLabel>
-                  <FormControl>
-                    <Input
-                      type="password"
-                      autoComplete="new-password"
-                      disabled={submitting}
-                      {...field}
-                      onChange={(e) => {
-                        field.onChange(e);
-                        setPasswordValue(e.target.value);
-                      }}
-                    />
-                  </FormControl>
+                  {/*
+                    Phase 55-02-b — eye-toggle pattern via shared building
+                    block. The strength-meter shadow setState (setPasswordValue)
+                    is preserved by chaining the onChange after field.onChange,
+                    so RHF + meter both fire on every keystroke (W-1 in plan
+                    Risk section). PasswordInputWithToggle owns its FormControl
+                    internally — see component header for the Radix-Slot
+                    rationale (do NOT wrap this in <FormControl> here).
+                  */}
+                  <PasswordInputWithToggle
+                    autoComplete="new-password"
+                    disabled={submitting}
+                    togglePasswordShowLabel={t("end-user.common.action.togglePassword.show.label")}
+                    togglePasswordHideLabel={t("end-user.common.action.togglePassword.hide.label")}
+                    {...field}
+                    onChange={(e) => {
+                      field.onChange(e);
+                      setPasswordValue(e.target.value);
+                    }}
+                  />
                   {/* D-25 — 4px strength meter; bands map to red/orange/yellow/green. */}
                   {passwordValue.length > 0 ? (
                     <div data-testid="password-strength-meter" className="flex flex-col gap-1">
