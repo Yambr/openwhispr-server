@@ -215,7 +215,27 @@ test.describe("@phase54-acceptance @long-form — full flow (slim OOB)", () => {
     });
 
     await test.step("step 8 — UI sign-out + /app guard redirect", async () => {
-      expect(false).toBe(true);
+      // Locale was returned to English at the end of step 6; theme was
+      // returned to its initial value at the end of step 7. The sign-out
+      // button label is therefore "Sign out" (English). PRD §8 is
+      // explicit — sign-out MUST go through the UI button, NOT a direct
+      // POST to /api/auth/sign-out (the legacy 100-fullflow spec uses
+      // the API path; this long-form spec exercises the user-facing
+      // button click that drives signOut() in auth-client.ts).
+      await page.getByRole("button", { name: "Sign out" }).click();
+      await page.waitForURL(/\/sign-in(\?|$)/, { timeout: 5_000 });
+      await page.waitForLoadState("networkidle");
+      expectNoBrowserErrors(page);
+
+      // Attempt to visit /app — the (auth)/layout.tsx server component
+      // detects the cleared session and issues `redirect("/sign-in")`
+      // (apps/web/src/app/(auth)/layout.tsx line 23). The plain redirect
+      // does NOT carry a `from=` query param — PRD §8 only requires the
+      // landing URL be /sign-in.
+      await page.goto(`${WEB_BASE}/app`);
+      await page.waitForURL(/\/sign-in(\?|$)/, { timeout: 5_000 });
+      await page.waitForLoadState("networkidle");
+      await expect(page).toHaveURL(/\/sign-in(\?|$)/);
       expectNoBrowserErrors(page);
     });
   });
