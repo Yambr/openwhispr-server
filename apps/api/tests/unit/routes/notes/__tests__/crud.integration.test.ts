@@ -81,7 +81,10 @@ describe("integration — notes CRUD (real Postgres + RLS)", () => {
         expected_speaker_count: 3,
       }),
     });
-    expect(res.statusCode).toBe(200);
+    // Phase 56 / Plan 02 / R8 — POST /api/notes/create MUST return
+    // 201 Created (resource creation), not 200 OK. Matches upstream
+    // wire spec at /Users/nick/openwhispr/.planning/phases/08-client-server-audit/SERVER-REQUIREMENTS.md §R8.
+    expect(res.statusCode).toBe(201);
     const body = res.json() as Record<string, unknown>;
     // Verify the 19 upstream CloudNote fields are present.
     const required = [
@@ -125,7 +128,8 @@ describe("integration — notes CRUD (real Postgres + RLS)", () => {
       headers: { "content-type": "application/json" },
       payload,
     });
-    expect(r1.statusCode).toBe(200);
+    // Phase 56-02 / R8 — create always returns 201 (resource creation).
+    expect(r1.statusCode).toBe(201);
     const id1 = (r1.json() as { id: string }).id;
 
     // Retry with same client_note_id but DIFFERENT title — must return
@@ -140,7 +144,11 @@ describe("integration — notes CRUD (real Postgres + RLS)", () => {
         content: "different",
       }),
     });
-    expect(r2.statusCode).toBe(200);
+    // Phase 56-02 / R8 — idempotent retry (D-24 returns existing row)
+    // still returns 201 to honor the create-route wire shape; semantic
+    // distinction between "newly created" and "previously existed" is
+    // not modelled in the upstream contract.
+    expect(r2.statusCode).toBe(201);
     expect(r2.statusCode).not.toBe(409);
     const body2 = r2.json() as { id: string; title: string; content: string };
     expect(body2.id).toBe(id1);
@@ -234,8 +242,11 @@ describe("integration — notes CRUD (real Postgres + RLS)", () => {
       headers: { "content-type": "application/json" },
       payload: JSON.stringify({ id }),
     });
-    expect(del.statusCode).toBe(200);
-    expect((del.json() as { ok: boolean }).ok).toBe(true);
+    // Phase 56-02 / R8 — DELETE /api/notes/delete returns 204 No Content
+    // with an EMPTY body. The old {ok:true} JSON envelope is removed
+    // because 204 per HTTP spec carries no body.
+    expect(del.statusCode).toBe(204);
+    expect(del.payload).toBe("");
 
     // Verify row still in DB but with deleted_at set.
     const { rows } = await pool.query<{ deleted_at: Date | null }>(
@@ -301,7 +312,8 @@ describe("integration — notes CRUD (real Postgres + RLS)", () => {
       headers: { "content-type": "application/json" },
       payload: JSON.stringify({ client_note_id: "a-private", title: "B's own" }),
     });
-    expect(bCreate.statusCode).toBe(200);
+    // Phase 56-02 / R8 — create always 201.
+    expect(bCreate.statusCode).toBe(201);
 
     // A's original row is still there with original title.
     const aList = await appA.inject({ method: "GET", url: "/api/notes/list" });
@@ -332,6 +344,74 @@ describe("integration — notes CRUD (real Postgres + RLS)", () => {
         url: "/api/notes/create",
         headers: { "content-type": "application/json" },
         payload: JSON.stringify({ title: "x" }),
+      });
+      expect(res.statusCode).toBe(401);
+    } finally {
+      await app.close();
+    }
+  });
+
+  // Phase 56-02 / R8 — defensive 401-guard branches on batch-create and
+  // delete routes (these handlers carry the same `if (!req.user ||
+  // !req.tenant)` guard as create). Without these the per-file branch
+  // coverage on the two routes sat at 88% / 83%, below the ≥90/90/90/90
+  // constitutional floor; the routes ARE production-readiness-listed
+  // (LOCKER-04 rateLimit + zod schema both present) but coverage was
+  // historically only exercised end-to-end through the auth plugin and
+  // never via direct unauthed inject. These tests close the gap.
+  it("401 — missing req.user defensive guard (batch-create)", async () => {
+    const Fastify = (await import("fastify")).default;
+    const app = Fastify({ logger: false });
+    const { registerErrorHandler } = await import("../../../../../src/error-handler");
+    const { zodTypeProvider } = await import("../../../../../src/plugins/zod-type-provider");
+    registerErrorHandler(app);
+    await app.register(zodTypeProvider);
+    const { drizzle } = await import("drizzle-orm/node-postgres");
+    const db = drizzle(pool);
+    const { buildNotesBatchCreateRoutes } = await import(
+      "../../../../../src/routes/notes/batch-create"
+    );
+    await app.register(
+      buildNotesBatchCreateRoutes({
+        db: db as unknown as Parameters<typeof buildNotesBatchCreateRoutes>[0]["db"],
+      }),
+    );
+    await app.ready();
+    try {
+      const res = await app.inject({
+        method: "POST",
+        url: "/api/notes/batch-create",
+        headers: { "content-type": "application/json" },
+        payload: JSON.stringify({ notes: [{ title: "x" }] }),
+      });
+      expect(res.statusCode).toBe(401);
+    } finally {
+      await app.close();
+    }
+  });
+
+  it("401 — missing req.user defensive guard (delete)", async () => {
+    const Fastify = (await import("fastify")).default;
+    const app = Fastify({ logger: false });
+    const { registerErrorHandler } = await import("../../../../../src/error-handler");
+    const { zodTypeProvider } = await import("../../../../../src/plugins/zod-type-provider");
+    registerErrorHandler(app);
+    await app.register(zodTypeProvider);
+    const { drizzle } = await import("drizzle-orm/node-postgres");
+    const db = drizzle(pool);
+    const { buildNotesDeleteRoutes } = await import("../../../../../src/routes/notes/delete");
+    await app.register(
+      buildNotesDeleteRoutes({
+        db: db as unknown as Parameters<typeof buildNotesDeleteRoutes>[0]["db"],
+      }),
+    );
+    await app.ready();
+    try {
+      const res = await app.inject({
+        method: "DELETE",
+        url: "/api/notes/delete",
+        headers: { "content-type": "application/json" },
+        payload: JSON.stringify({ id: "11111111-1111-4111-8111-111111111111" }),
       });
       expect(res.statusCode).toBe(401);
     } finally {

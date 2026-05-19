@@ -3,7 +3,10 @@
 //
 // Wire shape (matches ~/openwhispr/src/services/NotesService.ts):
 //   Request:  NoteInput (validated by NoteInputSchema)
-//   Success:  200 CloudNote
+//   Success:  201 CloudNote (Phase 56-02 / R8 — flipped from 200; resource
+//             creation route returns Created. Idempotent retry per D-24
+//             still returns 201 with the existing row — the wire contract
+//             does not model the new-vs-existed distinction.)
 //
 // D-24 — same client_note_id on retry returns the existing row (200, NOT
 //        409). The desktop client retries on network blips with the same
@@ -69,7 +72,7 @@ export const buildNotesCreateRoutes = (deps: NotesCreateDeps) =>
           return row;
         });
 
-        return reply.code(200).send(rowToCloudNote(row));
+        return reply.code(201).send(rowToCloudNote(row));
       },
     });
   };

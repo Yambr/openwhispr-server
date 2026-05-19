@@ -3,7 +3,9 @@
 //
 // Wire shape (matches ~/openwhispr/src/services/NotesService.ts.deleteNote):
 //   Request:  { id: string } (body)
-//   Success:  200 { ok: true }
+//   Success:  204 (no body; Phase 56-02 / R8 — flipped from 200 {ok:true}.
+//             HTTP spec: 204 carries no body, so the {ok:true} envelope
+//             is removed.)
 //   404:      note not found
 //
 // D-23 — soft delete. Sets deleted_at = NOW(); the row stays in the
@@ -55,7 +57,9 @@ export const buildNotesDeleteRoutes = (deps: NotesDeleteDeps) =>
         if (!updated) {
           throw new NotFoundError("NOTE_NOT_FOUND", "note not found");
         }
-        return reply.code(200).send({ ok: true });
+        // 204 No Content per R8 — explicit empty send() so Fastify
+        // emits a zero-length body (no JSON envelope).
+        return reply.code(204).send();
       },
     });
   };
