@@ -82,14 +82,23 @@ test.describe("@phase55-acceptance @long-form — list load-more on 3 screens (s
       const loadMore = page.getByRole("button", { name: /^Load more$/ });
       await expect(loadMore).toBeVisible({ timeout: 10_000 });
       // Click fires a fresh GET /api/notes/list?limit=20 (production currently
-      // wires onClick to list.refetch() — same query key, same limit).
-      const refetchPromise = page.waitForRequest(
-        (req) => req.url().includes("/api/notes/list") && req.method() === "GET",
+      // wires onClick to list.refetch() — same query key, same limit). We
+      // assert BOTH the request shape AND a 200 response so the spec catches
+      // future regressions where the route changes auth/limit/payload.
+      const refetchPromise = page.waitForResponse(
+        (res) => res.url().includes("/api/notes/list") && res.request().method() === "GET",
         { timeout: 10_000 },
       );
       await loadMore.click();
-      const req = await refetchPromise;
-      expect(req.url()).toMatch(/\/api\/notes\/list\?limit=20(?:$|&)/);
+      const res = await refetchPromise;
+      expect(res.url()).toMatch(/\/api\/notes\/list\?limit=20(?:$|&)/);
+      expect(res.status()).toBe(200);
+      // Post-refetch the cursor is unchanged (PAGE_LIMIT=20) → server returns
+      // the same 20 rows → hasMore stays true → Load more button stays visible.
+      // This locks the production behaviour today (refetch is a no-op for the
+      // visible row count) and surfaces any future cursor-bumping rewrite as
+      // a deliberate spec change.
+      await expect(loadMore).toBeVisible();
       expectNoBrowserErrors(page);
       await seed.clearAllData();
     });
@@ -102,13 +111,15 @@ test.describe("@phase55-acceptance @long-form — list load-more on 3 screens (s
       });
       const loadMore = page.getByRole("button", { name: /^Load more$/ });
       await expect(loadMore).toBeVisible({ timeout: 10_000 });
-      const refetchPromise = page.waitForRequest(
-        (req) => req.url().includes("/api/conversations/list") && req.method() === "GET",
+      const refetchPromise = page.waitForResponse(
+        (res) => res.url().includes("/api/conversations/list") && res.request().method() === "GET",
         { timeout: 10_000 },
       );
       await loadMore.click();
-      const req = await refetchPromise;
-      expect(req.url()).toMatch(/\/api\/conversations\/list\?limit=20(?:$|&)/);
+      const res = await refetchPromise;
+      expect(res.url()).toMatch(/\/api\/conversations\/list\?limit=20(?:$|&)/);
+      expect(res.status()).toBe(200);
+      await expect(loadMore).toBeVisible();
       expectNoBrowserErrors(page);
       await seed.clearAllData();
     });
@@ -121,13 +132,15 @@ test.describe("@phase55-acceptance @long-form — list load-more on 3 screens (s
       });
       const loadMore = page.getByRole("button", { name: /^Load more$/ });
       await expect(loadMore).toBeVisible({ timeout: 10_000 });
-      const refetchPromise = page.waitForRequest(
-        (req) => req.url().includes("/api/transcriptions/list") && req.method() === "GET",
+      const refetchPromise = page.waitForResponse(
+        (res) => res.url().includes("/api/transcriptions/list") && res.request().method() === "GET",
         { timeout: 10_000 },
       );
       await loadMore.click();
-      const req = await refetchPromise;
-      expect(req.url()).toMatch(/\/api\/transcriptions\/list\?limit=20(?:$|&)/);
+      const res = await refetchPromise;
+      expect(res.url()).toMatch(/\/api\/transcriptions\/list\?limit=20(?:$|&)/);
+      expect(res.status()).toBe(200);
+      await expect(loadMore).toBeVisible();
       expectNoBrowserErrors(page);
     });
   });
