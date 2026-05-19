@@ -1,0 +1,108 @@
+// SPDX-License-Identifier: FSL-1.1-ALv2
+// Phase 54 / Plan 54-02 — Long-form acceptance: full sign-up → verify →
+// sign-in → per-screen walk → locale toggle → theme toggle → UI sign-out
+// + guard check, all asserted against the slim dev-tools stack with zero
+// browser console errors at every PRD step boundary (PRD §1-8).
+//
+// This is the brand-new-user OOB happy path. It does NOT inherit the
+// per-worker fixture user (Phase 53's alice+N storageState) — it
+// provisions its OWN unique user via the web UI on every run so the
+// sign-up + verify legs are exercised end-to-end. The unique email is
+// `flow54+${Date.now()}@local.test` to disambiguate from prior runs in
+// the same mailpit DB / postgres volume.
+//
+// Slim-only by design: the spec hardcodes localhost ports
+// (http://localhost:3000 web, http://localhost:4000 api,
+// http://localhost:8025 mailpit) because the traefik project covers
+// the production-equivalent routing path via Phase 53's u1..u13 sweep
+// and 100-fullflow legacy spec. Running this against traefik would
+// require host-based URL rewrites without adding signal.
+//
+// Mailpit access lives behind apps/web/tests/e2e/support/mailpit.ts
+// (Phase 54 / Plan 54-01) — the spec is forbidden from re-implementing
+// inline mailpit polling.
+//
+// Browser-side error invariant: every PRD step ends with a call to
+// `expectNoBrowserErrors(page)`. The DEFAULT_ALLOWLIST in
+// browser-diagnostics.ts covers framework-level aborts only
+// (_rsc=… ERR_ABORTED, POST /api/locale ERR_ABORTED). Any new real
+// error must be diagnosed + filed as BUG-54-*, NOT silenced with a
+// new allowlist entry.
+
+import { test as base, expect } from "@playwright/test";
+import { attachBrowserDiagnostics, expectNoBrowserErrors } from "../support/browser-diagnostics.js";
+import { fetchVerificationLink } from "../support/mailpit.js";
+
+const WEB_BASE = "http://localhost:3000";
+const API_BASE = "http://localhost:4000";
+
+// Override the per-worker fixture storageState — this spec MUST start
+// signed-out and provisions its own user via the UI.
+const test = base.extend({});
+test.use({ storageState: { cookies: [], origins: [] } });
+
+test.describe("@phase54-acceptance @long-form — full flow (slim OOB)", () => {
+  test.beforeEach(async ({ page }, testInfo) => {
+    test.skip(
+      testInfo.project.name !== "slim",
+      "Phase 54 acceptance suite runs against slim topology only — traefik path is covered by Phase 53 sweep + 100-fullflow",
+    );
+    await attachBrowserDiagnostics(page);
+  });
+
+  test("registers, verifies, signs in, walks every authed screen, toggles locale + theme, signs out, and asserts guard — all with zero browser errors", async ({
+    page,
+    context,
+  }) => {
+    const uniq = `flow54+${Date.now()}@local.test`;
+    const password = "correct-horse-battery-staple-9";
+    const cursor = new Date();
+    void uniq;
+    void password;
+    void cursor;
+    void context;
+    void WEB_BASE;
+    void API_BASE;
+    void fetchVerificationLink;
+
+    await test.step("step 1 — sign-up via UI", async () => {
+      expect(false).toBe(true);
+      expectNoBrowserErrors(page);
+    });
+
+    await test.step("step 2 — verification email arrives in mailpit", async () => {
+      expect(false).toBe(true);
+      expectNoBrowserErrors(page);
+    });
+
+    await test.step("step 3 — verify link returns 200/302/303", async () => {
+      expect(false).toBe(true);
+      expectNoBrowserErrors(page);
+    });
+
+    await test.step("step 4 — sign-in via UI lands on /app", async () => {
+      expect(false).toBe(true);
+      expectNoBrowserErrors(page);
+    });
+
+    await test.step("step 5 — walk every authed screen with empty-state assertions", async () => {
+      expect(false).toBe(true);
+      expectNoBrowserErrors(page);
+    });
+
+    await test.step("step 6 — locale toggle en→ru→en with refresh persistence", async () => {
+      expect(false).toBe(true);
+      expectNoBrowserErrors(page);
+    });
+
+    await test.step("step 7 — theme toggle with refresh persistence", async () => {
+      expect(false).toBe(true);
+      expectNoBrowserErrors(page);
+    });
+
+    await test.step("step 8 — UI sign-out + /app guard redirect", async () => {
+      expect(false).toBe(true);
+      expectNoBrowserErrors(page);
+    });
+  });
+});
