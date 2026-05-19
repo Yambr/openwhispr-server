@@ -1,15 +1,15 @@
 ---
 gsd_state_version: 1.0
-milestone: v2.2
-milestone_name: — Pre-OSS Security & Hygiene
-status: Phase 51 CLOSED — all v2.2 pre-OSS REVIEW fix-cycle plans done; ready for OSS publication
-last_updated: "2026-05-18T11:10:00.000Z"
-last_activity: "2026-05-18 — Massive ROADMAP reconciliation sweep + Plan 51-26/27 (LOCKER-08 amendment sentinel reconciliation + self-test fixture SSL fix). Stage 4 (unit+integration) of `make verify` reached 4550/4550 PASS (was 4526 with 24 fails carrying constitutional Phase 32+33 sentinel debt against the Plan 51-23/24/25 LOCKER-08 amendment). Plan 51-26 commit `53936e1` reconciles 7 sentinel files (0020-drop-plaintext / 0018-rls-fail-closed / 0001_better_auth / 0003_better_auth_tenant_defaults / auth-session-token-shape / check-default-secrets path-bug / plan-52-04b-routes-cascade) with inverted-mutation validation against the post-amendment shape. Plan 51-27 commit `84da9e3` fixes self-test fixture `tests/self-tests/_helpers.ts:fixtureSecrets` to write DATABASE_URL with `?sslmode=disable` (root cause: post-Phase-2 SSL-by-default contract turned TLS on against bundled fixture postgres without SSL cert, crashing migrate.cjs at handshake). `make verify` now exit 0 across all 5 stages (lockers / biome / typecheck / tests / coverage). Coverage: 92.85% lines / 87.99% branches / 94.05% functions / 92.2% statements. Sweep also reconciled 20 missed ROADMAP ticks: Phase 20 (compose+Helm production guardrails) commit `d202f12` with retroactive 20-02a SUMMARY + 20-VERIFICATION.md; Phases 21-30 + 42-50 (v2.1 QA cascade — 19 phases CLOSED 2026-05-16 with SUMMARY but ticks missed) commit `2cdd708`. Open ticks dropped 50 → 31. Plus session-prior earlier 2026-05-18: Phase 51 (pre-OSS REVIEW fix-cycle) 100% CLOSED, Plan 51-19 e2e proven via make e2e-test-phase6 exit 0 14/14. All 4 lockers BLOCKING."
+milestone: v2.3
+milestone_name: — Cross-repo client contract conformance
+status: Phase 56 CLOSED — all 12 R-rows from upstream client SERVER-REQUIREMENTS.md landed on local main; client e2e suite unblocked
+last_updated: "2026-05-19T20:10:00.000Z"
+last_activity: "2026-05-19 — Phase 56 CLOSED in ~3h wall-clock. 11 atomic sub-plans (56-01..56-11) executed via wave-1 solo → wave-2 parallel ×7 → wave-3 solo HALT-at-tip → wave-4/5 orchestrator-driven. All 12 R-rows from /Users/dev/openwhispr/.planning/phases/08-client-server-audit/SERVER-REQUIREMENTS.md landed on local `main`: R1 seed-tenant `d4b06a6`, R3 realtime-language (in `c897393` marker `c6c13b4`), R4 health no-deprecation `3e99215`, R5 verif-status sessionEmail `57b4c48`, R8 notes 201/204 `eb0f363`, R9 folders 201/204 + cascade `e0d14b4`, R10 conv 201/204 (in `d1725ea` marker `c36d627`), R11 trx 201/204 atomic `dc9e875`, R12 v1 envelope `b30c21e`. R2/R6/R7 verify-only. Wave-2 produced two attribution swaps + one empty squash + stash dance — lesson learned: parallel squash-merges to shared main race even with per-agent worktrees. Wave-3 HALT-at-tip pattern (executor RGRG on branch only; orchestrator drives squash via `git format-patch + git apply --3way`) eliminated the race entirely — adopt for all future parallel-executor work. GitHub `origin/main` remains at 'Initial commit'; push deferred per user. apps/web has no v1/keys consumers yet (no UI migration needed). Out-of-phase observations: `tests/e2e/phase-05-transcriptions.spec.ts` 200-code assertions need next-e2e sweep; api container `LITELLM_MASTER_KEY` boot gate is pre-existing slim-profile env gap. Phase docs at `.planning/phases/56-client-contract-conformance/{CONTEXT,PLAN,VERIFICATION}.md`."
 progress:
-  total_phases: 89
-  completed_phases: 86
-  total_plans: 230
-  completed_plans: 227
+  total_phases: 90
+  completed_phases: 87
+  total_plans: 241
+  completed_plans: 238
   percent: 97
   open_ticks: 3
   open_ticks_detail:
