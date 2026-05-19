@@ -37,7 +37,8 @@ const ListResponse = z.object({
 const BatchCreateResponse = z.object({
   created: z.array(CloudTranscriptionShape),
 });
-const DeleteResponse = z.object({ ok: z.boolean() });
+// Phase 56 / Plan 05 (R11) — DELETE returns 204 No Content (empty body),
+// so the prior `DeleteResponse = { ok: true }` schema was removed entirely.
 const BatchDeleteResponse = z.object({ deleted: z.array(z.string()) });
 
 function rnd(prefix: string): string {
@@ -55,12 +56,13 @@ describe.skipIf(!REACHABLE)("WIRE-26 — /api/transcriptions/* (5 routes)", () =
         text: "contract create",
       }),
     });
-    expect(res.status).toBe(200);
+    // Phase 56 / Plan 05 (R11) — POST /create returns 201.
+    expect(res.status).toBe(201);
     const body = await res.json();
     expect(() => CloudTranscriptionShape.parse(body)).not.toThrow();
   });
 
-  it("POST /api/transcriptions/create idempotent on same client_transcription_id (200, not 409)", async () => {
+  it("POST /api/transcriptions/create idempotent on same client_transcription_id (201, not 409)", async () => {
     const jar = await signInFixture("fixture@conformance.test");
     const clientId = rnd("idem");
     const r1 = await jar.fetch(`${BACKEND_URL}/api/transcriptions/create`, {
@@ -79,8 +81,9 @@ describe.skipIf(!REACHABLE)("WIRE-26 — /api/transcriptions/* (5 routes)", () =
         text: "idem second",
       }),
     });
-    expect(r1.status).toBe(200);
-    expect(r2.status).toBe(200);
+    // Phase 56 / Plan 05 (R11) — both legs 201, idempotent body match.
+    expect(r1.status).toBe(201);
+    expect(r2.status).toBe(201);
     expect(r2.status).not.toBe(409);
     const j1 = CloudTranscriptionShape.parse(await r1.json());
     const j2 = CloudTranscriptionShape.parse(await r2.json());
@@ -100,7 +103,8 @@ describe.skipIf(!REACHABLE)("WIRE-26 — /api/transcriptions/* (5 routes)", () =
         ],
       }),
     });
-    expect(res.status).toBe(200);
+    // Phase 56 / Plan 05 (R11) — batch-create returns 201.
+    expect(res.status).toBe(201);
     const parsed = BatchCreateResponse.parse(await res.json());
     expect(parsed.created).toHaveLength(2);
   });
@@ -113,7 +117,9 @@ describe.skipIf(!REACHABLE)("WIRE-26 — /api/transcriptions/* (5 routes)", () =
     expect(() => ListResponse.parse(body)).not.toThrow();
   });
 
-  it("DELETE /api/transcriptions/delete returns { ok: true }", async () => {
+  it("DELETE /api/transcriptions/delete returns 204 No Content (empty body)", async () => {
+    // Phase 56 / Plan 05 (R11) — DELETE returns 204 with empty body
+    // (RFC 7230 §3.3.2). Prior { ok: true } body shape was removed.
     const jar = await signInFixture("fixture@conformance.test");
     const created = await jar.fetch(`${BACKEND_URL}/api/transcriptions/create`, {
       method: "POST",
@@ -129,9 +135,9 @@ describe.skipIf(!REACHABLE)("WIRE-26 — /api/transcriptions/* (5 routes)", () =
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ id }),
     });
-    expect(del.status).toBe(200);
-    const body = await del.json();
-    expect(() => DeleteResponse.parse(body)).not.toThrow();
+    expect(del.status).toBe(204);
+    const text = await del.text();
+    expect(text).toBe("");
   });
 
   it("POST /api/transcriptions/batch-delete returns { deleted: string[] }", async () => {

@@ -75,7 +75,10 @@ describe("integration — transcriptions CRUD (real Postgres + RLS)", () => {
         status: "completed",
       }),
     });
-    expect(res.statusCode).toBe(200);
+    // Phase 56 / Plan 05 (R11) — POST /create returns 201 Created per
+    // SERVER-REQUIREMENTS.md §R11 (was 200, flipped to standard REST
+    // POST-creates-resource semantics).
+    expect(res.statusCode).toBe(201);
     const body = res.json() as Record<string, unknown>;
     const required = [
       "id",
@@ -117,7 +120,9 @@ describe("integration — transcriptions CRUD (real Postgres + RLS)", () => {
         text: "first",
       }),
     });
-    expect(r1.statusCode).toBe(200);
+    // Phase 56 / Plan 05 (R11) — POST /create returns 201 (incl. on
+    // D-24 idempotent retry — same shape for both legs).
+    expect(r1.statusCode).toBe(201);
     const id1 = (r1.json() as { id: string }).id;
 
     const r2 = await appA.inject({
@@ -129,7 +134,9 @@ describe("integration — transcriptions CRUD (real Postgres + RLS)", () => {
         text: "SECOND — ignored",
       }),
     });
-    expect(r2.statusCode).toBe(200);
+    // Phase 56 / Plan 05 (R11) — D-24 idempotent retry returns 201,
+    // SAME body (existing row), explicitly NOT 409.
+    expect(r2.statusCode).toBe(201);
     expect(r2.statusCode).not.toBe(409);
     const body2 = r2.json() as { id: string; text: string };
     expect(body2.id).toBe(id1);
@@ -167,7 +174,10 @@ describe("integration — transcriptions CRUD (real Postgres + RLS)", () => {
         ],
       }),
     });
-    expect(res.statusCode).toBe(200);
+    // Phase 56 / Plan 05 (R11) — POST /batch-create returns 201 Created
+    // per SERVER-REQUIREMENTS.md §R11 (was 200, flipped to standard REST
+    // POST-creates-resource semantics — applies to batch wrapper too).
+    expect(res.statusCode).toBe(201);
     const body = res.json() as {
       created: { id: string; text: string; client_transcription_id: string; word_count: number }[];
     };
@@ -192,7 +202,8 @@ describe("integration — transcriptions CRUD (real Postgres + RLS)", () => {
         { client_transcription_id: "bare-2", text: "y" },
       ]),
     });
-    expect(res.statusCode).toBe(200);
+    // Phase 56 / Plan 05 (R11) — bare-array body also yields 201.
+    expect(res.statusCode).toBe(201);
     const body = res.json() as { created: unknown[] };
     expect(body.created).toHaveLength(2);
   });
@@ -241,7 +252,11 @@ describe("integration — transcriptions CRUD (real Postgres + RLS)", () => {
       headers: { "content-type": "application/json" },
       payload: JSON.stringify({ id: target }),
     });
-    expect(del.statusCode).toBe(200);
+    // Phase 56 / Plan 05 (R11) — DELETE /delete returns 204 No Content
+    // per SERVER-REQUIREMENTS.md §R11 (was 200 {ok:true}; body MUST be
+    // empty for 204 — RFC 7230 §3.3.2).
+    expect(del.statusCode).toBe(204);
+    expect(del.body).toBe("");
 
     const list2 = await appA.inject({
       method: "GET",
@@ -266,8 +281,9 @@ describe("integration — transcriptions CRUD (real Postgres + RLS)", () => {
       headers: { "content-type": "application/json" },
       payload: JSON.stringify({ id }),
     });
-    expect(del.statusCode).toBe(200);
-    expect((del.json() as { ok: boolean }).ok).toBe(true);
+    // Phase 56 / Plan 05 (R11) — 204 No Content + empty body.
+    expect(del.statusCode).toBe(204);
+    expect(del.body).toBe("");
 
     const { rows } = await pool.query<{ deleted_at: Date | null }>(
       `SELECT deleted_at FROM transcriptions WHERE id = $1`,
@@ -326,7 +342,8 @@ describe("integration — transcriptions CRUD (real Postgres + RLS)", () => {
         text: "B own",
       }),
     });
-    expect(bCreate.statusCode).toBe(200);
+    // Phase 56 / Plan 05 (R11) — cross-tenant create still 201.
+    expect(bCreate.statusCode).toBe(201);
   });
 
   it("D-32 invariant — no usage_ledger rows created by CRUD operations", async () => {

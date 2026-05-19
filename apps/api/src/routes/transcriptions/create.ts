@@ -3,7 +3,10 @@
 //
 // Wire shape (matches ~/openwhispr/src/services/TranscriptionsService.ts):
 //   Request:  TranscriptionInput
-//   Success:  200 CloudTranscription (14 fields per shape.ts)
+//   Success:  201 CloudTranscription (14 fields per shape.ts) — Phase 56
+//             Plan 05 (R11) flipped from 200 to 201 per SERVER-
+//             REQUIREMENTS.md §R11 (standard REST POST-creates-resource).
+//             D-24 idempotent retry returns 201 + existing-row body too.
 //
 // D-24 — same client_transcription_id on retry returns the existing row
 //        (200, NOT 409). Pattern 1 — createOrReturnExisting().
@@ -63,7 +66,7 @@ export const buildTranscriptionsCreateRoutes = (deps: TranscriptionsCreateDeps) 
           return row;
         });
 
-        return reply.code(200).send(rowToCloudTranscription(row));
+        return reply.code(201).send(rowToCloudTranscription(row));
       },
     });
   };

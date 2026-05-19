@@ -5,7 +5,11 @@
 // Wire shape (matches
 // ~/openwhispr/src/services/TranscriptionsService.ts.deleteTranscription):
 //   Request:  { id: string } (body)
-//   Success:  200 { ok: true }
+//   Success:  204 No Content (empty body) — Phase 56 Plan 05 (R11)
+//             flipped from 200 {ok:true} to 204 per SERVER-REQUIREMENTS.md
+//             §R11 (standard REST DELETE-success semantics; the client
+//             stub already discards the response: `await cloudDelete(...)`
+//             returns void in TranscriptionsService.ts.deleteTranscription).
 //   404:      transcription not found
 //
 // D-23 — soft delete. Sets deleted_at = NOW(); row remains in the table.
@@ -53,7 +57,9 @@ export const buildTranscriptionsDeleteRoutes = (deps: TranscriptionsDeleteDeps) 
         if (!updated) {
           throw new NotFoundError("TRANSCRIPTION_NOT_FOUND", "transcription not found");
         }
-        return reply.code(200).send({ ok: true });
+        // 204 No Content — empty body per RFC 7230 §3.3.2. Fastify
+        // skips body serialization when .send() receives undefined.
+        return reply.code(204).send();
       },
     });
   };
