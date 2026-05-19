@@ -482,6 +482,20 @@ export function buildAllRoutes(deps: AllRoutesDeps): readonly RoutePlugin[] {
         // /api/_test/litellm-baseurl introspection seam so the contract
         // suite can prove PROVIDER-01 (env override → all routes follow).
         ...(deps.litellm ? { litellm: deps.litellm } : {}),
+        // Phase 56 / Plan 56-01 / R1 — when the setup-admin signUpEmail
+        // is wired (production wiring binds `auth.api.signUpEmail` for
+        // /api/setup/admin) reuse the same bound function for the
+        // seed-tenant route. Both call into the same Better Auth
+        // instance with identical request shape.
+        ...(deps.setupAdmin
+          ? {
+              signUpEmail: (call: { body: { email: string; password: string; name: string } }) =>
+                deps.setupAdmin?.signUpEmail({ body: call.body }) as Promise<{
+                  data: { user: { id: string; email: string } } | null;
+                  error: { code?: string; message?: string } | null;
+                }>,
+            }
+          : {}),
       }),
     );
   }

@@ -19,8 +19,11 @@ apps/api/src/lib/ssrf-dispatcher.ts:59  # issue-31-DI-fallback-jsdoc
 apps/api/src/lib/ssrf-dispatcher.ts:163  # issue-31-DI-fallback
 apps/api/src/routes/index.ts:474  # issue-31-debt-NODE_ENV-shortcircuit
 apps/api/src/routes/test-only.ts:18  # issue-31-debt-test-only-jsdoc-header
-apps/api/src/routes/test-only.ts:122  # issue-31-debt-test-only-jsdoc
-apps/api/src/routes/test-only.ts:128  # issue-31-debt-test-only-gate
+apps/api/src/routes/test-only.ts:168  # issue-31-debt-test-only-jsdoc (drifted 122 → 168 in Phase 56 / Plan 56-01 R1 seed-tenant signature additions)
+apps/api/src/routes/test-only.ts:174  # issue-31-debt-test-only-gate (drifted 128 → 174 in Phase 56 / Plan 56-01 R1 seed-tenant signature additions)
+apps/api/src/routes/test-only.ts:353  # issue-56-01-test-only-seed-tenant-jsdoc-veto (Phase 56 / R1 — comment narrative of the production-veto defence-in-depth)
+apps/api/src/routes/test-only.ts:360  # issue-56-01-test-only-seed-tenant-jsdoc-gate (Phase 56 / R1 — comment narrative of the OPENWHISPR_TEST_ROUTES tightened-gate rationale)
+apps/api/src/routes/test-only.ts:372  # issue-56-01-test-only-seed-tenant-gate (Phase 56 / R1 — defence-in-depth production-veto inside the seed-tenant handler per SERVER-REQUIREMENTS.md §R1 gate 1)
 apps/worker/src/jobs/email-delivery.ts:80  # issue-31-DI-fallback-jsdoc
 apps/worker/src/jobs/email-delivery.ts:95  # issue-31-DI-fallback
 packages/byok-guard/src/index.ts:230  # issue-31-boundary-check (drifted 221 → 230 in Phase 51 / Plan 51-02 after re-export of redactUrl)

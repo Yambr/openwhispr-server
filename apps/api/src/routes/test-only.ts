@@ -35,9 +35,10 @@
 // internal scheduling) is not test-controllable. The previous_token
 // machinery is wired through `recordPreviousToken` so the contract
 // test's overlap assertion holds.
-import { randomBytes } from "node:crypto";
+import { randomBytes, randomUUID } from "node:crypto";
 import { type ExecutableTx, type TransactionalDb, withTenant } from "@openwhispr/data";
 import type { LitellmClient } from "@openwhispr/litellm-client";
+import { SeedTenantRequest } from "@openwhispr/wire-schemas";
 import { sql } from "drizzle-orm";
 import type { FastifyInstance, FastifyRequest } from "fastify";
 import { AuthError } from "../errors.js";
@@ -51,6 +52,37 @@ import type { AuthLike } from "../middleware/dual-auth.js";
  */
 export interface TestOnlyAuth extends AuthLike {
   handler?: (req: Request) => Promise<Response>;
+}
+
+/**
+ * Phase 56 / Plan 56-01 / R1 — Better Auth signUpEmail shape used by
+ * `/api/_test/seed-tenant`. Mirrors the subset of
+ * `auth.api.signUpEmail({body})` consumed by the handler (same shape
+ * setup-admin uses; declared locally to avoid widening AuthLike, which
+ * would ripple through every dual-auth fake in the suite).
+ */
+export interface TestOnlySignUpResult {
+  readonly data: { readonly user: { readonly id: string; readonly email: string } } | null;
+  readonly error: { readonly code?: string; readonly message?: string } | null;
+}
+
+export type TestOnlySignUpEmail = (call: {
+  body: { email: string; password: string; name: string };
+}) => Promise<TestOnlySignUpResult>;
+
+/**
+ * Phase 56 / Plan 56-01 / R1 — minted-bearer sink. The seed-tenant
+ * handler generates an opaque bearer + records it here so the
+ * downstream dual-auth path (which consults the same map in tests, and
+ * the real sessions table in production wiring) can resolve subsequent
+ * `Authorization: Bearer <token>` requests to the seeded user.
+ *
+ * Tests pass a plain Map; production wiring leaves this undefined and
+ * the handler instead INSERTs the session row directly into the
+ * sessions table (also covered below).
+ */
+export interface TestOnlySessionSink {
+  set(token: string, value: { id: string; email: string; tenantId: string }): void;
 }
 
 export interface TestOnlyDeps {
@@ -69,6 +101,20 @@ export interface TestOnlyDeps {
    * (production /api/_test/* always 404 — the gate is unchanged).
    */
   litellm?: LitellmClient;
+  /**
+   * Phase 56 / Plan 56-01 / R1 — `auth.api.signUpEmail` bound to the
+   * production Better Auth instance. When omitted, the seed-tenant
+   * route is NOT registered (the rest of the test-only surface still
+   * works). Tests inject a fake that emulates the Drizzle-adapter
+   * INSERT side-effect against an in-process fake `users` table.
+   */
+  signUpEmail?: TestOnlySignUpEmail;
+  /**
+   * Phase 56 / Plan 56-01 / R1 — minted-bearer sink (see
+   * `TestOnlySessionSink`). Tests pass a Map; production omits it (the
+   * handler writes to the real sessions table via the DB pool).
+   */
+  sessions?: TestOnlySessionSink;
 }
 
 function extractBearer(authHeader: string | string[] | undefined): string | null {
@@ -278,6 +324,169 @@ export function buildTestOnlyRoutes(deps: TestOnlyDeps) {
       });
       return { ok: true };
     });
+
+    // Phase 56 / Plan 56-01 / R1 — POST /api/_test/seed-tenant.
+    //
+    // Spec: /Users/dev/openwhispr/.planning/phases/08-client-server-audit/
+    //   SERVER-REQUIREMENTS.md §R1 (lines 21-83). Locked decisions:
+    //   .planning/phases/56-client-contract-conformance/CONTEXT.md §D-1.
+    //
+    // The route bridges Better Auth's signUp flow — which (a) rejects
+    // every non-browser fetch() with MISSING_OR_NULL_ORIGIN, and (b)
+    // returns `{token: null, user}` until the verification-email round-
+    // trip completes — for contract-level e2e callers that need a real
+    // session bearer in one round-trip. It unblocks 22 of 28 Phase 9
+    // client e2e scenarios.
+    //
+    // Bypasses:
+    //   - No trustedOrigins / MISSING_OR_NULL_ORIGIN check. Fastify
+    //     handlers do not enforce the Better-Auth CSRF gate by default;
+    //     by NOT routing through `auth.handler(Request)` we sidestep it.
+    //   - Email-verification skipped via a direct UPDATE users SET
+    //     email_verified=true, email_verified_at=now() after signUpEmail
+    //     succeeds.
+    //   - Bearer is minted with `crypto.randomBytes(32).toString('base64url')`
+    //     (same shape as `/api/_test/force-rotate`); INSERTed into the
+    //     `sessions` table so the bearer-plugin lookup admits it on
+    //     subsequent requests.
+    //
+    // Gate defence-in-depth: a fresh NODE_ENV==='production' veto here
+    // makes the route 404 even if an operator mis-sets
+    // OPENWHISPR_TEST_ROUTES=true in production. The outer `enabled`
+    // gate already covers the default-deny posture; this is the second
+    // independent layer per the R1 spec.
+    // Phase 56 / Plan 56-01 / R1 — D-1 mandates a TIGHTER gate for
+    // seed-tenant than the rest of the test-only surface. The outer
+    // `enabled` gate (above) admits NODE_ENV='test' alone for legacy
+    // reasons (reset-setup / health-authed / force-rotate). Seed-tenant
+    // additionally requires the explicit `OPENWHISPR_TEST_ROUTES=true`
+    // env opt-in regardless of the runtime mode — see
+    // SERVER-REQUIREMENTS.md §R1 gate-2 + CONTEXT.md §D-1.
+    if (deps.signUpEmail && process.env.OPENWHISPR_TEST_ROUTES === "true") {
+      const signUpEmail = deps.signUpEmail;
+      app.post("/api/_test/seed-tenant", { config: { rateLimit: false } }, async (req, reply) => {
+        // Defence-in-depth: refuse in production even if the env opt-in
+        // was mis-set. The outer gate would already have skipped
+        // registration, but a second handler-side check costs nothing
+        // and pins the contract under operator mis-configuration.
+        if (process.env.NODE_ENV === "production") {
+          return reply.code(404).send({ error: "not found" });
+        }
+        const parsed = SeedTenantRequest.safeParse(req.body);
+        if (!parsed.success) {
+          return reply.code(400).send({
+            error: "invalid body",
+            code: "INVALID_BODY",
+            details: parsed.error.flatten(),
+          });
+        }
+        const body = parsed.data;
+
+        // 1. Mint (or look up) the user via Better Auth's signUpEmail.
+        //    Idempotency contract (test 6): a second call with the same
+        //    email returns the existing user row + a fresh session.
+        //    The bound signUpEmail handles dedupe (Better Auth's
+        //    USER_ALREADY_EXISTS or our test fake's lower-case lookup);
+        //    on error we synthesise an idempotent lookup against the
+        //    users table (production path — Better Auth on duplicate
+        //    email surfaces a typed error rather than the existing row).
+        const signUp = await signUpEmail({
+          body: { email: body.email, password: body.password, name: body.name },
+        });
+
+        let userId: string;
+        let userEmail: string;
+        let createdAt: string;
+        if (signUp.data) {
+          userId = signUp.data.user.id;
+          userEmail = signUp.data.user.email;
+          createdAt = new Date().toISOString();
+        } else {
+          // Better Auth refused — try the idempotent lookup branch
+          // (e.g. USER_ALREADY_EXISTS). The seed-tenant contract
+          // promises 200 + the existing row on repeat invocation.
+          const lookup = (await db.transaction(async (tx) => {
+            return (await tx.execute(sql`
+              SELECT id, email, created_at FROM users
+              WHERE lower(email) = lower(${body.email})
+              LIMIT 1
+            `)) as {
+              rows: Array<{ id: string; email: string; created_at: string | Date }>;
+            };
+          })) as { rows: Array<{ id: string; email: string; created_at: string | Date }> };
+          const existing = lookup.rows[0];
+          if (!existing) {
+            return reply.code(500).send({
+              error: signUp.error?.message ?? "signUpEmail failed",
+              code: signUp.error?.code ?? "SIGNUP_FAILED",
+            });
+          }
+          userId = existing.id;
+          userEmail = existing.email;
+          createdAt =
+            typeof existing.created_at === "string"
+              ? existing.created_at
+              : existing.created_at.toISOString();
+        }
+
+        // 2. Flip email_verified=true straight on the user row. Skips
+        //    the verification-email round-trip per R1. Bound parameter
+        //    is the freshly-minted user id; no string interpolation.
+        await db.transaction(async (tx) => {
+          await tx.execute(sql`
+            UPDATE users
+               SET email_verified = true,
+                   email_verified_at = now()
+             WHERE id = ${userId}::uuid
+          `);
+        });
+
+        // 3. Mint a fresh opaque bearer and INSERT a sessions row so
+        //    Better Auth's bearer plugin admits subsequent requests
+        //    carrying it. Same 32-byte base64url shape as the rest of
+        //    the test-only surface (force-rotate / health-authed).
+        const token = randomBytes(32).toString("base64url");
+        const sessionId = randomUUID();
+        // 30-day TTL mirrors the production session config (auth.ts
+        // sessions.expiresIn = 60*60*24*30).
+        const expiresAt = new Date(Date.now() + 1000 * 60 * 60 * 24 * 30).toISOString();
+        await db.transaction(async (tx) => {
+          await tx.execute(sql`
+            INSERT INTO sessions (id, user_id, tenant_id, token, expires_at, created_at, updated_at)
+            VALUES (${sessionId}::uuid,
+                    ${userId}::uuid,
+                    (SELECT tenant_id FROM users WHERE id = ${userId}::uuid),
+                    ${token},
+                    ${expiresAt}::timestamptz,
+                    now(),
+                    now())
+          `);
+        });
+
+        // 4. Test-only seam — when caller passed a sessions Map (unit
+        //    tests), mirror the token there so the in-process dual-auth
+        //    fake resolves the bearer to the same user. Production
+        //    wiring leaves this undefined; the bearer plugin reads the
+        //    real sessions row written above.
+        if (deps.sessions) {
+          deps.sessions.set(token, {
+            id: userId,
+            email: userEmail,
+            tenantId: req.headers["x-test-tenant-id"]?.toString() ?? "",
+          });
+        }
+
+        return reply.code(200).send({
+          token,
+          user: {
+            id: userId,
+            email: userEmail,
+            emailVerified: true,
+            createdAt,
+          },
+        });
+      });
+    }
   };
 }
 

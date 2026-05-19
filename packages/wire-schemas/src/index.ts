@@ -19,6 +19,7 @@ export * from "./openai-realtime-token.js";
 export * from "./reason.js";
 export * from "./settings.js";
 export * from "./streaming-usage.js";
+export * from "./test-only-seed-tenant.js";
 export * from "./transcriptions.js";
 export * from "./verification-status.js";
 export * from "./web-search.js";
