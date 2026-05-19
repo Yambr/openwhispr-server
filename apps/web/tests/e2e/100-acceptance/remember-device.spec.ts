@@ -79,6 +79,16 @@ test.describe("@phase55-acceptance @long-form — remember-device payload + cook
     // in DEFAULT_ALLOWLIST — not a real bug. Mirrors revoke-sessions.spec.ts.
     allowBrowserErrors(page, [
       /GET [^ ]+\/_next\/static\/chunks\/[^ ]+ → FAILED: net::ERR_ABORTED/,
+      // Phase 55-02-d step 1 — idempotent provisioning probes sign-in
+      // FIRST (cheap path for already-verified runs). On a fresh run
+      // alice+55d does not yet exist, so Better Auth rejects the probe
+      // with 401 INVALID_EMAIL_OR_PASSWORD. The spec then falls back
+      // to sign-up + mailpit-verify. The 401 network + console entries
+      // are the intended fast-path probe, not a real bug. Same
+      // allowlist precedent as delete-account.spec.ts:59-64 for its
+      // deliberate post-deletion 401 retry.
+      /POST [^ ]+\/api\/auth\/sign-in\/email[^ ]* → 401\b/,
+      /Failed to load resource:.*\b401\b/,
     ]);
   });
 
