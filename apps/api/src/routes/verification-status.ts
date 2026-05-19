@@ -7,10 +7,15 @@
 // has been clicked.
 //
 // Behavior: return `{verified: users.email_verified_at !== null}` for
-// the email in the query string under the SESSION'S tenant scope (T-02-
-// 03-04: cross-tenant access via this email param is mitigated by the
-// preHandler binding `req.tenant` from the session AND the SELECT
-// running inside `withTenant`).
+// the SESSION-DERIVED caller email under the session's tenant scope.
+// The `?email=` query param is REQUIRED by BACKEND_SPEC and validated
+// (strict, RFC-5321 ≤254 bytes) but its VALUE is intentionally
+// discarded — identity is derived from the session per
+// SERVER-REQUIREMENTS §R5 (Phase 8 audit; openwhispr repo). Param-vs-
+// session mismatch is silently tolerated (no 400) per R5 disposition:
+// "if not [security-purposed], just ignore it silently per current
+// behavior" (R5 lines 243-244). T-02-03-04: belt-and-suspenders —
+// tenant from session AND the SELECT runs inside `withTenant`.
 //
 // Rate limit (D-28): 30/min keyed on (ip, email) — the desktop polls
 // during onboarding; busy fixtures must not DoS each other.
@@ -48,14 +53,25 @@ export const buildVerificationStatusRoutes = (deps: VerificationStatusDeps) =>
       },
       preHandler: requireCookieOnly,
       handler: async (req) => {
-        const query = VerificationStatusQuery.parse(req.query);
+        // R5: validate the param shape (strict, ≤254 bytes) but discard
+        // its value — identity is session-derived. Parse-and-drop also
+        // guards against a future schema drift where a strict-only
+        // tolerance regression could leak in.
+        VerificationStatusQuery.parse(req.query);
         if (!req.tenant) {
           // requireCookieOnly should always set this; defense-in-depth.
           throw new AuthError("session expired");
         }
+        const sessionEmail = req.user?.email;
+        if (!sessionEmail) {
+          // Defense-in-depth: requireCookieOnly attaches `req.user`. If
+          // it ever resolves a session without an email (e.g., upstream
+          // provider quirk), treat as no-such-user → verified=false.
+          return { verified: false };
+        }
         const verified = await withTenant(db, req.tenant, async (tx) => {
           const res = (await tx.execute(
-            sql`SELECT email_verified_at FROM users WHERE email = ${query.email} LIMIT 1`,
+            sql`SELECT email_verified_at FROM users WHERE email = ${sessionEmail} LIMIT 1`,
           )) as { rows: Array<{ email_verified_at: Date | string | null }> };
           const row = res.rows[0];
           return Boolean(row && row.email_verified_at !== null);

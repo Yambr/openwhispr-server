@@ -198,6 +198,124 @@ describe("GET /api/auth/verification-status (cookie-only)", () => {
     await app.close();
   });
 
+  // Phase 56 / Plan 56-09 — R5 conformance: ?email= param is documented
+  // in BACKEND_SPEC but the SERVER MUST derive identity from session, not
+  // the param. Tolerate any well-formed email value (incl. mismatch with
+  // the session-derived caller) without 400. Verified status reflects the
+  // SESSION user, never the client-supplied param. See SERVER-REQUIREMENTS
+  // §R5 (`/Users/dev/openwhispr/.planning/phases/08-client-server-audit/
+  // SERVER-REQUIREMENTS.md` lines 219-254).
+
+  it("R5: ?email= mismatching session does NOT 400 and returns session truth", async () => {
+    // Session user is alice (verified). Param is bob. Server MUST return
+    // 200 with alice's verified-state, NOT 400 and NOT bob's truth.
+    const db = makeFakeDb((sql) => {
+      if (/SELECT email_verified_at FROM users/.test(sql)) {
+        return [{ email_verified_at: "2026-01-01T00:00:00Z" }];
+      }
+      return [];
+    });
+    const auth = makeAuth(async () => ({
+      user: { id: "u-alice", email: "alice@b.test", tenantId: TENANT_A },
+    }));
+    const app = buildApp({ db, auth });
+    const res = await app.inject({
+      method: "GET",
+      url: "/api/auth/verification-status?email=bob%40b.test",
+      headers: { cookie: "openwhispr.session_token=valid" },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toEqual({ verified: true });
+    await app.close();
+  });
+
+  it("R5: SQL WHERE-email is bound to the SESSION email, not the client param", async () => {
+    // Capture SQL parameter bindings and assert the lookup key is the
+    // session-derived email. This is the LOCK-IN test that proves the
+    // server ignores the client-supplied ?email= for authoritative use.
+    const seenEmails: string[] = [];
+    const tx: FakeTx = {
+      async execute(query: unknown): Promise<unknown> {
+        // Drizzle's `sql` template places bound parameter VALUES directly
+        // into `queryChunks` as bare primitives, interleaved with
+        // template-string objects (`{ value: string[] }`). Extract the
+        // string primitives to inspect what the handler bound.
+        const chunks = (query as { queryChunks?: unknown[] }).queryChunks ?? [];
+        for (const c of chunks) {
+          if (typeof c === "string" && c.includes("@")) seenEmails.push(c);
+        }
+        return { rows: [{ email_verified_at: null }] };
+      },
+    };
+    const db = {
+      async transaction<T>(cb: (t: FakeTx) => Promise<T>): Promise<T> {
+        return cb(tx);
+      },
+    };
+    const auth = makeAuth(async () => ({
+      user: { id: "u-alice", email: "alice@b.test", tenantId: TENANT_A },
+    }));
+    const app = buildApp({ db, auth });
+    const res = await app.inject({
+      method: "GET",
+      url: "/api/auth/verification-status?email=bob%40b.test",
+      headers: { cookie: "openwhispr.session_token=valid" },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(seenEmails).toContain("alice@b.test");
+    expect(seenEmails).not.toContain("bob@b.test");
+    await app.close();
+  });
+
+  it("R5 defense-in-depth: session without email → verified=false (no DB query)", async () => {
+    // If requireCookieOnly ever attaches a session whose user has no
+    // email (provider quirk, future identity-provider drift, etc.), the
+    // handler MUST short-circuit to verified=false rather than running
+    // an unbound SQL query. Pin this branch.
+    let dbQueried = false;
+    const db = makeFakeDb(() => {
+      dbQueried = true;
+      return [];
+    });
+    const auth = makeAuth(async () => ({
+      // Cast through `unknown` is forbidden by LOCKER-02; instead
+      // construct a session whose `user.email` is empty string. Empty
+      // string is falsy and triggers the defense branch identically.
+      user: { id: "u-1", email: "", tenantId: TENANT_A },
+    }));
+    const app = buildApp({ db, auth });
+    const res = await app.inject({
+      method: "GET",
+      url: "/api/auth/verification-status?email=any%40b.test",
+      headers: { cookie: "openwhispr.session_token=valid" },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toEqual({ verified: false });
+    expect(dbQueried).toBe(false);
+    await app.close();
+  });
+
+  it("R5: ?email= with a well-formed unknown address still returns 200 (session truth)", async () => {
+    const db = makeFakeDb((sql) => {
+      if (/SELECT email_verified_at FROM users/.test(sql)) {
+        return [{ email_verified_at: "2026-01-01T00:00:00Z" }];
+      }
+      return [];
+    });
+    const auth = makeAuth(async () => ({
+      user: { id: "u-alice", email: "alice@b.test", tenantId: TENANT_A },
+    }));
+    const app = buildApp({ db, auth });
+    const res = await app.inject({
+      method: "GET",
+      url: "/api/auth/verification-status?email=does-not-exist%40nowhere.test",
+      headers: { cookie: "openwhispr.session_token=valid" },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toEqual({ verified: true });
+    await app.close();
+  });
+
   // Phase-2 debt back-fill — exercises the `if (!req.tenant)` defense-
   // in-depth branch at verification-status.ts:53-56. Reachable when the
   // session resolves but tenantId is the empty string (`?? fallback`
