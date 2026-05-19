@@ -33,8 +33,10 @@ import {
   TranscriptionInputSchema,
   TranscriptionStatusSchema,
   V1CreateApiKeyResponseSchema,
+  V1Failure,
   V1ListApiKeysResponseSchema,
   V1Response,
+  V1Success,
   WebSearchRequestSchema,
   WebSearchResponseSchema,
   WebSearchResultSchema,
@@ -579,9 +581,14 @@ describe("api-keys schemas", () => {
     ).toBe(false);
   });
 
-  it("V1Response<T> wraps payloads in { data: T }", () => {
-    const Wrapped = V1Response(ApiKeySchema);
+  // Phase 56-06 D-3 — V1Response envelope flipped to a discriminated
+  // union of success/failure variants. The old `{ data: T }` literal
+  // form is REJECTED — clients must branch on `success` first.
+
+  it("V1Success<T> requires { success: true, data: T } (strict)", () => {
+    const Wrapped = V1Success(ApiKeySchema);
     const ok = {
+      success: true,
       data: {
         id: UUID,
         name: "n",
@@ -593,16 +600,67 @@ describe("api-keys schemas", () => {
       },
     };
     expect(() => Wrapped.parse(ok)).not.toThrow();
+    // Missing success flag — REJECTED (legacy `{data:T}` no longer valid).
+    expect(Wrapped.safeParse({ data: ok.data }).success).toBe(false);
+    // success:false in a success-variant schema — REJECTED.
+    expect(Wrapped.safeParse({ ...ok, success: false }).success).toBe(false);
+    // Stray top-level keys — REJECTED.
+    expect(Wrapped.safeParse({ ...ok, error: "no" }).success).toBe(false);
+  });
+
+  it("V1Failure has { success: false, error: string, code?: string } (strict)", () => {
+    expect(() => V1Failure.parse({ success: false, error: "boom" })).not.toThrow();
+    expect(() =>
+      V1Failure.parse({ success: false, error: "boom", code: "UNAUTHORIZED" }),
+    ).not.toThrow();
+    // Empty error string — REJECTED.
+    expect(V1Failure.safeParse({ success: false, error: "" }).success).toBe(false);
+    // success:true in failure schema — REJECTED.
+    expect(V1Failure.safeParse({ success: true, error: "x" }).success).toBe(false);
+    // Stray `data` key on the failure shape — REJECTED.
+    expect(V1Failure.safeParse({ success: false, error: "x", data: {} }).success).toBe(false);
+  });
+
+  it("V1Response<T> is a discriminated union of success/failure variants", () => {
+    const Wrapped = V1Response(ApiKeySchema);
+    const apiKey = {
+      id: UUID,
+      name: "n",
+      key_prefix: "pak_abcdef",
+      scopes: [],
+      last_used_at: null,
+      expires_at: null,
+      created_at: T,
+    };
+    // Success branch parses.
+    expect(() => Wrapped.parse({ success: true, data: apiKey })).not.toThrow();
+    // Failure branch parses (with or without code).
+    expect(() => Wrapped.parse({ success: false, error: "boom" })).not.toThrow();
+    expect(() => Wrapped.parse({ success: false, error: "boom", code: "NOT_FOUND" })).not.toThrow();
+    // Legacy plain `{ data: T }` (no success discriminator) — REJECTED.
+    expect(Wrapped.safeParse({ data: apiKey }).success).toBe(false);
+    // Empty envelope — REJECTED.
     expect(Wrapped.safeParse({}).success).toBe(false);
   });
 
-  it("V1ListApiKeysResponse exposes { data: { keys: ApiKey[] } }", () => {
-    const ok = { data: { keys: [] } };
+  it("V1ListApiKeysResponse exposes { success: true, data: { keys: ApiKey[] } }", () => {
+    const ok = { success: true, data: { keys: [] } };
     expect(() => V1ListApiKeysResponseSchema.parse(ok)).not.toThrow();
+    // Failure variant also parses.
+    expect(() =>
+      V1ListApiKeysResponseSchema.parse({
+        success: false,
+        error: "unauthorized",
+        code: "UNAUTHORIZED",
+      }),
+    ).not.toThrow();
+    // Legacy `{ data: { keys: [] } }` — REJECTED.
+    expect(V1ListApiKeysResponseSchema.safeParse({ data: { keys: [] } }).success).toBe(false);
   });
 
-  it("V1CreateApiKeyResponse exposes { data: CreateApiKeyResponse } including `key`", () => {
+  it("V1CreateApiKeyResponse exposes { success: true, data: CreateApiKeyResponse } including `key`", () => {
     const ok = {
+      success: true,
       data: {
         id: UUID,
         name: "n",
@@ -615,6 +673,16 @@ describe("api-keys schemas", () => {
       },
     };
     expect(() => V1CreateApiKeyResponseSchema.parse(ok)).not.toThrow();
+    // Failure variant also parses.
+    expect(() =>
+      V1CreateApiKeyResponseSchema.parse({
+        success: false,
+        error: "duplicate",
+        code: "CONFLICT",
+      }),
+    ).not.toThrow();
+    // Legacy `{ data: T }` — REJECTED.
+    expect(V1CreateApiKeyResponseSchema.safeParse({ data: ok.data }).success).toBe(false);
   });
 });
 

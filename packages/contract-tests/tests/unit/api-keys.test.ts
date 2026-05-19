@@ -5,9 +5,13 @@
 // Asserts the wire shape against a live BACKEND_URL with the seeded
 // fixture user. Skip-if-unreachable semantics mirror folders.test.ts.
 //
-// Distinct envelope: every WIRE-27 route returns the V1Response
-// `{ data: T }` shape per D-28 — different from the rest of Phase 5
-// which returns the resource directly.
+// Phase 56-06 / D-3 — V1Response envelope flipped to a discriminated
+// union of success/failure variants:
+//
+//   success: { success: true, data: T }
+//   failure: { success: false, error: string, code?: string }
+//
+// Distinct from the rest of Phase 5 which returns the resource directly.
 
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
@@ -41,18 +45,27 @@ const CreateApiKeyResponseShape = z.object({
   key: z.string(),
 });
 
-const V1ListResponse = z.object({
-  data: z.object({ keys: z.array(ApiKeyShape) }),
-});
-const V1CreateResponse = z.object({ data: CreateApiKeyResponseShape });
-const V1RevokeResponse = z.object({ data: ApiKeyShape });
+// Phase 56-06 D-3 — success envelope shape. Strict so any drift back
+// to the legacy `{ data: T }` literal (without `success`) is rejected
+// by Zod's discriminator AND any stray `error`/`code` key on a 2xx
+// response is caught by .strict().
+const V1ListResponse = z
+  .object({
+    success: z.literal(true),
+    data: z.object({ keys: z.array(ApiKeyShape) }),
+  })
+  .strict();
+const V1CreateResponse = z
+  .object({ success: z.literal(true), data: CreateApiKeyResponseShape })
+  .strict();
+const V1RevokeResponse = z.object({ success: z.literal(true), data: ApiKeyShape }).strict();
 
 function rnd(prefix: string): string {
   return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
 }
 
 describe.skipIf(!REACHABLE)("WIRE-27 — /api/v1/keys/* (3 routes)", () => {
-  it("POST /api/v1/keys/create returns { data: CreateApiKeyResponse } with clear-text 'key' (D-28, D-29)", async () => {
+  it("POST /api/v1/keys/create returns { success:true, data: CreateApiKeyResponse } with clear-text 'key' (D-3, D-29)", async () => {
     const jar = await signInFixture("fixture@conformance.test");
     const res = await jar.fetch(`${BACKEND_URL}/api/v1/keys/create`, {
       method: "POST",
@@ -67,7 +80,7 @@ describe.skipIf(!REACHABLE)("WIRE-27 — /api/v1/keys/* (3 routes)", () => {
     expect(parsed.data.key_prefix).toBe(parsed.data.key.slice(0, 12));
   });
 
-  it("GET /api/v1/keys/list returns { data: { keys: ApiKey[] } } with NO clear-text or hash", async () => {
+  it("GET /api/v1/keys/list returns { success:true, data: { keys: ApiKey[] } } with NO clear-text or hash", async () => {
     const jar = await signInFixture("fixture@conformance.test");
     // Seed a key first so the list is non-empty.
     await jar.fetch(`${BACKEND_URL}/api/v1/keys/create`, {
@@ -87,7 +100,7 @@ describe.skipIf(!REACHABLE)("WIRE-27 — /api/v1/keys/* (3 routes)", () => {
     }
   });
 
-  it("POST /api/v1/keys/:id/revoke returns { data: ApiKey } with revoked_at set", async () => {
+  it("POST /api/v1/keys/:id/revoke returns { success:true, data: ApiKey } with revoked_at set", async () => {
     const jar = await signInFixture("fixture@conformance.test");
     const create = await jar.fetch(`${BACKEND_URL}/api/v1/keys/create`, {
       method: "POST",

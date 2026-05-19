@@ -30,6 +30,7 @@ import { AuthError, ConflictError } from "../../../errors.js";
 import { generatePak, hashKey } from "../../../lib/argon2-keys.js";
 import { auditCtxFromRequest, recordAudit } from "../../../lib/audit.js";
 import { type ApiKeyRow, rowToApiKey } from "./list.js";
+import { withV1Envelope } from "./v1-envelope.js";
 
 export interface KeysCreateDeps {
   db: TransactionalDb<ExecutableTx>;
@@ -53,7 +54,7 @@ function computeExpiresAt(days: number | null | undefined): Date | null {
 }
 
 export const buildKeysCreateRoutes = (deps: KeysCreateDeps) =>
-  async function keysCreateRoutes(app: FastifyInstance): Promise<void> {
+  withV1Envelope(async function keysCreateRoutes(app: FastifyInstance): Promise<void> {
     app.route({
       method: "POST",
       url: "/api/v1/keys/create",
@@ -140,11 +141,14 @@ export const buildKeysCreateRoutes = (deps: KeysCreateDeps) =>
         }
 
         const wire = rowToApiKey(row);
-        // D-28 envelope + D-29 clear-text-once. `key` field surfaces the
-        // raw PAK exactly here; subsequent /list calls NEVER include it.
-        return reply.code(200).send({ data: { ...wire, key: clearText } });
+        // Phase 56-06 D-3 — V1Response success envelope (was the legacy
+        // `{ data: T }` shape). HTTP status stays 200 — R12 spec table
+        // does NOT mandate 201 for /create (the rest of the wire surface
+        // uses 200 for create as well, mirroring upstream client). The
+        // `key` (clear-text PAK) surfaces here EXACTLY ONCE per D-29.
+        return reply.code(200).send({ success: true, data: { ...wire, key: clearText } });
       },
     });
-  };
+  });
 
 export default buildKeysCreateRoutes;

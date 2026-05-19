@@ -61,7 +61,7 @@ beforeEach(async () => {
 });
 
 describe("integration — /api/v1/keys CRUD (real Postgres + RLS)", () => {
-  it("create — returns { data: { ...ApiKey, key: 'pak_*' } } and clear-text is NOT persisted", async () => {
+  it("create — returns { success:true, data: { ...ApiKey, key: 'pak_*' } } and clear-text is NOT persisted", async () => {
     const res = await appA.inject({
       method: "POST",
       url: "/api/v1/keys/create",
@@ -70,6 +70,7 @@ describe("integration — /api/v1/keys CRUD (real Postgres + RLS)", () => {
     });
     expect(res.statusCode).toBe(200);
     const envelope = res.json() as {
+      success: true;
       data: {
         id: string;
         name: string;
@@ -82,7 +83,11 @@ describe("integration — /api/v1/keys CRUD (real Postgres + RLS)", () => {
         revoked_at: string | null;
       };
     };
+    // Phase 56-06 D-3 — discriminated envelope.
+    expect(envelope.success).toBe(true);
     expect(envelope).toHaveProperty("data");
+    expect(envelope).not.toHaveProperty("error");
+    expect(envelope).not.toHaveProperty("code");
     const body = envelope.data;
     // D-29 — clear-text PAK returned, starts with pak_.
     expect(body.key.startsWith("pak_")).toBe(true);
@@ -111,7 +116,7 @@ describe("integration — /api/v1/keys CRUD (real Postgres + RLS)", () => {
     expect(leakCheck.rows[0].n).toBe(0);
   });
 
-  it("list — returns { data: { keys: ApiKey[] } } without `key` or `key_hash`", async () => {
+  it("list — returns { success:true, data: { keys: ApiKey[] } } without `key` or `key_hash`", async () => {
     // Seed two keys via the API.
     const c1 = await appA.inject({
       method: "POST",
@@ -134,9 +139,12 @@ describe("integration — /api/v1/keys CRUD (real Postgres + RLS)", () => {
     });
     expect(list.statusCode).toBe(200);
     const envelope = list.json() as {
+      success: true;
       data: { keys: Array<Record<string, unknown>> };
     };
+    expect(envelope.success).toBe(true);
     expect(envelope).toHaveProperty("data");
+    expect(envelope).not.toHaveProperty("error");
     expect(envelope.data.keys).toHaveLength(2);
     for (const row of envelope.data.keys) {
       // T-KEY-LEAK mitigation — clear-text/hash NEVER in list.
@@ -172,8 +180,14 @@ describe("integration — /api/v1/keys CRUD (real Postgres + RLS)", () => {
       headers: { "content-type": "application/json" },
       payload: JSON.stringify({ name: "dup-name" }),
     });
+    // Phase 56-06 D-3 — failure envelope: {success:false, error, code}.
+    // HTTP status code stays truthful at 409 (NOT 200).
     expect(r2.statusCode).toBe(409);
-    expect((r2.json() as { error: string }).error).toMatch(/already exists/);
+    const r2body = r2.json() as { success: false; error: string; code?: string };
+    expect(r2body.success).toBe(false);
+    expect(r2body.error).toMatch(/already exists/);
+    expect(r2body.code).toBe("API_KEY_NAME_TAKEN");
+    expect(r2body).not.toHaveProperty("data");
   });
 
   it("create — expiresInDays maps to expires_at", async () => {
@@ -184,7 +198,7 @@ describe("integration — /api/v1/keys CRUD (real Postgres + RLS)", () => {
       payload: JSON.stringify({ name: "expiring", expiresInDays: 30 }),
     });
     expect(res.statusCode).toBe(200);
-    const body = (res.json() as { data: { expires_at: string } }).data;
+    const body = (res.json() as { success: true; data: { expires_at: string } }).data;
     expect(body.expires_at).not.toBeNull();
     const ms = new Date(body.expires_at).getTime() - Date.now();
     // Within 30 days ± 1 minute slack.
@@ -206,7 +220,8 @@ describe("integration — /api/v1/keys CRUD (real Postgres + RLS)", () => {
       url: "/api/v1/keys/list",
     });
     expect(bList.statusCode).toBe(200);
-    const bBody = bList.json() as { data: { keys: unknown[] } };
+    const bBody = bList.json() as { success: true; data: { keys: unknown[] } };
+    expect(bBody.success).toBe(true);
     expect(bBody.data.keys).toHaveLength(0);
 
     // Cross-tenant name reuse is legal (partial UNIQUE is per-tenant).
@@ -261,7 +276,8 @@ describe("integration — /api/v1/keys CRUD (real Postgres + RLS)", () => {
       payload: JSON.stringify({ name: "audit-issued-key" }),
     });
     expect(res.statusCode).toBe(200);
-    const wire = res.json() as { data: { id: string; key: string } };
+    const wire = res.json() as { success: true; data: { id: string; key: string } };
+    expect(wire.success).toBe(true);
     const clearText = wire.data.key;
     const keyId = wire.data.id;
 
@@ -291,7 +307,7 @@ describe("integration — /api/v1/keys CRUD (real Postgres + RLS)", () => {
       payload: JSON.stringify({ name: "audit-revoked-key" }),
     });
     expect(create.statusCode).toBe(200);
-    const { id: keyId } = (create.json() as { data: { id: string } }).data;
+    const { id: keyId } = (create.json() as { success: true; data: { id: string } }).data;
 
     const revoke = await appA.inject({
       method: "POST",
@@ -318,7 +334,7 @@ describe("integration — /api/v1/keys CRUD (real Postgres + RLS)", () => {
       payload: JSON.stringify({ name: "a-cross-tenant-revoke" }),
     });
     expect(create.statusCode).toBe(200);
-    const { id: keyId } = (create.json() as { data: { id: string } }).data;
+    const { id: keyId } = (create.json() as { success: true; data: { id: string } }).data;
 
     const bRevoke = await appB.inject({
       method: "POST",

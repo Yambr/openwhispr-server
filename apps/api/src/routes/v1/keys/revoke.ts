@@ -29,6 +29,7 @@ import { z } from "zod";
 import { AuthError, NotFoundError, ValidationError } from "../../../errors.js";
 import { auditCtxFromRequest, recordAudit } from "../../../lib/audit.js";
 import { type ApiKeyRow, rowToApiKey } from "./list.js";
+import { withV1Envelope } from "./v1-envelope.js";
 
 export interface KeysRevokeDeps {
   db: TransactionalDb<ExecutableTx>;
@@ -39,7 +40,7 @@ const ParamsSchema = z.object({
 });
 
 export const buildKeysRevokeRoutes = (deps: KeysRevokeDeps) =>
-  async function keysRevokeRoutes(app: FastifyInstance): Promise<void> {
+  withV1Envelope(async function keysRevokeRoutes(app: FastifyInstance): Promise<void> {
     app.route({
       method: "POST",
       url: "/api/v1/keys/:id/revoke",
@@ -91,10 +92,10 @@ export const buildKeysRevokeRoutes = (deps: KeysRevokeDeps) =>
         if (!row) {
           throw new NotFoundError("API_KEY_NOT_FOUND", "api key not found");
         }
-        // V1Response envelope per D-28: { data: ApiKey }.
-        return reply.code(200).send({ data: rowToApiKey(row) });
+        // Phase 56-06 D-3 — V1Response success envelope.
+        return reply.code(200).send({ success: true, data: rowToApiKey(row) });
       },
     });
-  };
+  });
 
 export default buildKeysRevokeRoutes;

@@ -67,12 +67,12 @@ async function createKey(name: string): Promise<{ id: string; key: string }> {
     headers: { "content-type": "application/json" },
     payload: JSON.stringify({ name }),
   });
-  const body = (res.json() as { data: { id: string; key: string } }).data;
+  const body = (res.json() as { success: true; data: { id: string; key: string } }).data;
   return body;
 }
 
 describe("integration — POST /api/v1/keys/:id/revoke (real Postgres + RLS)", () => {
-  it("revoke — happy path returns { data: ApiKey } with revoked_at populated (D-28)", async () => {
+  it("revoke — happy path returns { success:true, data: ApiKey } with revoked_at populated (Phase 56-06 D-3)", async () => {
     const { id } = await createKey("revoke-target");
     const res = await appA.inject({
       method: "POST",
@@ -80,9 +80,12 @@ describe("integration — POST /api/v1/keys/:id/revoke (real Postgres + RLS)", (
     });
     expect(res.statusCode).toBe(200);
     const envelope = res.json() as {
+      success: true;
       data: { id: string; revoked_at: string | null };
     };
+    expect(envelope.success).toBe(true);
     expect(envelope).toHaveProperty("data");
+    expect(envelope).not.toHaveProperty("error");
     expect(envelope.data.id).toBe(id);
     expect(envelope.data.revoked_at).not.toBeNull();
     // No clear-text or hash leakage on revoke response.
@@ -97,7 +100,7 @@ describe("integration — POST /api/v1/keys/:id/revoke (real Postgres + RLS)", (
       url: `/api/v1/keys/${id}/revoke`,
     });
     expect(r1.statusCode).toBe(200);
-    const firstAt = (r1.json() as { data: { revoked_at: string } }).data.revoked_at;
+    const firstAt = (r1.json() as { success: true; data: { revoked_at: string } }).data.revoked_at;
 
     // Brief delay; if COALESCE were missing the second revoke would
     // overwrite revoked_at with a later NOW().
@@ -108,7 +111,7 @@ describe("integration — POST /api/v1/keys/:id/revoke (real Postgres + RLS)", (
       url: `/api/v1/keys/${id}/revoke`,
     });
     expect(r2.statusCode).toBe(200);
-    const secondAt = (r2.json() as { data: { revoked_at: string } }).data.revoked_at;
+    const secondAt = (r2.json() as { success: true; data: { revoked_at: string } }).data.revoked_at;
     expect(secondAt).toBe(firstAt);
   });
 
@@ -122,6 +125,7 @@ describe("integration — POST /api/v1/keys/:id/revoke (real Postgres + RLS)", (
     expect(list.statusCode).toBe(200);
     const body = (
       list.json() as {
+        success: true;
         data: { keys: Array<{ id: string; revoked_at: string | null }> };
       }
     ).data;
@@ -130,13 +134,19 @@ describe("integration — POST /api/v1/keys/:id/revoke (real Postgres + RLS)", (
     expect(found?.revoked_at).not.toBeNull();
   });
 
-  it("revoke — cross-tenant attempt → 404 (RLS, NEVER 403)", async () => {
+  it("revoke — cross-tenant attempt → 404 + failure envelope (RLS, NEVER 403)", async () => {
     const { id } = await createKey("a-only");
     const bRevoke = await appB.inject({
       method: "POST",
       url: `/api/v1/keys/${id}/revoke`,
     });
     expect(bRevoke.statusCode).toBe(404);
+    // Phase 56-06 D-3 — failure envelope.
+    const body = bRevoke.json() as { success: false; error: string; code?: string };
+    expect(body.success).toBe(false);
+    expect(body.error).toMatch(/not found/i);
+    expect(body.code).toBe("API_KEY_NOT_FOUND");
+    expect(body).not.toHaveProperty("data");
     // Defensive — make sure A's row is NOT revoked after B's attempt.
     const { rows } = await pool.query<{ revoked_at: Date | null }>(
       `SELECT revoked_at FROM api_keys WHERE id = $1`,
@@ -145,21 +155,27 @@ describe("integration — POST /api/v1/keys/:id/revoke (real Postgres + RLS)", (
     expect(rows[0]?.revoked_at).toBeNull();
   });
 
-  it("revoke — unknown id → 404", async () => {
+  it("revoke — unknown id → 404 + failure envelope", async () => {
     const res = await appA.inject({
       method: "POST",
       // Valid v4 UUID (third group starts with 4, fourth with 8-b)
       url: "/api/v1/keys/11111111-1111-4111-8111-111111111111/revoke",
     });
     expect(res.statusCode).toBe(404);
+    const body = res.json() as { success: false; error: string; code?: string };
+    expect(body.success).toBe(false);
+    expect(body.code).toBe("API_KEY_NOT_FOUND");
   });
 
-  it("revoke — invalid uuid → 400", async () => {
+  it("revoke — invalid uuid → 400 + failure envelope", async () => {
     const res = await appA.inject({
       method: "POST",
       url: "/api/v1/keys/not-a-uuid/revoke",
     });
     expect(res.statusCode).toBe(400);
+    const body = res.json() as { success: false; error: string; code?: string };
+    expect(body.success).toBe(false);
+    expect(body.code).toBe("INVALID_ID");
   });
 
   it("T-REVOKE-LATENCY — verifyKey() still TRUE after revoke (Phase 6 will gate on revoked_at)", async () => {
