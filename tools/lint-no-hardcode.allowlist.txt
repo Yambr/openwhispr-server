@@ -39,7 +39,7 @@ packages/data/src/schema/tenants.ts:4  # canonical-default-tenant
 # bucket (e) PERMANENT docker-compose-internal-url, because they are the
 # canonical docker-compose service-address defaults the CLAUDE.md OOB-boot
 # rule depends on.
-apps/api/src/auth.ts:376  # issue-31-debt-hardcode-localhost-3000 (drift +13 by 55-05b)
+apps/api/src/auth.ts:425  # issue-31-debt-hardcode-localhost-3000 (drift +13 by 55-05b; +49 by 57-A.2)
 apps/api/src/routes/test-only.ts:227  # issue-31-debt-hardcode-localhost-3000 (drifted 181 → 227 in Phase 56 / Plan 56-01 R1 seed-tenant signature additions)
 apps/api/src/routes/better-auth-handler.ts:49  # comment-only-narrative-issue-31-fp (Plan 51-10 fix rationale comment references the old localhost fallback)
 apps/api/src/config/auth.ts:68  # 53-37-test-env-default — NODE_ENV=test fallback URL used only when AUTH_URL is unset in vitest harness; never reached at production boot
@@ -57,8 +57,8 @@ apps/api/src/config/litellm.ts:63  # 53-42-anti-footgun-sentinel-msg — same se
 # `/* ... */` comment that narrates the env-driven default, the routing
 # pattern, or the security boundary — it is NOT a runtime literal. Removing
 # the prose would degrade self-documenting source.
-apps/api/src/auth.ts:380  # comment-only-narrative-issue-31-fp (drift +13 by 55-05b)
-apps/api/src/auth.ts:381  # comment-only-narrative-issue-31-fp (drift +13 by 55-05b)
+apps/api/src/auth.ts:429  # comment-only-narrative-issue-31-fp (drift +13 by 55-05b; +49 by 57-A.2)
+apps/api/src/auth.ts:430  # comment-only-narrative-issue-31-fp (drift +13 by 55-05b; +49 by 57-A.2)
 apps/api/src/lib/audit.ts:88  # comment-only-narrative-issue-31-fp
 apps/api/src/lib/cookie-domain.ts:21  # comment-only-narrative-issue-31-fp
 apps/api/src/lib/cookie-domain.ts:34  # comment-only-narrative-issue-31-fp

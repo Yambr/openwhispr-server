@@ -195,7 +195,15 @@ async function encryptInto(
     target[sidecarFieldNameCamel(config.sidecarPrefix, key)] = row[key];
   }
   if (config.fingerprint) {
-    target[config.fingerprint.column] = fingerprintBytes(plaintext, config.fingerprint.algorithm);
+    // Emit both snake_case (SQL column) and camelCase (drizzle TS field)
+    // shapes, mirroring the symmetric write for the 6 sidecars above.
+    // Without the camelCase form Better Auth's adapter-factory
+    // `transformInput` whitelist drops the snake_case key (the
+    // additionalFields registration codegen at additional-fields.ts uses
+    // camelCase, matching the drizzle TS schema).
+    const fp = fingerprintBytes(plaintext, config.fingerprint.algorithm);
+    target[config.fingerprint.column] = fp;
+    target[toCamel(config.fingerprint.column)] = fp;
   }
   delete target[column];
 }
@@ -232,19 +240,40 @@ async function decryptFrom(
   providers: readonly KeyProvider[],
   model: string,
 ): Promise<void> {
-  const sidecarPresent = SIDECAR_KEYS.every((k) => {
-    const v = target[sidecarFieldName(config.sidecarPrefix, k)];
-    return Buffer.isBuffer(v);
-  });
-  if (!sidecarPresent) return;
+  // Phase 57 / Track A.2 — read path accepts either form of sidecar key
+  // (snake_case `password_value_ciphertext` from a raw driver row, OR
+  // camelCase `passwordValueCiphertext` from Better Auth's adapter-factory
+  // `transformOutput` — which keys by the TS-field name declared on the
+  // schema, equivalent to the additionalFields registration codegen'd
+  // from this same column map). The write path at `encryptInto` already
+  // emits BOTH forms so downstream readers can pick either shape; the
+  // read path now mirrors that symmetry. Without this, rows pulled
+  // through the BA adapter factory carry only the camelCase form and
+  // the snake_case lookup below would fail `sidecarPresent`, returning
+  // ciphertext-but-unaware-of-it rows to BA's findOne callers (manifest
+  // as scrypt-verify failure on sign-in → "Password not found").
+  function readSidecar(k: (typeof SIDECAR_KEYS)[number]): Buffer | undefined {
+    const snake = target[sidecarFieldName(config.sidecarPrefix, k)];
+    if (Buffer.isBuffer(snake)) return snake;
+    const camel = target[sidecarFieldNameCamel(config.sidecarPrefix, k)];
+    if (Buffer.isBuffer(camel)) return camel;
+    return undefined;
+  }
+
+  const sidecars: Partial<Record<(typeof SIDECAR_KEYS)[number], Buffer>> = {};
+  for (const k of SIDECAR_KEYS) {
+    const v = readSidecar(k);
+    if (v === undefined) return; // partial / absent sidecar set — pass through
+    sidecars[k] = v;
+  }
 
   const encryptedRow: EncryptedRow = {
-    dek_wrapped: target[sidecarFieldName(config.sidecarPrefix, "dek_wrapped")] as Buffer,
-    dek_iv: target[sidecarFieldName(config.sidecarPrefix, "dek_iv")] as Buffer,
-    dek_auth_tag: target[sidecarFieldName(config.sidecarPrefix, "dek_auth_tag")] as Buffer,
-    value_iv: target[sidecarFieldName(config.sidecarPrefix, "value_iv")] as Buffer,
-    value_auth_tag: target[sidecarFieldName(config.sidecarPrefix, "value_auth_tag")] as Buffer,
-    value_ciphertext: target[sidecarFieldName(config.sidecarPrefix, "value_ciphertext")] as Buffer,
+    dek_wrapped: sidecars.dek_wrapped as Buffer,
+    dek_iv: sidecars.dek_iv as Buffer,
+    dek_auth_tag: sidecars.dek_auth_tag as Buffer,
+    value_iv: sidecars.value_iv as Buffer,
+    value_auth_tag: sidecars.value_auth_tag as Buffer,
+    value_ciphertext: sidecars.value_ciphertext as Buffer,
   };
 
   // Provider chain: try each in order. On the FIRST successful
@@ -268,11 +297,16 @@ async function decryptFrom(
   }
 
   target[column] = plaintext.toString("utf8");
+  // Strip BOTH forms (snake + camel) so the cleaned row matches whichever
+  // shape the caller produced; symmetric with the write path that emits
+  // both forms on `encryptInto`.
   for (const k of SIDECAR_KEYS) {
     delete target[sidecarFieldName(config.sidecarPrefix, k)];
+    delete target[sidecarFieldNameCamel(config.sidecarPrefix, k)];
   }
   if (config.fingerprint) {
     delete target[config.fingerprint.column];
+    delete target[toCamel(config.fingerprint.column)];
   }
 
   // Phase 41.e / HI-03 — TTL enforcement at the lens layer. The check
@@ -362,9 +396,40 @@ export function wrapAdapter(
 
   async function decryptRow(model: string, row: Record<string, unknown>): Promise<void> {
     const modelCols = columnMap[model];
-    if (!modelCols) return;
-    for (const [col, cfg] of Object.entries(modelCols)) {
-      await decryptFrom(row, col, cfg, providers, model);
+    if (modelCols) {
+      for (const [col, cfg] of Object.entries(modelCols)) {
+        await decryptFrom(row, col, cfg, providers, model);
+      }
+    }
+    // Phase 57 / Track A.2 — walk joined sub-models. Better Auth's
+    // adapter-factory fallback-join (`@better-auth/core` factory.mjs
+    // `handleFallbackJoin`) embeds joined rows in the parent row under
+    // the joined model's canonical name (e.g. `result.account` on a
+    // `findOne({model:'user', join:{account:true}})`). Those rows have
+    // already been `transformOutput`'d (sidecar camelCase keys present)
+    // but the join sub-query runs against the INNER factory adapter,
+    // never re-entering our lens — so without explicit recursion here,
+    // joined account rows leak ciphertext as plaintext-NULL through to
+    // BA's `findUserByEmail({includeAccounts:true})` and sign-in's
+    // `credentialAccount.password` lookup returns null.
+    //
+    // The relation may be one-to-one (object) or one-to-many (array)
+    // per BA's join contract (factory.mjs:197-207). Recurse into both
+    // shapes against every model key present in our columnMap so the
+    // walk is bounded and explicit.
+    for (const joinedModel of Object.keys(columnMap)) {
+      if (joinedModel === model) continue;
+      const joined = row[joinedModel];
+      if (joined === null || joined === undefined) continue;
+      if (Array.isArray(joined)) {
+        for (const item of joined) {
+          if (item && typeof item === "object") {
+            await decryptRow(joinedModel, item as Record<string, unknown>);
+          }
+        }
+      } else if (typeof joined === "object") {
+        await decryptRow(joinedModel, joined as Record<string, unknown>);
+      }
     }
   }
 

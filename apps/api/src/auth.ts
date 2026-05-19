@@ -19,6 +19,7 @@
 // instance; no callback rewriting yet.
 
 import {
+  deriveSidecarAdditionalFields,
   type EncryptedColumnMap,
   type KeyProvider,
   selectProvider,
@@ -122,42 +123,81 @@ export interface EmailDeliveryPayload {
  * application code writes it. See 33-04-DECISIONS.md §D-01.
  */
 /**
- * Plan 51-24 — empty by design.
+ * Phase 57 / Track A.2 — Better-Auth-owned credential columns under the
+ * envelope-encryption lens.
  *
- * Better Auth's drizzleAdapter applies a strict additionalFields
- * whitelist on every model write and silently drops keys not declared
- * in the corresponding Better Auth model schema. The 6 envelope-
- * encryption sidecars + fingerprint columns that the lens
- * (`packages/data/src/encryption/lens.ts`) emits as part of
- * `encryptInto()` are NOT in that whitelist — they get stripped before
- * Drizzle ORM ever sees them, the bytea sidecars never land at the
- * DB layer, and the plaintext key (which the lens deletes) is back to
- * default-NULL, so the plaintext credential travels straight to the
- * Better-Auth-introspection compat column added in migration 0025.
+ * Each (model, column) entry routes plaintext writes through the lens at
+ * `packages/data/src/encryption/lens.ts`: the lens encrypts the value, emits
+ * the 6 bytea sidecars (`<col>_dek_wrapped`, `<col>_dek_iv`,
+ * `<col>_dek_auth_tag`, `<col>_value_iv`, `<col>_value_auth_tag`,
+ * `<col>_value_ciphertext`), optionally writes a SHA-256 fingerprint sidecar
+ * (`<col>_fp`) for O(log N) lookup against ciphertext, and DELETES the
+ * plaintext key from the row payload BEFORE Drizzle builds the SQL. The
+ * compat plaintext column (added by migration 0025) ends up NULL at rest.
  *
- * For Better Auth-owned models (user, account, session, verification)
- * we accept the Better Auth canonical security posture: credentials
- * arrive at the adapter already-hashed by Better Auth (scrypt for
- * password, opaque for OAuth tokens). Storing the hashed credential
- * in `account.password` is the canonical Better Auth pattern. OAuth
- * access/refresh/id tokens are short-TTL by design.
+ * Companion wiring lives at the `betterAuth({...})` call below: the helper
+ * `deriveSidecarAdditionalFields(ENCRYPTED_COLUMNS_MAP)` materialises the
+ * 44 `additionalFields` declarations Better Auth's adapter-factory
+ * `transformInput` needs in order to forward the lens-emitted sidecar keys
+ * through to the SQL layer (RESEARCH.md §1 Seam #2 + §6.1 Option B1). Adding
+ * an encrypted column = one line here; the 6 (+1) sidecar registrations
+ * materialise automatically. Drift-prevention test:
+ * `packages/data/tests/unit/__tests__/additional-fields-drift.test.ts`.
  *
- * Phase 33 envelope-encryption remains in force for:
- *   * `oauth_state.code_verifier` — written by our own route handlers
- *     via direct sql-template inserts (NOT through Better Auth's
- *     adapter; the lens doesn't enter the picture there); 33-04
- *     §D-01 documents the manual-codec sites.
- *   * Any future non-Better-Auth model added to this map.
+ * Coverage rationale per credential:
+ *   * `account.password` — scrypt-hashed by Better Auth before reaching the
+ *     adapter, but the hash itself is sensitive material at rest. Envelope-
+ *     encryption defence-in-depth against pg_dump exfiltration.
+ *   * `account.{access_token,refresh_token,id_token}` — OAuth credentials
+ *     issued by upstream providers. Short-TTL by design, but rotation
+ *     latency + offline-database compromise both motivate at-rest envelope.
+ *   * `session.token` + `session.previous_token` — opaque bearer tokens
+ *     issued by the bearer plugin; the SHA-256 fingerprint sidecars
+ *     (`token_fp`, `previous_token_fp`) preserve indexed lookup-by-token
+ *     without ever querying the ciphertext (lens `_fp_lookup` clause
+ *     rewrite at `lens.ts:297`). AUTH-04 5-minute overlap window is
+ *     enforced application-side against `previous_token_expires_at`.
+ *   * `verification.value` — short-lived email-verification / reset tokens.
+ *     Lower threat surface (TTL ~ hours) but trivial inclusion cost.
  *
- * A proper lens ⇄ Better Auth adapter integration would require
- * either re-implementing drizzleAdapter to keep sidecar keys through
- * its whitelist OR registering every sidecar as `additionalFields`
- * on each Better Auth model. Both are heavier than the security
- * benefit at-rest envelope encryption brings on top of Better Auth's
- * canonical hashing — deferred to a future hardening phase if a
- * compliance review requires it.
+ * Not in this map:
+ *   * `oauth_state.code_verifier` — written via direct sql-template inserts
+ *     in apps/api/src/routes/{auth-callback,desktop-signin}.ts. Encrypted
+ *     via the manual codec at `packages/data/src/encryption/oauth-state-
+ *     codec.ts`; the adapter-lens never sees those writes.
+ *   * `users.password_hash` — empirical grep confirms no application code
+ *     writes that column (33-04-DECISIONS §D-01); Better Auth uses the
+ *     `account.password` row instead.
  */
-export const ENCRYPTED_COLUMNS_MAP: EncryptedColumnMap = {};
+export const ENCRYPTED_COLUMNS_MAP: EncryptedColumnMap = {
+  account: {
+    password: { sidecarPrefix: "password" },
+    access_token: { sidecarPrefix: "access_token" },
+    refresh_token: { sidecarPrefix: "refresh_token" },
+    id_token: { sidecarPrefix: "id_token" },
+  },
+  session: {
+    token: {
+      sidecarPrefix: "token",
+      fingerprint: { column: "token_fp", algorithm: "sha256" },
+    },
+    previous_token: {
+      sidecarPrefix: "previous_token",
+      fingerprint: { column: "previous_token_fp", algorithm: "sha256" },
+    },
+  },
+  verification: {
+    value: { sidecarPrefix: "value" },
+  },
+};
+
+/**
+ * Phase 57 / Track A.2 — codegen-derived `additionalFields` for every
+ * encrypted column above. Computed at module load (pure function, no I/O)
+ * so the Better-Auth-side registration is a function of `ENCRYPTED_COLUMNS_MAP`,
+ * never a hand-maintained parallel list (RESEARCH.md §3.5 + §8 doctrine 3).
+ */
+const SIDECAR_ADDITIONAL_FIELDS = deriveSidecarAdditionalFields(ENCRYPTED_COLUMNS_MAP);
 
 export interface BuildAuthOptions {
   db: AppDb;
@@ -330,19 +370,28 @@ export function buildAuth(opts: BuildAuthOptions): AuthInstance {
     // dev — its own NODE_ENV-aware behaviour). Only when the operator
     // explicitly opts in do we force-disable the limiter.
     ...(rateLimitOff ? { rateLimit: { enabled: false } } : {}),
-    // Phase 33 / Plan 33-04 — wrap the drizzle adapter with the
-    // envelope-encryption lens. `drizzleAdapter(db, ...)` returns a
-    // factory `(options) => DBAdapter`; Better-Auth invokes the factory
-    // at construction time with its own options. We compose
-    // `wrapAdapter` AFTER the factory resolves so the lens sees the
-    // fully-constructed `DBAdapter` shape. The lens transparently
-    // intercepts every create/update/findOne/findMany. KEK rotation
-    // is supported by passing an array of providers; v1 uses a single
+    // Phase 33 / Plan 33-04 + Phase 57 / Track A — wrap the drizzle adapter
+    // with the envelope-encryption lens. `drizzleAdapter(db, ...)` returns
+    // a factory `(options) => DBAdapter`; Better-Auth invokes the factory
+    // at construction time with its own options. We compose `wrapAdapter`
+    // AFTER the factory resolves so the lens sees the fully-constructed
+    // `DBAdapter` shape. The lens transparently intercepts every
+    // create/update/findOne/findMany AND the `transaction` primitive
+    // (Track A.1: re-wraps the trx adapter Better Auth binds into
+    // AsyncLocalStorage, restoring decorator totality — see
+    // packages/data/src/encryption/lens.ts:443). KEK rotation is
+    // supported by passing an array of providers; v1 uses a single
     // provider sourced from `opts.keyProvider` or `selectProvider()`.
-    // SCOPE NOTE (33-04-DECISIONS §D-05): Better-Auth's adapter-factory
-    // strips unknown keys during field-translation, so the 6 bytea
-    // sidecar keys produced by the lens currently fall through to NULL
-    // until Plan 33-05's schema-side additionalFields declarations land.
+    //
+    // Adapter-factory `transformInput` whitelist: Better-Auth's adapter
+    // iterates only the keys present in `schema[model].fields`, which is
+    // the union of canonical model fields + the `additionalFields` declared
+    // on the betterAuth({...}) call below. The lens's emitted 6 sidecar
+    // keys (+ optional fp) per encrypted column would be silently dropped
+    // without an additionalFields registration. Track A.2 closes that gap
+    // via `deriveSidecarAdditionalFields(ENCRYPTED_COLUMNS_MAP)` plumbed
+    // into the per-model `additionalFields` below — codegen, not a
+    // hand-maintained parallel list (RESEARCH.md §6.1 Option B1).
     database: (() => {
       // Plan 51-22 — Better Auth's single-tenant bridge is migration-level:
       // 0003_better_auth_tenant_defaults.sql sets `ALTER ROLE openwhispr_app
@@ -395,6 +444,12 @@ export function buildAuth(opts: BuildAuthOptions): AuthInstance {
     // value) lands as 'en' end-to-end.
     user: {
       additionalFields: {
+        // Phase 57 / Track A.2 — codegen sidecar registrations for any
+        // future `user`-model encrypted columns. Currently `{}` (no
+        // user-table credentials encrypted at rest); spread anyway so a
+        // future addition to ENCRYPTED_COLUMNS_MAP.user materialises here
+        // by construction.
+        ...(SIDECAR_ADDITIONAL_FIELDS.user ?? {}),
         locale: {
           type: "string",
           required: false,
@@ -416,6 +471,18 @@ export function buildAuth(opts: BuildAuthOptions): AuthInstance {
           input: false,
         },
       },
+    },
+    // Phase 57 / Track A.2 — codegen sidecar registrations so the lens's
+    // emitted bytea keys are forwarded by Better Auth's adapter-factory
+    // `transformInput` whitelist instead of silently dropped. Sources of
+    // truth: `ENCRYPTED_COLUMNS_MAP` (this file) → `deriveSidecarAdditionalFields`
+    // (packages/data/src/encryption/additional-fields.ts). Drift-prevention
+    // unit test: `additional-fields-drift.test.ts` in @openwhispr/data.
+    account: {
+      additionalFields: { ...(SIDECAR_ADDITIONAL_FIELDS.account ?? {}) },
+    },
+    verification: {
+      additionalFields: { ...(SIDECAR_ADDITIONAL_FIELDS.verification ?? {}) },
     },
     emailAndPassword: {
       enabled: true,
@@ -547,6 +614,13 @@ export function buildAuth(opts: BuildAuthOptions): AuthInstance {
       },
     },
     session: {
+      // Phase 57 / Track A.2 — codegen sidecar registrations for session.{token,
+      // previous_token} envelope-encryption. Merged into the same `session`
+      // config block as the TTL / cookieCache settings below to keep the BA
+      // option key unique (a duplicate `session:` key silently overrides the
+      // first via JS object-literal semantics — caught by the canary test
+      // when token sidecars failed to land at rest).
+      additionalFields: { ...(SIDECAR_ADDITIONAL_FIELDS.session ?? {}) },
       // D-03: ≥30-day TTL.
       expiresIn: 60 * 60 * 24 * 30,
       updateAge: 60 * 60 * 24,

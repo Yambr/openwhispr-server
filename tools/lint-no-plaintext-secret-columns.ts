@@ -41,19 +41,39 @@
  * flag flip (research §15 pitfall #13).
  *
  * Phase 33-05 / Plan 51-23 constitutional amendment to DISCIPLINE
- * Rule 15: the 7 Better-Auth-introspection-compat columns under
- * `LENS_INTROSPECTION_COMPAT` are allowed as nullable, no-DEFAULT,
- * never-written sentinels. Better-Auth's `drizzleAdapter` introspects
- * the raw drizzle schema at adapter-construction time and refuses to
- * boot without these field names; its INSERT-SQL generator also lists
- * every schema column and binds `DEFAULT` for any value not supplied.
- * The envelope-encryption lens (`packages/data/src/encryption/lens.ts`)
- * DELETES the plaintext key from the row payload BEFORE Drizzle builds
- * the SQL — plaintext NEVER lands at rest. The DB column exists
- * exclusively as a Drizzle-SQL-gen ⇄ Better-Auth-introspection
- * compatibility shim. See migration `0025_better_auth_account_plaintext_compat.sql`,
- * `apps/api/src/auth.ts` ENCRYPTED_COLUMNS_MAP, and `.planning/deferred-items.md`
- * "Plan 51-19 e2e closure" §amendment.
+ * Rule 15 (made runtime-real by Phase 57 / Track A): the 7 Better-Auth-
+ * introspection-compat columns under `LENS_INTROSPECTION_COMPAT` are
+ * allowed as nullable, no-DEFAULT, never-written sentinels. Better-Auth's
+ * `drizzleAdapter` introspects the raw drizzle schema at adapter-
+ * construction time and refuses to boot without these field names; its
+ * INSERT-SQL generator also lists every schema column and binds `DEFAULT`
+ * for any value not supplied. The envelope-encryption lens
+ * (`packages/data/src/encryption/lens.ts`) DELETES the plaintext key from
+ * the row payload BEFORE Drizzle builds the SQL — plaintext NEVER lands
+ * at rest. The DB column exists exclusively as a Drizzle-SQL-gen ⇄
+ * Better-Auth-introspection compatibility shim.
+ *
+ * History — the invariant became MECHANICALLY ACTIVE in Phase 57 / Track
+ * A.2 (data:CR-01 + data:CR-03). Prior to Phase 57 the
+ * `ENCRYPTED_COLUMNS_MAP` referenced below was `{}` (an explicit deferral
+ * documented in `apps/api/src/auth.ts` headed "Plan 51-24 — empty by
+ * design"). With an empty map the lens never fired on Better-Auth-owned
+ * model writes, so the "lens DELETES the plaintext key" clause above
+ * described an aspirational future state, not the runtime. The Phase 57
+ * `better-auth-envelope-at-rest.test.ts` integration canary surfaced the
+ * gap end-to-end (plaintext landed in the introspection-compat column at
+ * sign-up). Track A.2 populated `ENCRYPTED_COLUMNS_MAP` for the 4 BA
+ * models and added the `deriveSidecarAdditionalFields` codegen so the
+ * lens's emitted sidecar keys are no longer silently dropped by Better
+ * Auth's adapter-factory `transformInput` whitelist. From Phase 57 on
+ * the invariant above is the runtime contract, not an aspiration.
+ *
+ * Cross-references: migration `0025_better_auth_account_plaintext_compat.sql`,
+ * `apps/api/src/auth.ts` ENCRYPTED_COLUMNS_MAP,
+ * `packages/data/src/encryption/additional-fields.ts` (codegen helper),
+ * `packages/data/tests/unit/__tests__/additional-fields-drift.test.ts`
+ * (drift-prevention test), `apps/api/tests/integration/better-auth-
+ * envelope-at-rest.test.ts` (end-to-end at-rest assertion).
  *
  * Adding to LENS_INTROSPECTION_COMPAT requires:
  *   (a) the row is written by Better-Auth's drizzleAdapter (not by

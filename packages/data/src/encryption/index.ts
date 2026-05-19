@@ -5,6 +5,8 @@
 // from `@openwhispr/data/encryption` for the narrow surface — both
 // resolve to this file.
 
+export type { SidecarAdditionalFields } from "./additional-fields.js";
+export { deriveSidecarAdditionalFields } from "./additional-fields.js";
 export type {
   BackfillColumnConfig,
   BackfillColumnMap,
