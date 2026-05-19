@@ -10,13 +10,15 @@
 import { runAxe } from "./fixtures/axe.js";
 import { bindToContext } from "./fixtures/seed.js";
 import { expect, test } from "./fixtures/states.js";
+import { attachBrowserDiagnostics, expectNoBrowserErrors } from "./support/browser-diagnostics.js";
 
 const NOTES_ROUTE = "**/api/notes/list**";
 
 test.describe("U8 — notes list with folder sidebar (Phase 07.1 / Plan 10)", () => {
   // Plan 13.1 — auth provisioned by global-setup.ts; storageState is
   // applied per worker via the auth-extended `test`. Reset data state only.
-  test.beforeEach(async ({ context }) => {
+  test.beforeEach(async ({ context, page }) => {
+    await attachBrowserDiagnostics(page);
     const seed = bindToContext(context);
     await seed.clearAllData();
   });
@@ -28,17 +30,20 @@ test.describe("U8 — notes list with folder sidebar (Phase 07.1 / Plan 10)", ()
     await loadingFor(NOTES_ROUTE);
     await page.goto("/app/notes");
     await expect(page.locator('[data-testid="notes-list-skeleton-row"]').first()).toBeVisible();
+    expectNoBrowserErrors(page);
   });
 
   test("empty state — friendly empty card after clearAllData", async ({ page }) => {
     await page.goto("/app/notes");
     await expect(page.getByText(/No notes yet/i)).toBeVisible();
+    expectNoBrowserErrors(page);
   });
 
   test("error state — Alert when list endpoint returns 500", async ({ page, errorFor }) => {
     await errorFor(NOTES_ROUTE, 500);
     await page.goto("/app/notes");
     await expect(page.getByText(/Could not load notes/i)).toBeVisible();
+    expectNoBrowserErrors(page);
   });
 
   test("success state — N seeded rows render + D-UX5 zero folder mutation UI", async ({
@@ -59,6 +64,7 @@ test.describe("U8 — notes list with folder sidebar (Phase 07.1 / Plan 10)", ()
       })
       .count();
     expect(offending).toBe(0);
+    expectNoBrowserErrors(page);
   });
 
   test("axe — WCAG 2.2 AA clean on populated list", async ({ page, context }) => {
@@ -67,5 +73,6 @@ test.describe("U8 — notes list with folder sidebar (Phase 07.1 / Plan 10)", ()
     await page.goto("/app/notes");
     await expect(page.getByText(/Seed Note 0/i)).toBeVisible();
     await runAxe(page);
+    expectNoBrowserErrors(page);
   });
 });

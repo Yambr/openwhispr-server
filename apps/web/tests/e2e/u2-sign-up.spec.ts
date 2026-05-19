@@ -3,14 +3,20 @@
 import { expect, test } from "./_diagnostics-fixture.js";
 import { FIXTURE_PASSWORD, fixtureEmail } from "./fixtures/auth.js";
 import { runAxe } from "./fixtures/axe.js";
+import { attachBrowserDiagnostics, expectNoBrowserErrors } from "./support/browser-diagnostics.js";
 
 test.describe("U2 Sign-up (Phase 07.1 / Plan 07)", () => {
+  test.beforeEach(async ({ page }) => {
+    await attachBrowserDiagnostics(page);
+  });
+
   test("empty state — form renders pristine with no error alert", async ({ page }) => {
     await page.goto("/sign-up");
     await expect(page.getByLabel(/name/i)).toHaveValue("");
     await expect(page.getByLabel(/email/i)).toHaveValue("");
     await expect(page.getByRole("button", { name: /^sign up$/i })).toBeVisible();
     await expect(page.getByText(/sign-up failed/i)).toHaveCount(0);
+    expectNoBrowserErrors(page);
   });
 
   test("loading state — submit while /api/auth/sign-up/email is in flight keeps button disabled", async ({
@@ -28,6 +34,7 @@ test.describe("U2 Sign-up (Phase 07.1 / Plan 07)", () => {
     await expect(page.getByRole("button", { name: /sign up|loading/i })).toBeDisabled({
       timeout: 5_000,
     });
+    expectNoBrowserErrors(page);
   });
 
   test("duplicate email — silent generic response prevents enumeration", async ({ page }, info) => {
@@ -55,6 +62,7 @@ test.describe("U2 Sign-up (Phase 07.1 / Plan 07)", () => {
     await expect(page.getByText(/check your email/i).first()).toBeVisible({ timeout: 15_000 });
     // Negative invariant — duplicate-disclosure copy must NOT appear.
     await expect(page.getByText(/already registered/i)).toHaveCount(0);
+    expectNoBrowserErrors(page);
   });
 
   test("success state — new email shows verification message", async ({ page }) => {
@@ -65,11 +73,13 @@ test.describe("U2 Sign-up (Phase 07.1 / Plan 07)", () => {
     await page.getByLabel(/^password$/i).fill(FIXTURE_PASSWORD);
     await page.getByRole("button", { name: /^sign up$/i }).click();
     await expect(page.getByText(/check your email/i)).toBeVisible({ timeout: 15_000 });
+    expectNoBrowserErrors(page);
   });
 
   test("axe — WCAG 2.2 AA scan on /sign-up", async ({ page }) => {
     await page.goto("/sign-up");
     await page.getByRole("button", { name: /^sign up$/i }).waitFor();
     await runAxe(page, "u2-sign-up");
+    expectNoBrowserErrors(page);
   });
 });

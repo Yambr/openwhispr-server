@@ -8,13 +8,15 @@
 import { runAxe } from "./fixtures/axe.js";
 import { bindToContext } from "./fixtures/seed.js";
 import { expect, test } from "./fixtures/states.js";
+import { attachBrowserDiagnostics, expectNoBrowserErrors } from "./support/browser-diagnostics.js";
 
 const MESSAGES_ROUTE = "**/api/conversations/messages**";
 
 test.describe("U12 — conversation detail (Phase 07.1 / Plan 11)", () => {
   // Plan 13.1 — auth provisioned by global-setup.ts; storageState is
   // applied per worker via the auth-extended `test`. Reset data state only.
-  test.beforeEach(async ({ context }) => {
+  test.beforeEach(async ({ context, page }) => {
+    await attachBrowserDiagnostics(page);
     const seed = bindToContext(context);
     await seed.clearAllData();
   });
@@ -29,6 +31,7 @@ test.describe("U12 — conversation detail (Phase 07.1 / Plan 11)", () => {
     await loadingFor(MESSAGES_ROUTE);
     await page.goto(`/app/conversations/${convs[0]!.id}`);
     await expect(page.locator('[data-testid="conv-detail-skeleton"]').first()).toBeVisible();
+    expectNoBrowserErrors(page);
   });
 
   test("empty state — No messages card when conversation has zero messages", async ({
@@ -39,6 +42,7 @@ test.describe("U12 — conversation detail (Phase 07.1 / Plan 11)", () => {
     const convs = await seed.seedConversations({ count: 1, withMessages: 0 });
     await page.goto(`/app/conversations/${convs[0]!.id}`);
     await expect(page.getByText(/No messages/i)).toBeVisible();
+    expectNoBrowserErrors(page);
   });
 
   test("error state — Alert when messages endpoint returns 500", async ({
@@ -51,6 +55,7 @@ test.describe("U12 — conversation detail (Phase 07.1 / Plan 11)", () => {
     await errorFor(MESSAGES_ROUTE, 500);
     await page.goto(`/app/conversations/${convs[0]!.id}`);
     await expect(page.getByText(/Could not load conversation/i)).toBeVisible();
+    expectNoBrowserErrors(page);
   });
 
   test("success state — seeded messages render in thread", async ({ page, context }) => {
@@ -61,6 +66,7 @@ test.describe("U12 — conversation detail (Phase 07.1 / Plan 11)", () => {
     await expect(page.getByText(/seed message 1/i)).toBeVisible();
     await expect(page.getByText(/seed message 2/i)).toBeVisible();
     await expect(page.getByText(/seed message 3/i)).toBeVisible();
+    expectNoBrowserErrors(page);
   });
 
   test("axe — WCAG 2.2 AA clean on populated detail", async ({ page, context }) => {
@@ -69,5 +75,6 @@ test.describe("U12 — conversation detail (Phase 07.1 / Plan 11)", () => {
     await page.goto(`/app/conversations/${convs[0]!.id}`);
     await expect(page.getByText(/seed message 0/i)).toBeVisible();
     await runAxe(page);
+    expectNoBrowserErrors(page);
   });
 });

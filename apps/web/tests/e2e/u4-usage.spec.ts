@@ -10,6 +10,7 @@
 import { runAxe } from "./fixtures/axe.js";
 import { bindToContext } from "./fixtures/seed.js";
 import { expect, test } from "./fixtures/states.js";
+import { attachBrowserDiagnostics, expectNoBrowserErrors } from "./support/browser-diagnostics.js";
 
 const ROUTE = "**/api/usage";
 
@@ -17,7 +18,8 @@ test.describe("U4 — usage dashboard (Phase 07.1 / Plan 08)", () => {
   // Plan 13.1 — auth is provisioned by global-setup.ts and applied via the
   // per-worker `storageState` override on the auth-extended `test`. Each
   // test starts already signed in; only data state needs resetting here.
-  test.beforeEach(async ({ context }) => {
+  test.beforeEach(async ({ context, page }) => {
+    await attachBrowserDiagnostics(page);
     const seed = bindToContext(context);
     await seed.clearAllData();
   });
@@ -29,6 +31,7 @@ test.describe("U4 — usage dashboard (Phase 07.1 / Plan 08)", () => {
     await loadingFor(ROUTE);
     await page.goto("/app");
     await expect(page.locator('[data-testid="usage-skeleton"]').first()).toBeVisible();
+    expectNoBrowserErrors(page);
   });
 
   test("empty state (N/A per UI-SPEC) — four KPI cards still render with 0", async ({ page }) => {
@@ -38,12 +41,14 @@ test.describe("U4 — usage dashboard (Phase 07.1 / Plan 08)", () => {
     await expect(page.getByTestId("kpi-words-remaining")).toBeVisible();
     await expect(page.getByTestId("kpi-plan")).toBeVisible();
     await expect(page.getByTestId("kpi-limit-reached")).toBeVisible();
+    expectNoBrowserErrors(page);
   });
 
   test("error state — Alert when /api/usage returns 500", async ({ page, errorFor }) => {
     await errorFor(ROUTE, 500);
     await page.goto("/app");
     await expect(page.getByText(/Could not load usage/i)).toBeVisible();
+    expectNoBrowserErrors(page);
   });
 
   test("success state — KPI cards populate after seeded usage", async ({ page, context }) => {
@@ -52,11 +57,13 @@ test.describe("U4 — usage dashboard (Phase 07.1 / Plan 08)", () => {
     await page.goto("/app");
     await expect(page.getByTestId("kpi-words-used")).toBeVisible();
     await expect(page.getByTestId("kpi-plan")).toContainText(/unlimited/i);
+    expectNoBrowserErrors(page);
   });
 
   test("axe — WCAG 2.2 AA clean on populated dashboard", async ({ page }) => {
     await page.goto("/app");
     await expect(page.getByTestId("kpi-words-used")).toBeVisible();
     await runAxe(page);
+    expectNoBrowserErrors(page);
   });
 });

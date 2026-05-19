@@ -10,8 +10,13 @@
 // non-flaky regardless of stack state.
 import { expect, test } from "./_diagnostics-fixture.js";
 import { runAxe } from "./fixtures/axe.js";
+import { attachBrowserDiagnostics, expectNoBrowserErrors } from "./support/browser-diagnostics.js";
 
 test.describe("U-setup (Phase 18.1.1 / Plan 05)", () => {
+  test.beforeEach(async ({ page }) => {
+    await attachBrowserDiagnostics(page);
+  });
+
   test("axe — WCAG 2.2 AA scan on /setup", async ({ page }) => {
     const response = await page.goto("/setup");
     // When the server has already completed initial setup, /setup
@@ -30,5 +35,6 @@ test.describe("U-setup (Phase 18.1.1 / Plan 05)", () => {
       page.getByRole("heading", { level: 2, name: /set up your openwhispr server/i }),
     ).toBeVisible({ timeout: 15_000 });
     await runAxe(page, "u-setup");
+    expectNoBrowserErrors(page);
   });
 });

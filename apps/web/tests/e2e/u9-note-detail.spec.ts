@@ -8,13 +8,15 @@
 import { runAxe } from "./fixtures/axe.js";
 import { bindToContext } from "./fixtures/seed.js";
 import { expect, test } from "./fixtures/states.js";
+import { attachBrowserDiagnostics, expectNoBrowserErrors } from "./support/browser-diagnostics.js";
 
 const NOTES_ROUTE = "**/api/notes/list**";
 
 test.describe("U9 — note detail (Phase 07.1 / Plan 10)", () => {
   // Plan 13.1 — auth provisioned by global-setup.ts; storageState is
   // applied per worker via the auth-extended `test`. Reset data state only.
-  test.beforeEach(async ({ context }) => {
+  test.beforeEach(async ({ context, page }) => {
+    await attachBrowserDiagnostics(page);
     const seed = bindToContext(context);
     await seed.clearAllData();
   });
@@ -23,17 +25,20 @@ test.describe("U9 — note detail (Phase 07.1 / Plan 10)", () => {
     await loadingFor(NOTES_ROUTE);
     await page.goto("/app/notes/00000000-0000-0000-0000-000000000000");
     await expect(page.locator('[data-testid="note-detail-skeleton"]')).toBeVisible();
+    expectNoBrowserErrors(page);
   });
 
   test("empty state — not-found UI for id missing from list", async ({ page }) => {
     await page.goto("/app/notes/00000000-0000-0000-0000-000000000000");
     await expect(page.getByText(/Note not found/i)).toBeVisible();
+    expectNoBrowserErrors(page);
   });
 
   test("error state — Alert when list endpoint returns 500", async ({ page, errorFor }) => {
     await errorFor(NOTES_ROUTE, 500);
     await page.goto("/app/notes/00000000-0000-0000-0000-000000000000");
     await expect(page.getByText(/Could not load note/i)).toBeVisible();
+    expectNoBrowserErrors(page);
   });
 
   test("success state — Content tab renders for seeded note", async ({ page, context }) => {
@@ -45,6 +50,7 @@ test.describe("U9 — note detail (Phase 07.1 / Plan 10)", () => {
     await page.goto(`/app/notes/${id}`);
     await expect(page.getByRole("tab", { name: /Content/i })).toBeVisible();
     await expect(page.getByText(/detail-body-content/i)).toBeVisible();
+    expectNoBrowserErrors(page);
   });
 
   test("axe — WCAG 2.2 AA clean on populated detail", async ({ page, context }) => {
@@ -56,5 +62,6 @@ test.describe("U9 — note detail (Phase 07.1 / Plan 10)", () => {
     await page.goto(`/app/notes/${id}`);
     await expect(page.getByRole("tab", { name: /Content/i })).toBeVisible();
     await runAxe(page);
+    expectNoBrowserErrors(page);
   });
 });
