@@ -126,16 +126,24 @@ export function resolveLocale(req: NextRequest): SupportedLocale {
 export function middleware(req: NextRequest): NextResponse {
   const locale = resolveLocale(req);
 
-  // Auth gate for /app/* — runs BEFORE the NextResponse.next() so the
-  // redirect short-circuits the rest. Locale resolution still happened, so
-  // callers that inspect the redirect URL can read the locale from the
-  // cookie passthrough.
-  if (req.nextUrl.pathname.startsWith("/app/")) {
+  // Auth gate for /app and /app/* — runs BEFORE the NextResponse.next()
+  // so the redirect short-circuits the rest. Locale resolution still
+  // happened, so callers that inspect the redirect URL can read the
+  // locale from the cookie passthrough.
+  //
+  // Phase 55-03-c fix (BUG-55-03-c-FROM-PARAM-LOST): the matcher
+  // previously checked `startsWith("/app/")` (with trailing slash),
+  // which missed the bare `/app` path. That fell through to the
+  // `(auth)/layout.tsx` server-side guard which `redirect("/sign-in")`
+  // s without preserving the original path → users lost the deep-link
+  // post-sign-in. Match bare `/app` AND `/app/*`.
+  const path = req.nextUrl.pathname;
+  if (path === "/app" || path.startsWith("/app/")) {
     const cookie = getSessionCookie(req, { cookiePrefix: COOKIE_PREFIX });
     if (!cookie) {
       const url = req.nextUrl.clone();
       url.pathname = "/sign-in";
-      url.searchParams.set("from", req.nextUrl.pathname);
+      url.searchParams.set("from", path);
       return NextResponse.redirect(url);
     }
   }
