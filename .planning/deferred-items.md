@@ -55,6 +55,26 @@ but the totals require ~10 PRs to close.
 
 ## Phase 54+ ownership
 
+### FEATURE-verify-email-expired-token-UX
+
+`/api/auth/verify-email?token=…` returns Better Auth's 404 JSON envelope
+when a token is expired (default exp = 1h after sign-up) or invalid.
+That's correct from a security standpoint — no info leak about whether
+the token ever existed — but the UX is bad: the user sees a raw JSON
+"Ресурс не найден" page with no recovery path.
+
+**Proposed work (Phase 54+):**
+- Change Better Auth's verification email URL from `/api/auth/verify-email`
+  (direct API) to `/verify-email` (web page). The web page POSTs the
+  token to the API and renders friendly success/expired/error UI.
+- Add "Request a new verification email" button on the expired-token
+  branch of `VerifyEmailClient.tsx` (already exists, just needs a new
+  state). Wires through `authClient.sendVerificationEmail({email})`.
+
+Not a bug — token expiry behavior is correct. Just a UX gap.
+
+---
+
 ### FEATURE-msw-intercept — server-side fetch intercept (MSW node-server)
 
 24 e2e specs in `apps/web/tests/e2e/` are auto-skipped under the slim

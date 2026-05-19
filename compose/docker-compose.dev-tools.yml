@@ -58,6 +58,16 @@ services:
       # in their .env per docs/security.md.
       OUTBOUND_ALLOWED_HOSTS: ${OUTBOUND_ALLOWED_HOSTS:-litellm,mailpit,valkey,postgres}
       OUTBOUND_PRIVATE_HOST_ALLOWLIST: ${OUTBOUND_PRIVATE_HOST_ALLOWLIST:-litellm,mailpit,valkey,postgres}
+      # BUG-A — base compose ships OIDC_ISSUER_URL default pointing at
+      # `fixture-idp` (which exists ONLY in the contract-test overlay).
+      # Dev-tools doesn't run fixture-idp, so the discovery fetch hits
+      # the SSRF guard → 500 on /api/auth/sign-in/social. Blank the
+      # OIDC env vars so `listConfiguredOidcProviders()` returns [] and
+      # the UI hides the social buttons entirely. Operators who want
+      # OIDC in dev set the vars explicitly in their own .env.
+      OIDC_ISSUER_URL: ""
+      OIDC_CLIENT_ID: ""
+      OIDC_CLIENT_SECRET: ""
   worker:
     environment:
       SMTP_PORT: "1025"
