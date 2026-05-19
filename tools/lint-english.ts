@@ -79,6 +79,14 @@ const IGNORE = [
   "**/__tests__/*-i18n.test.*",
   "**/__tests__/i18n*.test.*",
   "apps/web/tests/e2e/i18n-russian.spec.ts",
+  // Phase 54 / Plan 54-02 — long-form acceptance spec asserts the locale
+  // toggle flips i18n labels into Russian; the assertion target text
+  // (the language-switcher "Russian" option label and the AppShell
+  // sign-out button label) MUST appear verbatim in the spec source to
+  // match the runtime DOM. Same i18n-surface rationale as
+  // i18n-russian.spec.ts above. This source file (lint-english.ts)
+  // remains ASCII-clean; the Russian strings live only in the spec.
+  "apps/web/tests/e2e/100-acceptance/full-flow.spec.ts",
   // Phase 33 — CJM signup-extras step unit tests own a Cyrillic-detection
   // regex (the literal source uses the U+0410..U+044F + U+0401 + U+0451
   // codepoint range) as the assertion subject under test. The regex must
