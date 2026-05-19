@@ -7,30 +7,7 @@ are archived under `.planning/backlog-archive/`.
 the entry rather than marking it closed — git history preserves the
 record. Keep this file under ~200 lines.
 
-**Bug count: 2.**
-
----
-
-## BUG-55-06-a-RSC-FETCH-WALL — `/app` usage Retry button error state unreachable from Playwright
-
-**Surfaced by:** Plan 55-06-a execution on 2026-05-19 (halted before RED commit — plan explicitly forecasts this halt condition).
-
-**Repro intent:** Long-form acceptance spec wants to drive `UsageDashboardClient.tsx:90-92` Retry button by:
-1. `page.route('**/api/usage', 500)` → assert Alert + Retry render.
-2. Re-route to 200 → click Retry → assert KPI cards populate.
-
-**Why it can't work today (two compounding walls):**
-1. **RSC server-side fetch wall** — `apps/web/src/app/(auth)/app/page.tsx:27-51` runs `queryClient.prefetchQuery` server-side via `internalApiUrl()` (api:3000 inside the docker network). The request never crosses the browser boundary, so `page.route()` cannot intercept it. Same root cause as `BUG-53-27` / Phase 41.c `D-c-1` deferred (which already covers the loading-state branch for u4-usage.spec.ts; this entry extends the same defect to the **error** branch).
-2. **Empty-defaults fallback masks failure** — `page.tsx:34-43` on `!res.ok` returns `{ wordsUsed: 0, wordsRemaining: 0, plan: "unlimited", limitReached: false }` instead of throwing. The dehydrated cache is therefore always a *success* shape. Combined with `staleTime: 60_000` in `query-client.tsx:34` + `query-client-server.ts:18`, the Client `useQuery` reads from the hydrated cache and **never refetches**, so even a 500 stub on the browser-side route is ignored. `usage.isError` is never true → Alert + Retry button never render.
-
-**UX impact:** ZERO production impact — this is a TEST-INFRASTRUCTURE wall, not a user-visible defect. The Retry button works correctly in real failure scenarios (transient API outage after staleTime expiry, network-level failures the SSR catches). But it is **structurally untestable** under the current RSC + hydration design from a Playwright spec.
-
-**Fix candidates (all out of scope for Plan 55-06-a):**
-1. **MSW infra phase** (forecast in the plan) — mount Mock Service Worker at the apps/api container boundary so server-side fetches via `internalApiUrl()` route through interceptor.
-2. **Refactor `app/(auth)/app/page.tsx` to `<Suspense>` + `useSuspenseQuery`** — moves the network boundary to the client where `page.route()` can intercept (Phase 41.c `D-c-1` suggested resolution).
-3. **Remove the empty-defaults fallback** in `page.tsx:34-43` — let SSR errors propagate so the Client query starts in error state. Production-behavior change; needs design review (current behavior is intentional per UI-SPEC empty-as-N/A).
-
-**Owner:** unassigned. Surface area: 11 Retry/error-state buttons across the app (RESEARCH.md §"Network error → Retry button") are all blocked on the same wall.
+**Bug count: 1.**
 
 ---
 
