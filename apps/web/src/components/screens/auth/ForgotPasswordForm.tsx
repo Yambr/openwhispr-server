@@ -34,7 +34,6 @@ import {
   FormMessage,
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
-import { authClient } from "@/lib/auth-client";
 import { useZodForm } from "@/lib/form-utils";
 import { AuthShell } from "./AuthShell";
 
@@ -42,15 +41,14 @@ const forgotPasswordSchema = z.object({
   email: z.string().email(),
 });
 
-// Better Auth 1.6.9 exposes forgetPassword via the runtime Proxy but
-// the inferred typed surface omits it. Match the ExtendedAuthClient
-// pattern from auth-client.ts: declare a narrow typed surface so the
-// cast at the call site is precise (LOCKER-02 — no wildcard escape).
-type ForgetPassword = (args: {
-  email: string;
-  redirectTo?: string;
-}) => Promise<{ data: unknown; error: { code?: string; message?: string } | null }>;
-type AuthClientWithForget = typeof authClient & { forgetPassword: ForgetPassword };
+// Better Auth 1.6.9 wire path. The React client's typed `forgetPassword`
+// helper POSTs to `/api/auth/forget-password` which 404s on Better
+// Auth 1.6.9 — the active endpoint is `/request-password-reset`
+// (verified by tests/e2e-cjm/steps/password-reset.steps.ts:60-73).
+// We POST raw JSON via the global fetch instead of the typed helper.
+// Better Auth gates CSRF by Origin and same-origin browser fetches
+// are trusted.
+const REQUEST_PASSWORD_RESET_PATH = "/api/auth/request-password-reset";
 
 export function ForgotPasswordForm(): React.JSX.Element {
   const { t } = useTranslation(["end-user", "common"]);
@@ -70,8 +68,20 @@ export function ForgotPasswordForm(): React.JSX.Element {
       // The server returns 200 in both cases (registered vs not); a
       // thrown promise (network failure) is also swallowed so the
       // success panel renders unconditionally.
-      const extended = authClient as AuthClientWithForget;
-      await extended.forgetPassword({ email: values.email });
+      // redirectTo: tell Better Auth where to land the user AFTER the
+      // email link is followed. BA's GET /api/auth/reset-password/:token
+      // callback handler validates the token, then 302s the browser to
+      // `${redirectTo}?token=<token>` — which is exactly what
+      // /reset-password expects. The web origin MUST be in the API's
+      // trustedOrigins (apps/api/src/auth.ts:370 — gated by
+      // AUTH_TRUSTED_ORIGINS_EXTRA). We use window.location.origin so
+      // the value matches whatever public host the browser is on.
+      const redirectTo = `${window.location.origin}/reset-password`;
+      await fetch(REQUEST_PASSWORD_RESET_PATH, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: values.email, redirectTo }),
+      });
     } catch {
       // Swallow — anti-enumeration.
     } finally {

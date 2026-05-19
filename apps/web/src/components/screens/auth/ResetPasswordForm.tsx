@@ -32,9 +32,16 @@ import {
   FormMessage,
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
-import { authClient } from "@/lib/auth-client";
 import { useZodForm } from "@/lib/form-utils";
 import { AuthShell } from "./AuthShell";
+
+// Better Auth 1.6.9 canonical wire path. Verified by the CJM step at
+// tests/e2e-cjm/steps/password-reset.steps.ts:118. We POST raw JSON
+// rather than calling authClient.resetPassword to avoid binding to a
+// typed helper whose method name has shifted across Better Auth
+// releases. CSRF is gated by Origin; same-origin browser fetches are
+// trusted.
+const RESET_PASSWORD_PATH = "/api/auth/reset-password";
 
 export interface ResetPasswordFormProps {
   /** Reset token extracted from `?token=…` by the RSC parent. */
@@ -53,13 +60,6 @@ function makeResetSchema(mismatchMessage: string) {
       message: mismatchMessage,
     });
 }
-
-// Better Auth 1.6.9 exposes resetPassword via the runtime Proxy.
-type ResetPassword = (args: {
-  newPassword: string;
-  token: string;
-}) => Promise<{ data: unknown; error: { code?: string; message?: string } | null }>;
-type AuthClientWithReset = typeof authClient & { resetPassword: ResetPassword };
 
 export function ResetPasswordForm(props: ResetPasswordFormProps): React.JSX.Element {
   const { t } = useTranslation(["end-user", "common"]);
@@ -104,12 +104,12 @@ export function ResetPasswordForm(props: ResetPasswordFormProps): React.JSX.Elem
     setSubmitting(true);
     setErrorKind(null);
     try {
-      const extended = authClient as AuthClientWithReset;
-      const result = await extended.resetPassword({
-        newPassword: values.newPassword,
-        token,
+      const res = await fetch(RESET_PASSWORD_PATH, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ newPassword: values.newPassword, token }),
       });
-      if (result.error) {
+      if (!res.ok) {
         setErrorKind("generic");
         return;
       }

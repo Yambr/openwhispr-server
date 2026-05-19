@@ -51,9 +51,17 @@ interface MailpitMessageFullBody {
 const VERIFY_LINK_PATTERN =
   /https?:\/\/[^\s"'<>]+\/(?:verify-email|api\/auth\/verify-email)\?[^\s"'<>]*token=[^\s"'<>&]+/i;
 
-// Password-reset link uses the web-UI route; Better Auth's reset
-// template embeds an absolute URL pointing at WEB_BASE/reset-password.
-const RESET_LINK_PATTERN = /https?:\/\/[^\s"'<>]+\/reset-password\?[^\s"'<>]*token=[^\s"'<>&]+/i;
+// Password-reset link. Better Auth 1.6.9 embeds the URL it constructs
+// at `${baseURL}/reset-password/<token>?callbackURL=<redirectTo>`
+// (vendored source: node_modules/.../better-auth/dist/api/routes/
+// password.mjs:72). The catch-all mount under `/api/auth/*` means the
+// real path on the wire is `/api/auth/reset-password/<token>?…`. The
+// GET handler validates the token, then 302s to `<redirectTo>?token=…`
+// (the web UI lands there). The regex matches BOTH shapes so future
+// callers that bypass `redirectTo` and link straight at the web route
+// continue to resolve.
+const RESET_LINK_PATTERN =
+  /https?:\/\/[^\s"'<>]+\/(?:api\/auth\/)?reset-password[/?][^\s"'<>]*(?:token=|[A-Za-z0-9_-]{8,})[^\s"'<>]*/i;
 
 async function pollForLink(
   email: string,

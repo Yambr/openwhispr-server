@@ -24,12 +24,11 @@ vi.mock("next/link", () => ({
   ),
 }));
 
-const resetPassword = vi.fn();
-vi.mock("@/lib/auth-client", () => ({
-  authClient: {
-    resetPassword: (...args: unknown[]) => resetPassword(...args),
-  },
-}));
+// ResetPasswordForm POSTs raw JSON to /api/auth/reset-password
+// (Better Auth 1.6.9 canonical path; we deliberately bypass the typed
+// authClient helper to avoid binding to a name that shifts across BA
+// releases). Spy on global fetch so the unit suite never networks.
+const fetchSpy = vi.fn();
 
 const resources = {
   "end-user": {
@@ -90,8 +89,12 @@ function Wrap({ children }: { children: React.ReactNode }) {
 
 describe("ResetPasswordForm (Phase 55-01-a)", () => {
   beforeEach(() => {
-    resetPassword.mockReset();
+    fetchSpy.mockReset();
     routerPush.mockReset();
+    fetchSpy.mockResolvedValue({ ok: true, status: 200, json: async () => ({}) } as Response);
+    vi.spyOn(globalThis, "fetch").mockImplementation(
+      (...args: unknown[]) => fetchSpy(...args) as Promise<Response>,
+    );
   });
   afterEach(() => {
     vi.restoreAllMocks();
@@ -146,7 +149,7 @@ describe("ResetPasswordForm (Phase 55-01-a)", () => {
     await user.type(screen.getByLabelText(/confirm new password/i), "Different-Pass-9!");
     await user.click(screen.getByRole("button", { name: /set new password/i }));
     expect(await screen.findByText(/passwords do not match/i)).toBeInTheDocument();
-    expect(resetPassword).not.toHaveBeenCalled();
+    expect(fetchSpy).not.toHaveBeenCalled();
   });
 
   it("zod rejects weak passwords (length < 8)", async () => {
@@ -160,11 +163,15 @@ describe("ResetPasswordForm (Phase 55-01-a)", () => {
     await user.type(screen.getByLabelText(/^new password$/i), "weak");
     await user.type(screen.getByLabelText(/confirm new password/i), "weak");
     await user.click(screen.getByRole("button", { name: /set new password/i }));
-    await waitFor(() => expect(resetPassword).not.toHaveBeenCalled());
+    await waitFor(() => expect(fetchSpy).not.toHaveBeenCalled());
   });
 
-  it("successful submit calls authClient.resetPassword and router.push('/sign-in')", async () => {
-    resetPassword.mockResolvedValueOnce({ data: { ok: true }, error: null });
+  it("successful submit POSTs /api/auth/reset-password and router.push('/sign-in')", async () => {
+    fetchSpy.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      json: async () => ({}),
+    } as Response);
     const { ResetPasswordForm } = await import("../ResetPasswordForm");
     const user = userEvent.setup();
     render(
@@ -175,10 +182,16 @@ describe("ResetPasswordForm (Phase 55-01-a)", () => {
     await user.type(screen.getByLabelText(/^new password$/i), "Strong-Pass-9!");
     await user.type(screen.getByLabelText(/confirm new password/i), "Strong-Pass-9!");
     await user.click(screen.getByRole("button", { name: /set new password/i }));
-    await waitFor(() => expect(resetPassword).toHaveBeenCalledTimes(1));
-    const call = resetPassword.mock.calls[0]?.[0] as { newPassword: string; token: string };
-    expect(call.newPassword).toBe("Strong-Pass-9!");
-    expect(call.token).toBe("reset-token-xyz");
+    await waitFor(() => expect(fetchSpy).toHaveBeenCalledTimes(1));
+    const call = fetchSpy.mock.calls[0] as [string, RequestInit];
+    expect(call[0]).toBe("/api/auth/reset-password");
+    expect((call[1] as RequestInit).method).toBe("POST");
+    const body = JSON.parse((call[1] as RequestInit).body as string) as {
+      newPassword: string;
+      token: string;
+    };
+    expect(body.newPassword).toBe("Strong-Pass-9!");
+    expect(body.token).toBe("reset-token-xyz");
     await waitFor(() => expect(routerPush).toHaveBeenCalledWith("/sign-in"));
   });
 });

@@ -24,12 +24,11 @@ vi.mock("next/link", () => ({
   ),
 }));
 
-const forgetPassword = vi.fn();
-vi.mock("@/lib/auth-client", () => ({
-  authClient: {
-    forgetPassword: (...args: unknown[]) => forgetPassword(...args),
-  },
-}));
+// ForgotPasswordForm POSTs raw JSON to /api/auth/request-password-reset
+// (Better Auth 1.6.9 wire path; the typed forgetPassword helper would
+// hit the deprecated /forget-password endpoint). We spy on global
+// fetch so the unit suite never touches the network.
+const fetchSpy = vi.fn();
 
 const resources = {
   "end-user": {
@@ -81,7 +80,11 @@ function Wrap({ children }: { children: React.ReactNode }) {
 
 describe("ForgotPasswordForm (Phase 55-01-a)", () => {
   beforeEach(() => {
-    forgetPassword.mockReset();
+    fetchSpy.mockReset();
+    fetchSpy.mockResolvedValue({ ok: true, status: 200, json: async () => ({}) } as Response);
+    vi.spyOn(globalThis, "fetch").mockImplementation(
+      (...args: unknown[]) => fetchSpy(...args) as Promise<Response>,
+    );
   });
   afterEach(() => {
     vi.restoreAllMocks();
@@ -108,16 +111,20 @@ describe("ForgotPasswordForm (Phase 55-01-a)", () => {
     );
     // Empty submit → form does NOT invoke the auth client.
     await user.click(screen.getByRole("button", { name: /send reset link/i }));
-    await waitFor(() => expect(forgetPassword).not.toHaveBeenCalled());
+    await waitFor(() => expect(fetchSpy).not.toHaveBeenCalled());
 
     // Bad email shape → still no auth call; FormMessage surfaces.
     await user.type(screen.getByLabelText(/email/i), "not-an-email");
     await user.click(screen.getByRole("button", { name: /send reset link/i }));
-    await waitFor(() => expect(forgetPassword).not.toHaveBeenCalled());
+    await waitFor(() => expect(fetchSpy).not.toHaveBeenCalled());
   });
 
-  it("successful auth-client call renders enumeration-safe success panel", async () => {
-    forgetPassword.mockResolvedValueOnce({ data: { ok: true }, error: null });
+  it("successful POST renders enumeration-safe success panel", async () => {
+    fetchSpy.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      json: async () => ({}),
+    } as Response);
     const { ForgotPasswordForm } = await import("../ForgotPasswordForm");
     const user = userEvent.setup();
     render(
@@ -127,14 +134,18 @@ describe("ForgotPasswordForm (Phase 55-01-a)", () => {
     );
     await user.type(screen.getByLabelText(/email/i), "registered@local.test");
     await user.click(screen.getByRole("button", { name: /send reset link/i }));
-    await waitFor(() => expect(forgetPassword).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(fetchSpy).toHaveBeenCalledTimes(1));
+    // Wire path is the Better Auth 1.6.9 canonical endpoint.
+    const call = fetchSpy.mock.calls[0] as [string, RequestInit];
+    expect(call[0]).toBe("/api/auth/request-password-reset");
+    expect((call[1] as RequestInit).method).toBe("POST");
     expect(
       await screen.findByText(/if your email is registered, we have sent you a reset link/i),
     ).toBeInTheDocument();
   });
 
-  it("rejected auth-client call renders the SAME enumeration-safe panel (no leak)", async () => {
-    forgetPassword.mockRejectedValueOnce(new Error("network"));
+  it("rejected POST renders the SAME enumeration-safe panel (no leak)", async () => {
+    fetchSpy.mockRejectedValueOnce(new Error("network"));
     const { ForgotPasswordForm } = await import("../ForgotPasswordForm");
     const user = userEvent.setup();
     render(
@@ -144,7 +155,7 @@ describe("ForgotPasswordForm (Phase 55-01-a)", () => {
     );
     await user.type(screen.getByLabelText(/email/i), "not-registered@local.test");
     await user.click(screen.getByRole("button", { name: /send reset link/i }));
-    await waitFor(() => expect(forgetPassword).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(fetchSpy).toHaveBeenCalledTimes(1));
     expect(
       await screen.findByText(/if your email is registered, we have sent you a reset link/i),
     ).toBeInTheDocument();
