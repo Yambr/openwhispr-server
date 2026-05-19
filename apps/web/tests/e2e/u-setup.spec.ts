@@ -20,9 +20,11 @@ test.describe("U-setup (Phase 18.1.1 / Plan 05)", () => {
   test("axe — WCAG 2.2 AA scan on /setup", async ({ page }) => {
     const response = await page.goto("/setup");
     // When the server has already completed initial setup, /setup
-    // either redirects or returns a non-2xx; in both cases we skip the
-    // axe scan because the wizard isn't rendered.
-    if (!response || !response.ok()) {
+    // either redirects (URL is no longer /setup) or returns a non-2xx.
+    // In both cases we skip the axe scan because the wizard isn't rendered.
+    const finalUrl = new URL(page.url());
+    const onSetup = finalUrl.pathname === "/setup";
+    if (!response || !response.ok() || !onSetup) {
       test.skip(true, "setup already completed — skipping axe scan");
       return;
     }
