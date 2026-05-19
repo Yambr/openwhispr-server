@@ -43,6 +43,11 @@
 //   - Step 3: 1 conversation with 1 message → populated branch + footer
 //
 // Browser-side error invariant: every step ends with expectNoBrowserErrors.
+//
+// GREEN (55-12-b-02): RED spec passed 3/3 clean on slim — the production
+// wiring (NoteDetailClient empty Back + ConversationDetailClient empty Back
+// + footer Back) was always live; this commit is the GREEN gate marker
+// confirming 3x clean execution against the running slim stack.
 
 import { test as base, expect } from "@playwright/test";
 import { storageStatePath } from "../fixtures/auth.js";
