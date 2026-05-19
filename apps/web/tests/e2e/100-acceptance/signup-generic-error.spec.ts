@@ -46,10 +46,13 @@ test.describe("@phase55-acceptance @long-form — sign-up generic error (slim)",
     page,
   }) => {
     await test.step("step 1 — pre-arm 500 stub on /api/auth/sign-up/email BEFORE navigating", async () => {
-      // Plan 55-15-b-01 RED gate: stub deliberately omitted so submit
-      // hits the real /api/auth/sign-up/email and succeeds (or 4xx)
-      // instead of producing the generic-error Alert variant. GREEN
-      // (55-15-b-02) installs the page.route 500 fulfill.
+      await page.route(SIGN_UP_ROUTE, (route) =>
+        route.fulfill({
+          status: 500,
+          contentType: "application/json",
+          body: JSON.stringify({ error: { message: "server explosion" } }),
+        }),
+      );
     });
 
     await test.step("step 2 — goto /sign-up, form renders", async () => {
