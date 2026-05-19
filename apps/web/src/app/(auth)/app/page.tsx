@@ -31,15 +31,17 @@ export default async function UsagePage(): Promise<React.JSX.Element> {
         headers: { cookie: cookieHeader },
         cache: "no-store",
       });
+      // Phase 55-06-a fix (BUG-55-06-a-RSC-FETCH-WALL): on non-2xx,
+      // throw so the dehydrated cache hydrates into the Client useQuery's
+      // `isError=true` branch (UsageDashboardClient.tsx:80-95 renders the
+      // Alert + Retry surface). The previous fallback returned
+      // wordsUsed=0 defaults which silently masked real outages — making
+      // /api/usage 5xx look identical to a fresh tenant. Truthful error
+      // state lets retry-button UCs be exercised AND aligns UX with the
+      // rest of the dashboard (list/detail clients all surface 5xx as
+      // explicit Alert + Retry).
       if (!res.ok) {
-        // Surface as empty defaults — the Client component still renders
-        // the KPI grid (UI-SPEC: empty is N/A).
-        return {
-          wordsUsed: 0,
-          wordsRemaining: 0,
-          plan: "unlimited",
-          limitReached: false,
-        };
+        throw new Error(`/api/usage ${res.status}`);
       }
       return (await res.json()) as {
         wordsUsed: number;
