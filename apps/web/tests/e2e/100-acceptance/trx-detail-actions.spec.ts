@@ -36,7 +36,12 @@
 //   OPENWHISPR_TOPOLOGY=slim PLAYWRIGHT_SKIP_WEBSERVER=1 \
 //     pnpm --filter @openwhispr/web exec playwright test \
 //     100-acceptance --project=slim --reporter=line
-//   → 13 passed (was 12 pre-55-04-b) including this spec.
+//   → 13 passed (was 12 pre-55-04-b) including this spec at slot [13/13].
+//
+// Flake gate: solo-spec re-run x3 on the live slim stack: 1.7s / 1.8s / 2.2s,
+// all green. No retries configured for the slim project. The DELETE-confirm
+// branch vaporises the seeded row each run so the spec is idempotent across
+// repeated executions against the same fixture user.
 
 import { test as base, expect } from "@playwright/test";
 import { storageStatePath } from "../fixtures/auth.js";
