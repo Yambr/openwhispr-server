@@ -73,7 +73,10 @@ const resources = {
         },
         action: {
           forgotPassword: {
-            link: { disabled: "Forgot password? — coming soon, contact your operator." },
+            // Phase 55-01-a — D-UX2 reversed; muted "coming soon" copy
+            // replaced with active CTA label that drives the new
+            // /forgot-password Next.js route.
+            link: { label: "Forgot password?" },
           },
           "signup-link": { label: "Don't have an account? Sign up" },
           resendVerification: { label: "Resend verification email" },
@@ -186,18 +189,16 @@ describe("SignInForm (Phase 07.1 / Plan 07 — U1)", () => {
     expect(screen.queryByRole("button", { name: /continue with sso/i })).not.toBeInTheDocument();
   });
 
-  it("renders disabled forgot-password text per D-UX2", async () => {
+  it("renders live forgot-password link (Phase 55-01-a reversal of D-UX2)", async () => {
     const { SignInForm } = await import("../SignInForm");
     render(
       <Wrap>
         <SignInForm />
       </Wrap>,
     );
-    const txt = screen.getByText(/forgot password/i);
-    expect(txt).toBeInTheDocument();
-    // It must NOT be a clickable link or button (D-UX2: disabled).
-    expect(txt.tagName.toLowerCase()).not.toBe("a");
-    expect(txt.tagName.toLowerCase()).not.toBe("button");
+    const link = screen.getByRole("link", { name: /forgot password/i });
+    expect(link).toBeInTheDocument();
+    expect(link).toHaveAttribute("href", "/forgot-password");
   });
 
   it("renders sign-up link", async () => {
@@ -447,16 +448,16 @@ describe("SignInForm (Phase 07.1 / Plan 07 — U1)", () => {
     expect(screen.getByRole("button", { name: /hide password/i })).toBeInTheDocument();
   });
 
-  it("D-UX2 sentinel: forgot-password text remains muted (not anchor, not button)", async () => {
+  it("Phase 55-01-a sentinel: forgot-password is a live link to /forgot-password (D-UX2 reversed)", async () => {
     const { SignInForm } = await import("../SignInForm");
     render(
       <Wrap>
         <SignInForm />
       </Wrap>,
     );
-    const txt = screen.getByText(/forgot password/i);
-    expect(txt.tagName.toLowerCase()).not.toBe("a");
-    expect(txt.tagName.toLowerCase()).not.toBe("button");
+    const link = screen.getByRole("link", { name: /forgot password/i });
+    expect(link.tagName.toLowerCase()).toBe("a");
+    expect(link).toHaveAttribute("href", "/forgot-password");
   });
 
   it("UICONF-07: a non-403 error does NOT render the resend CTA (regression guard)", async () => {

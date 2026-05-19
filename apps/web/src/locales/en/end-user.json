@@ -417,11 +417,88 @@
         }
       }
     },
+    "forgot-password": {
+      "title": {
+        "heading": {
+          "text": "Forgot your password?"
+        }
+      },
+      "subtitle": {
+        "body": {
+          "text": "Enter your account email and we will send a reset link."
+        }
+      },
+      "form": {
+        "email": {
+          "label": "Email"
+        },
+        "submit": {
+          "label": "Send reset link"
+        }
+      },
+      "success": {
+        "title": {
+          "text": "Check your email"
+        },
+        "body": {
+          "text": "If your email is registered, we have sent you a reset link."
+        }
+      }
+    },
+    "reset-password": {
+      "title": {
+        "heading": {
+          "text": "Set a new password"
+        }
+      },
+      "subtitle": {
+        "body": {
+          "text": "Pick a new password and confirm it to finish."
+        }
+      },
+      "form": {
+        "new-password": {
+          "label": "New password"
+        },
+        "confirm-password": {
+          "label": "Confirm new password"
+        },
+        "submit": {
+          "label": "Set new password"
+        }
+      },
+      "error-generic": {
+        "title": {
+          "text": "Reset failed"
+        },
+        "body": {
+          "text": "Could not reset your password. Request a fresh link and try again."
+        }
+      },
+      "error-missing-token": {
+        "title": {
+          "text": "Reset link is invalid"
+        },
+        "body": {
+          "text": "This reset link is missing or expired. Request a new one."
+        }
+      },
+      "action": {
+        "back-to-forgot": {
+          "label": "Request a new reset link"
+        }
+      },
+      "validation": {
+        "mismatch": {
+          "text": "Passwords do not match."
+        }
+      }
+    },
     "signin": {
       "action": {
         "forgotPassword": {
           "link": {
-            "disabled": "Forgot password? — coming soon, contact your operator."
+            "label": "Forgot password?"
           }
         },
         "rememberDevice": {

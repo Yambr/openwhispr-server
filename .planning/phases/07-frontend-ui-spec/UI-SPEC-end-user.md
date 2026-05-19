@@ -130,7 +130,24 @@ TanStack Query keys: none (form is imperative, not query-driven).
 | `end-user.signin.oidc.google.label`                                | Continue with Google                                         |
 | `end-user.signin.oidc.github.label`                                | Continue with GitHub                                         |
 | `end-user.signin.oidc.sso.label`                                   | Continue with SSO                                            |
-| `end-user.signin.action.forgotPassword.link.disabled`              | Forgot password? — coming soon, contact your operator.       |
+| `end-user.signin.action.forgotPassword.link.label`                 | Forgot password?                                             |
+| `end-user.forgot-password.title.heading.text`                      | Forgot your password?                                        |
+| `end-user.forgot-password.subtitle.body.text`                      | Enter your account email and we will send a reset link.      |
+| `end-user.forgot-password.form.email.label`                        | Email                                                        |
+| `end-user.forgot-password.form.submit.label`                       | Send reset link                                              |
+| `end-user.forgot-password.success.title.text`                      | Check your email                                             |
+| `end-user.forgot-password.success.body.text`                       | If your email is registered, we have sent you a reset link.  |
+| `end-user.reset-password.title.heading.text`                       | Set a new password                                           |
+| `end-user.reset-password.subtitle.body.text`                       | Pick a new password and confirm it to finish.                |
+| `end-user.reset-password.form.new-password.label`                  | New password                                                 |
+| `end-user.reset-password.form.confirm-password.label`              | Confirm new password                                         |
+| `end-user.reset-password.form.submit.label`                        | Set new password                                             |
+| `end-user.reset-password.error-generic.title.text`                 | Reset failed                                                 |
+| `end-user.reset-password.error-generic.body.text`                  | Could not reset your password. Request a fresh link and try again. |
+| `end-user.reset-password.error-missing-token.title.text`           | Reset link is invalid                                        |
+| `end-user.reset-password.error-missing-token.body.text`            | This reset link is missing or expired. Request a new one.    |
+| `end-user.reset-password.action.back-to-forgot.label`              | Request a new reset link                                     |
+| `end-user.reset-password.validation.mismatch.text`                 | Passwords do not match.                                      |
 | `end-user.signin.action.resendVerification.label`                  | Resend verification email                                    |
 | `end-user.signin.action.signup-link.label`                         | Don't have an account? Sign up                               |
 | `end-user.signin.error.title.text`                                 | Sign-in failed                                               |
@@ -1481,10 +1498,14 @@ route file's `method:` key inside `app.route({...})` or the literal in
 | POST   | /api/auth/revoke-other-sessions      | session cookie  | U5 revoke-all-other-sessions action |
 | GET    | /api/auth/sign-in/social/:provider   | public          | U1 OIDC button (Continue with SSO) — only when OIDC providers are configured (apps/api/src/auth.ts oidcProviders) |
 
-> **Note on forgot-password.** Per D-UX2, `POST /api/auth/forget-password` and
-> `POST /api/auth/reset-password` are NOT used in v1 (the "Forgot password?"
-> link in U1 is disabled / links to a static placeholder). Phase 7.x will
-> reintroduce them.
+> **Note on forgot-password.** D-UX2 was REVERSED in Phase 55-01-a (UC
+> coverage audit) with explicit user sign-off. The "Forgot password?"
+> link in U1 is now a live `<Link href="/forgot-password">` and the
+> `/forgot-password` + `/reset-password` Next.js routes ship with
+> matching client forms driving `authClient.forgetPassword` and
+> `authClient.resetPassword`. The wire endpoints
+> `POST /api/auth/request-password-reset` and `POST /api/auth/reset-password`
+> have been GREEN since Phase 19.1.
 
 ## Assumptions resolved
 

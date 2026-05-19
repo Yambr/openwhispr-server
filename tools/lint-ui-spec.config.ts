@@ -44,6 +44,10 @@ export const BETTER_AUTH_PATHS: ReadonlyArray<string> = [
   "POST /api/auth/verify-email",
   "POST /api/auth/send-verification-email",
   "POST /api/auth/forget-password",
+  // Better Auth 1.6.9 registers `request-password-reset` (the
+  // `forget-password` alias from older releases 404s). Both names are
+  // listed so historical UI-SPEC references keep validating.
+  "POST /api/auth/request-password-reset",
   "POST /api/auth/reset-password",
   "GET /api/auth/get-session",
   "GET /api/auth/list-sessions",

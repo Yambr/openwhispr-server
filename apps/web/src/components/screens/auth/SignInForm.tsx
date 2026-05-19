@@ -12,6 +12,19 @@
 //   - D-UX2 sentinel: forgot-password remains muted static text. The
 //     anchor lands with Phase 19.1 reset-mail.
 //
+// Phase 55-01-a — D-UX2 REVERSED with user authorisation.
+//   Source of authority: Phase 55 UC coverage audit (RESEARCH.md
+//   §"Top 10 gaps" #1) PLUS explicit user sign-off recorded on
+//   2026-05-19 in the executor prompt for Plan 55-01-a. The audit
+//   found this was the single BLOCKED UC in the entire surface —
+//   every user who forgot their password was stuck because the
+//   /forgot-password Next.js route never shipped after Phase 19.1
+//   put the API wire in place. This reversal flips lines ~247-253
+//   from a muted <p aria-disabled="true"> sentinel into a live
+//   <Link href="/forgot-password"> CTA, closing
+//   BUG-54-PRD-RESET-UI-MISSING. The reversal is NOT a unilateral
+//   executor decision — the audit + user are the chain of authority.
+//
 // Client Component. RHF + zod + Better Auth signIn.email + OIDC row.
 // D-S1: no custom fetch. Every call goes through authClient.* directly.
 // Open-redirect mitigation: post-signin redirect is HARDCODED to "/app".
@@ -245,12 +258,19 @@ export function SignInForm(): React.JSX.Element {
               )}
             />
             {/*
-              D-UX2 sentinel: forgot-password remains muted static text.
-              Source of truth: D-UX2 (Phase 18.1.1) — anchor lands with Phase 19.1 reset-mail.
+              Phase 55-01-a: user-authorized reversal of D-UX2 (Phase 18.1.1).
+              The previous muted "Forgot password? — coming soon" sentinel
+              is replaced with a live link to the /forgot-password route
+              shipped in this same plan. Chain of authority: Phase 55 UC
+              coverage audit + explicit user sign-off (see file header).
+              Closes BUG-54-PRD-RESET-UI-MISSING.
             */}
-            <p className="text-muted-foreground text-sm" aria-disabled="true">
-              {t("end-user.signin.action.forgotPassword.link.disabled")}
-            </p>
+            <Link
+              href="/forgot-password"
+              className="text-sm text-primary underline underline-offset-4 hover:opacity-80"
+            >
+              {t("end-user.signin.action.forgotPassword.link.label")}
+            </Link>
             <Button type="submit" disabled={submitting}>
               {t("end-user.signin.form.submit.label")}
             </Button>
