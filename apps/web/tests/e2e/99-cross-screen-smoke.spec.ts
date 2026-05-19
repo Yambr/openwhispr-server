@@ -20,6 +20,7 @@ import {
   test,
 } from "./fixtures/auth.js";
 import { bindToContext } from "./fixtures/seed.js";
+import { attachBrowserDiagnostics, expectNoBrowserErrors } from "./support/browser-diagnostics.js";
 import { getOrigins } from "./support/topology.js";
 
 // Phase 53 / Plan 53-35 — 99-cross-screen-smoke uses its OWN fixture
@@ -39,7 +40,8 @@ test.beforeAll(async () => {
 test.use({ storageState: storageStatePath(DEDICATED_INDEX) });
 
 test.describe("99 — cross-screen smoke (Phase 07.1 / Plan 13)", () => {
-  test.beforeEach(async ({ context }) => {
+  test.beforeEach(async ({ context, page }) => {
+    await attachBrowserDiagnostics(page);
     const seed = bindToContext(context);
     await seed.clearAllData();
   });
@@ -125,5 +127,7 @@ test.describe("99 — cross-screen smoke (Phase 07.1 / Plan 13)", () => {
     } finally {
       await freshContext.close();
     }
+
+    expectNoBrowserErrors(page);
   });
 });

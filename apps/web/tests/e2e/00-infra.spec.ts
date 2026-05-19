@@ -15,22 +15,29 @@
 // real Traefik + Next.js + api stack.
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test } from "./_diagnostics-fixture.js";
+import { attachBrowserDiagnostics, expectNoBrowserErrors } from "./support/browser-diagnostics.js";
 
 const ADMIN_BASIC_USER = "admin";
 const ADMIN_BASIC_PASS = "testpw123";
 
 test.describe("infra smoke (WEB-IMPL-03)", () => {
-  test("GET /api/health → 200", async ({ request }) => {
+  test.beforeEach(async ({ page }) => {
+    await attachBrowserDiagnostics(page);
+  });
+
+  test("GET /api/health → 200", async ({ page, request }) => {
     const res = await request.get("/api/health");
     expect(res.status()).toBe(200);
+    expectNoBrowserErrors(page);
   });
 
-  test("GET / → 200 or 307 (root redirects to /app)", async ({ request }) => {
+  test("GET / → 200 or 307 (root redirects to /app)", async ({ page, request }) => {
     const res = await request.get("/", { maxRedirects: 0 });
     expect([200, 307]).toContain(res.status());
+    expectNoBrowserErrors(page);
   });
 
-  test("GET /admin/observability without auth → 401", async ({ request }, testInfo) => {
+  test("GET /admin/observability without auth → 401", async ({ page, request }, testInfo) => {
     // Phase 53 / Plan 53-31 — Traefik-only test. Under slim there is no
     // basic-auth middleware on the web container, so anonymous GET to
     // /admin/observability returns 200 with the 403 role-gate fallback
@@ -42,9 +49,10 @@ test.describe("infra smoke (WEB-IMPL-03)", () => {
     }
     const res = await request.get("/admin/observability", { maxRedirects: 0 });
     expect(res.status()).toBe(401);
+    expectNoBrowserErrors(page);
   });
 
-  test("GET /admin/observability with basic auth → 200 or 404", async ({ request }) => {
+  test("GET /admin/observability with basic auth → 200 or 404", async ({ page, request }) => {
     const credentials = Buffer.from(`${ADMIN_BASIC_USER}:${ADMIN_BASIC_PASS}`).toString("base64");
     const res = await request.get("/admin/observability", {
       headers: { authorization: `Basic ${credentials}` },
@@ -54,6 +62,7 @@ test.describe("infra smoke (WEB-IMPL-03)", () => {
     // Either proves the basic-auth middleware accepted the credentials and
     // forwarded the request to the web service.
     expect([200, 404]).toContain(res.status());
+    expectNoBrowserErrors(page);
   });
 
   test("axe-core baseline scan on / has no critical violations", async ({ page }) => {
@@ -65,5 +74,6 @@ test.describe("infra smoke (WEB-IMPL-03)", () => {
       .analyze();
     const critical = results.violations.filter((v) => v.impact === "critical");
     expect(critical).toEqual([]);
+    expectNoBrowserErrors(page);
   });
 });
