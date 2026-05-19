@@ -65,6 +65,12 @@ test.describe("@phase55-acceptance @long-form — theme switcher 3-option cycle 
     // revoke-sessions.spec.ts:109-111.
     allowBrowserErrors(page, [
       /GET [^ ]+\/_next\/static\/chunks\/[^ ]+ → FAILED: net::ERR_ABORTED/,
+      // Step 1's "try sign-in first" probe deliberately fails with 401
+      // INVALID_EMAIL_OR_PASSWORD on the first ever run (alice+55e
+      // doesn't exist yet → fall through to sign-up + verify). Mirrors
+      // delete-account.spec.ts:57-65. Not a real bug.
+      /POST [^ ]+\/api\/auth\/sign-in\/email[^ ]* → 401\b/,
+      /Failed to load resource:.*\b401\b/,
     ]);
   });
 
