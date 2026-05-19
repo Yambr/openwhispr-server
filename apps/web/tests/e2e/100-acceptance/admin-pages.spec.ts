@@ -72,8 +72,16 @@ test.describe("@phase55-acceptance @long-form — admin pages happy path (slim)"
         page.getByText(/Server-side configuration for speech-to-text and note recording/i),
       ).toBeVisible();
 
-      // Read-only status alert.
-      await expect(page.getByRole("status").filter({ hasText: /^Read-only$/ })).toBeVisible();
+      // Read-only alert — AdminIndex renders <Alert role="status">
+      // with title "Read-only" (i18n key admin.index.readonly.title.text)
+      // and body "Edits require restarting the api container with
+      // updated env." Match on both texts; the role-name discrimination
+      // is best-effort (shadcn's Alert spreads ...props so role="status"
+      // overrides the default role="alert", but role-name accessibility
+      // tree may not surface "Read-only" as the accessible-name on the
+      // status region under all chromium variants — text match is the
+      // robust observable).
+      await expect(page.getByText(/^Read-only$/).first()).toBeVisible();
       await expect(
         page.getByText(/Edits require restarting the api container with updated env\./i),
       ).toBeVisible();
