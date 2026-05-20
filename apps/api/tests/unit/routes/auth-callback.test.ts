@@ -21,6 +21,7 @@ import Fastify, { type FastifyInstance } from "fastify";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { registerErrorHandler } from "../../../src/error-handler.js";
 import { _resetDefaultTenantCacheForTesting } from "../../../src/lib/default-tenant.js";
+import { rateLimitPlugin } from "../../../src/plugins/rate-limit.js";
 import { buildAuthCallbackRoutes, type MintBearer } from "../../../src/routes/auth-callback.js";
 
 const VALID_STATE_ID = "11111111-2222-3333-4444-555555555555";
@@ -347,6 +348,60 @@ describe("GET /api/auth/desktop-callback/:provider", () => {
       });
       expect(res.statusCode).toBe(400);
       expect(res.json()).toEqual({ error: "state expired" });
+      await app.close();
+    });
+  });
+
+  describe("HR-01 — desktop-callback route carries a rateLimit budget", () => {
+    // Phase 63 / HR-01 — the route MUST declare an explicit
+    // `config.rateLimit` budget (LOCKER-04 + abuse mitigation: each
+    // successful CAS burns the legitimate oauth_state row → an attacker
+    // who knows a victim is mid-flight has an exploitable race).
+
+    it("HR-01: route config carries a { max, timeWindow } rateLimit object", async () => {
+      let captured: unknown;
+      const { db } = makeFakeDb(new Map());
+      const app = Fastify({ logger: false });
+      app.addHook("onRoute", (routeOptions) => {
+        if (routeOptions.url === "/api/auth/desktop-callback/:provider") {
+          captured = (routeOptions.config as { rateLimit?: unknown } | undefined)?.rateLimit;
+        }
+      });
+      registerErrorHandler(app);
+      app.register(
+        buildAuthCallbackRoutes({ keyProvider, db, mintBearer: vi.fn() as unknown as MintBearer }),
+      );
+      await app.ready();
+      expect(captured).toBeTypeOf("object");
+      expect(captured).toMatchObject({ max: 60, timeWindow: "1 minute" });
+      await app.close();
+    });
+
+    it("HR-01: a burst past 60 from one IP returns 429 with the error envelope", async () => {
+      const { db } = makeFakeDb(new Map());
+      const app = Fastify({ logger: false, trustProxy: true });
+      registerErrorHandler(app);
+      await app.register(rateLimitPlugin, { redis: undefined });
+      await app.register(
+        buildAuthCallbackRoutes({ keyProvider, db, mintBearer: vi.fn() as unknown as MintBearer }),
+      );
+      await app.ready();
+      // Unknown state → deterministic 400, but the limiter still counts.
+      for (let i = 0; i < 60; i++) {
+        const r = await app.inject({
+          method: "GET",
+          url: `/api/auth/desktop-callback/oidc?state=${UNKNOWN_STATE_ID}&code=x`,
+          headers: { "x-forwarded-for": "10.0.0.61" },
+        });
+        expect(r.statusCode).toBe(400);
+      }
+      const blocked = await app.inject({
+        method: "GET",
+        url: `/api/auth/desktop-callback/oidc?state=${UNKNOWN_STATE_ID}&code=x`,
+        headers: { "x-forwarded-for": "10.0.0.61" },
+      });
+      expect(blocked.statusCode).toBe(429);
+      expect(blocked.json()).toEqual({ error: "Too many requests" });
       await app.close();
     });
   });
