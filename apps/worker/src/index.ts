@@ -90,6 +90,7 @@ import {
   buildUsageRollupDispatcher,
   buildUsageRollupTenantHandler,
 } from "./jobs/usage-rollup-daily.js";
+import { runShutdown } from "./lib/shutdown.js";
 import { drainStaleVkrKeys } from "./lib/vkr-drain.js";
 import { buildQueueRegistry, closeQueueRegistry, QUEUE_NAMES } from "./queues.js";
 import { installSchedulers } from "./scheduler.js";
@@ -234,18 +235,20 @@ async function main(): Promise<void> {
     if (shuttingDown) return;
     shuttingDown = true;
     log.info({ signal }, "shutting down — draining BullMQ workers");
-    try {
-      await Promise.allSettled(workers.map((w) => w.close()));
-      await ingestQueue.close();
-      await closeQueueRegistry(registry);
-      await litellmPool.end();
-      await appOwnerPool.end();
-      await maintenancePool.end();
-      await redis.quit();
-    } catch (err) {
-      log.error({ err }, "error during shutdown");
-    }
-    process.exit(0);
+    // Phase 66 / CR-08 — runShutdown inspects the Promise.allSettled
+    // results AND guards every subsequent teardown await, returning a
+    // non-zero exit code on ANY drain failure. A masked exit(0) on a
+    // drain failure would have the orchestrator record a false graceful
+    // shutdown during rolling deploys.
+    const code = await runShutdown({
+      workers,
+      ingestQueue,
+      closeRegistry: () => closeQueueRegistry(registry),
+      pools: [litellmPool, appOwnerPool, maintenancePool],
+      redis,
+      logger: log,
+    });
+    process.exit(code);
   };
   process.on("SIGTERM", () => {
     void shutdown("SIGTERM");
