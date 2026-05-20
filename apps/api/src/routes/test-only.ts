@@ -42,6 +42,7 @@ import { SeedTenantRequest } from "@openwhispr/wire-schemas";
 import { sql } from "drizzle-orm";
 import type { FastifyInstance, FastifyRequest } from "fastify";
 import { AuthError } from "../errors.js";
+import { resolveDefaultTenantId } from "../lib/default-tenant.js";
 import { recordPreviousToken } from "../lib/token-rotation.js";
 import type { AuthLike } from "../middleware/dual-auth.js";
 
@@ -153,17 +154,6 @@ function extractBetterAuthErrorMessage(err: unknown): string {
     }
   }
   return err instanceof Error ? err.message : "signUpEmail failed";
-}
-
-/**
- * Phase 59 / Track A / R14 — the set of stable Better Auth error codes
- * that mean "a user with this email already exists". Better Auth's
- * email/password sign-up emits `USER_ALREADY_EXISTS_USE_ANOTHER_EMAIL`
- * (see `BASE_ERROR_CODES`); `USER_ALREADY_EXISTS` is the sibling code
- * other flows use. Both are routed into the idempotent re-seed lookup.
- */
-function isDuplicateEmailCode(code: string): boolean {
-  return code === "USER_ALREADY_EXISTS_USE_ANOTHER_EMAIL" || code === "USER_ALREADY_EXISTS";
 }
 
 async function lookupSessionIdByToken(
@@ -470,59 +460,89 @@ export function buildTestOnlyRoutes(deps: TestOnlyDeps) {
               body: { email: body.email, password: body.password, name: body.name },
             });
           } catch (err) {
-            const code = extractBetterAuthErrorCode(err);
-            if (code && isDuplicateEmailCode(code)) {
-              // Route the thrown duplicate into the idempotent lookup
-              // branch by synthesising the returned-error shape.
-              signUp = {
-                data: null,
-                error: { code, message: extractBetterAuthErrorMessage(err) },
-              };
-            } else {
-              // Genuine failure — re-throw to the generic 500 path.
-              throw err;
-            }
+            // Phase 59 / Track A / R14 — Better Auth's `APIError.from`
+            // is called with a BARE STRING as its `error` arg (see
+            // better-auth sign-up.mjs:205 + @better-auth/core error
+            // index.mjs: `APIError.from(status, error)` reads
+            // `error.message` / `error.code`). `BASE_ERROR_CODES.*`
+            // values are human-readable STRINGS ("User already exists.
+            // Use another email.") — a string has no `.code`, so the
+            // thrown APIError's `body.code` is `undefined`. There is no
+            // reliable structured discriminator on the thrown error,
+            // and 422 UNPROCESSABLE_ENTITY is shared with
+            // FAILED_TO_CREATE_USER. So we do NOT try to classify the
+            // throw — we route ANY thrown signUpEmail error into the
+            // idempotent lookup below. The DB lookup is itself the
+            // discriminator: if a user with this email already exists
+            // the re-seed is idempotent (200); if not, the existing
+            // `if (!existing)` branch surfaces the genuine failure as a
+            // 500. `extractBetterAuthError*` are kept only to preserve
+            // the original message/code on that genuine-failure 500.
+            const thrownCode = extractBetterAuthErrorCode(err);
+            signUp = {
+              data: null,
+              error: {
+                // exactOptionalPropertyTypes: omit `code` entirely when
+                // absent rather than setting it to `undefined`.
+                ...(thrownCode ? { code: thrownCode } : {}),
+                message: extractBetterAuthErrorMessage(err),
+              },
+            };
           }
 
-          let userId: string;
-          let userEmail: string;
-          let createdAt: string;
-          if (signUp.data) {
-            userId = signUp.data.user.id;
-            userEmail = signUp.data.user.email;
-            createdAt = new Date().toISOString();
-          } else {
-            // Better Auth refused — try the idempotent lookup branch
-            // (e.g. USER_ALREADY_EXISTS). The seed-tenant contract
-            // promises 200 + the existing row on repeat invocation.
-            const lookup = (await db.transaction(async (tx) => {
-              return (await tx.execute(sql`
+          // Phase 59 / Track A / R14 — the PERSISTED users row is the
+          // single source of truth for `userId`. Better Auth's
+          // `signUpEmail` on a DUPLICATE email does NOT throw and does
+          // NOT return the existing user — it returns
+          // `{data:{user:{id:<phantom>}}}` with a FRESHLY-GENERATED id
+          // that was never committed (the duplicate pre-check rolls the
+          // INSERT back). Trusting `signUp.data.user.id` then INSERTs a
+          // sessions row whose `user_id` FK points at a non-existent
+          // user → `sessions_user_id_users_id_fk` violation → 500. So we
+          // ALWAYS resolve the user by an email lookup against the
+          // committed row, regardless of what `signUpEmail` returned.
+          //
+          // Runs inside withTenant(): `users` has FORCE ROW LEVEL
+          // SECURITY (`tenant_id = current_setting('app.tenant_id')`);
+          // a bare-transaction SELECT returns 0 rows without a GUC.
+          const tenantId = await resolveDefaultTenantId();
+          const lookup = (await withTenant(db, tenantId, async (tx) => {
+            return (await tx.execute(sql`
               SELECT id, email, created_at FROM users
               WHERE lower(email) = lower(${body.email})
               LIMIT 1
             `)) as {
-                rows: Array<{ id: string; email: string; created_at: string | Date }>;
-              };
-            })) as { rows: Array<{ id: string; email: string; created_at: string | Date }> };
-            const existing = lookup.rows[0];
-            if (!existing) {
-              return reply.code(500).send({
-                error: signUp.error?.message ?? "signUpEmail failed",
-                code: signUp.error?.code ?? "SIGNUP_FAILED",
-              });
-            }
-            userId = existing.id;
-            userEmail = existing.email;
-            createdAt =
-              typeof existing.created_at === "string"
-                ? existing.created_at
-                : existing.created_at.toISOString();
+              rows: Array<{ id: string; email: string; created_at: string | Date }>;
+            };
+          })) as { rows: Array<{ id: string; email: string; created_at: string | Date }> };
+          const existing = lookup.rows[0];
+          if (!existing) {
+            // No committed user row AND signUpEmail did not persist one
+            // — a genuine sign-up failure. Preserve the original
+            // message/code (`extractBetterAuthError*` covers both the
+            // thrown-APIError and returned-error shapes).
+            return reply.code(500).send({
+              error: signUp.error?.message ?? "signUpEmail failed",
+              code: signUp.error?.code ?? "SIGNUP_FAILED",
+            });
           }
+          const userId = existing.id;
+          const userEmail = existing.email;
+          const createdAt =
+            typeof existing.created_at === "string"
+              ? existing.created_at
+              : existing.created_at.toISOString();
 
           // 2. Flip email_verified=true straight on the user row. Skips
           //    the verification-email round-trip per R1. Bound parameter
           //    is the freshly-minted user id; no string interpolation.
-          await db.transaction(async (tx) => {
+          //    Runs inside withTenant() (tenantId resolved above) so the
+          //    users / sessions FORCE-RLS policies admit the writes on
+          //    every path — the pre-R14 happy path only worked because
+          //    Better Auth's signUpEmail leaked an app.tenant_id SET
+          //    onto the pooled connection; the duplicate path has no
+          //    such leak and a bare-transaction write 500s (R14).
+          await withTenant(db, tenantId, async (tx) => {
             await tx.execute(sql`
             UPDATE users
                SET email_verified = true,
@@ -535,17 +555,19 @@ export function buildTestOnlyRoutes(deps: TestOnlyDeps) {
           //    Better Auth's bearer plugin admits subsequent requests
           //    carrying it. Same 32-byte base64url shape as the rest of
           //    the test-only surface (force-rotate / health-authed).
+          //    Runs inside withTenant() so the sessions WITH CHECK RLS
+          //    policy admits the INSERT without a leaked GUC (R14).
           const token = randomBytes(32).toString("base64url");
           const sessionId = randomUUID();
           // 30-day TTL mirrors the production session config (auth.ts
           // sessions.expiresIn = 60*60*24*30).
           const expiresAt = new Date(Date.now() + 1000 * 60 * 60 * 24 * 30).toISOString();
-          await db.transaction(async (tx) => {
+          await withTenant(db, tenantId, async (tx) => {
             await tx.execute(sql`
             INSERT INTO sessions (id, user_id, tenant_id, token, expires_at, created_at, updated_at)
             VALUES (${sessionId}::uuid,
                     ${userId}::uuid,
-                    (SELECT tenant_id FROM users WHERE id = ${userId}::uuid),
+                    ${tenantId}::uuid,
                     ${token},
                     ${expiresAt}::timestamptz,
                     now(),

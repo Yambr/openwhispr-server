@@ -46,6 +46,30 @@ function makeRecordingDb() {
         }
       }
       const text = parts.join("");
+      // withTenant() GUC bind — acknowledge (R14).
+      if (/set_config\s*\(\s*'app\.tenant_id'/i.test(text)) {
+        return { rows: [] };
+      }
+      // R14 tenant resolution for the withTenant() wrap.
+      if (/SELECT\s+tenant_id\s+FROM\s+users\s+WHERE\s+id/i.test(text)) {
+        return { rows: [{ tenant_id: "00000000-0000-0000-0000-000000000000" }] };
+      }
+      // R14 — the handler resolves the persisted user via an email
+      // lookup (the signUpEmail return id is not trusted). Echo back
+      // any user the fake signUpEmail inserted into the `users` map.
+      if (/SELECT[\s\S]*FROM\s+users\s+WHERE[\s\S]*lower\s*\(\s*email\s*\)/i.test(text)) {
+        const email = params[0];
+        if (typeof email === "string") {
+          for (const row of users.values()) {
+            if (row.email.toLowerCase() === email.toLowerCase()) {
+              return {
+                rows: [{ id: row.id, email: row.email, created_at: "2026-05-20T00:00:00.000Z" }],
+              };
+            }
+          }
+        }
+        return { rows: [] };
+      }
       if (/UPDATE\s+users\s+SET[\s\S]*email_verified\s*=\s*true/i.test(text)) {
         return { rows: [], rowCount: 1 };
       }

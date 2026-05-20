@@ -95,6 +95,21 @@ function makeRecordingDb() {
       }
       const text = parts.join("");
       recorded.push({ sql: text, params });
+      // SELECT set_config('app.tenant_id', $1, true) — withTenant() GUC
+      // bind. Acknowledge so the wrapped transaction proceeds (R14).
+      if (/set_config\s*\(\s*'app\.tenant_id'/i.test(text)) {
+        return { rows: [] };
+      }
+      // SELECT tenant_id FROM users WHERE id = $1 — R14 tenant resolution
+      // for the withTenant() wrap. The fake users table is single-tenant
+      // (default tenant) so every known user resolves to FAKE_TENANT_ID.
+      if (/SELECT\s+tenant_id\s+FROM\s+users\s+WHERE\s+id/i.test(text)) {
+        const id = params[0];
+        if (typeof id === "string" && users.has(id)) {
+          return { rows: [{ tenant_id: FAKE_TENANT_ID }] };
+        }
+        return { rows: [] };
+      }
       // UPDATE users SET email_verified=true, email_verified_at=now()
       // WHERE id = $1 — mutate the fake row so test 5 + test 4 can see.
       if (/UPDATE\s+users\s+SET[\s\S]*email_verified\s*=\s*true/i.test(text)) {
