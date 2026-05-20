@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
-// Phase 07.1 / Plan 12 — A2 /admin/observability RSC entry (D-ADMIN-1, D-S1).
+// Phase 07.1 / Plan 12 — A2 /admin/observability RSC entry (D-S1).
 //
 // Pure pass-through to the Client Component: A2 has zero server-side data
 // fetches (the screen is a static deep-link grid into the operator's
@@ -7,9 +7,9 @@
 // NEXT_PUBLIC_*, so Next.js inlines them into the client bundle at build
 // time — operators must rebuild the web container after env changes.
 //
-// D-ADMIN-1 — no application-layer role check. The (admin) layout (Plan 06)
-// is also gate-less; Traefik basic-auth at the edge is the single source of
-// truth for admin access.
+// Admin access is gated by the (admin) layout, which calls
+// checkAdminAccess() (admin = users.role='admin'); see lib/admin-guard.ts.
+// This page adds no extra role check of its own.
 import { ObservabilityClient } from "@/components/screens/admin/ObservabilityClient";
 
 export default function ObservabilityPage(): React.JSX.Element {

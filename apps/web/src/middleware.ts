@@ -21,8 +21,9 @@
 // Anti-patterns intentionally avoided:
 //   - No `next-intl` middleware. The negotiation surface is two locales
 //     + cookie + Accept-Language; a 5kB dep would add no value.
-//   - Auth matcher is NOT widened to /admin/* — D-ADMIN-1 keeps the
-//     Traefik basic-auth gate authoritative for admin.
+//   - Auth matcher is NOT widened to /admin/* — the (admin) layout
+//     applies the role gate itself (checkAdminAccess(), see
+//     lib/admin-guard.ts), so a middleware match would be redundant.
 
 import acceptLanguageParser from "accept-language-parser";
 import { getSessionCookie } from "better-auth/cookies";
