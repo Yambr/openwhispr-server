@@ -1,0 +1,62 @@
+# Phase 64 — verify-first disposition log (H-1..H-4)
+
+Re-verified against `main` HEAD before any fix (CLAUDE.md hard rule 3).
+Date: 2026-05-20.
+
+## H-1 — LOCKER-04 inv-14: declarative `schema:` missing on 12 folders/notes routes
+
+**Disposition: STILL LIVE.**
+
+Evidence — `grep -Ln "schema:" apps/api/src/routes/folders/*.ts apps/api/src/routes/notes/*.ts`
+lists all 12 route files (plus the `shape.ts` helpers, which are not route
+declarations) as MISSING `schema:`:
+  folders/{batch-create,create,delete,list,update}.ts
+  notes/{batch-create,create,delete-all,delete,list,search,update}.ts
+Cross-check — every `conversations/*.ts` route file MATCHES `schema:`.
+
+Per-route-class confirmed:
+  - 8 body routes — folders/{create,batch-create,delete,update},
+    notes/{create,batch-create,delete,update,search}. Each handler already
+    `.parse()`s a Zod schema (FolderInputSchema, NoteInputSchema,
+    BatchCreateBodySchema, DeleteBodySchema, UpdateBodySchema,
+    SearchRequestSchema).
+  - 2 querystring routes — folders/list, notes/list. No declared zod
+    querystring schema; `parseListQuery((req.query) as ListQuery)` only.
+  - 1 body-less route — notes/delete-all (DELETE, no `.parse()`).
+
+## H-2 — wire-schema drift: server `MessageRoleSchema` accepts `"tool"`
+
+**Disposition: STILL LIVE.**
+
+Evidence:
+  - `conversations/messages.ts:63` — `const MessageRoleSchema = z.enum(["user", "assistant", "system", "tool"]);`
+  - `packages/wire-schemas/src/conversations.ts:19` — `export const ConversationRoleSchema = z.enum(["user", "assistant", "system"]);` (no `"tool"`)
+  - Handler stores `role: body.role` verbatim; no server-side `"tool"` handling.
+
+### H-2 advisor decision
+
+(recorded after the Task 2 advisor checkpoint — see below)
+
+## H-3 — wire-schema drift: server `metadata` is `z.record(z.string(), z.unknown())`
+
+**Disposition: STILL LIVE.**
+
+Evidence:
+  - `conversations/messages.ts:70` — `metadata: z.record(z.string(), z.unknown()).nullable().optional(),`
+  - `packages/wire-schemas/src/conversations.ts:21` — `const MetadataSchema = z...` declared `const`, NOT exported.
+  - Only the 4 KiB envelope is re-checked at runtime (`messages.ts:112-114`);
+    key/value shape never validated server-side.
+
+## H-4 — `notes/delete-all.ts` emits a string-valued 400 `error` field
+
+**Disposition: STILL LIVE.**
+
+Evidence — `notes/delete-all.ts:84-88`:
+  `return reply.code(400).send({ error: \`delete-all exceeds ${MAX_INLINE_PURGE} rows; please delete in batches\` });`
+String-valued `error`, not the canonical `{error:{code,message}}` envelope.
+No `ValidationError` import in the file.
+
+## Conclusion
+
+All four findings (H-1..H-4) confirmed STILL LIVE — no divergence from the
+planner's pre-determination. Proceeding with strict RED→GREEN TDD per finding.
