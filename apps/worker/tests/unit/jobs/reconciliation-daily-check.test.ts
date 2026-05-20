@@ -65,7 +65,8 @@ beforeAll(async () => {
        request_id text NOT NULL,
        kind text NOT NULL,
        units integer NOT NULL,
-       created_at timestamptz NOT NULL DEFAULT now()
+       created_at timestamptz NOT NULL DEFAULT now(),
+       event_at timestamptz
      )`,
   );
   await appPool.query(`INSERT INTO users (id, tenant_id) VALUES ($1, $2), ($3, $4)`, [
@@ -180,6 +181,46 @@ SUITE("reconciliation-daily-check (D-R2)", () => {
     expect(enq).toHaveLength(1);
     expect(enq[0]?.tenant_id).toBe(TENANT_A);
     expect(enq[0]?.drift_pct).toBeCloseTo(75, 1);
+  });
+
+  // Phase 58 Track B / worker:CR-02 — the ledger-side window must bucket on
+  // COALESCE(event_at, created_at), the SAME expression the rollup uses, so
+  // the drift gauge stays meaningful. A row whose spend occurred yesterday
+  // (event_at in-window) but was ingested today (created_at out-of-window)
+  // is counted; LiteLLM buckets the same row by startTime → drift is 0.
+  // Pre-fix the ledger query filters on `created_at` → the row is excluded →
+  // ledger_count=0 vs litellm_count=1 → false 100% drift breach.
+  it("worker:CR-02 — reconciliation buckets ledger rows by event_at, not created_at", async () => {
+    if (!h) throw new Error("harness");
+    // LiteLLM: one spend row, startTime inside the [05-10, 05-11) window.
+    await h.llPool.query(
+      `INSERT INTO "LiteLLM_SpendLogs" (request_id, "end_user", spend, "startTime")
+       VALUES ('late', $1, 0, '2026-05-10 23:59:50+00')`,
+      [USER_A],
+    );
+    // Ledger: same logical row — event_at in-window (yesterday 23:59:50Z),
+    // created_at OUT of window (ingested today 00:00:20Z).
+    await h.appPool.query(
+      `INSERT INTO usage_ledger (tenant_id, user_id, request_id, kind, units, created_at, event_at)
+       VALUES ($1::uuid, $2::uuid, 'late', 'reason_tokens', 1,
+               '2026-05-11 00:00:20+00', '2026-05-10 23:59:50+00')`,
+      [TENANT_A, USER_A],
+    );
+    const enq: unknown[] = [];
+    const handler = buildReconciliationDailyCheckHandler({
+      litellmPool: h.llPool,
+      appOwnerPool: h.appPool,
+      discrepancyQueue: {
+        async add(_n, d) {
+          enq.push(d);
+          return {} as never;
+        },
+      },
+      env: () => undefined,
+    });
+    const result = (await handler(fakeJob(WIN))) as unknown as { breached: number };
+    expect(result.breached).toBe(0);
+    expect(_readDriftStoreForTest().get(TENANT_A)?.drift_pct).toBe(0);
   });
 
   it("skips zero-activity tenants from the gauge store (cardinality bound)", async () => {
