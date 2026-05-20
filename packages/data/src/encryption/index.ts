@@ -29,7 +29,15 @@ export type { EncryptedRow } from "./envelope.js";
 export { decryptValue, encryptValue } from "./envelope.js";
 export type { KeyProvider } from "./key-provider.js";
 export { selectProvider } from "./key-provider.js";
-export { KmsKeyProvider } from "./kms-key-provider.js";
+// Phase 67 / HI-06 — `KmsKeyProvider` and `VaultKeyProvider` are deliberately
+// NOT re-exported here. They are v1 stubs (every method throws
+// `NOT_IMPLEMENTED`) and `validateKeyProviderSelection()` refuses
+// `OPENWHISPR_KEY_PROVIDER=vault|kms` at boot. They remain reachable
+// internally via `selectProvider()` (which imports them directly from their
+// own files); exporting them from the public barrel falsely advertised them
+// as production-grade `KeyProvider` implementations. v1 supports
+// `OPENWHISPR_KEY_PROVIDER=env` only — KMS/Vault providers are a v2 roadmap
+// item (see `docs/security.md §12`).
 export type {
   EncryptedColumnConfig,
   EncryptedColumnMap,
@@ -38,4 +46,3 @@ export type {
 export { AccountTokenExpiredError, wrapAdapter } from "./lens.js";
 export type { EncryptedCodeVerifierSidecars } from "./oauth-state-codec.js";
 export { decryptCodeVerifierFromRow, encryptCodeVerifier } from "./oauth-state-codec.js";
-export { VaultKeyProvider } from "./vault-key-provider.js";

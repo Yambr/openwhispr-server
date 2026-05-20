@@ -410,6 +410,14 @@ Each column maps to 6 nullable `bytea` sidecar columns (the `EncryptedRow` shape
 
 The lens that round-trips plaintext ↔ ciphertext at the Drizzle adapter layer lives at `packages/data/src/encryption/lens.ts`; the OAuth-state codec for the three raw-`sql` fragment sites lives at `packages/data/src/encryption/oauth-state-codec.ts`. Boot-time validation is at `packages/data/src/encryption/validate-boot.ts` and runs from both `apps/api/src/index.ts` and `apps/worker/src/index.ts` — process exits `78` (BSD `EX_CONFIG`) on missing/short `MASTER_KEK` or unsupported `OPENWHISPR_KEY_PROVIDER`.
 
+### 12.1.1 Key-provider selection — v1 supports `env` only
+
+`OPENWHISPR_KEY_PROVIDER` selects how the master KEK is sourced. **In v1 the only supported value is `env`** (the default): the KEK is read as raw bytes from the `MASTER_KEK` environment variable. `validateKeyProviderSelection()` (`packages/data/src/encryption/boot.ts`) **refuses boot** (exit `78`) for any other value.
+
+`vault` and `kms` are reserved provider names whose implementations (`VaultKeyProvider`, `KmsKeyProvider`) are **v1 stubs** — every method throws `NOT_IMPLEMENTED`. They are a documented **v2 roadmap item**, are deliberately NOT exported from the `@openwhispr/data` / `@openwhispr/data/encryption` public barrel, and cannot be selected at boot. Do NOT set `OPENWHISPR_KEY_PROVIDER=vault` or `=kms` — the process will exit `78`.
+
+Sourcing the `MASTER_KEK` *value* from a managed KMS is fully supported in v1 — see §12.5 — but that is done via the `env` provider (the operator fetches the bytes from the KMS at deploy time and exports them as `MASTER_KEK`). The KMS integration is in the deploy tooling, not in a `kms` key-provider.
+
 ### 12.2 `MASTER_KEK` env — setup
 
 `MASTER_KEK` is 32 raw bytes encoded as base64. **Never log it**, never commit it, never bake it into images. The value MUST be present at boot for both `api` and `worker` containers; absence or wrong length causes immediate exit-78.
@@ -473,7 +481,7 @@ In v1, steps 2 and 4 are operator scripts; automating them is out of scope for P
 
 ### 12.5 KMS provisioning recipes
 
-The `env` provider is the v1 default. To source `MASTER_KEK` from a managed KMS, the operator fetches the raw bytes once at deploy time and exports them via the env path.
+`env` is the **only** v1 key provider (see §12.1.1). The recipes below do NOT enable a `kms`/`vault` *provider* — they show how to source the `MASTER_KEK` *bytes* from a managed KMS and hand them to the `env` provider: the operator fetches the raw bytes once at deploy time and exports them via the `MASTER_KEK` env var. A native `kms`/`vault` key provider is a v2 roadmap item.
 
 **AWS KMS** (`generate-data-key` with `AES_256`):
 
