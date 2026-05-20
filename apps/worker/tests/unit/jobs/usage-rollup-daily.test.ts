@@ -44,7 +44,8 @@ beforeAll(async () => {
        request_id text NOT NULL,
        kind text NOT NULL,
        units integer NOT NULL,
-       created_at timestamptz NOT NULL DEFAULT now()
+       created_at timestamptz NOT NULL DEFAULT now(),
+       event_at timestamptz
      )`,
   );
   await pool.query(
@@ -191,6 +192,76 @@ SUITE("usage-rollup-daily tenant child (Tenant)", () => {
     );
     expect(rows).toHaveLength(1);
     expect(rows[0]?.total_units).toBe(15);
+  });
+
+  // Phase 58 Track B / worker:CR-02 — a row whose spend OCCURRED yesterday
+  // (event_at = yesterday 23:59:50Z) but was INGESTED today (created_at =
+  // today 00:00:20Z) must be bucketed into yesterday's rollup. Pre-fix the
+  // query filters on `created_at` → the row lands in today's bucket → the
+  // aggregate for yesterday is wrong (excludes it).
+  it("worker:CR-02 — late-ingested row buckets by event_at, not created_at", async () => {
+    if (!h) throw new Error("harness");
+    await h.pool.query("TRUNCATE usage_ledger, usage_rollup_daily");
+    await h.pool.query(
+      `INSERT INTO usage_ledger (tenant_id, user_id, request_id, kind, units, created_at, event_at)
+       VALUES ($1::uuid, $2::uuid, 'late', 'reason_tokens', 42,
+               '2026-05-11 00:00:20+00', '2026-05-10 23:59:50+00')`,
+      [TENANT_A, USER_A],
+    );
+    const handler = buildUsageRollupTenantHandler({ pool: h.pool });
+    await handler(fakeJob({ tenant_id: TENANT_A, date: "2026-05-10" }));
+    const { rows } = await h.pool.query<{ total_units: number }>(
+      "SELECT total_units FROM usage_rollup_daily WHERE tenant_id = $1::uuid AND date = '2026-05-10'",
+      [TENANT_A],
+    );
+    expect(rows).toHaveLength(1);
+    expect(rows[0]?.total_units).toBe(42);
+  });
+
+  // Phase 58 Track B / worker:CR-02 — dispatcher must also bucket by event_at.
+  it("worker:CR-02 — dispatcher enqueues a tenant for the event_at day", async () => {
+    if (!h) throw new Error("harness");
+    await h.pool.query("TRUNCATE usage_ledger, usage_rollup_daily");
+    await h.pool.query(
+      `INSERT INTO usage_ledger (tenant_id, user_id, request_id, kind, units, created_at, event_at)
+       VALUES ($1::uuid, $2::uuid, 'late-d', 'reason_tokens', 7,
+               '2026-05-11 00:00:20+00', '2026-05-10 23:59:50+00')`,
+      [TENANT_A, USER_A],
+    );
+    const enqueued: Array<{ tenant_id: string; date: string }> = [];
+    const dispatcher = buildUsageRollupDispatcher({
+      ownerPool: h.pool,
+      childQueue: {
+        async add(_n, d) {
+          enqueued.push(d as { tenant_id: string; date: string });
+          return {} as never;
+        },
+      },
+    });
+    await dispatcher(fakeJob({ date: "2026-05-10" }));
+    expect(enqueued).toHaveLength(1);
+    expect(enqueued[0]?.tenant_id).toBe(TENANT_A);
+  });
+
+  // Phase 58 Track B / worker:CR-02 — historical rows (NULL event_at) keep
+  // created_at bucketing via COALESCE — already-published numbers do not shift.
+  it("worker:CR-02 — NULL event_at row falls back to created_at bucketing", async () => {
+    if (!h) throw new Error("harness");
+    await h.pool.query("TRUNCATE usage_ledger, usage_rollup_daily");
+    await h.pool.query(
+      `INSERT INTO usage_ledger (tenant_id, user_id, request_id, kind, units, created_at, event_at)
+       VALUES ($1::uuid, $2::uuid, 'hist', 'reason_tokens', 13,
+               '2026-05-10 12:00:00+00', NULL)`,
+      [TENANT_A, USER_A],
+    );
+    const handler = buildUsageRollupTenantHandler({ pool: h.pool });
+    await handler(fakeJob({ tenant_id: TENANT_A, date: "2026-05-10" }));
+    const { rows } = await h.pool.query<{ total_units: number }>(
+      "SELECT total_units FROM usage_rollup_daily WHERE tenant_id = $1::uuid AND date = '2026-05-10'",
+      [TENANT_A],
+    );
+    expect(rows).toHaveLength(1);
+    expect(rows[0]?.total_units).toBe(13);
   });
 
   it("inserts an empty rollup when no ledger rows exist for the day", async () => {

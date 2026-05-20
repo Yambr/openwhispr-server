@@ -197,6 +197,13 @@
       "when": 1781193600000,
       "tag": "0026_better_auth_session_token_fp_nullable",
       "breakpoints": true
+    },
+    {
+      "idx": 28,
+      "version": "7",
+      "when": 1781280000000,
+      "tag": "0027_usage_ledger_event_at",
+      "breakpoints": true
     }
   ]
 }
