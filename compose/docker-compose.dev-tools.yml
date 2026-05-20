@@ -1,25 +1,20 @@
 # Phase 14 / Plan 14-03 — Dev-tools overlay.
 #
-# Re-introduces ONLY mailpit (dev SMTP catch-all) — TD-14.a closure
-# (CONTEXT decision 1). Fixture-idp / seed / contract-test-runner live in
-# the contract-test overlay (`compose/docker-compose.contract-test.yml`).
+# Phase 61 / R19 — `mailpit` and the api/worker `SMTP_PORT: "1025"`
+# wiring were PROMOTED to the base docker-compose.yml. The slim-core
+# base now ships mailpit as a first-class service so a plain
+# `docker compose up -d` (no overlays) delivers verification email
+# end-to-end. This overlay no longer redefines mailpit or SMTP_PORT —
+# single source of truth lives in the base compose.
+#
+# Fixture-idp / seed / contract-test-runner live in the contract-test
+# overlay (`compose/docker-compose.contract-test.yml`).
 #
 #   docker compose -f docker-compose.yml -f compose/docker-compose.dev-tools.yml up -d
-#
-# No api.depends_on.mailpit re-add: per RESEARCH §A.3 mailpit table, the
-# slim-core api boot is intentionally decoupled from mailpit. EmailSender.ts
-# loud-fails at runtime (NOT boot) when SMTP_HOST is set but unreachable.
 
 services:
-  # Phase 53 / Plan 53-13 — wire SMTP_PORT=1025 into api+worker so they
-  # reach the mailpit container on its default port. Without this, both
-  # services use packages/email's SMTP_PORT default of 587 and fail every
-  # email send with ECONNREFUSED 1025-vs-587. The base docker-compose.yml
-  # deliberately does NOT set SMTP_PORT (it'd be lying when the overlay
-  # is absent); the overlay owns the dev-tools wiring.
   api:
     environment:
-      SMTP_PORT: "1025"
       # Phase 53 / Plan 53-22 — dev-tools overlay drops NODE_ENV from
       # production to development so the boot-time auth guard
       # (config/auth.ts:validateAuthBoot) admits HTTP AUTH_URL. In
@@ -79,7 +74,6 @@ services:
       OPENWHISPR_TEST_ROUTES: "true"
   worker:
     environment:
-      SMTP_PORT: "1025"
       # BUG-53-41 — worker constructs the litellm client too (BullMQ
       # ingestion). Mirror the api seed so both halves see the same
       # default in OOB dev.
@@ -92,23 +86,3 @@ services:
   litellm:
     environment:
       LITELLM_MASTER_KEY: ${LITELLM_MASTER_KEY:-sk-dev-master-key-do-not-use-in-prod}
-
-  mailpit:
-    image: axllent/mailpit:v1.29
-    networks: [openwhispr_internal]
-    # Phase 13 / Plan 01 / Task 13-01-08 — bind HTTP API to host loopback so
-    # the e2e-cjm harness (running outside the compose network) can poll
-    # /api/v1/messages without depending on Traefik.
-    ports:
-      - "127.0.0.1:8025:8025"
-    environment:
-      MP_MAX_MESSAGES: "5000"
-      MP_SMTP_AUTH_ACCEPT_ANY: "1"
-      MP_SMTP_AUTH_ALLOW_INSECURE: "1"
-    healthcheck:
-      test:
-        - CMD-SHELL
-        - wget --quiet --tries=1 --spider http://localhost:8025/livez || wget --quiet --tries=1 --spider http://localhost:8025/api/v1/info
-      interval: 10s
-      timeout: 3s
-      retries: 3

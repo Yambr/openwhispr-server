@@ -320,6 +320,11 @@ services:
       # production operators MUST NOT set this in their .env (mock mode
       # returns canned segments regardless of audio content).
       MOCK_DIARIZATION: ${MOCK_DIARIZATION:-}
+      # Phase 61 / R19 — slim-core ships the bundled `mailpit` service as
+      # its dev/test SMTP catch-all. `EmailSender.ts` defaults SMTP_PORT
+      # to 587; mailpit listens on 1025. `.env` carries SMTP_HOST=mailpit.
+      # Corporate operators override SMTP_HOST / SMTP_PORT in their .env.
+      SMTP_PORT: ${SMTP_PORT:-1025}
       # Phase 03 / CR-01 fix — Valkey URL for the diarization idempotency
       # cache. buildApp() reads VALKEY_URL and constructs the redis client;
       # if unset the /v1/audio/diarization route is intentionally NOT
@@ -414,6 +419,13 @@ services:
       # operators can re-translate subjects/bodies without rebuilding the
       # image — `docker compose restart worker` picks up edits.
       LOCALES_DIR: /app/locales
+      # Phase 61 / R19 — slim-core ships the bundled `mailpit` service
+      # (below) as its dev/test SMTP catch-all. `EmailSender.ts` defaults
+      # SMTP_PORT to 587; mailpit listens on 1025, so the base compose
+      # MUST pin 1025 or every verification-email send ECONNREFUSEs.
+      # `.env` carries SMTP_HOST=mailpit. Corporate operators override
+      # SMTP_HOST / SMTP_PORT in their own .env to point at a real relay.
+      SMTP_PORT: ${SMTP_PORT:-1025}
     volumes:
       # Phase 10 / Plan 10-01d — see LOCALES_DIR comment above.
       - ./apps/worker/src/i18n/locales:/app/locales:ro
@@ -520,3 +532,44 @@ services:
       - "traefik.http.routers.web-admin.tls=true"
       - "traefik.http.routers.web-admin.service=web-svc"
       - "traefik.http.services.web-svc.loadbalancer.server.port=3000"
+
+  # Phase 61 / R19 — bundled dev/test SMTP catch-all.
+  #
+  # The slim-core stack is the OSS-quickstart / dev-test topology
+  # (no Traefik, plain http, NODE_ENV=development per Phase 59). A real
+  # cloud sign-up journey sends a verification email; without an SMTP
+  # sink in the base stack the worker's email job ECONNREFUSE-loops and
+  # a genuine new user can never verify + sign in (R19).
+  #
+  # Mailpit was previously confined to compose/docker-compose.dev-tools.yml;
+  # R19 promotes it to a first-class slim-core service so a plain
+  # `docker compose up -d` (no overlays) delivers verification email
+  # end-to-end. The api + worker reach it by compose service name
+  # `mailpit` on its SMTP port 1025 (SMTP_PORT pinned on both services
+  # above; SMTP_HOST=mailpit lives in .env / .env.slim.example).
+  #
+  # Corporate operators point SMTP_HOST / SMTP_PORT at their own relay
+  # in .env; mailpit then simply runs unused (or is removed via an
+  # operator compose override). No api/worker `depends_on: mailpit` —
+  # per the Phase-14 decision the api boot stays decoupled from mailpit
+  # and `EmailSender.ts` loud-fails at send time, not boot time.
+  mailpit:
+    image: axllent/mailpit:v1.29
+    networks: [openwhispr_internal]
+    # HTTP UI bound to host loopback so a developer (or the e2e harness
+    # running outside the compose network) can read delivered messages
+    # at http://127.0.0.1:8025 without depending on Traefik.
+    ports:
+      - "127.0.0.1:8025:8025"
+    environment:
+      MP_MAX_MESSAGES: "5000"
+      MP_SMTP_AUTH_ACCEPT_ANY: "1"
+      MP_SMTP_AUTH_ALLOW_INSECURE: "1"
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - wget --quiet --tries=1 --spider http://localhost:8025/livez || wget --quiet --tries=1 --spider http://localhost:8025/api/v1/info
+      interval: 10s
+      timeout: 3s
+      retries: 3
+    restart: unless-stopped
