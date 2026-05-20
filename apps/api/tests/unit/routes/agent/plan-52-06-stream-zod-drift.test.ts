@@ -28,8 +28,16 @@ describe("Plan 52-06 — agent/stream zod drift fixes", () => {
   const stream = readFileSync(STREAM, "utf8");
   const translate = readFileSync(TRANSLATE, "utf8");
 
-  it("stream.ts uses zod-inferred body type (no explicit annotation)", () => {
-    expect(stream).toMatch(/const\s+body\s*=\s*AgentStreamRequestSchema\.parse/);
+  it("stream.ts uses the zod-type-provider-typed req.body (WR-04: no inline re-parse)", () => {
+    // WR-04 (Phase 65) — the inline handler-side re-parse is dropped; the
+    // declarative `schema.body` + `withTypeProvider` give a typed,
+    // already-validated `req.body`.
+    const code = stream
+      .split("\n")
+      .filter((l) => !l.trimStart().startsWith("//"))
+      .join("\n");
+    expect(code).toMatch(/const\s+body\s*=\s*req\.body/);
+    expect(code).not.toMatch(/AgentStreamRequestSchema\.parse\(/);
     // Pre-fix annotation form must not return.
     expect(stream).not.toMatch(
       /const\s+body:\s*\{\s*messages:\s*AgentChatMessage\[\];\s*model\?:\s*string;/,
