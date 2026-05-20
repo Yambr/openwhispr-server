@@ -58,11 +58,48 @@ function isCredentialParam(name: string): boolean {
  *     `{"alg":"…","typ":"JWT"}` which base64url-encodes to that prefix
  *     in 100% of practical cases.
  */
-const BEARER_SHAPES: RegExp[] = [
-  /sk-ant-[A-Za-z0-9_-]{20,}/g,
-  /sk-[A-Za-z0-9_-]{20,}/g,
+// Phase 57 / Track D (REVIEW-INDEX byok:CR-01 + byok:CR-02):
+//   * CR-01 — added GitHub PAT/OAuth, Tavily, Yandex, and AWS STS
+//     session-key prefixes. Tavily + Yandex are SHIPPED web-search
+//     providers (apps/api/src/routes/agent/web-search.ts) — their real
+//     keys were leaking into boot hints + structured logs verbatim.
+//   * CR-02 — lowered the `sk-` body threshold from {20,} to {8,}.
+//     LiteLLM virtual keys (the `sk-` prefix + a 16-char hex body) have
+//     8-19 char bodies and slipped through the old threshold. {8,} is
+//     conservative enough to avoid false positives on ordinary English
+//     prose (8+ consecutive [A-Za-z0-9_-] chars after a literal `sk-`
+//     is rare).
+//
+// Shape provenance (doc-verified vs conservative):
+//   * GitHub `gh[pousr]_` + 36+ base62 — DOC-VERIFIED (GitHub token
+//     format reference: ghp_/gho_/ghu_/ghs_/ghr_, 36-char minimum body).
+//   * AWS `AKIA`/`ASIA` + exactly 16 [A-Z0-9] — DOC-VERIFIED (AWS
+//     access-key-id format: 4-char prefix + 16 chars; ASIA = STS).
+//   * Google `AIza` + 35 — DOC-VERIFIED (Google API key format).
+//   * Tavily `tvly-` + {16,40} — CONSERVATIVE: Tavily publishes a 32+
+//     char base62 body in dashboard samples; {16,40} errs slightly wide.
+//   * Yandex `AQVN` (folder-scoped IAM) + {16,} and `y0_` (OAuth) +
+//     {20,} — CONSERVATIVE: Yandex does not publish exact lengths; the
+//     prefixes are stable, the body bounds err toward over-redaction.
+//   * `sk-`/`sk-ant-` — see CR-02 note above.
+//
+// No catastrophic backtracking: every alternative is a fixed literal
+// prefix followed by a single bounded `[charclass]{n,}` quantifier — no
+// nested quantifiers, no `(.+)+`. Safe to run on every logged URL.
+const BEARER_SHAPES: readonly RegExp[] = [
+  /sk-ant-[A-Za-z0-9_-]{8,}/g,
+  /sk-[A-Za-z0-9_-]{8,}/g,
   /AIza[A-Za-z0-9_-]{35,}/g,
-  /AKIA[A-Z0-9]{16,}/g,
+  // AWS access-key-id (AKIA = permanent) and STS session-key (ASIA).
+  /AKIA[A-Z0-9]{16}/g,
+  /ASIA[A-Z0-9]{16}/g,
+  // GitHub PAT / OAuth — ghp_ gho_ ghu_ ghs_ ghr_ prefixes.
+  /gh[pousr]_[A-Za-z0-9]{36,255}/g,
+  // Tavily web-search API key.
+  /tvly-[A-Za-z0-9]{16,40}/g,
+  // Yandex — folder-scoped IAM key (AQVN…) and OAuth token (y0_…).
+  /AQVN[A-Za-z0-9_-]{16,}/g,
+  /y0_[A-Za-z0-9_-]{20,}/g,
   // JWT — strict three-part match starting with the canonical `eyJ`
   // header. The third segment may be empty for unsigned tokens (rare),
   // but we require it for the redactor (one-token, opaque body).
