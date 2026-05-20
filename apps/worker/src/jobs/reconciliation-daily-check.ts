@@ -127,6 +127,11 @@ export function buildReconciliationDailyCheckHandler(
       const fallbackStart = new Date(utcMidnight.getTime() - 24 * 60 * 60 * 1000).toISOString();
       const windowStart = data.window_start ?? fallbackStart;
       const windowEnd = data.window_end ?? fallbackEnd;
+      // Phase 66 / CR-06 — deterministic window identifier. Derived once
+      // per tick from the resolved window; used both on the discrepancy
+      // payload AND as the basis for the per-tenant BullMQ `jobId` so a
+      // retried fan-out collapses re-enqueues.
+      const windowId = `${windowStart}:${windowEnd}`;
 
       // LiteLLM side: count + sum spend per tenant via end_user → users mapping.
       // We aggregate in two passes (LiteLLM DB, then app DB) and merge in JS
@@ -228,13 +233,23 @@ export function buildReconciliationDailyCheckHandler(
         nextDriftStore.set(tenantId, { drift_pct: driftPct, drift_usd_cents: driftUsd });
         if (driftPct > pctThreshold || driftUsd > usdThreshold) {
           breached++;
-          await deps.discrepancyQueue.add("reconciliation-discrepancy", {
-            tenant_id: tenantId,
-            since: windowStart,
-            until: windowEnd,
-            drift_pct: driftPct,
-            drift_usd_cents: driftUsd,
-          });
+          // Phase 66 / CR-06 — deterministic per-tenant jobId. A mid-loop
+          // throw + BullMQ retry re-runs the whole fan-out; passing a
+          // stable jobId derived from (window, tenant) means the retried
+          // enqueue collapses onto the existing job instead of piling a
+          // duplicate per-tenant discrepancy job.
+          await deps.discrepancyQueue.add(
+            "reconciliation-discrepancy",
+            {
+              tenant_id: tenantId,
+              since: windowStart,
+              until: windowEnd,
+              drift_pct: driftPct,
+              drift_usd_cents: driftUsd,
+              window_id: windowId,
+            },
+            { jobId: `recon-disc:${windowId}:${tenantId}` },
+          );
         }
       }
 

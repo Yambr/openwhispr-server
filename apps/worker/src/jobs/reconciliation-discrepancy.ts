@@ -32,6 +32,14 @@ export const reconciliationDiscrepancySchema = z
     until: z.string().datetime(),
     drift_pct: z.number().nonnegative(),
     drift_usd_cents: z.number().nonnegative(),
+    // Phase 66 / CR-06 — additive, OPTIONAL window identifier. The schema
+    // is `.strict()`, so a NEW field MUST be declared here or `.parse()`
+    // rejects the payload. Optional so existing enqueue sites and
+    // backfill jobs that omit it still parse. reconciliation-daily-check
+    // sets it AND uses it to derive the BullMQ `jobId` so a retried
+    // breach fan-out collapses per-tenant re-enqueues instead of
+    // duplicating them.
+    window_id: z.string().optional(),
   })
   .strict();
 export type ReconciliationDiscrepancyPayload = z.infer<typeof reconciliationDiscrepancySchema>;
