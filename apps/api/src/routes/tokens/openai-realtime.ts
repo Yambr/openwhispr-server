@@ -165,11 +165,20 @@ export const buildOpenAIRealtimeTokenRoutes = () =>
           (r): r is Extract<typeof r, { status: 400 }> => !r.ok && r.status === 400,
         );
         if (upstream400) {
+          // WR-02 (Phase 65) — the raw upstream 400 blob is NOT surfaced on
+          // the wire. `upstream400.upstreamBody` is an unredacted,
+          // structurally-untyped upstream-controlled blob; echoing it lets a
+          // crafted upstream 400 place free-form attacker text on the
+          // desktop-facing response. The upstream body is logged server-side
+          // only; the wire carries the route-controlled fixed fields.
+          req.log.warn(
+            { upstreamBody: upstream400.upstreamBody },
+            "OpenAI Realtime token mint upstream 400",
+          );
           return reply.code(400).send({
             error: {
               code: "UPSTREAM_REJECTED",
               message: `${PROVIDER_LABEL} rejected the request`,
-              upstream: upstream400.upstreamBody,
               requestId: req.id,
             },
           });
