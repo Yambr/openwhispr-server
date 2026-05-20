@@ -124,6 +124,48 @@ function extractBearer(authHeader: string | string[] | undefined): string | null
   return match ? (match[1]?.trim() ?? null) : null;
 }
 
+/**
+ * Phase 59 / Track A / R14 — Better Auth's `APIError` (better-auth@1.6.9
+ * → better-call@1.3.5 `InternalAPIError`) carries the error code on its
+ * `.body.code` field. `APIError.from(status, error)` constructs
+ * `new APIError(statusCode, {message: error.message, code: error.code})`,
+ * so for the duplicate-email path the stable, version-checked
+ * discriminator is `body.code === "USER_ALREADY_EXISTS_USE_ANOTHER_EMAIL"`.
+ * Returns the code string when present, else null.
+ */
+function extractBetterAuthErrorCode(err: unknown): string | null {
+  if (err && typeof err === "object" && "body" in err) {
+    const body = (err as { body?: unknown }).body;
+    if (body && typeof body === "object" && "code" in body) {
+      const code = (body as { code?: unknown }).code;
+      if (typeof code === "string") return code;
+    }
+  }
+  return null;
+}
+
+function extractBetterAuthErrorMessage(err: unknown): string {
+  if (err && typeof err === "object" && "body" in err) {
+    const body = (err as { body?: unknown }).body;
+    if (body && typeof body === "object" && "message" in body) {
+      const message = (body as { message?: unknown }).message;
+      if (typeof message === "string") return message;
+    }
+  }
+  return err instanceof Error ? err.message : "signUpEmail failed";
+}
+
+/**
+ * Phase 59 / Track A / R14 — the set of stable Better Auth error codes
+ * that mean "a user with this email already exists". Better Auth's
+ * email/password sign-up emits `USER_ALREADY_EXISTS_USE_ANOTHER_EMAIL`
+ * (see `BASE_ERROR_CODES`); `USER_ALREADY_EXISTS` is the sibling code
+ * other flows use. Both are routed into the idempotent re-seed lookup.
+ */
+function isDuplicateEmailCode(code: string): boolean {
+  return code === "USER_ALREADY_EXISTS_USE_ANOTHER_EMAIL" || code === "USER_ALREADY_EXISTS";
+}
+
 async function lookupSessionIdByToken(
   db: TransactionalDb<ExecutableTx>,
   tenantId: string,
@@ -403,16 +445,44 @@ export function buildTestOnlyRoutes(deps: TestOnlyDeps) {
           const body = parsed.data;
 
           // 1. Mint (or look up) the user via Better Auth's signUpEmail.
-          //    Idempotency contract (test 6): a second call with the same
-          //    email returns the existing user row + a fresh session.
-          //    The bound signUpEmail handles dedupe (Better Auth's
-          //    USER_ALREADY_EXISTS or our test fake's lower-case lookup);
-          //    on error we synthesise an idempotent lookup against the
-          //    users table (production path — Better Auth on duplicate
-          //    email surfaces a typed error rather than the existing row).
-          const signUp = await signUpEmail({
-            body: { email: body.email, password: body.password, name: body.name },
-          });
+          //    Idempotency contract (test 6 / R14): a second call with
+          //    the same email returns the existing user row + a fresh
+          //    session.
+          //
+          //    Phase 59 / Track A / R14 — Better Auth's production
+          //    `auth.api.signUpEmail` does NOT return `{data:null,error}`
+          //    on a duplicate email. It THROWS an `APIError` (verified
+          //    against better-auth@1.6.9 `api/routes/sign-up.mjs:205`:
+          //    `APIError.from("UNPROCESSABLE_ENTITY",
+          //    BASE_ERROR_CODES.USER_ALREADY_EXISTS_USE_ANOTHER_EMAIL)`).
+          //    The thrown error carries
+          //    `.body.code === "USER_ALREADY_EXISTS_USE_ANOTHER_EMAIL"`
+          //    (`APIError.from` maps `error.code` straight into `body`).
+          //    A thrown duplicate is routed into the SAME idempotent
+          //    `{data:null,error}` recovery branch below; any OTHER
+          //    thrown error is re-thrown to the generic 500 path. The
+          //    returned-error `else` branch is kept as defence-in-depth
+          //    (it costs nothing and covers the unit-test fake's
+          //    returned-error shape).
+          let signUp: TestOnlySignUpResult;
+          try {
+            signUp = await signUpEmail({
+              body: { email: body.email, password: body.password, name: body.name },
+            });
+          } catch (err) {
+            const code = extractBetterAuthErrorCode(err);
+            if (code && isDuplicateEmailCode(code)) {
+              // Route the thrown duplicate into the idempotent lookup
+              // branch by synthesising the returned-error shape.
+              signUp = {
+                data: null,
+                error: { code, message: extractBetterAuthErrorMessage(err) },
+              };
+            } else {
+              // Genuine failure — re-throw to the generic 500 path.
+              throw err;
+            }
+          }
 
           let userId: string;
           let userEmail: string;

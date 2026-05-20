@@ -631,6 +631,121 @@ describe("/api/_test/seed-tenant (Phase 56 / R1)", () => {
     await app.close();
   });
 
+  it("Test 11 (R14 idempotent-reseed-throwing-path): re-seed a known email through a THROWING signUpEmail → 200, never 500", async () => {
+    // Phase 59 / Track A / R14. The production `auth.api.signUpEmail`
+    // does NOT return `{data:null,error}` on a duplicate email — it
+    // THROWS a Better Auth `APIError` (verified against
+    // better-auth@1.6.9: `api/routes/sign-up.mjs:205` →
+    // `APIError.from("UNPROCESSABLE_ENTITY",
+    // BASE_ERROR_CODES.USER_ALREADY_EXISTS_USE_ANOTHER_EMAIL)`, whose
+    // `.body.code === "USER_ALREADY_EXISTS_USE_ANOTHER_EMAIL"`).
+    //
+    // The pre-R14 handler had NO try/catch around signUpEmail, so the
+    // thrown APIError escaped to the global error handler → generic
+    // 500. The earlier fakes only ever RETURN an error, so this path
+    // was never exercised. This fake THROWS an APIError-shaped object
+    // matching production. RED: second seed 500s. GREEN: 200 idempotent.
+    vi.stubEnv("NODE_ENV", "test");
+    vi.stubEnv("OPENWHISPR_TEST_ROUTES", "true");
+    const { db, users } = makeRecordingDb();
+    // signUpEmail: first call mints the user; second call THROWS an
+    // APIError-shaped duplicate-email error exactly as Better Auth does.
+    const signUpEmail = vi.fn(async (call: { body: { email: string } }) => {
+      const lower = call.body.email.toLowerCase();
+      for (const row of users.values()) {
+        if (row.email.toLowerCase() === lower) {
+          // Better Auth APIError shape on a duplicate email.
+          const err = Object.assign(new Error("User already exists. Use another email."), {
+            name: "APIError",
+            status: "UNPROCESSABLE_ENTITY",
+            statusCode: 422,
+            body: {
+              message: "User already exists. Use another email.",
+              code: "USER_ALREADY_EXISTS_USE_ANOTHER_EMAIL",
+            },
+          });
+          throw err;
+        }
+      }
+      const id = FAKE_USER_ID;
+      users.set(id, { id, email: call.body.email, emailVerified: false });
+      return { data: { user: { id, email: call.body.email } }, error: null };
+    });
+    const fakeAuth = {
+      handler: vi.fn(),
+      api: { getSession: vi.fn(async () => null), signUpEmail },
+    };
+    const app = buildLocalApp({ fakeAuth, fakeDb: db });
+    await app.ready();
+    const payload = {
+      email: "r14@test.local",
+      password: "hunter22hunter22",
+      name: "E2E Tenant",
+      verified: true,
+    };
+    const first = await app.inject({
+      method: "POST",
+      url: "/api/_test/seed-tenant",
+      headers: { "content-type": "application/json" },
+      payload,
+    });
+    expect(first.statusCode).toBe(200);
+    const firstBody = first.json() as { token: string; user: { id: string } };
+    // Second call — production path THROWS USER_ALREADY_EXISTS_USE_ANOTHER_EMAIL.
+    const second = await app.inject({
+      method: "POST",
+      url: "/api/_test/seed-tenant",
+      headers: { "content-type": "application/json" },
+      payload,
+    });
+    expect(second.statusCode).toBe(200);
+    const secondBody = second.json() as { token: string; user: { id: string } };
+    // Same user id (idempotent — no duplicate row).
+    expect(secondBody.user.id).toBe(firstBody.user.id);
+    // Fresh session token on the re-seed.
+    expect(secondBody.token).not.toBe(firstBody.token);
+    await app.close();
+  });
+
+  it("Test 12 (R14 non-duplicate throw re-thrown): a non-duplicate APIError still 500s", async () => {
+    // Phase 59 / Track A / R14 — regression guard. The catch must only
+    // swallow the duplicate-email code; a genuine signUpEmail failure
+    // (any other thrown APIError) MUST still surface as a 500, not be
+    // masked into a misleading 200.
+    vi.stubEnv("NODE_ENV", "test");
+    vi.stubEnv("OPENWHISPR_TEST_ROUTES", "true");
+    const { db, users } = makeRecordingDb();
+    const signUpEmail = vi.fn(async () => {
+      const err = Object.assign(new Error("Password too short"), {
+        name: "APIError",
+        status: "BAD_REQUEST",
+        statusCode: 400,
+        body: { message: "Password too short", code: "PASSWORD_TOO_SHORT" },
+      });
+      throw err;
+    });
+    const fakeAuth = {
+      handler: vi.fn(),
+      api: { getSession: vi.fn(async () => null), signUpEmail },
+    };
+    const app = buildLocalApp({ fakeAuth, fakeDb: db });
+    await app.ready();
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/_test/seed-tenant",
+      headers: { "content-type": "application/json" },
+      payload: {
+        email: "r14-nondupe@test.local",
+        password: "hunter22hunter22",
+        name: "E2E Tenant",
+        verified: true,
+      },
+    });
+    expect(res.statusCode).toBe(500);
+    expect(users.size).toBe(0);
+    await app.close();
+  });
+
   it("Test 9 (signup-failure): 500 envelope when Better Auth signUpEmail returns an error", async () => {
     vi.stubEnv("NODE_ENV", "test");
     vi.stubEnv("OPENWHISPR_TEST_ROUTES", "true");
