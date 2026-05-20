@@ -618,6 +618,67 @@ SUITE("reconciliation-daily-check (D-R2)", () => {
     expect(_readDriftStoreForTest().size).toBe(0);
   });
 
+  it("CR-06: discrepancy enqueue passes a deterministic jobId for de-dup on retry", async () => {
+    if (!h) throw new Error("harness");
+    // Phase 66 / CR-06: pre-fix, the per-tenant breach fan-out called
+    // discrepancyQueue.add WITHOUT a jobId — a mid-loop throw + BullMQ
+    // retry re-enqueues duplicate per-tenant discrepancy jobs. The fix
+    // passes a deterministic jobId derived from (window, tenant) so a
+    // retried fan-out collapses re-enqueues.
+    //
+    // Seed two breaching tenants: A (4 LiteLLM / 1 ledger) and B
+    // (LiteLLM-only -> 100% drift).
+    await h.llPool.query(
+      `INSERT INTO "LiteLLM_SpendLogs" (request_id, "end_user", spend, "startTime") VALUES
+       ('d1', $1, 0, '2026-05-10 09:00:00+00'),
+       ('d2', $1, 0, '2026-05-10 10:00:00+00'),
+       ('d3', $1, 0, '2026-05-10 11:00:00+00'),
+       ('d4', $1, 0, '2026-05-10 12:00:00+00'),
+       ('d5', $2, 0, '2026-05-10 09:00:00+00')`,
+      [USER_A, USER_B],
+    );
+    await h.appPool.query(
+      `INSERT INTO usage_ledger (tenant_id, user_id, request_id, kind, units, created_at)
+       VALUES ($1::uuid, $2::uuid, 'd1', 'reason_tokens', 1, '2026-05-10 09:00:00+00')`,
+      [TENANT_A, USER_A],
+    );
+
+    type AddCall = { jobName: string; data: unknown; opts: { jobId?: string } | undefined };
+    const calls: AddCall[] = [];
+    const makeHandler = () =>
+      buildReconciliationDailyCheckHandler({
+        litellmPool: h?.llPool as Pool,
+        appOwnerPool: h?.appPool as Pool,
+        discrepancyQueue: {
+          async add(jobName, data, opts) {
+            calls.push({ jobName, data, opts: opts as { jobId?: string } | undefined });
+            return {} as never;
+          },
+        },
+        env: () => undefined,
+      });
+
+    await makeHandler()(fakeJob(WIN));
+    // Both breaching tenants enqueued, each with a jobId.
+    expect(calls).toHaveLength(2);
+    for (const c of calls) {
+      expect(c.opts?.jobId).toBeTruthy();
+      expect(typeof c.opts?.jobId).toBe("string");
+    }
+    // jobIds are distinct per tenant within the same window.
+    const jobIds = calls.map((c) => c.opts?.jobId);
+    expect(new Set(jobIds).size).toBe(2);
+
+    // Re-run the handler over the SAME window — the jobIds must be
+    // IDENTICAL (deterministic) so a BullMQ retry collapses re-enqueues.
+    const firstRunIds = [...jobIds].sort();
+    calls.length = 0;
+    _resetDriftStoreForTest();
+    await makeHandler()(fakeJob(WIN));
+    const secondRunIds = calls.map((c) => c.opts?.jobId).sort();
+    expect(secondRunIds).toEqual(firstRunIds);
+  });
+
   it("honors RECONCILIATION_DRIFT_USD_CENTS_THRESHOLD env override", async () => {
     if (!h) throw new Error("harness");
     await h.llPool.query(
