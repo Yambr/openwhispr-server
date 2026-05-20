@@ -72,11 +72,17 @@ export function buildUsageRollupDispatcher(
       // Explicit `data.date` (e.g. for backfill) wins.
       const date =
         data.date ?? new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+      // Phase 58 Track B / worker:CR-02 — bucket by COALESCE(event_at,
+      // created_at). event_at carries the LiteLLM startTime (when the spend
+      // actually occurred); created_at is the worker ingest timestamp. A row
+      // ingested 30s after UTC midnight must roll up into the day its spend
+      // occurred, not the day it landed. Historical rows have NULL event_at
+      // and fall back to created_at — no already-published number shifts.
       const { rows } = await deps.ownerPool.query<{ tenant_id: string }>(
         `SELECT DISTINCT tenant_id::text AS tenant_id
          FROM usage_ledger
-        WHERE created_at >= ($1::date)
-          AND created_at <  ($1::date + INTERVAL '1 day')`,
+        WHERE COALESCE(event_at, created_at) >= ($1::date)
+          AND COALESCE(event_at, created_at) <  ($1::date + INTERVAL '1 day')`,
         [date],
       );
       for (const row of rows) {
@@ -116,12 +122,15 @@ export function buildUsageRollupTenantHandler(
   // (data, client).
   return withTenantContext(usageRollupTenantSchema, deps.pool, async (data, client) => {
     await client.query(
+      // Phase 58 Track B / worker:CR-02 — bucket by COALESCE(event_at,
+      // created_at), the SAME expression the dispatcher uses, so the
+      // per-tenant aggregate matches the day the dispatcher enqueued.
       `WITH per_kind AS (
          SELECT kind, SUM(units)::int AS units_sum
            FROM usage_ledger
           WHERE tenant_id = $1::uuid
-            AND created_at >= ($2::date)
-            AND created_at <  ($2::date + INTERVAL '1 day')
+            AND COALESCE(event_at, created_at) >= ($2::date)
+            AND COALESCE(event_at, created_at) <  ($2::date + INTERVAL '1 day')
           GROUP BY kind
        )
        INSERT INTO usage_rollup_daily (tenant_id, date, total_units, kind_breakdown)

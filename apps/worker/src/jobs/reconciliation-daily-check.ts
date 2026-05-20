@@ -188,10 +188,18 @@ export function buildReconciliationDailyCheckHandler(
         tenant_id: string;
         row_count: string;
       }>(
+        // Phase 58 Track B / worker:CR-02 — bucket by COALESCE(event_at,
+        // created_at), the SAME expression usage-rollup-daily uses. The
+        // LiteLLM side already buckets by "startTime"; bucketing the ledger
+        // side by the worker ingest timestamp made the drift gauge compare
+        // mismatched windows and report a false 0 (or false breach) for
+        // rows ingested across a UTC-midnight boundary. event_at carries
+        // the LiteLLM startTime; NULL-event_at historical rows fall back to
+        // created_at so no published reconciliation number shifts.
         `SELECT tenant_id::text AS tenant_id, COUNT(*)::text AS row_count
            FROM usage_ledger
-          WHERE created_at >= $1::timestamptz
-            AND created_at <  $2::timestamptz
+          WHERE COALESCE(event_at, created_at) >= $1::timestamptz
+            AND COALESCE(event_at, created_at) <  $2::timestamptz
           GROUP BY tenant_id`,
         [windowStart, windowEnd],
       );

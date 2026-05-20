@@ -106,7 +106,8 @@ describe.skipIf(SKIP)("runIngestOnce (integration)", () => {
         request_id text NOT NULL,
         kind text NOT NULL,
         units integer NOT NULL,
-        created_at timestamptz NOT NULL DEFAULT now()
+        created_at timestamptz NOT NULL DEFAULT now(),
+        event_at timestamptz
       );
       CREATE UNIQUE INDEX usage_ledger_request_id_unique ON usage_ledger(request_id);
     `);
@@ -264,6 +265,39 @@ describe.skipIf(SKIP)("runIngestOnce (integration)", () => {
       `SELECT count(*)::text AS c FROM usage_ledger WHERE request_id = 'ow-replay-1'`,
     );
     expect(count.rows[0]?.c).toBe("1");
+  });
+
+  // Phase 58 Track B / worker:CR-02 — the ingest writer must persist the
+  // LiteLLM startTime into usage_ledger.event_at so the rollup +
+  // reconciliation jobs can bucket by when the spend actually occurred.
+  it("worker:CR-02 — writes the LiteLLM startTime into usage_ledger.event_at", async () => {
+    await clearAll();
+    const redis = new FakeRedis();
+    // Within the 5-minute initial-lookback window so the watermark-mode
+    // scan picks it up; the exact value is what we assert event_at carries.
+    const spendStart = new Date(Date.now() - 60_000);
+    await seedSpendRow({
+      request_id: "litellm-cr02",
+      end_user: userId,
+      model: "qwen3.6-plus",
+      total_tokens: 10,
+      metadata: { openwhispr_request_id: "ow-cr02" },
+      startTime: spendStart,
+    });
+
+    await runIngestOnce({
+      litellmPool,
+      appOwnerPool: appPool,
+      connection: {} as never,
+      redis,
+    });
+
+    const { rows } = await appPool.query<{ event_at: Date | null }>(
+      `SELECT event_at FROM usage_ledger WHERE request_id = 'ow-cr02'`,
+    );
+    expect(rows).toHaveLength(1);
+    expect(rows[0]?.event_at).not.toBeNull();
+    expect(new Date(rows[0]!.event_at as Date).toISOString()).toBe(spendStart.toISOString());
   });
 
   it("advances watermark to the latest startTime processed", async () => {
@@ -468,7 +502,8 @@ describe.skipIf(SKIP)("runIngestOnce — worker:CR-01 recoverable-skip watermark
         request_id text NOT NULL,
         kind text NOT NULL,
         units integer NOT NULL,
-        created_at timestamptz NOT NULL DEFAULT now()
+        created_at timestamptz NOT NULL DEFAULT now(),
+        event_at timestamptz
       );
       CREATE UNIQUE INDEX usage_ledger_request_id_unique ON usage_ledger(request_id);
     `);
