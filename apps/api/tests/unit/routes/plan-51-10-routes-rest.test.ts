@@ -42,15 +42,29 @@ describe("Plan 51-10 — api-routes-rest HIGH hardening", () => {
     ).toBe(true);
   });
 
-  it("HR-02 better-auth: origin no longer trusts a raw Host header", () => {
+  it("HR-02 / CR-01 better-auth: origin no longer trusts a raw Host header", () => {
     const src = readFileSync(BETTER_AUTH_SRC, "utf8");
-    // Post-fix the function consults INGRESS_BASE_URL first, then
-    // AUTH_URL, then an explicit AUTH_TRUSTED_ORIGINS_EXTRA
-    // allowlist before falling back to Host. The strings must be
-    // present so a future refactor that reverts to bare-Host
-    // re-fails this guard.
+    // Phase 57 / Track E (api-routes-rest:CR-01) hardened HR-02 further.
+    // The pre-fix allowlist branch returned the SAME attacker-controlled
+    // `${proto}://${host}` value whether or not the Host matched
+    // AUTH_TRUSTED_ORIGINS_EXTRA. The fix removes the allowlist branch
+    // and the Host fallback entirely: buildRequestUrl reads ONLY the
+    // env-derived origin. The comments still reference the env vars but
+    // there must be no `req.headers.host` read inside buildRequestUrl.
     expect(/INGRESS_BASE_URL/.test(src)).toBe(true);
-    expect(/AUTH_TRUSTED_ORIGINS_EXTRA/.test(src)).toBe(true);
+    const fn = src.match(/function buildRequestUrl[\s\S]+?^}/m)?.[0] ?? "";
+    expect(fn, "buildRequestUrl not found").toBeTruthy();
+    // Strip `//` line comments so the assertion targets executable code
+    // only — the doc comment legitimately names `req.headers.host` while
+    // explaining why it is no longer trusted.
+    const code = fn
+      .split("\n")
+      .filter((line) => !line.trim().startsWith("//"))
+      .join("\n");
+    expect(
+      /req\.headers(\.host|\["host"\])/.test(code),
+      "buildRequestUrl must NOT read req.headers.host — Host header is never an origin source",
+    ).toBe(false);
   });
 
   it("HR-03 desktop-signin: decodeURIComponent failure returns undefined (no raw passthrough)", () => {

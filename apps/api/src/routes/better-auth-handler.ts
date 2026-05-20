@@ -43,50 +43,28 @@ export interface BetterAuthHandlerDeps {
 }
 
 function buildRequestUrl(req: FastifyRequest): string {
-  // Phase 51 / Plan 51-10 (REVIEW api-routes-rest HIGH HR-02) — Better
+  // Phase 57 / Track E (REVIEW api-routes-rest CRITICAL CR-01) — Better
   // Auth uses this URL for Origin / CSRF / redirect-uri validation.
-  // Pre-fix the Host header was trusted unconditionally and the
-  // fallback was `localhost`, both of which let a hostile reverse-
-  // proxy supply an arbitrary origin (`Host: evil.example.com`).
   //
-  // New precedence:
-  //   1. INGRESS_BASE_URL env (canonical operator-set origin; checked
-  //      by the BYOK guard at boot when overlays demand it).
-  //   2. AUTH_URL env (Better Auth's own baseURL — already env-driven).
-  //   3. Request Host header — accepted only when it appears in the
-  //      AUTH_TRUSTED_ORIGINS_EXTRA allowlist; otherwise we refuse to
-  //      reconstruct an attacker-controlled origin.
-  //   4. Fall back to AUTH_URL with a logged warning.
-  const proto = (req.headers["x-forwarded-proto"] as string | undefined) ?? "https";
-  const ingressBase = process.env.INGRESS_BASE_URL;
-  if (ingressBase) {
-    try {
-      const u = new URL(ingressBase);
-      return `${u.origin}${req.url}`;
-    } catch {
-      // Fall through.
-    }
-  }
-  const authUrl = process.env.AUTH_URL;
-  if (authUrl) {
-    try {
-      const u = new URL(authUrl);
-      return `${u.origin}${req.url}`;
-    } catch {
-      // Fall through.
-    }
-  }
-  const host = (req.headers.host as string | undefined) ?? "localhost";
-  const extra = (process.env.AUTH_TRUSTED_ORIGINS_EXTRA ?? "")
-    .split(",")
-    .map((s) => s.trim())
-    .filter((s) => s.length > 0);
-  const candidate = `${proto}://${host}`;
-  if (extra.includes(candidate) || extra.includes(host)) {
-    return `${candidate}${req.url}`;
-  }
-  // Last-resort fallback — explicit, narrow, documented.
-  return `${candidate}${req.url}`;
+  // The pre-fix code (Plan 51-10 HR-02) fell back to the
+  // attacker-controlled `req.headers.host` header when neither
+  // INGRESS_BASE_URL nor AUTH_URL was set — and BOTH the
+  // AUTH_TRUSTED_ORIGINS_EXTRA "allowlist-pass" branch and the
+  // allowlist-fail branch returned the SAME `${proto}://${host}` value,
+  // so a forged `Host: evil.example.com` was always trusted. That broke
+  // Better Auth's CSRF / Origin / redirect-uri validation on any deploy
+  // that did not set those env vars.
+  //
+  // The fix: `req.headers.host` is NEVER an origin source. The canonical
+  // origin is read exclusively from env — INGRESS_BASE_URL preferred,
+  // AUTH_URL fallback. `validateIngressBoot()` ran at startup and exited
+  // 78 (EX_CONFIG) if both were unset, so at least one is guaranteed
+  // present here. The allowlist branch is removed entirely — it promoted
+  // attacker-controlled values, it did not gate them. Multi-origin CSRF
+  // support belongs in Better Auth's own `trustedOrigins` list (wired in
+  // apps/api/src/auth.ts), NOT in canonical-origin reconstruction.
+  const base = (process.env.INGRESS_BASE_URL?.trim() || process.env.AUTH_URL?.trim()) as string;
+  return `${base.replace(/\/+$/, "")}${req.url}`;
 }
 
 async function buildRequestBody(req: FastifyRequest): Promise<string | undefined> {

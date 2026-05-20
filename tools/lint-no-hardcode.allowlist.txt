@@ -39,14 +39,19 @@ packages/data/src/schema/tenants.ts:4  # canonical-default-tenant
 # bucket (e) PERMANENT docker-compose-internal-url, because they are the
 # canonical docker-compose service-address defaults the CLAUDE.md OOB-boot
 # rule depends on.
-apps/api/src/auth.ts:425  # issue-31-debt-hardcode-localhost-3000 (drift +13 by 55-05b; +49 by 57-A.2)
+apps/api/src/auth.ts:428  # comment-only-narrative-issue-31-fp (57-E baseURL comment references the localhost fallback being removed; drift was 425, +3 by 57-E)
 apps/api/src/routes/test-only.ts:234  # issue-31-debt-hardcode-localhost-3000 (drifted 181 → 227 → 234 in Phase 56 / Plan 56-01 R1 + Phase 57 / Track C registration-gate production-veto lift)
-apps/api/src/routes/better-auth-handler.ts:49  # comment-only-narrative-issue-31-fp (Plan 51-10 fix rationale comment references the old localhost fallback)
+# better-auth-handler.ts:49 entry removed in Phase 57 / Track E — the
+# buildRequestUrl comment no longer references `localhost` (the
+# req.headers.host fallback was deleted; api-routes-rest:CR-01).
 apps/api/src/config/auth.ts:68  # 53-37-test-env-default — NODE_ENV=test fallback URL used only when AUTH_URL is unset in vitest harness; never reached at production boot
+apps/api/src/config/auth.ts:159  # 57-E-test-env-default — validateIngressBoot NODE_ENV=test fallback URL; used only when INGRESS_BASE_URL/AUTH_URL unset in vitest harness, never reached at production boot
 apps/web/src/app/(public)/setup/page.tsx:35  # 53-28-comment-narrative-fp — JSDoc references http://api:3000 fallback resolved by internalApiUrl()
 apps/web/src/app/(public)/setup/page.tsx:40  # 53-28-comment-narrative-fp — JSDoc references INTERNAL_API_URL=http://api:3000 contract
-apps/api/src/routes/better-auth-handler.ts:79  # issue-31-debt-hardcode-localhost
-apps/api/src/index.ts:738  # issue-31-debt-hardcode-litellm-port-4000 (drift +34 by 55-05b)
+# better-auth-handler.ts:79 entry removed in Phase 57 / Track E — the
+# `req.headers.host ?? "localhost"` fallback line was deleted entirely
+# (api-routes-rest:CR-01); no localhost literal remains in the file.
+apps/api/src/index.ts:750  # issue-31-debt-hardcode-litellm-port-4000 (drift +34 by 55-05b; +12 by 57-E)
 apps/api/src/config/litellm.ts:29  # 53-42-anti-footgun-sentinel — validateLitellmBoot detects this exact dev-overlay default; must be inline for the guard to reject prod boot with it
 apps/api/src/config/litellm.ts:63  # 53-42-anti-footgun-sentinel-msg — same sentinel quoted in the FATAL message so operators see the exact value that triggered refusal
 
@@ -57,8 +62,8 @@ apps/api/src/config/litellm.ts:63  # 53-42-anti-footgun-sentinel-msg — same se
 # `/* ... */` comment that narrates the env-driven default, the routing
 # pattern, or the security boundary — it is NOT a runtime literal. Removing
 # the prose would degrade self-documenting source.
-apps/api/src/auth.ts:429  # comment-only-narrative-issue-31-fp (drift +13 by 55-05b; +49 by 57-A.2)
-apps/api/src/auth.ts:430  # comment-only-narrative-issue-31-fp (drift +13 by 55-05b; +49 by 57-A.2)
+apps/api/src/auth.ts:434  # comment-only-narrative-issue-31-fp (drift +13 by 55-05b; +49 by 57-A.2; +5 by 57-E)
+apps/api/src/auth.ts:435  # comment-only-narrative-issue-31-fp (drift +13 by 55-05b; +49 by 57-A.2; +5 by 57-E)
 apps/api/src/lib/audit.ts:88  # comment-only-narrative-issue-31-fp
 apps/api/src/lib/cookie-domain.ts:21  # comment-only-narrative-issue-31-fp
 apps/api/src/lib/cookie-domain.ts:34  # comment-only-narrative-issue-31-fp

@@ -47,7 +47,7 @@ import { genericOAuth } from "better-auth/plugins/generic-oauth";
 // Phase 53 / Plan 53-22 — boot-time auth security guard. REFUSES
 // production boots with non-HTTPS AUTH_URL (would emit cookies
 // without Secure flag → MITM exposure). See config/auth.ts.
-import { validateAuthBoot } from "./config/auth.js";
+import { validateAuthBoot, validateIngressBoot } from "./config/auth.js";
 import { cookieDomainConfig } from "./lib/cookie-domain.js";
 import { resolveDefaultTenantId } from "./lib/default-tenant.js";
 import { readOidcProvidersForRegistration } from "./lib/oidc-providers.js";
@@ -422,7 +422,12 @@ export function buildAuth(opts: BuildAuthOptions): AuthInstance {
         )) as unknown as ReturnType<typeof drizzleAdapter>;
     })(),
     secret: process.env.BETTER_AUTH_SECRET,
-    baseURL: process.env.AUTH_URL ?? "http://localhost:3000",
+    // Phase 57 / Track E (REVIEW api-routes-rest CR-01) — cookie-signing
+    // baseURL is pinned to the validated canonical origin
+    // (INGRESS_BASE_URL preferred, AUTH_URL fallback). validateIngressBoot
+    // runs at boot and exits 78 if neither is set, so the localhost
+    // fallback that masked a misconfigured deploy is gone.
+    baseURL: validateIngressBoot().ingressBaseUrl,
     // Phase 02.3 — AUTH_TRUSTED_ORIGINS_EXTRA: optional comma-separated
     // list of additional origins admitted by better-auth's CSRF gate.
     // Used by in-cluster traffic (e.g. the contract-test seed service
