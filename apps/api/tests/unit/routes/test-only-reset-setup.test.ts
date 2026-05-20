@@ -129,15 +129,20 @@ describe("/api/_test/reset-setup (Phase 55-05)", () => {
     await app.close();
   });
 
-  it("Test 3: OPENWHISPR_TEST_ROUTES='true' overrides NODE_ENV gate (compose parity)", async () => {
+  it("Test 3: OPENWHISPR_TEST_ROUTES='true' does NOT override the NODE_ENV=production veto (api-routes-rest:CR-02)", async () => {
+    // Phase 57 / Track C — api-routes-rest:CR-02. The production veto was
+    // lifted to the plugin-registration gate. A misset OPENWHISPR_TEST_ROUTES
+    // in a production deploy can no longer resurrect /api/_test/reset-setup
+    // (which re-opens the admin-claim window for an unauthenticated caller).
+    // This test previously asserted the OPPOSITE — that the env knob
+    // "overrides" the gate. That override WAS the CR-02 vulnerability.
     vi.stubEnv("NODE_ENV", "production");
     vi.stubEnv("OPENWHISPR_TEST_ROUTES", "true");
     const { db } = makeRecordingDb();
     const app = buildLocalApp(db);
     await app.ready();
     const res = await app.inject({ method: "POST", url: "/api/_test/reset-setup" });
-    expect(res.statusCode).toBe(200);
-    expect(res.json()).toEqual({ ok: true });
+    expect(res.statusCode).toBe(404);
     await app.close();
   });
 

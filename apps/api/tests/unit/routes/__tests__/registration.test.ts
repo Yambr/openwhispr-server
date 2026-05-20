@@ -145,9 +145,15 @@ describe("buildAllRoutes — Phase 04 registration of agent/stream + 3 token rou
   });
 
   it("Test 8 (branch coverage) — test-only routes register when OPENWHISPR_TEST_ROUTES env is true", async () => {
+    // Phase 57 / Track C — api-routes-rest:CR-02 + CR-03. The
+    // OPENWHISPR_TEST_ROUTES opt-in is honored ONLY when NODE_ENV is not
+    // 'production' (the dev-tools-overlay scenario, NODE_ENV=development).
+    // This test previously used NODE_ENV='production' here, which pinned
+    // the exact CR-02/CR-03 vulnerability — the production veto is now
+    // lifted to the plugin-registration gate.
     const prevNode = process.env.NODE_ENV;
     const prevOw = process.env.OPENWHISPR_TEST_ROUTES;
-    process.env.NODE_ENV = "production";
+    process.env.NODE_ENV = "development";
     process.env.OPENWHISPR_TEST_ROUTES = "true";
     try {
       const tree = await buildRouteTree({

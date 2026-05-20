@@ -40,7 +40,7 @@ packages/data/src/schema/tenants.ts:4  # canonical-default-tenant
 # canonical docker-compose service-address defaults the CLAUDE.md OOB-boot
 # rule depends on.
 apps/api/src/auth.ts:425  # issue-31-debt-hardcode-localhost-3000 (drift +13 by 55-05b; +49 by 57-A.2)
-apps/api/src/routes/test-only.ts:227  # issue-31-debt-hardcode-localhost-3000 (drifted 181 → 227 in Phase 56 / Plan 56-01 R1 seed-tenant signature additions)
+apps/api/src/routes/test-only.ts:234  # issue-31-debt-hardcode-localhost-3000 (drifted 181 → 227 → 234 in Phase 56 / Plan 56-01 R1 + Phase 57 / Track C registration-gate production-veto lift)
 apps/api/src/routes/better-auth-handler.ts:49  # comment-only-narrative-issue-31-fp (Plan 51-10 fix rationale comment references the old localhost fallback)
 apps/api/src/config/auth.ts:68  # 53-37-test-env-default — NODE_ENV=test fallback URL used only when AUTH_URL is unset in vitest harness; never reached at production boot
 apps/web/src/app/(public)/setup/page.tsx:35  # 53-28-comment-narrative-fp — JSDoc references http://api:3000 fallback resolved by internalApiUrl()

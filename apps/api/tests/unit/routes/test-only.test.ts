@@ -272,10 +272,14 @@ describe("test-only routes (NODE_ENV=test gated)", () => {
 
   // ----- Stage B back-fill — close coverage gaps to 90/90/90/90 ----------
 
-  it("Test 6: NODE_ENV=production + OPENWHISPR_TEST_ROUTES=true ALSO registers the routes", async () => {
-    // Pins line 127 cond-expr idx 1 (the OR fallback). The compose
-    // contract-test stack uses this opt-in to expose force-rotate while
-    // running with NODE_ENV=production for deploy-posture parity.
+  it("Test 6: NODE_ENV=production + OPENWHISPR_TEST_ROUTES=true does NOT register the routes", async () => {
+    // Phase 57 / Track C — api-routes-rest:CR-02 + CR-03. The production
+    // veto was lifted to the plugin-registration gate: NODE_ENV='production'
+    // hard-refuses the WHOLE /api/_test/* surface regardless of the
+    // operator-controlled OPENWHISPR_TEST_ROUTES knob. A misset env can no
+    // longer resurrect force-rotate / reset-setup in a production deploy.
+    // (This test previously asserted the OPPOSITE — that the OR fallback
+    // re-registered the routes. That behavior was the CR-02/CR-03 vuln.)
     vi.stubEnv("NODE_ENV", "production");
     vi.stubEnv("OPENWHISPR_TEST_ROUTES", "true");
     const app = buildLocalApp({ authed: true });
@@ -285,7 +289,7 @@ describe("test-only routes (NODE_ENV=test gated)", () => {
       url: "/api/_test/health-authed",
       headers: { authorization: "Bearer X" },
     });
-    expect(res.statusCode).toBe(200);
+    expect(res.statusCode).toBe(404);
     await app.close();
   });
 
