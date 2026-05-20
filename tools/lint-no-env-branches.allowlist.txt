@@ -13,8 +13,8 @@
 # Seed (current-main inventory at Phase 31 Plan 01 land — DO NOT bulk-fix
 # in this plan; targeted fix phases follow).
 apps/api/src/auth.ts:553  # issue-31-boundary-better-auth-cookies (line drifted 497 → 505 → 520 → 541 → 553 → 550 → 553 by Phases 33-04 + 41-a/b + 41-e + 52-05 + 51-20 + 51-22 + 51-24 ENCRYPTED_COLUMNS_MAP collapse; cookie-secure flag is a legitimate bootstrap-time env read at the Better Auth boundary)
-apps/api/src/index.ts:583  # issue-31-debt-NODE_ENV-shortcircuit-comment (51-25 — NODE_ENV in comment narrative; drifted +27 by 55-05b, +12 by 57-E validateIngressBoot wiring, +20 by 57-F validateSafetyKnobsBoot wiring)
-apps/api/src/index.ts:588  # issue-31-debt-NODE_ENV-shortcircuit-code (33-04 +9; 34 -1; 51-02 +5; 51-03 +10; 52-09 +1; 51-25 +1; 55-05b +27; 57-E +12; 57-F +20)
+apps/api/src/index.ts:609  # issue-31-debt-NODE_ENV-shortcircuit-comment (51-25 — NODE_ENV in comment narrative; drifted +27 by 55-05b, +12 by 57-E validateIngressBoot wiring, +20 by 57-F validateSafetyKnobsBoot wiring, +26 by 60-A makePino logger wiring)
+apps/api/src/index.ts:614  # issue-31-debt-NODE_ENV-shortcircuit-code (33-04 +9; 34 -1; 51-02 +5; 51-03 +10; 52-09 +1; 51-25 +1; 55-05b +27; 57-E +12; 57-F +20; 60-A +26)
 apps/api/src/lib/ssrf-dispatcher.ts:59  # issue-31-DI-fallback-jsdoc
 apps/api/src/lib/ssrf-dispatcher.ts:163  # issue-31-DI-fallback
 apps/api/src/routes/index.ts:474  # issue-31-debt-NODE_ENV-shortcircuit
