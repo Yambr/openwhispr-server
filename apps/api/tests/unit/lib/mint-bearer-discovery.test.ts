@@ -78,7 +78,7 @@ describe("buildMintBearer — OIDC discovery (Phase 02.16 / Group H)", () => {
     __resetOidcDiscoveryCacheForTests();
     vi.stubEnv("OIDC_CLIENT_ID", "client-id-fixture");
     vi.stubEnv("OIDC_CLIENT_SECRET", "client-secret-fixture");
-    vi.stubEnv("OIDC_ISSUER_URL", "http://idp.test");
+    vi.stubEnv("OIDC_ISSUER_URL", "https://idp.test");
     // Explicit endpoint env vars intentionally NOT stubbed — that is the
     // fixture-idp / real-operator config we are closing Group H against.
     delete process.env.OIDC_TOKEN_URL;
@@ -97,17 +97,17 @@ describe("buildMintBearer — OIDC discovery (Phase 02.16 / Group H)", () => {
     const fetchSpy = vi.fn(async (url: string | URL | Request, _init?: RequestInit) => {
       void _init;
       const u = typeof url === "string" ? url : url.toString();
-      if (u === "http://idp.test/.well-known/openid-configuration") {
+      if (u === "https://idp.test/.well-known/openid-configuration") {
         return jsonResponse({
-          issuer: "http://idp.test",
-          token_endpoint: "http://idp.test/discovered-token",
-          userinfo_endpoint: "http://idp.test/discovered-userinfo",
+          issuer: "https://idp.test",
+          token_endpoint: "https://idp.test/discovered-token",
+          userinfo_endpoint: "https://idp.test/discovered-userinfo",
         });
       }
-      if (u === "http://idp.test/discovered-token") {
+      if (u === "https://idp.test/discovered-token") {
         return jsonResponse({ access_token: "AT" });
       }
-      if (u === "http://idp.test/discovered-userinfo") {
+      if (u === "https://idp.test/discovered-userinfo") {
         return jsonResponse({ sub: "s1", email: "u@x.test" });
       }
       throw new Error(`unexpected fetch: ${u}`);
@@ -122,7 +122,7 @@ describe("buildMintBearer — OIDC discovery (Phase 02.16 / Group H)", () => {
     const tokenCall = fetchSpy.mock.calls.find(
       (c) =>
         (typeof c[0] === "string" ? c[0] : (c[0] as URL).toString()) ===
-        "http://idp.test/discovered-token",
+        "https://idp.test/discovered-token",
     );
     expect(tokenCall).toBeDefined();
     expect((tokenCall?.[1] as RequestInit).method).toBe("POST");
@@ -132,17 +132,17 @@ describe("buildMintBearer — OIDC discovery (Phase 02.16 / Group H)", () => {
     const { auth } = buildFakeAuth();
     const fetchSpy = vi.fn(async (url: string | URL | Request) => {
       const u = typeof url === "string" ? url : url.toString();
-      if (u === "http://idp.test/.well-known/openid-configuration") {
+      if (u === "https://idp.test/.well-known/openid-configuration") {
         return jsonResponse({
-          issuer: "http://idp.test",
-          token_endpoint: "http://idp.test/discovered-token",
-          userinfo_endpoint: "http://idp.test/discovered-userinfo",
+          issuer: "https://idp.test",
+          token_endpoint: "https://idp.test/discovered-token",
+          userinfo_endpoint: "https://idp.test/discovered-userinfo",
         });
       }
-      if (u === "http://idp.test/discovered-token") {
+      if (u === "https://idp.test/discovered-token") {
         return jsonResponse({ access_token: "AT" });
       }
-      if (u === "http://idp.test/discovered-userinfo") {
+      if (u === "https://idp.test/discovered-userinfo") {
         return jsonResponse({ sub: "s1", email: "u@x.test" });
       }
       throw new Error(`unexpected fetch: ${u}`);
@@ -157,7 +157,7 @@ describe("buildMintBearer — OIDC discovery (Phase 02.16 / Group H)", () => {
     const uiCall = fetchSpy.mock.calls.find(
       (c) =>
         (typeof c[0] === "string" ? c[0] : (c[0] as URL).toString()) ===
-        "http://idp.test/discovered-userinfo",
+        "https://idp.test/discovered-userinfo",
     );
     expect(uiCall).toBeDefined();
   });
@@ -195,7 +195,7 @@ describe("buildMintBearer — OIDC discovery (Phase 02.16 / Group H)", () => {
     const { auth } = buildFakeAuth();
     const fetchSpy = vi.fn(async (url: string | URL | Request) => {
       const u = typeof url === "string" ? url : url.toString();
-      if (u === "http://idp.test/.well-known/openid-configuration") {
+      if (u === "https://idp.test/.well-known/openid-configuration") {
         return new Response("PII-LEAK-IN-DISCOVERY-BODY", { status: 502 });
       }
       throw new Error(`unexpected fetch: ${u}`);
@@ -206,5 +206,167 @@ describe("buildMintBearer — OIDC discovery (Phase 02.16 / Group H)", () => {
     });
     await expect(mint(ARGS)).rejects.toThrow(/discovery 502/);
     await expect(mint(ARGS)).rejects.not.toThrow(/PII-LEAK-IN-DISCOVERY-BODY/);
+  });
+
+  it("HI-04 — discovery doc missing token_endpoint fails schema validation (NOT cached)", async () => {
+    const { auth } = buildFakeAuth();
+    const fetchSpy = vi.fn(async (url: string | URL | Request) => {
+      const u = typeof url === "string" ? url : url.toString();
+      if (u === "https://idp.test/.well-known/openid-configuration") {
+        // No token_endpoint — an unchecked cast would accept this.
+        return jsonResponse({
+          issuer: "https://idp.test",
+          userinfo_endpoint: "https://idp.test/userinfo",
+        });
+      }
+      throw new Error(`unexpected fetch: ${u}`);
+    });
+    vi.stubGlobal("fetch", fetchSpy);
+    const mint = buildMintBearer({
+      auth: auth as unknown as Parameters<typeof buildMintBearer>[0]["auth"],
+    });
+    await expect(mint(ARGS)).rejects.toThrow(/schema validation/);
+    // A second call must re-fetch — the bad doc was NOT cached.
+    await expect(mint(ARGS)).rejects.toThrow(/schema validation/);
+    const discoveryCalls = fetchSpy.mock.calls.filter((c) => {
+      const u = typeof c[0] === "string" ? c[0] : (c[0] as URL).toString();
+      return u.includes("/.well-known/openid-configuration");
+    });
+    expect(discoveryCalls.length).toBe(2);
+  });
+
+  it("HI-04 — discovery doc with a non-URL token_endpoint fails schema validation", async () => {
+    const { auth } = buildFakeAuth();
+    const fetchSpy = vi.fn(async (url: string | URL | Request) => {
+      const u = typeof url === "string" ? url : url.toString();
+      if (u === "https://idp.test/.well-known/openid-configuration") {
+        return jsonResponse({
+          issuer: "https://idp.test",
+          token_endpoint: "not-a-url",
+          userinfo_endpoint: "https://idp.test/userinfo",
+        });
+      }
+      throw new Error(`unexpected fetch: ${u}`);
+    });
+    vi.stubGlobal("fetch", fetchSpy);
+    const mint = buildMintBearer({
+      auth: auth as unknown as Parameters<typeof buildMintBearer>[0]["auth"],
+    });
+    await expect(mint(ARGS)).rejects.toThrow(/schema validation/);
+  });
+
+  it("HI-04 — discovery doc whose token_endpoint is a cross-origin attacker URL is rejected", async () => {
+    const { auth } = buildFakeAuth();
+    const fetchSpy = vi.fn(async (url: string | URL | Request) => {
+      const u = typeof url === "string" ? url : url.toString();
+      if (u === "https://idp.test/.well-known/openid-configuration") {
+        // Origin-swap attack — token endpoint points at an attacker.
+        return jsonResponse({
+          issuer: "https://idp.test",
+          token_endpoint: "https://attacker.example/steal",
+          userinfo_endpoint: "https://idp.test/userinfo",
+        });
+      }
+      throw new Error(`unexpected fetch: ${u}`);
+    });
+    vi.stubGlobal("fetch", fetchSpy);
+    const mint = buildMintBearer({
+      auth: auth as unknown as Parameters<typeof buildMintBearer>[0]["auth"],
+    });
+    await expect(mint(ARGS)).rejects.toThrow(/origin not affiliated/);
+  });
+
+  it("HI-04 — discovery doc with an http:// token_endpoint is rejected (https required)", async () => {
+    const { auth } = buildFakeAuth();
+    const fetchSpy = vi.fn(async (url: string | URL | Request) => {
+      const u = typeof url === "string" ? url : url.toString();
+      if (u === "https://idp.test/.well-known/openid-configuration") {
+        return jsonResponse({
+          issuer: "https://idp.test",
+          token_endpoint: "http://idp.test/token",
+          userinfo_endpoint: "https://idp.test/userinfo",
+        });
+      }
+      throw new Error(`unexpected fetch: ${u}`);
+    });
+    vi.stubGlobal("fetch", fetchSpy);
+    const mint = buildMintBearer({
+      auth: auth as unknown as Parameters<typeof buildMintBearer>[0]["auth"],
+    });
+    await expect(mint(ARGS)).rejects.toThrow(/must be https/);
+  });
+
+  it("HI-04 — a cross-origin endpoint in OIDC_DISCOVERY_ALLOWED_ORIGINS is accepted", async () => {
+    vi.stubEnv("OIDC_DISCOVERY_ALLOWED_ORIGINS", "https://idp-token.test");
+    const { auth } = buildFakeAuth();
+    const fetchSpy = vi.fn(async (url: string | URL | Request) => {
+      const u = typeof url === "string" ? url : url.toString();
+      if (u === "https://idp.test/.well-known/openid-configuration") {
+        return jsonResponse({
+          issuer: "https://idp.test",
+          token_endpoint: "https://idp-token.test/token",
+          userinfo_endpoint: "https://idp.test/userinfo",
+        });
+      }
+      if (u === "https://idp-token.test/token") {
+        return jsonResponse({ access_token: "AT" });
+      }
+      if (u === "https://idp.test/userinfo") {
+        return jsonResponse({ sub: "s1", email: "u@x.test" });
+      }
+      throw new Error(`unexpected fetch: ${u}`);
+    });
+    vi.stubGlobal("fetch", fetchSpy);
+    const mint = buildMintBearer({
+      auth: auth as unknown as Parameters<typeof buildMintBearer>[0]["auth"],
+    });
+    await expect(mint(ARGS)).resolves.toBeDefined();
+  });
+
+  it("HI-04 — a valid discovery doc is cached within TTL (one fetch) and re-fetched after expiry", async () => {
+    const { auth } = buildFakeAuth();
+    const fetchSpy = vi.fn(async (url: string | URL | Request) => {
+      const u = typeof url === "string" ? url : url.toString();
+      if (u === "https://idp.test/.well-known/openid-configuration") {
+        return jsonResponse({
+          issuer: "https://idp.test",
+          token_endpoint: "https://idp.test/token",
+          userinfo_endpoint: "https://idp.test/userinfo",
+        });
+      }
+      if (u === "https://idp.test/token") {
+        return jsonResponse({ access_token: "AT" });
+      }
+      if (u === "https://idp.test/userinfo") {
+        return jsonResponse({ sub: "s1", email: "u@x.test" });
+      }
+      throw new Error(`unexpected fetch: ${u}`);
+    });
+    vi.stubGlobal("fetch", fetchSpy);
+    const mint = buildMintBearer({
+      auth: auth as unknown as Parameters<typeof buildMintBearer>[0]["auth"],
+    });
+
+    const discoveryCallCount = (): number =>
+      fetchSpy.mock.calls.filter((c) => {
+        const u = typeof c[0] === "string" ? c[0] : (c[0] as URL).toString();
+        return u.includes("/.well-known/openid-configuration");
+      }).length;
+
+    // Two calls inside the TTL → discovery fetched exactly once (cached).
+    vi.useFakeTimers();
+    try {
+      vi.setSystemTime(new Date("2026-05-20T00:00:00Z"));
+      await mint(ARGS);
+      await mint(ARGS);
+      expect(discoveryCallCount()).toBe(1);
+
+      // Advance past the 60-minute TTL → next call re-fetches.
+      vi.setSystemTime(new Date("2026-05-20T01:00:01Z"));
+      await mint(ARGS);
+      expect(discoveryCallCount()).toBe(2);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
