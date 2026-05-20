@@ -44,6 +44,9 @@ _None found._
 ### WARNING
 
 #### WR-01 — Upstream error `.message` flows verbatim through `ServiceUnavailable` to the wire envelope
+
+**Status:** ALREADY-CLOSED — verified 2026-05-21, Phase 65 — Phase 62 HI-03 swept all 7 throw sites to code+literal pairs (`ServiceUnavailable("SERVICE_UNAVAILABLE", "Service temporarily unavailable")` / `TypedServiceUnavailable("WEB_SEARCH_*", "Service temporarily unavailable")`); the upstream `.message` is logged server-side only. No production fix; regression guard test added (commit `4a751c18`).
+
 **Files / lines:**
 - `apps/api/src/routes/transcribe.ts:115` — `throw new ServiceUnavailable(err.message);` for `MissingProviderKeyError`.
 - `apps/api/src/routes/reason.ts:118` — same pattern.
@@ -56,6 +59,9 @@ _None found._
 **Why WARNING, not BLOCKER.** No currently-reachable code path produces an attacker-controllable `message`.
 
 #### WR-02 — `openai-realtime.ts` echoes upstream body wholesale to the wire on 400
+
+**Status:** CLOSED 2026-05-21 — Phase 65, commit `4a751c18` — the raw `upstream: upstream400.upstreamBody` field is dropped from the 400 envelope; the upstream blob is logged server-side only. Disposition: drop (not allowlist) — no wire-doc consumer needs `code`/`type`/`param`.
+
 **File:** `apps/api/src/routes/tokens/openai-realtime.ts:167-176`
 
 ```ts
@@ -76,16 +82,25 @@ if (upstream400) {
 **Describe-only fix shape:** restrict the echo to a fixed `{ code, type, param }` allowlist, never the raw `message`; or drop `upstream` entirely.
 
 #### WR-03 — `realtime.ts:182` and `agent/stream.ts:145` throw `new AuthError("unauthorized")` (legacy single-arg form), inconsistent with every other route in scope
+
+**Status:** CLOSED 2026-05-21 — Phase 65, commit `c8b5d9ae` — both routes now throw the two-arg `AuthError("UNAUTHORIZED", "unauthorized")` form so `code === "UNAUTHORIZED"`, matching every other in-scope route.
+
 **Files:** `apps/api/src/routes/realtime.ts:182`, `apps/api/src/routes/agent/stream.ts:145`
 
 Per `apps/api/src/errors.ts:46-55`, the one-arg form sets `code = "AUTH_ERROR"` (class default) and `message = "unauthorized"`. Every other route in scope (transcribe, reason, diarization, transcriptions/*, v1/keys/*, web-search, streaming-usage) uses the two-arg form `new AuthError("UNAUTHORIZED", "unauthorized")` to produce the spec-mandated `code = "UNAUTHORIZED"`. Realtime + agent/stream emit a non-canonical code that downstream i18n keying (`errors.<code>` lookup) and client switch-on-code logic will miss.
 
 #### WR-04 — `agent/stream.ts:159` re-parses the body after `schema.body` already validated it
+
+**Status:** CLOSED 2026-05-21 — Phase 65, commit `c8b5d9ae` — determination: the zod-type-provider's `validatorCompiler` IS attached (`plugins/zod-type-provider.ts:21`, registered at the buildApp boundary), so the declarative `schema.body` validates the body before the handler. The route now registers via `app.withTypeProvider<ZodTypeProvider>()` for a typed `req.body` and the redundant inline `AgentStreamRequestSchema.parse()` is dropped. (Distinct from Phase 64 H-1's conversations routes, which do NOT declare `schema.body` and kept their inline parse.)
+
 **File:** `apps/api/src/routes/agent/stream.ts:115-159`
 
 The route registers `schema: { body: AgentStreamRequestSchema }` (LOCKER-04 compliance), then inside the handler does `AgentStreamRequestSchema.parse(req.body ?? {})`. The comment justifies this as needed for hijack-ordering, but Fastify runs `schema.body` validation **before** the handler executes — well before any `reply.hijack()`. The manual parse is dead defence that doubles allocation cost on the hottest paid endpoint in the codebase, and the misleading comment will trip future maintainers.
 
 #### WR-05 — `agent/web-search.ts:98-113` hardcodes provider→envvar-label mapping by name; drift-prone
+
+**Status:** CLOSED 2026-05-21 — Phase 65, commit `b41a57b8` — a `readonly envVarLabel: string` member was added to the `WebSearchProvider` interface; the tavily + yandex adapters supply their own label; the route reads `provider.envVarLabel` generically — no `provider.name ===` string fork remains.
+
 **File:** `apps/api/src/routes/agent/web-search.ts:98-113`
 
 ```ts
@@ -100,6 +115,9 @@ const envVarName =
 If a new web-search adapter is added to `lib/web-search/registry.ts` but not here, the operator gets `Tavily not configured (set <provider env vars> in .env)` — misleading. The metadata belongs on the `WebSearchProvider` interface (`provider.envVarLabel()`), not as a string-equality fork in the route.
 
 #### WR-06 — `diarization.ts` Speaches branch uses non-cryptographic boundary nonce
+
+**Status:** CLOSED 2026-05-21 — Phase 65, commit `73661033` — the `Math.random()` boundary segment is replaced with `crypto.randomBytes(16).toString("hex")`; a regression test proves the boundary carries a 32-hex-char cryptographic segment and two successive boundaries differ.
+
 **File:** `apps/api/src/routes/diarization.ts:474-476`
 
 ```ts
@@ -111,11 +129,17 @@ const boundary = `----owsp-speaches-${Date.now().toString(36)}-${Math.random()
 `Math.random()` is acceptable for boundary uniqueness in isolation, but the route forwards untrusted user-uploaded audio bytes. If an attacker can predict the boundary (Mersenne-Twister state recoverable after enough samples) they can craft an upload whose bytes contain the boundary and smuggle a forged form field overriding `name="model"`. Replace with `crypto.randomBytes(16).toString("hex")`.
 
 #### WR-07 — `transcriptions/batch-delete.ts` atomicity check exposes cross-tenant id-existence timing oracle
+
+**Status:** CLOSED 2026-05-21 — Phase 65, commit `59b7d732` — the failure path now waits out a constant-time wall-clock floor (`FAILURE_PATH_FLOOR_MS = 750`, measured from handler entry) before throwing `NotFoundError`, so an all-miss batch is no longer a fast-fail and response timing no longer oracles cross-tenant id existence. The RED stayed timing-based: a structural floor assertion (an all-miss 500-id batch takes ≥ the floor) plus a comparative median assertion (all-miss median not systematically faster than all-hit), both against real Postgres.
+
 **File:** `apps/api/src/routes/transcriptions/batch-delete.ts:74-104`
 
 The route compares `returnedIds.length !== requestedIds.length` to throw `NotFoundError`. RLS hides cross-tenant rows; the route also constrains `user_id = ${userId}::uuid AND deleted_at IS NULL`. The route correctly conflates three failure modes into one 404, but the response timing differs measurably between "all 500 ids hit" (full UPDATE) and "all 500 ids miss" (empty RETURNING). Cross-tenant id-existence oracling via timing remains feasible at large batch sizes. Mitigate with a constant-time wait on the failure path.
 
 #### WR-08 — `diarization.ts:345` 504 envelope is operator-facing copy emitted to end users + invents undocumented field
+
+**Status:** CLOSED 2026-05-21 — Phase 65, commit `73661033` — the 502 (job failed/cancelled) and 504 (poll-ceiling) sends now emit the canonical `{error:<string>}` envelope with no inline `jobId` field; the 504 operator-speak ("corporate LiteLLM override with self-hosted Speaches") is replaced with user-facing copy referencing the documented Idempotency-Key resume mechanism. Scope: the jobId-carrying 502/504 sites only — the envelope-correct non-jobId inline sends (`:284`, `:507+`, the 409s) were already canonical and out of scope.
+
 **File:** `apps/api/src/routes/diarization.ts:345-349`
 
 ```ts
@@ -129,6 +153,9 @@ return reply.code(504).send({
 Two issues: (a) the message is operator-speak ("corporate LiteLLM override") shown on a user-facing endpoint; (b) the `jobId` field is invented inline and is not part of the canonical `{error: <string>}` envelope used by `errors.ts`. Several other inline `reply.code().send({error, jobId})` shapes appear at `diarization.ts:257`, `:274`, `:281-284`, `:330-333` — the route bypasses the typed-error contract.
 
 #### WR-09 — `realtime.ts:188-191` mutates `req.raw.url` from a magic-string sentinel base
+
+**Status:** CLOSED 2026-05-21 — Phase 65, commit `970e17bd` — Option A (document + assert relative). Rationale: `@fastify/http-proxy@11.4.4` exposes no per-request upstream-URL rewrite hook (only `wsClientOptions.rewriteRequestHeaders`, headers-only), so Option B is not cleanly achievable; Option A is the genuine improvement. The `"http://internal"` sentinel parser base is now documented; the preHandler asserts `req.raw.url` is relative (rejects loudly if absolute, surfacing the silent scheme/host-drop bug); the in-place mutation stays as the last preHandler statement with a comment on the deliberate timing.
+
 **File:** `apps/api/src/routes/realtime.ts:188-191`
 
 ```ts
@@ -143,6 +170,9 @@ Two issues:
 2. Mutating `req.raw.url` mid-request is read-modify-share state on `IncomingMessage`. Any other hook (audit, observability) running between this mutation and the proxy upgrade sees the URL with the user id appended — placing the user id into log contexts that wouldn't otherwise carry it.
 
 #### WR-10 — `transcriptions/list.ts:64` logs full `Error` object without redaction
+
+**Status:** CLOSED 2026-05-21 — Phase 65, commit `1c71fafc` — `req.log.warn` now logs `{ name: (err as Error).name }` instead of the raw `err` Error object, so `err.message` cannot leak user cursor text into Loki.
+
 **File:** `apps/api/src/routes/transcriptions/list.ts:57-66`
 
 ```ts
@@ -155,6 +185,9 @@ Two issues:
 The wire envelope is correctly bypass-free, but the unredacted `err` is handed to pino. The shared `@openwhispr/observability/redact` policy is a fixed path allowlist — `err.message` is not redacted. If `parseListQuery` ever embeds raw user-supplied cursor text in its message, it lands in Loki. Pass `{ name: (err as Error).name }` only, or extend the redact policy.
 
 #### WR-11 — `streaming-usage.ts:82-103` logs `text_preview` (up to 1000 chars of user STT output) to structured logs
+
+**Status:** CLOSED 2026-05-21 — Phase 65, commit `1c71fafc` — `text_preview` (and the now-dead `previewCap` local) is dropped from the structured log; `text_sha256` + `text_length` (a hash + a count, not raw content) stay. User STT content no longer reaches 30-day Loki retention.
+
 **File:** `apps/api/src/routes/streaming-usage.ts:76-103`
 
 The route observes D-13 for the **ledger** (text never persisted) but logs `text_preview` to pino on every request. The shared redact policy does not cover `text_preview`. Loki retention is 30+ days. Either add `text_preview` to the redact policy or drop the field on the production profile (it's debug-only).
