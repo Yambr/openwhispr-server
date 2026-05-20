@@ -1,0 +1,52 @@
+# Phase 62 — verify-first disposition log (HI-01..HI-05)
+
+Re-confirmed against `main` before any fix. Per CLAUDE.md hard rule 3,
+an already-closed finding is recorded with evidence and gets NO RED test
+and NO production change.
+
+## HI-01 — ALREADY CLOSED
+
+`apps/api/src/auth.ts:430` reads `baseURL: validateIngressBoot().ingressBaseUrl`.
+`grep -n 'localhost:3000' apps/api/src/auth.ts` returns NO match in the
+`baseURL` position (no match at all). `grep -n 'ingressBaseUrl'` shows the
+literal `?? "http://localhost:3000"` fallback the finding reported is GONE.
+
+Closure: Phase 57 Track E added `validateIngressBoot()` (`config/auth.ts`),
+which refuses boot (exit 78) when neither `INGRESS_BASE_URL` nor `AUTH_URL`
+is set, and refuses non-HTTPS under `NODE_ENV=production`.
+
+Disposition: **CLOSED (already-resolved)** — Phase 57 Track E. No fix in
+Phase 62.
+
+## HI-02 — STILL LIVE
+
+`apps/api/src/index.ts:620` gates `buildDebugFetchRoutes()` registration on
+`NODE_ENV==='test' || OPENWHISPR_TEST_ROUTES==='true'` — no
+`NODE_ENV!=='production'` veto. `apps/api/src/routes/__test/fetch.ts:63-65`
+plugin self-gate is old-style too. Both gate sites need the production veto
+(the Phase 57 Track C pattern). Disposition: **LIVE — fix in Task 2.**
+
+## HI-03 — STILL LIVE
+
+`apps/api/src/error-handler.ts` echoes `err.message` for ZodError (`:135`),
+fastify-validation (`:152`), `RateLimitError` (`:180`), `ServiceUnavailable`
+(`:187`). 8 interpolated `new ServiceUnavailable(...)` route throw sites
+(transcribe:217, reason:118, diarization:191, assemblyai:106+111,
+deepgram:72+81, openai-realtime:185+193); diarization:360 is already a
+code+literal pair. Disposition: **LIVE — fix in Task 3 (handler) + Task 4
+(route throw sites).**
+
+## HI-04 — STILL LIVE
+
+`apps/api/src/lib/mint-bearer.ts:118` `discoveryCache = new Map(...)` — no
+TTL, no size bound. `:142` `(await res.json()) as OidcDiscoveryDoc` and
+`:217` `(await tokenRes.json()) as OidcTokenResponse` are unchecked casts.
+Disposition: **LIVE — fix in Task 5.**
+
+## HI-05 — STILL LIVE
+
+`apps/api/src/lib/token-rotation.ts:162` follow-up
+`SELECT email FROM users WHERE id = ${first.user_id}::uuid` runs with NO
+`withTenant()` binding and NO `tenant_id` predicate. The comment (`:155-158`)
+admits it "bypasses RLS deliberately". Disposition: **LIVE — fix-shape
+determination + fix-or-HALT in Task 6.**
