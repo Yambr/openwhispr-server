@@ -297,6 +297,39 @@ intercept inside the Next.js server runtime; would re-enable the
 
 ---
 
+## Better Auth upgrade for id-based session revocation (web HI-02)
+
+**Status:** OPEN — v2-blocker (library-shape).
+
+**Surfaced by:** Phase 68 / Plan 68-01 — REVIEW web HIGH HI-02, 2026-05-21.
+
+**Repro / evidence:**
+- `apps/web/src/components/screens/account/SessionsTable.tsx` holds a
+  Better Auth bearer per session (`SessionRow.token`) in the JS heap
+  because `authClient.listSessions()` returns it and
+  `authClient.revokeSession({ token })` requires it.
+- Better Auth 1.6.9 `revokeSession` body is `z.ZodObject<{ token: z.ZodString }>`
+  ONLY — confirmed against
+  `node_modules/.pnpm/better-auth@1.6.9*/.../dist/api/routes/session.d.mts:230-235`.
+  There is NO id-based `revokeSession` overload in this version.
+- HI-02 was resolved via the documentation route (file-header comment +
+  CSP `connect-src` containment) — the bearer is kept strictly off every
+  rendered DOM surface, but it is unavoidable in heap.
+
+**Durable fix:** upgrade Better Auth to a version exposing an id-based
+session-revocation endpoint, then change `SessionsTable` to drop `token`
+from `SessionRow` entirely and revoke by `session.id`.
+
+**Why deferred:** a Better Auth major-version bump is out of scope for a
+pre-publication HIGH-backlog phase; it needs its own upgrade plan
+(migration of the auth plugin surface + regression of every `authClient.*`
+call site).
+
+**Owner:** unassigned. Re-surface at the next Better Auth upgrade window.
+
+
+---
+
 ## Historical (pre-Phase 53)
 
 Older items from Phases 14, 18, 20, 31, 33, 51 live in
