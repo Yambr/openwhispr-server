@@ -1,18 +1,24 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
-// Phase 07.1 / Plan 06 — Admin shell (D-ADMIN-1 + D-STRUCT-1).
+// Phase 07.1 / Plan 06 — Admin shell (D-STRUCT-1).
 //
-// Two-row admin sidebar (Observability, Configuration). NO sign-out button:
-// admin auth is enforced at Traefik basic-auth (D-ADMIN-1), so the only way
-// to "log out" of admin is to clear browser credentials at the OS level.
-// Adding a sign-out here would be misleading.
+// Two-row admin sidebar (Observability, Configuration). The admin surface
+// is gated by the application role model — admin = `users.role='admin'`,
+// enforced by `checkAdminAccess()` (see `lib/admin-guard.ts`). No edge /
+// reverse-proxy credential gate is involved.
+//
+// Phase 68 / Plan 68-01 — REVIEW web HIGH HI-04: an admin signs out via
+// Better Auth `signOut()` like any other user, so the header carries an
+// in-product sign-out control (mirrors `AppShell.handleSignOut`).
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
+import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
+import { signOut } from "@/lib/auth-client";
 import { ThemeSwitcher } from "./theme-switcher";
 
 interface NavItem {
@@ -31,6 +37,12 @@ const NAV: NavItem[] = [
 export function AdminShell({ children }: { children: ReactNode }): React.JSX.Element {
   const { t } = useTranslation(["admin", "common"]);
   const pathname = usePathname();
+  const router = useRouter();
+
+  async function handleSignOut(): Promise<void> {
+    await signOut();
+    router.push("/sign-in");
+  }
 
   return (
     <div className="flex min-h-screen bg-bg text-text">
@@ -66,6 +78,9 @@ export function AdminShell({ children }: { children: ReactNode }): React.JSX.Ele
             {t("common:common.brand.mode.admin.label")}
           </span>
           <ThemeSwitcher />
+          <Button onClick={handleSignOut} size="sm" variant="outline">
+            {t("common:common.signout.label")}
+          </Button>
         </header>
         <main className="flex-1 overflow-auto p-6">{children}</main>
       </div>
