@@ -9,6 +9,8 @@
 //     AUTH-04 5-minute overlap window admits OLD bearers in the live
 //     binary; recordPreviousToken called on Better Auth's session
 //     rotation (set-auth-token response header).
+import { randomBytes } from "node:crypto";
+import { EnvKeyProvider, encryptCodeVerifier } from "@openwhispr/data";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { buildApp } from "../../src/index.js";
 
@@ -17,10 +19,23 @@ const TENANT_ID = "00000000-0000-0000-0000-000000000000";
 
 // ---------- Fakes ----------
 
+// Phase 60 / Track B — test-fixture drift fix. The fake oauth_state row
+// must carry the 6 encrypted `code_verifier_*` bytea sidecars the
+// post-Phase-33 desktop-callback route reads via
+// `decryptCodeVerifierFromRow`. Here the production `buildApp` registers
+// the route with the default `selectProvider()` KeyProvider (an
+// `EnvKeyProvider` reading `MASTER_KEK`), so the fixture is encrypted
+// with an `EnvKeyProvider` bound to the same stubbed `MASTER_KEK`.
 interface FakeStateRow {
   id: string;
   scheme: string;
   code_verifier: string;
+  code_verifier_dek_wrapped: Buffer;
+  code_verifier_dek_iv: Buffer;
+  code_verifier_dek_auth_tag: Buffer;
+  code_verifier_value_iv: Buffer;
+  code_verifier_value_auth_tag: Buffer;
+  code_verifier_value_ciphertext: Buffer;
   consumed_at: string | null;
   expires_at: string;
 }
@@ -122,11 +137,16 @@ function makeFakeAuth(opts: FakeAuthOpts = {}) {
   };
 }
 
-function freshStateRow(scheme: string): FakeStateRow {
+async function freshStateRow(scheme: string): Promise<FakeStateRow> {
+  // `selectProvider()` (the route default) reads `MASTER_KEK` lazily on
+  // first decrypt; encrypt the fixture with an EnvKeyProvider bound to
+  // the same env so encrypt→decrypt round-trips.
+  const sidecars = await encryptCodeVerifier(new EnvKeyProvider(), `verifier-${scheme}`);
   return {
     id: VALID_STATE_ID,
     scheme,
     code_verifier: `verifier-${scheme}`,
+    ...sidecars,
     consumed_at: null,
     expires_at: new Date(Date.now() + 10 * 60_000).toISOString(),
   };
@@ -137,13 +157,15 @@ function freshStateRow(scheme: string): FakeStateRow {
 describe("buildApp() — Plan 08 wiring", () => {
   beforeEach(() => {
     vi.unstubAllEnvs();
+    // Phase 60 / Track B — deterministic KEK for the oauth_state codec.
+    vi.stubEnv("MASTER_KEK", randomBytes(32).toString("base64url"));
   });
   afterEach(() => {
     vi.unstubAllEnvs();
   });
 
   it("Test 1: mintBearer is plumbed → OAuth callback returns 302 (NOT 503)", async () => {
-    const stateRows = new Map([[VALID_STATE_ID, freshStateRow("openwhispr")]]);
+    const stateRows = new Map([[VALID_STATE_ID, await freshStateRow("openwhispr")]]);
     const { db } = makeFakeDb({ oauthStateRows: stateRows });
     const auth = makeFakeAuth({ user: { id: "u1", email: "u@x", tenantId: TENANT_ID } });
     const mintBearer = vi.fn(async () => "OPAQUE_FROM_MINT");
