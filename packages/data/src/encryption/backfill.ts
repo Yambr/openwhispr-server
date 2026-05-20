@@ -76,6 +76,34 @@ export interface RunBackfillOpts {
   };
 }
 
+// Phase 67 / Plan 67-01 — HI-04: lens-managed-column guard.
+//
+// Post-Phase-57 Track A, `apps/api/src/auth.ts` ships a POPULATED
+// `ENCRYPTED_COLUMNS_MAP` — the envelope-encryption lens now encrypts these
+// Better-Auth-owned credential columns on EVERY write. A bulk `runBackfill`
+// over them is therefore (a) unnecessary — the lens already encrypts them —
+// and (b) data-corrupting: it writes ciphertext into the bytea sidecars while
+// leaving the plaintext column populated, so a later lens read decrypts the
+// sidecars and silently overwrites Better Auth's live plaintext credential.
+//
+// This static refuse-list mirrors `ENCRYPTED_COLUMNS_MAP`. NOTE the table-name
+// skew: `ENCRYPTED_COLUMNS_MAP` keys the sessions model as `session` (the
+// Better-Auth model name) while the SQL table and the backfill column-map use
+// `sessions` (plural) — both forms are listed so the guard cannot be bypassed.
+// `oauth_state.code_verifier` is NOT here: it is codec-managed (manual codec),
+// not lens-managed, so backfilling it is still legitimate.
+const LENS_MANAGED_COLUMNS: ReadonlySet<string> = new Set([
+  "account.password",
+  "account.access_token",
+  "account.refresh_token",
+  "account.id_token",
+  "session.token",
+  "sessions.token",
+  "session.previous_token",
+  "sessions.previous_token",
+  "verification.value",
+]);
+
 const SIDECAR_SUFFIXES = [
   "dek_wrapped",
   "dek_iv",
@@ -100,6 +128,20 @@ export async function runBackfill(opts: RunBackfillOpts): Promise<BackfillReport
   for (const [table, cols] of Object.entries(columnMap)) {
     report[table] = {};
     for (const [column, cfg] of Object.entries(cols)) {
+      // HI-04 guard: refuse any column the encryption lens already manages at
+      // write-time. Throws BEFORE the dry-run branch / any SQL — a bulk
+      // backfill of these columns would corrupt the row (plaintext +
+      // ciphertext coexisting). See LENS_MANAGED_COLUMNS above.
+      if (LENS_MANAGED_COLUMNS.has(`${table}.${column}`)) {
+        throw new Error(
+          `[backfill] ${table}.${column} is a lens-managed credential column: ` +
+            `the envelope-encryption lens encrypts it at write-time ` +
+            `(apps/api ENCRYPTED_COLUMNS_MAP, Phase 57). A bulk backfill is ` +
+            `unnecessary and data-corrupting (plaintext + ciphertext would ` +
+            `coexist; a later lens read silently overwrites the live ` +
+            `plaintext). Refusing to process this column.`,
+        );
+      }
       const started = Date.now();
       // Quoted identifiers — table+column names are author-controlled
       // (column-map literal), never user input. No SQL injection surface

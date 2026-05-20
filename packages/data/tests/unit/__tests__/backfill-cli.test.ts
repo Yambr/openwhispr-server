@@ -85,19 +85,20 @@ describe("resolveOwnerUrl", () => {
 });
 
 describe("DEFAULT_COLUMN_MAP", () => {
-  it("includes all 8 Better-Auth credential columns + fingerprint sidecars on sessions", () => {
-    expect(Object.keys(DEFAULT_COLUMN_MAP.account!)).toEqual([
-      "access_token",
-      "refresh_token",
-      "id_token",
-      "password",
-    ]);
-    expect(DEFAULT_COLUMN_MAP.sessions!.token!.fingerprintColumn).toBe("token_fp");
-    expect(DEFAULT_COLUMN_MAP.sessions!.previous_token!.fingerprintColumn).toBe(
-      "previous_token_fp",
-    );
-    expect(DEFAULT_COLUMN_MAP.verification!.value).toEqual({});
+  // Phase 67 / HI-04 — the CLI default map was NARROWED. Post-Phase-57 the
+  // envelope-encryption lens encrypts the 7 Better-Auth credential columns on
+  // write, and `runBackfill` now REFUSES any lens-managed column. Only
+  // `oauth_state.code_verifier` (codec-managed, not lens-managed) remains a
+  // legitimate backfill target.
+  it("HI-04: contains only the codec-managed oauth_state.code_verifier column", () => {
+    expect(Object.keys(DEFAULT_COLUMN_MAP)).toEqual(["oauth_state"]);
     expect(DEFAULT_COLUMN_MAP.oauth_state!.code_verifier).toEqual({});
+  });
+
+  it("HI-04: no longer includes any lens-managed Better-Auth credential column", () => {
+    expect(DEFAULT_COLUMN_MAP.account).toBeUndefined();
+    expect(DEFAULT_COLUMN_MAP.sessions).toBeUndefined();
+    expect(DEFAULT_COLUMN_MAP.verification).toBeUndefined();
   });
 });
 
@@ -253,7 +254,8 @@ describe("main() — happy path against real PG", () => {
     const emitted = stdoutSpy.mock.calls.map((c) => String(c[0])).join("");
     const parsed = JSON.parse(emitted);
     expect(parsed.dryRun).toBe(true);
-    expect(parsed.report.account.access_token).toEqual(
+    // HI-04 — the default map now backfills only oauth_state.code_verifier.
+    expect(parsed.report.oauth_state.code_verifier).toEqual(
       expect.objectContaining({
         scanned: expect.any(Number),
         encrypted: 0,
