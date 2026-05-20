@@ -61,7 +61,10 @@ export const buildTranscriptionsListRoutes = (deps: TranscriptionsListDeps) =>
           // parseListQuery message can echo user-supplied cursor/ISO
           // strings; route those through the centralized handler with
           // a fixed-code envelope instead of leaking to the wire.
-          req.log.warn({ err }, "transcriptions/list: invalid query");
+          // WR-10 (Phase 65) — log a redacted shape (`{ name }`), never the
+          // raw Error object: the shared redact policy does not cover
+          // `err.message`, which can embed user cursor text.
+          req.log.warn({ name: (err as Error).name }, "transcriptions/list: invalid query");
           throw new ValidationError("INVALID_QUERY", "invalid query");
         }
 

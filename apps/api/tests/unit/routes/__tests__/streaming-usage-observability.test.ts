@@ -2,12 +2,12 @@
 // Phase 05 / Plan 02 / Task 1 — streaming-usage observability tests.
 //
 // D-11/D-13 — assert the structured log emission shape:
-//   * SHA-256(text) + length + bounded preview (200/1000 char cap)
+//   * SHA-256(text) + length (WR-11 / Phase 65 — the raw STT-content
+//     preview is dropped; only the hash + count reach structured logs)
 //   * Telemetry fields (sttProvider, sttModel, sttLanguage, audioSizeBytes,
 //     audioFormat, sttProcessingMs, clientType, appVersion, clientVersion,
 //     clientTotalMs) attached to the log entry
-//   * The full body.text is NEVER written to the log object verbatim
-//     when sendLogs=false AND length > 200 (preview is truncated)
+//   * The body.text is NEVER written to the log object
 //
 // Strategy: feed Fastify a custom logger stream that captures JSON lines,
 // then assert the captured "streaming-usage" log entry's fields directly.
@@ -91,7 +91,7 @@ describe("POST /api/streaming-usage — observability (D-11, D-13)", () => {
     }
   });
 
-  it("emits SHA-256(text) + length + preview at <= 200 chars when sendLogs=false", async () => {
+  it("emits SHA-256(text) + length, NO text_preview, when sendLogs=false (WR-11)", async () => {
     const logs: unknown[] = [];
     app = buildApp(logs);
     const text = "hello world";
@@ -111,11 +111,12 @@ describe("POST /api/streaming-usage — observability (D-11, D-13)", () => {
     expect(entry).toBeDefined();
     expect(entry?.text_sha256).toBe(createHash("sha256").update(text).digest("hex"));
     expect(entry?.text_length).toBe(text.length);
-    expect(entry?.text_preview).toBe(text); // shorter than 200 char cap
+    // WR-11 (Phase 65) — the raw STT-content preview is dropped.
+    expect(entry).not.toHaveProperty("text_preview");
     expect(entry?.sendLogs).toBe(false);
   });
 
-  it("preview truncated to 200 chars for long text when sendLogs=false (D-13)", async () => {
+  it("long text emits length, NO text_preview, when sendLogs=false (WR-11)", async () => {
     const logs: unknown[] = [];
     app = buildApp(logs);
     const longText = "a".repeat(1500);
@@ -132,11 +133,11 @@ describe("POST /api/streaming-usage — observability (D-11, D-13)", () => {
     });
     const entry = findUsageLog(logs);
     expect(entry).toBeDefined();
-    expect((entry?.text_preview as string).length).toBe(200);
+    expect(entry).not.toHaveProperty("text_preview");
     expect(entry?.text_length).toBe(1500);
   });
 
-  it("preview truncated to 1000 chars when sendLogs=true (D-13)", async () => {
+  it("long text emits NO text_preview when sendLogs=true (WR-11)", async () => {
     const logs: unknown[] = [];
     app = buildApp(logs);
     const longText = "b".repeat(1500);
@@ -153,7 +154,8 @@ describe("POST /api/streaming-usage — observability (D-11, D-13)", () => {
     });
     const entry = findUsageLog(logs);
     expect(entry).toBeDefined();
-    expect((entry?.text_preview as string).length).toBe(1000);
+    expect(entry).not.toHaveProperty("text_preview");
+    expect(entry?.text_length).toBe(1500);
   });
 
   it("D-13 — full plaintext text NEVER appears in any log line when truncated", async () => {

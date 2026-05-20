@@ -24,10 +24,10 @@
 //           the response's `wordsUsed`. RLS restricts the SUM to the
 //           current tenant.
 //   4. OTel span attrs + structured log fields per D-11. text is NEVER
-//      persisted in usage_ledger (D-13 / T-05-08 PII mitigation). We log
-//      SHA-256(text) + length + a length-bounded preview:
-//        - sendLogs=false → first 200 chars of preview
-//        - sendLogs=true  → first 1000 chars of preview
+//      persisted in usage_ledger (D-13 / T-05-08 PII mitigation). WR-11
+//      (Phase 65) — the structured log carries ONLY SHA-256(text) + length;
+//      the raw STT-content preview is dropped (STT output is user content
+//      and must not sit in 30-day Loki retention).
 //   5. Response: `{wordsUsed, wordsRemaining: 999_999_999, plan: 'unlimited',
 //      limitReached: false}` per D-12.
 
@@ -71,13 +71,13 @@ export const buildStreamingUsageRoutes = (deps: StreamingUsageDeps) =>
         const userId = req.user.id;
         const units = Math.round(body.audioDurationSeconds);
 
-        // D-13: NEVER store body.text in usage_ledger. Emit SHA-256 +
-        // length + bounded preview to structured logs only.
+        // D-13: NEVER store body.text in usage_ledger. WR-11 (Phase 65) —
+        // emit ONLY SHA-256(text) + length to structured logs; the raw
+        // STT-content preview is dropped (Loki retention is 30+ days and
+        // STT output is user content, not operator telemetry).
         const text = body.text ?? "";
         const text_sha256 = createHash("sha256").update(text).digest("hex");
         const text_length = text.length;
-        const previewCap = body.sendLogs ? 1000 : 200;
-        const text_preview = text.slice(0, previewCap);
 
         req.log.info(
           {
@@ -86,7 +86,6 @@ export const buildStreamingUsageRoutes = (deps: StreamingUsageDeps) =>
             units,
             text_sha256,
             text_length,
-            text_preview,
             sendLogs: body.sendLogs,
             sttProvider: body.sttProvider,
             sttModel: body.sttModel,
