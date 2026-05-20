@@ -23,6 +23,7 @@ import Fastify, { type FastifyInstance } from "fastify";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { registerErrorHandler } from "../../../src/error-handler.js";
 import { _resetDefaultTenantCacheForTesting } from "../../../src/lib/default-tenant.js";
+import { rateLimitPlugin } from "../../../src/plugins/rate-limit.js";
 import { buildDesktopSigninRoutes } from "../../../src/routes/desktop-signin.js";
 
 const DEFAULT_TENANT = "00000000-0000-0000-0000-000000000000";
@@ -236,6 +237,60 @@ describe("GET /api/desktop-signin/:provider", () => {
       });
       expect(res.statusCode).toBe(503);
       expect(res.json()).toEqual({ error: "oidc not configured" });
+      await app.close();
+    });
+  });
+
+  describe("HR-02 — desktop-signin route carries a rateLimit budget", () => {
+    // Phase 63 / HR-02 — the route MUST declare an explicit
+    // `config.rateLimit` budget (LOCKER-04 + abuse mitigation: each call
+    // INSERTs an oauth_state row + 6 encryption sidecars + 302s to the
+    // IdP → unauthenticated write-amplification + redirect-launcher).
+
+    it("HR-02: route config carries a { max, timeWindow } rateLimit object", async () => {
+      let captured: unknown;
+      const { db } = makeFakeDb();
+      const app = Fastify({ logger: false });
+      app.addHook("onRoute", (routeOptions) => {
+        if (routeOptions.url === "/api/desktop-signin/:provider") {
+          captured = (routeOptions.config as { rateLimit?: unknown } | undefined)?.rateLimit;
+        }
+      });
+      registerErrorHandler(app);
+      app.register(buildDesktopSigninRoutes({ db }));
+      await app.ready();
+      expect(captured).toBeTypeOf("object");
+      expect(captured).toMatchObject({ max: 60, timeWindow: "1 minute" });
+      await app.close();
+    });
+
+    it("HR-02: a burst past 60 returns 429 and the 61st does NOT INSERT oauth_state", async () => {
+      const { db, recorded } = makeFakeDb();
+      const app = Fastify({ logger: false, trustProxy: true });
+      registerErrorHandler(app);
+      await app.register(rateLimitPlugin, { redis: undefined });
+      await app.register(buildDesktopSigninRoutes({ db }));
+      await app.ready();
+      const url = "/api/desktop-signin/oidc?callbackURL=openwhispr%3A%2F%2Fcb&protocol=openwhispr";
+      for (let i = 0; i < 60; i++) {
+        const r = await app.inject({
+          method: "GET",
+          url,
+          headers: { "x-forwarded-for": "10.0.0.62" },
+        });
+        expect(r.statusCode).toBe(302);
+      }
+      const blocked = await app.inject({
+        method: "GET",
+        url,
+        headers: { "x-forwarded-for": "10.0.0.62" },
+      });
+      expect(blocked.statusCode).toBe(429);
+      expect(blocked.json()).toEqual({ error: "Too many requests" });
+      // Regression-shape: the over-budget request was rejected BEFORE the
+      // handler ran → at most 60 oauth_state INSERTs recorded.
+      const inserts = recorded.filter((r) => /INSERT INTO oauth_state/i.test(r.sql));
+      expect(inserts.length).toBe(60);
       await app.close();
     });
   });
