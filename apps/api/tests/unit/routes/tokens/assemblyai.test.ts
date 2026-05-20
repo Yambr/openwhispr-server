@@ -169,7 +169,7 @@ describe("POST /api/streaming-token (AssemblyAI v3)", () => {
     }
   });
 
-  it("maps upstream 401 to 503 not-configured envelope", async () => {
+  it("HI-03 — maps upstream 401 to 503 with class-default literal (no upstream detail leak)", async () => {
     agent
       .get(ASSEMBLYAI_HOST)
       .intercept({ path: "/v3/token?expires_in_seconds=60", method: "GET" })
@@ -183,9 +183,9 @@ describe("POST /api/streaming-token (AssemblyAI v3)", () => {
         headers: { authorization: "Bearer ok-u1" },
       });
       expect(r.statusCode).toBe(503);
-      expect(r.json()).toEqual({
-        error: "AssemblyAI not configured (set ASSEMBLYAI_API_KEY in .env)",
-      });
+      // HI-03 (Phase 62): the upstream-failure detail is logged server-side;
+      // the wire envelope emits the class-default literal.
+      expect(r.json()).toEqual({ error: "Service temporarily unavailable" });
     } finally {
       await app.close();
     }
@@ -277,7 +277,8 @@ describe("POST /api/streaming-token (AssemblyAI v3)", () => {
         headers: { authorization: "Bearer ok-u1" },
       });
       expect(r.statusCode).toBe(503);
-      expect(r.json()).toEqual({ error: "AssemblyAI token mint malformed response" });
+      // HI-03 (Phase 62): class-default literal — no leaked detail.
+      expect(r.json()).toEqual({ error: "Service temporarily unavailable" });
     } finally {
       await app.close();
     }

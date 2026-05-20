@@ -69,7 +69,10 @@ export const buildDeepgramTokenRoutes = () =>
         });
 
         if (!r.ok) {
-          throw new ServiceUnavailable(r.message);
+          // HI-03 (Phase 62): code+literal pair — `r.message` is logged
+          // server-side, NOT carried on `.message`.
+          req.log.warn({ providerMessage: r.message }, "Deepgram token mint upstream failure");
+          throw new ServiceUnavailable("SERVICE_UNAVAILABLE", "Service temporarily unavailable");
         }
 
         // Wire-spec field rename: upstream Deepgram returns `access_token`;
@@ -78,7 +81,8 @@ export const buildDeepgramTokenRoutes = () =>
         // desktop client.
         const accessToken = (r.json as { access_token?: unknown }).access_token;
         if (typeof accessToken !== "string") {
-          throw new ServiceUnavailable("Deepgram token mint malformed response");
+          // HI-03 (Phase 62): code+literal pair for consistency.
+          throw new ServiceUnavailable("SERVICE_UNAVAILABLE", "Service temporarily unavailable");
         }
         return reply.send({ token: accessToken });
       },

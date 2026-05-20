@@ -209,7 +209,8 @@ describe("POST /api/deepgram-streaming-token (Deepgram Grant Token)", () => {
         headers: { authorization: "Bearer ok-u1" },
       });
       expect(r.statusCode).toBe(503);
-      expect(r.json()).toEqual({ error: "Deepgram token mint malformed response" });
+      // HI-03 (Phase 62): class-default literal — no leaked detail.
+      expect(r.json()).toEqual({ error: "Service temporarily unavailable" });
     } finally {
       await app.close();
     }
@@ -229,7 +230,8 @@ describe("POST /api/deepgram-streaming-token (Deepgram Grant Token)", () => {
         headers: { authorization: "Bearer ok-u1" },
       });
       expect(r.statusCode).toBe(503);
-      expect(r.json()).toEqual({ error: "Deepgram token mint upstream error" });
+      // HI-03 (Phase 62): class-default literal — no leaked upstream detail.
+      expect(r.json()).toEqual({ error: "Service temporarily unavailable" });
     } finally {
       await app.close();
     }
