@@ -1,13 +1,16 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 // BUG-53-36 closure — branch coverage tests for oauth-state-codec.
+// data:CR-05 — positive lock: the codec NEVER trusts a caller-supplied
+// plaintext `code_verifier`. Migration 0020 dropped the plaintext
+// column; there is no plaintext fallback. A row missing sidecars must
+// throw, even when it carries a `code_verifier` string field.
 //
 // Covers:
 //   - encryptCodeVerifier produces 6 bytea sidecars (happy path).
 //   - decryptCodeVerifierFromRow round-trip (single provider).
-//   - decryptCodeVerifierFromRow fallback to plaintext column when
-//     sidecars absent (mid-backfill window).
-//   - decryptCodeVerifierFromRow throws when both plaintext and
-//     sidecars are absent.
+//   - decryptCodeVerifierFromRow throws when sidecars absent — even if
+//     a plaintext `code_verifier` string is present (data:CR-05 lock).
+//   - decryptCodeVerifierFromRow throws when sidecars are absent.
 //   - hasAllSidecars branch coverage: each of the 6 buffer checks
 //     fails independently when any one sidecar is missing.
 //   - decryptCodeVerifierFromRow tries providers in order; first
@@ -59,16 +62,21 @@ describe("oauth-state-codec — BUG-53-36 branch coverage", () => {
     expect(recovered).toBe(plaintext);
   });
 
-  it("falls back to plaintext code_verifier when sidecars are absent", async () => {
-    const recovered = await decryptCodeVerifierFromRow([provider], {
-      code_verifier: "legacy-plaintext-value",
-    });
-    expect(recovered).toBe("legacy-plaintext-value");
+  it("data:CR-05 — NEVER trusts a caller-supplied plaintext code_verifier", async () => {
+    // Migration 0020 dropped the plaintext oauth_state.code_verifier
+    // column. The codec must NOT have a plaintext-fallback branch: a row
+    // carrying a `code_verifier` string but no sidecars is corruption /
+    // a hostile caller-supplied secret and MUST throw, not be trusted.
+    await expect(
+      decryptCodeVerifierFromRow([provider], {
+        code_verifier: "attacker-supplied-plaintext",
+      } as Parameters<typeof decryptCodeVerifierFromRow>[1]),
+    ).rejects.toThrow(/missing bytea sidecars/);
   });
 
-  it("throws when both plaintext and sidecars are absent", async () => {
+  it("throws when sidecars are absent", async () => {
     await expect(decryptCodeVerifierFromRow([provider], {})).rejects.toThrow(
-      /missing both plaintext code_verifier and bytea sidecars/,
+      /missing bytea sidecars/,
     );
   });
 
@@ -92,9 +100,9 @@ describe("oauth-state-codec — BUG-53-36 branch coverage", () => {
       it(`drops sidecar ${field} → falls through hasAllSidecars`, async () => {
         const incomplete: Record<string, Buffer | null> = { ...sidecars };
         incomplete[field] = null;
-        // No plaintext fallback → throw with the missing-both message.
+        // No plaintext fallback → throw with the missing-sidecars message.
         await expect(decryptCodeVerifierFromRow([provider], incomplete)).rejects.toThrow(
-          /missing both plaintext/,
+          /missing bytea sidecars/,
         );
       });
     }

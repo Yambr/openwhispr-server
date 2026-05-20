@@ -20,10 +20,10 @@
 // `decryptCodeVerifierFromRow` is the inverse: given a row object with
 // the 6 sidecars present, recover the UTF-8 plaintext via the provider
 // chain (matches lens.ts read semantics — try each provider until one
-// decrypts, otherwise rethrow). Rows missing all sidecars (legacy
-// plaintext during the 33-03 backfill mid-window) fall through to the
-// plaintext `code_verifier` column, mirroring the lens' silent-pass-
-// through posture.
+// decrypts, otherwise rethrow). It throws if the sidecars are absent;
+// there is no plaintext fallback — migration 0020 dropped the plaintext
+// `oauth_state.code_verifier` column, so the codec only ever emits and
+// accepts the encrypted 6-sidecar form (data:CR-05).
 
 import { decryptValue, type EncryptedRow, encryptValue } from "./envelope.js";
 import type { KeyProvider } from "./key-provider.js";
@@ -60,7 +60,6 @@ export async function encryptCodeVerifier(
 }
 
 interface RowWithSidecars {
-  code_verifier?: string | null;
   code_verifier_dek_wrapped?: Buffer | null;
   code_verifier_dek_iv?: Buffer | null;
   code_verifier_dek_auth_tag?: Buffer | null;
@@ -82,17 +81,18 @@ function hasAllSidecars(row: RowWithSidecars): boolean {
 
 /**
  * Recover plaintext from a row's sidecar columns. Tries each provider in
- * order; the FIRST successful decrypt wins. If sidecars are absent,
- * falls back to the plaintext `code_verifier` column (mid-backfill
- * window). Throws if neither plaintext nor sidecars are present.
+ * order; the FIRST successful decrypt wins. Throws if the sidecars are
+ * absent — there is no plaintext fallback. Migration 0020 dropped the
+ * plaintext `oauth_state.code_verifier` column, so a row reaching this
+ * helper without sidecars is corruption (or a hostile caller-supplied
+ * secret) and MUST NOT be trusted (data:CR-05).
  */
 export async function decryptCodeVerifierFromRow(
   providers: readonly KeyProvider[],
   row: RowWithSidecars,
 ): Promise<string> {
   if (!hasAllSidecars(row)) {
-    if (typeof row.code_verifier === "string") return row.code_verifier;
-    throw new Error("oauth_state row missing both plaintext code_verifier and bytea sidecars");
+    throw new Error("oauth_state row missing bytea sidecars for code_verifier");
   }
   const encrypted: EncryptedRow = {
     dek_wrapped: row.code_verifier_dek_wrapped as Buffer,

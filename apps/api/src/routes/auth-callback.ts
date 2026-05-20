@@ -243,8 +243,9 @@ export const buildAuthCallbackRoutes = (deps: AuthCallbackDeps) =>
           .send({ error: "oauth callback not configured" });
       }
 
-      // Phase 33 / Plan 33-04 — decrypt verifier via the codec. Falls
-      // back to plaintext when sidecars are absent (legacy mid-backfill).
+      // Phase 33 / Plan 33-04 — decrypt verifier via the codec. The
+      // codec accepts only the encrypted 6-sidecar form and throws when
+      // sidecars are absent; there is no plaintext fallback (data:CR-05).
       const codeVerifier = await decryptCodeVerifierFromRow([keyProvider], stateRow);
 
       const bearer = await mintBearer({
