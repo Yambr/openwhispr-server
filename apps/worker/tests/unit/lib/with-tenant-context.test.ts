@@ -304,6 +304,51 @@ SUITE("withTenantContext (D-W1)", () => {
     await expect(wrapped(fakeJob({ tenant_id: TENANT_A }))).rejects.toThrow();
   });
 
+  it("CR-04: a throwing ROLLBACK does not mask the original handler error", async () => {
+    if (!harness) throw new Error("harness");
+    // Phase 66 / CR-04: pre-fix, `catch (handlerErr) { await
+    // client.query("ROLLBACK"); throw handlerErr; }` — if ROLLBACK
+    // itself throws (transient pg failure, broken pipe), the ROLLBACK
+    // error REPLACES handlerErr and BullMQ retries the wrong cause.
+    // The fix wraps ROLLBACK in its own try/catch so handlerErr always
+    // propagates.
+    class HandlerSentinelError extends Error {
+      readonly code = "HANDLER_SENTINEL";
+      constructor() {
+        super("handler-sentinel");
+        this.name = "HandlerSentinelError";
+      }
+    }
+    const rollbackError = new Error("ROLLBACK exploded — broken pipe");
+    const poolProxy = new Proxy(harness.pool, {
+      get(target, prop, receiver) {
+        if (prop === "connect") {
+          return async () => {
+            const c = await target.connect();
+            const cOrig = c.query.bind(c);
+            (c as any).query = async (text: unknown, params?: unknown) => {
+              if (typeof text === "string" && /^\s*ROLLBACK/i.test(text)) {
+                throw rollbackError;
+              }
+              return (cOrig as any)(text, params);
+            };
+            return c;
+          };
+        }
+        return Reflect.get(target, prop, receiver);
+      },
+    });
+    const wrapped = withTenantContext(SCHEMA, poolProxy as Pool, async () => {
+      throw new HandlerSentinelError();
+    });
+    // The error that propagates MUST be the handler's sentinel, NOT the
+    // ROLLBACK error.
+    await expect(wrapped(fakeJob({ tenant_id: TENANT_A }))).rejects.toBeInstanceOf(
+      HandlerSentinelError,
+    );
+    await expect(wrapped(fakeJob({ tenant_id: TENANT_A }))).rejects.not.toBe(rollbackError);
+  });
+
   it("releases the pg client on both success and failure paths", async () => {
     if (!harness) throw new Error("harness");
     let releaseCount = 0;

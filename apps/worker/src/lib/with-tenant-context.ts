@@ -147,7 +147,17 @@ export function withTenantContext<S extends TenantJobSchema>(
             await handler(data, client);
             await client.query("COMMIT");
           } catch (handlerErr) {
-            await client.query("ROLLBACK");
+            // Phase 66 / CR-04 — wrap ROLLBACK in its own try/catch. A
+            // throwing ROLLBACK (transient pg failure, client mid-
+            // disconnect, broken pipe) must NEVER replace `handlerErr`
+            // — that would have BullMQ retry/log the wrong cause and
+            // make the real failure invisible. The ROLLBACK error is
+            // logged for operator visibility; `handlerErr` always wins.
+            try {
+              await client.query("ROLLBACK");
+            } catch (rbErr) {
+              childLog.error({ err: rbErr }, "ROLLBACK failed after handler error");
+            }
             throw handlerErr;
           }
         } finally {
