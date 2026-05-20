@@ -632,9 +632,17 @@ describe.skipIf(SKIP)("runIngestOnce — worker:CR-01 recoverable-skip watermark
       metadata: { openwhispr_request_id: "ow-b-notenant" },
       startTime: new Date(base.getTime() + 2_000),
     });
+    // The bad-duration row needs a *valid* user/tenant so it reaches the
+    // duration-validation branch (a missing tenant would short-circuit first).
+    const baddurUserId = "00000000-0000-0000-0000-0000000000b9";
+    await appPool.query(`INSERT INTO users (id, tenant_id, email) VALUES ($1, $2, $3)`, [
+      baddurUserId,
+      tenantId,
+      "b9@example.com",
+    ]);
     await seedSpendRow({
       request_id: "cr01-b-baddur",
-      end_user: "00000000-0000-0000-0000-0000000000b2",
+      end_user: baddurUserId,
       model: "whisper-large-v3",
       total_tokens: 0,
       metadata: { openwhispr_request_id: "ow-b-baddur", duration: "not-a-number" },
