@@ -94,6 +94,9 @@ Branch: `main` @ 6e43588.
   validated `authUrl`; consume it: `baseURL: validateAuthBoot().authUrl`. The
   test-mode branch in `config/auth.ts:65-70` keeps the harness working without
   the literal `localhost:3000` leaking into production code.
+- **Status:** CLOSED (already-resolved) — Phase 57 Track E replaced the literal
+  with `validateIngressBoot().ingressBaseUrl` (`auth.ts:430`); confirmed Phase 62
+  (`verify-first.log`). No production change needed.
 
 ---
 
@@ -118,6 +121,10 @@ Branch: `main` @ 6e43588.
 - Fix recommendation: Refuse to register the debug route when
   `NODE_ENV === "production"`. Better: gate registration on a build-time symbol
   so the code is tree-shaken out of the dist bundle entirely.
+- **Status:** CLOSED 2026-05-20 — Phase 62, commit `ca5132a9`. Both gate sites
+  (`index.ts` registration + `routes/__test/fetch.ts` plugin self-gate) gained
+  the `NODE_ENV !== "production"` veto; RED test asserts a 404 under
+  `NODE_ENV=production` + `OPENWHISPR_TEST_ROUTES=true`.
 
 ---
 
@@ -159,6 +166,14 @@ Branch: `main` @ 6e43588.
   default literal everywhere except `ValidationError` where caller context is
   intentional. Audit every `throw new ServiceUnavailable(...)` / `throw new
   RateLimitError(...)` site in routes for incidental upstream-message leakage.
+- **Status:** CLOSED 2026-05-20 — Phase 62, commit `128626ee`. error-handler
+  now emits the class-default literal for ZodError / fastify-validation /
+  RateLimitError / ServiceUnavailable (+ the `fv.statusCode===429/503` shims) —
+  no `err.message` / `issues[0].message` echo. All 9 `new ServiceUnavailable(...)`
+  route throw sites (transcribe / reason / diarization / web-search / assemblyai
+  / deepgram / openai-realtime) converted to code+literal pairs; upstream detail
+  logged server-side via `req.log.warn`. `ValidationError` keeps its intentional
+  caller text. Coordinates with LOCKER-05 (strengthening — no allowlist change).
 
 ---
 
@@ -194,6 +209,12 @@ Branch: `main` @ 6e43588.
   matches the issuer's origin (or an explicit allowlist of issuer-affiliated
   origins). Add a short positive TTL (e.g. 60 min) so a rotated/refreshed IdP
   recovers without a pod roll.
+- **Status:** CLOSED 2026-05-20 — Phase 62, commit `dfec2c59`. The discovery
+  doc is zod-validated (`token_endpoint`/`userinfo_endpoint` required, `.url()`)
+  before caching; both endpoints must be `https://` and issuer-origin-affiliated
+  (cross-origin needs `OIDC_DISCOVERY_ALLOWED_ORIGINS`, default-deny). The bare
+  `Map` is replaced with a 16-entry, 60-min-TTL cache (expired entries re-fetch,
+  oldest evicted on overflow). The OIDC token response is zod-validated too.
 
 ---
 
@@ -220,6 +241,14 @@ Branch: `main` @ 6e43588.
 - Fix recommendation: Wrap the email SELECT in
   `withTenant(db, first.tenant_id, async (tx) => …)` so RLS pins it, or add
   `AND tenant_id = ${first.tenant_id}::uuid` to the SELECT WHERE clause.
+- **Status:** CLOSED 2026-05-20 — Phase 62, commit `aa28c391`. Fixed via
+  Option B (`AND tenant_id = ${first.tenant_id}::uuid` predicate) — chosen over
+  Option A (`withTenant()` wrap) because Option A requires widening the `db`
+  param type, rippling to 5 minimal-shape unit-test fakes. Option B is the clean
+  api-core-side fix: no migration, no caller ripple. NOT a HALT. (The separate
+  `data:CR-04` AUTH-04-overlap wiring residual — `tryPreviousToken` on the
+  RLS-subject app pool — remains tracked in `deferred-items.md`; HI-05's
+  follow-up-SELECT scoping is independent and now closed.)
 
 ---
 
