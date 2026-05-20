@@ -72,6 +72,8 @@ This converts a transient bearer leak into a permanent account takeover. Same fi
 
 Route config is `{ auth: false }` only. Every other public route in scope declares a `rateLimit` budget; this one falls to the global default. The handler does a UUID lookup + CAS UPDATE per request; an attacker can brute oauth_state IDs (vanishingly small landing probability, but the cost of trying is sub-millisecond) or simply DoS the endpoint. Each successful CAS BURNS the legitimate state row → exploitable race for an attacker who knows a victim is mid-flight. Add `rateLimit: { max: 60, timeWindow: '1 minute' }`.
 
+**Status:** CLOSED 2026-05-20 — Phase 63, commit `83a6bc63`. Added `config.rateLimit: { max: 60, timeWindow: "1 minute" }` to the route; LOCKER-04 satisfied with a real budget.
+
 #### HR-02 — `/api/desktop-signin/:provider` has no rate-limit and writes to DB on every call
 
 `apps/api/src/routes/desktop-signin.ts:97`
@@ -82,6 +84,8 @@ Route config is `{ auth: false }` only. Each request INSERTs an `oauth_state` ro
 - Send unsolicited 302s to crafted IdP URLs to weaponise the server as a redirect-launcher (the IdP URL itself is operator-configured, but the user-visible redirect is to the IdP, which then bounces to whatever scheme the desktop encoded — the scheme allowlist DOES protect, but only after the DB write completes).
 
 Add a rate-limit budget.
+
+**Status:** CLOSED 2026-05-20 — Phase 63, commit `d9e454fb`. Added `config.rateLimit: { max: 60, timeWindow: "1 minute" }`; the over-budget request is rejected before the `oauth_state` INSERT (regression test asserts INSERT count ≤ 60). LOCKER-04 satisfied.
 
 #### HR-03 — `verification-status` rate-limit drifted from documented contract
 
@@ -94,6 +98,8 @@ rateLimit: { max: 30, timeWindow: "1 minute" }
 ```
 
 No `keyGenerator`. Falls back to the default IP bucket. Multiple desktops onboarding behind one corporate NAT (the exact deployment the docstring calls out) collide on the same bucket and DoS each other. Either implement the `keyGenerator` per the doc, or correct the doc.
+
+**Status:** CLOSED 2026-05-20 — Phase 63, commit `c903c62f` — `(ip,email)` keyGenerator implemented per D-RL2; doc-downgrade rejected. Key shape `${req.ip}:${sha256(lower(trim(email))).slice(0,16)}`; absent `?email=` degrades to an ip-only key (`${req.ip}:_`). The email is normalized + SHA-256-hashed before entering the key (no plaintext PII in Valkey key dumps) and the keyGenerator does no DB access (not an enumeration oracle). The docstring now matches the implemented key.
 
 ---
 
