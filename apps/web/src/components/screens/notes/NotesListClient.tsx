@@ -118,7 +118,11 @@ export function NotesListClient(): React.JSX.Element {
   });
 
   const list = useQuery({
-    queryKey: [...queryKeys.notes.list(cursor), { folder: folderFilter }],
+    // HI-03 — the key must equal the RSC dehydrated key produced in
+    // `notes/page.tsx` so the SSR prefetch is consumed on first paint.
+    // `folderFilter` does NOT change the fetched payload — it is a pure
+    // client-side `.filter()` below — so it has no place in the cache key.
+    queryKey: queryKeys.notes.list(cursor),
     queryFn: () => clientFetch<NotesListResponse>(`/api/notes/list?limit=${cursor.limit}`),
   });
 
