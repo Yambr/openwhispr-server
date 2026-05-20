@@ -60,7 +60,12 @@ const MESSAGE_METADATA_MAX_BYTES = 4096;
 // source file directly.
 const MESSAGE_CONTENT_MAX_BYTES = 256 * 1024;
 
-const MessageRoleSchema = z.enum(["user", "assistant", "system", "tool"]);
+// H-2 (Phase 64) — role enum aligned DOWN to the canonical
+// `ConversationRoleSchema` from `@openwhispr/wire-schemas`. The server
+// previously accepted `"tool"`, a unilateral widening the OUTPUT
+// contract (`CloudMessageSchema`) and the upstream client persistence
+// interface (`ConversationsService.ts`) both reject.
+const MessageRoleSchema = z.enum(["user", "assistant", "system"]);
 
 const MessageInputSchema = z
   .object({

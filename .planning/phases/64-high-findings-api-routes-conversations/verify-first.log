@@ -33,9 +33,37 @@ Evidence:
   - `packages/wire-schemas/src/conversations.ts:19` — `export const ConversationRoleSchema = z.enum(["user", "assistant", "system"]);` (no `"tool"`)
   - Handler stores `role: body.role` verbatim; no server-side `"tool"` handling.
 
-### H-2 advisor decision
+### H-2 advisor decision — DECIDED: option-a
 
-(recorded after the Task 2 advisor checkpoint — see below)
+Advisor investigation (gsd-advisor-researcher scope, executed against the
+read-only client repo + spec docs):
+
+- Upstream client persistence/sync interface
+  `/Users/dev/openwhispr/src/services/ConversationsService.ts` declares
+  `role: "user" | "assistant" | "system"` at ALL FOUR sites (lines 9, 28,
+  74, 80). NO `"tool"` on the cloud-persisted conversation-messages
+  contract.
+- The `"tool"` literal DOES appear elsewhere in the client tree
+  (`src/components/chat/ChatMessages.tsx`, `src/services/ReasoningService.ts`)
+  — but those are the in-memory chat / reasoning UI layer, a separate
+  concern from the cloud-synced conversation messages. They never round
+  through `ConversationsService` / `CloudMessageSchema`.
+- The canonical `ConversationRoleSchema` (`packages/wire-schemas`) and the
+  client's persistence interface AGREE exactly on `{user,assistant,system}`.
+- The server's `MessageRoleSchema` `"tool"` value has NO consumer on the
+  persistence path; the handler stores `role` verbatim with no `"tool"`
+  branch.
+
+**Advisor RECOMMENDATION: option-a** — drop `"tool"` from the server's
+`MessageRoleSchema`. The server's enum widening is a genuine unilateral
+drift; the canonical wire-schema + the client persistence interface are
+the authoritative contract (CLAUDE.md: "every endpoint matches
+BACKEND_SPEC byte-for-byte"). Single server-only edit, no upstream
+coordination needed.
+
+**CHOSEN: option-a** (taking the advisor's first/recommended option per
+the autonomous checkpoint protocol). No upstream client change required;
+`/Users/dev/openwhispr` untouched.
 
 ## H-3 — wire-schema drift: server `metadata` is `z.record(z.string(), z.unknown())`
 
