@@ -48,6 +48,9 @@ export const buildFoldersUpdateRoutes = (deps: FoldersUpdateDeps) =>
     app.route({
       method: "PATCH",
       url: "/api/folders/update",
+      // LOCKER-04 inv-14 — declarative schema wires the SAME Zod schema
+      // the handler .parse()s inline (stock ZodCompiler not attached).
+      schema: { body: UpdateBodySchema },
       config: { rateLimit: { max: 120, timeWindow: "1 minute" } },
       handler: async (req, reply) => {
         if (!req.user || !req.tenant) {
