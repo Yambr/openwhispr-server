@@ -11,6 +11,36 @@ record. Keep this file under ~200 lines.
 
 ---
 
+## Phase 57 — data:CR-02 — fail-OPEN RLS posture re-installed by migration 0024 (Track B HALT)
+
+**Status:** HALT during Phase 57 Track B execution. No migration 0027 landed. No RED test committed (the RED test would be trivially writable, but the GREEN fix has no non-workaround form — see below — so committing a RED test with no viable GREEN would leave a permanently-red suite, violating "no skipped tests").
+
+**WHY — pure option-A breaks Better Auth sign-up, and option-B has no form that does not bake a single-tenant assumption into the wrong layer:**
+
+The plan offered option-A (drop the 0024 rolconfig + 4 column DEFAULTs in a forward migration 0027) and option-B (supply tenant context via `withTenant()` at the request boundary). Investigation proves **neither is viable as a clean fix in v1**:
+
+1. **Better Auth's `drizzleAdapter` is bound to a single `db` at `buildAuth()` time** (`apps/api/src/auth.ts:405-415`). It issues bare `INSERT INTO {users,sessions,account,verification} (tenant_id, ...) VALUES (default, ...)` — no explicit `tenant_id`. The value is resolved 100% by the column DEFAULT `current_setting('app.tenant_id', true)::uuid`, which in turn is only non-empty because migration 0024 re-installed `ALTER ROLE openwhispr_app SET app.tenant_id TO '<DEFAULT_TENANT_ID>'` (rolconfig, applied at backend-connect).
+
+2. **Pure option-A (drop rolconfig + DEFAULTs) breaks sign-up.** With both gone, Better Auth's bare INSERT lands `tenant_id = NULL` → `23502` NOT NULL violation, and the fail-closed RLS `WITH CHECK` (migration 0018) additionally raises `42501`. Confirmed by the standing comment in `apps/api/tests/integration/better-auth-envelope-at-rest.test.ts:93-99` ("Better Auth wiring runs as `openwhispr_app` so the rolconfig-bound `app.tenant_id` GUC supplies the default tenant_id for the four Better-Auth-owned INSERTs").
+
+3. **Option-B cannot use `withTenant()` at the request boundary.** `withTenant()` (`packages/data/src/tenant-context.ts:90`) sets the GUC inside ONE Drizzle transaction *it opens itself* and runs `fn(tx)`. Better Auth's universal `handler()` (`apps/api/src/routes/better-auth-handler.ts:241-291`) runs its own multi-statement flow; sign-up wraps everything in `runWithTransaction(ctx.context.adapter, ...)` → `adapter.transaction(cb)` (documented in deferred-item #14 above, lines 20-22). The Better Auth handler does not accept an injected `tx`, so `withTenant()` cannot envelope it. `better-auth-handler.ts` only uses `withTenant()` for the optional email-enumeration probe — never for the sign-up INSERT path.
+
+4. **The one chokepoint that DOES exist is the wrong layer.** Track A.1 (commit `8377735`, `packages/data/src/encryption/lens.ts:443`) already re-wraps the trx adapter Better Auth binds into AsyncLocalStorage. Issuing `SELECT set_config('app.tenant_id', '<DEFAULT_TENANT_ID>', true)` as the first statement of that wrapped transaction would let migration 0027 drop the rolconfig + DEFAULTs while keeping sign-up green and the GUC transaction-scoped (fail-closed-compatible). BUT: (a) it bakes `DEFAULT_TENANT_ID` — a tenancy concept — into the envelope-**encryption** package, coupling two unrelated subsystems; (b) it does not cover Better Auth DB ops *outside* a transaction (`getSession`, sign-in `findOne`), which still need the GUC; (c) it is exactly the "rewrite Better Auth wiring in a way that smells like a workaround" the Track B brief said to HALT on.
+
+**Diagnostic chain:** `auth.ts:405-415` (bare adapter, no tenant) → `0024_*.sql:40-59` (rolconfig + 4 DEFAULTs supply tenant_id implicitly) → `0018_rls_fail_closed.sql:27-41` (Phase 32 had RESET exactly these) → `better-auth-handler.ts:241` (handler not wrapped) → `tenant-context.ts:90` (`withTenant` cannot envelope a foreign transaction) → deferred-item #14 lines 20-22 (BA sign-up = one BA-owned transaction).
+
+**Unblock proposal — needs a user/architecture decision (one of):**
+
+- **(D1) Per-connection GUC hook on the Better-Auth app pool.** Add a `pool.on('connect', c => c.query("SET app.tenant_id = '<DEFAULT_TENANT_ID>'"))` hook to the *specific* pool Better Auth uses. Functionally identical to the rolconfig but lives in code, is greppable, and is removable in one place when v2 multi-tenancy ships. Still fail-OPEN to the default tenant for the Better Auth surface — but that surface is genuinely single-tenant in v1 (sign-up creates the *first* user; there is no prior tenant context to honor). Migration 0027 then drops the rolconfig + DEFAULTs so *non-Better-Auth* app code stays fail-closed. This is the smallest honest fix: it scopes the fail-open to the four BA tables only, documented, instead of role-wide.
+
+- **(D2) Accept-and-document.** Keep 0024 as-is; amend `CLAUDE.md` + `docs/security.md` §12 to state explicitly that v1 is single-tenant and the four Better-Auth tables have a rolconfig-bound `app.tenant_id` that fails OPEN to `DEFAULT_TENANT_ID` by design. CR-02 then becomes a documentation fix, not a code fix. The property-test still gets added but asserts the *documented* posture (BA tables → default-tenant rows; the other 12 tables → fail-closed).
+
+- **(D3) Full request-scoped tenant for Better Auth (v2-shaped).** Replace the `betterAuth({...})` adapter binding with a per-request adapter constructed inside the `/api/auth/*` handler, each bound to a connection that has `set_config('app.tenant_id', <resolved-tenant>, true)` already applied. This is a real Better Auth integration rewrite (the adapter is currently module-singleton) and is the only option that makes the BA surface genuinely fail-closed + multi-tenant-ready. Out of scope for a pre-publication CRITICAL-fix phase.
+
+**Recommendation:** D1. It is non-invasive, removes the role-wide rolconfig (the actual review complaint — "every backend connection from the app role"), scopes the remaining fail-open to exactly the four single-tenant Better-Auth tables, and is greppable/removable. D2 is acceptable if the team prefers zero code change. D3 is correct long-term but is a phase of its own.
+
+**No production code, schema, or migration was changed by Track B.** Working tree at `6133c2b` (Track A HEAD) plus this deferred-items entry only.
+
 ## Phase 57 — data:CR-01 + data:CR-03 — Better Auth credentials remain at rest as plaintext
 
 **Discovered:** Phase 57 Track A execution attempt, 2026-05-20. **Status:** HALT pending architectural decision.
