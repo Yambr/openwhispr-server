@@ -111,6 +111,3 @@ packages/data/src/seed/conformance.ts:123  # canonical-fixture-api-localhost
 # MIGRATION-DEBT, which was a mis-classification — these are intentional
 # defaults, not migration debt). See 31-08-DECISIONS.md §D-2.
 packages/litellm-client/src/config.ts:29  # permanent-docker-compose-internal-url
-apps/web/src/lib/internal-api.ts:11  # issue-51-11b-internal-api-doc — :3000 in module docstring (centralised from 7 duplicates)
-apps/web/src/lib/internal-api.ts:13  # issue-51-11b-internal-api-doc — :3000 in module docstring (centralised from 7 duplicates)
-apps/web/src/lib/internal-api.ts:22  # issue-51-11b-internal-api-default — :3000 docker-compose internal-network fallback (centralised from 7 duplicates)
