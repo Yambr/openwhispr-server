@@ -13,6 +13,19 @@ record. Keep this file under ~200 lines.
 
 ## Phase 59 — pre-existing api-suite failures (out of Phase 59 scope)
 
+**Status:** RESOLVED 2026-05-20 (Phase 60 Track B, commit `c3ec3be0`) —
+confirmed root cause: **test-fixture drift** (NOT a route bug). Phase 33
+migration 0020 dropped the plaintext `oauth_state.code_verifier` column;
+the desktop-callback route reads 6 encrypted `code_verifier_*` bytea
+sidecars via `decryptCodeVerifierFromRow`, which throws
+`oauth_state row missing bytea sidecars for code_verifier` when the fake
+row carries only a plaintext `code_verifier` → 500 instead of 302. The
+production route + codec are correct; the three test files' fake
+`oauth_state` rows were updated to emit the real encrypted sidecars via
+`encryptCodeVerifier` (CLAUDE.md hard rule 1). All 6 tests now green;
+full api suite 1415 passing, 0 failing. Entry retained for the
+historical record.
+
 **Discovered:** Phase 59 execution, full `pnpm --filter @openwhispr/api test`.
 
 Six api-project tests fail; all PRE-DATE Phase 59 — verified by reverting
