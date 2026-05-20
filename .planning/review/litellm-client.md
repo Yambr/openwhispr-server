@@ -1,272 +1,208 @@
-# Review: litellm-client
-Branch: main @ 13f0864
-Files reviewed: 5
+# Adversarial Code Review — packages/litellm-client/src/**
 
-- `packages/litellm-client/src/index.ts` (453 LOC)
-- `packages/litellm-client/src/config.ts` (57 LOC)
-- `packages/litellm-client/src/errors.ts` (92 LOC)
-- `packages/litellm-client/src/model-aliases.ts` (73 LOC)
-- `packages/litellm-client/src/model-aliases-yaml-test-seam.ts` (79 LOC)
+**Branch:** `main` (HEAD 6e43588)
+**Scope:** `config.ts`, `errors.ts`, `index.ts` (~625 LoC in-scope).
+**Out of scope:** tests, `.planning/`, `docs/`, generated `litellm-aliases.generated.json`, `model-aliases*.ts` (not in the user-supplied scope paths).
+**Stance:** FORCE — bugs assumed present until disproved.
 
-Plus inspection of `litellm-aliases.generated.json` and cross-codebase consumers in `apps/api/src/routes/{transcribe,reason,realtime,agent/stream}.ts`, `apps/api/src/lib/ssrf-dispatcher.ts`, `apps/api/src/index.ts`.
+---
 
 ## Summary
-- CRITICAL: 1 / HIGH: 3 / MEDIUM: 4 / LOW: 3
-- Top 3 production risks:
-  1. **Streaming non-2xx error path can stall the event loop indefinitely** — `chatCompletionsStream` sets `bodyTimeout: 0` and on a 4xx/5xx response calls `await res.body.text()` with no timeout. A slow-rolled or never-completed error body from a hung upstream blocks the route handler forever. Under 1000 concurrent users this is a fast path to event-loop starvation.
-  2. **`audioTranscriptions` multipart prefix-injection leaks the caller's `Readable` on the error path** — `through.destroy(err)` is wired for source-error but the destination (PassThrough → undici) failing does not destroy `args.body`. Half-streamed audio uploads from disconnected clients accumulate file descriptors / memory until GC.
-  3. **`isOverride` is computed once from `process.env.LITELLM_BASE_URL`** while the actual `baseUrl` comes from `config.baseUrl`. The two sources can disagree (dotenv load order, test injection, future worker/CLI consumers) — producing spurious `MissingProviderKeyError` 503s in corporate deployments.
+
+The package is in **substantively good shape** for a pre-publication audit. The dominant secret-leak surface (`LitellmUpstreamError.bodyText`) is correctly truncated at construction, held as a non-enumerable own property, AND overridden via `toJSON()` — three independent layers all firing in the right direction. Multipart pass-through preserves the streaming invariant (no rebuffer of the audio payload). SSRF gate is enforced lazily per-call.
+
+What I did **not** find: the multipart re-buffering bug, an untruncated upstream body in any error class, a master-key leaking through stringification of any in-package construct, an unsafe `eval` / shell, or any active TODO/FIXME/HACK in scope.
+
+What I **did** find:
+1. One **HIGH** path where `LitellmUpstreamError` truncation can be bypassed via the optional `message` constructor parameter — defence-in-depth gap, currently not triggered by in-package callers but exported as a public class.
+2. One **HIGH** drift between scope expectations and implementation: `LITELLM_VIRTUAL_KEY` (corporate-override virtual key) is **never read** by this package. The corp-override env-pivot the spec describes is implemented by the operator setting `LITELLM_MASTER_KEY` to whatever value their internal proxy accepts. If `LITELLM_VIRTUAL_KEY` is meant to be a first-class env binding (per the project `CLAUDE.md` corporate-override narrative), this loader does not honor it.
+3. One **HIGH** plain-HTTP default + no `https://` assertion on operator overrides.
+4. One **MEDIUM** divergence between `chatCompletions`/`audioTranscriptions`/`passthrough` (which drain error bodies via the implicit undici `bodyTimeout`) and `chatCompletionsStream` (which drains via the explicit `drainWithTimeout` helper).
+5. A cluster of `@internal` `export` symbols whose only legitimate consumers are this package's own tests — well-documented but a structural smell.
+
+No CRITICAL findings.
+
+---
 
 ## Findings
 
-### [CRITICAL] `chatCompletionsStream` error-drain has no body timeout — slow-loris stall vector
+### HIGH
 
-`packages/litellm-client/src/index.ts:341-356`
+#### HI-1 — `LitellmUpstreamError` allows untruncated `message` via constructor override
+**File:** `packages/litellm-client/src/errors.ts:68-85`
 
-```ts
-bodyTimeout: req.bodyTimeout ?? 0,   // line 341 — 0 == no timeout
-…
-if (res.statusCode >= 400) {
-  const bodyText = await res.body.text();   // line 354 — unbounded
-  throw new LitellmUpstreamError(res.statusCode, bodyText);
-}
-```
-
-For the 2xx streaming path, `bodyTimeout: 0` is correct (long-lived SSE). But the SAME `bodyTimeout: 0` applies on the non-2xx path immediately below, where we call `body.text()` to populate the error message. Headers arrive, statusCode is 502/504/429, body is slow-rolled or never closes → `await body.text()` never resolves. The fastify request handler hangs, holds an open socket back to the desktop client, holds the dispatcher connection slot, holds the SSRF agent slot. Repeated under load this exhausts undici's connection pool and stalls the fastify event loop.
-
-Fix options:
-- Read the error body with a bounded race: `Promise.race([res.body.text(), setTimeout(5_000).then(() => '<truncated>')])` and `res.body.destroy()` on timeout.
-- Or emit `LitellmUpstreamError(status, "")` without reading the body on streaming failures, accepting loss of diagnostic detail for the safety guarantee.
-
-### [HIGH] `audioTranscriptions` PassThrough wiring leaks source `Readable` on destination errors
-
-`packages/litellm-client/src/index.ts:390-394`
+The constructor signature is `constructor(status: number, bodyText: string, message?: string)`. When `message` is supplied, line 73 uses it verbatim:
 
 ```ts
-const through = new PassThrough();
-through.write(prefix);
-args.body.on("error", (err) => through.destroy(err));
-args.body.pipe(through);
-body = through;
+super(message ?? `LiteLLM upstream returned ${status}: ${truncated}`);
 ```
 
-Two issues:
-1. `args.body.pipe(through)` propagates source → dest, but there is NO reverse wiring. When undici aborts the request mid-upload (client disconnect, timeout, SSRF reject), `through` is destroyed but `args.body` keeps reading from its source until GC. Per-failed-upload fd / memory leak.
-2. `through.write(prefix)` ignores the return value (backpressure). PassThrough absorbs ~200 bytes synchronously so this is fine today, but a defensive write should respect backpressure.
+`bodyText` is still truncated (line 72) and pinned non-enumerable (lines 79-84), so the *property* is safe — but `Error.message` is enumerable and gets serialized by pino's default `err` serializer (the `toJSON()` override only emits `{name, message, status}`, which **includes the raw message**). The class is `export`ed from `index.ts:573-577`, so any future caller in another package can construct `new LitellmUpstreamError(500, rawBody, rawBody)` and exfiltrate the full upstream payload into Loki via `log.error({ err })`.
 
-Fix with `stream/promises.pipeline`:
-```ts
-import { pipeline } from "node:stream/promises";
-const through = new PassThrough();
-through.write(prefix);
-pipeline(args.body, through).catch(() => { /* errors surface via undici */ });
-```
+In-package callers (`ensureOk` line 378, the inline mapping at line 472) currently pass only `(status, bodyText)`, so the bug is **latent, not active**. But the class is part of the public surface and the LOCKER-05 contract is "truncate AT CONSTRUCTION" — the third parameter violates that contract.
 
-### [HIGH] `isOverride` detection drifts from `baseUrl` source-of-truth (false-positive 503s)
+**Severity HIGH** rather than CRITICAL because no in-tree caller triggers it today; flips to CRITICAL the moment any consumer passes a third arg containing upstream text.
 
-`packages/litellm-client/src/index.ts:233`
+#### HI-2 — `LITELLM_VIRTUAL_KEY` env binding is silently absent
+**File:** `packages/litellm-client/src/config.ts:32-57`
 
-```ts
-const isOverride = opts.isOverride ?? Boolean(process.env.LITELLM_BASE_URL);
-```
+The project-level narrative (CLAUDE.md and this review's scope brief) describes the corp-override pivot as: corporate operators override `LITELLM_BASE_URL` / `LITELLM_VIRTUAL_KEY` to point at their existing internal LiteLLM Proxy. This loader honors `LITELLM_BASE_URL` (line 39-42) but never reads `LITELLM_VIRTUAL_KEY`. The auth header is built unconditionally from `config.masterKey` (`index.ts:365`).
 
-`isOverride` encodes "corporate deployment — skip the bundled-default provider-key precheck", but it is computed from `process.env.LITELLM_BASE_URL` while the `baseUrl` the client uses comes from `config.baseUrl` (loaded by `loadLitellmConfigFromEnv`). Drift paths:
+Either:
+(a) the documentation is wrong and corp operators are expected to put their virtual key in `LITELLM_MASTER_KEY` (in which case the variable name is misleading and should be documented), or
+(b) this loader is missing the `LITELLM_VIRTUAL_KEY` precedence rule (it should win over `LITELLM_MASTER_KEY` when the override path is taken).
 
-1. **Test injection mismatch.** A test that constructs `config.baseUrl = "https://corp.example/litellm"` without also setting `process.env.LITELLM_BASE_URL` gets `isOverride = false` and triggers bundled-default provider-key prechecks against a corporate config. `opts.isOverride` is the escape hatch but isn't default.
-2. **dotenv / bootstrap race.** If `buildLitellmClient` is imported before any env-loading step runs, `process.env.LITELLM_BASE_URL` is undefined at first call. Today's apps/api ordering is fine; future workers/CLIs may trip it.
-3. **Logical coupling.** The precheck question is "does my baseUrl point at our bundled defaults?" — answer it from `config`, not env.
+Operationally, today operators **can** make it work by setting `LITELLM_MASTER_KEY=<their-virtual-key>`, but the contract is undocumented and the env name diverges from the spec.
 
-Fix:
-```ts
-const isOverride = opts.isOverride ?? (config.baseUrl !== DEFAULT_LITELLM_BASE_URL);
-```
+**Severity HIGH** because misconfigured corp operators get 401-from-upstream → desktop logout (Pitfall #8 the package is explicitly trying to prevent).
 
-Bonus: this removes the only `process.env` read in the runtime path, cleaning the LOCKER-01 posture.
-
-### [HIGH] Header values forwarded from caller-supplied strings without CR/LF rejection
-
-`packages/litellm-client/src/index.ts:253-260, 402, 416`
+#### HI-3 — Plain HTTP default for `DEFAULT_LITELLM_BASE_URL`; no `https://` assertion on operator overrides
+**File:** `packages/litellm-client/src/config.ts:29, 39-42`
 
 ```ts
-function authHeaders(userId: string, requestId: string): Record<string, string> {
-  return {
-    authorization: `Bearer ${config.masterKey}`,
-    "x-litellm-end-user-id": userId,                    // raw caller value
-    "x-litellm-spend-logs-metadata": JSON.stringify({
-      openwhispr_request_id: requestId,                 // JSON-escaped, safe
-    }),
-  };
-}
-…
-"content-type": args.contentType,                       // raw caller value
+export const DEFAULT_LITELLM_BASE_URL = "http://litellm:4000";
 ```
 
-`userId` and `args.contentType` are forwarded verbatim. Undici DOES reject `\r` / `\n` / `\x00` in header values (throws `INVALID_HEADER_TOKEN`), but that throw is unwrapped here and bubbles as a generic 500 instead of a 400, hiding the root cause. Defense-in-depth:
+The project hard rule is **HTTPS-only on externally reachable ports**. `litellm:4000` is a docker-compose internal service name, NOT externally reachable, so this default is defensible — but there is **no assertion** that operators who override `LITELLM_BASE_URL` use `https://`. A misconfigured corp operator setting `LITELLM_BASE_URL=http://aimodels.inner.example` would send `Authorization: Bearer <master-key>` in plaintext over the internal network with no warning.
 
-- Validate (or strip) CR/LF in `userId` and `args.contentType` at the client boundary; throw a typed `LitellmUpstreamError(400, "invalid header character")` instead of an undici stack.
-- Today `userId = req.user.id` (UUID from Better Auth) so live exploitation is blocked, but this package is being PUBLISHED — a future consumer with looser ID validation would silently lose the gate.
+Add a config-load-time assertion: any override value whose scheme is not `https://` must explicitly opt in via a separate flag (e.g., `LITELLM_ALLOW_PLAINTEXT=1`) or be confined to the docker-compose hostname allowlist.
 
-`requestId` is JSON-stringified inside `x-litellm-spend-logs-metadata`, so injection through that field is blocked by `JSON.stringify`'s escaping.
+**Severity HIGH** for environments where the corporate LiteLLM proxy sits on a routable hop.
 
-### [HIGH] Five exported symbols have zero non-test consumers (debut publish locks in API surface)
+### MEDIUM
 
-`packages/litellm-client/src/index.ts:93-100, 108-109, 177`
+#### ME-1 — Error-drain asymmetry between streaming and non-streaming paths
+**File:** `packages/litellm-client/src/index.ts:373-381` vs `index.ts:460-475`
+
+`ensureOk` (line 377) calls `res.body.text()` directly with no explicit bound — relies on undici's `bodyTimeout: 120_000` (the inherited default) to provide an upper bound on the error-body drain. `chatCompletionsStream` (line 471) routes through `drainWithTimeout(..., ERROR_DRAIN_TIMEOUT_MS=15_000)` because its 2xx path uses `bodyTimeout: 0`. The asymmetry is **correct today** but fragile: anyone who later flips `chatCompletions` to `bodyTimeout: 0` (for long-context streaming additions) silently loses the error-drain bound.
+
+Lift `drainWithTimeout` into `ensureOk` (with `ERROR_DRAIN_TIMEOUT_MS` as the bound) so the contract holds regardless of the per-method timeout configuration. Cheap defence-in-depth.
+
+#### ME-2 — `process.env.LITELLM_BASE_URL` read outside `bootstrap`/`config` modules
+**File:** `packages/litellm-client/src/index.ts:330`
 
 ```ts
-export const BUNDLED_MODEL_PROVIDER = …      // imported only by this package's tests
-export const PROVIDER_ENV_VAR = …            // imported only by this package's tests
-export const DEFAULT_HEADERS_TIMEOUT_MS = …  // no consumers anywhere
-export const DEFAULT_BODY_TIMEOUT_MS = …     // no consumers anywhere
-export const DEFAULT_STT_MODEL = …           // no consumers anywhere
+const isOverride =
+  opts.isOverride ??
+  (config.baseUrl !== DEFAULT_LITELLM_BASE_URL || Boolean(process.env.LITELLM_BASE_URL));
 ```
 
-Confirmed by grep across `apps/**` and `packages/**` excluding `packages/litellm-client/src/` — the first two only appear in this package's own `tests/unit/index.test.ts`, the last three have no importers at all.
+LOCKER-01 covers `NODE_ENV` specifically, so this read is permitted. But the comment immediately above (lines 321-327) argues the whole point of the refactor was to derive `isOverride` from `config.baseUrl` rather than `process.env`, and then the fallback clause re-introduces `process.env`. The env-read clause is logically dead in any well-formed call chain (`loadLitellmConfigFromEnv` already pushes the env into `config.baseUrl`). Either drop the env clause or document why both sources are consulted.
 
-Why HIGH and not MEDIUM: this is the package's debut on a public GitHub remote. Every exported symbol becomes API contract that we either maintain forever or break in a 1.x bump. LOCKER-04 invariant 14 explicitly forbids exported symbols with no non-test importers.
+#### ME-3 — Repeated `as Parameters<typeof doRequest>[1]` casts
+**File:** `packages/litellm-client/src/index.ts:410, 458, 538, 557`
 
-Fix: de-export to internal `const`s, OR add a README documenting these as part of the stable public surface intentionally.
+Four `as`-narrowed casts at the undici call sites because `reqOpts` is typed as `Record<string, unknown>`. LOCKER-02 permits single `as` casts so these are compliant — but the pattern is duplicated four times and reads as a smell. Pull a small typed builder helper out (`function callUndici(url, opts: Dispatcher.RequestOptions)`); the `Record<string, unknown>` middle-step is only needed because of TS struggling with the optional `signal` inclusion.
 
-### [MEDIUM] `audioTranscriptions` injects `model` form field even when caller already supplied one
+#### ME-4 — No defensive scrub on synchronous undici errors
+**File:** `packages/litellm-client/src/index.ts:408-411, 456-459, 538-539, 555-558`
 
-`packages/litellm-client/src/index.ts:381-395`
+If undici fails to make the request (DNS, connection refused, TLS handshake) before any response is returned, the thrown error originates inside undici. Its message conventionally does not include request headers, BUT the request options object might be attached as `.cause` or in a stack frame on some failure modes. The package does no defensive scrubbing of caught network errors before rethrowing.
 
-The client unconditionally prepends a `name="model"` multipart part regardless of whether `args.body` already contains a `model` field. If a future caller (none today) includes their own `model` part, the proxy receives two — LiteLLM's `data.get("model")` returns the first, so the client's injected value wins and the caller's is silently ignored. Tighten the contract:
+In practice this is unlikely to leak (undici errors carry `.code`, `.errno`, sometimes `.address`, not headers), but a defence-in-depth envelope (`try { await doRequest(...) } catch (cause) { throw scrubError(cause) }`) at each call site would close the residual surface — and document the LOCKER-05 spirit at the network-error boundary, not just the upstream-body boundary.
 
-- Either document "the client owns the `model` form field — do not include it in `args.body`",
-- Or detect and reject a duplicate at the client boundary.
+### LOW
 
-### [MEDIUM] Module-load fallback in `deriveBundledModelProviderMap` masks build/codegen failures
+#### LO-1 — `DEFAULT_CHAT_MODEL = "qwen3.6-plus"` hardcoded
+**File:** `packages/litellm-client/src/config.ts:30`
 
-`packages/litellm-client/src/index.ts:78-92`
+Hardcoded model identifier as fallback. Operators with a custom `litellm_config.yaml` whose alias set does not include `qwen3.6-plus` get a 4xx-from-upstream when callers omit `model`. Today this is documented in the comment chain. Consider deriving from `loadBundledModelProviders()` keys so the default automatically tracks the yaml (out-of-scope file but the integration point is in-scope).
 
-```ts
-function deriveBundledModelProviderMap(): Record<string, keyof LitellmProviderKeys> {
-  try {
-    return loadBundledModelProviders() as Record<string, keyof LitellmProviderKeys>;
-  } catch {
-    return {
-      "qwen3.6-plus": "openrouter",
-      "gemini-3-flash": "openrouter",
-      "gpt-4o-mini": "openrouter",
-      "whisper-large-v3": "groq",
-    };
-  }
-}
-```
+#### LO-2 — Static-fallback `BUNDLED_MODEL_PROVIDER` drift risk
+**File:** `packages/litellm-client/src/index.ts:86-100`
 
-The codegen JSON is committed and always present, so this catch is unreachable in production — but if it WERE reached (corrupted dist, mis-bundled output, a future runtime swap to yaml), the static map silently disagrees with the canonical yaml. The contract advertises "any model added to the yaml is automatically picked up" — the fallback breaks that contract silently.
+The catch-branch fallback map (4 hard-coded entries: `qwen3.6-plus`, `gemini-3-flash`, `gpt-4o-mini`, `whisper-large-v3`) can drift from the yaml if `loadBundledModelProviders()` ever fails silently. The comment acknowledges this is intentional. Add an assertion in CI that the static fallback is a subset of the yaml-derived set.
 
-The comment at line 76 argues a 503 from a wrong-provider precheck is preferable to a boot crash. Disagree: a boot crash with a stack pointing at the missing JSON is operator-actionable; a spurious 503 at request time looks like an upstream provider problem and routes ops in the wrong direction. Drop the try/catch; let import fail loudly.
+#### LO-3 — `@internal` exports as public surface
+**File:** `packages/litellm-client/src/index.ts:107, 113, 131, 133, 144, 217`
 
-### [MEDIUM] `LITELLM_BASE_URL` accepted from env with zero validation
+Six `export const` declarations all tagged `@internal — Plan 51-15b ... NOT a stable public API surface`. The comment is the right answer but the `export` keyword is still in the package's public d.ts. A truly internal symbol belongs in a separate file imported via a package-private export, or behind a `/** @internal */` JSDoc paired with `stripInternal` in tsconfig. Cosmetic at this stage.
 
-`packages/litellm-client/src/config.ts:39-42`
+#### LO-4 — Retry / backoff: not implemented (intentional?)
+**File:** `packages/litellm-client/src/index.ts:386-560`
 
-```ts
-const baseUrl =
-  env.LITELLM_BASE_URL && env.LITELLM_BASE_URL.length > 0
-    ? env.LITELLM_BASE_URL
-    : DEFAULT_LITELLM_BASE_URL;
-```
+The review checklist asks for "exp backoff + jitter required". The package has **no retry loop** — every method fires undici once and surfaces the response/error. This is correct for chat-completions (non-idempotent — retrying a duplicated `user` attribution would double-bill) and arguably correct for transcribe (the audio body is a single-shot Readable that cannot be replayed without rebuffering, which would re-introduce the CRITICAL-FIX-09 bug).
 
-No URL parse, no scheme restriction, no userinfo check. A misconfigured operator could set `LITELLM_BASE_URL=file:///etc/passwd`, `LITELLM_BASE_URL=javascript:alert(1)`, or `LITELLM_BASE_URL=https://attacker.example@litellm:4000` (userinfo smuggling). The SSRF dispatcher would presumably reject `file://` at wire time, but the client emits no error at config load — the failure surfaces as an opaque undici parse error at the first request.
+Flagged LOW only to surface that this is by design; verify upstream LiteLLM proxy is configured to do its own provider-side retries, or document the absence here.
 
-The `realtime` route also derives `ws://` from `baseUrl` via a regex scheme swap (`apps/api/src/routes/realtime.ts:75`). If baseUrl carries a path, userinfo, or an unexpected scheme, the swap silently misbehaves.
-
-Fix at config load:
-```ts
-const parsed = new URL(baseUrl);            // throws on invalid
-if (!["http:", "https:"].includes(parsed.protocol)) throw new Error("LITELLM_BASE_URL scheme must be http or https");
-if (parsed.username || parsed.password) throw new Error("LITELLM_BASE_URL must not contain userinfo");
-```
-
-### [MEDIUM] `MissingProviderKeyError` message embeds caller-supplied `model` without truncation/escaping
-
-`packages/litellm-client/src/errors.ts:49`
-
-```ts
-super(`${envVar} is not configured. Set it in .env to enable model "${model}" via LiteLLM.`);
-```
-
-`model` is caller-supplied (a `req.model` field from a route request body). Two concerns:
-
-1. **No length cap.** A caller could send a multi-MB `model` value and the entire string would land in pino logs. Apply the same 200-char cap that `LitellmUpstreamError` uses.
-2. **No structural escape.** Low-likelihood downstream rendering surfaces (Grafana log panel rendered as markdown, a future ops UI) could be misled by control chars. Today Grafana renders as text — currently safe.
-
-### [LOW] `parseMultipartBoundary` regex is RFC-loose
-
-`packages/litellm-client/src/index.ts:225`
-
-```ts
-const match = contentType.match(/boundary=("?)([^";]+)\1/i);
-```
-
-RFC 2046 §5.1.1 boundary chars are `0-9 A-Z a-z '()+_,-./:=?` + space. The regex accepts any char except `"` and `;` — broader than the RFC. Incoming headers come from undici (which validates) so this is fine in practice, noting only.
-
-### [LOW] `extras` spread before structured fields is fragile contract
-
-`packages/litellm-client/src/index.ts:278-283, 323-330`
-
-```ts
-const body = JSON.stringify({
-  ...req.extras,
-  model,
-  messages: req.messages,
-  user: req.userId,
-});
-```
-
-`model`, `messages`, `user` are placed AFTER `...req.extras`, so they override any same-keyed extras values. Today this is the intent ("structured fields win"). But the contract is implicit and reorder-fragile. A future caller passing `user: "other-tenant"` in `extras` would have it silently overridden — fine — but if someone reorders the spread the cross-tenant attribution leak appears. Strip the known keys from extras explicitly:
-```ts
-const { model: _m, messages: _ms, user: _u, stream: _s, stream_options: _so, ...restExtras } = req.extras ?? {};
-```
-
-Same in `chatCompletionsStream`. Today the merge happens to work because `stream_options: mergedStreamOptions` comes after `...req.extras`, but explicit destructuring documents the precedence at the point of use.
-
-### [LOW] Comment fallback list in `deriveBundledModelProviderMap` is hand-maintained
-
-`packages/litellm-client/src/index.ts:86-90`
-
-The 4-entry static fallback is hand-maintained against the yaml. If kept (see MEDIUM finding above), it should be auto-generated alongside the JSON, otherwise it drifts.
+---
 
 ## Dead code
 
-- `BUNDLED_MODEL_PROVIDER` export — referenced only in this package's own tests. Internal `const` suffices.
-- `PROVIDER_ENV_VAR` export — same.
-- `DEFAULT_HEADERS_TIMEOUT_MS`, `DEFAULT_BODY_TIMEOUT_MS` exports — no consumers anywhere.
-- `DEFAULT_STT_MODEL` export — no consumers anywhere.
-- `deriveBundledModelProviderMap`'s catch-fallback static map — unreachable at runtime because the codegen JSON is committed and bundled.
+None detected in the in-scope files. Every exported symbol is either:
+- Consumed by sibling routes in `apps/api` (`buildLitellmClient`, `loadLitellmConfigFromEnv`, `LitellmUpstreamError`, `MissingProviderKeyError`, `SsrfDispatcherNotInstalledError`, the three `DEFAULT_*` constants).
+- Explicitly marked `@internal` for in-package test consumption (LO-3).
 
-## Suppressed warnings
+The re-exports from `model-aliases.js` at `index.ts:578-582` should be verified at a higher level (the file is out of this review's scope).
 
-None. No `@ts-ignore`, `@ts-expect-error`, `@ts-nocheck`, `as any`, or `as unknown as` in any reviewed file. Good.
+---
 
-(`reqOpts as Parameters<typeof doRequest>[1]` casts appear 4× in index.ts. These are structural casts of `Record<string, unknown>` → undici's options type, not type suppressions.)
+## Suppressed warnings / lint bypasses
 
-## Notes
+None.
 
-**Cross-cutting concerns flagged for follow-up, NOT in this package's scope:**
+- Zero `@ts-ignore`, `@ts-nocheck`, `@ts-expect-error`, `as any`, `as unknown as` in scope.
+- Three classes of single-step `as` narrowings (`index.ts:64, 410/458/538/557, 548`) — all LOCKER-02 compliant; the symbol-indexer cast at line 64 carries a Plan 52-01 justification comment, line 548 narrows `string → Dispatcher.HttpMethod`, lines 410/458/538/557 are the ME-3 cluster.
+- No `eslint-disable`, no biome-disable, no `// @ts-*` directives.
 
-1. **`apps/api/src/lib/dep-check.ts:83`** issues an ad-hoc `request(\`${deps.litellmUrl}/health\`, ...)` directly rather than going through `buildLitellmClient`. SSRF dispatcher is still installed globally so wire-level SSRF is enforced, but the client's `assertSsrfInstalled` defense-in-depth check is skipped. Health-check endpoint, not on the hot path; minor.
+---
 
-2. **Realtime WSS path** (`apps/api/src/routes/realtime.ts:75-127`) derives `ws://` from `client.baseUrl` via a regex scheme swap. The litellm-client itself doesn't expose a `wsUpstream` helper — every WSS consumer must re-derive. Consider exposing `derivewsUrl(baseUrl: string): string` as part of the package's public surface so each consumer doesn't reinvent the regex (especially relevant once baseUrl validation lands — see MEDIUM finding above).
+## TODO / FIXME / HACK
 
-3. **No retry / backoff anywhere in the client.** Every method is single-shot — 429s and transient 5xxs bubble straight up as `LitellmUpstreamError(502)`. The review checklist explicitly mentions "exponential backoff with jitter on 429/5xx"; there is no implementation. This may be intentional (let route handlers decide) but is undocumented. ARCHITECTURAL: decide whether retry belongs HERE, in the calling routes, or not at all, and write the decision into the package README before publish.
+None in scope. (Plan/Phase tag comments like `Phase 41.f / HI-2` are forward-historical markers, not unfinished work.)
 
-4. **AbortController support exists** via `signal?: AbortSignal` forwarded to undici per call. There is no helper for "abort all in-flight requests on shutdown" — for graceful drain during a deployment this would matter. Add to package readme as a known limitation.
+---
 
-5. **`audioTranscriptions` model field ownership**: today the client owns `model` via `?model=` query + injected multipart part. Document this PROMINENTLY for OSS consumers — calling code must NOT add their own `model` field to the multipart body, or it will be silently ignored.
+## CLAUDE.md Hard-Rule-1 compliance ("never edit prod to make tests pass")
 
-6. **License header**: every reviewed file carries `// SPDX-License-Identifier: FSL-1.1-ALv2`. Good for OSS publish.
+No evidence of test-driven prod edits. Two specific patterns inspected:
 
-7. **`opts.request` test seam**: documented and gated behind a clear "tests inject this" comment. Acceptable design for a thin abstraction; preferable to vi.mock-style module replacement.
+- The `BUNDLED_MODEL_PROVIDER` static fallback (`index.ts:90-99`) preserves "the pre-41.f surface" — the comment is forward-architectural, not a test-fix justification.
+- `assertSsrfInstalled` is bypassed when `opts.request` is injected (`index.ts:334-338`). The bypass is documented as a test seam but is **also** a legitimate production seam (worker / CLI consumer). Acceptable.
 
-8. **`process.env` reads**: one in `config.ts:33` (correct — config layer per LOCKER-01) and one in `index.ts:233` (the `isOverride` smell, flagged HIGH above). No `NODE_ENV` branches anywhere. LOCKER-01 clean.
+---
 
-9. **Pino redaction posture**: `LitellmUpstreamError` correctly truncates `bodyText` at construction, marks it non-enumerable, and overrides `toJSON()`. LOCKER-05 posture is correct in advance of Phase 37 BLOCKING flip. `Authorization: Bearer <masterKey>` is never composed into any error message — verified.
+## LOCKER cross-check
 
-10. **Hardcode posture**: `DEFAULT_LITELLM_BASE_URL = "http://litellm:4000"` is the docker-compose service name, intentional and documented. No `localhost`, no `sk-` literals, no UUID literals in src/. LOCKER-03 clean.
+| Locker | Status | Notes |
+|---|---|---|
+| LOCKER-01 (no NODE_ENV branches) | OK | No NODE_ENV reads. `process.env.LITELLM_BASE_URL` read at `index.ts:330` is permitted (rule applies only to NODE_ENV). |
+| LOCKER-02 (no type suppressions) | OK | Three single-step `as` narrowings, all justified. |
+| LOCKER-03 (no hardcoded localhost / UUID / secret shapes) | WARN | `DEFAULT_LITELLM_BASE_URL = "http://litellm:4000"` is a compose service name, not localhost/127.0.0.1, not on the blocklist. The `:4000` port literal may trigger the LOCKER-03 lint's `:3000\|:4000\|:8080` clause — verify against `tools/lint-no-hardcode.ts` output and add a narrow allowlist if needed. |
+| LOCKER-04 (route schema + rateLimit) | N/A | Not a route file. |
+| LOCKER-05 (Error string-field truncation at construction) | WARN | See HI-1 — `LitellmUpstreamError` honors the spirit but the optional `message` constructor parameter creates a bypass surface. |
+| LOCKER-06 (no shell credential interpolation) | OK | No `child_process`, no shell. |
+| LOCKER-08 (no plaintext credential columns) | N/A | Not a schema file. |
 
-11. **TODO/FIXME/HACK scan**: zero hits across all five reviewed files.
+---
 
-12. **Disabled tests scan**: zero `.skip/.only/.todo` in `packages/litellm-client/tests/`.
+## Multipart pass-through verification (CRIT scope)
+
+Inspected `audioTranscriptions` (`index.ts:477-540`) explicitly for the re-buffering bug pattern from older clients. **No re-buffering present:**
+- The caller's `Readable` is piped through a `PassThrough` (line 507).
+- Only a small synthetic `name="model"` multipart part is written ahead of the pipe (line 508).
+- The audio payload itself is never `await body.text()` / `await body.buffer()`-ed; it flows lazily into undici.
+- Bidirectional teardown (lines 517-522) releases source FDs on destination error/close.
+
+Multipart-handling here is correct and compatible with LiteLLM v1.83.7+'s native multipart-passthrough fix.
+
+---
+
+## Master-key / virtual-key leak surface
+
+Inspected stringification paths:
+- `LitellmClientConfig` is never logged in this package.
+- `authHeaders()` (`index.ts:350-371`) constructs the Bearer header inline; not stored on a logged object.
+- `LitellmUpstreamError` does not capture the request headers — only response status + truncated body.
+- `MissingProviderKeyError` message contains only the env var name and the model name — no key value.
+- `SsrfDispatcherNotInstalledError` message contains only a fixed string.
+
+**No active leak path detected for `LITELLM_MASTER_KEY`** within this package. ME-4 covers the residual undici-side risk.
+
+`LITELLM_VIRTUAL_KEY` is **never read** by this package, so there is no leak surface — but see HI-2 for the spec-divergence finding.
+
+---
+
+_Reviewed: 2026-05-20_
+_Reviewer: gsd-code-reviewer (FORCE stance)_
+_Depth: standard, scope-restricted to packages/litellm-client/src/{config,errors,index}.ts_

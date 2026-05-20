@@ -1,179 +1,263 @@
-# Review: data
-Branch: main @ 13f0864
-Files reviewed: 34 source files (20 schema, 10 encryption, 4 root incl. migrate/client/tenant-context/index) + 24 forward migrations + 2 init scripts.
+# Data-layer adversarial review — pre-publication
+
+Branch: `main` @ 6e43588. Scope: `packages/data/src/**` and `packages/data/migrations/*.sql`.
+Review posture: FORCE — assume every claim in the code comments is a lie until traced to its actual call site.
+
+---
 
 ## Summary
-- CRITICAL: 0 / HIGH: 3 / MEDIUM: 5 / LOW: 6
-- Top 3 production risks:
-  1. **Stale `session_lookup_by_token(text)` SECURITY DEFINER function** (migration 0005) still exists in production DB with `GRANT EXECUTE … TO openwhispr_app`, but references the dropped plaintext `sessions.token` column (dropped in 0020). Invoking it raises `42703 column "token" does not exist`. Dead-code attack surface on an app-grantable SECDEF.
-  2. **`packages/data/src/sessions/lookup-by-previous-token.ts` exports `lookupSessionByPreviousToken` but no production caller imports it.** `apps/api/src/lib/token-rotation.ts:111-127` inlines the fp-lookup SQL directly. The documented "Node-side replacement helper" is dead in production and only exercised by unit tests — risk of drift between the helper and the inlined SQL.
-  3. **No TLS posture on either pg `Pool`.** `client.ts` and `migrate.ts` build connection pools with `new Pool({ connectionString })` only; nothing forces `sslmode=require` for cloud / corp deploys. An operator who omits `?sslmode=require` from `DATABASE_URL` ships plaintext credentials + RLS-protected rows over the wire.
+
+The data layer is well-shaped on the surface (canonical `withTenant` chokepoint, fail-closed RLS via `NULLIF(...)::uuid`, two-pool client separation, envelope-encryption library, boot-time KEK gate). However, the Better-Auth integration silently undoes the load-bearing security premise of Phase 33 envelope-encryption at rest, and migration 0024 silently re-establishes a fail-OPEN RLS posture that migration 0018 had explicitly torn down. Both are documented in code comments as deliberate choices, which makes them harder to spot in review but does not change their security impact.
+
+**Top three issues:**
+
+1. **CRITICAL — Plaintext credentials at rest for every Better-Auth-owned column.** `apps/api/src/auth.ts:160` declares `ENCRYPTED_COLUMNS_MAP: EncryptedColumnMap = {}`. The empty map means `wrapAdapter` walks zero columns on the `account` / `session` / `verification` models. Migration 0025 re-added the 7 plaintext columns (`account.password`, `account.access_token`, `account.refresh_token`, `account.id_token`, `verification.value`, `sessions.token`, `sessions.previous_token`) as nullable text, and Better Auth's `drizzleAdapter` writes plaintext into them on every sign-up, OAuth link, password reset, and session rotation. The schema-file comments (e.g. `accounts.ts:42-49`) still claim "Plaintext value NEVER lands here at runtime: the envelope-encryption lens intercepts every write" — this is FALSE post-Plan 51-23/24. The LOCKER-08 linter inline-allowlists these columns on the same false premise (`tools/lint-no-plaintext-secret-columns.ts:101-117`). Net effect: at-rest encryption for credentials, the entire delivered value of CRIT-FIX-02 / Phase 33, is reverted.
+
+2. **CRITICAL — Fail-OPEN RLS posture re-installed by migration 0024.** Migration 0018 (CRIT-FIX-01, Phase 32) explicitly RESETS `ALTER ROLE openwhispr_app ... app.tenant_id` and DROPs the `tenant_id` column DEFAULTs from the four Better-Auth tables, so route code that forgets `withTenant()` produces zero rows / 42501 instead of leaking the default tenant. Migration 0024 RE-INSTALLS both. Now every backend connection from the app role lands with `app.tenant_id` bound to the default tenant via rolconfig, and every Better-Auth `INSERT (default,...)` resolves to that tenant. This silently re-establishes the v1 single-tenant posture documented as DEFERRED-to-v2 in 0003, AFTER Phase 32 had committed the multi-tenant fail-closed posture. The 16-tables × 4-ops × 2-contexts property test that pinned Phase 32's guarantee is now meaningless for the four Better-Auth tables.
+
+3. **CRITICAL — Plan 51-23/24 amendment was driven by test failures.** Per CLAUDE.md hard rule 1 and the commit ledger (`13a1547 fix(51-23+24): better-auth full sign-up flow + locker-08 amendment`, `da674a3 fix(51-21+22): seed-on-boot bundling + better-auth tenant column defaults`), the LOCKER-08 amendment and the column-defaults restoration were both performed to make Better Auth's sign-up flow succeed — i.e. to make tests/E2E green — by mutating production schema and reverting the constitutional rule. The official path for such a decision is a DISCIPLINE amendment with rationale, but the rationale documented inline (`tools/lint-no-plaintext-secret-columns.ts:101-107`, `auth.ts:124-159`) is false: it claims the lens deletes plaintext before INSERT, when in fact `ENCRYPTED_COLUMNS_MAP = {}` means the lens never fires for these columns. The amendment effectively rewrote production SQL/schema to satisfy a Better-Auth-integration test.
+
+---
 
 ## Findings
 
-### [HIGH] HI-01 — Dangling SECDEF function `session_lookup_by_token(text)` references dropped column
-**File:** `packages/data/migrations/0005_session_token_plain.sql:84-98`, not subsequently dropped.
-Migration 0019b drops `lookup_session_by_previous_token(text)`. Migration 0020 drops the plaintext `sessions.token` column. But `session_lookup_by_token(text)` (also created in 0005, lines 84-98) is never dropped — it lives on with `GRANT EXECUTE … TO openwhispr_app` and a body of `SELECT s.user_id, s.tenant_id FROM sessions s WHERE s.token = p_token AND s.expires_at > now()`. After 0020 the column is gone, so any call raises 42703. No production code path invokes it today (grep apps/ packages/ excluding migrations/tests yields zero hits), but:
-- It is an app-role-EXECUTE-grantable SECDEF that still exists.
-- A future regression that wires it back will fail loudly only at runtime, not at deploy time.
-- It signals migration debt — the symmetry expected from 0019b is missing.
+### CRITICAL
 
-**Fix:** Ship a follow-up migration `0023_drop_stale_session_lookup_by_token.sql`:
-```sql
-DROP FUNCTION IF EXISTS session_lookup_by_token(text);
-```
-(REVOKE is implicit on DROP.)
+#### CR-01 — Plaintext credentials persisted by Better Auth via empty ENCRYPTED_COLUMNS_MAP
+`apps/api/src/auth.ts:160`, `packages/data/src/schema/accounts.ts:51-54`, `packages/data/src/schema/sessions.ts:39-40`, `packages/data/src/schema/verifications.ts:28`, `packages/data/migrations/0025_better_auth_account_plaintext_compat.sql:34-46`
 
-### [HIGH] HI-02 — Dead exported helper `lookupSessionByPreviousToken`
-**File:** `packages/data/src/sessions/lookup-by-previous-token.ts:55-72` (whole file).
-Header comment claims this is the Node-side replacement for the dropped SECDEF function. Inspection shows:
-- No production importer (`grep -rn lookupSessionByPreviousToken apps/ packages/` excluding `__tests__`, `.test.ts`, and the data package itself yields zero hits).
-- `apps/api/src/lib/token-rotation.ts:111-127` re-inlines the same fp-lookup SQL via drizzle's `sql` template instead of calling this helper.
-- Only test files import it.
+Schema declares 7 plaintext credential columns as "compat sentinels never written". Linter LOCKER-08 inline-allowlists them on the premise that `lens.ts::encryptInto()` deletes the plaintext key before Drizzle builds the INSERT. But `auth.ts:160` ships `ENCRYPTED_COLUMNS_MAP = {}` — the lens's per-model loop (`lens.ts:351`) short-circuits on `if (!modelCols) return;` for every Better-Auth-owned model. Plaintext therefore travels straight to the DB. Every OAuth refresh token, ID token, scrypt-hashed password, email-verification token, password-reset token, session bearer, and previous-token bearer is stored as `text` at rest with zero envelope encryption.
 
-This is a half-finished feature: the carefully-documented contract (BYPASSRLS pool, partial-index lookup, 5-minute window filter) lives in two places. Drift risk: a future security fix to `token-rotation.ts` may forget the helper, or vice versa.
+The 48 bytea sidecar columns added by migration 0019 sit empty for these models forever; they are not even cleaned up in 0025/0026 — pure schema overhead with no security benefit.
 
-**Fix:** Either (a) replace the inlined SQL in `apps/api/src/lib/token-rotation.ts:111-127` with a call to `lookupSessionByPreviousToken(ownerPool, plaintext)` — preferred, single source of truth; or (b) delete `packages/data/src/sessions/lookup-by-previous-token.ts` outright and drop the unit-test file. Pick one — current state ships both paths.
+The Better-Auth canonical-security-posture argument in `auth.ts:138-144` is incomplete: it correctly notes that passwords arrive scrypt-hashed, but `access_token`, `refresh_token`, `id_token`, `verification.value`, and `sessions.token` are stored in **plaintext** by Better Auth's drizzleAdapter — those are the columns that envelope-at-rest was designed for in the first place.
 
-### [HIGH] HI-03 — No TLS opt-in on pg `Pool` construction
-**File:** `packages/data/src/client.ts:38, 63`; `packages/data/src/migrate.ts:74, 210`; `packages/data/src/encryption/cli/backfill-encrypt-credentials.ts:132`.
-All pools are built as `new Pool({ connectionString: url, max: N })` with no `ssl` field. `pg` honors `?sslmode=require` if present in the URL but does NOT enforce it. For a "1000 concurrent users, enterprise-grade, self-hosted" project where corp operators replace LiteLLM with internal endpoints, sending DB credentials + tenant rows over plaintext TCP on first-boot misconfig is a real failure mode.
+#### CR-02 — Fail-OPEN RLS posture re-installed by 0024
+`packages/data/migrations/0024_better_auth_tenant_id_defaults.sql:40-59`
 
-**Fix:** Add an `ssl` discriminator that requires opt-out, not opt-in. Example:
-```ts
-function poolSsl(url: string): { ssl: false | { rejectUnauthorized: boolean } } {
-  const u = new URL(url);
-  if (u.hostname === "postgres" || u.hostname === "pgbouncer") return { ssl: false }; // compose
-  return { ssl: { rejectUnauthorized: true } };
-}
-const pool = new Pool({ connectionString: url, max: 20, ...poolSsl(url) });
-```
-Plus boot-time check that refuses non-loopback hosts without `sslmode=require`.
+Migration 0024 re-issues `ALTER ROLE openwhispr_app SET app.tenant_id TO '00000000-...'` and re-installs `ALTER COLUMN tenant_id SET DEFAULT current_setting('app.tenant_id', true)::uuid` on `users` / `sessions` / `account` / `verification`. Migration 0018 (`0018_rls_fail_closed.sql:27-42`) explicitly removed both because they collapsed RLS to fail-open for the default tenant. With 0024 applied:
 
-### [MEDIUM] MD-01 — `migrate.ts` does not validate `MASTER_KEK` despite seed/CLI peers doing so
-**File:** `packages/data/src/migrate.ts` (whole `main()`).
-The encrypt-backfill CLI (`packages/data/src/encryption/cli/backfill-encrypt-credentials.ts:113`) calls `validateEncryptionBoot(process.env)` and exits 78 on missing MASTER_KEK. The migrate runner does not. Operationally this means an operator can `make migrate` against a fresh DB whose MASTER_KEK env is missing/short, then crash on the first runtime request that touches encryption. The cheap defense is to fail at deploy-time, not request-time.
+- Any code path that touches the four Better-Auth tables WITHOUT `withTenant()` runs against `app.tenant_id = '00000000-...'` — silently visible data from the default tenant, no 42501.
+- The PgBouncer transaction-pool reuses physical connections; rolconfig is applied once at backend-connect and stays for the life of the connection. With 0024 the GUC is no longer required-by-route per the fail-closed contract.
+- The 128-case property test that pinned CRIT-FIX-01 (`packages/data/tests/unit/__tests__/rls-fail-closed.property.test.ts`, referenced in `tenant-context.ts:88`) covers only tables outside the Better-Auth set under the new posture.
 
-**Fix:** Add `validateEncryptionBoot(process.env)` at the top of `main()` before opening any pool. (Migrate-time encryption is not strictly required, but failing-fast preserves the "fresh `docker compose up` works or fails loudly" invariant.)
+If multi-tenancy ever ships (v2 per the 0003 deferral note), this rolconfig will silently bind every connection to the default tenant regardless of incoming request context — every request leaks the default tenant.
 
-### [MEDIUM] MD-02 — Asymmetric `NOBYPASSRLS` enforcement in `init/00-roles.sql.tpl`
-**File:** `packages/data/migrations/init/00-roles.sql.tpl:35-39`.
-The CREATE branch for `openwhispr_app` is `CREATE ROLE openwhispr_app WITH LOGIN PASSWORD …` — no `NOBYPASSRLS` clause. The ALTER branch (line 38) DOES include `NOBYPASSRLS`. The defensive `RAISE EXCEPTION` block (line 47-49) catches an inherited BYPASSRLS, but the asymmetric DDL is confusing and one Postgres role-default change away from breaking the invariant.
+#### CR-03 — LOCKER-08 amendment rationale is false; schema mutation driven by tests
+`tools/lint-no-plaintext-secret-columns.ts:101-117`, `packages/data/migrations/0025_*.sql`, `packages/data/migrations/0026_*.sql`, git commits 13a1547 and da674a3
 
-**Fix:** Add explicit `NOBYPASSRLS` to the CREATE branch:
-```sql
-EXECUTE 'CREATE ROLE openwhispr_app WITH LOGIN NOBYPASSRLS PASSWORD ' || quote_literal('${POSTGRES_APP_PASSWORD}');
-```
+The `LENS_INTROSPECTION_COMPAT` allowlist comment block (lint-no-plaintext-secret-columns.ts:101-107) states that the lens "DELETES the plaintext key from the row payload BEFORE Drizzle builds the INSERT SQL, so the DB column NEVER receives plaintext at runtime." This is mechanically impossible given `auth.ts:160` `ENCRYPTED_COLUMNS_MAP = {}`. The amendment's load-bearing premise is incorrect, but it is what was used to justify both (a) restoring the columns and (b) extending the LOCKER-08 allowlist.
 
-### [MEDIUM] MD-03 — `FIXTURE_PASSWORD` literal lives in production-shipped seed module
-**File:** `packages/data/src/seed/conformance.ts:24`.
-`export const FIXTURE_PASSWORD = "test-PW-12345!"`. While the seed runs only under the contract-test compose overlay, the constant is exported from a production-shipped package (`packages/data/src/seed/`), not from `tests/`. Per LOCKER-03 the location is allowed (`test-PW-12345!` doesn't match the locker's secret-shape regex), but the design risk is real: a future operator who runs `pnpm seed:conformance` against prod with `DATABASE_URL_OWNER` set will idempotently INSERT live users carrying a publicly-known password. The seed has no env-flag refuse-on-prod guard.
+Per CLAUDE.md hard rule 1: production schema and the LOCKER discipline were modified to satisfy a Better-Auth integration failure. The correct discipline path would have been to either (a) wire the wrapAdapter↔Better-Auth `additionalFields` integration (acknowledged in `auth.ts:152-157` as deferred) or (b) document the deferral and surface the security gap in `.planning/deferred-items.md` without mutating production.
 
-**Fix:** Move the seed under `tests/` (or gate behind an explicit `OPENWHISPR_SEED_ALLOW=true` env var that refuses if absent). Document the refusal in the README's "self-host quickstart" section.
+#### CR-04 — AUTH-04 5-minute overlap window: `previous_token_fp` never populated by Better Auth
+`packages/data/src/sessions/lookup-by-previous-token.ts:58-72`, `packages/data/migrations/0026_better_auth_session_token_fp_nullable.sql:1-26`
 
-### [MEDIUM] MD-04 — `seedPhase5Resources` writes invalid `argon2id$placeholder` into `api_keys.key_hash`
-**File:** `packages/data/src/seed/conformance.ts:219`.
-The seed inserts a row into `api_keys` with `key_hash = 'argon2id$placeholder'`, which is NOT a valid Argon2id digest. If the contract-test fixture path ever feeds this row to the bearer-resolution flow (e.g. an operator tests `pak_seed…` against the live API), Argon2id verification would throw on parse, not on mismatch, which yields a 500 instead of a clean 401.
+The Node-side helper `lookupSessionByPreviousToken` queries `sessions.previous_token_fp` (the SHA-256 fingerprint). Migration 0026's own comment block (lines 1-23) admits: "Better Auth writes the plaintext session token directly via its drizzleAdapter; the lens does NOT fire, so the SHA-256 fingerprint sidecar (`token_fp`) that the lens used to produce on write is never populated." This silently breaks the AUTH-04 5-minute token-rotation overlap contract for every session rotated by Better Auth — `previous_token_fp` is always NULL, the helper always returns null, and a desktop client that retries the previous bearer within the 5-minute window gets a 401 instead of the rotated session.
 
-**Fix:** Compute a proper Argon2id digest of a fixed plaintext at seed time (or skip the api_keys row in this seed and move to a dedicated key-fixture seeder).
+The contract is preserved on paper by the new partial UNIQUE INDEX on plaintext `sessions.token`, but the dual-token overlap behavior described in `tenant-context.ts:88` references and Phase 33 design docs is no longer behaviorally backed.
 
-### [MEDIUM] MD-05 — `withTenant` comment header references non-existent `withSystemContext()`
-**File:** `packages/data/src/tenant-context.ts:84-86`.
-The header comment says: "Calling code MUST flow through `withTenant()` (this function) or `withSystemContext()` for system-scoped jobs that explicitly opt out of tenant isolation via BYPASSRLS roles." But `withSystemContext` does not exist in this package — it lives in `apps/worker/src/lib/with-system-context.ts`. Operator/developer reading data-layer code finds a dangling reference.
+#### CR-05 — `decryptCodeVerifierFromRow` plaintext-fallback path is dead AND keeps stale type
+`packages/data/src/encryption/oauth-state-codec.ts:62-95`
 
-**Fix:** Either re-export `withSystemContext` from this package (preserve the docs claim) or amend the comment to point at `apps/worker/src/lib/with-system-context.ts` explicitly.
+Type `RowWithSidecars` still declares `code_verifier?: string | null` and the fallback at `oauth-state-codec.ts:94` returns `row.code_verifier` when sidecars are absent. Migration 0020 dropped the plaintext `code_verifier` column from `oauth_state`; the column is gone. Any row that reaches this helper without sidecars (corruption, broken backfill, partial UPDATE) now silently falls through to `undefined` and throws the "missing both plaintext code_verifier and bytea sidecars" message — except the type still encourages callers to fill it. Worse: should anyone ever rehydrate a code_verifier string into a row dict (test scaffolding, route hot-fix, replay), the codec will quietly skip decryption and trust a caller-supplied secret. The fallback path needs to be deleted, not left as an alley.
 
-### [LOW] LO-01 — `_safe_table_reset(text, boolean)` (migration 0021) has no callers
-**File:** `packages/data/migrations/0021_safe_table_reset_helper.sql`.
-The helper is defined and GRANT EXECUTE'd to `openwhispr_owner`, but no migration calls it. Header says "future reset-style migrations MUST call this helper" — that's a guardrail without enforcement. Per LOCKER-04 every exported symbol MUST have a non-test importer.
+### HIGH
 
-**Fix:** Either add a tools/lint-migrations.ts rule that refuses `TRUNCATE TABLE` outside `_safe_table_reset(…)` calls, or document the helper as "available for future use" in the architecture docs so its lifecycle is explicit.
+#### HI-01 — Migration 0005 `TRUNCATE TABLE "sessions"` is destructive on replay
+`packages/data/migrations/0005_session_token_plain.sql:33`
 
-### [LOW] LO-02 — `MASTER_KEK` validator does not entropy-check the decoded key
-**File:** `packages/data/src/encryption/boot.ts:84-96` and `env-key-provider.ts:27-37`.
-`Buffer.from(raw, "base64url")` silently drops invalid characters and returns whatever bytes it could decode. The validator only asserts `decoded.length === 32`. A KEK like `AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA` (32 zero bytes after base64url decode) passes both validators. This is theoretical (operators using `openssl rand 32` will not hit it), but the comment in `env-key-provider.ts:31` claims the value is "produced by tools/bootstrap.sh" with no runtime enforcement.
+Unconditional TRUNCATE of `sessions` in an applied-in-order migration. The comment justifies it as "Phase 02 is dev-only" but the migration journal entry is the same one that will run against any operator's pre-0005 install — including ones with live sessions. Migration 0021 introduced `_safe_table_reset(...)` to prevent recurrence but cannot retroactively fix 0005. Forward-only mitigation is to add a NOTICE/raise-on-non-empty guard, but per CLAUDE.md hard rule 1 the 0005 file must not be touched. Surface in operator runbook as "destructive forward migration" with explicit pre-flight check.
 
-**Fix:** Add a min-entropy check (count distinct bytes ≥ 16, or reject all-zero/all-same byte runs) in `validateMasterKek`.
+#### HI-02 — `api_keys.user_id` foreign-key column has no index
+`packages/data/migrations/0010_api_keys.sql:10-13, 36-48`
 
-### [LOW] LO-03 — `as any` suppressions in seed conformance CLI detection
-**File:** `packages/data/src/seed/conformance.ts:241, 246`.
-Two `as any` casts on `import.meta` / `require` for the dual ESM/CJS entry-point check. The biome ignore comments justify them. Per DISCIPLINE Rule 12, `as any` is REFUSED in production code, but the same rule allows pre-existing debt allowlists. These two casts ship in the conformance seed.
+`api_keys.user_id` is a NOT NULL FK with `ON DELETE CASCADE` to `users.id`. The only indexes on `api_keys` cover `key_prefix` (unique), `(tenant_id, name)` partial unique, and the `(tenant_id, created_at DESC, id DESC)` partial keyset. None starts with `user_id`. `DELETE FROM users WHERE id = ?` triggers a sequential scan of `api_keys` to enforce the cascade — fine on tiny instances, expensive at 1000-user load-test scale. Same observation applies to `transcriptions.user_id` (`0009_transcriptions.sql`), `conversations.user_id`, `messages.user_id`, `notes.user_id`, `folders.user_id` — none have a dedicated `user_id` index; only the keyset partial index, which is sufficient for tenant-scoped LIST but not for the FK cascade scan.
 
-**Fix:** Replace with the typed pattern used in `packages/data/src/migrate.ts:230-249` (`isCliEntry()`) which avoids `as any` via `typeof import.meta?.url === "string"` narrowing. Same dual-mode detection, no suppression.
+#### HI-03 — Migration 0014 `audit_log` partitioning: legacy rows backfilled into `audit_log_default`, never promoted
+`packages/data/migrations/0014_audit_log_partition.sql:118-138`
 
-### [LOW] LO-04 — `0001_better_auth.sql` SECDEF function (bytea variant) shipped without `SET search_path` hardening
-**File:** `packages/data/migrations/0001_better_auth.sql:117-128` (historical).
-The original `lookup_session_by_previous_token(p_hash bytea)` SECURITY DEFINER function was created without `SET search_path = public, pg_temp` — the PG SECDEF best practice. It was replaced by the text variant in 0005 (which DOES set search_path), and finally dropped by 0019b. So the vulnerable function existed in the DB between 0001 and 0005's apply time. No production install can be exposed today, but the migration history shows the hardening lesson was learned mid-stream.
+Migration runs `INSERT INTO "audit_log" SELECT ... FROM "audit_log_legacy"` then drops the legacy table. With `infinite_time_partitions = true` and the migration running inside a transaction (cannot call `run_maintenance_proc()` because it issues COMMIT internally), every legacy row whose `created_at` predates the 4 premade monthly partitions lands in `audit_log_default` — a catch-all. The plan defers promotion to "the daily partman-maintenance BullMQ job", but until that job runs once, the legacy rows live on the default partition and queries scanning specific months miss them. If the BullMQ job is misconfigured or fails to deploy, legacy audit data is silently invisible to month-scoped queries. Surface as runbook step.
 
-**Fix:** No action — historical. Note as engineering lesson for future SECDEF migrations.
+#### HI-04 — `backfill.ts` idempotency predicate is broken post-0020/0025
+`packages/data/src/encryption/backfill.ts:108-148`
 
-### [LOW] LO-05 — `process.exit` codes in `migrate.ts` are not POSIX-meaningful past 78
-**File:** `packages/data/src/migrate.ts:163, 182, 204`.
-Exits use `2`, `3`, `4` for distinct failure modes (URL missing, PgBouncer host, admin URL missing). These conflict with POSIX `sysexits(3)` (`2 = EX_USAGE`, `3` is unassigned, `4` is unassigned). The encryption-boot module uses BSD-correct `EX_CONFIG = 78`. Convention is inconsistent across the data package.
+The backfill SQL is `WHERE "${column}" IS NOT NULL AND "${column}_value_ciphertext" IS NULL`. Designed to run between 0019 (additive bytea) and 0020 (drop plaintext). After 0020 dropped the plaintext columns, the SQL fails with 42703 (undefined column) — that's flagged as expected. But 0025 re-added the plaintext columns as nullable text. Running the backfill CLI now (e.g., as a recovery step or in CI) will:
 
-**Fix:** Pick one convention and document it. Either:
-- All exits use BSD sysexits codes (`EX_USAGE=64`, `EX_CONFIG=78`, `EX_DATAERR=65`), or
-- Document the migrate-specific codes (2/3/4) in a top-of-file comment + the operator runbook.
+1. SELECT every row where the column is non-null — these are Better-Auth-written plaintext credentials (CR-01).
+2. Encrypt each plaintext into the bytea sidecars.
+3. UPDATE the row to set sidecars — but leave the plaintext column populated.
+4. Result: plaintext credentials AND ciphertext sidecars coexist in the same row. Next read goes through the lens (also broken per CR-01), but if a future operator wires the lens correctly, the lens sees sidecars and decrypts — silently overwriting the plaintext that Better Auth was actively using.
 
-### [LOW] LO-06 — `pgIdent` is only used for the `litellm` DB owner identifier — risk of pretentious surface
-**File:** `packages/data/src/migrate.ts:43-48`.
-The exported `pgIdent` function is internal scaffolding for `ensureLitellmDatabase`. Exported because of unit tests (LOCKER-04 requires a non-test importer; the test counts). Not a bug — but the exported surface is misleading. A code reviewer may believe `pgIdent` is a general-purpose identifier sanitizer.
+The backfill module needs an explicit guard: refuse to run if the target column is `account.*` / `verification.value` / `sessions.token` / `sessions.previous_token` while `ENCRYPTED_COLUMNS_MAP` is empty for those models.
 
-**Fix:** Either narrow the JSDoc to "internal helper for litellm-DB autocreate; not a general-purpose escaper" or move it to a private `_helpers/` file with `@internal` tag.
+#### HI-05 — `audit_log_tenant_id_tenants_id_fk` declared `ON DELETE no action` while children cascade
+`packages/data/migrations/0000_initial.sql:78-80`, `0014_audit_log_partition.sql:76-78`
+
+`audit_log.tenant_id → tenants.id` is `ON DELETE NO ACTION`, while every other tenant_id FK is `ON DELETE CASCADE` (notes/folders/conversations/messages/transcriptions/api_keys) or `RESTRICT` (users). `audit_log` is append-only by design, so deleting a tenant fails if any audit row exists — which is correct for the audit posture but is undocumented. Should be a code comment on the table declaration or in `.planning/deferred-items.md` for the operator tenant-delete runbook. Same for `usage_ledger`, `account`, `verification`, `sessions` (all `NO ACTION` on tenant_id by 0000_initial / 0001_better_auth).
+
+#### HI-06 — VaultKeyProvider and KmsKeyProvider are stubs but exported from public barrel as production-grade types
+`packages/data/src/encryption/index.ts:30,39`, `packages/data/src/encryption/vault-key-provider.ts:13-27`, `packages/data/src/encryption/kms-key-provider.ts:13-27`
+
+`@openwhispr/data/encryption` re-exports `VaultKeyProvider` and `KmsKeyProvider` as if they were complete `KeyProvider` impls. They throw `NOT_IMPLEMENTED` on every method. `validateKeyProviderSelection()` (`boot.ts:104-109`) refuses `OPENWHISPR_KEY_PROVIDER=vault|kms` at boot, which is the intended guard — but a downstream package that imports `KmsKeyProvider` and instantiates it programmatically (outside `selectProvider()`) gets a constructible-but-broken object. CLAUDE.md describes "AWS KMS / GCP KMS / Azure Key Vault / HashiCorp Vault" in docs/security.md §12 as available, implying production support; the code is not. Documentation vs. code drift.
+
+### MEDIUM
+
+#### ME-01 — Stale comments in `accounts.ts` / `sessions.ts` / `verifications.ts` claim plaintext "NEVER lands here at runtime"
+`packages/data/src/schema/accounts.ts:42-49`, `packages/data/src/schema/sessions.ts:34-44`, `packages/data/src/schema/verifications.ts:25-27`
+
+Comments still describe Phase 33-05 semantics that Plan 51-23/24 reversed. Future maintainers will read these and assume the lens fires — wrong. The comments need to be updated to match `ENCRYPTED_COLUMNS_MAP = {}` reality, or the security gap needs to be closed (CR-01 fix).
+
+#### ME-02 — `seed/conformance.ts` ships `'argon2id$placeholder'` as a key_hash literal
+`packages/data/src/seed/conformance.ts:219`
+
+The seeded API key row stores literal `'argon2id$placeholder'` in `key_hash`. Anyone wiring an auth path that ever resolves the seed API key by prefix and tries to verify against the hash gets undefined behavior — Argon2 verification on a non-PHC string throws. Acceptable for a seed-only row that no production code ever Auth-hits, but the literal `placeholder` is a code smell that signals "this row is fictional"; should be a clearly-named constant (e.g. `SEED_API_KEY_DEAD_HASH`) and the route must reject keys with this hash explicitly.
+
+#### ME-03 — `DEFAULT_TENANT_ID` constant is re-declared in `seed/conformance.ts`
+`packages/data/src/seed/conformance.ts:35`
+
+`const DEFAULT_TENANT_ID = "00000000-0000-0000-0000-000000000000";` duplicates the value baked into migration 0000 + 0003 + 0024 + LOCKER-03 allowlist. Risk of drift if the constitutional UUID ever changes (extremely unlikely, but the duplication is unnecessary). Better: a single `export const DEFAULT_TENANT_ID = ...` in the public barrel.
+
+#### ME-04 — `api_keys` lacks an explicit `tenant_id`-only index
+`packages/data/migrations/0010_api_keys.sql`
+
+The keyset partial index `(tenant_id, created_at DESC, id DESC) WHERE revoked_at IS NULL` covers most query patterns, but list-all-keys-including-revoked or admin-counts-per-tenant queries miss the index. Marginal at v1 scale.
+
+#### ME-05 — `lookup-by-previous-token.ts` runs on the OWNER pool (BYPASSRLS) by design but is exposed via the public surface
+`packages/data/src/sessions/lookup-by-previous-token.ts:18-23,55-72`
+
+The helper acknowledges BYPASSRLS posture in comments and is invoked with the owner pool, but it's NOT exported from `src/index.ts` — callers must reach into `packages/data/src/sessions/lookup-by-previous-token.ts` directly. That's an undocumented public surface that bypasses the data-package's barrel-only public API discipline. Either export it (and surface the BYPASSRLS warning explicitly in the type signature, e.g. `OwnerExecutor`) or move it under `internal/`.
+
+#### ME-06 — `oauth-state-codec.ts` `RowWithSidecars` interface is structurally typed and accepts arbitrary `code_verifier_*` fields
+`packages/data/src/encryption/oauth-state-codec.ts:62-70`
+
+The interface uses optional `Buffer | null` for every sidecar, so `decryptCodeVerifierFromRow` does runtime `Buffer.isBuffer` checks but a caller can pass `{ code_verifier_dek_wrapped: <some-string> }` and only fail at the `Buffer.isBuffer` guard. The contract would be tighter as a discriminated union of "row with all sidecars present" vs "row with none".
+
+#### ME-07 — `migrate.ts::ensureLitellmDatabase()` admin pool reuses the owner credentials for the `postgres` maintenance DB
+`packages/data/src/migrate.ts:70-95,99-118`
+
+`resolveAdminUrl()` defaults to swapping the path component of `DATABASE_URL_OWNER` to `/postgres`. Implies `openwhispr_owner` has CONNECT on the `postgres` maintenance database — true for stock pg containers, but an operator using a hardened pg cluster where `postgres` DB connect is REVOKED will hit the failure here without context. Operator runbook should mention `POSTGRES_ADMIN_URL` is the cleaner path for production.
+
+### LOW
+
+#### LO-01 — `seed_tenant_settings()` SECURITY DEFINER lacks `SET search_path = pg_temp` in 0006
+`packages/data/migrations/0006_tenant_settings.sql:62-73`
+
+Has `SET search_path = public` but not `, pg_temp`. PG SECURITY DEFINER hardening best practice is `public, pg_temp` (mirrored elsewhere — e.g. `_safe_table_reset` in 0021 line 26 has it, `session_lookup_by_token` in 0005 line 89 has it). Defense in depth.
+
+#### LO-02 — `audit_log_action_check` enumeration duplicated between schema and migration
+`packages/data/src/schema/audit_log.ts:25-44`, `packages/data/migrations/0014_audit_log_partition.sql:56-75`
+
+Same 18-action enumeration in two places. Schema list is annotated `// D-A6 — canonical 18-action enumeration. The same list is enforced at the database layer via the audit_log_action_check CHECK constraint` so the duplication is known. Single-source by exporting the list constant and using a SQL function or generator to emit the CHECK clause would be cleaner; not blocking.
+
+#### LO-03 — `validateMasterKek` accepts a base64url string that decodes to padded 32 bytes from non-32 input
+`packages/data/src/encryption/boot.ts:84-96`
+
+`Buffer.from(raw, "base64url")` silently drops non-alphabet chars and may produce 32 bytes from non-canonical input. The length check catches truncated/over-length input, but an operator who pastes a base64-padded (`=`) value where base64url-unpadded is expected may not realize the input got rewritten. Document the bootstrap.sh output shape in the error message or accept both base64 and base64url explicitly.
+
+#### LO-04 — `client.ts::buildPoolConfig` `rejectUnauthorized: false` default for self-signed certs is the right call but undocumented at call sites
+`packages/data/src/client.ts:38-46`
+
+`PGSSL_REJECT_UNAUTHORIZED=1` is the production flip. The signature `makeAppDb()` / `makeOwnerDb()` does not surface this — operators reading just the public API have no breadcrumb to the env-var name. Add to readme/runbook.
+
+#### LO-05 — `withTenant` rejects non-UUID with `String(tenantId)` interpolation
+`packages/data/src/tenant-context.ts:96`
+
+`throw new Error(\`withTenant: invalid tenant UUID: ${String(tenantId)}\`);` — if a caller passes a Buffer or a circular ref, `String(...)` may produce `[object Object]` or throw. Tiny but real. Use `JSON.stringify(tenantId)` with a try/catch, or just `typeof tenantId` + a hint.
+
+---
+
+## Migration-specific section
+
+Reviewed every migration in `packages/data/migrations/`. Highlights:
+
+**Hardcoded `"public"` schema in FK references:** Spot-checked all migrations — none use `"public"."tenants"` literal FK references. Schema is implicitly resolved via `search_path`. (CLAUDE.md hard rule 1 reference is preserved — no test-driven schema mutation found of this shape.)
+
+**Idempotency / re-runnability:**
+- 0000 — INSERT default tenant uses `ON CONFLICT DO NOTHING`. Safe.
+- 0003 — same; idempotent.
+- 0005 — **NOT idempotent.** Unconditional TRUNCATE. See HI-01.
+- 0006 — backfill uses `ON CONFLICT DO NOTHING`. Safe.
+- 0014 — drops legacy table; replay would 42P01 on the rename step. Safe on linear migration but a no-go for partial-rollback replay.
+- 0019/0020/0021/0023/0024/0025/0026 — all idempotent via `IF EXISTS` / `ADD COLUMN IF NOT EXISTS` / `ALTER ... SET DEFAULT` (last-write-wins).
+- 0019b — `DROP FUNCTION IF EXISTS`. Safe.
+
+**Down-migration gaps:**
+- 0005 has NO `.down.sql` companion. Truncated session rows cannot be restored.
+- 0014 has a `.down.sql`, but pg_partman state rollback is operationally fragile.
+- 0019/0020/0021/0024 each have `.down.sql` companions; status reviewed at the named files (not in scope to validate full reverse semantics in this pass).
+- 0023/0025/0026 — companion `.down.sql` not visible in directory listing for 0023/0025/0026. Forward-only is OK per CLAUDE.md hard rule 1 for committed-to-production migrations, but the deferred operator-rollback path should at least exist as a documented rescue script for the new envelope-encryption columns.
+
+**RLS coverage:** Every tenant-scoped table from `TENANT_SCOPED_TABLES` (`schema/index.ts:25-44`) has `ENABLE + FORCE ROW LEVEL SECURITY + tenant_isolation policy` in its source migration:
+- users/sessions/audit_log/usage_ledger — 0000
+- account/verification — 0001
+- oauth_state — 0002
+- tenant_settings/user_settings — 0006
+- notes/folders — 0007
+- conversations/messages — 0008
+- transcriptions — 0009
+- api_keys — 0010
+- audit_log (re-issued on partitioned parent) — 0014
+- usage_rollup_daily — 0015
+- All thirteen tables had their policy bodies rewritten to NULLIF-cast fail-closed form in 0018 — verified.
+
+Tables without RLS (correct posture):
+- `tenants` — root tenant table; documented in `schema/tenants.ts:1-4`.
+- `setup_state` — operator-global singleton; documented in `schema/setup_state.ts:3-7`.
+
+**Schema mutations driven by tests (CLAUDE.md hard rule 1 check):**
+- 0024 + 0025 + 0026 + the LOCKER-08 amendment together form the Plan 51-22/23/24 push that made Better-Auth sign-up green at the cost of plaintext-at-rest and rolconfig-bound RLS. Commit messages (`fix(51-23+24): better-auth full sign-up flow + locker-08 amendment`) acknowledge "fix" of "Better Auth full sign-up flow" — i.e. fixing tests/E2E by mutating production schema. This is the violation flagged in CR-03.
+- No other applied-migration mutation in this codebase visibly fits the "test-driven schema change" pattern. 0021 (`_safe_table_reset`), 0022 (`setup_state` grants), 0023 (drop stale fn) are all forward-additive fixes with non-test rationale.
+
+**FK column-index coverage gaps:** See HI-02. Missing indexes on user_id for api_keys, transcriptions, conversations, messages, notes, folders (only covered indirectly by the leading-`tenant_id` keyset indexes). Account, verification, sessions have explicit user_id indexes (`account_user_id_idx`, etc.).
+
+---
 
 ## Dead code
-- `packages/data/src/sessions/lookup-by-previous-token.ts` — exports `lookupSessionByPreviousToken`; no production importer (only tests). See HI-02.
-- `session_lookup_by_token(text)` SECURITY DEFINER function in DB (created by migration 0005) — no production caller; references dropped column. See HI-01.
-- `_safe_table_reset(text, boolean)` SQL function (migration 0021) — defined but never invoked. See LO-01.
-- `AccountTokenExpiredError` class (lens.ts:90) — thrown by the lens but no caller catches by class; only mentioned in comments in `apps/api/src/auth.ts:112`. Acceptable as a defense-in-depth signal that propagates to Better Auth's error envelope.
+
+- `packages/data/src/encryption/oauth-state-codec.ts:62-95` — `decryptCodeVerifierFromRow` plaintext fallback is dead post-0020 (the plaintext `code_verifier` column no longer exists in the DB). See CR-05.
+- `packages/data/src/encryption/backfill.ts` — `runBackfill` for Better-Auth-owned columns is effectively dead given `ENCRYPTED_COLUMNS_MAP = {}`. Re-running it now (HI-04) actively introduces inconsistency rather than recovering from drift.
+- `packages/data/src/sessions/lookup-by-previous-token.ts` — alive but unreachable in practice (CR-04). The fingerprint column is never written by Better Auth.
+- `packages/data/src/schema/accounts.ts:57-86` (24 bytea sidecars) + `verifications.ts:33-38` (6 sidecars) + `sessions.ts:47-73` (12 sidecars + 2 fingerprints) — declared, migrated, never populated for Better-Auth-owned writes. Pure schema overhead — about 44 bytea columns persisted as NULL across every Better-Auth row.
+- `VaultKeyProvider` + `KmsKeyProvider` — exported from the public barrel; instantiable; every method throws. Stubs are well-marked in source but the public surface is misleading. See HI-06.
 
 ## Suppressed warnings
-- `packages/data/src/seed/conformance.ts:241, 246` — two `as any` casts on `import.meta` / `require` for CLI dual-mode detection. See LO-03.
-- No `@ts-ignore` / `@ts-nocheck` / `@ts-expect-error` found in any production file under `packages/data/src/`. Clean against DISCIPLINE Rule 12 modulo LO-03.
 
-## Notes
+- `apps/api/src/auth.ts:369-373` — uses `as unknown as ReturnType<typeof drizzleAdapter>` and `(factory as (o: unknown) => Parameters<typeof wrapAdapter>[0])(options)` to bridge Better-Auth's factory shape to `wrapAdapter`. Allowed under LOCKER-02 only if these are tracked in the suppression allowlist; otherwise this is a stale double-cast that may have shipped via a Plan 51-23/24 amendment. Should be re-evaluated when CR-01 is fixed.
+- `packages/data/src/seed/conformance.ts:74-76, 165-168, 196-205, 218-222, 224-230` — `biome-ignore` for `lint/suspicious/noConsole` are reasonable for one-shot CLI scripts.
+- `packages/data/src/bin/seed-conformance.ts:16,32` — `v8 ignore start/stop` band. Acceptable for a CLI entry guard.
 
-### `packages/data/src/schema/users.ts` (currently `M` in git status)
-**Status: SAFE for first publication.** The uncommitted edit adds:
-- `name: text("name")`, `emailVerified: boolean("email_verified").notNull().default(false)`, `emailVerifiedAt: timestamp(...)`, `image: text("image")`, `passwordHash: text("password_hash")`, `locale: text("locale").notNull().default("en")`, `role: text("role")`.
+No `as any` / `@ts-ignore` / `@ts-nocheck` found in scope.
 
-Checked against LOCKER-08:
-- `password_hash` is NOT in the locker regex (`/^(access_token|refresh_token|id_token|password|value|token|previous_token|code_verifier)$/`). The regex matches the bare `password` column, which the schema does NOT declare (it's on `account`, envelope-encrypted via 6 bytea sidecars). The `password_hash` column stores an Argon2id digest, not a reversible secret — correct treatment per Better Auth's adapter contract.
-- `email`, `name`, `image`, `locale`, `role` are not credential-shape columns. No envelope encryption required.
-- `tenantId` is NOT NULL with `onDelete: "restrict"` — correct.
-- `(tenant_id, lower(email))` functional unique index — correct case-insensitive uniqueness, matches migration 0004.
+No raw `sql\`${userInput}\`` injection surface found. Identifier interpolation in `backfill.ts:108-148` uses author-controlled column-map keys (not user input) and is acknowledged in code comments. `migrate.ts::pgIdent` correctly whitelists identifier shape with regex.
 
-Conclusion: the uncommitted edit is schema-shape-correct and clears LOCKER-08. Recommend committing as-is before publication.
+---
 
-### RLS posture
-All 16 tenant-scoped tables enumerated in `TENANT_SCOPED_TABLES` (`packages/data/src/schema/index.ts:25-44`) have RLS ENABLE + FORCE + fail-closed policy from migration 0018. Verified by grepping migrations 0000, 0001, 0002, 0006-0010, 0014-0017 for `ENABLE ROW LEVEL SECURITY` + `FORCE ROW LEVEL SECURITY` + canonical `current_setting('app.tenant_id', true)::uuid` policy. Migration 0018 explicitly reshapes every policy to `NULLIF(current_setting(...), '')::uuid` for fail-closed semantics and DROP DEFAULTs the role-default escape from 0003. **No tenant-scoped table is missing FORCE RLS.**
+## TODO / FIXME / HACK scan
 
-### GRANT integrity
-Migration 0017 originally forgot to GRANT `setup_state` to `openwhispr_app`; migration 0022 retroactively added it (correctly forward-only per Hard Rule 1). All other migrations that CREATE TABLE include the canonical `GRANT SELECT, INSERT, UPDATE, DELETE … TO openwhispr_app` block. The audit_log partitioned-parent (0014) correctly re-grants after the parent is rebuilt. No `BYPASSRLS` is granted to `openwhispr_app` — both the CREATE/ALTER DDL paths and the defensive `RAISE EXCEPTION` block in `init/00-roles.sql.tpl:47-49` enforce this.
+`grep -rE "TODO|FIXME|HACK|XXX" packages/data/` returned no markers in source or migrations within scope. Clean.
 
-### Envelope encryption
-- `createCipheriv("aes-256-gcm", ...)` appears in exactly two production files: `packages/data/src/encryption/envelope.ts:56` (value layer) and `packages/data/src/encryption/env-key-provider.ts:50` (DEK-wrap layer). No other production code uses createCipheriv — module boundary is clean.
-- 12-byte IVs from `randomBytes(12)` on every encrypt — no counter, no reuse risk under GCM.
-- Auth-tag mismatch propagates via `cipher.final()`/`decipher.final()` throws — verified.
-- `validateEncryptionBoot()` is called by the backfill CLI and (per the docstring) is wired into api+worker boot via Plan 33-04 — exits 78 on missing/short MASTER_KEK or non-`env` provider selection. Stubs (`VaultKeyProvider`, `KmsKeyProvider`) throw on every method, refusing silent miswire.
+---
 
-### Schema vs migrations consistency
-- Drizzle journal `meta/_journal.json` has 24 entries matching 24 forward SQL files. No drift.
-- Drizzle schema declarations exhaustively cover the 16 tenant-scoped tables + 2 operator-global (`tenants`, `setup_state`).
-- `TENANT_SCOPED_TABLES` const in `schema/index.ts` includes all 16; matches the 16 fail-closed policies in 0018.
+## Hardcoded literals scan
 
-### Hardcode posture
-- `localhost` literals: 1 in production code at `packages/data/src/seed/conformance.ts:123` (`http://api.localhost` as AUTH_URL default). The seed is contract-test fixture tooling, but ships in the production package tree. See MD-03.
-- `127.0.0.1` / `:3000` / `:4000` / `:8080` / `:5432` — all `:5432` references are in comments only.
-- UUID literals: only `'00000000-0000-0000-0000-000000000000'` (the canonical `DEFAULT_TENANT_ID`, allowlisted by LOCKER-03) and the `SEED_*_ID` constants (`11111111-0000-4000-…`) in `seed/conformance.ts:29-34` — bound to the fixture seeder.
-- No real plaintext credentials in seed beyond `FIXTURE_PASSWORD = "test-PW-12345!"` (see MD-03).
+- `DEFAULT_TENANT_ID = '00000000-0000-0000-0000-000000000000'` — present in migrations 0000:26, 0003:38-39, 0024:43, seed/conformance.ts:35. All allowlisted per LOCKER-03 carve-out.
+- No `localhost`, `127.0.0.1`, ports `:3000|:4000|:8080` found in `packages/data/src/**` or `packages/data/migrations/**` in scope.
+- No `sk-…`, `sk-ant-…`, `AIza…`, `AKIA…`, `Bearer ey…` patterns found in scope.
 
-### Migration runner posture
-- `migrate.ts` correctly refuses to run as the app role (insists on `DATABASE_URL_OWNER`).
-- Refuses to run DDL through a pgbouncer host (exit code 3) — correct anti-pattern guard.
-- LiteLLM database auto-create has a documented opt-out (`SKIP_LITELLM_DB_AUTOCREATE=1`).
-- `CREATE DATABASE litellm OWNER ${safeOwner}` interpolates `safeOwner` after `pgIdent(...)` whitelist — safe.
-- Logger redaction is N/A here — the migrate runner uses bare `console.log/error` with short status messages; no connection strings, MASTER_KEK values, or row payloads are logged.
+---
 
-### CLI entry-point detection
-Both `migrate.ts:232-250` and `seed/conformance.ts:238-247` carry dual ESM/CJS entry-point detection. `migrate.ts` uses a typed pattern (no suppressions); `conformance.ts` uses `as any` casts (LO-03). The migrate pattern should be the template.
+## Required actions before public publication (severity-ordered)
+
+1. **CR-01 + CR-03:** Either wire the lens through Better-Auth's `additionalFields` properly so `ENCRYPTED_COLUMNS_MAP` is non-empty for `account`/`session`/`verification`/`user`, OR revert migrations 0025/0026 + the LOCKER-08 amendment + delete the orphaned bytea sidecars. Shipping the current state publicly means shipping plaintext OAuth tokens and bearer tokens at rest in `text` columns.
+2. **CR-02:** Revert migration 0024's `ALTER ROLE ... SET app.tenant_id` and column defaults, OR document explicitly in CLAUDE.md and docs/security.md that v1 single-tenant has rolconfig-bound RLS that fails OPEN to the default tenant. Current code-vs-doc mismatch is a security-posture lie.
+3. **CR-04 + CR-05:** Reconcile the broken AUTH-04 fingerprint path and remove the dead `code_verifier` plaintext fallback.
+4. **HI-01..HI-06:** Operator-runbook updates + index additions as scoped.
+5. **ME-01:** Sync schema comments to reflect actual lens behavior.
+
+---
+
+_Reviewer: gsd-code-reviewer (FORCE adversarial)_
+_Reviewed: 2026-05-20T00:00:00Z_
+_Scope: packages/data/src/** + packages/data/migrations/*.sql_
+_Depth: deep (cross-file: apps/api/src/auth.ts, tools/lint-no-plaintext-secret-columns.ts, git log)_

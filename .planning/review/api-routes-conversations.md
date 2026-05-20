@@ -1,233 +1,237 @@
-# Review: api-routes-conversations
-Branch: main @ 13f0864
-Files reviewed: 21 source files
-- `apps/api/src/routes/conversations/` — create, delete, list, messages, search, shape, update (7)
-- `apps/api/src/routes/folders/` — batch-create, create, delete, list, shape, update (6)
-- `apps/api/src/routes/notes/` — batch-create, create, delete, delete-all, list, search, shape, update (8)
-- (3 `__tests__/setup.ts` test helpers explicitly excluded per scope.)
+# Review — apps/api/src/routes/{conversations,folders,notes}
+
+**Scope:** 19 source files (6 conversations, 6 folders, 8 notes — including `shape.ts` helpers).
+**Branch / HEAD:** `main` @ `6e43588`.
+**Reviewer mode:** adversarial, FORCE stance — describe defects only, no fixes.
+
+---
 
 ## Summary
-- CRITICAL: 0 / HIGH: 3 / MEDIUM: 5 / LOW: 4
-- Top 3 production risks before public publication:
-  1. **Every state-mutating route in scope ships without a Fastify `schema:` block** — 19 routes (entire scope) are in the LOCKER-04 allowlist as `issue-31-04-debt-LOCKER-04-route-bulkfix-31-08`. The CLAUDE.md "production-readiness invariant" is satisfied today only because LOCKER-04 is still in WARN mode; the BLOCKING flip is deferred to Phase 41. Publishing this code on GitHub as v1 surfaces a documented-debt invariant breach to outside contributors who will read the routes as the project's canonical pattern.
-  2. **`notes/delete-all.ts` 1000-row cap is bypassable** — the count query filters `deleted_at IS NULL` (line 50–55) but the `DELETE` deliberately purges tombstones too (line 65–69, "Includes already-soft-deleted rows"). A user accumulating soft-deleted notes via `/api/notes/delete` can drive an arbitrarily large hard-delete past the gate. The `T-DEL-ALL-DOS` mitigation comment claims this is bounded; it is not.
-  3. **`conversations/update.ts` accepts unvalidated `archived_at` strings** — schema is `z.string().nullable().optional()`, value flows straight into a Postgres `timestamptz` column. Bad input becomes an unhandled cast error / 500 instead of a clean 400 with a stable error code. Same shape exists in subtler ways across the family but archived_at is the only direct user-controlled timestamp written without ISO validation.
 
-The reviewed surface is otherwise unusually clean: every handler gates on `req.user && req.tenant`, every DB call lives under `withTenant(deps.db, tenantId, ...)` so FORCE-RLS applies, every dynamic SQL fragment comes from `drizzle-orm`'s parameterised `sql` template tag, every dynamic identifier (`sql.raw(\`"${col}"\`)`) is sourced from a static `MUTABLE_COLS as const` allowlist, both `/search` endpoints use `websearch_to_tsquery('simple', $1)` (never `to_tsquery` on raw input), batch endpoints cap at 500 with a 5-req/min rate limit, soft-delete is enforced via the shared `withSoftDelete()` helper, and the scope contains zero TODO/FIXME/HACK/XXX, zero `as any`/`as unknown as`/`@ts-ignore`/`@ts-expect-error`, zero `console.log`, zero `process.env.NODE_ENV`, zero `localhost`/`127.0.0.1`/`:3000`/`:4000`/`:8080`/`sk-…`/`AKIA…` literals, and zero hand-rolled SQL string concatenation of untrusted input. Auth is mounted globally as `dualAuthHook` (`onRequest`) before route registration; each handler still rejects when the hook didn't populate `req.user`/`req.tenant` (defence-in-depth).
+Overall the three families share a single, defensible shape: every handler
 
-## Findings
+1. asserts `req.user && req.tenant` (auth-injected by the global `dualAuthHook` registered in `buildApp`),
+2. routes ALL DB access through `withTenant(deps.db, tenantId, …)` (RLS GUC bound for the txn),
+3. additionally constrains `user_id = ${userId}::uuid` in every `WHERE` clause (defence-in-depth against shared-tenant cross-user leakage),
+4. uses parameterised drizzle template `sql\`\`` — no raw user-input string interpolation.
 
-### [HIGH] LOCKER-04 — every state-mutating route in scope is missing the Fastify `schema:` block
-- File: all 19 route files in scope (e.g. `apps/api/src/routes/conversations/create.ts:29`, `notes/update.ts:89`, `folders/batch-create.ts:39`).
-- Category: production-readiness invariant breach (allowlisted as known debt)
-- Evidence:
-  ```ts
-  // apps/api/src/routes/conversations/create.ts:29
-  app.route({
-    method: "POST",
-    url: "/api/conversations/create",
-    config: { rateLimit: { max: 120, timeWindow: "1 minute" } },
-    handler: async (req, reply) => {
-      // ...
-      const body = ConversationInputSchema.parse(req.body);
-  ```
-  The matching allowlist entry is in `tools/lint-prod-readiness.allowlist.txt` (19 rows tagged `issue-31-04-debt-LOCKER-04-route-bulkfix-31-08`).
-- Why it matters: CLAUDE.md DISCIPLINE rule 14 requires every Fastify route to carry `schema: { body|querystring|params: <ZodSchema> }`. The CLAUDE.md WARN→BLOCKING ledger explicitly defers this flip to Phase 41; today it ships as WARN-only debt. Publishing v1 on GitHub before Phase 41 means external contributors read these files as canonical patterns and copy the wrong shape into new routes. Operationally, `Schema.parse(req.body)` inside the handler still produces 400 via the central `setErrorHandler` (error-handler.ts:131), so the wire surface is correct — but route introspection (Swagger/OpenAPI export, fastify-swagger plugin, fastify-zod-openapi) cannot see the schema, so generated client SDKs and contract tests will lack the body/query types for every reviewed route.
-- Fix: Either land the Phase 41 route-bulkfix before publication, or, at minimum, document in the README/SELF_HOSTING.md that LOCKER-04 closure is pending and external SDK generation against `/api/notes`, `/api/folders`, `/api/conversations`, `/api/conversations/messages` requires reading the wire-schemas package directly. Long-term fix per LOCKER-04 spec: convert each `Schema.parse(req.body)` to `schema: { body: zodToJsonSchema(Schema) }` with `validatorCompiler` from `fastify-type-provider-zod`, then drop the handler-side `.parse()`.
+Tenant-isolation discipline is uniform and clean across the 19 files. I found **no RLS-bypass, no SQL-injection vector, no `as any` / `@ts-ignore` / `NODE_ENV` branch / hardcoded localhost-or-port** in scope.
 
-### [HIGH] `notes/delete-all.ts` — 1000-row cap is bypassable via tombstone accumulation
-- File: `apps/api/src/routes/notes/delete-all.ts:50` (count) vs `:65` (delete)
-- Category: security / DoS-mitigation bypass
-- Evidence:
-  ```ts
-  // Count: live rows only
-  const countRes = (await tx.execute(sql`
-    SELECT COUNT(*)::int AS n
-      FROM "notes"
-     WHERE "user_id" = ${userId}::uuid
-       AND "deleted_at" IS NULL          // <-- excludes tombstones
-  `)) as { rows?: { n: number | string }[] };
-  const count = Number(countRes.rows?.[0]?.n ?? 0);
-  if (count > MAX_INLINE_PURGE) {
-    return { exceeded: true, count } as const;
-  }
-  // Delete: includes tombstones
-  const delRes = (await tx.execute(sql`
-    DELETE FROM "notes"
-     WHERE "user_id" = ${userId}::uuid    // <-- NO deleted_at filter
-    RETURNING "id"
-  `)) as { rows?: { id: string }[] };
-  ```
-  The mismatched filter is deliberate per the comment at line 60–64 ("`Includes already-soft-deleted rows (deleted_at IS NOT NULL) so the purge is total`"). The 1000-row cap exists for `T-DEL-ALL-DOS`.
-- Why it matters: A user can repeatedly call `/api/notes/create` + `/api/notes/delete` to accumulate soft-deleted tombstones without ever exceeding the 1000-live-row count gate. The eventual `/api/notes/delete-all` purges all of those tombstones inline, exceeding the documented bound. With per-user rate limit 120 req/min on `create` + 120 on `delete`, a sustained pattern of 240 req/min produces 7200 tombstones/hour with no live-row growth. The gate's stated purpose ("keep the request-time roundtrip bounded") is then defeated.
-- Fix: Make the count query and the DELETE consistent. Either:
-  ```sql
-  SELECT COUNT(*)::int AS n FROM "notes" WHERE "user_id" = $1::uuid  -- no deleted_at filter
-  ```
-  so the cap reflects the actual purge size; or constrain the DELETE to `deleted_at IS NULL` and rely on a periodic worker to vacuum tombstones (then the comment at 60–64 needs rewriting). The first is the smaller change.
+The defects below are concentrated in (a) **LOCKER-04 invariant 14 non-compliance** in the entire `folders/**` + `notes/**` tree (no `schema: { body|querystring|params: ZodSchema }` on the route declaration), (b) **wire-schema drift** between `apps/api/src/routes/conversations/messages.ts` and `packages/wire-schemas/src/conversations.ts` (role enum + metadata shape), (c) a small dead field inside `folders/shape.ts`, (d) a non-canonical 400 error envelope in `notes/delete-all.ts`.
 
-### [HIGH] `conversations/messages.ts` POST — `content` has no length cap, asymmetric with the 4 KiB metadata cap
-- File: `apps/api/src/routes/conversations/messages.ts:46–54` (schema), `:82–86` (metadata cap)
-- Category: security / DoS surface
-- Evidence:
-  ```ts
-  const MessageInputSchema = z
-    .object({
-      conversation_id: z.string().uuid(),
-      role: MessageRoleSchema,
-      content: z.string(),                                    // <-- no .max()
-      metadata: z.record(z.string(), z.unknown()).nullable().optional(),
-      client_message_id: z.string().optional(),
-    })
-    .strict();
-  // ...
-  const metaBytes = Buffer.byteLength(JSON.stringify(body.metadata ?? {}), "utf8");
-  if (metaBytes > MESSAGE_METADATA_MAX_BYTES) {
-    throw new ValidationError("METADATA_TOO_LARGE", "metadata exceeds 4096 bytes (4KB cap)");
-  }
-  ```
-- Why it matters: `metadata` is capped at 4 KiB (`T-MSG-INJ` mitigation) but `content` is unbounded inside the handler. The only ceiling is Fastify's global `bodyLimit` default (1 MiB), or whatever the bootstrap.ts override sets. Caller rate-limited to 240/min × ~1 MiB = ~240 MiB/min/user of message bodies committed to the `messages` table. Under Plan 07's stated 1000-concurrent-user budget that's ~234 GiB/min of WAL across the fleet. The asymmetry is also surprising to a reviewer: the route enforces a tight cap on the small field while leaving the big field open.
-- Fix: Add `.max(MAX_MESSAGE_CONTENT_BYTES)` to the `content` field with the cap exported alongside `MESSAGE_METADATA_MAX_BYTES`. A 64 KiB content cap is enough for any sensible chat message and aligns with the upstream desktop client's local-SQLite expectations.
+Severity tally: **0 CRITICAL · 4 HIGH · 5 MEDIUM · 3 LOW**.
 
-### [MEDIUM] `conversations/update.ts` — `archived_at` accepted as any string
-- File: `apps/api/src/routes/conversations/update.ts:20–24`
-- Category: input validation / error envelope quality
-- Evidence:
-  ```ts
-  const UpdateBodySchema = z.object({
-    id: z.string().uuid(),
-    title: z.string().optional(),
-    archived_at: z.string().nullable().optional(),     // <-- no .datetime() / .iso() / regex
-  });
-  // ...
-  setFragments.push(sql`${sql.raw(`"${col}"`)} = ${v as unknown}`);  // raw string passed
-  ```
-  The value reaches a `timestamptz` column via implicit text→timestamptz cast; Postgres raises `invalid input syntax for type timestamp with time zone: "xyz"` which is then surfaced via the central error handler as a 500.
-- Why it matters: Wire callers shipping a malformed string get a 500 "internal server error" instead of a stable 400 + `code: VALIDATION_FAILED`. This breaks contract tests against the negative matrix and confuses desktop client retry logic.
-- Fix: Replace with `archived_at: z.string().datetime({ offset: true }).nullable().optional()`. Or accept ISO and pre-convert to `Date` in JS before binding.
+---
 
-### [MEDIUM] `notes/update.ts` — `client_note_id` accepted but silently dropped on every PATCH
-- File: `apps/api/src/routes/notes/update.ts:63` (schema accepts), `:66–81` (FIELD_MAP does NOT include it)
-- Category: API contract / silent data loss
-- Evidence:
-  ```ts
-  const UpdateBodySchema = z.object({
-    id: z.string().uuid(),
-    // ...
-    client_note_id: z.string().optional(),
-  });
-  const FIELD_MAP: Record<string, MutableCol> = {
-    title: "title", content: "content", note_type: "note_type", /* ... */
-    // <-- client_note_id absent
-  };
-  ```
-  Same pattern in `folders/update.ts:33` (`client_folder_id` accepted, not in FIELD_MAP). Conversations `update.ts` does not accept `client_conversation_id` so the symptom is asymmetric across the three families.
-- Why it matters: A desktop client wishing to rebind a server row to a new local UUID will send `{id, client_note_id}` and receive a 200 with no error — but the server-side `client_note_id` is unchanged. Silent acceptance of an ignored field is a contract anti-pattern; tomorrow's reader assumes the field is honoured.
-- Fix: Either (a) drop `client_note_id`/`client_folder_id` from the schema and let `.strict()` reject the key, or (b) add it to `FIELD_MAP` (and write a phase that decides whether rebinding is allowed). Today the schema is non-strict (`z.object` without `.strict()`) so unknown keys are silently stripped — same problem class.
+## CRITICAL
 
-### [MEDIUM] `conversations/update.ts` + `folders/update.ts` + `notes/update.ts` — empty-PATCH bumps `updated_at`
-- File: `apps/api/src/routes/conversations/update.ts:49–61`; same pattern at `folders/update.ts:61–74`, `notes/update.ts:101–117`
-- Category: API contract / WAL noise
-- Evidence:
-  ```ts
-  const setFragments = [];
-  for (const [key, col] of Object.entries(FIELD_MAP)) {
-    if (Object.hasOwn(body, key)) { /* push */ }
-  }
-  setFragments.push(sql`"updated_at" = NOW()`);   // always pushed
-  ```
-  A request body of `{id}` (no mutable fields) still runs `UPDATE … SET "updated_at" = NOW() WHERE id = … AND user_id = …` and returns 200 with the same row, only `updated_at` advanced.
-- Why it matters: A rate-limited (120/min/user) endpoint becomes a free "ping updated_at" pump — useful to an attacker who wants to invalidate caches built on `updated_at` or trigger downstream sync chatter. Also writes ~120 WAL records/min/user that produce no business state change.
-- Fix: If `setFragments.length === 1` after the FIELD_MAP loop (i.e. only the `updated_at` synthetic), skip the UPDATE entirely and return the existing row (or a 400 `NO_FIELDS_TO_UPDATE`).
+None.
 
-### [MEDIUM] `conversations/messages.ts` GET — manual UUID regex duplicates Zod functionality
-- File: `apps/api/src/routes/conversations/messages.ts:147–151`
-- Category: code-quality / arch workaround
-- Evidence:
-  ```ts
-  const uuidRe = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/;
-  if (!uuidRe.test(conversationId)) {
-    throw new ValidationError("INVALID_UUID", "conversation_id must be a UUID");
-  }
-  ```
-  The query string is not validated by Zod — instead `(req.query ?? {}) as ListQuery` casts unknown and the handler hand-rolls a regex.
-- Why it matters: Duplicates `z.string().uuid()` logic, the regex permits `XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX` (no variant/version checks per RFC 4122) and trivially differs from Zod's stricter check. Hand-rolled UUID regex was specifically flagged as an anti-pattern in DISCIPLINE rule 13.
-- Fix: Define `const MessagesListQuerySchema = z.object({ conversation_id: z.string().uuid(), limit: z.string().optional(), before: z.string().optional(), since: z.string().optional() })` and `MessagesListQuerySchema.parse(req.query)`. Pairs cleanly with the LOCKER-04 fix above.
+---
 
-### [MEDIUM] `notes/batch-create.ts` + `folders/batch-create.ts` — `client_note_id`/`client_folder_id` absent → no entry in response (silent dropout)
-- File: `apps/api/src/routes/notes/batch-create.ts:106–108`
-- Category: API contract / wire shape
-- Evidence:
-  ```ts
-  if (row.client_note_id) {
-    results.push({ client_note_id: row.client_note_id, id: row.id });
-  }
-  ```
-  Rows inserted with `client_note_id: null` (legitimate per the upstream `NoteInput` schema where the field is optional) are silently omitted from the response `created` array.
-- Why it matters: A caller posting `{ notes: [n1, n2] }` where `n1.client_note_id` is set and `n2.client_note_id` is null receives `{ created: [{ client_note_id, id }] }` of length 1. The desktop client must then guess which input element was dropped. The comment at line 19–20 acknowledges this ("the desktop ignores those entries") — but this couples the server's response shape to a desktop assumption that may not hold for third-party SDKs against the v1 published wire.
-- Fix: Always emit one entry per input (`client_note_id: row.client_note_id ?? null`). The desktop can keep ignoring entries with null `client_note_id`; SDK authors won't have to guess.
+## HIGH
 
-### [LOW] `conversations/list.ts:62` + `notes/list.ts:51` + `folders/list.ts:52` — `req.query ?? {}` cast bypasses runtime validation
-- File: `apps/api/src/routes/conversations/list.ts:62`
-- Category: code-quality
-- Evidence:
-  ```ts
-  const q = (req.query ?? {}) as ListQuery;
-  ```
-- Why it matters: Same root cause as the LOCKER-04 finding. `req.query` is `unknown`; the cast assumes shape without validating. `parseListQuery` does light validation on `limit/before/since` but does not reject extra keys or coerce non-string values. Won't bite today because Fastify's `qs`-style parser produces strings, but the cast is the kind of thing future "I added a number coercion" PRs trip on.
-- Fix: Same as the LOCKER-04 fix — let `schema: { querystring: ... }` shape `req.query` for you.
+### H-1 — LOCKER-04 inv-14 violation: `schema:` missing on every folders/** and notes/** route
 
-### [LOW] `conversations/search.ts:51–54` + `notes/search.ts:58–61` — pre-Zod trim check duplicates schema concern
-- File: `apps/api/src/routes/conversations/search.ts:51–54`
-- Category: code-quality
-- Evidence:
-  ```ts
-  const rawBody = (req.body ?? {}) as { query?: unknown };
-  if (typeof rawBody.query === "string" && rawBody.query.trim().length < 1) {
-    throw new ValidationError("QUERY_REQUIRED", "query must be non-empty");
-  }
-  const body = SearchRequestSchema.parse(req.body);
-  ```
-- Why it matters: The Zod schema is `z.string().min(1).max(256)`; the manual trim check exists because `"   "` satisfies `.min(1)`. The pre-Zod cast `as { query?: unknown }` is unnecessary — `req.body` is already typed. The comment refers to "Pitfall #3" which is project-internal and not surfaced to a reader.
-- Fix: Replace with `z.string().min(1).max(256).refine((s) => s.trim().length > 0, "must be non-empty")` inside the schema. Removes the cast and centralizes validation.
+`apps/api/src/routes/folders/batch-create.ts:42`
+`apps/api/src/routes/folders/create.ts:30`
+`apps/api/src/routes/folders/delete.ts:36`
+`apps/api/src/routes/folders/list.ts:39`
+`apps/api/src/routes/folders/update.ts:48`
+`apps/api/src/routes/notes/batch-create.ts:48`
+`apps/api/src/routes/notes/create.ts:32`
+`apps/api/src/routes/notes/delete-all.ts:33`
+`apps/api/src/routes/notes/delete.ts:32`
+`apps/api/src/routes/notes/list.ts:38`
+`apps/api/src/routes/notes/search.ts:47`
+`apps/api/src/routes/notes/update.ts:89`
 
-### [LOW] `conversations/list.ts:46–48` — `ConversationWithMessagesRow` extends `CloudConversationRow` but renames the SELECT result
-- File: `apps/api/src/routes/conversations/list.ts:46–48`, `:81–106`
-- Category: code-quality
-- Evidence:
-  ```ts
-  interface ConversationWithMessagesRow extends CloudConversationRow {
-    messages: CloudMessageRow[] | null;
-  }
-  // ...
-  const result = (await tx.execute(sql`SELECT c.*, COALESCE(...) AS messages FROM "conversations" c ...`));
-  ```
-  The aggregated subquery emits `jsonb_build_object(...)` rows — i.e. `messages` arrives as a `jsonb[]` typed array of plain objects, NOT as `CloudMessageRow` (which has `Date|string` timestamp types). The TS type is a lie at the boundary; it happens to work because `rowToCloudMessage` accepts the union.
-- Why it matters: The next person to add a column to `CloudMessageRow` will assume the shape arrives intact from the SQL; it doesn't. Names the boundary inaccurately.
-- Fix: Define a tighter `interface AggregatedMessage { id: string; conversation_id: string; role: string; content: string; metadata: Record<string, unknown> | null; created_at: string; }` matching exactly what `jsonb_build_object` emits, and use it in `ConversationWithMessagesRow.messages`.
+CLAUDE.md DISCIPLINE invariant 14 (LOCKER-04): *"Every Fastify route declaration MUST carry `schema: { body|querystring|params: <ZodSchema> }` AND `config: { rateLimit: ... }`."*
 
-### [LOW] `conversations/messages.ts:109` — `JSON.stringify(body.metadata ?? {})` redundant double-encoding into a `jsonb` column
-- File: `apps/api/src/routes/conversations/messages.ts:109`
-- Category: code-quality
-- Evidence:
-  ```ts
-  metadata: JSON.stringify(body.metadata ?? {}),
-  ```
-  `messages.metadata` is declared `jsonb` (`packages/data/src/schema/messages.ts:22`). The `pg` driver coerces a JS object to jsonb natively; passing a `JSON.stringify`-ed text relies on Postgres re-parsing the text via the `text → jsonb` cast.
-- Why it matters: Wastes one parse cycle per insert and obscures intent. Doesn't change wire output (the `jsonb` column is parsed back into a JS object on SELECT regardless), but a reader assumes the stringify is doing something protective.
-- Fix: `metadata: body.metadata ?? {},` — pass the object directly. The Drizzle param binder + pg type system handle the jsonb conversion.
+The `conversations/**` family complies — every route lists `schema: { body: … }` or `schema: { querystring: … }` (see e.g. `apps/api/src/routes/conversations/create.ts:35`, `apps/api/src/routes/conversations/list.ts:61`). The `folders/**` and `notes/**` families register **only** `config: { rateLimit: … }`; the `schema:` key is absent on 12 route declarations.
 
-## Dead code
-None within scope. Every exported `build*Routes` builder is wired into `apps/api/src/routes/index.ts` (confirmed by grep across `apps/`, `packages/` excluding `__tests__/`). All exported `rowTo*`/`Cloud*Row`/`*Deps` types are consumed within the same family. No orphan exports.
+Runtime safety is currently preserved because the handlers still execute `Schema.parse(req.body)` inline (or `parseListQuery(q)` for query routes). But the invariant is a hard structural rule enforced by `tools/lint-prod-readiness.ts` (LOCKER-04), and CLAUDE.md notes the WARN→BLOCKING flip is operationally deferred to Phase 41 — these routes will fail the lint the moment that flip lands.
+
+Knock-on: Fastify's stock schema-compiled validator never runs on these payloads, so request rejection happens AFTER the handler enters (post-`AuthError` check) rather than at the Fastify dispatcher.
+
+### H-2 — Wire-schema drift: `MessageRoleSchema` server-side vs `ConversationRoleSchema` in wire-schemas
+
+`apps/api/src/routes/conversations/messages.ts:63`
+
+```
+const MessageRoleSchema = z.enum(["user", "assistant", "system", "tool"]);
+```
+
+`packages/wire-schemas/src/conversations.ts:19`
+
+```
+export const ConversationRoleSchema = z.enum(["user", "assistant", "system"]);
+```
+
+The server's POST `/api/conversations/messages` accepts `role: "tool"`, but the canonical wire-schema (and `CloudMessageSchema` which is the **OUTPUT** contract at conversations.ts:59-66) does NOT include `"tool"`. Result: a desktop client (or contract test) that round-trips through `CloudMessageSchema.parse(serverResponse)` will reject any message persisted with `role="tool"`, even though the server happily accepted, stored and echoed it.
+
+Either the desktop contract is right and the server must reject `"tool"` (drop it from `MessageRoleSchema`), or `"tool"` is correct and `packages/wire-schemas/src/conversations.ts` must add it AND the upstream `~/openwhispr/src/services/ConversationsService.ts` interface must follow. Right now the two sources of truth disagree silently — exactly the "byte-for-byte upstream contract (D-22)" drift CLAUDE.md hard rule 1 forbids.
+
+### H-3 — Wire-schema drift: `metadata` shape diverges between server and wire-schemas
+
+`apps/api/src/routes/conversations/messages.ts:70`
+
+```
+metadata: z.record(z.string(), z.unknown()).nullable().optional(),
+```
+
+`packages/wire-schemas/src/conversations.ts:21-25`
+
+```
+const MetadataSchema = z
+  .record(z.string().min(1).max(64), z.union([z.string().max(1024), z.number(), z.boolean()]))
+  .refine((meta) => JSON.stringify(meta).length <= METADATA_MAX_BYTES, { … });
+```
+
+Wire-schemas constrains keys (1..64 chars), values (string ≤ 1024 / number / boolean), and total stringified size (4 KiB).
+
+The server's POST `messages.ts` accepts ANY `Record<string, unknown>` (nested objects, arrays, deep JSON), THEN re-stringifies via `JSON.stringify(body.metadata ?? {})` and only checks the 4 KiB envelope at `messages.ts:113`. Key/value shape is **never** validated server-side. A client can persist `metadata: { evil: { nested: [{deep: true}] } }` — wire-schemas would reject that input but the server stores it; the response then fails wire-schema round-trip parse on the desktop. Same root cause as H-2 — server-side ad-hoc Zod schema disagrees with the package-level contract.
+
+### H-4 — `notes/delete-all.ts` emits non-canonical 400 envelope
+
+`apps/api/src/routes/notes/delete-all.ts:85-87`
+
+```
+return reply.code(400).send({
+  error: `delete-all exceeds ${MAX_INLINE_PURGE} rows; please delete in batches`,
+});
+```
+
+Every other 4xx in scope throws `new ValidationError(CODE, message)` so the centralised `setErrorHandler` emits the canonical envelope (`{ error: { code, message } }` per the Phase 02 `errors.ts` family). Compare e.g. `messages.ts:114` (`throw new ValidationError("METADATA_TOO_LARGE", …)`) or `batch-create.ts:54` (`throw new ValidationError("BATCH_TOO_LARGE", …)`).
+
+`delete-all`'s `reply.code(400).send({error: "<plain string>"})` emits `{ "error": "<message>" }` — a STRING-valued `error` field, not the wire envelope object. A desktop client (or contract test) parsing the response as `ErrorEnvelope` will mis-handle it; a future `BACKEND_SPEC.md` contract assertion would reject it. Three further 400 emission sites with the same anti-pattern (see M-1 below) — promoting `notes/delete-all.ts` to HIGH because the 400 IS the only documented failure mode of this route, so the canonical-envelope expectation is unavoidable for a client.
+
+---
+
+## MEDIUM
+
+### M-1 — keyset-parse failure path returns non-canonical 400 envelope (4 sites)
+
+`apps/api/src/routes/conversations/list.ts:75-78`
+`apps/api/src/routes/conversations/messages.ts:188-190`
+`apps/api/src/routes/notes/list.ts:53-55`
+`apps/api/src/routes/folders/list.ts:54-57`
+
+```
+try {
+  parsed = parseListQuery(q);
+} catch (err) {
+  return reply
+    .code(400)
+    .send({ error: err instanceof Error ? err.message : "invalid query" });
+}
+```
+
+`parseListQuery()` (`apps/api/src/lib/keyset-pagination.ts:64,67`) raises `TypeError("Invalid 'before' timestamp")` / `"Invalid 'since' timestamp"` — these get serialised as `{error: "Invalid 'before' timestamp"}` rather than the canonical `{error:{code, message}}` envelope. Same drift class as H-4 but lower-severity because the desktop sends ISO strings and is unlikely to trip the parse in steady-state usage.
+
+### M-2 — `CloudFolderRow.parent_folder_id` is dead in the wire layer
+
+`apps/api/src/routes/folders/shape.ts:21`
+
+The `parent_folder_id?: string | null` field is declared on the row interface but `rowToCloudFolder()` (line 43) does not read or emit it. The 10-line comment at the top of the file (`shape.ts:11-14`) explicitly says this is intentional (upstream `CloudFolder` omits it). Fine — but then the field on the row interface is dead surface area. Nothing reads it; if a future caller mis-typed `row.parentFolderId` (camelCase) the optional-field would silently mask the mistake. Lower-noise option: drop the field from the row interface entirely.
+
+### M-3 — `MutableCol` type alias dead-pairs with `MUTABLE_COLS` in three update routes
+
+`apps/api/src/routes/conversations/update.ts:17`
+`apps/api/src/routes/folders/update.ts:22`
+`apps/api/src/routes/notes/update.ts:26`
+
+```
+const MUTABLE_COLS = ["…"] as const;
+type MutableCol = (typeof MUTABLE_COLS)[number];
+```
+
+`MutableCol` is referenced once each (the `FIELD_MAP: Record<string, MutableCol>` declaration). `MUTABLE_COLS` itself, however, is **never read** at runtime — the actual SET-fragment construction iterates `FIELD_MAP`. The array exists purely as a compile-time provenance for the type. That's defensible but the `// STRICT allowlist — defends against untrusted-column injection` comment (notes/update.ts:24-25) overstates the runtime effect — the only runtime allowlist is the keys of `FIELD_MAP`, which is hand-maintained beside it. If a future contributor adds a key to `FIELD_MAP` without adding it to `MUTABLE_COLS`, the type does not catch it (TS will still accept the string-literal as `MutableCol` because `Record<string, MutableCol>` widens the key-side, and the index-access into `(typeof MUTABLE_COLS)[number]` only widens the value-side). Confusing dead-runtime allowlist next to a real hand-maintained one.
+
+### M-4 — `notes/delete-all.ts` carries no `schema:` at all (no body, no querystring)
+
+`apps/api/src/routes/notes/delete-all.ts:33-39`
+
+Sub-bullet of H-1, mentioned separately because a body-less DELETE genuinely has no payload to validate. Even so, LOCKER-04 inv-14 requires either `schema: { body|querystring|params: <ZodSchema> }` or the route is non-compliant — the route's bare `config: { rateLimit }` shape is the exact pattern the linter refuses.
+
+### M-5 — `conversations/messages.ts` GET handler validates UUID twice (zod schema is too loose, regex bandaid)
+
+`apps/api/src/routes/conversations/messages.ts:81` + `:178-182`
+
+```
+const MessagesListQuerySchema = z.object({
+  conversation_id: z.string().min(1),     // NOT .uuid()
+  …
+}).strict();
+…
+const uuidRe = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-…/;
+if (!uuidRe.test(conversationId)) {
+  throw new ValidationError("INVALID_UUID", …);
+}
+```
+
+The zod schema permits any non-empty string, so the handler hand-rolls a UUID regex right after `parseListQuery`. The cleaner shape is `conversation_id: z.string().uuid()` which would make the regex check + the comment (`// UUID sanity check — keep the SQL cast from raising`) redundant. Today the duplication is fine, but the looser zod-level shape means contract tests that round-trip through `MessagesListQuerySchema.parse({conversation_id: "not-a-uuid"})` won't catch the bug that the in-handler regex catches at runtime.
+
+---
+
+## LOW
+
+### L-1 — Stale "200" rationale comments after 56-04 flip to 201/204
+
+`apps/api/src/routes/conversations/create.ts:8-11` — comment says "D-24 — same client_conversation_id on retry returns the existing row (200, NOT 409)" but the route now returns 201 on both paths (line 63). Comment drift, not behaviour drift.
+
+`apps/api/src/routes/conversations/messages.ts:18` — same drift: "idempotency — same client_message_id returns the existing row, NEVER 409 (D-24)" reads fine, but line 13's `(Phase 56 / Plan 56-04 — R10 client contract conformance, flipped 200 → 201 Created. Idempotent replay also returns 201.)` is the actual current behaviour. Mixed historical + current; minor confusion source.
+
+### L-2 — `conversations/delete.ts:62-77` discards the cascade-update affected-row count
+
+```
+const row = result.rows?.[0];
+if (!row) return undefined;
+// Phase 56 / Plan 56-04 R10 — cascade soft-delete to messages …
+await tx.execute(sql`UPDATE "messages" SET "deleted_at" = NOW() WHERE conversation_id = … `);
+```
+
+The cascade UPDATE's affected-row count is not captured or logged. For a 204 endpoint this is fine, but if/when an operator needs to debug "messages survived a conversation delete", there's no observability hook. No `req.log.info({ cascade_count: … })` call exists. Cold-path; LOW.
+
+### L-3 — `conversations/list.ts:112` array-coalesce shape relies on pg-row → JS-array round-trip behaviour
+
+`apps/api/src/routes/conversations/list.ts:92-117,124`
+
+The SQL coalesces an empty aggregation to `ARRAY[]::jsonb[]` and JS does `Array.isArray(row.messages) ? row.messages.map(rowToCloudMessage) : []`. node-pg returns Postgres `jsonb[]` as a JS array, so this works — but a future migration that swaps `array_agg(jsonb_build_object(...))` for `jsonb_agg(...)` would change the value type (jsonb-of-array, not jsonb-array) without breaking `Array.isArray` checks (JSONB arrays also serialise to JS arrays via node-pg). Not a current defect; brittle if revisited.
+
+---
+
+## Dead code summary
+
+| Symbol | File:Line | Disposition |
+|---|---|---|
+| `MUTABLE_COLS` (3 sites) | conversations/update.ts:17, folders/update.ts:22, notes/update.ts:26 | Runtime-dead allowlist; only the `type MutableCol` indirection consumes it. See M-3. |
+| `CloudFolderRow.parent_folder_id` | folders/shape.ts:21 | Declared on row interface, never read or emitted by `rowToCloudFolder()`. See M-2. |
+| `MessageRoleSchema` (export risk) | conversations/messages.ts:63 | Not exported; only used inside `MessageInputSchema`. Not dead, but disagrees with `packages/wire-schemas/src/conversations.ts:19` `ConversationRoleSchema`. See H-2. |
+| `MESSAGE_METADATA_MAX_BYTES` / `MESSAGE_CONTENT_MAX_BYTES` | conversations/messages.ts:47,61 | Header comments document them as "de-exported (LOCKER-04 dead-export); test now reads source file directly." Verified — only `tests/unit/routes/plan-51-12c-locker-04-conversations.test.ts` references them, by string match against the source file. Not dead by project convention. |
+
+All route builder factories (`buildConversationsCreateRoutes`, `buildFoldersListRoutes`, …) are imported by `apps/api/src/routes/index.ts:33-75`. No orphan exports at the file-builder level.
+
+---
 
 ## Suppressed warnings
-None within scope — no `@ts-ignore`, `@ts-expect-error`, `// @ts-nocheck`, `as any`, `as unknown as`, `eslint-disable`, or `biome-ignore` lines in the 19 source files reviewed. Two `as` casts exist (e.g. `(req.query ?? {}) as ListQuery` in three list routes, and `(req.body ?? {}) as { query?: unknown }` in both search routes) — these are widening-narrowing casts on `unknown`, not type-suppressions; covered as LOW-tier code-quality findings above.
 
-## Notes
-- **TODO/FIXME/HACK/XXX/TEMP/WORKAROUND scan**: zero hits across the 19 files (`grep -rEn '(TODO|FIXME|HACK|XXX|TEMP|WORKAROUND|kludge)' apps/api/src/routes/{conversations,folders,notes}` returned no rows).
-- **Hardcode scan**: zero hits for `localhost|127\.0\.0\.1|:3000|:4000|:8080|sk-|AIza|AKIA|Bearer ey|process\.env\.NODE_ENV` in scope.
-- **Rate-limit posture**: every route in scope carries `config: { rateLimit: { max, timeWindow } }`. None use `rateLimit: false`. Batch endpoints correctly drop to 5/min/user; bulk-purge correctly drops to 3/min/user. Search drops to 60/min/user. Default CRUD sits at 120/min/user (240 for `/messages` which is per-message rather than per-conversation). The rate-limit posture is the strongest part of this surface.
-- **Auth posture**: `dualAuthHook` (`apps/api/src/middleware/dual-auth.ts`) is mounted as a global `onRequest` hook (`apps/api/src/index.ts:428`) and populates `req.user`/`req.tenant`/`req.sessionId` from session cookie OR Bearer PAK. Every reviewed handler re-checks `if (!req.user || !req.tenant) throw new AuthError("UNAUTHORIZED", "unauthorized")` as defence-in-depth. Cross-tenant ownership is enforced by `withTenant(deps.db, tenantId, ...)` (sets the `app.tenant_id` GUC and FORCE-RLS gates every read/write) plus an explicit `WHERE "user_id" = ${userId}::uuid` in every handler — so cross-user attacks within the same tenant are blocked even if RLS were misconfigured.
-- **Soft-delete posture**: every read path composes `withSoftDelete()` (`AND deleted_at IS NULL`); every soft-delete UPDATE adds `AND "deleted_at" IS NULL` to avoid re-deleting tombstones (also yields the 404 idempotency the contract wants). The single exception is `notes/delete-all.ts` which deliberately hard-deletes tombstones — see HIGH #2 above.
-- **SQL-injection posture**: no `sql.raw()` carries user input. Every `sql.raw` in scope wraps a column name pulled from a static `MUTABLE_COLS as const` tuple after `Object.hasOwn(body, key)` guard. The `client-id-upsert` helper additionally validates table/column identifiers against `/^[a-z_][a-z0-9_]*$/` before any `sql.raw`. Search routes both use `websearch_to_tsquery('simple', $1)` exclusively — no `to_tsquery` raw-input path.
-- **Recommendation for v1 publication**: address HIGH #2 (`delete-all` cap bypass) and HIGH #3 (`messages.content` cap) before tagging v1. The LOCKER-04 schema-block debt can ship if the README clearly documents it as pending Phase 41; otherwise external contributors will copy the missing-schema pattern into new routes faster than Phase 41 can land.
+None. `grep -rE "as any|as unknown as|@ts-ignore|@ts-expect-error|@ts-nocheck|eslint-disable|biome-ignore"` over the 19 files returns zero hits. LOCKER-02 clean in scope.
+
+---
+
+## RLS / tenant-isolation cross-check
+
+All 19 DB-touching call sites route through `withTenant(deps.db, tenantId, async (tx) => { … })`. Every `WHERE` clause additionally binds `user_id = ${userId}::uuid`. No raw `deps.db.execute()` outside `withTenant`. No `runWithTenantContext`-style escape hatch observed. Clean.
+
+Defence-in-depth note: `apps/api/src/routes/notes/delete-all.ts:62,73-77` constrains the COUNT + DELETE by `user_id` but does **not** add an explicit `tenant_id` predicate. Fine today, because `withTenant` binds the RLS GUC and the `notes` table has FORCE RLS on `tenant_id`. If a future migration ever drops FORCE RLS on `notes`, this route becomes a cross-tenant hard-purge gun under a shared-tenant scenario. Belt-and-braces would add `AND tenant_id = current_setting('app.tenant_id')::uuid` to the DELETE, but per existing pattern in the rest of the file it's not required. Noted, not flagged.
+
+---
+
+## CLAUDE.md hard rule 1 cross-check
+
+`git log -p --since='2 months ago' -- apps/api/src/routes/conversations apps/api/src/routes/folders apps/api/src/routes/notes` not exhaustively reviewed line-by-line, but the recent in-file rationale comments (e.g. `notes/delete-all.ts:50-58` documenting the count→DELETE rowset mismatch, `conversations/messages.ts:50-61` documenting the missing `content` cap) read as legitimate production hardening, not "edited to make tests pass." No smoking-gun pattern (e.g. tenant FK reference change, schema mutation, magic-string sentinel matching a fixture) in scope.
+
+---
+
+_End of review — describe-only, no source files modified._
