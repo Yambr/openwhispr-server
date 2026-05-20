@@ -371,94 +371,107 @@ export function buildTestOnlyRoutes(deps: TestOnlyDeps) {
     // SERVER-REQUIREMENTS.md §R1 gate-2 + CONTEXT.md §D-1.
     if (deps.signUpEmail && process.env.OPENWHISPR_TEST_ROUTES === "true") {
       const signUpEmail = deps.signUpEmail;
-      app.post("/api/_test/seed-tenant", { config: { rateLimit: false } }, async (req, reply) => {
-        // Defence-in-depth: refuse in production even if the env opt-in
-        // was mis-set. The outer gate would already have skipped
-        // registration, but a second handler-side check costs nothing
-        // and pins the contract under operator mis-configuration.
-        if (process.env.NODE_ENV === "production") {
-          return reply.code(404).send({ error: "not found" });
-        }
-        const parsed = SeedTenantRequest.safeParse(req.body);
-        if (!parsed.success) {
-          return reply.code(400).send({
-            error: "invalid body",
-            code: "INVALID_BODY",
-            details: parsed.error.flatten(),
+      // R13 — `auth: false` opts this route out of the global
+      // `dualAuthHook` (middleware/dual-auth.ts). seed-tenant mints the
+      // FIRST bearer for an as-yet-unauthenticated test tenant; requiring
+      // a session to call it is circular (the route IS the bootstrap).
+      // The dual-auth hook only skips routes whose `config.auth === false`
+      // — omitting this flag (the pre-R13 state) sat the handler behind
+      // the production auth gate and 401'd every call. SERVER-REQUIREMENTS
+      // §R1 mandates "skip the trustedOrigins / auth check entirely".
+      // Safety is the OPENWHISPR_TEST_ROUTES + NODE_ENV gate above —
+      // production 404s the whole /api/_test/* surface.
+      app.post(
+        "/api/_test/seed-tenant",
+        { config: { rateLimit: false, auth: false } },
+        async (req, reply) => {
+          // Defence-in-depth: refuse in production even if the env opt-in
+          // was mis-set. The outer gate would already have skipped
+          // registration, but a second handler-side check costs nothing
+          // and pins the contract under operator mis-configuration.
+          if (process.env.NODE_ENV === "production") {
+            return reply.code(404).send({ error: "not found" });
+          }
+          const parsed = SeedTenantRequest.safeParse(req.body);
+          if (!parsed.success) {
+            return reply.code(400).send({
+              error: "invalid body",
+              code: "INVALID_BODY",
+              details: parsed.error.flatten(),
+            });
+          }
+          const body = parsed.data;
+
+          // 1. Mint (or look up) the user via Better Auth's signUpEmail.
+          //    Idempotency contract (test 6): a second call with the same
+          //    email returns the existing user row + a fresh session.
+          //    The bound signUpEmail handles dedupe (Better Auth's
+          //    USER_ALREADY_EXISTS or our test fake's lower-case lookup);
+          //    on error we synthesise an idempotent lookup against the
+          //    users table (production path — Better Auth on duplicate
+          //    email surfaces a typed error rather than the existing row).
+          const signUp = await signUpEmail({
+            body: { email: body.email, password: body.password, name: body.name },
           });
-        }
-        const body = parsed.data;
 
-        // 1. Mint (or look up) the user via Better Auth's signUpEmail.
-        //    Idempotency contract (test 6): a second call with the same
-        //    email returns the existing user row + a fresh session.
-        //    The bound signUpEmail handles dedupe (Better Auth's
-        //    USER_ALREADY_EXISTS or our test fake's lower-case lookup);
-        //    on error we synthesise an idempotent lookup against the
-        //    users table (production path — Better Auth on duplicate
-        //    email surfaces a typed error rather than the existing row).
-        const signUp = await signUpEmail({
-          body: { email: body.email, password: body.password, name: body.name },
-        });
-
-        let userId: string;
-        let userEmail: string;
-        let createdAt: string;
-        if (signUp.data) {
-          userId = signUp.data.user.id;
-          userEmail = signUp.data.user.email;
-          createdAt = new Date().toISOString();
-        } else {
-          // Better Auth refused — try the idempotent lookup branch
-          // (e.g. USER_ALREADY_EXISTS). The seed-tenant contract
-          // promises 200 + the existing row on repeat invocation.
-          const lookup = (await db.transaction(async (tx) => {
-            return (await tx.execute(sql`
+          let userId: string;
+          let userEmail: string;
+          let createdAt: string;
+          if (signUp.data) {
+            userId = signUp.data.user.id;
+            userEmail = signUp.data.user.email;
+            createdAt = new Date().toISOString();
+          } else {
+            // Better Auth refused — try the idempotent lookup branch
+            // (e.g. USER_ALREADY_EXISTS). The seed-tenant contract
+            // promises 200 + the existing row on repeat invocation.
+            const lookup = (await db.transaction(async (tx) => {
+              return (await tx.execute(sql`
               SELECT id, email, created_at FROM users
               WHERE lower(email) = lower(${body.email})
               LIMIT 1
             `)) as {
-              rows: Array<{ id: string; email: string; created_at: string | Date }>;
-            };
-          })) as { rows: Array<{ id: string; email: string; created_at: string | Date }> };
-          const existing = lookup.rows[0];
-          if (!existing) {
-            return reply.code(500).send({
-              error: signUp.error?.message ?? "signUpEmail failed",
-              code: signUp.error?.code ?? "SIGNUP_FAILED",
-            });
+                rows: Array<{ id: string; email: string; created_at: string | Date }>;
+              };
+            })) as { rows: Array<{ id: string; email: string; created_at: string | Date }> };
+            const existing = lookup.rows[0];
+            if (!existing) {
+              return reply.code(500).send({
+                error: signUp.error?.message ?? "signUpEmail failed",
+                code: signUp.error?.code ?? "SIGNUP_FAILED",
+              });
+            }
+            userId = existing.id;
+            userEmail = existing.email;
+            createdAt =
+              typeof existing.created_at === "string"
+                ? existing.created_at
+                : existing.created_at.toISOString();
           }
-          userId = existing.id;
-          userEmail = existing.email;
-          createdAt =
-            typeof existing.created_at === "string"
-              ? existing.created_at
-              : existing.created_at.toISOString();
-        }
 
-        // 2. Flip email_verified=true straight on the user row. Skips
-        //    the verification-email round-trip per R1. Bound parameter
-        //    is the freshly-minted user id; no string interpolation.
-        await db.transaction(async (tx) => {
-          await tx.execute(sql`
+          // 2. Flip email_verified=true straight on the user row. Skips
+          //    the verification-email round-trip per R1. Bound parameter
+          //    is the freshly-minted user id; no string interpolation.
+          await db.transaction(async (tx) => {
+            await tx.execute(sql`
             UPDATE users
                SET email_verified = true,
                    email_verified_at = now()
              WHERE id = ${userId}::uuid
           `);
-        });
+          });
 
-        // 3. Mint a fresh opaque bearer and INSERT a sessions row so
-        //    Better Auth's bearer plugin admits subsequent requests
-        //    carrying it. Same 32-byte base64url shape as the rest of
-        //    the test-only surface (force-rotate / health-authed).
-        const token = randomBytes(32).toString("base64url");
-        const sessionId = randomUUID();
-        // 30-day TTL mirrors the production session config (auth.ts
-        // sessions.expiresIn = 60*60*24*30).
-        const expiresAt = new Date(Date.now() + 1000 * 60 * 60 * 24 * 30).toISOString();
-        await db.transaction(async (tx) => {
-          await tx.execute(sql`
+          // 3. Mint a fresh opaque bearer and INSERT a sessions row so
+          //    Better Auth's bearer plugin admits subsequent requests
+          //    carrying it. Same 32-byte base64url shape as the rest of
+          //    the test-only surface (force-rotate / health-authed).
+          const token = randomBytes(32).toString("base64url");
+          const sessionId = randomUUID();
+          // 30-day TTL mirrors the production session config (auth.ts
+          // sessions.expiresIn = 60*60*24*30).
+          const expiresAt = new Date(Date.now() + 1000 * 60 * 60 * 24 * 30).toISOString();
+          await db.transaction(async (tx) => {
+            await tx.execute(sql`
             INSERT INTO sessions (id, user_id, tenant_id, token, expires_at, created_at, updated_at)
             VALUES (${sessionId}::uuid,
                     ${userId}::uuid,
@@ -468,31 +481,32 @@ export function buildTestOnlyRoutes(deps: TestOnlyDeps) {
                     now(),
                     now())
           `);
-        });
-
-        // 4. Test-only seam — when caller passed a sessions Map (unit
-        //    tests), mirror the token there so the in-process dual-auth
-        //    fake resolves the bearer to the same user. Production
-        //    wiring leaves this undefined; the bearer plugin reads the
-        //    real sessions row written above.
-        if (deps.sessions) {
-          deps.sessions.set(token, {
-            id: userId,
-            email: userEmail,
-            tenantId: req.headers["x-test-tenant-id"]?.toString() ?? "",
           });
-        }
 
-        return reply.code(200).send({
-          token,
-          user: {
-            id: userId,
-            email: userEmail,
-            emailVerified: true,
-            createdAt,
-          },
-        });
-      });
+          // 4. Test-only seam — when caller passed a sessions Map (unit
+          //    tests), mirror the token there so the in-process dual-auth
+          //    fake resolves the bearer to the same user. Production
+          //    wiring leaves this undefined; the bearer plugin reads the
+          //    real sessions row written above.
+          if (deps.sessions) {
+            deps.sessions.set(token, {
+              id: userId,
+              email: userEmail,
+              tenantId: req.headers["x-test-tenant-id"]?.toString() ?? "",
+            });
+          }
+
+          return reply.code(200).send({
+            token,
+            user: {
+              id: userId,
+              email: userEmail,
+              emailVerified: true,
+              createdAt,
+            },
+          });
+        },
+      );
     }
   };
 }
