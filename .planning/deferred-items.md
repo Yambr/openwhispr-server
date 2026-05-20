@@ -11,6 +11,65 @@ record. Keep this file under ~200 lines.
 
 ---
 
+## Phase 58 Track C — data:CR-04 AUTH-04 overlap: `tryPreviousToken` wired onto an RLS-subject pool
+
+**Discovered:** 2026-05-20, during Phase 58 Track C characterization
+(`apps/api/tests/integration/auth-04-token-rotation-overlap.test.ts`).
+
+**WHY this is a real but deferred gap:**
+The reviewer's `data:CR-04` claim ("`previous_token_fp` never populated")
+was scoped to Better Auth's drizzleAdapter write path. The
+characterization test proves that scope is a false-positive:
+- `recordPreviousToken` (`apps/api/src/lib/token-rotation.ts`) writes
+  `previous_token_fp = sha256(old bearer)` + `previous_token_expires_at
+  = now()+5min` via a RAW `sql` UPDATE inside `withTenant(...)`. It never
+  traverses the lens / drizzleAdapter — the column IS populated on
+  rotation. **GREEN in the test.**
+- `tryPreviousToken` resolves the old bearer correctly **on a BYPASSRLS
+  connection** (its documented contract — see
+  `packages/data/src/sessions/lookup-by-previous-token.ts` header), and
+  the 5-minute window is bounded. **GREEN in the test.**
+
+**The residual gap:** the deployed binary
+(`apps/api/src/index.ts:470-495`) wires the dual-auth hook's
+`tryPreviousToken` adapter onto `opts.db` === `makeAppDb()` — the
+RLS-SUBJECT `openwhispr_app` role. `sessions` carries FORCE ROW LEVEL
+SECURITY (`migrations/0000_initial.sql:115`), and the dual-auth hook
+invokes the adapter BEFORE the tenant is resolved, so `app.tenant_id`
+is unset and the lookup SELECT matches zero rows. The AUTH-04 overlap
+window is therefore non-functional in production via the standard
+wiring — a different mechanism than the reviewer's drizzleAdapter
+scope, but a genuine gap. Test
+`data:CR-04 — characterizes the wiring gap: tryPreviousToken on the
+RLS-subject app role matches zero rows` PINS this with executable
+evidence.
+
+**WHY deferred (CLAUDE.md hard rule 1):** the fix is NOT a one-line
+wiring change — it requires threading a BYPASSRLS owner pool into
+`buildApp` and the dual-auth request hot path solely for
+`tryPreviousToken`. `buildApp` has no such option today; `probeOwnerPool`
+exists in the entrypoint but is not a general `ownerDb`. Introducing a
+BYPASSRLS connection reachable from every authenticated request is a
+security-review-bearing architectural change — it must not be hacked in
+to green a test. The Phase 58 PLAN Track C GREEN step anticipated a
+possible wiring fix in `index.ts`, but the discovered shape (new
+BYPASSRLS pool in the hot path) crosses the hard-rule-1 architectural
+threshold.
+
+**Unblock proposal:** dedicated mini-plan — add an optional
+`ownerDb`/`tryPreviousTokenDb` to `BuildAppOptions`, construct it from
+`DATABASE_URL_OWNER` in the entrypoint (reuse the `probeOwnerPool`
+sizing rationale), and wire the dual-auth `tryPreviousToken` adapter
+onto it. Alternative: re-introduce a `SECURITY DEFINER` SQL function
+(as migration 0005's `lookup_session_by_previous_token` did before
+0019b dropped it) that bypasses RLS and is EXECUTE-granted to
+`openwhispr_app` — keeps the request path on the app pool. Either path
+needs its own RED→GREEN TDD plan + security review.
+
+**Owner:** unassigned. Re-surface as a Phase 59+ mini-plan.
+
+---
+
 ## Phase 57 Track E — pre-existing `pnpm typecheck` errors in apps/api (out of scope)
 
 **Discovered:** 2026-05-20, during Track E GREEN verification (`pnpm typecheck`).
