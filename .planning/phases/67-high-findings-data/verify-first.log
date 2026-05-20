@@ -1,0 +1,60 @@
+# Phase 67 — verify-first disposition log (HI-01..HI-06)
+
+Re-verified against `main` HEAD before any fix (CLAUDE.md hard rule 3).
+
+## HI-01 — STILL LIVE (doc gap)
+- `0005_session_token_plain.sql:33` — `TRUNCATE TABLE "sessions";` unconditional.
+- `ls packages/data/migrations/0005*.down.sql` → no matches (no down-migration exists).
+- Disposition: doc-only — `docs/operations.md` runbook entry. Migration 0005 NOT edited.
+
+## HI-02 — STILL LIVE (5 of 6 tables)
+- `transcriptions.user_id` (0009:7), `conversations.user_id` (0008:8), `messages.user_id`
+  (0008:49), `folders.user_id` (0007:9), `notes.user_id` (0007:49) — each
+  `uuid NOT NULL REFERENCES "users"("id") ON DELETE CASCADE`.
+- Only indexes touching `user_id` are composite `<tbl>_client_id_idx` LED BY `tenant_id`
+  — none leads with `user_id`.
+- `api_keys` EXCLUDED — 0028_api_keys_name_scope.sql rescoped `api_keys_active_name_idx`
+  (DROP at :24 + CREATE at :27) to lead with `user_id`. Sufficient leading index.
+- Journal max `idx: 29` (tag `0028_api_keys_name_scope`) → next idx 30, tag `0029`.
+- drizzle-kit IS available (`drizzle:generate` script) but SQL is hand-authored
+  (partial-free index DDL); journal entry hand-added mirroring the idx:29 block.
+- Disposition: code fix — NEW migration 0029 + .down.sql + migration test. RED→GREEN.
+
+## HI-03 — STILL LIVE (doc gap)
+- `0014_audit_log_partition.sql:121-137` — legacy rows INSERTed into partitioned parent;
+  rows predating premade partitions land in `audit_log_default`; :128 comment defers
+  promotion ("deliberately do NOT call run_maintenance_proc() here").
+- Disposition: doc-only — `docs/operations.md` runbook entry. Migration 0014 NOT edited.
+
+## HI-04 — STILL LIVE; REVIEW PREMISE IS STALE (confirmed correction)
+- `backfill.ts:109-145` — `idempotencyWhere` built per (table,column); NO guard exists.
+- STALE-PREMISE CHECK: `apps/api/src/auth.ts:172` `ENCRYPTED_COLUMNS_MAP` is POPULATED
+  (object literal with `account: {password,access_token,refresh_token,id_token}`,
+  `session: {token,previous_token}`, `verification: {value}`) — NOT `{}`.
+- CONCLUSION: the review's "while ENCRYPTED_COLUMNS_MAP is empty" framing is STALE.
+  Phase 57 Track A populated the map; the lens encrypts those columns on write.
+  The correct guard is a STATIC refuse-list of lens-managed (table,column) pairs,
+  independent of any runtime map emptiness. The refuse-list must match BOTH the
+  `session` model name AND the `sessions` SQL/backfill table name (table-name skew).
+- Disposition: code fix — `LENS_MANAGED` refuse-list guard in `runBackfill`. RED→GREEN.
+
+## HI-05 — STILL LIVE (doc gap)
+- `0000_initial.sql:71-72,79-80,83-84,88` — sessions/audit_log/usage_ledger tenant_id FK
+  `ON DELETE no action`.
+- `0001_better_auth.sql:43,67` — account/verification `REFERENCES "tenants"("id")` with
+  NO `ON DELETE` clause → PG default `NO ACTION`.
+- Disposition: doc-only — schema-file comments on 5 pgTables + operations runbook note.
+  Migrations NOT edited.
+
+## HI-06 — STILL LIVE
+- `encryption/index.ts:32` `export { KmsKeyProvider }`, `:41` `export { VaultKeyProvider }`
+  — both re-exported from the public barrel.
+- `key-provider.ts:17-18` imports the two classes DIRECTLY from their own files;
+  `selectProvider()` (:49-57) instantiates them — unaffected by a barrel change.
+- Disposition: approach (a) — remove the 2 barrel re-exports; correct `docs/security.md
+  §12` to state v1 supports `OPENWHISPR_KEY_PROVIDER=env` only, KMS/Vault v2-roadmap.
+  RED→GREEN for the code part.
+
+## Divergence from planner pre-determination
+None. All 6 findings confirmed exactly as the planner pre-determined, including the
+HI-02 `api_keys`-excluded correction and the HI-04 stale-premise correction.
