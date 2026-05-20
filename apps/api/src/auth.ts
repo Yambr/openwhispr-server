@@ -47,7 +47,7 @@ import { genericOAuth } from "better-auth/plugins/generic-oauth";
 // Phase 53 / Plan 53-22 — boot-time auth security guard. REFUSES
 // production boots with non-HTTPS AUTH_URL (would emit cookies
 // without Secure flag → MITM exposure). See config/auth.ts.
-import { validateAuthBoot, validateIngressBoot } from "./config/auth.js";
+import { validateAuthBoot, validateIngressBoot, validateOriginBoot } from "./config/auth.js";
 import { cookieDomainConfig } from "./lib/cookie-domain.js";
 import { resolveDefaultTenantId } from "./lib/default-tenant.js";
 import { readOidcProvidersForRegistration } from "./lib/oidc-providers.js";
@@ -700,6 +700,21 @@ export function buildAuth(opts: BuildAuthOptions): AuthInstance {
       ipAddress: {
         ipAddressHeaders: ["x-forwarded-for"],
       },
+      // Phase 59 / Track C — R18: sign-in/email null-Origin relaxation.
+      //
+      // A non-browser client (the desktop harness running undici `fetch`)
+      // sends no `Origin` header; Better Auth's `validateOrigin` throws
+      // `403 MISSING_OR_NULL_ORIGIN` before `trustedOrigins` is consulted.
+      // `disableOriginCheck` as a path-array makes `validateOrigin` skip
+      // the check for those Better-Auth-basePath-relative paths only.
+      //
+      // `validateOriginBoot()` (config/auth.ts — the LOCKER-01-allowlisted
+      // home for the runtime-mode branch) returns `relaxNullOrigin: true`
+      // ONLY under the seed-tenant double-gate: OPENWHISPR_TEST_ROUTES is
+      // `"true"` AND the runtime mode is non-production. Production keeps
+      // the full CSRF posture — the array is empty and Better Auth
+      // enforces the Origin check. Never `trustedOrigins:['*']`.
+      ...(validateOriginBoot().relaxNullOrigin ? { disableOriginCheck: ["/sign-in/email"] } : {}),
     },
     plugins,
   }) as unknown as AuthInstance;

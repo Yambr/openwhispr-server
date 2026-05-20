@@ -177,3 +177,36 @@ export function validateIngressBoot(
 
   return { ingressBaseUrl: resolved };
 }
+
+// Phase 59 / Track C — R18: sign-in/email null-Origin relaxation.
+//
+// A non-browser client (the OpenWhispr desktop harness running undici
+// `fetch`) sends NO `Origin` header. Better Auth's `validateOrigin`
+// middleware throws `403 MISSING_OR_NULL_ORIGIN` before `trustedOrigins`
+// is ever consulted — so a `trustedOrigins` predicate cannot rescue it.
+// The supported, path-scoped escape hatch is `advanced.disableOriginCheck`
+// as a string-array of path prefixes.
+//
+// `relaxNullOrigin` is true ONLY under the SAME double-gate the
+// seed-tenant test route uses (R1 / R13): `OPENWHISPR_TEST_ROUTES==="true"`
+// AND `NODE_ENV!=="production"`. Production NEVER relaxes the Origin /
+// CSRF posture — there is no env-var that flips this on in production.
+//
+// LOCKER-01: this module lives under `config/` (the allowlist for
+// `process.env.*` / `NODE_ENV` reads). The boolean is computed here, at
+// boot, and consumed by `auth.ts` as a plain derived constant — no
+// `NODE_ENV` comparison leaks into the route-handling auth builder.
+
+export interface OriginBootValidation {
+  /**
+   * True when the runtime may skip Better Auth's Origin check for the
+   * test-only sign-in paths. Double-gated; false in production always.
+   */
+  readonly relaxNullOrigin: boolean;
+}
+
+export function validateOriginBoot(env: NodeJS.ProcessEnv = process.env): OriginBootValidation {
+  const testRoutes = env.OPENWHISPR_TEST_ROUTES === "true";
+  const isProduction = env.NODE_ENV === "production";
+  return { relaxNullOrigin: testRoutes && !isProduction };
+}
