@@ -51,7 +51,7 @@ apps/web/src/app/(public)/setup/page.tsx:40  # 53-28-comment-narrative-fp — JS
 # better-auth-handler.ts:79 entry removed in Phase 57 / Track E — the
 # `req.headers.host ?? "localhost"` fallback line was deleted entirely
 # (api-routes-rest:CR-01); no localhost literal remains in the file.
-apps/api/src/index.ts:796  # issue-31-debt-hardcode-litellm-port-4000 (drift +34 by 55-05b; +12 by 57-E; +20 by 57-F; +26 by 60-A)
+apps/api/src/index.ts:802  # issue-31-debt-hardcode-litellm-port-4000 (drift +34 by 55-05b; +12 by 57-E; +20 by 57-F; +32 by 60-A)
 apps/api/src/config/litellm.ts:29  # 53-42-anti-footgun-sentinel — validateLitellmBoot detects this exact dev-overlay default; must be inline for the guard to reject prod boot with it
 apps/api/src/config/litellm.ts:63  # 53-42-anti-footgun-sentinel-msg — same sentinel quoted in the FATAL message so operators see the exact value that triggered refusal
 
