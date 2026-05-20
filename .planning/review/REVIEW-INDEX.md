@@ -33,7 +33,7 @@
 | `apps/api` routes — transcriptions/tokens/v1-keys/agent | 0 | 11 → 0 (✅ Phase 65) | 6* | — | [api-routes-transcriptions.md](./api-routes-transcriptions.md) |
 | `apps/api` routes — rest (auth-callback, setup, test-only, …) | **3** | 3 → 0 (✅ Phase 63) | 5 | 8 | [api-routes-rest.md](./api-routes-rest.md) |
 | `apps/web` (Next.js 15) | 0 | 6 | 12 | 9 | [web.md](./web.md) |
-| `apps/worker` (BullMQ) | **2** | 7 | 6 | 2 | [worker.md](./worker.md) |
+| `apps/worker` (BullMQ) | **2** (CR-01/02 ✅ Phase 58) | 7 → 0 (✅ Phase 66) | 6 | 2 | [worker.md](./worker.md) |
 | `packages/data` (schema, RLS, encryption, migrate) | **5** | 6 | 7 | 5 | [data.md](./data.md) |
 | `packages/wire-schemas` | 0 | 1 | 4 | 8 | [wire-schemas.md](./wire-schemas.md) |
 | `packages/litellm-client` | 0 | 3 | 4 | 4 | [litellm-client.md](./litellm-client.md) |
