@@ -32,13 +32,13 @@
 //   409 — Idempotency-Key conflict (Stripe)
 //   502 — pyannote job 'failed' or 'cancelled' | upstream rejected payload (4xx)
 //   503 — PYANNOTE_API_KEY unset | pyannote 5xx | pyannote auth error (Pitfall #8)
-//   504 — 5-minute polling ceiling exceeded (jobId returned for resume hint)
+//   504 — 5-minute polling ceiling exceeded (resume via the Idempotency-Key)
 //
 // LITELLM-07 acknowledged: NO usage_ledger row is written for diarization.
 // pyannote billing is unmetered in v1 (documented in 03-06-PLAN.md threat
 // register — accepted disposition; v2 may add nginx-log-based metering).
 
-import { createHash } from "node:crypto";
+import { createHash, randomBytes } from "node:crypto";
 import { setTimeout as sleep } from "node:timers/promises";
 import { DiarizationResponse } from "@openwhispr/wire-schemas";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
@@ -330,9 +330,10 @@ function handleDiarization(deps: DiarizationDeps, idem: IdempotencyCache) {
           return reply.code(200).send(DiarizationResponse.parse(job.output));
         }
         if (job.status === "failed" || job.status === "cancelled") {
+          // WR-08 (Phase 65) — canonical {error:<string>} envelope; no inline
+          // `jobId` field (not part of the contract — Phase 64 H-4).
           return reply.code(502).send({
             error: `diarization job ${job.status}`,
-            jobId,
           });
         }
         // status === 'created' | 'running' — wait then poll again.
@@ -344,11 +345,13 @@ function handleDiarization(deps: DiarizationDeps, idem: IdempotencyCache) {
           // sleep rejects on abort — fall back into the loop's abort check.
         }
       }
-      // 5-minute ceiling exceeded. Caller may resume via Idempotency-Key.
+      // 5-minute ceiling exceeded. WR-08 (Phase 65) — canonical
+      // {error:<string>} envelope with user-facing copy (no operator-speak,
+      // no inline `jobId`). The resume hint is the documented
+      // Idempotency-Key round-trip, not an envelope field: re-posting with
+      // the same Idempotency-Key resumes polling the in-flight job.
       return reply.code(504).send({
-        error:
-          "diarization exceeded 5-minute ceiling; for files > 5min consider corporate LiteLLM override with self-hosted Speaches",
-        jobId,
+        error: "diarization timed out; retry with the same Idempotency-Key to resume",
       });
     } finally {
       req.raw.off("close", onClose);
@@ -474,9 +477,13 @@ function handleSpeachesDiarization(deps: DiarizationDeps) {
     // explicitly (rather than via FormData) so the body type stays as
     // a Node Buffer — predictable for the test seam and the undici
     // dispatcher both. Boundary is unique-per-request.
-    const boundary = `----owsp-speaches-${Date.now().toString(36)}-${Math.random()
-      .toString(36)
-      .slice(2, 10)}`;
+    // WR-06 (Phase 65) — the multipart boundary segment is cryptographically
+    // sourced. This route forwards untrusted user audio bytes; a predictable
+    // (Math.random) boundary would let an attacker craft an upload whose
+    // bytes contain the boundary and smuggle a forged `name="model"` field.
+    const boundary = `----owsp-speaches-${Date.now().toString(36)}-${randomBytes(16).toString(
+      "hex",
+    )}`;
     const CRLF = "\r\n";
     const head = Buffer.from(
       `--${boundary}${CRLF}` +

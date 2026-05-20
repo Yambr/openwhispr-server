@@ -21,7 +21,7 @@
 //   * 503 missing PYANNOTE_API_KEY (Pitfall #8 — NEVER 401)
 //   * 503 PyannoteUnavailableError (5xx) with retry-after header
 //   * 503 PyannoteAuthError (401/403 from upstream — Pitfall #8)
-//   * 504 5-minute polling ceiling exceeded (jobId returned)
+//   * 504 5-minute polling ceiling exceeded (canonical {error} envelope)
 //   * idempotency: bindJobId called with the freshly-submitted jobId
 //   * PYANNOTE_API_KEY never appears in any reply payload
 //   * uploadToPresignedUrl receives the full file bytes (no truncation)
@@ -407,12 +407,11 @@ describe("POST /v1/audio/diarization", () => {
       payload: body,
     });
     expect(res.statusCode).toBe(502);
-    // 502 envelope carries an additional `jobId` hint so the desktop can
-    // resume polling. ErrorEnvelope is .strict() — assert the `error`
-    // field directly rather than parsing strictly.
-    const json = res.json() as { error: string; jobId: string };
+    // WR-08 (Phase 65) — canonical {error:<string>} envelope; no inline
+    // `jobId` field (Phase 64 H-4).
+    const json = res.json() as Record<string, unknown>;
     expect(json.error).toBe("diarization job failed");
-    expect(json.jobId).toBe("job-1");
+    expect(json).not.toHaveProperty("jobId");
   });
 
   it("returns 502 envelope when pyannote job status='cancelled'", async () => {
@@ -431,9 +430,10 @@ describe("POST /v1/audio/diarization", () => {
       payload: body,
     });
     expect(res.statusCode).toBe(502);
-    const json = res.json() as { error: string; jobId: string };
+    // WR-08 (Phase 65) — canonical {error:<string>} envelope; no `jobId`.
+    const json = res.json() as Record<string, unknown>;
     expect(json.error).toBe("diarization job cancelled");
-    expect(json.jobId).toBe("job-1");
+    expect(json).not.toHaveProperty("jobId");
   });
 
   it("returns 502 envelope on PyannoteBadRequestError (upstream rejected our payload)", async () => {
@@ -523,7 +523,7 @@ describe("POST /v1/audio/diarization", () => {
     expect(res.statusCode).not.toBe(401);
   });
 
-  it("returns 504 envelope with jobId when polling exceeds the 5-minute ceiling", async () => {
+  it("returns 504 canonical envelope when polling exceeds the 5-minute ceiling", async () => {
     // Simulate the ceiling without burning 5 real minutes of wall-clock:
     // the fake pollJob throws immediately on the first call to advance
     // through the loop, then a Date.now spy reports the elapsed time has
@@ -583,9 +583,11 @@ describe("POST /v1/audio/diarization", () => {
     vi.useRealTimers();
 
     expect(res.statusCode).toBe(504);
-    const json = res.json() as { error: string; jobId: string };
-    expect(json.error).toMatch(/5-minute ceiling/);
-    expect(json.jobId).toBe("job-1");
+    // WR-08 (Phase 65) — canonical {error:<string>} envelope; user-facing
+    // copy (no operator-speak), no inline `jobId`.
+    const json = res.json() as Record<string, unknown>;
+    expect(json.error).toBe("diarization timed out; retry with the same Idempotency-Key to resume");
+    expect(json).not.toHaveProperty("jobId");
   }, 15_000);
 
   it("uploadToPresignedUrl receives the full file bytes (no truncation)", async () => {
