@@ -11,6 +11,32 @@ record. Keep this file under ~200 lines.
 
 ---
 
+## Phase 57 Track E — pre-existing `pnpm typecheck` errors in apps/api (out of scope)
+
+**Discovered:** 2026-05-20, during Track E GREEN verification (`pnpm typecheck`).
+
+**WHY out of scope:** Track E (`api-routes-rest:CR-01`) touched only
+`config/auth.ts`, `routes/better-auth-handler.ts`, `auth.ts`, `index.ts`
+(boot-gate wiring) and compose/test files. The 5 errors below are
+present on `git stash` (Track E changes removed) — confirmed
+pre-existing, not introduced by Track E. CLAUDE.md hard rule 1 +
+scope-boundary rule forbid fixing unrelated production code under a
+Track E commit.
+
+```
+apps/api/src/routes/index.ts(377,5)   TS2322  FastifyPluginAsync not assignable to RoutePlugin
+apps/api/src/routes/index.ts(378,5)   TS2322  (same)
+apps/api/src/routes/index.ts(384,5)   TS2322  (same)
+apps/api/src/routes/tokens/assemblyai.ts(106,42) TS2339  'message' missing on union arm
+apps/api/src/routes/tokens/deepgram.ts(72,42)    TS2339  'message' missing on union arm
+```
+
+**Repro:** `pnpm typecheck` from repo root. **Fix owner:** a future
+targeted apps/api type-hygiene phase — the `RoutePlugin` arity mismatch
+and the `tokens/*` discriminated-union narrowing are both isolated.
+
+---
+
 ## Phase 57 — data:CR-02 — fail-OPEN RLS posture re-installed by migration 0024 — RESOLVED via D2
 
 **Status:** RESOLVED in Phase 57 Track B via **D2 (document the debt honestly + property-test the documented posture)**. No migration changed. The boundary property test `packages/data/tests/unit/__tests__/rls-posture-boundary.test.ts` + the `docs/security.md` §11.1 posture section + the `CLAUDE.md` item-16 ledger entry land the documented-debt resolution. **D3 (request-scoped per-request Better Auth adapter) is the scheduled v2-blocker successor — see below.** The diagnostic chain is preserved verbatim for the v2 D3 work.

@@ -92,6 +92,18 @@ import { validateBetterAuthSecretBoot } from "./lib/better-auth-secret-boot.js";
 
 validateBetterAuthSecretBoot();
 
+// Phase 57 / Track E (REVIEW api-routes-rest CRITICAL CR-01) — ingress
+// origin boot gate. better-auth-handler.ts reconstructs the request URL
+// Better Auth uses for CSRF / Origin / redirect-uri validation; without
+// a configured INGRESS_BASE_URL / AUTH_URL the pre-fix code fell back to
+// the attacker-controlled `req.headers.host` header. validateIngressBoot
+// REFUSES to start (exit 78 EX_CONFIG) when both env vars are unset, so
+// the route handler always has a trustworthy env-derived origin. Same
+// loud-fail posture as validateEncryptionBoot / validateBetterAuthSecretBoot.
+import { validateIngressBoot } from "./config/auth.js";
+
+validateIngressBoot();
+
 // Phase 6 / Plan 03 / Task 1 (D-T3 load order) — OTel SDK must start
 // BEFORE any other import resolves so `@opentelemetry/instrumentation-pino`
 // patches the `pino` module at require time. This import is intentionally

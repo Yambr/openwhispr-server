@@ -104,3 +104,76 @@ function defaultFail(message: string): never {
   console.error(`FATAL ${message}`);
   process.exit(EX_CONFIG);
 }
+
+// Phase 57 / Track E — api-routes-rest:CR-01 ingress-origin boot guard.
+//
+// `better-auth-handler.ts:buildRequestUrl` reconstructs the request URL
+// Better Auth uses for CSRF / Origin / redirect-uri validation. The
+// pre-fix code fell back to the attacker-controlled `req.headers.host`
+// header when neither INGRESS_BASE_URL nor AUTH_URL was set — letting a
+// forged `Host: evil.example.com` bypass Better Auth's origin checks on
+// any deploy that did not set those env vars.
+//
+// `validateIngressBoot()` closes the hole at the only safe layer: boot.
+// It REFUSES to start the process (exit 78 EX_CONFIG, matching
+// `validateAuthBoot()` / `validateEncryptionBoot()`) when BOTH
+// INGRESS_BASE_URL (preferred) and AUTH_URL are unset. After the gate,
+// `buildRequestUrl` reads only the validated env value — `req.headers.host`
+// is never an origin source.
+//
+// LOCKER-01: this module lives under `config/` (the allowlist for
+// `process.env.*` reads). INGRESS_BASE_URL / AUTH_URL are not NODE_ENV
+// branches; reading them here is compliant.
+
+export interface IngressBootValidation {
+  /** The validated canonical origin — INGRESS_BASE_URL preferred, else AUTH_URL. */
+  readonly ingressBaseUrl: string;
+}
+
+/**
+ * Validate the ingress-origin boot config or refuse to start.
+ *
+ * @param env Environment snapshot. Defaults to `process.env`; injected
+ *   in unit tests to avoid mutating the global.
+ * @param onFail Side-effect invoked instead of `process.exit(78)` —
+ *   tests pass a spy here to assert exit behaviour without killing the
+ *   test runner. Production callers omit this; the default invokes
+ *   `process.exit(78)`.
+ */
+export function validateIngressBoot(
+  env: NodeJS.ProcessEnv = process.env,
+  onFail: (message: string) => never = defaultFail,
+): IngressBootValidation {
+  const ingress = env.INGRESS_BASE_URL?.trim();
+  const authUrl = env.AUTH_URL?.trim();
+  const resolved = ingress || authUrl;
+
+  // Phase 53 / Plan 53-37 parity — vitest sets NODE_ENV=test. Existing
+  // buildAuth() unit tests construct the Better Auth instance without
+  // populating INGRESS_BASE_URL / AUTH_URL; the production-boot guard
+  // must not refuse those harnesses. Treat test env as permissive and
+  // return a safe default. The dedicated validate-ingress-boot.test.ts
+  // suite still exercises the strict accept/refuse matrix by injecting
+  // its own env snapshot (NODE_ENV=development), so the gate is covered.
+  if (env.NODE_ENV === "test" && !resolved) {
+    return { ingressBaseUrl: "http://localhost:4000" };
+  }
+
+  if (!resolved) {
+    onFail(
+      "ingress-boot: INGRESS_BASE_URL (preferred) or AUTH_URL must be set. " +
+        "req.headers.host is NEVER a safe origin source — a forged Host header " +
+        "would bypass Better Auth's CSRF / Origin / redirect-uri validation. " +
+        "Closes api-routes-rest:CR-01 (Phase 57).",
+    );
+  }
+
+  if (env.NODE_ENV === "production" && !resolved.startsWith("https://")) {
+    onFail(
+      `ingress-boot: NODE_ENV=production requires an HTTPS origin. ` +
+        `Got: ${JSON.stringify(resolved)}. Set INGRESS_BASE_URL=https://...`,
+    );
+  }
+
+  return { ingressBaseUrl: resolved };
+}

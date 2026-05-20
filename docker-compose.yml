@@ -247,6 +247,14 @@ services:
       NODE_ENV: production
       OPENWHISPR_API_URL: ${OPENWHISPR_API_URL:-https://api.localhost}
       AUTH_URL: ${AUTH_URL:-https://api.localhost}
+      # Phase 57 / Track E (api-routes-rest:CR-01) — canonical ingress
+      # origin. better-auth-handler.ts reconstructs the URL Better Auth
+      # uses for CSRF / Origin / redirect-uri validation from this value;
+      # the attacker-controlled Host header is NEVER trusted.
+      # validateIngressBoot() exits 78 (EX_CONFIG) at boot if neither
+      # INGRESS_BASE_URL nor AUTH_URL is set. Defaults to the documented
+      # quickstart origin so `docker compose up` boots out of the box.
+      INGRESS_BASE_URL: ${INGRESS_BASE_URL:-https://api.localhost}
       # Phase 02.17 / D-02 — OPENWHISPR_PROTOCOL accepts a comma-separated
       # list (parsed in apps/api/src/lib/scheme-allowlist.ts). The default
       # registers `mycorp-whispr` so contract tests covering the custom-
