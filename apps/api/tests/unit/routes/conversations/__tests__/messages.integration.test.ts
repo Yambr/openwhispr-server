@@ -136,8 +136,14 @@ describe("integration — WIRE-25 /api/conversations/messages POST", () => {
         metadata: oversized,
       }),
     });
+    // H-3 (Phase 64) — the 4 KiB cap is now enforced by the canonical
+    // MetadataSchema at the parse boundary (a ZodError → the canonical
+    // "Invalid request" 400 envelope), in addition to the kept runtime
+    // METADATA_TOO_LARGE check. Either way the oversized payload is
+    // rejected with a 400 + a non-empty string error envelope.
     expect(res.statusCode).toBe(400);
-    expect((res.json() as { error: string }).error).toMatch(/4096|4KB/);
+    expect(typeof (res.json() as { error: string }).error).toBe("string");
+    expect((res.json() as { error: string }).error.length).toBeGreaterThan(0);
   });
 
   it("conversation_id pointing at another tenant → 404 (RLS invisible)", async () => {

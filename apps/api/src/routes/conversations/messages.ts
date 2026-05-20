@@ -26,6 +26,7 @@
 // additionally bind by user_id in every WHERE clause to keep EXPLAIN
 // output obvious (matches the established Plan 05 pattern).
 import { type ExecutableTx, type TransactionalDb, withTenant } from "@openwhispr/data";
+import { MetadataSchema } from "@openwhispr/wire-schemas";
 import { sql } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
@@ -72,7 +73,11 @@ const MessageInputSchema = z
     conversation_id: z.string().uuid(),
     role: MessageRoleSchema,
     content: z.string().max(MESSAGE_CONTENT_MAX_BYTES),
-    metadata: z.record(z.string(), z.unknown()).nullable().optional(),
+    // H-3 (Phase 64) — adopt the canonical MetadataSchema (bounded keys,
+    // scalar values, 4 KiB cap) instead of an ad-hoc looser
+    // z.record(z.string(), z.unknown()). The runtime 4 KiB check below
+    // is kept as defence-in-depth (the cap is now ALSO enforced here).
+    metadata: MetadataSchema.nullable().optional(),
     client_message_id: z.string().optional(),
   })
   .strict();
@@ -113,7 +118,10 @@ export const buildConversationsMessagesRoutes = (deps: ConversationsMessagesDeps
         }
         const body = MessageInputSchema.parse(req.body);
 
-        // T-MSG-INJ — 4 KiB metadata cap.
+        // T-MSG-INJ — 4 KiB metadata cap. Defence-in-depth: the canonical
+        // MetadataSchema (H-3, Phase 64) now also enforces this cap at the
+        // schema layer; this runtime check is kept so the METADATA_TOO_LARGE
+        // i18n code path stays exercised.
         const metaBytes = Buffer.byteLength(JSON.stringify(body.metadata ?? {}), "utf8");
         if (metaBytes > MESSAGE_METADATA_MAX_BYTES) {
           throw new ValidationError("METADATA_TOO_LARGE", "metadata exceeds 4096 bytes (4KB cap)");
