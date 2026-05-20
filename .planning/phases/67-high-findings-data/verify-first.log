@@ -37,6 +37,14 @@ Re-verified against `main` HEAD before any fix (CLAUDE.md hard rule 3).
   independent of any runtime map emptiness. The refuse-list must match BOTH the
   `session` model name AND the `sessions` SQL/backfill table name (table-name skew).
 - Disposition: code fix — `LENS_MANAGED` refuse-list guard in `runBackfill`. RED→GREEN.
+- CLI-default-map choice (recorded per plan): `DEFAULT_COLUMN_MAP` in
+  `cli/backfill-encrypt-credentials.ts` was NARROWED to only
+  `oauth_state.code_verifier` (the sole non-lens-managed column). Leaving the
+  old 8-column default would have made the default CLI invocation fail loudly
+  at the new guard; narrowing keeps the CLI usable for its one remaining
+  legitimate target. The guard in `runBackfill` remains the non-negotiable
+  chokepoint regardless of the CLI map. Two stale `backfill-cli.test.ts`
+  assertions encoding the pre-HI-04 8-column shape were updated to match.
 
 ## HI-05 — STILL LIVE (doc gap)
 - `0000_initial.sql:71-72,79-80,83-84,88` — sessions/audit_log/usage_ledger tenant_id FK

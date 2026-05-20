@@ -28,25 +28,22 @@ import { validateEncryptionBoot } from "../boot.js";
 import { selectProvider } from "../key-provider.js";
 
 /**
- * Canonical column-map for the 8 Better-Auth credential columns +
- * 2 fingerprint sidecars on `sessions`. Source of truth for the
- * CLI default invocation; the programmatic API accepts an arbitrary
- * column-map for tests / partial replays.
+ * Canonical column-map for the CLI default invocation. The programmatic API
+ * (`runBackfill`) accepts an arbitrary column-map for tests / partial replays.
+ *
+ * Phase 67 / HI-04 — NARROWED. Post-Phase-57 Track A the envelope-encryption
+ * lens encrypts the 7 Better-Auth-owned credential columns
+ * (`account.{password,access_token,refresh_token,id_token}`,
+ * `sessions.{token,previous_token}`, `verification.value`) on every write —
+ * see `apps/api/src/auth.ts` `ENCRYPTED_COLUMNS_MAP`. `runBackfill` now REFUSES
+ * any of those lens-managed columns (a bulk backfill of them is unnecessary and
+ * data-corrupting). They are therefore removed from the CLI default map.
+ *
+ * `oauth_state.code_verifier` remains: it is codec-managed (the manual
+ * `oauth-state-codec`), not lens-managed, so a backfill of it is still a
+ * legitimate recovery operation.
  */
 export const DEFAULT_COLUMN_MAP: BackfillColumnMap = {
-  account: {
-    access_token: {},
-    refresh_token: {},
-    id_token: {},
-    password: {},
-  },
-  verification: {
-    value: {},
-  },
-  sessions: {
-    token: { fingerprintColumn: "token_fp" },
-    previous_token: { fingerprintColumn: "previous_token_fp" },
-  },
   oauth_state: {
     code_verifier: {},
   },
