@@ -5,6 +5,8 @@
 // the test must drive BEGIN/set_config/COMMIT through a real pool. The
 // SMTP transport and template renderer are stubs (network boundary —
 // permitted by CLAUDE.md).
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { PostgreSqlContainer, type StartedPostgreSqlContainer } from "@testcontainers/postgresql";
 import type { Job } from "bullmq";
 import { Pool } from "pg";
@@ -110,7 +112,12 @@ SUITE("email-delivery (D-W5)", () => {
   it("invokes the renderer + sender with the parsed payload (happy path)", async () => {
     if (!h) throw new Error("harness");
     const { sender, renderer, sent } = makeStubs();
-    const handler = buildEmailDeliveryHandler({ pool: h.pool, sender, renderer });
+    const handler = buildEmailDeliveryHandler({
+      pool: h.pool,
+      sender,
+      renderer,
+      allowSmtpFallback: false,
+    });
     await handler(
       fakeJob({
         tenant_id: TENANT,
@@ -138,7 +145,12 @@ SUITE("email-delivery (D-W5)", () => {
       },
     };
     const { renderer } = makeStubs();
-    const handler = buildEmailDeliveryHandler({ pool: h.pool, sender: failingSender, renderer });
+    const handler = buildEmailDeliveryHandler({
+      pool: h.pool,
+      sender: failingSender,
+      renderer,
+      allowSmtpFallback: false,
+    });
     await expect(
       handler(
         fakeJob({
@@ -165,7 +177,12 @@ SUITE("email-delivery (D-W5)", () => {
         return { subject: "S", text: "plain" };
       },
     };
-    const handler = buildEmailDeliveryHandler({ pool: h.pool, sender, renderer });
+    const handler = buildEmailDeliveryHandler({
+      pool: h.pool,
+      sender,
+      renderer,
+      allowSmtpFallback: false,
+    });
     await handler(
       fakeJob({
         tenant_id: TENANT,
@@ -185,7 +202,12 @@ SUITE("email-delivery (D-W5)", () => {
       },
     };
     const { renderer } = makeStubs();
-    const handler = buildEmailDeliveryHandler({ pool: h.pool, sender: failingSender, renderer });
+    const handler = buildEmailDeliveryHandler({
+      pool: h.pool,
+      sender: failingSender,
+      renderer,
+      allowSmtpFallback: false,
+    });
     await expect(
       handler(
         fakeJob({
@@ -198,13 +220,12 @@ SUITE("email-delivery (D-W5)", () => {
     ).rejects.toThrow(/reason=unknown/);
   });
 
-  it("HI-01: treats reason='smtp-not-configured' as non-fatal skip in non-prod", async () => {
-    // Phase 13 review HI-01: when the API's EmailSender dev-fallback returns
-    // delivered:false + reason:'smtp-not-configured' (no SMTP_HOST in
-    // non-prod), the worker MUST NOT throw — that would burn 5 BullMQ retry
-    // attempts on a misconfigured-by-design dev stack and surface as
-    // spurious red failures in CI. The handler should resolve cleanly so
-    // BullMQ records `completed` and operators see one WARN line per job.
+  it("CR-03: THROWS on reason='smtp-not-configured' when allowSmtpFallback is false (no false-green)", async () => {
+    // Phase 66 / CR-03: the silent-green carve-out is gone. With the
+    // opt-in flag OFF (the default — staging / unset NODE_ENV), an
+    // smtp-not-configured result MUST fail the job so BullMQ retries /
+    // DLQs the undelivered email. Pre-fix the only knob was `nodeEnv`
+    // and any non-production env silently returned a green job.
     if (!h) throw new Error("harness");
     const skipSender: EmailSender = {
       async send() {
@@ -216,8 +237,38 @@ SUITE("email-delivery (D-W5)", () => {
       pool: h.pool,
       sender: skipSender,
       renderer,
-      // Explicitly non-prod — dev/test/staging all share the skip path.
-      nodeEnv: "development",
+      allowSmtpFallback: false,
+    });
+    await expect(
+      handler(
+        fakeJob({
+          tenant_id: TENANT,
+          to: "a@b.co",
+          template_id: "welcome",
+          request_id: REQ,
+        }),
+      ),
+    ).rejects.toThrow(/did not deliver/);
+  });
+
+  it("CR-03: resolves on reason='smtp-not-configured' when allowSmtpFallback is explicitly true", async () => {
+    // The dev-compose-up convenience is now an EXPLICIT opt-in
+    // (EMAIL_FALLBACK_NONFATAL=1 -> deps.allowSmtpFallback=true), gated
+    // on the flag — not on NODE_ENV. With the flag ON the handler
+    // resolves cleanly so a fresh `docker compose up` with no SMTP env
+    // does not burn BullMQ retries.
+    if (!h) throw new Error("harness");
+    const skipSender: EmailSender = {
+      async send() {
+        return { delivered: false, reason: "smtp-not-configured" };
+      },
+    };
+    const { renderer } = makeStubs();
+    const handler = buildEmailDeliveryHandler({
+      pool: h.pool,
+      sender: skipSender,
+      renderer,
+      allowSmtpFallback: true,
     });
     await expect(
       handler(
@@ -231,40 +282,10 @@ SUITE("email-delivery (D-W5)", () => {
     ).resolves.toBeUndefined();
   });
 
-  it("HI-01: STILL throws on reason='smtp-not-configured' when NODE_ENV=production", async () => {
-    // Production must remain loud-fail. The EmailSender's construction-time
-    // throw normally fires first in prod (SMTP_HOST is required), but a
-    // defence-in-depth pass at the worker layer guards against an injected
-    // sender stub or future code path that bypasses the construction check.
-    if (!h) throw new Error("harness");
-    const skipSender: EmailSender = {
-      async send() {
-        return { delivered: false, reason: "smtp-not-configured" };
-      },
-    };
-    const { renderer } = makeStubs();
-    const handler = buildEmailDeliveryHandler({
-      pool: h.pool,
-      sender: skipSender,
-      renderer,
-      nodeEnv: "production",
-    });
-    await expect(
-      handler(
-        fakeJob({
-          tenant_id: TENANT,
-          to: "a@b.co",
-          template_id: "welcome",
-          request_id: REQ,
-        }),
-      ),
-    ).rejects.toThrow(/did not deliver/);
-  });
-
-  it("HI-01: still throws on OTHER non-delivery reasons in non-prod (e.g. smtp-unreachable)", async () => {
-    // The skip carve-out is keyed strictly on `smtp-not-configured`. Any
-    // other failure reason (transport error, refused recipient, etc.)
-    // must keep the retry-throw posture so BullMQ retries.
+  it("CR-03: still throws on OTHER non-delivery reasons even when allowSmtpFallback is true", async () => {
+    // The fallback carve-out is keyed strictly on `smtp-not-configured`.
+    // Any other failure reason (transport error, refused recipient, etc.)
+    // keeps the retry-throw posture even with the opt-in flag ON.
     if (!h) throw new Error("harness");
     const failingSender: EmailSender = {
       async send() {
@@ -276,7 +297,7 @@ SUITE("email-delivery (D-W5)", () => {
       pool: h.pool,
       sender: failingSender,
       renderer,
-      nodeEnv: "development",
+      allowSmtpFallback: true,
     });
     await expect(
       handler(
@@ -290,12 +311,25 @@ SUITE("email-delivery (D-W5)", () => {
     ).rejects.toThrow(/did not deliver/);
   });
 
+  it("CR-03: email-delivery.ts source contains no process.env.NODE_ENV read (LOCKER-01)", () => {
+    // Constitutional guard — the NODE_ENV env read must live in a
+    // boundary file (config/worker-config.ts), never in this job file.
+    const src = readFileSync(resolve(__dirname, "../../../src/jobs/email-delivery.ts"), "utf8");
+    expect(src).not.toMatch(/process\.env\.NODE_ENV/);
+    expect(src).not.toMatch(/process\.env\b/);
+  });
+
   it("passes locale + variables through to the renderer", async () => {
     if (!h) throw new Error("harness");
     const rendererSpy = vi.fn().mockReturnValue({ subject: "S", text: "T" });
     const renderer: TemplateRenderer = { render: rendererSpy };
     const { sender } = makeStubs();
-    const handler = buildEmailDeliveryHandler({ pool: h.pool, sender, renderer });
+    const handler = buildEmailDeliveryHandler({
+      pool: h.pool,
+      sender,
+      renderer,
+      allowSmtpFallback: false,
+    });
     await handler(
       fakeJob({
         tenant_id: TENANT,
