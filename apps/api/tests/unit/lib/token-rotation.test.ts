@@ -180,6 +180,40 @@ describe("tryPreviousToken (Phase 02.12 plain-text)", () => {
     expect(out?.email).toBeNull();
   });
 
+  it("HI-05 — the follow-up email SELECT is tenant-scoped (AND tenant_id = <resolved>::uuid)", async () => {
+    // HI-05 (REVIEW api-core HIGH / Phase 62): the email follow-up SELECT
+    // must be explicitly bound to the tenant the sessions row resolved.
+    //
+    // A true cross-tenant repro is not constructible on the v1 slim stack
+    // (CLAUDE.md Constraint 16 — single-default-tenant RLS posture: exactly
+    // one tenant exists), so the regression-shape assertion is on the
+    // emitted SQL: the email query MUST carry the `tenant_id` predicate
+    // bound to the SAME tenant_id the first (sessions) query returned.
+    let call = 0;
+    const captured: Array<{ sql: string; params: unknown[] }> = [];
+    const RESOLVED_TENANT = "tenant-uuid-hi05";
+    const db = {
+      execute: vi.fn().mockImplementation(async (q: unknown) => {
+        call += 1;
+        captured.push(chunksToText(q));
+        if (call === 1) {
+          return { rows: [{ user_id: "user-uuid-hi05", tenant_id: RESOLVED_TENANT }] };
+        }
+        return { rows: [{ email: "hi05@example.test" }] };
+      }),
+    };
+    const out = await tryPreviousToken(db, "old-bearer");
+    expect(out?.email).toBe("hi05@example.test");
+    // Two queries ran — the sessions probe, then the email follow-up.
+    expect(captured.length).toBe(2);
+    const emailQuery = captured[1]!;
+    // The follow-up SELECT targets `users` and carries the tenant_id gate.
+    expect(emailQuery.sql).toMatch(/SELECT\s+email\s+FROM\s+users/i);
+    expect(emailQuery.sql).toMatch(/tenant_id\s*=/i);
+    // The predicate is bound to the SAME tenant the sessions row resolved.
+    expect(emailQuery.params).toContain(RESOLVED_TENANT);
+  });
+
   it("Phase 33 / Plan 33-04 — issues a SHA-256 fingerprint probe against sessions.previous_token_fp (no SECURITY DEFINER function call)", async () => {
     const captured: { sql: string; params: unknown[] } = { sql: "", params: [] };
     const db = {
