@@ -8,6 +8,27 @@
 //
 // We use TanStack Query (queryKeys.sessions()) so RSC prefetch + cache
 // invalidation work the same as any other screen.
+//
+// Phase 68 / Plan 68-01 — REVIEW web HIGH HI-02 (session-bearer heap
+// exposure — documented, unavoidable).
+//   `authClient.listSessions()` returns each session's Better Auth bearer
+//   on `SessionRow.token`, so the bearer for every session sits in the JS
+//   heap (the TanStack Query cache). This is UNAVOIDABLE in Better Auth
+//   1.6.9: `revokeSession` accepts ONLY `{ token }` — there is NO
+//   id-based revocation overload (confirmed against
+//   `better-auth/dist/api/routes/session.d.mts:230-235`, body
+//   `z.ZodObject<{ token: z.ZodString }>` only). Revoking a session
+//   therefore REQUIRES holding its token.
+//   Containment posture:
+//     * The token is read ONLY inside the `revokeOne` mutation closure
+//       (`revokeOne.mutate(row.token)`). It is NEVER placed in a rendered
+//       DOM attribute, a `data-*` attribute, or a React `key` (keys use
+//       the opaque `row.id`). `sessions-table-bearer-exposure.test.ts`
+//       pins this.
+//     * The app CSP `connect-src` allowlist limits where a compromised
+//       dependency / XSS could exfiltrate a heap-read bearer to.
+//   Durable fix (v2): a Better Auth upgrade exposing id-based session
+//   revocation — recorded in `.planning/deferred-items.md`.
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
