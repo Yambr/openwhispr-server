@@ -1,0 +1,24 @@
+# R18 re-probe — 2026-05-20T16:24:38.765Z
+# slim-test stack localhost:4000, NODE_ENV=development, OPENWHISPR_TEST_ROUTES=true
+
+## seed-tenant POST -> 200
+{"token":"I4ksquTwpSHxJxBAscAivLNFLRzQrNDRp-8g3Z8jSj0","user":{"id":"821e1ad9-8b4d-45f2-92d1-f384f5700374","email":"r18-reprobe-1779294278765@test.local","emailVerified":true,"createdAt":"2026-05-20 16:24:38.864+00"}}
+
+## sign-in/email POST (undici, Origin not set) -> 403
+origin-header-sent-by-undici: (undici sends no Origin header on server-side fetch)
+{"message":"Missing or null Origin","code":"MISSING_OR_NULL_ORIGIN"}
+
+## VERDICT: 403 MISSING_OR_NULL_ORIGIN reproduced = true
+
+# ─────────────────────────────────────────────────────────────────────
+# POST-FIX re-probe — 2026-05-20T16:30:10Z (api rebuilt with Track C fix)
+# ─────────────────────────────────────────────────────────────────────
+# Fix: advanced.disableOriginCheck=["/sign-in/email"] in auth.ts, gated
+# by validateOriginBoot().relaxNullOrigin (OPENWHISPR_TEST_ROUTES==="true"
+# AND NODE_ENV!=="production"). Production never relaxes.
+
+## seed-tenant POST -> 200
+## sign-in/email POST (undici, Origin not set) -> 200
+{"redirect":false,"token":"...","user":{...,"emailVerified":true,...}}
+
+## VERDICT: R18 FIXED — null-Origin sign-in returns 200 on the slim stack.
