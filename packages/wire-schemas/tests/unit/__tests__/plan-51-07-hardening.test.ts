@@ -125,5 +125,19 @@ describe("Plan 51-07 — wire-schemas hardening", () => {
       const r = VerificationStatusQuery.safeParse({ email: "u@example.com" });
       expect(r.success).toBe(true);
     });
+
+    // Phase 59 / Track D — R15/R5: `?email=` is OPTIONAL. R5 requires the
+    // server to accept the param "without warning, without error" — which
+    // includes its absence. A required-param schema (the inverse of R5)
+    // 400s a desktop poll that omits the param.
+    it("R15/R5: verification-status accepts an absent email (param optional)", () => {
+      const r = VerificationStatusQuery.safeParse({});
+      expect(r.success).toBe(true);
+    });
+
+    it("R15/R5: verification-status still rejects a malformed email when present", () => {
+      const r = VerificationStatusQuery.safeParse({ email: "not-an-email" });
+      expect(r.success).toBe(false);
+    });
   });
 });
