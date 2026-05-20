@@ -125,8 +125,8 @@ Track E commit.
 apps/api/src/routes/index.ts(377,5)   TS2322  FastifyPluginAsync not assignable to RoutePlugin
 apps/api/src/routes/index.ts(378,5)   TS2322  (same)
 apps/api/src/routes/index.ts(384,5)   TS2322  (same)
-apps/api/src/routes/tokens/assemblyai.ts(106,42) TS2339  'message' missing on union arm
-apps/api/src/routes/tokens/deepgram.ts(72,42)    TS2339  'message' missing on union arm
+apps/api/src/routes/tokens/assemblyai.ts(107,45) TS2339  'message' missing on union arm  (line drifted 106→107 by Phase 62 HI-03 req.log.warn add)
+apps/api/src/routes/tokens/deepgram.ts(74,45)    TS2339  'message' missing on union arm  (line drifted 72→74 by Phase 62 HI-03 req.log.warn add)
 ```
 
 **Repro:** `pnpm typecheck` from repo root. **Fix owner:** a future

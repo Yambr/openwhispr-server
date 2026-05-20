@@ -24,6 +24,16 @@
 // Defensive: the default path emits "Internal server error" rather than
 // `err.message` to avoid leaking internal state. Stack traces NEVER leak
 // — the full error is logged server-side via `req.log.warn`.
+//
+// HI-03 (REVIEW api-core HIGH / Phase 62): the typed-error branches for
+// ZodError, Fastify-validation, RateLimitError and ServiceUnavailable
+// (plus the `fv.statusCode===429/503` shims) emit the per-class DEFAULT
+// LITERAL — they do NOT echo `err.message`/`err.issues[0].message`. A
+// route throwing `new ServiceUnavailable("postgres pool exhausted: …")`
+// can no longer surface that upstream/internal string to the wire
+// envelope. The full error is still logged server-side via
+// `req.log.warn({ err })`. `ValidationError` keeps its caller text — its
+// per-site i18n-code contract is intentional (errors.ts:20-21).
 
 import { APIError } from "better-auth/api";
 import type { FastifyInstance } from "fastify";
@@ -127,12 +137,14 @@ export function registerErrorHandler(app: FastifyInstance): void {
     let code: string | undefined;
 
     const fv = err as FastifyValidationLike;
-    const errMessage = err instanceof Error ? err.message : "";
 
     if (err instanceof ZodError) {
+      // HI-03 — a Zod issue message frequently echoes the input value /
+      // path; emit the class-default literal instead of `issues[0].message`.
+      // `code` stays undefined here to preserve the legacy literal-emission
+      // semantics for ZodError (matches the APIError / default catch-all).
       status = 400;
-      const first = err.issues[0];
-      message = first?.message ?? "Invalid request";
+      message = "Invalid request";
     } else if (typeof fv.code === "string" && fv.code.startsWith("FST_ERR_CTP_")) {
       // BUG-55-01-b-05 — Fastify content-type-parser errors
       // (FST_ERR_CTP_EMPTY_JSON_BODY, FST_ERR_CTP_INVALID_MEDIA_TYPE,
@@ -148,8 +160,10 @@ export function registerErrorHandler(app: FastifyInstance): void {
       code = "VALIDATION_ERROR";
     } else if (fv.validation !== undefined) {
       // Fastify's own schema-validation failures arrive with `validation`.
+      // HI-03 — Fastify's validation message echoes the offending property
+      // path/value; emit the class-default literal.
       status = 400;
-      message = errMessage || "Invalid request";
+      message = "Invalid request";
     } else if (err instanceof ValidationError) {
       status = 400;
       message = err.message || "Invalid request";
@@ -176,19 +190,24 @@ export function registerErrorHandler(app: FastifyInstance): void {
       message = err.message || "Upstream error";
       code = err.code;
     } else if (err instanceof RateLimitError) {
+      // HI-03 — never echo `err.message`; a caller MAY interpolate the
+      // client IP / quota detail. Emit the class-default literal.
       status = 429;
-      message = errMessage || "Too many requests";
+      message = "Too many requests";
       code = err.code;
     } else if (fv.statusCode === 429) {
       status = 429;
-      message = errMessage || "Too many requests";
+      message = "Too many requests";
     } else if (err instanceof ServiceUnavailable) {
+      // HI-03 — never echo `err.message`; a caller MAY interpolate an
+      // upstream error string (e.g. "postgres pool exhausted: <suffix>").
+      // Emit the class-default literal. The full error is logged below.
       status = 503;
-      message = errMessage || "Service temporarily unavailable";
+      message = "Service temporarily unavailable";
       code = err.code;
     } else if (fv.statusCode === 503) {
       status = 503;
-      message = errMessage || "Service temporarily unavailable";
+      message = "Service temporarily unavailable";
     } else if (err instanceof ServerError) {
       status = 500;
       message = err.message || "Internal server error";

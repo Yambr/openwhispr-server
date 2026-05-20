@@ -273,7 +273,10 @@ describe("POST /api/transcribe", () => {
     });
     expect(res.statusCode).toBe(503);
     const env = ErrorEnvelope.parse(res.json());
-    expect(env.error).toMatch(/GROQ_API_KEY is not configured/);
+    // HI-03 (Phase 62): the error envelope emits the class-default literal
+    // — the missing-key detail stays server-side (`req.log.warn`).
+    expect(env.error).toBe("Service temporarily unavailable");
+    expect(res.body).not.toContain("GROQ_API_KEY");
   });
 
   it("returns 502 envelope on upstream LiteLLM failure (no master-key leakage)", async () => {

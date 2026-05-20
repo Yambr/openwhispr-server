@@ -212,9 +212,13 @@ export const buildTranscribeRoutes = (deps: TranscribeDeps) =>
         } catch (err) {
           if (err instanceof MissingProviderKeyError) {
             // 503 — operator-actionable config issue. NEVER 401 (Pitfall #8).
-            // Throw ServiceUnavailable so the centralized setErrorHandler
-            // emits the canonical envelope using err.message verbatim.
-            throw new ServiceUnavailable(err.message);
+            // HI-03 (Phase 62): code+literal pair — the missing-key detail
+            // is logged server-side for operator triage but is NOT carried
+            // on `.message` (the error handler emits the class-default
+            // literal regardless; this keeps the throw site explicit so a
+            // future handler change cannot re-leak the upstream string).
+            req.log.warn({ err }, "missing provider key on /api/transcribe");
+            throw new ServiceUnavailable("SERVICE_UNAVAILABLE", "Service temporarily unavailable");
           }
           if (err instanceof LitellmUpstreamError) {
             req.log.warn({ status: err.status }, "litellm upstream error on /api/transcribe");

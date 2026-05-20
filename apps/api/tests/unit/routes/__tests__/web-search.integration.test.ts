@@ -183,8 +183,10 @@ describe("POST /api/agent/web-search", () => {
     expect(res.statusCode).toBe(503);
     expect(res.statusCode).not.toBe(401); // Pitfall #8 — NEVER 401.
     const env = ErrorEnvelope.parse(res.json());
-    expect(env.error).toMatch(/TAVILY_API_KEY/);
-    expect(env.error).toMatch(/Tavily/);
+    // HI-03 (Phase 62): the envelope emits the class-default literal — the
+    // provider/env-var hint stays server-side (`req.log.warn`).
+    expect(env.error).toBe("Service temporarily unavailable");
+    expect(res.body).not.toContain("TAVILY_API_KEY");
   });
 
   it("returns 503 envelope mentioning Yandex env vars when Yandex isConfigured()=false", async () => {
@@ -199,8 +201,9 @@ describe("POST /api/agent/web-search", () => {
     });
     expect(res.statusCode).toBe(503);
     const env = ErrorEnvelope.parse(res.json());
-    expect(env.error).toMatch(/Yandex/);
-    expect(env.error).toMatch(/YANDEX_SEARCH_API_KEY/);
+    // HI-03 (Phase 62): class-default literal; env-var hint stays server-side.
+    expect(env.error).toBe("Service temporarily unavailable");
+    expect(res.body).not.toContain("YANDEX_SEARCH_API_KEY");
   });
 
   it("returns 502 'web-search upstream failed' on UpstreamError", async () => {
@@ -222,7 +225,7 @@ describe("POST /api/agent/web-search", () => {
     expect(env.error).toBe("web-search upstream failed");
   });
 
-  it("returns 503 with provider's MissingProviderKeyError message verbatim if raised mid-call", async () => {
+  it("HI-03 — returns 503 class-default literal (NOT the MissingProviderKeyError message) if raised mid-call", async () => {
     const { db } = makeFakeDb();
     const provider = makeFakeProvider("tavily", {
       onSearch: async () => {
@@ -238,7 +241,10 @@ describe("POST /api/agent/web-search", () => {
     });
     expect(res.statusCode).toBe(503);
     const env = ErrorEnvelope.parse(res.json());
-    expect(env.error).toBe("Tavily not configured (set TAVILY_API_KEY in .env)");
+    // HI-03 (Phase 62): the MissingProviderKeyError detail is logged
+    // server-side, NOT echoed to the wire.
+    expect(env.error).toBe("Service temporarily unavailable");
+    expect(res.body).not.toContain("TAVILY_API_KEY");
   });
 
   it("Yandex live adapter — UpstreamError surfaces as the generic 502 envelope (no stub-pending branch)", async () => {

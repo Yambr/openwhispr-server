@@ -101,14 +101,17 @@ export const buildAssemblyAITokenRoutes = () =>
         });
 
         if (!r.ok) {
-          // Throw ServiceUnavailable so the centralized setErrorHandler
-          // emits the canonical envelope with r.message verbatim.
-          throw new ServiceUnavailable(r.message);
+          // HI-03 (Phase 62): code+literal pair — `r.message` (the upstream
+          // failure detail) is logged server-side, NOT carried on
+          // `.message`. The error handler emits the class-default literal.
+          req.log.warn({ providerMessage: r.message }, "AssemblyAI token mint upstream failure");
+          throw new ServiceUnavailable("SERVICE_UNAVAILABLE", "Service temporarily unavailable");
         }
 
         const token = (r.json as { token?: unknown }).token;
         if (typeof token !== "string") {
-          throw new ServiceUnavailable("AssemblyAI token mint malformed response");
+          // HI-03 (Phase 62): code+literal pair for consistency.
+          throw new ServiceUnavailable("SERVICE_UNAVAILABLE", "Service temporarily unavailable");
         }
         return reply.send({ token });
       },

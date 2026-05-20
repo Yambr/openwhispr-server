@@ -95,21 +95,24 @@ export const buildWebSearchRoutes = (deps: WebSearchDeps) =>
 
         if (!provider.isConfigured()) {
           // Per-provider 503 envelope. Pitfall #8 — NEVER 401.
+          // HI-03 (Phase 62): the operator-actionable "set <ENV_VAR>"
+          // detail is logged server-side, NOT echoed to the wire (the
+          // error handler emits the class-default literal). The throw
+          // site keeps a code+literal pair so a future handler change
+          // cannot re-leak the env-var hint.
           const envVarName =
             provider.name === "tavily"
               ? "TAVILY_API_KEY"
               : provider.name === "yandex"
                 ? "YANDEX_SEARCH_API_KEY + YANDEX_SEARCH_FOLDER_ID"
                 : "<provider env vars>";
-          const label =
-            provider.name === "tavily"
-              ? "Tavily"
-              : provider.name === "yandex"
-                ? "Yandex"
-                : provider.name;
+          req.log.warn(
+            { provider: provider.name, envVarName },
+            "web-search provider not configured",
+          );
           throw new TypedServiceUnavailable(
             "WEB_SEARCH_NOT_CONFIGURED",
-            `${label} not configured (set ${envVarName} in .env)`,
+            "Service temporarily unavailable",
           );
         }
 
@@ -118,7 +121,13 @@ export const buildWebSearchRoutes = (deps: WebSearchDeps) =>
           result = await provider.search(body.query, body.numResults);
         } catch (e) {
           if (e instanceof MissingProviderKeyError) {
-            throw new TypedServiceUnavailable("WEB_SEARCH_PROVIDER_KEY_MISSING", e.message);
+            // HI-03 (Phase 62): the missing-key detail is logged
+            // server-side, NOT carried on `.message`.
+            req.log.warn({ provider: provider.name, err: e }, "web-search missing provider key");
+            throw new TypedServiceUnavailable(
+              "WEB_SEARCH_PROVIDER_KEY_MISSING",
+              "Service temporarily unavailable",
+            );
           }
           if (e instanceof UpstreamError) {
             req.log.warn(

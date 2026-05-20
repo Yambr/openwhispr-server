@@ -187,8 +187,11 @@ function handleDiarization(deps: DiarizationDeps, idem: IdempotencyCache) {
       if (err instanceof MissingPyannoteKeyError) {
         // Pitfall #8: 503 (NOT 401) — the desktop's tokenStore treats
         // 401 as a session-expiry signal and signs the user out. Config
-        // gaps must surface as 503 with operator-actionable message.
-        throw new ServiceUnavailable(err.message);
+        // gaps must surface as 503.
+        // HI-03 (Phase 62): code+literal pair — the missing-key detail is
+        // logged server-side, NOT carried on `.message`.
+        req.log.warn({ err }, "missing pyannote key on /v1/audio/diarization");
+        throw new ServiceUnavailable("SERVICE_UNAVAILABLE", "Service temporarily unavailable");
       }
       throw err;
     }

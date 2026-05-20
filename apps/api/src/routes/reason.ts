@@ -113,9 +113,10 @@ export const buildReasonRoutes = (deps: ReasonDeps) =>
         } catch (err) {
           if (err instanceof MissingProviderKeyError) {
             // 503 — operator-actionable config issue. NEVER 401 (Pitfall #8).
-            // ServiceUnavailable carries err.message verbatim through the
-            // centralized envelope.
-            throw new ServiceUnavailable(err.message);
+            // HI-03 (Phase 62): code+literal pair — the missing-key detail
+            // is logged server-side, NOT carried on `.message`.
+            req.log.warn({ err }, "missing provider key on /api/reason");
+            throw new ServiceUnavailable("SERVICE_UNAVAILABLE", "Service temporarily unavailable");
           }
           if (err instanceof LitellmUpstreamError) {
             req.log.warn({ status: err.status }, "litellm upstream error on /api/reason");

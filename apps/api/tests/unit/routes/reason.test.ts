@@ -293,7 +293,11 @@ describe("POST /api/reason", () => {
     });
     expect(res.statusCode).toBe(503);
     const env = ErrorEnvelope.parse(res.json());
-    expect(env.error).toMatch(/OPENROUTER_API_KEY/);
+    // HI-03 (Phase 62): the error envelope emits the class-default literal
+    // — the missing-key detail is NOT echoed to the wire (it stays in the
+    // server-side `req.log.warn({ err })` for operator triage).
+    expect(env.error).toBe("Service temporarily unavailable");
+    expect(res.body).not.toContain("OPENROUTER_API_KEY");
   });
 
   it("returns 502 envelope on upstream LiteLLM failure (no master-key leakage)", async () => {

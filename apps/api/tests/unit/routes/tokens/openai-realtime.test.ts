@@ -223,7 +223,8 @@ describe("POST /api/openai-realtime-token", () => {
       // partial failure.
       expect(raw).not.toContain("ek_first_should_not_leak");
       const body = r.json() as { error: string };
-      expect(body.error).toContain("token mint upstream error");
+      // HI-03 (Phase 62): class-default literal — no leaked upstream detail.
+      expect(body.error).toBe("Service temporarily unavailable");
     } finally {
       await app.close();
     }
@@ -354,7 +355,8 @@ describe("POST /api/openai-realtime-token", () => {
         payload: {},
       });
       expect(r.statusCode).toBe(503);
-      expect(r.json()).toEqual({ error: "OpenAI Realtime token mint malformed response" });
+      // HI-03 (Phase 62): class-default literal — no leaked detail.
+      expect(r.json()).toEqual({ error: "Service temporarily unavailable" });
     } finally {
       await app.close();
     }

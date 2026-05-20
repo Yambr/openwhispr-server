@@ -182,7 +182,13 @@ export const buildOpenAIRealtimeTokenRoutes = () =>
           (r): r is Extract<typeof r, { status: 503 }> => !r.ok && r.status === 503,
         );
         if (failed) {
-          throw new ServiceUnavailable(failed.message);
+          // HI-03 (Phase 62): code+literal pair — `failed.message` is
+          // logged server-side, NOT carried on `.message`.
+          req.log.warn(
+            { providerMessage: failed.message },
+            "OpenAI Realtime token mint upstream failure",
+          );
+          throw new ServiceUnavailable("SERVICE_UNAVAILABLE", "Service temporarily unavailable");
         }
 
         // After the find() above, every entry is { ok: true, json }.
@@ -190,7 +196,8 @@ export const buildOpenAIRealtimeTokenRoutes = () =>
         const secrets = okResults.map((r) => {
           const value = (r.json as { value?: unknown }).value;
           if (typeof value !== "string" || value.length === 0) {
-            throw new ServiceUnavailable(`${PROVIDER_LABEL} token mint malformed response`);
+            // HI-03 (Phase 62): code+literal pair for consistency.
+            throw new ServiceUnavailable("SERVICE_UNAVAILABLE", "Service temporarily unavailable");
           }
           return value;
         });

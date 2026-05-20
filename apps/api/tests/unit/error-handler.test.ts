@@ -127,6 +127,14 @@ describe("registerErrorHandler — global envelope (D-13)", () => {
       err.statusCode = 503;
       throw err;
     });
+    // HI-03 leak-shape routes — throw typed errors with interpolated
+    // upstream/internal text and assert the envelope never carries it.
+    app.get("/hi03-su-interpolated", async () => {
+      throw new ServiceUnavailable("postgres pool exhausted: secret-suffix-9f3a");
+    });
+    app.get("/hi03-ratelimit-interpolated", async () => {
+      throw new RateLimitError("burst from 10.1.2.3 over quota");
+    });
   });
 
   afterEach(async () => {
@@ -142,13 +150,14 @@ describe("registerErrorHandler — global envelope (D-13)", () => {
     expect(body.error).toBe("body is invalid");
   });
 
-  it("maps a real ZodError -> 400 with envelope", async () => {
+  it("HI-03 — maps a real ZodError -> 400 with the class-default literal (no issue-message echo)", async () => {
     const res = await app.inject({ method: "GET", url: "/throw-zod" });
     expect(res.statusCode).toBe(400);
     const body = res.json();
     expect(() => ErrorEnvelope.parse(body)).not.toThrow();
-    // First issue surfaces as the message — non-empty string.
-    expect(body.error.length).toBeGreaterThan(0);
+    // HI-03: the Zod issue message (which echoes the input path/value)
+    // must NOT reach the wire — the handler emits the fixed literal.
+    expect(body.error).toBe("Invalid request");
   });
 
   it("maps AuthError -> 401 with envelope (PITFALLS #1: NEVER 200)", async () => {
@@ -169,16 +178,21 @@ describe("registerErrorHandler — global envelope (D-13)", () => {
     expect(res.json().error).toBe("user not found");
   });
 
-  it("maps RateLimitError -> 429 with envelope", async () => {
+  it("HI-03 — maps RateLimitError -> 429 with the class-default literal (no err.message echo)", async () => {
     const res = await app.inject({ method: "GET", url: "/throw-ratelimit" });
     expect(res.statusCode).toBe(429);
-    expect(res.json().error).toBe("too many requests");
+    // HI-03: the constructor-supplied message ("too many requests" here,
+    // but a caller MAY interpolate a client IP) must NOT reach the wire.
+    expect(res.json().error).toBe("Too many requests");
   });
 
-  it("maps ServiceUnavailable -> 503 with envelope", async () => {
+  it("HI-03 — maps ServiceUnavailable -> 503 with the class-default literal (no err.message echo)", async () => {
     const res = await app.inject({ method: "GET", url: "/throw-503" });
     expect(res.statusCode).toBe(503);
-    expect(res.json().error).toBe("db unavailable");
+    // HI-03: a route MAY throw `new ServiceUnavailable("postgres pool
+    // exhausted: <suffix>")`; the interpolated upstream string must NOT
+    // reach the wire envelope.
+    expect(res.json().error).toBe("Service temporarily unavailable");
   });
 
   it("maps ServerError -> 500 with envelope", async () => {
@@ -187,16 +201,18 @@ describe("registerErrorHandler — global envelope (D-13)", () => {
     expect(res.json().error).toBe("intentional bug");
   });
 
-  it("maps fastify-rate-limit-style err.statusCode=429 -> 429", async () => {
+  it("HI-03 — maps fastify-rate-limit-style err.statusCode=429 -> 429 with class-default literal", async () => {
     const res = await app.inject({ method: "GET", url: "/throw-fastify-429" });
     expect(res.statusCode).toBe(429);
-    expect(res.json().error).toBe("Rate limit reached");
+    // HI-03: the fastify-statusCode shim must also emit the literal.
+    expect(res.json().error).toBe("Too many requests");
   });
 
-  it("maps fastify err.statusCode=503 -> 503", async () => {
+  it("HI-03 — maps fastify err.statusCode=503 -> 503 with class-default literal", async () => {
     const res = await app.inject({ method: "GET", url: "/throw-fastify-503" });
     expect(res.statusCode).toBe(503);
-    expect(res.json().error).toBe("db went away");
+    // HI-03: the fastify-statusCode shim must also emit the literal.
+    expect(res.json().error).toBe("Service temporarily unavailable");
   });
 
   it("maps SSRFBlockedError thrown directly -> 502 with canonical message (D-S5)", async () => {
@@ -272,6 +288,23 @@ describe("registerErrorHandler — global envelope (D-13)", () => {
     const res = await app.inject({ method: "GET", url: "/throw-fastify-503-empty" });
     expect(res.statusCode).toBe(503);
     expect(res.json().error).toBe("Service temporarily unavailable");
+  });
+
+  it("HI-03 — ServiceUnavailable with interpolated upstream text does NOT leak it to the envelope", async () => {
+    const res = await app.inject({ method: "GET", url: "/hi03-su-interpolated" });
+    expect(res.statusCode).toBe(503);
+    expect(res.json().error).toBe("Service temporarily unavailable");
+    // Defense-in-depth: the raw body must not carry the interpolated text.
+    expect(res.body).not.toContain("postgres pool exhausted");
+    expect(res.body).not.toContain("secret-suffix-9f3a");
+  });
+
+  it("HI-03 — RateLimitError with interpolated client-IP text does NOT leak it to the envelope", async () => {
+    const res = await app.inject({ method: "GET", url: "/hi03-ratelimit-interpolated" });
+    expect(res.statusCode).toBe(429);
+    expect(res.json().error).toBe("Too many requests");
+    expect(res.body).not.toContain("10.1.2.3");
+    expect(res.body).not.toContain("over quota");
   });
 
   it("every error response has Content-Type application/json; charset=utf-8", async () => {

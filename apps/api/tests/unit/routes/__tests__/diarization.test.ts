@@ -471,7 +471,10 @@ describe("POST /v1/audio/diarization", () => {
     });
     expect(res.statusCode).toBe(503);
     const env = ErrorEnvelope.parse(res.json());
-    expect(env.error).toMatch(/PYANNOTE_API_KEY/);
+    // HI-03 (Phase 62): the envelope emits the class-default literal — the
+    // missing-key detail stays server-side (`req.log.warn`).
+    expect(env.error).toBe("Service temporarily unavailable");
+    expect(res.body).not.toContain("PYANNOTE_API_KEY");
     // Defensive: a 401 would sign the desktop user out.
     expect(res.statusCode).not.toBe(401);
   });
@@ -494,7 +497,8 @@ describe("POST /v1/audio/diarization", () => {
     expect(res.statusCode).toBe(503);
     expect(res.headers["retry-after"]).toBe("30");
     const env = ErrorEnvelope.parse(res.json());
-    expect(env.error).toMatch(/pyannote\.ai upstream/);
+    // HI-03 (Phase 62): the envelope emits the class-default literal.
+    expect(env.error).toBe("Service temporarily unavailable");
   });
 
   it("converts PyannoteAuthError (401/403 upstream) to 503 with operator-actionable message (Pitfall #8)", async () => {
