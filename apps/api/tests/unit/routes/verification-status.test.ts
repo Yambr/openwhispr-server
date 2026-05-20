@@ -21,6 +21,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { registerErrorHandler } from "../../../src/error-handler.js";
 import { _resetDefaultTenantCacheForTesting } from "../../../src/lib/default-tenant.js";
 import type { AuthLike } from "../../../src/middleware/dual-auth.js";
+import { rateLimitPlugin } from "../../../src/plugins/rate-limit.js";
 import { zodTypeProvider } from "../../../src/plugins/zod-type-provider.js";
 import { buildVerificationStatusRoutes } from "../../../src/routes/verification-status.js";
 
@@ -347,6 +348,124 @@ describe("GET /api/auth/verification-status (cookie-only)", () => {
   // session resolves but tenantId is the empty string (`?? fallback`
   // does not catch ""). Production should never hit this; the test pins
   // the canonical 401 envelope so the defense doesn't regress silently.
+  // Phase 63 / HR-03 — the REAL `verification-status` route MUST carry a
+  // (ip, email) composite rate-limit keyGenerator (the docstring's
+  // documented contract + the D-RL2 `composite-ip-email` matrix entry).
+  // Unlike the synthetic `rate-limit-verification-status.test.ts` (which
+  // builds an inline route with its own keyGenerator), these tests
+  // exercise the production `buildVerificationStatusRoutes` plugin so the
+  // route-side drift is actually caught.
+  describe("HR-03 — (ip,email) rate-limit keyGenerator on the real route", () => {
+    async function buildRateLimitedApp(): Promise<FastifyInstance> {
+      const db = makeFakeDb((sql) => {
+        if (/SELECT email_verified_at FROM users/.test(sql)) {
+          return [{ email_verified_at: "2026-01-01T00:00:00Z" }];
+        }
+        return [];
+      });
+      // Process-boundary stub: session always resolves with a fixed
+      // verified user so the handler returns 200 (the limiter counts 200s).
+      const auth = makeAuth(async () => ({
+        user: { id: "u-1", email: "session@b.test", tenantId: TENANT_A },
+      }));
+      const app = Fastify({ logger: false, trustProxy: true });
+      registerErrorHandler(app);
+      await app.register(rateLimitPlugin, { redis: undefined });
+      app.register(zodTypeProvider);
+      app.register(buildVerificationStatusRoutes({ db, auth }));
+      await app.ready();
+      return app;
+    }
+
+    const COOKIE = { cookie: "openwhispr.session_token=valid" };
+
+    it("HR-03: route config.rateLimit carries a keyGenerator function", async () => {
+      let captured: unknown;
+      const db = makeFakeDb(() => []);
+      const auth = makeAuth(async () => null);
+      const app = Fastify({ logger: false });
+      app.addHook("onRoute", (routeOptions) => {
+        if (routeOptions.url === "/api/auth/verification-status") {
+          captured = (routeOptions.config as { rateLimit?: { keyGenerator?: unknown } } | undefined)
+            ?.rateLimit?.keyGenerator;
+        }
+      });
+      registerErrorHandler(app);
+      app.register(zodTypeProvider);
+      app.register(buildVerificationStatusRoutes({ db, auth }));
+      await app.ready();
+      expect(captured).toBeTypeOf("function");
+      await app.close();
+    });
+
+    it("HR-03: two emails from one IP occupy separate 30/min buckets", async () => {
+      const app = await buildRateLimitedApp();
+      const ip = { "x-forwarded-for": "10.0.0.30" };
+      for (let i = 0; i < 30; i++) {
+        const r = await app.inject({
+          method: "GET",
+          url: "/api/auth/verification-status?email=a%40corp.local",
+          headers: { ...ip, ...COOKIE },
+        });
+        expect(r.statusCode).toBe(200);
+      }
+      const aBlocked = await app.inject({
+        method: "GET",
+        url: "/api/auth/verification-status?email=a%40corp.local",
+        headers: { ...ip, ...COOKIE },
+      });
+      expect(aBlocked.statusCode).toBe(429);
+      // Same IP, different email → fresh bucket.
+      const bFresh = await app.inject({
+        method: "GET",
+        url: "/api/auth/verification-status?email=b%40corp.local",
+        headers: { ...ip, ...COOKIE },
+      });
+      expect(bFresh.statusCode).toBe(200);
+      await app.close();
+    });
+
+    it("HR-03: email is case-normalized — mixed-case shares a bucket (regression guard)", async () => {
+      const app = await buildRateLimitedApp();
+      const ip = { "x-forwarded-for": "10.0.0.31" };
+      for (let i = 0; i < 30; i++) {
+        await app.inject({
+          method: "GET",
+          url: "/api/auth/verification-status?email=Alice%40corp.local",
+          headers: { ...ip, ...COOKIE },
+        });
+      }
+      const lower = await app.inject({
+        method: "GET",
+        url: "/api/auth/verification-status?email=alice%40corp.local",
+        headers: { ...ip, ...COOKIE },
+      });
+      expect(lower.statusCode).toBe(429);
+      await app.close();
+    });
+
+    it("HR-03: absent ?email= degrades to an ip-only key — never throws", async () => {
+      const app = await buildRateLimitedApp();
+      const ip = { "x-forwarded-for": "10.0.0.32" };
+      for (let i = 0; i < 30; i++) {
+        const r = await app.inject({
+          method: "GET",
+          url: "/api/auth/verification-status",
+          headers: { ...ip, ...COOKIE },
+        });
+        expect(r.statusCode).toBe(200);
+      }
+      const blocked = await app.inject({
+        method: "GET",
+        url: "/api/auth/verification-status",
+        headers: { ...ip, ...COOKIE },
+      });
+      expect(blocked.statusCode).toBe(429);
+      expect(blocked.json()).toEqual({ error: "Too many requests" });
+      await app.close();
+    });
+  });
+
   it("session with empty tenantId hits the defense-in-depth 401 branch", async () => {
     const db = makeFakeDb(() => []);
     const auth = makeAuth(async () => ({

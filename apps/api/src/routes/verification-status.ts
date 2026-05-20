@@ -20,9 +20,17 @@
 // belt-and-suspenders — tenant from session AND the SELECT runs inside
 // `withTenant`.
 //
-// Rate limit (D-28): 30/min keyed on (ip, email) — the desktop polls
-// during onboarding; busy fixtures must not DoS each other.
+// Rate limit (D-28): 30/min keyed on (ip, sha256(lower(email))); absent
+// ?email= degrades to an ip-only key — the desktop polls during
+// onboarding; busy fixtures behind one corporate NAT must not DoS each
+// other. Phase 63 / HR-03 implemented the route-side keyGenerator that
+// the D-RL2 matrix (`config/rate-limits.ts`, keying:"composite-ip-email")
+// always expected. The email component is trim()+lowerCase()-normalized
+// then SHA-256-hashed before entering the key so no plaintext email
+// surfaces in Valkey key dumps / traces; the keyGenerator does NO DB
+// access, so it cannot become an email-existence enumeration oracle.
 
+import { createHash } from "node:crypto";
 import { type ExecutableTx, type TransactionalDb, withTenant } from "@openwhispr/data";
 import { VerificationStatusQuery, VerificationStatusResponse } from "@openwhispr/wire-schemas";
 import { sql } from "drizzle-orm";
@@ -48,6 +56,21 @@ export const buildVerificationStatusRoutes = (deps: VerificationStatusDeps) =>
         rateLimit: {
           max: 30,
           timeWindow: "1 minute",
+          // Phase 63 / HR-03 — (ip, email) composite key per D-RL2. The
+          // email is normalized (trim + lowercase) then SHA-256-hashed
+          // (hex, first 16 chars — ample bucket-separation entropy) so
+          // the `owrl:`-namespaced key carries no plaintext PII. Absent
+          // ?email= degrades to an ip-only key (`${ip}:_` sentinel) —
+          // never throws. No DB access here → not an existence oracle.
+          keyGenerator: (req) => {
+            const raw = (req.query as { email?: unknown }).email;
+            if (typeof raw !== "string" || raw.trim() === "") {
+              return `${req.ip}:_`;
+            }
+            const norm = raw.trim().toLowerCase();
+            const emailKey = createHash("sha256").update(norm).digest("hex").slice(0, 16);
+            return `${req.ip}:${emailKey}`;
+          },
         },
       },
       schema: {

@@ -7,6 +7,13 @@
 //   2. The 31st is 429 with envelope-conformant body.
 //   3. Changing the email moves to a fresh bucket (separate keyGenerator
 //      output per email).
+//
+// NOTE (Phase 63 / HR-03): this suite exercises a SYNTHETIC inline route
+// with its own keyGenerator — it is an independent check of the
+// keyGenerator partitioning shape. The PRODUCTION `verification-status`
+// route now also carries a real (ip, sha256(lower(email))) keyGenerator;
+// `tests/unit/routes/verification-status.test.ts` (HR-03 describe block)
+// exercises that real plugin. This synthetic suite stays valid as-is.
 import Fastify from "fastify";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { registerErrorHandler } from "../../../src/error-handler.js";
