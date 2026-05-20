@@ -151,15 +151,25 @@ export async function tryPreviousToken(
   // Pre-fix, buildApp's minimal-mode tryPrev adapter hard-coded
   // `email: ""` because the SECURITY DEFINER function only returned
   // the (user_id, tenant_id) pair — that empty-string sentinel
-  // silently propagated through middleware. The follow-up SELECT here
-  // bypasses RLS deliberately too (the email lookup is gated by the
-  // tenant_id we already authenticated above). The query goes through
-  // the standard appDb role; users.id is a primary key so the query
-  // is bounded.
+  // silently propagated through middleware.
+  //
+  // HI-05 (REVIEW api-core HIGH / Phase 62): the follow-up SELECT is
+  // now EXPLICITLY tenant-scoped — `AND tenant_id = <resolved>::uuid`.
+  // Previously the SELECT relied solely on the post-condition that
+  // `first.user_id` belongs to `first.tenant_id`; a race during a
+  // user-move / admin-impersonation flow could desync those. The
+  // predicate pins the lookup to the tenant the sessions row already
+  // resolved, so a row whose `tenant_id` does not match is never read.
+  // (The function still runs on the standard `openwhispr_app` role —
+  // this is belt-and-braces at the SQL level. `users.id` is a primary
+  // key so the query stays bounded.)
   let email: string | null = null;
   try {
     const er = (await db.execute(
-      sql`SELECT email FROM users WHERE id = ${first.user_id}::uuid LIMIT 1`,
+      sql`SELECT email FROM users
+           WHERE id = ${first.user_id}::uuid
+             AND tenant_id = ${first.tenant_id}::uuid
+           LIMIT 1`,
     )) as { rows: Array<{ email: string }> };
     email = er.rows[0]?.email ?? null;
   } catch {
