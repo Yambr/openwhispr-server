@@ -20,9 +20,19 @@
 import { type ExecutableTx, type TransactionalDb, withTenant } from "@openwhispr/data";
 import { sql } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
+import { z } from "zod";
 import { AuthError } from "../../errors.js";
 
 const MAX_INLINE_PURGE = 1000;
+
+// LOCKER-04 inv-14 — DELETE /api/notes/delete-all carries no request
+// payload, but the invariant still requires a declarative `schema:`
+// key. This route is body-less: the desktop client sends DELETE with
+// no JSON body. The schema therefore accepts an absent body (undefined
+// / null) AND an empty object — anything else is rejected at the
+// dispatcher. Satisfies the structural rule (the linter checks
+// `schema:` key presence, not its shape).
+const EmptyBodySchema = z.object({}).strict().nullish();
 
 export interface NotesDeleteAllDeps {
   db: TransactionalDb<ExecutableTx>;
@@ -33,6 +43,8 @@ export const buildNotesDeleteAllRoutes = (deps: NotesDeleteAllDeps) =>
     app.route({
       method: "DELETE",
       url: "/api/notes/delete-all",
+      // LOCKER-04 inv-14 — empty-body schema for a payload-less DELETE.
+      schema: { body: EmptyBodySchema },
       // Tighter rate-limit than per-note delete — bulk-purge ops should
       // be rare. 3/min/user is enough for "I accidentally", "I really
       // accidentally", "yes really".

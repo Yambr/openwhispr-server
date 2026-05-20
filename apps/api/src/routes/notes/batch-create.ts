@@ -48,6 +48,9 @@ export const buildNotesBatchCreateRoutes = (deps: NotesBatchCreateDeps) =>
     app.route({
       method: "POST",
       url: "/api/notes/batch-create",
+      // LOCKER-04 inv-14 — declarative schema wires the SAME Zod schema
+      // the handler .parse()s inline (stock ZodCompiler not attached).
+      schema: { body: BatchCreateBodySchema },
       // D-30 / T-05-04 — tighter rate limit on the batch endpoint to
       // mitigate flood-via-amplification. 5 requests/min/user is enough
       // for legitimate bulk sync after a long offline window (5 × 500 =

@@ -22,6 +22,7 @@ import { fileURLToPath } from "node:url";
 import Fastify from "fastify";
 import { describe, expect, it } from "vitest";
 import { registerErrorHandler } from "../../../../src/error-handler.js";
+import { zodTypeProvider } from "../../../../src/plugins/zod-type-provider.js";
 import { buildNotesCreateRoutes } from "../../../../src/routes/notes/create.js";
 
 const TEST_DIR = dirname(fileURLToPath(import.meta.url));
@@ -53,6 +54,7 @@ describe("H-1 — notes LOCKER-04 inv-14 declarative schema", () => {
   it("H-1 GUARD — malformed body still rejects with the canonical 400 envelope", async () => {
     const app = Fastify({ logger: false });
     registerErrorHandler(app);
+    await app.register(zodTypeProvider);
     app.addHook("onRequest", async (req) => {
       req.user = { id: "00000000-0000-0000-0000-0000000000aa", email: "h1@test" };
       req.tenant = "00000000-0000-0000-0000-000000000000";

@@ -32,6 +32,9 @@ export const buildNotesDeleteRoutes = (deps: NotesDeleteDeps) =>
     app.route({
       method: "DELETE",
       url: "/api/notes/delete",
+      // LOCKER-04 inv-14 — declarative schema wires the SAME Zod schema
+      // the handler .parse()s inline (stock ZodCompiler not attached).
+      schema: { body: DeleteBodySchema },
       config: { rateLimit: { max: 120, timeWindow: "1 minute" } },
       handler: async (req, reply) => {
         if (!req.user || !req.tenant) {

@@ -14,6 +14,7 @@
 import { type ExecutableTx, type TransactionalDb, withTenant } from "@openwhispr/data";
 import { sql } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
+import { z } from "zod";
 import { AuthError } from "../../errors.js";
 import {
   buildKeysetOrderLimit,
@@ -33,11 +34,24 @@ interface ListQuery {
   since?: string;
 }
 
+// LOCKER-04 inv-14 — declarative querystring schema (mirrors
+// conversations/messages.ts MessagesListQuerySchema). The keyset trio
+// arrives as raw strings; parseListQuery() below is the semantic parse
+// that produces the typed keyset value.
+const ListQuerySchema = z
+  .object({
+    limit: z.string().optional(),
+    before: z.string().optional(),
+    since: z.string().optional(),
+  })
+  .strict();
+
 export const buildNotesListRoutes = (deps: NotesListDeps) =>
   async function notesListRoutes(app: FastifyInstance): Promise<void> {
     app.route({
       method: "GET",
       url: "/api/notes/list",
+      schema: { querystring: ListQuerySchema },
       config: { rateLimit: { max: 120, timeWindow: "1 minute" } },
       handler: async (req, reply) => {
         if (!req.user || !req.tenant) {

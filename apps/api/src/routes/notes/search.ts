@@ -47,6 +47,9 @@ export const buildNotesSearchRoutes = (deps: NotesSearchDeps) =>
     app.route({
       method: "POST",
       url: "/api/notes/search",
+      // LOCKER-04 inv-14 — declarative schema wires the SAME Zod schema
+      // the handler .parse()s inline (stock ZodCompiler not attached).
+      schema: { body: SearchRequestSchema },
       config: { rateLimit: { max: 60, timeWindow: "1 minute" } },
       handler: async (req, reply) => {
         if (!req.user || !req.tenant) {

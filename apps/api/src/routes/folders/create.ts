@@ -30,6 +30,10 @@ export const buildFoldersCreateRoutes = (deps: FoldersCreateDeps) =>
     app.route({
       method: "POST",
       url: "/api/folders/create",
+      // LOCKER-04 inv-14 — declarative schema wires the SAME Zod schema
+      // the handler .parse()s inline below (the stock ZodCompiler is not
+      // attached, so the inline .parse() remains the validating call).
+      schema: { body: FolderInputSchema },
       config: { rateLimit: { max: 120, timeWindow: "1 minute" } },
       handler: async (req, reply) => {
         if (!req.user || !req.tenant) {

@@ -40,6 +40,9 @@ export const buildFoldersBatchCreateRoutes = (deps: FoldersBatchCreateDeps) =>
     app.route({
       method: "POST",
       url: "/api/folders/batch-create",
+      // LOCKER-04 inv-14 — declarative schema wires the SAME Zod schema
+      // the handler .parse()s inline (stock ZodCompiler not attached).
+      schema: { body: BatchCreateBodySchema },
       // D-30 / T-05-04 — tighter rate limit on the batch endpoint.
       config: { rateLimit: { max: 5, timeWindow: "1 minute" } },
       handler: async (req, reply) => {
