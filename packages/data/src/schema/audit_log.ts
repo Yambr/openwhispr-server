@@ -49,6 +49,13 @@ export const auditLog = pgTable(
   "audit_log",
   {
     id: uuid("id").primaryKey().defaultRandom(),
+    // HI-05: the tenant_id → tenants.id FK is `ON DELETE NO ACTION` (migration
+    // 0000 declares it so; `.references()` with no `onDelete` reflects that).
+    // DELIBERATE — `audit_log` is append-only, so a tenant cannot be deleted
+    // while audit rows reference it. This differs from the sibling
+    // `ON DELETE CASCADE` tenant FKs on
+    // notes/folders/conversations/messages/transcriptions/api_keys. See the
+    // "Tenant deletion" section of docs/operations.md.
     tenantId: uuid("tenant_id")
       .notNull()
       .references(() => tenants.id),

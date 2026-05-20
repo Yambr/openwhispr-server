@@ -1361,6 +1361,110 @@ kubectl -n openwhispr logs deploy/ow-openwhispr-api | grep i18n.locales_dir
 
 ---
 
+## Database migration upgrade notes
+
+These notes cover migration behaviours an operator must be aware of when
+upgrading an existing installation. They do not change any migration SQL —
+applied migrations are immutable — they document forward-only consequences.
+
+### Destructive forward migrations
+
+> Review finding HI-01.
+
+Migration `0005_session_token_plain.sql` runs an **unconditional
+`TRUNCATE TABLE "sessions"`** (step 3 of the migration) inside the migration
+runner's per-migration transaction. It dates from an early-phase schema
+reshape (dropping the legacy `token_hash` / `previous_token_hash` bytea
+columns) and was written assuming a dev-only database.
+
+**Impact when upgrading an installation that predates migration 0005 and has
+live sessions:**
+
+- **Every active session is cleared** the moment migration 0005 applies.
+  Every signed-in user — including every connected OpenWhispr desktop client —
+  is logged out and must re-authenticate.
+- Migration 0005 has **no `.down.sql` companion**. The truncated session rows
+  are **unrecoverable**; a rollback cannot restore them.
+
+**Pre-flight check before upgrading across migration 0005:**
+
+1. Confirm whether the target installation is already at or beyond migration
+   0005: `SELECT * FROM _meta.__drizzle_migrations ORDER BY id;` — if a row
+   tagged `0005_session_token_plain` is present, this migration has already
+   run and the warning does not apply to subsequent upgrades.
+2. If migration 0005 has **not** yet been applied, schedule the upgrade in a
+   **maintenance window** and notify users that they will be signed out.
+
+Migration `0021_safe_table_reset_helper.sql` later introduced a
+`_safe_table_reset(...)` guard so that any future table-reset is non-empty-row
+aware; it prevents recurrence but **cannot retroactively make migration 0005
+non-destructive**.
+
+### Audit-log partition maintenance after upgrade
+
+> Review finding HI-03.
+
+Migration `0014_audit_log_partition.sql` converts `audit_log` into a
+pg_partman-managed range-partitioned table. As part of the migration it copies
+the pre-existing (legacy) `audit_log` rows into the new partitioned parent.
+
+`create_parent` materialises the current month plus four future months. Legacy
+rows whose `created_at` predates that window do **not** land in a bounded
+monthly partition — they fall through to the catch-all **`audit_log_default`**
+partition. The migration deliberately does **not** call
+`run_maintenance_proc()` itself, because that procedure issues an internal
+`COMMIT`, which is illegal inside the migration runner's wrapping transaction.
+
+**Required operator action after upgrading through migration 0014:**
+
+Ensure the legacy rows are promoted off `audit_log_default` into properly
+bounded monthly child partitions. Either:
+
+- **Let the scheduled `partman-maintenance` BullMQ worker job run** — it runs
+  daily and calls partman maintenance for you; nothing to do beyond confirming
+  the worker is deployed and healthy; **or**
+- **Run partman maintenance once manually**, outside any transaction:
+
+  ```sql
+  -- Run as a partman-privileged role, NOT inside a transaction block.
+  CALL partman.run_maintenance_proc();
+  ```
+
+**Until promotion runs, month-scoped audit queries silently miss the legacy
+rows** (those rows sit on `audit_log_default`, which a month-bounded partition
+prune skips). If the `partman-maintenance` worker job is misconfigured or
+fails to deploy, run the manual `CALL` above as a one-time remediation.
+
+### Tenant deletion
+
+> Review finding HI-05.
+
+Not every `tenant_id` foreign key cascades. The five tables below reference
+`tenants(id)` with **`ON DELETE NO ACTION`** (the application/identity tables),
+while `notes`, `folders`, `conversations`, `messages`, `transcriptions` and
+`api_keys` reference it with `ON DELETE CASCADE`:
+
+| Table          | `tenant_id` FK posture | Rationale                                   |
+| -------------- | ---------------------- | ------------------------------------------- |
+| `audit_log`    | `NO ACTION`            | Append-only audit data must not be cascaded away. |
+| `usage_ledger` | `NO ACTION`            | Append-only billing/usage data.             |
+| `sessions`     | `NO ACTION`            | Better Auth identity table.                 |
+| `account`      | `NO ACTION`            | Better Auth identity table.                 |
+| `verification` | `NO ACTION`            | Better Auth identity table.                 |
+
+**Consequence:** a `DELETE FROM tenants WHERE id = ?` **fails with a foreign-key
+violation** if any `audit_log` / `usage_ledger` / `sessions` / `account` /
+`verification` row still references that tenant. This is deliberate — it
+prevents silent loss of append-only audit/usage history.
+
+**To delete a tenant, the operator must first purge or archive the referencing
+rows.** Append-only audit and usage data should be **exported** (not silently
+dropped) before removal — see the Backup and restore section. Only after the
+five `NO ACTION` tables hold no rows for the tenant will the `DELETE FROM
+tenants` succeed.
+
+---
+
 ## Future phases
 
 - **Phase 10 (this document):** full operator handbook (deploy / upgrade

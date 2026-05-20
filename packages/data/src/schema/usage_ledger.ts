@@ -11,6 +11,13 @@ export const usageLedger = pgTable(
   "usage_ledger",
   {
     id: uuid("id").primaryKey().defaultRandom(),
+    // HI-05: the tenant_id → tenants.id FK is `ON DELETE NO ACTION` (migration
+    // 0000 declares it so; `.references()` with no `onDelete` reflects that).
+    // DELIBERATE — `usage_ledger` is append-only billing/usage data, so a
+    // tenant cannot be deleted while usage rows reference it. This differs
+    // from the sibling `ON DELETE CASCADE` tenant FKs on
+    // notes/folders/conversations/messages/transcriptions/api_keys. See the
+    // "Tenant deletion" section of docs/operations.md.
     tenantId: uuid("tenant_id")
       .notNull()
       .references(() => tenants.id),
