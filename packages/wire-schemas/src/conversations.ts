@@ -18,7 +18,9 @@ const METADATA_MAX_BYTES = 4096;
 
 export const ConversationRoleSchema = z.enum(["user", "assistant", "system"]);
 
-const MetadataSchema = z
+// H-3 (Phase 64) — exported so the server's conversations/messages.ts
+// can adopt this canonical shape instead of an ad-hoc looser schema.
+export const MetadataSchema = z
   .record(z.string().min(1).max(64), z.union([z.string().max(1024), z.number(), z.boolean()]))
   .refine((meta) => JSON.stringify(meta).length <= METADATA_MAX_BYTES, {
     message: "metadata too large",
