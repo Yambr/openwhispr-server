@@ -4,7 +4,9 @@
 // Wire shape (matches ~/openwhispr/src/services/NotesService.ts.deleteAll):
 //   Request:  (no body)
 //   Success:  200 { deleted: number }
-//   400:      delete-all exceeds 1000 rows (Open Q#6 / T-DEL-ALL-DOS)
+//   400:      delete-all exceeds 1000 rows (Open Q#6 / T-DEL-ALL-DOS) —
+//             emitted via ValidationError so the canonical envelope is
+//             produced by the centralized setErrorHandler (H-4, Phase 64).
 //
 // D-23 + Open Q#6: HARD delete (DELETE FROM, not UPDATE deleted_at =
 // NOW()). The "delete all" semantics in the desktop is "purge from
@@ -21,7 +23,7 @@ import { type ExecutableTx, type TransactionalDb, withTenant } from "@openwhispr
 import { sql } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
-import { AuthError } from "../../errors.js";
+import { AuthError, ValidationError } from "../../errors.js";
 
 const MAX_INLINE_PURGE = 1000;
 
@@ -94,9 +96,16 @@ export const buildNotesDeleteAllRoutes = (deps: NotesDeleteAllDeps) =>
         });
 
         if (result.exceeded) {
-          return reply.code(400).send({
-            error: `delete-all exceeds ${MAX_INLINE_PURGE} rows; please delete in batches`,
-          });
+          // H-4 (Phase 64) — route the over-limit 400 through the
+          // centralized setErrorHandler (the SINGLE emission point) via
+          // ValidationError, instead of an inline reply emission. This
+          // gives the response i18n localization + uniform error logging,
+          // consistent with every sibling 4xx (METADATA_TOO_LARGE,
+          // BATCH_TOO_LARGE, ...).
+          throw new ValidationError(
+            "DELETE_ALL_TOO_LARGE",
+            `delete-all exceeds ${MAX_INLINE_PURGE} rows; please delete in batches`,
+          );
         }
         return reply.code(200).send({ deleted: result.deleted });
       },
