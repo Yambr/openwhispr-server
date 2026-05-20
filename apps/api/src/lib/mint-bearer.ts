@@ -30,6 +30,7 @@
 // + provider name, NEVER the IdP response body — IdP body may contain
 // PII or attacker-controlled values.
 import type { ExecutableTx, TransactionalDb } from "@openwhispr/data";
+import { z } from "zod";
 import type { MintBearer, MintBearerArgs } from "../routes/auth-callback.js";
 
 /**
@@ -80,10 +81,16 @@ export interface BuildMintBearerOpts {
   };
 }
 
-interface OidcTokenResponse {
-  access_token: string;
-  id_token?: string;
-}
+// HI-04 (REVIEW api-core HIGH / Phase 62) — the OIDC token response is
+// zod-validated before use. `await res.json() as OidcTokenResponse` was
+// an unchecked cast: a hijacked token endpoint could plant a malformed
+// body and the unchecked `access_token` would flow into the userinfo
+// Bearer header. The schema fails loud instead.
+const OidcTokenResponseSchema = z.object({
+  access_token: z.string().min(1),
+  id_token: z.string().optional(),
+});
+type OidcTokenResponse = z.infer<typeof OidcTokenResponseSchema>;
 
 interface OidcUserinfo {
   sub: string;
@@ -92,10 +99,16 @@ interface OidcUserinfo {
   picture?: string;
 }
 
-interface OidcDiscoveryDoc {
-  token_endpoint?: string;
-  userinfo_endpoint?: string;
-}
+// HI-04 — the OIDC discovery doc is zod-validated before caching.
+// `token_endpoint` / `userinfo_endpoint` MUST be absolute https:// URLs;
+// the scheme + same-origin checks below additionally pin them to the
+// issuer's origin so a poisoned discovery response cannot redirect the
+// `client_secret` exchange to an attacker endpoint.
+const OidcDiscoveryDocSchema = z.object({
+  token_endpoint: z.string().url(),
+  userinfo_endpoint: z.string().url(),
+});
+type OidcDiscoveryDoc = z.infer<typeof OidcDiscoveryDocSchema>;
 
 function requireEnv(name: string): string {
   const value = process.env[name];
@@ -105,17 +118,54 @@ function requireEnv(name: string): string {
   return value;
 }
 
-// Phase 02.16 — process-lifetime cache for the OIDC discovery doc.
-// OIDC issuers consider discovery stable; the spec (OIDC Discovery 1.0
-// §4) explicitly permits clients to cache the document. A process-
-// lifetime cache is sufficient for our scale and avoids paying the
-// roundtrip on every callback. Reset on process restart (operator
-// rolls the api pod after rotating the IdP).
+// HI-04 — bounded, TTL'd cache for the OIDC discovery doc.
 //
-// Keyed by issuer URL (post-trim) to support — in theory — multiple
-// IdPs in one process. The map stays bounded by the small set of
-// configured issuers.
-const discoveryCache = new Map<string, OidcDiscoveryDoc>();
+// OIDC Discovery 1.0 §4 explicitly permits caching the metadata
+// document. The previous implementation used a bare process-lifetime
+// `Map` with NO TTL and NO size bound: a poisoned discovery response
+// (token-endpoint swap) was cached for the entire process life, and a
+// rotated/refreshed IdP could not recover without a pod roll.
+//
+// `MAX_CACHE_ENTRIES` bounds the issuer set (eviction is oldest-first);
+// `DISCOVERY_TTL_MS` (60 min positive TTL) lets a refreshed IdP recover
+// on the next callback. Each entry carries an absolute `expiresAt`.
+const MAX_CACHE_ENTRIES = 16;
+const DISCOVERY_TTL_MS = 60 * 60 * 1000;
+
+interface DiscoveryCacheEntry {
+  doc: OidcDiscoveryDoc;
+  expiresAt: number;
+}
+
+const discoveryCache = new Map<string, DiscoveryCacheEntry>();
+
+/**
+ * HI-04 — assert an OIDC endpoint URL is an https:// URL whose origin
+ * matches the issuer's origin (or an explicit operator-configured
+ * allowlist origin). A non-affiliated origin on `token_endpoint` /
+ * `userinfo_endpoint` is the exact attacker primitive HI-04 describes
+ * (redirect the `client_secret` exchange). Default-deny: an operator
+ * with a legitimate split-domain IdP sets `OIDC_DISCOVERY_ALLOWED_ORIGINS`
+ * (csv of `https://...` origins).
+ */
+function assertEndpointAffiliated(label: string, endpoint: string, issuerOrigin: string): void {
+  let url: URL;
+  try {
+    url = new URL(endpoint);
+  } catch {
+    throw new Error(`mint bearer: discovery ${label} is not a valid URL`);
+  }
+  if (url.protocol !== "https:") {
+    throw new Error(`mint bearer: discovery ${label} must be https`);
+  }
+  if (url.origin === issuerOrigin) return;
+  const allowed = (process.env.OIDC_DISCOVERY_ALLOWED_ORIGINS ?? "")
+    .split(",")
+    .map((o) => o.trim())
+    .filter((o) => o.length > 0);
+  if (allowed.includes(url.origin)) return;
+  throw new Error(`mint bearer: discovery ${label} origin not affiliated with issuer`);
+}
 
 /**
  * Fetch (and cache) the OIDC issuer's discovery doc. Per RFC 8414 /
@@ -126,21 +176,48 @@ const discoveryCache = new Map<string, OidcDiscoveryDoc>();
  * (OIDC_ISSUER_URL) and we resolve the rest — matches Better Auth
  * genericOAuth's lazy-discovery contract (auth.ts:89–90).
  *
+ * HI-04 — the fetched document is zod-validated AND each endpoint is
+ * checked for https + issuer-origin affiliation BEFORE caching; an
+ * expired cache entry is treated as a miss and re-fetched.
+ *
  * T-02.7-07 — error messages include the HTTP status only, NEVER the
  * response body (discovery doc may be served from a misconfigured
  * proxy that leaks PII or attacker-controlled values).
  */
 async function discoverOidc(issuerUrl: string): Promise<OidcDiscoveryDoc> {
   const issuer = issuerUrl.replace(/\/+$/, "");
+  const now = Date.now();
   const cached = discoveryCache.get(issuer);
-  if (cached) return cached;
+  if (cached && cached.expiresAt > now) return cached.doc;
+  if (cached) discoveryCache.delete(issuer);
+
   const url = `${issuer}/.well-known/openid-configuration`;
   const res = await fetch(url);
   if (!res.ok) {
     throw new Error(`mint bearer: discovery ${res.status} (issuer=${issuer})`);
   }
-  const doc = (await res.json()) as OidcDiscoveryDoc;
-  discoveryCache.set(issuer, doc);
+  const parsed = OidcDiscoveryDocSchema.safeParse(await res.json());
+  if (!parsed.success) {
+    // HI-04 — never cache an unvalidated doc; fail loud (no body leak).
+    throw new Error(`mint bearer: discovery doc failed schema validation (issuer=${issuer})`);
+  }
+  const doc = parsed.data;
+
+  let issuerOrigin: string;
+  try {
+    issuerOrigin = new URL(issuer).origin;
+  } catch {
+    throw new Error(`mint bearer: OIDC_ISSUER_URL is not a valid URL`);
+  }
+  assertEndpointAffiliated("token_endpoint", doc.token_endpoint, issuerOrigin);
+  assertEndpointAffiliated("userinfo_endpoint", doc.userinfo_endpoint, issuerOrigin);
+
+  // HI-04 — bound the cache size; evict oldest on overflow.
+  if (discoveryCache.size >= MAX_CACHE_ENTRIES) {
+    const oldestKey = discoveryCache.keys().next().value;
+    if (oldestKey !== undefined) discoveryCache.delete(oldestKey);
+  }
+  discoveryCache.set(issuer, { doc, expiresAt: now + DISCOVERY_TTL_MS });
   return doc;
 }
 
@@ -180,19 +257,13 @@ export function buildMintBearer(opts: BuildMintBearerOpts): MintBearer {
       userinfoEndpoint = explicitUserinfoUrl;
     } else {
       const issuerUrl = requireEnv("OIDC_ISSUER_URL");
+      // HI-04 — `discoverOidc` zod-validates the doc and asserts both
+      // endpoints are https + issuer-origin-affiliated before returning;
+      // `token_endpoint` / `userinfo_endpoint` are therefore guaranteed
+      // present, well-formed, and trusted at this point.
       const doc = await discoverOidc(issuerUrl);
-      const discoveredToken = explicitTokenUrl ?? doc.token_endpoint;
-      const discoveredUserinfo = explicitUserinfoUrl ?? doc.userinfo_endpoint;
-      if (!discoveredToken) {
-        throw new Error(`mint bearer: discovery doc missing token_endpoint (issuer=${issuerUrl})`);
-      }
-      if (!discoveredUserinfo) {
-        throw new Error(
-          `mint bearer: discovery doc missing userinfo_endpoint (issuer=${issuerUrl})`,
-        );
-      }
-      tokenEndpoint = discoveredToken;
-      userinfoEndpoint = discoveredUserinfo;
+      tokenEndpoint = explicitTokenUrl ?? doc.token_endpoint;
+      userinfoEndpoint = explicitUserinfoUrl ?? doc.userinfo_endpoint;
     }
 
     const redirectUri = `${authUrl.replace(/\/+$/, "")}/api/auth/desktop-callback/${args.provider}`;
@@ -214,7 +285,16 @@ export function buildMintBearer(opts: BuildMintBearerOpts): MintBearer {
       // T-02.7-07 — DO NOT include response body in the error message.
       throw new Error(`mint bearer: token exchange ${tokenRes.status} (provider=${args.provider})`);
     }
-    const tokens = (await tokenRes.json()) as OidcTokenResponse;
+    // HI-04 — zod-validate the token response; an unchecked cast let a
+    // malformed/poisoned body's `access_token` flow into the userinfo
+    // Bearer header. Fail loud instead (no body leak in the message).
+    const tokenParsed = OidcTokenResponseSchema.safeParse(await tokenRes.json());
+    if (!tokenParsed.success) {
+      throw new Error(
+        `mint bearer: token response failed schema validation (provider=${args.provider})`,
+      );
+    }
+    const tokens: OidcTokenResponse = tokenParsed.data;
 
     // Step 2 — userinfo.
     const uiRes = await fetch(userinfoEndpoint, {
