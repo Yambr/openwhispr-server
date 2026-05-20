@@ -179,7 +179,9 @@ export const buildRealtimeRoutes = (deps: RealtimeDeps) =>
         // canonical 401 envelope BEFORE the WS upgrade completes.
         const user = req.user;
         if (!user || !user.id) {
-          throw new AuthError("unauthorized");
+          // WR-03 (Phase 65) — two-arg form so code === "UNAUTHORIZED",
+          // matching every other route (i18n `errors.UNAUTHORIZED` keying).
+          throw new AuthError("UNAUTHORIZED", "unauthorized");
         }
         // D-03 / LITELLM-04: append `?user=<userId>` so LiteLLM tags
         // spend rows by openwhispr user without per-user virtual keys.

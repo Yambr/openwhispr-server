@@ -58,6 +58,7 @@ import type { FastifyInstance } from "fastify";
 import { AuthError } from "../../errors.js";
 import { type StreamChunk, sseToNdjson } from "../../lib/sse-parser.js";
 import { createToolCallAccumulator } from "../../lib/tool-call-accumulator.js";
+import type { ZodTypeProvider } from "../../plugins/zod-type-provider.js";
 import { prependSystemPrompt, translateLegacyTools } from "./translate-tools.js";
 
 export interface AgentStreamDeps {
@@ -109,16 +110,18 @@ function endWithFinish(raw: import("node:http").ServerResponse, finishReason: st
 
 export const buildAgentStreamRoutes = (deps: AgentStreamDeps) =>
   async function agentStreamRoutes(app: FastifyInstance): Promise<void> {
-    app.route({
+    // WR-04 (Phase 65) — `withTypeProvider<ZodTypeProvider>()` makes the
+    // declarative `schema.body` both validate at runtime AND give the handler
+    // a typed `req.body`. The zod-type-provider's validatorCompiler is
+    // attached at the buildApp boundary, so Fastify validates the body BEFORE
+    // the handler runs (well before `reply.hijack()`); a ZodError flows
+    // through `registerErrorHandler` as the canonical 400 envelope. The
+    // previously-inline handler-side re-parse was redundant double
+    // validation on the hottest paid endpoint and is dropped.
+    app.withTypeProvider<ZodTypeProvider>().route({
       method: "POST",
       url: "/api/agent/stream",
       schema: {
-        // Phase 41.b / HI-02 — declarative schema reference required by
-        // LOCKER-04. The route still calls .parse() manually inside the
-        // handler because zod-type-provider's auto-400 path runs AFTER
-        // Fastify's body parser but the route's hijack must happen with
-        // a validated body — manual parse keeps the order explicit and
-        // routes ZodError through registerErrorHandler.
         body: AgentStreamRequestSchema,
       },
       config: {
@@ -142,21 +145,15 @@ export const buildAgentStreamRoutes = (deps: AgentStreamDeps) =>
         //     req.user — if not, throw BEFORE hijack so the centralized
         //     handler emits the canonical 401 envelope (T-04-AUTH).
         if (!req.user?.id) {
-          throw new AuthError("unauthorized");
+          // WR-03 (Phase 65) — two-arg form so code === "UNAUTHORIZED",
+          // matching every other route (i18n `errors.UNAUTHORIZED` keying).
+          throw new AuthError("UNAUTHORIZED", "unauthorized");
         }
         const userId = req.user.id;
-        // Phase 41.b / HI-02 — strict zod validation BEFORE reply.hijack()
-        // so a ZodError flows through the centralized 400 envelope handler
-        // instead of being swallowed into a synthetic stream_error finish
-        // chunk post-hijack. The schema enforces messages/tools cap +
-        // structural shape; downstream code can rely on the narrowed types.
-        // Phase 52 / Plan 52-06 — `exactOptionalPropertyTypes: true`
-        // rejects the previous explicit annotation because zod's
-        // `.optional()` produces `T | undefined` while the annotation
-        // wrote bare `T?`. Let TS infer the body type directly from
-        // `parse()`; downstream `body.model` / `body.tools` consumers
-        // are unchanged (still `T | undefined`).
-        const body = AgentStreamRequestSchema.parse(req.body ?? {});
+        // WR-04 (Phase 65) — `req.body` is already validated + typed by the
+        // declarative `schema.body` (the zod-type-provider's validatorCompiler
+        // runs before this handler). No inline re-parse needed.
+        const body = req.body;
 
         // (2) Set headers, hijack, flush, disable Nagle (D-02 / D-04).
         // Use raw.setHeader directly so light-my-request preserves them
