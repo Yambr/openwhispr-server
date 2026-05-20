@@ -26,7 +26,7 @@ const FK_CASCADE_TABLES = [
 let booted: BootResult | undefined;
 
 beforeAll(async () => {
-  booted = await bootMigratedPostgres({ withPgPartman: false });
+  booted = await bootMigratedPostgres({ withPgPartman: true });
 }, 180_000);
 
 afterAll(async () => {
