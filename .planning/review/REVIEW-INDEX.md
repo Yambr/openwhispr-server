@@ -52,9 +52,9 @@
 
 3. **`data:CR-03` — Schema mutation driven by tests (CLAUDE.md hard rule 1 violation).** Commits `13a1547` and `da674a3` rewrote production schema + amended LOCKER-08 discipline to satisfy a Better-Auth integration test. Amendment rationale ("lens deletes plaintext before INSERT") is mechanically false given CR-01. — **✅ CLOSED by Phase 57 Track A** (commit `6133c2b`: LOCKER-08 amendment rationale reverted; the rationale is now mechanically true because `ENCRYPTED_COLUMNS_MAP` is populated and the lens fires).
 
-4. **`data:CR-04` — AUTH-04 5-minute overlap broken.** `previous_token_fp` never populated → previous-token rotation overlap window non-functional. — **⏳ DEFERRED to Phase 58** (out of Phase 57 scope per CONTEXT.md).
+4. **`data:CR-04` — AUTH-04 5-minute overlap broken.** `previous_token_fp` never populated → previous-token rotation overlap window non-functional. — **⚠️ PARTIALLY CLOSED by Phase 58 Track C** (commit `d6b2e939`). The reviewer's claim ("`previous_token_fp` never populated") is a false-positive — `recordPreviousToken` (`token-rotation.ts:80`) writes it via a raw `sql` UPDATE that bypasses the adapter; characterization test `auth-04-token-rotation-overlap.test.ts` confirms population + bounded window. **A residual gap remains**: the deployed `dual-auth` hook wires `tryPreviousToken` onto the RLS-subject `openwhispr_app` pool, and `sessions` has `FORCE ROW LEVEL SECURITY` + the hook runs pre-tenant-resolution → lookup matches 0 rows → the overlap window is non-functional in the deployed binary. Logged in `.planning/deferred-items.md`; needs a BYPASSRLS owner-pool threaded into the dual-auth hot path (grey-area architectural decision — Phase 59).
 
-5. **`data:CR-05` — Dead plaintext-fallback in `oauth-state-codec.ts` post-migration-0020.** — **⏳ DEFERRED to Phase 58** (out of Phase 57 scope per CONTEXT.md).
+5. **`data:CR-05` — Dead plaintext-fallback in `oauth-state-codec.ts` post-migration-0020.** — **✅ CLOSED by Phase 58 Track D** (commit `86ef80db`: dead `code_verifier` plaintext branch removed; sole caller `auth-callback.ts` passes a sidecar-only SELECT row — branch confirmed unreachable; positive-lock test added).
 
 ### `apps/api` routes — rest — 3 CRITICALs
 
@@ -66,9 +66,9 @@
 
 ### `apps/worker` — 2 CRITICALs
 
-9. **`worker:CR-01` — Spend-ingest watermark advances past silently-skipped rows.** `jobs/ingest-litellm-spend.ts:329-344` — missing end_user/tenant/invalid duration rows are skipped but watermark advances. Permanently orphans billable spend even after prerequisite data materializes. Only duration-skip emits a billing-anomaly counter. — **⏳ DEFERRED to Phase 58** (Tier-1 billing-correctness; out of Phase 57 Tier-0 scope per CONTEXT.md).
+9. **`worker:CR-01` — Spend-ingest watermark advances past silently-skipped rows.** `jobs/ingest-litellm-spend.ts:329-344` — missing end_user/tenant/invalid duration rows are skipped but watermark advances. Permanently orphans billable spend even after prerequisite data materializes. Only duration-skip emits a billing-anomaly counter. — **✅ CLOSED by Phase 58 Track A** (commits `3e7ca0e4`, `199e0047`: bounded watermark hold to `min(lastProcessed, oldestRecoverableSkip)` with `MAX_RECOVERABLE_HOLD_MS` age-out; billing-anomaly counters for all 4 skip reasons).
 
-10. **`worker:CR-02` — Daily rollup + reconciliation bucket by `created_at`, not LiteLLM `startTime`.** A 30-second-late tick after UTC midnight allocates yesterday's spend to today's rollup. Reconciliation reads same column so drift gauge reports 0 while rollup is wrong. — **⏳ DEFERRED to Phase 58** (Tier-1 billing-correctness).
+10. **`worker:CR-02` — Daily rollup + reconciliation bucket by `created_at`, not LiteLLM `startTime`.** A 30-second-late tick after UTC midnight allocates yesterday's spend to today's rollup. Reconciliation reads same column so drift gauge reports 0 while rollup is wrong. — **✅ CLOSED by Phase 58 Track B** (commits `d68694ad`, `32b0b933`: migration 0027 adds `usage_ledger.event_at`; ingest writes LiteLLM `startTime`; rollup + reconciliation bucket by `COALESCE(event_at, created_at)` — going-forward, historical numbers unshifted).
 
 ### `packages/byok-guard` — 2 CRITICALs
 
