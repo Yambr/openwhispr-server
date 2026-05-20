@@ -24,8 +24,15 @@ const TENANT_B = "00000000-0000-0000-0000-00000000000b";
 let pool: Pool;
 let userA: string;
 let userB: string;
+// Phase 59 / Track E — R17: a SECOND distinct user inside the SAME
+// default tenant as userA. In v1's single-installation-single-tenant
+// RLS posture both seed-tenants collapse to the default tenant, so the
+// real per-owner namespace is the USER — userA2 proves two owners can
+// hold the same key name.
+let userA2: string;
 let appA: FastifyInstance;
 let appB: FastifyInstance;
+let appA2: FastifyInstance;
 
 beforeAll(async () => {
   pool = await getSharedRoutePool();
@@ -45,15 +52,24 @@ beforeAll(async () => {
        RETURNING id`,
     [TENANT_B, "keys-b@test"],
   );
+  const ra2 = await pool.query<{ id: string }>(
+    `INSERT INTO users (tenant_id, email) VALUES ($1, $2)
+       ON CONFLICT (tenant_id, (lower(email))) DO UPDATE SET email = EXCLUDED.email
+       RETURNING id`,
+    [TENANT_A, "keys-a2@test"],
+  );
   userA = ra.rows[0]!.id;
   userB = rb.rows[0]!.id;
+  userA2 = ra2.rows[0]!.id;
   appA = await buildTestApp({ pool, userId: userA, tenantId: TENANT_A });
   appB = await buildTestApp({ pool, userId: userB, tenantId: TENANT_B });
+  appA2 = await buildTestApp({ pool, userId: userA2, tenantId: TENANT_A });
 }, 180_000);
 
 afterAll(async () => {
   if (appA) await appA.close();
   if (appB) await appB.close();
+  if (appA2) await appA2.close();
 }, 60_000);
 
 beforeEach(async () => {
@@ -188,6 +204,50 @@ describe("integration — /api/v1/keys CRUD (real Postgres + RLS)", () => {
     expect(r2body.error).toMatch(/already exists/);
     expect(r2body.code).toBe("API_KEY_NAME_TAKEN");
     expect(r2body).not.toHaveProperty("data");
+  });
+
+  // Phase 59 / Track E — R17: API-key name uniqueness is scoped to the
+  // OWNER (user_id), not the tenant. In v1's single-default-tenant RLS
+  // posture `(tenant_id, name)` is functionally global within an
+  // installation, so two distinct users would collide on a shared name —
+  // a cross-owner usability bug + info leak (a 409 reveals another
+  // owner's key-name choice). The list/revoke handlers already scope by
+  // user_id, confirming keys are user-owned.
+  it("R17 — two distinct owners can each create a key with the same name", async () => {
+    const r1 = await appA.inject({
+      method: "POST",
+      url: "/api/v1/keys/create",
+      headers: { "content-type": "application/json" },
+      payload: JSON.stringify({ name: "shared-name" }),
+    });
+    expect(r1.statusCode).toBe(200);
+    // userA2 is a DIFFERENT user in the SAME (default) tenant as userA.
+    const r2 = await appA2.inject({
+      method: "POST",
+      url: "/api/v1/keys/create",
+      headers: { "content-type": "application/json" },
+      payload: JSON.stringify({ name: "shared-name" }),
+    });
+    expect(r2.statusCode).toBe(200);
+  });
+
+  it("R17 — the SAME owner reusing an active name still gets 409", async () => {
+    const r1 = await appA.inject({
+      method: "POST",
+      url: "/api/v1/keys/create",
+      headers: { "content-type": "application/json" },
+      payload: JSON.stringify({ name: "same-owner-dup" }),
+    });
+    expect(r1.statusCode).toBe(200);
+    const r2 = await appA.inject({
+      method: "POST",
+      url: "/api/v1/keys/create",
+      headers: { "content-type": "application/json" },
+      payload: JSON.stringify({ name: "same-owner-dup" }),
+    });
+    expect(r2.statusCode).toBe(409);
+    const body = r2.json() as { success: false; code?: string };
+    expect(body.code).toBe("API_KEY_NAME_TAKEN");
   });
 
   it("create — expiresInDays maps to expires_at", async () => {

@@ -19,9 +19,11 @@
 //        @node-rs/argon2 dispatches the hash onto the NAPI tokio
 //        threadpool (Pitfall #5) so a single create call does NOT block
 //        Fastify's event loop.
-// D-30 — same-tenant duplicate active name → 409 envelope (relies on
-//        the partial UNIQUE INDEX api_keys_active_name_idx from Plan 01
-//        on (tenant_id, name) WHERE revoked_at IS NULL).
+// D-30 — same-OWNER duplicate active name → 409 envelope (relies on
+//        the partial UNIQUE INDEX api_keys_active_name_idx, re-scoped to
+//        (user_id, name) WHERE revoked_at IS NULL by migration 0028 /
+//        Phase 59 Track E (R17)). Two DISTINCT owners may each hold a
+//        key with the same name; only a same-owner active reuse 409s.
 import { type ExecutableTx, type TransactionalDb, withTenant } from "@openwhispr/data";
 import { sql } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
@@ -127,9 +129,10 @@ export const buildKeysCreateRoutes = (deps: KeysCreateDeps) =>
             return inserted;
           });
         } catch (err) {
-          // D-30 — partial UNIQUE (tenant_id, name) WHERE revoked_at IS
-          // NULL collision → 409. `code: '23505'` is the Postgres
-          // unique_violation SQLSTATE.
+          // D-30 — partial UNIQUE (user_id, name) WHERE revoked_at IS
+          // NULL collision → 409 (migration 0028 / Phase 59 Track E /
+          // R17 re-scoped this from (tenant_id, name)). `code: '23505'`
+          // is the Postgres unique_violation SQLSTATE.
           // drizzle wraps pg errors in DrizzleQueryError; the original
           // pg SQLSTATE lives on `.cause.code` (or `.code` if not wrapped).
           const raw = err as { code?: string; cause?: { code?: string } } | null;
