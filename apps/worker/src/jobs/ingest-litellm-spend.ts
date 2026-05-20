@@ -373,13 +373,18 @@ export async function runIngestOnce(
       units = Math.ceil(seconds / 60);
     }
 
+    // Phase 58 Track B / worker:CR-02 — persist the LiteLLM startTime into
+    // usage_ledger.event_at so usage-rollup-daily + reconciliation-daily-check
+    // can bucket rows by when the spend actually occurred, not by the worker
+    // ingest timestamp (created_at). Normalized to a Date via `rowStart` —
+    // the same normalization used for the watermark below.
     const insertRes = await deps.appOwnerPool.query(
       `
-        INSERT INTO usage_ledger (tenant_id, user_id, request_id, kind, units)
-        VALUES ($1::uuid, $2::uuid, $3, $4, $5)
+        INSERT INTO usage_ledger (tenant_id, user_id, request_id, kind, units, event_at)
+        VALUES ($1::uuid, $2::uuid, $3, $4, $5, $6::timestamptz)
         ON CONFLICT (request_id) DO NOTHING
       `,
-      [tenantId, userId, ourRid, kind, units],
+      [tenantId, userId, ourRid, kind, units, rowStart(r).toISOString()],
     );
     if ((insertRes.rowCount ?? 0) > 0) {
       processed++;

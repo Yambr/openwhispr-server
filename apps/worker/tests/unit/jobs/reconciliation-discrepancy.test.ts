@@ -77,7 +77,8 @@ beforeAll(async () => {
       request_id text NOT NULL,
       kind text NOT NULL,
       units integer NOT NULL,
-      created_at timestamptz NOT NULL DEFAULT now()
+      created_at timestamptz NOT NULL DEFAULT now(),
+      event_at timestamptz
     );
     CREATE UNIQUE INDEX usage_ledger_request_id_unique ON usage_ledger(request_id);
   `);
