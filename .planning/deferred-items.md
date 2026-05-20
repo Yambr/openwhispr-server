@@ -11,9 +11,14 @@ record. Keep this file under ~200 lines.
 
 ---
 
-## Phase 57 — data:CR-02 — fail-OPEN RLS posture re-installed by migration 0024 (Track B HALT)
+## Phase 57 — data:CR-02 — fail-OPEN RLS posture re-installed by migration 0024 — RESOLVED via D2
 
-**Status:** HALT during Phase 57 Track B execution. No migration 0027 landed. No RED test committed (the RED test would be trivially writable, but the GREEN fix has no non-workaround form — see below — so committing a RED test with no viable GREEN would leave a permanently-red suite, violating "no skipped tests").
+**Status:** RESOLVED in Phase 57 Track B via **D2 (document the debt honestly + property-test the documented posture)**. No migration changed. The boundary property test `packages/data/tests/unit/__tests__/rls-posture-boundary.test.ts` + the `docs/security.md` §11.1 posture section + the `CLAUDE.md` item-16 ledger entry land the documented-debt resolution. **D3 (request-scoped per-request Better Auth adapter) is the scheduled v2-blocker successor — see below.** The diagnostic chain is preserved verbatim for the v2 D3 work.
+
+**Why D2 and not D1/D3:**
+- **D1 is dead.** D1 proposed a `pool.on('connect', ...)` GUC hook on the Better Auth app pool. Under PgBouncer transaction-mode pooling, `DISCARD ALL` (the default `server_reset_query`) wipes any session-level `SET app.tenant_id` between leased transactions, and `compose/pgbouncer/pgbouncer.ini` carries no `server_reset_query` override. A connect-time session `SET` therefore does not survive to the transaction that actually runs the Better Auth INSERT — D1 cannot work as specified.
+- **D2 (chosen, Phase 57).** Keep migration 0024 as-is; document the posture honestly in `CLAUDE.md` + `docs/security.md` §11.1 and lock the cohort boundary with a property test so any future drift is caught by CI. Zero code/migration change. Correct for a single-tenant v1.
+- **D3 (scheduled v2-blocker successor).** Replace the module-singleton `betterAuth({...})` adapter binding with a per-request adapter bound to a connection that has `set_config('app.tenant_id', <resolved-tenant>, true)` applied. This is the only option that makes the Better Auth surface genuinely fail-closed + multi-tenant-ready. It is a real Better Auth integration rewrite — out of scope for v1; it is the named v2-blocker.
 
 **WHY — pure option-A breaks Better Auth sign-up, and option-B has no form that does not bake a single-tenant assumption into the wrong layer:**
 
@@ -37,9 +42,9 @@ The plan offered option-A (drop the 0024 rolconfig + 4 column DEFAULTs in a forw
 
 - **(D3) Full request-scoped tenant for Better Auth (v2-shaped).** Replace the `betterAuth({...})` adapter binding with a per-request adapter constructed inside the `/api/auth/*` handler, each bound to a connection that has `set_config('app.tenant_id', <resolved-tenant>, true)` already applied. This is a real Better Auth integration rewrite (the adapter is currently module-singleton) and is the only option that makes the BA surface genuinely fail-closed + multi-tenant-ready. Out of scope for a pre-publication CRITICAL-fix phase.
 
-**Recommendation:** D1. It is non-invasive, removes the role-wide rolconfig (the actual review complaint — "every backend connection from the app role"), scopes the remaining fail-open to exactly the four single-tenant Better-Auth tables, and is greppable/removable. D2 is acceptable if the team prefers zero code change. D3 is correct long-term but is a phase of its own.
+**Resolution (Phase 57 Track B):** D2 was chosen by the user over D3. D1 is dead (see "Why D2 and not D1/D3" above — PgBouncer `DISCARD ALL` wipes the session `SET`). D2 lands documentation (`CLAUDE.md` item 16, `docs/security.md` §11.1) + the boundary property test `rls-posture-boundary.test.ts` — NO migration or production-schema change. D3 remains the durable v2-blocker fix and inherits the diagnostic chain above when the v2 Better-Auth multi-tenant rework is scheduled.
 
-**No production code, schema, or migration was changed by Track B.** Working tree at `6133c2b` (Track A HEAD) plus this deferred-items entry only.
+**No production code, schema, or migration was changed by Track B.** D2's deliverables are docs + one new test file only.
 
 ## Phase 57 — data:CR-01 + data:CR-03 — Better Auth credentials remain at rest as plaintext
 

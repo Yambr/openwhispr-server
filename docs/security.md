@@ -362,6 +362,20 @@ Semantics per (op, context) cell after migration 0018:
 
 **Threat IDs closed.** TM-RLS-DEFAULT (default-tenant leakage). Registry entry in section 9.
 
+### 11.1 Row-Level Security posture (v1) — Better Auth fail-open caveat (data:CR-02)
+
+The Phase 32 fail-closed posture above is **not uniform** across all 16 tenant-scoped tables in the shipped v1 codebase. Migration `0024_better_auth_tenant_id_defaults.sql` re-installed — _after_ Phase 32 — both the `ALTER ROLE openwhispr_app SET app.tenant_id` rolconfig and the GUC-bound `tenant_id` column DEFAULTs on the four Better Auth identity tables. The data-layer adversarial review flagged this as **data:CR-02**. Phase 57 Track B resolves it via **D2 — document the debt honestly + property-test the documented posture** (no migration change). The honest, accurate posture as shipped:
+
+**The 12 application tables enforce fail-closed RLS.** `audit_log`, `usage_ledger`, `oauth_state`, `tenant_settings`, `user_settings`, `notes`, `folders`, `conversations`, `messages`, `transcriptions`, `api_keys`, `usage_rollup_daily` have **no** `tenant_id` column DEFAULT. A query without tenant context returns zero rows on SELECT and a bare INSERT is refused (`42501` RLS deny, or `23502` NOT NULL). Phase 32's guarantee holds intact for these tables.
+
+**The 4 Better Auth identity tables fail open to the default tenant.** `users`, `sessions`, `account`, `verification` currently resolve to the default tenant when no `withTenant()` context is set. This is because Better Auth's `drizzleAdapter` is a module-singleton that issues bare `INSERT INTO <table> (tenant_id, ...) VALUES (default, ...)` statements — it relies entirely on the migration-0024 column DEFAULTs (`tenant_id DEFAULT current_setting('app.tenant_id', true)::uuid`) plus the rolconfig-bound GUC to fill `tenant_id`. A bare `openwhispr_app` connection therefore (a) reads default-tenant rows without `withTenant()`, and (b) writes that succeed and bind to the default tenant.
+
+**Why this is not a live exposure in v1.** v1 is single-installation-single-tenant: there is exactly one tenant (the default tenant). With one tenant there is no other tenant's data to leak — the fail-open path resolves to the only tenant that exists. It is nonetheless tracked **security debt**, not an accepted permanent design.
+
+**The durable fix is a named v2-blocker.** The proper resolution — "D3" — is a request-scoped, per-request Better Auth adapter, each bound to a connection that has `set_config('app.tenant_id', <resolved-tenant>, true)` already applied, replacing the current module-singleton `betterAuth({...})` adapter binding. D3 makes the Better Auth surface genuinely fail-closed and multi-tenant-ready. It is a Better Auth integration rewrite, deferred to v2; tracked in `.planning/deferred-items.md` (the "Phase 57 — data:CR-02" entry).
+
+**Coverage.** The cohort boundary is pinned by the property test at `packages/data/tests/unit/__tests__/rls-posture-boundary.test.ts` (real Postgres testcontainer). It asserts the 12 application tables refuse a bare INSERT and the 4 Better Auth tables admit one bound to the default tenant — and is structured to fail loudly on _either_ half of a partial regression (an app table gaining a fail-open DEFAULT, or a Better Auth table losing its DEFAULT without the D3 adapter fix landing alongside).
+
 ---
 
 ## 12. Encryption at rest (envelope encryption for credential columns)
