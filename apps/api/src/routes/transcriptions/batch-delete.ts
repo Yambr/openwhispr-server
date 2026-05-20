@@ -26,6 +26,7 @@
 //
 // D-23 — soft delete via deleted_at = NOW(); rows remain in the table.
 // D-32 — NO usage_ledger writes.
+import { setTimeout as sleep } from "node:timers/promises";
 import { type ExecutableTx, type TransactionalDb, withTenant } from "@openwhispr/data";
 import { sql } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
@@ -33,6 +34,18 @@ import { z } from "zod";
 import { AuthError, NotFoundError, ValidationError } from "../../errors.js";
 
 const MAX_BATCH_SIZE = 500;
+
+// WR-07 (Phase 65) — constant-time failure-path floor. The all-hit path
+// runs a full `UPDATE … RETURNING` and commits; the all-miss path returns an
+// empty RETURNING and rolls back — Postgres does measurably less work on a
+// miss, so raw response timing oracles cross-tenant id existence at large
+// batch sizes. On the mismatch branch we wait until a fixed wall-clock budget
+// (measured from handler entry) elapses before throwing, so the failure path
+// is never systematically faster than a success. The budget must exceed the
+// p99 all-hit duration for the 500-id cap; 750ms is generous for a
+// soft-delete UPDATE of 500 indexed rows (sub-50ms loopback) while staying a
+// tolerable ceiling for a genuinely-missing batch.
+const FAILURE_PATH_FLOOR_MS = 750;
 
 const BatchDeleteBodySchema = z.object({
   ids: z.array(z.string().uuid()),
@@ -63,6 +76,8 @@ export const buildTranscriptionsBatchDeleteRoutes = (deps: TranscriptionsBatchDe
 
         const tenantId = req.tenant;
         const userId = req.user.id;
+        // WR-07 — handler-entry timestamp anchors the constant-time floor.
+        const startedAt = Date.now();
 
         // Dedupe the input — Postgres `id = ANY(arr)` matches each row
         // once regardless of duplicates in `arr`, so the atomicity
@@ -99,6 +114,14 @@ export const buildTranscriptionsBatchDeleteRoutes = (deps: TranscriptionsBatchDe
           // Postgres aborts the tx on the exception; no partial soft-
           // deletes ever land.
           if (returnedIds.length !== requestedIds.length) {
+            // WR-07 — equalize the failure path with the success path so
+            // response timing does not oracle cross-tenant id existence.
+            // Wait out the remaining constant-time budget BEFORE throwing
+            // (the throw rolls the tx back).
+            const elapsed = Date.now() - startedAt;
+            if (elapsed < FAILURE_PATH_FLOOR_MS) {
+              await sleep(FAILURE_PATH_FLOOR_MS - elapsed);
+            }
             throw new NotFoundError("TRANSCRIPTION_NOT_FOUND", "transcription not found");
           }
           return returnedIds;
