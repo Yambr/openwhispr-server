@@ -9,8 +9,12 @@
 //     creator sees the clear text once at issuance time
 //     (CreateApiKeyResponse.key); subsequent reads expose just the prefix.
 //   * `revoked_at` is the soft-revoke marker; partial UNIQUE on
-//     (tenant_id, name) WHERE revoked_at IS NULL prevents duplicate
-//     active names per tenant.
+//     (user_id, name) WHERE revoked_at IS NULL prevents duplicate active
+//     names PER OWNER. Phase 59 / Track E (R17) re-scoped this index
+//     from (tenant_id, name) to (user_id, name) — keys are user-owned
+//     (the list/revoke handlers scope by user_id) and a tenant-scoped
+//     index is functionally global in v1's single-default-tenant RLS
+//     posture, colliding two distinct owners on a shared name.
 import { pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
 import { tenants } from "./tenants.js";
 import { users } from "./users.js";
