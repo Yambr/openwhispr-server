@@ -54,6 +54,8 @@ Runtime safety is currently preserved because the handlers still execute `Schema
 
 Knock-on: Fastify's stock schema-compiled validator never runs on these payloads, so request rejection happens AFTER the handler enters (post-`AuthError` check) rather than at the Fastify dispatcher.
 
+**Status:** CLOSED 2026-05-20 — Phase 64, commit `32f75b3e` — declarative `schema:` added to all 12 folders/notes routes (8 body / 2 querystring / 1 body-less). RED `f1a16914`. Inline `.parse()` preserved on every route; LOCKER-04 NO-SCHEMA findings cleared.
+
 ### H-2 — Wire-schema drift: `MessageRoleSchema` server-side vs `ConversationRoleSchema` in wire-schemas
 
 `apps/api/src/routes/conversations/messages.ts:63`
@@ -71,6 +73,8 @@ export const ConversationRoleSchema = z.enum(["user", "assistant", "system"]);
 The server's POST `/api/conversations/messages` accepts `role: "tool"`, but the canonical wire-schema (and `CloudMessageSchema` which is the **OUTPUT** contract at conversations.ts:59-66) does NOT include `"tool"`. Result: a desktop client (or contract test) that round-trips through `CloudMessageSchema.parse(serverResponse)` will reject any message persisted with `role="tool"`, even though the server happily accepted, stored and echoed it.
 
 Either the desktop contract is right and the server must reject `"tool"` (drop it from `MessageRoleSchema`), or `"tool"` is correct and `packages/wire-schemas/src/conversations.ts` must add it AND the upstream `~/openwhispr/src/services/ConversationsService.ts` interface must follow. Right now the two sources of truth disagree silently — exactly the "byte-for-byte upstream contract (D-22)" drift CLAUDE.md hard rule 1 forbids.
+
+**Status:** CLOSED 2026-05-20 — Phase 64, commit `df69cfe6` — option-a per advisor (drop `"tool"` server-side, align DOWN to the canonical contract). Advisor finding: upstream client persistence interface `ConversationsService.ts` uses `{user,assistant,system}` at all 4 sites; the server's `"tool"` was unilateral drift. Server-only edit; no upstream client change required.
 
 ### H-3 — Wire-schema drift: `metadata` shape diverges between server and wire-schemas
 
@@ -92,6 +96,8 @@ Wire-schemas constrains keys (1..64 chars), values (string ≤ 1024 / number / b
 
 The server's POST `messages.ts` accepts ANY `Record<string, unknown>` (nested objects, arrays, deep JSON), THEN re-stringifies via `JSON.stringify(body.metadata ?? {})` and only checks the 4 KiB envelope at `messages.ts:113`. Key/value shape is **never** validated server-side. A client can persist `metadata: { evil: { nested: [{deep: true}] } }` — wire-schemas would reject that input but the server stores it; the response then fails wire-schema round-trip parse on the desktop. Same root cause as H-2 — server-side ad-hoc Zod schema disagrees with the package-level contract.
 
+**Status:** CLOSED 2026-05-20 — Phase 64, commit `4e976fcb` — server `metadata` adopts the canonical `MetadataSchema` (now `export`ed from `@openwhispr/wire-schemas`). A nested-object metadata value is rejected at the route boundary; the runtime 4 KiB check kept as defence-in-depth.
+
 ### H-4 — `notes/delete-all.ts` emits non-canonical 400 envelope
 
 `apps/api/src/routes/notes/delete-all.ts:85-87`
@@ -105,6 +111,8 @@ return reply.code(400).send({
 Every other 4xx in scope throws `new ValidationError(CODE, message)` so the centralised `setErrorHandler` emits the canonical envelope (`{ error: { code, message } }` per the Phase 02 `errors.ts` family). Compare e.g. `messages.ts:114` (`throw new ValidationError("METADATA_TOO_LARGE", …)`) or `batch-create.ts:54` (`throw new ValidationError("BATCH_TOO_LARGE", …)`).
 
 `delete-all`'s `reply.code(400).send({error: "<plain string>"})` emits `{ "error": "<message>" }` — a STRING-valued `error` field, not the wire envelope object. A desktop client (or contract test) parsing the response as `ErrorEnvelope` will mis-handle it; a future `BACKEND_SPEC.md` contract assertion would reject it. Three further 400 emission sites with the same anti-pattern (see M-1 below) — promoting `notes/delete-all.ts` to HIGH because the 400 IS the only documented failure mode of this route, so the canonical-envelope expectation is unavoidable for a client.
+
+**Status:** CLOSED 2026-05-20 — Phase 64, commit `ad403d59` — over-limit 400 now throws `ValidationError("DELETE_ALL_TOO_LARGE", ...)` so the centralized `setErrorHandler` is the single emission point (i18n localization + uniform logging). **Divergence note (CLAUDE.md hard rule 3):** the review framed this as a string-vs-object envelope defect, but this repo's canonical error envelope IS `{ error: <string> }` — see `apps/api/src/error-handler.ts:4` and the existing `delete-all.integration.test.ts` assertion. `ValidationError` does NOT change the envelope to `{code,message}`. The genuine, fixed defect is the inline emission bypassing the centralized handler — editing `error-handler.ts` to make the envelope an object would violate CLAUDE.md hard rule 1. Recorded in `verify-first.log`.
 
 ---
 

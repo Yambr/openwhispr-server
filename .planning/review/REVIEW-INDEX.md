@@ -29,7 +29,7 @@
 | Package | CRIT | HIGH | MED | LOW | Report |
 |---|---:|---:|---:|---:|---|
 | `apps/api` core (bootstrap/auth/middleware/plugins/lib/i18n) | **1** | 5 → 0 (✅ Phase 62) | 11 | 8 | [api-core.md](./api-core.md) |
-| `apps/api` routes — conversations/folders/notes | 0 | 4 | 5 | 3 | [api-routes-conversations.md](./api-routes-conversations.md) |
+| `apps/api` routes — conversations/folders/notes | 0 | 4 → 0 (✅ Phase 64) | 5 | 3 | [api-routes-conversations.md](./api-routes-conversations.md) |
 | `apps/api` routes — transcriptions/tokens/v1-keys/agent | 0 | 11* | 6* | — | [api-routes-transcriptions.md](./api-routes-transcriptions.md) |
 | `apps/api` routes — rest (auth-callback, setup, test-only, …) | **3** | 3 → 0 (✅ Phase 63) | 5 | 8 | [api-routes-rest.md](./api-routes-rest.md) |
 | `apps/web` (Next.js 15) | 0 | 6 | 12 | 9 | [web.md](./web.md) |
@@ -83,7 +83,7 @@
 ## All HIGH findings (~38) — distribution
 
 - **`api-core` (5):** AUTH_URL plaintext-localhost default; `/__test/fetch` survives in prod via `OPENWHISPR_TEST_ROUTES`; centralized error-handler echoes `err.message` for typed-error classes; OIDC discovery cached unbounded (token-endpoint hijack → client_secret leak); `tryPreviousToken` follow-up email SELECT bypasses RLS. — **✅ ALL CLEARED by Phase 62** (HI-01 already-resolved by Phase 57 Track E; HI-02 `ca5132a9`, HI-03 `128626ee`, HI-04 `dfec2c59`, HI-05 `aa28c391` — see [api-core.md](./api-core.md) per-finding closure markers).
-- **`api-routes-conversations` (4):** LOCKER-04 inv-14 violations (12 routes in folders/notes without `schema:`); wire-schema drift in messages.ts (server adds `"tool"` role, metadata shape diverges); non-canonical `{error:string}` envelope in delete-all.
+- **`api-routes-conversations` (4):** LOCKER-04 inv-14 violations (12 routes in folders/notes without `schema:`); wire-schema drift in messages.ts (server adds `"tool"` role, metadata shape diverges); non-canonical `{error:string}` envelope in delete-all. — **✅ ALL CLEARED by Phase 64** (H-1 `32f75b3e`, H-2 `df69cfe6`, H-3 `4e976fcb`, H-4 `ad403d59` — see [api-routes-conversations.md](./api-routes-conversations.md) per-finding closure markers; H-2 resolved option-a via advisor — server aligned DOWN to the canonical role enum; H-4's review framing of a string-vs-object envelope corrected — the repo's canonical envelope IS `{error:<string>}`, the fix routes the 400 through the centralized handler).
 - **`api-routes-rest` (3):** missing rateLimit on auth-callback + desktop-signin; verification-status docstring claims `(ip,email)` keyed but no keyGenerator → corporate NAT DoS. — **✅ ALL CLEARED by Phase 63** (HR-01 `83a6bc63`, HR-02 `d9e454fb`, HR-03 `c903c62f` — see [api-routes-rest.md](./api-routes-rest.md) per-finding closure markers; HR-03 implemented the `(ip,email)` keyGenerator per D-RL2, doc-downgrade rejected).
 - **`api-routes-transcriptions` (11 warning):** `ServiceUnavailable(err.message)` propagating upstream verbatim (7 sites); openai-realtime echoing `upstreamBody`; AuthError code drift `AUTH_ERROR` vs `UNAUTHORIZED`; `Math.random()` for multipart boundary; STT `text_preview` logged unredacted to pino.
 - **`web` (6):** sign-in form drops `?from=`; SessionsTable ships Better Auth bearer tokens to JS heap; NotesListClient queryKey mismatch wastes prefetch; AdminShell has no sign-out button (stale basic-auth assumption); 8 files carry stale `D-ADMIN-1`/Traefik basic-auth comments; hardcoded `:3000` in `internal-api.ts` (LOCKER-03).
