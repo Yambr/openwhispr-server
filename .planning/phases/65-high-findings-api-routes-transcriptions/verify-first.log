@@ -1,0 +1,123 @@
+# Phase 65 — verify-first disposition log (WR-01..WR-11)
+
+Re-verified against `main` (HEAD pre-phase) on 2026-05-21 per CLAUDE.md hard
+rule 3. Each finding grepped at its anchor before any fix.
+
+## WR-01 — ALREADY-CLOSED (Phase 62 HI-03)
+
+`grep -n "ServiceUnavailable" apps/api/src/routes/{transcribe,reason,diarization}.ts
+apps/api/src/routes/tokens/*.ts apps/api/src/routes/agent/web-search.ts`
+
+All throw sites emit a two-arg code+literal pair — no raw `.message`:
+- transcribe.ts:221      ServiceUnavailable("SERVICE_UNAVAILABLE", "Service temporarily unavailable")
+- reason.ts:119          ServiceUnavailable("SERVICE_UNAVAILABLE", "Service temporarily unavailable")
+- diarization.ts:194     ServiceUnavailable("SERVICE_UNAVAILABLE", "Service temporarily unavailable")
+- diarization.ts:363     ServiceUnavailable("PYANNOTE_UNAVAILABLE", "pyannote.ai upstream unavailable")
+- tokens/assemblyai.ts:108,114   ServiceUnavailable("SERVICE_UNAVAILABLE", "Service temporarily unavailable")
+- tokens/deepgram.ts:75,85       ServiceUnavailable("SERVICE_UNAVAILABLE", "Service temporarily unavailable")
+- tokens/openai-realtime.ts:191,200  ServiceUnavailable("SERVICE_UNAVAILABLE", "Service temporarily unavailable")
+- agent/web-search.ts:113  TypedServiceUnavailable("WEB_SEARCH_NOT_CONFIGURED", "Service temporarily unavailable")
+- agent/web-search.ts:127  TypedServiceUnavailable("WEB_SEARCH_PROVIDER_KEY_MISSING", "Service temporarily unavailable")
+
+The upstream `.message` is logged server-side only (`req.log.warn({ providerMessage })`,
+explicit `// HI-03 (Phase 62)` comments). The review's WR-01 text citing
+`transcribe.ts:115` raw `.message` is STALE. DISPOSITION: ALREADY-CLOSED — no
+production fix; GREEN-only regression guard test added.
+
+## WR-02 — STILL LIVE
+
+`grep -n "upstreamBody" apps/api/src/routes/tokens/openai-realtime.ts`
+→ `:172  upstream: upstream400.upstreamBody` — raw upstream blob echoed on the
+400 wire. DISPOSITION: STILL LIVE — fix per Task 1.
+
+## WR-03 — STILL LIVE
+
+`grep -n 'AuthError("unauthorized")' apps/api/src/routes/realtime.ts apps/api/src/routes/agent/stream.ts`
+→ realtime.ts:182 + agent/stream.ts:145 — legacy single-arg form.
+DISPOSITION: STILL LIVE — fix per Task 4.
+
+## WR-04 — STILL LIVE (judgment call: validator IS attached → drop the parse)
+
+`grep -rn "setValidatorCompiler" apps/api/src` →
+`apps/api/src/plugins/zod-type-provider.ts:21  app.setValidatorCompiler(validatorCompiler)`.
+The `zodTypeProvider` fastify-plugin is registered at the buildApp boundary
+(`index.ts:169` import; registered before routes). `agent/stream.ts` declares
+`schema: { body: AgentStreamRequestSchema }` at :122. With the validator
+compiler attached, Fastify runs declarative `schema.body` validation BEFORE
+the handler — ALWAYS, regardless of `reply.hijack()` (hijack happens inside the
+handler, long after validation). The `:118-121` comment claiming the manual
+parse is needed "because zod-type-provider's auto-400 path runs AFTER Fastify's
+body parser" is misleading: schema validation runs before the handler and a
+ZodError is routed through `registerErrorHandler` already.
+
+DETERMINATION: validator IS attached → the inline `AgentStreamRequestSchema.parse`
+at :159 is genuinely redundant. WR-04 fix = DROP the parse, use the
+type-provider-typed `req.body`, correct the comment. (This differs from Phase 64
+H-1's conversations routes, which KEPT the inline parse because those routes
+deliberately do NOT declare `schema.body` — confirmed `streaming-usage.ts:64-67`
+and `web-search.ts:93` both comment "we do NOT register schema.body". The
+agent/stream route DOES declare it, so the parse is dead defence here.)
+DISPOSITION: STILL LIVE — drop the parse per Task 4.
+
+## WR-05 — STILL LIVE
+
+`grep -n 'provider.name ===' apps/api/src/routes/agent/web-search.ts`
+→ :104 + :106 — `provider.name === "tavily" ? ... : "yandex" ? ...` string fork.
+DISPOSITION: STILL LIVE — fix per Task 2.
+
+## WR-06 — STILL LIVE
+
+`grep -n "Math.random" apps/api/src/routes/diarization.ts`
+→ :477 — `Math.random().toString(36).slice(2,10)` boundary nonce.
+DISPOSITION: STILL LIVE — fix per Task 3.
+
+## WR-07 — STILL LIVE
+
+`grep -n "returnedIds.length !== requestedIds.length" apps/api/src/routes/transcriptions/batch-delete.ts`
+→ :101 — all-hit path runs the full UPDATE...RETURNING, all-miss returns empty.
+DISPOSITION: STILL LIVE — fix per Task 6.
+
+## WR-08 — STILL LIVE
+
+`diarization.ts:333-336` (502 `{error, jobId}`) and `:348-352` (504 operator-speak
+copy + `jobId`). POLL_CEILING_MS = 300_000 (`:68`) — no test override; the 504
+path is hard to drive in a unit test (see SUMMARY note). DISPOSITION: STILL LIVE
+— fix per Task 3.
+
+## WR-09 — STILL LIVE (judgment call: Option A — document sentinel + assert relative)
+
+`grep -n "http://internal" apps/api/src/routes/realtime.ts`
+→ :189 — `new URL(rawUrl, "http://internal")` then `req.raw.url` in-place mutation
+inside the `preHandler`.
+
+DECISION: Option A (document + assert relative). Rationale:
+- Option B (proxy URL-rewrite hook) is NOT cleanly available: `@fastify/http-proxy@11.4.4`
+  exposes `wsClientOptions.rewriteRequestHeaders` (headers only — already used at
+  realtime.ts:152) but NO per-request upstream-URL rewrite hook. The plugin reads
+  `req.raw.url` directly when wiring the WSS upgrade — there is no documented
+  `preRewrite`/`rewriteRequestUrl` seam in 11.4.4. Forcing a rewrite would be a
+  fragile reach into plugin internals (CLAUDE.md hard rule 1 — no fragile invention).
+- Option A is the genuine improvement: the `"http://internal"` sentinel is a
+  documented WHATWG-URL parser base (host never used); a guard that throws if
+  `rawUrl` is ever absolute makes the silent scheme/host-drop bug surface loudly.
+  The in-place mutation stays (the plugin requires it) but is the LAST statement
+  in the `preHandler` with a comment that the user id deliberately enters
+  `req.raw.url` only immediately before the upgrade.
+DISPOSITION: STILL LIVE — Option A per Task 5.
+
+## WR-10 — STILL LIVE
+
+`grep -n "{ err }" apps/api/src/routes/transcriptions/list.ts`
+→ :64 — `req.log.warn({ err }, ...)` logs the full Error object.
+DISPOSITION: STILL LIVE — fix per Task 7.
+
+## WR-11 — STILL LIVE
+
+`grep -n "text_preview" apps/api/src/routes/streaming-usage.ts`
+→ :80 (`text_preview = text.slice(0, previewCap)`) + :89 (logged).
+DISPOSITION: STILL LIVE — fix per Task 7.
+
+---
+
+No divergence from the planner's pre-determination: WR-01 ALREADY-CLOSED,
+WR-02..WR-11 STILL LIVE.
