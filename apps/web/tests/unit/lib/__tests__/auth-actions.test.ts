@@ -60,7 +60,12 @@ describe("auth-actions.signOutAction (Phase 07.1 / Plan 05)", () => {
     expect(redirectMock).toHaveBeenCalledWith("/sign-in");
   });
 
-  it("uses the http://api:3000 default when INTERNAL_API_URL is unset", async () => {
+  // Phase 68 / Plan 68-01 — REVIEW web HIGH HI-06: internalApiUrl() is
+  // now fail-closed. With INTERNAL_API_URL unset there is no hardcoded
+  // host:port fallback — the helper throws before any fetch is attempted.
+  // signOutAction swallows the upstream failure and STILL redirects to
+  // /sign-in (sign-out must always clear the UI), but no fetch is made.
+  it("HI-06: skips the fetch (fail-closed) when INTERNAL_API_URL is unset", async () => {
     process.env.INTERNAL_API_URL = "";
     headersMock.mockResolvedValue(new Headers());
     const fetchMock = vi.fn(async () => new Response("{}", { status: 200 }));
@@ -68,10 +73,8 @@ describe("auth-actions.signOutAction (Phase 07.1 / Plan 05)", () => {
 
     const { signOutAction } = await import("../../../../src/lib/auth-actions");
     await expect(signOutAction()).rejects.toThrow(/NEXT_REDIRECT/);
-    const [url, init] = firstCall(fetchMock);
-    expect(url).toBe("http://api:3000/api/auth/sign-out");
-    // Cookie header forwarded as empty string when no incoming cookies.
-    expect((init.headers as Record<string, string>).cookie).toBe("");
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(redirectMock).toHaveBeenCalledWith("/sign-in");
   });
 
   it("still redirects to /sign-in when the upstream sign-out fetch fails", async () => {

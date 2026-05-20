@@ -439,12 +439,21 @@ vi.mock("@/lib/i18n", () => ({
 }));
 
 describe("/setup RSC page guard — fetch target + branches", () => {
+  // Phase 68 / Plan 68-01 — REVIEW web HIGH HI-06: internalApiUrl() is
+  // fail-closed and throws when INTERNAL_API_URL is unset. The /setup RSC
+  // page resolves the API base URL through it, so the test env must
+  // provide the var the production deploy paths (docker-compose / Helm)
+  // always set.
+  const originalInternalApiUrl = process.env.INTERNAL_API_URL;
   beforeEach(() => {
     rscRedirect.mockReset();
     routerPush.mockReset();
+    process.env.INTERNAL_API_URL = "http://api.internal";
   });
   afterEach(() => {
     globalThis.fetch = originalFetch;
+    if (originalInternalApiUrl === undefined) delete process.env.INTERNAL_API_URL;
+    else process.env.INTERNAL_API_URL = originalInternalApiUrl;
   });
 
   it("status='pending' -> renders <SetupForm /> (no redirect)", async () => {

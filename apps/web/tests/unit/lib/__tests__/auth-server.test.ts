@@ -140,7 +140,12 @@ describe("auth-server.getServerSession (Phase 07.1 / Plan 05)", () => {
     expect(await getServerSession()).toBeNull();
   });
 
-  it("falls back to http://api:3000 when INTERNAL_API_URL is unset", async () => {
+  // Phase 68 / Plan 68-01 — REVIEW web HIGH HI-06: internalApiUrl() is
+  // now fail-closed. With INTERNAL_API_URL unset the helper throws — there
+  // is no hardcoded host:port fallback. getServerSession() wraps the
+  // call in try/catch and resolves to `null` (fail-safe RSC behaviour);
+  // no fetch is attempted.
+  it("HI-06: returns null (fail-closed) when INTERNAL_API_URL is unset", async () => {
     process.env.INTERNAL_API_URL = "";
     headersMock.mockResolvedValue(new Headers({ cookie: "x=1" }));
     const fetchMock = vi.fn(
@@ -153,7 +158,7 @@ describe("auth-server.getServerSession (Phase 07.1 / Plan 05)", () => {
     globalThis.fetch = fetchMock as typeof fetch;
 
     const { getServerSession } = await import("../../../../src/lib/auth-server");
-    await getServerSession();
-    expect(firstCall(fetchMock)[0]).toBe("http://api:3000/api/auth/get-session");
+    expect(await getServerSession()).toBeNull();
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 });
