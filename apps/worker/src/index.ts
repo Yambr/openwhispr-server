@@ -72,6 +72,7 @@ import { makePino } from "@openwhispr/observability";
 import { type ConnectionOptions, Worker } from "bullmq";
 import { Redis as IORedis } from "ioredis";
 import { Pool } from "pg";
+import { loadWorkerConfig } from "./config/worker-config.js";
 import { makeAppOwnerPool } from "./db/app-pool.js";
 import { makeLitellmPool } from "./db/litellm-pool.js";
 import { createTemplateRenderer } from "./i18n/template-renderer.js";
@@ -107,6 +108,11 @@ const log = makePino({ base: { service: "worker" } });
 // and returns a logging-only sender so `docker compose up` still boots
 // on a fresh clone with no SMTP env vars.
 const realSender = createEmailSender({ log, env: process.env });
+// Phase 66 / CR-03 — worker runtime config resolved at the boundary.
+// `worker-config.ts` is the ONLY place the worker reads its env contract
+// (LOCKER-01 boundary file). `allowSmtpFallback` is the explicit
+// `EMAIL_FALLBACK_NONFATAL` opt-in — it replaces the old NODE_ENV read.
+const workerConfig = loadWorkerConfig();
 // Plan 10-01b — real i18n-backed template renderer; loads en+ru bundles
 // from disk at module init. Replaces the noopRenderer stub left in place
 // by Phase 6 Plan 06-08 pending the worker i18n surface (this plan).
@@ -198,6 +204,7 @@ async function main(): Promise<void> {
       pool: appOwnerPool,
       sender: realSender,
       renderer: templateRenderer,
+      allowSmtpFallback: workerConfig.allowSmtpFallback,
     }),
     { connection },
   );

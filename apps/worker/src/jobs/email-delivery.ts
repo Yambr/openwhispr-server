@@ -67,20 +67,21 @@ export interface EmailDeliveryDeps {
   sender: EmailSender;
   renderer: TemplateRenderer;
   /**
-   * Phase 13 review HI-01 — environment gate for the dev-fallback skip
-   * carve-out. When the EmailSender returns `{ delivered:false,
+   * Phase 66 / CR-03 — explicit opt-in for the SMTP-not-configured
+   * non-fatal carve-out. When the EmailSender returns `{ delivered:false,
    * reason:"smtp-not-configured" }` (the dev no-op path in
-   * `@openwhispr/email`), the worker MUST NOT throw in non-production
-   * environments — that would burn 5 BullMQ retry attempts on a stack
-   * that intentionally has SMTP unconfigured. In production we keep the
-   * loud-fail posture (defence-in-depth: the EmailSender's
-   * construction-time throw normally fires first in prod, but a future
-   * injected sender could bypass that gate).
+   * `@openwhispr/email`) AND this flag is `true`, the handler resolves
+   * cleanly instead of throwing — so a fresh `docker compose up` with no
+   * SMTP env vars does not burn BullMQ retry attempts.
    *
-   * Defaults to `process.env.NODE_ENV` so production wiring (apps/worker/
-   * src/index.ts) does not need to thread the value through explicitly.
+   * When `false` (the default for any operator who has not explicitly
+   * set `EMAIL_FALLBACK_NONFATAL`), an undelivered email FAILS the job so
+   * BullMQ retries / DLQs it — no silent green for an unsent email. This
+   * flag is resolved in `config/worker-config.ts` from
+   * `EMAIL_FALLBACK_NONFATAL`; it is NEVER derived from `NODE_ENV`
+   * (CR-03 closed the LOCKER-01 / CLAUDE.md rule-11 violation).
    */
-  nodeEnv?: string | undefined;
+  allowSmtpFallback: boolean;
 }
 
 /**
@@ -92,7 +93,6 @@ export interface EmailDeliveryDeps {
 export function buildEmailDeliveryHandler(
   deps: EmailDeliveryDeps,
 ): (job: import("bullmq").Job) => Promise<void> {
-  const nodeEnv = deps.nodeEnv ?? process.env.NODE_ENV;
   return withTenantContext(emailDeliverySchema, deps.pool, async (data) => {
     const rendered = deps.renderer.render(data.template_id, data.locale, data.variables);
     const result = await deps.sender.send({
@@ -102,13 +102,15 @@ export function buildEmailDeliveryHandler(
       ...(rendered.html ? { html: rendered.html } : {}),
     });
     if (!result.delivered) {
-      // Phase 13 review HI-01: dev-fallback skip carve-out. Only the
+      // Phase 66 / CR-03: SMTP-not-configured carve-out. Only the
       // canonical `smtp-not-configured` reason emitted by
       // @openwhispr/email's no-op sender takes the non-fatal path, and
-      // only outside production. Every other reason — and the
-      // smtp-not-configured reason in production — keeps the retry-throw
-      // posture so BullMQ retries on transient send failure.
-      if (result.reason === "smtp-not-configured" && nodeEnv !== "production") {
+      // ONLY when the operator explicitly opted in via
+      // `EMAIL_FALLBACK_NONFATAL` (threaded as deps.allowSmtpFallback).
+      // Every other reason — and `smtp-not-configured` WITHOUT the flag
+      // — keeps the retry-throw posture so BullMQ retries / DLQs the
+      // undelivered email. No silent green for an unsent email.
+      if (result.reason === "smtp-not-configured" && deps.allowSmtpFallback) {
         return;
       }
       throw new Error(
