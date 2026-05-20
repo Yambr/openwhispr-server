@@ -45,6 +45,8 @@ interface TavilyResponseBody {
  */
 export class TavilyAdapter implements WebSearchProvider {
   readonly name = "tavily";
+  // WR-05 (Phase 65) — operator env-var label read generically by the route.
+  readonly envVarLabel = "TAVILY_API_KEY";
 
   isConfigured(): boolean {
     return typeof process.env.TAVILY_API_KEY === "string" && process.env.TAVILY_API_KEY.length > 0;

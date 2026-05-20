@@ -238,6 +238,8 @@ interface YandexErrorBody {
 
 export class YandexAdapter implements WebSearchProvider {
   readonly name = "yandex";
+  // WR-05 (Phase 65) — operator env-var label read generically by the route.
+  readonly envVarLabel = "YANDEX_SEARCH_API_KEY + YANDEX_SEARCH_FOLDER_ID";
 
   isConfigured(): boolean {
     const key = process.env.YANDEX_SEARCH_API_KEY;

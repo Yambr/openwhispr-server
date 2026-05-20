@@ -93,6 +93,7 @@ function makeFakeProvider(
 ): WebSearchProvider {
   return {
     name,
+    envVarLabel: `${name.toUpperCase()}_API_KEY`,
     isConfigured: () => behavior.configured !== false,
     search:
       behavior.onSearch ??

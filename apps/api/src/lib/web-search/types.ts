@@ -32,6 +32,13 @@ export interface WebSearchOptions {
  */
 export interface WebSearchProvider {
   readonly name: string;
+  /**
+   * WR-05 (Phase 65) — the operator env-var label surfaced in the
+   * server-side "provider not configured" log. Lives on the interface so
+   * the route reads it generically; a new adapter cannot drift a route-side
+   * `provider.name ===` string fork.
+   */
+  readonly envVarLabel: string;
   isConfigured(): boolean;
   search(
     query: string,

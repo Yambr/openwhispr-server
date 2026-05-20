@@ -39,6 +39,7 @@ function makeFakeDb(): Parameters<typeof buildWebSearchRoutes>[0]["db"] {
 
 const happyProvider: WebSearchProvider = {
   name: "tavily",
+  envVarLabel: "TAVILY_API_KEY",
   isConfigured: () => true,
   search: async () => ({
     results: [{ title: "ok", url: "https://example", snippet: "ok" }],
