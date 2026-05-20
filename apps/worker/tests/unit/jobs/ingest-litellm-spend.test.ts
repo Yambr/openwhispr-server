@@ -418,6 +418,284 @@ describe.skipIf(SKIP)("runIngestOnce (integration)", () => {
 });
 
 // ---------------------------------------------------------------------------
+// Phase 58 Track A — worker:CR-01 — spend-ingest watermark must NOT advance
+// past rows skipped for a *recoverable* reason (missing end_user / missing
+// tenant mapping — the mapping can materialize later). Invalid-duration is
+// unrecoverable bad data — that one skips + advances. All three skip reasons
+// must emit a billing-anomaly counter. ON CONFLICT (request_id) keeps the
+// hold + re-ingest idempotent (no double-billing).
+// ---------------------------------------------------------------------------
+
+describe.skipIf(SKIP)("runIngestOnce — worker:CR-01 recoverable-skip watermark hold", () => {
+  let container: StartedPostgreSqlContainer;
+  let appPool: pg.Pool;
+  let litellmPool: pg.Pool;
+  let tenantId: string;
+
+  beforeAll(async () => {
+    container = await new PostgreSqlContainer("postgres:17.5-alpine")
+      .withDatabase("openwhispr")
+      .withUsername("owner")
+      .withPassword("ownerpw")
+      .start();
+
+    const adminUrl = `${container.getConnectionUri()}`;
+    const adminPool = new Pool({ connectionString: adminUrl, max: 1 });
+    try {
+      await adminPool.query(`CREATE DATABASE litellm`);
+    } finally {
+      await adminPool.end();
+    }
+
+    appPool = new Pool({ connectionString: adminUrl, max: 2 });
+    const litellmUri = adminUrl.replace(/\/openwhispr$/, "/litellm");
+    litellmPool = new Pool({ connectionString: litellmUri, max: 2 });
+
+    await appPool.query(`
+      CREATE TABLE tenants (
+        id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+        name text NOT NULL
+      );
+      CREATE TABLE users (
+        id uuid PRIMARY KEY,
+        tenant_id uuid NOT NULL REFERENCES tenants(id),
+        email text NOT NULL
+      );
+      CREATE TABLE usage_ledger (
+        id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+        tenant_id uuid NOT NULL,
+        user_id uuid NOT NULL,
+        request_id text NOT NULL,
+        kind text NOT NULL,
+        units integer NOT NULL,
+        created_at timestamptz NOT NULL DEFAULT now()
+      );
+      CREATE UNIQUE INDEX usage_ledger_request_id_unique ON usage_ledger(request_id);
+    `);
+    await litellmPool.query(`
+      CREATE TABLE "LiteLLM_SpendLogs" (
+        request_id text PRIMARY KEY,
+        "end_user" text,
+        spend numeric,
+        total_tokens integer,
+        model text NOT NULL,
+        "startTime" timestamptz NOT NULL,
+        "endTime" timestamptz,
+        metadata jsonb
+      );
+    `);
+
+    const t = await appPool.query<{ id: string }>(
+      `INSERT INTO tenants (name) VALUES ('default') RETURNING id`,
+    );
+    tenantId = t.rows[0]?.id;
+  }, 120_000);
+
+  afterAll(async () => {
+    if (litellmPool) await litellmPool.end();
+    if (appPool) await appPool.end();
+    if (container) await container.stop();
+  }, 60_000);
+
+  async function seedSpendRow(args: {
+    request_id: string;
+    end_user: string | null;
+    model: string;
+    total_tokens: number | null;
+    metadata: Record<string, unknown> | null;
+    startTime: Date;
+  }): Promise<void> {
+    await litellmPool.query(
+      `INSERT INTO "LiteLLM_SpendLogs" (request_id, "end_user", spend, total_tokens, model, "startTime", metadata)
+       VALUES ($1, $2, 0.001, $3, $4, $5, $6::jsonb)`,
+      [
+        args.request_id,
+        args.end_user,
+        args.total_tokens,
+        args.model,
+        args.startTime,
+        args.metadata === null ? null : JSON.stringify(args.metadata),
+      ],
+    );
+  }
+
+  async function clearAll(): Promise<void> {
+    await litellmPool.query(`DELETE FROM "LiteLLM_SpendLogs"`);
+    await appPool.query(`DELETE FROM usage_ledger`);
+    await appPool.query(`DELETE FROM users`);
+  }
+
+  it("worker:CR-01 — Scenario A: a missing-tenant-mapping row holds the watermark and is recovered on a later tick", async () => {
+    await clearAll();
+    const { _resetBillingAnomalies } = await import("../../../src/jobs/ingest-litellm-spend.js");
+    _resetBillingAnomalies();
+    const redis = new FakeRedis();
+
+    // Start the watermark before T1 so the row is in-scope.
+    const t1 = new Date(Date.now() - 120_000);
+    const wmBefore = new Date(t1.getTime() - 60_000).toISOString();
+    await redis.set(WATERMARK_KEY, wmBefore);
+
+    // R1 references a user id that does NOT yet exist in `users`.
+    const orphanUserId = "00000000-0000-0000-0000-0000000000a1";
+    await seedSpendRow({
+      request_id: "cr01-r1",
+      end_user: orphanUserId,
+      model: "qwen3.6-plus",
+      total_tokens: 42,
+      metadata: { openwhispr_request_id: "ow-cr01-r1" },
+      startTime: t1,
+    });
+
+    // Tick 1 — R1 is skipped (no tenant mapping). Recoverable → must NOT
+    // advance the watermark past T1.
+    const r1 = await runIngestOnce({
+      litellmPool,
+      appOwnerPool: appPool,
+      connection: {} as never,
+      redis,
+    });
+    expect(r1.rowsScanned).toBe(1);
+    expect(r1.rowsProcessed).toBe(0);
+
+    const wmAfterTick1 = await redis.get(WATERMARK_KEY);
+    expect(wmAfterTick1).toBeTruthy();
+    // The watermark must remain at-or-before T1 so the next tick re-scans R1.
+    expect(new Date(wmAfterTick1!).getTime()).toBeLessThan(t1.getTime());
+
+    // A billing-anomaly counter fired for the recoverable skip.
+    const { _readBillingAnomalies } = await import("../../../src/jobs/ingest-litellm-spend.js");
+    const reasons1 = _readBillingAnomalies().map((a) => a.reason);
+    expect(reasons1).toContain("missing_tenant");
+
+    // Now the user/tenant mapping materializes.
+    await appPool.query(`INSERT INTO users (id, tenant_id, email) VALUES ($1, $2, $3)`, [
+      orphanUserId,
+      tenantId,
+      "late@example.com",
+    ]);
+
+    // Tick 2 — R1 must now be re-scanned and ingested (recovered).
+    const r2 = await runIngestOnce({
+      litellmPool,
+      appOwnerPool: appPool,
+      connection: {} as never,
+      redis,
+    });
+    expect(r2.rowsScanned).toBe(1);
+    expect(r2.rowsProcessed).toBe(1);
+
+    const ledger = await appPool.query<{ request_id: string; tenant_id: string }>(
+      `SELECT request_id, tenant_id FROM usage_ledger`,
+    );
+    expect(ledger.rows).toEqual([{ request_id: "ow-cr01-r1", tenant_id: tenantId }]);
+
+    // Tick 3 — re-scan must be idempotent (ON CONFLICT) — no double-billing.
+    await redis.set(WATERMARK_KEY, wmBefore);
+    const r3 = await runIngestOnce({
+      litellmPool,
+      appOwnerPool: appPool,
+      connection: {} as never,
+      redis,
+    });
+    expect(r3.rowsScanned).toBe(1);
+    expect(r3.rowsProcessed).toBe(0);
+    const count = await appPool.query<{ c: string }>(
+      `SELECT count(*)::text AS c FROM usage_ledger WHERE request_id = 'ow-cr01-r1'`,
+    );
+    expect(count.rows[0]?.c).toBe("1");
+  });
+
+  it("worker:CR-01 — Scenario B: missing_end_user + missing_tenant + non_numeric_duration all emit anomaly counters", async () => {
+    await clearAll();
+    const { _resetBillingAnomalies, _readBillingAnomalies } = await import(
+      "../../../src/jobs/ingest-litellm-spend.js"
+    );
+    _resetBillingAnomalies();
+    const redis = new FakeRedis();
+    const base = new Date(Date.now() - 90_000);
+    await redis.set(WATERMARK_KEY, new Date(base.getTime() - 60_000).toISOString());
+
+    await seedSpendRow({
+      request_id: "cr01-b-nouser",
+      end_user: null,
+      model: "qwen3.6-plus",
+      total_tokens: 5,
+      metadata: { openwhispr_request_id: "ow-b-nouser" },
+      startTime: new Date(base.getTime() + 1_000),
+    });
+    await seedSpendRow({
+      request_id: "cr01-b-notenant",
+      end_user: "00000000-0000-0000-0000-0000000000b2",
+      model: "qwen3.6-plus",
+      total_tokens: 5,
+      metadata: { openwhispr_request_id: "ow-b-notenant" },
+      startTime: new Date(base.getTime() + 2_000),
+    });
+    await seedSpendRow({
+      request_id: "cr01-b-baddur",
+      end_user: "00000000-0000-0000-0000-0000000000b2",
+      model: "whisper-large-v3",
+      total_tokens: 0,
+      metadata: { openwhispr_request_id: "ow-b-baddur", duration: "not-a-number" },
+      startTime: new Date(base.getTime() + 3_000),
+    });
+
+    await runIngestOnce({
+      litellmPool,
+      appOwnerPool: appPool,
+      connection: {} as never,
+      redis,
+    });
+
+    const reasons = _readBillingAnomalies().map((a) => a.reason);
+    expect(reasons).toContain("missing_end_user");
+    expect(reasons).toContain("missing_tenant");
+    expect(reasons).toContain("non_numeric_duration");
+  });
+
+  it("worker:CR-01 — Scenario C: an invalid-duration row is skipped AND the watermark advances past it (ingest cannot stall)", async () => {
+    await clearAll();
+    const { _resetBillingAnomalies } = await import("../../../src/jobs/ingest-litellm-spend.js");
+    _resetBillingAnomalies();
+    const redis = new FakeRedis();
+
+    const tBad = new Date(Date.now() - 60_000);
+    await redis.set(WATERMARK_KEY, new Date(tBad.getTime() - 60_000).toISOString());
+
+    // A real user so the row reaches the duration-validation branch.
+    const userId = "00000000-0000-0000-0000-0000000000c3";
+    await appPool.query(`INSERT INTO users (id, tenant_id, email) VALUES ($1, $2, $3)`, [
+      userId,
+      tenantId,
+      "c3@example.com",
+    ]);
+    await seedSpendRow({
+      request_id: "cr01-c-baddur",
+      end_user: userId,
+      model: "whisper-large-v3",
+      total_tokens: 0,
+      metadata: { openwhispr_request_id: "ow-c-baddur", duration: -7 },
+      startTime: tBad,
+    });
+
+    const r = await runIngestOnce({
+      litellmPool,
+      appOwnerPool: appPool,
+      connection: {} as never,
+      redis,
+    });
+    expect(r.rowsScanned).toBe(1);
+    expect(r.rowsProcessed).toBe(0);
+
+    // Unrecoverable bad data — watermark advances past it so ingest does not
+    // stall on permanently-bad rows.
+    const wm = await redis.get(WATERMARK_KEY);
+    expect(new Date(wm!).getTime()).toBe(tBad.getTime());
+  });
+});
+
+// ---------------------------------------------------------------------------
 // BullMQ wiring smoke tests — module-level, run regardless of docker.
 // They cover the trivial wrapper functions (createQueue / ensureScheduler /
 // createWorker) without standing up redis: BullMQ accepts a connection
