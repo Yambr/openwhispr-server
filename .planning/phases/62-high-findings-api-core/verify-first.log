@@ -43,10 +43,19 @@ TTL, no size bound. `:142` `(await res.json()) as OidcDiscoveryDoc` and
 `:217` `(await tokenRes.json()) as OidcTokenResponse` are unchecked casts.
 Disposition: **LIVE — fix in Task 5.**
 
-## HI-05 — STILL LIVE
+## HI-05 — STILL LIVE → FIXED (Option B)
 
 `apps/api/src/lib/token-rotation.ts:162` follow-up
-`SELECT email FROM users WHERE id = ${first.user_id}::uuid` runs with NO
-`withTenant()` binding and NO `tenant_id` predicate. The comment (`:155-158`)
-admits it "bypasses RLS deliberately". Disposition: **LIVE — fix-shape
-determination + fix-or-HALT in Task 6.**
+`SELECT email FROM users WHERE id = ${first.user_id}::uuid` ran with NO
+`withTenant()` binding and NO `tenant_id` predicate.
+
+Fix-shape determination (Task 6.1): **Option B (`AND tenant_id` predicate)**
+chosen over Option A (`withTenant()` wrap). Option A requires widening the
+`tryPreviousToken` `db` param from the minimal `{ execute }` shape to
+`TransactionalDb<ExecutableTx>`, which ripples to 5 minimal-shape unit-test
+fakes in `token-rotation.test.ts`. Option B is the clean api-core-side fix:
+no `db`-type change, no caller ripple, no migration. The follow-up SELECT
+now carries `AND tenant_id = ${first.tenant_id}::uuid`. NOT a HALT —
+Option B is cleanly achievable.
+
+Disposition: **FIXED — Phase 62 commit aa28c391** (Option B predicate).

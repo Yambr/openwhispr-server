@@ -28,7 +28,7 @@
 
 | Package | CRIT | HIGH | MED | LOW | Report |
 |---|---:|---:|---:|---:|---|
-| `apps/api` core (bootstrap/auth/middleware/plugins/lib/i18n) | **1** | 5 | 11 | 8 | [api-core.md](./api-core.md) |
+| `apps/api` core (bootstrap/auth/middleware/plugins/lib/i18n) | **1** | 5 → 0 (✅ Phase 62) | 11 | 8 | [api-core.md](./api-core.md) |
 | `apps/api` routes — conversations/folders/notes | 0 | 4 | 5 | 3 | [api-routes-conversations.md](./api-routes-conversations.md) |
 | `apps/api` routes — transcriptions/tokens/v1-keys/agent | 0 | 11* | 6* | — | [api-routes-transcriptions.md](./api-routes-transcriptions.md) |
 | `apps/api` routes — rest (auth-callback, setup, test-only, …) | **3** | 3 | 5 | 8 | [api-routes-rest.md](./api-routes-rest.md) |
@@ -82,7 +82,7 @@
 
 ## All HIGH findings (~38) — distribution
 
-- **`api-core` (5):** AUTH_URL plaintext-localhost default; `/__test/fetch` survives in prod via `OPENWHISPR_TEST_ROUTES`; centralized error-handler echoes `err.message` for typed-error classes; OIDC discovery cached unbounded (token-endpoint hijack → client_secret leak); `tryPreviousToken` follow-up email SELECT bypasses RLS.
+- **`api-core` (5):** AUTH_URL plaintext-localhost default; `/__test/fetch` survives in prod via `OPENWHISPR_TEST_ROUTES`; centralized error-handler echoes `err.message` for typed-error classes; OIDC discovery cached unbounded (token-endpoint hijack → client_secret leak); `tryPreviousToken` follow-up email SELECT bypasses RLS. — **✅ ALL CLEARED by Phase 62** (HI-01 already-resolved by Phase 57 Track E; HI-02 `ca5132a9`, HI-03 `128626ee`, HI-04 `dfec2c59`, HI-05 `aa28c391` — see [api-core.md](./api-core.md) per-finding closure markers).
 - **`api-routes-conversations` (4):** LOCKER-04 inv-14 violations (12 routes in folders/notes without `schema:`); wire-schema drift in messages.ts (server adds `"tool"` role, metadata shape diverges); non-canonical `{error:string}` envelope in delete-all.
 - **`api-routes-rest` (3):** missing rateLimit on auth-callback + desktop-signin; verification-status docstring claims `(ip,email)` keyed but no keyGenerator → corporate NAT DoS.
 - **`api-routes-transcriptions` (11 warning):** `ServiceUnavailable(err.message)` propagating upstream verbatim (7 sites); openai-realtime echoing `upstreamBody`; AuthError code drift `AUTH_ERROR` vs `UNAUTHORIZED`; `Math.random()` for multipart boundary; STT `text_preview` logged unredacted to pino.
