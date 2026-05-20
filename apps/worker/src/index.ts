@@ -74,6 +74,7 @@ import { Redis as IORedis } from "ioredis";
 import { Pool } from "pg";
 import { loadWorkerConfig } from "./config/worker-config.js";
 import { makeAppOwnerPool } from "./db/app-pool.js";
+import { assertDirectPostgres } from "./db/assert-direct-postgres.js";
 import { makeLitellmPool } from "./db/litellm-pool.js";
 import { createTemplateRenderer } from "./i18n/template-renderer.js";
 import { buildAuditArchiveHandler } from "./jobs/audit-archive.js";
@@ -142,8 +143,18 @@ async function main(): Promise<void> {
 
   const litellmPool = makeLitellmPool();
   const appOwnerPool = makeAppOwnerPool();
+  // Phase 66 / CR-09 — the inline maintenancePool gets the SAME shared
+  // PgBouncer guard makeAppOwnerPool / makeLitellmPool use. Pre-fix it
+  // had none — a PgBouncer-pointed DATABASE_URL_OWNER would let
+  // partman.run_maintenance_proc()'s internal COMMITs corrupt partman
+  // state (Pitfall #9).
+  const maintenanceUrl = process.env["DATABASE_URL_OWNER"];
+  if (!maintenanceUrl) {
+    throw new Error("DATABASE_URL_OWNER is required");
+  }
+  assertDirectPostgres(maintenanceUrl, "DATABASE_URL_OWNER");
   const maintenancePool = new Pool({
-    connectionString: process.env["DATABASE_URL_OWNER"],
+    connectionString: maintenanceUrl,
     max: 1,
   });
 
