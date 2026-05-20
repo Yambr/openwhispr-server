@@ -27,11 +27,19 @@
 //
 // Client Component. RHF + zod + Better Auth signIn.email + OIDC row.
 // D-S1: no custom fetch. Every call goes through authClient.* directly.
-// Open-redirect mitigation: post-signin redirect is HARDCODED to "/app".
+//
+// Phase 68 / Plan 68-01 — REVIEW web HIGH HI-01.
+//   Open-redirect mitigation: the post-sign-in redirect honours the
+//   middleware-set `?from=` deep-link param, but ONLY through the strict
+//   same-origin allowlist in `lib/safe-from-param.ts` (must start with
+//   `/app/` or equal `/app`; no `://`, no `\`, no leading `//`). Any
+//   value failing the allowlist falls back to `/app`. This preserves the
+//   middleware's deep-link recovery flow without re-opening the
+//   open-redirect surface the previous hardcode guarded against.
 "use client";
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -48,6 +56,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { authClient } from "@/lib/auth-client";
 import { useZodForm } from "@/lib/form-utils";
+import { safeFromParam } from "@/lib/safe-from-param";
 import { signInSchema } from "@/lib/schemas/auth";
 import { AuthShell } from "./AuthShell";
 import { OidcButtons } from "./OidcButtons";
@@ -61,6 +70,9 @@ type SignInState =
 export function SignInForm(): React.JSX.Element {
   const { t } = useTranslation(["end-user", "common"]);
   const router = useRouter();
+  const searchParams = useSearchParams();
+  // HI-01 — validated post-sign-in destination from the `?from=` param.
+  const destination = safeFromParam(searchParams.get("from"));
   const [submitting, setSubmitting] = useState(false);
   const [state, setState] = useState<SignInState>({ kind: "idle" });
 
@@ -85,8 +97,8 @@ export function SignInForm(): React.JSX.Element {
         password: values.password,
         // D-21: pass-through to Better Auth.
         rememberMe: values.rememberDevice,
-        // Open-redirect mitigation: hardcoded — never read ?next= from URL.
-        callbackURL: "/app",
+        // HI-01: allowlist-validated `?from=` deep-link destination.
+        callbackURL: destination,
       });
       if (result.error) {
         if (result.error.code === "EMAIL_NOT_VERIFIED") {
@@ -96,7 +108,7 @@ export function SignInForm(): React.JSX.Element {
         }
         return;
       }
-      router.push("/app");
+      router.push(destination);
     } catch {
       setState({ kind: "error-generic" });
     } finally {
