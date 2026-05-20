@@ -1,0 +1,56 @@
+# Phase 66 — verify-first disposition log (CR-03..CR-09)
+
+Re-verified against `main` HEAD 25bda651 on 2026-05-21 before any fix.
+Per CLAUDE.md hard rule 3 — each finding re-confirmed against current code.
+
+## CR-03 — STILL LIVE + CONSTITUTIONAL
+
+- `apps/worker/src/jobs/email-delivery.ts:95` — `const nodeEnv = deps.nodeEnv ?? process.env.NODE_ENV;` (LOCKER-01 hit).
+- `:111` — `if (result.reason === "smtp-not-configured" && nodeEnv !== "production") { return; }` (silent-green carve-out).
+- `tools/lint-no-env-branches.allowlist.txt:30` — `apps/worker/src/jobs/email-delivery.ts:80  # issue-31-DI-fallback-jsdoc`
+- `tools/lint-no-env-branches.allowlist.txt:31` — `apps/worker/src/jobs/email-delivery.ts:95  # issue-31-DI-fallback`
+- Phase 61 cross-check: `packages/email/src/EmailSender.ts:109-112` emits `{ delivered: false, reason: "smtp-not-configured" }` — that package read is a separate, correctly-bounded surface; the worker-side carve-out was NOT swept by R19. Confirmed still live.
+
+DECISION (CR-03): boundary file = `apps/worker/src/config/worker-config.ts` (a `*config*.ts` file inside the LOCKER-01 allowed boundary set). It reads `process.env.EMAIL_FALLBACK_NONFATAL` (a real opt-in flag, `"1"`/`"true"` => true) and NOT `NODE_ENV`. The flag is threaded through `index.ts` and injected as `deps.allowSmtpFallback: boolean`. The `smtp-not-configured` path FAILS the job (throws) unless the explicit flag is set.
+
+## CR-04 — STILL LIVE
+
+- `apps/worker/src/lib/with-tenant-context.ts:149-152` — bare `await client.query("ROLLBACK")` inside `catch (handlerErr)`; a throwing ROLLBACK replaces `handlerErr`.
+
+## CR-05 — STILL LIVE
+
+- `apps/worker/src/jobs/partman-maintenance.ts:76-78` — unguarded `for (const partition of detached) await deps.auditArchiveQueue.add(...)`; no per-iteration guard.
+
+DECISION (CR-05): mitigation shape = collect-failures-and-re-throw-after-loop. Rationale: simplest, retry-safe — BullMQ retries the WHOLE detached list; `discoverDetached` is idempotent (already-archived partitions no longer match the predicate) so re-enqueuing on retry is harmless. `Promise.allSettled` would also work but the sequential collect keeps the existing per-iteration ordering and is no harder to read.
+
+## CR-06 — STILL LIVE (worker-local, NOT a wire change)
+
+- `apps/worker/src/jobs/reconciliation-daily-check.ts:231-237` — `discrepancyQueue.add("reconciliation-discrepancy", {...})` with NO `jobId` options arg.
+- `apps/worker/src/jobs/reconciliation-discrepancy.ts:28-36` — `reconciliationDiscrepancySchema` is `.object({...}).strict()`, defined LOCAL to `apps/worker`, NOT in `@openwhispr/wire-schemas`. No external suite to run.
+- `apps/worker/src/lib/typed-queue.ts:29-33` — `TypedQueue.add` ALREADY forwards an optional `jobsOpts?: JobsOptions` 3rd arg to BullMQ `queue.add`. No widening of `add` required.
+
+DECISION (CR-06): add `window_id: z.string().optional()` additively to the strict schema; pass `{ jobId: \`recon-disc:${window_id}:${tenantId}\` }` as the 3rd arg to `discrepancyQueue.add`. Deterministic `window_id = \`${windowStart}:${windowEnd}\``.
+
+## CR-07 — STILL LIVE
+
+- `apps/worker/src/index.ts:131-145` — `do { ... } while (cursor !== "0")` SCAN loop with no iteration cap.
+- `:152-154` — catch logs `warn` only, no OTel counter.
+
+## CR-08 — STILL LIVE
+
+- `apps/worker/src/index.ts:266-277` — `Promise.allSettled` + 6 awaits inside one try/catch; `process.exit(0)` unconditional.
+
+## CR-09 — STILL LIVE
+
+- `apps/worker/src/index.ts:174-177` — inline `maintenancePool = new Pool({ connectionString: process.env["DATABASE_URL_OWNER"], max: 1 })` with NO PgBouncer guard.
+- `apps/worker/src/db/app-pool.ts:160-164` and `apps/worker/src/db/litellm-pool.ts:24-28` BOTH duplicate the `new URL(url).hostname` + `/pgbouncer/i` guard inline.
+
+DECISION (CR-09): extract `apps/worker/src/db/assert-direct-postgres.ts` exporting `assertDirectPostgres(url, envVarName)`; wire all three pools (`makeAppOwnerPool`, `makeLitellmPool`, inline `maintenancePool`).
+
+## Baseline
+
+- `pnpm typecheck`: 5 errors, ALL in `apps/api` (routes/index.ts x3, tokens/assemblyai.ts, tokens/deepgram.ts). Zero in `apps/worker`. This is the documented 5-error baseline.
+
+## Divergence from planner pre-determination
+
+None. All 7 findings confirmed STILL LIVE exactly as the planner pre-determined. `TypedQueue.add` already forwards `JobsOptions` (planner flagged this as a maybe — confirmed: no widening needed).
