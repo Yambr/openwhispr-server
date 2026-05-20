@@ -1,0 +1,59 @@
+# Phase 63 — verify-first disposition log
+
+Re-verification of HR-01..HR-03 against `main` HEAD before any fix
+(CLAUDE.md hard rule 3 — never invent a fix for a non-bug).
+Date: 2026-05-20.
+
+## HR-01 — /api/auth/desktop-callback/:provider has no rate-limit
+
+Disposition: **STILL LIVE.**
+Evidence: `grep -n "rateLimit" apps/api/src/routes/auth-callback.ts` → NO match.
+Route registered at `auth-callback.ts:124` with `{ config: { auth: false } }`
+only — no `rateLimit` key. Falls to the plugin global default + the
+always-on 600/min GLOBAL_IP_CEILING. LOCKER-04 obligation unmet (real
+budget, not `rateLimit:false`).
+Fix: add `rateLimit: { max: 60, timeWindow: "1 minute" }` (sibling
+public-auth-flow cluster value — auth-providers.ts, locale.ts).
+
+## HR-02 — /api/desktop-signin/:provider has no rate-limit
+
+Disposition: **STILL LIVE.**
+Evidence: `grep -n "rateLimit" apps/api/src/routes/desktop-signin.ts` → NO match.
+Route registered at `desktop-signin.ts:97` with `{ config: { auth: false } }`
+only. Handler INSERTs an `oauth_state` row + 6 encryption sidecars + 302s
+to the IdP on every call → unauthenticated write-amplification.
+Fix: add `rateLimit: { max: 60, timeWindow: "1 minute" }`.
+
+## HR-03 — verification-status rate-limit drifted from documented contract
+
+Disposition: **STILL LIVE.**
+Evidence: `grep -n "keyGenerator" apps/api/src/routes/verification-status.ts`
+→ NO match. `config.rateLimit` at `:48-51` has `max:30` + `timeWindow`
+only, NO `keyGenerator`. The header docstring (`:23-24`) claims
+`30/min keyed on (ip, email)` — code/doc drift confirmed. The existing
+`rate-limit-verification-status.test.ts` exercises a SYNTHETIC inline
+route with a keyGenerator and never registers the real plugin, so the
+production drift is invisible to it.
+
+Fix-shape decision (Task 3): **implement the (ip, email) keyGenerator —
+doc-downgrade REJECTED.**
+Rationale:
+1. The docstring's stated intent (corporate-NAT-safe onboarding polling)
+   is a real first-class self-host topology, not aspirational prose.
+2. `config/rate-limits.ts` already encodes `verificationStatus` as
+   `keying: "composite-ip-email"` (D-RL2); the route-side keyGenerator is
+   the missing half of an already-locked decision. A doc-downgrade would
+   also require downgrading the D-RL2 matrix entry — rejected.
+3. `email` is already a validated, bounded (RFC-5321 ≤254 bytes), optional
+   query param — safe schema-validated input for the keyGenerator.
+Key shape: `${req.ip}:${sha256(trim().toLowerCase(email)).slice(0,16)}`.
+Enumeration-oracle guards: email normalized (trim + lowercase) then
+SHA-256-hashed before entering the key (no plaintext PII in Valkey key
+dumps); the keyGenerator does NO DB access (cannot be an existence
+oracle); absent `?email=` degrades to an ip-only key (`${req.ip}:_`),
+never throws.
+
+## Divergence from planner pre-determination
+
+None. All three findings confirmed STILL LIVE exactly as the planner
+pre-determined.
