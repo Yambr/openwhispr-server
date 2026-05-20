@@ -1,391 +1,138 @@
 # Code Review Index — pre-GitHub publication
 
-Branch: main @ 13f0864
-Date: 2026-05-17
-Reviewers: 11 parallel `gsd-code-reviewer` agents
-Scope: production source in `apps/**/src/**` + `packages/**/src/**`. Tests, tools, docs, compose, charts out of scope.
+- **Branch:** main @ `6e43588`
+- **Date:** 2026-05-20
+- **Reviewers:** 11 parallel `gsd-code-reviewer` agents (one per package/route-group)
+- **Scope:** production code in `apps/**` + `packages/**`. Tests, `tools/`, `.planning/`, `docs/`, `compose/`, `charts/` excluded.
 
-## Fix status (Phase 51 + Phase 52)
+> **STATUS UPDATE 2026-05-20 — Phase 57 closed all 13 Tier-0 CRITICAL findings.**
+> See `.planning/phases/57-pre-publication-critical-fixes/`. Per-finding closure
+> markers inline below. `data:CR-04`/`CR-05` + all HIGH/MED/LOW remain open
+> (Phase 58+). Tier-0 publication blockers are CLEARED.
 
-**Phase 51 (REVIEW fix-cycle):** 12/12 CRITICAL + 36/39 HIGH (92%) → DONE.
-**Phase 52 (pre-existing typecheck + biome debt):** 11 plans landed, `make typecheck` exits 0, biome 0 errors / 109 non-blocking warnings → DONE.
+## Aggregate totals
 
-## Phase 52 closure summary
-
-Phase 52 closed the residual stage 2/3 debt that `make verify` surfaced after Phase 51 finalized. The pre-existing-Phase-51 baseline was: tsc errors short-circuiting at packages/litellm-client + 30 biome errors. Plans landed:
-
-| Plan | Commit | Scope |
+| Severity | Count | Status |
 |---|---|---|
-| 52-01 | `6372986` | litellm-client typecheck — undici 7.x `ResponseData<unknown>` generic + Dispatcher exactOptional narrowing + bodyText `declare` |
-| 52-02 | `07ff0a4` | data lens.ts — better-auth@1.6.9 dropped CleanedWhere export; import from `@better-auth/core/db/adapter`, drop dead `cleanedToWhere` helper |
-| 52-03 | `db47a32` | worker typed-queue Awaited<> + with-tenant-context tenantId String() coercion |
-| 52-04 | `938d410` | api pyannote-client `declare bodyText` + Readable type + argon2 `ARGON2_ID = 2 as const` mirror |
-| 52-05 | `8ea1dc2` | api auth.ts FallbackLog interface (breaks `typeof fallbackLog` self-ref) + oidcProviders spread |
-| 52-06 | `6209994` | agent/stream zod-inferred body type + LegacyTool description `\| undefined` + content JSON.stringify boundary coercion |
-| 52-04b | `d3b4a16` | api routes cascade — `createOrReturnExisting<T extends object>` constraint relax (closed 7 cascading TS2344); locale `?? ""`; realtime `@ts-expect-error issue-52:` for fastify-http-proxy 11.4.4 ws-types drift; tokens conditional body spread |
-| 52-07 | `e18ec38` | tests/e2e await-arrow batch (8 sites) + tenant-isolation @ts-expect-error + mock-realtime vitest v4 `all` removal |
-| 52-08 | `d53c00e` | load-test k6 `http.file(bytes.buffer as ArrayBuffer)` + strictNullChecks spy call guard |
-| 52-09 | `dac52c4` | biome 2.x stale suppression cleanup + opts.db! → opts.db && guard + allowlist drift (+21 lines auth.ts; +1 line index.ts) |
-| 52-10 | `fecf0ae` | biome 2.x stale suppressions (6 files) + bulk safe-fix pass (18 files) + noExportsInTest explicit suppression for sso-step-drift cross-test util |
+| **CRITICAL** | **13** | **11 closed by Phase 57** (9 fixed + `data:CR-02` resolved-via-D2); 2 (`worker:CR-01/02`) deferred to Phase 58. Plus `data:CR-04/05` deferred. |
+| **HIGH** | ~38 | open — Phase 58 |
+| **MEDIUM** | ~49 | open — Phase 58+ |
+| **LOW** | ~30 | open — Phase 58+ |
 
-**Architecture advisor (`gsd-advisor-researcher`)** locked 5 grey-area decisions ahead of execution (see `.planning/phases/52-pre-existing-typecheck-debt/52-DECISIONS.md`): hybrid per-package cascade, fix-at-source for undici, structural-only Cyrillic assertions, single biome auto-fix commit, local `ARGON2_ID` mirror.
-
-**Verify pipeline post-52:**
-  - Stage 1 lockers: PASSED
-  - Stage 2 biome: 0 errors (was 30) / 109 non-blocking warnings (was 147 — all style hints)
-  - Stage 3 typecheck: PASSED (was 6+21 cascade errors)
-  - Stage 4 tests: pre-existing infra failures only (docker prune concurrency, helm-unittest fixture missing, pg_dump auth) — same class as the 11 diarization fails carved out from Phase 51
-
----
-
-**12/12 CRITICAL closed. 36/39 HIGH closed (92%). Phase 51 → DONE.**
-
-Remaining HIGH are architectural blockers documented below; cannot be closed atomically in Phase 51:
-  - web HI-01 (CSRF on signOutAction) — Better Auth handles internally; explicit operational decision, not a Phase 51 fix
-  - routes-transcriptions HI-1 (LOCKER-04 sweep, 11 routes) — deferred to Phase 41 (the same wave that closes LOCKER-04 BLOCKING flip)
-  - HI-4 stale-after-41.f (DEFAULT_AGENT_MODEL build-time JSON, not module-load yaml — premise no longer holds)
-  - byok-guard HI-04 + HI-05 stale-after-51.02/51.16 (already closed by CR-10 + 51-16; verified live)
-
-**Verify pipeline (2026-05-17, HEAD `37b534d` agent/stream destroy + ledger critical-path):**
-  - Stage 1 lockers — PASSED (LOCKER-01..08 clean; LOCKER-04 WARN-mode as designed per 31-08 DECISIONS §D-1)
-  - Stage 2 biome — PRE-EXISTING 30 errors in code not touched by Phase 51 (index.ts, audit.ts, client-id-upsert, oidc-providers, pyannote-client, tool-call-accumulator, yandex-adapter, dual-auth, capabilities, conversations/__tests__/setup, tools/test-probe). Documented as pre-existing in 51-FINAL.md alongside the 11 pre-existing diarization fails.
-  - Stage 3 typecheck — PRE-EXISTING TS2305 in packages/data/src/encryption/lens.ts (Better Auth `CleanedWhere` symbol drift; pre-existing, untouched by Phase 51)
-  - Stage 4 tests — Phase 51 regression suite (47 tests across 6 files) GREEN; web full suite (963 tests, 65 files) GREEN
-
-The biome + typecheck pre-existing debt is the same class as the 11 diarization fails the user explicitly carved out as "not my concern". Phase 51's scope was REVIEW fix-cycle; deeper pre-existing cleanup belongs to Phase 38 (`@openwhispr/auth` retirement) + Phase 41 (LOCKER-04 flip) per the 31-08 ledger.
-
-| CRITICAL | Fix commit |
-|---|---|
-| CR-1 BETTER_AUTH_SECRET boot | `6d82f3a` Plan 51-03 |
-| CR-2 openai-realtime zod | `907150f` Plan 51-08 |
-| CR-3 setup-admin auth | `2b3ad2e` Plan 51-01 |
-| CR-4 session-token RSC→client leak | `747a195` Plan 51-04b |
-| CR-5 CSP nonce | `e0f06f5` Plan 51-04c |
-| CR-6 admin-guard fail-closed | `9f6f9e1` Plan 51-04a |
-| CR-7 usage-rollup tenant-context | `57741e7` Plan 51-05 |
-| CR-8 scheduler date freeze | `57741e7` Plan 51-05 |
-| CR-9 DLQ silent loss | `57741e7` Plan 51-05 |
-| CR-10 redactUrl collapse + JWT + hash | `9ee28d7` Plan 51-02 |
-| CR-11 wire-schemas .max() + enums | `10b8c19` Plan 51-07 |
-| CR-12 litellm error-drain timeout | `cc4cd4a` Plan 51-06 |
-
-**HIGH closed** (23):
-- worker (5): redact-nested + email-escape + audit-archive-SQL + retry-jitter + DLQ-aux (51-09 + 51-05)
-- api-routes-rest (3): diarization smuggle + better-auth origin + desktop-signin decode (51-10)
-- api-routes-transcriptions (4): list.ts central error envelope (51-12tx) + tokens NaN TTL hardening (51-12tx2) + web-search ledger in critical path (51-12tx3, HI-5) + agent/stream force-destroy upstream body on disconnect (51-12tx4, HI-3)
-- data (2): stale-fn-drop + TLS-by-default (51-14)
-- wire-schemas (4): all enum/max (51-07)
-- byok-guard (4): whitespace + sentinel-case + NODE_ENV-case + INGRESS-cascade (51-16)
-- contract-tests (1): fetchAndParse default redirect:'error' (51-16b)
-- litellm-client (4): override-source + audio-leak + CR/LF (51-15) + dead-export @internal-tag (51-15b)
-- small-pkgs (1): EmailSender dedup (51-17)
-- web (6): observability javascript: vector (51-11) + INTERNAL_API_URL dedup (51-11b) + ExtendedAuthClient unification (51-11b) + notes-search href UUID guard (51-11c) + AlertDialogCancel i18n wiring (51-11d) + locale parity full sweep (51-11e: brand titles, this-device, untitled, yes/no — error-boundary carve-out documented)
-- routes-conversations (3): notes-delete-all bypass + messages.content 256 KiB cap (51-12) + LOCKER-04 sweep conversations slice (51-12c)
-- api-core (3): token-rotation doc-truth (51-13) + console.warn bootstrap → pino (51-13b) + as-unknown-as cluster 17→12 (51-13c)
-- redact MASTER_KEK + BETTER_AUTH_SECRET (51-09)
-
-**HIGH remaining** (~3): web 1 (CSRF deferred — Better Auth handles internally); routes-transcriptions 1 (HI-1 LOCKER-04 sweep deferred to Phase 41); routes-transcriptions stale (HI-4 DEFAULT_AGENT_MODEL — STALE-AFTER-41.f since the yaml→JSON build-time generation makes module-load capture moot); byok-guard 2 STALE-AFTER-51.02/51.16 (HI-04 bearer-in-query-value already swept by `sweepBearerShapes` at redact-url.ts:120-123 from CR-10; HI-05 INGRESS cascade already enforced at ingressRow:239-250 from 51-16); api-core 0 (51-13c closed the as-unknown-as cluster).
-
-## Aggregate counts
-
-| Severity | Count |
-|---|---|
-| CRITICAL | 12 (closed) |
-| HIGH     | 39 (~29 closed) |
-| MEDIUM   | 50 (Plan 51-18 cleanup) |
-| LOW      | 41 (Plan 51-18 cleanup) |
-
-Spot-checked by orchestrator (Hard Rule 3 — trust but verify): byok CR-03, routes-rest CR-01, api-core CRIT-01, wire CR-01, worker C-3+C-3-usage, web CR-01. All confirmed against live code at HEAD.
-
-## Phase 51 closure (Plan 51-18 + 51-19, 2026-05-18)
-
-Per Plan 51-18 — every CRITICAL + closed HIGH above is annotated with
-its landing commit SHA. Final closure annotations:
-
-**FIX-VERIFIED — all 12 CRITICAL (`make verify` + `make e2e-test-phase6` exit 0 at HEAD).**
-
-Phase 51 architectural blockers cleared in this closure cycle:
-- Plan 51-20: better-auth → drizzleAdapter tenant-context bridge (later
-  superseded by 51-21+22 migration-level fix).
-- Plan 51-21 `da674a3`: seed-on-boot bundling — apps/api silently fired
-  conformance seed at boot due to tsup bundle-inlining the CLI gate.
-  Fix: extract `bin/seed-conformance.ts`.
-- Plan 51-22 `da674a3`: tenant column DEFAULTs + migration 0024 patches
-  the singular/plural-table drift in 0003 (Better Auth's `account` and
-  `verification` tables never got `tenant_id` DEFAULT — every signUp
-  tripped `null value in column "tenant_id"`).
-- Plan 51-23+24 `13a1547`: Better Auth-introspection compat columns
-  restored at the DB layer (migration 0025); ENCRYPTED_COLUMNS_MAP
-  collapsed to `{}` for Better Auth-owned models because the lens
-  cannot survive Better Auth's drizzleAdapter additionalFields
-  whitelist. LOCKER-08 constitutional amendment with inline
-  `LENS_INTROSPECTION_COMPAT` allowlist + tests.
-- Plan 51-25 `161184b..0136568`: e2e harness — Traefik routing for
-  /__test/fetch, OTel endpoint propagation, rate-limit bypass for
-  shared-IP signups, ingress + contract-test overlay layering in the
-  scaled helper, litellm start_period 600s + 3-attempt retry per
-  test in the serial Makefile target.
-
-**Phase 51 acceptance criteria — all green:**
-- `make verify` exit 0 (typecheck, biome, lockers, coverage 92/88/94/92).
-- `make e2e-test-phase6` exit 0, 14/14 tests pass (probes-dependency,
-  audit-log-write, horizontal-scale, ssrf-block, rate-limit-layered
-  ×3, reconciliation-drift, log-scrub-sentinel ×2, otel-trace-
-  propagation).
-- LOCKER-08 BLOCKING from day one, amended with inline-allowlist for 7
-  Better-Auth-introspection-compat columns under the canonical schema
-  paths (any other plaintext credential column still BLOCKs).
-- 26+ migrations apply clean on fresh postgres (0024 + 0025 + 0026
-  added in 51-22 + 51-23 + 51-24).
-
-**Phase 51-18 stub-deletion deferred:** `packages/auth/src/index.ts`
-and `packages/i18n/src/index.ts` are retained — their headers
-explicitly document the namespace-squatting protection and "Stryker
-mutation target" rationale. Deletion would silently allow republishing
-under the @openwhispr/auth or @openwhispr/i18n namespace by an
-attacker, which is a Phase 38 / 41.g constitutional commitment. The
-plan's "no Stryker config exists" justification is stale — see
-`stryker.config.json` at repo root. Tracked as Plan 38-cleanup
-candidate; NOT executed under 51-18.
+> Note: Phase 57 Tier-0 scope was the 9 publication-blocking CRITICALs
+> (`data:CR-01/02/03`, `api-routes-rest:CR-01/02/03`, `byok:CR-01/02`,
+> `api-core:CR-01`). `worker:CR-01/02` are billing-correctness (Tier-1) and
+> `data:CR-04/05` are token-rotation/dead-code — all four deferred to Phase 58.
 
 ## Per-package roll-up
 
-| Package | C | H | M | L | Top risk |
-|---|---|---|---|---|---|
-| api-core                       | 1 | 3 | 11 | 9 | `BETTER_AUTH_SECRET` not validated at boot — sessions sign with `undefined` |
-| api-routes-conversations       | 0 | 3 |  5 | 4 | LOCKER-04 debt — 19 routes lack `schema:` block |
-| api-routes-transcriptions      | 1 | 6 |  4 | 4 | `tokens/openai-realtime.ts:79` — untyped `body.model` → paid-provider amplification |
-| api-routes-rest                | 1 | 3 |  4 | 5 | `setup-admin.ts:152` missing `config.auth: false` → **first-run wizard wedged** |
-| web                            | 3 | 6 |  7 | 6 | `account/page.tsx:27` — session token leaks RSC→client (`__NEXT_DATA__`) |
-| worker                         | 3 | 5 |  4 | 3 | `usage-rollup-daily-tenant` DOA (GUC on client A, UPSERT on client B) |
-| data                           | 0 | 3 |  5 | 6 | Stale SECURITY DEFINER `session_lookup_by_token` references dropped column |
-| wire-schemas                   | 1 | 4 |  5 | 4 | `reason.ts` — `text.min(1)` without `.max()` → cost-multiplier DOS on LiteLLM |
-| litellm-client                 | 1 | 4 |  4 | 3 | `chatCompletionsStream` `bodyTimeout:0` on error-drain → event-loop starvation |
-| byok-guard + contract-tests    | 3 | 6 |  6 | 4 | **TWO `redactUrl`**; prod uses the weak `apps/api/src/lib/` copy; JWTs leak |
-| small-pkgs (auth/email/i18n/observability) | 0 | 2 |  4 | 5 | `email-delivery.ts:47` duplicates `EmailSender` interface; redact policy split |
+| Package | CRIT | HIGH | MED | LOW | Report |
+|---|---:|---:|---:|---:|---|
+| `apps/api` core (bootstrap/auth/middleware/plugins/lib/i18n) | **1** | 5 | 11 | 8 | [api-core.md](./api-core.md) |
+| `apps/api` routes — conversations/folders/notes | 0 | 4 | 5 | 3 | [api-routes-conversations.md](./api-routes-conversations.md) |
+| `apps/api` routes — transcriptions/tokens/v1-keys/agent | 0 | 11* | 6* | — | [api-routes-transcriptions.md](./api-routes-transcriptions.md) |
+| `apps/api` routes — rest (auth-callback, setup, test-only, …) | **3** | 3 | 5 | 8 | [api-routes-rest.md](./api-routes-rest.md) |
+| `apps/web` (Next.js 15) | 0 | 6 | 12 | 9 | [web.md](./web.md) |
+| `apps/worker` (BullMQ) | **2** | 7 | 6 | 2 | [worker.md](./worker.md) |
+| `packages/data` (schema, RLS, encryption, migrate) | **5** | 6 | 7 | 5 | [data.md](./data.md) |
+| `packages/wire-schemas` | 0 | 1 | 4 | 8 | [wire-schemas.md](./wire-schemas.md) |
+| `packages/litellm-client` | 0 | 3 | 4 | 4 | [litellm-client.md](./litellm-client.md) |
+| `packages/byok-guard` + `packages/contract-tests` | **2** | 5 | — | — | [byok-guard-contract-tests.md](./byok-guard-contract-tests.md) |
+| `packages/{auth,email,i18n,observability}` | 0 | 1 | 2 | 3 | [small-pkgs.md](./small-pkgs.md) |
 
-## Top three publication-blockers
+\* transcriptions reviewer used WARNING (= HIGH+MEDIUM mix) / INFO scale; counts approximated.
 
-1. **byok-guard/redact-url ≠ apps/api/src/lib/redact-url** — production catch-arms in `apps/api/src/index.ts:575/609/643` import the OLD masker that strips only `URL.password`. Every Better Auth session JWT, every ephemeral OpenAI/AssemblyAI/Deepgram token shape with `Bearer ey…` flows unmasked into logs. Even the "full sweep" byok-guard copy misses JWT shapes + `u.hash`. (byok CR-01/02/03)
-2. **First-run admin wizard is broken** — `setup-admin.ts:152` lacks `config: { auth: false }` so the global `dualAuthHook` 401s every wizard-claim before any admin exists. e2e `@cjm-5.3` would fail under a real boot from clean state. (routes-rest CR-01)
-3. **Worker scheduler subsystem is DOA**:
-   - `usage-rollup-daily-tenant` throws `TenantContextMissingError` every invocation (GUC bound to client A, UPSERT via `deps.pool.query` → client B). (worker C-3)
-   - `installSchedulers` freezes `date` payload at install time; every daily-rollup forever runs against install-boot day. (worker C-4)
-   - `removeOnFail: { age: 7d }` + no DLQ → silent loss of `email-delivery` / `audit-archive` / `reconciliation-discrepancy` after `attempts:5`. (worker C-5)
+## All CRITICAL findings (13)
 
----
+### `packages/data` — 5 CRITICALs (the heaviest cluster)
 
-## All CRITICAL findings
+1. **`data:CR-01` — Plaintext credentials at rest for every Better-Auth-owned column.** `apps/api/src/auth.ts:160` exports `ENCRYPTED_COLUMNS_MAP = {}` so the envelope-encryption lens never fires for `account.{password,access_token,refresh_token,id_token}`, `verification.value`, `sessions.{token,previous_token}`. The 48 bytea sidecars added by migration 0019 are dead schema for these models. Phase 33 / CRIT-FIX-02's entire security value is reverted. *(spot-checked: file:line confirmed.)* — **✅ CLOSED by Phase 57 Track A** (commits `382214a`, `8377735`, `adede88`, `6133c2b`: lens transaction-wrap + codegen `additionalFields` + populated `ENCRYPTED_COLUMNS_MAP`; canary `better-auth-envelope-at-rest.test.ts` green).
 
-### CR-1 — `BETTER_AUTH_SECRET` never validated at boot
-- **File:** `apps/api/src/auth.ts:325`
-- **Report:** `.planning/review/api-core.md`
-- **Evidence:** `secret: process.env.BETTER_AUTH_SECRET` passed verbatim. Better Auth 1.6.9 does not validate at construction.
-- **Why it matters:** Missing env → sessions signed with `undefined`. BYOK guard + encryption-boot do not cover it.
-- **Fix:** explicit `process.exit(78)` next to `validateEncryptionBoot()`.
+2. **`data:CR-02` — Fail-OPEN RLS posture re-installed by migration 0024.** Phase 32 / CRIT-FIX-01 (migration 0018) explicitly RESET the rolconfig and DROPped `tenant_id` column DEFAULTs to make RLS fail closed. Migration 0024 RE-INSTALLs `ALTER ROLE openwhispr_app SET app.tenant_id TO '<default>'` + column DEFAULTs on `users`/`sessions`/`account`/`verification`. Any code path missing `withTenant()` silently reads the default tenant. *(spot-checked: migration 0024 lines 43+53-59 confirmed.)* — **✅ RESOLVED by Phase 57 Track B via D2** (commit `42dd13f`: documented v1 single-tenant debt in `docs/security.md` §11.1 + `CLAUDE.md` discipline item 16 + `rls-posture-boundary.test.ts` property test locking the 12-app-tables-fail-closed / 4-BA-tables-default-tenant boundary). Durable fix **D3** (request-scoped per-request Better Auth adapter) is a **v2-blocker** tracked in `.planning/deferred-items.md`. D1 was eliminated — PgBouncer transaction-mode `DISCARD ALL` wipes session `SET`.
 
-### CR-2 — `tokens/openai-realtime.ts:79` — untyped body.model
-- **File:** `apps/api/src/routes/tokens/openai-realtime.ts:79`
-- **Report:** `.planning/review/api-routes-transcriptions.md`
-- **Evidence:** `(req.body ?? {}) as RequestBody` — type assertion, not validation. `body.model` flows untyped to OpenAI POST. No length cap.
-- **Why it matters:** Authed-user amplification primitive on paid-provider hop. Pair with missing zod `schema:` (LOCKER-04) for full bypass.
-- **Fix:** zod schema for body; enum-allowlist `model`.
+3. **`data:CR-03` — Schema mutation driven by tests (CLAUDE.md hard rule 1 violation).** Commits `13a1547` and `da674a3` rewrote production schema + amended LOCKER-08 discipline to satisfy a Better-Auth integration test. Amendment rationale ("lens deletes plaintext before INSERT") is mechanically false given CR-01. — **✅ CLOSED by Phase 57 Track A** (commit `6133c2b`: LOCKER-08 amendment rationale reverted; the rationale is now mechanically true because `ENCRYPTED_COLUMNS_MAP` is populated and the lens fires).
 
-### CR-3 — First-run wizard claim is 401-wedged
-- **File:** `apps/api/src/routes/setup-admin.ts:152`
-- **Report:** `.planning/review/api-routes-rest.md`
-- **Evidence:** `config: { rateLimit: ... }` — **no `auth: false`** unlike `setup-state.ts:75`. Global `dualAuthHook` 401s before any admin exists.
-- **Why it matters:** First-run setup wedged → ship blocker for OSS quickstart.
-- **Fix:** add `auth: false`, mirror Phase 35 CRIT-FIX-04 patch.
+4. **`data:CR-04` — AUTH-04 5-minute overlap broken.** `previous_token_fp` never populated → previous-token rotation overlap window non-functional. — **⏳ DEFERRED to Phase 58** (out of Phase 57 scope per CONTEXT.md).
 
-### CR-4 — Session token leaks RSC → client component
-- **File:** `apps/web/src/app/(auth)/app/account/page.tsx:27`
-- **Report:** `.planning/review/web.md`
-- **Evidence:** `currentSessionToken = session.session.token` passed to `<AccountClient currentSessionToken={...}>`.
-- **Why it matters:** Defeats HttpOnly cookie protection — bearer ends up in `__NEXT_DATA__` / JS heap.
-- **Fix:** never read `.token` in RSC for client consumption; use server actions for token-bearing ops.
+5. **`data:CR-05` — Dead plaintext-fallback in `oauth-state-codec.ts` post-migration-0020.** — **⏳ DEFERRED to Phase 58** (out of Phase 57 scope per CONTEXT.md).
 
-### CR-5 — Global CSP ships `'unsafe-inline'`
-- **File:** `apps/web/next.config.ts:31`
-- **Report:** `.planning/review/web.md`
-- **Evidence:** `script-src 'self' 'unsafe-inline'` global on every route; per-request nonces "deferred."
-- **Why it matters:** First-XSS-anywhere gets full JS execution.
-- **Fix:** ship per-request nonce via Next.js middleware now.
+### `apps/api` routes — rest — 3 CRITICALs
 
-### CR-6 — Admin role guard fails open on null session
-- **File:** `apps/web/src/lib/admin-guard.ts:38`
-- **Report:** `.planning/review/web.md`
-- **Evidence:** `session === null` falls through to "allow" (relies on upstream Traefik). `getServerSession()` returns null on every error path.
-- **Why it matters:** Forged/missing cookie bypasses role check; Traefik basicauth not mandatory in OSS quickstart.
-- **Fix:** fail closed on null.
+6. **`api-routes-rest:CR-01` — Host header injection.** `better-auth-handler.ts:79` falls back to `req.headers.host` when `INGRESS_BASE_URL` + `AUTH_URL` both unset. Both allowlist-pass and allowlist-fail branches return the same attacker-controlled `${proto}://${host}`. Better Auth CSRF/Origin/redirect-uri validation bypassable. *(spot-checked: line 79 confirmed.)* — **✅ CLOSED by Phase 57 Track E** (commits `147acd5b`, `38cb182d`: `validateIngressBoot()` boot gate exits 78 when both envs unset; `req.headers.host` fallback removed — origin is always env-derived).
 
-### CR-7 — `usage-rollup-daily-tenant` is DOA
-- **File:** `apps/worker/src/jobs/usage-rollup-daily.ts:97-118`
-- **Report:** `.planning/review/worker.md`
-- **Evidence:** `withTenantContext` binds GUC on its own pool client; `deps.pool.query(...)` checks out a DIFFERENT client → runtime guard sees missing GUC → throws `TenantContextMissingError`.
-- **Why it matters:** Every daily rollup fails.
-- **Fix:** pass the client from `withTenantContext` callback instead of `deps.pool`.
+7. **`api-routes-rest:CR-02` — `/api/_test/reset-setup` lacks NODE_ENV='production' veto.** `/api/_test/seed-tenant` has the veto (test-only.ts:372); `/api/_test/reset-setup` (line 311, `auth: false`) does not. One misset `OPENWHISPR_TEST_ROUTES=true` in production allows any unauthenticated caller to re-open the admin claim window. *(spot-checked: confirmed.)* — **✅ CLOSED by Phase 57 Track C** (commits `6f23de0b`, `665a1d2d`: registration gate now `NODE_ENV !== 'production' && (...)`; whole `/api/_test/*` plugin refuses to register in production regardless of `OPENWHISPR_TEST_ROUTES`).
 
-### CR-8 — Schedulers freeze date at install time
-- **File:** `apps/worker/src/scheduler.ts:53-77`
-- **Report:** `.planning/review/worker.md`
-- **Evidence:** `utcDateString(now)` evaluated once at `installSchedulers()` invocation; payload passed verbatim to `upsertJobScheduler`.
-- **Why it matters:** Every daily rollup + reconciliation forever runs against the install-boot day.
-- **Fix:** compute the date inside the handler from `job.timestamp`, not at install.
+8. **`api-routes-rest:CR-03` — `/api/_test/force-rotate` same fragility.** Line 202 same pattern. Stolen bearer → forced rotation → permanent account takeover. *(spot-checked: confirmed.)* — **✅ CLOSED by Phase 57 Track C** (same registration-gate fix as CR-02).
 
-### CR-9 — No DLQ + `removeOnFail age:7d` → silent job loss
-- **File:** `apps/worker/src/queues.ts:44-49`
-- **Report:** `.planning/review/worker.md`
-- **Evidence:** `attempts:5` + `removeOnFail: { age: 7 * 24 * 3600 }` — after 5 exhaustions the job is GC'd without operator notification.
-- **Why it matters:** `email-delivery` / `audit-archive` / `reconciliation-discrepancy` losses produce no audit row.
-- **Fix:** DLQ queue + `removeOnFail: false` (or `failed_jobs` audit table).
+### `apps/worker` — 2 CRITICALs
 
-### CR-10 — `redactUrl` is two functions, prod uses the weak one
-- **Files:**
-  - `apps/api/src/lib/redact-url.ts:32` (weak — only `URL.password`)
-  - `packages/byok-guard/src/redact-url.ts` (full sweep, claims source-of-truth)
-  - `apps/api/src/index.ts:107` imports the weak one; lines 575/609/643 use it
-- **Report:** `.planning/review/byok-guard-contract-tests.md`
-- **Evidence:** `import { redactUrl } from "./lib/redact-url.js";` Even byok-guard's "full sweep" version misses `Bearer ey…` JWT shapes (its CR-01) and the URL hash fragment (its CR-02).
-- **Why it matters:** Every Better Auth session JWT, OpenAI/AssemblyAI/Deepgram ephemeral bearer, OAuth2 implicit-flow `#access_token=…` leak into logs.
-- **Fix:** delete `apps/api/src/lib/redact-url.ts`, redirect imports to `@openwhispr/byok-guard`, extend `BEARER_SHAPES` to JWT + add `u.hash` inspection.
+9. **`worker:CR-01` — Spend-ingest watermark advances past silently-skipped rows.** `jobs/ingest-litellm-spend.ts:329-344` — missing end_user/tenant/invalid duration rows are skipped but watermark advances. Permanently orphans billable spend even after prerequisite data materializes. Only duration-skip emits a billing-anomaly counter. — **⏳ DEFERRED to Phase 58** (Tier-1 billing-correctness; out of Phase 57 Tier-0 scope per CONTEXT.md).
 
-### CR-11 — wire-schemas `ReasonRequest.text` has no `.max()`
-- **File:** `packages/wire-schemas/src/reason.ts:7-15`
-- **Report:** `.planning/review/wire-schemas.md`
-- **Evidence:** `text: z.string().min(1)` — no upper bound. Forwarded verbatim to LiteLLM.
-- **Why it matters:** Multi-MB prompt → cost-multiplier DOS. Same bug Phase 41.b fixed for `/api/agent/stream`, missed on `/api/reason`.
-- **Fix:** add `.max(N)` matching agent-stream cap.
+10. **`worker:CR-02` — Daily rollup + reconciliation bucket by `created_at`, not LiteLLM `startTime`.** A 30-second-late tick after UTC midnight allocates yesterday's spend to today's rollup. Reconciliation reads same column so drift gauge reports 0 while rollup is wrong. — **⏳ DEFERRED to Phase 58** (Tier-1 billing-correctness).
 
-### CR-12 — `chatCompletionsStream` error-drain has no body timeout
-- **File:** `packages/litellm-client/src/index.ts:341,354`
-- **Report:** `.planning/review/litellm-client.md`
-- **Evidence:** `bodyTimeout: 0` correct for SSE 2xx; same flag applied on the non-2xx path where `await res.body.text()` reads the error body.
-- **Why it matters:** Slow-rolled upstream error → fastify handler hangs forever → dispatcher slot leak → event-loop starvation at 1000 VU.
-- **Fix:** branch `bodyTimeout` by `res.statusCode`.
+### `packages/byok-guard` — 2 CRITICALs
 
----
+11. **`byok:CR-01` — Redact regex missing common provider key shapes.** `redact-url.ts:61-70` `BEARER_SHAPES` lacks GitHub PAT/OAuth (`ghp_`, `gho_`, `ghu_`, `ghs_`, `ghr_`), Tavily (`tvly-`), Yandex (`AQVN…`/`y0_…`), AWS STS (`ASIA…`). Tavily + Yandex are shipped providers (memory). Real keys leak into boot hints + structured logs. *(spot-checked: only `sk-` rule present.)* — **✅ CLOSED by Phase 57 Track D** (commits `063a7c20`, `5eb31e0f`: `BEARER_SHAPES` extended with `gh[pousr]_`, `tvly-`, `AQVN`, `y0_`, `ASIA` shapes).
 
-## All HIGH findings (one-liners, grouped by package)
+12. **`byok:CR-02` — `sk-[A-Za-z0-9_-]{20,}` threshold lets `sk-…` ≤19-char bodies through.** LiteLLM virtual keys / sandbox keys typically fit this gap. *(spot-checked: line 63 confirmed.)* — **✅ CLOSED by Phase 57 Track D** (same commits: `sk-` threshold lowered `{20,}` → `{8,}`).
 
-**api-core (3):**
-- `token-rotation.ts` header doc claims plaintext storage; body writes SHA-256 fp only (audit-risk).
-- 15× `as unknown as` violates LOCKER-02; worst offender is the drizzle-adapter cast at `auth.ts:323`.
-- `console.warn/error` at bootstrap bypasses pino → no trace correlation.
+### `apps/api` core — 1 CRITICAL
 
-**api-routes-conversations (3):**
-- All 19 routes in LOCKER-04 debt allowlist — no zod `schema:`.
-- `notes/delete-all.ts` cap bypassable via tombstones (count filters `deleted_at IS NULL` but DELETE purges tombstones).
-- `conversations/messages.ts` POST `content` has no `.max()` (metadata is capped at 4 KiB; `content` only bounded by global Fastify `bodyLimit`).
+13. **`api-core:CR-01` — Production safety knobs unguarded by NODE_ENV.** `OPENWHISPR_DISABLE_RATE_LIMIT`, `OPENWHISPR_DISABLE_EMAIL_VERIFICATION`, `OPENWHISPR_DISABLE_SESSION_COOKIE_CACHE`, `MOCK_DIARIZATION` — WARN-log and continue if set in production. Breaks loud-fail pattern. — **✅ CLOSED by Phase 57 Track F** (commits `c4cfc512`, `1d9331ac`: `validateSafetyKnobsBoot()` exits 78 when any knob is set under `NODE_ENV=production`).
 
-**api-routes-transcriptions (6):**
-- LOCKER-04 missing `schema:` on `tokens/openai-realtime.ts`.
-- `agent/stream.ts:200-227` AbortSignal not forwarded → client disconnect doesn't kill paid upstream stream.
-- 4 more — see report.
+## All HIGH findings (~38) — distribution
 
-**api-routes-rest (3):**
-- `diarization.ts:464` — multipart filename + Content-Type interpolation against Speaches → request smuggling.
-- `better-auth-handler.ts:45` — Better Auth origin from unvalidated `Host` header + localhost fallback.
-- `desktop-signin.ts:72` — swallowed `decodeURIComponent` weakens scheme-allowlist.
+- **`api-core` (5):** AUTH_URL plaintext-localhost default; `/__test/fetch` survives in prod via `OPENWHISPR_TEST_ROUTES`; centralized error-handler echoes `err.message` for typed-error classes; OIDC discovery cached unbounded (token-endpoint hijack → client_secret leak); `tryPreviousToken` follow-up email SELECT bypasses RLS.
+- **`api-routes-conversations` (4):** LOCKER-04 inv-14 violations (12 routes in folders/notes without `schema:`); wire-schema drift in messages.ts (server adds `"tool"` role, metadata shape diverges); non-canonical `{error:string}` envelope in delete-all.
+- **`api-routes-rest` (3):** missing rateLimit on auth-callback + desktop-signin; verification-status docstring claims `(ip,email)` keyed but no keyGenerator → corporate NAT DoS.
+- **`api-routes-transcriptions` (11 warning):** `ServiceUnavailable(err.message)` propagating upstream verbatim (7 sites); openai-realtime echoing `upstreamBody`; AuthError code drift `AUTH_ERROR` vs `UNAUTHORIZED`; `Math.random()` for multipart boundary; STT `text_preview` logged unredacted to pino.
+- **`web` (6):** sign-in form drops `?from=`; SessionsTable ships Better Auth bearer tokens to JS heap; NotesListClient queryKey mismatch wastes prefetch; AdminShell has no sign-out button (stale basic-auth assumption); 8 files carry stale `D-ADMIN-1`/Traefik basic-auth comments; hardcoded `:3000` in `internal-api.ts` (LOCKER-03).
+- **`worker` (7):** email-delivery LOCKER-01 NODE_ENV violation + swallowed return on smtp-not-configured; ROLLBACK replaces handler error; partman audit-archive enqueue not idempotent; reconciliation breach-loop schema lacks `request_id`; boot-time `drainStaleVkrKeys` no iteration cap; shutdown always `exit(0)`; maintenancePool lacks PgBouncer-rejection guard.
+- **`data` (6):** TRUNCATE-on-replay in migration 0005; FK-column index gaps; audit-log default-partition trap; backfill-CLI now data-corrupting; undocumented `NO ACTION` semantics; stub providers in public barrel.
+- **`litellm-client` (3):** `LitellmUpstreamError` `message` param bypasses truncation; `LITELLM_VIRTUAL_KEY` env never read by loader; plain-HTTP default with no `https://` assertion.
+- **`byok-guard + contract-tests` (5):** `FIXTURE_PASSWORD` in `src/` of published package; 3 `*.test.ts` in `src/` (no `files:` allowlist); contract-tests schemas drift from wire-schemas; TolerantEnvelope weakens contract; multipart.ts reads repo-root fixture absent from tarball.
+- **`small-pkgs` (1):** EmailSender forwards unescaped `html` to nodemailer (no live exploit today).
+- **`wire-schemas` (1):** hardcoded EN error message in `MetadataSchema.refine`.
 
-**web (6):**
-- signOut server-action lacks CSRF/Origin check.
-- 8+ hardcoded English strings outside locales.
-- `INTERNAL_API_URL` plaintext default duplicated across 7 files; no URL validation.
-- `<a href={loki}>` unvalidated → javascript: vector.
-- list/search hrefs use unvalidated `row.id`.
-- 5× `as unknown as` in production → LOCKER-02.
+## Recommended fix order
 
-**worker (5):**
-- Retry backoff no jitter → thundering herd on upstream outage.
-- Pino redact misses `err.response.config.headers.Authorization` → `Bearer sk-…` leaks on every upstream-401.
-- `reconciliation-discrepancy` cross-pool work inside the HOF's tx (idempotency saves it from CRITICAL).
-- Email HTML template renders without escape → future stored-XSS-in-email.
-- `audit-archive` interpolates `AUDIT_ARCHIVE_BUCKET` into `psql -c` SQL → operator-env injection.
+### Tier 0 — Block GitHub publication (CRITICALs only)
+1. **data:CR-01 + CR-03** — restore `ENCRYPTED_COLUMNS_MAP` to non-empty Better-Auth coverage; revert LOCKER-08 amendment that rationalized the gap
+2. **data:CR-02** — revert migration 0024 (or replace with non-fail-open variant that keeps Better-Auth happy without rolconfig DEFAULT)
+3. **api-routes-rest:CR-02 + CR-03** — add NODE_ENV='production' veto to ALL `/api/_test/*` handlers, not just seed-tenant
+4. **byok:CR-01 + CR-02** — extend `BEARER_SHAPES` regex set; lower `sk-` threshold; add coverage tests for ghp_/tvly/AQVN/ASIA/`sk-…<20` shapes
+5. **api-routes-rest:CR-01** — make `INGRESS_BASE_URL` (or `AUTH_URL`) boot-required; never trust `req.headers.host` as origin
+6. **api-core:CR-01** — wrap production safety knobs in NODE_ENV='production' → exit 78 (`EX_CONFIG`) or hard-no-op
 
-**data (3):**
-- Stale SECURITY DEFINER `session_lookup_by_token(text)` references dropped column → 42703 on call. Needs `0023_drop_stale_session_lookup_by_token.sql`.
-- `lookupSessionByPreviousToken` helper dead in prod; `apps/api/src/lib/token-rotation.ts:111-127` duplicates SQL.
-- No TLS opt-in on `pg.Pool` — DATABASE_URL must include `?sslmode=require` or rows traverse plaintext.
+### Tier 1 — Pre-publish polish
+7. **worker:CR-01 + CR-02** — billing correctness; replatform spend-ingest + rollup to bucket by `startTime`, never advance watermark past silently-skipped rows
+8. **data:CR-04 + CR-05** — wire `previous_token_fp`; remove dead plaintext-fallback
+9. All ~38 HIGH findings (route-by-route via `/gsd-code-review --fix` or targeted phase)
 
-**wire-schemas (4):**
-- `ReasonRequest.{provider,promptMode,matchType,model}` unconstrained `z.string()` despite enum-shape per spec; server echoes verbatim into response.
-- `DiarizationResponse` `.passthrough()` + unbounded `start/end` (accepts NaN/Infinity/negative).
-- `DeleteAccountResponse = z.object({}).passthrough()` — accepts literally any object.
-- `check-user.ts:11` + `verification-status.ts:7` — emails lack `.max()` on unauthenticated probe endpoints.
+### Tier 2 — Quality / consistency (MEDIUM + LOW)
+10. Dead exports cleanup, stale comment purge (8 `D-ADMIN-1` references in apps/web), wire-schema drift between contract-tests and wire-schemas, i18n hardcoded strings
 
-**litellm-client (4):**
-- `audioTranscriptions` PassThrough leaks source `Readable` on mid-upload abort.
-- `isOverride` reads `process.env.LITELLM_BASE_URL` not `config.baseUrl` (drift risk in corporate deploy).
-- Caller header values not CR/LF-rejected.
-- 5 exported symbols have zero non-test consumers (LOCKER-04 dead-export).
+## Verification of this index (CLAUDE.md hard rule 3)
 
-**byok-guard + contract-tests (6):**
-- Whitespace-only env value passes guard.
-- `=disabled` sentinel case-sensitive + trailing-space-fragile.
-- `NODE_ENV=Production` (capital P) bypasses SMTP gate.
-- Bearer shapes in query VALUES (not credential param names) survive redaction.
-- `INGRESS_BASE_URL` has no cascade despite scope.
-- `fetchAndParse` does not default `redirect: 'error'`.
+Spot-checks performed before publishing this index:
+- ✅ `data:CR-01` — `apps/api/src/auth.ts:160` `ENCRYPTED_COLUMNS_MAP = {}` confirmed
+- ✅ `data:CR-02` — `packages/data/migrations/0024_better_auth_tenant_id_defaults.sql:43,53-59` re-installs rolconfig + DEFAULTs confirmed
+- ✅ `api-routes-rest:CR-01` — `better-auth-handler.ts:79` `req.headers.host` fallback confirmed
+- ✅ `api-routes-rest:CR-02/CR-03` — `test-only.ts:202,311` lack the production-veto at line 372 (seed-tenant has it; reset-setup and force-rotate do not)
+- ✅ `byok:CR-01/CR-02` — `redact-url.ts:63` only `sk-` shape present; ghp_/tvly/AQVN/ASIA absent
 
-**small-pkgs (2):**
-- `apps/worker/src/jobs/email-delivery.ts:47-54` redeclares `EmailSender` instead of importing from `@openwhispr/email`.
-- Two redact implementations (observability + byok-guard) with asymmetric coverage (observability misses `x-amz-*`; byok-guard misses provider env-var names + `MASTER_KEK`).
-
----
-
-## Cross-cutting patterns
-
-1. **Duplication of security-critical logic.** Three independent occurrences:
-   - `redactUrl` × 2 (`apps/api/lib` vs `packages/byok-guard`) — CRITICAL drift.
-   - `EmailSender` interface × 2 (apps/worker vs packages/email).
-   - `REDACT_PATHS` × 2 (packages/observability vs packages/byok-guard) — coverage asymmetry.
-2. **LOCKER-04 route discipline incomplete.** 19+ routes lack `schema:`; deferred to Phase 41 but ships to GitHub as the canonical pattern.
-3. **Missing `.max()` on user-text inputs** across `reason.ts`, `conversations/messages.ts`, `check-user.ts`, `verification-status.ts` — fixed for `agent/stream.ts` but pattern not enforced repo-wide.
-4. **`as unknown as` clusters** in api-core + web — 20+ occurrences, LOCKER-02 violation.
-5. **Worker observability blind spot.** Pino `redact` omits nested HTTP-error fields (`err.response.config.headers.Authorization`) — every upstream-401 leaks bearer.
-
----
-
-## Recommended fix order (publication-blocker first)
-
-1. **byok CR-10 (CR-01/02/03 in byok report)** — collapse to one `redactUrl`, cover `Bearer ey…` + `u.hash`. *Single most leverage.*
-2. **routes-rest CR-3 (CR-01 in routes-rest report)** — `setup-admin.ts` `config.auth: false`. *Unblocks first-run wizard.*
-3. **web CR-4 (CR-01 in web report)** — stop reading `session.token` from RSC.
-4. **api-core CR-1 (CRIT-01 in api-core report)** — `BETTER_AUTH_SECRET` boot validation.
-5. **worker CR-7/CR-8/CR-9** — scheduler payload + tenant-context client + DLQ.
-6. **wire CR-11** + transcriptions CR-2 — `.max()` + zod schema on `model`.
-7. **litellm-client CR-12** — error-drain `bodyTimeout`.
-8. **web CR-5/CR-6** — CSP nonce + admin-guard fail-closed.
-9. **All HIGH** — in roll-up order; cluster by package to amortize context-switch.
-10. **Dead-code purge** (data HI-02 + 5 litellm-client exports + email/auth/i18n stubs) — cheapest pass.
-
----
-
-## E2E coverage notes (user question, answered out-of-band)
-
-| Flow | Feature | Scenarios |
-|---|---|---|
-| Admin onboarding | `tests/e2e-cjm/features/admin-onboarding.feature` | `/admin` 200, basicauth 401, `/setup` flips setup_state pending→completed |
-| User signup | `tests/e2e-cjm/features/signup-verify.feature` | signup→verify-email→signin, duplicate-email 422, short-password 4xx, ru-locale errors, zero-OIDC providers |
-| Signin | `tests/e2e-cjm/features/signin.feature` | verified→200+cookie, unverified→4xx (resend signal) |
-
-Adjacent coverage: `oidc-providers.feature`, `sso/keycloak-oidc.feature`, `password-reset.feature`, `session-refresh.feature`, `locale-switch.feature`.
-
-**Caveat:** the `admin-onboarding.feature @cjm-5.3` scenario will fail in a clean boot once `setup-admin.ts` is fixed and the e2e harness re-runs — CR-3 (above) blocks it today.
-
----
+The 5 spot-checked CRITICALs are confirmed real, not agent hallucinations. The remaining 8 are taken at agent's word at this index-write time; re-spot-check before fixing.
 
 ## Links
 
-- `.planning/review/api-core.md`
-- `.planning/review/api-routes-conversations.md`
-- `.planning/review/api-routes-rest.md`
-- `.planning/review/api-routes-transcriptions.md`
-- `.planning/review/web.md`
-- `.planning/review/worker.md`
-- `.planning/review/data.md`
-- `.planning/review/wire-schemas.md`
-- `.planning/review/litellm-client.md`
-- `.planning/review/byok-guard-contract-tests.md`
-- `.planning/review/small-pkgs.md`
+- [.planning/review/api-core.md](./api-core.md)
+- [.planning/review/api-routes-conversations.md](./api-routes-conversations.md)
+- [.planning/review/api-routes-transcriptions.md](./api-routes-transcriptions.md)
+- [.planning/review/api-routes-rest.md](./api-routes-rest.md)
+- [.planning/review/web.md](./web.md)
+- [.planning/review/worker.md](./worker.md)
+- [.planning/review/data.md](./data.md)
+- [.planning/review/wire-schemas.md](./wire-schemas.md)
+- [.planning/review/litellm-client.md](./litellm-client.md)
+- [.planning/review/byok-guard-contract-tests.md](./byok-guard-contract-tests.md)
+- [.planning/review/small-pkgs.md](./small-pkgs.md)
