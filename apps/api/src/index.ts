@@ -147,7 +147,7 @@ import fastifyMultipart from "@fastify/multipart";
 import { redactUrl } from "@openwhispr/byok-guard";
 import type { ExecutableTx, TransactionalDb } from "@openwhispr/data";
 import type { LitellmClient } from "@openwhispr/litellm-client";
-import Fastify, { type FastifyInstance } from "fastify";
+import Fastify, { type FastifyBaseLogger, type FastifyInstance } from "fastify";
 import { registerErrorHandler } from "./error-handler.js";
 import { i18nPlugin } from "./i18n/init.js";
 import { type DepCheck, makeDepCheck } from "./lib/dep-check.js";
@@ -190,6 +190,24 @@ export const MULTIPART_OPTIONS = {
 } as const;
 
 export interface BuildAppOptions {
+  /**
+   * Phase 60 / Track A — optional pino logger fed into the Fastify
+   * constructor. Production leaves this unset and `buildApp` defaults to
+   * `makePino({ base: { service: "api" } })` so the canonical
+   * REDACT_PATHS policy applies to every request/error record. The field
+   * exists only as a test seam (mirrors the `destination` seam in
+   * `request-log.ts:buildLogger`) so a unit test can inject
+   * `makePino({ destination })` and capture serialized output. A bare
+   * pino bypassing `makePino` is forbidden — the redact policy is not
+   * optional.
+   *
+   * Typed as `FastifyBaseLogger` (which `makePino`'s `pino.Logger`
+   * structurally satisfies) so the Fastify constructor keeps its default
+   * logger generic — a narrower `pino.Logger` here makes Fastify infer a
+   * non-default `FastifyInstance<..., Logger>` that breaks route-plugin
+   * assignability under `exactOptionalPropertyTypes`.
+   */
+  logger?: FastifyBaseLogger;
   /**
    * Phase 1 transactional database (PgBouncer-backed app role). Required
    * for the cookie-only routes (verification-status, delete-account)
@@ -306,7 +324,21 @@ export interface BuildAppOptions {
 
 export const buildApp = async (opts: BuildAppOptions = {}): Promise<FastifyInstance> => {
   // 1. trustProxy:true — Pitfall #2.
-  const app = Fastify({ logger: false, trustProxy: true });
+  //    Phase 60 / Track A (Defect A): build Fastify with a real pino
+  //    logger so every `req.log.{warn,info,error}` call site — incl.
+  //    `error-handler.ts` "request error" on every 500 and the
+  //    `request-log` plugin's `req.log.child({openwhisprSource})` — emits
+  //    structured JSON. The logger goes through `makePino` so the
+  //    canonical REDACT_PATHS policy scrubs secret-shaped fields; log
+  //    level comes from `LOG_LEVEL` (read inside `makePino`), never
+  //    `NODE_ENV`. `opts.logger` is a test-only injection seam.
+  //    Fastify 5 accepts a pre-built logger instance under
+  //    `loggerInstance` (the `logger` key is reserved for a pino *options*
+  //    object); `makePino` returns an instance, so it goes here.
+  const app = Fastify({
+    loggerInstance: opts.logger ?? makePino({ base: { service: "api" } }),
+    trustProxy: true,
+  });
 
   // 2. Centralized error handler FIRST so plugin errors during
   //    register get the envelope.
