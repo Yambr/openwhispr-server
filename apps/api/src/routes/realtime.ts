@@ -187,9 +187,25 @@ export const buildRealtimeRoutes = (deps: RealtimeDeps) =>
         // spend rows by openwhispr user without per-user virtual keys.
         // We mutate `req.raw.url` because @fastify/http-proxy reads the
         // raw IncomingMessage URL when wiring the upstream upgrade.
+        //
+        // WR-09 (Phase 65) — `"http://internal"` is a sentinel parser base:
+        // the WHATWG `URL` constructor requires an absolute base to resolve a
+        // relative path; the host is never used (only `u.pathname + u.search`
+        // are read back). For a Fastify route the raw IncomingMessage URL is
+        // always a relative origin-form path (`/v1/realtime?...`). If it is
+        // ever absolute (a proxy-injected / test-harness URL), `new URL` would
+        // silently DROP the sentinel base and re-emit the foreign URL's
+        // path+query — so we assert relativeness and fail loud instead.
         const rawUrl = req.raw.url ?? req.url;
+        if (!rawUrl.startsWith("/")) {
+          throw new AuthError("UNAUTHORIZED", "unauthorized");
+        }
         const u = new URL(rawUrl, "http://internal");
         u.searchParams.set("user", user.id);
+        // The user id deliberately enters `req.raw.url` here — the LAST
+        // statement of the preHandler — so it is appended only immediately
+        // before @fastify/http-proxy wires the upstream upgrade, minimising
+        // the window in which an earlier hook could observe the mutated URL.
         req.raw.url = u.pathname + u.search;
       },
     });
