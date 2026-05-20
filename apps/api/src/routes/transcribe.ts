@@ -34,6 +34,8 @@
 // Multipart plugin registration: @fastify/multipart is registered ONCE in
 // buildApp (HIGH-4, Plan 03 Wave-1). This route does NOT re-register it.
 
+import { randomBytes } from "node:crypto";
+import { PassThrough, type Readable } from "node:stream";
 import { type ExecutableTx, type TransactionalDb, withTenant } from "@openwhispr/data";
 import {
   type LitellmClient,
@@ -61,6 +63,81 @@ interface UpstreamWhisperJson {
 const STT_PROVIDER = "groq";
 const STT_MODEL = "whisper-large-v3";
 const UNLIMITED_REMAINING = 999_999_999;
+
+/**
+ * Phase 59 / Track B — R16 facet 2: zero-byte upload guard.
+ *
+ * `req.file()` pulls JUST the multipart `file` part as a stream
+ * (`@fastify/multipart` is registered with `attachFieldsToBody:false` at
+ * buildApp). We peek the FIRST chunk of that stream:
+ *
+ *   - first chunk is `undefined` (stream ended with zero bytes)
+ *     → the upload is empty; the caller rejects with 400 EMPTY_AUDIO
+ *     BEFORE any upstream call.
+ *   - first chunk has bytes → we re-wrap the part into a FRESH multipart
+ *     envelope, prepending the peeked chunk back and streaming the rest.
+ *     Only ONE chunk is ever held in memory — the O(1)-per-request
+ *     streaming invariant (SCALE-01) is preserved; the audio payload is
+ *     never fully buffered.
+ *
+ * Returns `{ empty: true }` for the zero-byte case, or
+ * `{ empty: false, body, contentType }` carrying the re-enveloped stream.
+ */
+interface MultipartFilePart {
+  readonly filename?: string;
+  readonly mimetype?: string;
+  readonly file: Readable;
+}
+
+type PeekResult = { empty: true } | { empty: false; body: Readable; contentType: string };
+
+async function peekAndRewrap(part: MultipartFilePart): Promise<PeekResult> {
+  const iterator = part.file[Symbol.asyncIterator]();
+  const first = await iterator.next();
+  if (first.done || (first.value as Buffer).length === 0) {
+    // Drain any trailing zero-length chunks so the socket is released.
+    part.file.resume();
+    return { empty: true };
+  }
+  const firstChunk = first.value as Buffer;
+
+  const boundary = `----openwhispr-${randomBytes(16).toString("hex")}`;
+  const filename = part.filename ?? "audio";
+  const mimetype = part.mimetype ?? "application/octet-stream";
+  const head = Buffer.from(
+    `--${boundary}\r\n` +
+      `Content-Disposition: form-data; name="file"; filename="${filename}"\r\n` +
+      `Content-Type: ${mimetype}\r\n\r\n`,
+    "utf8",
+  );
+  const tail = Buffer.from(`\r\n--${boundary}--\r\n`, "utf8");
+
+  const through = new PassThrough();
+  // Pipe the envelope: head → firstChunk → remaining file chunks → tail.
+  // The remaining chunks stream straight through — never collected.
+  void (async () => {
+    try {
+      through.write(head);
+      through.write(firstChunk);
+      let next = await iterator.next();
+      while (!next.done) {
+        if (!through.write(next.value as Buffer)) {
+          await new Promise((resolve) => through.once("drain", resolve));
+        }
+        next = await iterator.next();
+      }
+      through.end(tail);
+    } catch (err) {
+      through.destroy(err as Error);
+    }
+  })();
+
+  return {
+    empty: false,
+    body: through,
+    contentType: `multipart/form-data; boundary=${boundary}`,
+  };
+}
 
 export const buildTranscribeRoutes = (deps: TranscribeDeps) =>
   async function transcribeRoutes(app: FastifyInstance): Promise<void> {
@@ -93,6 +170,31 @@ export const buildTranscribeRoutes = (deps: TranscribeDeps) =>
           );
         }
 
+        // Phase 59 / Track B — R16 facet 2: read the multipart `file` part
+        // and reject a zero-byte upload with 400 BEFORE any upstream call.
+        // `peekAndRewrap` holds at most ONE chunk in memory; the audio
+        // payload streams through unbuffered (SCALE-01 O(1) preserved).
+        let filePart: MultipartFilePart | undefined;
+        try {
+          filePart = (await req.file()) as MultipartFilePart | undefined;
+        } catch (err) {
+          const code = (err as { code?: string }).code;
+          if (code === "FST_REQ_FILE_TOO_LARGE") {
+            throw new ValidationError("FILE_TOO_LARGE", "audio file exceeds size limit");
+          }
+          throw err;
+        }
+        if (!filePart) {
+          throw new ValidationError(
+            "MULTIPART_FILE_FIELD_MISSING",
+            "expected a `file` multipart field",
+          );
+        }
+        const peeked = await peekAndRewrap(filePart);
+        if (peeked.empty) {
+          throw new ValidationError("EMPTY_AUDIO", "audio file is empty");
+        }
+
         let upstreamJson: UpstreamWhisperJson;
         try {
           const upstream = await deps.litellm.audioTranscriptions({
@@ -101,8 +203,8 @@ export const buildTranscribeRoutes = (deps: TranscribeDeps) =>
             // `model=None`. STT_MODEL is the single source of truth
             // (also echoed in the response.sttModel field below).
             model: STT_MODEL,
-            body: req.raw,
-            contentType,
+            body: peeked.body,
+            contentType: peeked.contentType,
             userId: req.user.id,
             requestId: req.id,
           });

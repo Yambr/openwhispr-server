@@ -27,6 +27,15 @@ export interface DepResult {
   readonly ok: boolean;
   readonly latency_ms: number;
   readonly error?: string;
+  /**
+   * Phase 59 / Track B — R16 facet 1. True when the dep was intentionally
+   * NOT probed (e.g. a deploy whose `LITELLM_BASE_URL` is unset because a
+   * corporate operator points the AI plane elsewhere, or a slim deploy
+   * with no bundled litellm). A `skipped` dep is reported `ok:true` and
+   * EXCLUDED from the `/readyz` aggregate — an intentionally-absent
+   * subsystem must not 503 the readiness probe.
+   */
+  readonly skipped?: boolean;
 }
 
 export type DepName = "postgres" | "valkey" | "litellm";
@@ -34,7 +43,12 @@ export type DepName = "postgres" | "valkey" | "litellm";
 export interface DepCheckDeps {
   readonly pg: Pool;
   readonly valkey: Redis;
-  readonly litellmUrl: string;
+  /**
+   * LiteLLM `/health` base URL. When unset/empty the litellm probe is
+   * SKIPPED (returns `{ok:true, skipped:true}`) instead of attempting an
+   * outbound call — see `DepResult.skipped`.
+   */
+  readonly litellmUrl?: string;
 }
 
 export type DepCheck = (name: DepName) => Promise<DepResult>;
@@ -60,6 +74,14 @@ export const makeDepCheck = (deps: DepCheckDeps): DepCheck => {
 
   const probe = async (name: DepName): Promise<DepResult> => {
     const start = Date.now();
+    // Phase 59 / Track B — R16 facet 1: an unset/empty litellmUrl means
+    // the AI plane is intentionally absent on this deploy. Report the
+    // litellm dep `skipped` (ok:true) WITHOUT an outbound call; `/readyz`
+    // excludes a skipped dep from its aggregate so an intentionally-
+    // absent subsystem never 503s the readiness probe.
+    if (name === "litellm" && !deps.litellmUrl?.trim()) {
+      return { ok: true, latency_ms: 0, skipped: true };
+    }
     let timeoutHandle: NodeJS.Timeout | undefined;
     const timeoutPromise = new Promise<never>((_, reject) => {
       timeoutHandle = setTimeout(
@@ -80,7 +102,10 @@ export const makeDepCheck = (deps: DepCheckDeps): DepCheck => {
           } else if (name === "valkey") {
             await deps.valkey.ping();
           } else {
-            const { statusCode, body } = await request(`${deps.litellmUrl}/health`, {
+            // litellmUrl is guaranteed non-empty here — the `skipped`
+            // short-circuit at the top of probe() handled the absent case.
+            const url = (deps.litellmUrl as string).trim();
+            const { statusCode, body } = await request(`${url}/health`, {
               method: "GET",
               bodyTimeout: PROBE_TIMEOUT_MS,
               headersTimeout: PROBE_TIMEOUT_MS,
