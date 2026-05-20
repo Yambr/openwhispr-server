@@ -244,7 +244,7 @@ services:
       - "4000:3000"
     env_file: .env
     environment:
-      NODE_ENV: production
+      NODE_ENV: ${NODE_ENV:-production}
       OPENWHISPR_API_URL: ${OPENWHISPR_API_URL:-https://api.localhost}
       AUTH_URL: ${AUTH_URL:-https://api.localhost}
       # Phase 57 / Track E (api-routes-rest:CR-01) — canonical ingress
@@ -391,7 +391,7 @@ services:
     networks: [openwhispr_internal]
     env_file: .env
     environment:
-      NODE_ENV: production
+      NODE_ENV: ${NODE_ENV:-production}
       VALKEY_HOST: valkey
       VALKEY_PORT: "6379"
       VALKEY_PASSWORD: ${VALKEY_PASSWORD}
@@ -470,7 +470,7 @@ services:
       - "3000:3000"
     env_file: .env
     environment:
-      NODE_ENV: production
+      NODE_ENV: ${NODE_ENV:-production}
       # Same-origin: server-side fetches from RSC / route handlers reach
       # apps/api on the internal bridge (no Traefik hop). The browser-side
       # fetches go through Traefik via relative `/api/*` paths when the
