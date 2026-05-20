@@ -49,3 +49,28 @@ describe("LitellmUpstreamError — bodyText truncation (CR-9)", () => {
     expect(JSON.stringify(err)).not.toContain("x".repeat(201));
   });
 });
+
+// Phase 68 / Plan 68-01 — REVIEW litellm-client HIGH HI-1.
+// LOCKER-05's contract is "truncate AT CONSTRUCTION". The `bodyText`
+// path was truncated, but the optional `message` override was passed to
+// `super()` verbatim — so a caller could route an untruncated upstream
+// payload straight into `Error.message`.
+describe("HI-1 — LitellmUpstreamError message-override truncation", () => {
+  const HUGE = "y".repeat(500);
+
+  it("HI-1: a 500-char message override is truncated to <= 200 chars", () => {
+    const err = new LitellmUpstreamError(500, "body", HUGE);
+    expect(err.message.length).toBeLessThanOrEqual(200);
+  });
+
+  it("HI-1: an untruncated payload passed as `message` cannot reach Error.message", () => {
+    const err = new LitellmUpstreamError(500, "x".repeat(500), "z".repeat(500));
+    expect(err.message).not.toContain("z".repeat(201));
+    expect(JSON.stringify(err)).not.toContain("z".repeat(201));
+  });
+
+  it("HI-1: a short message override is preserved unchanged", () => {
+    const err = new LitellmUpstreamError(500, "body", "short-msg");
+    expect(err.message).toBe("short-msg");
+  });
+});

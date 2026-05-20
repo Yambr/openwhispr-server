@@ -70,7 +70,12 @@ export class LitellmUpstreamError extends Error {
     // a verbose upstream payload (which could include secret-shaped
     // provider responses) into our own log surface.
     const truncated = bodyText.slice(0, 200);
-    super(message ?? `LiteLLM upstream returned ${status}: ${truncated}`);
+    // Phase 68 / Plan 68-01 — REVIEW litellm-client HIGH HI-1: the
+    // optional `message` override is ALSO truncated at construction. The
+    // LOCKER-05 contract is "truncate AT CONSTRUCTION" — passing the
+    // override to `super()` verbatim let a caller route an untruncated
+    // upstream payload straight into `Error.message`.
+    super((message ?? `LiteLLM upstream returned ${status}: ${truncated}`).slice(0, 200));
     this.name = "LitellmUpstreamError";
     this.status = status;
     // Non-enumerable: drops the field from JSON.stringify(err) entirely,
