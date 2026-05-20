@@ -170,8 +170,15 @@ interface AuthedReq extends FastifyRequest {
  */
 export function buildTestOnlyRoutes(deps: TestOnlyDeps) {
   return async function testOnlyRoutes(app: FastifyInstance): Promise<void> {
+    // Phase 57 / Track C — api-routes-rest:CR-02 + CR-03. The production
+    // veto is lifted to the plugin-registration gate: NODE_ENV='production'
+    // hard-refuses the WHOLE /api/_test/* surface regardless of
+    // OPENWHISPR_TEST_ROUTES. A misset env knob can no longer re-open the
+    // admin-claim window (reset-setup) or force a session rotation
+    // (force-rotate). Closes api-routes-rest:CR-02 + CR-03 (Phase 57).
     const enabled =
-      process.env.NODE_ENV === "test" || process.env.OPENWHISPR_TEST_ROUTES === "true";
+      process.env.NODE_ENV !== "production" &&
+      (process.env.NODE_ENV === "test" || process.env.OPENWHISPR_TEST_ROUTES === "true");
     if (!enabled) {
       // Gate: production / dev / staging — no routes registered.
       return;
