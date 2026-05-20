@@ -24,6 +24,7 @@
     "MULTIPART_FILE_FIELD_REQUIRED": "Expected multipart/form-data with `file` field",
     "MULTIPART_FILE_FIELD_MISSING": "Expected `file` multipart field",
     "FILE_TOO_LARGE": "File exceeds size limit",
+    "EMPTY_AUDIO": "Audio file is empty",
     "TRANSCRIPTION_UPSTREAM_FAILED": "Upstream transcription provider failure",
     "WEB_SEARCH_UPSTREAM_FAILED": "Web-search upstream failed",
     "WEB_SEARCH_DISABLED": "Web search is disabled",

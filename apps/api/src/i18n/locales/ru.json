@@ -24,6 +24,7 @@
     "MULTIPART_FILE_FIELD_REQUIRED": "Ожидается multipart/form-data с полем `file`",
     "MULTIPART_FILE_FIELD_MISSING": "Ожидается поле `file` в multipart-запросе",
     "FILE_TOO_LARGE": "Размер файла превышает допустимый предел",
+    "EMPTY_AUDIO": "Аудиофайл пуст",
     "TRANSCRIPTION_UPSTREAM_FAILED": "Ошибка вышестоящего провайдера транскрипции",
     "WEB_SEARCH_UPSTREAM_FAILED": "Сбой вышестоящего сервиса веб-поиска",
     "WEB_SEARCH_DISABLED": "Веб-поиск отключён",
