@@ -90,6 +90,7 @@ import {
   buildUsageRollupDispatcher,
   buildUsageRollupTenantHandler,
 } from "./jobs/usage-rollup-daily.js";
+import { drainStaleVkrKeys } from "./lib/vkr-drain.js";
 import { buildQueueRegistry, closeQueueRegistry, QUEUE_NAMES } from "./queues.js";
 import { installSchedulers } from "./scheduler.js";
 
@@ -118,47 +119,10 @@ const workerConfig = loadWorkerConfig();
 // by Phase 6 Plan 06-08 pending the worker i18n surface (this plan).
 const templateRenderer = createTemplateRenderer();
 
-/**
- * Phase 14 / Plan 05 — transient cleanup of stale BullMQ keys left over
- * from the deleted virtual-key-rotation worker. Operators upgrading
- * in-place have `bull:virtual-key-rotation:*` keys in Valkey from a
- * previous worker boot; BullMQ would not delete them on its own and a
- * resurrected Worker pickup of a nonexistent queue is harmless but
- * produces log noise. SCAN+DEL with a small COUNT so the cleanup is
- * non-blocking on a large keyspace. Idempotent — a second boot finds
- * zero matching keys and exits the loop cleanly. Safe to remove in a
- * future phase once stragglers stop appearing. Wrapped in try/catch
- * because cleanup failure must NEVER prevent the worker from booting.
- */
-async function drainStaleVkrKeys(redis: IORedis, logger: typeof log): Promise<void> {
-  try {
-    let cursor = "0";
-    let total = 0;
-    do {
-      // SCAN returns [next_cursor, keys[]]. COUNT is a hint to Valkey.
-      const [next, keys] = await redis.scan(
-        cursor,
-        "MATCH",
-        "bull:virtual-key-rotation:*",
-        "COUNT",
-        "200",
-      );
-      cursor = next;
-      if (keys.length > 0) {
-        await redis.del(...keys);
-        total += keys.length;
-      }
-    } while (cursor !== "0");
-    if (total > 0) {
-      logger.info(
-        { deleted: total },
-        "drained stale bull:virtual-key-rotation:* keys (Plan 14-05)",
-      );
-    }
-  } catch (err) {
-    logger.warn({ err }, "transient vkr-key cleanup failed; non-fatal");
-  }
-}
+// Phase 66 / CR-07 — `drainStaleVkrKeys` (with the SCAN iteration cap +
+// failure counter) lives in `./lib/vkr-drain.ts` so it can be unit-tested
+// without importing this entrypoint (which runs `main()` as a top-level
+// side effect). See that module for the Plan 14-05 rationale.
 
 async function main(): Promise<void> {
   const redis = new IORedis({
