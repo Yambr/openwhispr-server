@@ -95,6 +95,33 @@ describe("POST /__test/fetch (Phase 6 / Plan 06-12b debug fetch)", () => {
         await app.close();
       }
     });
+
+    it("HI-02 — returns 404 when NODE_ENV='production' even with OPENWHISPR_TEST_ROUTES=true", async () => {
+      // HI-02 regression: a misset OPENWHISPR_TEST_ROUTES copied from a dev
+      // .env into a production deployment must NOT mount the unauthenticated
+      // arbitrary-URL fetcher. The production veto wins over the env flag.
+      const previousRoutes = process.env.OPENWHISPR_TEST_ROUTES;
+      process.env.OPENWHISPR_TEST_ROUTES = "true";
+      try {
+        const app = await makeApp({ nodeEnv: "production" });
+        try {
+          const res = await app.inject({
+            method: "POST",
+            url: "/__test/fetch",
+            payload: { url: "https://example.com" },
+          });
+          expect(res.statusCode).toBe(404);
+        } finally {
+          await app.close();
+        }
+      } finally {
+        if (previousRoutes === undefined) {
+          delete process.env.OPENWHISPR_TEST_ROUTES;
+        } else {
+          process.env.OPENWHISPR_TEST_ROUTES = previousRoutes;
+        }
+      }
+    });
   });
 
   describe("NODE_ENV='test' (route registered)", () => {

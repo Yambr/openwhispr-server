@@ -8,10 +8,10 @@ apps/api/src/index.ts:408  # issue-51-13c-audit-ctx — FastifyRequest → audit
 apps/api/src/index.ts:436  # issue-51-13c-tx-bridge-ssrf — same TransactionalDb narrowing for ssrf-audit path (line drifted +23) (57-E +12) (57-F +20) (60-A +32)
 apps/api/src/index.ts:471  # issue-51-13c-audit-ctx-ssrf — same audit-ctx narrowing on ssrf path (line drifted +23) (57-E +12) (57-F +20) (60-A +32)
 apps/api/src/index.ts:507  # issue-51-13c-db-execute-shape — opts.db.execute() structural surface for licensing probe (line drifted +23) (57-E +12) (57-F +20) (60-A +32)
-apps/api/src/index.ts:703  # issue-55-05b-locker-comment — narrative reference to "as unknown as" cap inside the setupAdmin wiring comment block (57-E +12) (57-F +20) (60-A +32)
-apps/api/src/index.ts:707  # issue-51-13c-auth-like — buildAuth() returns AuthInstance; dual-auth-hook consumes AuthLike (51-25 +1; 55-05b +34) (57-E +12) (57-F +20) (60-A +32)
-apps/api/src/index.ts:771  # issue-51-13c-redis-narrow — ioredis client → RedisLike narrow subset (51-25 +1; 53-42 +8; 55-05b +34) (57-E +12) (57-F +20) (60-A +32)
-apps/api/src/index.ts:808  # issue-51-13c-valkey-widen — RedisLike → ioredis.Redis for sched plugin (51-25 +1; 53-42 +8; 55-05b +34) (57-E +12) (57-F +20) (60-A +32)
+apps/api/src/index.ts:711  # issue-55-05b-locker-comment — narrative reference to "as unknown as" cap inside the setupAdmin wiring comment block (57-E +12) (57-F +20) (60-A +32) (62-02 +8)
+apps/api/src/index.ts:715  # issue-51-13c-auth-like — buildAuth() returns AuthInstance; dual-auth-hook consumes AuthLike (51-25 +1; 55-05b +34) (57-E +12) (57-F +20) (60-A +32) (62-02 +8)
+apps/api/src/index.ts:779  # issue-51-13c-redis-narrow — ioredis client → RedisLike narrow subset (51-25 +1; 53-42 +8; 55-05b +34) (57-E +12) (57-F +20) (60-A +32) (62-02 +8)
+apps/api/src/index.ts:816  # issue-51-13c-valkey-widen — RedisLike → ioredis.Redis for sched plugin (51-25 +1; 53-42 +8; 55-05b +34) (57-E +12) (57-F +20) (60-A +32) (62-02 +8)
 apps/api/src/lib/api-error-status.ts:52  # issue-51-13c-api-error-status — better-auth APIError.status field type drifts across minors (string-name vs number); narrow probe documented at L18-22
 apps/web/src/components/screens/account/SessionsTable.tsx:10  # issue-31-debt-suppression
 apps/web/src/lib/form-utils.ts:34  # issue-31-debt-suppression

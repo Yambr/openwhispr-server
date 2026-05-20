@@ -15,10 +15,15 @@
 //          entry point.  This route is THAT entry point.
 //
 // Security posture:
-//   * First-line `NODE_ENV !== 'test'` guard — production never sees this
-//     route.  The `apps/api/src/index.ts` registration is also gated on
-//     the same flag (defense in depth, matches the pattern from
-//     apps/api/src/routes/test-only.ts).
+//   * Production veto (REVIEW api-core HIGH HI-02 / Phase 62): registration
+//     is REFUSED outright when `NODE_ENV === 'production'`, regardless of
+//     `OPENWHISPR_TEST_ROUTES`. A misset env flag copied from a dev `.env`
+//     into a production deployment can no longer mount this route.
+//   * Otherwise gated on `NODE_ENV === 'test'` OR the explicit
+//     `OPENWHISPR_TEST_ROUTES=true` flag (the non-production compose
+//     contract-test stack uses the env flag). The `apps/api/src/index.ts`
+//     registration carries the SAME production veto + gate (defense in
+//     depth, matches the pattern from apps/api/src/routes/test-only.ts).
 //   * No auth.  No rate-limit.  The route exists exclusively for the
 //     hermetic e2e stack which sets NODE_ENV=test on the api service.
 //   * The fetched URL is NEVER returned to the caller — only the upstream
@@ -58,11 +63,17 @@ export function buildDebugFetchRoutes(deps: DebugFetchDeps = {}) {
     // gate), the registration becomes a no-op so production bundles
     // cannot accidentally expose the route. Plan 51-25 — also accept
     // the explicit `OPENWHISPR_TEST_ROUTES=true` env flag so the
-    // compose contract-test stack (which runs NODE_ENV=production)
-    // can drive this route without flipping NODE_ENV.
+    // non-production compose contract-test stack can drive this route.
+    //
+    // HI-02 (Phase 62): the `NODE_ENV !== "production"` term is an
+    // absolute veto — it short-circuits the env-flag branch so a misset
+    // `OPENWHISPR_TEST_ROUTES=true` in production never registers the
+    // route. Same veto as apps/api/src/routes/test-only.ts (Phase 57
+    // Track C) and the parallel gate in apps/api/src/index.ts.
     const gated =
-      TEST_NODE_ENVS.has(process.env.NODE_ENV ?? "") ||
-      process.env.OPENWHISPR_TEST_ROUTES === "true";
+      process.env.NODE_ENV !== "production" &&
+      (TEST_NODE_ENVS.has(process.env.NODE_ENV ?? "") ||
+        process.env.OPENWHISPR_TEST_ROUTES === "true");
     if (!gated) {
       return;
     }

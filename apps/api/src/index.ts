@@ -613,11 +613,19 @@ export const buildApp = async (opts: BuildAppOptions = {}): Promise<FastifyInsta
 
   // Phase 6 / Plan 06-12b — debug-only outbound-fetch helper. Registered
   // ONLY when NODE_ENV === 'test' OR the explicit OPENWHISPR_TEST_ROUTES
-  // gate is set (compose contract-test stack uses the env flag because
-  // it runs NODE_ENV=production). The plugin itself enforces the gate
-  // again at registration (defense in depth — same pattern as
-  // apps/api/src/routes/test-only.ts). Plan 51-25.
-  if (process.env.NODE_ENV === "test" || process.env.OPENWHISPR_TEST_ROUTES === "true") {
+  // gate is set (the non-production compose contract-test stack uses the
+  // env flag). The plugin itself enforces the gate again at registration
+  // (defense in depth — same pattern as apps/api/src/routes/test-only.ts).
+  // Plan 51-25.
+  //
+  // HI-02 (Phase 62): `NODE_ENV !== "production"` is an absolute veto —
+  // a misset OPENWHISPR_TEST_ROUTES=true copied into a production .env can
+  // no longer mount this unauthenticated arbitrary-URL fetcher. Same veto
+  // Phase 57 Track C applied to the /api/_test/* plugin gate.
+  if (
+    process.env.NODE_ENV !== "production" &&
+    (process.env.NODE_ENV === "test" || process.env.OPENWHISPR_TEST_ROUTES === "true")
+  ) {
     await app.register(buildDebugFetchRoutes());
   }
 
