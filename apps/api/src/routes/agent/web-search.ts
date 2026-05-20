@@ -100,14 +100,11 @@ export const buildWebSearchRoutes = (deps: WebSearchDeps) =>
           // error handler emits the class-default literal). The throw
           // site keeps a code+literal pair so a future handler change
           // cannot re-leak the env-var hint.
-          const envVarName =
-            provider.name === "tavily"
-              ? "TAVILY_API_KEY"
-              : provider.name === "yandex"
-                ? "YANDEX_SEARCH_API_KEY + YANDEX_SEARCH_FOLDER_ID"
-                : "<provider env vars>";
+          // WR-05 (Phase 65) — the operator env-var label is read generically
+          // off the WebSearchProvider interface. A new adapter supplies its
+          // own `envVarLabel`; no route-side string fork can drift.
           req.log.warn(
-            { provider: provider.name, envVarName },
+            { provider: provider.name, envVarName: provider.envVarLabel },
             "web-search provider not configured",
           );
           throw new TypedServiceUnavailable(
