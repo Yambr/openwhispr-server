@@ -128,6 +128,33 @@ describe("/readyz (D-P1 — checks Postgres + Valkey + LiteLLM)", () => {
     await app.close();
   });
 
+  // Phase 59 / Track B — R16 facet 1: an intentionally-absent litellm
+  // (corporate override pointing elsewhere, or a deploy with no bundled
+  // litellm) must NOT drag /readyz to 503. The dep-check reports it
+  // `skipped:true` and the aggregate excludes a skipped dep.
+  it("R16 — returns 200 when LiteLLM is honestly reported skipped", async () => {
+    const { fn } = makeDepCheckFake({
+      litellm: { ok: true, latency_ms: 0, skipped: true },
+    });
+    const app = await makeApp(fn);
+    const res = await app.inject({ method: "GET", url: "/readyz" });
+    expect(res.statusCode).toBe(200);
+    const body = res.json() as Record<DepName, DepResult>;
+    expect(body.litellm.skipped).toBe(true);
+    await app.close();
+  });
+
+  it("R16 — a skipped litellm does not mask a real postgres outage", async () => {
+    const { fn } = makeDepCheckFake({
+      litellm: { ok: true, latency_ms: 0, skipped: true },
+      postgres: { ok: false, latency_ms: 5, error: "ECONNREFUSED" },
+    });
+    const app = await makeApp(fn);
+    const res = await app.inject({ method: "GET", url: "/readyz" });
+    expect(res.statusCode).toBe(503);
+    await app.close();
+  });
+
   it("returns 503 with operator-actionable error when depCheck is not wired", async () => {
     const app = await makeApp(); // no depCheck
     const res = await app.inject({ method: "GET", url: "/readyz" });

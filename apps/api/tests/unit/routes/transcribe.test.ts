@@ -319,6 +319,28 @@ describe("POST /api/transcribe", () => {
     expect(calls).toHaveLength(0);
   });
 
+  // Phase 59 / Track B — R16 facet 2: a zero-byte audio file part must be
+  // rejected with 400 BEFORE any upstream call. Pre-fix the empty body
+  // streamed through to litellm and 502'd.
+  it("R16 — rejects a zero-byte file part with 400 before any upstream call", async () => {
+    const { db } = makeFakeDb();
+    const calls: AudioTranscriptionRequest[] = [];
+    const litellm = makeFakeLitellm({ calls, bodyByteCount: 0 });
+    app = buildApp({ db, litellm });
+    const { body, contentType } = multipartBody("");
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/transcribe",
+      headers: { "content-type": contentType },
+      payload: body,
+    });
+    expect(res.statusCode).toBe(400);
+    const env = ErrorEnvelope.parse(res.json());
+    expect(env.error).toMatch(/empty/i);
+    // The empty upload NEVER reached the STT upstream.
+    expect(calls).toHaveLength(0);
+  });
+
   it("forwards req.raw without buffering (1.5 MB payload streams through)", async () => {
     const { db } = makeFakeDb();
     const calls: AudioTranscriptionRequest[] = [];

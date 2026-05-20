@@ -108,6 +108,22 @@ describe("dep-check (D-P2) — real services", () => {
     expect(ll.ok).toBe(true);
   });
 
+  // Phase 59 / Track B — R16 facet 1: an unset/empty litellmUrl reports
+  // the litellm dep `skipped:true` (ok:true) WITHOUT an outbound call.
+  it("R16 — litellm probe is skipped when litellmUrl is unset", async () => {
+    const check = makeDepCheck({ pg: pgPool, valkey });
+    const ll = await check("litellm");
+    expect(ll.ok).toBe(true);
+    expect(ll.skipped).toBe(true);
+  });
+
+  it("R16 — litellm probe is skipped when litellmUrl is whitespace-only", async () => {
+    const check = makeDepCheck({ pg: pgPool, valkey, litellmUrl: "   " });
+    const ll = await check("litellm");
+    expect(ll.ok).toBe(true);
+    expect(ll.skipped).toBe(true);
+  });
+
   it("checkPostgres runs SELECT 1 (cheap roundtrip) and reports latency_ms", async () => {
     const check = makeFresh();
     const r = await check("postgres");
