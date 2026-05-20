@@ -6,15 +6,15 @@
  * server-side request. Better Auth's `validateOrigin` middleware throws
  * `403 MISSING_OR_NULL_ORIGIN` BEFORE `trustedOrigins` is consulted, so a
  * `trustedOrigins` predicate cannot rescue a missing/null Origin. The
- * supported escape hatch is `advanced.disableOriginCheck` as a path-array,
+ * supported, type-clean escape hatch is `advanced.disableOriginCheck`,
  * which `validateOrigin` honours via `shouldSkipOriginCheck`.
  *
- * R18 fix: relax the Origin check for the auth sign-in paths ONLY when
- * `OPENWHISPR_TEST_ROUTES === "true"` AND `NODE_ENV !== "production"` — the
- * SAME double-gate R1/R13 use for seed-tenant. Production never relaxes.
+ * R18 fix: relax the Origin check ONLY when `OPENWHISPR_TEST_ROUTES`
+ * is `"true"` AND the runtime mode is non-production — the SAME
+ * double-gate R1/R13 use for seed-tenant. Production never relaxes.
  *
- * Reverts: this test goes RED if `disableOriginCheck` stops being a
- * path-array gated on the test-routes double-gate.
+ * Reverts: this test goes RED if `disableOriginCheck` stops being
+ * gated on the test-routes double-gate.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -69,23 +69,20 @@ describe("Phase 59 R18 — null-Origin relaxation for sign-in/email", () => {
     process.env = originalEnv;
   });
 
-  it("test-routes ON + non-production → sign-in path is in disableOriginCheck", () => {
+  it("test-routes ON + non-production → disableOriginCheck is true", () => {
     process.env.OPENWHISPR_TEST_ROUTES = "true";
     process.env.NODE_ENV = "development";
     buildAuth({ db: stubDb, email: stubEmail });
     const { disableOriginCheck } = lastAdvanced();
-    expect(Array.isArray(disableOriginCheck)).toBe(true);
-    expect(disableOriginCheck as string[]).toContain("/sign-in/email");
+    expect(disableOriginCheck).toBe(true);
   });
 
-  it("test-routes OFF → no Origin relaxation (disableOriginCheck absent/empty)", () => {
+  it("test-routes OFF → no Origin relaxation (disableOriginCheck absent)", () => {
     delete process.env.OPENWHISPR_TEST_ROUTES;
     process.env.NODE_ENV = "development";
     buildAuth({ db: stubDb, email: stubEmail });
     const { disableOriginCheck } = lastAdvanced();
-    expect(disableOriginCheck === undefined || (disableOriginCheck as string[]).length === 0).toBe(
-      true,
-    );
+    expect(disableOriginCheck).toBeUndefined();
   });
 
   it("production never relaxes even with test-routes ON", () => {
@@ -93,9 +90,7 @@ describe("Phase 59 R18 — null-Origin relaxation for sign-in/email", () => {
     process.env.NODE_ENV = "production";
     buildAuth({ db: stubDb, email: stubEmail });
     const { disableOriginCheck } = lastAdvanced();
-    expect(disableOriginCheck === undefined || (disableOriginCheck as string[]).length === 0).toBe(
-      true,
-    );
+    expect(disableOriginCheck).toBeUndefined();
   });
 
   it("never uses the wildcard trustedOrigins escape", () => {

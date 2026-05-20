@@ -704,17 +704,19 @@ export function buildAuth(opts: BuildAuthOptions): AuthInstance {
       //
       // A non-browser client (the desktop harness running undici `fetch`)
       // sends no `Origin` header; Better Auth's `validateOrigin` throws
-      // `403 MISSING_OR_NULL_ORIGIN` before `trustedOrigins` is consulted.
-      // `disableOriginCheck` as a path-array makes `validateOrigin` skip
-      // the check for those Better-Auth-basePath-relative paths only.
+      // `403 MISSING_OR_NULL_ORIGIN` before `trustedOrigins` is consulted,
+      // so a `trustedOrigins` predicate cannot rescue it. The supported,
+      // type-clean escape hatch is `advanced.disableOriginCheck` — it
+      // makes `validateOrigin` skip the Origin / null-Origin check.
       //
       // `validateOriginBoot()` (config/auth.ts — the LOCKER-01-allowlisted
       // home for the runtime-mode branch) returns `relaxNullOrigin: true`
       // ONLY under the seed-tenant double-gate: OPENWHISPR_TEST_ROUTES is
       // `"true"` AND the runtime mode is non-production. Production keeps
-      // the full CSRF posture — the array is empty and Better Auth
-      // enforces the Origin check. Never `trustedOrigins:['*']`.
-      ...(validateOriginBoot().relaxNullOrigin ? { disableOriginCheck: ["/sign-in/email"] } : {}),
+      // the full CSRF posture — the flag is absent and Better Auth
+      // enforces the Origin check on every `/api/auth/*` route. No env var
+      // flips this on in production. Never `trustedOrigins:['*']`.
+      ...(validateOriginBoot().relaxNullOrigin ? { disableOriginCheck: true } : {}),
     },
     plugins,
   }) as unknown as AuthInstance;
