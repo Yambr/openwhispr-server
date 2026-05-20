@@ -14,7 +14,9 @@
 //   * mintBearer is invoked with (code, codeVerifier, scheme) extracted
 //     from the consumed oauth_state row.
 
+import { randomBytes } from "node:crypto";
 import { ErrorEnvelope } from "@openwhispr/contract-tests/schemas";
+import { EnvKeyProvider, encryptCodeVerifier, type KeyProvider } from "@openwhispr/data";
 import Fastify, { type FastifyInstance } from "fastify";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { registerErrorHandler } from "../../../src/error-handler.js";
@@ -24,13 +26,34 @@ import { buildAuthCallbackRoutes, type MintBearer } from "../../../src/routes/au
 const VALID_STATE_ID = "11111111-2222-3333-4444-555555555555";
 const UNKNOWN_STATE_ID = "99999999-9999-9999-9999-999999999999";
 
+// Phase 60 / Track B — test-fixture drift fix. Migration 0020 (Phase 33)
+// dropped the plaintext `oauth_state.code_verifier` column; the route
+// reads 6 `code_verifier_*` bytea sidecars and calls
+// `decryptCodeVerifierFromRow`, which throws "missing bytea sidecars"
+// when the fake row lacks them → 500 instead of 302. The fake DB is the
+// test's process boundary; making it return the REAL encrypted shape the
+// production schema emits corrects the fake to match reality (NOT a mock
+// of internal logic). A deterministic env KeyProvider encrypts the
+// verifier; the same provider is fed into the route deps so its decrypt
+// round-trips.
 interface FakeStateRow {
   id: string;
   scheme: string;
+  // Plaintext kept on the fixture object only as the encrypt input /
+  // round-trip oracle — it is NOT a column the route reads.
   code_verifier: string;
+  code_verifier_dek_wrapped: Buffer;
+  code_verifier_dek_iv: Buffer;
+  code_verifier_dek_auth_tag: Buffer;
+  code_verifier_value_iv: Buffer;
+  code_verifier_value_auth_tag: Buffer;
+  code_verifier_value_ciphertext: Buffer;
   consumed_at: string | null;
   expires_at: string;
 }
+
+/** Deterministic per-suite env KeyProvider — fed to both encrypt + the route. */
+let keyProvider: KeyProvider;
 
 type FakeTx = { execute(query: unknown): Promise<unknown> };
 
@@ -122,15 +145,21 @@ function makeFakeDb(rows: Map<string, FakeStateRow>): {
 function buildApp(deps: Parameters<typeof buildAuthCallbackRoutes>[0]): FastifyInstance {
   const app = Fastify({ logger: false });
   registerErrorHandler(app);
-  app.register(buildAuthCallbackRoutes(deps));
+  // Phase 60 / Track B — bind the suite KeyProvider so the route's
+  // `decryptCodeVerifierFromRow` uses the SAME provider the fixtures
+  // encrypted with (round-trip recovers the plaintext verifier).
+  app.register(buildAuthCallbackRoutes({ keyProvider, ...deps }));
   return app;
 }
 
-function freshRow(scheme: string): FakeStateRow {
+async function freshRow(scheme: string): Promise<FakeStateRow> {
+  const plaintext = `verifier-for-${scheme}`;
+  const sidecars = await encryptCodeVerifier(keyProvider, plaintext);
   return {
     id: VALID_STATE_ID,
     scheme,
-    code_verifier: `verifier-for-${scheme}`,
+    code_verifier: plaintext,
+    ...sidecars,
     consumed_at: null,
     expires_at: new Date(Date.now() + 10 * 60_000).toISOString(),
   };
@@ -139,17 +168,20 @@ function freshRow(scheme: string): FakeStateRow {
 describe("GET /api/auth/desktop-callback/:provider", () => {
   beforeEach(() => {
     _resetDefaultTenantCacheForTesting();
+    // Deterministic 32-byte KEK so EnvKeyProvider can wrap/unwrap DEKs.
+    vi.stubEnv("MASTER_KEK", randomBytes(32).toString("base64url"));
+    keyProvider = new EnvKeyProvider();
   });
 
   afterEach(() => {
-    /* noop */
+    vi.unstubAllEnvs();
   });
 
   describe("happy path: 4-scheme matrix", () => {
     const matrix = ["openwhispr", "openwhispr-dev", "openwhispr-staging", "mycorp-whispr"];
     for (const scheme of matrix) {
       it(`echoes scheme '${scheme}' in the final redirect`, async () => {
-        const rows = new Map<string, FakeStateRow>([[VALID_STATE_ID, freshRow(scheme)]]);
+        const rows = new Map<string, FakeStateRow>([[VALID_STATE_ID, await freshRow(scheme)]]);
         const mintBearer: MintBearer = vi
           .fn<MintBearer>()
           .mockResolvedValue("opaque-token-abcDEF_-123");
@@ -183,7 +215,7 @@ describe("GET /api/auth/desktop-callback/:provider", () => {
 
   describe("state lifecycle errors", () => {
     it("state already consumed → 400 + envelope", async () => {
-      const row = freshRow("openwhispr");
+      const row = await freshRow("openwhispr");
       row.consumed_at = new Date(Date.now() - 60_000).toISOString();
       const rows = new Map([[VALID_STATE_ID, row]]);
       const mintBearer = vi.fn();
@@ -204,7 +236,7 @@ describe("GET /api/auth/desktop-callback/:provider", () => {
     });
 
     it("state expired → 400 + envelope", async () => {
-      const row = freshRow("openwhispr");
+      const row = await freshRow("openwhispr");
       row.expires_at = new Date(Date.now() - 60_000).toISOString();
       const rows = new Map([[VALID_STATE_ID, row]]);
       const { db } = makeFakeDb(rows);
@@ -299,7 +331,7 @@ describe("GET /api/auth/desktop-callback/:provider", () => {
       // NOT as 'already consumed'. The CAS UPDATE rejects the row (both
       // conditions in the WHERE clause fail) and the diagnostic probe
       // checks expires_at FIRST.
-      const row = freshRow("openwhispr");
+      const row = await freshRow("openwhispr");
       row.consumed_at = new Date(Date.now() - 11 * 60_000).toISOString();
       row.expires_at = new Date(Date.now() - 60_000).toISOString();
       const rows = new Map([[VALID_STATE_ID, row]]);
@@ -321,7 +353,7 @@ describe("GET /api/auth/desktop-callback/:provider", () => {
 
   describe("operator-misconfigured (no mintBearer adapter)", () => {
     it("returns 503 when mintBearer is unset and state is valid", async () => {
-      const rows = new Map([[VALID_STATE_ID, freshRow("openwhispr")]]);
+      const rows = new Map([[VALID_STATE_ID, await freshRow("openwhispr")]]);
       const { db } = makeFakeDb(rows);
       const app = buildApp({ db });
       const res = await app.inject({

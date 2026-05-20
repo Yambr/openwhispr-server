@@ -16,6 +16,8 @@
 //   - vi.stubGlobal('fetch', ...) for IdP token + userinfo exchange
 //   - Fake auth.$context with internalAdapter spies
 //   - Fake DB matching auth-callback.test.ts pattern (queryChunks SQL)
+import { randomBytes } from "node:crypto";
+import { EnvKeyProvider, encryptCodeVerifier, type KeyProvider } from "@openwhispr/data";
 import Fastify, { type FastifyInstance } from "fastify";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { registerErrorHandler } from "../../../src/error-handler.js";
@@ -26,13 +28,26 @@ import { buildAuthCallbackRoutes } from "../../../src/routes/auth-callback.js";
 const STATE_ID = "11111111-2222-3333-4444-555555555555";
 const FAKE_TOKEN = "b".repeat(32);
 
+// Phase 60 / Track B — test-fixture drift fix. The fake oauth_state row
+// must carry the 6 encrypted `code_verifier_*` bytea sidecars the
+// post-Phase-33 route reads via `decryptCodeVerifierFromRow`; a
+// plaintext-only fake throws "missing bytea sidecars" → 500.
 interface FakeStateRow {
   id: string;
   scheme: string;
   code_verifier: string;
+  code_verifier_dek_wrapped: Buffer;
+  code_verifier_dek_iv: Buffer;
+  code_verifier_dek_auth_tag: Buffer;
+  code_verifier_value_iv: Buffer;
+  code_verifier_value_auth_tag: Buffer;
+  code_verifier_value_ciphertext: Buffer;
   consumed_at: string | null;
   expires_at: string;
 }
+
+/** Deterministic per-suite env KeyProvider — fed to both encrypt + the route. */
+let keyProvider: KeyProvider;
 
 type FakeTx = { execute(query: unknown): Promise<unknown> };
 
@@ -108,6 +123,10 @@ describe("Phase 02.7 / D-01 end-to-end: desktop-callback → real mintBearer →
     vi.unstubAllGlobals();
     vi.unstubAllEnvs();
     process.env = { ...ORIGINAL_ENV };
+    // Phase 60 / Track B — deterministic 32-byte KEK so EnvKeyProvider
+    // can wrap/unwrap the per-row DEK for the encrypted code_verifier.
+    vi.stubEnv("MASTER_KEK", randomBytes(32).toString("base64url"));
+    keyProvider = new EnvKeyProvider();
     vi.stubEnv("OIDC_CLIENT_ID", "client-id-fixture");
     vi.stubEnv("OIDC_CLIENT_SECRET", "client-secret-fixture");
     vi.stubEnv("OIDC_TOKEN_URL", "https://idp.test/token");
@@ -154,6 +173,7 @@ describe("Phase 02.7 / D-01 end-to-end: desktop-callback → real mintBearer →
     vi.stubGlobal("fetch", fetchSpy);
 
     const mintBearer = buildMintBearer({ auth });
+    const sidecars = await encryptCodeVerifier(keyProvider, "verifier-from-row");
     const rows = new Map<string, FakeStateRow>([
       [
         STATE_ID,
@@ -161,6 +181,7 @@ describe("Phase 02.7 / D-01 end-to-end: desktop-callback → real mintBearer →
           id: STATE_ID,
           scheme: "openwhispr-dev",
           code_verifier: "verifier-from-row",
+          ...sidecars,
           consumed_at: null,
           expires_at: new Date(Date.now() + 10 * 60_000).toISOString(),
         },
@@ -170,7 +191,7 @@ describe("Phase 02.7 / D-01 end-to-end: desktop-callback → real mintBearer →
 
     app = Fastify({ logger: false });
     registerErrorHandler(app);
-    await app.register(buildAuthCallbackRoutes({ db, mintBearer }));
+    await app.register(buildAuthCallbackRoutes({ db, mintBearer, keyProvider }));
 
     const res = await app.inject({
       method: "GET",
