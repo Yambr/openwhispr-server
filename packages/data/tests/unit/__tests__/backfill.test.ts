@@ -361,3 +361,69 @@ describe.skip("runBackfill — integration on real PG testcontainer (obsolete po
     expect(typeof userId).toBe("string");
   });
 });
+
+// Phase 67 / Plan 67-01 — HI-04: lens-managed-column guard.
+//
+// Post-Phase-57 Track A, `apps/api/src/auth.ts:172` `ENCRYPTED_COLUMNS_MAP` is
+// POPULATED — the encryption lens encrypts `account.{password,access_token,
+// refresh_token,id_token}`, `session.{token,previous_token}` and
+// `verification.value` on EVERY Better-Auth write. A bulk `runBackfill` over
+// those columns is therefore (a) unnecessary — the lens already did it — and
+// (b) data-corrupting — it encrypts into the bytea sidecars while leaving the
+// plaintext column populated, so a later lens read silently overwrites Better
+// Auth's live plaintext credential. `runBackfill` must REFUSE any lens-managed
+// (table,column) pair before touching the DB. The guard is a static
+// refuse-list (the review's "while ENCRYPTED_COLUMNS_MAP is empty" framing is
+// STALE — the map is populated). The guard must match BOTH the `session`
+// model name AND the `sessions` SQL table name (table-name skew).
+describe("runBackfill — HI-04 lens-managed-column guard", () => {
+  let boot: BootResult;
+  let ownerPool: Pool;
+  let provider: EnvKeyProvider;
+  const kek = makeKek();
+
+  beforeAll(async () => {
+    process.env.MASTER_KEK = kek;
+    boot = await bootMigratedPostgres({ withPgPartman: true });
+    ownerPool = new Pool({ connectionString: boot.ownerUri });
+    provider = new EnvKeyProvider();
+  }, 180_000);
+
+  afterAll(async () => {
+    await ownerPool.end();
+    await boot.stop();
+    delete process.env.MASTER_KEK;
+  });
+
+  // RED 1 — guard refuses each lens-managed (table,column) pair, in BOTH the
+  // `account`/`verification` table name forms AND both `session` + `sessions`.
+  it.each<[string, BackfillColumnMap]>([
+    ["account.access_token", { account: { access_token: {} } }],
+    ["account.refresh_token", { account: { refresh_token: {} } }],
+    ["account.id_token", { account: { id_token: {} } }],
+    ["account.password", { account: { password: {} } }],
+    ["verification.value", { verification: { value: {} } }],
+    ["session.token (singular model name)", { session: { token: {} } }],
+    ["sessions.token (plural SQL name)", { sessions: { token: {} } }],
+    ["session.previous_token (singular)", { session: { previous_token: {} } }],
+    ["sessions.previous_token (plural)", { sessions: { previous_token: {} } }],
+  ])("HI-04: runBackfill refuses lens-managed column %s", async (_label, columnMap) => {
+    await expect(
+      runBackfill({ ownerPool, keyProvider: provider, columnMap, dryRun: true }),
+    ).rejects.toThrow(/lens-managed/i);
+  });
+
+  // RED 2 — guard is a NO-OP for a column the lens does NOT manage.
+  // `oauth_state.code_verifier` is codec-managed (not lens-managed) and is NOT
+  // in the refuse-list — the guard must not throw its lens-managed error here.
+  it("HI-04: runBackfill does NOT raise the guard error for a non-lens column", async () => {
+    const columnMap: BackfillColumnMap = { oauth_state: { code_verifier: {} } };
+    let guardError = false;
+    try {
+      await runBackfill({ ownerPool, keyProvider: provider, columnMap, dryRun: true });
+    } catch (err) {
+      if (/lens-managed/i.test((err as Error).message)) guardError = true;
+    }
+    expect(guardError).toBe(false);
+  });
+});
