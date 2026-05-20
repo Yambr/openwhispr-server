@@ -127,6 +127,25 @@ export const TICK_MS = 30_000;
 /** First-run lookback window: process spend rows from the last 5 minutes. */
 export const INITIAL_LOOKBACK_MS = 5 * 60_000;
 
+/**
+ * Phase 58 Track A / worker:CR-01 — bounded watermark-hold cap.
+ *
+ * When a spend row is skipped for a *recoverable* reason (missing end_user,
+ * missing tenant mapping — the mapping can materialize later), the watermark
+ * is held just before that row so the next tick re-scans it. To prevent the
+ * watermark stalling ingest forever on a row whose prerequisite never
+ * materializes, a recoverable-skip row OLDER than `now - MAX_RECOVERABLE_HOLD_MS`
+ * no longer holds the watermark — it ages out (treated as unrecoverable) and
+ * emits `recordBillingAnomaly("recoverable_skip_aged_out")` so operators see it.
+ */
+export const MAX_RECOVERABLE_HOLD_MS = 24 * 60 * 60_000;
+
+/**
+ * Epsilon (ms) subtracted from a held row's startTime so the next tick's
+ * `startTime > watermark` filter re-includes the held row itself.
+ */
+const WATERMARK_HOLD_EPSILON_MS = 1;
+
 /** Minimal redis surface needed by the job (get/set string watermark). */
 export interface RedisLike {
   get(key: string): Promise<string | null>;
@@ -275,6 +294,34 @@ export async function runIngestOnce(
   }
 
   let processed = 0;
+
+  /**
+   * Phase 58 Track A / worker:CR-01 — oldest startTime among rows skipped for
+   * a *recoverable* reason this tick (missing end_user / missing tenant). If
+   * set, the watermark is held just before this row so the next tick re-scans
+   * it. Rows older than `now - MAX_RECOVERABLE_HOLD_MS` age out (do NOT hold).
+   */
+  let oldestRecoverableSkip: Date | null = null;
+  const holdCutoff = Date.now() - MAX_RECOVERABLE_HOLD_MS;
+  const rowStart = (r: SpendLogRow): Date =>
+    r.startTime instanceof Date ? r.startTime : new Date(r.startTime);
+  /**
+   * Record a recoverable skip: hold the watermark on the oldest such row
+   * unless it has aged out past `MAX_RECOVERABLE_HOLD_MS`, in which case it
+   * is treated as unrecoverable (does not hold) and an aged-out anomaly fires.
+   */
+  const noteRecoverableSkip = (r: SpendLogRow): void => {
+    const ts = rowStart(r);
+    if (ts.getTime() < holdCutoff) {
+      // Prerequisite never materialized within the bounded window — age out.
+      recordBillingAnomaly("recoverable_skip_aged_out");
+      return;
+    }
+    if (oldestRecoverableSkip === null || ts.getTime() < oldestRecoverableSkip.getTime()) {
+      oldestRecoverableSkip = ts;
+    }
+  };
+
   for (const r of rows) {
     const ourRid =
       (r.metadata && typeof r.metadata["openwhispr_request_id"] === "string"
@@ -283,7 +330,11 @@ export async function runIngestOnce(
 
     const userId = r.end_user;
     if (!userId) {
-      log.warn({ rid: ourRid }, "spend log missing end_user — skipping");
+      // Recoverable: the spend row may gain an end_user later (or the api
+      // backfills it) — hold the watermark + emit an anomaly counter.
+      log.warn({ rid: ourRid }, "spend log missing end_user — skipping (watermark held)");
+      recordBillingAnomaly("missing_end_user");
+      noteRecoverableSkip(r);
       continue;
     }
 
@@ -293,7 +344,11 @@ export async function runIngestOnce(
     );
     const tenantId = tenantRes.rows[0]?.tenant_id;
     if (!tenantId) {
-      log.warn({ rid: ourRid, userId }, "no tenant for user — skipping spend row");
+      // Recoverable: the users row (user/tenant mapping) can materialize
+      // after this tick — hold the watermark + emit an anomaly counter.
+      log.warn({ rid: ourRid, userId }, "no tenant for user — skipping spend row (watermark held)");
+      recordBillingAnomaly("missing_tenant");
+      noteRecoverableSkip(r);
       continue;
     }
 
@@ -334,12 +389,24 @@ export async function runIngestOnce(
   // Watermark is owned by the live tick. Windowed-backfill callers
   // (reconciliation-discrepancy) MUST NOT advance it — doing so would
   // skip rows in the live ingestion stream.
+  //
+  // Phase 58 Track A / worker:CR-01 — the watermark must NOT advance past a
+  // row skipped for a recoverable reason (missing end_user / missing tenant),
+  // or that billable spend is permanently orphaned once the prerequisite
+  // materializes. Advance to min(lastRow.startTime, oldestRecoverableSkip - ε)
+  // so the next tick re-scans the unresolved row. Re-scanning is idempotent:
+  // INSERT ... ON CONFLICT (request_id) DO NOTHING — no double-billing.
   if (!windowed && rows.length > 0) {
     const last = rows[rows.length - 1];
     if (last) {
-      const ts =
-        last.startTime instanceof Date ? last.startTime.toISOString() : String(last.startTime);
-      await deps.redis.set(WATERMARK_KEY, ts);
+      let advanceTo = rowStart(last).getTime();
+      if (oldestRecoverableSkip !== null) {
+        const hold = (oldestRecoverableSkip as Date).getTime() - WATERMARK_HOLD_EPSILON_MS;
+        if (hold < advanceTo) {
+          advanceTo = hold;
+        }
+      }
+      await deps.redis.set(WATERMARK_KEY, new Date(advanceTo).toISOString());
     }
   }
 
