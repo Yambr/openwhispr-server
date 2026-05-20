@@ -7,6 +7,7 @@
 // cross-DB query semantics (RESEARCH Pitfall #9). Same defensive guard as
 // packages/data/src/migrate.ts applies here at module construction time.
 import pg from "pg";
+import { assertDirectPostgres } from "./assert-direct-postgres.js";
 
 const { Pool } = pg;
 
@@ -15,16 +16,8 @@ export function makeLitellmPool(env: NodeJS.ProcessEnv = process.env): pg.Pool {
   if (!url) {
     throw new Error("LITELLM_READ_DATABASE_URL or LITELLM_DATABASE_URL is required");
   }
-  let host: string | null = null;
-  try {
-    host = new URL(url).hostname;
-  } catch {
-    // pg.Pool will surface a clearer error below; do not swallow.
-  }
-  if (host && /pgbouncer/i.test(host)) {
-    throw new Error(
-      `LITELLM_READ_DATABASE_URL must point DIRECT to postgres:5432, not pgbouncer host "${host}" (Pitfall #9 — cross-DB read fails through transaction-mode pool)`,
-    );
-  }
+  // Phase 66 / CR-09 — shared PgBouncer-hostname guard (Pitfall #9 —
+  // cross-DB reads fail through a transaction-mode pool).
+  assertDirectPostgres(url, "LITELLM_READ_DATABASE_URL");
   return new Pool({ connectionString: url, max: 5 });
 }

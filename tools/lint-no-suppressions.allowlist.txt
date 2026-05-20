@@ -17,15 +17,15 @@ apps/web/src/components/screens/account/SessionsTable.tsx:10  # issue-31-debt-su
 apps/web/src/lib/form-utils.ts:34  # issue-31-debt-suppression
 apps/web/src/lib/form-utils.ts:35  # issue-31-debt-suppression
 apps/web/src/middleware.ts:117  # issue-31-debt-suppression (line drifted 107 → 117 by Phase 53 / Plan 53-04+53-08 CSP nonce/wasm-unsafe-eval comment expansion)
-apps/worker/src/db/app-pool.ts:61  # issue-31-debt-suppression-pg-typing
-apps/worker/src/db/app-pool.ts:70  # issue-31-debt-suppression-pg-typing
-apps/worker/src/db/app-pool.ts:74  # issue-31-debt-suppression-pg-typing
-apps/worker/src/db/app-pool.ts:78  # issue-31-debt-suppression-pg-typing
-apps/worker/src/db/app-pool.ts:110  # issue-31-debt-suppression-pg-typing
-apps/worker/src/db/app-pool.ts:121  # issue-31-debt-suppression-pg-typing
-apps/worker/src/db/app-pool.ts:128  # issue-31-debt-suppression-pg-typing
-apps/worker/src/db/app-pool.ts:136  # issue-31-debt-suppression-pg-typing
-apps/worker/src/db/app-pool.ts:142  # issue-31-debt-suppression-pg-typing
+apps/worker/src/db/app-pool.ts:62  # issue-31-debt-suppression-pg-typing
+apps/worker/src/db/app-pool.ts:71  # issue-31-debt-suppression-pg-typing
+apps/worker/src/db/app-pool.ts:75  # issue-31-debt-suppression-pg-typing
+apps/worker/src/db/app-pool.ts:79  # issue-31-debt-suppression-pg-typing
+apps/worker/src/db/app-pool.ts:111  # issue-31-debt-suppression-pg-typing
+apps/worker/src/db/app-pool.ts:122  # issue-31-debt-suppression-pg-typing
+apps/worker/src/db/app-pool.ts:129  # issue-31-debt-suppression-pg-typing
+apps/worker/src/db/app-pool.ts:137  # issue-31-debt-suppression-pg-typing
+apps/worker/src/db/app-pool.ts:143  # issue-31-debt-suppression-pg-typing
 apps/worker/src/jobs/reconciliation-discrepancy.ts:58  # issue-31-debt-suppression
 packages/data/src/seed/conformance.ts:241  # issue-31-debt-suppression
 packages/data/src/seed/conformance.ts:246  # issue-31-debt-suppression
