@@ -73,8 +73,26 @@ export function buildPartmanMaintenanceHandler(
     }
 
     const detached = await discoverDetached(deps.maintenancePool);
+    // Phase 66 / CR-05 — per-iteration guard. Pre-fix a mid-loop enqueue
+    // throw aborted the loop, leaving the remaining partitions detached-
+    // but-not-archived. We now attempt EVERY partition, collect any
+    // failures, and re-throw after the loop so BullMQ retries the WHOLE
+    // detached list. `discoverDetached` is idempotent — a partition
+    // archived on an earlier attempt no longer matches the predicate, so
+    // re-enqueuing on retry is harmless.
+    const failures: Array<{ partition: string; err: unknown }> = [];
     for (const partition of detached) {
-      await deps.auditArchiveQueue.add("audit-archive", { partition_name: partition });
+      try {
+        await deps.auditArchiveQueue.add("audit-archive", { partition_name: partition });
+      } catch (err) {
+        failures.push({ partition, err });
+      }
+    }
+    if (failures.length > 0) {
+      throw new Error(
+        `partman-maintenance: ${failures.length} audit-archive enqueue(s) failed ` +
+          `(${failures.map((f) => f.partition).join(", ")}) — retrying the whole detached list`,
+      );
     }
     return { detached };
   });

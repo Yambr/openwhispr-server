@@ -123,6 +123,57 @@ SUITE("partman-maintenance (D-A4)", () => {
     expect(enq.map((e) => e.partition_name)).toContain("audit_log_p2025_01");
   });
 
+  it("CR-05: collects enqueue failures and re-throws after attempting ALL partitions", async () => {
+    // Phase 66 / CR-05: pre-fix, the enqueue loop had no per-iteration
+    // guard — a mid-loop `auditArchiveQueue.add` throw aborted the loop,
+    // leaving the remaining partitions detached-but-not-enqueued. The
+    // fix collects failures and re-throws after the loop so BullMQ
+    // retries the WHOLE detached list (discoverDetached is idempotent).
+    //
+    // Pure-unit: stub maintenancePool so `CALL run_maintenance_proc()`
+    // and `discoverDetached` both resolve against fixed data — no
+    // pgpartman image required.
+    const detachedFixture = ["audit_log_p2024_01", "audit_log_p2024_02", "audit_log_p2024_03"];
+    const fakeClient = {
+      async query() {
+        return { rows: [] };
+      },
+      release() {
+        /* no-op */
+      },
+    };
+    const fakePool = {
+      async connect() {
+        return fakeClient;
+      },
+      async query() {
+        return { rows: detachedFixture.map((table_name) => ({ table_name })) };
+      },
+    } as unknown as Pool;
+
+    const attempted: string[] = [];
+    const handler = buildPartmanMaintenanceHandler({
+      maintenancePool: fakePool,
+      auditArchiveQueue: {
+        async add(_n, d) {
+          const name = (d as { partition_name: string }).partition_name;
+          attempted.push(name);
+          // Fail on the SECOND partition — the loop must NOT abort here.
+          if (name === detachedFixture[1]) {
+            throw new Error("Valkey OOM — enqueue rejected");
+          }
+          return {} as never;
+        },
+      },
+    });
+
+    // The job must FAIL (so BullMQ retries the whole list).
+    await expect(handler(fakeJob())).rejects.toThrow();
+    // And every partition AFTER the failing one must still have been
+    // attempted — the loop collected the failure instead of aborting.
+    expect(attempted).toEqual(detachedFixture);
+  });
+
   it("uses a fresh non-transactional connection (CALL semantics)", () => {
     // Static-source contract: the handler issues `CALL partman.run_maintenance_proc()`
     // (CALL, not SELECT, and not wrapped in BEGIN). Verified by handler source.
