@@ -47,6 +47,8 @@ The dev-fallback carve-out short-circuits with `return;` when the sender reports
 
 **Fix direction:** thread a real config flag (e.g. `EMAIL_FALLBACK_NONFATAL=1`) through `bootstrap` and inject via `deps.nodeEnv` / rename to `deps.allowSmtpFallback`. Constitutional violation MUST be resolved before public publication.
 
+**Status:** CLOSED 2026-05-21 — Phase 66, commit `52d7cbd8` — new boundary file `apps/worker/src/config/worker-config.ts` reads `EMAIL_FALLBACK_NONFATAL`; `email-delivery.ts` `deps.nodeEnv` renamed to `deps.allowSmtpFallback` (zero `process.env` reads in the job file); `smtp-not-configured` now FAILS the job unless the explicit opt-in flag is set — staging no longer false-greens an unsent email; both LOCKER-01 allowlist entries for `email-delivery.ts` REMOVED (`tools/lint-no-env-branches.allowlist.txt`), `pnpm lint:lockers` green with them gone.
+
 ---
 
 ### CR-04 — HIGH / BLOCKER — `withTenantContext` ROLLBACK can replace the original handler error `lib/with-tenant-context.ts:147-154`
@@ -65,6 +67,8 @@ If `ROLLBACK` itself throws (transient pg failure, client mid-disconnect, broken
 
 **Fix direction:** wrap ROLLBACK in its own try; re-throw `handlerErr` regardless.
 
+**Status:** CLOSED 2026-05-21 — Phase 66, commit `f03895ec` — the `ROLLBACK` in `withTenantContext`'s catch is now in its own try/catch; a throwing ROLLBACK is logged via `childLog` and `handlerErr` always propagates.
+
 ---
 
 ### CR-05 — HIGH / BLOCKER — `partman-maintenance` audit-archive enqueue loop is not idempotent under partial failure `jobs/partman-maintenance.ts:68-80`
@@ -73,6 +77,8 @@ After `partman.run_maintenance_proc()` returns (which internally COMMITs detache
 
 **Fix direction:** (a) collect failures and re-throw after the loop, or (b) `Promise.allSettled` + log each, or (c) persist the discovered list in a checkpoint table so retries resume.
 
+**Status:** CLOSED 2026-05-21 — Phase 66, commit `12fe1ce1` — chose mitigation shape (a): the enqueue loop guards each iteration, collects failures, and re-throws after the loop so BullMQ retries the WHOLE detached list (`discoverDetached` is idempotent — already-archived partitions no longer match).
+
 ---
 
 ### CR-06 — HIGH / BLOCKER — Reconciliation-daily-check throws mid-loop ⇒ duplicate discrepancy enqueues on retry `jobs/reconciliation-daily-check.ts:213-242`
@@ -80,6 +86,8 @@ After `partman.run_maintenance_proc()` returns (which internally COMMITs detache
 The handler builds `nextDriftStore` and awaits `discrepancyQueue.add(...)` for each breached tenant. If `.add()` throws on tenant N, the for-loop aborts before reaching the `driftStore.clear() + bulk-copy` at lines 241-242, and on BullMQ retry the entire breach fan-out re-runs for tenants 1..N. The `reconciliationDiscrepancySchema` payload has no `request_id`/`window_id` field, so `typedQueue.add()` cannot de-dup via BullMQ `jobId`. Result: duplicate per-tenant discrepancy jobs pile up after every retry.
 
 **Fix direction:** add `request_id: z.string().uuid()` (or `window_id: <start>-<tenant>`) to the discrepancy schema; pass it as the BullMQ `jobId` on `.add()` so re-enqueues collapse. Optionally `Promise.allSettled` the fan-out so a single failure doesn't abort the rest.
+
+**Status:** CLOSED 2026-05-21 — Phase 66, commit `45b11961` — `reconciliationDiscrepancySchema` is **worker-local** (`apps/worker/src/jobs/reconciliation-discrepancy.ts`, NOT a shared wire package — no wire-suite run); it gains an additive `window_id: z.string().optional()` field (the schema is `.strict()` so the field must be declared). `reconciliation-daily-check` passes a deterministic `recon-disc:<window>:<tenant>` as the BullMQ `jobId` so a retried fan-out collapses re-enqueues. `TypedQueue.add` already forwards a `JobsOptions` arg — no widening needed.
 
 ---
 
@@ -96,6 +104,8 @@ Two problems:
 2. Permission errors (Valkey ACL change) log at `warn` and never surface to operators without log-tailing at boot. No counter, no alert.
 
 **Fix direction:** (a) add `MAX_ITERATIONS = 1000` cap, (b) emit an OTel counter on cleanup failure so dashboards can surface stuck workers.
+
+**Status:** CLOSED 2026-05-21 — Phase 66, commit `67e477f7` — `drainStaleVkrKeys` extracted into `apps/worker/src/lib/vkr-drain.ts` (a testable seam — importing `index.ts` runs `main()` as a top-level side effect); the SCAN loop is capped at `VKR_DRAIN_MAX_ITERATIONS = 1000` so a misbehaving Valkey cursor can no longer lock boot; a cleanup failure increments the `worker_vkr_cleanup_failures_total` OTel counter.
 
 ---
 
@@ -120,6 +130,8 @@ process.exit(0);
 
 **Fix direction:** track a `shutdownErrored` flag (also from the `Promise.allSettled` results array) and `process.exit(shutdownErrored ? 1 : 0)`.
 
+**Status:** CLOSED 2026-05-21 — Phase 66, commit `8955c7da` — the shutdown body extracted into `runShutdown(deps)` (`apps/worker/src/lib/shutdown.ts`, a testable seam); it inspects the `Promise.allSettled` results for `rejected` AND guards every subsequent teardown await, tracking `shutdownErrored`, and returns exit code `1` on any drain failure. `index.ts` calls `process.exit(code)` — a masked exit(0) no longer reports a false graceful shutdown.
+
 ---
 
 ### CR-09 — HIGH / BLOCKER — `maintenancePool` lacks the PgBouncer guard that `appOwnerPool` enforces `apps/worker/src/index.ts:174-177`
@@ -136,6 +148,8 @@ const maintenancePool = new Pool({
 It uses the same `DATABASE_URL_OWNER` env var as `makeAppOwnerPool` (`db/app-pool.ts:160-164`), which DOES guard against PgBouncer hostnames. If an operator misconfigures the URL to point at PgBouncer (transaction mode), `appOwnerPool` throws fast; `maintenancePool` does NOT — and `partman.run_maintenance_proc()` over PgBouncer transaction-mode will silently corrupt partman state because of its internal COMMITs (Pitfall #9, documented in `db/litellm-pool.ts` header).
 
 **Fix direction:** extract a shared `assertDirectPostgres(url)` helper used by both pool factories AND inline in `index.ts`.
+
+**Status:** CLOSED 2026-05-21 — Phase 66, commit `49a8f90f` — new shared helper `apps/worker/src/db/assert-direct-postgres.ts` (`assertDirectPostgres(url, envVarName)`); `makeAppOwnerPool`, `makeLitellmPool`, AND the inline `maintenancePool` construction in `index.ts` all route through it — no worker pg pool can silently point at PgBouncer transaction-mode.
 
 ---
 
@@ -243,3 +257,11 @@ One exception worth noting: CR-03 (NODE_ENV branch in `email-delivery.ts`) is th
 **Total:** 17 findings.
 
 **Status: issues_found.** Publication-blocked on CR-01 / CR-02 (silent loss + rollup skew on a billing surface) and CR-03 (constitutional NODE_ENV violation in `apps/worker/src/jobs/email-delivery.ts`). The remaining HIGH items (CR-04..CR-09) are robustness gaps that an enterprise-grade self-host operator will hit under partial Valkey / pg / SMTP failure and should be fixed before 1000-concurrent-user load testing claims hold.
+
+---
+
+## Closure log
+
+- **CR-01 / CR-02** — ✅ CLOSED by Phase 58 (Tracks A/B).
+- **CR-03 .. CR-09** — ✅ CLOSED by Phase 66 (commit-per-finding RED+GREEN pairs; see per-finding `**Status:**` markers above). All 8 constitutional lockers green with the 2 LOCKER-01 `email-delivery.ts` allowlist entries REMOVED; `pnpm --filter @openwhispr/worker test` green (220 tests); `pnpm typecheck` at the 5-error baseline (0 new, all in `apps/api`).
+- **WR-01 .. WR-08** — OPEN (MEDIUM/LOW) — out of scope for Phase 66.
