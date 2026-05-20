@@ -104,6 +104,26 @@ import { validateIngressBoot } from "./config/auth.js";
 
 validateIngressBoot();
 
+// Phase 57 / Track F (REVIEW api-core CRITICAL CR-01) — production
+// safety-knob boot gate. OPENWHISPR_DISABLE_RATE_LIMIT /
+// OPENWHISPR_DISABLE_EMAIL_VERIFICATION / OPENWHISPR_DISABLE_SESSION_COOKIE_CACHE
+// / MOCK_DIARIZATION disable anti-abuse / verification controls or swap in a
+// mock backend. They are legitimate dev/test/load-test affordances but a
+// single leaked env line in production silently disables core security
+// controls. validateSafetyKnobsBoot REFUSES to start (exit 78 EX_CONFIG)
+// when any knob is truthy under NODE_ENV=production — same loud-fail posture
+// as validateEncryptionBoot / validateIngressBoot. The veto fires ONLY in
+// production; non-production profiles keep the knobs functional.
+import { validateSafetyKnobsBoot } from "./config/safety-knobs.js";
+
+try {
+  validateSafetyKnobsBoot();
+} catch (err) {
+  // biome-ignore lint/suspicious/noConsole: pre-logger boot path — stderr is the only sink.
+  console.error(`FATAL ${err instanceof Error ? err.message : String(err)}`);
+  process.exit(78);
+}
+
 // Phase 6 / Plan 03 / Task 1 (D-T3 load order) — OTel SDK must start
 // BEFORE any other import resolves so `@opentelemetry/instrumentation-pino`
 // patches the `pino` module at require time. This import is intentionally
