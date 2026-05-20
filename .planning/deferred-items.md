@@ -11,6 +11,32 @@ record. Keep this file under ~200 lines.
 
 ---
 
+## Phase 59 — pre-existing api-suite failures (out of Phase 59 scope)
+
+**Discovered:** Phase 59 execution, full `pnpm --filter @openwhispr/api test`.
+
+Six api-project tests fail; all PRE-DATE Phase 59 — verified by reverting
+`auth.ts` + `transcribe.ts` to the Track-A baseline (`d391961e`) and
+re-running `auth-callback`, which still showed the same 4 failures.
+
+- `tests/unit/routes/auth-callback.test.ts` — 4 cases: the 4-scheme
+  desktop-callback matrix 500s instead of 302.
+- `tests/unit/__tests__/oauth-channel-scheme-mint-bearer.test.ts` — 1
+  case: desktop-callback → mintBearer → channel-scheme 302 emits 500.
+- `tests/unit/index.test.ts` — 1 case: "mintBearer is plumbed → OAuth
+  callback returns 302 (NOT 503)".
+
+**WHY deferred:** all three cluster on the OAuth desktop-callback +
+`mintBearer` path — out of scope for Phase 59 (R14–R18 touch seed-tenant,
+auth Origin gate, SSRF/transcribe, verification-status, api-key index).
+Phase 59's scope boundary forbids fixing unrelated pre-existing failures.
+The cluster looks like a single `mintBearer`/sessions-row regression that
+predates this phase. Needs its own debug phase.
+
+**Owner:** unassigned. Re-surface as a `/gsd-debug` target.
+
+---
+
 ## Phase 58 Track C — data:CR-04 AUTH-04 overlap: `tryPreviousToken` wired onto an RLS-subject pool
 
 **Discovered:** 2026-05-20, during Phase 58 Track C characterization
