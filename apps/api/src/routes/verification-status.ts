@@ -8,14 +8,17 @@
 //
 // Behavior: return `{verified: users.email_verified_at !== null}` for
 // the SESSION-DERIVED caller email under the session's tenant scope.
-// The `?email=` query param is REQUIRED by BACKEND_SPEC and validated
-// (strict, RFC-5321 ≤254 bytes) but its VALUE is intentionally
-// discarded — identity is derived from the session per
-// SERVER-REQUIREMENTS §R5 (Phase 8 audit; openwhispr repo). Param-vs-
-// session mismatch is silently tolerated (no 400) per R5 disposition:
-// "if not [security-purposed], just ignore it silently per current
-// behavior" (R5 lines 243-244). T-02-03-04: belt-and-suspenders —
-// tenant from session AND the SELECT runs inside `withTenant`.
+// The `?email=` query param is OPTIONAL per R5 (Phase 59 / Track D —
+// R15 re-opened R5): when present it is validated (strict, RFC-5321
+// ≤254 bytes) but its VALUE is intentionally discarded; when ABSENT the
+// route still succeeds — identity is always derived from the session.
+// R5 mandates the server accept the param "without warning, without
+// error", which includes its absence — a required-param 400 was the
+// direct inverse of R5. Param-vs-session mismatch is silently tolerated
+// (no 400) per R5 disposition: "if not [security-purposed], just ignore
+// it silently per current behavior" (R5 lines 243-244). T-02-03-04:
+// belt-and-suspenders — tenant from session AND the SELECT runs inside
+// `withTenant`.
 //
 // Rate limit (D-28): 30/min keyed on (ip, email) — the desktop polls
 // during onboarding; busy fixtures must not DoS each other.

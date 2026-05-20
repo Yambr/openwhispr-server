@@ -229,6 +229,32 @@ describe("GET /api/auth/verification-status (cookie-only)", () => {
     await app.close();
   });
 
+  // Phase 59 / Track D — R15/R5: the `?email=` param is OPTIONAL. R5
+  // requires the server to "accept the email query param without
+  // warning, without error" — which includes its ABSENCE. A required-
+  // param schema (400 when omitted) is the direct inverse of R5. The
+  // desktop client polls this route with a session cookie and no param.
+  it("R15/R5: GET without ?email= returns 200 (param is optional)", async () => {
+    const db = makeFakeDb((sql) => {
+      if (/SELECT email_verified_at FROM users/.test(sql)) {
+        return [{ email_verified_at: "2026-01-01T00:00:00Z" }];
+      }
+      return [];
+    });
+    const auth = makeAuth(async () => ({
+      user: { id: "u-1", email: "v@b.test", tenantId: TENANT_A },
+    }));
+    const app = buildApp({ db, auth });
+    const res = await app.inject({
+      method: "GET",
+      url: "/api/auth/verification-status",
+      headers: { cookie: "openwhispr.session_token=valid" },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toEqual({ verified: true });
+    await app.close();
+  });
+
   it("R5: SQL WHERE-email is bound to the SESSION email, not the client param", async () => {
     // Capture SQL parameter bindings and assert the lookup key is the
     // session-derived email. This is the LOCK-IN test that proves the
