@@ -24,9 +24,10 @@
 //     sidebar; rendering them here would duplicate the surface and
 //     widen the trust boundary unnecessarily.
 //
-// Phase 07.1 D-ADMIN-1: Sidebar + shell are provided by AdminLayout
-// (apps/web/src/app/(admin)/layout.tsx). AdminIndex renders its own
-// content only — no Shell/Sidebar wrap here.
+// Phase 07.1: Sidebar + shell are provided by AdminLayout
+// (apps/web/src/app/(admin)/layout.tsx), which also applies the role gate
+// via checkAdminAccess(). AdminIndex renders its own content only — no
+// Shell/Sidebar wrap here.
 //
 // Client Component — `useTranslation` from react-i18next consumes the
 // I18nProvider context that AdminLayout boots. There is no client-side

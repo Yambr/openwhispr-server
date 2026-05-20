@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
-// Phase 07.1 / Plan 12 — A3 Config view Client Component (D-API4, D-S1, D-ADMIN-1).
+// Phase 07.1 / Plan 12 — A3 Config view Client Component (D-API4, D-S1).
 //
 // Read-only operator view of STT pipeline + note recording config.
 // Two parallel queries against existing endpoints:
@@ -10,7 +10,8 @@
 //          security hot zone with no backing endpoint. Operator docs explain
 //          override mechanics via the "Docs: how to override" external link.
 // D-S1:   No new API endpoints; we only read existing routes.
-// D-ADMIN-1: NO application-layer role check; Traefik basic-auth gates the surface.
+// Admin access is gated by the (admin) layout via checkAdminAccess()
+// (admin = users.role='admin'; see lib/admin-guard.ts).
 "use client";
 
 import { useQuery, useQueryClient } from "@tanstack/react-query";

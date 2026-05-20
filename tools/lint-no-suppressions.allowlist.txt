@@ -16,7 +16,7 @@ apps/api/src/lib/api-error-status.ts:52  # issue-51-13c-api-error-status — bet
 apps/web/src/components/screens/account/SessionsTable.tsx:10  # issue-31-debt-suppression
 apps/web/src/lib/form-utils.ts:34  # issue-31-debt-suppression
 apps/web/src/lib/form-utils.ts:35  # issue-31-debt-suppression
-apps/web/src/middleware.ts:117  # issue-31-debt-suppression (line drifted 107 → 117 by Phase 53 / Plan 53-04+53-08 CSP nonce/wasm-unsafe-eval comment expansion)
+apps/web/src/middleware.ts:118  # issue-31-debt-suppression (line drifted 107 → 117 → 118 by Phase 53 CSP nonce/wasm-unsafe-eval + Phase 68 HI-05 admin-comment correction)
 apps/worker/src/db/app-pool.ts:62  # issue-31-debt-suppression-pg-typing
 apps/worker/src/db/app-pool.ts:71  # issue-31-debt-suppression-pg-typing
 apps/worker/src/db/app-pool.ts:75  # issue-31-debt-suppression-pg-typing
