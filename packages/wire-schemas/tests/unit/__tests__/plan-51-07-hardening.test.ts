@@ -45,19 +45,24 @@ describe("Plan 51-07 — wire-schemas hardening", () => {
       expect(r.success).toBe(true);
     });
 
-    it("rejects non-enum `provider`", () => {
+    // R23: provider / promptMode / matchType were RESPONSE-shape fields
+    // wrongly modeled on the REQUEST schema. They are removed from
+    // ReasonRequest. The schema is now `.passthrough()`, so a stray
+    // value for any of them is tolerated (accepted, ignored) rather than
+    // rejected — the route never reads them from the request body.
+    it("R23 — tolerates a stray `provider` (removed from request schema, .passthrough())", () => {
       const r = ReasonRequest.safeParse({ text: "ok", provider: "evil" });
-      expect(r.success).toBe(false);
+      expect(r.success).toBe(true);
     });
 
-    it("rejects non-enum `promptMode`", () => {
+    it("R23 — tolerates a stray `promptMode` (removed from request schema, .passthrough())", () => {
       const r = ReasonRequest.safeParse({ text: "ok", promptMode: "junk" });
-      expect(r.success).toBe(false);
+      expect(r.success).toBe(true);
     });
 
-    it("rejects non-enum `matchType`", () => {
+    it("R23 — tolerates a stray `matchType` (removed from request schema, .passthrough())", () => {
       const r = ReasonRequest.safeParse({ text: "ok", matchType: "junk" });
-      expect(r.success).toBe(false);
+      expect(r.success).toBe(true);
     });
   });
 

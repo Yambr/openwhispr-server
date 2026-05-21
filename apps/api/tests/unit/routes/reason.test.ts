@@ -229,7 +229,11 @@ describe("POST /api/reason", () => {
     expect(calls).toHaveLength(0);
   });
 
-  it("rejects extra body field with 400 envelope (.strict() — T-03-05-01)", async () => {
+  it("accepts the FULL documented BACKEND_SPEC request body (R23 — all ~21 fields → 200)", async () => {
+    // R23: the immutable desktop client POSTs the full documented body
+    // (docs/wire-contracts-phase-3.md §/api/reason). Pre-R23 the schema
+    // was `.strict()` with only text/model/provider/promptMode/matchType,
+    // so every documented field beyond text/model tripped a 400.
     const { db } = makeFakeDb();
     const calls: ChatCompletionRequest[] = [];
     const litellm = makeFakeLitellm({ calls });
@@ -238,14 +242,61 @@ describe("POST /api/reason", () => {
       method: "POST",
       url: "/api/reason",
       headers: { "content-type": "application/json" },
-      payload: JSON.stringify({ text: "hi", foo: "bar" }),
+      payload: JSON.stringify({
+        text: "raw transcript",
+        model: "qwen3.6-plus",
+        agentName: "Claude",
+        customDictionary: ["Yambr", "Gizmo"],
+        customPrompt: "Optional user-provided cleanup prompt",
+        systemPrompt: "Optional system override",
+        language: "en",
+        locale: "en-US",
+        sessionId: "11111111-2222-3333-4444-555555555555",
+        clientType: "desktop",
+        appVersion: "1.2.3",
+        clientVersion: "1.2.3",
+        sttProvider: "openai",
+        sttModel: "whisper-1",
+        sttProcessingMs: 412,
+        sttWordCount: 27,
+        sttLanguage: "en",
+        audioDurationMs: 6500,
+        audioSizeBytes: 90123,
+        audioFormat: "webm",
+        clientTotalMs: 1200,
+      }),
     });
-    expect(res.statusCode).toBe(400);
-    expect(() => ErrorEnvelope.parse(res.json())).not.toThrow();
-    expect(calls).toHaveLength(0);
+    expect(res.statusCode).toBe(200);
+    const parsed = ReasonResponse.parse(res.json());
+    expect(parsed.text).toBe("mocked reasoning");
+    expect(parsed.model).toBe("qwen3.6-plus");
+    // Handler still forwards only `text` to LiteLLM as the user message.
+    expect(calls).toHaveLength(1);
+    expect(calls[0]?.messages).toEqual([{ role: "user", content: "raw transcript" }]);
   });
 
-  it("rejects body-level user attribution-spoofing with 400 envelope (.strict() — D-03 belt-and-suspenders)", async () => {
+  it("accepts an UNDOCUMENTED extra body field (.passthrough() — R23 forward-compat)", async () => {
+    const { db } = makeFakeDb();
+    const calls: ChatCompletionRequest[] = [];
+    const litellm = makeFakeLitellm({ calls });
+    app = buildApp({ db, litellm });
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/reason",
+      headers: { "content-type": "application/json" },
+      payload: JSON.stringify({ text: "hi", futureClientField: "bar" }),
+    });
+    expect(res.statusCode).toBe(200);
+    const parsed = ReasonResponse.parse(res.json());
+    expect(parsed.text).toBe("mocked reasoning");
+    expect(calls).toHaveLength(1);
+  });
+
+  it("tolerates a body-level `user` field — handler still attributes via req.user.id (D-03)", async () => {
+    // R23: ReasonRequest is now `.passthrough()`, so a body-level `user`
+    // no longer 400s. Attribution safety is unchanged: the route NEVER
+    // reads `user` from req.body — the shared LiteLLM client overrides it
+    // with req.user.id at the call site (D-03 belt-and-suspenders).
     const { db } = makeFakeDb();
     const calls: ChatCompletionRequest[] = [];
     const litellm = makeFakeLitellm({ calls });
@@ -256,9 +307,9 @@ describe("POST /api/reason", () => {
       headers: { "content-type": "application/json" },
       payload: JSON.stringify({ text: "hi", user: "victim-user-id" }),
     });
-    expect(res.statusCode).toBe(400);
-    expect(() => ErrorEnvelope.parse(res.json())).not.toThrow();
-    expect(calls).toHaveLength(0);
+    expect(res.statusCode).toBe(200);
+    expect(calls).toHaveLength(1);
+    expect(calls[0]?.userId).toBe(TEST_USER);
   });
 
   it("returns 401 envelope when no auth (req.user absent)", async () => {
@@ -347,12 +398,11 @@ describe("POST /api/reason", () => {
     }
   });
 
-  it("echoes custom promptMode and matchType verbatim (from documented enum)", async () => {
-    // Phase 51 / Plan 51-07 — promptMode and matchType are now bounded
-    // to the documented enum (default | cleanup | agent), and the
-    // handler still echoes the caller's value verbatim. Using
-    // `cleanup` + `agent` exercises the same echo contract without
-    // accepting wire-poison values.
+  it("response promptMode/matchType are the constant 'default' (R23 — request-shape removed)", async () => {
+    // R23: promptMode / matchType were RESPONSE-shape fields wrongly
+    // modeled on the REQUEST schema. The immutable client never sends
+    // them. They are removed from ReasonRequest; the handler's response
+    // echo is now the literal "default" (no client-sourced value).
     const { db } = makeFakeDb();
     const calls: ChatCompletionRequest[] = [];
     const litellm = makeFakeLitellm({ calls });
@@ -361,19 +411,17 @@ describe("POST /api/reason", () => {
       method: "POST",
       url: "/api/reason",
       headers: { "content-type": "application/json" },
-      payload: JSON.stringify({
-        text: "x",
-        promptMode: "cleanup",
-        matchType: "agent",
-      }),
+      payload: JSON.stringify({ text: "x" }),
     });
     expect(res.statusCode).toBe(200);
     const parsed = ReasonResponse.parse(res.json());
-    expect(parsed.promptMode).toBe("cleanup");
-    expect(parsed.matchType).toBe("agent");
+    expect(parsed.promptMode).toBe("default");
+    expect(parsed.matchType).toBe("default");
   });
 
-  it("rejects non-enum promptMode (Plan 51-07 / REVIEW wire-schemas HIGH)", async () => {
+  it("tolerates a stray promptMode in the body (.passthrough() — R23, no longer 400)", async () => {
+    // R23: a body-level `promptMode` is now an undocumented passthrough
+    // key — accepted but ignored; the response echo stays "default".
     const { db } = makeFakeDb();
     const litellm = makeFakeLitellm({ calls: [] });
     app = buildApp({ db, litellm });
@@ -383,10 +431,12 @@ describe("POST /api/reason", () => {
       headers: { "content-type": "application/json" },
       payload: JSON.stringify({
         text: "x",
-        promptMode: "wire-poison-attempt",
+        promptMode: "anything-the-client-sends",
       }),
     });
-    expect(res.statusCode).toBe(400);
+    expect(res.statusCode).toBe(200);
+    const parsed = ReasonResponse.parse(res.json());
+    expect(parsed.promptMode).toBe("default");
   });
 
   it("falls back to provider='litellm' when model alias is unknown to bundled table", async () => {
