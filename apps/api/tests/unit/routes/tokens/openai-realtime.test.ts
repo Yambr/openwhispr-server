@@ -62,6 +62,8 @@ let agent: MockAgent;
 
 interface TestAppOpts {
   bearerMap?: Record<string, string>;
+  /** D4 — inject a non-default operator-owned realtime model alias. */
+  realtimeModel?: string;
 }
 
 async function buildTestApp(opts: TestAppOpts = {}): Promise<FastifyInstance> {
@@ -81,7 +83,11 @@ async function buildTestApp(opts: TestAppOpts = {}): Promise<FastifyInstance> {
       email: `${userId}@test.local`,
     };
   });
-  await app.register(buildOpenAIRealtimeTokenRoutes());
+  await app.register(
+    buildOpenAIRealtimeTokenRoutes(
+      opts.realtimeModel !== undefined ? { realtimeModel: opts.realtimeModel } : {},
+    ),
+  );
   await app.ready();
   return app;
 }
@@ -335,6 +341,45 @@ describe("POST /api/openai-realtime-token", () => {
       expect(sess1.type).toBe("realtime");
       expect(sess1.model).toBe("gpt-realtime-2025");
       expect(sess2.model).toBe("gpt-realtime");
+    } finally {
+      await app.close();
+    }
+  });
+
+  // D4 — the realtime default model is operator-owned (LITELLM_REALTIME_MODEL
+  // → litellm config → injected dep). With no `body.model`, the route uses
+  // the injected alias instead of a baked `gpt-realtime` literal.
+  it("uses the injected realtimeModel as the default when body.model is omitted (D4)", async () => {
+    const captured: Array<Record<string, unknown>> = [];
+    const captureReply = (value: string) => (opts: { body?: unknown }) => {
+      try {
+        const raw = typeof opts.body === "string" ? opts.body : String(opts.body ?? "");
+        captured.push(JSON.parse(raw) as Record<string, unknown>);
+      } catch {
+        captured.push({});
+      }
+      return makeFixtureWithValue(value);
+    };
+    agent
+      .get(OPENAI_HOST)
+      .intercept({ path: "/v1/realtime/client_secrets", method: "POST" })
+      .reply(200, captureReply("ek_corp"));
+
+    const app = await buildTestApp({
+      bearerMap: { "Bearer ok-u1": "u1" },
+      realtimeModel: "corp-realtime-internal",
+    });
+    try {
+      const r = await app.inject({
+        method: "POST",
+        url: "/api/openai-realtime-token",
+        headers: { authorization: "Bearer ok-u1", "content-type": "application/json" },
+        payload: {},
+      });
+      expect(r.statusCode).toBe(200);
+      expect(captured).toHaveLength(1);
+      const sess = captured[0].session as { type: string; model: string };
+      expect(sess.model).toBe("corp-realtime-internal");
     } finally {
       await app.close();
     }

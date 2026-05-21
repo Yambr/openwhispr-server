@@ -38,7 +38,13 @@ import type { FastifyInstance } from "fastify";
 import { ServiceUnavailable } from "../../errors.js";
 import { callProvider } from "./_call-provider.js";
 
-const DEFAULT_MODEL = "gpt-realtime";
+// D4 — bundled-default realtime model alias. This stays a literal ONLY as
+// the fallback when no operator-owned alias is injected (test isolation /
+// a deployment that never set LITELLM_REALTIME_MODEL). Production threads
+// the operator value from `loadLitellmConfigFromEnv().defaultRealtimeModel`
+// via the route's `realtimeModel` option — no `process.env` read in this
+// route file (LOCKER-01).
+const FALLBACK_REALTIME_MODEL = "gpt-realtime";
 const PROVIDER_LABEL = "OpenAI Realtime";
 const ENV_VAR_NAME = "OPENAI_API_KEY";
 const UPSTREAM_URL = "https://api.openai.com/v1/realtime/client_secrets";
@@ -54,8 +60,17 @@ const UPSTREAM_URL = "https://api.openai.com/v1/realtime/client_secrets";
 // liability without coordinated upstream support.
 const WHISPER_TRANSCRIPTION_MODEL = "whisper-1";
 
-export const buildOpenAIRealtimeTokenRoutes = () =>
+/**
+ * D4 — route options. `realtimeModel` is the operator-owned default model
+ * alias used when the client omits `body.model`. Threaded from
+ * `loadLitellmConfigFromEnv().defaultRealtimeModel` by `buildAllRoutes`;
+ * omitted in test isolation, where the route falls back to
+ * `FALLBACK_REALTIME_MODEL`. The options type is inlined (not an exported
+ * interface) so it does not become a LOCKER-04 dead export.
+ */
+export const buildOpenAIRealtimeTokenRoutes = (opts: { realtimeModel?: string } = {}) =>
   async function openAIRealtimeTokenRoutes(app: FastifyInstance): Promise<void> {
+    const defaultModel = opts.realtimeModel ?? FALLBACK_REALTIME_MODEL;
     app.route({
       method: "POST",
       url: "/api/openai-realtime-token",
@@ -106,7 +121,9 @@ export const buildOpenAIRealtimeTokenRoutes = () =>
           });
         }
         const streams = parsed.data.streams ?? 1;
-        const model = parsed.data.model ?? DEFAULT_MODEL;
+        // D4 — caller-supplied model wins; otherwise the operator-owned
+        // default alias (or the bundled fallback in test isolation).
+        const model = parsed.data.model ?? defaultModel;
         const language = parsed.data.language;
 
         // Phase 56 / Plan 56-07 (R3 / D-2) — Build the upstream session
