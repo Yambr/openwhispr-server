@@ -19,7 +19,7 @@ apps/api/src/index.ts:626  # issue-31-debt-NODE_ENV-shortcircuit-code (33-04 +9;
 apps/api/src/index.ts:627  # issue-62-HI-02-debug-fetch-prod-veto-code (62-02 — entrypoint debug-fetch gate; NODE_ENV==='test' branch retained alongside the HI-02 NODE_ENV!=='production' veto)
 apps/api/src/lib/ssrf-dispatcher.ts:59  # issue-31-DI-fallback-jsdoc
 apps/api/src/lib/ssrf-dispatcher.ts:163  # issue-31-DI-fallback
-apps/api/src/routes/index.ts:474  # issue-31-debt-NODE_ENV-shortcircuit
+apps/api/src/routes/index.ts:485  # issue-31-debt-NODE_ENV-shortcircuit
 apps/api/src/routes/test-only.ts:18  # issue-31-debt-test-only-jsdoc-header
 apps/api/src/routes/test-only.ts:220  # issue-31-debt-test-only-jsdoc (drifted 122 → 168 → 200 across Phases 56/57/59 — plugin jsdoc NODE_ENV narrative)
 apps/api/src/routes/test-only.ts:232  # issue-31-debt-test-only-gate (drifted 128 → 174 → 180 → 212 across Phases 56/57/59 — registration gate, NODE_ENV!=='production' veto term)
