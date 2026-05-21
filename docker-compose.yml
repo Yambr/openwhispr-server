@@ -360,8 +360,17 @@ services:
         condition: service_healthy
       valkey:
         condition: service_healthy
+    # R25 — healthcheck targets /api/ready (Cloud-plane readiness), NOT
+    # /api/health (liveness). /api/ready 503s when the SSRF dispatcher
+    # marker is missing, no LiteLLM client was constructed, or the LiteLLM
+    # upstream is unreachable — so a container that cannot serve
+    # /api/transcribe, /api/reason, /api/agent/* is marked `unhealthy` and
+    # pulled from rotation instead of silently returning 500s. /api/health
+    # remains the liveness/restart probe (kubelet livenessProbe semantics):
+    # a transient upstream blip must not cascade-restart the container.
+    # `wget --spider` exits non-zero on the 503, satisfying the contract.
     healthcheck:
-      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://127.0.0.1:3000/api/health"]
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://127.0.0.1:3000/api/ready"]
       interval: 10s
       timeout: 3s
       retries: 3
