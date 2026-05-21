@@ -158,6 +158,19 @@ export interface AllRoutesDeps {
    */
   litellmMasterKey?: string;
   /**
+   * D2/D3a/D4 — operator-owned model aliases (env vars `LITELLM_STT_MODEL`,
+   * `LITELLM_DEFAULT_CHAT_MODEL`, `LITELLM_REALTIME_MODEL`) resolved by
+   * `loadLitellmConfigFromEnv()` and threaded into the transcribe / reason /
+   * openai-realtime-token route deps. Routes consume these via injected
+   * deps — no route file reads `process.env` (LOCKER-01). When omitted,
+   * each route falls back to its bundled-default alias constant.
+   */
+  litellmModels?: {
+    sttModel: string;
+    chatModel: string;
+    realtimeModel: string;
+  };
+  /**
    * Phase 03 / Plan 06 (D-07 REVISED): Valkey client for the diarization
    * route's Stripe-style idempotency cache. When supplied (production
    * wires the same client used by the rate-limit plugin), the
@@ -266,7 +279,11 @@ export function buildAllRoutes(deps: AllRoutesDeps): readonly RoutePlugin[] {
     // request time.
     buildAssemblyAITokenRoutes(),
     buildDeepgramTokenRoutes(),
-    buildOpenAIRealtimeTokenRoutes(),
+    // D4 — pass the operator-owned realtime model alias so the token-mint
+    // route does not bake `gpt-realtime` as a literal.
+    buildOpenAIRealtimeTokenRoutes(
+      deps.litellmModels ? { realtimeModel: deps.litellmModels.realtimeModel } : {},
+    ),
     // Phase 05 / Plan 02 — WIRE-09 + WIRE-10. Both routes are registered
     // UNCONDITIONALLY (do not gate on litellm presence) because their
     // contract is database-only: idempotent ledger insert + SUM aggregator.
@@ -413,7 +430,12 @@ export function buildAllRoutes(deps: AllRoutesDeps): readonly RoutePlugin[] {
   // when a LiteLLM client was constructed (LITELLM_MASTER_KEY present).
   // Plans 05/06/07 follow the same pattern as they land.
   if (deps.litellm) {
-    const transcribeDeps: TranscribeDeps = { db: deps.db, litellm: deps.litellm };
+    // D2 — thread the operator-owned STT alias into the transcribe deps.
+    const transcribeDeps: TranscribeDeps = {
+      db: deps.db,
+      litellm: deps.litellm,
+      ...(deps.litellmModels ? { sttModel: deps.litellmModels.sttModel } : {}),
+    };
     plugins.push(buildTranscribeRoutes(transcribeDeps));
     // Phase 04 / Plan 06 — POST /api/agent/stream forwards to LiteLLM
     // /v1/chat/completions, so it shares the same litellm-presence gate as
@@ -429,7 +451,12 @@ export function buildAllRoutes(deps: AllRoutesDeps): readonly RoutePlugin[] {
     // template (Plan 04 Pattern 1). Same conditional gate: skipped when
     // LITELLM_MASTER_KEY is unset at boot, registered when the shared
     // client is constructed.
-    const reasonDeps: ReasonDeps = { db: deps.db, litellm: deps.litellm };
+    // D3a — thread the operator-owned default chat model into reason deps.
+    const reasonDeps: ReasonDeps = {
+      db: deps.db,
+      litellm: deps.litellm,
+      ...(deps.litellmModels ? { defaultModel: deps.litellmModels.chatModel } : {}),
+    };
     plugins.push(buildReasonRoutes(reasonDeps));
     // Phase 03 / Plan 07 (LITELLM-03, D-04): WSS /v1/realtime reverse-
     // proxy. Registered only when LITELLM_MASTER_KEY was loadable at

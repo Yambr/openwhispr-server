@@ -256,6 +256,20 @@ export interface BuildAppOptions {
    */
   litellm?: LitellmClient;
   /**
+   * D2/D3a/D4 — operator-owned model aliases lifted out of TypeScript
+   * route literals. Production threads these straight from
+   * `loadLitellmConfigFromEnv()` (env vars `LITELLM_STT_MODEL`,
+   * `LITELLM_DEFAULT_CHAT_MODEL`, `LITELLM_REALTIME_MODEL`); the route
+   * handlers receive them via injected deps so no route file reads
+   * `process.env` (LOCKER-01). When omitted, each route falls back to its
+   * bundled-default alias constant.
+   */
+  litellmModels?: {
+    sttModel: string;
+    chatModel: string;
+    realtimeModel: string;
+  };
+  /**
    * Phase 03 / Plan 07 (LITELLM-03, D-04): the LITELLM_MASTER_KEY string
    * the WSS /v1/realtime reverse-proxy injects on upstream-bound upgrade
    * headers. Production passes the same key that fed
@@ -588,6 +602,9 @@ export const buildApp = async (opts: BuildAppOptions = {}): Promise<FastifyInsta
       mintBearer,
       ...(opts.litellm ? { litellm: opts.litellm } : {}),
       ...(opts.litellmMasterKey ? { litellmMasterKey: opts.litellmMasterKey } : {}),
+      // D2/D3a/D4 — forward the operator-owned model aliases so the
+      // transcribe / reason / realtime-token route deps carry them.
+      ...(opts.litellmModels ? { litellmModels: opts.litellmModels } : {}),
       // Phase 03 / Plan 06 (CR-01): forward the Valkey client + the
       // mockDiarization flag so /v1/audio/diarization is registered when
       // the operator wired VALKEY_URL at boot. Without this thread-through,
@@ -748,6 +765,9 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   validateLitellmBoot();
   let litellm: LitellmClient | undefined;
   let litellmMasterKey: string | undefined;
+  // D2/D3a/D4 — operator-owned model aliases captured alongside the client
+  // so route deps can be threaded without any route-level process.env read.
+  let litellmModels: BuildAppOptions["litellmModels"];
   try {
     const { buildLitellmClient, loadLitellmConfigFromEnv } = await import(
       "@openwhispr/litellm-client"
@@ -768,6 +788,13 @@ if (import.meta.url === `file://${process.argv[1]}`) {
     // header rewrite. Same source-of-truth as the client construction
     // above, so they can never drift out of sync at boot.
     litellmMasterKey = litellmConfig.masterKey;
+    // D2/D3a/D4 — same source-of-truth as the client construction above,
+    // so the route-injected aliases can never drift from the proxy auth.
+    litellmModels = {
+      sttModel: litellmConfig.defaultSttModel,
+      chatModel: litellmConfig.defaultChatModel,
+      realtimeModel: litellmConfig.defaultRealtimeModel,
+    };
   } catch (err) {
     // Phase 13 review HI-02 / Plan 51-13b: do NOT log `err.message` —
     // `loadLitellmConfigFromEnv` can embed LITELLM_BASE_URL (potentially
@@ -828,6 +855,11 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   const buildOpts: BuildAppOptions = { db, auth };
   if (litellm) buildOpts.litellm = litellm;
   if (litellmMasterKey) buildOpts.litellmMasterKey = litellmMasterKey;
+  // D2/D3a/D4 — forward the operator-owned model aliases resolved by
+  // `loadLitellmConfigFromEnv()` so transcribe / reason / realtime-token
+  // routes never bake a model literal. Set only when the litellm config
+  // was loadable (same gate as the client itself).
+  if (litellmModels) buildOpts.litellmModels = litellmModels;
   if (redis) buildOpts.redis = redis;
   if (mockDiarization) buildOpts.mockDiarization = true;
   // Phase 6 / Plan 06-04 (OBS-05, D-P2) — wire the /readyz dep-check.

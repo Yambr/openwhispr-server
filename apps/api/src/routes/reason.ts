@@ -35,6 +35,7 @@
 
 import { type ExecutableTx, type TransactionalDb, withTenant } from "@openwhispr/data";
 import {
+  DEFAULT_CHAT_MODEL,
   type LitellmClient,
   LitellmUpstreamError,
   MissingProviderKeyError,
@@ -48,10 +49,13 @@ export interface ReasonDeps {
   db: TransactionalDb<ExecutableTx>;
   litellm: LitellmClient;
   /**
-   * Optional override for the default chat model. Production picks up the
-   * value from litellm-client config (D-06: 'qwen3.6-plus'). Tests may
-   * inject another model alias to assert the routing table without
-   * mutating env state.
+   * D3a — operator-owned default chat model. Production threads this from
+   * `loadLitellmConfigFromEnv().defaultChatModel` (env
+   * `LITELLM_DEFAULT_CHAT_MODEL`, bundled default `DEFAULT_CHAT_MODEL`).
+   * Tests inject another alias to assert the routing table without
+   * mutating env state. When omitted, the route falls back to the
+   * imported `DEFAULT_CHAT_MODEL` env-default constant — no
+   * `qwen3.6-plus` literal is baked into this route file.
    */
   defaultModel?: string;
 }
@@ -62,14 +66,17 @@ interface UpstreamChatJson {
   usage?: { prompt_tokens?: number; completion_tokens?: number; total_tokens?: number };
 }
 
-const DEFAULT_MODEL = "qwen3.6-plus";
-
 /**
- * Static map: bundled-default model alias -> provider name returned in
- * ReasonResponse.provider. Mirrors compose/litellm/litellm_config.yaml
- * model_list. When LITELLM_BASE_URL is overridden to a corporate proxy,
- * the operator's mapping may differ; the `'litellm'` fallback signals
- * "routed through the configured LiteLLM endpoint, provider opaque".
+ * D3b — DISPLAY-ONLY, BEST-EFFORT hint. This map exists solely to
+ * populate the `provider` field of `ReasonResponse` (billing-echo /
+ * desktop display); it is NOT a routing decision — LiteLLM's catalog
+ * owns provider routing. It is intentionally NOT exhaustive and NOT
+ * env-driven (env-driving a whole map would be config sprawl). A
+ * corporate operator's catalog model that is absent here resolves to
+ * the `'litellm'` fallback below, which correctly signals "routed
+ * through the configured LiteLLM endpoint, provider opaque". This is a
+ * different class of literal from the D2/D3a/D4 model defaults — those
+ * gate behaviour and ARE env-driven; this is a cosmetic echo.
  */
 const MODEL_PROVIDER: Record<string, string> = {
   "qwen3.6-plus": "openrouter",
@@ -98,7 +105,11 @@ export const buildReasonRoutes = (deps: ReasonDeps) =>
         // Manual zod parse so .strict() rejection raises ZodError —
         // mapped to 400 by the centralized error handler.
         const body = ReasonRequest.parse(req.body);
-        const model = body.model ?? deps.defaultModel ?? DEFAULT_MODEL;
+        // D3a — `body.model` (caller) wins; else the operator-owned
+        // default (LITELLM_DEFAULT_CHAT_MODEL via deps.defaultModel); else
+        // the bundled `DEFAULT_CHAT_MODEL` env-default. R28: `body.model`
+        // may arrive explicitly `null` — `??` treats null like absent.
+        const model = body.model ?? deps.defaultModel ?? DEFAULT_CHAT_MODEL;
 
         let upstreamJson: UpstreamChatJson;
         try {

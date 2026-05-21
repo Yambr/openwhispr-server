@@ -217,9 +217,10 @@ describe("POST /api/transcribe", () => {
     expect(calls[0]?.userId).toBe(TEST_USER);
     expect(typeof calls[0]?.requestId).toBe("string");
     // Phase 19.2 / Plan 02 — SERVER-ERRORS Entry 11 regression: route
-    // MUST forward STT_MODEL ("whisper-large-v3") into the litellm
-    // client call so the upstream URL carries `?model=...` and LiteLLM
-    // does not reject with `Invalid model name passed in model=None`.
+    // MUST forward the STT model into the litellm client call so the
+    // upstream URL carries `?model=...` and LiteLLM does not reject with
+    // `Invalid model name passed in model=None`. D2: with no injected
+    // `sttModel` dep the route falls back to the bundled default alias.
     expect(calls[0]?.model).toBe("whisper-large-v3");
     // Ledger row written with kind='transcribe_minutes', units=2, ON CONFLICT
     const insert = recorded.find((r) => /INSERT INTO usage_ledger/i.test(r.sql));
@@ -235,6 +236,29 @@ describe("POST /api/transcribe", () => {
     // The kind+units pair we care about most: the row was inserted with
     // units=2 (minutes derived from upstream duration=90s).
     expect(insert?.sql).toMatch(/2\s*\)\s*ON CONFLICT/);
+  });
+
+  // D2 — the STT alias is operator-owned (LITELLM_STT_MODEL → litellm
+  // config → injected dep). A corporate operator's non-default alias MUST
+  // reach the litellm call AND be echoed in `sttModel`, with no
+  // `whisper-large-v3` literal baked into the route.
+  it("forwards an injected non-default sttModel into the litellm call and the response (D2)", async () => {
+    const { db } = makeFakeDb();
+    const calls: AudioTranscriptionRequest[] = [];
+    const litellm = makeFakeLitellm({ calls, bodyByteCount: 0 });
+    app = buildApp({ db, litellm, sttModel: "corp-whisper-internal" });
+    const { body, contentType } = multipartBody("hello-world-audio");
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/transcribe",
+      headers: { "content-type": contentType },
+      payload: body,
+    });
+    expect(res.statusCode).toBe(200);
+    const parsed = TranscribeResponse.parse(res.json());
+    expect(parsed.sttModel).toBe("corp-whisper-internal");
+    expect(calls).toHaveLength(1);
+    expect(calls[0]?.model).toBe("corp-whisper-internal");
   });
 
   it("returns 401 envelope when no auth (req.user absent)", async () => {

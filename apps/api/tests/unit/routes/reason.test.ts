@@ -188,6 +188,52 @@ describe("POST /api/reason", () => {
     expect(insert?.sql).toMatch(/15\s*\)\s*ON CONFLICT/);
   });
 
+  // D3a — the default chat model is operator-owned (LITELLM_DEFAULT_CHAT_MODEL
+  // → litellm config → injected `defaultModel` dep). When `body.model` is
+  // absent the route MUST use the injected value, not a baked literal.
+  it("uses the injected defaultModel when body.model is omitted (D3a)", async () => {
+    const { db } = makeFakeDb();
+    const calls: ChatCompletionRequest[] = [];
+    const litellm = makeFakeLitellm({
+      calls,
+      upstreamJson: {
+        model: "corp-chat-internal",
+        choices: [{ message: { role: "assistant", content: "ok" } }],
+        usage: { total_tokens: 3 },
+      },
+    });
+    app = buildApp({ db, litellm, defaultModel: "corp-chat-internal" });
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/reason",
+      headers: { "content-type": "application/json" },
+      payload: JSON.stringify({ text: "hello" }),
+    });
+    expect(res.statusCode).toBe(200);
+    const parsed = ReasonResponse.parse(res.json());
+    expect(parsed.model).toBe("corp-chat-internal");
+    // Unknown to the bundled display map → best-effort 'litellm' fallback.
+    expect(parsed.provider).toBe("litellm");
+    expect(calls[0]?.model).toBe("corp-chat-internal");
+  });
+
+  // D3a — R28: `body.model` may arrive explicitly null; the route must
+  // treat null like absent and fall through to the injected default.
+  it("treats body.model=null like absent and uses the injected default (D3a/R28)", async () => {
+    const { db } = makeFakeDb();
+    const calls: ChatCompletionRequest[] = [];
+    const litellm = makeFakeLitellm({ calls });
+    app = buildApp({ db, litellm, defaultModel: "corp-chat-internal" });
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/reason",
+      headers: { "content-type": "application/json" },
+      payload: JSON.stringify({ text: "hello", model: null }),
+    });
+    expect(res.statusCode).toBe(200);
+    expect(calls[0]?.model).toBe("corp-chat-internal");
+  });
+
   it("respects explicit model gpt-4o-mini and echoes provider=openrouter", async () => {
     const { db } = makeFakeDb();
     const calls: ChatCompletionRequest[] = [];

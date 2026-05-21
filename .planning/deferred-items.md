@@ -11,6 +11,21 @@ record. Keep this file under ~200 lines.
 
 ---
 
+## Pre-existing test failure — `plan-52-06-stream-zod-drift.test.ts` LegacyTool description regex
+
+**Discovered:** 2026-05-22, during quick-task 260522-envmodels (out-of-scope, not fixed).
+
+`apps/api/tests/unit/routes/agent/plan-52-06-stream-zod-drift.test.ts >
+"LegacyTool.description carries explicit \`| undefined\`"` fails: the test
+greps `apps/api/src/routes/agent/translate-tools.ts` for
+`/description\?:\s*string\s*\|\s*undefined/` but the current source no
+longer carries that explicit `| undefined` annotation. Confirmed
+pre-existing — reproduces on `main` with the quick-task changes stashed.
+Belongs to the agent/stream zod surface, not the model-hardcode
+quick-task scope.
+
+---
+
 ## R24/R26 — e2e harness `compose-helper.ts` references a missing `seed` service
 
 **Discovered:** 2026-05-22, during R26 (quick-task 20260521-r24-ssrf-explicit-dispatcher).

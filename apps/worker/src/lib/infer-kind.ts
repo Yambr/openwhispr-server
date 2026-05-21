@@ -13,6 +13,16 @@
 // worse since the units column would be a token count).
 export type LedgerKind = "transcribe_minutes" | "reason_tokens" | "realtime_minutes";
 
+// D8 (quick-task 260522-envmodels) — the `whisper-large-v3` literal here is
+// NOT an env-drivable config value: it is part of a CLASSIFICATION HEURISTIC
+// that maps an arbitrary LiteLLM model alias (whatever survives on
+// LiteLLM_SpendLogs.model) to a usage_ledger `kind`. It is intentionally
+// left as a literal — and is in fact redundant with the `includes("whisper")`
+// fallback on the same line (any whisper-family alias, including a corporate
+// `whisper-large-v3` rename, still classifies as transcription). The explicit
+// equality is kept only as a fast-path / self-documenting anchor for the
+// bundled default. Env-driving it would not improve operator control: the
+// heuristic must tolerate ANY upstream alias, not a single configured one.
 export function inferKind(model: string): LedgerKind {
   if (model === "whisper-large-v3" || model.includes("whisper")) {
     return "transcribe_minutes";

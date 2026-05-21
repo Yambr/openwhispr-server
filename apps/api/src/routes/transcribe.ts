@@ -38,6 +38,7 @@ import { randomBytes } from "node:crypto";
 import { PassThrough, type Readable } from "node:stream";
 import { type ExecutableTx, type TransactionalDb, withTenant } from "@openwhispr/data";
 import {
+  DEFAULT_STT_MODEL,
   type LitellmClient,
   LitellmUpstreamError,
   MissingProviderKeyError,
@@ -51,6 +52,15 @@ import { minutesFromDuration } from "../lib/word-units.js";
 export interface TranscribeDeps {
   db: TransactionalDb<ExecutableTx>;
   litellm: LitellmClient;
+  /**
+   * D2 — STT model alias forwarded to LiteLLM's `/v1/audio/transcriptions`.
+   * Production threads this from `loadLitellmConfigFromEnv().defaultSttModel`
+   * (operator-owned via `LITELLM_STT_MODEL`); the LiteLLM proxy catalog
+   * resolves the alias. The route NEVER reads `process.env` (LOCKER-01) and
+   * NEVER bakes a model literal — when the dep is omitted (test isolation)
+   * the route falls back to the bundled `DEFAULT_STT_MODEL` env-default.
+   */
+  sttModel?: string;
 }
 
 interface UpstreamWhisperJson {
@@ -60,8 +70,11 @@ interface UpstreamWhisperJson {
   segments?: unknown[];
 }
 
+// STT_PROVIDER is a display-only hint echoed in `TranscribeResponse.sttProvider`
+// — it is NOT behaviour-gating (LiteLLM's catalog owns provider routing) and
+// is intentionally NOT env-driven. The STT *model* (D2) IS operator-owned and
+// flows through `deps.sttModel`.
 const STT_PROVIDER = "groq";
-const STT_MODEL = "whisper-large-v3";
 const UNLIMITED_REMAINING = 999_999_999;
 
 /**
@@ -195,14 +208,19 @@ export const buildTranscribeRoutes = (deps: TranscribeDeps) =>
           throw new ValidationError("EMPTY_AUDIO", "audio file is empty");
         }
 
+        // D2 — operator-owned STT alias (LITELLM_STT_MODEL → litellm config
+        // → deps.sttModel). Resolved once: forwarded to LiteLLM AND echoed
+        // in the response so the wire `sttModel` field and the upstream
+        // `?model=` query never drift.
+        const sttModel = deps.sttModel ?? DEFAULT_STT_MODEL;
+
         let upstreamJson: UpstreamWhisperJson;
         try {
           const upstream = await deps.litellm.audioTranscriptions({
             // Phase 19.2 / Plan 02 — SERVER-ERRORS Entry 11 closure:
-            // forward STT_MODEL so LiteLLM does not reject with
-            // `model=None`. STT_MODEL is the single source of truth
-            // (also echoed in the response.sttModel field below).
-            model: STT_MODEL,
+            // forward the resolved STT model so LiteLLM does not reject
+            // with `model=None`.
+            model: sttModel,
             body: peeked.body,
             contentType: peeked.contentType,
             userId: req.user.id,
@@ -253,7 +271,7 @@ export const buildTranscribeRoutes = (deps: TranscribeDeps) =>
           plan: "unlimited" as const,
           limitReached: false as const,
           sttProvider: STT_PROVIDER,
-          sttModel: STT_MODEL,
+          sttModel,
           ...(upstreamJson.language !== undefined ? { language: upstreamJson.language } : {}),
           ...(upstreamJson.duration !== undefined ? { duration: upstreamJson.duration } : {}),
           ...(upstreamJson.segments !== undefined ? { segments: upstreamJson.segments } : {}),
