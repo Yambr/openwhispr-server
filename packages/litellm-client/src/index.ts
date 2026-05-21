@@ -29,7 +29,10 @@ import type { LitellmClientConfig, LitellmProviderKeys } from "./config.js";
 // Phase 51 / Plan 51-15 — needed at runtime for the
 // `config.baseUrl !== DEFAULT_LITELLM_BASE_URL` override-detection
 // branch (REVIEW HI-3).
-import { DEFAULT_LITELLM_BASE_URL } from "./config.js";
+// D2/D6 — `DEFAULT_STT_MODEL` now lives in config.js as the env-default
+// for `LITELLM_STT_MODEL`; imported here for the `audioTranscriptions`
+// fallback so a caller that omits `model` still gets the bundled alias.
+import { DEFAULT_LITELLM_BASE_URL, DEFAULT_STT_MODEL } from "./config.js";
 import {
   LitellmUpstreamError,
   MissingProviderKeyError,
@@ -214,13 +217,6 @@ export interface AudioTranscriptionRequest {
   /** Phase 41.f / HI-1 — undici bodyTimeout override. */
   bodyTimeout?: number;
 }
-
-/**
- * @internal — Plan 51-15b (REVIEW HIGH HI-4). Default Whisper model
- * for `audioTranscriptions`; exposed via `export` only for the package's
- * own test suite. Production callers MUST NOT depend on this name.
- */
-export const DEFAULT_STT_MODEL = "whisper-large-v3";
 
 export interface PassthroughRequest {
   method: string;
@@ -582,6 +578,8 @@ export type {
 export {
   DEFAULT_CHAT_MODEL,
   DEFAULT_LITELLM_BASE_URL,
+  DEFAULT_REALTIME_MODEL,
+  DEFAULT_STT_MODEL,
   loadLitellmConfigFromEnv,
 } from "./config.js";
 export {

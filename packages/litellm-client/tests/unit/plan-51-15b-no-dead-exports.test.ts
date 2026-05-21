@@ -28,12 +28,15 @@ function declarationWindow(src: string, name: string): string {
 }
 
 describe("Plan 51-15b — internal-only litellm-client constants pinned with @internal", () => {
+  // D2/D6 — `DEFAULT_STT_MODEL` was relocated from index.ts to config.ts
+  // (it is now the env-default for `LITELLM_STT_MODEL` and a deliberate
+  // part of the config public API, re-exported alongside DEFAULT_CHAT_MODEL).
+  // It is therefore no longer an internal-only index.ts export.
   const NAMES = [
     "BUNDLED_MODEL_PROVIDER",
     "PROVIDER_ENV_VAR",
     "DEFAULT_HEADERS_TIMEOUT_MS",
     "DEFAULT_BODY_TIMEOUT_MS",
-    "DEFAULT_STT_MODEL",
   ];
 
   it.each(NAMES)("`%s` declaration carries @internal JSDoc marker", (name) => {

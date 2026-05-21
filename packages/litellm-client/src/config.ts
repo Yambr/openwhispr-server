@@ -43,10 +43,35 @@ export interface LitellmClientConfig {
   providerKeys: LitellmProviderKeys;
   /** Default model for chatCompletions when caller omits it (D-06). */
   defaultChatModel: string;
+  /**
+   * Default STT alias forwarded to `/v1/audio/transcriptions` when the
+   * caller omits a model (D2/D6). Operator-owned via `LITELLM_STT_MODEL`
+   * — the alias resolution lives in the LiteLLM proxy catalog, never as a
+   * TypeScript literal in a route file.
+   */
+  defaultSttModel: string;
+  /**
+   * Default realtime model alias (D4/D1). Operator-owned via
+   * `LITELLM_REALTIME_MODEL`. Surfaced here so both the realtime proxy
+   * route (D1 task) and the OpenAI-realtime token mint read ONE source of
+   * truth instead of two divergent literals.
+   */
+  defaultRealtimeModel: string;
 }
 
 export const DEFAULT_LITELLM_BASE_URL = "http://litellm:4000";
 export const DEFAULT_CHAT_MODEL = "qwen3.6-plus";
+/**
+ * D2/D6 — literal fallback for `LITELLM_STT_MODEL`. This is the bundled
+ * Groq Whisper alias in `compose/litellm/litellm_config.yaml`; it stays a
+ * literal ONLY as the env-default, never as a route-baked constant.
+ */
+export const DEFAULT_STT_MODEL = "whisper-large-v3";
+/**
+ * D4/D1 — literal fallback for `LITELLM_REALTIME_MODEL`. Bundled OpenAI
+ * realtime alias; literal ONLY as the env-default.
+ */
+export const DEFAULT_REALTIME_MODEL = "gpt-realtime";
 
 /** Compose service name of the bundled LiteLLM proxy (slim/dev stack). */
 const BUNDLED_LITELLM_HOST = "litellm";
@@ -93,6 +118,17 @@ export function loadLitellmConfigFromEnv(
     env.LITELLM_DEFAULT_CHAT_MODEL && env.LITELLM_DEFAULT_CHAT_MODEL.length > 0
       ? env.LITELLM_DEFAULT_CHAT_MODEL
       : DEFAULT_CHAT_MODEL;
+  // D2/D6 + D4/D1 — STT + realtime aliases follow the same env-override
+  // seam as LITELLM_DEFAULT_CHAT_MODEL: an empty string is treated as
+  // unset so a blank .env line does not shadow the bundled default.
+  const defaultSttModel =
+    env.LITELLM_STT_MODEL && env.LITELLM_STT_MODEL.length > 0
+      ? env.LITELLM_STT_MODEL
+      : DEFAULT_STT_MODEL;
+  const defaultRealtimeModel =
+    env.LITELLM_REALTIME_MODEL && env.LITELLM_REALTIME_MODEL.length > 0
+      ? env.LITELLM_REALTIME_MODEL
+      : DEFAULT_REALTIME_MODEL;
   return {
     baseUrl,
     masterKey,
@@ -102,5 +138,7 @@ export function loadLitellmConfigFromEnv(
       pyannote: env.PYANNOTE_API_KEY ? env.PYANNOTE_API_KEY : undefined,
     },
     defaultChatModel,
+    defaultSttModel,
+    defaultRealtimeModel,
   };
 }
