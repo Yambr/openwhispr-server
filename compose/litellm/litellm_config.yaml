@@ -52,11 +52,25 @@ model_list:
       api_key: os.environ/GROQ_API_KEY
 
   # ---- Realtime (OpenAI direct — D-12, verified accessible 2026-05-10) ----
-  # `gpt-realtime` is the default model when the desktop opens
-  # WSS /v1/realtime without specifying one (replaces the deprecated
-  # gpt-4o-realtime-preview). Per D-12 OpenAI Realtime is the only
-  # public-cloud SaaS that speaks the OpenAI Realtime WSS spec verbatim;
-  # corporate operators with Speaches/Azure override via LITELLM_BASE_URL.
+  # D1 — `realtime-default` is the canonical server-injected realtime
+  # alias. WSS /v1/realtime (apps/api/src/routes/realtime.ts) forces
+  # `?model=realtime-default` onto the upstream URL regardless of what
+  # the desktop client sends, so the realtime model is pure operator
+  # config (LITELLM_REALTIME_MODEL env var, default `realtime-default`).
+  # To switch the realtime backend OpenAI→Speaches, retarget THIS entry
+  # — see litellm_config.local-speaches.yaml for the Speaches variant.
+  - model_name: realtime-default
+    litellm_params:
+      model: openai/gpt-realtime
+      api_key: os.environ/OPENAI_API_KEY
+      mode: realtime
+
+  # `gpt-realtime` / `gpt-realtime-mini` / `gpt-4o-realtime-preview` are
+  # retained as extra aliases for backward compatibility (older desktop
+  # builds that still send an explicit `?model=`). Per D-12 OpenAI
+  # Realtime is the only public-cloud SaaS that speaks the OpenAI
+  # Realtime WSS spec verbatim; corporate operators with Speaches/Azure
+  # override via LITELLM_BASE_URL.
   - model_name: gpt-realtime
     litellm_params:
       model: openai/gpt-realtime
