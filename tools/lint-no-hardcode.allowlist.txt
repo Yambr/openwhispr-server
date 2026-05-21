@@ -39,7 +39,7 @@ packages/data/src/schema/tenants.ts:4  # canonical-default-tenant
 # bucket (e) PERMANENT docker-compose-internal-url, because they are the
 # canonical docker-compose service-address defaults the CLAUDE.md OOB-boot
 # rule depends on.
-apps/api/src/auth.ts:428  # comment-only-narrative-issue-31-fp (57-E baseURL comment references the localhost fallback being removed; drift was 425, +3 by 57-E)
+apps/api/src/auth.ts:429  # comment-only-narrative-issue-31-fp (57-E baseURL comment references the localhost fallback being removed; drift was 425, +3 by 57-E; +1 by R22)
 apps/api/src/routes/test-only.ts:286  # issue-31-debt-hardcode-localhost-3000 (drifted 181 → 227 → 234 → 266 across Phases 56/57/59 — force-rotate AUTH_URL fallback)
 # better-auth-handler.ts:49 entry removed in Phase 57 / Track E — the
 # buildRequestUrl comment no longer references `localhost` (the
@@ -62,14 +62,14 @@ apps/api/src/config/litellm.ts:63  # 53-42-anti-footgun-sentinel-msg — same se
 # `/* ... */` comment that narrates the env-driven default, the routing
 # pattern, or the security boundary — it is NOT a runtime literal. Removing
 # the prose would degrade self-documenting source.
-apps/api/src/auth.ts:434  # comment-only-narrative-issue-31-fp (drift +13 by 55-05b; +49 by 57-A.2; +5 by 57-E)
-apps/api/src/auth.ts:435  # comment-only-narrative-issue-31-fp (drift +13 by 55-05b; +49 by 57-A.2; +5 by 57-E)
+apps/api/src/auth.ts:435  # comment-only-narrative-issue-31-fp (drift +13 by 55-05b; +49 by 57-A.2; +5 by 57-E; +1 by R22)
+apps/api/src/auth.ts:436  # comment-only-narrative-issue-31-fp (drift +13 by 55-05b; +49 by 57-A.2; +5 by 57-E; +1 by R22)
 apps/api/src/lib/audit.ts:88  # comment-only-narrative-issue-31-fp
 apps/api/src/lib/cookie-domain.ts:21  # comment-only-narrative-issue-31-fp
 apps/api/src/lib/cookie-domain.ts:34  # comment-only-narrative-issue-31-fp
 apps/api/src/lib/cookie-domain.ts:41  # comment-only-narrative-issue-31-fp
 apps/api/src/otel-bootstrap.ts:42  # comment-only-narrative-issue-31-fp
-apps/api/src/routes/index.ts:239  # comment-only-narrative-issue-31-fp
+apps/api/src/routes/index.ts:249  # comment-only-narrative-issue-31-fp (drift +10 by R22 verify-email-complete wiring)
 apps/api/src/routes/locale.ts:10  # comment-only-narrative-issue-31-fp
 apps/api/src/routes/reason.ts:27  # comment-only-narrative-issue-31-fp
 apps/api/src/routes/tokens/_call-provider.ts:34  # comment-only-jsdoc-timeout-ms-not-port-issue-31-fp
@@ -111,3 +111,14 @@ packages/data/src/seed/conformance.ts:123  # canonical-fixture-api-localhost
 # MIGRATION-DEBT, which was a mis-classification — these are intentional
 # defaults, not migration debt). See 31-08-DECISIONS.md §D-2.
 packages/litellm-client/src/config.ts:48  # permanent-docker-compose-internal-url (drifted 29 → 48 by Phase 68 HI-2/HI-3 config-loader header expansion)
+
+# --- (e) PERMANENT — desktop auth-bridge contract address (DO NOT REMOVE) ---
+# R22: the OpenWhispr Electron client (immutable, ships separately) runs a
+# loopback HTTP listener on `127.0.0.1:5199` whose `/oauth/callback` endpoint
+# is the client's ONLY token-intake channel. This is a FIXED inter-process
+# contract address between the server and the immutable desktop client — a
+# self-hosting operator does NOT relocate the client's loopback listener.
+# Same doctrine as the docker-compose service-address defaults above
+# (31-08-DECISIONS.md §D-2): an intentional fixed-contract literal, NOT
+# deployment debt. The redirect target is server-fixed; never attacker-derived.
+apps/api/src/config/desktop-bridge.ts:39  # permanent-desktop-bridge-contract-url
