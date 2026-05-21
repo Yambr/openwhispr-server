@@ -15,6 +15,7 @@
 // `packages/data/src/sessions/lookup-by-previous-token.ts`. The
 // AUTH-04 5-minute overlap CONTRACT is preserved as a behaviour
 // guarantee — storage shape is now ciphertext-only.
+import { sql } from "drizzle-orm";
 import { index, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
 import { bytea } from "./_helpers.js";
 import { tenants } from "./tenants.js";
@@ -48,20 +49,30 @@ export const sessions = pgTable(
 
     // token — envelope-encrypted at rest. Plaintext column dropped
     // by migration 0020, restored as a never-written introspection
-    // sentinel by 0025. `token_fp` (below) is NOT NULL so the
-    // UNIQUE-token contract from Plan 02.12 is preserved at the
-    // fingerprint layer.
+    // sentinel by 0025; it is NULL at rest for every real session
+    // (the lens strips the plaintext key on write).
     tokenDekWrapped: bytea("token_dek_wrapped"),
     tokenDekIv: bytea("token_dek_iv"),
     tokenDekAuthTag: bytea("token_dek_auth_tag"),
     tokenValueIv: bytea("token_value_iv"),
     tokenValueAuthTag: bytea("token_value_auth_tag"),
     tokenValueCiphertext: bytea("token_value_ciphertext"),
-    // Plan 51-24 — relaxed to nullable: Better Auth's drizzleAdapter
-    // strips the lens-emitted sidecars from its writes, so the
-    // fingerprint never gets populated for Better-Auth-owned session
-    // rows. Uniqueness now lives on `token` (plaintext) via a partial
-    // UNIQUE INDEX (migration 0026).
+    // token_fp — SHA-256 fingerprint of the session bearer; the
+    // canonical session-resolution lookup key (R20).
+    //
+    // Post-Phase-57 the encryption lens DOES populate this on every
+    // session create: `encryptInto()` emits `token_fp` (snake + camel)
+    // whenever `fingerprint` is configured, and the codegen'd
+    // `SIDECAR_ADDITIONAL_FIELDS` registration forwards `tokenFp`
+    // through Better Auth's adapter `transformInput` whitelist so it
+    // lands at the SQL layer. (Plan 51-24's claim that "drizzleAdapter
+    // strips the sidecars, the fingerprint is never populated" predates
+    // that Phase-57 wiring and is no longer true.)
+    //
+    // Nullable — kept relaxed so a replay against a pre-fix database
+    // with residual NULL-token_fp rows does not trip 23502. The
+    // UNIQUE-token contract from Plan 02.12 is enforced by the partial
+    // unique index `sessions_token_fp_unique` (migration 0030).
     tokenFp: bytea("token_fp"),
 
     expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
@@ -87,10 +98,14 @@ export const sessions = pgTable(
   },
   (t) => ({
     tenantIdx: index("sessions_tenant_id_idx").on(t.tenantId),
-    // Full UNIQUE on the SHA-256 fingerprint (migration 0020 promoted
-    // the partial-unique from 0019 to a full UNIQUE once token_fp
-    // became NOT NULL). Replaces the dropped `sessions_token_unique`.
-    tokenFpUnique: uniqueIndex("sessions_token_fp_unique").on(t.tokenFp),
+    // Partial UNIQUE on the SHA-256 fingerprint — migration 0030 (R20)
+    // recreated it partial (`WHERE token_fp IS NOT NULL`) after 0026
+    // relaxed token_fp to nullable. This is the live uniqueness contract
+    // for session tokens; the plaintext-`token` index from 0026 (which
+    // indexed an always-NULL column) was dropped by 0030.
+    tokenFpUnique: uniqueIndex("sessions_token_fp_unique")
+      .on(t.tokenFp)
+      .where(sql`${t.tokenFp} IS NOT NULL`),
     // Partial index on the AUTH-04 overlap-window fingerprint
     // (preserved from 0019 — `WHERE previous_token_fp IS NOT NULL`).
     // Replaces the dropped `sessions_previous_token_idx`.

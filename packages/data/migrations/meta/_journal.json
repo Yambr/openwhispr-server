@@ -218,6 +218,13 @@
       "when": 1781452800000,
       "tag": "0029_fk_user_id_indexes",
       "breakpoints": true
+    },
+    {
+      "idx": 31,
+      "version": "7",
+      "when": 1781539200000,
+      "tag": "0030_session_token_fp_unique_restore",
+      "breakpoints": true
     }
   ]
 }
