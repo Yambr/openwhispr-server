@@ -18,11 +18,22 @@
 // during the 33-03 backfill) pass through unchanged — the lens NEVER
 // guesses ciphertext from an absent sidecar set.
 //
-// `where`-clause rewrite: any clause whose `field` ends in
-// `_fp_lookup` is converted before delegation: the plaintext `value`
-// is SHA-256 hashed, the field is rewritten to the fingerprint column
-// (declared in the column-map), and the value becomes the bytea(32)
-// digest. This lets routes search by token plaintext without ever
+// `where`-clause rewrite: two cases are converted before delegation.
+//   1. Explicit `_fp_lookup`: any clause whose `field` ends in
+//      `_fp_lookup` is rewritten to the fingerprint column with the
+//      SHA-256 digest of the plaintext `value`.
+//   2. R20 — bare equality on a fingerprinted column: a clause whose
+//      `field` is itself a fingerprinted encrypted column (e.g.
+//      `session.token`) and whose `operator` is `eq` (the Better-Auth
+//      `Where` default) is ALSO rewritten to the fingerprint column +
+//      digest. This is what makes Better Auth's own session resolution
+//      work: `internalAdapter.findSession(token)` emits a bare
+//      `{field:"token", operator:"eq"}` clause — NOT a `_fp_lookup`
+//      clause — and the plaintext column is NULL at rest, so without
+//      this rewrite every Better-Auth-issued bearer 401s. Non-`eq`
+//      operators (`ne`, `in`, `contains`, ordering) cannot be satisfied
+//      by a one-way hash and pass through unchanged.
+// Both cases let callers search by token plaintext without ever
 // querying the encrypted ciphertext.
 //
 // KEK rotation: callers may pass an array of `KeyProvider`s. Index 0
@@ -337,24 +348,58 @@ function rewriteWhere(
   const modelCols = columnMap[model];
   if (!modelCols) return [...where];
   return where.map((clause) => {
-    if (typeof clause.field !== "string" || !clause.field.endsWith("_fp_lookup")) {
-      return clause;
+    if (typeof clause.field !== "string") return clause;
+
+    // Case 1 — explicit `_fp_lookup` suffix.
+    if (clause.field.endsWith("_fp_lookup")) {
+      const colName = clause.field.slice(0, -"_fp_lookup".length);
+      const cfg = modelCols[colName];
+      if (!cfg?.fingerprint) return clause;
+      if (typeof clause.value !== "string") return clause;
+      return toFingerprintClause(clause, cfg.fingerprint);
     }
-    const colName = clause.field.slice(0, -"_fp_lookup".length);
-    const cfg = modelCols[colName];
+
+    // Case 2 (R20) — bare equality on a fingerprinted encrypted column.
+    // Better Auth's `findSession` / `updateSession` / `deleteSession`
+    // emit `{field:"token", operator:"eq"}` (or operator omitted, which
+    // defaults to "eq"). Rewrite those to the fingerprint lookup so the
+    // NULL-at-rest plaintext column is never queried. A non-string value
+    // means the clause already carries the bytea digest — skip to avoid
+    // double-hashing. Non-`eq` operators pass through (a hash cannot
+    // satisfy ne/in/contains/ordering).
+    const cfg = modelCols[clause.field];
     if (!cfg?.fingerprint) return clause;
+    if (clause.operator !== undefined && clause.operator !== "eq") return clause;
     if (typeof clause.value !== "string") return clause;
-    const digest = fingerprintBytes(clause.value, cfg.fingerprint.algorithm);
-    // Where["value"] does not advertise Buffer in its public types,
-    // but Better-Auth's drizzle layer accepts bytea-compatible values
-    // transparently for the `eq` operator (this is the primary path
-    // for fingerprint lookup). One narrow runtime assignment keeps
-    // the contract intact without a double-cast suppression-style
-    // pattern flagged by LOCKER-no-suppressions.
-    const next: Where = { ...clause, field: cfg.fingerprint.column };
-    (next as { value: unknown }).value = digest;
-    return next;
+    return toFingerprintClause(clause, cfg.fingerprint);
   });
+}
+
+/**
+ * Rewrite one clause to `{field:<fp field>, value:<sha256 digest>}`.
+ *
+ * The field is emitted in **camelCase** (`tokenFp`, not `token_fp`):
+ * Better Auth's adapter validates a WHERE clause's `field` against the
+ * model's registered field names and rejects an unknown key with
+ * `BetterAuthError: Field <x> not found in model <m>`. The sidecar
+ * fingerprint is registered via `deriveSidecarAdditionalFields` under
+ * its camelCase name (additional-fields.ts uses `toCamel`), so the
+ * rewrite must target that name; Better Auth then translates it to the
+ * snake_case `token_fp` DB column. (Direct-driver consumers that build
+ * raw SQL — e.g. `lib/token-rotation.ts` — use the snake_case column
+ * name themselves and never go through this adapter path.)
+ *
+ * `Where["value"]` does not advertise Buffer in its public types, but
+ * Better-Auth's drizzle layer accepts bytea-compatible values for the
+ * `eq` operator (the fingerprint-lookup primary path). One narrow
+ * runtime assignment keeps the contract intact without a double-cast
+ * suppression-style pattern flagged by LOCKER-02.
+ */
+function toFingerprintClause(clause: Where, fingerprint: FingerprintColumn): Where {
+  const digest = fingerprintBytes(clause.value as string, fingerprint.algorithm);
+  const next: Where = { ...clause, field: toCamel(fingerprint.column) };
+  (next as { value: unknown }).value = digest;
+  return next;
 }
 
 /**
