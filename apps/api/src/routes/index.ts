@@ -116,6 +116,10 @@ import {
   buildVerificationStatusRoutes,
   type VerificationStatusDeps,
 } from "./verification-status.js";
+import {
+  buildVerifyEmailCompleteRoutes,
+  type VerifyEmailCompleteDeps,
+} from "./verify-email-complete.js";
 
 export type RoutePlugin = (app: FastifyInstance) => Promise<void>;
 
@@ -208,6 +212,12 @@ export function buildAllRoutes(deps: AllRoutesDeps): readonly RoutePlugin[] {
     db: deps.db,
     auth: deps.auth,
   };
+  // R22 — verify-email-complete reads the Better Auth session cookie set
+  // by the verify-email handler one redirect-hop earlier and 302s the
+  // raw session token to the desktop auth-bridge.
+  const verifyEmailCompleteDeps: VerifyEmailCompleteDeps = {
+    auth: deps.auth,
+  };
   const desktopSigninDeps: DesktopSigninDeps = { db: deps.db };
   const authCallbackDeps: AuthCallbackDeps = deps.mintBearer
     ? { db: deps.db, mintBearer: deps.mintBearer }
@@ -243,6 +253,7 @@ export function buildAllRoutes(deps: AllRoutesDeps): readonly RoutePlugin[] {
     buildSetupStateRoutes(setupStateDeps),
     buildCheckUserRoutes(checkUserDeps),
     buildVerificationStatusRoutes(verificationDeps),
+    buildVerifyEmailCompleteRoutes(verifyEmailCompleteDeps),
     buildDeleteAccountRoutes(deleteAccountDeps),
     buildDesktopSigninRoutes(desktopSigninDeps),
     buildAuthCallbackRoutes(authCallbackDeps),
@@ -545,5 +556,6 @@ export {
   buildTranscriptionsListRoutes,
   buildUsageRoutes,
   buildVerificationStatusRoutes,
+  buildVerifyEmailCompleteRoutes,
   buildWebSearchRoutes,
 };

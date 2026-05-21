@@ -51,6 +51,7 @@ import { validateAuthBoot, validateIngressBoot, validateOriginBoot } from "./con
 import { cookieDomainConfig } from "./lib/cookie-domain.js";
 import { resolveDefaultTenantId } from "./lib/default-tenant.js";
 import { readOidcProvidersForRegistration } from "./lib/oidc-providers.js";
+import { rewriteVerificationCallbackUrl } from "./lib/verification-callback-url.js";
 
 /**
  * Structural return type for buildAuth. Better Auth's full instance type
@@ -584,6 +585,19 @@ export function buildAuth(opts: BuildAuthOptions): AuthInstance {
     // account unverified — operator sees the error and the desktop's
     // verification-status poll keeps returning false.
     emailVerification: {
+      // R22 — sign-up → verify must leave the user with a working
+      // session. Better Auth's `verify-email` handler (plain sign-up
+      // token, no `updateTo`) creates a session ONLY when this flag is
+      // set (vendored proof: `better-auth/dist/api/routes/email-
+      // verification.mjs:268-287` — the `autoSignInAfterVerification`
+      // branch runs `createSession` + `setSessionCookie`). Without it
+      // the post-verify request carries no session and the desktop
+      // client lands unauthenticated. Setting it `true` makes the
+      // verify-email click establish a Better Auth session; the
+      // verify-email-complete route (reached via the rewritten
+      // `callbackURL` below) then hands that session's raw token to the
+      // desktop auth-bridge.
+      autoSignInAfterVerification: true,
       sendVerificationEmail: async ({
         user,
         url,
@@ -591,6 +605,22 @@ export function buildAuth(opts: BuildAuthOptions): AuthInstance {
         user: { email: string; locale?: string; tenantId?: string };
         url: string;
       }) => {
+        // R22 — rewrite the verification link's `callbackURL` to the
+        // server-controlled verify-email-complete route. Better Auth
+        // builds `url` as `${baseURL}/verify-email?token=...&callbackURL=
+        // <encoded body.callbackURL OR "/">` (vendored proof:
+        // `sign-up.mjs` + `email-verification.mjs:28-29`). The slim
+        // desktop client does NOT send a `callbackURL` at sign-up, so
+        // the default is `"/"`. We override it server-side to a fixed
+        // RELATIVE path: Better Auth's `verify-email` handler, on
+        // success, `302`-redirects to whatever `callbackURL` the link
+        // carries (`email-verification.mjs:288`), and its `originCheck`
+        // middleware admits any relative path (`allowRelativePaths:
+        // true`). The verify-email-complete route then reads the
+        // freshly-set session cookie and bridges the bearer to the
+        // desktop client. This is a SERVER-FIXED relative literal — it
+        // is never attacker-influenced, so no open-redirect surface.
+        const verificationUrl = rewriteVerificationCallbackUrl(url);
         if (opts.enqueueEmail) {
           const locale: "en" | "ru" = user.locale === "ru" ? "ru" : "en";
           // Phase 41.a / HI-03 — see sibling sendResetPassword note above.
@@ -605,7 +635,11 @@ export function buildAuth(opts: BuildAuthOptions): AuthInstance {
             // Send both so the rendered email is not a string of literal
             // placeholders. The api receives a Better Auth `url` parameter;
             // alias it to `verification_url` for the worker contract.
-            variables: { verification_url: url, url, name: user.email },
+            variables: {
+              verification_url: verificationUrl,
+              url: verificationUrl,
+              name: user.email,
+            },
             request_id: crypto.randomUUID(),
           });
           return;
@@ -613,8 +647,8 @@ export function buildAuth(opts: BuildAuthOptions): AuthInstance {
         await email.send({
           to: user.email,
           subject: "Verify your OpenWhispr account",
-          text: `Click to verify: ${url}`,
-          html: `<p>Click to verify: <a href="${url}">${url}</a></p>`,
+          text: `Click to verify: ${verificationUrl}`,
+          html: `<p>Click to verify: <a href="${verificationUrl}">${verificationUrl}</a></p>`,
         });
       },
     },
