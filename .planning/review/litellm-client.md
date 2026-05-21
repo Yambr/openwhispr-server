@@ -43,6 +43,8 @@ In-package callers (`ensureOk` line 378, the inline mapping at line 472) current
 
 **Severity HIGH** rather than CRITICAL because no in-tree caller triggers it today; flips to CRITICAL the moment any consumer passes a third arg containing upstream text.
 
+**Status:** CLOSED 2026-05-21 — Phase 68, commit `4072c20a` — the `message` constructor override is now `.slice(0, 200)`-truncated before `super()`, closing the LOCKER-05 bypass. RED test (HI-1-named) pins it.
+
 #### HI-2 — `LITELLM_VIRTUAL_KEY` env binding is silently absent
 **File:** `packages/litellm-client/src/config.ts:32-57`
 
@@ -56,6 +58,8 @@ Operationally, today operators **can** make it work by setting `LITELLM_MASTER_K
 
 **Severity HIGH** because misconfigured corp operators get 401-from-upstream → desktop logout (Pitfall #8 the package is explicitly trying to prevent).
 
+**Status:** CLOSED 2026-05-21 — Phase 68, commit `f6687341` — resolution (b): `loadLitellmConfigFromEnv` reads `LITELLM_VIRTUAL_KEY`; when set it wins over `LITELLM_MASTER_KEY` as `config.masterKey`. Precedence documented in the loader header. RED test (HI-2-named) pins it.
+
 #### HI-3 — Plain HTTP default for `DEFAULT_LITELLM_BASE_URL`; no `https://` assertion on operator overrides
 **File:** `packages/litellm-client/src/config.ts:29, 39-42`
 
@@ -68,6 +72,8 @@ The project hard rule is **HTTPS-only on externally reachable ports**. `litellm:
 Add a config-load-time assertion: any override value whose scheme is not `https://` must explicitly opt in via a separate flag (e.g., `LITELLM_ALLOW_PLAINTEXT=1`) or be confined to the docker-compose hostname allowlist.
 
 **Severity HIGH** for environments where the corporate LiteLLM proxy sits on a routable hop.
+
+**Status:** CLOSED 2026-05-21 — Phase 68, commit `f6687341` — `loadLitellmConfigFromEnv` refuses a non-https `LITELLM_BASE_URL` override when `NODE_ENV === "production"`, unless `LITELLM_ALLOW_PLAINTEXT` is truthy or the host is the bundled `litellm` compose service. The bundled `http://litellm:4000` default and non-production stay unaffected. RED test (HI-3-named) pins all branches.
 
 ### MEDIUM
 
