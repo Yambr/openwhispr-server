@@ -258,6 +258,68 @@ describe("POST /api/agent/stream", () => {
     }
   });
 
+  it("R23 — accepts the FULL documented BACKEND_SPEC request body (messages + systemPrompt + tools + sessionId + clientType + appVersion)", async () => {
+    // R23: the immutable desktop client POSTs sessionId/clientType/
+    // appVersion alongside messages. Pre-R23 the schema was `.strict()`
+    // and missing those three keys, so the documented body 400'd.
+    agent
+      .get(LITELLM_BASE)
+      .intercept({ path: LITELLM_PATH, method: "POST" })
+      .reply(200, buildTextOnlySse(), {
+        headers: { "content-type": "text/event-stream" },
+      });
+
+    const app = await buildTestApp({ bearerMap: { "Bearer ok-u1": "u1" } });
+    try {
+      const r = await app.inject({
+        method: "POST",
+        url: "/api/agent/stream",
+        headers: { authorization: "Bearer ok-u1", "content-type": "application/json" },
+        payload: {
+          messages: [{ role: "user", content: "hi" }],
+          model: "qwen3.6-plus",
+          systemPrompt: "be helpful",
+          tools: [{ name: "search", description: "web", parameters: { type: "object" } }],
+          sessionId: "11111111-2222-3333-4444-555555555555",
+          clientType: "desktop",
+          appVersion: "1.2.3",
+        },
+      });
+      expect(r.statusCode).toBe(200);
+      expect(r.headers["content-type"]).toBe("application/x-ndjson");
+      const lines = r.body.split("\n").filter((l) => l.length > 0);
+      expect(lines.length).toBeGreaterThan(0);
+    } finally {
+      await app.close();
+    }
+  });
+
+  it("R23 — accepts an UNDOCUMENTED extra top-level field (.passthrough() forward-compat)", async () => {
+    agent
+      .get(LITELLM_BASE)
+      .intercept({ path: LITELLM_PATH, method: "POST" })
+      .reply(200, buildTextOnlySse(), {
+        headers: { "content-type": "text/event-stream" },
+      });
+
+    const app = await buildTestApp({ bearerMap: { "Bearer ok-u1": "u1" } });
+    try {
+      const r = await app.inject({
+        method: "POST",
+        url: "/api/agent/stream",
+        headers: { authorization: "Bearer ok-u1", "content-type": "application/json" },
+        payload: {
+          messages: [{ role: "user", content: "hi" }],
+          futureClientField: "value",
+        },
+      });
+      expect(r.statusCode).toBe(200);
+      expect(r.headers["content-type"]).toBe("application/x-ndjson");
+    } finally {
+      await app.close();
+    }
+  });
+
   it("Test 2 — chunk vocabulary matches BACKEND_SPEC for multi-tool-call stream", async () => {
     agent
       .get(LITELLM_BASE)
@@ -819,7 +881,18 @@ describe("POST /api/agent/stream", () => {
     }
   });
 
-  it("Test 20 (HI-02) — unknown top-level keys are rejected (strict)", async () => {
+  it("Test 20 (R23) — unknown top-level keys are tolerated (.passthrough())", async () => {
+    // R23 (was HI-02): the request schema was relaxed from `.strict()` to
+    // `.passthrough()`. The immutable desktop client sends documented
+    // metadata fields (sessionId/clientType/appVersion) and may add more;
+    // an unmodeled key no longer 400s — it is accepted and ignored while
+    // `messages` (+ the typed fields) stay validated.
+    agent
+      .get(LITELLM_BASE)
+      .intercept({ path: LITELLM_PATH, method: "POST" })
+      .reply(200, buildTextOnlySse(), {
+        headers: { "content-type": "text/event-stream" },
+      });
     const app = await buildTestApp({ bearerMap: { "Bearer ok-u1": "u1" } });
     try {
       const r = await app.inject({
@@ -828,7 +901,8 @@ describe("POST /api/agent/stream", () => {
         headers: { authorization: "Bearer ok-u1", "content-type": "application/json" },
         payload: { messages: [{ role: "user", content: "hi" }], sneaky: 1 },
       });
-      expect(r.statusCode).toBe(400);
+      expect(r.statusCode).toBe(200);
+      expect(r.headers["content-type"]).toBe("application/x-ndjson");
     } finally {
       await app.close();
     }

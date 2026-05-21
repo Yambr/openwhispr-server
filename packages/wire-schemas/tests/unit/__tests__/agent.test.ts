@@ -38,13 +38,37 @@ describe("AgentStreamRequestSchema", () => {
     expect(AgentStreamRequestSchema.safeParse({}).success).toBe(false);
   });
 
-  it("rejects unknown top-level keys (strict)", () => {
+  it("R23 — accepts unknown top-level keys (.passthrough() forward-compat)", () => {
     expect(
       AgentStreamRequestSchema.safeParse({
         messages: [{ role: "user", content: "x" }],
-        sneaky: "value",
+        futureClientField: "value",
       }).success,
-    ).toBe(false);
+    ).toBe(true);
+  });
+
+  it("R23 — accepts the documented sessionId / clientType / appVersion fields", () => {
+    expect(
+      AgentStreamRequestSchema.safeParse({
+        messages: [{ role: "user", content: "x" }],
+        sessionId: "11111111-2222-3333-4444-555555555555",
+        clientType: "desktop",
+        appVersion: "1.2.3",
+      }).success,
+    ).toBe(true);
+  });
+
+  it("R23 — rejects oversize sessionId / clientType / appVersion (max bound)", () => {
+    const long = "x".repeat(257);
+    expect(AgentStreamRequestSchema.safeParse({ messages: [], sessionId: long }).success).toBe(
+      false,
+    );
+    expect(AgentStreamRequestSchema.safeParse({ messages: [], clientType: long }).success).toBe(
+      false,
+    );
+    expect(AgentStreamRequestSchema.safeParse({ messages: [], appVersion: long }).success).toBe(
+      false,
+    );
   });
 
   it("rejects messages.length > 50 (cost-multiplier cap)", () => {

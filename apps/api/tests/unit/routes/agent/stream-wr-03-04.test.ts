@@ -115,12 +115,14 @@ describe("agent/stream — WR-04 declarative schema validates the body", () => {
 
   it("WR-04: a malformed body is rejected by the declarative schema (400)", async () => {
     app = await buildTestApp({ userPresent: true });
-    // `messages` is required + `.strict()` — an extra unknown key is malformed.
+    // R23: the schema is now `.passthrough()`, so an extra unknown key is
+    // NOT malformed. `messages` is still required + array-typed — a
+    // wrong-typed `messages` is the canonical malformed body.
     const res = await app.inject({
       method: "POST",
       url: "/api/agent/stream",
       headers: { "content-type": "application/json" },
-      payload: { messages: [], bogusKey: "x" },
+      payload: { messages: "not-an-array" },
     });
     expect(res.statusCode).toBe(400);
   });
