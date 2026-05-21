@@ -70,7 +70,7 @@ function buildApp(deps: { db: ReturnType<typeof makeFakeDb>; auth: AuthLike }): 
   return app;
 }
 
-describe("GET /api/auth/verification-status (cookie-only)", () => {
+describe("GET /api/auth/verification-status (R21 dual-path — cookie wins, else ?email=)", () => {
   beforeEach(() => {
     _resetDefaultTenantCacheForTesting();
   });
@@ -137,7 +137,10 @@ describe("GET /api/auth/verification-status (cookie-only)", () => {
     await app.close();
   });
 
-  it("missing cookie → 401 + envelope", async () => {
+  // R21 (4A) — the route is no longer cookie-only. A poll with NO session
+  // and a format-valid `?email=` is the sign-up→verify-window path: it
+  // MUST resolve email-derived identity and return 200, never 401.
+  it("R21: no session + format-valid ?email= for unknown user → 200 {verified:false}", async () => {
     const db = makeFakeDb(() => []);
     const auth = makeAuth(async () => null);
     const app = buildApp({ db, auth });
@@ -145,14 +148,91 @@ describe("GET /api/auth/verification-status (cookie-only)", () => {
       method: "GET",
       url: "/api/auth/verification-status?email=anyone%40b.test",
     });
-    expect(res.statusCode).toBe(401);
-    expect(() => ErrorEnvelope.parse(res.json())).not.toThrow();
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toEqual({ verified: false });
     await app.close();
   });
 
-  it("bearer-only (no cookie) → 401 (cookie-only enforcement)", async () => {
-    // The fake getSession will be invoked WITHOUT Authorization header
-    // (requireCookieOnly strips it). With no cookie either, it returns null.
+  it("R21: no session + ?email= for a known-unverified user → 200 {verified:false}", async () => {
+    const db = makeFakeDb((sql) => {
+      if (/SELECT email_verified_at FROM users/.test(sql)) {
+        return [{ email_verified_at: null }];
+      }
+      return [];
+    });
+    const auth = makeAuth(async () => null);
+    const app = buildApp({ db, auth });
+    const res = await app.inject({
+      method: "GET",
+      url: "/api/auth/verification-status?email=pending%40b.test",
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toEqual({ verified: false });
+    await app.close();
+  });
+
+  it("R21: no session + ?email= for a known-verified user → 200 {verified:true}", async () => {
+    const db = makeFakeDb((sql) => {
+      if (/SELECT email_verified_at FROM users/.test(sql)) {
+        return [{ email_verified_at: "2026-01-01T00:00:00Z" }];
+      }
+      return [];
+    });
+    const auth = makeAuth(async () => null);
+    const app = buildApp({ db, auth });
+    const res = await app.inject({
+      method: "GET",
+      url: "/api/auth/verification-status?email=done%40b.test",
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toEqual({ verified: true });
+    await app.close();
+  });
+
+  it("R21: unknown email is byte-identical to a known-unverified user (anti-enumeration)", async () => {
+    const auth = makeAuth(async () => null);
+    // Unknown email — no row.
+    const unknownApp = buildApp({ db: makeFakeDb(() => []), auth });
+    const unknown = await unknownApp.inject({
+      method: "GET",
+      url: "/api/auth/verification-status?email=ghost%40b.test",
+    });
+    await unknownApp.close();
+    // Known-but-unverified — a row with null timestamp.
+    const knownApp = buildApp({
+      db: makeFakeDb((sql) =>
+        /SELECT email_verified_at FROM users/.test(sql) ? [{ email_verified_at: null }] : [],
+      ),
+      auth,
+    });
+    const known = await knownApp.inject({
+      method: "GET",
+      url: "/api/auth/verification-status?email=real%40b.test",
+    });
+    await knownApp.close();
+    // No enumeration oracle: identical status code AND identical body.
+    expect(unknown.statusCode).toBe(known.statusCode);
+    expect(unknown.json()).toEqual(known.json());
+    expect(unknown.json()).toEqual({ verified: false });
+  });
+
+  it("R21: no session + no ?email= → 200 {verified:false}", async () => {
+    const db = makeFakeDb(() => []);
+    const auth = makeAuth(async () => null);
+    const app = buildApp({ db, auth });
+    const res = await app.inject({
+      method: "GET",
+      url: "/api/auth/verification-status",
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toEqual({ verified: false });
+    await app.close();
+  });
+
+  it("R21: a stray bearer (no cookie) is stripped → email-derived path, 200", async () => {
+    // The bearer must NOT satisfy the route — cookie-only contract is a
+    // strict superset. getSession is invoked WITHOUT Authorization; with
+    // no cookie it returns null, so the ?email= path drives the lookup.
     const db = makeFakeDb(() => []);
     const auth = makeAuth(async ({ headers }) => {
       expect(headers.has("authorization")).toBe(false);
@@ -164,7 +244,53 @@ describe("GET /api/auth/verification-status (cookie-only)", () => {
       url: "/api/auth/verification-status?email=any%40b.test",
       headers: { authorization: "Bearer would-pass-on-other-routes" },
     });
-    expect(res.statusCode).toBe(401);
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toEqual({ verified: false });
+    await app.close();
+  });
+
+  it("R21: cookie session wins over a mismatching ?email= (SQL bound to session email)", async () => {
+    const seenEmails: string[] = [];
+    const tx: FakeTx = {
+      async execute(query: unknown): Promise<unknown> {
+        const chunks = (query as { queryChunks?: unknown[] }).queryChunks ?? [];
+        for (const c of chunks) {
+          if (typeof c === "string" && c.includes("@")) seenEmails.push(c);
+        }
+        return { rows: [{ email_verified_at: "2026-01-01T00:00:00Z" }] };
+      },
+    };
+    const db = {
+      async transaction<T>(cb: (t: FakeTx) => Promise<T>): Promise<T> {
+        return cb(tx);
+      },
+    };
+    const auth = makeAuth(async () => ({
+      user: { id: "u-alice", email: "alice@b.test", tenantId: TENANT_A },
+    }));
+    const app = buildApp({ db, auth });
+    const res = await app.inject({
+      method: "GET",
+      url: "/api/auth/verification-status?email=bob%40b.test",
+      headers: { cookie: "openwhispr.session_token=valid" },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toEqual({ verified: true });
+    expect(seenEmails).toContain("alice@b.test");
+    expect(seenEmails).not.toContain("bob@b.test");
+    await app.close();
+  });
+
+  it("R21: malformed ?email= → 400 from the Zod schema (input error, not poll path)", async () => {
+    const db = makeFakeDb(() => []);
+    const auth = makeAuth(async () => null);
+    const app = buildApp({ db, auth });
+    const res = await app.inject({
+      method: "GET",
+      url: "/api/auth/verification-status?email=not-an-email-at-all",
+    });
+    expect(res.statusCode).toBe(400);
+    expect(() => ErrorEnvelope.parse(res.json())).not.toThrow();
     await app.close();
   });
 
