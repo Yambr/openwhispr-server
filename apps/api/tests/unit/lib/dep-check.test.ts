@@ -9,7 +9,7 @@
 // Behaviors locked by D-P2:
 //   - 5s TTL cache via lru-cache keyed by dep name
 //   - In-flight promise dedup (one upstream call per cache window)
-//   - checkPostgres = SELECT 1, checkValkey = PING, checkLitellm = GET /health
+//   - checkPostgres = SELECT 1, checkValkey = PING, checkLitellm = GET /health/readiness (R29)
 //   - Unhealthy on upstream timeout / 5xx / network error
 //   - Re-checks after TTL expiry (single re-check, not stampede)
 
@@ -138,7 +138,12 @@ describe("dep-check (D-P2) — real services", () => {
     expect(r.ok).toBe(true);
   });
 
-  it("checkLitellm calls /health (path verified by stand-in)", async () => {
+  // R29 (quick-task 20260522) — the litellm probe must hit
+  // `/health/readiness` (proxy-state only, no provider fan-out), NOT
+  // `/health` (deep diagnostic that fans out to every model and flaps
+  // 503 when any provider hiccups). `/health/readiness` is the correct
+  // tight-poll readiness signal.
+  it("R29 — checkLitellm calls /health/readiness (path verified by stand-in)", async () => {
     const check = makeFresh();
     let observedPath = "";
     litellmServer.removeAllListeners("request");
@@ -148,7 +153,7 @@ describe("dep-check (D-P2) — real services", () => {
       res.end("{}");
     });
     await check("litellm");
-    expect(observedPath).toBe("/health");
+    expect(observedPath).toBe("/health/readiness");
     // restore default handler for subsequent tests
     litellmServer.removeAllListeners("request");
     litellmServer.on("request", (req, res) => {
