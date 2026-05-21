@@ -506,4 +506,29 @@ describe("POST /api/reason", () => {
     // units=0 inlined into SQL by drizzle's StringChunk path under our recorder.
     expect(insert?.sql).toMatch(/0\s*\)\s*ON CONFLICT/);
   });
+
+  // R28 (quick-task 20260522) — the immutable desktop client builds the
+  // /api/reason body from `opts.model` / `opts.agentName`; on the FIRST
+  // dictation of a session those are `null`, so the body literally
+  // contains `"model":null` / `"agentName":null`. The schema's
+  // `.optional()` rejected `null`, 400-ing the first dictation. `.nullish()`
+  // admits it; the handler's `?? default` already treats null === undefined.
+  it("R28 — accepts the first-dictation body {text, model:null, agentName:null} -> 200", async () => {
+    const { db } = makeFakeDb();
+    const calls: ChatCompletionRequest[] = [];
+    const litellm = makeFakeLitellm({ calls });
+    app = buildApp({ db, litellm });
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/reason",
+      headers: { "content-type": "application/json" },
+      payload: JSON.stringify({ text: "hi", model: null, agentName: null }),
+    });
+    expect(res.statusCode).toBe(200);
+    const parsed = ReasonResponse.parse(res.json());
+    // `model:null` falls through to the default-model chain.
+    expect(parsed.model).toBe("qwen3.6-plus");
+    expect(calls).toHaveLength(1);
+    expect(calls[0]?.model).toBe("qwen3.6-plus");
+  });
 });

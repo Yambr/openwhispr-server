@@ -36,7 +36,10 @@ export type AgentChatMessage = z.infer<typeof AgentChatMessageSchema>;
 export const AgentLegacyToolSchema = z
   .object({
     name: z.string().min(1).max(128),
-    description: z.string().max(2048).optional(),
+    // R28 (quick-task 20260522): `.nullish()` — a client may send
+    // `"description":null` for a tool without a description; `null` for
+    // an unset optional field is valid JSON. `.optional()` rejected it.
+    description: z.string().max(2048).nullish(),
     parameters: z.unknown(),
   })
   .strict();
@@ -59,16 +62,26 @@ export type AgentLegacyTool = z.infer<typeof AgentLegacyToolSchema>;
  * `.passthrough()` so future documented client fields no longer 400.
  * The sub-object schemas (AgentChatMessageSchema / AgentLegacyToolSchema)
  * keep their `.strict()` — their shape is fixed.
+ *
+ * R28 (quick-task 20260522): every optional field is `.nullish()`, NOT
+ * `.optional()`. The immutable desktop client builds the body from
+ * `opts.model` / `opts.systemPrompt`; on the FIRST dictation of a
+ * session those are `null`, so the body literally carries
+ * `"model":null`. `.optional()` rejected `null` — 400-ing the first
+ * dictation. `.nullish()` admits it; the route handler treats `null`
+ * identically to `undefined` (resolveModel `??`, prependSystemPrompt
+ * falsy-check, tools null-skip). The `.max()` bounds still apply when a
+ * non-null value IS present.
  */
 export const AgentStreamRequestSchema = z
   .object({
     messages: z.array(AgentChatMessageSchema).min(0).max(50),
-    model: z.string().min(1).max(128).optional(),
-    systemPrompt: z.string().max(16_384).optional(),
-    tools: z.array(AgentLegacyToolSchema).max(64).optional(),
-    sessionId: z.string().max(256).optional(),
-    clientType: z.string().max(256).optional(),
-    appVersion: z.string().max(256).optional(),
+    model: z.string().min(1).max(128).nullish(),
+    systemPrompt: z.string().max(16_384).nullish(),
+    tools: z.array(AgentLegacyToolSchema).max(64).nullish(),
+    sessionId: z.string().max(256).nullish(),
+    clientType: z.string().max(256).nullish(),
+    appVersion: z.string().max(256).nullish(),
   })
   .passthrough();
 export type AgentStreamRequest = z.infer<typeof AgentStreamRequestSchema>;

@@ -24,9 +24,15 @@
 // matches the wire-schema's zod inference under
 // `exactOptionalPropertyTypes: true`. Same observable behaviour;
 // downstream `tool.description ?? "..."` consumers unchanged.
+//
+// R28 (quick-task 20260522) — `description` is `string | null | undefined`:
+// the wire schema (AgentLegacyToolSchema) widened the field to `.nullish()`
+// so a client may send `"description":null`. translateLegacyTools collapses
+// a `null` to `undefined` at the boundary so the OpenAI tool shape carries
+// `string | undefined`.
 export interface LegacyTool {
   name: string;
-  description?: string | undefined;
+  description?: string | null | undefined;
   parameters: unknown;
 }
 
@@ -56,7 +62,9 @@ export function translateLegacyTools(tools: LegacyTool[] | undefined): OpenAIToo
     type: "function" as const,
     function: {
       name: t.name,
-      description: t.description,
+      // R28 — collapse a client-sent `null` description to `undefined`
+      // (the OpenAITool shape carries `string | undefined`).
+      description: t.description ?? undefined,
       parameters: t.parameters,
     },
   }));

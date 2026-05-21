@@ -208,9 +208,15 @@ export const buildAgentStreamRoutes = (deps: AgentStreamDeps) =>
         //     the env DEFAULT_AGENT_MODEL chain), stream:true + include_usage,
         //     authHeaders, spend-logs metadata, bodyTimeout:0, signal
         //     forwarding, and non-2xx → LitellmUpstreamError mapping.
-        const messages = prependSystemPrompt(body.messages ?? [], body.systemPrompt);
+        // R28 — the wire schema's optional fields are `.nullish()`, so
+        // `systemPrompt` / `tools` / `model` are `T | null | undefined`.
+        // The helpers narrow to `T | undefined`; `?? undefined` collapses
+        // a client-sent `null` to `undefined` (semantically identical —
+        // the field is unset). prependSystemPrompt's falsy-check and
+        // resolveModel's `??` already treat both the same.
+        const messages = prependSystemPrompt(body.messages ?? [], body.systemPrompt ?? undefined);
         const extras: Record<string, unknown> = {};
-        if (body.tools !== undefined) {
+        if (body.tools !== undefined && body.tools !== null) {
           extras.tools = translateLegacyTools(body.tools);
         }
 
@@ -256,7 +262,7 @@ export const buildAgentStreamRoutes = (deps: AgentStreamDeps) =>
             content: typeof m.content === "string" ? m.content : JSON.stringify(m.content),
           }));
           upstream = await deps.litellm.chatCompletionsStream({
-            model: resolveModel(body.model),
+            model: resolveModel(body.model ?? undefined),
             messages: llmMessages,
             userId,
             requestId: req.id,

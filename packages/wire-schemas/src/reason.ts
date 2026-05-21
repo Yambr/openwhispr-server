@@ -43,29 +43,42 @@ const MAX_META_STRING_LENGTH = 256;
 const MAX_PROMPT_LENGTH = 16_384;
 
 // POST /api/reason — request body (BACKEND_SPEC §/api/reason).
+//
+// R28 (quick-task 20260522): every optional field is `.nullish()`
+// (=== `.optional().nullable()`), NOT `.optional()`. The immutable
+// desktop client builds the body from `opts.model` / `opts.agentName`;
+// on the FIRST dictation of a session those are `null` (the store has
+// not yet resolved a model/agent), so the body literally contains
+// `"model":null`. `.optional()` accepts "key absent" OR the typed value
+// but REJECTS `null` — 400-ing the first dictation. `null` for an unset
+// optional field is valid JSON and standard client behavior; BACKEND_SPEC
+// marks these optional, so "optional" must tolerate `null`. The route
+// handler already consumes these fields with `?? default`, which treats
+// `null` identically to `undefined`. The `.max()` / `.min()` bounds
+// still apply when a non-null value IS present.
 export const ReasonRequest = z
   .object({
     text: z.string().min(1).max(MAX_REASON_TEXT_LENGTH),
-    model: z.string().min(1).max(128).optional(),
-    agentName: z.string().max(MAX_META_STRING_LENGTH).optional(),
-    customDictionary: z.array(z.string().max(MAX_META_STRING_LENGTH)).optional(),
-    customPrompt: z.string().max(MAX_PROMPT_LENGTH).optional(),
-    systemPrompt: z.string().max(MAX_PROMPT_LENGTH).optional(),
-    language: z.string().max(MAX_META_STRING_LENGTH).optional(),
-    locale: z.string().max(MAX_META_STRING_LENGTH).optional(),
-    sessionId: z.string().max(MAX_META_STRING_LENGTH).optional(),
-    clientType: z.string().max(MAX_META_STRING_LENGTH).optional(),
-    appVersion: z.string().max(MAX_META_STRING_LENGTH).optional(),
-    clientVersion: z.string().max(MAX_META_STRING_LENGTH).optional(),
-    sttProvider: z.string().max(MAX_META_STRING_LENGTH).optional(),
-    sttModel: z.string().max(MAX_META_STRING_LENGTH).optional(),
-    sttLanguage: z.string().max(MAX_META_STRING_LENGTH).optional(),
-    audioFormat: z.string().max(MAX_META_STRING_LENGTH).optional(),
-    sttProcessingMs: z.number().optional(),
-    sttWordCount: z.number().optional(),
-    audioDurationMs: z.number().optional(),
-    audioSizeBytes: z.number().optional(),
-    clientTotalMs: z.number().optional(),
+    model: z.string().min(1).max(128).nullish(),
+    agentName: z.string().max(MAX_META_STRING_LENGTH).nullish(),
+    customDictionary: z.array(z.string().max(MAX_META_STRING_LENGTH)).nullish(),
+    customPrompt: z.string().max(MAX_PROMPT_LENGTH).nullish(),
+    systemPrompt: z.string().max(MAX_PROMPT_LENGTH).nullish(),
+    language: z.string().max(MAX_META_STRING_LENGTH).nullish(),
+    locale: z.string().max(MAX_META_STRING_LENGTH).nullish(),
+    sessionId: z.string().max(MAX_META_STRING_LENGTH).nullish(),
+    clientType: z.string().max(MAX_META_STRING_LENGTH).nullish(),
+    appVersion: z.string().max(MAX_META_STRING_LENGTH).nullish(),
+    clientVersion: z.string().max(MAX_META_STRING_LENGTH).nullish(),
+    sttProvider: z.string().max(MAX_META_STRING_LENGTH).nullish(),
+    sttModel: z.string().max(MAX_META_STRING_LENGTH).nullish(),
+    sttLanguage: z.string().max(MAX_META_STRING_LENGTH).nullish(),
+    audioFormat: z.string().max(MAX_META_STRING_LENGTH).nullish(),
+    sttProcessingMs: z.number().nullish(),
+    sttWordCount: z.number().nullish(),
+    audioDurationMs: z.number().nullish(),
+    audioSizeBytes: z.number().nullish(),
+    clientTotalMs: z.number().nullish(),
   })
   .passthrough();
 export type ReasonRequest = z.infer<typeof ReasonRequest>;
