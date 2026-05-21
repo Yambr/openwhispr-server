@@ -20,10 +20,16 @@ export const ConversationRoleSchema = z.enum(["user", "assistant", "system"]);
 
 // H-3 (Phase 64) — exported so the server's conversations/messages.ts
 // can adopt this canonical shape instead of an ad-hoc looser schema.
+//
+// Phase 68 / Plan 68-01 — REVIEW wire-schemas HIGH H-1: the
+// size-refinement message is the stable machine key `metadata.too_large`
+// (NOT inline English). The route maps the key through i18next so the
+// end-user error message is localized — wire schemas must never carry an
+// inline-English end-user string.
 export const MetadataSchema = z
   .record(z.string().min(1).max(64), z.union([z.string().max(1024), z.number(), z.boolean()]))
   .refine((meta) => JSON.stringify(meta).length <= METADATA_MAX_BYTES, {
-    message: "metadata too large",
+    message: "metadata.too_large",
   });
 
 export const ConversationInputSchema = z
