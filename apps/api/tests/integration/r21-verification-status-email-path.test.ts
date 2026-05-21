@@ -1,0 +1,210 @@
+// SPDX-License-Identifier: FSL-1.1-ALv2
+// R21 — verification-status email-derived auth path, server-side proof.
+//
+// Under Better Auth 1.6.9 `requireEmailVerification: true`,
+// `POST /sign-up/email` issues NO session (vendored proof: `sign-up.mjs`
+// L160-161 / L249 returns `{token:null}` before `createSession`). The
+// desktop then polls `GET /api/auth/verification-status?email=<x>` every
+// 5s — with no session the OLD cookie-only route 401'd every poll, making
+// the sign-up→verify window structurally unsatisfiable.
+//
+// This boots a real Postgres via testcontainers, applies ALL migrations,
+// constructs the production `buildAuth()` AND the production
+// `buildVerificationStatusRoutes` plugin, and asserts the 4A contract end
+// to end against a real DB:
+//
+//   (1) real sign-up issues no session token (the R21 trigger condition);
+//   (2) `verification-status?email=<signed-up addr>` → 200 {verified:false}
+//       with NO session cookie (the email-derived path);
+//   (3) after the email is verified (email_verified_at set) the SAME poll
+//       → 200 {verified:true};
+//   (4) an unknown email → 200 {verified:false}, byte-identical to (2) —
+//       no enumeration oracle.
+//
+// The new `resolve-verification-identity` helper is exercised for real —
+// only the Postgres driver (network boundary) is a container, nothing of
+// the internal logic is mocked.
+
+import { dirname as pathDirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
+import { type AppDb, schema, withTenant } from "@openwhispr/data";
+import { PostgreSqlContainer, type StartedPostgreSqlContainer } from "@testcontainers/postgresql";
+import { sql } from "drizzle-orm";
+import { drizzle } from "drizzle-orm/node-postgres";
+import { migrate } from "drizzle-orm/node-postgres/migrator";
+import Fastify, { type FastifyInstance } from "fastify";
+import { Pool } from "pg";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { buildAuth } from "../../src/auth.js";
+import { registerErrorHandler } from "../../src/error-handler.js";
+import { zodTypeProvider } from "../../src/plugins/zod-type-provider.js";
+import { buildVerificationStatusRoutes } from "../../src/routes/verification-status.js";
+
+const __dirname = pathDirname(fileURLToPath(import.meta.url));
+const MIGRATIONS_FOLDER = resolve(
+  __dirname,
+  "..",
+  "..",
+  "..",
+  "..",
+  "packages",
+  "data",
+  "migrations",
+);
+
+let container: StartedPostgreSqlContainer;
+let ownerPool: Pool;
+let appPool: Pool;
+// Better Auth's exported AuthInstance type is intentionally narrow
+// (apps/api/src/auth.ts) — this integration test drives the raw `api`
+// surface (`signUpEmail` with `returnHeaders`). Biome's `noExplicitAny`
+// does not flag a bare `let` declaration, so no suppression is needed.
+let auth: any;
+let app: FastifyInstance;
+let appDb: AppDb;
+
+beforeAll(async () => {
+  process.env.MASTER_KEK = process.env.MASTER_KEK ?? Buffer.alloc(32).toString("base64url");
+  process.env.BETTER_AUTH_SECRET ??=
+    "0000000000000000000000000000000000000000000000000000000000000000";
+  // R21 trigger condition: email verification ENABLED → sign-up issues
+  // no session (this is the exact production posture the bug lives in).
+  process.env.OPENWHISPR_DISABLE_EMAIL_VERIFICATION = "0";
+  process.env.OPENWHISPR_KEY_PROVIDER = process.env.OPENWHISPR_KEY_PROVIDER ?? "env";
+
+  container = await new PostgreSqlContainer("openwhispr/postgres:17.5-pgpartman")
+    .withDatabase("openwhispr")
+    .withUsername("postgres_super")
+    .withPassword("super-pw")
+    .start();
+
+  const superPool = new Pool({ connectionString: container.getConnectionUri() });
+  await superPool.query("CREATE SCHEMA IF NOT EXISTS partman");
+  await superPool.query("CREATE EXTENSION IF NOT EXISTS pg_partman SCHEMA partman");
+  await superPool.query(
+    `CREATE ROLE openwhispr_owner WITH LOGIN BYPASSRLS CREATEROLE PASSWORD 'owner-pw'`,
+  );
+  await superPool.query(`CREATE ROLE openwhispr_app WITH LOGIN PASSWORD 'app-pw'`);
+  await superPool.query(`GRANT openwhispr_app TO openwhispr_owner WITH ADMIN OPTION`);
+  await superPool.query(`GRANT SET, ALTER SYSTEM ON PARAMETER "app.tenant_id" TO openwhispr_owner`);
+  await superPool.query(`ALTER DATABASE openwhispr OWNER TO openwhispr_owner`);
+  await superPool.query(`ALTER SCHEMA public OWNER TO openwhispr_owner`);
+  await superPool.query(`GRANT ALL ON SCHEMA partman TO openwhispr_owner`);
+  await superPool.query(`GRANT ALL ON ALL TABLES IN SCHEMA partman TO openwhispr_owner`);
+  await superPool.query(`GRANT ALL ON ALL SEQUENCES IN SCHEMA partman TO openwhispr_owner`);
+  await superPool.query(`GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA partman TO openwhispr_owner`);
+  await superPool.query(`GRANT EXECUTE ON ALL PROCEDURES IN SCHEMA partman TO openwhispr_owner`);
+  await superPool.end();
+
+  const host = container.getHost();
+  const port = container.getMappedPort(5432);
+
+  ownerPool = new Pool({
+    connectionString: `postgres://openwhispr_owner:owner-pw@${host}:${port}/openwhispr`,
+  });
+  await migrate(drizzle(ownerPool), {
+    migrationsFolder: MIGRATIONS_FOLDER,
+    migrationsSchema: "_meta",
+    migrationsTable: "__drizzle_migrations",
+  });
+
+  appPool = new Pool({
+    connectionString: `postgres://openwhispr_app:app-pw@${host}:${port}/openwhispr`,
+  });
+  appDb = drizzle(appPool, { schema });
+  auth = buildAuth({ db: appDb });
+
+  // The production verification-status plugin, registered on a Fastify
+  // instance with the REAL db + REAL auth — no mocks of internal logic.
+  app = Fastify({ logger: false });
+  registerErrorHandler(app);
+  app.register(zodTypeProvider);
+  app.register(buildVerificationStatusRoutes({ db: appDb, auth }));
+  await app.ready();
+}, 240_000);
+
+afterAll(async () => {
+  await app?.close();
+  await appPool?.end();
+  await ownerPool?.end();
+  await container?.stop();
+}, 60_000);
+
+const DEFAULT_TENANT = "00000000-0000-0000-0000-000000000000";
+
+describe("R21 — verification-status resolves email-derived identity with no session", () => {
+  it("real sign-up under requireEmailVerification issues NO session token", async () => {
+    const email = `r21-nosession-${Date.now()}@example.test`;
+    const res = await auth.api.signUpEmail({
+      body: { email, password: "R21!Str0ngPass", name: "R21 No Session" },
+      returnHeaders: true,
+    });
+    // The R21 trigger: Better Auth returns {token:null} before createSession.
+    expect(res.response?.token ?? null).toBeNull();
+  }, 60_000);
+
+  it("sign-up → poll ?email= (no cookie) → {verified:false}; verify → {verified:true}", async () => {
+    const email = `r21-window-${Date.now()}@example.test`;
+    await auth.api.signUpEmail({
+      body: { email, password: "R21!Str0ngPass", name: "R21 Window" },
+    });
+
+    // Poll with NO session cookie — the desktop's exact request shape.
+    const before = await app.inject({
+      method: "GET",
+      url: `/api/auth/verification-status?email=${encodeURIComponent(email)}`,
+    });
+    expect(before.statusCode).toBe(200);
+    expect(before.json()).toEqual({ verified: false });
+
+    // Click the verification link — model it by setting email_verified_at
+    // on the user row (the column the route reads). Runs inside withTenant
+    // so the FORCE-RLS users policy admits the UPDATE.
+    await withTenant(appDb, DEFAULT_TENANT, async (tx) => {
+      await tx.execute(sql`
+        UPDATE users
+           SET email_verified = true,
+               email_verified_at = now()
+         WHERE lower(email) = lower(${email})
+      `);
+    });
+
+    // Poll again — same request, now verified.
+    const after = await app.inject({
+      method: "GET",
+      url: `/api/auth/verification-status?email=${encodeURIComponent(email)}`,
+    });
+    expect(after.statusCode).toBe(200);
+    expect(after.json()).toEqual({ verified: true });
+  }, 60_000);
+
+  it("unknown email → 200 {verified:false}, byte-identical to a known-unverified poll", async () => {
+    const unknownEmail = `r21-ghost-${Date.now()}@nowhere.test`;
+    const knownEmail = `r21-pending-${Date.now()}@example.test`;
+    await auth.api.signUpEmail({
+      body: { email: knownEmail, password: "R21!Str0ngPass", name: "R21 Pending" },
+    });
+
+    const unknown = await app.inject({
+      method: "GET",
+      url: `/api/auth/verification-status?email=${encodeURIComponent(unknownEmail)}`,
+    });
+    const known = await app.inject({
+      method: "GET",
+      url: `/api/auth/verification-status?email=${encodeURIComponent(knownEmail)}`,
+    });
+
+    // No enumeration oracle: identical status code AND identical body.
+    expect(unknown.statusCode).toBe(known.statusCode);
+    expect(unknown.json()).toEqual(known.json());
+    expect(unknown.json()).toEqual({ verified: false });
+  }, 60_000);
+
+  it("malformed ?email= → 400 from the Zod schema", async () => {
+    const res = await app.inject({
+      method: "GET",
+      url: "/api/auth/verification-status?email=not-an-email",
+    });
+    expect(res.statusCode).toBe(400);
+  }, 30_000);
+});
