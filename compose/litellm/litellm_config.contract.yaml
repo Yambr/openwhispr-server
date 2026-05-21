@@ -43,6 +43,16 @@ model_list:
   # asserts only proxy-reaches-LiteLLM behavior; real realtime smoke
   # against OpenAI direct is e2e/Phase 4 (requires OPENAI_API_KEY in
   # `.env.e2e`).
+  #
+  # D1 — `realtime-default` is the canonical server-injected realtime
+  # alias (WSS /v1/realtime forces `?model=realtime-default`). Listed
+  # here for alias-presence parity with the bundled-default config;
+  # realtime does NOT honor `mock_response` (see the caveat above).
+  - model_name: realtime-default
+    litellm_params:
+      model: openai/gpt-realtime
+      api_key: "fake-key-for-mock"
+      mode: realtime
   - model_name: gpt-realtime
     litellm_params:
       model: openai/gpt-realtime

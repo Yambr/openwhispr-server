@@ -200,19 +200,20 @@ If your internal pyannote endpoint is single-hop (POST multipart → 200 segment
 
 ```
 desktop ──WSS──▶ Traefik (idle 3600s) ──▶ api (Fastify wsUpstream) ──▶ litellm
-       (Authorization: Bearer <opaque>)                              │
-                                                                     ▼
-                                                         OpenAI Realtime API
-                                                  (wss://api.openai.com/v1/realtime
-                                                          ?model=gpt-realtime,
-                                                   LiteLLM `mode: realtime`)
+       (Authorization: Bearer <opaque>,                              │
+        NO ?model= — server injects it)        api forces             ▼
+                                          ?model=realtime-default  OpenAI Realtime API
+                                          ?user=<userId>      (wss://api.openai.com/v1/realtime
+                                                                      ?model=gpt-realtime,
+                                                               LiteLLM `mode: realtime`)
 ```
 
-- **Default backend (D-12):** OpenAI Realtime API direct via LiteLLM `mode: realtime`. Default model alias `gpt-realtime` (GA). Aliases shipped in `compose/litellm/litellm_config.yaml`: `gpt-realtime`, `gpt-realtime-mini`, `gpt-4o-realtime-preview` (legacy).
+- **Server-injected model alias (D1).** LiteLLM routes `/v1/realtime` on the `?model=` query parameter, NOT the in-band `session.update` frame. The api (`apps/api/src/routes/realtime.ts`) **forces** `?model=<LITELLM_REALTIME_MODEL>` (default `realtime-default`) onto the upstream-bound URL in the same preHandler that forces `?user=<userId>` — **overwriting whatever the desktop client sent (or omitted)**. The realtime model is therefore pure operator config: **the desktop client sends no model**, and OpenAI→Speaches is a one-line `litellm_config` retarget of the `realtime-default` alias with zero client change. The `LITELLM_REALTIME_MODEL` env var sets the alias; operators normally leave it at `realtime-default` and retarget the alias in `litellm_config.yaml` instead.
+- **Default backend (D-12):** OpenAI Realtime API direct via LiteLLM `mode: realtime`. Default alias `realtime-default` → `openai/gpt-realtime` (GA). Extra aliases shipped in `compose/litellm/litellm_config.yaml` for backward compat with older desktop builds that still send an explicit `?model=`: `gpt-realtime`, `gpt-realtime-mini`, `gpt-4o-realtime-preview` (legacy).
 - **Pricing reminder:** OpenAI Realtime is `$0.06/min` audio in + `$0.24/min` audio out (operator-visible cost; surface via Grafana usage dashboards).
 - **Opaque-bearer preserved.** The desktop bearer is the OpenWhispr session token (validated by Better Auth on upgrade). Neither `LITELLM_MASTER_KEY` nor `OPENAI_API_KEY` is exposed to the desktop — LiteLLM injects upstream credentials server-side.
 - **Ingress timeouts.** Traefik `forwardingTimeouts.idleConnTimeout` and `routerTransport.respondingTimeouts.idleTimeout` are both 3600s on the realtime route (Plan 07). Shorter timeouts cause spurious mid-session disconnects on long dictations (`BACKEND_SPEC.md:L788-L791`).
-- **Corporate override.** Set `LITELLM_BASE_URL` to your internal proxy serving `gpt-realtime` (Speaches realtime, Azure OpenAI realtime, etc.). Wire shape on the desktop side is identical.
+- **Corporate override.** Set `LITELLM_BASE_URL` to your internal proxy and point the `realtime-default` alias at your realtime upstream (Speaches realtime, Azure OpenAI realtime, etc.). Wire shape on the desktop side is identical — and unchanged regardless of which provider serves `realtime-default`.
 
 ---
 
