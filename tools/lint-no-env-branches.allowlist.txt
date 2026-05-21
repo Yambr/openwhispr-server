@@ -21,12 +21,12 @@ apps/api/src/lib/ssrf-dispatcher.ts:59  # issue-31-DI-fallback-jsdoc
 apps/api/src/lib/ssrf-dispatcher.ts:163  # issue-31-DI-fallback
 apps/api/src/routes/index.ts:474  # issue-31-debt-NODE_ENV-shortcircuit
 apps/api/src/routes/test-only.ts:18  # issue-31-debt-test-only-jsdoc-header
-apps/api/src/routes/test-only.ts:200  # issue-31-debt-test-only-jsdoc (drifted 122 → 168 → 200 across Phases 56/57/59 — plugin jsdoc NODE_ENV narrative)
-apps/api/src/routes/test-only.ts:212  # issue-31-debt-test-only-gate (drifted 128 → 174 → 180 → 212 across Phases 56/57/59 — registration gate, NODE_ENV!=='production' veto term)
-apps/api/src/routes/test-only.ts:213  # issue-31-debt-test-only-gate (drifted 181 → 213 across Phases 57/59 — registration gate continuation, NODE_ENV==='test' term)
-apps/api/src/routes/test-only.ts:392  # issue-56-01-test-only-seed-tenant-jsdoc-veto (drifted 353 → 360 → 402 in Phase 57 / Track C + Phase 59 / Track A R14 — comment narrative of the production-veto defence-in-depth)
-apps/api/src/routes/test-only.ts:399  # issue-56-01-test-only-seed-tenant-jsdoc-gate (drifted 360 → 367 → 409 in Phase 57 / Track C + Phase 59 / Track A R14 — comment narrative of the OPENWHISPR_TEST_ROUTES tightened-gate rationale)
-apps/api/src/routes/test-only.ts:424  # issue-56-01-test-only-seed-tenant-gate (drifted 372 → 379 → 392 → 434 in Phase 57 / Track C + R13 + Phase 59 / Track A — defence-in-depth production-veto retained inside the seed-tenant handler; redundant after the registration-gate lift but harmless)
+apps/api/src/routes/test-only.ts:220  # issue-31-debt-test-only-jsdoc (drifted 122 → 168 → 200 across Phases 56/57/59 — plugin jsdoc NODE_ENV narrative)
+apps/api/src/routes/test-only.ts:232  # issue-31-debt-test-only-gate (drifted 128 → 174 → 180 → 212 across Phases 56/57/59 — registration gate, NODE_ENV!=='production' veto term)
+apps/api/src/routes/test-only.ts:233  # issue-31-debt-test-only-gate (drifted 181 → 213 across Phases 57/59 — registration gate continuation, NODE_ENV==='test' term)
+apps/api/src/routes/test-only.ts:412  # issue-56-01-test-only-seed-tenant-jsdoc-veto (drifted 353 → 360 → 402 in Phase 57 / Track C + Phase 59 / Track A R14 — comment narrative of the production-veto defence-in-depth)
+apps/api/src/routes/test-only.ts:419  # issue-56-01-test-only-seed-tenant-jsdoc-gate (drifted 360 → 367 → 409 in Phase 57 / Track C + Phase 59 / Track A R14 — comment narrative of the OPENWHISPR_TEST_ROUTES tightened-gate rationale)
+apps/api/src/routes/test-only.ts:444  # issue-56-01-test-only-seed-tenant-gate (drifted 372 → 379 → 392 → 434 in Phase 57 / Track C + R13 + Phase 59 / Track A — defence-in-depth production-veto retained inside the seed-tenant handler; redundant after the registration-gate lift but harmless)
 packages/byok-guard/src/index.ts:230  # issue-31-boundary-check (drifted 221 → 230 in Phase 51 / Plan 51-02 after re-export of redactUrl)
 packages/email/src/EmailSender.ts:7  # issue-31-boundary-check-jsdoc
 packages/email/src/EmailSender.ts:107  # issue-31-boundary-check (line drifted 79 → 87 → 107; Phase 68 HIGH-EMAIL-01 added the SendArgs.html escaping JSDoc)

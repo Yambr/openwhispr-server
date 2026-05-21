@@ -35,7 +35,7 @@
 // internal scheduling) is not test-controllable. The previous_token
 // machinery is wired through `recordPreviousToken` so the contract
 // test's overlap assertion holds.
-import { randomBytes, randomUUID } from "node:crypto";
+import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { type ExecutableTx, type TransactionalDb, withTenant } from "@openwhispr/data";
 import type { LitellmClient } from "@openwhispr/litellm-client";
 import { SeedTenantRequest } from "@openwhispr/wire-schemas";
@@ -156,13 +156,29 @@ function extractBetterAuthErrorMessage(err: unknown): string {
   return err instanceof Error ? err.message : "signUpEmail failed";
 }
 
+/**
+ * R20 — SHA-256 fingerprint of a bearer token. `sessions.token` is
+ * envelope-encrypted at rest (plaintext column NULL); the canonical
+ * session-resolution lookup is by the `token_fp` fingerprint sidecar.
+ * Every direct-SQL path in this test-only surface that writes or reads
+ * a session token MUST go through the fingerprint so a seed-tenant
+ * bearer resolves through the IDENTICAL code path as a real
+ * Better-Auth-issued bearer (the lens `rewriteWhere` fingerprint
+ * rewrite). Matches `lib/token-rotation.ts` `recordPreviousToken`.
+ */
+function tokenFingerprint(bearer: string): Buffer {
+  return createHash("sha256").update(bearer, "utf8").digest();
+}
+
 async function lookupSessionIdByToken(
   db: TransactionalDb<ExecutableTx>,
   tenantId: string,
   bearer: string,
 ): Promise<string | null> {
   return await withTenant(db, tenantId, async (tx) => {
-    const r = (await tx.execute(sql`SELECT id FROM sessions WHERE token = ${bearer} LIMIT 1`)) as {
+    const r = (await tx.execute(
+      sql`SELECT id FROM sessions WHERE token_fp = ${tokenFingerprint(bearer)} LIMIT 1`,
+    )) as {
       rows: Array<{ id: string }>;
     };
     return r.rows[0]?.id ?? null;
@@ -177,12 +193,16 @@ async function rotateSessionInDb(
 ): Promise<string> {
   // Generate a NEW opaque 32-byte bearer (URL-safe base64-ish via base64url).
   const newBearer = randomBytes(32).toString("base64url");
+  // R20 — write the SHA-256 fingerprints, NOT the plaintext columns. The
+  // plaintext `token` / `previous_token` columns are envelope-encrypted
+  // (NULL at rest); session resolution and the AUTH-04 overlap window
+  // both look up by the `*_fp` fingerprint sidecars.
   await withTenant(db, tenantId, async (tx) => {
     await tx.execute(
       sql`UPDATE sessions
-          SET previous_token = ${oldBearer},
+          SET previous_token_fp = ${tokenFingerprint(oldBearer)},
               previous_token_expires_at = now() + interval '5 minutes',
-              token = ${newBearer},
+              token_fp = ${tokenFingerprint(newBearer)},
               updated_at = now()
           WHERE id = ${sessionId}::uuid`,
     );
@@ -557,6 +577,15 @@ export function buildTestOnlyRoutes(deps: TestOnlyDeps) {
           //    the test-only surface (force-rotate / health-authed).
           //    Runs inside withTenant() so the sessions WITH CHECK RLS
           //    policy admits the INSERT without a leaked GUC (R14).
+          //
+          //    R20 — the row carries `token_fp` (SHA-256 of the bearer),
+          //    NOT the plaintext `token` column. `sessions.token` is
+          //    envelope-encrypted (NULL at rest); Better Auth's
+          //    `findSession` resolves via the lens `rewriteWhere`
+          //    fingerprint rewrite (`WHERE token_fp = sha256(<bearer>)`).
+          //    Writing the fingerprint here makes the seed-tenant bearer
+          //    resolve through the IDENTICAL path as a real sign-in
+          //    bearer — the two must not diverge.
           const token = randomBytes(32).toString("base64url");
           const sessionId = randomUUID();
           // 30-day TTL mirrors the production session config (auth.ts
@@ -564,11 +593,11 @@ export function buildTestOnlyRoutes(deps: TestOnlyDeps) {
           const expiresAt = new Date(Date.now() + 1000 * 60 * 60 * 24 * 30).toISOString();
           await withTenant(db, tenantId, async (tx) => {
             await tx.execute(sql`
-            INSERT INTO sessions (id, user_id, tenant_id, token, expires_at, created_at, updated_at)
+            INSERT INTO sessions (id, user_id, tenant_id, token_fp, expires_at, created_at, updated_at)
             VALUES (${sessionId}::uuid,
                     ${userId}::uuid,
                     ${tenantId}::uuid,
-                    ${token},
+                    ${tokenFingerprint(token)},
                     ${expiresAt}::timestamptz,
                     now(),
                     now())
