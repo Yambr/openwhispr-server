@@ -85,8 +85,10 @@ export const buildReasonRoutes = (deps: ReasonDeps) =>
       config: { rateLimit: { max: 120, timeWindow: "1 minute" } },
       // No `schema.body` registered with the type-provider so the
       // centralized error-handler emits the canonical {error} envelope on
-      // ZodError rather than Fastify's `validation` shape (which would
-      // bypass the .strict() rejection messaging). We parse manually below.
+      // ZodError rather than Fastify's `validation` shape. We parse
+      // manually below. R23: ReasonRequest is `.passthrough()` — it
+      // tolerates unmodeled keys but still validates `text` + the typed
+      // documented fields, raising ZodError -> 400 on a malformed body.
       handler: async (req, reply) => {
         if (!req.user || !req.tenant) {
           // Defensive — dualAuthHook should have thrown.
@@ -148,8 +150,11 @@ export const buildReasonRoutes = (deps: ReasonDeps) =>
           text: upstreamJson.choices?.[0]?.message?.content ?? "",
           model: responseModel,
           provider: MODEL_PROVIDER[responseModel] ?? MODEL_PROVIDER[model] ?? "litellm",
-          promptMode: body.promptMode ?? "default",
-          matchType: body.matchType ?? "default",
+          // R23: `promptMode` / `matchType` are RESPONSE-shape fields and
+          // were removed from `ReasonRequest` — the immutable client
+          // never sent them. The echo is the constant documented default.
+          promptMode: "default",
+          matchType: "default",
         };
         return reply.code(200).send(response);
       },

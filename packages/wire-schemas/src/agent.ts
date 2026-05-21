@@ -51,6 +51,14 @@ export type AgentLegacyTool = z.infer<typeof AgentLegacyToolSchema>;
  *   - tools: ≤ 64 entries (LiteLLM upstream caps lower in practice)
  *   - systemPrompt: ≤ 16_384 chars (≈ 4k tokens — long-prompt budget)
  *   - model: 1..128 chars (LiteLLM alias names + override paths)
+ *   - sessionId / clientType / appVersion: ≤ 256 chars (metadata)
+ *
+ * R23 (quick-task 20260521): the immutable desktop client POSTs
+ * sessionId / clientType / appVersion alongside `messages`. They are
+ * now explicitly modeled, and the top-level `.strict()` is relaxed to
+ * `.passthrough()` so future documented client fields no longer 400.
+ * The sub-object schemas (AgentChatMessageSchema / AgentLegacyToolSchema)
+ * keep their `.strict()` — their shape is fixed.
  */
 export const AgentStreamRequestSchema = z
   .object({
@@ -58,6 +66,9 @@ export const AgentStreamRequestSchema = z
     model: z.string().min(1).max(128).optional(),
     systemPrompt: z.string().max(16_384).optional(),
     tools: z.array(AgentLegacyToolSchema).max(64).optional(),
+    sessionId: z.string().max(256).optional(),
+    clientType: z.string().max(256).optional(),
+    appVersion: z.string().max(256).optional(),
   })
-  .strict();
+  .passthrough();
 export type AgentStreamRequest = z.infer<typeof AgentStreamRequestSchema>;
