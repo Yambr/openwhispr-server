@@ -526,6 +526,141 @@ describe("encryption lens — Phase 33 Plan 02", () => {
     });
   });
 
+  // R20 — Better Auth's `internalAdapter.findSession(token)` issues a BARE
+  // equality clause `{field:"token", operator:"eq", value:<plaintext>}`, NOT
+  // a `_fp_lookup` clause (the `_fp_lookup` convention has no Better-Auth
+  // caller). Pre-fix, that bare clause passed through to `WHERE token = ...`
+  // against the NULL-at-rest plaintext column → no match → 401 on every
+  // sync route for a real signed-in user. The lens must auto-rewrite a bare
+  // equality clause on a fingerprinted encrypted column to the fingerprint
+  // lookup, so Better Auth's own session resolution resolves correctly.
+  describe("bare-equality rewrite on fingerprinted columns (R20)", () => {
+    it("rewrites a bare `{field:'token', operator:'eq'}` clause to token_fp = sha256(value)", async () => {
+      const provider = new EnvKeyProvider();
+      const { adapter } = makeMockAdapter();
+      const wrapped = wrapAdapter(adapter, provider, COLUMN_MAP);
+
+      await wrapped.create({
+        model: "sessions",
+        data: { id: "ba-1", token: "better-auth-session-token", user_id: "u" },
+      });
+
+      // Exactly the clause shape better-auth's findSession emits.
+      const row = await wrapped.findOne<any>({
+        model: "sessions",
+        where: [
+          {
+            field: "token",
+            value: "better-auth-session-token",
+            operator: "eq",
+            connector: "AND",
+          },
+        ],
+      });
+      expect(row).toBeTruthy();
+      expect(row!.id).toBe("ba-1");
+      expect(row!.token).toBe("better-auth-session-token");
+    });
+
+    it("rewrites a bare `{field:'token'}` clause with operator omitted", async () => {
+      const provider = new EnvKeyProvider();
+      const { adapter } = makeMockAdapter();
+      const wrapped = wrapAdapter(adapter, provider, COLUMN_MAP);
+      await wrapped.create({
+        model: "sessions",
+        data: { id: "ba-2", token: "tok-omitted-op", user_id: "u" },
+      });
+      const row = await wrapped.findOne<any>({
+        model: "sessions",
+        // operator omitted — better-auth's Where default is "eq".
+        where: [{ field: "token", value: "tok-omitted-op", connector: "AND" } as any],
+      });
+      expect(row).toBeTruthy();
+      expect(row!.id).toBe("ba-2");
+    });
+
+    it("update/delete by bare token clause resolve via the fingerprint", async () => {
+      const provider = new EnvKeyProvider();
+      const { adapter } = makeMockAdapter();
+      const wrapped = wrapAdapter(adapter, provider, COLUMN_MAP);
+      await wrapped.create({
+        model: "sessions",
+        data: { id: "ba-3", token: "tok-mutate", user_id: "u" },
+      });
+      const updated = await wrapped.update<any>({
+        model: "sessions",
+        where: [{ field: "token", value: "tok-mutate", operator: "eq", connector: "AND" }],
+        update: { user_id: "u2" },
+      });
+      expect(updated).toBeTruthy();
+      expect(updated!.user_id).toBe("u2");
+
+      await wrapped.delete({
+        model: "sessions",
+        where: [{ field: "token", value: "tok-mutate", operator: "eq", connector: "AND" }],
+      });
+      const gone = await wrapped.findOne<any>({
+        model: "sessions",
+        where: [{ field: "token", value: "tok-mutate", operator: "eq", connector: "AND" }],
+      });
+      expect(gone).toBeNull();
+    });
+
+    it("does NOT rewrite a non-eq operator on a fingerprinted column", async () => {
+      const provider = new EnvKeyProvider();
+      const { adapter } = makeMockAdapter();
+      const wrapped = wrapAdapter(adapter, provider, COLUMN_MAP);
+      await wrapped.create({
+        model: "sessions",
+        data: { id: "ba-4", token: "tok-ne", user_id: "u" },
+      });
+      // `ne` cannot be satisfied by a hash; the clause must pass through
+      // unchanged → compares against the NULL plaintext column → no match.
+      const row = await wrapped.findOne<any>({
+        model: "sessions",
+        where: [{ field: "token", value: "tok-ne", operator: "ne", connector: "AND" }],
+      });
+      expect(row).toBeNull();
+    });
+
+    it("does NOT rewrite a clause whose value is already a Buffer (idempotency)", async () => {
+      const provider = new EnvKeyProvider();
+      const { adapter } = makeMockAdapter();
+      const wrapped = wrapAdapter(adapter, provider, COLUMN_MAP);
+      await wrapped.create({
+        model: "sessions",
+        data: { id: "ba-5", token: "tok-buf", user_id: "u" },
+      });
+      const fp = createHash("sha256").update("tok-buf").digest();
+      // A clause already carrying the fingerprint Buffer must not be
+      // re-rewritten (would double-hash). Querying token_fp directly works.
+      const row = await wrapped.findOne<any>({
+        model: "sessions",
+        where: [{ field: "token_fp", value: fp as any, operator: "eq", connector: "AND" }],
+      });
+      expect(row).toBeTruthy();
+      expect(row!.id).toBe("ba-5");
+    });
+
+    it("leaves non-fingerprinted encrypted columns alone (account.password)", async () => {
+      const provider = new EnvKeyProvider();
+      const { adapter } = makeMockAdapter();
+      const wrapped = wrapAdapter(adapter, provider, COLUMN_MAP);
+      await wrapped.create({
+        model: "account",
+        data: { id: "acc-1", password: "secret-pw", user_id: "u" },
+      });
+      // account.password has NO fingerprint config — a bare equality clause
+      // must pass through (it will miss against the NULL plaintext column,
+      // which is correct: password lookup-by-value is not a supported path).
+      const row = await wrapped.findOne<any>({
+        model: "account",
+        where: [{ field: "password", value: "secret-pw", operator: "eq", connector: "AND" }],
+      });
+      expect(row).toBeNull();
+    });
+  });
+
   describe("pass-through methods", () => {
     it("count delegates without transformation", async () => {
       const provider = new EnvKeyProvider();

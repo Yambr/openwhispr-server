@@ -143,6 +143,33 @@ dev-tools overlay (`compose/docker-compose.dev-tools.yml`) seeds
 sane defaults for local development; production `.env` must list
 the real internal hostnames explicitly.
 
+### Verification-email link origin (`INGRESS_BASE_URL`)
+
+Better Auth builds the **email verification link** from
+`INGRESS_BASE_URL` (falling back to `AUTH_URL`):
+`<INGRESS_BASE_URL>/api/auth/verify-email?token=...`. That URL must be
+reachable from **where the user reads their mail** — a normal browser,
+outside the Docker network.
+
+A frequent slim-core mistake is leaving `INGRESS_BASE_URL` at the
+internal Traefik hostname `https://api.localhost`. `api.localhost`
+resolves only inside the compose network, so the emailed link is dead
+for any real user — sign-up appears to succeed but the user can never
+verify and is stuck at `EMAIL_NOT_VERIFIED` on sign-in.
+
+Set `INGRESS_BASE_URL` (and `AUTH_URL` / `OPENWHISPR_API_URL`, which
+feed Better Auth's CSRF/Origin allow-list) to the **externally
+reachable** origin:
+
+- **No-Traefik single-host slim deploy** — the api is published on host
+  port 4000 (compose `4000:3000`), so use `http://localhost:4000`.
+- **Behind a reverse proxy / public deploy** — your public origin,
+  e.g. `https://openwhispr.example.com` (production also requires
+  `https://` per the `validateAuthBoot` guard above).
+
+All three vars must agree. The slim test `.env` (and
+`.env.slim.example`) ship pinned to `http://localhost:4000`.
+
 ## Cross-references
 
 - Wire shapes (byte-for-byte authoritative): `BACKEND_SPEC.md`
