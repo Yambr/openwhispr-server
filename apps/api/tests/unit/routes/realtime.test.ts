@@ -33,6 +33,9 @@ import {
 const TEST_TENANT = "00000000-0000-0000-0000-000000000000";
 const TEST_USER = "11111111-1111-1111-1111-111111111111";
 const TEST_MASTER_KEY = "sk-litellm-master-test-only";
+// D1 — server-injected realtime model alias. The desktop sends no model;
+// the preHandler forces `?model=<this>` onto the upstream-bound URL.
+const TEST_REALTIME_MODEL = "realtime-default";
 
 interface UpstreamCapture {
   url?: string;
@@ -84,7 +87,11 @@ async function startUpstream(): Promise<{
  * hook that populates req.user / req.tenant when `authed` is true,
  * and the centralized error handler so AuthError → 401 envelope.
  */
-async function buildApp(opts: { upstream: string; authed?: boolean }): Promise<FastifyInstance> {
+async function buildApp(opts: {
+  upstream: string;
+  authed?: boolean;
+  realtimeModel?: string;
+}): Promise<FastifyInstance> {
   const app = Fastify({ logger: false });
   registerErrorHandler(app);
   if (opts.authed !== false) {
@@ -100,7 +107,13 @@ async function buildApp(opts: { upstream: string; authed?: boolean }): Promise<F
   const litellm = {
     baseUrl: opts.upstream,
   } as unknown as LitellmClient;
-  await app.register(buildRealtimeRoutes({ litellm, masterKey: TEST_MASTER_KEY }));
+  await app.register(
+    buildRealtimeRoutes({
+      litellm,
+      masterKey: TEST_MASTER_KEY,
+      realtimeModel: opts.realtimeModel ?? TEST_REALTIME_MODEL,
+    }),
+  );
   await app.ready();
   return app;
 }
@@ -155,7 +168,13 @@ describe("WSS /v1/realtime route — D-27 wsClientOptions tightening (Phase 04 P
         return origRegister(plugin as never, opts as never);
       };
       const litellm = { baseUrl: upstream.url } as unknown as LitellmClient;
-      await app.register(buildRealtimeRoutes({ litellm, masterKey: TEST_MASTER_KEY }));
+      await app.register(
+        buildRealtimeRoutes({
+          litellm,
+          masterKey: TEST_MASTER_KEY,
+          realtimeModel: TEST_REALTIME_MODEL,
+        }),
+      );
       await app.ready();
       // Find the http-proxy register call (the one with `wsUpstream`).
       const proxyOpts = captured.find((o) => typeof o.wsUpstream === "string");
@@ -189,7 +208,13 @@ describe("WSS /v1/realtime route — D-27 wsClientOptions tightening (Phase 04 P
         return origRegister(plugin as never, opts as never);
       };
       const litellm = { baseUrl: upstream.url } as unknown as LitellmClient;
-      await app.register(buildRealtimeRoutes({ litellm, masterKey: TEST_MASTER_KEY }));
+      await app.register(
+        buildRealtimeRoutes({
+          litellm,
+          masterKey: TEST_MASTER_KEY,
+          realtimeModel: TEST_REALTIME_MODEL,
+        }),
+      );
       await app.ready();
       const proxyOpts = captured.find((o) => typeof o.wsUpstream === "string");
       expect(proxyOpts).toBeDefined();
@@ -316,6 +341,73 @@ describe("WSS /v1/realtime route", () => {
     await new Promise<void>((res) => ws.once("close", () => res()));
   });
 
+  it("forces ?model=<deps.realtimeModel> on the upstream URL when the client sends no model (D1 / T-03-07-05)", async () => {
+    upstream = await startUpstream();
+    app = await buildApp({ upstream: upstream.url });
+    await app.listen({ port: 0, host: "127.0.0.1" });
+    const proxyAddr = app.server.address() as AddressInfo;
+    // The desktop opens /v1/realtime with NO ?model= — the OpenAI Realtime
+    // protocol would otherwise carry a provider-specific model in-band.
+    const wsUrl = `ws://127.0.0.1:${proxyAddr.port}/v1/realtime`;
+    const ws = new WebSocket(wsUrl);
+    await new Promise<void>((res, rej) => {
+      ws.once("open", () => res());
+      ws.once("error", (err) => rej(err));
+    });
+    await upstream.upgraded;
+    const upstreamUrl = new URL(upstream.capture.url ?? "", "http://internal");
+    // The server-configured alias is injected as a query param.
+    expect(upstreamUrl.searchParams.get("model")).toBe(TEST_REALTIME_MODEL);
+    // ?user= injection is unaffected (no regression).
+    expect(upstreamUrl.searchParams.get("user")).toBe(TEST_USER);
+    ws.close();
+    await new Promise<void>((res) => ws.once("close", () => res()));
+  });
+
+  it("overwrites a caller-supplied ?model= query with the server alias (D1 tamper-normalization / T-03-07-05)", async () => {
+    upstream = await startUpstream();
+    app = await buildApp({ upstream: upstream.url });
+    await app.listen({ port: 0, host: "127.0.0.1" });
+    const proxyAddr = app.server.address() as AddressInfo;
+    // The desktop sends a provider-specific `?model=gpt-realtime` (or a
+    // tampered value) — the preHandler MUST overwrite it, exactly like ?user=.
+    const wsUrl = `ws://127.0.0.1:${proxyAddr.port}/v1/realtime?model=gpt-realtime&intent=transcription`;
+    const ws = new WebSocket(wsUrl);
+    await new Promise<void>((res, rej) => {
+      ws.once("open", () => res());
+      ws.once("error", (err) => rej(err));
+    });
+    await upstream.upgraded;
+    const upstreamUrl = new URL(upstream.capture.url ?? "", "http://internal");
+    // Client-supplied model is discarded; the operator-configured alias wins.
+    expect(upstreamUrl.searchParams.get("model")).toBe(TEST_REALTIME_MODEL);
+    expect(upstreamUrl.searchParams.get("model")).not.toBe("gpt-realtime");
+    // ?user= still forced; unrelated params preserved.
+    expect(upstreamUrl.searchParams.get("user")).toBe(TEST_USER);
+    expect(upstreamUrl.searchParams.get("intent")).toBe("transcription");
+    ws.close();
+    await new Promise<void>((res) => ws.once("close", () => res()));
+  });
+
+  it("injects whichever realtimeModel the deps carry (operator config seam — D1)", async () => {
+    upstream = await startUpstream();
+    // A different operator alias proves the value is pure injected config,
+    // not a route-level literal.
+    app = await buildApp({ upstream: upstream.url, realtimeModel: "speaches-realtime" });
+    await app.listen({ port: 0, host: "127.0.0.1" });
+    const proxyAddr = app.server.address() as AddressInfo;
+    const ws = new WebSocket(`ws://127.0.0.1:${proxyAddr.port}/v1/realtime`);
+    await new Promise<void>((res, rej) => {
+      ws.once("open", () => res());
+      ws.once("error", (err) => rej(err));
+    });
+    await upstream.upgraded;
+    const upstreamUrl = new URL(upstream.capture.url ?? "", "http://internal");
+    expect(upstreamUrl.searchParams.get("model")).toBe("speaches-realtime");
+    ws.close();
+    await new Promise<void>((res) => ws.once("close", () => res()));
+  });
+
   // ----- Stage B back-fill — close residual branch gaps to 90/90/90/90 ----
 
   it("buildRewriteRequestHeaders falls back to user='anonymous' when user.id is missing (line 115 idx 1)", () => {
@@ -378,7 +470,13 @@ describe("WSS /v1/realtime route", () => {
       }
     });
     const litellm = { baseUrl: upstream.url } as unknown as LitellmClient;
-    await localApp.register(buildRealtimeRoutes({ litellm, masterKey: TEST_MASTER_KEY }));
+    await localApp.register(
+      buildRealtimeRoutes({
+        litellm,
+        masterKey: TEST_MASTER_KEY,
+        realtimeModel: TEST_REALTIME_MODEL,
+      }),
+    );
     await localApp.ready();
     expect(capturedPreHandler).toBeDefined();
 
@@ -394,6 +492,9 @@ describe("WSS /v1/realtime route", () => {
     const u = new URL((fakeReq.raw as { url: string }).url, "http://internal");
     expect(u.searchParams.get("user")).toBe(TEST_USER);
     expect(u.searchParams.get("intent")).toBe("hello");
+    // D1 — the server-injected model alias is forced even on the
+    // req.url fallback path.
+    expect(u.searchParams.get("model")).toBe(TEST_REALTIME_MODEL);
     await localApp.close();
   });
 

@@ -77,6 +77,20 @@ model_list:
   #
   # For real OpenAI Realtime smoke (≤10 calls proof-of-wiring), see
   # the realistic-smoke-paid mode flag.
+  #
+  # D1 — `realtime-default` is the canonical server-injected realtime
+  # alias. WSS /v1/realtime (apps/api/src/routes/realtime.ts) forces
+  # `?model=realtime-default` onto the upstream URL. THIS entry IS the
+  # OpenAI→Speaches switch: pointing `realtime-default` at the Speaches
+  # realtime upstream is the single edit that retargets the backend,
+  # with zero desktop-client change.
+  - model_name: realtime-default
+    litellm_params:
+      model: openai/speaches-realtime
+      api_base: http://speaches:8000/v1
+      api_key: "speaches-dummy"
+      mode: realtime
+
   - model_name: gpt-realtime
     litellm_params:
       model: openai/speaches-realtime

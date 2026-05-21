@@ -1,0 +1,49 @@
+- generic [active] [ref=e1]:
+  - main [ref=e2]:
+    - group "Language" [ref=e4]:
+      - button "English" [pressed] [ref=e5]
+      - button "Русский" [ref=e6]
+    - generic [ref=e56]:
+      - complementary [ref=e57]:
+        - generic [ref=e58]:
+          - generic [ref=e59]: W
+          - generic [ref=e60]:
+            - generic [ref=e61]: OpenWhispr Server
+            - generic [ref=e62]: Self-host · v1
+        - generic [ref=e63]:
+          - heading "Create your private workspace." [level=2] [ref=e64]
+          - paragraph [ref=e65]: Run OpenWhispr on your own infrastructure.
+        - generic [ref=e66]:
+          - generic [ref=e67]: v1.0.4
+          - generic [ref=e68]: ·
+          - link "Status" [ref=e69] [cursor=pointer]:
+            - /url: https://github.com/openwhispr/openwhispr-server/actions
+          - link "Docs" [ref=e70] [cursor=pointer]:
+            - /url: https://github.com/openwhispr/openwhispr-server#readme
+          - link "GitHub" [ref=e71] [cursor=pointer]:
+            - /url: https://github.com/openwhispr/openwhispr-server
+      - generic [ref=e74]:
+        - generic [ref=e75]:
+          - heading "Create your OpenWhispr account" [level=1] [ref=e76]
+          - paragraph [ref=e77]: A confirmation email is sent to verify your address.
+        - button "Continue with SSO" [ref=e79]
+        - generic [ref=e80]:
+          - generic [ref=e81]:
+            - generic [ref=e82]: Name
+            - textbox "Name" [ref=e83]
+          - generic [ref=e84]:
+            - generic [ref=e85]: Email
+            - textbox "Email" [ref=e86]
+          - generic [ref=e87]:
+            - generic [ref=e88]: Password
+            - generic [ref=e89]:
+              - textbox "Password" [ref=e90]
+              - button "Show password" [ref=e91]:
+                - generic [ref=e92]: Show password
+                - img [ref=e93]
+          - button "Sign up" [ref=e96]
+        - paragraph [ref=e97]:
+          - link "Already have an account? Sign in" [ref=e98] [cursor=pointer]:
+            - /url: /sign-in
+  - region "Notifications alt+T"
+  - alert [ref=e53]
