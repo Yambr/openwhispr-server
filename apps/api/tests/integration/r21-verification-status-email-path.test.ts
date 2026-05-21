@@ -8,22 +8,37 @@
 // 5s — with no session the OLD cookie-only route 401'd every poll, making
 // the sign-up→verify window structurally unsatisfiable.
 //
-// This boots a real Postgres via testcontainers, applies ALL migrations,
-// constructs the production `buildAuth()` AND the production
-// `buildVerificationStatusRoutes` plugin, and asserts the 4A contract end
-// to end against a real DB:
+// CRITICAL — this test boots the PRODUCTION `buildApp()` surface, NOT a
+// bare Fastify instance. `/api/auth/verification-status` is gated by TWO
+// auth layers:
+//   1. the app-wide `dualAuthHook` (`onRequest`, registered inside
+//      `buildApp()`), which 401s every sessionless request BEFORE the
+//      route handler runs, and
+//   2. (historically) a route-level `preHandler` — removed in R21.
+// A bare Fastify instance registering ONLY `buildVerificationStatusRoutes`
+// never installs layer 1, so it cannot observe layer-1 gating and would
+// false-PASS even while production 401s. The R21 fix adds `auth: false`
+// to the route's `config` so the global `dualAuthHook` skips it; this
+// test exercises BOTH layers exactly as production does and is the
+// regression guard for that class of bug.
+//
+// It boots a real Postgres via testcontainers, applies ALL migrations,
+// constructs the production `buildAuth()` AND the full production
+// `buildApp()` stack, and asserts the 4A contract end to end against a
+// real DB:
 //
 //   (1) real sign-up issues no session token (the R21 trigger condition);
-//   (2) `verification-status?email=<signed-up addr>` → 200 {verified:false}
-//       with NO session cookie (the email-derived path);
+//   (2) `verification-status?email=<signed-up addr>` with NO session
+//       cookie → 200 {verified:false} (NOT 401 — the layer-1 regression
+//       guard); the email-derived path;
 //   (3) after the email is verified (email_verified_at set) the SAME poll
 //       → 200 {verified:true};
 //   (4) an unknown email → 200 {verified:false}, byte-identical to (2) —
-//       no enumeration oracle.
+//       no enumeration oracle;
+//   (5) a valid session cookie still wins — identity is session-derived.
 //
-// The new `resolve-verification-identity` helper is exercised for real —
-// only the Postgres driver (network boundary) is a container, nothing of
-// the internal logic is mocked.
+// Only the Postgres driver (network boundary) is a container; nothing of
+// the internal logic is mocked — real `buildAuth` + real `buildApp`.
 
 import { dirname as pathDirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -32,13 +47,11 @@ import { PostgreSqlContainer, type StartedPostgreSqlContainer } from "@testconta
 import { sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/node-postgres";
 import { migrate } from "drizzle-orm/node-postgres/migrator";
-import Fastify, { type FastifyInstance } from "fastify";
+import type { FastifyInstance } from "fastify";
 import { Pool } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { buildAuth } from "../../src/auth.js";
-import { registerErrorHandler } from "../../src/error-handler.js";
-import { zodTypeProvider } from "../../src/plugins/zod-type-provider.js";
-import { buildVerificationStatusRoutes } from "../../src/routes/verification-status.js";
+import { buildApp } from "../../src/index.js";
 
 const __dirname = pathDirname(fileURLToPath(import.meta.url));
 const MIGRATIONS_FOLDER = resolve(
@@ -57,8 +70,9 @@ let ownerPool: Pool;
 let appPool: Pool;
 // Better Auth's exported AuthInstance type is intentionally narrow
 // (apps/api/src/auth.ts) — this integration test drives the raw `api`
-// surface (`signUpEmail` with `returnHeaders`). Biome's `noExplicitAny`
-// does not flag a bare `let` declaration, so no suppression is needed.
+// surface (`signUpEmail` / `signInEmail` with `returnHeaders`). Biome's
+// `noExplicitAny` does not flag a bare `let` declaration, so no
+// suppression is needed.
 let auth: any;
 let app: FastifyInstance;
 let appDb: AppDb;
@@ -114,12 +128,12 @@ beforeAll(async () => {
   appDb = drizzle(appPool, { schema });
   auth = buildAuth({ db: appDb });
 
-  // The production verification-status plugin, registered on a Fastify
-  // instance with the REAL db + REAL auth — no mocks of internal logic.
-  app = Fastify({ logger: false });
-  registerErrorHandler(app);
-  app.register(zodTypeProvider);
-  app.register(buildVerificationStatusRoutes({ db: appDb, auth }));
+  // The PRODUCTION app surface: `buildApp` registers the app-wide
+  // `dualAuthHook` (`onRequest`) BEFORE routes — so this test now goes
+  // through BOTH the global auth hook AND the verification-status route,
+  // exactly like the deployed binary. No mocks of internal logic: real
+  // db + real auth.
+  app = await buildApp({ db: appDb as never, auth: auth as never });
   await app.ready();
 }, 240_000);
 
@@ -141,6 +155,23 @@ describe("R21 — verification-status resolves email-derived identity with no se
     });
     // The R21 trigger: Better Auth returns {token:null} before createSession.
     expect(res.response?.token ?? null).toBeNull();
+  }, 60_000);
+
+  it("REGRESSION GUARD: sessionless ?email= poll returns 200, NOT 401 (layer-1 dualAuthHook bypass)", async () => {
+    // This is the assertion the prior bare-Fastify test could NOT make:
+    // the global `dualAuthHook` 401s every sessionless request unless the
+    // route opts out via `config.auth = false`. A 401 here means the R21
+    // fix regressed.
+    const email = `r21-guard-${Date.now()}@example.test`;
+    await auth.api.signUpEmail({
+      body: { email, password: "R21!Str0ngPass", name: "R21 Guard" },
+    });
+    const res = await app.inject({
+      method: "GET",
+      url: `/api/auth/verification-status?email=${encodeURIComponent(email)}`,
+    });
+    expect(res.statusCode, "global dualAuthHook must NOT gate this route").not.toBe(401);
+    expect(res.statusCode).toBe(200);
   }, 60_000);
 
   it("sign-up → poll ?email= (no cookie) → {verified:false}; verify → {verified:true}", async () => {
@@ -207,4 +238,45 @@ describe("R21 — verification-status resolves email-derived identity with no se
     });
     expect(res.statusCode).toBe(400);
   }, 30_000);
+
+  it("a valid session cookie still wins — identity is session-derived", async () => {
+    // Sign up, then verify the email so `signInEmail` will issue a real
+    // session (Better Auth refuses sessions for unverified users under
+    // requireEmailVerification).
+    const email = `r21-cookie-${Date.now()}@example.test`;
+    const password = "R21!Str0ngPass";
+    await auth.api.signUpEmail({ body: { email, password, name: "R21 Cookie" } });
+    await withTenant(appDb, DEFAULT_TENANT, async (tx) => {
+      await tx.execute(sql`
+        UPDATE users
+           SET email_verified = true,
+               email_verified_at = now()
+         WHERE lower(email) = lower(${email})
+      `);
+    });
+
+    // Real sign-in → a real session; capture the Set-Cookie headers.
+    const signIn = await auth.api.signInEmail({
+      body: { email, password },
+      returnHeaders: true,
+    });
+    const setCookie = signIn.headers?.get("set-cookie");
+    expect(setCookie, "sign-in must issue a session cookie").toBeTruthy();
+    // Reduce a possibly-multi Set-Cookie string to the `name=value` pairs.
+    const cookieHeader = String(setCookie)
+      .split(/,(?=[^;]+?=)/)
+      .map((c: string) => c.split(";")[0]?.trim())
+      .filter(Boolean)
+      .join("; ");
+
+    // Poll with the session cookie and NO ?email= — identity is
+    // session-derived; the verified user resolves to {verified:true}.
+    const res = await app.inject({
+      method: "GET",
+      url: "/api/auth/verification-status",
+      headers: { cookie: cookieHeader },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toEqual({ verified: true });
+  }, 60_000);
 });
