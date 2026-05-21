@@ -25,7 +25,7 @@
 //   z.object({ error: z.string() })                                   // default (D-34, Phase 5)
 //   z.object({ error: z.object({ message, code? }) })                 // structured (BACKEND_SPEC.md:745)
 //
-// The TolerantEnvelope schema is exported from `./negative-matrix.ts`
+// The DefaultErrorEnvelope schema is exported from `./negative-matrix.ts`
 // (built as a `z.union([...])` over the two object shapes) so the
 // Pitfall #6 enumeration sanity test shares the same source of truth.
 
@@ -33,7 +33,11 @@ import { randomUUID } from "node:crypto";
 import { describe, expect, it } from "vitest";
 import { BACKEND_URL, probeBackend } from "../../src/env.js";
 import { signInFixture } from "../../src/helpers/sign-in-fixture.js";
-import { OUT_OF_SCOPE_PATHS, PHASE_5_ROUTES, TolerantEnvelope } from "../../src/negative-matrix.js";
+import {
+  DefaultErrorEnvelope,
+  OUT_OF_SCOPE_PATHS,
+  PHASE_5_ROUTES,
+} from "../../src/negative-matrix.js";
 
 const REACHABLE = await probeBackend();
 
@@ -75,7 +79,7 @@ describe.skipIf(!REACHABLE)("WIRE-29 + WIRE-16 — CONTRACT-01 negative matrix",
           [400, 401, 405, 415],
           `${route.method} ${route.path} status=${status} body=${JSON.stringify(body)}`,
         ).toContain(status);
-        expect(() => TolerantEnvelope.parse(body)).not.toThrow();
+        expect(() => DefaultErrorEnvelope.parse(body)).not.toThrow();
       });
     }
   });
@@ -109,7 +113,7 @@ describe.skipIf(!REACHABLE)("WIRE-29 + WIRE-16 — CONTRACT-01 negative matrix",
           [400, 415, 422],
           `${route.method} ${route.path} status=${res.status} body=${JSON.stringify(body)}`,
         ).toContain(res.status);
-        expect(() => TolerantEnvelope.parse(body)).not.toThrow();
+        expect(() => DefaultErrorEnvelope.parse(body)).not.toThrow();
       });
     }
   });
@@ -118,7 +122,7 @@ describe.skipIf(!REACHABLE)("WIRE-29 + WIRE-16 — CONTRACT-01 negative matrix",
     const path = `/api/nonexistent-${randomUUID()}`;
     const { status, body } = await fetchJson(`${BACKEND_URL}${path}`, { method: "GET" });
     expect(status).toBe(404);
-    expect(() => TolerantEnvelope.parse(body)).not.toThrow();
+    expect(() => DefaultErrorEnvelope.parse(body)).not.toThrow();
   });
 
   describe("out-of-scope paths (Stripe + referrals) → 404 + envelope", () => {
@@ -131,7 +135,7 @@ describe.skipIf(!REACHABLE)("WIRE-29 + WIRE-16 — CONTRACT-01 negative matrix",
         }
         const { status, body } = await fetchJson(`${BACKEND_URL}${oos.path}`, init);
         expect(status).toBe(404);
-        expect(() => TolerantEnvelope.parse(body)).not.toThrow();
+        expect(() => DefaultErrorEnvelope.parse(body)).not.toThrow();
       });
     }
   });

@@ -13,21 +13,24 @@
 import { z } from "zod";
 
 /**
- * Tolerant envelope matcher (D-33) — accepts BOTH the default
- * `{error: string}` envelope (D-34, every Phase 5 endpoint) AND the
- * structured `{error: {message, code?}}` envelope (BACKEND_SPEC.md:745,
- * reserved for future structured-error sites).
+ * Default error-envelope matcher (D-34).
+ *
+ * Phase 68 / Plan 68-01 — REVIEW byok HIGH HI-04: this was previously a
+ * permissive `TolerantEnvelope` union accepting BOTH the default
+ * `{error: string}` shape AND a structured `{error: {message, code?}}`
+ * shape. The union WEAKENED the contract — a route accidentally emitting
+ * the structured object instead of the string would still pass the
+ * negative matrix undetected.
+ *
+ * Every Phase 5 / Phase 2-4 endpoint emits the STRING form
+ * (`{error: string}`); the structured form is not used by any route in
+ * v1. The matcher is therefore tightened to the string form only — a
+ * route emitting the wrong shape now fails the matrix loudly. If a
+ * future structured-error site lands (BACKEND_SPEC.md:745), it gets its
+ * OWN per-route matcher rather than re-widening this global one.
  */
-export const TolerantEnvelope = z.union([
-  z.object({ error: z.string().min(1) }),
-  z.object({
-    error: z.object({
-      message: z.string().min(1),
-      code: z.string().optional(),
-    }),
-  }),
-]);
-export type TolerantEnvelope = z.infer<typeof TolerantEnvelope>;
+export const DefaultErrorEnvelope = z.object({ error: z.string().min(1) }).strict();
+export type DefaultErrorEnvelope = z.infer<typeof DefaultErrorEnvelope>;
 
 /**
  * Each tuple is `{ method, path, hasBody? }` where `hasBody` (when
