@@ -90,7 +90,7 @@ packages/data/src/bin/seed-conformance.ts:11  # comment-only-narrative-51-21-fp 
 # the canonical Traefik host. Both are out-of-scope of the migration-debt
 # bucket — they are intentional fixture infrastructure.
 packages/contract-tests/src/env.ts:13  # canonical-fixture-api-localhost
-packages/contract-tests/src/negative-matrix.ts:98  # canonical-fixture-uuid
+packages/contract-tests/src/negative-matrix.ts:101  # canonical-fixture-uuid (drifted 98 → 101 by Phase 68 HI-04 DefaultErrorEnvelope comment expansion)
 packages/data/src/seed/conformance.ts:29  # canonical-fixture-seed-uuid
 packages/data/src/seed/conformance.ts:30  # canonical-fixture-seed-uuid
 packages/data/src/seed/conformance.ts:31  # canonical-fixture-seed-uuid
@@ -110,4 +110,4 @@ packages/data/src/seed/conformance.ts:123  # canonical-fixture-api-localhost
 # users. Retagged in Phase 31 / Plan 31-08 (was previously in bucket (b)
 # MIGRATION-DEBT, which was a mis-classification — these are intentional
 # defaults, not migration debt). See 31-08-DECISIONS.md §D-2.
-packages/litellm-client/src/config.ts:29  # permanent-docker-compose-internal-url
+packages/litellm-client/src/config.ts:48  # permanent-docker-compose-internal-url (drifted 29 → 48 by Phase 68 HI-2/HI-3 config-loader header expansion)

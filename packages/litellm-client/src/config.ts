@@ -22,8 +22,8 @@
 // upstream Authorization header crosses a routable hop in plaintext. A
 // non-https override in production is REFUSED unless `LITELLM_ALLOW_PLAINTEXT`
 // is truthy OR the host is the bundled `litellm` compose service. The
-// bundled `http://litellm:4000` default (not an override) is unaffected,
-// and non-production stays http-friendly for the slim/dev stack. This
+// bundled default (not an override) is unaffected, and non-production
+// stays http-friendly for the slim/dev stack. This
 // mirrors the Phase 57 `validateIngressBoot` posture. This module is a
 // `config/*` file, so the `NODE_ENV` read here is LOCKER-01 permitted.
 //
