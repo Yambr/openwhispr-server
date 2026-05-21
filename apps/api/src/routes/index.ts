@@ -471,6 +471,16 @@ export function buildAllRoutes(deps: AllRoutesDeps): readonly RoutePlugin[] {
       const realtimeDeps: RealtimeDeps = {
         litellm: deps.litellm,
         masterKey: deps.litellmMasterKey,
+        // D1 — the realtime model alias forced onto the upstream-bound
+        // `?model=` query string by realtime.ts (T-03-07-05). LiteLLM
+        // routes /v1/realtime on this query param, so it becomes pure
+        // operator config: the desktop client sends no model. Read from
+        // LITELLM_REALTIME_MODEL here (the route-assembly seam — same
+        // place MOCK_DIARIZATION / SPEACHES_DIARIZATION_URL are read);
+        // default `realtime-default` matches the alias shipped in
+        // compose/litellm/litellm_config*.yaml. Operators retarget the
+        // alias in litellm_config.yaml (OpenAI→Speaches), not here.
+        realtimeModel: process.env.LITELLM_REALTIME_MODEL?.trim() || "realtime-default",
       };
       plugins.push(buildRealtimeRoutes(realtimeDeps));
     }

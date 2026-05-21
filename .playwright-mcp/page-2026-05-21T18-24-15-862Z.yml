@@ -1,0 +1,52 @@
+- generic [active] [ref=e1]:
+  - main [ref=e2]:
+    - group "Language" [ref=e4]:
+      - button "English" [pressed] [ref=e5]
+      - button "Русский" [ref=e6]
+    - generic [ref=e7]:
+      - complementary [ref=e8]:
+        - generic [ref=e9]:
+          - generic [ref=e10]: W
+          - generic [ref=e11]:
+            - generic [ref=e12]: OpenWhispr Server
+            - generic [ref=e13]: Self-host · v1
+        - generic [ref=e14]:
+          - heading "Your speech, on your servers." [level=2] [ref=e15]
+          - paragraph [ref=e16]: Private speech-to-text, structured notes, and conversation history — running in your own environment, with full audit trail.
+        - generic [ref=e17]:
+          - generic [ref=e18]: v1.0.4
+          - generic [ref=e19]: ·
+          - link "Status" [ref=e20] [cursor=pointer]:
+            - /url: https://github.com/openwhispr/openwhispr-server/actions
+          - link "Docs" [ref=e21] [cursor=pointer]:
+            - /url: https://github.com/openwhispr/openwhispr-server#readme
+          - link "GitHub" [ref=e22] [cursor=pointer]:
+            - /url: https://github.com/openwhispr/openwhispr-server
+      - generic [ref=e25]:
+        - generic [ref=e26]:
+          - heading "Sign in to OpenWhispr" [level=1] [ref=e27]
+          - paragraph [ref=e28]: Use your email or your organization SSO.
+        - generic [ref=e31]: Or with email
+        - generic [ref=e33]:
+          - generic [ref=e34]:
+            - generic [ref=e35]: Email
+            - textbox "Email" [ref=e36]
+          - generic [ref=e37]:
+            - generic [ref=e38]: Password
+            - generic [ref=e39]:
+              - textbox "Password" [ref=e40]
+              - button "Show password" [ref=e41]:
+                - generic [ref=e42]: Show password
+                - img [ref=e43]
+          - generic [ref=e46]:
+            - checkbox "Remember this device" [ref=e47]
+            - checkbox
+            - generic [ref=e48] [cursor=pointer]: Remember this device
+          - link "Forgot password?" [ref=e49] [cursor=pointer]:
+            - /url: /forgot-password
+          - button "Sign in" [ref=e50]
+        - paragraph [ref=e51]:
+          - link "Don't have an account? Sign up" [ref=e52] [cursor=pointer]:
+            - /url: /sign-up
+  - region "Notifications alt+T"
+  - alert [ref=e53]

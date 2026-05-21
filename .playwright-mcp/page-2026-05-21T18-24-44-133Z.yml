@@ -1,0 +1,53 @@
+- generic [active] [ref=e1]:
+  - main [ref=e2]:
+    - group "Language" [ref=e4]:
+      - button "English" [pressed] [ref=e5]
+      - button "Русский" [ref=e6]
+    - generic [ref=e99]:
+      - complementary [ref=e100]:
+        - generic [ref=e101]:
+          - generic [ref=e102]: W
+          - generic [ref=e103]:
+            - generic [ref=e104]: OpenWhispr Server
+            - generic [ref=e105]: Self-host · v1
+        - generic [ref=e106]:
+          - heading "Your speech, on your servers." [level=2] [ref=e107]
+          - paragraph [ref=e108]: Private speech-to-text, structured notes, and conversation history — running in your own environment, with full audit trail.
+        - generic [ref=e109]:
+          - generic [ref=e110]: v1.0.4
+          - generic [ref=e111]: ·
+          - link "Status" [ref=e112] [cursor=pointer]:
+            - /url: https://github.com/openwhispr/openwhispr-server/actions
+          - link "Docs" [ref=e113] [cursor=pointer]:
+            - /url: https://github.com/openwhispr/openwhispr-server#readme
+          - link "GitHub" [ref=e114] [cursor=pointer]:
+            - /url: https://github.com/openwhispr/openwhispr-server
+      - generic [ref=e117]:
+        - generic [ref=e118]:
+          - heading "Sign in to OpenWhispr" [level=1] [ref=e119]
+          - paragraph [ref=e120]: Use your email or your organization SSO.
+        - button "Continue with SSO" [ref=e122]
+        - generic [ref=e125]: Or with email
+        - generic [ref=e127]:
+          - generic [ref=e128]:
+            - generic [ref=e129]: Email
+            - textbox "Email" [ref=e130]
+          - generic [ref=e131]:
+            - generic [ref=e132]: Password
+            - generic [ref=e133]:
+              - textbox "Password" [ref=e134]
+              - button "Show password" [ref=e135]:
+                - generic [ref=e136]: Show password
+                - img [ref=e137]
+          - generic [ref=e140]:
+            - checkbox "Remember this device" [ref=e141]
+            - checkbox
+            - generic [ref=e142] [cursor=pointer]: Remember this device
+          - link "Forgot password?" [ref=e143] [cursor=pointer]:
+            - /url: /forgot-password
+          - button "Sign in" [ref=e144]
+        - paragraph [ref=e145]:
+          - link "Don't have an account? Sign up" [ref=e146] [cursor=pointer]:
+            - /url: /sign-up
+  - region "Notifications alt+T"
+  - alert [ref=e53]

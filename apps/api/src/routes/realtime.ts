@@ -37,6 +37,16 @@
 //     server-side `req.user.id` AFTER auth. Caller-supplied `?user=`
 //     in the URL is overwritten — any tampering attempt is silently
 //     normalized to the authenticated user id.
+//   * T-03-07-05 (client-supplied ?model): D1 — LiteLLM routes
+//     `/v1/realtime` on the `?model=` query param. The OpenAI Realtime
+//     protocol would otherwise force the immutable desktop client to
+//     carry a provider-specific model name (e.g. `gpt-realtime`), which
+//     breaks the moment an operator swaps the backend to Speaches. The
+//     preHandler forces `?model=<deps.realtimeModel>` server-side,
+//     OVERWRITING whatever the client sent (or omitted) — identical
+//     tamper-normalization to `?user=`. The realtime model becomes pure
+//     operator config: OpenAI→Speaches is a one-line `litellm_config`
+//     edit, zero client change.
 
 import fastifyHttpProxy from "@fastify/http-proxy";
 import type { LitellmClient } from "@openwhispr/litellm-client";
@@ -103,6 +113,17 @@ export interface RealtimeDeps {
    * mutating process.env.
    */
   masterKey: string;
+  /**
+   * D1 — the realtime model alias forced onto the upstream-bound
+   * `?model=` query string (T-03-07-05). LiteLLM routes `/v1/realtime`
+   * on this query param, NOT the in-band `session.update` frame, so
+   * injecting it server-side makes the realtime model pure operator
+   * config — the desktop client sends no model. Production wires it
+   * from `LITELLM_REALTIME_MODEL` (default `"realtime-default"`) in
+   * routes/index.ts; injected here (not read from process.env at
+   * register time) to mirror the `masterKey` testable-deps pattern.
+   */
+  realtimeModel: string;
 }
 
 /**
@@ -202,6 +223,13 @@ export const buildRealtimeRoutes = (deps: RealtimeDeps) =>
         }
         const u = new URL(rawUrl, "http://internal");
         u.searchParams.set("user", user.id);
+        // D1 / T-03-07-05: force `?model=<deps.realtimeModel>` so LiteLLM
+        // routes the realtime WS to the operator-configured upstream.
+        // `.set` OVERWRITES any client-supplied `?model=` — identical
+        // tamper-normalization to `?user=` above. The desktop client
+        // therefore sends no model; OpenAI→Speaches is a one-line
+        // `litellm_config` edit with zero client change.
+        u.searchParams.set("model", deps.realtimeModel);
         // The user id deliberately enters `req.raw.url` here — the LAST
         // statement of the preHandler — so it is appended only immediately
         // before @fastify/http-proxy wires the upstream upgrade, minimising

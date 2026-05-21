@@ -1,0 +1,48 @@
+- generic [active] [ref=e1]:
+  - main [ref=e2]:
+    - group "Language" [ref=e4]:
+      - button "English" [pressed] [ref=e5]
+      - button "Русский" [ref=e6]
+    - generic [ref=e7]:
+      - complementary [ref=e8]:
+        - generic [ref=e9]:
+          - generic [ref=e10]: W
+          - generic [ref=e11]:
+            - generic [ref=e12]: OpenWhispr Server
+            - generic [ref=e13]: Self-host · v1
+        - generic [ref=e14]:
+          - heading "Create your private workspace." [level=2] [ref=e15]
+          - paragraph [ref=e16]: Run OpenWhispr on your own infrastructure.
+        - generic [ref=e17]:
+          - generic [ref=e18]: v1.0.4
+          - generic [ref=e19]: ·
+          - link "Status" [ref=e20] [cursor=pointer]:
+            - /url: https://github.com/openwhispr/openwhispr-server/actions
+          - link "Docs" [ref=e21] [cursor=pointer]:
+            - /url: https://github.com/openwhispr/openwhispr-server#readme
+          - link "GitHub" [ref=e22] [cursor=pointer]:
+            - /url: https://github.com/openwhispr/openwhispr-server
+      - generic [ref=e25]:
+        - generic [ref=e26]:
+          - heading "Create your OpenWhispr account" [level=1] [ref=e27]
+          - paragraph [ref=e28]: A confirmation email is sent to verify your address.
+        - generic [ref=e29]:
+          - generic [ref=e30]:
+            - generic [ref=e31]: Name
+            - textbox "Name" [ref=e32]
+          - generic [ref=e33]:
+            - generic [ref=e34]: Email
+            - textbox "Email" [ref=e35]
+          - generic [ref=e36]:
+            - generic [ref=e37]: Password
+            - generic [ref=e38]:
+              - textbox "Password" [ref=e39]
+              - button "Show password" [ref=e40]:
+                - generic [ref=e41]: Show password
+                - img [ref=e42]
+          - button "Sign up" [ref=e45]
+        - paragraph [ref=e46]:
+          - link "Already have an account? Sign in" [ref=e47] [cursor=pointer]:
+            - /url: /sign-in
+  - region "Notifications alt+T"
+  - alert [ref=e48]
