@@ -11,8 +11,18 @@
 //   * valid session cookie → identity session-derived (unchanged R5/R15
 //     behavior); the `?email=` param is IGNORED even on mismatch.
 //   * no session + format-valid `?email=` → identity email-derived;
-//     `SELECT email_verified_at WHERE email = ?email=` under
+//     `SELECT email_verified WHERE email = ?email=` under
 //     `withTenant(defaultTenantId)`.
+//
+// R21 (verification-column fix) — the route reads `users.email_verified`
+// (the boolean Better Auth maintains), NOT `users.email_verified_at`.
+// Better Auth's `verify-email` endpoint flips `email_verified` to `true`
+// when the user clicks the verification link; it NEVER writes the
+// `email_verified_at` timestamp. `email_verified_at` is an audit-only
+// column populated solely by the seed/conformance path, so reading it
+// here left the route returning `{verified:false}` forever after a real
+// verify-email click. The timestamp column stays as a legitimate audit
+// field — only the *read* moved to the boolean.
 //   * no session + no `?email=` → `{verified:false}`.
 //   * unknown email → `{verified:false}`, byte-identical to a known-but-
 //     unverified user — no 404, no distinct error shape (anti-enumeration).
@@ -114,11 +124,19 @@ export const buildVerificationStatusRoutes = (deps: VerificationStatusDeps) =>
           return { verified: false };
         }
         const verified = await withTenant(db, identity.tenant, async (tx) => {
+          // R21 — read `email_verified` (boolean NOT NULL DEFAULT false),
+          // the column Better Auth's verify-email flow maintains. An
+          // unverified user has `false`, a verified user `true`, an
+          // unknown email yields no row → `Boolean(undefined && …)` is
+          // `false`. Anti-enumeration parity holds: unknown-email and
+          // known-but-unverified both resolve to `{verified:false}`.
+          // `email_verified_at` is audit-only and NOT written by Better
+          // Auth — reading it here masked the column-mismatch bug.
           const res = (await tx.execute(
-            sql`SELECT email_verified_at FROM users WHERE email = ${lookupEmail} LIMIT 1`,
-          )) as { rows: Array<{ email_verified_at: Date | string | null }> };
+            sql`SELECT email_verified FROM users WHERE email = ${lookupEmail} LIMIT 1`,
+          )) as { rows: Array<{ email_verified: boolean }> };
           const row = res.rows[0];
-          return Boolean(row && row.email_verified_at !== null);
+          return Boolean(row && row.email_verified === true);
         });
         return { verified };
       },
