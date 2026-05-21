@@ -52,9 +52,15 @@ const SSRF_WRAPPED_MARKER = Symbol.for("openwhispr.ssrf-wrapped");
  * test files that build a client but never fire a request do not need to
  * bootstrap SSRF.
  *
- * When `opts.request` was injected (test seam), the assertion is skipped
- * because the injected function owns its own network mocking and the
- * global dispatcher is not consulted.
+ * When `opts.request` was injected, the assertion is skipped because the
+ * injected function owns its own egress path and the global dispatcher is
+ * not consulted. The injection seam has TWO sanctioned uses:
+ *   1. test mocking (a `MockAgent`-backed `request`); and
+ *   2. R24 — production boot-time binding to a `request` that pins the
+ *      SSRF-wrapped Agent as the explicit `dispatcher` (see
+ *      apps/api/src/lib/litellm-ssrf-request.ts). The injected fn is built
+ *      by trusted boot code and is never user-derived, so the
+ *      assertion-skip is safe: the fn itself guarantees SSRF-safe egress.
  */
 function assertSsrfInstalled(): void {
   // Phase 52 / Plan 52-01 — `exactOptionalPropertyTypes: true` in tsconfig
@@ -256,8 +262,16 @@ export interface BuildLitellmClientOptions {
    */
   isOverride?: boolean;
   /**
-   * Optional injection point for tests. Defaults to undici's global
-   * `request` (which honors `setGlobalDispatcher(new MockAgent(...))`).
+   * Optional injection point for the outbound `request` function. Defaults
+   * to undici's global `request` (which honors
+   * `setGlobalDispatcher(new MockAgent(...))`). Two sanctioned uses:
+   *   1. test mocking; and
+   *   2. R24 — production boot-time binding to a `request` that pins an
+   *      explicit SSRF-wrapped dispatcher, so the client never depends on
+   *      the mutable process-global dispatcher surviving boot.
+   * In BOTH cases `assertSsrfInstalled` is skipped because the injected
+   * function owns its own SSRF-safe egress path. The default (no-injection)
+   * path still runs `ssrfGate()` to protect any future bare caller.
    */
   request?: typeof undiciRequest;
 }

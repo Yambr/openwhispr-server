@@ -135,7 +135,11 @@ import "./otel-bootstrap.js";
 // agent as the upstream) and BEFORE buildApp() and any route registers.
 import { installGlobalSSRF } from "./bootstrap.js";
 
-installGlobalSSRF();
+// R24 — capture the SSRF-wrapped dispatcher. It stays installed as the
+// process-global (Better Auth / web-search adapters), AND is bound
+// explicitly to the LiteLLM client's `request` seam below so the LiteLLM
+// client never depends on the mutable global dispatcher surviving boot.
+const ssrfDispatcher = installGlobalSSRF();
 
 import fastifyCookie from "@fastify/cookie";
 import fastifyMultipart from "@fastify/multipart";
@@ -152,6 +156,7 @@ import { registerErrorHandler } from "./error-handler.js";
 import { i18nPlugin } from "./i18n/init.js";
 import { type DepCheck, makeDepCheck } from "./lib/dep-check.js";
 import type { RedisLike } from "./lib/idempotency-cache.js";
+import { makeSsrfBoundRequest } from "./lib/litellm-ssrf-request.js";
 import { buildMintBearer } from "./lib/mint-bearer.js";
 import {
   recordPreviousToken as recordPreviousTokenLib,
@@ -734,7 +739,16 @@ if (import.meta.url === `file://${process.argv[1]}`) {
       "@openwhispr/litellm-client"
     );
     const litellmConfig = loadLitellmConfigFromEnv();
-    litellm = buildLitellmClient(litellmConfig);
+    // R24 — bind the LiteLLM client's `request` seam to the SSRF-wrapped
+    // dispatcher captured at boot. The client therefore never consults the
+    // process-global dispatcher, so a post-boot `setGlobalDispatcher` call
+    // from any other component cannot strip the SSRF marker and degrade
+    // /api/transcribe, /api/reason, /api/agent/* to 500. The injected
+    // `request` owns its egress path, so `assertSsrfInstalled` is correctly
+    // skipped (sanctioned boot-time injection — see litellm-ssrf-request.ts).
+    litellm = buildLitellmClient(litellmConfig, {
+      request: makeSsrfBoundRequest(ssrfDispatcher),
+    });
     // Plan 07 — surface masterKey separately so buildAllRoutes can pass
     // it into the WSS /v1/realtime reverse-proxy's wsClientOptions
     // header rewrite. Same source-of-truth as the client construction

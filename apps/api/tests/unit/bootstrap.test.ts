@@ -20,7 +20,16 @@ vi.mock("undici", async (importOriginal) => {
   };
 });
 
-import { installGlobalSSRF } from "../../src/bootstrap.js";
+import { buildSsrfDispatcher, installGlobalSSRF } from "../../src/bootstrap.js";
+
+const SSRF_WRAPPED_MARKER = Symbol.for("openwhispr.ssrf-wrapped");
+
+const enforceConfig = {
+  OUTBOUND_ALLOWED_HOSTS: ["openrouter.ai"],
+  OUTBOUND_PRIVATE_HOST_ALLOWLIST: [],
+  OUTBOUND_ALLOW_LOOPBACK: false,
+  OUTBOUND_SSRF_MODE: "enforce" as const,
+};
 
 describe("bootstrap.installGlobalSSRF", () => {
   it("calls setGlobalDispatcher with an undici Dispatcher (default config from env)", () => {
@@ -105,6 +114,29 @@ describe("bootstrap.installGlobalSSRF", () => {
     expect(payload.rule).toBe("rfc1918_10");
     expect(payload.mode).toBe("enforce");
     expect(payload.level).toBe(40); // pino numeric level for warn
+  });
+
+  // R24 — the explicit per-client SSRF dispatcher seam.
+  it("R24: buildSsrfDispatcher returns a Dispatcher carrying SSRF_WRAPPED_MARKER", () => {
+    const dispatcher = buildSsrfDispatcher({ config: enforceConfig }) as {
+      [k: symbol]: unknown;
+      dispatch?: unknown;
+    };
+    expect(typeof dispatcher.dispatch).toBe("function");
+    expect(dispatcher[SSRF_WRAPPED_MARKER]).toBe(true);
+  });
+
+  it("R24: installGlobalSSRF RETURNS the installed marked Dispatcher", () => {
+    setGlobalDispatcherMock.mockClear();
+    const dispatcher = installGlobalSSRF({ config: enforceConfig }) as {
+      [k: symbol]: unknown;
+      dispatch?: unknown;
+    };
+    expect(typeof dispatcher.dispatch).toBe("function");
+    expect(dispatcher[SSRF_WRAPPED_MARKER]).toBe(true);
+    // The returned dispatcher is the SAME instance handed to setGlobalDispatcher.
+    expect(setGlobalDispatcherMock).toHaveBeenCalledTimes(1);
+    expect(setGlobalDispatcherMock.mock.calls[0]?.[0]).toBe(dispatcher);
   });
 
   it("defaultOnBlock contract — null ip + warn mode round-trip", () => {

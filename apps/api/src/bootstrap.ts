@@ -12,9 +12,13 @@
 // fetching feature goes through the gate.
 
 import { makePino } from "@openwhispr/observability";
-import { setGlobalDispatcher } from "undici";
+import { type Dispatcher, setGlobalDispatcher } from "undici";
 import { loadSSRFConfig, type SSRFConfig } from "./config/ssrf.js";
-import { makeSSRFDispatcher, type SSRFBlockContext } from "./lib/ssrf-dispatcher.js";
+import {
+  makeSSRFDispatcher,
+  SSRF_WRAPPED_MARKER,
+  type SSRFBlockContext,
+} from "./lib/ssrf-dispatcher.js";
 
 // Phase 51 / Plan 51-13b (REVIEW api-core HIGH HI-02) — bootstrap pino
 // logger. `makePino()` applies the canonical REDACT_PATHS policy so any
@@ -43,15 +47,27 @@ export function defaultOnBlock(ctx: SSRFBlockContext): void {
 }
 
 /**
- * Install the SSRF dispatcher as the global undici dispatcher.
- * Idempotent — safe to call from tests that re-import the module.
+ * Build (but do NOT install) an SSRF-wrapped undici `Dispatcher` from the
+ * same config-loading path used by `installGlobalSSRF`. This is the SINGLE
+ * construction site for the SSRF Agent.
+ *
+ * R24 — the returned dispatcher carries the non-enumerable
+ * `SSRF_WRAPPED_MARKER` and can be bound explicitly to the LiteLLM client's
+ * `opts.request` seam at boot, so the LiteLLM client never consults the
+ * mutable process-global dispatcher (which a stray `setGlobalDispatcher`
+ * call after boot could silently clobber).
+ *
+ * Throws if `makeSSRFDispatcher` somehow returns a dispatcher that does NOT
+ * carry the marker — `installGlobalSSRF` is a non-optional bootstrap step
+ * and a marker-less dispatcher would silently degrade every Cloud-plane
+ * route to a 500 (R25 fail-fast: crash-loop instead of serving 500s).
  *
  * @param overrides Test-only injection point for config + onBlock.
  */
-export function installGlobalSSRF(overrides?: {
+export function buildSsrfDispatcher(overrides?: {
   config?: SSRFConfig;
   onBlock?: (ctx: SSRFBlockContext) => void;
-}): void {
+}): Dispatcher {
   const cfg = overrides?.config ?? loadSSRFConfig();
   const dispatcher = makeSSRFDispatcher({
     allowedHosts: cfg.OUTBOUND_ALLOWED_HOSTS,
@@ -60,5 +76,32 @@ export function installGlobalSSRF(overrides?: {
     mode: cfg.OUTBOUND_SSRF_MODE,
     onBlock: overrides?.onBlock ?? defaultOnBlock,
   });
+  // R25 boot fail-fast — refuse to proceed on a non-installable state.
+  // Single `as` narrow (LOCKER-02 clean) mirrors `assertSsrfInstalled`.
+  const marked = dispatcher as Dispatcher & { [k: symbol]: unknown };
+  if (!marked[SSRF_WRAPPED_MARKER]) {
+    throw new Error(
+      "bootstrap: makeSSRFDispatcher returned a dispatcher missing SSRF_WRAPPED_MARKER",
+    );
+  }
+  return dispatcher;
+}
+
+/**
+ * Install the SSRF dispatcher as the global undici dispatcher.
+ * Idempotent — safe to call from tests that re-import the module.
+ *
+ * Returns the installed `Dispatcher` so `index.ts` can bind it explicitly
+ * to the LiteLLM client's `opts.request` seam (R24) while ALSO keeping it
+ * registered as the process-global for Better Auth / web-search adapters.
+ *
+ * @param overrides Test-only injection point for config + onBlock.
+ */
+export function installGlobalSSRF(overrides?: {
+  config?: SSRFConfig;
+  onBlock?: (ctx: SSRFBlockContext) => void;
+}): Dispatcher {
+  const dispatcher = buildSsrfDispatcher(overrides);
   setGlobalDispatcher(dispatcher);
+  return dispatcher;
 }
