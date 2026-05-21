@@ -31,4 +31,18 @@ describe("H-3 — conversations MetadataSchema", () => {
     const huge = { big: "x".repeat(5000) };
     expect(() => MetadataSchema.parse(huge)).toThrow();
   });
+
+  // Phase 68 / Plan 68-01 — REVIEW wire-schemas HIGH H-1.
+  // The size-refinement message must NOT carry an inline English
+  // end-user string ("metadata too large") — it must be a stable
+  // machine key the route localizes via i18next.
+  it("H-1: the size-refinement issue message is the machine key metadata.too_large", () => {
+    const huge = { big: "x".repeat(5000) };
+    const result = MetadataSchema.safeParse(huge);
+    expect(result.success).toBe(false);
+    if (result.success) return;
+    const messages = result.error.issues.map((i) => i.message);
+    expect(messages).toContain("metadata.too_large");
+    expect(messages).not.toContain("metadata too large");
+  });
 });
