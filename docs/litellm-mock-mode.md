@@ -79,6 +79,34 @@ The contract-test profile sets `MOCK_DIARIZATION=true` on the api service. Produ
 
 ---
 
+## ⚠️ Operator Warning — Do Not Leak `LITELLM_CONFIG_FILE` Into a Live Deploy
+
+`LITELLM_CONFIG_FILE` selects which config the `litellm` service mounts. **It must be unset (or `litellm_config.yaml`) for any live / slim-core deployment.** When it is left set to `litellm_config.contract.yaml`, the proxy comes up in hermetic mock mode and behaves asymmetrically:
+
+- `/api/reason` and `/api/agent/stream` return **200** — chat models have a `mock_response`, so they short-circuit cleanly.
+- `/api/transcribe` returns **502** — LiteLLM does not reliably short-circuit `mock_response` on the multipart audio passthrough, so the request still reaches the real Groq route and fails (typically `Invalid API Key` if the contract profile carries a placeholder key).
+
+This 502 is **not a server bug** — it is the contract config leaking into a live stack. The failure mode is sneaky because reasoning still works, so the stack looks "mostly healthy."
+
+**How it leaks:** `make contract-test` exports `LITELLM_CONFIG_FILE=litellm_config.contract.yaml` for its `docker compose up`. If a subsequent `docker compose up` runs in the **same shell** without unsetting it, the variable carries over and the live `litellm` container silently boots the mock config.
+
+**Bring a live stack up cleanly:**
+
+```bash
+unset LITELLM_CONFIG_FILE          # drop any leftover from a contract-test run
+docker compose up -d --force-recreate litellm
+```
+
+**Verify the running container has the production config (0 mock entries expected):**
+
+```bash
+docker exec <litellm-container> grep -c mock_response /etc/litellm/config.yaml   # → 0
+```
+
+The R25 `/api/ready` probe (`docs` — readiness endpoint) catches this at the *upstream* layer: a mock-config `litellm` whose audio route is broken will eventually surface as a degraded `litellm_upstream` check. Prefer `/api/ready` over `/api/health` for the compose healthcheck so an unservable stack is marked `unhealthy`.
+
+---
+
 ## Running Locally
 
 ```bash
@@ -98,9 +126,10 @@ docker compose --profile default --profile contract-test down -v
 | Diarization tests fail with `PyannoteUnavailableError`                                 | `MOCK_DIARIZATION` env not propagated to the api service in your local override         | Confirm `docker compose --profile contract-test config` shows `MOCK_DIARIZATION=true` in the api environment   |
 | Realtime test times out at upgrade                                                     | LiteLLM container is starting; readiness probe not green yet                            | Re-run after `docker compose ps` shows `litellm` healthy                                                       |
 | Container restart loop on `litellm`                                                    | `LITELLM_CONFIG_FILE` not honored — check the volume mount expression in compose        | Verify Plan 01's `./compose/litellm/${LITELLM_CONFIG_FILE:-litellm_config.yaml}:...` is present                |
+| `/api/transcribe` → 502 on a live stack while `/api/reason` returns 200                | `LITELLM_CONFIG_FILE` leaked from a `make contract-test` run — `litellm` is on the mock config; audio passthrough does not honor `mock_response` | `unset LITELLM_CONFIG_FILE && docker compose up -d --force-recreate litellm`; confirm `grep -c mock_response /etc/litellm/config.yaml` → `0` |
 
 For real-API exercise (operator-paid quota), use `make e2e-test` after creating `.env.e2e` with `OPENROUTER_API_KEY`, `GROQ_API_KEY`, `OPENAI_API_KEY`, and `PYANNOTE_API_KEY`. See `Makefile` for the target.
 
 ---
 
-*Last updated: 2026-05-10 (Phase 03 Plan 09).*
+*Last updated: 2026-05-22 (R27 — operator warning on `LITELLM_CONFIG_FILE` leak into live deploys).*
