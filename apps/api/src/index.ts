@@ -176,6 +176,7 @@ import { buildDebugFetchRoutes } from "./routes/__test/fetch.js";
 import type { MintBearer } from "./routes/auth-callback.js";
 import { buildAllRoutes } from "./routes/index.js";
 import { markStartupComplete, registerProbes } from "./routes/probes.js";
+import { buildReadinessRoutes } from "./routes/readiness.js";
 import type { SetupAdminRenameTenant, SetupAdminSignUpEmail } from "./routes/setup-admin.js";
 
 /** Signature of the recordPreviousToken library function (for tests). */
@@ -615,6 +616,19 @@ export const buildApp = async (opts: BuildAppOptions = {}): Promise<FastifyInsta
     ...(opts.depCheck ? { depCheck: opts.depCheck } : {}),
     ...(opts.migrationsCheck ? { migrationsCheck: opts.migrationsCheck } : {}),
   });
+
+  // R25 — GET /api/ready: the Cloud-plane readiness probe (compose
+  // healthcheck target). Verifies the SSRF dispatcher marker at REQUEST
+  // time (catches a post-boot clobber), the LiteLLM client was
+  // constructed at boot, and the LiteLLM upstream is reachable. A
+  // container that fails any check is marked `unhealthy` and pulled from
+  // rotation instead of silently 500-ing /api/transcribe etc.
+  await app.register(
+    buildReadinessRoutes({
+      litellmClientConstructed: opts.litellm !== undefined,
+      ...(opts.depCheck ? { depCheck: opts.depCheck } : {}),
+    }),
+  );
 
   // Phase 6 / Plan 06-12b — debug-only outbound-fetch helper. Registered
   // ONLY when NODE_ENV === 'test' OR the explicit OPENWHISPR_TEST_ROUTES
