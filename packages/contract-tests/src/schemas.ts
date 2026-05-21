@@ -28,16 +28,44 @@ export type ErrorEnvelope = z.infer<typeof ErrorEnvelope>;
 // handlers moved to `@openwhispr/wire-schemas` to break the
 // package-boundary inversion (HIGH-FIX-BYOK-01). Re-exported here so
 // existing contract tests keep their import paths.
+//
+// Phase 68 / Plan 68-01 — REVIEW byok HIGH HI-03: `OpenAIRealtimeTokenResponse`
+// was ALSO added here so the locally-redefined divergent copy is removed
+// and the canonical schema is the single source of truth. The
+// verify-first grep found this is the ONLY locally-defined schema with a
+// true wire-schemas counterpart — `streaming-usage.ts` ships a *request*
+// body (`StreamingUsageBodySchema`), not a usage *response*.
 export {
   CheckUserRequest,
   CheckUserResponse,
   DeleteAccountResponse,
   DiarizationResponse,
+  OpenAIRealtimeTokenResponse,
   ReasonRequest,
   ReasonResponse,
   VerificationStatusQuery,
   VerificationStatusResponse,
 } from "@openwhispr/wire-schemas";
+
+// ---------------------------------------------------------------------
+// Phase 68 / Plan 68-01 — REVIEW byok HIGH HI-03: contract-package-owned
+// schemas (no `@openwhispr/wire-schemas` counterpart — intentionally
+// defined HERE).
+//
+// The schemas below (`HealthResponse`, `TranscribeRequestFields/Response`,
+// the NDJSON streaming `*Chunk` family + `StreamChunk`,
+// `StreamingTokenResponse`, `DeepgramStreamingTokenResponse`,
+// `UsageResponse` / `StreamingUsageResponse`, `ErrorEnvelope`) have NO
+// production-route Zod counterpart in `@openwhispr/wire-schemas` —
+// either the route validates its body inline, or (streaming/NDJSON) the
+// shape is asserted only at the contract layer because there is no
+// server-side Zod parse of the response. They are therefore legitimately
+// owned by the contract-tests package: they describe wire invariants the
+// CONTRACT-01 suite enforces, not request schemas a route handler reuses.
+// `streaming-usage.ts` in wire-schemas ships a *request* body
+// (`StreamingUsageBodySchema`) — NOT a usage *response* — so
+// `UsageResponse` has no counterpart to import.
+// ---------------------------------------------------------------------
 
 // GET /api/health
 //
@@ -241,22 +269,8 @@ export type UsageResponse = z.infer<typeof UsageResponse>;
 export const StreamingUsageResponse = UsageResponse;
 export type StreamingUsageResponse = UsageResponse;
 
-/**
- * POST /api/openai-realtime-token success body.
- *
- * Wire shape per BACKEND_SPEC.md §/api/openai-realtime-token.
- *   * `clientSecret` — convenience field, equals `clientSecrets[0]`.
- *   * `clientSecrets` — array of ephemeral OpenAI Realtime client
- *     secrets, length === streams (always 1 or 2 per D-17).
- * The desktop asserts `clientSecrets.length >= 2` when streams=2.
- *
- * `.min(1)` because the server's fail-fast (Promise.all) guarantees
- * at least one secret on success — partial-failure responses 503 with
- * the canonical envelope rather than serializing a partial body
- * (T-04-01 partial-success-leakage mitigation).
- */
-export const OpenAIRealtimeTokenResponse = z.object({
-  clientSecret: z.string().min(1),
-  clientSecrets: z.array(z.string().min(1)).min(1),
-});
-export type OpenAIRealtimeTokenResponse = z.infer<typeof OpenAIRealtimeTokenResponse>;
+// Phase 68 / Plan 68-01 — REVIEW byok HIGH HI-03: the local
+// `OpenAIRealtimeTokenResponse` definition was REMOVED — it is now
+// re-exported from `@openwhispr/wire-schemas` (see the export block near
+// the top of this file) so the contract test pins the SAME object the
+// production route validates against, eliminating the drift surface.
