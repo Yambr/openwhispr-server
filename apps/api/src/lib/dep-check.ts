@@ -11,7 +11,20 @@
 // Probes:
 //   - 'postgres' → `SELECT 1` via the app's pg.Pool
 //   - 'valkey'   → ioredis `PING`
-//   - 'litellm'  → undici GET `${litellmUrl}/health`, fail on >=500
+//   - 'litellm'  → undici GET `${litellmUrl}/health/readiness`, fail on >=500
+//
+// R29 (quick-task 20260522): the litellm probe hits `/health/readiness`,
+// NOT `/health`. `/health` is a DEEP diagnostic — it fans out and
+// actively probes every model in `model_list` (Groq, OpenRouter,
+// OpenAI); if any provider is briefly slow / rate-limited it reports a
+// non-200 and our probe flips to 503 even though the PROXY itself is
+// fully able to serve requests. `/health/readiness` checks the proxy's
+// OWN state (`{"status":"healthy","db":"connected"}`) with NO provider
+// fan-out — the correct "is the proxy able to accept requests" signal
+// for a tight readiness poll. Both `depCheck` consumers (`/readyz` and
+// the compose healthcheck via `/api/ready`) want "deps able to serve",
+// not "every provider model up", so `/health/readiness` is right for
+// both.
 //
 // Source-of-truth: 06-CONTEXT.md D-P2; 06-RESEARCH.md §5.
 //
@@ -44,7 +57,7 @@ export interface DepCheckDeps {
   readonly pg: Pool;
   readonly valkey: Redis;
   /**
-   * LiteLLM `/health` base URL. When unset/empty the litellm probe is
+   * LiteLLM base URL (probed at `/health/readiness`). When unset/empty the litellm probe is
    * SKIPPED (returns `{ok:true, skipped:true}`) instead of attempting an
    * outbound call — see `DepResult.skipped`.
    */
@@ -105,7 +118,9 @@ export const makeDepCheck = (deps: DepCheckDeps): DepCheck => {
             // litellmUrl is guaranteed non-empty here — the `skipped`
             // short-circuit at the top of probe() handled the absent case.
             const url = (deps.litellmUrl as string).trim();
-            const { statusCode, body } = await request(`${url}/health`, {
+            // R29 — `/health/readiness` (proxy-state only), NOT `/health`
+            // (deep provider fan-out that flaps 503 on any provider hiccup).
+            const { statusCode, body } = await request(`${url}/health/readiness`, {
               method: "GET",
               bodyTimeout: PROBE_TIMEOUT_MS,
               headersTimeout: PROBE_TIMEOUT_MS,
