@@ -99,16 +99,32 @@ describe("ReasonRequest", () => {
     expect(ReasonRequest.safeParse({ text: "hi" }).success).toBe(true);
   });
 
-  it("accepts text + all optional fields", () => {
-    // Plan 51-07 (REVIEW wire-schemas HIGH) — promptMode / matchType /
-    // provider are now bound to documented enum values; pre-fix the
-    // route echoed arbitrary client strings back into the response.
+  it("accepts text + the FULL documented BACKEND_SPEC body (R23 — all ~21 fields)", () => {
+    // R23: the request schema now models every documented client field.
+    // provider / promptMode / matchType were RESPONSE-shape fields and
+    // are removed from the request schema.
     const result = ReasonRequest.safeParse({
       text: "rewrite this email",
       model: "qwen3.6-plus",
-      provider: "openrouter",
-      promptMode: "cleanup",
-      matchType: "cleanup",
+      agentName: "Claude",
+      customDictionary: ["Yambr", "Gizmo"],
+      customPrompt: "Optional user-provided cleanup prompt",
+      systemPrompt: "Optional system override",
+      language: "en",
+      locale: "en-US",
+      sessionId: "11111111-2222-3333-4444-555555555555",
+      clientType: "desktop",
+      appVersion: "1.2.3",
+      clientVersion: "1.2.3",
+      sttProvider: "openai",
+      sttModel: "whisper-1",
+      sttProcessingMs: 412,
+      sttWordCount: 27,
+      sttLanguage: "en",
+      audioDurationMs: 6500,
+      audioSizeBytes: 90123,
+      audioFormat: "webm",
+      clientTotalMs: 1200,
     });
     expect(result.success).toBe(true);
   });
@@ -117,8 +133,8 @@ describe("ReasonRequest", () => {
     expect(ReasonRequest.safeParse({ text: "" }).success).toBe(false);
   });
 
-  it("rejects unknown fields (.strict)", () => {
-    expect(ReasonRequest.safeParse({ text: "hi", surprise: 1 }).success).toBe(false);
+  it("R23 — accepts unknown fields (.passthrough() forward-compat)", () => {
+    expect(ReasonRequest.safeParse({ text: "hi", futureClientField: 1 }).success).toBe(true);
   });
 });
 
