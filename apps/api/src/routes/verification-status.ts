@@ -57,6 +57,16 @@ export const buildVerificationStatusRoutes = (deps: VerificationStatusDeps) =>
       method: "GET",
       url: "/api/auth/verification-status",
       config: {
+        // R21: opt out of the global dualAuthHook — this route resolves
+        // identity itself via resolveVerificationIdentity (cookie session
+        // if present, else validated ?email=). Without this, the app-wide
+        // `onRequest` dualAuthHook (apps/api/src/index.ts) 401s every
+        // sessionless poll BEFORE the handler runs — exactly the
+        // sign-up→verify window the desktop must satisfy. The route keeps
+        // its rateLimit block below; `auth: false` is independent of it
+        // and does NOT relax LOCKER-04 (which only waives rateLimit for
+        // health URLs).
+        auth: false,
         rateLimit: {
           max: 30,
           timeWindow: "1 minute",
