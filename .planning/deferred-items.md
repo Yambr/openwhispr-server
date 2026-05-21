@@ -11,6 +11,35 @@ record. Keep this file under ~200 lines.
 
 ---
 
+## R24/R26 — e2e harness `compose-helper.ts` references a missing `seed` service
+
+**Discovered:** 2026-05-22, during R26 (quick-task 20260521-r24-ssrf-explicit-dispatcher).
+
+`tests/e2e/compose-helper.ts` `bringStackUp()` runs
+`docker compose --profile default --profile contract-test run --rm seed`,
+but the bare `docker-compose.yml` no longer defines a `seed` service —
+the compose file was refactored into a single default-profile file and
+the `seed` / `fixture-idp` / `contract-test-runner` services moved to an
+overlay (`compose/overlays/contract-test.yml`, per the `docker-compose.yml`
+header comment) that bare `docker compose` does not auto-load. Result:
+`make e2e-hermetic` / any `*.e2e.test.ts` run fails in globalSetup with
+`no such service: seed` BEFORE any test body executes.
+
+This is pre-existing infra breakage (not introduced by R24-R26) — the
+`*.e2e.test.ts` suite has been unrunnable via the documented harness
+since the compose-megafile split. R26's `tests/e2e/cloud-plane.e2e.test.ts`
+is correct and was verified manually (live curl through `:4000`:
+/api/reason 200, /api/agent/stream 200 NDJSON, /api/transcribe 502 — not
+the R24 500 — /api/ready 200, zero SsrfDispatcherNotInstalledError in
+api logs). It will run green once the harness is fixed.
+
+**Fix (future targeted phase):** repoint `compose-helper.ts` to pass the
+contract-test overlay via `-f docker-compose.yml -f compose/overlays/contract-test.yml`
+(or set `COMPOSE_FILE`), OR add the `seed` one-shot back to the bare
+compose file behind the `contract-test` profile. Then run the full
+`*.e2e.test.ts` suite (transcribe / reason / agent-stream / cloud-plane)
+through Traefik and confirm green.
+
 ## Phase 59 — pre-existing api-suite failures (out of Phase 59 scope)
 
 **Status:** RESOLVED 2026-05-20 (Phase 60 Track B, commit `c3ec3be0`) —
