@@ -59,6 +59,38 @@ const result: SendResult = await sender.send({
 boot-time misconfiguration fails fast (instead of failing on the first
 verification email an hour later).
 
+## HTML-escaping contract (caller owns escaping)
+
+> Phase 68 / Plan 68-01 — REVIEW small-pkgs `HIGH-EMAIL-01`.
+
+`SendArgs.html` is forwarded to `nodemailer` **verbatim**. `EmailSender`
+performs **no HTML-escaping** of any kind — it is a transport, not a
+template renderer.
+
+**The caller owns escaping.** Any value interpolated into the `html`
+string MUST be HTML-escaped by the caller *before* it reaches
+`sender.send`, OR be provably not user-controlled. An un-escaped,
+attacker-influenced value placed into `html` would be delivered as
+stored-HTML injection in the recipient's inbox.
+
+Why the escape is **not** done at this boundary:
+
+- The worker email path (`apps/worker/src/jobs/email-delivery.ts`)
+  already renders `html` through the worker `template-renderer`, which
+  interpolates every variable with `htmlEscape: true`
+  (`apps/worker/src/i18n/template-renderer.ts`). A second escape here
+  would double-escape and corrupt the already-safe HTML.
+- The api auth path (`apps/api/src/auth.ts`) builds `html` by
+  interpolating only a Better-Auth-generated reset/verify URL — a
+  server-generated value, not user input.
+
+No current caller interpolates user-controlled data into `html`, so the
+contract is **caller-owns-escaping**, documented here and in the
+`SendArgs.html` JSDoc. New callers that build `html` by string
+interpolation MUST escape every interpolated value (mirror the worker
+`template-renderer`'s `htmlEscape: true` pattern) or only interpolate
+non-user-controlled values.
+
 ## Environment-variable contract
 
 All variables are read from the `env` argument passed to
