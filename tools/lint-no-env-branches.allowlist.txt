@@ -29,5 +29,5 @@ apps/api/src/routes/test-only.ts:399  # issue-56-01-test-only-seed-tenant-jsdoc-
 apps/api/src/routes/test-only.ts:424  # issue-56-01-test-only-seed-tenant-gate (drifted 372 → 379 → 392 → 434 in Phase 57 / Track C + R13 + Phase 59 / Track A — defence-in-depth production-veto retained inside the seed-tenant handler; redundant after the registration-gate lift but harmless)
 packages/byok-guard/src/index.ts:230  # issue-31-boundary-check (drifted 221 → 230 in Phase 51 / Plan 51-02 after re-export of redactUrl)
 packages/email/src/EmailSender.ts:7  # issue-31-boundary-check-jsdoc
-packages/email/src/EmailSender.ts:87  # issue-31-boundary-check (line drifted 79 → 87 over time; pre-OSS review caught the drift, correcting in Phase 51)
+packages/email/src/EmailSender.ts:107  # issue-31-boundary-check (line drifted 79 → 87 → 107; Phase 68 HIGH-EMAIL-01 added the SendArgs.html escaping JSDoc)
 packages/litellm-client/src/config.ts:73  # issue-68-litellm-HI-3-https-assertion — config loader is the canonical env boundary; NODE_ENV gates the production-only https assertion on an operator-overridden LITELLM_BASE_URL (mirrors Phase 57 validateIngressBoot)
