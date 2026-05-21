@@ -8,6 +8,12 @@
   "exports": {
     ".": "./src/index.ts"
   },
+  "comment:files": "Phase 68 / Plan 68-01 — REVIEW byok HIGH HI-01/02. Defence-in-depth allowlist: src/ currently has no test files, but an explicit files: field keeps any future *.test.ts out of the published tarball.",
+  "files": [
+    "src/index.ts",
+    "src/redact-url.ts",
+    "!**/*.test.ts"
+  ],
   "scripts": {
     "test": "vitest run",
     "typecheck": "tsc -p tsconfig.json --noEmit",
