@@ -9,6 +9,21 @@
     ".": "./src/index.ts",
     "./schemas": "./src/schemas.ts"
   },
+  "comment:files": "Phase 68 / Plan 68-01 — REVIEW byok HIGH HI-01/02/05. Explicit allowlist so the published tarball ships ONLY the consumer-facing schema/error surface. Test files (*.test.ts) and the privileged test-only helpers (helpers/sign-in-fixture.ts carries FIXTURE_PASSWORD + an owner-pool email_verified DB flip) are excluded via the `!` negations. The bundled audio fixture (HI-05) is included so the multipart helper resolves a package-local path.",
+  "files": [
+    "src/index.ts",
+    "src/schemas.ts",
+    "src/errors.ts",
+    "src/env.ts",
+    "src/negative-matrix.ts",
+    "src/helpers/cookie-jar.ts",
+    "src/helpers/http.ts",
+    "src/helpers/multipart.ts",
+    "src/helpers/streaming.ts",
+    "fixtures/audio/sample-1s.wav",
+    "!**/*.test.ts",
+    "!src/helpers/sign-in-fixture.ts"
+  ],
   "scripts": {
     "test": "vitest run",
     "test:run": "vitest run",

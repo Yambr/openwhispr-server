@@ -13,13 +13,15 @@ import { defineConfig } from "vitest/config";
 
 export default defineConfig({
   test: {
-    // Phase 15 / Plan 02 (STRUCT-01) — tests live under tests/unit/ post-move.
+    // Phase 15 / Plan 02 (STRUCT-01) — tests live under tests/unit/.
     // Phase 56 (R9 folders, R11 transcriptions, R8 notes) — per-resource
-    // CONTRACT-01 wire-shape tests colocated under src/ are also picked
-    // up (e.g. folders-shape.test.ts, transcriptions-shape.test.ts,
-    // notes-shape.test.ts). They assert zod-schema + status-code
-    // invariants without needing a live BACKEND_URL.
-    include: ["tests/**/*.test.ts", "src/**/*.test.ts"],
+    // CONTRACT-01 wire-shape tests (folders-shape.test.ts,
+    // transcriptions-shape.test.ts, notes-shape.test.ts) assert
+    // zod-schema + status-code invariants without a live BACKEND_URL.
+    // Phase 68 / Plan 68-01 — REVIEW byok HIGH HI-01/02: those *-shape
+    // test files were moved out of `src/` into `tests/unit/` so they no
+    // longer ship in the package tarball; only `tests/**` is scanned.
+    include: ["tests/**/*.test.ts"],
     reporters: ["dot"],
     testTimeout: 60_000,
     hookTimeout: 60_000,

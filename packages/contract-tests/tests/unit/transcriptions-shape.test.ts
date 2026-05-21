@@ -21,9 +21,9 @@
 
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
-import { BACKEND_URL, probeBackend } from "./env.js";
-import { signInFixture } from "./helpers/sign-in-fixture.js";
-import { ErrorEnvelope } from "./schemas.js";
+import { BACKEND_URL, probeBackend } from "../../src/env.js";
+import { signInFixture } from "../../src/helpers/sign-in-fixture.js";
+import { ErrorEnvelope } from "../../src/schemas.js";
 
 const REACHABLE = await probeBackend();
 
