@@ -90,3 +90,93 @@ describe("loadLitellmConfigFromEnv", () => {
     }
   });
 });
+
+// Phase 68 / Plan 68-01 — REVIEW litellm-client HIGH HI-2.
+// CLAUDE.md's corporate-override narrative names `LITELLM_VIRTUAL_KEY` as
+// the credential operators set when pointing at their internal LiteLLM —
+// but the loader never read it. HI-2 wires it with precedence over
+// `LITELLM_MASTER_KEY`.
+describe("HI-2 — LITELLM_VIRTUAL_KEY precedence", () => {
+  it("HI-2: LITELLM_VIRTUAL_KEY wins over LITELLM_MASTER_KEY when both set", () => {
+    const cfg = loadLitellmConfigFromEnv({
+      LITELLM_MASTER_KEY: "sk-master-x",
+      LITELLM_VIRTUAL_KEY: "sk-virtual-corp",
+    });
+    expect(cfg.masterKey).toBe("sk-virtual-corp");
+  });
+
+  it("HI-2: falls back to LITELLM_MASTER_KEY when LITELLM_VIRTUAL_KEY is unset", () => {
+    const cfg = loadLitellmConfigFromEnv({ LITELLM_MASTER_KEY: "sk-master-x" });
+    expect(cfg.masterKey).toBe("sk-master-x");
+  });
+
+  it("HI-2: an empty LITELLM_VIRTUAL_KEY does not shadow LITELLM_MASTER_KEY", () => {
+    const cfg = loadLitellmConfigFromEnv({
+      LITELLM_MASTER_KEY: "sk-master-x",
+      LITELLM_VIRTUAL_KEY: "",
+    });
+    expect(cfg.masterKey).toBe("sk-master-x");
+  });
+});
+
+// Phase 68 / Plan 68-01 — REVIEW litellm-client HIGH HI-3.
+// A non-https operator-overridden LITELLM_BASE_URL ships the upstream
+// Authorization credential over plaintext HTTP. HI-3 refuses it in
+// production unless an explicit LITELLM_ALLOW_PLAINTEXT opt-out is set or
+// the host is the bundled `litellm` compose service.
+describe("HI-3 — https assertion on production base-URL override", () => {
+  it("HI-3: production + http override throws", () => {
+    expect(() =>
+      loadLitellmConfigFromEnv({
+        LITELLM_MASTER_KEY: "sk-master-x",
+        LITELLM_BASE_URL: "http://aimodels.example.com",
+        NODE_ENV: "production",
+      }),
+    ).toThrow(/https/i);
+  });
+
+  it("HI-3: production + http override + LITELLM_ALLOW_PLAINTEXT=1 does not throw", () => {
+    const cfg = loadLitellmConfigFromEnv({
+      LITELLM_MASTER_KEY: "sk-master-x",
+      LITELLM_BASE_URL: "http://aimodels.example.com",
+      NODE_ENV: "production",
+      LITELLM_ALLOW_PLAINTEXT: "1",
+    });
+    expect(cfg.baseUrl).toBe("http://aimodels.example.com");
+  });
+
+  it("HI-3: production + https override does not throw", () => {
+    const cfg = loadLitellmConfigFromEnv({
+      LITELLM_MASTER_KEY: "sk-master-x",
+      LITELLM_BASE_URL: "https://aimodels.example.com",
+      NODE_ENV: "production",
+    });
+    expect(cfg.baseUrl).toBe("https://aimodels.example.com");
+  });
+
+  it("HI-3: production + bundled http://litellm:4000 default does not throw", () => {
+    const cfg = loadLitellmConfigFromEnv({
+      LITELLM_MASTER_KEY: "sk-master-x",
+      NODE_ENV: "production",
+    });
+    expect(cfg.baseUrl).toBe(DEFAULT_LITELLM_BASE_URL);
+  });
+
+  it("HI-3: production + explicit override to the bundled litellm host does not throw", () => {
+    const cfg = loadLitellmConfigFromEnv({
+      LITELLM_MASTER_KEY: "sk-master-x",
+      LITELLM_BASE_URL: "http://litellm:4000",
+      NODE_ENV: "production",
+    });
+    expect(cfg.baseUrl).toBe("http://litellm:4000");
+  });
+
+  it("HI-3: non-production + http override does not throw (slim/dev stack)", () => {
+    const cfg = loadLitellmConfigFromEnv({
+      LITELLM_MASTER_KEY: "sk-master-x",
+      LITELLM_BASE_URL: "http://aimodels.example.com",
+      NODE_ENV: "development",
+    });
+    expect(cfg.baseUrl).toBe("http://aimodels.example.com");
+  });
+});
