@@ -294,6 +294,71 @@ describe("POST /api/agent/stream", () => {
     }
   });
 
+  it("R28 — accepts the first-dictation body with model:null, systemPrompt:null, tools:null -> 200 NDJSON", async () => {
+    // R28: the immutable desktop client builds the body from
+    // `opts.model` / `opts.systemPrompt`; on the FIRST dictation of a
+    // session those are `null`, so the body literally carries
+    // `"model":null`. `.optional()` rejected `null`; `.nullish()` admits
+    // it and the handler treats null === undefined (resolveModel `??`,
+    // prependSystemPrompt falsy-check, tools null-skip).
+    agent
+      .get(LITELLM_BASE)
+      .intercept({ path: LITELLM_PATH, method: "POST" })
+      .reply(200, buildTextOnlySse(), {
+        headers: { "content-type": "text/event-stream" },
+      });
+
+    const app = await buildTestApp({ bearerMap: { "Bearer ok-u1": "u1" } });
+    try {
+      const r = await app.inject({
+        method: "POST",
+        url: "/api/agent/stream",
+        headers: { authorization: "Bearer ok-u1", "content-type": "application/json" },
+        payload: {
+          messages: [{ role: "user", content: "hi" }],
+          model: null,
+          systemPrompt: null,
+          tools: null,
+          sessionId: null,
+          clientType: null,
+          appVersion: null,
+        },
+      });
+      expect(r.statusCode).toBe(200);
+      expect(r.headers["content-type"]).toBe("application/x-ndjson");
+      const lines = r.body.split("\n").filter((l) => l.length > 0);
+      expect(lines.length).toBeGreaterThan(0);
+    } finally {
+      await app.close();
+    }
+  });
+
+  it("R28 — accepts a tool whose description is null -> 200 NDJSON", async () => {
+    agent
+      .get(LITELLM_BASE)
+      .intercept({ path: LITELLM_PATH, method: "POST" })
+      .reply(200, buildTextOnlySse(), {
+        headers: { "content-type": "text/event-stream" },
+      });
+
+    const app = await buildTestApp({ bearerMap: { "Bearer ok-u1": "u1" } });
+    try {
+      const r = await app.inject({
+        method: "POST",
+        url: "/api/agent/stream",
+        headers: { authorization: "Bearer ok-u1", "content-type": "application/json" },
+        payload: {
+          messages: [{ role: "user", content: "hi" }],
+          tools: [{ name: "search", description: null, parameters: { type: "object" } }],
+        },
+      });
+      expect(r.statusCode).toBe(200);
+      expect(r.headers["content-type"]).toBe("application/x-ndjson");
+    } finally {
+      await app.close();
+    }
+  });
+
   it("R23 — accepts an UNDOCUMENTED extra top-level field (.passthrough() forward-compat)", async () => {
     agent
       .get(LITELLM_BASE)
