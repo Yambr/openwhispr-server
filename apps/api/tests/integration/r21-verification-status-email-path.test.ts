@@ -31,20 +31,34 @@
 //   (2) `verification-status?email=<signed-up addr>` with NO session
 //       cookie → 200 {verified:false} (NOT 401 — the layer-1 regression
 //       guard); the email-derived path;
-//   (3) after the email is verified (email_verified_at set) the SAME poll
+//   (3) after the REAL Better Auth verify-email flow runs (the desktop
+//       user clicks the link → `GET /api/auth/verify-email?token=…`,
+//       which flips `users.email_verified` to `true`) the SAME poll
 //       → 200 {verified:true};
 //   (4) an unknown email → 200 {verified:false}, byte-identical to (2) —
 //       no enumeration oracle;
 //   (5) a valid session cookie still wins — identity is session-derived.
 //
-// Only the Postgres driver (network boundary) is a container; nothing of
-// the internal logic is mocked — real `buildAuth` + real `buildApp`.
+// R21 (verification-column fix) — case (3) deliberately drives the REAL
+// Better Auth verify-email endpoint, NOT a manual `UPDATE users SET
+// email_verified, email_verified_at`. Better Auth flips ONLY the
+// `email_verified` boolean; it never writes the `email_verified_at`
+// timestamp. The prior manual UPDATE set BOTH columns and so masked the
+// bug where the route read the never-written timestamp column. The
+// verification token is captured via an in-test `EmailSender` stub wired
+// into `buildAuth` (`sendVerificationEmail` forwards a `url` carrying the
+// token); the test then injects that token into the real verify-email
+// route on the production `buildApp` instance.
+//
+// Only the Postgres driver (network boundary) and the SMTP transport
+// (the email-capture stub — a process/network boundary) are stand-ins;
+// nothing of the internal logic is mocked — real `buildAuth` (incl. the
+// real verify-email handler) + real `buildApp`.
 
 import { dirname as pathDirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { type AppDb, schema, withTenant } from "@openwhispr/data";
+import { type AppDb, schema } from "@openwhispr/data";
 import { PostgreSqlContainer, type StartedPostgreSqlContainer } from "@testcontainers/postgresql";
-import { sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/node-postgres";
 import { migrate } from "drizzle-orm/node-postgres/migrator";
 import type { FastifyInstance } from "fastify";
@@ -76,6 +90,53 @@ let appPool: Pool;
 let auth: any;
 let app: FastifyInstance;
 let appDb: AppDb;
+
+// Process-boundary stub for the SMTP transport. Better Auth's
+// `sendVerificationEmail` hook (apps/api/src/auth.ts) calls `email.send`
+// with a `url` that carries the verification token. We capture the most
+// recent `url` per recipient address so the test can drive the REAL
+// `GET /api/auth/verify-email?token=…` route — exercising exactly what a
+// desktop user's link click does in production. No internal logic is
+// mocked: the verify-email handler, the DB write, and the column it
+// flips are all real.
+const sentVerificationUrls = new Map<string, string>();
+const captureEmailSender = {
+  async send({ to, html, text }: { to: string; html?: string; text?: string }) {
+    const haystack = `${html ?? ""} ${text ?? ""}`;
+    const match = haystack.match(/https?:\/\/[^\s"'<>]+/);
+    if (match) sentVerificationUrls.set(to.toLowerCase(), match[0]);
+    return { delivered: true };
+  },
+};
+
+/**
+ * Drive the REAL Better Auth verify-email flow for `email`: pull the
+ * token from the captured verification URL and inject it into the
+ * production verify-email route on `buildApp`. Asserts the route flips
+ * the user to verified (2xx/3xx — Better Auth may redirect on success).
+ */
+async function verifyEmailViaRealFlow(email: string): Promise<void> {
+  const url = sentVerificationUrls.get(email.toLowerCase());
+  if (!url) {
+    throw new Error(
+      `no verification URL captured for ${email} — sendVerificationEmail hook did not fire`,
+    );
+  }
+  const token = new URL(url).searchParams.get("token");
+  if (!token) {
+    throw new Error(`captured verification URL has no ?token= param: ${url}`);
+  }
+  const res = await app.inject({
+    method: "GET",
+    url: `/api/auth/verify-email?token=${encodeURIComponent(token)}`,
+  });
+  // Better Auth's verify-email returns 200 (or 302 to a callback URL) on
+  // success; anything 4xx/5xx means the token did not verify the user.
+  expect(
+    res.statusCode,
+    `verify-email must succeed, got ${res.statusCode}: ${res.body}`,
+  ).toBeLessThan(400);
+}
 
 beforeAll(async () => {
   process.env.MASTER_KEK = process.env.MASTER_KEK ?? Buffer.alloc(32).toString("base64url");
@@ -126,7 +187,11 @@ beforeAll(async () => {
     connectionString: `postgres://openwhispr_app:app-pw@${host}:${port}/openwhispr`,
   });
   appDb = drizzle(appPool, { schema });
-  auth = buildAuth({ db: appDb });
+  // Wire the email-capture stub so the verification token is observable
+  // in-test. `enqueueEmail` is intentionally left unset → the inline
+  // `email.send` path runs (apps/api/src/auth.ts), which is what feeds
+  // `captureEmailSender`.
+  auth = buildAuth({ db: appDb, email: captureEmailSender as never });
 
   // The PRODUCTION app surface: `buildApp` registers the app-wide
   // `dualAuthHook` (`onRequest`) BEFORE routes — so this test now goes
@@ -143,8 +208,6 @@ afterAll(async () => {
   await ownerPool?.end();
   await container?.stop();
 }, 60_000);
-
-const DEFAULT_TENANT = "00000000-0000-0000-0000-000000000000";
 
 describe("R21 — verification-status resolves email-derived identity with no session", () => {
   it("real sign-up under requireEmailVerification issues NO session token", async () => {
@@ -188,17 +251,14 @@ describe("R21 — verification-status resolves email-derived identity with no se
     expect(before.statusCode).toBe(200);
     expect(before.json()).toEqual({ verified: false });
 
-    // Click the verification link — model it by setting email_verified_at
-    // on the user row (the column the route reads). Runs inside withTenant
-    // so the FORCE-RLS users policy admits the UPDATE.
-    await withTenant(appDb, DEFAULT_TENANT, async (tx) => {
-      await tx.execute(sql`
-        UPDATE users
-           SET email_verified = true,
-               email_verified_at = now()
-         WHERE lower(email) = lower(${email})
-      `);
-    });
+    // Click the verification link — drive the REAL Better Auth
+    // verify-email flow (token captured from the sendVerificationEmail
+    // hook, injected into `GET /api/auth/verify-email`). This is what a
+    // desktop user's click does in production: Better Auth flips ONLY
+    // `users.email_verified` (the boolean), never `email_verified_at`.
+    // A manual `UPDATE … email_verified_at` here would mask the bug the
+    // R21 column fix closes — the route now reads `email_verified`.
+    await verifyEmailViaRealFlow(email);
 
     // Poll again — same request, now verified.
     const after = await app.inject({
@@ -246,14 +306,11 @@ describe("R21 — verification-status resolves email-derived identity with no se
     const email = `r21-cookie-${Date.now()}@example.test`;
     const password = "R21!Str0ngPass";
     await auth.api.signUpEmail({ body: { email, password, name: "R21 Cookie" } });
-    await withTenant(appDb, DEFAULT_TENANT, async (tx) => {
-      await tx.execute(sql`
-        UPDATE users
-           SET email_verified = true,
-               email_verified_at = now()
-         WHERE lower(email) = lower(${email})
-      `);
-    });
+    // Verify via the REAL verify-email flow so Better Auth will issue a
+    // session on sign-in (it refuses sessions for unverified users under
+    // requireEmailVerification). No manual UPDATE — same rationale as the
+    // window test above.
+    await verifyEmailViaRealFlow(email);
 
     // Real sign-in → a real session; capture the Set-Cookie headers.
     const signIn = await auth.api.signInEmail({

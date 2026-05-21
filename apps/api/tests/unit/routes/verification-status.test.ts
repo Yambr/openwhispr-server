@@ -2,7 +2,7 @@
 // Phase 2 / Plan 03 / Task 3 — `/api/auth/verification-status` plugin tests.
 //
 // In-process: hand-rolled fake `AuthLike` (cookie-only contract) + fake
-// `TransactionalDb` with a `users.email_verified_at` row injection. End-
+// `TransactionalDb` with a `users.email_verified` row injection. End-
 // to-end with a real backend lives in Plan 06.
 //
 // Coverage:
@@ -27,7 +27,7 @@ import { buildVerificationStatusRoutes } from "../../../src/routes/verification-
 
 const TENANT_A = "11111111-1111-1111-1111-111111111111";
 
-type RowFor = (sqlText: string) => Array<{ email_verified_at: string | null }>;
+type RowFor = (sqlText: string) => Array<{ email_verified: boolean }>;
 
 type FakeTx = { execute(query: unknown): Promise<unknown> };
 
@@ -79,10 +79,10 @@ describe("GET /api/auth/verification-status (R21 dual-path — cookie wins, else
     /* noop */
   });
 
-  it("returns {verified:true} when the user has a verified-at timestamp", async () => {
+  it("returns {verified:true} when the user has email_verified = true", async () => {
     const db = makeFakeDb((sql) => {
-      if (/SELECT email_verified_at FROM users/.test(sql)) {
-        return [{ email_verified_at: "2026-01-01T00:00:00Z" }];
+      if (/SELECT email_verified FROM users/.test(sql)) {
+        return [{ email_verified: true }];
       }
       return [];
     });
@@ -102,8 +102,8 @@ describe("GET /api/auth/verification-status (R21 dual-path — cookie wins, else
 
   it("returns {verified:false} for unverified user", async () => {
     const db = makeFakeDb((sql) => {
-      if (/SELECT email_verified_at FROM users/.test(sql)) {
-        return [{ email_verified_at: null }];
+      if (/SELECT email_verified FROM users/.test(sql)) {
+        return [{ email_verified: false }];
       }
       return [];
     });
@@ -155,8 +155,8 @@ describe("GET /api/auth/verification-status (R21 dual-path — cookie wins, else
 
   it("R21: no session + ?email= for a known-unverified user → 200 {verified:false}", async () => {
     const db = makeFakeDb((sql) => {
-      if (/SELECT email_verified_at FROM users/.test(sql)) {
-        return [{ email_verified_at: null }];
+      if (/SELECT email_verified FROM users/.test(sql)) {
+        return [{ email_verified: false }];
       }
       return [];
     });
@@ -173,8 +173,8 @@ describe("GET /api/auth/verification-status (R21 dual-path — cookie wins, else
 
   it("R21: no session + ?email= for a known-verified user → 200 {verified:true}", async () => {
     const db = makeFakeDb((sql) => {
-      if (/SELECT email_verified_at FROM users/.test(sql)) {
-        return [{ email_verified_at: "2026-01-01T00:00:00Z" }];
+      if (/SELECT email_verified FROM users/.test(sql)) {
+        return [{ email_verified: true }];
       }
       return [];
     });
@@ -201,7 +201,7 @@ describe("GET /api/auth/verification-status (R21 dual-path — cookie wins, else
     // Known-but-unverified — a row with null timestamp.
     const knownApp = buildApp({
       db: makeFakeDb((sql) =>
-        /SELECT email_verified_at FROM users/.test(sql) ? [{ email_verified_at: null }] : [],
+        /SELECT email_verified FROM users/.test(sql) ? [{ email_verified: false }] : [],
       ),
       auth,
     });
@@ -257,7 +257,7 @@ describe("GET /api/auth/verification-status (R21 dual-path — cookie wins, else
         for (const c of chunks) {
           if (typeof c === "string" && c.includes("@")) seenEmails.push(c);
         }
-        return { rows: [{ email_verified_at: "2026-01-01T00:00:00Z" }] };
+        return { rows: [{ email_verified: true }] };
       },
     };
     const db = {
@@ -337,8 +337,8 @@ describe("GET /api/auth/verification-status (R21 dual-path — cookie wins, else
     // Session user is alice (verified). Param is bob. Server MUST return
     // 200 with alice's verified-state, NOT 400 and NOT bob's truth.
     const db = makeFakeDb((sql) => {
-      if (/SELECT email_verified_at FROM users/.test(sql)) {
-        return [{ email_verified_at: "2026-01-01T00:00:00Z" }];
+      if (/SELECT email_verified FROM users/.test(sql)) {
+        return [{ email_verified: true }];
       }
       return [];
     });
@@ -363,8 +363,8 @@ describe("GET /api/auth/verification-status (R21 dual-path — cookie wins, else
   // desktop client polls this route with a session cookie and no param.
   it("R15/R5: GET without ?email= returns 200 (param is optional)", async () => {
     const db = makeFakeDb((sql) => {
-      if (/SELECT email_verified_at FROM users/.test(sql)) {
-        return [{ email_verified_at: "2026-01-01T00:00:00Z" }];
+      if (/SELECT email_verified FROM users/.test(sql)) {
+        return [{ email_verified: true }];
       }
       return [];
     });
@@ -397,7 +397,7 @@ describe("GET /api/auth/verification-status (R21 dual-path — cookie wins, else
         for (const c of chunks) {
           if (typeof c === "string" && c.includes("@")) seenEmails.push(c);
         }
-        return { rows: [{ email_verified_at: null }] };
+        return { rows: [{ email_verified: false }] };
       },
     };
     const db = {
@@ -450,8 +450,8 @@ describe("GET /api/auth/verification-status (R21 dual-path — cookie wins, else
 
   it("R5: ?email= with a well-formed unknown address still returns 200 (session truth)", async () => {
     const db = makeFakeDb((sql) => {
-      if (/SELECT email_verified_at FROM users/.test(sql)) {
-        return [{ email_verified_at: "2026-01-01T00:00:00Z" }];
+      if (/SELECT email_verified FROM users/.test(sql)) {
+        return [{ email_verified: true }];
       }
       return [];
     });
@@ -484,8 +484,8 @@ describe("GET /api/auth/verification-status (R21 dual-path — cookie wins, else
   describe("HR-03 — (ip,email) rate-limit keyGenerator on the real route", () => {
     async function buildRateLimitedApp(): Promise<FastifyInstance> {
       const db = makeFakeDb((sql) => {
-        if (/SELECT email_verified_at FROM users/.test(sql)) {
-          return [{ email_verified_at: "2026-01-01T00:00:00Z" }];
+        if (/SELECT email_verified FROM users/.test(sql)) {
+          return [{ email_verified: true }];
         }
         return [];
       });
