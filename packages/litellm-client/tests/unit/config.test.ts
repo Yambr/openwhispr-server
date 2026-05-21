@@ -4,6 +4,8 @@ import { describe, expect, it } from "vitest";
 import {
   DEFAULT_CHAT_MODEL,
   DEFAULT_LITELLM_BASE_URL,
+  DEFAULT_REALTIME_MODEL,
+  DEFAULT_STT_MODEL,
   loadLitellmConfigFromEnv,
 } from "../../src/config.js";
 
@@ -67,6 +69,53 @@ describe("loadLitellmConfigFromEnv", () => {
       LITELLM_DEFAULT_CHAT_MODEL: "gemini-3-flash",
     });
     expect(cfg.defaultChatModel).toBe("gemini-3-flash");
+  });
+
+  // D2/D6 — STT model alias is operator-owned via LITELLM_STT_MODEL; the
+  // route no longer bakes `whisper-large-v3` as a TypeScript literal.
+  it("defaults defaultSttModel to DEFAULT_STT_MODEL when unset (D6)", () => {
+    const cfg = loadLitellmConfigFromEnv({ LITELLM_MASTER_KEY: "sk-master-x" });
+    expect(cfg.defaultSttModel).toBe(DEFAULT_STT_MODEL);
+    expect(cfg.defaultSttModel).toBe("whisper-large-v3");
+  });
+
+  it("honors LITELLM_STT_MODEL override (D2)", () => {
+    const cfg = loadLitellmConfigFromEnv({
+      LITELLM_MASTER_KEY: "sk-master-x",
+      LITELLM_STT_MODEL: "corp-whisper-internal",
+    });
+    expect(cfg.defaultSttModel).toBe("corp-whisper-internal");
+  });
+
+  it("treats an empty LITELLM_STT_MODEL as unset (falls back to default)", () => {
+    const cfg = loadLitellmConfigFromEnv({
+      LITELLM_MASTER_KEY: "sk-master-x",
+      LITELLM_STT_MODEL: "",
+    });
+    expect(cfg.defaultSttModel).toBe(DEFAULT_STT_MODEL);
+  });
+
+  // D4/D1 — realtime model alias is operator-owned via LITELLM_REALTIME_MODEL.
+  it("defaults defaultRealtimeModel to DEFAULT_REALTIME_MODEL when unset (D4)", () => {
+    const cfg = loadLitellmConfigFromEnv({ LITELLM_MASTER_KEY: "sk-master-x" });
+    expect(cfg.defaultRealtimeModel).toBe(DEFAULT_REALTIME_MODEL);
+    expect(cfg.defaultRealtimeModel).toBe("gpt-realtime");
+  });
+
+  it("honors LITELLM_REALTIME_MODEL override (D4)", () => {
+    const cfg = loadLitellmConfigFromEnv({
+      LITELLM_MASTER_KEY: "sk-master-x",
+      LITELLM_REALTIME_MODEL: "corp-realtime-internal",
+    });
+    expect(cfg.defaultRealtimeModel).toBe("corp-realtime-internal");
+  });
+
+  it("treats an empty LITELLM_REALTIME_MODEL as unset (falls back to default)", () => {
+    const cfg = loadLitellmConfigFromEnv({
+      LITELLM_MASTER_KEY: "sk-master-x",
+      LITELLM_REALTIME_MODEL: "",
+    });
+    expect(cfg.defaultRealtimeModel).toBe(DEFAULT_REALTIME_MODEL);
   });
 
   it("falls back to default base URL when LITELLM_BASE_URL is empty string", () => {
