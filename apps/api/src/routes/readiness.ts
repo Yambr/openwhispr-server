@@ -9,20 +9,35 @@
 // is marked `unhealthy` and pulled from rotation — instead of silently
 // serving 500s on /api/transcribe, /api/reason, /api/agent/*.
 //
-// Checks (each a hard 200-or-503 contributor):
-//   - ssrf_dispatcher: the process-global undici dispatcher carries the
-//     `openwhispr.ssrf-wrapped` marker. This catches RUNTIME clobbering
-//     (a stray post-boot `setGlobalDispatcher`), not just the boot state.
-//   - litellm_client: a LiteLLM client was constructed at buildApp() time
-//     (LITELLM_MASTER_KEY present). When absent, the Cloud-plane routes
-//     are not even registered, so the container is not Cloud-ready.
-//   - litellm_upstream: a cheap LiteLLM `/health` ping under a short
-//     timeout (delegated to the shared dep-check library, ≤2s). A
-//     `skipped` upstream (intentionally-absent AI plane) does NOT fail
-//     the probe.
+// Checks:
+//   - litellm_client (GATING): a LiteLLM client was constructed at
+//     buildApp() time (LITELLM_MASTER_KEY present). When absent, the
+//     Cloud-plane routes are not even registered, so the container is
+//     not Cloud-ready.
+//   - litellm_upstream (GATING): a cheap LiteLLM `/health/readiness`
+//     ping under a short timeout (delegated to the shared dep-check
+//     library, ≤2s). A `skipped` upstream (intentionally-absent AI
+//     plane) does NOT fail the probe.
+//   - ssrf_dispatcher (INFORMATIONAL, non-gating — R29b): whether the
+//     process-global undici dispatcher still carries the
+//     `openwhispr.ssrf-wrapped` marker. POST-R24 this is NO LONGER a
+//     Cloud-gating signal: the LiteLLM client holds its OWN explicit
+//     SSRF-wrapped dispatcher (bound at boot via `makeSsrfBoundRequest`)
+//     and never consults the global, so a clobbered global does not
+//     break /api/transcribe|reason|agent. The global dispatcher still
+//     matters for Better Auth OIDC redirects + the Tavily/Yandex
+//     web-search adapters (they egress via `globalThis.fetch`), so the
+//     marker state is still REPORTED for operator visibility — but it
+//     must NOT 503 the compose healthcheck and depool a container that
+//     serves the Cloud plane perfectly. A defense-in-depth posture
+//     degradation belongs in metrics/alerting, not the readiness gate
+//     (k8s/compose readiness doctrine: "can I serve my contract", not
+//     "is my security posture pristine"). Fast-follow: emit this as an
+//     OTel gauge so it drives a real alert.
 //
 // The handler NEVER throws — every failure path resolves to a 503 with a
-// structured `checks` body so operators can disambiguate.
+// structured `checks` body so operators can disambiguate. `status` is
+// 503 ONLY when a GATING check fails.
 
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { type Dispatcher, getGlobalDispatcher } from "undici";
@@ -41,8 +56,11 @@ interface ReadinessCheck {
 interface ReadinessBody {
   readonly status: "ready" | "not_ready";
   readonly checks: {
+    /** INFORMATIONAL — non-gating (R29b). See file header. */
     readonly ssrf_dispatcher: ReadinessCheck;
+    /** GATING. */
     readonly litellm_client: ReadinessCheck;
+    /** GATING. */
     readonly litellm_upstream: ReadinessCheck;
   };
 }
@@ -110,7 +128,10 @@ export const buildReadinessRoutes = (deps: ReadinessDeps) =>
             : { ok: result.ok };
         }
 
-        const allOk = ssrf_dispatcher.ok && litellm_client.ok && litellm_upstream.ok;
+        // R29b — `ssrf_dispatcher` is INFORMATIONAL: it is reported in
+        // `checks` for operator visibility but is NOT part of the gating
+        // conjunction. Only the two Cloud-gating checks flip `status`.
+        const allOk = litellm_client.ok && litellm_upstream.ok;
         const body: ReadinessBody = {
           status: allOk ? "ready" : "not_ready",
           checks: { ssrf_dispatcher, litellm_client, litellm_upstream },

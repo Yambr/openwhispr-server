@@ -92,17 +92,25 @@ describe("GET /api/ready", () => {
     await app.close();
   });
 
-  it("503 not_ready when the global dispatcher lacks the SSRF marker", async () => {
+  it("R29b — 200 ready when the global dispatcher lacks the SSRF marker (ssrf_dispatcher is informational, non-gating)", async () => {
+    // Post-R24 the LiteLLM client holds its OWN bound SSRF-wrapped
+    // dispatcher; a clobbered process-global does NOT break the Cloud
+    // plane, so it must NOT depool the container via the compose
+    // healthcheck. The marker state is still reported in `checks` for
+    // operator visibility (Better Auth OIDC / web-search egress) but is
+    // excluded from the gating conjunction.
     setGlobalDispatcher(bareAgent);
     const app = await makeApp({
       litellmClientConstructed: true,
       depCheck: async () => ({ ok: true, latency_ms: 1 }),
     });
     const res = await app.inject({ method: "GET", url: "/api/ready" });
-    expect(res.statusCode).toBe(503);
+    expect(res.statusCode).toBe(200);
     const body = res.json();
-    expect(body.status).toBe("not_ready");
+    expect(body.status).toBe("ready");
+    // Reported, falsey — visible to operators, but did NOT flip status.
     expect(body.checks.ssrf_dispatcher.ok).toBe(false);
+    expect(body.checks.ssrf_dispatcher.error).toMatch(/SSRF-wrapped/);
     await app.close();
   });
 
