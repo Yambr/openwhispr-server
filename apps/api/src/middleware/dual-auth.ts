@@ -45,8 +45,15 @@ import { resolveDefaultTenantId } from "../lib/default-tenant.js";
  */
 export interface SessionResult {
   user: { id: string; email: string; tenantId?: string | null };
-  /** Better Auth's session row when available (id at minimum). */
-  session?: { id?: string };
+  /**
+   * Better Auth's session row when available (id at minimum). R22 widens
+   * this with the optional raw `token` — the opaque bearer the
+   * verify-email-complete route hands to the desktop auth-bridge. The
+   * runtime object Better Auth's `getSession` returns always carries
+   * `token`; only the `dualAuthHook` (which needs just `id`) under-reads
+   * it. Declaring it optional keeps every existing fake compiling.
+   */
+  session?: { id?: string; token?: string };
 }
 
 /**
