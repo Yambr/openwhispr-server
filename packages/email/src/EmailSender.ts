@@ -43,6 +43,26 @@ export interface SendArgs {
   to: string;
   subject: string;
   text: string;
+  /**
+   * Optional HTML body.
+   *
+   * Phase 68 / Plan 68-01 — REVIEW small-pkgs HIGH-EMAIL-01
+   * (caller-owns-escaping contract, made explicit).
+   *
+   * SECURITY CONTRACT: this string is forwarded to nodemailer VERBATIM.
+   * `EmailSender` performs NO HTML-escaping of any kind. The CALLER owns
+   * escaping every interpolated value before it reaches this field — an
+   * un-escaped, attacker-influenced value here would be delivered as
+   * stored-HTML injection in the recipient's inbox.
+   *
+   * Reference safe pattern: the worker `template-renderer`
+   * (`apps/worker/src/i18n/template-renderer.ts`) interpolates template
+   * variables with `htmlEscape: true`. Callers that build `html` by
+   * string interpolation MUST escape every interpolated value the same
+   * way, OR only interpolate values that are provably not
+   * user-controlled (e.g. a server-generated URL). See
+   * `packages/email/README.md` for the full contract.
+   */
   html?: string;
 }
 
