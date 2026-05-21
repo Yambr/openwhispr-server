@@ -35,15 +35,19 @@ None.
 
 **HI-01 — `SignInForm` discards middleware's `?from=` deep-link parameter.**
 - `apps/web/src/components/screens/auth/SignInForm.tsx:89,99` — hardcodes `callbackURL: "/app"` and `router.push("/app")`. The comment on L88 calls it "Open-redirect mitigation" but middleware (`apps/web/src/middleware.ts:146`) explicitly preserves `?from=<originalPath>` for exactly this recovery flow. Result: a user who deep-links to `/app/notes/123` while signed out is redirected to `/sign-in?from=/app/notes/123` (correct), but lands on `/app` after sign-in (wrong) — their deep link is silently lost. Either consume `?from=` with an allowlist (must start with `/app/` and contain no `://`), or remove the `from=` query in middleware so the design intent is consistent.
+- **Status:** CLOSED 2026-05-21 — Phase 68, commit `0f1e9ee7` — `SignInForm` consumes the middleware `?from=` param through a strict same-origin path allowlist (`lib/safe-from-param.ts`: starts with `/app/` or equals `/app`; no `://`, no `\`, no leading `//`; else `/app`).
 
 **HI-02 — `SessionsTable` ships Better Auth bearer tokens into the JS heap.**
 - `apps/web/src/components/screens/account/SessionsTable.tsx:30-38,200` — `SessionRow.token: string` and `revokeOne.mutate(row.token)` pass the bearer. `authClient.listSessions()` returns every session's token (required by `revokeSession({ token })`'s API contract). The Phase 51 CR-4 fix renamed `currentSessionToken → currentSessionId` but the row-level bearers are still in the response body and rendered into the React tree. An XSS or compromised dependency reading window state can exfiltrate every session's bearer. Better Auth's revokeSession probably accepts `id` too in newer versions; switch to id-based revocation if so, or document that the bearers are unavoidable and add a CSP-`connect-src` audit.
+- **Status:** CLOSED 2026-05-21 — Phase 68, commit `4d8e47f0` — resolved via the documentation route. Better Auth 1.6.9 `revokeSession` accepts ONLY `{ token }` — there is NO id-based revocation overload (confirmed against `better-auth/dist/api/routes/session.d.mts:230-235`), so the bearer-in-heap is unavoidable without a library upgrade. The bearer is kept off every render path (DOM attr / `data-*` / React key — RED-test-pinned); the file header documents the exposure + the CSP `connect-src` containment; the durable fix (a Better Auth upgrade) is logged in `.planning/deferred-items.md` as a v2 item.
 
 **HI-03 — `NotesListClient` query key never matches RSC dehydrated key.**
 - `apps/web/src/components/screens/notes/NotesListClient.tsx:121` — `queryKey: [...queryKeys.notes.list(cursor), { folder: folderFilter }]`. RSC prefetch in `apps/web/src/app/(auth)/app/notes/page.tsx:25` uses `queryKeys.notes.list(cursor)` (no folder field). Result: every `/app/notes` first paint thinks the cache is empty and fires a client fetch, wasting the entire SSR prefetch work. Either thread `folderFilter` into the RSC prefetch or drop it from the client query key.
+- **Status:** CLOSED 2026-05-21 — Phase 68, commit `08da020c` — dropped the `{ folder }` tuple element from the client query key so it equals the RSC dehydrated key `queryKeys.notes.list(cursor)`; `folderFilter` stays a pure client-side `.filter()` (it never changed the fetched payload). SSR prefetch is now consumed on first paint.
 
 **HI-04 — `AdminShell` has no sign-out button (UX dead end).**
 - `apps/web/src/components/screens/AdminShell.tsx:3-7,73` — header has only ThemeSwitcher; the rationale comment says "admin auth is enforced at Traefik basic-auth ... Adding a sign-out here would be misleading." Basic-auth was retired in Phase 55-18-cleanup (see `apps/web/src/lib/admin-guard.ts:20-25`). Admin users on `/admin/*` now have no in-product way to sign out — they have to navigate to `/app/account` first. Add the sign-out button.
+- **Status:** CLOSED 2026-05-21 — Phase 68, commit `a1ac295e` — the AdminShell header renders a Better Auth `signOut()` button routing to `/sign-in` (mirrors `AppShell.handleSignOut`); the stale "NO sign-out button / Traefik basic-auth" header comment was purged in the same commit.
 
 **HI-05 — Stale security comments contradicting current admin model.**
 Multiple files document the retired Traefik basic-auth model. Misleading next to security-critical code; a future contributor following the comments would weaken the gate.
@@ -55,9 +59,11 @@ Multiple files document the retired Traefik basic-auth model. Misleading next to
 - `apps/web/src/components/screens/AdminShell.tsx:2-7` — see HI-04
 - `apps/web/src/components/screens/AdminIndex.tsx:27` — "Phase 07.1 D-ADMIN-1"
 - `apps/web/src/middleware.ts:23-25` — "Auth matcher is NOT widened to /admin/* — D-ADMIN-1 keeps the Traefik basic-auth gate authoritative for admin"
+- **Status:** CLOSED 2026-05-21 — Phase 68, commit `42a839e1` — every stale `D-ADMIN-1` / Traefik-basic-auth comment across the 7 files (AdminShell folded into HI-04's commit) was purged or corrected to describe the real model (admin = `users.role='admin'` enforced by `checkAdminAccess()`; see `admin-guard.ts`). `admin-guard.ts` + `(admin)/layout.tsx` already correct — left untouched. Comment-only; zero behaviour change.
 
 **HI-06 — Hardcoded `:3000` port in production source.**
 - `apps/web/src/lib/internal-api.ts:22` — `const DEFAULT_INTERNAL_API_URL = "http://api:3000"`. LOCKER-03 (CLAUDE.md DISCIPLINE rule 13) lists `:3000|:4000|:8080` as REFUSED outside `tests/`, `.env.*.example`, `compose/`, `docs/`, `charts/`, `tools/`. `apps/web/src/lib/` is not on the allowlist. Either add an explicit lint exemption + comment why, or require `INTERNAL_API_URL` to be set (fail-closed) instead of falling back. Comments on lines 13-17 already acknowledge "Operators wiring a hostile env value bear responsibility; defence-in-depth URL-shape validation is deferred to Plan 51-18 (LOW)" — the URL-shape validation should land before public release.
+- **Status:** CLOSED 2026-05-21 — Phase 68, commit `b72a23c0` — `internalApiUrl()` is now fail-closed (throws when `INTERNAL_API_URL` is unset/empty — docker-compose + Helm always set it); the `:3000` literal is removed and the 3 transitional `lint-no-hardcode.allowlist.txt` entries for `internal-api.ts` are deleted. `pnpm lint:lockers` green.
 
 ### MEDIUM
 

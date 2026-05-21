@@ -38,6 +38,8 @@ No CRITICAL findings. No BACKEND_SPEC byte-for-byte divergences detected against
 
 The string `"metadata too large"` is a user-surface error message hardcoded in English. Project rule (CLAUDE.md / Constraints): "Runtime localization: `en` + `ru` minimum from day one for UI copy, emails, **end-user error messages**." The Zod refinement message lands in the 400-envelope `error` field when desktop clients exceed the cap, so it is an end-user error message. Convention elsewhere is for schema refinement messages to be either empty (route handler localizes via i18next + setErrorMap) or stable machine keys (`metadata.too_large`) — never inline English. The reviewer brief explicitly enumerates "hardcoded locale string" as HIGH for wire-schemas.
 
+**Status:** CLOSED 2026-05-21 — Phase 68, commit `43687221` — the `MetadataSchema.refine` message is now the stable machine key `metadata.too_large` (the route maps it through i18next); no inline English remains. RED test (H-1-named) parses an over-budget object and asserts the issue message equals the machine key.
+
 ---
 
 ### MEDIUM

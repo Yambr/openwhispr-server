@@ -57,10 +57,14 @@ Additionally, `signInFixture({verified: false})` imports `pg`, opens an owner po
 
 **Recommend:** move helpers + `*-shape.test.ts` files out of `src/` (e.g. into a sibling `harness/` directory), add a `files:` allowlist, and tighten `exports` to expose only the schema/error surface needed by external consumers.
 
+**Status:** CLOSED 2026-05-21 — Phase 68, commit `d793661f` — a `files:` allowlist on `contract-tests/package.json` excludes `*.test.ts` and the privileged `helpers/sign-in-fixture.ts` (which carries `FIXTURE_PASSWORD` + the owner-pool `email_verified` flip) from the tarball. Verified via `npm pack --dry-run`: 11 files, no `sign-in-fixture.ts`, no `FIXTURE_PASSWORD`. Relocating the fixture did not trip gitleaks (the `FIXTURE_PASSWORD` literal stayed in place). `byok-guard` got a symmetric `files:` allowlist.
+
 #### HI-02 — `.test.ts` files live inside `src/` and ship in the published tarball
 **File:** `packages/contract-tests/src/folders-shape.test.ts`, `notes-shape.test.ts`, `transcriptions-shape.test.ts`
 
 `tsconfig.json` `"include": ["src/**/*.ts"]` compiles these into `dist/` whenever `tsc --build` runs. No `files:` allowlist in `package.json`, so `npm pack` tars them. Three vitest suites would ship in the artifact, bloating the tarball and shipping internal route enumerations (`PHASE_5_ROUTES` constants and assertions). Move to `tests/` or add a `files:` allowlist.
+
+**Status:** CLOSED 2026-05-21 — Phase 68, commit `d793661f` — the three `*-shape.test.ts` files were relocated from `src/` to `tests/unit/`; the `files:` allowlist additionally negates `**/*.test.ts`. `npm pack --dry-run` confirms no `*.test.ts` in the tarball.
 
 #### HI-03 — `contract-tests/src/schemas.ts` defines wire schemas that are NOT in `@openwhispr/wire-schemas` — silent drift surface
 **File:** `packages/contract-tests/src/schemas.ts:50-262`
@@ -78,6 +82,8 @@ Verified `wire-schemas/src/index.ts` barrel: it re-exports `agent, api-keys, che
 
 **Recommend:** for each locally-defined schema, either (a) confirm there is no `wire-schemas` counterpart and document why the contract package owns it, or (b) replace with a `wire-schemas` import.
 
+**Status:** CLOSED 2026-05-21 — Phase 68, commit `254a272c` — verify-first found `OpenAIRealtimeTokenResponse` is the ONLY locally-defined schema with a true canonical counterpart; it is now re-exported from `@openwhispr/wire-schemas` (RED test pins referential identity). The planner's note that `streaming-usage` had a counterpart was corrected — `wire-schemas/streaming-usage.ts` ships a *request* body (`StreamingUsageBodySchema`), not a usage *response*, so `UsageResponse` has no counterpart. The remaining contract-package-owned schemas (`HealthResponse`, `Transcribe*`, the `*Chunk` family, `StreamingTokenResponse`, `DeepgramStreamingTokenResponse`, `UsageResponse`, `ErrorEnvelope`) carry a header comment block stating why the contract package legitimately owns them (no production-route Zod counterpart).
+
 #### HI-04 — `negative-matrix.ts` route inventory is a static literal; stale entries silently pass; `TolerantEnvelope` weakens the contract
 **File:** `packages/contract-tests/src/negative-matrix.ts:21-29, 55-141`
 
@@ -87,10 +93,14 @@ Two issues:
 
 2. `TolerantEnvelope` (`negative-matrix.ts:21-29`) accepts BOTH `{error: string}` AND `{error: {message, code?}}`. BACKEND_SPEC's default envelope is the string form; the structured form is reserved for one future site. By accepting both as equivalent, the matrix cannot detect a route mistakenly emitting structured-error where it should emit string-error. This weakens the negative-matrix contract.
 
+**Status:** CLOSED 2026-05-21 — Phase 68, commit `86c9c48a` — (1) the route-inventory drift guard `negative-matrix-enumeration.test.ts` was confirmed ALREADY PRESENT and live (it walks the runtime fastify route tree and asserts parity with `PHASE_5_ROUTES ∪ PHASE_2_4_BASELINE_ROUTES`) — so the static-inventory sub-issue was already mitigated. (2) `TolerantEnvelope` was replaced with a strict `DefaultErrorEnvelope` (`{error: z.string().min(1)}.strict()`) — the structured form is used by no v1 route, so a route emitting the wrong shape now fails the matrix loudly. RED test (HI-04-named) pins the strict matcher + the drift-guard presence.
+
 #### HI-05 — `audioMultipartBody` reads from repo-root `tests/fixtures/audio/` that does not exist in the published tarball
 **File:** `packages/contract-tests/src/helpers/multipart.ts:28-29`
 
 `resolve(__dirname, "../../../../tests/fixtures/audio", filename)` walks four levels up from `packages/contract-tests/src/helpers/`, landing at the repo root's `tests/` directory. This works in-repo but **a published `@openwhispr/contract-tests` tarball does not bundle `tests/fixtures/audio/sample-1s.wav`**. Any external consumer who imports this helper crashes with `ENOENT` at the first call. Either bundle a sample fixture inside the package (e.g. `packages/contract-tests/fixtures/sample-1s.wav`) or move the helper out of `src/`.
+
+**Status:** CLOSED 2026-05-21 — Phase 68, commit `d793661f` — the audio fixture is bundled at `packages/contract-tests/fixtures/audio/sample-1s.wav`, the `multipart.ts` resolve path repointed to `../../fixtures/audio`, and `fixtures/audio/sample-1s.wav` added to the `files:` allowlist. `npm pack --dry-run` confirms the fixture ships with the package.
 
 ---
 
