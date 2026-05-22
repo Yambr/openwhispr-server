@@ -2,9 +2,9 @@
 gsd_state_version: 1.0
 milestone: v2.4
 milestone_name: — OSS-Publish Readiness
-status: Phase 57 CLOSED — Phase 58 next
-last_updated: "2026-05-22T17:48:00.000Z"
-last_activity: "2026-05-22 — Phase 57 CLOSED. 6 commits (ac391b97/5b270182/6294e61c/d3cf16b4/24b18462 + allowlist sync). AUDIT-SEC-01: migration 0031 reinstates SECURITY DEFINER lookup_session_by_previous_token_fp(bytea); AUTH-04 overlap window restored; 4/4 integration tests GREEN on real Postgres. AUDIT-CI-01: tsc --noEmit exits 0. AUDIT-CI-02/03/04: zod-drift test fixed, e2e compose-helper contract-test overlay, worker-RLS test re-enabled with docker skipIf. LOCKER-06 allowlist re-synced after line drift (no --no-verify needed going forward). All cited tests independently re-run by orchestrator (15 unit + 4 integration GREEN). Next: Phase 58 (audit hardening + library adoption)."
+status: Phases 57+58 CLOSED — Phase 59 next
+last_updated: "2026-05-22T18:55:00.000Z"
+last_activity: "2026-05-22 — Phases 57+58 CLOSED. Phase 57: 6 commits — AUDIT-SEC-01 (migration 0031 SECURITY DEFINER lookup, AUTH-04 restored) + AUDIT-CI-01..04. Phase 58: 11 commits — AUDIT-HARD-01..05 (auth rateLimit, lru-cache IP store, backfill cap, mailpit dev profile, dead OIDC var removed), AUDIT-LIB-01..03 (Zod env-parser unification, config/stt-settings.ts, AbortSignal.timeout), AUDIT-DOC-01 (EMAIL_FALLBACK_NONFATAL docs). Full-suite triage: ran v2.4 HEAD vs pre-v2.4 baseline 3b504fa3 — 39 failures at HEAD, ALL pre-existing on main EXCEPT one slim-core-base Test-2 regression (Phase-58 mailpit profile), now fixed. Zero net new test failures vs main. Pre-existing main test-debt (~38 failures) logged in .planning/audit-v2.4/TEST-TRIAGE.md, out of v2.4 scope. Next: Phase 59 (documentation truth pass)."
 progress:
   total_phases: 72
   completed_phases: 27
