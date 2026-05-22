@@ -2,18 +2,31 @@
 
 [![License: FSL-1.1-ALv2](https://img.shields.io/badge/license-FSL--1.1--ALv2-blue.svg)](./LICENSE)
 [![Languages](https://img.shields.io/badge/languages-en%20%7C%20ru-brightgreen.svg)](./docs/i18n.md)
-[![CI](https://github.com/openwhispr/openwhispr-server/actions/workflows/ci.yml/badge.svg)](https://github.com/openwhispr/openwhispr-server/actions/workflows/ci.yml)
-[![Security](https://github.com/openwhispr/openwhispr-server/actions/workflows/security.yml/badge.svg)](https://github.com/openwhispr/openwhispr-server/actions/workflows/security.yml)
+[![CI](https://github.com/Yambr/openwhispr-server/actions/workflows/ci.yml/badge.svg)](https://github.com/Yambr/openwhispr-server/actions/workflows/ci.yml)
+[![Security](https://github.com/Yambr/openwhispr-server/actions/workflows/security.yml/badge.svg)](https://github.com/Yambr/openwhispr-server/actions/workflows/security.yml)
 
 A drop-in OpenWhispr backend any organization can self-host — open-source
 out of the box, corporate-LiteLLM-ready by env override.
+
+## The OpenWhispr desktop client
+
+This repository is the **self-hosted backend** for the OpenWhispr desktop
+application — an Electron client that registers a custom URL scheme,
+captures audio, and round-trips transcription / reasoning / realtime
+through this server. It implements the wire surface (`BACKEND_SPEC.md` /
+`OAUTH_SPEC.md` / `SELF_HOSTING.md`) the client expects byte-for-byte, so
+pointing the desktop client at your own deployment is a single base-URL
+change with no client code modifications.
+
+The desktop client lives in its own repository:
+**[github.com/openwhispr/openwhispr](https://github.com/openwhispr/openwhispr)**.
 
 ## 30-second smoke (fresh clone)
 
 If you just want to confirm the repo boots before reading anything else:
 
 ```bash
-git clone https://github.com/openwhispr/openwhispr-server.git
+git clone https://github.com/Yambr/openwhispr-server.git
 cd openwhispr-server
 make up-with-dev-tools                                  # bring stack up
 curl -sk http://localhost:4000/readyz | jq              # 200 with { "postgres": {ok,...}, "valkey": {...}, "litellm": {...} }
@@ -68,7 +81,7 @@ and [STRUCT-03 research](./.planning/phases/15-repo-refactor-fsl-relicense-histo
 
 ```bash
 # Register the Helm repository (one-time):
-helm repo add openwhispr https://openwhispr.github.io/openwhispr-server
+helm repo add openwhispr https://Yambr.github.io/openwhispr-server
 helm repo update
 
 # Install:
@@ -97,7 +110,7 @@ for the full variant matrix.
 
 ```bash
 # 1. Clone and configure for Variant A.
-git clone https://github.com/openwhispr/openwhispr-server.git
+git clone https://github.com/Yambr/openwhispr-server.git
 cd openwhispr-server
 cp .env.embedded.example .env
 
