@@ -28,14 +28,19 @@ describe("LitellmUpstreamError — bodyText truncation (CR-9)", () => {
     expect(JSON.stringify(err)).not.toContain("x".repeat(201));
   });
 
-  it("err.toJSON() returns only { name, message, status }", () => {
+  // litellm-patterns A3 — `toJSON()` is widened to include the typed
+  // `kind` discriminant (a small enum string, safe to ship). `bodyText`
+  // STAYS absent — that is the LOCKER-05 contract this test guards.
+  it("err.toJSON() returns { name, message, status, kind } and never bodyText", () => {
     const err = new LitellmUpstreamError(502, HUGE);
     expect(err.toJSON()).toEqual({
       name: "LitellmUpstreamError",
       message: expect.any(String),
       status: 502,
+      kind: "server",
     });
     expect(JSON.stringify(err.toJSON())).not.toContain("x".repeat(10000));
+    expect(JSON.stringify(err.toJSON())).not.toMatch(/bodyText/);
   });
 
   it("preserves status field for route mapping", () => {

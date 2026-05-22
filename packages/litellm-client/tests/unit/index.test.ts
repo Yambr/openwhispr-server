@@ -1309,3 +1309,73 @@ describe("buildLitellmClient — chatCompletionsStream", () => {
     expect(Object.hasOwn(opts, "dispatcher")).toBe(false);
   });
 });
+
+// litellm-patterns A3 — RED tests: the non-2xx throw sites classify the
+// status and parse the upstream `Retry-After` header into the error.
+describe("litellm-patterns A3 — typed upstream error at throw sites", () => {
+  it("chatCompletions: a 429 carries kind=rate_limit + parsed retryAfterMs", async () => {
+    agent
+      .get(BASE)
+      .intercept({ path: "/v1/chat/completions", method: "POST" })
+      .reply(429, "rate limited", { headers: { "retry-after": "30" } });
+
+    const client = buildLitellmClient(baseConfig(), { isOverride: false });
+    try {
+      await client.chatCompletions({
+        model: "qwen3.6-plus",
+        messages: [{ role: "user", content: "hi" }],
+        userId: "u1",
+        requestId: "r1",
+      });
+      throw new Error("should not reach");
+    } catch (err) {
+      expect(err).toBeInstanceOf(LitellmUpstreamError);
+      const e = err as LitellmUpstreamError;
+      expect(e.kind).toBe("rate_limit");
+      expect(e.retryAfterMs).toBe(30_000);
+    }
+  });
+
+  it("chatCompletions: a 401 carries kind=auth and no retryAfterMs", async () => {
+    agent
+      .get(BASE)
+      .intercept({ path: "/v1/chat/completions", method: "POST" })
+      .reply(401, "denied");
+
+    const client = buildLitellmClient(baseConfig(), { isOverride: false });
+    try {
+      await client.chatCompletions({
+        model: "qwen3.6-plus",
+        messages: [{ role: "user", content: "hi" }],
+        userId: "u1",
+        requestId: "r1",
+      });
+      throw new Error("should not reach");
+    } catch (err) {
+      const e = err as LitellmUpstreamError;
+      expect(e.kind).toBe("auth");
+      expect(e.retryAfterMs).toBeUndefined();
+    }
+  });
+
+  it("chatCompletionsStream: a non-2xx carries the same kind classification", async () => {
+    agent
+      .get(BASE)
+      .intercept({ path: "/v1/chat/completions", method: "POST" })
+      .reply(503, "upstream down");
+
+    const client = buildLitellmClient(baseConfig(), { isOverride: false });
+    try {
+      await client.chatCompletionsStream({
+        model: "qwen3.6-plus",
+        messages: [{ role: "user", content: "hi" }],
+        userId: "u1",
+        requestId: "r1",
+      });
+      throw new Error("should not reach");
+    } catch (err) {
+      const e = err as LitellmUpstreamError;
+      expect(e.kind).toBe("server");
+    }
+  });
+});
