@@ -32,6 +32,7 @@ function touch(rel: string, content: string): void {
   writeFileSync(full, content, "utf8");
 }
 
+// REUSE-IgnoreStart
 const GOOD_DOCKERFILE = [
   "# SPDX-License-Identifier: FSL-1.1-ALv2",
   "FROM traefik:v3.6",
@@ -39,6 +40,7 @@ const GOOD_DOCKERFILE = [
   "HEALTHCHECK --interval=10s CMD wget -q -O- http://localhost:8080/ping || exit 1",
   "",
 ].join("\n");
+// REUSE-IgnoreEnd
 
 const BAD_DOCKERFILE = [
   "FROM debian:stable-slim",
