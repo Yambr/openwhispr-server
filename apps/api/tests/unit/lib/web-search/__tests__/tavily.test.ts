@@ -176,3 +176,38 @@ describe("TavilyAdapter", () => {
     expect(new TavilyAdapter().name).toBe("tavily");
   });
 });
+
+// Phase 68 — operator-tunable URL + timeout. The adapter no longer bakes
+// `https://api.tavily.com/search` as a module literal; the upstream URL +
+// total request timeout arrive via the constructor (resolved from env at
+// the index.ts boundary). These cases prove the injected `searchUrl` is the
+// endpoint actually hit and that omitting options preserves the default.
+describe("TavilyAdapter — Phase 68 env-driven URL/timeout", () => {
+  const CUSTOM_HOST = "https://tavily-proxy.internal";
+
+  it("search() POSTs to the injected searchUrl override", async () => {
+    const pool = agent.get(CUSTOM_HOST);
+    let hit = false;
+    pool.intercept({ path: "/proxy/search", method: "POST" }).reply(() => {
+      hit = true;
+      return { statusCode: 200, data: { results: [] } };
+    });
+
+    const a = new TavilyAdapter({ searchUrl: `${CUSTOM_HOST}/proxy/search` });
+    await a.search("q", 5);
+    expect(hit).toBe(true);
+  });
+
+  it("default constructor still targets api.tavily.com/search", async () => {
+    const pool = agent.get(TAVILY_HOST);
+    let hit = false;
+    pool.intercept({ path: "/search", method: "POST" }).reply(() => {
+      hit = true;
+      return { statusCode: 200, data: { results: [] } };
+    });
+
+    const a = new TavilyAdapter();
+    await a.search("q", 5);
+    expect(hit).toBe(true);
+  });
+});

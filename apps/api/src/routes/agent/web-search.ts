@@ -42,12 +42,17 @@ import { type ExecutableTx, type TransactionalDb, withTenant } from "@openwhispr
 import { WebSearchRequestSchema } from "@openwhispr/wire-schemas";
 import { sql } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
+import type { WebSearchConfig } from "../../config/web-search.js";
 import {
   AuthError,
   ServiceUnavailable as TypedServiceUnavailable,
   UpstreamError as TypedUpstreamError,
 } from "../../errors.js";
-import { resolveWebSearchProvider, webSearchRegistry } from "../../lib/web-search/registry.js";
+import {
+  buildWebSearchRegistry,
+  resolveWebSearchProvider,
+  webSearchRegistry,
+} from "../../lib/web-search/registry.js";
 import {
   MissingProviderKeyError,
   UpstreamError,
@@ -63,13 +68,30 @@ export interface WebSearchDeps {
    * (D-02 boot-fatal on unknown env value).
    */
   provider?: WebSearchProvider;
+  /**
+   * Phase 68 — operator-owned web-search adapter configuration (Tavily /
+   * Yandex upstream URLs + request timeouts) resolved at the `index.ts`
+   * env boundary via `loadWebSearchConfigFromEnv()`. When supplied, the
+   * route resolves its provider from a config-tuned registry built via
+   * `buildWebSearchRegistry()`. When omitted, it resolves the shared
+   * literal-default registry. Ignored when `provider` is set directly.
+   */
+  webSearchConfig?: WebSearchConfig;
 }
 
 export const buildWebSearchRoutes = (deps: WebSearchDeps) =>
   async function webSearchRoutes(app: FastifyInstance): Promise<void> {
     // Resolve ONCE at registration. Re-resolving per-request would mask
     // operator typos in WEB_SEARCH_PROVIDER (D-02 boot-fatal stance).
-    const provider = deps.provider ?? resolveWebSearchProvider();
+    // Phase 68 — when a webSearchConfig is threaded from the env boundary,
+    // resolve against a config-tuned registry so the adapters carry the
+    // operator's URL/timeout overrides; otherwise fall back to the shared
+    // literal-default registry.
+    const provider =
+      deps.provider ??
+      resolveWebSearchProvider(
+        deps.webSearchConfig ? buildWebSearchRegistry(deps.webSearchConfig) : undefined,
+      );
 
     app.route({
       method: "POST",

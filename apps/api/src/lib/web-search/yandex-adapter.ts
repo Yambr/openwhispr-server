@@ -47,9 +47,26 @@ import {
   type WebSearchProvider,
 } from "./types.js";
 
-const YANDEX_URL = "https://searchapi.api.cloud.yandex.net/v2/web/search";
-const HEADERS_TIMEOUT_MS = 5_000;
-const BODY_TIMEOUT_MS = 10_000;
+/**
+ * Phase 68 — operator-tunable Yandex knobs. The upstream URL + undici
+ * headers/body timeouts were module-level literals; they are now injected
+ * by the route-assembly seam (apps/api/src/index.ts →
+ * loadWebSearchConfigFromEnv). This adapter never reads `process.env` for
+ * them (LOCKER-01). All fields are optional so existing callers (and
+ * tests) that omit options keep the historical defaults.
+ */
+export interface YandexAdapterOptions {
+  /** POST endpoint for Yandex Search API v2. */
+  searchUrl?: string;
+  /** undici headers timeout in ms. Default: 5000. */
+  headersTimeoutMs?: number;
+  /** undici body timeout in ms. Default: 10000. */
+  bodyTimeoutMs?: number;
+}
+
+const DEFAULT_YANDEX_URL = "https://searchapi.api.cloud.yandex.net/v2/web/search";
+const DEFAULT_HEADERS_TIMEOUT_MS = 5_000;
+const DEFAULT_BODY_TIMEOUT_MS = 10_000;
 
 type RegionTuple = {
   searchType: string;
@@ -241,6 +258,16 @@ export class YandexAdapter implements WebSearchProvider {
   // WR-05 (Phase 65) — operator env-var label read generically by the route.
   readonly envVarLabel = "YANDEX_SEARCH_API_KEY + YANDEX_SEARCH_FOLDER_ID";
 
+  private readonly searchUrl: string;
+  private readonly headersTimeoutMs: number;
+  private readonly bodyTimeoutMs: number;
+
+  constructor(options: YandexAdapterOptions = {}) {
+    this.searchUrl = options.searchUrl ?? DEFAULT_YANDEX_URL;
+    this.headersTimeoutMs = options.headersTimeoutMs ?? DEFAULT_HEADERS_TIMEOUT_MS;
+    this.bodyTimeoutMs = options.bodyTimeoutMs ?? DEFAULT_BODY_TIMEOUT_MS;
+  }
+
   isConfigured(): boolean {
     const key = process.env.YANDEX_SEARCH_API_KEY;
     const folder = readFolderId();
@@ -289,15 +316,15 @@ export class YandexAdapter implements WebSearchProvider {
 
     let res: Awaited<ReturnType<typeof request>>;
     try {
-      res = await request(YANDEX_URL, {
+      res = await request(this.searchUrl, {
         method: "POST",
         headers: {
           "content-type": "application/json",
           authorization: `Api-Key ${apiKey}`,
         },
         body,
-        headersTimeout: HEADERS_TIMEOUT_MS,
-        bodyTimeout: BODY_TIMEOUT_MS,
+        headersTimeout: this.headersTimeoutMs,
+        bodyTimeout: this.bodyTimeoutMs,
       });
     } catch {
       throw new UpstreamError("Yandex request failed or timed out");

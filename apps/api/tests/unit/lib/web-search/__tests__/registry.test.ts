@@ -8,7 +8,9 @@
 //   * Registry map exposes both 'tavily' and 'yandex' entries.
 
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { loadWebSearchConfigFromEnv } from "../../../../../src/config/web-search.js";
 import {
+  buildWebSearchRegistry,
   resolveWebSearchProvider,
   webSearchRegistry,
 } from "../../../../../src/lib/web-search/registry.js";
@@ -54,5 +56,28 @@ describe("web-search registry", () => {
     process.env.WEB_SEARCH_PROVIDER = "googlesearch";
     expect(() => resolveWebSearchProvider()).toThrow(/tavily/);
     expect(() => resolveWebSearchProvider()).toThrow(/yandex/);
+  });
+
+  // Phase 68 — config-tuned registry. `buildWebSearchRegistry()` constructs
+  // the adapters with the operator's URL/timeout knobs (from
+  // `loadWebSearchConfigFromEnv()`), and `resolveWebSearchProvider()` accepts
+  // that registry so the env boundary stays in config/ + index.ts.
+  it("buildWebSearchRegistry returns both providers from a config", () => {
+    const reg = buildWebSearchRegistry(loadWebSearchConfigFromEnv({}));
+    expect(reg.get("tavily")?.name).toBe("tavily");
+    expect(reg.get("yandex")?.name).toBe("yandex");
+  });
+
+  it("resolveWebSearchProvider honors an injected config-tuned registry", () => {
+    const reg = buildWebSearchRegistry(loadWebSearchConfigFromEnv({}));
+    expect(resolveWebSearchProvider(reg).name).toBe("tavily");
+    process.env.WEB_SEARCH_PROVIDER = "yandex";
+    expect(resolveWebSearchProvider(reg).name).toBe("yandex");
+  });
+
+  it("resolveWebSearchProvider still throws D-02 boot-fatal against a config-tuned registry", () => {
+    const reg = buildWebSearchRegistry(loadWebSearchConfigFromEnv({}));
+    process.env.WEB_SEARCH_PROVIDER = "does-not-exist";
+    expect(() => resolveWebSearchProvider(reg)).toThrow(/Unknown WEB_SEARCH_PROVIDER/);
   });
 });
