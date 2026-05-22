@@ -666,6 +666,71 @@ describe("POST /api/reason", () => {
     expect(call.model).toBe("qwen3.6-cleanup");
   });
 
+  it("R33 — cleanup-shape with non-empty customPrompt -> override used VERBATIM as the system message (tier 1)", async () => {
+    // Three-tier precedence tier 1: the user's Prompt-Studio cleanup
+    // override (`body.customPrompt`) wins over the server localized
+    // default. The upstream call must carry the override verbatim, still
+    // route to the cleanup model, and still carry thinking-off extras.
+    const { db } = makeFakeDb();
+    const calls: ChatCompletionRequest[] = [];
+    const litellm = makeFakeLitellm({
+      calls,
+      upstreamJson: {
+        model: "qwen3.6-cleanup",
+        choices: [{ message: { role: "assistant", content: "One, two, three." } }],
+        usage: { total_tokens: 9 },
+      },
+    });
+    app = buildApp({ db, litellm, defaultModel: "qwen3.6-plus", cleanupModel: "qwen3.6-cleanup" });
+    const customCleanup = "Remove fillers. Output ONLY the cleaned transcript. No commentary.";
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/reason",
+      headers: { "content-type": "application/json" },
+      // Cleanup shape (no model/agentName/systemPrompt) PLUS the
+      // Prompt-Studio cleanup override the client forwards.
+      payload: JSON.stringify({ text: "uh one two three", customPrompt: customCleanup }),
+    });
+    expect(res.statusCode).toBe(200);
+    expect(calls).toHaveLength(1);
+    const call = calls[0];
+    if (!call) throw new Error("expected one upstream call");
+
+    // Tier 1: the system message IS the customPrompt verbatim — NOT the
+    // localized server default (no `text cleanup tool` marker).
+    expect(call.messages).toHaveLength(2);
+    expect(call.messages[0]).toEqual({ role: "system", content: customCleanup });
+    expect(call.messages[0]?.content).not.toContain("text cleanup tool");
+    expect(call.messages[1]).toEqual({ role: "user", content: "uh one two three" });
+
+    // Still the cleanup shape: cleanup model + thinking-off extras.
+    expect(call.model).toBe("qwen3.6-cleanup");
+    expect(call.extras).toEqual({
+      extra_body: { chat_template_kwargs: { enable_thinking: false } },
+    });
+  });
+
+  it("R33 — cleanup-shape with empty-string customPrompt -> server localized default (tier 2)", async () => {
+    // Tier 2: a blank `customPrompt` must NOT send an empty system
+    // message — it falls through to the localized `prompts.cleanupPrompt`.
+    const { db } = makeFakeDb();
+    const calls: ChatCompletionRequest[] = [];
+    const litellm = makeFakeLitellm({ calls });
+    app = buildApp({ db, litellm, defaultModel: "qwen3.6-plus", cleanupModel: "qwen3.6-cleanup" });
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/reason",
+      headers: { "content-type": "application/json" },
+      payload: JSON.stringify({ text: "one two three", customPrompt: "" }),
+    });
+    expect(res.statusCode).toBe(200);
+    const call = calls[0];
+    if (!call) throw new Error("expected one upstream call");
+    expect(call.messages[0]?.role).toBe("system");
+    expect(call.messages[0]?.content).toContain("text cleanup tool");
+    expect(call.model).toBe("qwen3.6-cleanup");
+  });
+
   it("R33 — agent-shape request -> conversational call, default model, NO thinking-off", async () => {
     const { db } = makeFakeDb();
     const calls: ChatCompletionRequest[] = [];
