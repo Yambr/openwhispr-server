@@ -507,7 +507,6 @@ services:
         NEXT_PUBLIC_TEMPO_BASE_URL: ${NEXT_PUBLIC_TEMPO_BASE_URL:-}
         NEXT_PUBLIC_MIMIR_BASE_URL: ${NEXT_PUBLIC_MIMIR_BASE_URL:-}
         NEXT_PUBLIC_LOKI_BASE_URL: ${NEXT_PUBLIC_LOKI_BASE_URL:-}
-        NEXT_PUBLIC_OIDC_PROVIDERS: ${NEXT_PUBLIC_OIDC_PROVIDERS:-google,github,oidc}
         # Phase 53 / Plan 53-06 — Next.js rewrites() destination for
         # the `/api/auth/*` and `/api/locale*` proxy paths. Inside this
         # compose network the api Service is reachable as `api:3000`;
@@ -537,10 +536,6 @@ services:
       NEXT_PUBLIC_TEMPO_BASE_URL: ${NEXT_PUBLIC_TEMPO_BASE_URL:-}
       NEXT_PUBLIC_MIMIR_BASE_URL: ${NEXT_PUBLIC_MIMIR_BASE_URL:-}
       NEXT_PUBLIC_LOKI_BASE_URL: ${NEXT_PUBLIC_LOKI_BASE_URL:-}
-      # OIDC provider button slugs surfaced on /sign-in (U1). Server-side
-      # OIDC config lives in apps/api per Phase 2 PROVIDER-03; this var
-      # controls UI visibility only.
-      NEXT_PUBLIC_OIDC_PROVIDERS: ${NEXT_PUBLIC_OIDC_PROVIDERS:-google,github,oidc}
     depends_on:
       api:
         condition: service_healthy
