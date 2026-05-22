@@ -50,7 +50,13 @@ services:
     image: openwhispr/postgres:17.5-pgpartman
     networks: [openwhispr_internal]
     environment:
-      POSTGRES_USER: ${POSTGRES_OWNER_USER}
+      # USER names are canonical (not secrets) — slim-template (5-key
+      # operator contract) intentionally omits them; compose supplies the
+      # canonical defaults so a bare `cp .env.slim.example .env` + `up`
+      # boots cleanly without bootstrap.sh adding role names. Passwords
+      # stay required (bootstrap.sh fills the placeholder values from the
+      # template). Closes Phase 61 deferred-item #6.
+      POSTGRES_USER: ${POSTGRES_OWNER_USER:-openwhispr_owner}
       POSTGRES_PASSWORD: ${POSTGRES_OWNER_PASSWORD}
       POSTGRES_DB: openwhispr
       # Phase 01.2 — pass through the role passwords so 00-roles.sh can
@@ -64,7 +70,8 @@ services:
       # OWNER of the `litellm` database. Already set above as POSTGRES_USER
       # on first init; declared explicitly so the script's quote_ident
       # interpolation is decoupled from the bootstrap-superuser env-var name.
-      POSTGRES_OWNER_USER: ${POSTGRES_OWNER_USER}
+      POSTGRES_OWNER_USER: ${POSTGRES_OWNER_USER:-openwhispr_owner}
+      POSTGRES_APP_USER: ${POSTGRES_APP_USER:-openwhispr_app}
     volumes:
       - postgres_data:/var/lib/postgresql/data
       # Plan 03 (phase 01) fills this directory with role/RLS bootstrap SQL;
@@ -177,8 +184,8 @@ services:
       # connection string MUST opt out via `?sslmode=disable` (canonical
       # libpq escape hatch). LiteLLM's own Python pg client respects the
       # same flag.
-      LITELLM_DATABASE_URL: ${LITELLM_DATABASE_URL:-postgres://${POSTGRES_OWNER_USER}:${POSTGRES_OWNER_PASSWORD}@postgres:5432/litellm?sslmode=disable}
-      DATABASE_URL: ${LITELLM_DATABASE_URL:-postgres://${POSTGRES_OWNER_USER}:${POSTGRES_OWNER_PASSWORD}@postgres:5432/litellm?sslmode=disable}
+      LITELLM_DATABASE_URL: ${LITELLM_DATABASE_URL:-postgres://${POSTGRES_OWNER_USER:-openwhispr_owner}:${POSTGRES_OWNER_PASSWORD}@postgres:5432/litellm?sslmode=disable}
+      DATABASE_URL: ${LITELLM_DATABASE_URL:-postgres://${POSTGRES_OWNER_USER:-openwhispr_owner}:${POSTGRES_OWNER_PASSWORD}@postgres:5432/litellm?sslmode=disable}
       # Provider keys — `:-` so a fresh clone with empty keys does NOT
       # block container boot. Endpoints whose backing key is missing
       # surface 503 envelopes at request time (per Plan 03/04/07
@@ -441,7 +448,7 @@ services:
       # owner credentials used by the migrate runner; an operator can set
       # LITELLM_READ_DATABASE_URL explicitly to point at a different
       # cluster.
-      LITELLM_READ_DATABASE_URL: ${LITELLM_READ_DATABASE_URL:-postgres://${POSTGRES_OWNER_USER}:${POSTGRES_OWNER_PASSWORD}@postgres:5432/litellm?sslmode=disable}
+      LITELLM_READ_DATABASE_URL: ${LITELLM_READ_DATABASE_URL:-postgres://${POSTGRES_OWNER_USER:-openwhispr_owner}:${POSTGRES_OWNER_PASSWORD}@postgres:5432/litellm?sslmode=disable}
       # DATABASE_URL_OWNER is already in .env (Phase 1).
       # Phase 14 / Plan 14-01 (SLIM-01): OTEL_EXPORTER_OTLP_ENDPOINT has
       # NO default fallback (slim-core ships without otel-collector). See
