@@ -297,4 +297,24 @@ describe("Phase 02.4 G5a — better-auth-handler bridge plugin", () => {
     expect(authRoute?.config).toMatchObject({ auth: false });
     await parent.close();
   });
+
+  it("AUDIT-HARD-01: /api/auth/* catch-all carries an explicit rateLimit budget", async () => {
+    // Auth endpoints are the highest-value abuse target (credential
+    // stuffing, enumeration, signup spam). The catch-all MUST declare a
+    // per-route { max, timeWindow } rateLimit object — without it the
+    // namespace falls back to the global default which is too generous
+    // for an unauthenticated write surface.
+    const parent = Fastify();
+    let captured: unknown;
+    parent.addHook("onRoute", (route) => {
+      if (route.url === "/api/auth/*") {
+        captured = (route.config as { rateLimit?: unknown } | undefined)?.rateLimit;
+      }
+    });
+    await parent.register(buildBetterAuthHandlerRoutes({ auth: makeStubAuth({}) as never }));
+    await parent.ready();
+    expect(captured).toBeTypeOf("object");
+    expect(captured).toMatchObject({ max: 20, timeWindow: "1 minute" });
+    await parent.close();
+  });
 });

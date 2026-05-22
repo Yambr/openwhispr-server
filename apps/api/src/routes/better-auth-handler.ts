@@ -188,7 +188,12 @@ export const buildBetterAuthHandlerRoutes = (deps: BetterAuthHandlerDeps) =>
     app.all(
       "/api/auth/*",
       {
-        config: { auth: false },
+        // AUDIT-HARD-01 (HACK-H2) — auth endpoints are the highest-value
+        // abuse target (credential stuffing, enumeration, signup spam).
+        // The catch-all MUST carry an explicit per-route rateLimit budget;
+        // relying on the global default leaves this unauthenticated write
+        // surface under-protected.
+        config: { auth: false, rateLimit: { max: 20, timeWindow: "1 minute" } },
         ...(enumerationOptOut && db
           ? {
               preHandler: async (req: FastifyRequest, reply: FastifyReply) => {
