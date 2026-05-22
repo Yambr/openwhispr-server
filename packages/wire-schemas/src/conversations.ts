@@ -49,7 +49,13 @@ export const ConversationInputSchema = z
           .object({
             role: ConversationRoleSchema,
             content: z.string().max(MESSAGE_CONTENT_MAX),
-            metadata: MetadataSchema.optional(),
+            // R36 — the immutable client's SyncService maps every
+            // message `metadata: m.metadata ? (...) : null`, so a
+            // message without metadata carries an EXPLICIT null.
+            // `.nullish()` (= optional + nullable) accepts absent OR
+            // null OR a populated object; `.optional()` alone rejected
+            // the null and 400'd every conversation sync.
+            metadata: MetadataSchema.nullish(),
           })
           .strict(),
       )

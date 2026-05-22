@@ -7,7 +7,7 @@
 // scalar-value contract.
 
 import { describe, expect, it } from "vitest";
-import { MetadataSchema } from "../../../src/conversations.js";
+import { ConversationInputSchema, MetadataSchema } from "../../../src/conversations.js";
 
 describe("H-3 — conversations MetadataSchema", () => {
   it("MetadataSchema is exported and parses a flat scalar map", () => {
@@ -44,5 +44,34 @@ describe("H-3 — conversations MetadataSchema", () => {
     const messages = result.error.issues.map((i) => i.message);
     expect(messages).toContain("metadata.too_large");
     expect(messages).not.toContain("metadata too large");
+  });
+});
+
+describe("R36 — ConversationInput message.metadata accepts explicit null", () => {
+  // The immutable desktop client's SyncService.pushConversation maps
+  // every message as `metadata: m.metadata ? (...) : null` — a message
+  // without metadata carries an EXPLICIT `null`. Practically every
+  // conversation has at least one such message, so the input schema
+  // MUST accept `metadata: null` (R28 class — `.optional()` alone
+  // rejects an explicit null).
+  it("accepts a message with metadata:null", () => {
+    const result = ConversationInputSchema.safeParse({
+      messages: [{ role: "user", content: "hi", metadata: null }],
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it("still accepts a message with metadata absent", () => {
+    const result = ConversationInputSchema.safeParse({
+      messages: [{ role: "user", content: "hi" }],
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it("still accepts a message with a populated metadata object", () => {
+    const result = ConversationInputSchema.safeParse({
+      messages: [{ role: "user", content: "hi", metadata: { k: "v" } }],
+    });
+    expect(result.success).toBe(true);
   });
 });
