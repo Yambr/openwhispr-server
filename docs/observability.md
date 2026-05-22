@@ -62,8 +62,12 @@ to a distinct failure mode and a distinct operator action.
 | Readiness   | `/readyz`   | Postgres + Valkey + LiteLLM round-trip, 5 s cache.   | Traffic stopped on failure.   |
 | Startup     | `/startupz` | Migrations applied + pg pool warm + Valkey reachable.| Boot grace; longer timeout.   |
 
-`/api/health` is preserved as an alias for `/livez` (Phase 2 contract
-back-compat).
+`/api/health` is a distinct first-class endpoint for the Electron
+client (Phase 2 contract). Unlike `/livez` — which returns only
+`{ "status": "ok" }` — `/api/health` returns `{ "status": "ok",
+"migrations_completed": <bool> }`, adding the schema-readiness flag.
+Both routes have no dependency checks and always return 200; kubelet
+uses `/livez` for restart decisions and never consults `/api/health`.
 
 `/livez` has **no dependency checks**. A Postgres or Valkey blip must
 not cascade-restart every API pod -- recovery is a sub-second hiccup,
