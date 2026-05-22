@@ -323,6 +323,58 @@ describe("buildMintBearer — OIDC discovery (Phase 02.16 / Group H)", () => {
     await expect(mint(ARGS)).resolves.toBeDefined();
   });
 
+  it("LRU — a 17th distinct issuer evicts the oldest entry (max:16)", async () => {
+    // The discovery cache is bounded at max:16 entries; inserting a 17th
+    // distinct issuer must evict the least-recently-used (the first one).
+    // A subsequent call for the evicted issuer must re-fetch its doc.
+    const { auth } = buildFakeAuth();
+    const fetchSpy = vi.fn(async (url: string | URL | Request) => {
+      const u = typeof url === "string" ? url : url.toString();
+      const wellKnown = u.match(/^(https:\/\/idp-\d+\.test)\/\.well-known\/openid-configuration$/);
+      if (wellKnown) {
+        const origin = wellKnown[1];
+        return jsonResponse({
+          issuer: origin,
+          token_endpoint: `${origin}/token`,
+          userinfo_endpoint: `${origin}/userinfo`,
+        });
+      }
+      if (/^https:\/\/idp-\d+\.test\/token$/.test(u)) {
+        return jsonResponse({ access_token: "AT" });
+      }
+      if (/^https:\/\/idp-\d+\.test\/userinfo$/.test(u)) {
+        return jsonResponse({ sub: "s1", email: "u@x.test" });
+      }
+      throw new Error(`unexpected fetch: ${u}`);
+    });
+    vi.stubGlobal("fetch", fetchSpy);
+    const mint = buildMintBearer({
+      auth: auth as unknown as Parameters<typeof buildMintBearer>[0]["auth"],
+    });
+
+    const discoveryCallCountFor = (origin: string): number =>
+      fetchSpy.mock.calls.filter((c) => {
+        const u = typeof c[0] === "string" ? c[0] : (c[0] as URL).toString();
+        return u === `${origin}/.well-known/openid-configuration`;
+      }).length;
+
+    // Fill the cache with 16 distinct issuers (idp-0 .. idp-15).
+    for (let i = 0; i < 16; i++) {
+      vi.stubEnv("OIDC_ISSUER_URL", `https://idp-${i}.test`);
+      await mint(ARGS);
+    }
+    expect(discoveryCallCountFor("https://idp-0.test")).toBe(1);
+
+    // Insert a 17th issuer → idp-0 (LRU) is evicted.
+    vi.stubEnv("OIDC_ISSUER_URL", "https://idp-16.test");
+    await mint(ARGS);
+
+    // idp-0 was evicted → a fresh call for it re-fetches the discovery doc.
+    vi.stubEnv("OIDC_ISSUER_URL", "https://idp-0.test");
+    await mint(ARGS);
+    expect(discoveryCallCountFor("https://idp-0.test")).toBe(2);
+  });
+
   it("HI-04 — a valid discovery doc is cached within TTL (one fetch) and re-fetched after expiry", async () => {
     const { auth } = buildFakeAuth();
     const fetchSpy = vi.fn(async (url: string | URL | Request) => {
@@ -354,6 +406,9 @@ describe("buildMintBearer — OIDC discovery (Phase 02.16 / Group H)", () => {
       }).length;
 
     // Two calls inside the TTL → discovery fetched exactly once (cached).
+    // The discovery cache's TTL is driven by `lru-cache`, configured to
+    // read its expiry clock from `Date.now()` — which Vitest fake timers
+    // mock — so `setSystemTime` deterministically controls expiry.
     vi.useFakeTimers();
     try {
       vi.setSystemTime(new Date("2026-05-20T00:00:00Z"));
