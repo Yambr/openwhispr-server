@@ -11,6 +11,33 @@ record. Keep this file under ~200 lines.
 
 ---
 
+## Phase 61 — load-test path reconciliation (env-template / compose-default contract)
+
+**Discovered:** 2026-05-22 running `make load-smoke` for v2.4 Phase 61.
+
+`tools/load-test/scripts/run.sh` had drifted out of sync with Phase 14's
+slim-core split + BYOK guard. Phase 61 FIXED three `run.sh` overlay-layering
+bugs + a `sslmode` env-template omission (committed). TWO issues remain,
+deferred because they touch the slim-core CONTEXT decision:
+
+1. **`.env.full.example` internally inconsistent** — sets
+   `INGRESS_BASE_URL=https://api.localhost/` which makes the BYOK guard
+   require `INGRESS_TLS_CERT_PATH`, but the template never sets it → a
+   straight `.env.full.example` bootstrap cannot boot the api.
+2. **slim-template vs base-compose gap** — `.env.slim.example` is a
+   deliberate 5-key minimal template and omits `POSTGRES_OWNER_USER` /
+   `POSTGRES_APP_USER` / `POSTGRES_DB`, yet `docker-compose.yml:53,67`
+   hard-references them with NO `:-` default.
+
+**Fix (own phase):** reconcile the env-template/compose-default contract —
+either add `:-` defaults to `docker-compose.yml`, or ship a dedicated
+`.env.load-test.example`. Then run a fresh mock plateau. Full detail in
+`.planning/audit-v2.4/PHASE-61-LOADTEST-STATUS.md`. The published SLO numbers
+in `docs/operations.md` (Phase-8 Run-5) remain valid — they are hardware-bound
+and the canonical re-baseline is operator H100 hardware.
+
+---
+
 ## Pre-existing test failure — `plan-52-06-stream-zod-drift.test.ts` LegacyTool description regex
 
 **Discovered:** 2026-05-22, during quick-task 260522-envmodels (out-of-scope, not fixed).
