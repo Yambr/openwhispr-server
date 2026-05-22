@@ -21,7 +21,11 @@ import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { AuthError, ValidationError } from "../../errors.js";
 import { createOrReturnExisting } from "../../lib/client-id-upsert.js";
-import { type CloudTranscriptionRow, rowToCloudTranscription } from "./shape.js";
+import {
+  type CloudTranscriptionRow,
+  normalizeTranscriptionStatus,
+  rowToCloudTranscription,
+} from "./shape.js";
 
 const MAX_BATCH_SIZE = 500;
 
@@ -77,7 +81,7 @@ export const buildTranscriptionsBatchCreateRoutes = (deps: TranscriptionsBatchCr
               model: input.model ?? null,
               language: input.language ?? null,
               audio_duration_ms: input.audio_duration_ms ?? null,
-              status: input.status ?? "completed",
+              status: normalizeTranscriptionStatus(input.status ?? "completed"),
             };
             const { row } = await createOrReturnExisting<CloudTranscriptionRow>(tx, {
               table: "transcriptions",

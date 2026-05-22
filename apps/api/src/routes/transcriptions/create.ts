@@ -17,7 +17,11 @@ import { TranscriptionInputSchema } from "@openwhispr/wire-schemas";
 import type { FastifyInstance } from "fastify";
 import { AuthError } from "../../errors.js";
 import { createOrReturnExisting } from "../../lib/client-id-upsert.js";
-import { type CloudTranscriptionRow, rowToCloudTranscription } from "./shape.js";
+import {
+  type CloudTranscriptionRow,
+  normalizeTranscriptionStatus,
+  rowToCloudTranscription,
+} from "./shape.js";
 
 export interface TranscriptionsCreateDeps {
   db: TransactionalDb<ExecutableTx>;
@@ -53,7 +57,7 @@ export const buildTranscriptionsCreateRoutes = (deps: TranscriptionsCreateDeps) 
             model: body.model ?? null,
             language: body.language ?? null,
             audio_duration_ms: body.audio_duration_ms ?? null,
-            status: body.status ?? "completed",
+            status: normalizeTranscriptionStatus(body.status ?? "completed"),
           };
           const { row } = await createOrReturnExisting<CloudTranscriptionRow>(tx, {
             table: "transcriptions",

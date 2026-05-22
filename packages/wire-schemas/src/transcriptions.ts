@@ -5,8 +5,14 @@
  *
  * Phase 39 — HIGH sweep: `.strict()` on input, UUID + ISO-8601 + bounded
  * text on output, status enum, non-neg integer durations + word_count.
+ *
+ * R35 (quick-task 20260522) — INPUT `created_at` accepts the SQLite space
+ * form via the lenient `INPUT_DATETIME`; INPUT `status` widened to a
+ * bounded free-text string. `CloudTranscriptionSchema` (RESPONSE) stays
+ * strict (RFC-3339 datetime + 4-value status enum).
  */
 import { z } from "zod";
+import { INPUT_DATETIME } from "./input-datetime.js";
 
 const ISO_DATETIME = z.string().datetime({ offset: true });
 const TEXT_MAX = 5 * 1024 * 1024; // 5 MB
@@ -25,8 +31,8 @@ export const TranscriptionInputSchema = z
     model: z.string().max(SHORT).nullable().optional(),
     language: z.string().max(SHORT).nullable().optional(),
     audio_duration_ms: z.number().int().nonnegative().nullable().optional(),
-    status: TranscriptionStatusSchema.optional(),
-    created_at: ISO_DATETIME.optional(),
+    status: z.string().max(SHORT).optional(),
+    created_at: INPUT_DATETIME.optional(),
   })
   .strict();
 export type TranscriptionInput = z.infer<typeof TranscriptionInputSchema>;

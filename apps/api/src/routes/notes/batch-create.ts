@@ -26,7 +26,7 @@ import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { AuthError, ValidationError } from "../../errors.js";
 import { createOrReturnExisting } from "../../lib/client-id-upsert.js";
-import type { CloudNoteRow } from "./shape.js";
+import { type CloudNoteRow, normalizeNoteType } from "./shape.js";
 
 const MAX_BATCH_SIZE = 500;
 
@@ -88,7 +88,10 @@ export const buildNotesBatchCreateRoutes = (deps: NotesBatchCreateDeps) =>
               folder_id: input.folder_id ?? null,
               title: input.title ?? null,
               content: input.content ?? "",
-              note_type: input.note_type ?? "personal",
+              // R37 — normalize a client free-text note_type to a
+              // canonical NoteType so the stored row + strict CloudNote
+              // response always carry a valid enum value.
+              note_type: normalizeNoteType(input.note_type),
               enhanced_content: input.enhanced_content ?? null,
               enhancement_prompt: input.enhancement_prompt ?? null,
               source_file: input.source_file ?? null,
