@@ -14,6 +14,7 @@
 //     value crashes the process at boot — the Phase 1 no-default-secrets
 //     discipline: never silently fall back, never paper over operator typos.
 
+import type { WebSearchConfig } from "../../config/web-search.js";
 import { TavilyAdapter } from "./tavily-adapter.js";
 import type { WebSearchProvider } from "./types.js";
 import { YandexAdapter } from "./yandex-adapter.js";
@@ -36,16 +37,50 @@ export const webSearchRegistry: Map<string, WebSearchProvider> = new Map<string,
 const DEFAULT_PROVIDER = "tavily";
 
 /**
+ * Build a fresh provider registry whose adapters are constructed with the
+ * operator-tuned URL/timeout knobs from `config/web-search.ts`. Phase 68 —
+ * the route-assembly seam (apps/api/src/index.ts) resolves the env-driven
+ * `WebSearchConfig` and passes it here so the adapters never read
+ * `process.env` themselves (LOCKER-01).
+ */
+export function buildWebSearchRegistry(config: WebSearchConfig): Map<string, WebSearchProvider> {
+  return new Map<string, WebSearchProvider>([
+    [
+      "tavily",
+      new TavilyAdapter({
+        searchUrl: config.tavily.searchUrl,
+        timeoutMs: config.tavily.timeoutMs,
+      }),
+    ],
+    [
+      "yandex",
+      new YandexAdapter({
+        searchUrl: config.yandex.searchUrl,
+        headersTimeoutMs: config.yandex.headersTimeoutMs,
+        bodyTimeoutMs: config.yandex.bodyTimeoutMs,
+      }),
+    ],
+  ]);
+}
+
+/**
  * Resolve the active web-search provider per the `WEB_SEARCH_PROVIDER`
  * env var. Called ONCE at route registration; cached for the life of the
  * process. Throwing here at boot is intentional — it surfaces operator
  * typos immediately rather than at first-request time.
+ *
+ * @param registry Provider registry to look up. Defaults to the shared
+ *   module-level `webSearchRegistry` (literal-default adapters). The
+ *   route-assembly seam passes a config-tuned registry built via
+ *   `buildWebSearchRegistry()`.
  */
-export function resolveWebSearchProvider(): WebSearchProvider {
+export function resolveWebSearchProvider(
+  registry: Map<string, WebSearchProvider> = webSearchRegistry,
+): WebSearchProvider {
   const name = process.env.WEB_SEARCH_PROVIDER ?? DEFAULT_PROVIDER;
-  const provider = webSearchRegistry.get(name);
+  const provider = registry.get(name);
   if (!provider) {
-    const known = Array.from(webSearchRegistry.keys()).join(", ");
+    const known = Array.from(registry.keys()).join(", ");
     throw new Error(`Unknown WEB_SEARCH_PROVIDER='${name}'. Known providers: ${known}.`);
   }
   return provider;

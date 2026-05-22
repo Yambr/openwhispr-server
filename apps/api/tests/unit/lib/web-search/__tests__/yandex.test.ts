@@ -416,3 +416,48 @@ describe("YandexAdapter.search() — error mapping", () => {
     await expect(adapter.search("q", 1)).rejects.toBeInstanceOf(MissingProviderKeyError);
   });
 });
+
+// Phase 68 — operator-tunable URL + timeouts. The adapter no longer bakes
+// the Yandex Cloud searchapi endpoint as a module literal; the upstream URL
+// + undici headers/body timeouts arrive via the constructor (resolved from
+// env at the index.ts boundary). This proves the injected `searchUrl` is
+// the endpoint actually hit and the default still targets Yandex Cloud.
+describe("YandexAdapter — Phase 68 env-driven URL/timeout", () => {
+  const CUSTOM_ORIGIN = "https://yandex-mirror.internal";
+
+  it("search() POSTs to the injected searchUrl override", async () => {
+    process.env.YANDEX_SEARCH_API_KEY = "k";
+    process.env.YANDEX_SEARCH_FOLDER_ID = "b1gfolder";
+    let hit = false;
+    agent
+      .get(CUSTOM_ORIGIN)
+      .intercept({ path: "/mirror/v2/web/search", method: "POST" })
+      .reply(() => {
+        hit = true;
+        return { statusCode: 200, data: { rawData: b64("<yandexsearch></yandexsearch>") } };
+      });
+
+    const adapter = new YandexAdapter({
+      searchUrl: `${CUSTOM_ORIGIN}/mirror/v2/web/search`,
+    });
+    await adapter.search("q", 1);
+    expect(hit).toBe(true);
+  });
+
+  it("default constructor still targets the Yandex Cloud searchapi endpoint", async () => {
+    process.env.YANDEX_SEARCH_API_KEY = "k";
+    process.env.YANDEX_SEARCH_FOLDER_ID = "b1gfolder";
+    let hit = false;
+    agent
+      .get(YANDEX_ORIGIN)
+      .intercept({ path: YANDEX_PATH, method: "POST" })
+      .reply(() => {
+        hit = true;
+        return { statusCode: 200, data: { rawData: b64("<yandexsearch></yandexsearch>") } };
+      });
+
+    const adapter = new YandexAdapter();
+    await adapter.search("q", 1);
+    expect(hit).toBe(true);
+  });
+});

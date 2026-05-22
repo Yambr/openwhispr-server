@@ -25,8 +25,23 @@
 import { fetch } from "undici";
 import { MissingProviderKeyError, UpstreamError, type WebSearchProvider } from "./types.js";
 
-const TAVILY_URL = "https://api.tavily.com/search";
-const TOTAL_TIMEOUT_MS = 5000;
+/**
+ * Phase 68 — operator-tunable Tavily knobs. The upstream URL + total
+ * request timeout were module-level literals; they are now injected by
+ * the route-assembly seam (apps/api/src/index.ts → loadWebSearchConfigFromEnv).
+ * This adapter never reads `process.env` for them (LOCKER-01). Both fields
+ * are optional so existing callers (and tests) that omit options keep the
+ * historical defaults.
+ */
+export interface TavilyAdapterOptions {
+  /** POST endpoint for Tavily Search. Default: https://api.tavily.com/search */
+  searchUrl?: string;
+  /** Total request timeout in ms (AbortController). Default: 5000. */
+  timeoutMs?: number;
+}
+
+const DEFAULT_TAVILY_URL = "https://api.tavily.com/search";
+const DEFAULT_TOTAL_TIMEOUT_MS = 5000;
 const MAX_RESULTS_CAP = 10;
 
 interface TavilyResultRow {
@@ -48,6 +63,14 @@ export class TavilyAdapter implements WebSearchProvider {
   // WR-05 (Phase 65) — operator env-var label read generically by the route.
   readonly envVarLabel = "TAVILY_API_KEY";
 
+  private readonly searchUrl: string;
+  private readonly timeoutMs: number;
+
+  constructor(options: TavilyAdapterOptions = {}) {
+    this.searchUrl = options.searchUrl ?? DEFAULT_TAVILY_URL;
+    this.timeoutMs = options.timeoutMs ?? DEFAULT_TOTAL_TIMEOUT_MS;
+  }
+
   isConfigured(): boolean {
     return typeof process.env.TAVILY_API_KEY === "string" && process.env.TAVILY_API_KEY.length > 0;
   }
@@ -63,10 +86,10 @@ export class TavilyAdapter implements WebSearchProvider {
       throw new MissingProviderKeyError("Tavily not configured (set TAVILY_API_KEY in .env)");
     }
     const ctrl = new AbortController();
-    const timer = setTimeout(() => ctrl.abort(), TOTAL_TIMEOUT_MS);
+    const timer = setTimeout(() => ctrl.abort(), this.timeoutMs);
     let res: Response;
     try {
-      res = await fetch(TAVILY_URL, {
+      res = await fetch(this.searchUrl, {
         method: "POST",
         headers: {
           "content-type": "application/json",
