@@ -369,13 +369,23 @@ describe("Phase 14 / Plan 14-03 — dev-tools overlay", () => {
     expect(existsSync(path)).toBe(true);
   });
 
-  it("declares ONLY the mailpit service (no fixture-idp / seed / contract-test-runner)", () => {
+  // Phase 61 / R19 — mailpit + the SMTP wiring were PROMOTED into the
+  // slim base (mailpit ships there behind the `dev` compose profile), so
+  // the dev-tools overlay no longer redefines mailpit. It now only
+  // carries dev-only ENV overrides on the base api/worker/litellm
+  // services (NODE_ENV=development, rate-limit bypass, test-route seam,
+  // well-known dev master key). It still declares NO standalone overlay
+  // services — fixture-idp / seed / contract-test-runner live in the
+  // contract-test overlay.
+  it("declares NO standalone services — only env overrides on base api/worker/litellm", () => {
     const doc = loadYaml(path);
     const keys = new Set(Object.keys(doc.services ?? {}));
-    expect(keys.has("mailpit")).toBe(true);
+    expect(keys.has("mailpit")).toBe(false);
     expect(keys.has("fixture-idp")).toBe(false);
     expect(keys.has("seed")).toBe(false);
     expect(keys.has("contract-test-runner")).toBe(false);
+    // The only stanzas present are env-override patches on base services.
+    expect([...keys].sort()).toEqual(["api", "litellm", "worker"]);
   });
 
   it.skipIf(!HAS_DOCKER)(
