@@ -9,7 +9,7 @@
  * The import below resolves to a module that does NOT YET EXIST. That import
  * failure is the canonical RED signal per CLAUDE.md's constitutional TDD rule.
  */
-import { mkdtempSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -199,8 +199,15 @@ describe("lint-ui-spec / coverage supplements", () => {
   });
 
   it("findProjectRoot walks up to repo root from a nested path", () => {
+    // From tools/, findProjectRoot walks up to the nearest ancestor that
+    // contains a package.json — the repo root. Asserting the directory
+    // *name* would be brittle: a git worktree checkout lives under a
+    // differently-named path (e.g. `.claude/worktrees/<branch>`). Assert
+    // the structural invariant instead — the result is an ancestor of
+    // tools/ that carries a package.json.
     const root = findProjectRoot(__dirname);
-    expect(root).toMatch(/openwhispr-server$/);
+    expect(existsSync(resolve(root, "package.json"))).toBe(true);
+    expect(__dirname.startsWith(root)).toBe(true);
   });
 
   it("findProjectRoot falls back to cwd when no package.json found", () => {
