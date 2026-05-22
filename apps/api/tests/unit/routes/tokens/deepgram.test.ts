@@ -42,6 +42,8 @@ let agent: MockAgent;
 
 interface TestAppOpts {
   bearerMap?: Record<string, string>;
+  /** Optional operator-overridden Deepgram Grant Token endpoint URL. */
+  tokenUrl?: string;
 }
 
 async function buildTestApp(opts: TestAppOpts = {}): Promise<FastifyInstance> {
@@ -59,7 +61,9 @@ async function buildTestApp(opts: TestAppOpts = {}): Promise<FastifyInstance> {
       email: `${userId}@test.local`,
     };
   });
-  await app.register(buildDeepgramTokenRoutes());
+  await app.register(
+    buildDeepgramTokenRoutes(opts.tokenUrl !== undefined ? { tokenUrl: opts.tokenUrl } : {}),
+  );
   await app.ready();
   return app;
 }
@@ -254,6 +258,33 @@ describe("POST /api/deepgram-streaming-token (Deepgram Grant Token)", () => {
         headers: { authorization: "Bearer ok-u1" },
       });
       expect(ok.statusCode).toBe(200);
+    } finally {
+      await app.close();
+    }
+  });
+
+  it("calls a caller-supplied tokenUrl instead of the bundled default host", async () => {
+    // Operator-overridden DEEPGRAM_TOKEN_URL is threaded into the route
+    // factory by index.ts (the env boundary). Proves the host literal is
+    // no longer baked into the route handler.
+    const CUSTOM_HOST = "https://deepgram.proxy.internal";
+    agent
+      .get(CUSTOM_HOST)
+      .intercept({ path: "/edge/v1/auth/grant", method: "POST" })
+      .reply(200, DEEPGRAM_FIXTURE, { headers: { "content-type": "application/json" } });
+
+    const app = await buildTestApp({
+      bearerMap: { "Bearer ok-u1": "u1" },
+      tokenUrl: `${CUSTOM_HOST}/edge/v1/auth/grant`,
+    });
+    try {
+      const r = await app.inject({
+        method: "POST",
+        url: "/api/deepgram-streaming-token",
+        headers: { authorization: "Bearer ok-u1" },
+      });
+      expect(r.statusCode).toBe(200);
+      expect(r.json()).toEqual({ token: DEEPGRAM_FIXTURE.access_token });
     } finally {
       await app.close();
     }
