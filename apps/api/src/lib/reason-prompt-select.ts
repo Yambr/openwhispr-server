@@ -90,9 +90,36 @@ export interface ChatMessage {
 }
 
 /**
+ * Resolve the cleanup-shape system message via the THREE-tier
+ * precedence (the verified cleanup contract):
+ *
+ *   1. `body.customPrompt` non-empty → use it VERBATIM. This is the
+ *      user's Prompt-Studio override (the immutable client sends
+ *      `customPrompt = settings.customPrompts.cleanup`, populated only
+ *      when the user saved a custom cleanup prompt). The user's explicit
+ *      choice wins over the server default.
+ *   2. else → the server's localized default `prompts.cleanupPrompt`.
+ *
+ * `customPrompt` is `.nullish()` and may also be `""` — "non-empty"
+ * means `typeof === "string" && trim().length > 0`, so a blank/whitespace
+ * override falls through to the localized default rather than sending an
+ * empty system message.
+ */
+function cleanupSystemContent(body: ReasonRequest, locale: SupportedLocale): string {
+  const custom = body.customPrompt;
+  if (typeof custom === "string" && custom.trim().length > 0) {
+    return custom;
+  }
+  return cleanupPrompt(locale);
+}
+
+/**
  * Build the upstream `messages` array for a /api/reason request.
  *
- *   - cleanup shape  → `[system(localized cleanupPrompt), user(text)]`
+ *   - cleanup shape  → `[system(<cleanupSystemContent>), user(text)]`
+ *     where `<cleanupSystemContent>` follows the three-tier precedence:
+ *     non-empty `body.customPrompt` (Prompt-Studio override) → else the
+ *     localized `prompts.cleanupPrompt` default.
  *   - agent shape w/ `systemPrompt` → `[system(systemPrompt), user(text)]`
  *   - agent shape w/ only `agentName` → `[user(text)]`
  *
@@ -103,7 +130,7 @@ export interface ChatMessage {
 export function selectMessages(body: ReasonRequest, locale: SupportedLocale): ChatMessage[] {
   const userMsg: ChatMessage = { role: "user", content: body.text };
   if (isCleanupRequest(body)) {
-    return [{ role: "system", content: cleanupPrompt(locale) }, userMsg];
+    return [{ role: "system", content: cleanupSystemContent(body, locale) }, userMsg];
   }
   if (body.systemPrompt !== undefined && body.systemPrompt !== null) {
     return [{ role: "system", content: body.systemPrompt }, userMsg];

@@ -49,10 +49,15 @@ cleanup path.
 absent AND `model` empty/absent (`null`, missing, or `""`). This is the
 dictation-cleanup path. The server:
 
-- prepends a **localized cleanup system message** (`prompts.cleanupPrompt`
-  from `apps/api/src/i18n/locales/{en,ru}.json`; locale resolved from
-  `body.language` → `body.locale` → request `Accept-Language` → `en`).
-  The `{{agentName}}` token inside the prompt is intentionally a literal
+- prepends a **cleanup system message** chosen by a two-tier precedence:
+  1. `body.customPrompt` when non-empty (`trim().length > 0`) — the
+     user's Prompt-Studio cleanup override, used **verbatim**;
+  2. else the **localized server default** `prompts.cleanupPrompt`
+     (from `apps/api/src/i18n/locales/{en,ru}.json`; locale resolved from
+     `body.language` → `body.locale` → request `Accept-Language` → `en`).
+  A blank/whitespace `customPrompt` falls through to the localized
+  default — it never sends an empty system message. The `{{agentName}}`
+  token inside the localized prompt is intentionally a literal
   (anti-injection framing), not interpolated;
 - routes to the operator-owned **cleanup-class model**
   (`REASONING_CLEANUP_MODEL`, bundled default `qwen3.6-cleanup`);

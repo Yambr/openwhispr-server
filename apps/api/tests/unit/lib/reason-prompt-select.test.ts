@@ -117,6 +117,50 @@ describe("selectMessages()", () => {
     expect(msgs[0]?.content).toBe(EN_CLEANUP_PROMPT);
   });
 
+  it("cleanup shape with non-empty customPrompt -> [system(customPrompt VERBATIM), user] (tier 1)", () => {
+    // Tier 1 of the three-tier precedence: the user's Prompt-Studio
+    // cleanup override wins over the server localized default.
+    const custom = "Strip filler. Output only cleaned text. Nothing else.";
+    const msgs = selectMessages(body({ customPrompt: custom, text: "uh one two" }), "en");
+    expect(msgs).toHaveLength(2);
+    expect(msgs[0]).toEqual({ role: "system", content: custom });
+    expect(msgs[0]?.content).not.toBe(EN_CLEANUP_PROMPT);
+    expect(msgs[1]).toEqual({ role: "user", content: "uh one two" });
+  });
+
+  it("cleanup shape with empty-string customPrompt -> falls through to localized default (tier 2)", () => {
+    const msgs = selectMessages(body({ customPrompt: "" }), "en");
+    expect(msgs[0]?.content).toBe(EN_CLEANUP_PROMPT);
+  });
+
+  it("cleanup shape with whitespace-only customPrompt -> falls through to localized default (tier 2)", () => {
+    const msgs = selectMessages(body({ customPrompt: "   \n  " }), "en");
+    expect(msgs[0]?.content).toBe(EN_CLEANUP_PROMPT);
+  });
+
+  it("cleanup shape with absent customPrompt -> server localized default (tier 2)", () => {
+    const msgs = selectMessages(body(), "en");
+    expect(msgs[0]?.content).toBe(EN_CLEANUP_PROMPT);
+  });
+
+  it("cleanup shape with null customPrompt -> server localized default (tier 2)", () => {
+    const msgs = selectMessages(
+      body({ customPrompt: null as ReasonRequest["customPrompt"] }),
+      "ru",
+    );
+    expect(msgs[0]?.content).toBe(RU_CLEANUP_PROMPT);
+  });
+
+  it("customPrompt does NOT override the agent shape (agentName-only stays system-message-free)", () => {
+    // customPrompt is a cleanup-shape-only override; an agent-shape
+    // request must not gain a system message from it (no regression).
+    const msgs = selectMessages(
+      body({ agentName: "Whispr", customPrompt: "some override", text: "do it" }),
+      "en",
+    );
+    expect(msgs).toEqual([{ role: "user", content: "do it" }]);
+  });
+
   it("agent shape with systemPrompt -> [system(systemPrompt), user]", () => {
     const msgs = selectMessages(body({ systemPrompt: "You are a pirate.", text: "ahoy" }), "en");
     expect(msgs).toEqual([
