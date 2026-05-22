@@ -45,7 +45,11 @@ describe("Plan 52-06 — agent/stream zod drift fixes", () => {
   });
 
   it("LegacyTool.description carries explicit `| undefined`", () => {
-    expect(translate).toMatch(/description\?:\s*string\s*\|\s*undefined/);
+    // R28 (quick-task 20260522) — AgentLegacyToolSchema widened the wire
+    // field to `.nullish()`, so the interface is now
+    // `string | null | undefined`. The explicit `| undefined` arm — the
+    // exactOptionalPropertyTypes drift this test pins — is still present.
+    expect(translate).toMatch(/description\?:\s*string\s*\|\s*null\s*\|\s*undefined/);
   });
 
   it("stream.ts stringifies non-string content before passing to litellm-client", () => {
