@@ -97,6 +97,15 @@ export function buildDebugFetchRoutes(deps: DebugFetchDeps = {}) {
         // hook; Fastify routes that error to the global onError chain
         // (Plan 06-12b audit emission) and the error handler (Plan 06
         // 502 envelope).  We do NOT swallow the error here.
+        // codeql[js/request-forgery] — intentional: this is a test-only
+        // route whose SOLE purpose is to drive globalThis.fetch with a
+        // caller-supplied URL so the process-wide SSRF dispatcher
+        // (apps/api/src/bootstrap.ts) fires and tests/e2e/ssrf-block.test.ts
+        // can prove the gate blocks AWS IMDS. The route is REFUSED outright
+        // when NODE_ENV==='production' (registration-time veto above + the
+        // parallel veto in apps/api/src/index.ts), so it is unreachable in
+        // any production bundle. The real SSRF defence is the global undici
+        // dispatcher — validating the URL here would defeat the test's intent.
         const res = await fetchImpl(url);
         // Read+discard the body so the upstream socket is released
         // promptly; we don't echo upstream content (would be a metadata

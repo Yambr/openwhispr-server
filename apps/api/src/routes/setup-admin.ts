@@ -157,6 +157,12 @@ export const buildSetupAdminRoutes = (deps: SetupAdminDeps) =>
       // sister route /api/setup-state (Phase 35 / CRIT-FIX-04). Anti-abuse
       // is preserved by the per-IP rateLimit above.
       config: { auth: false, rateLimit: { max: 5, timeWindow: "1 minute" } },
+      // codeql[js/missing-rate-limiting] — false positive: this route IS
+      // rate-limited via Fastify's `config.rateLimit` route option above
+      // (5/min/IP, enforced by @fastify/rate-limit). CodeQL's query does
+      // not model Fastify's config-object convention; LOCKER-04 in turn
+      // REQUIRES every route to carry config.rateLimit, so the limiter is
+      // structurally guaranteed present.
       handler: async (req: FastifyRequest, reply: FastifyReply) => {
         // 1. Parse + validate. Unknown extra keys (e.g. `role:'admin'`)
         //    are silently dropped — Zod's default behaviour is "strip

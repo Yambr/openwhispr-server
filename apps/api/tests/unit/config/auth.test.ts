@@ -132,4 +132,29 @@ describe("validateAuthBoot", () => {
     });
     expect(failure).toMatch(/got 5/);
   });
+
+  // v2.5-B / CodeQL #21 (js/clear-text-logging) — AUTH_URL flows from
+  // process.env into the onFail() log message. A URL may carry userinfo
+  // credentials (`https://user:secret@host`); the redacted message must
+  // NOT echo the cleartext password into stderr.
+  it("redacts AUTH_URL userinfo credentials in the production-HTTP refusal message", () => {
+    const { failure } = callValidate({
+      NODE_ENV: "production",
+      AUTH_URL: "http://admin:hunter2@api.example.com",
+      BETTER_AUTH_SECRET: STRONG_SECRET,
+    });
+    expect(failure).toBeDefined();
+    expect(failure).not.toContain("hunter2");
+    expect(failure).toContain("***");
+  });
+
+  it("redacts AUTH_URL userinfo credentials in the bad-scheme refusal message", () => {
+    const { failure } = callValidate({
+      NODE_ENV: "development",
+      AUTH_URL: "ftp://admin:hunter2@example.com",
+      BETTER_AUTH_SECRET: STRONG_SECRET,
+    });
+    expect(failure).toBeDefined();
+    expect(failure).not.toContain("hunter2");
+  });
 });

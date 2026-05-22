@@ -59,6 +59,11 @@ jobs:
       - uses: github/codeql-action/init@v4
         with:
           languages: ${{ matrix.language }}
+          # Scoped config — excludes non-shipped test code from scanning so
+          # code-scanning alerts stay signal-rich. No query is disabled;
+          # only test trees / fixtures / the test-probe tool are ignored.
+          # See .github/codeql/codeql-config.yml for the full rationale.
+          config-file: ./.github/codeql/codeql-config.yml
       - uses: github/codeql-action/analyze@v4
 
   license-scan:

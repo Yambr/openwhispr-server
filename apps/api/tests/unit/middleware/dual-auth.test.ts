@@ -236,4 +236,27 @@ describe("dual-auth helpers", () => {
     expect(__test.extractBearer("bearer caseInsensitive")).toBe("caseInsensitive");
     expect(__test.extractBearer(["Bearer first", "Bearer second"])).toBe("first");
   });
+
+  // v2.5-B / CodeQL #14 (js/polynomial-redos) — the linear-time rewrite
+  // of extractBearer must match the SAME strings as the prior
+  // `/^Bearer\s+(.+)$/i`, and must NOT exhibit super-linear backtracking.
+  it("extractBearer: linear rewrite preserves the no-whitespace and tab cases", () => {
+    // `Bearerx` — no whitespace after the prefix → no match (null).
+    expect(__test.extractBearer("Bearerx")).toBeNull();
+    // bare `Bearer` with no separator → null.
+    expect(__test.extractBearer("Bearer")).toBeNull();
+    // tab separator is whitespace → token extracted.
+    expect(__test.extractBearer("Bearer\ttok")).toBe("tok");
+    // whitespace-only suffix trims to empty string (prior behaviour).
+    expect(__test.extractBearer("Bearer   ")).toBe("");
+  });
+
+  it("extractBearer: pathological all-whitespace input resolves in linear time", () => {
+    // The prior regex was quadratic on `Bearer ` + many spaces with no
+    // non-space terminator. A 100k-space payload must complete fast.
+    const pathological = `Bearer ${" ".repeat(100_000)}`;
+    const start = performance.now();
+    expect(__test.extractBearer(pathological)).toBe("");
+    expect(performance.now() - start).toBeLessThan(100);
+  });
 });

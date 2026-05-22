@@ -103,7 +103,19 @@ const BEARER_SHAPES: readonly RegExp[] = [
   // JWT — strict three-part match starting with the canonical `eyJ`
   // header. The third segment may be empty for unsigned tokens (rare),
   // but we require it for the redactor (one-token, opaque body).
-  /eyJ[A-Za-z0-9_-]+\.eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+/g,
+  //
+  // CodeQL #17 (js/polynomial-redos): the prior unbounded
+  // `[A-Za-z0-9_-]+` segments backtracked super-linearly on a long
+  // `eyJeyJeyJ…` run with no dot terminator (the `eyJ` literal overlaps
+  // the segment charclass, so `/g` retried a full O(N) backtrack at
+  // every `eyJ` offset → O(N²)). Two changes make the match linear:
+  //   1. A `(?<![A-Za-z0-9_-])` lookbehind anchors the start to a
+  //      token boundary, so `/g` cannot restart inside a contiguous
+  //      base64url run after a failed attempt.
+  //   2. Each segment is bounded to {1,8192} — a JWT segment far past
+  //      8 KB is not a real token — so a single attempt is bounded.
+  // Neither change narrows what is matched for any genuine JWT.
+  /(?<![A-Za-z0-9_-])eyJ[A-Za-z0-9_-]{1,8192}\.eyJ[A-Za-z0-9_-]{1,8192}\.[A-Za-z0-9_-]{1,8192}/g,
 ];
 
 /**
