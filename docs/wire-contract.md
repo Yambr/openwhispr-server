@@ -220,6 +220,12 @@ input/output asymmetry is intentional and load-bearing.
   `TranscriptionStatus` (`pending|processing|completed|failed`, fallback
   `completed`) before the row is stored — see `normalizeTranscriptionStatus()`
   in `apps/api/src/routes/transcriptions/shape.ts`.
+- **`messages[].metadata` (conversation INPUT) — R36.** Accepted as
+  absent, an explicit `null`, OR a populated metadata object
+  (`MetadataSchema.nullish()`). The immutable client's `SyncService`
+  maps every message `metadata: m.metadata ? (...) : null`, so a message
+  without metadata carries an explicit `null`; `.optional()` alone
+  rejected it and 400'd every conversation sync.
 - **`Cloud*` RESPONSE schemas stay strict.** `CloudTranscription`,
   `CloudNote`, `CloudConversation`, `CloudMessage`, `CloudFolder` and
   `SearchResult` keep `z.string().datetime({ offset: true })` for every
