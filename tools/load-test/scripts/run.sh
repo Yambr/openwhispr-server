@@ -47,11 +47,22 @@ cd "$ROOT"
 # .env.example. Never set in production / CI.
 # Phase 08.5-02 Task 4: under PROFILE=realistic, layer the third compose
 # overlay (08.5-01) so the real LiteLLM container wins over the mock.
-# Mock profile path is unchanged — byte-identical to Phase 08.
+# Mock profile path is unchanged otherwise.
+#
+# Phase 61 / AUDIT load-test fix: `docker-compose.load-test.yml` declares
+# partial overlay fragments for grafana/loki/tempo/mimir/otel-collector
+# (volume mounts + resource limits) that expect the FULL service
+# definitions — but Phase 14's slim-core split moved those services out
+# of the base `docker-compose.yml` into `compose/docker-compose.observability.yml`.
+# `run.sh` was never reconciled, so the merged project errored with
+# `service "grafana" has neither an image nor a build context`. The
+# observability overlay must be layered BEFORE the load-test overlay so
+# the partial fragments merge onto a complete base.
+COMPOSE_OBS="-f compose/docker-compose.observability.yml"
 if [ "$PROFILE" = "realistic" ]; then
-  COMPOSE_BASE="docker compose -f docker-compose.yml -f compose/docker-compose.load-test.yml -f compose/docker-compose.load-test.realistic.yml --profile $COMPOSE_PROFILE"
+  COMPOSE_BASE="docker compose -f docker-compose.yml ${COMPOSE_OBS} -f compose/docker-compose.load-test.yml -f compose/docker-compose.load-test.realistic.yml --profile $COMPOSE_PROFILE"
 else
-  COMPOSE_BASE="docker compose -f docker-compose.yml -f compose/docker-compose.load-test.yml --profile $COMPOSE_PROFILE"
+  COMPOSE_BASE="docker compose -f docker-compose.yml ${COMPOSE_OBS} -f compose/docker-compose.load-test.yml --profile $COMPOSE_PROFILE"
 fi
 if [ "${OPENWHISPR_LOADTEST_KEEP_STACK:-0}" = "1" ]; then
   trap 'printf "OPENWHISPR_LOADTEST_KEEP_STACK=1 — stack left running for forensic capture. Tear down with: %s down\n" "$COMPOSE_BASE" >&2' EXIT INT TERM
