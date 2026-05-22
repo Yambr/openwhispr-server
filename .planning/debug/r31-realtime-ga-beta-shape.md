@@ -1,9 +1,30 @@
 ---
-status: awaiting_human_verify
+status: resolved
 trigger: "R31 (client-filed blocker, reopened TWICE) — OpenAI Realtime via WSS /v1/realtime reverse-proxy fails with invalid_request_error.beta_api_shape_disabled in-band WS error event; transcription_session.created never arrives; WS closes 4000."
 created: 2026-05-22T10:46:59Z
-updated: 2026-05-22T11:10:00Z
+updated: 2026-05-22T13:18:00Z
+resolved_commit: fcea86f9
 ---
+
+## RESOLUTION (2026-05-22, commit fcea86f9)
+
+Three upstream-leg defects. Fix = a dual-backend frame-aware
+`/v1/realtime` relay replacing the transparent passthrough:
+- DEFECT 1 (`?intent=transcription`) — stripped from the upstream URL.
+- DEFECT 2 (LiteLLM hardcodes `OpenAI-Beta`) — default backend is now
+  `direct` (relay → OpenAI GA straight, full header control). The
+  `litellm` backend carries a defense-in-depth container patch.
+- DEFECT 3 (event-vocab gap) — relay translates Beta↔GA frames:
+  GA `session.created` → `transcription_session.created`, etc.
+
+R31 regressed twice because f41d29e2 stripped the header on the wrong
+leg (client→Fastify). Closed now with a real-WS integration test
+(r31-realtime-ga-shape.test.ts) against a GA-asserting mock — a
+Beta-vs-GA regression fails at the test level.
+
+LIVE verified: rebuilt api + patched litellm; real WS handshake to
+`/v1/realtime?intent=transcription` received `transcription_session.created`
+— not `beta_api_shape_disabled`, not close-1011.
 
 ## Current Focus
 
