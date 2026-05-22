@@ -40,7 +40,7 @@ packages/data/src/schema/tenants.ts:4  # canonical-default-tenant
 # canonical docker-compose service-address defaults the CLAUDE.md OOB-boot
 # rule depends on.
 apps/api/src/auth.ts:429  # comment-only-narrative-issue-31-fp (57-E baseURL comment references the localhost fallback being removed; drift was 425, +3 by 57-E; +1 by R22)
-apps/api/src/routes/test-only.ts:286  # issue-31-debt-hardcode-localhost-3000 (drifted 181 → 227 → 234 → 266 across Phases 56/57/59 — force-rotate AUTH_URL fallback)
+apps/api/src/routes/test-only.ts:291  # issue-31-debt-hardcode-localhost-3000 (drifted 181 → 227 → 234 → 266 across Phases 56/57/59 — force-rotate AUTH_URL fallback)
 # better-auth-handler.ts:49 entry removed in Phase 57 / Track E — the
 # buildRequestUrl comment no longer references `localhost` (the
 # req.headers.host fallback was deleted; api-routes-rest:CR-01).

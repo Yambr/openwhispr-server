@@ -222,8 +222,13 @@ export function fastifyHeadersToWebHeaders(
 function extractBearer(authHeader: string | string[] | undefined): string | null {
   const value = Array.isArray(authHeader) ? authHeader[0] : authHeader;
   if (!value) return null;
-  const match = /^Bearer\s+(.+)$/i.exec(value);
-  return match ? (match[1]?.trim() ?? null) : null;
+  // CodeQL #14 (js/polynomial-redos) — the prior `/^Bearer\s+(.+)$/i`
+  // backtracks super-linearly: `\s+` and `(.+)` both match whitespace,
+  // so a `Bearer ` value followed by many spaces and no terminator is
+  // quadratic. The linear-time equivalent: a fixed-prefix test (no
+  // ambiguous quantifier) then a plain slice + trim.
+  if (!/^Bearer\s/i.test(value)) return null;
+  return value.slice("Bearer".length).trim();
 }
 
 // Plan 08: extractBearer is consumed by the recordPreviousToken onSend
