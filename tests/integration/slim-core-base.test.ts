@@ -73,9 +73,29 @@ describe("Phase 14 / Plan 14-01 — slim-core base conformance", () => {
   const doc = loadCompose();
   const services = doc.services ?? {};
 
-  it("Test 1: services keys equal exactly the slim-core set", () => {
+  // Phase 58 / AUDIT-HARD-04 — the slim base later gained a `profiles:
+  // [dev]`-gated mailpit (a dev SMTP trap). A profile-gated service does
+  // NOT start on a bare `docker compose up`, so the slim default set is
+  // still exactly SLIM_CORE. The original "keys equal exactly SLIM_CORE"
+  // assertion predated any dev-profiled service; the invariant we actually
+  // want: every SLIM_CORE service is present and un-profiled (in the slim
+  // default set), and any EXTRA service is profile-gated out of it.
+  it("Test 1: slim-core services are all present and un-profiled; extras are profile-gated", () => {
     const keys = new Set(Object.keys(services));
-    expect(keys).toEqual(SLIM_CORE);
+    for (const core of SLIM_CORE) {
+      expect(keys.has(core), `slim-core service "${core}" must exist`).toBe(true);
+      expect(
+        services[core]?.profiles,
+        `slim-core service "${core}" must NOT declare profiles: — it belongs to the slim default set`,
+      ).toBeUndefined();
+    }
+    for (const name of keys) {
+      if (SLIM_CORE.has(name)) continue;
+      expect(
+        services[name]?.profiles,
+        `extra service "${name}" must declare profiles: to stay out of the slim default set`,
+      ).not.toBeUndefined();
+    }
   });
 
   // Phase 58 / AUDIT-HARD-04 — mailpit (a dev SMTP trap) was un-gated and
