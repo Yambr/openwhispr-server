@@ -119,7 +119,7 @@ jobs:
       - name: Bootstrap fixture .env
         if: steps.gate.outputs.have_keys == 'true'
         run: |
-          cp .env.example .env
+          cp .env.slim.example .env
           if [ -x tools/bootstrap.sh ]; then
             tools/bootstrap.sh --ci || true
           fi
@@ -284,7 +284,7 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - name: Bootstrap fixture .env
         run: |
-          cp .env.example .env
+          cp .env.slim.example .env
           if [ -x tools/bootstrap.sh ]; then
             tools/bootstrap.sh --ci || true
           fi
