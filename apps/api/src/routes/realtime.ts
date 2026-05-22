@@ -47,6 +47,15 @@
 //     tamper-normalization to `?user=`. The realtime model becomes pure
 //     operator config: OpenAI→Speaches is a one-line `litellm_config`
 //     edit, zero client change.
+//   * T-03-07-06 (client-supplied OpenAI-Beta opt-in): R31 — OpenAI
+//     Realtime is GA. A client sending `OpenAI-Beta: realtime=v1` would
+//     leak the retired Beta-API opt-in through to OpenAI, which rejects
+//     it (`beta_api_shape_disabled`) and the WS closes 1011 before
+//     `transcription_session.created`. rewriteRequestHeaders strips the
+//     header (both casings) — the proxy normalizes the upstream leg to
+//     OpenAI Realtime GA regardless of what any client sends. Together
+//     with T-03-07-05 (D1 `?model=`) this makes the upstream leg
+//     GA-only and provider-agnostic.
 
 import fastifyHttpProxy from "@fastify/http-proxy";
 import type { LitellmClient } from "@openwhispr/litellm-client";
@@ -72,6 +81,17 @@ export function buildRewriteRequestHeaders(masterKey: string) {
     };
     delete next.authorization;
     delete next.Authorization;
+    // R31 / T-03-07-06 — OpenAI Realtime is GA. A desktop client
+    // sending `OpenAI-Beta: realtime=v1` would otherwise leak the
+    // retired Beta-API opt-in through Fastify -> LiteLLM -> OpenAI,
+    // which rejects it (`beta_api_shape_disabled`) and the client-
+    // facing WS closes with code 1011 before `transcription_session.
+    // created`. The proxy is the GA contract boundary — strip the
+    // header in both the lowercase canonical Node form and the literal
+    // client casing, regardless of what any client (current or future)
+    // sends. Mirrors the `authorization` / `Authorization` dual-delete.
+    delete next["openai-beta"];
+    delete next["OpenAI-Beta"];
     next.authorization = `Bearer ${masterKey}`;
     next["x-litellm-spend-logs-metadata"] = JSON.stringify({
       openwhispr_request_id: requestId,
