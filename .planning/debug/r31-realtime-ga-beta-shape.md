@@ -2,8 +2,8 @@
 status: awaiting_human_verify
 trigger: "R31 (client-filed blocker, reopened FOURTH time) — c069f369's betaToGaSessionPayload transform translates a session.update frame the REAL cloud client (preconfigured mode) NEVER SENDS. Relay never configures the GA transcription session → segments:0, textLength:0, commit timeout."
 created: 2026-05-22T10:46:59Z
-updated: 2026-05-22T17:15:00Z
-resolved_commit: fcea86f9
+updated: 2026-05-22T17:20:00Z
+resolved_commit: f2be05d8
 ---
 
 ## RESOLVED 2026-05-22 (FOURTH ROUND — DEFECT 6) — LIVE VERIFIED PRECONFIGURED
