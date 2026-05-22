@@ -32,10 +32,10 @@ milestone has not been formally opened yet.
 
 ### Phase 13 — E2E coverage gaps (root cause for many UI bugs below)
 
-- **TD-13.a — Duplicate "already registered" banner.** `apps/web/src/components/screens/auth/SignUpForm.tsx` renders the dup-warning twice. Unit test asserts `getAllByText(/already registered/i).length.toBeGreaterThan(0)` — passes for 1 AND for 2. Test is gaslighting us.
+- **TD-13.a — RESOLVED.** `apps/web/src/components/screens/auth/SignUpForm.tsx` renders a single `<Alert>` for the duplicate-email case; the `SignUpForm.test.tsx` assertions use single-element `findByText`/`getByText`, not the weak `getAllByText(...).length.toBeGreaterThan(0)`.
 - **TD-13.b — Zod errors surface as bare "Invalid input".** `apps/web/src/lib/schemas/auth.ts` enforces `password.min(8)`. Client shows no per-field message, no localization, no "must be at least 8 chars". User has no idea why submit failed.
-- **TD-13.c — Sign-in 403 with no explanation.** After signup, verification email never arrives (TD-mailpit). User tries sign-in → 403 from Better Auth `requireEmailVerification`. UI shows generic error; no resend link, no "check your spam", no "your verification email was never sent because the worker is broken".
-- **TD-13.d — `getAllByText` weak assertion pattern.** Likely repeated across SignInForm, ResetPasswordForm, VerifyEmailScreen. Sweep all `auth/__tests__/*.test.tsx` for `toBeGreaterThan(0)` and tighten to `toHaveLength(1)` where exclusivity matters.
+- **TD-13.c — Sign-in 403 with no explanation.** After signup, the user tries sign-in → 403 from Better Auth `requireEmailVerification`. UI shows generic error; no resend link, no "check your spam".
+- **TD-13.d — RESOLVED.** The weak `getAllByText(/already registered/i).length.toBeGreaterThan(0)` pattern is no longer present in `apps/web/src/components/screens/auth/__tests__/*` — auth tests assert single elements via `findByText`/`getByText`.
 - **TD-13.e — No E2E for any auth journey.** `tests/e2e/` contains only `phase6-scale-dynamic.yml` (k6 perf). Zero Playwright/Cucumber. CJM unmapped — there is no document listing the journeys that SHOULD be tested.
 - **TD-13.f — DevTools `FrameDoesNotExistError`** — browser extension noise, NOT our bug. Document so future sessions skip it.
 
@@ -49,11 +49,11 @@ milestone has not been formally opened yet.
 
 The live `apps/web/src/components/screens/auth/*` implementation has drifted from this contract. Symptoms (duplicate banner, "Invalid input" non-message, SSO buttons always rendered, no resend-verification CTA) are NOT free-design questions — they are **conformance failures against an existing locked design**. Phase 12 is therefore a **conformance audit + remediation**, not a redesign.
 
-- **TD-12.a — `/admin` returns 404.** Next.js route group `(admin)/admin/config` exists; page at `/admin` itself does NOT. Operator typing `https://api.localhost/admin` sees a Next.js 404 (after Traefik basicauth passes). Need either an index page or a redirect to `/admin/config` or `/setup`.
+- **TD-12.a — RESOLVED.** The `/admin` index page now exists at `apps/web/src/app/(admin)/admin/page.tsx` (alongside `admin/config` and `admin/observability`); operators no longer hit a Next.js 404.
 - **TD-12.b — Admin bootstrap password unrecoverable.** `.env` ships `ADMIN_BASIC_AUTH_USERS=admin:$$2y$$05$$...` — a bcrypt hash with no companion plaintext. Operators cannot log in. There is no documented path "first run? do X". Possible fixes:
   - (preferred) First-run onboarding wizard: `/setup` route, app detects empty `users` table → operator sets admin email+password → stored in Better Auth `users` with `role=admin`. htpasswd remains as break-glass with the hash documented as "lost-key recovery only".
   - (alt) `make admin-password` Makefile target prints the password from a sealed secret.
-- **TD-12.c — SSO/OIDC buttons render with 0 providers configured.** Web shows Google/GitHub/OIDC sign-in buttons unconditionally. Clicking → POST `/api/auth/sign-in/social` → 404 (`Provider not found`) → repeated clicks trigger Better Auth ratelimit → 429. UI should call a `GET /api/auth/providers` (or similar capability endpoint) at mount and only render buttons for configured providers. **The provider config is operator-side env — UI must honour it.**
+- **TD-12.c — RESOLVED.** `apps/web/src/components/screens/auth/useAuthProviders.ts` queries the provider-capability endpoint and `OidcButtons.tsx` renders only configured providers; no SSO buttons appear when zero providers are configured.
 - **TD-12.d — Auth pages are this-session's own free-handed design.** Not run through `ui-ux-pro-max` skill. Reference patterns: Supabase / Clerk / Linear sign-in. Needs design pass with the design skill before re-implementation.
 - **TD-12.e — Sign-in success has no clear post-state for unverified users.** No "resend verification email" CTA on the 403 screen.
 - **TD-12.f — Bcrypt `$` escape requirement in `.env` is invisible to operators.** Documented in YAML comment buried at line 642 of `docker-compose.embedded-litellm.yml`. Setup wizard removes this trap entirely.
@@ -100,7 +100,7 @@ The live `apps/web/src/components/screens/auth/*` implementation has drifted fro
 
 ### Cross-cutting: Mailpit `noopSender`
 
-- **TD-mailpit — `apps/worker/src/index.ts:128-134` uses a hardcoded `noopSender`** instead of the nodemailer-backed `EmailService` from `apps/api/src/email.ts`. Worker reads the email-delivery job from BullMQ, returns `{ delivered: true, reason: "no-op-sender" }` without ever calling SMTP. Mailpit inbox stays empty forever. **Owned by Phase 13** because the E2E test for signup→verify is what exposes this and gates the fix.
+- **TD-mailpit — RESOLVED (Phase 13).** `apps/worker/src/index.ts` now constructs a real sender via `createEmailSender` from the shared `@openwhispr/email` package (`const realSender = createEmailSender({ log, env: process.env })`). The hardcoded `noopSender` is gone; the worker delivers verification email over SMTP.
 
 ### Cross-cutting: testcontainers cleanup
 
