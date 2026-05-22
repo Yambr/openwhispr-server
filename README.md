@@ -16,9 +16,16 @@ If you just want to confirm the repo boots before reading anything else:
 git clone https://github.com/openwhispr/openwhispr-server.git
 cd openwhispr-server
 make up-with-dev-tools                                  # bring stack up
-curl -sk http://localhost:4000/readyz | jq              # expect ok=true for postgres, valkey, litellm
-open http://localhost:3000                              # web UI lands at /sign-up
+curl -sk http://localhost:4000/readyz | jq              # 200 with { "postgres": {ok,...}, "valkey": {...}, "litellm": {...} }
+open http://localhost:3000                              # web UI redirects unauthenticated visitors to /sign-in
 ```
+
+> This 30-second smoke boots the **main `docker-compose.yml`** stack,
+> which publishes the api on host port `4000` and the web UI on `3000`.
+> The 5-minute quickstart below boots a **different** stack
+> (`compose/docker-compose.embedded-litellm.yml`) that is Traefik-fronted
+> and publishes no per-service host ports — use `https://api.localhost` /
+> `https://web.localhost` there, not `localhost:4000` / `localhost:3000`.
 
 The dev-tools overlay seeds a working `LITELLM_MASTER_KEY`, opens the
 internal SSRF allow-list for compose hostnames, and disables Better
@@ -42,9 +49,9 @@ If `pnpm test` is what you reach for, note: package-filtered runs
 use `--project=<name>` to avoid pulling unrelated workspace projects:
 
 ```bash
-pnpm --filter @openwhispr/api    test   # 147 files / 1299 tests, ~98s
+pnpm --filter @openwhispr/api    test   # ~98s
 pnpm --filter @openwhispr/worker test   # ~20s
-pnpm --filter @openwhispr/web    test   # 65 files / 963 tests, ~15s
+pnpm --filter @openwhispr/web    test   # ~15s
 ```
 
 ---
@@ -108,16 +115,21 @@ $EDITOR .env   # set every REPLACE_ME including BETTER_AUTH_SECRET and at least 
 docker compose -f compose/docker-compose.embedded-litellm.yml up -d
 docker compose -f compose/docker-compose.embedded-litellm.yml ps   # confirm api, worker, postgres, valkey, litellm are healthy
 
+# The embedded-litellm stack publishes NO per-service host ports — only
+# Traefik does. Reach the api at https://api.localhost (self-signed dev
+# cert, so curl needs -k), the web UI at https://web.localhost, and the
+# mailpit inbox at https://mailpit.localhost.
+
 # 5. Register a user and verify (dev profile uses mailpit for verification email).
-curl -fsS -X POST http://localhost:3000/api/auth/sign-up/email \
+curl -fsSk -X POST https://api.localhost/api/auth/sign-up/email \
   -H "Content-Type: application/json" \
   -d '{"email":"you@example.com","password":"correct-horse-battery-staple","name":"Demo"}'
 
-# Open mailpit at http://localhost:8025 and click the verification link
+# Open mailpit at https://mailpit.localhost and click the verification link
 # (the link 302s to /api/auth/verify-email and sets the session cookie).
 
 # 6. Sign in and capture the bearer token (saved in cookie + set-auth-token header).
-curl -fsS -X POST http://localhost:3000/api/auth/sign-in/email \
+curl -fsSk -X POST https://api.localhost/api/auth/sign-in/email \
   -H "Content-Type: application/json" \
   -c /tmp/owc.cookies \
   -D /tmp/owc.headers \
@@ -125,11 +137,15 @@ curl -fsS -X POST http://localhost:3000/api/auth/sign-in/email \
 TOKEN=$(grep -oE 'set-auth-token: [^[:space:]]+' /tmp/owc.headers | cut -d' ' -f2 | tr -d '\r')
 
 # 7. Transcribe a sample WAV.
-curl -fsS -X POST http://localhost:3000/api/transcribe \
+curl -fsSk -X POST https://api.localhost/api/transcribe \
   -H "Authorization: Bearer $TOKEN" \
-  -F "file=@./tests/fixtures/audio/sample.wav" \
+  -F "file=@./tests/fixtures/audio/sample-1s.wav" \
   | jq .
-# expect: { "text": "...", "language": "en", "duration_s": ... }
+# expect (extra fields elided): {
+#   "text": "...", "language": "en", "duration": 1.0,
+#   "wordsUsed": 1, "wordsRemaining": 999999999, "plan": "unlimited",
+#   "limitReached": false, "sttProvider": "...", "sttModel": "..."
+# }
 ```
 
 End-to-end, from clone to a 200 response on `/api/transcribe`, on a
@@ -175,7 +191,7 @@ bundles and are mechanically enforced by `tools/lint-english.ts`.
 | Target                | Network                          | Quota cost   | When to run                                                      |
 | --------------------- | -------------------------------- | ------------ | ---------------------------------------------------------------- |
 | `make test`           | none (vitest + stryker)          | none         | Every commit; covers unit + property + mutation slices.          |
-| `make contract-test`  | local docker only                | none         | Hermetic CI default. Uses LiteLLM `mock_response` + `MOCK_DIARIZATION=true`. See [docs/litellm-mock-mode.md](./docs/litellm-mock-mode.md). |
+| `make contract-test`  | local docker only                | none         | Hermetic CI default. Uses the LiteLLM `mock_response` config (`litellm_config.contract.yaml`). See [docs/litellm-mock-mode.md](./docs/litellm-mock-mode.md). |
 | `make e2e-test`       | real provider APIs               | real money   | Requires `.env.e2e` with `OPENROUTER_API_KEY` + `GROQ_API_KEY` + `OPENAI_API_KEY` + `PYANNOTE_API_KEY`. Operator-driven cadence (NOT every PR). See [.env.e2e.example](./.env.e2e.example). |
 | `make load-test`      | profile-driven (mock / Speaches) | none (mock) / GPU host (Speaches) | Phase 8 load harness; smoke vs baseline vs plateau. See [docs/operations.md](./docs/operations.md). |
 
@@ -285,5 +301,8 @@ Full rationale, alternatives, and version compatibility matrix in
 
 ## License
 
-Apache-2.0 with explicit patent grant. See [`LICENSE`](./LICENSE) and
-[`NOTICE`](./NOTICE).
+Functional Source License, Version 1.1, Apache 2.0 Future License
+(FSL-1.1-ALv2) — see [`LICENSE`](./LICENSE), [`NOTICE`](./NOTICE), and
+[ADR-0013](./docs/adrs/0013-fsl-relicense.md) for the relicensing
+rationale. Each release converts to Apache-2.0 two years after
+publication.
