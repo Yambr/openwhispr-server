@@ -82,14 +82,19 @@ This document is **English-only** per CLAUDE.md.
 
 ### Decision: wordsUsed semantics
 
-**Resolution of RESEARCH open questions A5/A6:** in v1 we record `wordsUsed` as the
-**word count of the transcribed `text`** (server-derived, not client-asserted). The
-upstream spec is silent on the unit; it does not commit to either "minutes-of-audio"
-or "literal words". v1's quota system is OFF (`limitReached` is always `false`,
-PROJECT.md WIRE-05) so the value is observability-only and the cheapest derivation
-that matches the field name is the canonical interpretation.
+**Resolution of RESEARCH open questions A5/A6:** in v1 we record `wordsUsed` as
+**minutes of transcribed audio**, rounded up — `ceil(duration / 60)`, computed by
+`minutesFromDuration()` in `apps/api/src/lib/word-units.ts` from the upstream
+Whisper `duration` field. The upstream spec is silent on the unit; it does not
+commit to either "minutes-of-audio" or "literal words". v1's quota system is OFF
+(`limitReached` is always `false`, PROJECT.md WIRE-05) so the value is
+observability-only. Minutes-of-audio was chosen over literal-word-count so the
+unit matches the `usage_ledger` kind `transcribe_minutes` — keeping the unit
+binding internally consistent across the response shape, the ledger row, and the
+observability label. (When `duration` is absent — OpenAI omits it for
+`response_format=json` rather than `verbose_json` — `wordsUsed` is `0`.)
 
-- **Locked unit:** number of whitespace-separated tokens in the response `text`.
+- **Locked unit:** minutes of audio, `ceil(duration_seconds / 60)`.
 - **`wordsRemaining`:** always reported as a positive sentinel (`Number.MAX_SAFE_INTEGER`
   or a fixed `999_999_999`) in v1 to signal "unlimited" without breaking the response
   shape the desktop reads (`BACKEND_SPEC.md:L208`).

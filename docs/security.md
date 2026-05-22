@@ -23,7 +23,7 @@ mitigate.
 | Control                                         | Status                                                            |
 | ----------------------------------------------- | ----------------------------------------------------------------- |
 | HTTPS only externally                           | constitutional; Traefik :443 + :8443; no plaintext HTTP entrypoint |
-| Apache-2.0 license (with explicit patent grant) | `LICENSE`, `NOTICE`                                               |
+| FSL-1.1-ALv2 license (Apache-2.0 future conversion) | `LICENSE`, `NOTICE`, `docs/adrs/0013-fsl-relicense.md`        |
 | English-only source artifacts                   | `tools/lint-english.ts` + lefthook + CI gate                      |
 | Default-deny outbound (SSRF gate)               | `apps/api/src/lib/ssrf-dispatcher.ts` + per-env allow-list        |
 | Secret loading from env (v1)                    | `.env` (single-host) / Kubernetes Secret (Helm) / ESO (option)    |

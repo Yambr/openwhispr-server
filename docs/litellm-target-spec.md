@@ -63,26 +63,40 @@ The bundled `litellm` container mounts `compose/litellm/litellm_config.yaml` (Pl
 model_list:
   - model_name: qwen3.6-plus            # D-06: default reasoning model
     litellm_params:
-      model: openrouter/qwen/qwen-3.6-plus
+      model: openrouter/qwen/qwen3.6-plus
+      api_key: os.environ/OPENROUTER_API_KEY
+  - model_name: gemini-3-flash          # alternate reasoning model
+    litellm_params:
+      model: openrouter/google/gemini-3.1-flash-lite
       api_key: os.environ/OPENROUTER_API_KEY
   - model_name: gpt-4o-mini             # D-10: light reasoning fallback
     litellm_params:
       model: openrouter/openai/gpt-4o-mini
       api_key: os.environ/OPENROUTER_API_KEY
+  - model_name: qwen3.6-cleanup         # R33: fast dictation-cleanup model
+    litellm_params:
+      model: openrouter/qwen/qwen3.6-35b-a3b
+      api_key: os.environ/OPENROUTER_API_KEY
+      api_base: os.environ/REASONING_CLEANUP_API_BASE
   - model_name: whisper-large-v3        # D-11: STT via Groq (fastest hosted Whisper)
     litellm_params:
       model: groq/whisper-large-v3
+      api_base: https://api.groq.com/openai/v1
       api_key: os.environ/GROQ_API_KEY
-  - model_name: gpt-realtime            # D-12: OpenAI Realtime API direct
+  - model_name: realtime-default        # D-12: OpenAI Realtime API direct
     litellm_params:
       model: openai/gpt-realtime
       api_key: os.environ/OPENAI_API_KEY
       mode: realtime
 ```
 
+The full catalog also registers backward-compat realtime aliases
+(`gpt-realtime`, `gpt-realtime-mini`, `gpt-4o-realtime-preview`) for
+older desktop builds that still send an explicit `?model=`.
+
 **Operator setup**:
 
-1. `cp .env.example .env` and run `tools/bootstrap.sh` (replaces secret PLACEHOLDERs).
+1. `cp .env.embedded.example .env` and run `tools/bootstrap.sh` (replaces secret PLACEHOLDERs).
 2. Paste real provider keys into `.env`:
    - `OPENROUTER_API_KEY` — chat/reason models (D-06/D-10).
    - `GROQ_API_KEY` — Whisper-large-v3 STT (D-11).
@@ -101,7 +115,8 @@ Missing keys are not fatal at boot but produce 503 envelopes when the correspond
 **Operator setup**:
 
 1. Run an internal LiteLLM Proxy (`v1.83.7-stable+`) reachable at e.g. `https://litellm.corp.example.com`. Configure model aliases your stack serves (Speaches `whisper-large-v3`, internal `gpt-realtime` equivalent, etc.).
-2. In OpenWhispr Server `.env`:
+2. In OpenWhispr Server `.env` (start from `cp .env.full.example .env` — its
+   `LITELLM_BASE_URL` block documents the corporate-override path):
    - `LITELLM_BASE_URL=https://litellm.corp.example.com`
    - `LITELLM_MASTER_KEY=<corporate-master-key>`
 3. Disable the bundled `litellm` container (one of):
@@ -149,7 +164,7 @@ The same `request_id` is also written inline by `/api/transcribe` (Plan 04) and 
 | `LITELLM_DEFAULT_CHAT_MODEL`  | `qwen3.6-plus` (D-06)                                                         | operator picks corporate alias                                                  |
 | `LITELLM_READ_DATABASE_URL`   | optional — defaults to the same DIRECT `postgres:5432` URL the migrate runner uses; lets the worker target a read replica | corporate proxy DB; usually unused (worker reads bundled DB only)               |
 
-**Corporate-override is `LITELLM_BASE_URL` plus `LITELLM_MASTER_KEY` only.** Every other LiteLLM-related var is either inherited from `.env.example` defaults or unused on the api side when the bundled container is disabled.
+**Corporate-override is `LITELLM_BASE_URL` plus `LITELLM_MASTER_KEY` only.** Every other LiteLLM-related var is either inherited from `.env.full.example` defaults or unused on the api side when the bundled container is disabled.
 
 ---
 

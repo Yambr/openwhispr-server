@@ -25,7 +25,7 @@ topology. It is companion-read with:
 
 ## 1. Component decomposition
 
-OpenWhispr Server ships as eight distinct runtime units. Each maps to
+OpenWhispr Server ships as nine distinct runtime units. Each maps to
 a service in `docker-compose.yml` and to a Deployment / StatefulSet in
 the Helm chart at `charts/openwhispr/`.
 
@@ -37,7 +37,7 @@ the Helm chart at `charts/openwhispr/`.
 | postgres    | CloudNativePG 1.29 (Postgres 17 + pgpartman) | Single source of truth; FORCE RLS; partitioned audit_log + usage     | `postgres`      | CNPG `Cluster` CR      |
 | pgbouncer   | bitnami/pgbouncer 1.23+                   | Transaction-mode connection pool; bridges app pools to Postgres       | `pgbouncer`     | Deployment             |
 | valkey      | bitnami/valkey 8.x (Redis 7.4-compatible) | BullMQ queue substrate; rate-limit counters; WS fan-out               | `valkey`        | StatefulSet            |
-| litellm     | `ghcr.io/berriai/litellm:v1.83.7-stable`  | LLM / Whisper / Realtime gateway; corporate-override target           | `litellm`       | Deployment             |
+| litellm     | `openwhispr-litellm:r31-patched` (locally built on `ghcr.io/berriai/litellm:main-v1.83.14-stable`) | LLM / Whisper / Realtime gateway; corporate-override target           | `litellm`       | Deployment             |
 | minio       | bitnami/minio                             | S3-compatible object store; WAL archive sink; future audio archives   | `minio`         | Deployment / DistMode  |
 | traefik     | traefik 3.x                               | TLS termination; HTTPS-only; `:443` HTTP + `:8443` realtime WSS       | `traefik`       | Helm Traefik chart (separate install) |
 
@@ -149,9 +149,11 @@ Phase 4 contract suite.
 ### 2.3 `POST /api/agent/stream` (NDJSON line-flush)
 
 Implemented in Phase 4. The route returns `application/x-ndjson` and
-flushes one v3-vocabulary chunk per line (`text-delta`, `tool-call`,
-`tool-result`, `finish`). Backpressure is handled by Fastify's
-`reply.raw.write` calls plus a single periodic `flush()`.
+flushes one chunk per line. The chunk vocabulary (`StreamChunk` in
+`apps/api/src/lib/sse-parser.ts`) is `content` (text delta), `tool_call`
+(consolidated tool call), and `done` (terminal marker). Backpressure is
+handled by Fastify's `reply.raw.write` calls plus a single periodic
+`flush()`.
 
 ```mermaid
 sequenceDiagram
@@ -167,10 +169,10 @@ sequenceDiagram
   A->>L: stream chat completion (SSE upstream)
   loop per upstream chunk
     L-->>A: SSE delta
-    A-->>D: NDJSON line { type: "text-delta", value: "..." }
+    A-->>D: NDJSON line { type: "content", text: "..." }
   end
   L-->>A: SSE finish
-  A-->>D: NDJSON line { type: "finish", finish_reason }
+  A-->>D: NDJSON line { type: "done", finishReason }
   A-->>D: stream end
 ```
 
