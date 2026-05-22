@@ -297,8 +297,17 @@ export interface BuildLitellmClientOptions {
  */
 function parseMultipartBoundary(contentType: string): string | null {
   if (!contentType.toLowerCase().includes("multipart/form-data")) return null;
-  const match = contentType.match(/boundary=("?)([^";]+)\1/i);
-  return match ? (match[2] ?? null) : null;
+  // CodeQL #19 (js/polynomial-redos) — the prior `/boundary=("?)([^";]+)\1/i`
+  // pairs an optional capture group with a backreference; on a long
+  // `boundary=` run with no closing quote the engine backtracks
+  // super-linearly. Replace the backreference with an explicit
+  // two-branch alternation (quoted vs. unquoted), each branch a single
+  // bounded charclass run — linear-time, no backtracking ambiguity.
+  // Branch 1 matches a balanced-quoted value, branch 2 the bare token;
+  // both require >=1 inner char, exactly as the prior pattern did.
+  const match = contentType.match(/boundary="([^"]+)"|boundary=([^";]+)/i);
+  if (!match) return null;
+  return match[1] ?? match[2] ?? null;
 }
 
 /**

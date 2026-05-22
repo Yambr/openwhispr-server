@@ -26,6 +26,12 @@ on:
 concurrency:
   group: conformance-axe-${{ github.ref }}
   cancel-in-progress: true
+# CodeQL #37 (actions/missing-workflow-permissions) — least-privilege
+# GITHUB_TOKEN. This lane only checks out the repo and runs the axe
+# conformance compose stack; it never writes to the repo, posts
+# comments, or publishes artifacts, so read-only `contents` suffices.
+permissions:
+  contents: read
 jobs:
   axe-baseline:
     runs-on: ubuntu-latest

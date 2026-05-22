@@ -14,11 +14,11 @@
     "build": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
-    "nodemailer": "*"
+    "nodemailer": "^8.0.7"
   },
   "devDependencies": {
     "@types/node": "25.6.2",
-    "@types/nodemailer": "*",
+    "@types/nodemailer": "^8.0.0",
     "typescript": "6.0.3",
     "vitest": "4.1.5"
   }

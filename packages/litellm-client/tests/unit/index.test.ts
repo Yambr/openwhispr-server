@@ -506,6 +506,92 @@ describe("buildLitellmClient — passthrough", () => {
     expect(capturedHeaders["x-litellm-end-user-id"]).toBe("u2");
   });
 
+  // v2.5-B / CodeQL #19 (js/polynomial-redos) — parseMultipartBoundary's
+  // prior `/boundary=("?)([^";]+)\1/i` paired an optional capture with a
+  // backreference, backtracking super-linearly on a long `boundary=` run
+  // with no closing quote. The alternation rewrite must (a) still extract
+  // a quoted boundary and (b) resolve a pathological input in linear time.
+  function captureTranscriptionBody(): {
+    captured: { bytes: Buffer };
+    fakeRequest: (url: unknown, reqOpts: unknown) => Promise<Dispatcher.ResponseData>;
+  } {
+    const captured: { bytes: Buffer } = { bytes: Buffer.alloc(0) };
+    const fakeRequest = async (
+      _url: unknown,
+      reqOpts: unknown,
+    ): Promise<Dispatcher.ResponseData> => {
+      const body = (reqOpts as { body: Readable }).body;
+      const chunks: Buffer[] = [];
+      await new Promise<void>((res, rej) => {
+        body.on("data", (c: Buffer | string) =>
+          chunks.push(typeof c === "string" ? Buffer.from(c, "utf8") : c),
+        );
+        body.on("end", () => res());
+        body.on("error", (err) => rej(err));
+      });
+      captured.bytes = Buffer.concat(chunks);
+      return {
+        statusCode: 200,
+        body: {
+          async json() {
+            return { text: "ok" };
+          },
+          async text() {
+            return "";
+          },
+        },
+      } as unknown as Dispatcher.ResponseData;
+    };
+    return { captured, fakeRequest };
+  }
+
+  it("extracts a QUOTED multipart boundary and injects the model prefix", async () => {
+    const { captured, fakeRequest } = captureTranscriptionBody();
+    const client = buildLitellmClient(baseConfig(), {
+      isOverride: false,
+      request: fakeRequest as unknown as typeof undiciRequestRef,
+    });
+    const stream = Readable.from([Buffer.from("FILE_PART_BODY")]);
+    const res = await client.audioTranscriptions({
+      model: "whisper-large-v3",
+      body: stream,
+      // Quoted boundary form — RFC 2046 permits a quoted-string value.
+      contentType: 'multipart/form-data; boundary="quoted-bnd"',
+      userId: "u1",
+      requestId: "r1",
+    });
+    expect(res.statusCode).toBe(200);
+    const sent = captured.bytes.toString("utf8");
+    // The UNQUOTED boundary token (not the surrounding quotes) delimits
+    // the synthetic `name="model"` prefix part.
+    expect(sent).toMatch(/--quoted-bnd\r\n/);
+    expect(sent).toMatch(
+      /Content-Disposition: form-data; name="model"\r\n\r\nwhisper-large-v3\r\n/,
+    );
+  });
+
+  it("resolves a pathological multipart boundary header in linear time", async () => {
+    const { fakeRequest } = captureTranscriptionBody();
+    const client = buildLitellmClient(baseConfig(), {
+      isOverride: false,
+      request: fakeRequest as unknown as typeof undiciRequestRef,
+    });
+    const stream = Readable.from([Buffer.from("fake-audio")]);
+    // `boundary=` followed by a 100k-char run with an unbalanced quote —
+    // the prior backreference pattern backtracked quadratically here.
+    const pathological = `multipart/form-data; boundary="${"a".repeat(100_000)}`;
+    const start = performance.now();
+    const res = await client.audioTranscriptions({
+      model: "whisper-large-v3",
+      body: stream,
+      contentType: pathological,
+      userId: "u1",
+      requestId: "r1",
+    });
+    expect(performance.now() - start).toBeLessThan(500);
+    expect(res.statusCode).toBe(200);
+  });
+
   it("omits content-type header when not supplied (e.g. GET passthrough)", async () => {
     let capturedHeaders: Record<string, string> = {};
     agent

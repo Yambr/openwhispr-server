@@ -1,0 +1,75 @@
+# CodeQL scan configuration — scoped to keep code-scanning alerts signal-rich.
+#
+# Wired into the explicit `codeql` job in `.github/workflows/security.yml`
+# via `github/codeql-action/init`'s `config-file:` input.
+#
+# DESIGN PRINCIPLE
+# ----------------
+# No query is blanket-disabled. The full `security-extended`-equivalent
+# default query suite still runs against ALL production code. The only
+# narrowing applied here is `paths-ignore` for code that is NOT shipped:
+# test files, test fixtures, and the dedicated test-probe tool. Test code
+# is build-time-only and never executed in a production deployment, so
+# excluding it from CodeQL is a defensible, standard scoping decision — it
+# removes 16 false-positive alerts that fired on legitimate-by-design test
+# patterns without weakening coverage of any runtime path.
+#
+# FALSE POSITIVES THIS CONFIG CLEARS (16 total)
+# ---------------------------------------------
+#   js/disabling-certificate-validation  x7
+#     tests/e2e/*.ts, tests/e2e/helpers/*,
+#     packages/contract-tests/tests/unit/realtime.test.ts
+#     -> these set `rejectUnauthorized: false` to talk to the hermetic
+#        e2e stack's self-signed `*.localhost` dev certificates.
+#
+#   js/incomplete-sanitization  x3
+#     apps/web/src/components/screens/__tests__/locale-parity-sweep.test.tsx,
+#     packages/byok-guard/tests/unit/__tests__/redact-url-shapes.test.ts,
+#     tests/integration/compose-overlays.test.ts
+#     -> test fixtures exercising redaction/sanitization logic.
+#
+#   js/insecure-randomness  x1 (of 2 — see NOTE below)
+#     apps/web/tests/e2e/fixtures/seed.ts
+#     -> Math.random() for non-cryptographic e2e seed data.
+#
+#   js/polynomial-redos  x1 (of 2 — see NOTE below)
+#     apps/api/tests/unit/routes/test-only-seed-tenant.test.ts
+#     -> regex in a test-only route's unit test.
+#
+#   js/clear-text-logging  x1
+#     tests/integration/log-scrub-sentinel.test.ts
+#     -> a test that DELIBERATELY logs a sentinel string to verify the
+#        log scrubber catches it; logging is the assertion under test.
+#
+# NOTE — TWO ALERTS NOT CLEARED HERE (test-infra files living under src/)
+# -----------------------------------------------------------------------
+# These two files are test-infrastructure but reside under `src/` paths,
+# so a test-directory glob cannot cleanly reach them WITHOUT also dropping
+# real production code in the same trees:
+#
+#   js/insecure-randomness  — tools/test-probe/src/probe.ts
+#   js/polynomial-redos     — packages/data/src/seed/conformance.ts
+#
+# `tools/test-probe/**` is a self-contained test-only tool with no
+# production importer, so it IS excluded wholesale below (precise package
+# glob, not a generic test glob). `packages/data/src/seed/conformance.ts`
+# is a seed/test-fixture generator that ships inside the `@openwhispr/data`
+# package alongside production schema code — it is NOT excluded here to
+# avoid blanket-ignoring `packages/data/src/seed/**`. Its single
+# `js/polynomial-redos` alert is left visible for a real, targeted fix
+# (seed generator is non-hot-path, but the regex should still be bounded).
+# Tracked for v2.5-B / a follow-up production-fix pass.
+
+paths-ignore:
+  # --- Top-level test trees (not shipped) ---
+  - tests/**
+  - '**/tests/**'
+  - '**/__tests__/**'
+  - '**/*.test.ts'
+  - '**/*.test.tsx'
+  - '**/*.spec.ts'
+  - '**/*.spec.tsx'
+  # --- Test fixtures ---
+  - '**/fixtures/**'
+  # --- Dedicated test-only probe tool (no production importer) ---
+  - tools/test-probe/**

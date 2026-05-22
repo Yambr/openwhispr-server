@@ -23,6 +23,8 @@
 // in the route-handling path. The production-vs-development decision
 // happens here, at boot, and produces a single derived constant.
 
+import { redactUrl } from "@openwhispr/byok-guard";
+
 const EX_CONFIG = 78;
 
 export interface AuthBootValidation {
@@ -69,16 +71,20 @@ export function validateAuthBoot(
     };
   }
 
+  // CodeQL #21 (js/clear-text-logging) — AUTH_URL may carry userinfo
+  // credentials; redact before it reaches the stderr log sink.
+  const safeAuthUrl = redactUrl(authUrl);
+
   if (!isHttps && !isHttp) {
     onFail(
       `auth-boot: AUTH_URL is required and must start with http:// or https://. ` +
-        `Got: ${JSON.stringify(authUrl)}.`,
+        `Got: ${JSON.stringify(safeAuthUrl)}.`,
     );
   }
 
   if (isProduction && !isHttps) {
     onFail(
-      `auth-boot: NODE_ENV=production with non-HTTPS AUTH_URL (${authUrl}). ` +
+      `auth-boot: NODE_ENV=production with non-HTTPS AUTH_URL (${safeAuthUrl}). ` +
         `Refusing to boot — Better Auth would emit session cookies without the ` +
         `Secure flag, exposing every signed-in session to MITM over plaintext. ` +
         `Set AUTH_URL=https://... or run with NODE_ENV=development for local HTTP.`,
@@ -170,8 +176,10 @@ export function validateIngressBoot(
 
   if (env.NODE_ENV === "production" && !resolved.startsWith("https://")) {
     onFail(
+      // CodeQL #21 (js/clear-text-logging) — INGRESS_BASE_URL / AUTH_URL
+      // may carry userinfo credentials; redact before the stderr sink.
       `ingress-boot: NODE_ENV=production requires an HTTPS origin. ` +
-        `Got: ${JSON.stringify(resolved)}. Set INGRESS_BASE_URL=https://...`,
+        `Got: ${JSON.stringify(redactUrl(resolved))}. Set INGRESS_BASE_URL=https://...`,
     );
   }
 
