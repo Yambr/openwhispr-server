@@ -1,0 +1,111 @@
+// SPDX-License-Identifier: FSL-1.1-ALv2
+// R33 (quick-task 20260522) — /api/reason prompt-selection helper.
+//
+// PROBLEM: the immutable desktop client deliberately does NOT send a
+// cleanup `systemPrompt` on the cloud path (the cleanup prompt lives
+// client-side, local-path only). For cloud cleanup the client sends
+// `model`/`agentName`/`systemPrompt` all absent. Without a system
+// message the model treats the bare transcript as a chat turn and
+// answers conversationally instead of returning cleaned text.
+//
+// FIX: this pure module owns BOTH (a) the request-SHAPE detection and
+// (b) the prompt + model selection keyed on that shape. `reason.ts`
+// consumes it; the client stays untouched.
+//
+// LAYER 1 — prompt selection (persona). The cleanup prompt is a
+//   LOCALIZED i18n resource (`prompts.cleanupPrompt`, namespace
+//   registered in `i18n/init.ts`) — never a route-baked string literal
+//   (LOCKER-03). The `{{agentName}}` placeholder is kept LITERAL
+//   (anti-injection framing): the i18next lookup suppresses interpolation.
+// LAYER 2 — model routing + thinking-off (see Commit 2).
+
+import type { ReasonRequest } from "@openwhispr/wire-schemas";
+import { i18n } from "../i18n/init.js";
+
+/** Locales the api ships cleanup prompts for. Unknown → "en". */
+export type SupportedLocale = "en" | "ru";
+
+/**
+ * The cleanup SHAPE: NO `agentName` AND NO `systemPrompt` AND empty/absent
+ * `model`. `ReasonRequest` declares all three `.nullish()`
+ * (`string | null | undefined`); `model` may additionally be the empty
+ * string `""` (the client sends `"model":""` on a fresh session before
+ * the store resolves a model). "absent" therefore means
+ * `=== undefined || === null` for agentName/systemPrompt, plus `=== ""`
+ * for model.
+ *
+ * When this returns `true` the request is a dictation-cleanup call and
+ * gets the cleanup persona + fast-model routing; otherwise it is an agent
+ * call and keeps the conversational behaviour.
+ */
+export function isCleanupRequest(body: ReasonRequest): boolean {
+  const agentAbsent = body.agentName === undefined || body.agentName === null;
+  const systemAbsent = body.systemPrompt === undefined || body.systemPrompt === null;
+  const model = body.model;
+  const modelAbsent = model === undefined || model === null || model === "";
+  return agentAbsent && systemAbsent && modelAbsent;
+}
+
+/**
+ * Resolve the request locale to a supported cleanup-prompt locale.
+ *
+ * Precedence: `body.language` → `body.locale` → i18next-resolved
+ * `reqLanguage` (Accept-Language) → `"en"`. Region tags are stripped
+ * (`ru-RU` → `ru`); anything that is not a supported locale → `"en"`.
+ */
+export function resolveLocale(
+  body: ReasonRequest,
+  reqLanguage: string | undefined,
+): SupportedLocale {
+  const candidates = [body.language, body.locale, reqLanguage];
+  for (const raw of candidates) {
+    if (raw === undefined || raw === null || raw === "") continue;
+    const base = raw.toLowerCase().split("-")[0];
+    if (base === "ru") return "ru";
+    if (base === "en") return "en";
+  }
+  return "en";
+}
+
+/**
+ * Look up the localized cleanup prompt. Interpolation is SUPPRESSED so
+ * the literal `{{agentName}}` placeholder survives verbatim into the
+ * system message — it is anti-injection framing, not a template hole to
+ * fill. `i18n/init.ts` already sets `interpolation.escapeValue = false`;
+ * `skipOnVariables: true` additionally tells i18next to leave any
+ * `{{...}}` token in place rather than resolving it to an empty string.
+ */
+function cleanupPrompt(locale: SupportedLocale): string {
+  return i18n.t("prompts.cleanupPrompt", {
+    lng: locale,
+    interpolation: { skipOnVariables: true },
+  });
+}
+
+/** A single OpenAI-compatible chat message. */
+export interface ChatMessage {
+  role: "system" | "user";
+  content: string;
+}
+
+/**
+ * Build the upstream `messages` array for a /api/reason request.
+ *
+ *   - cleanup shape  → `[system(localized cleanupPrompt), user(text)]`
+ *   - agent shape w/ `systemPrompt` → `[system(systemPrompt), user(text)]`
+ *   - agent shape w/ only `agentName` → `[user(text)]`
+ *
+ * The agentName-only branch deliberately emits NO system message — that
+ * is today's behaviour and R33 must not regress it (the cleanup persona
+ * is added ONLY for the cleanup shape).
+ */
+export function selectMessages(body: ReasonRequest, locale: SupportedLocale): ChatMessage[] {
+  const userMsg: ChatMessage = { role: "user", content: body.text };
+  if (isCleanupRequest(body)) {
+    return [{ role: "system", content: cleanupPrompt(locale) }, userMsg];
+  }
+  if (body.systemPrompt !== undefined && body.systemPrompt !== null) {
+    return [{ role: "system", content: body.systemPrompt }, userMsg];
+  }
+  return [userMsg];
+}
