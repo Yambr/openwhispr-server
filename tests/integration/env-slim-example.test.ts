@@ -52,7 +52,15 @@ describe("Phase 14 / Plan 02 — .env.slim.example conformance", () => {
     );
   });
 
-  it("Test 3: uncommented keys are exactly the 11-key slim contract", () => {
+  it("Test 3: uncommented keys are exactly the current slim contract", () => {
+    // The slim contract grew past the original 11 keys as later phases
+    // landed: R19 added the verification-email origin facet
+    // (INGRESS_BASE_URL / AUTH_URL / OPENWHISPR_API_URL — the
+    // externally-reachable origin a mail client can resolve), the
+    // operator-owned realtime alias (LITELLM_REALTIME_MODEL), and the
+    // dev-profile SMTP block (mailpit was promoted into the slim base
+    // behind the `dev` compose profile). Each addition is documented
+    // inline in `.env.slim.example`; the file is the source of truth.
     const expectedKeys = [
       // 5 user-visible mandatory inputs (CONTEXT decision 4)
       "POSTGRES_APP_PASSWORD",
@@ -71,6 +79,21 @@ describe("Phase 14 / Plan 02 — .env.slim.example conformance", () => {
       // extension for split-host dev (web.localhost + api.localhost via
       // Traefik). See apps/api/src/auth.ts trustedOrigins computation.
       "AUTH_TRUSTED_ORIGINS_EXTRA",
+      // R19 — externally-reachable API origin facet. Better Auth builds
+      // the verification-email link from INGRESS_BASE_URL; AUTH_URL /
+      // OPENWHISPR_API_URL feed the CSRF/Origin allow-list.
+      "INGRESS_BASE_URL",
+      "AUTH_URL",
+      "OPENWHISPR_API_URL",
+      // D1 — operator-owned server-injected realtime model alias.
+      "LITELLM_REALTIME_MODEL",
+      // Phase 61 / R19 — dev-profile SMTP block (mailpit promoted into
+      // the slim base behind the `dev` compose profile).
+      "SMTP_HOST",
+      "SMTP_PORT",
+      "SMTP_USER",
+      "SMTP_PASSWORD",
+      "SMTP_FROM",
     ];
     const active = parseActiveKeys(slimText);
     const actualKeys = [...active.keys()].sort();
@@ -116,8 +139,13 @@ describe("Phase 14 / Plan 02 — .env.slim.example conformance", () => {
     expect(active.get("OTEL_EXPORTER_OTLP_ENDPOINT")).toBe("disabled");
   });
 
-  it("Test 8: contains a `# REQUIRES: docker-compose.<overlay>.yml` banner for each of the 5 overlays", () => {
-    const overlays = ["observability", "storage", "ingress", "pgbouncer", "dev-tools"];
+  // Phase 61 / R19 — the `dev-tools` overlay no longer owns mailpit/SMTP
+  // (promoted into the slim base behind the `dev` compose profile), so the
+  // slim template no longer carries a `dev-tools` REQUIRES banner. The
+  // opt-in overlays the template documents are: storage, observability,
+  // ingress, pgbouncer, and contract-test.
+  it("Test 8: contains a `# REQUIRES: docker-compose.<overlay>.yml` banner for each opt-in overlay", () => {
+    const overlays = ["observability", "storage", "ingress", "pgbouncer", "contract-test"];
     for (const overlay of overlays) {
       const banner = `# REQUIRES: compose/docker-compose.${overlay}.yml`;
       expect(slimText, `banner for overlay ${overlay}`).toContain(banner);
@@ -138,12 +166,16 @@ describe("Phase 14 / Plan 02 — .env.slim.example conformance", () => {
       return nextBannerIdx === -1 ? rest : rest.slice(0, nextBannerIdx);
     }
 
+    // The contract-test overlay carries NO BYOK env keys — it is
+    // self-contained (fixture-idp + seed + contract-test-runner). It is
+    // still listed so Test 9 asserts its banner exists with an empty key
+    // set rather than silently skipping it.
     const expectations: Record<string, string[]> = {
       storage: ["S3_ENDPOINT=", "S3_ACCESS_KEY=", "S3_SECRET_KEY=", "S3_BUCKET="],
       observability: ["OTEL_EXPORTER_OTLP_ENDPOINT=", "OTEL_SERVICE_NAME="],
       ingress: ["INGRESS_BASE_URL=", "TRAEFIK_ADMIN_PASSWORD="],
       pgbouncer: ["PGBOUNCER_ADMIN_PASSWORD="],
-      "dev-tools": ["SMTP_HOST=", "SMTP_PORT=", "SMTP_USER=", "SMTP_PASSWORD=", "SMTP_FROM="],
+      "contract-test": [],
     };
 
     for (const [overlay, keys] of Object.entries(expectations)) {
@@ -179,6 +211,19 @@ describe("Phase 14 / Plan 02 — .env.slim.example conformance", () => {
       "BACKUP_AGE_IDENTITY",
       "OTEL_EXPORTER_OTLP_ENDPOINT",
       "AUTH_TRUSTED_ORIGINS_EXTRA",
+      // R19 — externally-reachable API origin facet.
+      "INGRESS_BASE_URL",
+      "AUTH_URL",
+      "OPENWHISPR_API_URL",
+      // D1 — operator-owned realtime model alias.
+      "LITELLM_REALTIME_MODEL",
+      // Phase 61 / R19 — dev-profile SMTP block.
+      "SMTP_HOST",
+      "SMTP_PORT",
+      "SMTP_USER",
+      "SMTP_PASSWORD",
+      "SMTP_FROM",
+      // Derived (do not edit) — ${VAR}-interpolated.
       "DATABASE_URL",
       "VALKEY_URL",
       "LITELLM_BASE_URL",
