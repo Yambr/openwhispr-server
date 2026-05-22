@@ -41,8 +41,26 @@ import { parseTtlSeconds } from "./_parse-ttl.js";
 /** Default token TTL in seconds when ASSEMBLYAI_TOKEN_TTL is not set. */
 const DEFAULT_TTL_SECONDS = 60;
 
-export const buildAssemblyAITokenRoutes = () =>
+/**
+ * Bundled-default AssemblyAI v3 streaming-token endpoint. Stays a literal
+ * ONLY as the fallback when no operator-owned `ASSEMBLYAI_TOKEN_URL` is
+ * injected (test isolation / a deployment that never set the env var).
+ * Production threads the operator value from `index.ts` (the env-reading
+ * boundary — LOCKER-01) via the route factory's `tokenUrl` option — no
+ * `process.env` read in this route file. The dynamic `expires_in_seconds`
+ * query param is appended by the handler regardless of the base URL.
+ */
+const DEFAULT_TOKEN_URL = "https://streaming.assemblyai.com/v3/token";
+
+/**
+ * Route factory options. `tokenUrl` is the operator-owned AssemblyAI
+ * token endpoint base URL; omitted in test isolation, where the route
+ * falls back to `DEFAULT_TOKEN_URL`. Inlined (not an exported interface)
+ * so it does not become a LOCKER-04 dead export.
+ */
+export const buildAssemblyAITokenRoutes = (opts: { tokenUrl?: string } = {}) =>
   async function assemblyAITokenRoutes(app: FastifyInstance): Promise<void> {
+    const tokenUrl = opts.tokenUrl ?? DEFAULT_TOKEN_URL;
     app.route({
       method: "POST",
       url: "/api/streaming-token",
@@ -89,7 +107,7 @@ export const buildAssemblyAITokenRoutes = () =>
           req.log,
         );
         const r = await callProvider({
-          url: `https://streaming.assemblyai.com/v3/token?expires_in_seconds=${ttl}`,
+          url: `${tokenUrl}?expires_in_seconds=${ttl}`,
           method: "GET",
           // D-14: AssemblyAI v3 uses the bare API key as the Authorization
           // header value — NO "Bearer " prefix. This is intentional per

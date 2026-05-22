@@ -208,6 +208,25 @@ export interface AllRoutesDeps {
     signUpEmail: SetupAdminSignUpEmail;
     renameTenant?: SetupAdminRenameTenant;
   };
+  /**
+   * Operator-owned streaming-token-provider configuration lifted out of
+   * TypeScript route literals. Production threads these from `index.ts`
+   * (the env-reading boundary — LOCKER-01) via env vars
+   * `OPENAI_REALTIME_TOKEN_URL`, `OPENAI_REALTIME_WHISPER_MODEL`,
+   * `ASSEMBLYAI_TOKEN_URL`, `DEEPGRAM_TOKEN_URL`,
+   * `PROVIDER_TOTAL_TIMEOUT_MS`, `PROVIDER_CONNECT_TIMEOUT_MS`. Each field
+   * is optional; when omitted the route falls back to its bundled-default
+   * literal. The token-mint routes consume these via injected deps so no
+   * route file reads `process.env`.
+   */
+  tokenProviders?: {
+    openaiRealtimeTokenUrl?: string;
+    openaiRealtimeWhisperModel?: string;
+    assemblyaiTokenUrl?: string;
+    deepgramTokenUrl?: string;
+    providerTotalTimeoutMs?: number;
+    providerConnectTimeoutMs?: number;
+  };
 }
 
 /**
@@ -277,7 +296,11 @@ export function buildAllRoutes(deps: AllRoutesDeps): readonly RoutePlugin[] {
     // preHandler (D-18 missing-key 503 envelope); operators get a clear
     // "<Provider> not configured (set <ENV_VAR_NAME> in .env)" signal at
     // request time.
-    buildAssemblyAITokenRoutes(),
+    buildAssemblyAITokenRoutes(
+      deps.tokenProviders?.assemblyaiTokenUrl !== undefined
+        ? { tokenUrl: deps.tokenProviders.assemblyaiTokenUrl }
+        : {},
+    ),
     buildDeepgramTokenRoutes(),
     // D4 — pass the operator-owned realtime model alias so the token-mint
     // route does not bake `gpt-realtime` as a literal.
