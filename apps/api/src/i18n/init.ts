@@ -70,7 +70,13 @@ export function resolveLocalesDir(): string {
 }
 
 const SUPPORTED_LANGUAGES = ["en", "ru"] as const;
-const NAMESPACES = ["errors"] as const;
+// R33 (quick-task 20260522) — `prompts` joins `errors` as a second
+// top-level namespace. Each locale JSON file is therefore
+// `{ "errors": {...}, "prompts": {...} }`; i18next reads
+// `resources[lng][ns]` so the file structure matches 1:1. The
+// `prompts.cleanupPrompt` key carries the /api/reason cleanup persona
+// (LAYER 1 — see lib/reason-prompt-select.ts).
+const NAMESPACES = ["errors", "prompts"] as const;
 
 /**
  * Initialize the singleton i18next instance synchronously.
