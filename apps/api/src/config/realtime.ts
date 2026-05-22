@@ -39,6 +39,8 @@
 // (`OPENAI_REALTIME_URL`) rather than a hardcoded literal in route code —
 // same posture the streaming-token-provider URLs adopted.
 
+import { parsePositiveNumberEnv } from "@openwhispr/litellm-client";
+
 /** The two supported relay upstream backends. */
 export type RealtimeBackend = "litellm" | "direct";
 
@@ -197,19 +199,6 @@ function trim(raw: string | undefined): string | undefined {
 }
 
 /**
- * Parse a finite, positive number from an env var, falling back to a
- * default. A blank, non-numeric, or non-positive value yields the
- * default (loud-fail is reserved for `REALTIME_BACKEND`; a malformed VAD
- * tuning knob degrades gracefully to the documented default).
- */
-function numericEnv(raw: string | undefined, fallback: number): number {
-  const v = trim(raw);
-  if (v === undefined) return fallback;
-  const n = Number(v);
-  return Number.isFinite(n) && n > 0 ? n : fallback;
-}
-
-/**
  * Resolve {@link RealtimeConfig} from the environment.
  *
  * @param env Environment snapshot. Defaults to `process.env`; injected in
@@ -252,10 +241,19 @@ export function loadRealtimeConfigFromEnv(env: NodeJS.ProcessEnv = process.env):
   // preconfigured client never sends its own update).
   const transcription: RealtimeTranscriptionConfig = {
     model: trim(env.REALTIME_TRANSCRIPTION_MODEL) ?? DEFAULT_REALTIME_TRANSCRIPTION_MODEL,
-    inputAudioRate: numericEnv(env.REALTIME_INPUT_AUDIO_RATE, DEFAULT_REALTIME_INPUT_AUDIO_RATE),
-    vadThreshold: numericEnv(env.REALTIME_VAD_THRESHOLD, DEFAULT_REALTIME_VAD_THRESHOLD),
-    vadSilenceMs: numericEnv(env.REALTIME_VAD_SILENCE_MS, DEFAULT_REALTIME_VAD_SILENCE_MS),
-    vadPrefixPaddingMs: numericEnv(
+    inputAudioRate: parsePositiveNumberEnv(
+      env.REALTIME_INPUT_AUDIO_RATE,
+      DEFAULT_REALTIME_INPUT_AUDIO_RATE,
+    ),
+    vadThreshold: parsePositiveNumberEnv(
+      env.REALTIME_VAD_THRESHOLD,
+      DEFAULT_REALTIME_VAD_THRESHOLD,
+    ),
+    vadSilenceMs: parsePositiveNumberEnv(
+      env.REALTIME_VAD_SILENCE_MS,
+      DEFAULT_REALTIME_VAD_SILENCE_MS,
+    ),
+    vadPrefixPaddingMs: parsePositiveNumberEnv(
       env.REALTIME_VAD_PREFIX_PADDING_MS,
       DEFAULT_REALTIME_VAD_PREFIX_PADDING_MS,
     ),

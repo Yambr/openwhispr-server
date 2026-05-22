@@ -16,6 +16,8 @@
 // who sets none of these vars sees no behavior change.
 
 /** Resolved Tavily adapter knobs. */
+import { parsePositiveIntEnv } from "@openwhispr/litellm-client";
+
 export interface TavilyConfig {
   /** POST endpoint for Tavily Search. Default: https://api.tavily.com/search */
   searchUrl: string;
@@ -46,20 +48,6 @@ export const DEFAULT_YANDEX_SEARCH_URL = "https://searchapi.api.cloud.yandex.net
 export const DEFAULT_YANDEX_HEADERS_TIMEOUT_MS = 5_000;
 export const DEFAULT_YANDEX_BODY_TIMEOUT_MS = 10_000;
 
-/**
- * Parse a positive-integer env var. Returns `fallback` when the var is
- * unset, empty, or not a finite positive integer — a malformed knob must
- * never silently zero a timeout (which would abort every request).
- */
-function readPositiveInt(raw: string | undefined, fallback: number): number {
-  if (raw === undefined) return fallback;
-  const trimmed = raw.trim();
-  if (trimmed.length === 0) return fallback;
-  const n = Number(trimmed);
-  if (!Number.isFinite(n) || !Number.isInteger(n) || n <= 0) return fallback;
-  return n;
-}
-
 /** Read a non-empty trimmed string env var, else `fallback`. */
 function readUrl(raw: string | undefined, fallback: string): string {
   if (raw === undefined) return fallback;
@@ -84,15 +72,18 @@ export function loadWebSearchConfigFromEnv(env: NodeJS.ProcessEnv = process.env)
   return {
     tavily: {
       searchUrl: readUrl(env.TAVILY_SEARCH_URL, DEFAULT_TAVILY_SEARCH_URL),
-      timeoutMs: readPositiveInt(env.TAVILY_TIMEOUT_MS, DEFAULT_TAVILY_TIMEOUT_MS),
+      timeoutMs: parsePositiveIntEnv(env.TAVILY_TIMEOUT_MS, DEFAULT_TAVILY_TIMEOUT_MS),
     },
     yandex: {
       searchUrl: readUrl(env.YANDEX_SEARCH_URL, DEFAULT_YANDEX_SEARCH_URL),
-      headersTimeoutMs: readPositiveInt(
+      headersTimeoutMs: parsePositiveIntEnv(
         env.YANDEX_HEADERS_TIMEOUT_MS,
         DEFAULT_YANDEX_HEADERS_TIMEOUT_MS,
       ),
-      bodyTimeoutMs: readPositiveInt(env.YANDEX_BODY_TIMEOUT_MS, DEFAULT_YANDEX_BODY_TIMEOUT_MS),
+      bodyTimeoutMs: parsePositiveIntEnv(
+        env.YANDEX_BODY_TIMEOUT_MS,
+        DEFAULT_YANDEX_BODY_TIMEOUT_MS,
+      ),
     },
   };
 }

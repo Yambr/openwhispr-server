@@ -175,6 +175,7 @@ import fastifyMultipart from "@fastify/multipart";
 import { redactUrl } from "@openwhispr/byok-guard";
 import type { ExecutableTx, TransactionalDb } from "@openwhispr/data";
 import type { LitellmClient } from "@openwhispr/litellm-client";
+import { parsePositiveNumberEnv } from "@openwhispr/litellm-client";
 import Fastify, { type FastifyBaseLogger, type FastifyInstance } from "fastify";
 import { registerErrorHandler } from "./error-handler.js";
 import { i18nPlugin } from "./i18n/init.js";
@@ -952,18 +953,22 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   if (assemblyaiTokenUrl) tokenProviders.assemblyaiTokenUrl = assemblyaiTokenUrl;
   const deepgramTokenUrl = trimEnv(process.env.DEEPGRAM_TOKEN_URL);
   if (deepgramTokenUrl) tokenProviders.deepgramTokenUrl = deepgramTokenUrl;
+  // AUDIT-LIB-01 — built on the shared `parsePositiveNumberEnv` helper.
+  // A sentinel fallback of -1 maps both "unset" and "invalid" to
+  // `undefined` (= "use the bundled-default provider timeout"); the
+  // `onInvalid` hook preserves the operator-visible boot WARN that only
+  // fires for a present-but-malformed value.
+  const PARSE_TIMEOUT_SENTINEL = -1;
   const parseTimeoutEnv = (raw: string | undefined, name: string): number | undefined => {
-    const v = trimEnv(raw);
-    if (v === undefined) return undefined;
-    const n = Number(v);
-    if (!Number.isFinite(n) || n <= 0) {
-      bootLog.warn(
-        { event: "token.provider.timeout.invalid", env_var: name },
-        `${name} is not a positive number; falling back to the bundled-default provider timeout`,
-      );
-      return undefined;
-    }
-    return n;
+    const parsed = parsePositiveNumberEnv(raw, PARSE_TIMEOUT_SENTINEL, {
+      onInvalid: () => {
+        bootLog.warn(
+          { event: "token.provider.timeout.invalid", env_var: name },
+          `${name} is not a positive number; falling back to the bundled-default provider timeout`,
+        );
+      },
+    });
+    return parsed === PARSE_TIMEOUT_SENTINEL ? undefined : parsed;
   };
   const providerTotalTimeoutMs = parseTimeoutEnv(
     process.env.PROVIDER_TOTAL_TIMEOUT_MS,
