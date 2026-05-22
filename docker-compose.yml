@@ -308,6 +308,11 @@ services:
       # LITELLM_BASE_URL in .env to point at a corporate LiteLLM (LITELLM-05).
       LITELLM_BASE_URL: ${LITELLM_BASE_URL:-http://litellm:4000}
       LITELLM_MASTER_KEY: ${LITELLM_MASTER_KEY}
+      # D1 — realtime model alias the WSS /v1/realtime route forces onto
+      # the upstream `?model=` query string. Default `realtime-default`
+      # matches the litellm_config.yaml alias; operators retarget the
+      # alias in litellm_config, not here (OpenAI→Speaches one-line swap).
+      LITELLM_REALTIME_MODEL: ${LITELLM_REALTIME_MODEL:-realtime-default}
       # Phase 03 D-07 REVISED — pyannote.ai key is consumed by the Fastify
       # diarization route (apps/api/src/routes/diarization.ts in Plan 06),
       # NOT by the LiteLLM sidecar. Forwarded only to the api container.
