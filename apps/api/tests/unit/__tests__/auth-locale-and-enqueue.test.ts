@@ -149,9 +149,14 @@ describe("buildAuth — sendVerificationEmail enqueueEmail DI path", () => {
     // Phase 13 / Plan 01 — the worker's email_verification template
     // interpolates `{verification_url}` and `{name}`. The api now sends both
     // canonical keys; `url` is kept as a back-compat alias.
+    // R22 — sendVerificationEmail rewrites the link's `callbackURL` to the
+    // server-fixed `/api/auth/verify-email-complete` relative path before
+    // enqueueing, so both URL variables carry the appended query param.
+    const expectedUrl =
+      "https://api.localhost/api/auth/verify?token=abc&callbackURL=%2Fapi%2Fauth%2Fverify-email-complete";
     expect(payload.variables).toMatchObject({
-      url: "https://api.localhost/api/auth/verify?token=abc",
-      verification_url: "https://api.localhost/api/auth/verify?token=abc",
+      url: expectedUrl,
+      verification_url: expectedUrl,
       name: "ru@user.test",
     });
     // request_id is a fresh UUID
