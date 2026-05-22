@@ -21,6 +21,43 @@ change with no client code modifications.
 The desktop client lives in its own repository:
 **[github.com/openwhispr/openwhispr](https://github.com/openwhispr/openwhispr)**.
 
+## Screenshots
+
+The bundled Next.js web UI handles account onboarding for self-hosted
+deployments — sign-up, email verification, and sign-in.
+
+| Sign-up | Sign-in |
+| --- | --- |
+| ![OpenWhispr Server web UI — account sign-up screen](docs/images/signup.png) | ![OpenWhispr Server web UI — account sign-in screen](docs/images/signin.png) |
+
+## Why this exists
+
+OpenWhispr Server gives any organization a deployable, production-grade
+backend for the OpenWhispr desktop client without forcing a SaaS
+dependency.
+
+- **Self-hosted, open source end-to-end** — `git clone && docker compose up`;
+  no closed subsystems, no required SaaS.
+- **Open-source out of the box, corporate-LiteLLM-ready by env override** —
+  the bundled LiteLLM Proxy ships bare; point it at hosted providers via
+  `.env` keys, or swap in your internal LLM gateway with a single
+  `LITELLM_BASE_URL` change and no code modifications.
+- **Wire-compatible with the OpenWhispr desktop client** — every endpoint,
+  status code, error envelope, NDJSON chunk vocabulary, and channel-scheme
+  echo matches `BACKEND_SPEC.md` / `OAUTH_SPEC.md` / `SELF_HOSTING.md`
+  byte-for-byte.
+- **Multi-tenant Postgres with row-level security** — HA Postgres 17 with
+  RLS-enforced tenant isolation, property-tested boundaries.
+- **Built for scale** — BullMQ workers, anti-abuse rate limiting, and
+  horizontal autoscaling targeting 1000 concurrent active users per
+  installation.
+- **Full observability** — OTel SDK to Collector to Tempo + Mimir + Loki +
+  Grafana (LGTM stack).
+- **Bilingual from day one** — English and Russian runtime locales;
+  operators mount additional locale bundles without rebuilding.
+- **Reproducible deploys** — docker-compose for single-host self-host, an
+  in-repo Helm chart for Kubernetes.
+
 ## 30-second smoke (fresh clone)
 
 If you just want to confirm the repo boots before reading anything else:
@@ -68,39 +105,6 @@ pnpm --filter @openwhispr/web    test   # ~15s
 ```
 
 ---
-
-## Install the Helm chart
-
-OpenWhispr Server ships an in-repo Helm chart at `charts/openwhispr/`.
-Chart releases are decoupled from server releases — chart semver moves
-on the `chart-v*` tag namespace and the packaged chart + index.yaml are
-published to the repository's `gh-pages` branch via
-`helm/chart-releaser-action` (see
-[`.github/workflows/chart-release.yml`](./.github/workflows/chart-release.yml)
-and [STRUCT-03 research](./.planning/phases/15-repo-refactor-fsl-relicense-history-scrub-v2/15-RESEARCH-helm-location.md)).
-
-```bash
-# Register the Helm repository (one-time):
-helm repo add openwhispr https://Yambr.github.io/openwhispr-server
-helm repo update
-
-# Install:
-helm install openwhispr openwhispr/openwhispr --namespace openwhispr --create-namespace
-
-# Or pin to a specific chart version:
-helm install openwhispr openwhispr/openwhispr --version 1.0.0
-```
-
-Operators who want the OCI distribution channel (ghcr.io) instead of
-the GitHub Pages index — the `v*` server-release lane publishes the
-same chart at `oci://ghcr.io/yambr/charts/openwhispr` via
-[`.github/workflows/helm-release.yml`](./.github/workflows/helm-release.yml).
-
-> **Status: Phase 10 (i18n, docs, OSS housekeeping).** Wire surface
-> (Phase 2-5), operational substrate (Phase 6-7), load-test + SLOs
-> (Phase 8), Helm chart (Phase 9), and server-side + web-side i18n
-> (Phase 10 / 10-01..02) are all in place. This release closes the
-> documentation suite (DOCS-01..06).
 
 ## Quickstart — < 5 minutes from clone to first transcription
 
@@ -167,6 +171,39 @@ laptop with a warm Docker cache: under five minutes.
 If you need the full enterprise topology (Kubernetes HA, CloudNativePG,
 distributed MinIO, Mimir + Tempo + Loki), see [`docs/operations.md`](./docs/operations.md)
 and the Helm chart at `charts/openwhispr/`.
+
+## Install the Helm chart
+
+OpenWhispr Server ships an in-repo Helm chart at `charts/openwhispr/`.
+Chart releases are decoupled from server releases — chart semver moves
+on the `chart-v*` tag namespace and the packaged chart + index.yaml are
+published to the repository's `gh-pages` branch via
+`helm/chart-releaser-action` (see
+[`.github/workflows/chart-release.yml`](./.github/workflows/chart-release.yml)
+and [STRUCT-03 research](./.planning/phases/15-repo-refactor-fsl-relicense-history-scrub-v2/15-RESEARCH-helm-location.md)).
+
+```bash
+# Register the Helm repository (one-time):
+helm repo add openwhispr https://Yambr.github.io/openwhispr-server
+helm repo update
+
+# Install:
+helm install openwhispr openwhispr/openwhispr --namespace openwhispr --create-namespace
+
+# Or pin to a specific chart version:
+helm install openwhispr openwhispr/openwhispr --version 1.0.0
+```
+
+Operators who want the OCI distribution channel (ghcr.io) instead of
+the GitHub Pages index — the `v*` server-release lane publishes the
+same chart at `oci://ghcr.io/yambr/charts/openwhispr` via
+[`.github/workflows/helm-release.yml`](./.github/workflows/helm-release.yml).
+
+> **Status: Phase 10 (i18n, docs, OSS housekeeping).** Wire surface
+> (Phase 2-5), operational substrate (Phase 6-7), load-test + SLOs
+> (Phase 8), Helm chart (Phase 9), and server-side + web-side i18n
+> (Phase 10 / 10-01..02) are all in place. This release closes the
+> documentation suite (DOCS-01..06).
 
 ## Provider keys
 
@@ -272,24 +309,6 @@ Architecture Decision Records live in [`docs/adrs/`](./docs/adrs/).
 For vulnerability reports see [`SECURITY.md`](./SECURITY.md).
 Community conduct is governed by
 [`CODE_OF_CONDUCT.md`](./CODE_OF_CONDUCT.md) (Contributor Covenant 2.1).
-
-## Project goals
-
-OpenWhispr Server exists to give any organization a deployable,
-production-grade backend for the OpenWhispr Electron desktop client
-without forcing a SaaS dependency. The constraints that shape the
-architecture are:
-
-- **Wire compatibility byte-for-byte** with upstream `BACKEND_SPEC.md`
-  / `SELF_HOSTING.md` / `OAUTH_SPEC.md` (1556 lines of authoritative
-  spec). Every endpoint, status code, error envelope, NDJSON chunk
-  vocabulary, and channel-scheme echo matches.
-- **1000 concurrent active users in a single installation** validated
-  by the Phase 8 load harness against published p95 SLO budgets.
-- **Drop-in corporate-LiteLLM override** so an org's existing internal
-  LLM gateway (Bedrock proxy, vLLM, internal LiteLLM) replaces the
-  bundled proxy with a single env var, no code changes.
-- **Open source end-to-end** — no closed subsystems, no required SaaS.
 
 ## Tech stack (quick scan)
 
