@@ -58,11 +58,17 @@ cd "$ROOT"
 # `service "grafana" has neither an image nor a build context`. The
 # observability overlay must be layered BEFORE the load-test overlay so
 # the partial fragments merge onto a complete base.
+# Observability overlay (grafana/loki/tempo/mimir/otel-collector) — see the
+# comment above. Storage overlay (minio + S3_* defaults) — Phase 14's BYOK
+# guard refuses to boot the api when `S3_ENDPOINT` is unset AND the storage
+# overlay is not enabled; the load-test stack must layer it so the api
+# starts. Both overlays are slim-core extractions the load-test predates.
 COMPOSE_OBS="-f compose/docker-compose.observability.yml"
+COMPOSE_STORAGE="-f compose/docker-compose.storage.yml"
 if [ "$PROFILE" = "realistic" ]; then
-  COMPOSE_BASE="docker compose -f docker-compose.yml ${COMPOSE_OBS} -f compose/docker-compose.load-test.yml -f compose/docker-compose.load-test.realistic.yml --profile $COMPOSE_PROFILE"
+  COMPOSE_BASE="docker compose -f docker-compose.yml ${COMPOSE_OBS} ${COMPOSE_STORAGE} -f compose/docker-compose.load-test.yml -f compose/docker-compose.load-test.realistic.yml --profile $COMPOSE_PROFILE"
 else
-  COMPOSE_BASE="docker compose -f docker-compose.yml ${COMPOSE_OBS} -f compose/docker-compose.load-test.yml --profile $COMPOSE_PROFILE"
+  COMPOSE_BASE="docker compose -f docker-compose.yml ${COMPOSE_OBS} ${COMPOSE_STORAGE} -f compose/docker-compose.load-test.yml --profile $COMPOSE_PROFILE"
 fi
 if [ "${OPENWHISPR_LOADTEST_KEEP_STACK:-0}" = "1" ]; then
   trap 'printf "OPENWHISPR_LOADTEST_KEEP_STACK=1 — stack left running for forensic capture. Tear down with: %s down\n" "$COMPOSE_BASE" >&2' EXIT INT TERM
