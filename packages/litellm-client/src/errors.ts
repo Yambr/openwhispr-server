@@ -14,6 +14,8 @@
 // Threat T-03-03-01 (LITELLM_MASTER_KEY in error message): bodyText is
 // truncated to 200 chars and the auth header is NEVER passed through.
 
+import { redactSecretShapes } from "./redact.js";
+
 /**
  * Phase 41.f / HI-2 — thrown when the LiteLLM client is invoked without
  * the SSRF-wrapped undici dispatcher installed as the process-wide global.
@@ -66,16 +68,25 @@ export class LitellmUpstreamError extends Error {
   private declare readonly bodyText: string;
 
   constructor(status: number, bodyText: string, message?: string) {
-    // Truncate body to 200 chars in the default message so we never echo
-    // a verbose upstream payload (which could include secret-shaped
-    // provider responses) into our own log surface.
-    const truncated = bodyText.slice(0, 200);
+    // litellm-patterns A2 — REDACT credential-shape substrings BEFORE the
+    // truncation runs. Truncation alone is insufficient: a secret-shaped
+    // token in the FIRST 200 chars survives `slice(0, 200)` into
+    // `Error.message`. Redaction is ADDITIVE — it strengthens the
+    // LOCKER-05 "truncate AT CONSTRUCTION" contract; truncation stays.
+    // Both `bodyText` and the optional `message` override are redacted.
+    const truncated = redactSecretShapes(bodyText).slice(0, 200);
     // Phase 68 / Plan 68-01 — REVIEW litellm-client HIGH HI-1: the
     // optional `message` override is ALSO truncated at construction. The
     // LOCKER-05 contract is "truncate AT CONSTRUCTION" — passing the
     // override to `super()` verbatim let a caller route an untruncated
-    // upstream payload straight into `Error.message`.
-    super((message ?? `LiteLLM upstream returned ${status}: ${truncated}`).slice(0, 200));
+    // upstream payload straight into `Error.message`. A2 adds the
+    // redaction pass on the same override before truncation.
+    super(
+      redactSecretShapes(message ?? `LiteLLM upstream returned ${status}: ${truncated}`).slice(
+        0,
+        200,
+      ),
+    );
     this.name = "LitellmUpstreamError";
     this.status = status;
     // Non-enumerable: drops the field from JSON.stringify(err) entirely,
