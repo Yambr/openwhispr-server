@@ -50,6 +50,7 @@
 import rateLimit from "@fastify/rate-limit";
 import type { FastifyInstance, FastifyRequest } from "fastify";
 import fp from "fastify-plugin";
+import { LRUCache } from "lru-cache";
 import { GLOBAL_IP_CEILING } from "../config/rate-limits.js";
 
 export interface RateLimitPluginOptions {
@@ -70,6 +71,14 @@ export interface RateLimitPluginOptions {
    */
   globalIpCeiling?: number;
   /**
+   * Override for the maximum number of distinct IP buckets the
+   * in-process (no-Valkey) fallback store retains. Defaults to
+   * `IN_PROCESS_IP_STORE_MAX`. AUDIT-HARD-02 (LIB-2) — bounding this
+   * store closes an IP-spray memory-leak vector; tests inject a tiny
+   * number to exercise the LRU eviction path within a single suite.
+   */
+  inProcessIpStoreMax?: number;
+  /**
    * Hook invoked when EITHER tier emits a 429. Best-effort audit-log
    * fanout; the default (an inline recordAudit emission) is wired by
    * the buildApp seam — kept injectable so the unit test can capture
@@ -84,8 +93,25 @@ interface IpCounterStore {
   incr(key: string, ttlMs: number): Promise<number>;
 }
 
-function inProcessIpStore(): IpCounterStore {
-  const buckets = new Map<string, { count: number; resetAt: number }>();
+// AUDIT-HARD-02 (LIB-2) — bounded number of distinct IP buckets the
+// in-process (no-Valkey) fallback will track. An unbounded `Map` here is
+// a memory-leak vector under an IP-spray DoS (each forged source IP adds
+// a permanent entry). `lru-cache` evicts the least-recently-used bucket
+// past this cap; 50k distinct IPs in a 1-minute window is far beyond any
+// legitimate single-host self-host deployment.
+const IN_PROCESS_IP_STORE_MAX = 50_000;
+
+function inProcessIpStore(max: number = IN_PROCESS_IP_STORE_MAX): IpCounterStore {
+  // `ttl: IP_TIER_WINDOW_MS` makes entries self-expire on the same
+  // 1-minute boundary the previous `resetAt` field enforced. We still
+  // track `resetAt` inside the value so a hit that lands AFTER expiry
+  // (but before lru-cache's lazy purge) restarts the window cleanly,
+  // preserving the exact counter semantics: `incr` returns the running
+  // count within the current window.
+  const buckets = new LRUCache<string, { count: number; resetAt: number }>({
+    max,
+    ttl: IP_TIER_WINDOW_MS,
+  });
   return {
     async incr(key: string, ttlMs: number) {
       const now = Date.now();
@@ -177,7 +203,9 @@ async function rateLimitPluginInner(
     });
   }
 
-  const ipStore: IpCounterStore = redis ? redisIpStore(redis) : inProcessIpStore();
+  const ipStore: IpCounterStore = redis
+    ? redisIpStore(redis)
+    : inProcessIpStore(opts.inProcessIpStoreMax);
   const ipCeiling = opts.globalIpCeiling ?? GLOBAL_IP_CEILING;
 
   // ── Phase 6 D-RL1 ──────────────────────────────────────────────────
