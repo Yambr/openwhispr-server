@@ -443,6 +443,42 @@ describe("WSS /v1/realtime route", () => {
     expect((out as Record<string, unknown>).Authorization).toBeUndefined();
   });
 
+  it("buildRewriteRequestHeaders strips the client-origin 'OpenAI-Beta' header (R31 / T-03-07-06)", () => {
+    // R31 — OpenAI Realtime is GA. A desktop client sending
+    // `OpenAI-Beta: realtime=v1` would otherwise leak the retired
+    // Beta-API opt-in through Fastify -> LiteLLM -> OpenAI, which
+    // rejects it (`beta_api_shape_disabled`) and the WS closes 1011.
+    // The proxy is the GA contract boundary — it MUST strip the header
+    // regardless of what any client sends.
+    const rh = buildRewriteRequestHeaders(TEST_MASTER_KEY);
+    const out = rh(
+      {
+        // @ts-expect-error — literal client casing intentionally provided.
+        "OpenAI-Beta": "realtime=v1",
+        "content-type": "application/json",
+      },
+      { id: "r" },
+    );
+    // The Beta opt-in is gone in BOTH casings.
+    expect((out as Record<string, unknown>)["OpenAI-Beta"]).toBeUndefined();
+    expect((out as Record<string, unknown>)["openai-beta"]).toBeUndefined();
+  });
+
+  it("buildRewriteRequestHeaders strips 'openai-beta' in lowercase canonical Node casing (R31)", () => {
+    const rh = buildRewriteRequestHeaders(TEST_MASTER_KEY);
+    const out = rh({ "openai-beta": "realtime=v1" }, { id: "r" });
+    expect((out as Record<string, unknown>)["openai-beta"]).toBeUndefined();
+    expect((out as Record<string, unknown>)["OpenAI-Beta"]).toBeUndefined();
+  });
+
+  it("buildRewriteRequestHeaders preserves headers outside the strip set (R31 — targeted, not blanket)", () => {
+    // Regression guard: the OpenAI-Beta strip must not become a blanket
+    // header wipe. A benign header passes through untouched.
+    const rh = buildRewriteRequestHeaders(TEST_MASTER_KEY);
+    const out = rh({ "content-type": "application/json" }, { id: "r" });
+    expect((out as Record<string, unknown>)["content-type"]).toBe("application/json");
+  });
+
   it("preHandler tolerates a missing req.raw.url (line 145 fallback to req.url)", async () => {
     // Pin line 145 binary-expr idx 1. Drive the preHandler directly with
     // a stub request whose `raw.url` is undefined; it must read from
