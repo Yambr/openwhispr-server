@@ -42,7 +42,7 @@ surface, see `packages/contract-tests/src/negative-matrix.test.ts`
 
 | Route                              | Method | Auth   | Notes |
 | ---------------------------------- | ------ | ------ | ----- |
-| `/api/agent/stream`                | POST   | bearer | NDJSON; v3-era chunk vocab (text-delta, tool-call, tool-result, finish) |
+| `/api/agent/stream`                | POST   | bearer | NDJSON; chunk vocab `content` / `tool_call` / `done` (R32 — matches the desktop client's cloud stream consumer; `tool_call.arguments` is a raw JSON string; tools execute client-side so no `tool_result` is emitted) |
 | `/api/streaming-token`             | POST   | bearer | AssemblyAI v3 ephemeral token |
 | `/api/deepgram-streaming-token`    | POST   | bearer | Deepgram ephemeral token |
 | `/api/openai-realtime-token`       | POST   | bearer | OpenAI Realtime ephemeral client_secret |

@@ -85,12 +85,13 @@ function resolveModel(bodyModel: string | undefined): string {
   return bodyModel ?? process.env.DEFAULT_AGENT_MODEL ?? DEFAULT_AGENT_MODEL;
 }
 
-/** Emit a single finish chunk + end the response, if still writable. */
+/** Emit a single terminal `done` chunk + end the response, if still writable. */
 function endWithFinish(raw: import("node:http").ServerResponse, finishReason: string): void {
   /* v8 ignore next */
   if (raw.writableEnded) return;
   const chunk: StreamChunk = {
-    type: "finish",
+    // R32 — terminal marker the desktop client recognises is `type:"done"`.
+    type: "done",
     finishReason,
     usage: { promptTokens: 0, completionTokens: 0 },
   };
@@ -322,7 +323,8 @@ export const buildAgentStreamRoutes = (deps: AgentStreamDeps) =>
           req.log.warn({ err: (err as Error).message }, "agent.stream drain error");
           if (!raw.writableEnded) {
             const finish: StreamChunk = {
-              type: "finish",
+              // R32 — terminal marker the desktop client recognises.
+              type: "done",
               finishReason: "stream_error",
               usage: { promptTokens: 0, completionTokens: 0 },
             };

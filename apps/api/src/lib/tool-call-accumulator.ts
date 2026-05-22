@@ -3,8 +3,11 @@
 //
 // OpenAI Chat Completions streaming emits `delta.tool_calls[].function.arguments`
 // as JSON-string fragments keyed by `tool_calls[].index`. Fragments must be
-// concatenated by index across deltas; the consolidated args string is parsed
-// only on flush (when finish_reason === "tool_calls").
+// concatenated by index across deltas; the consolidated args string is
+// forwarded verbatim on flush (when finish_reason === "tool_calls"). R32 —
+// the consolidated string is NOT parsed server-side: the desktop client's
+// cloud stream consumer expects `arguments` as a raw JSON string and parses
+// it itself before executing the tool.
 //
 // Safety (T-04-03 mitigation): on finish_reason === "stop" with pending state
 // (LiteLLM#17246 shape), the caller MUST NOT flush — the partial tool-call
@@ -14,11 +17,19 @@
 // Coverage gate: ≥90/90/90/90 — every branch is hit by the seven Plan 04-02
 // behavior tests.
 
+// R32 — the immutable desktop client's cloud stream consumer
+// (ReasoningService.processTextStreamingCloud) strictly filters NDJSON
+// chunks on `type === "tool_call"` and reads `{ id, name, arguments }`,
+// where `arguments` is a JSON STRING (not a parsed object). The client
+// itself does `JSON.parse(arguments)` before executing the tool. Our
+// wire shape therefore uses snake_case `tool_call` and forwards the
+// accumulated arguments string verbatim.
 export interface ToolCallChunk {
-  type: "tool-call";
-  toolCallId: string;
-  toolName: string;
-  args: unknown;
+  type: "tool_call";
+  id: string;
+  name: string;
+  /** Raw accumulated JSON-string of the tool arguments — NOT parsed. */
+  arguments: string;
 }
 
 export interface ToolCallDelta {
@@ -43,14 +54,6 @@ interface PartialToolCall {
   args: string;
 }
 
-function parseArgsOrFallback(raw: string): unknown {
-  try {
-    return JSON.parse(raw || "{}");
-  } catch {
-    return { __unparsed: raw };
-  }
-}
-
 export function createToolCallAccumulator(): ToolCallAccumulator {
   const state = new Map<number, PartialToolCall>();
 
@@ -72,10 +75,13 @@ export function createToolCallAccumulator(): ToolCallAccumulator {
         const p = state.get(k)!;
         if (!p.name) continue;
         out.push({
-          type: "tool-call",
-          toolCallId: p.id ?? `tc_${k}`,
-          toolName: p.name,
-          args: parseArgsOrFallback(p.args),
+          type: "tool_call",
+          id: p.id ?? `tc_${k}`,
+          name: p.name,
+          // R32 — forward the accumulated arguments JSON string verbatim
+          // (default to "{}" when the model emitted no arguments). The
+          // client does its own JSON.parse; we do NOT parse here.
+          arguments: p.args || "{}",
         });
       }
       state.clear();
