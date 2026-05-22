@@ -190,6 +190,38 @@ describe("callProvider — _call-provider.ts shared helper", () => {
     }
   });
 
+  it("honors a caller-supplied totalTimeoutMs shorter than the default 5s budget", async () => {
+    // The default total budget is 5000ms; a 6000ms upstream delay would
+    // normally complete well within a longer budget but here the caller
+    // injects a 200ms ceiling, so the AbortController fires fast and the
+    // catch branch maps to the timed-out envelope. Proves the timeout is
+    // operator-tunable (env-driven) rather than a baked literal.
+    agent
+      .get(PROVIDER_HOST)
+      .intercept({ path: "/mint", method: "GET" })
+      .reply(200, { token: "ignored" })
+      .delay(6000);
+
+    const start = Date.now();
+    const result = await callProvider({
+      url: `${PROVIDER_HOST}/mint`,
+      method: "GET",
+      headers: { authorization: "ok" },
+      envVarName: "TEST_API_KEY",
+      providerLabel: "Test",
+      totalTimeoutMs: 200,
+    });
+    const elapsed = Date.now() - start;
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.status).toBe(503);
+      expect(result.message).toBe("Test token mint timed out");
+    }
+    // Aborted via the 200ms ceiling, NOT the 5s default — well under 5s.
+    expect(elapsed).toBeLessThan(4000);
+  }, 10_000);
+
   it("maps connect-failure (no responder, net-disconnected) to 503 timed-out envelope", async () => {
     // No intercept registered AND disableNetConnect() is on, so the
     // dispatcher throws synchronously inside fetch — the catch branch
