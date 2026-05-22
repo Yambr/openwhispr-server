@@ -28,21 +28,28 @@
 
 import { Agent, fetch, getGlobalDispatcher, setGlobalDispatcher } from "undici";
 
-/** Total per-call budget (connect + body). 5s per D-20.
+/** Bundled-default total per-call budget (connect + body). 5s per D-20.
  *
  *  D-20 also calls for a 3s connect-only ceiling. We install a process-wide
- *  `Agent({connect:{timeout:3000}})` as the global dispatcher EXACTLY ONCE
+ *  `Agent({connect:{timeout:N}})` as the global dispatcher EXACTLY ONCE
  *  on first call (idempotent — re-entrant calls leave any test-injected
  *  MockAgent in place). The fetch call below then uses the global
  *  dispatcher rather than passing a per-call dispatcher, so vitest tests
  *  using `setGlobalDispatcher(mockAgent)` continue to intercept correctly.
  *  In production this gives connect-stalls a 3s ceiling and total-stalls a
- *  5s ceiling (AbortController). */
-const TOTAL_TIMEOUT_MS = 5000;
-const CONNECT_TIMEOUT_MS = 3000;
+ *  5s ceiling (AbortController).
+ *
+ *  Both ceilings are operator-tunable: production threads
+ *  `PROVIDER_TOTAL_TIMEOUT_MS` / `PROVIDER_CONNECT_TIMEOUT_MS` from
+ *  `apps/api/src/index.ts` (the env-reading boundary — LOCKER-01) into the
+ *  per-call `opts.totalTimeoutMs` / `opts.connectTimeoutMs`. These literals
+ *  stay ONLY as the fallback when no operator value is injected (test
+ *  isolation or a deployment that never sets the env vars). */
+const DEFAULT_TOTAL_TIMEOUT_MS = 5000;
+const DEFAULT_CONNECT_TIMEOUT_MS = 3000;
 
 let dispatcherInstalled = false;
-function ensureProviderDispatcher(): void {
+function ensureProviderDispatcher(connectTimeoutMs: number): void {
   if (dispatcherInstalled) return;
   // Detect a real default Agent (no MockAgent / test override). Heuristic:
   // we own the global dispatcher only if its constructor name is "Agent"
@@ -50,7 +57,7 @@ function ensureProviderDispatcher(): void {
   // false, but their MockAgent's name is "MockAgent" — we skip overwriting.
   const current = getGlobalDispatcher();
   if (current?.constructor?.name === "Agent") {
-    setGlobalDispatcher(new Agent({ connect: { timeout: CONNECT_TIMEOUT_MS } }));
+    setGlobalDispatcher(new Agent({ connect: { timeout: connectTimeoutMs } }));
   }
   dispatcherInstalled = true;
 }
@@ -64,6 +71,22 @@ export interface CallProviderOptions {
   envVarName: string;
   /** Human-readable provider name surfaced in every 503 message. */
   providerLabel: string;
+  /**
+   * Operator-tunable total per-call budget (connect + body) in
+   * milliseconds. Production threads `PROVIDER_TOTAL_TIMEOUT_MS` here from
+   * the index.ts env-reading boundary; omitted callers fall back to
+   * `DEFAULT_TOTAL_TIMEOUT_MS` (5000ms / D-20).
+   */
+  totalTimeoutMs?: number;
+  /**
+   * Operator-tunable TCP-handshake ceiling in milliseconds, applied when
+   * this is the FIRST `callProvider` invocation that installs the
+   * process-wide undici `Agent`. Production threads
+   * `PROVIDER_CONNECT_TIMEOUT_MS` here; omitted callers fall back to
+   * `DEFAULT_CONNECT_TIMEOUT_MS` (3000ms / D-20). Subsequent calls cannot
+   * change the connect ceiling — the dispatcher is installed once.
+   */
+  connectTimeoutMs?: number;
 }
 
 export type CallProviderResult =
@@ -100,9 +123,9 @@ function buildMessage(
 }
 
 export async function callProvider(opts: CallProviderOptions): Promise<CallProviderResult> {
-  ensureProviderDispatcher();
+  ensureProviderDispatcher(opts.connectTimeoutMs ?? DEFAULT_CONNECT_TIMEOUT_MS);
   const ctrl = new AbortController();
-  const timer = setTimeout(() => ctrl.abort(), TOTAL_TIMEOUT_MS);
+  const timer = setTimeout(() => ctrl.abort(), opts.totalTimeoutMs ?? DEFAULT_TOTAL_TIMEOUT_MS);
   try {
     // Phase 52 / Plan 52-04b — `exactOptionalPropertyTypes: true`
     // refuses `body: undefined` (RequestInit's body is optional, must
