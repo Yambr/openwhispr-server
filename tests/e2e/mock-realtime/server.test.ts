@@ -292,12 +292,20 @@ describe("mock-realtime WS server", () => {
     await new Promise<void>((res) => ws.once("close", () => res()));
   });
 
-  it("R31: append→commit emits committed + transcription delta + completed with a transcript", async () => {
+  it("R31: configured session + append→commit emits committed + transcription delta + completed with a transcript", async () => {
     handle = await startMockRealtimeServer({ port: 0 });
     const ws = new WebSocket(gaUrl());
     await new Promise<void>((res) => ws.once("message", () => res())); // drain session.created
     const frames: Array<{ type?: string; transcript?: string; delta?: string }> = [];
     ws.on("message", (d) => frames.push(JSON.parse(d.toString())));
+    // R31 DEFECT 6 — a GA transcription session must be CONFIGURED (a
+    // `session.update` received) before a commit yields a transcript.
+    ws.send(
+      JSON.stringify({
+        type: "session.update",
+        session: { type: "transcription", audio: { input: { format: { type: "audio/pcm" } } } },
+      }),
+    );
     ws.send(
       JSON.stringify({
         type: "input_audio_buffer.append",
@@ -313,6 +321,31 @@ describe("mock-realtime WS server", () => {
       (f) => f.type === "conversation.item.input_audio_transcription.completed",
     );
     expect(completed?.transcript).toBe(MOCK_TRANSCRIPT);
+    ws.close();
+    await new Promise<void>((res) => ws.once("close", () => res()));
+  });
+
+  it("R31 DEFECT 6: an UNCONFIGURED session (no session.update) commit yields committed but NO transcript", async () => {
+    // Mirrors the live symptom (segments:0, textLength:0) a preconfigured
+    // client hits when the relay fails to inject its own session.update.
+    handle = await startMockRealtimeServer({ port: 0 });
+    const ws = new WebSocket(gaUrl());
+    await new Promise<void>((res) => ws.once("message", () => res())); // drain session.created
+    const frames: Array<{ type?: string }> = [];
+    ws.on("message", (d) => frames.push(JSON.parse(d.toString())));
+    // NO session.update — the transcription session is never configured.
+    ws.send(
+      JSON.stringify({
+        type: "input_audio_buffer.append",
+        audio: Buffer.alloc(2_048).toString("base64"),
+      }),
+    );
+    ws.send(JSON.stringify({ type: "input_audio_buffer.commit" }));
+    await new Promise<void>((res) => setTimeout(res, 200));
+    const types = frames.map((f) => f.type);
+    expect(types).toContain("input_audio_buffer.committed");
+    expect(types).not.toContain("conversation.item.input_audio_transcription.completed");
+    expect(types).not.toContain("conversation.item.input_audio_transcription.delta");
     ws.close();
     await new Promise<void>((res) => ws.once("close", () => res()));
   });
@@ -336,6 +369,13 @@ describe("mock-realtime WS server", () => {
     await new Promise<void>((res) => ws.once("message", () => res()));
     const frames: Array<{ type?: string }> = [];
     ws.on("message", (d) => frames.push(JSON.parse(d.toString())));
+    // R31 DEFECT 6 — configure the session before committing.
+    ws.send(
+      JSON.stringify({
+        type: "session.update",
+        session: { type: "transcription", audio: { input: { format: { type: "audio/pcm" } } } },
+      }),
+    );
     ws.send(Buffer.alloc(4_096)); // binary audio frame
     ws.send(JSON.stringify({ type: "input_audio_buffer.commit" }));
     await new Promise<void>((res) => setTimeout(res, 200));

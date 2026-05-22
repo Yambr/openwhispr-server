@@ -17,7 +17,11 @@ import type { ExecutableTx, TransactionalDb } from "@openwhispr/data";
 import type { LitellmClient } from "@openwhispr/litellm-client";
 import type { FastifyInstance } from "fastify";
 import type { DiarizationConfig } from "../config/diarization.js";
-import { DEFAULT_OPENAI_REALTIME_URL, type RealtimeConfig } from "../config/realtime.js";
+import {
+  DEFAULT_OPENAI_REALTIME_URL,
+  DEFAULT_REALTIME_TRANSCRIPTION,
+  type RealtimeConfig,
+} from "../config/realtime.js";
 import type { WebSearchConfig } from "../config/web-search.js";
 import type { RedisLike } from "../lib/idempotency-cache.js";
 import type { AuthLike } from "../middleware/dual-auth.js";
@@ -560,6 +564,11 @@ export function buildAllRoutes(deps: AllRoutesDeps): readonly RoutePlugin[] {
         ...(realtimeConfig?.openaiRealtimeModel
           ? { openaiRealtimeModel: realtimeConfig.openaiRealtimeModel }
           : {}),
+        // R31 DEFECT 6 — transcription-session config the relay injects on
+        // upstream open (the preconfigured cloud client never sends its
+        // own `session.update`). Falls back to all-defaults when no
+        // `realtimeConfig` was threaded.
+        transcription: realtimeConfig?.transcription ?? DEFAULT_REALTIME_TRANSCRIPTION,
       };
       plugins.push(buildRealtimeRoutes(realtimeDeps));
     }

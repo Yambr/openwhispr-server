@@ -34,6 +34,14 @@ import {
 const TEST_USER = "11111111-1111-1111-1111-111111111111";
 const TEST_MASTER_KEY = "sk-litellm-master-test-only";
 const TEST_REALTIME_MODEL = "realtime-default";
+// R31 DEFECT 6 — transcription config the relay injects on upstream open.
+const TEST_TRANSCRIPTION = {
+  model: "gpt-4o-transcribe-diarize",
+  inputAudioRate: 24_000,
+  vadThreshold: 0.6,
+  vadSilenceMs: 600,
+  vadPrefixPaddingMs: 500,
+} as const;
 
 interface UpstreamCapture {
   url?: string;
@@ -106,6 +114,7 @@ async function buildApp(opts: {
     realtimeModel: TEST_REALTIME_MODEL,
     backend: "litellm",
     openaiRealtimeUrl: "wss://api.openai.com/v1/realtime",
+    transcription: TEST_TRANSCRIPTION,
     ...opts.deps,
   };
   await app.register(buildRealtimeRoutes(deps));
@@ -143,6 +152,7 @@ describe("buildUpstreamUrl — forces ?intent=transcription + ?model/?user injec
     realtimeModel: TEST_REALTIME_MODEL,
     backend: "litellm",
     openaiRealtimeUrl: "wss://api.openai.com/v1/realtime",
+    transcription: TEST_TRANSCRIPTION,
   };
 
   it("litellm mode: forces ?intent=transcription, ?model and ?user", () => {
@@ -208,6 +218,7 @@ describe("buildUpstreamHeaders — credential swap + NO OpenAI-Beta header", () 
     realtimeModel: TEST_REALTIME_MODEL,
     backend: "litellm",
     openaiRealtimeUrl: "wss://api.openai.com/v1/realtime",
+    transcription: TEST_TRANSCRIPTION,
   };
 
   it("litellm mode: master-key bearer + spend-logs metadata, NO OpenAI-Beta", () => {
@@ -339,8 +350,30 @@ describe("WSS /v1/realtime route — relay behaviour", () => {
     });
     expect(firstFrame.type).toBe("transcription_session.created");
 
-    // The client sends a Beta transcription_session.update; the upstream
-    // must receive the GA session.update{ session.type: "transcription" }.
+    // R31 DEFECT 6 — the relay ITSELF injects a GA session.update on
+    // upstream open (the preconfigured client may send none). Wait for it.
+    await new Promise<void>((resolve) => {
+      const check = () => {
+        if (upstream?.received.some((f) => f.type === "session.update")) resolve();
+        else setTimeout(check, 10);
+      };
+      check();
+    });
+    const relayInjected = upstream.received.find((f) => f.type === "session.update");
+    expect(relayInjected).toBeDefined();
+    const relaySession = relayInjected?.session as Record<
+      string,
+      Record<string, Record<string, Record<string, unknown>>>
+    >;
+    // The relay-originated frame carries the operator-configured model.
+    expect(relaySession.type).toBe("transcription");
+    expect(relaySession.audio.input.transcription).toEqual({
+      model: TEST_TRANSCRIPTION.model,
+    });
+
+    // The client sends its OWN Beta transcription_session.update; the
+    // upstream must receive a SECOND GA session.update{ type:transcription }
+    // with the flat Beta `input_audio_format` restructured to nested GA.
     ws.send(
       JSON.stringify({
         type: "transcription_session.update",
@@ -349,14 +382,18 @@ describe("WSS /v1/realtime route — relay behaviour", () => {
     );
     await new Promise<void>((resolve) => {
       const check = () => {
-        if (upstream?.received.some((f) => f.type === "session.update")) resolve();
+        if ((upstream?.received.filter((f) => f.type === "session.update").length ?? 0) >= 2)
+          resolve();
         else setTimeout(check, 10);
       };
       check();
     });
-    const gaUpdate = upstream.received.find((f) => f.type === "session.update");
-    expect(gaUpdate).toBeDefined();
-    const gaSession = gaUpdate?.session as Record<string, Record<string, Record<string, unknown>>>;
+    const clientUpdate = upstream.received.filter((f) => f.type === "session.update")[1];
+    expect(clientUpdate).toBeDefined();
+    const gaSession = clientUpdate?.session as Record<
+      string,
+      Record<string, Record<string, unknown>>
+    >;
     expect(gaSession.type).toBe("transcription");
     // The flat Beta `input_audio_format: "pcm16"` must be restructured
     // into the nested GA `audio.input.format` object (R31 DEFECT 4).

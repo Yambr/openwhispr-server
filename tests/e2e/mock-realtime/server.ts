@@ -57,6 +57,14 @@ export interface StopHandle {
   url: string;
   /** Closes all open connections + the underlying Fastify HTTP server. */
   stop: () => Promise<void>;
+  /**
+   * R31 DEFECT 6 — every `session.update` frame the mock has received on
+   * the upstream leg, in arrival order. The preconfigured-mode regression
+   * test asserts the RELAY itself injects a GA `session.update` (the
+   * silent cloud client never sends one). A relay that stops injecting
+   * leaves this array empty → the test FAILS.
+   */
+  receivedSessionUpdates: () => ReadonlyArray<Record<string, unknown>>;
 }
 
 /** WS close code used when the mock rejects a Beta-shaped upgrade. */
@@ -168,6 +176,11 @@ export async function startMockRealtimeServer(
     close: (code?: number, reason?: string) => void;
   }>();
 
+  // R31 DEFECT 6 — record every `session.update` frame received on the
+  // upstream leg so the preconfigured-mode test can assert the relay
+  // ORIGINATED one (the silent cloud client never sends its own).
+  const sessionUpdates: Array<Record<string, unknown>> = [];
+
   app.get("/v1/realtime", { websocket: true }, (socket, req) => {
     openSockets.add(socket);
     socket.on("close", () => openSockets.delete(socket));
@@ -255,6 +268,8 @@ export async function startMockRealtimeServer(
             return;
           }
         }
+        // R31 DEFECT 6 — record the frame for the preconfigured-mode test.
+        sessionUpdates.push(msg as Record<string, unknown>);
         // GA acknowledges a session.update with session.updated, echoing
         // the session payload back so the test can assert the translated
         // GA shape round-trips.
@@ -289,6 +304,22 @@ export async function startMockRealtimeServer(
               },
             }),
           );
+          return;
+        }
+        // R31 DEFECT 6 — a GA transcription session that was never
+        // configured (no `session.update` received) transcribes NOTHING.
+        // The mock emits committed but NO transcript when the session was
+        // never configured — mirroring the live symptom (segments:0,
+        // textLength:0, commit timeout) a preconfigured client hits when
+        // the relay fails to inject its own `session.update`.
+        if (assertGaShape && sessionUpdates.length === 0) {
+          socket.send(
+            JSON.stringify({
+              type: "input_audio_buffer.committed",
+              item_id: `item_${Date.now()}`,
+            }),
+          );
+          appendedAudioBytes = 0;
           return;
         }
         const itemId = `item_${Date.now()}`;
@@ -326,6 +357,7 @@ export async function startMockRealtimeServer(
 
   return {
     url,
+    receivedSessionUpdates: () => sessionUpdates,
     stop: async () => {
       for (const socket of openSockets) {
         socket.close(1000, "server stopping");

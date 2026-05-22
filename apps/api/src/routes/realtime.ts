@@ -47,6 +47,19 @@
 //     session that rejects the transcription `session.update` with
 //     `invalid_parameter`. The relay therefore FORCES `?intent=transcription`
 //     and sends NO conversational `?model=` in direct mode.
+//   * DEFECT 6 — the real cloud client runs PRECONFIGURED and NEVER sends
+//     a `transcription_session.update` at all (`ipcHandlers.js` sets
+//     `preconfigured: isCloud`; `openaiRealtimeStreaming.js:135` comment:
+//     "sending an update would strip language and noise-reduction"). The
+//     immutable client assumes Design A — the SERVER configures the
+//     transcription session at ephemeral-token-mint time. We run Design B
+//     (reverse-proxy relay, no ephemeral token); with a silent client a
+//     translate-only relay configures NOTHING → GA transcribes nothing →
+//     `segments:0, textLength:0`. Fix: the relay ITSELF injects a GA
+//     `session.update` on upstream open (see `buildRelaySessionUpdateFrame`),
+//     and swallows the resulting `session.updated` echo for that one
+//     self-injected frame. A non-preconfigured client's OWN later
+//     `session.update` is still translated + forwarded (DEFECT 4 path).
 //
 // ─── Beta↔GA translation contract (R31) ────────────────────────────────
 // Implemented as pure functions in lib/realtime-frame-translate.ts:
@@ -113,7 +126,9 @@ import { type RawData, WebSocket } from "ws";
 import type { RealtimeBackend } from "../config/realtime.js";
 import { AuthError } from "../errors.js";
 import {
+  buildRelaySessionUpdateFrame,
   parseRealtimeFrame,
+  type RelayTranscriptionConfig,
   translateClientToUpstream,
   translateUpstreamToClient,
 } from "../lib/realtime-frame-translate.js";
@@ -179,6 +194,14 @@ export interface RealtimeDeps {
    * deps for `litellm` mode need not supply it.
    */
   openaiRealtimeModel?: string;
+  /**
+   * R31 DEFECT 6 — transcription-session config the relay injects on
+   * upstream open. The preconfigured cloud client never sends its own
+   * `session.update`, so the relay must ORIGINATE one to configure the GA
+   * transcription session. Required at runtime for BOTH backends;
+   * routes/index.ts threads it from `realtimeConfig.transcription`.
+   */
+  transcription: RelayTranscriptionConfig;
 }
 
 /**
@@ -293,10 +316,25 @@ export function buildUpstreamHeaders(
  * Exported for direct unit-testing with a pair of in-memory `ws` sockets.
  * Wires both directions and the close/error propagation; returns once the
  * listeners are attached (the bridge lives for the socket lifetime).
+ *
+ * R31 DEFECT 6 — RELAY-ORIGINATED SESSION CONFIG. On `upstreamSocket`
+ * open, BEFORE flushing any buffered client frame, the relay injects its
+ * own GA `session.update` (built from `transcription`) to configure the
+ * GA transcription session. The immutable cloud client runs PRECONFIGURED
+ * and never sends its own `session.update` (see
+ * `buildRelaySessionUpdateFrame` for the full Design-A-vs-B rationale) —
+ * without this injection the GA session is never configured and
+ * transcribes nothing. The `session.updated` echo for this self-injected
+ * update is SWALLOWED (the preconfigured client already completed its
+ * startup handshake on `transcription_session.created`; a
+ * non-preconfigured client that later sends its OWN `session.update`
+ * still has THAT echo translated and forwarded — only the relay's first
+ * self-injected echo is dropped).
  */
 export function bridgeRealtimeSockets(
   clientSocket: WebSocket,
   upstreamSocket: WebSocket,
+  transcription: RelayTranscriptionConfig,
   log?: { warn: (obj: unknown, msg: string) => void },
 ): void {
   // Buffer client frames that arrive before the upstream WS is OPEN —
@@ -305,6 +343,16 @@ export function bridgeRealtimeSockets(
   // entry is a [raw, isBinary] tuple so binary-ness survives buffering.
   const pendingTuples: Array<[RawData, boolean]> = [];
   let upstreamOpen = upstreamSocket.readyState === WebSocket.OPEN;
+
+  // R31 DEFECT 6 — the relay injects exactly one `session.update` on
+  // upstream open. GA replies with a `session.updated` echo for it; that
+  // ONE echo must be swallowed (it is unsolicited from the client's point
+  // of view). `relaySessionUpdateEchoPending` is true between the inject
+  // and the matching echo; the FIRST `session.updated` seen while it is
+  // true is dropped, and the flag is cleared so every subsequent
+  // `session.updated` (a non-preconfigured client's own update echo) is
+  // translated and forwarded normally.
+  let relaySessionUpdateEchoPending = false;
 
   const forwardClientFrame = (raw: RawData, isBinary: boolean): void => {
     if (isBinary) {
@@ -334,6 +382,13 @@ export function bridgeRealtimeSockets(
 
   upstreamSocket.on("open", () => {
     upstreamOpen = true;
+    // R31 DEFECT 6 — configure the GA transcription session FIRST. The
+    // preconfigured cloud client never sends its own `session.update`, so
+    // the relay originates one. This MUST go out before any buffered
+    // client `input_audio_buffer.append` so the session is configured
+    // before audio arrives.
+    relaySessionUpdateEchoPending = true;
+    upstreamSocket.send(JSON.stringify(buildRelaySessionUpdateFrame(transcription)));
     for (const [raw, isBinary] of pendingTuples) {
       forwardClientFrame(raw, isBinary);
     }
@@ -352,6 +407,16 @@ export function bridgeRealtimeSockets(
         { event: "realtime.frame.dropped", direction: "upstream_to_client", reason: parsed.reason },
         "dropped malformed realtime frame (upstream -> client)",
       );
+      return;
+    }
+    // R31 DEFECT 6 — swallow the `session.updated` echo for the relay's
+    // OWN self-injected `session.update`. The preconfigured client did
+    // not send an update and would receive an unsolicited
+    // `transcription_session.updated`; while harmless to that client's
+    // state machine, dropping it keeps the client-visible frame stream
+    // faithful to what a Design-A preconfigured session looks like.
+    if (relaySessionUpdateEchoPending && parsed.frame.type === "session.updated") {
+      relaySessionUpdateEchoPending = false;
       return;
     }
     const translated = translateUpstreamToClient(parsed.frame);
@@ -450,7 +515,7 @@ export const buildRealtimeRoutes = (deps: RealtimeDeps) =>
           headers,
           handshakeTimeout: 10_000,
         });
-        bridgeRealtimeSockets(clientSocket, upstreamSocket, req.log);
+        bridgeRealtimeSockets(clientSocket, upstreamSocket, deps.transcription, req.log);
       },
     );
   };

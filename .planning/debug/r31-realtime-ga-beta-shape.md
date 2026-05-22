@@ -1,10 +1,95 @@
 ---
-status: resolved
-trigger: "R31 (client-filed blocker, reopened THRICE) — control path fixed by fcea86f9 but data path not bridged: session opens, audio sent (134KB), zero transcription results back (segments:0, textLength:0), commit timeout."
+status: awaiting_human_verify
+trigger: "R31 (client-filed blocker, reopened FOURTH time) — c069f369's betaToGaSessionPayload transform translates a session.update frame the REAL cloud client (preconfigured mode) NEVER SENDS. Relay never configures the GA transcription session → segments:0, textLength:0, commit timeout."
 created: 2026-05-22T10:46:59Z
-updated: 2026-05-22T16:45:00Z
+updated: 2026-05-22T17:15:00Z
 resolved_commit: fcea86f9
 ---
+
+## RESOLVED 2026-05-22 (FOURTH ROUND — DEFECT 6) — LIVE VERIFIED PRECONFIGURED
+
+The relay now ORIGINATES the GA transcription `session.update` itself on
+upstream open — Design B's equivalent of Design A's ephemeral-token mint.
+
+What changed:
+- `lib/realtime-frame-translate.ts` — new pure builder
+  `buildRelaySessionUpdateFrame(config)` producing the canonical GA nested
+  `session.update` (type:transcription, audio.input.{format,transcription,
+  turn_detection}).
+- `routes/realtime.ts` — `bridgeRealtimeSockets` now takes a
+  `RelayTranscriptionConfig`; on `upstream.on("open")` it sends the
+  relay-originated `session.update` BEFORE flushing buffered client
+  frames. The `session.updated` echo for that ONE self-injected frame is
+  swallowed; a non-preconfigured client's OWN later `session.update` still
+  gets translated + forwarded (DEFECT 4 path retained). Carried on BOTH
+  backends (`direct` + `litellm`).
+- `config/realtime.ts` — `RealtimeTranscriptionConfig` (model + audio rate
+  + server_vad knobs), env-driven via `REALTIME_TRANSCRIPTION_MODEL`,
+  `REALTIME_INPUT_AUDIO_RATE`, `REALTIME_VAD_*`. Default model
+  `gpt-4o-transcribe` (broadly-available GA; `gpt-4o-transcribe-diarize`
+  needs a special org grant — confirmed live by an `invalid_parameter`
+  rejection). LOCKER-01/03 clean — no hardcoded literals in route code.
+
+Tests:
+- NEW preconfigured-mode integration tests (direct + litellm): a silent
+  client (NO session.update) → relay-injected config asserted via the
+  mock's `receivedSessionUpdates()` → non-empty transcript asserted. The
+  GA-asserting mock now GATES the transcript on a configured session, so a
+  relay that stops injecting fails at the test level.
+- Non-preconfigured integration tests retained (client sends its own
+  update).
+- Unit tests for `buildRelaySessionUpdateFrame` + the new config knobs.
+- All suites green: 72 realtime/config unit + 30 mock-realtime + 8 R31
+  integration (incl. 2 new preconfigured) = 110 tests passing.
+
+LIVE VERIFIED (real OpenAI GA, REALTIME_BACKEND=direct default, real
+OPENAI_API_KEY, real docker compose stack, rebuilt api image): a WS client
+simulating the cloud client EXACTLY in PRECONFIGURED mode — it sent NO
+session.update, only `input_audio_buffer.append` (real 24kHz speech) +
+`.commit` — received back the full transcript:
+  "The quick brown fox jumps over the lazy dog. Testing real-time
+   transcription."
+textLength:77, 15 transcription deltas + completed — the exact inverse of
+the reported symptom (segments:0, textLength:0, commit timeout). The relay
+self-injected the GA session config; the silent client never configured
+anything itself.
+
+PRECONFIGURED-vs-NON-PRECONFIGURED COVERAGE (honest accounting — the
+previous round's miss was testing the wrong mode):
+- Preconfigured (silent client): covered by 2 new integration tests AND
+  the live run above.
+- Non-preconfigured (client sends its own session.update): covered by the
+  retained integration tests + the bidirectional unit test; the relay
+  translates the client's flat Beta payload (DEFECT 4 path) and forwards
+  the resulting `session.updated` echo (only the relay's FIRST self-
+  injected echo is swallowed).
+
+## REOPENED 2026-05-22 — FOURTH ROUND (DEFECT 6: preconfigured client sends NO session.update)
+
+c069f369 added `betaToGaSessionPayload` to translate the client's
+`transcription_session.update` frame flat→nested. But the REAL cloud
+desktop client runs in PRECONFIGURED mode (`ipcHandlers.js:5090`
+`preconfigured: isCloud` — always true for cloud) and DELIBERATELY sends
+NO `session.update` (`openaiRealtimeStreaming.js:135` — explicit comment:
+"sending an update would strip language and noise-reduction").
+
+Design mismatch: the immutable client assumes Design A (server configures
+the transcription session at ephemeral-token-mint time, client stays
+silent). We run Design B (reverse-proxy WS relay, no ephemeral token). In
+Design B with a silent client, NOBODY configures the transcription
+session — the client won't, the relay only translated/forwarded frames.
+
+FIX (DEFECT 6): In Design B the RELAY is the place the session gets
+configured. On upstream WS open, the relay ITSELF injects a GA
+`session.update` carrying the operator-configured transcription config,
+BEFORE flushing buffered client frames. The `session.updated` echo for
+the relay's self-injected update is SWALLOWED (the preconfigured client
+already resolved on `transcription_session.created`; a non-preconfigured
+client's own later `session.update` still gets its echo forwarded).
+
+The previous round's miss: the integration test had the test client SEND
+a session.update — exercising NON-preconfigured mode only. That is why
+c069f369 looked green and failed live.
 
 ## RESOLVED 2026-05-22 (data-path round) — DEFECT 4 + DEFECT 5
 

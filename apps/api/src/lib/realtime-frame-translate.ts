@@ -254,6 +254,80 @@ function gaToBetaSessionPayload(session: Record<string, unknown>): Record<string
 }
 
 /**
+ * R31 DEFECT 6 — the transcription-session config the relay-originated
+ * `session.update` carries. Mirrors `RealtimeTranscriptionConfig` in
+ * `config/realtime.ts`; kept as a local interface so this pure module has
+ * no dependency on the config layer.
+ */
+export interface RelayTranscriptionConfig {
+  /** GA transcription model name. */
+  model: string;
+  /** PCM input sample rate (Hz). */
+  inputAudioRate: number;
+  /** server_vad turn-detection parameters. */
+  vadThreshold: number;
+  vadSilenceMs: number;
+  vadPrefixPaddingMs: number;
+}
+
+/**
+ * Build the GA `session.update` frame the relay ORIGINATES on upstream
+ * open (R31 DEFECT 6).
+ *
+ * WHY THE RELAY ORIGINATES THIS FRAME
+ * ===================================
+ * The immutable cloud desktop client runs in PRECONFIGURED mode
+ * (`ipcHandlers.js` sets `preconfigured: isCloud`, always true on the
+ * cloud path). In that mode it DELIBERATELY never sends a
+ * `session.update` — its comment (`openaiRealtimeStreaming.js:135`) reads
+ * "Server-side ephemeral token already configured the session; sending an
+ * update would strip language and noise-reduction." The client assumes
+ * Design A: the server configures the transcription session at
+ * ephemeral-token-mint time.
+ *
+ * We run Design B — a reverse-proxy WS relay, no ephemeral token. With a
+ * silent (preconfigured) client, NOBODY configures the GA transcription
+ * session: the client won't, and a translate-only relay only ever
+ * restructures frames the client actually sends. The session stays
+ * unconfigured → GA transcribes nothing → `segments:0, textLength:0`,
+ * commit timeout (the exact reported symptom).
+ *
+ * The fix: in Design B the RELAY is the configuration point. It injects
+ * this GA `session.update` itself on upstream open — exactly what Design
+ * A's ephemeral-token mint did. The frame is the canonical GA nested
+ * shape (the same shape `betaToGaSessionPayload` produces; this builder
+ * ORIGINATES it rather than translating a client frame).
+ *
+ * GA shape produced:
+ *   { type: "session.update",
+ *     session: { type: "transcription",
+ *       audio: { input: {
+ *         format: { type: "audio/pcm", rate: <inputAudioRate> },
+ *         transcription: { model: <model> },
+ *         turn_detection: { type: "server_vad", threshold, ... } } } } }
+ */
+export function buildRelaySessionUpdateFrame(config: RelayTranscriptionConfig): RealtimeFrame {
+  return {
+    type: "session.update",
+    session: {
+      type: "transcription",
+      audio: {
+        input: {
+          format: { type: "audio/pcm", rate: config.inputAudioRate },
+          transcription: { model: config.model },
+          turn_detection: {
+            type: "server_vad",
+            threshold: config.vadThreshold,
+            silence_duration_ms: config.vadSilenceMs,
+            prefix_padding_ms: config.vadPrefixPaddingMs,
+          },
+        },
+      },
+    },
+  };
+}
+
+/**
  * Translate a CLIENT→UPSTREAM frame from the Beta vocabulary the
  * immutable desktop client speaks into the GA vocabulary OpenAI's
  * (or LiteLLM's) GA `/v1/realtime` surface expects.
