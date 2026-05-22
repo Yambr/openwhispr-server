@@ -221,3 +221,77 @@ path = ["**/.size-limit.cjs", "**/.size-limit.js", "**/userlist.txt.example"]
 precedence = "aggregate"
 SPDX-FileCopyrightText = "2026 Nick Iambroskin and OpenWhispr Server contributors"
 SPDX-License-Identifier = "FSL-1.1-ALv2"
+
+# --- Planning-phase markdown docs that intentionally quote SPDX strings
+# --- in code-spans / fenced blocks / inline mentions while documenting the
+# --- FSL relicense + tag-audit work. REUSE 3.3's expression parser cannot
+# --- distinguish "discussion of an SPDX tag" from a real annotation, and
+# --- the in-band `<!-- REUSE-IgnoreStart -->` markers are unreliable here
+# --- because some of these documents legitimately mention the string
+# --- `REUSE-IgnoreStart` inside their own prose (which collapses the
+# --- ignore region). Using `precedence = "override"` blocks inline parse.
+[[annotations]]
+path = [
+  ".planning/phases/15-repo-refactor-fsl-relicense-history-scrub-v2/15-03-SUMMARY.md",
+  ".planning/phases/15-repo-refactor-fsl-relicense-history-scrub-v2/15-REVIEW.md",
+  ".planning/phases/15-repo-refactor-fsl-relicense-history-scrub-v2/15-SECURITY.md",
+  ".planning/phases/16-phase-tag-comment-audit-v2/16-01-PLAN.md",
+  ".planning/phases/16-phase-tag-comment-audit-v2/16-REVIEW.md",
+  ".planning/phases/17-trusted-local-tls-production-acme-v2/17-02-PLAN.md",
+  ".planning/phases/17-trusted-local-tls-production-acme-v2/17-02-SUMMARY.md",
+  ".planning/phases/17-trusted-local-tls-production-acme-v2/17-03-PLAN.md",
+  ".planning/phases/17-trusted-local-tls-production-acme-v2/17-REVIEW.md",
+  ".planning/phases/18-ldap-keycloak-sso-spec/18-01-PLAN.md",
+  ".planning/phases/18-ldap-keycloak-sso-spec/18-PATTERNS.md",
+  ".planning/phases/18-ldap-keycloak-sso-spec/18-REVIEW.md",
+  ".planning/phases/18.1.1-aggregate-sweep-test-debt/18.1.1-04-PLAN.md",
+  ".planning/phases/18.1.1-aggregate-sweep-test-debt/18.1.1-PATTERNS.md",
+  ".planning/phases/20-compose-helm-production-guardrails/20-PATTERNS.md",
+  ".planning/phases/54-long-form-e2e/plans/54-01-PLAN.md",
+  ".planning/phases/67-high-findings-data/PLAN.md",
+]
+precedence = "override"
+SPDX-FileCopyrightText = "2026 Nick Iambroskin and OpenWhispr Server contributors"
+SPDX-License-Identifier = "FSL-1.1-ALv2"
+
+# --- Binary / opaque artefacts with no comment syntax: Playwright visual
+# --- snapshots, docs/screenshots, scheduled-task lock files, gitleaks
+# --- baseline file, third-party patch files. Annotated here per REUSE 3.3
+# --- guidance instead of adding sidecar `.license` files.
+[[annotations]]
+path = [
+  "**/*.png",
+  "**/*.jpg",
+  "**/*.jpeg",
+  "**/*.gif",
+  "**/*.webp",
+  "**/*.svg",
+  "**/*.ico",
+]
+precedence = "aggregate"
+SPDX-FileCopyrightText = "2026 Nick Iambroskin and OpenWhispr Server contributors"
+SPDX-License-Identifier = "FSL-1.1-ALv2"
+
+[[annotations]]
+path = [
+  "**/*.lock",
+  "**/*.patch",
+  ".gitleaksignore",
+  "**/.gitleaksignore",
+]
+precedence = "aggregate"
+SPDX-FileCopyrightText = "2026 Nick Iambroskin and OpenWhispr Server contributors"
+SPDX-License-Identifier = "FSL-1.1-ALv2"
+
+# --- Test fixtures: deliberately minimal source files used by lint test
+# --- harnesses; they ship the inline SPDX header but omit the copyright
+# --- comment to keep fixture bodies focused. Bats scripts under examples/
+# --- likewise carry the inline header only.
+[[annotations]]
+path = [
+  "**/*.fixture",
+  "**/*.bats",
+]
+precedence = "aggregate"
+SPDX-FileCopyrightText = "2026 Nick Iambroskin and OpenWhispr Server contributors"
+SPDX-License-Identifier = "FSL-1.1-ALv2"
