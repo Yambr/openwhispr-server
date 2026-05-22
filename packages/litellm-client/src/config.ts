@@ -31,6 +31,8 @@
 // firing a request that would otherwise return upstream 401 (RESEARCH
 // Pitfall #8).
 
+import { parsePositiveIntEnv } from "./env-parse.js";
+
 export interface LitellmProviderKeys {
   openrouter: string | undefined;
   groq: string | undefined;
@@ -137,23 +139,6 @@ export const DEFAULT_ERROR_DRAIN_TIMEOUT_MS = 15_000;
 
 /** Compose service name of the bundled LiteLLM proxy (slim/dev stack). */
 const BUNDLED_LITELLM_HOST = "litellm";
-
-/**
- * R32 — parse a positive-integer millisecond timeout from an env value.
- * An unset, empty, non-integer, or non-positive value yields `fallback`
- * — a blank `.env` line or an operator typo must not shadow the bundled
- * default with `NaN` (which undici would reject) or `0` (which disables
- * the timeout entirely). Mirrors the empty-string-is-unset seam already
- * used for the model-alias env reads above.
- */
-function parsePositiveIntEnv(raw: string | undefined, fallback: number): number {
-  if (raw === undefined) return fallback;
-  const trimmed = raw.trim();
-  if (trimmed.length === 0) return fallback;
-  if (!/^\d+$/.test(trimmed)) return fallback;
-  const parsed = Number.parseInt(trimmed, 10);
-  return Number.isInteger(parsed) && parsed > 0 ? parsed : fallback;
-}
 
 export function loadLitellmConfigFromEnv(
   env: NodeJS.ProcessEnv = process.env,

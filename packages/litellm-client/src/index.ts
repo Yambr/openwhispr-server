@@ -605,6 +605,11 @@ export {
   DEFAULT_STT_MODEL,
   loadLitellmConfigFromEnv,
 } from "./config.js";
+export type { ParsePositiveNumberEnvOptions } from "./env-parse.js";
+export {
+  parsePositiveIntEnv,
+  parsePositiveNumberEnv,
+} from "./env-parse.js";
 export {
   LitellmUpstreamError,
   MissingProviderKeyError,

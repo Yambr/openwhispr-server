@@ -17,6 +17,8 @@
 // Defaults are byte-identical to the pre-existing literals so an operator
 // who sets none of these vars sees no behavior change.
 
+import { parsePositiveIntEnv } from "@openwhispr/litellm-client";
+
 /** Pre-existing literal defaults — kept identical so unset env = no drift. */
 export const DEFAULT_PYANNOTE_BASE_URL = "https://api.pyannote.ai";
 export const DEFAULT_PYANNOTE_POLL_INTERVAL_MS = 1_500;
@@ -33,20 +35,6 @@ export interface DiarizationConfig {
   pollCeilingMs: number;
   /** Speaches local-diarization model alias. */
   speachesModel: string;
-}
-
-/**
- * Parse a positive-integer env var. Returns `fallback` when the var is
- * unset, empty, or not a finite positive integer — a malformed knob must
- * never silently zero the poll cadence or ceiling.
- */
-function readPositiveInt(raw: string | undefined, fallback: number): number {
-  if (raw === undefined) return fallback;
-  const trimmed = raw.trim();
-  if (trimmed.length === 0) return fallback;
-  const n = Number(trimmed);
-  if (!Number.isFinite(n) || !Number.isInteger(n) || n <= 0) return fallback;
-  return n;
 }
 
 /** Read a non-empty trimmed string env var, else `fallback`. */
@@ -73,11 +61,14 @@ export function loadDiarizationConfigFromEnv(
 ): DiarizationConfig {
   return {
     pyannoteBaseUrl: readString(env.PYANNOTE_BASE_URL, DEFAULT_PYANNOTE_BASE_URL),
-    pollIntervalMs: readPositiveInt(
+    pollIntervalMs: parsePositiveIntEnv(
       env.PYANNOTE_POLL_INTERVAL_MS,
       DEFAULT_PYANNOTE_POLL_INTERVAL_MS,
     ),
-    pollCeilingMs: readPositiveInt(env.PYANNOTE_POLL_CEILING_MS, DEFAULT_PYANNOTE_POLL_CEILING_MS),
+    pollCeilingMs: parsePositiveIntEnv(
+      env.PYANNOTE_POLL_CEILING_MS,
+      DEFAULT_PYANNOTE_POLL_CEILING_MS,
+    ),
     speachesModel: readString(env.SPEACHES_DIARIZATION_MODEL, DEFAULT_SPEACHES_DIARIZATION_MODEL),
   };
 }
