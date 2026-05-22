@@ -314,9 +314,11 @@ describe("test-only routes (NODE_ENV=test gated)", () => {
     });
     expect(res.statusCode).toBe(200);
     // The DB shortcut must have run — the UPDATE sessions row carries
-    // BOTH previous_token AND a fresh `token` value.
+    // BOTH the previous_token fingerprint AND a fresh `token_fp` value.
+    // R20 / LOCKER-08: the plaintext token columns are envelope-encrypted
+    // (NULL at rest); rotation writes only the SHA-256 `*_fp` sidecars.
     const update = recorded.find((q) =>
-      /UPDATE\s+sessions[\s\S]*previous_token[\s\S]*token\s*=/i.test(q.sql),
+      /UPDATE\s+sessions[\s\S]*previous_token_fp\s*=[\s\S]*token_fp\s*=/i.test(q.sql),
     );
     expect(update).toBeTruthy();
     expect(res.headers["set-auth-token"]).toBeTruthy();
