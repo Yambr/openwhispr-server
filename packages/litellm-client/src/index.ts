@@ -32,6 +32,13 @@ import type { LitellmClientConfig, LitellmProviderKeys } from "./config.js";
 // D2/D6 — `DEFAULT_STT_MODEL` now lives in config.js as the env-default
 // for `LITELLM_STT_MODEL`; imported here for the `audioTranscriptions`
 // fallback so a caller that omits `model` still gets the bundled alias.
+// R32 — the three timeout literals likewise now live in config.js as the
+// env-defaults for `LITELLM_HEADERS_TIMEOUT_MS` / `LITELLM_BODY_TIMEOUT_MS`
+// / `LITELLM_ERROR_DRAIN_TIMEOUT_MS`. The runtime path reads the resolved
+// `config.headersTimeoutMs` / `config.bodyTimeoutMs` / `config.errorDrainTimeoutMs`
+// instead of these literals; the constants are re-exported below (see the
+// `export { ... } from "./config.js"` block) for back-compat with
+// package-internal callers/tests.
 import { DEFAULT_LITELLM_BASE_URL, DEFAULT_STT_MODEL } from "./config.js";
 import {
   LitellmUpstreamError,
@@ -129,28 +136,38 @@ export const PROVIDER_ENV_VAR: Record<keyof LitellmProviderKeys, string> = {
  * Phase 41.f / HI-1 — default timeouts for the three non-streaming
  * methods. D-41f-1 picks one pair of conservative defaults that pass both
  * the Phase 8 SLO budget and the 1000-concurrent stall-vector defence.
- * Callers can override per-call (transcribe long audio, etc.).
+ *
+ * R32 — the timeout posture is now operator-tunable: the canonical
+ * default literals live in `config.ts` (the env boundary) as the
+ * fallbacks for `LITELLM_HEADERS_TIMEOUT_MS` / `LITELLM_BODY_TIMEOUT_MS`
+ * / `LITELLM_ERROR_DRAIN_TIMEOUT_MS`, and the runtime path in
+ * `buildLitellmClient` reads the resolved `config.headersTimeoutMs`
+ * / `config.bodyTimeoutMs` / `config.errorDrainTimeoutMs`. Callers can
+ * still override per-call (transcribe long audio, etc.). The three names
+ * below are re-exported from `config.ts` for back-compat with the
+ * package's own internal callers/tests.
  */
-/**
- * @internal — Plan 51-15b (REVIEW HIGH HI-4). Module-private timeout
- * defaults used by chat/transcribe/diarization callers within this
- * package. Exposed via `export` solely for the package's own tests;
- * production callers MUST NOT depend on these names.
- */
-export const DEFAULT_HEADERS_TIMEOUT_MS = 30_000;
-/** @internal — see DEFAULT_HEADERS_TIMEOUT_MS. */
-export const DEFAULT_BODY_TIMEOUT_MS = 120_000;
-
-/**
- * Phase 51 / Plan 51-06 (REVIEW CR-12) — bound on the non-2xx error-body
- * drain in `chatCompletionsStream`. The 2xx path keeps `bodyTimeout: 0`
- * because SSE streams are long-lived; the same flag on a slow-rolled
- * upstream error body produces an unbounded wait that burns a fastify
- * handler + leaks a dispatcher slot. 15s is empirically wide enough
- * for any reasonable upstream error message and short enough to avoid
- * event-loop starvation at the 1000-VU SLO.
- */
-export const ERROR_DRAIN_TIMEOUT_MS = 15_000;
+export {
+  /**
+   * @internal — Plan 51-15b (REVIEW HIGH HI-4) / R32. Env-default for
+   * `LITELLM_BODY_TIMEOUT_MS`; canonical declaration lives in config.ts.
+   * Production callers MUST NOT depend on this name.
+   */
+  DEFAULT_BODY_TIMEOUT_MS,
+  /**
+   * @internal — Plan 51-06 (REVIEW CR-12) / R32. Env-default for
+   * `LITELLM_ERROR_DRAIN_TIMEOUT_MS` — the bound on the non-2xx
+   * error-body drain in `chatCompletionsStream`; canonical declaration
+   * lives in config.ts. Production callers MUST NOT depend on this name.
+   */
+  DEFAULT_ERROR_DRAIN_TIMEOUT_MS,
+  /**
+   * @internal — Plan 51-15b (REVIEW HIGH HI-4) / R32. Env-default for
+   * `LITELLM_HEADERS_TIMEOUT_MS`; canonical declaration lives in config.ts.
+   * Production callers MUST NOT depend on this name.
+   */
+  DEFAULT_HEADERS_TIMEOUT_MS,
+} from "./config.js";
 
 export interface ChatCompletionRequest {
   model?: string;
@@ -404,6 +421,8 @@ export function buildLitellmClient(
         user: req.userId, // D-03: per-user attribution via OpenAI-compatible field
       });
       // Phase 41.f / HI-1 — forward headersTimeout / bodyTimeout / signal.
+      // R32 — the defaults come from `config` (env-tunable) rather than a
+      // hardcoded literal; an explicit per-call override still wins.
       const reqOpts: Record<string, unknown> = {
         method: "POST",
         headers: {
@@ -411,8 +430,8 @@ export function buildLitellmClient(
           "content-type": "application/json",
         },
         body,
-        headersTimeout: req.headersTimeout ?? DEFAULT_HEADERS_TIMEOUT_MS,
-        bodyTimeout: req.bodyTimeout ?? DEFAULT_BODY_TIMEOUT_MS,
+        headersTimeout: req.headersTimeout ?? config.headersTimeoutMs,
+        bodyTimeout: req.bodyTimeout ?? config.bodyTimeoutMs,
       };
       if (req.signal) reqOpts.signal = req.signal;
       const res = await doRequest(
@@ -473,12 +492,13 @@ export function buildLitellmClient(
       // bound (Phase 51 / Plan 51-06 / REVIEW CR-12) — a slow-rolled
       // upstream error body would otherwise hang the handler forever
       // because `bodyTimeout: 0` is the 2xx-path default. The bound is
-      // `ERROR_DRAIN_TIMEOUT_MS`; on timeout we discard whatever bytes
-      // arrived and surface the upstream error envelope with an
+      // `config.errorDrainTimeoutMs` (R32 — env-tunable via
+      // `LITELLM_ERROR_DRAIN_TIMEOUT_MS`); on timeout we discard whatever
+      // bytes arrived and surface the upstream error envelope with an
       // explicit "drain-timeout" marker so operators can disambiguate
       // upstream-broken from upstream-slow in logs.
       if (res.statusCode >= 400) {
-        const bodyText = await drainWithTimeout(res.body, ERROR_DRAIN_TIMEOUT_MS);
+        const bodyText = await drainWithTimeout(res.body, config.errorDrainTimeoutMs);
         throw new LitellmUpstreamError(res.statusCode, bodyText);
       }
       return res;
@@ -541,8 +561,9 @@ export function buildLitellmClient(
           "content-type": args.contentType,
         },
         body,
-        headersTimeout: args.headersTimeout ?? DEFAULT_HEADERS_TIMEOUT_MS,
-        bodyTimeout: args.bodyTimeout ?? DEFAULT_BODY_TIMEOUT_MS,
+        // R32 — env-tunable defaults; per-call override still wins.
+        headersTimeout: args.headersTimeout ?? config.headersTimeoutMs,
+        bodyTimeout: args.bodyTimeout ?? config.bodyTimeoutMs,
       };
       if (args.signal) reqOpts.signal = args.signal;
       const res = await doRequest(url, reqOpts as Parameters<typeof doRequest>[1]);
@@ -554,11 +575,12 @@ export function buildLitellmClient(
       const headers: Record<string, string> = authHeaders(args.userId, args.requestId);
       if (args.contentType) headers["content-type"] = args.contentType;
       // Phase 41.f / HI-1 — forward headersTimeout / bodyTimeout / signal.
+      // R32 — env-tunable defaults; per-call override still wins.
       const reqOpts: Record<string, unknown> = {
         method: args.method as Dispatcher.HttpMethod,
         headers,
-        headersTimeout: args.headersTimeout ?? DEFAULT_HEADERS_TIMEOUT_MS,
-        bodyTimeout: args.bodyTimeout ?? DEFAULT_BODY_TIMEOUT_MS,
+        headersTimeout: args.headersTimeout ?? config.headersTimeoutMs,
+        bodyTimeout: args.bodyTimeout ?? config.bodyTimeoutMs,
       };
       if (args.body !== undefined) reqOpts.body = args.body;
       if (args.signal) reqOpts.signal = args.signal;

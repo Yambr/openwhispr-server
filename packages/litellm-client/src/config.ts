@@ -57,6 +57,27 @@ export interface LitellmClientConfig {
    * truth instead of two divergent literals.
    */
   defaultRealtimeModel: string;
+  /**
+   * R32 — default undici `headersTimeout` (ms) for the non-streaming
+   * methods (chat / transcribe / passthrough). Operator-owned via
+   * `LITELLM_HEADERS_TIMEOUT_MS`; falls back to {@link DEFAULT_HEADERS_TIMEOUT_MS}.
+   * Per-call `headersTimeout` overrides still win.
+   */
+  headersTimeoutMs: number;
+  /**
+   * R32 — default undici `bodyTimeout` (ms) for the non-streaming methods.
+   * Operator-owned via `LITELLM_BODY_TIMEOUT_MS`; falls back to
+   * {@link DEFAULT_BODY_TIMEOUT_MS}. Per-call `bodyTimeout` overrides still
+   * win. Does NOT affect the streaming path (long-lived SSE keeps
+   * `bodyTimeout: 0`).
+   */
+  bodyTimeoutMs: number;
+  /**
+   * R32 — bound on the non-2xx error-body drain in `chatCompletionsStream`.
+   * Operator-owned via `LITELLM_ERROR_DRAIN_TIMEOUT_MS`; falls back to
+   * {@link DEFAULT_ERROR_DRAIN_TIMEOUT_MS}.
+   */
+  errorDrainTimeoutMs: number;
 }
 
 export const DEFAULT_LITELLM_BASE_URL = "http://litellm:4000";
@@ -73,8 +94,50 @@ export const DEFAULT_STT_MODEL = "whisper-large-v3";
  */
 export const DEFAULT_REALTIME_MODEL = "gpt-realtime";
 
+/**
+ * @internal — Plan 51-15b (REVIEW HIGH HI-4) / R32. Literal fallback for
+ * `LITELLM_HEADERS_TIMEOUT_MS`. Phase 41.f / HI-1 picked 30s as the
+ * conservative `headersTimeout` for the non-streaming methods; it stays a
+ * literal ONLY as the env-default. Production callers MUST NOT depend on
+ * this name — read `LitellmClientConfig.headersTimeoutMs` instead.
+ */
+export const DEFAULT_HEADERS_TIMEOUT_MS = 30_000;
+/**
+ * @internal — Plan 51-15b (REVIEW HIGH HI-4) / R32. Literal fallback for
+ * `LITELLM_BODY_TIMEOUT_MS`. Phase 41.f / HI-1 picked 120s as the
+ * conservative `bodyTimeout` for the non-streaming methods; it stays a
+ * literal ONLY as the env-default. Production callers MUST NOT depend on
+ * this name — read `LitellmClientConfig.bodyTimeoutMs` instead.
+ */
+export const DEFAULT_BODY_TIMEOUT_MS = 120_000;
+/**
+ * @internal — Plan 51-06 (REVIEW CR-12) / R32. Literal fallback for
+ * `LITELLM_ERROR_DRAIN_TIMEOUT_MS` — the bound on the non-2xx error-body
+ * drain in `chatCompletionsStream` (15s; literal ONLY as the env-default).
+ * Production callers MUST NOT depend on this name — read
+ * `LitellmClientConfig.errorDrainTimeoutMs` instead.
+ */
+export const DEFAULT_ERROR_DRAIN_TIMEOUT_MS = 15_000;
+
 /** Compose service name of the bundled LiteLLM proxy (slim/dev stack). */
 const BUNDLED_LITELLM_HOST = "litellm";
+
+/**
+ * R32 — parse a positive-integer millisecond timeout from an env value.
+ * An unset, empty, non-integer, or non-positive value yields `fallback`
+ * — a blank `.env` line or an operator typo must not shadow the bundled
+ * default with `NaN` (which undici would reject) or `0` (which disables
+ * the timeout entirely). Mirrors the empty-string-is-unset seam already
+ * used for the model-alias env reads above.
+ */
+function parsePositiveIntEnv(raw: string | undefined, fallback: number): number {
+  if (raw === undefined) return fallback;
+  const trimmed = raw.trim();
+  if (trimmed.length === 0) return fallback;
+  if (!/^\d+$/.test(trimmed)) return fallback;
+  const parsed = Number.parseInt(trimmed, 10);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : fallback;
+}
 
 export function loadLitellmConfigFromEnv(
   env: NodeJS.ProcessEnv = process.env,
@@ -129,6 +192,17 @@ export function loadLitellmConfigFromEnv(
     env.LITELLM_REALTIME_MODEL && env.LITELLM_REALTIME_MODEL.length > 0
       ? env.LITELLM_REALTIME_MODEL
       : DEFAULT_REALTIME_MODEL;
+  // R32 — undici timeout posture is operator-tunable via three env knobs;
+  // each falls back to its prior hardcoded literal when unset/invalid.
+  const headersTimeoutMs = parsePositiveIntEnv(
+    env.LITELLM_HEADERS_TIMEOUT_MS,
+    DEFAULT_HEADERS_TIMEOUT_MS,
+  );
+  const bodyTimeoutMs = parsePositiveIntEnv(env.LITELLM_BODY_TIMEOUT_MS, DEFAULT_BODY_TIMEOUT_MS);
+  const errorDrainTimeoutMs = parsePositiveIntEnv(
+    env.LITELLM_ERROR_DRAIN_TIMEOUT_MS,
+    DEFAULT_ERROR_DRAIN_TIMEOUT_MS,
+  );
   return {
     baseUrl,
     masterKey,
@@ -140,5 +214,8 @@ export function loadLitellmConfigFromEnv(
     defaultChatModel,
     defaultSttModel,
     defaultRealtimeModel,
+    headersTimeoutMs,
+    bodyTimeoutMs,
+    errorDrainTimeoutMs,
   };
 }

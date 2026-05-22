@@ -33,6 +33,12 @@ function baseConfig(): LitellmClientConfig {
     masterKey: "sk-master-test",
     providerKeys: { openrouter: "sk-or-test", groq: "gsk-test", pyannote: "hf-test" },
     defaultChatModel: "qwen3.6-plus",
+    defaultSttModel: "whisper-large-v3",
+    defaultRealtimeModel: "gpt-realtime",
+    // R32 — timeout posture is config-sourced; mirror the prior literals.
+    headersTimeoutMs: 30_000,
+    bodyTimeoutMs: 120_000,
+    errorDrainTimeoutMs: 15_000,
   };
 }
 
