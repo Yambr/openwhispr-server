@@ -76,6 +76,19 @@ Severity legend: CRITICAL = breaks a user / security hole; HIGH = wrong/misleadi
 
 ---
 
+## Wave 2 verification verdicts (2026-05-22)
+
+Re-verified against live `main` code (subagents had partly relied on stale planning docs).
+
+- **HACK-C1 — ALREADY FIXED.** Lens transaction wrapping (`lens.ts:573`) + `deriveSidecarAdditionalFields`/`SIDECAR_ADDITIONAL_FIELDS` (`auth.ts:201`) landed in Phase 57 Track A.2. Drop from backlog.
+- **HACK-C2 — CONFIRMED + refined.** Phase 33 migration `0019b` retired the SECURITY DEFINER `try_previous_token` function; `token-rotation.ts:139-146` is now a plain SELECT on the RLS-subject app pool. The comment at `token-rotation.ts:116-119` is itself a lie (describes a bypass that no longer exists). AUTH-04 overlap window is dead.
+- **HACK-M2 — CONFIRMED (mis-described).** mailpit has NO `profiles:` key → always-on, not dev-gated. Fix stands.
+- **HACK-M8 — CONFIRMED.** Both Next.js route files exist AND are dead (shadowed by `next.config.ts` `/api/:path*` rewrite). Delete stands.
+- **All other antipatterns (H2,H3,H4,H5,H6,M1,M3,M6,L5,LIB-2,LIB-3) — CONFIRMED.** H4 line numbers drifted: TS2322 now `routes/index.ts:478-485`, TS2339 `assemblyai.ts:125`+`deepgram.ts:91`.
+- **All 15 doc lies (DOC-1..19) — CONFIRMED.** None already-fixed, none false.
+
+**Fixable backlog after verification: ~27 findings.** HACK-C1 removed.
+
 ## Phase plan for v2.4 milestone
 
 Findings are grouped into phases by cohesion and risk:
