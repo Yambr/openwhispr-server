@@ -626,3 +626,6 @@ export {
   loadBundledModelProviders,
   loadLitellmModelAliases,
 } from "./model-aliases.js";
+// litellm-patterns A2 — re-exported for package consumers; the non-test
+// importer keeping it off the LOCKER-04 dead-export list is `errors.ts`.
+export { redactSecretShapes } from "./redact.js";
