@@ -48,6 +48,15 @@ jobs:
       - name: Add localhost hostname aliases
         run: |
           sudo sh -c 'echo "127.0.0.1 app.localhost api.localhost auth.localhost mailpit.localhost" >> /etc/hosts'
+      - name: Bootstrap fixture .env
+        # tools/bootstrap.sh fills missing/placeholder values with
+        # CI-safe randoms so docker compose does not boot with blank
+        # POSTGRES_*/VALKEY_*/MINIO_*/GRAFANA_*/LITELLM_MASTER_KEY values.
+        run: |
+          cp .env.slim.example .env
+          if [ -x tools/bootstrap.sh ]; then
+            tools/bootstrap.sh --ci || true
+          fi
       - name: docker compose build
         run: docker compose -f docker-compose.yml -f compose/docker-compose.embedded-litellm.yml build api worker web
       - name: Run UICONF-05 axe baseline (boots stack via bootStack())
