@@ -251,6 +251,63 @@ describe("YandexAdapter — XML parser (parseYandexXml)", () => {
   it("tolerates malformed XML by returning an empty array (never throws)", () => {
     expect(__testing__.parseYandexXml("not xml at all")).toEqual([]);
   });
+
+  // --- fast-xml-parser migration — equivalence-contract regression tests ---
+
+  it("tolerates a structurally broken (unclosed-tag) XML envelope without throwing", () => {
+    // The previous string-scan parser returned [] on any malformed input;
+    // fast-xml-parser throws a validation error on unclosed tags, so the
+    // adapter must catch it and preserve the never-throws contract.
+    expect(() => __testing__.parseYandexXml("<doc><url>u</url")).not.toThrow();
+    expect(__testing__.parseYandexXml("<doc><url>u</url")).toEqual([]);
+    expect(__testing__.parseYandexXml("")).toEqual([]);
+  });
+
+  it("handles a single-<doc> response page (array coercion, not object)", () => {
+    const xml = `<yandexsearch><response><results><grouping><group>
+      <doc>
+        <url>https://solo.example/</url>
+        <title>Solo <hlword>doc</hlword></title>
+        <passages><passage>solo passage</passage></passages>
+      </doc>
+    </group></grouping></results></response></yandexsearch>`;
+    const docs = __testing__.parseYandexXml(xml);
+    expect(docs).toHaveLength(1);
+    expect(docs[0]).toEqual({
+      url: "https://solo.example/",
+      title: "Solo doc",
+      snippet: "solo passage",
+    });
+  });
+
+  it("strips <hlword> tags carrying attributes inside passages", () => {
+    const xml = `<yandexsearch><response><results><grouping><group>
+      <doc>
+        <url>https://attr.example/</url>
+        <title>t</title>
+        <passages>
+          <passage>before <hlword priority="phrase">marked text</hlword> after</passage>
+        </passages>
+      </doc>
+    </group></grouping></results></response></yandexsearch>`;
+    const docs = __testing__.parseYandexXml(xml);
+    expect(docs[0]?.snippet).toBe("before marked text after");
+    expect(docs[0]?.snippet).not.toContain("hlword");
+    expect(docs[0]?.snippet).not.toContain("priority");
+  });
+
+  it("preserves inter-token whitespace around <hlword> in mixed content", () => {
+    // Regression guard: a node-tree walk collapses "A <hl>B</hl> C" → "AC".
+    // stopNodes keeps the raw inner XML so whitespace survives the strip.
+    const xml = `<yandexsearch><response><results><grouping><group>
+      <doc>
+        <url>https://ws.example/</url>
+        <extended-text>alpha <hlword>beta</hlword> gamma <hlword>delta</hlword> epsilon</extended-text>
+      </doc>
+    </group></grouping></results></response></yandexsearch>`;
+    const docs = __testing__.parseYandexXml(xml);
+    expect(docs[0]?.snippet).toBe("alpha beta gamma delta epsilon");
+  });
 });
 
 describe("YandexAdapter.search() — happy path (mocked HTTP)", () => {

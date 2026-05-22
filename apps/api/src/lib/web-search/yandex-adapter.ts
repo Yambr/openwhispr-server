@@ -39,6 +39,7 @@
 //     Error messages never echo the upstream JSON body (could leak the
 //     request id or, in pathological cases, the operator's folder id).
 
+import { XMLParser } from "fast-xml-parser";
 import { request } from "undici";
 import {
   MissingProviderKeyError,
@@ -102,127 +103,62 @@ interface YandexDoc {
 }
 
 /**
- * Minimal, focused XML extractor for the Yandex Search response envelope.
- * Walks `<doc>...</doc>` blocks and pulls a single tag's inner text using
- * a string-level scan (no regex backtracking). Returns [] on malformed XML
- * — the caller surfaces this as `UpstreamError` upstream of the result.
+ * fast-xml-parser instance tuned for the Yandex Search response envelope.
+ *
+ * `<doc>`, `<group>` and `<passage>` are coerced to arrays so single-result
+ * pages and multi-result pages share one code path. The four snippet-source
+ * leaf tags (`title`, `headline`, `extended-text`, `passage`) are declared as
+ * `stopNodes`: fast-xml-parser stops structural recursion at them and keeps
+ * their inner XML verbatim as a string. This preserves the mixed-content text
+ * positioning around `<hlword>` markup (e.g. "First <hlword>Result</hlword>
+ * Title") that a node-tree walk would otherwise reorder/collapse — `stripHlword`
+ * then removes the markup while keeping inter-token whitespace, exactly as the
+ * previous hand-rolled scanner did. Entities inside stopNode content are kept
+ * raw (the old string-slicing parser never decoded them), preserving the
+ * adapter's output contract byte-for-byte.
  */
-function parseYandexXml(xml: string): YandexDoc[] {
-  if (typeof xml !== "string" || xml.length === 0) return [];
-  const out: YandexDoc[] = [];
-  let cursor = 0;
-  while (true) {
-    const docStart = findOpen(xml, "doc", cursor);
-    if (docStart === -1) break;
-    const docEnd = findClose(xml, "doc", docStart.afterOpen);
-    if (docEnd === -1) break;
-    const inner = xml.slice(docStart.afterOpen, docEnd.beforeClose);
+const yandexXmlParser = new XMLParser({
+  ignoreAttributes: true,
+  trimValues: true,
+  isArray: (name: string): boolean => name === "doc" || name === "group" || name === "passage",
+  stopNodes: ["*.title", "*.headline", "*.extended-text", "*.passage"],
+});
 
-    const url = extractTagText(inner, "url");
-    const titleRaw = extractTagText(inner, "title");
-    const headlineRaw = extractTagText(inner, "headline");
-    const extended = extractTagText(inner, "extended-text");
-    const passages = extractPassages(inner);
-
-    const title = stripHlword(titleRaw);
-    let snippet: string;
-    if (extended.length > 0) {
-      snippet = stripHlword(extended);
-    } else if (passages.length > 0) {
-      snippet = passages.map(stripHlword).join(" ");
-    } else if (title.length > 0) {
-      snippet = title;
+/**
+ * Recursively collects every value bound to `key` anywhere in a parsed-XML
+ * object tree, in document order. Used to reach `<doc>` nodes regardless of
+ * the exact `<grouping>/<group>` nesting depth Yandex returns.
+ */
+function collectByKey(node: unknown, key: string, out: unknown[]): void {
+  if (Array.isArray(node)) {
+    for (const item of node) collectByKey(item, key, out);
+    return;
+  }
+  if (node === null || typeof node !== "object") return;
+  const record = node as Record<string, unknown>;
+  for (const [k, v] of Object.entries(record)) {
+    if (k === key) {
+      if (Array.isArray(v)) out.push(...v);
+      else out.push(v);
     } else {
-      snippet = stripHlword(headlineRaw);
-    }
-
-    out.push({ url: url.trim(), title, snippet: snippet.trim() });
-    cursor = docEnd.afterClose;
-  }
-  return out;
-}
-
-interface OpenPos {
-  start: number;
-  afterOpen: number;
-}
-interface ClosePos {
-  beforeClose: number;
-  afterClose: number;
-}
-
-function findOpen(s: string, tag: string, from: number): OpenPos | -1 {
-  const prefix = `<${tag}`;
-  let i = from;
-  while (i < s.length) {
-    const found = s.indexOf(prefix, i);
-    if (found === -1) return -1;
-    const next = s.charCodeAt(found + prefix.length);
-    // valid open if the next char terminates the tag name (space, >, /, or newline)
-    if (
-      next === 0x20 /* space */ ||
-      next === 0x3e /* > */ ||
-      next === 0x2f /* / */ ||
-      next === 0x09 /* tab */ ||
-      next === 0x0a /* \n */ ||
-      next === 0x0d /* \r */
-    ) {
-      const gt = s.indexOf(">", found + prefix.length);
-      if (gt === -1) return -1;
-      // self-closing tag (<doc/>) — skip
-      if (s.charCodeAt(gt - 1) === 0x2f) {
-        i = gt + 1;
-        continue;
-      }
-      return { start: found, afterOpen: gt + 1 };
-    }
-    i = found + 1;
-  }
-  return -1;
-}
-
-function findClose(s: string, tag: string, from: number): ClosePos | -1 {
-  const closeTag = `</${tag}>`;
-  const found = s.indexOf(closeTag, from);
-  if (found === -1) return -1;
-  return { beforeClose: found, afterClose: found + closeTag.length };
-}
-
-function extractTagText(s: string, tag: string): string {
-  const open = findOpen(s, tag, 0);
-  if (open === -1) return "";
-  const close = findClose(s, tag, open.afterOpen);
-  if (close === -1) return "";
-  return s.slice(open.afterOpen, close.beforeClose);
-}
-
-function extractPassages(s: string): string[] {
-  const out: string[] = [];
-  let cursor = 0;
-  // restrict to inside the first <passages>...</passages> block if present;
-  // otherwise scan the whole doc (defensive).
-  const passagesOpen = findOpen(s, "passages", 0);
-  let scope = s;
-  if (passagesOpen !== -1) {
-    const passagesClose = findClose(s, "passages", passagesOpen.afterOpen);
-    if (passagesClose !== -1) {
-      scope = s.slice(passagesOpen.afterOpen, passagesClose.beforeClose);
+      collectByKey(v, key, out);
     }
   }
-  while (cursor < scope.length) {
-    const open = findOpen(scope, "passage", cursor);
-    if (open === -1) break;
-    const close = findClose(scope, "passage", open.afterOpen);
-    if (close === -1) break;
-    out.push(scope.slice(open.afterOpen, close.beforeClose).trim());
-    cursor = close.afterClose;
+}
+
+/** Coerces an arbitrary parsed-XML leaf value to a flat string. */
+function leafToString(value: unknown): string {
+  if (typeof value === "string") return value;
+  if (typeof value === "number" || typeof value === "boolean") {
+    return String(value);
   }
-  return out;
+  return "";
 }
 
 /**
- * Strips `<hlword ...>` open tags and `</hlword>` close tags, preserving
- * inner text. Done via a single linear pass; never touches unrelated text.
+ * Strips `<hlword ...>` open tags and `</hlword>` close tags from a stopNode
+ * raw-XML string, preserving inner text and inter-token whitespace. Done via a
+ * single linear pass; never touches unrelated text.
  */
 function stripHlword(s: string): string {
   if (s.length === 0) return s;
@@ -245,6 +181,72 @@ function stripHlword(s: string): string {
     i++;
   }
   return result.replace(/\s+/g, " ").trim();
+}
+
+/**
+ * Parses the Yandex Search response XML envelope into normalized docs.
+ *
+ * Walks every `<doc>` node (any nesting depth) and applies the snippet
+ * content-priority chain extended-text > joined passages > title > headline,
+ * with `<hlword>` markup stripped. Returns `[]` on malformed XML — the caller
+ * surfaces this as `UpstreamError` upstream of the result.
+ */
+function parseYandexXml(xml: string): YandexDoc[] {
+  if (typeof xml !== "string" || xml.length === 0) return [];
+
+  let tree: unknown;
+  try {
+    tree = yandexXmlParser.parse(xml);
+  } catch {
+    return [];
+  }
+
+  const docNodes: unknown[] = [];
+  collectByKey(tree, "doc", docNodes);
+
+  const out: YandexDoc[] = [];
+  for (const docNode of docNodes) {
+    if (docNode === null || typeof docNode !== "object") continue;
+    const doc = docNode as Record<string, unknown>;
+
+    const url = leafToString(doc.url).trim();
+    const title = stripHlword(leafToString(doc.title));
+    const headline = leafToString(doc.headline);
+    const extended = leafToString(doc["extended-text"]);
+
+    // Prefer the canonical <passages><passage>… nesting; fall back to bare
+    // <passage> children when the <passages> wrapper is absent (defensive —
+    // mirrors the previous scanner's whole-doc fallback).
+    const passageNodes: unknown[] = [];
+    if (doc.passages !== undefined) {
+      collectByKey(doc.passages, "passage", passageNodes);
+    } else {
+      collectByKey(doc.passage, "passage", passageNodes);
+      if (passageNodes.length === 0 && doc.passage !== undefined) {
+        // <passage> coerced to array by isArray() — collectByKey above only
+        // matches the "passage" key, so a top-level doc.passage array needs a
+        // direct pickup.
+        const direct = doc.passage;
+        if (Array.isArray(direct)) passageNodes.push(...direct);
+        else passageNodes.push(direct);
+      }
+    }
+    const passages = passageNodes.map(leafToString);
+
+    let snippet: string;
+    if (extended.length > 0) {
+      snippet = stripHlword(extended);
+    } else if (passages.length > 0) {
+      snippet = passages.map(stripHlword).join(" ");
+    } else if (title.length > 0) {
+      snippet = title;
+    } else {
+      snippet = stripHlword(headline);
+    }
+
+    out.push({ url, title, snippet: snippet.trim() });
+  }
+  return out;
 }
 
 interface YandexErrorBody {
