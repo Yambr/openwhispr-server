@@ -176,6 +176,8 @@ export interface AllRoutesDeps {
     sttModel: string;
     chatModel: string;
     realtimeModel: string;
+    /** R33 — fast cleanup-class alias for /api/reason dictation cleanup. */
+    cleanupModel: string;
   };
   /**
    * Phase 03 / Plan 06 (D-07 REVISED): Valkey client for the diarization
@@ -526,7 +528,13 @@ export function buildAllRoutes(deps: AllRoutesDeps): readonly RoutePlugin[] {
     const reasonDeps: ReasonDeps = {
       db: deps.db,
       litellm: deps.litellm,
-      ...(deps.litellmModels ? { defaultModel: deps.litellmModels.chatModel } : {}),
+      // D3a — operator-owned default chat model; R33 — cleanup-class model.
+      ...(deps.litellmModels
+        ? {
+            defaultModel: deps.litellmModels.chatModel,
+            cleanupModel: deps.litellmModels.cleanupModel,
+          }
+        : {}),
     };
     plugins.push(buildReasonRoutes(reasonDeps));
   }

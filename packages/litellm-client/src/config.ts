@@ -58,6 +58,16 @@ export interface LitellmClientConfig {
    */
   defaultRealtimeModel: string;
   /**
+   * R33 — fast cleanup-class model alias for /api/reason dictation-cleanup
+   * requests. Operator-owned via `REASONING_CLEANUP_MODEL`; falls back to
+   * {@link DEFAULT_CLEANUP_MODEL}. The /api/reason route routes the
+   * cleanup request shape (no agentName, no systemPrompt, empty/absent
+   * model) to this alias with reasoning/thinking disabled — see
+   * `apps/api/src/lib/reason-prompt-select.ts`. The alias resolution
+   * lives in the LiteLLM proxy catalog, never as a route literal.
+   */
+  defaultCleanupModel: string;
+  /**
    * R32 — default undici `headersTimeout` (ms) for the non-streaming
    * methods (chat / transcribe / passthrough). Operator-owned via
    * `LITELLM_HEADERS_TIMEOUT_MS`; falls back to {@link DEFAULT_HEADERS_TIMEOUT_MS}.
@@ -93,6 +103,12 @@ export const DEFAULT_STT_MODEL = "whisper-large-v3";
  * realtime alias; literal ONLY as the env-default.
  */
 export const DEFAULT_REALTIME_MODEL = "gpt-realtime";
+/**
+ * R33 — literal fallback for `REASONING_CLEANUP_MODEL`. The bundled
+ * cleanup alias in `compose/litellm/litellm_config.yaml`; it stays a
+ * literal ONLY as the env-default, never as a route-baked constant.
+ */
+export const DEFAULT_CLEANUP_MODEL = "qwen3.6-cleanup";
 
 /**
  * @internal — Plan 51-15b (REVIEW HIGH HI-4) / R32. Literal fallback for
@@ -192,6 +208,11 @@ export function loadLitellmConfigFromEnv(
     env.LITELLM_REALTIME_MODEL && env.LITELLM_REALTIME_MODEL.length > 0
       ? env.LITELLM_REALTIME_MODEL
       : DEFAULT_REALTIME_MODEL;
+  // R33 — cleanup-class alias follows the same empty-string-is-unset seam.
+  const defaultCleanupModel =
+    env.REASONING_CLEANUP_MODEL && env.REASONING_CLEANUP_MODEL.length > 0
+      ? env.REASONING_CLEANUP_MODEL
+      : DEFAULT_CLEANUP_MODEL;
   // R32 — undici timeout posture is operator-tunable via three env knobs;
   // each falls back to its prior hardcoded literal when unset/invalid.
   const headersTimeoutMs = parsePositiveIntEnv(
@@ -214,6 +235,7 @@ export function loadLitellmConfigFromEnv(
     defaultChatModel,
     defaultSttModel,
     defaultRealtimeModel,
+    defaultCleanupModel,
     headersTimeoutMs,
     bodyTimeoutMs,
     errorDrainTimeoutMs,

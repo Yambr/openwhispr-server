@@ -41,6 +41,14 @@ model_list:
       model: openrouter/openai/gpt-4o-mini
       api_key: os.environ/OPENROUTER_API_KEY
 
+  # ---- Cleanup-class LLM (R33) — mirrors the bundled litellm_config.yaml.
+  # Thinking-off travels in the request body, not this yaml.
+  - model_name: qwen3.6-cleanup
+    litellm_params:
+      model: openrouter/qwen/qwen3.6-35b-a3b
+      api_key: os.environ/OPENROUTER_API_KEY
+      api_base: os.environ/REASONING_CLEANUP_API_BASE
+
   # ---- STT (Speaches via OpenAI-compatible STT — swap from bundled Groq) ----
   # 08.5-RESEARCH §G2: api code at apps/api/src/routes/transcribe.ts
   # POSTs to ${LITELLM_BASE_URL}/v1/audio/transcriptions with
