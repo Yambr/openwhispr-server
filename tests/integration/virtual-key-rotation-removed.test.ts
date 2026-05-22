@@ -169,7 +169,18 @@ describe("virtual-key-rotation removal conformance (Phase 14 / Plan 05)", () => 
   });
 
   it("apps/worker/src/index.ts boots a transient bull:virtual-key-rotation:* cleanup", () => {
-    const src = readFileSync(resolve(REPO_ROOT, "apps/worker/src/index.ts"), "utf8");
-    expect(src).toMatch(/bull:virtual-key-rotation:\*/);
+    // Phase 66 / CR-07 extracted the inline SCAN+DEL cleanup into the
+    // `drainStaleVkrKeys` helper at apps/worker/src/lib/vkr-drain.ts
+    // (adding the iteration cap + failure metric). The boot path still
+    // runs it — index.ts imports the helper and awaits it before any
+    // Worker construction. Assert the wiring as it now stands: the
+    // `bull:virtual-key-rotation:*` MATCH pattern lives in vkr-drain.ts
+    // and index.ts invokes the drain on boot.
+    const drainSrc = readFileSync(resolve(REPO_ROOT, "apps/worker/src/lib/vkr-drain.ts"), "utf8");
+    expect(drainSrc).toMatch(/bull:virtual-key-rotation:\*/);
+
+    const indexSrc = readFileSync(resolve(REPO_ROOT, "apps/worker/src/index.ts"), "utf8");
+    const liveIndex = stripComments(indexSrc);
+    expect(liveIndex).toMatch(/drainStaleVkrKeys/);
   });
 });
