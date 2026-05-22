@@ -685,6 +685,82 @@ jobs:
         if: always()
         run: docker compose down -v --remove-orphans || true
 
+  # Phase 60 — embedded-litellm stack smoke test (OSS publish SC-2).
+  # Boots the Traefik-fronted embedded-litellm compose stack with a
+  # hermetic mock LiteLLM (LITELLM_CONFIG_FILE=litellm_config.contract.yaml
+  # — every chat / transcription call short-circuits to a canned
+  # mock_response), then round-trips sign-up + transcribe against
+  # https://api.localhost. Needs NO provider secrets. On failure it
+  # uploads `docker compose logs` as an artifact, mirroring contract-test.
+  embedded-smoke:
+    runs-on: ubuntu-24.04
+    needs: [lint, typecheck, test]
+    timeout-minutes: 25
+    env:
+      # Select the hermetic mock LiteLLM config — no real provider keys,
+      # no outbound egress (mirrors the contract-test profile).
+      LITELLM_CONFIG_FILE: litellm_config.contract.yaml
+    steps:
+      - uses: step-security/harden-runner@a5ad31d6a139d249332a2605b85202e8c0b78450  # v2.19.1
+        with: { egress-policy: audit }
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd  # v5
+        with: { fetch-depth: 0 }
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1  # v4
+        with: { version: 11.0.8 }
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444  # v5
+        with: { node-version: '24', cache: 'pnpm' }
+      - run: pnpm install --frozen-lockfile
+      - name: Bootstrap fixture .env
+        run: |
+          cp .env.slim.example .env
+          if [ -x tools/bootstrap.sh ]; then
+            tools/bootstrap.sh --ci || true
+          fi
+      - name: Add /etc/hosts entries for *.localhost
+        run: |
+          # Linux glibc DOES NOT auto-resolve *.localhost; pin api.localhost
+          # to 127.0.0.1 so the host-side smoke probe reaches Traefik.
+          echo "127.0.0.1 api.localhost auth.localhost" | sudo tee -a /etc/hosts
+      - name: Build api + web + worker images
+        run: |
+          docker compose \
+            -f docker-compose.yml \
+            -f compose/docker-compose.embedded-litellm.yml \
+            -f compose/docker-compose.ingress.yml \
+            build api web worker migrate
+      - name: Bring up embedded-litellm stack (--wait)
+        run: |
+          docker compose \
+            -f docker-compose.yml \
+            -f compose/docker-compose.embedded-litellm.yml \
+            -f compose/docker-compose.ingress.yml \
+            up -d --wait
+      - name: Run sign-up + transcribe smoke probe
+        env:
+          SMOKE_BASE_URL: https://api.localhost
+        run: pnpm smoke -- tests/smoke/signup-transcribe.smoke.test.ts
+      - name: Capture compose logs on failure
+        if: failure()
+        run: |
+          docker compose \
+            -f docker-compose.yml \
+            -f compose/docker-compose.embedded-litellm.yml \
+            -f compose/docker-compose.ingress.yml \
+            logs --no-color > compose-logs-embedded-smoke.txt || true
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4
+        if: failure()
+        with:
+          name: compose-logs-embedded-smoke
+          path: compose-logs-embedded-smoke.txt
+      - name: Tear down
+        if: always()
+        run: |
+          docker compose \
+            -f docker-compose.yml \
+            -f compose/docker-compose.embedded-litellm.yml \
+            -f compose/docker-compose.ingress.yml \
+            down -v --remove-orphans || true
+
   # Phase 44 / Plan 44-01 / L3 — PR-time k6 mock load smoke.
   # Per memory feedback_loadtest_cost_discipline: PROFILE=mock ONLY.
   # OPENWHISPR_LOADTEST_ALLOW_PAID MUST be unset on PR; the Makefile
