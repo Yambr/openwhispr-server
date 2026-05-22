@@ -50,15 +50,15 @@ describe("sseToNdjson", () => {
   it("text-only.sse — emits one text-delta per non-empty content + a finish chunk with usage; halts at [DONE]", async () => {
     const raw = readFileSync(fixturePath("text-only"));
     const out = await drain(streamFromBuffers([raw]));
-    const textDeltas = out.filter((c) => c.type === "text-delta");
-    const finishes = out.filter((c) => c.type === "finish");
+    const textDeltas = out.filter((c) => c.type === "content");
+    const finishes = out.filter((c) => c.type === "done");
     // First delta has content:"" (empty string) — filtered. Then 7 non-empty.
     expect(textDeltas).toHaveLength(7);
-    expect((textDeltas[0] as { type: "text-delta"; text: string }).text).toBe("Hello");
-    expect((textDeltas[6] as { type: "text-delta"; text: string }).text).toBe(" response");
+    expect((textDeltas[0] as { type: "content"; text: string }).text).toBe("Hello");
+    expect((textDeltas[6] as { type: "content"; text: string }).text).toBe(" response");
     expect(finishes).toHaveLength(1);
     expect(finishes[0]).toEqual({
-      type: "finish",
+      type: "done",
       finishReason: "stop",
       usage: { promptTokens: 10, completionTokens: 7 },
     });
@@ -69,18 +69,18 @@ describe("sseToNdjson", () => {
   it("single-tool-call.sse — emits 0 text-deltas, 1 consolidated tool-call chunk, then 1 finish(tool_calls)", async () => {
     const raw = readFileSync(fixturePath("single-tool-call"));
     const out = await drain(streamFromBuffers([raw]));
-    expect(out.filter((c) => c.type === "text-delta")).toHaveLength(0);
-    const toolCalls = out.filter((c) => c.type === "tool-call");
+    expect(out.filter((c) => c.type === "content")).toHaveLength(0);
+    const toolCalls = out.filter((c) => c.type === "tool_call");
     expect(toolCalls).toHaveLength(1);
     expect(toolCalls[0]).toEqual({
-      type: "tool-call",
-      toolCallId: "call_abc123",
-      toolName: "get_weather",
-      args: { location: "Paris,FR" },
+      type: "tool_call",
+      id: "call_abc123",
+      name: "get_weather",
+      arguments: '{"location":"Paris,FR"}',
     });
     const finish = out[out.length - 1];
     expect(finish).toEqual({
-      type: "finish",
+      type: "done",
       finishReason: "tool_calls",
       usage: { promptTokens: 42, completionTokens: 11 },
     });
@@ -89,34 +89,34 @@ describe("sseToNdjson", () => {
   it("multi-tool-call.sse — emits 2 tool-call chunks in ascending index order before the finish chunk", async () => {
     const raw = readFileSync(fixturePath("multi-tool-call"));
     const out = await drain(streamFromBuffers([raw]));
-    const toolCalls = out.filter((c) => c.type === "tool-call");
+    const toolCalls = out.filter((c) => c.type === "tool_call");
     expect(toolCalls).toHaveLength(2);
     expect(toolCalls[0]).toMatchObject({
-      toolCallId: "call_aa",
-      toolName: "get_weather",
-      args: { location: "Paris" },
+      id: "call_aa",
+      name: "get_weather",
+      arguments: '{"location":"Paris"}',
     });
     expect(toolCalls[1]).toMatchObject({
-      toolCallId: "call_bb",
-      toolName: "get_time",
-      args: { tz: "UTC" },
+      id: "call_bb",
+      name: "get_time",
+      arguments: '{"tz":"UTC"}',
     });
-    expect(out[out.length - 1]).toMatchObject({ type: "finish", finishReason: "tool_calls" });
+    expect(out[out.length - 1]).toMatchObject({ type: "done", finishReason: "tool_calls" });
   });
 
   it("text-then-tool.sse — emits text-delta chunks BEFORE the tool-call chunk, preserving order", async () => {
     const raw = readFileSync(fixturePath("text-then-tool"));
     const out = await drain(streamFromBuffers([raw]));
-    const firstTextIdx = out.findIndex((c) => c.type === "text-delta");
-    const firstToolIdx = out.findIndex((c) => c.type === "tool-call");
+    const firstTextIdx = out.findIndex((c) => c.type === "content");
+    const firstToolIdx = out.findIndex((c) => c.type === "tool_call");
     expect(firstTextIdx).toBeGreaterThanOrEqual(0);
     expect(firstToolIdx).toBeGreaterThan(firstTextIdx);
-    const toolCalls = out.filter((c) => c.type === "tool-call");
+    const toolCalls = out.filter((c) => c.type === "tool_call");
     expect(toolCalls).toHaveLength(1);
     expect(toolCalls[0]).toMatchObject({
-      toolCallId: "call_mix1",
-      toolName: "get_weather",
-      args: { location: "Berlin" },
+      id: "call_mix1",
+      name: "get_weather",
+      arguments: '{"location":"Berlin"}',
     });
   });
 
@@ -124,10 +124,10 @@ describe("sseToNdjson", () => {
     const raw = readFileSync(fixturePath("premature-close"));
     const out = await drain(streamFromBuffers([raw]));
     // We received at least the leading text-delta from "This is fine".
-    expect(out.some((c) => c.type === "text-delta")).toBe(true);
+    expect(out.some((c) => c.type === "content")).toBe(true);
     const last = out[out.length - 1];
     expect(last).toEqual({
-      type: "finish",
+      type: "done",
       finishReason: "incomplete",
       usage: { promptTokens: 0, completionTokens: 0 },
     });
@@ -138,12 +138,12 @@ describe("sseToNdjson", () => {
     const out = await drain(streamFromBuffers([raw]));
     // Both surrounding text-deltas are emitted; the {invalid json} frame is dropped.
     const texts = out
-      .filter((c): c is { type: "text-delta"; text: string } => c.type === "text-delta")
+      .filter((c): c is { type: "content"; text: string } => c.type === "content")
       .map((c) => c.text);
     expect(texts).toContain("before");
     expect(texts).toContain("after");
     // The valid stop-finish at the tail is preserved.
-    expect(out[out.length - 1]).toMatchObject({ type: "finish", finishReason: "stop" });
+    expect(out[out.length - 1]).toMatchObject({ type: "done", finishReason: "stop" });
   });
 
   // Branch coverage — synthetic in-line streams targeting the few branches
@@ -156,7 +156,7 @@ describe("sseToNdjson", () => {
     ].join("");
     const out = await drain(streamFromBuffers([Buffer.from(lines)]));
     expect(out[out.length - 1]).toEqual({
-      type: "finish",
+      type: "done",
       finishReason: "stop",
       usage: { promptTokens: 0, completionTokens: 0 },
     });
@@ -170,8 +170,8 @@ describe("sseToNdjson", () => {
       "data: [DONE]\n\n",
     ].join("");
     const out = await drain(streamFromBuffers([Buffer.from(lines)]));
-    expect(out.filter((c) => c.type === "text-delta")).toHaveLength(1);
-    expect(out[out.length - 1]).toMatchObject({ type: "finish", finishReason: "stop" });
+    expect(out.filter((c) => c.type === "content")).toHaveLength(1);
+    expect(out[out.length - 1]).toMatchObject({ type: "done", finishReason: "stop" });
   });
 
   it("emits zero-usage finish on finish_reason=tool_calls when usage field is absent", async () => {
@@ -181,9 +181,9 @@ describe("sseToNdjson", () => {
       "data: [DONE]\n\n",
     ].join("");
     const out = await drain(streamFromBuffers([Buffer.from(lines)]));
-    expect(out.filter((c) => c.type === "tool-call")).toHaveLength(1);
+    expect(out.filter((c) => c.type === "tool_call")).toHaveLength(1);
     expect(out[out.length - 1]).toEqual({
-      type: "finish",
+      type: "done",
       finishReason: "tool_calls",
       usage: { promptTokens: 0, completionTokens: 0 },
     });
@@ -197,7 +197,7 @@ describe("sseToNdjson", () => {
       "data: [DONE]\n\n",
     ].join("");
     const out = await drain(streamFromBuffers([Buffer.from(lines)]));
-    expect(out.filter((c) => c.type === "text-delta")).toHaveLength(1);
+    expect(out.filter((c) => c.type === "content")).toHaveLength(1);
   });
 
   it("ignores OpenAI streaming chunks that lack a choices[0] entry (defensive parse)", async () => {
@@ -209,7 +209,7 @@ describe("sseToNdjson", () => {
       "data: [DONE]\n\n",
     ].join("");
     const out = await drain(streamFromBuffers([Buffer.from(lines)]));
-    expect(out.filter((c) => c.type === "text-delta")).toHaveLength(1);
+    expect(out.filter((c) => c.type === "content")).toHaveLength(1);
   });
 
   it("utf8-split.sse — text-delta containing 🎉 emerges intact when the buffer is split mid-codepoint", async () => {
@@ -221,7 +221,7 @@ describe("sseToNdjson", () => {
     const b = raw.subarray(685);
     const out = await drain(streamFromBuffers([a, b]));
     const text = out
-      .filter((c): c is { type: "text-delta"; text: string } => c.type === "text-delta")
+      .filter((c): c is { type: "content"; text: string } => c.type === "content")
       .map((c) => c.text)
       .join("");
     expect(text).toContain("🎉");

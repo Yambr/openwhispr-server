@@ -249,7 +249,7 @@ describe("POST /api/agent/stream", () => {
       const lines = r.body.split("\n").filter((l) => l.length > 0);
       expect(lines.length).toBeGreaterThan(0);
       const first = JSON.parse(lines[0]) as { type: string };
-      expect(first.type).toBe("text-delta");
+      expect(first.type).toBe("content");
       // Sanity: the entire round-trip stays under a generous unit budget.
       // (e2e budget < 500ms is asserted in plan 09 against the live stack.)
       expect(elapsed).toBeLessThan(2000);
@@ -406,26 +406,26 @@ describe("POST /api/agent/stream", () => {
         .split("\n")
         .filter((l) => l.length > 0)
         .map((l) => JSON.parse(l) as Record<string, unknown>);
-      const toolCalls = chunks.filter((c) => c.type === "tool-call");
+      const toolCalls = chunks.filter((c) => c.type === "tool_call");
       expect(toolCalls.length).toBe(2);
       expect(toolCalls[0]).toMatchObject({
-        type: "tool-call",
-        toolCallId: "tc_a",
-        toolName: "lookup",
-        args: { q: "foo" },
+        type: "tool_call",
+        id: "tc_a",
+        name: "lookup",
+        arguments: '{"q":"foo"}',
       });
       expect(toolCalls[1]).toMatchObject({
-        type: "tool-call",
-        toolCallId: "tc_b",
-        toolName: "search",
-        args: { x: 1 },
+        type: "tool_call",
+        id: "tc_b",
+        name: "search",
+        arguments: '{"x":1}',
       });
       const finish = chunks.at(-1) as {
         type: string;
         finishReason: string;
         usage: { promptTokens: number; completionTokens: number };
       };
-      expect(finish.type).toBe("finish");
+      expect(finish.type).toBe("done");
       expect(finish.finishReason).toBe("tool_calls");
       expect(finish.usage).toEqual({ promptTokens: 10, completionTokens: 5 });
     } finally {
@@ -772,7 +772,7 @@ describe("POST /api/agent/stream", () => {
       const lines = r.body.split("\n").filter((l) => l.length > 0);
       expect(lines).toHaveLength(1);
       const finish = JSON.parse(lines[0]) as { type: string; finishReason: string };
-      expect(finish.type).toBe("finish");
+      expect(finish.type).toBe("done");
       expect(finish.finishReason).toBe("upstream_error");
     } finally {
       await app.close();
@@ -841,7 +841,7 @@ describe("POST /api/agent/stream", () => {
       expect(r.statusCode).toBe(200);
       const lines = r.body.split("\n").filter((l) => l.length > 0);
       const last = JSON.parse(lines.at(-1) as string) as { type: string; finishReason: string };
-      expect(last.type).toBe("finish");
+      expect(last.type).toBe("done");
       expect(last.finishReason).toBe("stream_error");
     } finally {
       await app.close();
@@ -1093,7 +1093,7 @@ describe("POST /api/agent/stream", () => {
         usage: { promptTokens: number; completionTokens: number };
       };
       expect(finish).toEqual({
-        type: "finish",
+        type: "done",
         finishReason: "upstream_error",
         usage: { promptTokens: 0, completionTokens: 0 },
       });
@@ -1141,7 +1141,7 @@ describe("POST /api/agent/stream", () => {
       const lines = r.body.split("\n").filter((l) => l.length > 0);
       expect(lines).toHaveLength(1);
       const finish = JSON.parse(lines[0]) as { type: string; finishReason: string };
-      expect(finish.type).toBe("finish");
+      expect(finish.type).toBe("done");
       expect(finish.finishReason).toBe("upstream_error");
     } finally {
       await app.close();

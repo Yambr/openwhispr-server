@@ -2,9 +2,11 @@
 // Phase 04 / Plan 02 / Task 2 — Pure SSE → BACKEND_SPEC NDJSON translator.
 //
 // Consumes a `ReadableStream<Uint8Array>` of OpenAI Chat Completions SSE
-// frames and yields BACKEND_SPEC stream chunks. Framework-free; the only
-// boundaries crossed are TextDecoder + JSON.parse (both Node built-ins),
-// so coverage is achievable from a fixture corpus alone (no live LiteLLM).
+// frames and yields NDJSON stream chunks in the vocabulary the immutable
+// desktop client consumes (R32: `content` / `tool_call` / `done`).
+// Framework-free; the only boundaries crossed are TextDecoder + JSON.parse
+// (both Node built-ins), so coverage is achievable from a fixture corpus
+// alone (no live LiteLLM).
 //
 // Safety (T-04-03 mitigation): every `data:` payload is JSON.parse-validated
 // before forwarding; malformed frames are silently dropped so untrusted
@@ -15,12 +17,19 @@
 
 import type { ToolCallAccumulator, ToolCallChunk } from "./tool-call-accumulator.js";
 
+// R32 — wire vocabulary. The immutable desktop client's cloud stream
+// consumer (ReasoningService.processTextStreamingCloud) strictly filters
+// NDJSON chunks on `type === "content"` / `"tool_call"` and treats
+// `type === "done"` as the terminal marker. The previous v3-era vocab
+// (`text-delta` / `tool-call` / `finish`) matched none of those filters,
+// so every chunk was silently dropped and the chat window stayed empty.
+// `tool-result` is intentionally absent: tools execute on the CLIENT, so
+// the server never emits a tool-result chunk on the wire.
 export type StreamChunk =
-  | { type: "text-delta"; text: string }
+  | { type: "content"; text: string }
   | ToolCallChunk
-  | { type: "tool-result"; toolCallId: string; result: unknown }
   | {
-      type: "finish";
+      type: "done";
       finishReason: string;
       usage: { promptTokens: number; completionTokens: number };
     };
@@ -54,7 +63,7 @@ function* translateChunk(
   const delta = choice.delta;
   if (delta) {
     if (typeof delta.content === "string" && delta.content.length > 0) {
-      yield { type: "text-delta", text: delta.content };
+      yield { type: "content", text: delta.content };
     }
     if (delta.tool_calls) {
       acc.absorb({ tool_calls: delta.tool_calls });
@@ -64,7 +73,7 @@ function* translateChunk(
   if (fr === "tool_calls") {
     for (const tc of acc.flush()) yield tc;
     yield {
-      type: "finish",
+      type: "done",
       finishReason: "tool_calls",
       usage: {
         promptTokens: json.usage?.prompt_tokens ?? 0,
@@ -77,7 +86,7 @@ function* translateChunk(
     // is intentionally NOT flushed (T-04-03 / LiteLLM#17246 mitigation);
     // the caller can inspect acc.hasPending() to log a warning.
     yield {
-      type: "finish",
+      type: "done",
       finishReason: fr,
       usage: {
         promptTokens: json.usage?.prompt_tokens ?? 0,
@@ -119,7 +128,7 @@ export async function* sseToNdjson(input: SseToNdjsonInput): AsyncGenerator<Stre
           continue;
         }
         for (const out of translateChunk(json, input.acc)) {
-          if (out.type === "finish") sawFinish = true;
+          if (out.type === "done") sawFinish = true;
           yield out;
         }
       }
@@ -129,7 +138,7 @@ export async function* sseToNdjson(input: SseToNdjsonInput): AsyncGenerator<Stre
     // NDJSON stream (premature-close.sse fixture).
     if (!sawFinish) {
       yield {
-        type: "finish",
+        type: "done",
         finishReason: "incomplete",
         usage: { promptTokens: 0, completionTokens: 0 },
       };

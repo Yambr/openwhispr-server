@@ -22,11 +22,13 @@ describe("toolCallAccumulator", () => {
     acc.absorb({ tool_calls: [{ index: 0, function: { arguments: '"}' } }] });
     const out = acc.flush();
     expect(out).toHaveLength(1);
+    // R32 — wire shape is { type:"tool_call", id, name, arguments } where
+    // `arguments` is the raw accumulated JSON STRING (client parses it).
     expect(out[0]).toEqual({
-      type: "tool-call",
-      toolCallId: "call_a",
-      toolName: "get_weather",
-      args: { location: "Paris,FR" },
+      type: "tool_call",
+      id: "call_a",
+      name: "get_weather",
+      arguments: '{"location":"Paris,FR"}',
     });
   });
 
@@ -50,21 +52,23 @@ describe("toolCallAccumulator", () => {
     const out = acc.flush();
     expect(out).toHaveLength(2);
     expect(out[0]).toEqual({
-      type: "tool-call",
-      toolCallId: "call_a",
-      toolName: "get_weather",
-      args: { location: "Paris" },
+      type: "tool_call",
+      id: "call_a",
+      name: "get_weather",
+      arguments: '{"location":"Paris"}',
     });
     expect(out[1]).toEqual({
-      type: "tool-call",
-      toolCallId: "call_b",
-      toolName: "get_time",
-      args: { tz: "UTC" },
+      type: "tool_call",
+      id: "call_b",
+      name: "get_time",
+      arguments: '{"tz":"UTC"}',
     });
   });
 
-  // Test 3 — malformed args JSON falls back to {__unparsed: <raw>}.
-  it("emits a chunk with args={__unparsed:<raw>} when accumulated arguments cannot be JSON.parsed", () => {
+  // Test 3 — R32: malformed args JSON is forwarded verbatim as a string.
+  // The accumulator no longer parses; the client does its own JSON.parse
+  // and handles a parse failure on its side.
+  it("forwards the raw accumulated arguments string verbatim even when it is not valid JSON", () => {
     const acc = createToolCallAccumulator();
     acc.absorb({
       tool_calls: [{ index: 0, id: "call_x", function: { name: "bad", arguments: "{not json" } }],
@@ -72,10 +76,10 @@ describe("toolCallAccumulator", () => {
     const out = acc.flush();
     expect(out).toHaveLength(1);
     expect(out[0]).toEqual({
-      type: "tool-call",
-      toolCallId: "call_x",
-      toolName: "bad",
-      args: { __unparsed: "{not json" },
+      type: "tool_call",
+      id: "call_x",
+      name: "bad",
+      arguments: "{not json",
     });
   });
 
@@ -90,7 +94,7 @@ describe("toolCallAccumulator", () => {
     });
     const out = acc.flush();
     expect(out).toHaveLength(1);
-    expect(out[0]).toMatchObject({ toolCallId: "call_z", toolName: "ok" });
+    expect(out[0]).toMatchObject({ id: "call_z", name: "ok" });
   });
 
   // Test 5 — hasPending() before/after flush.
@@ -121,7 +125,7 @@ describe("toolCallAccumulator", () => {
     // overwrites cleanly via id/name keys.
     const partial = acc.flush();
     expect(partial).toHaveLength(1);
-    expect(partial[0]?.args).toEqual({ __unparsed: '{"a":' });
+    expect(partial[0]?.arguments).toBe('{"a":');
     expect(acc.hasPending()).toBe(false);
   });
 
@@ -147,10 +151,10 @@ describe("toolCallAccumulator", () => {
     const out = acc.flush();
     expect(out).toHaveLength(1);
     expect(out[0]).toEqual({
-      type: "tool-call",
-      toolCallId: "tc_3",
-      toolName: "noid",
-      args: { x: 1 },
+      type: "tool_call",
+      id: "tc_3",
+      name: "noid",
+      arguments: '{"x":1}',
     });
   });
 });
