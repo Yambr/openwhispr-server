@@ -14,7 +14,10 @@
 //      to `wordsUsed` (D-14). RLS restricts the SUM to the current
 //      tenant via the app.tenant_id GUC set by withTenant.
 //   3. Response: `{wordsUsed, wordsRemaining: 999_999_999, plan:
-//      'unlimited', limitReached: false}` per D-12/D-15.
+//      'unlimited', limitReached: false, isSubscribed: true,
+//      isTrial: false}` per D-12/D-15. R34 — `isSubscribed`/`isTrial`
+//      are read by the immutable desktop client's useUsage hook;
+//      SyncService.canSync() gates cloud sync on `isSubscribed`.
 
 import { type ExecutableTx, type TransactionalDb, withTenant } from "@openwhispr/data";
 import { sql } from "drizzle-orm";
@@ -65,6 +68,15 @@ export const buildUsageRoutes = (deps: UsageDeps) =>
           wordsRemaining: UNLIMITED_REMAINING,
           plan: "unlimited" as const,
           limitReached: false as const,
+          // R34 — the immutable desktop client's useUsage hook reads
+          // `isSubscribed` / `isTrial` and SyncService.canSync() gates
+          // cloud sync of transcriptions/notes/conversations on
+          // `isSubscribed`. The v1 corporate `unlimited` plan is a
+          // fully-entitled, non-trial plan, so it always reports
+          // subscribed. Without these fields the client coerces a
+          // missing value to `false` and cloud sync never starts.
+          isSubscribed: true as const,
+          isTrial: false as const,
         });
       },
     });
