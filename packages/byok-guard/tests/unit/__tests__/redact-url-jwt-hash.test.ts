@@ -40,6 +40,28 @@ describe("Plan 51-02 — redactUrl masks JWT shapes + URL fragment", () => {
       const out = redactUrl(`https://example.com/cb?next=${encodeURIComponent(jwt)}`);
       expect(out).not.toContain(jwt);
     });
+
+    // v2.5-B / CodeQL #17 (js/polynomial-redos) — the prior JWT shape
+    // `/eyJ[A-Za-z0-9_-]+\.eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+/g` exhibits
+    // super-linear backtracking on a long `eyJeyJeyJ…` run with no dot
+    // terminator. The bounded-quantifier rewrite must (a) still redact
+    // every real JWT and (b) resolve a pathological input in linear time.
+    it("resolves a pathological 'eyJ'-repetition payload in linear time", () => {
+      const pathological = `https://example.com/v1/${"eyJ".repeat(40_000)}`;
+      const start = performance.now();
+      const out = redactUrl(pathological);
+      expect(performance.now() - start).toBeLessThan(200);
+      // No dot-separated 3-segment shape → nothing to redact, returns intact.
+      expect(out).toContain("eyJ");
+    });
+
+    it("still redacts a JWT carrying a non-eyJ payload segment", () => {
+      // A 3-segment dot-separated token with the canonical eyJ header.
+      const jwt = "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJhYmMifQ.sig-bytes";
+      const out = redactUrl(`https://api.example.com/v1/${jwt}`);
+      expect(out).not.toContain(jwt);
+      expect(out).toContain("***");
+    });
   });
 
   describe("URL fragment (#access_token=…)", () => {
