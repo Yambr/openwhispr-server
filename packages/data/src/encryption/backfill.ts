@@ -70,6 +70,13 @@ export interface RunBackfillOpts {
   readonly dryRun?: boolean;
   /** Default 500. Caps memory per TX. */
   readonly batchSize?: number;
+  /**
+   * AUDIT-HARD-03 — safety cap on the per-column batched loop. Default
+   * `MAX_BACKFILL_ITERATIONS`. Exceeding it throws rather than spinning
+   * forever on a buggy idempotency predicate. Injectable so tests can
+   * exercise the cap with a small value.
+   */
+  readonly maxIterations?: number;
   /** Optional structured logger (pino-shape). Default: silent. */
   readonly logger?: {
     info: (obj: Record<string, unknown>, msg?: string) => void;
@@ -104,6 +111,19 @@ const LENS_MANAGED_COLUMNS: ReadonlySet<string> = new Set([
   "verification.value",
 ]);
 
+// AUDIT-HARD-03 (HACK-L5) — safety cap on the batched backfill loop.
+//
+// The loop's only natural exits are `rows.length === 0` and
+// `batchProcessed < batchSize` — both rely on the idempotency predicate
+// (`<col> IS NOT NULL AND <col>_value_ciphertext IS NULL`) shrinking the
+// result set as rows are encrypted. A buggy predicate, a column-map skew,
+// or a UPDATE that silently fails to populate the ciphertext sidecar would
+// leave a full batch eligible forever → an infinite spin holding an
+// owner-pool connection. This cap converts that failure mode into a loud,
+// fast error. The bound is generous: at the default batchSize of 500 it
+// covers 500M rows, far beyond any credential table in this system.
+const MAX_BACKFILL_ITERATIONS = 1_000_000;
+
 const SIDECAR_SUFFIXES = [
   "dek_wrapped",
   "dek_iv",
@@ -122,7 +142,15 @@ const SIDECAR_SUFFIXES = [
  * When `dryRun` is true: SELECT counts only; no UPDATE statements issued.
  */
 export async function runBackfill(opts: RunBackfillOpts): Promise<BackfillReport> {
-  const { ownerPool, keyProvider, columnMap, dryRun = false, batchSize = 500, logger } = opts;
+  const {
+    ownerPool,
+    keyProvider,
+    columnMap,
+    dryRun = false,
+    batchSize = 500,
+    maxIterations = MAX_BACKFILL_ITERATIONS,
+    logger,
+  } = opts;
   const report: BackfillReport = {};
 
   for (const [table, cols] of Object.entries(columnMap)) {
@@ -176,7 +204,18 @@ export async function runBackfill(opts: RunBackfillOpts): Promise<BackfillReport
       // per batch. The predicate is the idempotency guard, so processed rows
       // fall out of the result set on the next iteration even without an
       // OFFSET — preventing batch drift.
+      let iterations = 0;
       for (;;) {
+        // AUDIT-HARD-03 — defensive iteration cap. See MAX_BACKFILL_ITERATIONS.
+        iterations += 1;
+        if (iterations > maxIterations) {
+          throw new Error(
+            `[backfill] ${table}.${column}: exceeded ${maxIterations} ` +
+              `iterations without draining the work set — aborting to avoid an ` +
+              `infinite spin. This indicates a buggy idempotency predicate or an ` +
+              `UPDATE that is not populating the "${ciphertextCol}" sidecar.`,
+          );
+        }
         const client = await ownerPool.connect();
         let batchProcessed = 0;
         try {
