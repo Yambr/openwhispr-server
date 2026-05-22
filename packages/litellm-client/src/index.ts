@@ -49,6 +49,7 @@ import {
   SsrfDispatcherNotInstalledError,
 } from "./errors.js";
 import { loadBundledModelProviders } from "./model-aliases.js";
+import { abortableSleep, computeBackoffMs, isRetryableError } from "./retry.js";
 
 /**
  * Phase 41.f / HI-2 — well-known marker key. The SSRF-wrapping Agent
@@ -170,6 +171,24 @@ export {
    * Production callers MUST NOT depend on this name.
    */
   DEFAULT_HEADERS_TIMEOUT_MS,
+  /**
+   * @internal — litellm-patterns A4. Env-default for
+   * `LITELLM_RETRY_BASE_MS`; canonical declaration lives in config.ts.
+   * Production callers MUST NOT depend on this name.
+   */
+  DEFAULT_RETRY_BASE_MS,
+  /**
+   * @internal — litellm-patterns A4. Env-default for
+   * `LITELLM_RETRY_CAP_MS`; canonical declaration lives in config.ts.
+   * Production callers MUST NOT depend on this name.
+   */
+  DEFAULT_RETRY_CAP_MS,
+  /**
+   * @internal — litellm-patterns A4. Env-default for
+   * `LITELLM_RETRY_MAX_ATTEMPTS`; canonical declaration lives in
+   * config.ts. Production callers MUST NOT depend on this name.
+   */
+  DEFAULT_RETRY_MAX_ATTEMPTS,
 } from "./config.js";
 
 export interface ChatCompletionRequest {
@@ -460,25 +479,64 @@ export function buildLitellmClient(
         messages: req.messages,
         user: req.userId, // D-03: per-user attribution via OpenAI-compatible field
       });
-      // Phase 41.f / HI-1 — forward headersTimeout / bodyTimeout / signal.
-      // R32 — the defaults come from `config` (env-tunable) rather than a
-      // hardcoded literal; an explicit per-call override still wins.
-      const reqOpts: Record<string, unknown> = {
-        method: "POST",
-        headers: {
-          ...authHeaders(req.userId, req.requestId),
-          "content-type": "application/json",
-        },
-        body,
-        headersTimeout: req.headersTimeout ?? config.headersTimeoutMs,
-        bodyTimeout: req.bodyTimeout ?? config.bodyTimeoutMs,
-      };
-      if (req.signal) reqOpts.signal = req.signal;
-      const res = await doRequest(
-        `${config.baseUrl}/v1/chat/completions`,
-        reqOpts as Parameters<typeof doRequest>[1],
-      );
-      return ensureOk(res);
+      // litellm-patterns A4 — retry loop wrapping ONLY chatCompletions.
+      // chatCompletionsStream MUST NOT be retried (a partially-consumed
+      // SSE body cannot be safely replayed) — enforced by construction:
+      // the stream method below simply never calls this loop.
+      // audioTranscriptions is excluded in v1 — its body is a single-use
+      // Readable (a future phase can buffer-and-retry).
+      //
+      // Each attempt re-issues the request fresh; the JSON body is a
+      // pre-stringified string so there is no single-use-body problem
+      // here. Per-attempt headersTimeout / bodyTimeout still apply (the
+      // retry budget is NOT a global deadline).
+      const maxAttempts = Math.max(1, config.retryMaxAttempts);
+      let lastErr: unknown;
+      for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+        try {
+          // Phase 41.f / HI-1 — forward headersTimeout / bodyTimeout / signal.
+          // R32 — the defaults come from `config` (env-tunable) rather than
+          // a hardcoded literal; an explicit per-call override still wins.
+          const reqOpts: Record<string, unknown> = {
+            method: "POST",
+            headers: {
+              ...authHeaders(req.userId, req.requestId),
+              "content-type": "application/json",
+            },
+            body,
+            headersTimeout: req.headersTimeout ?? config.headersTimeoutMs,
+            bodyTimeout: req.bodyTimeout ?? config.bodyTimeoutMs,
+          };
+          if (req.signal) reqOpts.signal = req.signal;
+          const res = await doRequest(
+            `${config.baseUrl}/v1/chat/completions`,
+            reqOpts as Parameters<typeof doRequest>[1],
+          );
+          return await ensureOk(res);
+        } catch (err) {
+          lastErr = err;
+          // Not retryable — rethrow now (auth / client / unknown).
+          if (!isRetryableError(err)) throw err;
+          // Retryable but the budget is exhausted on the last attempt.
+          if (attempt + 1 >= maxAttempts) throw err;
+          // Caller cancelled — rethrow immediately, do NOT sleep.
+          if (req.signal?.aborted) throw err;
+          const retryAfterMs = err instanceof LitellmUpstreamError ? err.retryAfterMs : undefined;
+          const delayMs = computeBackoffMs(
+            attempt,
+            retryAfterMs,
+            config.retryBaseMs,
+            config.retryCapMs,
+          );
+          await abortableSleep(delayMs, req.signal);
+          // If the signal fired while we slept, rethrow the upstream error
+          // immediately rather than spinning another attempt.
+          if (req.signal?.aborted) throw err;
+        }
+      }
+      // Unreachable — the loop either returns a success or rethrows the
+      // last error. `throw lastErr` here is the type-narrowing belt.
+      throw lastErr;
     },
 
     async chatCompletionsStream(req) {

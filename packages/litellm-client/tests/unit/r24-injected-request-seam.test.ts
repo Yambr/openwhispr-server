@@ -39,6 +39,11 @@ function baseConfig(): LitellmClientConfig {
     headersTimeoutMs: 30_000,
     bodyTimeoutMs: 120_000,
     errorDrainTimeoutMs: 15_000,
+    // litellm-patterns A4 — single-attempt to keep the seam-test
+    // request-count assertions deterministic.
+    retryMaxAttempts: 1,
+    retryBaseMs: 1,
+    retryCapMs: 5,
   };
 }
 

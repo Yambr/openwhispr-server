@@ -90,6 +90,28 @@ export interface LitellmClientConfig {
    * {@link DEFAULT_ERROR_DRAIN_TIMEOUT_MS}.
    */
   errorDrainTimeoutMs: number;
+  /**
+   * litellm-patterns A4 — total attempts (initial + retries) for the
+   * `chatCompletions` retry loop. Operator-owned via
+   * `LITELLM_RETRY_MAX_ATTEMPTS`; falls back to
+   * {@link DEFAULT_RETRY_MAX_ATTEMPTS} (3 = 1 try + 2 retries). The
+   * streaming + audio-transcription paths are NEVER retried.
+   */
+  retryMaxAttempts: number;
+  /**
+   * litellm-patterns A4 — exponential-backoff base (ms) used when the
+   * upstream did not supply a usable `Retry-After`. Operator-owned via
+   * `LITELLM_RETRY_BASE_MS`; falls back to {@link DEFAULT_RETRY_BASE_MS}.
+   */
+  retryBaseMs: number;
+  /**
+   * litellm-patterns A4 — absolute upper bound (ms) on any single
+   * retry-backoff delay. Operator-owned via `LITELLM_RETRY_CAP_MS`;
+   * falls back to {@link DEFAULT_RETRY_CAP_MS}. Also serves as the
+   * acceptance cap on a parsed upstream `Retry-After`: a hint above this
+   * cap is treated as "use jittered exponential instead".
+   */
+  retryCapMs: number;
 }
 
 export const DEFAULT_LITELLM_BASE_URL = "http://litellm:4000";
@@ -136,6 +158,27 @@ export const DEFAULT_BODY_TIMEOUT_MS = 120_000;
  * `LitellmClientConfig.errorDrainTimeoutMs` instead.
  */
 export const DEFAULT_ERROR_DRAIN_TIMEOUT_MS = 15_000;
+/**
+ * @internal — litellm-patterns A4. Literal fallback for
+ * `LITELLM_RETRY_MAX_ATTEMPTS`. 3 total attempts = 1 try + 2 retries; it
+ * stays a literal ONLY as the env-default. Production callers MUST NOT
+ * depend on this name — read `LitellmClientConfig.retryMaxAttempts` instead.
+ */
+export const DEFAULT_RETRY_MAX_ATTEMPTS = 3;
+/**
+ * @internal — litellm-patterns A4. Literal fallback for
+ * `LITELLM_RETRY_BASE_MS` (exponential-backoff base, 250 ms). Literal
+ * ONLY as the env-default. Production callers MUST NOT depend on this
+ * name — read `LitellmClientConfig.retryBaseMs` instead.
+ */
+export const DEFAULT_RETRY_BASE_MS = 250;
+/**
+ * @internal — litellm-patterns A4. Literal fallback for
+ * `LITELLM_RETRY_CAP_MS` (per-attempt backoff cap, 8 s). Literal ONLY as
+ * the env-default. Production callers MUST NOT depend on this name —
+ * read `LitellmClientConfig.retryCapMs` instead.
+ */
+export const DEFAULT_RETRY_CAP_MS = 8_000;
 
 /** Compose service name of the bundled LiteLLM proxy (slim/dev stack). */
 const BUNDLED_LITELLM_HOST = "litellm";
@@ -209,6 +252,15 @@ export function loadLitellmConfigFromEnv(
     env.LITELLM_ERROR_DRAIN_TIMEOUT_MS,
     DEFAULT_ERROR_DRAIN_TIMEOUT_MS,
   );
+  // litellm-patterns A4 — retry-loop posture is operator-tunable via
+  // three env knobs; each falls back to its literal default when unset
+  // or invalid. Mirrors the R32 timeout-knob pattern exactly.
+  const retryMaxAttempts = parsePositiveIntEnv(
+    env.LITELLM_RETRY_MAX_ATTEMPTS,
+    DEFAULT_RETRY_MAX_ATTEMPTS,
+  );
+  const retryBaseMs = parsePositiveIntEnv(env.LITELLM_RETRY_BASE_MS, DEFAULT_RETRY_BASE_MS);
+  const retryCapMs = parsePositiveIntEnv(env.LITELLM_RETRY_CAP_MS, DEFAULT_RETRY_CAP_MS);
   return {
     baseUrl,
     masterKey,
@@ -224,5 +276,8 @@ export function loadLitellmConfigFromEnv(
     headersTimeoutMs,
     bodyTimeoutMs,
     errorDrainTimeoutMs,
+    retryMaxAttempts,
+    retryBaseMs,
+    retryCapMs,
   };
 }

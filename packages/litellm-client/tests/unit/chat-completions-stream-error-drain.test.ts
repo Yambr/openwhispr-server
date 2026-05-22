@@ -51,6 +51,11 @@ function baseConfig(errorDrainTimeoutMs: number): LitellmClientConfig {
     headersTimeoutMs: 30_000,
     bodyTimeoutMs: 120_000,
     errorDrainTimeoutMs,
+    // litellm-patterns A4 — stream method is NEVER retried; values
+    // listed only to satisfy the LitellmClientConfig shape.
+    retryMaxAttempts: 1,
+    retryBaseMs: 1,
+    retryCapMs: 5,
   };
 }
 
