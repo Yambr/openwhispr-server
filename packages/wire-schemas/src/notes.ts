@@ -43,7 +43,15 @@ export const NoteInputSchema = z
     content: z.string().max(CONTENT_MAX).optional(),
     enhanced_content: z.string().max(CONTENT_MAX).nullable().optional(),
     enhancement_prompt: z.string().max(PROMPT_MAX).nullable().optional(),
-    note_type: NoteTypeSchema.optional(),
+    // R37 — the client's local SQLite `note_type` column is
+    // unconstrained `TEXT NOT NULL DEFAULT 'personal'`; it can hold
+    // values outside the canonical enum (e.g. `"note"`). The strict
+    // `NoteTypeSchema` enum 400'd every such note sync. The INPUT
+    // accepts any short string; the route normalizes an unknown value
+    // to a canonical `NoteType` before storing. `CloudNoteSchema.note_type`
+    // (the response) stays the strict enum. Mirrors the R35 transcription
+    // `status` lenient-input / strict-output treatment.
+    note_type: z.string().max(SHORT_TEXT).nullish(),
     source_file: z.string().max(SHORT_TEXT).nullable().optional(),
     audio_duration_seconds: z.number().nonnegative().finite().nullable().optional(),
     participants: z.string().max(SHORT_TEXT).nullable().optional(),

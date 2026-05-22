@@ -68,6 +68,56 @@ describe("integration — POST /api/notes/batch-create", () => {
     for (const r of body.created) expect(r.id).toBeTruthy();
   });
 
+  it("R37 — accepts a free-text note_type + SQLite-form created_at and normalizes note_type", async () => {
+    // The immutable client syncs a raw SQLite note: `note_type` is the
+    // unconstrained free-text column (here "note", outside the canonical
+    // enum) and `created_at` is the space-separated SQLite form. Both
+    // were 400 before R37/R35. The route accepts them; note_type is
+    // normalized to a canonical value so the strict CloudNote response
+    // schema is satisfiable.
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/notes/batch-create",
+      headers: { "content-type": "application/json" },
+      payload: JSON.stringify({
+        notes: [
+          {
+            client_note_id: "r37-1",
+            title: "r37",
+            content: "c",
+            note_type: "note",
+            source_file: null,
+            audio_duration_seconds: null,
+            enhanced_content: null,
+            enhancement_prompt: null,
+            enhanced_at_content_hash: null,
+            transcript: null,
+            created_at: "2026-05-22 17:20:40",
+            updated_at: "2026-05-22 17:20:40",
+          },
+        ],
+      }),
+    });
+    expect(res.statusCode).toBe(201);
+    const body = res.json() as {
+      created: { client_note_id: string; id: string }[];
+    };
+    expect(body.created).toHaveLength(1);
+    expect(body.created[0]?.client_note_id).toBe("r37-1");
+    expect(body.created[0]?.id).toBeTruthy();
+    // batch-create returns the lightweight {client_note_id, id} shape;
+    // verify the stored row's note_type was normalized via the
+    // full-CloudNote list endpoint.
+    const list = await app.inject({ method: "GET", url: "/api/notes/list" });
+    expect(list.statusCode).toBe(200);
+    const listed = (list.json() as { notes: { client_note_id: string; note_type: string }[] })
+      .notes;
+    const r37 = listed.find((n) => n.client_note_id === "r37-1");
+    expect(r37).toBeDefined();
+    // the free-text "note" was normalized to the canonical default.
+    expect(r37?.note_type).toBe("personal");
+  });
+
   it("accepts a bare array body (forward-compat with plan <behavior>)", async () => {
     const res = await app.inject({
       method: "POST",
