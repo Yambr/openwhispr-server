@@ -44,8 +44,8 @@ apps/api/src/routes/test-only.ts:286  # issue-31-debt-hardcode-localhost-3000 (d
 # better-auth-handler.ts:49 entry removed in Phase 57 / Track E — the
 # buildRequestUrl comment no longer references `localhost` (the
 # req.headers.host fallback was deleted; api-routes-rest:CR-01).
-apps/api/src/config/auth.ts:68  # 53-37-test-env-default — NODE_ENV=test fallback URL used only when AUTH_URL is unset in vitest harness; never reached at production boot
-apps/api/src/config/auth.ts:159  # 57-E-test-env-default — validateIngressBoot NODE_ENV=test fallback URL; used only when INGRESS_BASE_URL/AUTH_URL unset in vitest harness, never reached at production boot
+apps/api/src/config/auth.ts:70  # 53-37-test-env-default — NODE_ENV=test fallback URL used only when AUTH_URL is unset in vitest harness; never reached at production boot
+apps/api/src/config/auth.ts:165  # 57-E-test-env-default — validateIngressBoot NODE_ENV=test fallback URL; used only when INGRESS_BASE_URL/AUTH_URL unset in vitest harness, never reached at production boot
 apps/web/src/app/(public)/setup/page.tsx:35  # 53-28-comment-narrative-fp — JSDoc references http://api:3000 fallback resolved by internalApiUrl()
 apps/web/src/app/(public)/setup/page.tsx:40  # 53-28-comment-narrative-fp — JSDoc references INTERNAL_API_URL=http://api:3000 contract
 # better-auth-handler.ts:79 entry removed in Phase 57 / Track E — the
