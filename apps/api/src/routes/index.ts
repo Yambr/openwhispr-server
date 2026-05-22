@@ -307,10 +307,18 @@ export function buildAllRoutes(deps: AllRoutesDeps): readonly RoutePlugin[] {
         : {},
     ),
     // D4 — pass the operator-owned realtime model alias so the token-mint
-    // route does not bake `gpt-realtime` as a literal.
-    buildOpenAIRealtimeTokenRoutes(
-      deps.litellmModels ? { realtimeModel: deps.litellmModels.realtimeModel } : {},
-    ),
+    // route does not bake `gpt-realtime` as a literal. Also thread the
+    // operator-owned client-secret endpoint URL + Whisper transcription
+    // model alias resolved from env at the entrypoint boundary.
+    buildOpenAIRealtimeTokenRoutes({
+      ...(deps.litellmModels ? { realtimeModel: deps.litellmModels.realtimeModel } : {}),
+      ...(deps.tokenProviders?.openaiRealtimeTokenUrl !== undefined
+        ? { tokenUrl: deps.tokenProviders.openaiRealtimeTokenUrl }
+        : {}),
+      ...(deps.tokenProviders?.openaiRealtimeWhisperModel !== undefined
+        ? { whisperModel: deps.tokenProviders.openaiRealtimeWhisperModel }
+        : {}),
+    }),
     // Phase 05 / Plan 02 — WIRE-09 + WIRE-10. Both routes are registered
     // UNCONDITIONALLY (do not gate on litellm presence) because their
     // contract is database-only: idempotent ledger insert + SUM aggregator.

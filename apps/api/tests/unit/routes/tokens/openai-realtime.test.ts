@@ -64,6 +64,10 @@ interface TestAppOpts {
   bearerMap?: Record<string, string>;
   /** D4 — inject a non-default operator-owned realtime model alias. */
   realtimeModel?: string;
+  /** Optional operator-overridden OpenAI Realtime client-secret endpoint. */
+  tokenUrl?: string;
+  /** Optional operator-overridden Whisper transcription model alias. */
+  whisperModel?: string;
 }
 
 async function buildTestApp(opts: TestAppOpts = {}): Promise<FastifyInstance> {
@@ -84,9 +88,11 @@ async function buildTestApp(opts: TestAppOpts = {}): Promise<FastifyInstance> {
     };
   });
   await app.register(
-    buildOpenAIRealtimeTokenRoutes(
-      opts.realtimeModel !== undefined ? { realtimeModel: opts.realtimeModel } : {},
-    ),
+    buildOpenAIRealtimeTokenRoutes({
+      ...(opts.realtimeModel !== undefined ? { realtimeModel: opts.realtimeModel } : {}),
+      ...(opts.tokenUrl !== undefined ? { tokenUrl: opts.tokenUrl } : {}),
+      ...(opts.whisperModel !== undefined ? { whisperModel: opts.whisperModel } : {}),
+    }),
   );
   await app.ready();
   return app;
@@ -568,6 +574,80 @@ describe("POST /api/openai-realtime-token", () => {
         await app.close();
       }
     });
+  });
+
+  it("calls a caller-supplied tokenUrl instead of the bundled default host", async () => {
+    // Operator-overridden OPENAI_REALTIME_TOKEN_URL is threaded into the
+    // route factory by index.ts (the env boundary). Proves the upstream
+    // host literal is no longer baked into the route handler.
+    const CUSTOM_HOST = "https://openai.proxy.internal";
+    agent
+      .get(CUSTOM_HOST)
+      .intercept({ path: "/edge/v1/realtime/client_secrets", method: "POST" })
+      .reply(200, makeFixtureWithValue("ek_custom_host"), {
+        headers: { "content-type": "application/json" },
+      });
+
+    const app = await buildTestApp({
+      bearerMap: { "Bearer ok-u1": "u1" },
+      tokenUrl: `${CUSTOM_HOST}/edge/v1/realtime/client_secrets`,
+    });
+    try {
+      const r = await app.inject({
+        method: "POST",
+        url: "/api/openai-realtime-token",
+        headers: { authorization: "Bearer ok-u1", "content-type": "application/json" },
+        payload: {},
+      });
+      expect(r.statusCode).toBe(200);
+      const body = r.json() as { clientSecret: string };
+      expect(body.clientSecret).toBe("ek_custom_host");
+    } finally {
+      await app.close();
+    }
+  });
+
+  it("uses a caller-supplied whisperModel for session.input_audio_transcription.model", async () => {
+    // Operator-overridden OPENAI_REALTIME_WHISPER_MODEL is threaded into
+    // the route factory; the route emits it as the transcription model
+    // when the client supplies a language.
+    const captured: Array<Record<string, unknown>> = [];
+    agent
+      .get(OPENAI_HOST)
+      .intercept({ path: "/v1/realtime/client_secrets", method: "POST" })
+      .reply(200, (callOpts: { body?: unknown }) => {
+        const raw = typeof callOpts.body === "string" ? callOpts.body : String(callOpts.body ?? "");
+        try {
+          captured.push(JSON.parse(raw) as Record<string, unknown>);
+        } catch {
+          captured.push({});
+        }
+        return makeFixtureWithValue("ek_whisper");
+      });
+
+    const app = await buildTestApp({
+      bearerMap: { "Bearer ok-u1": "u1" },
+      whisperModel: "whisper-large-v3",
+    });
+    try {
+      const r = await app.inject({
+        method: "POST",
+        url: "/api/openai-realtime-token",
+        headers: { authorization: "Bearer ok-u1", "content-type": "application/json" },
+        payload: { language: "ru" },
+      });
+      expect(r.statusCode).toBe(200);
+      expect(captured).toHaveLength(1);
+      const session = captured[0].session as {
+        input_audio_transcription?: { model?: string; language?: string };
+      };
+      expect(session.input_audio_transcription).toEqual({
+        model: "whisper-large-v3",
+        language: "ru",
+      });
+    } finally {
+      await app.close();
+    }
   });
 
   it("returns 401 on missing bearer BEFORE consuming rate-limit bucket (T-04-04 mitigation)", async () => {

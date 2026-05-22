@@ -47,30 +47,46 @@ import { callProvider } from "./_call-provider.js";
 const FALLBACK_REALTIME_MODEL = "gpt-realtime";
 const PROVIDER_LABEL = "OpenAI Realtime";
 const ENV_VAR_NAME = "OPENAI_API_KEY";
-const UPSTREAM_URL = "https://api.openai.com/v1/realtime/client_secrets";
+/**
+ * Bundled-default OpenAI Realtime client-secret endpoint. Stays a literal
+ * ONLY as the fallback when no operator-owned `OPENAI_REALTIME_TOKEN_URL`
+ * is injected (test isolation / a deployment that never set the env var).
+ * Production threads the operator value from `index.ts` (the env-reading
+ * boundary — LOCKER-01) via the route factory's `tokenUrl` option — no
+ * `process.env` read in this route file.
+ */
+const DEFAULT_UPSTREAM_URL = "https://api.openai.com/v1/realtime/client_secrets";
 
 // Phase 56 / Plan 56-07 (R3 / D-2) — Whisper model used for the upstream
 // `session.input_audio_transcription.model` field when the client supplies
-// a `language`. Chosen as "whisper-1" to mirror the established repo
+// a `language`. Defaults to "whisper-1" to mirror the established repo
 // convention (apps/api/src/lib/settings-resolver.ts:106 defaults to
-// "whisper-1" for sttModel). The constant is intentionally a route-local
-// invariant rather than env-driven: OpenAI's Realtime API contract for
-// `input_audio_transcription.model` accepts a fixed set of Whisper-family
-// model IDs, and operator-supplied values would be a forwards-compat
-// liability without coordinated upstream support.
-const WHISPER_TRANSCRIPTION_MODEL = "whisper-1";
+// "whisper-1" for sttModel). Operators that route OpenAI's Realtime API
+// through a proxy exposing a different Whisper-family alias override it
+// via `OPENAI_REALTIME_WHISPER_MODEL`; the value is threaded in by
+// `index.ts` via the route factory's `whisperModel` option — no
+// `process.env` read in this route file (LOCKER-01).
+const DEFAULT_WHISPER_TRANSCRIPTION_MODEL = "whisper-1";
 
 /**
  * D4 — route options. `realtimeModel` is the operator-owned default model
  * alias used when the client omits `body.model`. Threaded from
  * `loadLitellmConfigFromEnv().defaultRealtimeModel` by `buildAllRoutes`;
  * omitted in test isolation, where the route falls back to
- * `FALLBACK_REALTIME_MODEL`. The options type is inlined (not an exported
+ * `FALLBACK_REALTIME_MODEL`. `tokenUrl` is the operator-owned OpenAI
+ * Realtime client-secret endpoint URL (env `OPENAI_REALTIME_TOKEN_URL`);
+ * `whisperModel` is the operator-owned transcription model alias (env
+ * `OPENAI_REALTIME_WHISPER_MODEL`). Both fall back to their bundled-default
+ * literals when omitted. The options type is inlined (not an exported
  * interface) so it does not become a LOCKER-04 dead export.
  */
-export const buildOpenAIRealtimeTokenRoutes = (opts: { realtimeModel?: string } = {}) =>
+export const buildOpenAIRealtimeTokenRoutes = (
+  opts: { realtimeModel?: string; tokenUrl?: string; whisperModel?: string } = {},
+) =>
   async function openAIRealtimeTokenRoutes(app: FastifyInstance): Promise<void> {
     const defaultModel = opts.realtimeModel ?? FALLBACK_REALTIME_MODEL;
+    const upstreamUrl = opts.tokenUrl ?? DEFAULT_UPSTREAM_URL;
+    const whisperModel = opts.whisperModel ?? DEFAULT_WHISPER_TRANSCRIPTION_MODEL;
     app.route({
       method: "POST",
       url: "/api/openai-realtime-token",
@@ -142,7 +158,7 @@ export const buildOpenAIRealtimeTokenRoutes = (opts: { realtimeModel?: string } 
         } = { type: "realtime", model };
         if (language !== undefined) {
           sessionPayload.input_audio_transcription = {
-            model: WHISPER_TRANSCRIPTION_MODEL,
+            model: whisperModel,
             language,
           };
         }
@@ -150,7 +166,7 @@ export const buildOpenAIRealtimeTokenRoutes = (opts: { realtimeModel?: string } 
 
         const mintOne = () =>
           callProvider({
-            url: UPSTREAM_URL,
+            url: upstreamUrl,
             method: "POST",
             // D-16: Bearer prefix is REQUIRED for OpenAI (unlike AssemblyAI's
             // bare-key or Deepgram's "Token <key>"). Pinned by tests.
