@@ -117,7 +117,11 @@ export async function bringStackUp(): Promise<void> {
   //    signal the e2e actually needs. `make contract-test` uses --wait
   //    because the in-cluster runner depends on every observability
   //    target via its own depends_on; our host-side suite does not.
-  const upCode = await compose("--profile", "default", "up", "-d");
+  // `--profile dev` is required: AUDIT-HARD-04 gated the `mailpit` SMTP
+  // trap behind the `dev` profile (it must not start in production).
+  // The r21/r22 verification-email e2e tests poll mailpit on
+  // 127.0.0.1:8025, so the host-side harness must opt the trap in.
+  const upCode = await compose("--profile", "default", "--profile", "dev", "up", "-d");
   if (upCode !== 0) {
     throw new Error(`docker compose up failed with exit code ${upCode}`);
   }

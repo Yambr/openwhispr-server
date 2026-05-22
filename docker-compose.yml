@@ -590,8 +590,20 @@ services:
   # operator compose override). No api/worker `depends_on: mailpit` —
   # per the Phase-14 decision the api boot stays decoupled from mailpit
   # and `EmailSender.ts` loud-fails at send time, not boot time.
+  #
+  # AUDIT-HARD-04 (HACK-M2): mailpit is a DEV SMTP trap, not a
+  # production service — it accepts any auth and stores mail in memory
+  # with no delivery. It MUST NOT start in the default production
+  # stack. The `dev` profile gates it: `docker compose up` (no profile)
+  # and `docker compose --profile default up` both skip mailpit;
+  # operators / harnesses that want the trap pass `--profile dev`.
+  # Corporate operators point SMTP_HOST / SMTP_PORT at their own relay
+  # in .env and never enable the `dev` profile. The host-side e2e
+  # harness (`tests/e2e/compose-helper.ts`) and any dev workflow that
+  # needs the trap pass `--profile dev` explicitly.
   mailpit:
     image: axllent/mailpit:v1.29
+    profiles: [dev]
     networks: [openwhispr_internal]
     # HTTP UI bound to host loopback so a developer (or the e2e harness
     # running outside the compose network) can read delivered messages
