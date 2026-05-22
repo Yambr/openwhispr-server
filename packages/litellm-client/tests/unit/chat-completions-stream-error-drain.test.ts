@@ -30,10 +30,29 @@
 
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+import {
+  buildLitellmClient,
+  type LitellmClientConfig,
+  LitellmUpstreamError,
+} from "../../src/index.js";
 
 const INDEX_SRC = fileURLToPath(new URL("../../src/index.ts", import.meta.url));
 const CONFIG_SRC = fileURLToPath(new URL("../../src/config.ts", import.meta.url));
+
+function baseConfig(errorDrainTimeoutMs: number): LitellmClientConfig {
+  return {
+    baseUrl: "http://litellm:4000",
+    masterKey: "sk-master-test",
+    providerKeys: { openrouter: "sk-or-test", groq: "gsk-test", pyannote: "hf-test" },
+    defaultChatModel: "qwen3.6-plus",
+    defaultSttModel: "whisper-large-v3",
+    defaultRealtimeModel: "gpt-realtime",
+    headersTimeoutMs: 30_000,
+    bodyTimeoutMs: 120_000,
+    errorDrainTimeoutMs,
+  };
+}
 
 describe("Plan 51-06 / R32 — chatCompletionsStream error-drain timeout", () => {
   it("(a) static: config declares DEFAULT_ERROR_DRAIN_TIMEOUT_MS > 0 and index bounds the non-2xx drain", () => {
@@ -64,5 +83,59 @@ describe("Plan 51-06 / R32 — chatCompletionsStream error-drain timeout", () =>
     const value = Number((m?.[1] ?? "0").replace(/_/g, ""));
     expect(value).toBeGreaterThan(0);
     expect(value).toBeLessThanOrEqual(30_000);
+  });
+});
+
+describe("AUDIT-LIB-03 — drainWithTimeout uses AbortSignal.timeout", () => {
+  it("(static) no hand-rolled setTimeout/clearTimeout in the drain helper", () => {
+    // LIB-4 — the drain helper must be built on the Node 24 builtin
+    // `AbortSignal.timeout(ms)`, not a hand-rolled setTimeout +
+    // clearTimeout + unref trio.
+    const indexSrc = readFileSync(INDEX_SRC, "utf8");
+    const drainFn = indexSrc.slice(
+      indexSrc.indexOf("async function drainWithTimeout"),
+      indexSrc.indexOf("export function buildLitellmClient"),
+    );
+    expect(drainFn).toContain("AbortSignal.timeout");
+    expect(drainFn).not.toContain("setTimeout");
+    expect(drainFn).not.toContain("clearTimeout");
+  });
+
+  it("(functional) a hanging non-2xx body resolves to the drain-timeout marker within the bound", async () => {
+    // Drive chatCompletionsStream's non-2xx drain path with an injected
+    // request whose `body.text()` NEVER resolves. The AbortSignal.timeout
+    // bound must fire, destroy the body, and surface the operator-visible
+    // `<drain-timeout-after-Nms>` marker on the LitellmUpstreamError —
+    // proving the refactored timer still bounds the drain.
+    const DRAIN_MS = 40;
+    let destroyed = false;
+    const hangingBody = {
+      text: () => new Promise<string>(() => {}), // never resolves
+      destroy: () => {
+        destroyed = true;
+      },
+    };
+    const injected = vi.fn(async () => ({
+      statusCode: 502,
+      headers: {},
+      body: hangingBody,
+    }));
+    const client = buildLitellmClient(baseConfig(DRAIN_MS), {
+      isOverride: false,
+      request: injected as unknown as typeof import("undici").request,
+    });
+    const started = Date.now();
+    await expect(
+      client.chatCompletionsStream({
+        model: "qwen3.6-plus",
+        messages: [{ role: "user", content: "hi" }],
+        userId: "u1",
+        requestId: "r1",
+      }),
+    ).rejects.toBeInstanceOf(LitellmUpstreamError);
+    // The drain resolved via the timeout, not a hang.
+    expect(Date.now() - started).toBeLessThan(2_000);
+    // The hanging body was destroyed so the dispatcher slot is freed.
+    expect(destroyed).toBe(true);
   });
 });

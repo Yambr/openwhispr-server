@@ -124,18 +124,22 @@ function buildMessage(
 
 export async function callProvider(opts: CallProviderOptions): Promise<CallProviderResult> {
   ensureProviderDispatcher(opts.connectTimeoutMs ?? DEFAULT_CONNECT_TIMEOUT_MS);
-  const ctrl = new AbortController();
-  const timer = setTimeout(() => ctrl.abort(), opts.totalTimeoutMs ?? DEFAULT_TOTAL_TIMEOUT_MS);
   try {
     // Phase 52 / Plan 52-04b — `exactOptionalPropertyTypes: true`
     // refuses `body: undefined` (RequestInit's body is optional, must
     // be omitted entirely when not present). Conditional spread keeps
     // the call shape clean.
+    //
+    // AUDIT-LIB-03 (LIB-5) — `AbortSignal.timeout()` is the Node 24
+    // builtin for "abort after N ms"; it replaces a hand-rolled
+    // AbortController + setTimeout + clearTimeout trio. The signal's
+    // timer is internally unref'd, so no process-exit handle leaks and
+    // there is nothing to clear in a `finally`.
     const res = await fetch(opts.url, {
       method: opts.method,
       headers: opts.headers,
       ...(opts.body !== undefined ? { body: opts.body } : {}),
-      signal: ctrl.signal,
+      signal: AbortSignal.timeout(opts.totalTimeoutMs ?? DEFAULT_TOTAL_TIMEOUT_MS),
     });
 
     if (res.status === 401 || res.status === 403) {
@@ -199,8 +203,6 @@ export async function callProvider(opts: CallProviderOptions): Promise<CallProvi
       status: 503,
       message: buildMessage(opts.providerLabel, opts.envVarName, "timed-out"),
     };
-  } finally {
-    clearTimeout(timer);
   }
 }
 
