@@ -11,8 +11,10 @@ import enLocale from "../../../src/i18n/locales/en.json" with { type: "json" };
 import ruLocale from "../../../src/i18n/locales/ru.json" with { type: "json" };
 import {
   isCleanupRequest,
+  QWEN_THINKING_OFF_EXTRAS,
   resolveLocale,
   selectMessages,
+  selectModelAndExtras,
 } from "../../../src/lib/reason-prompt-select.js";
 
 // English-only source rule (CLAUDE.md): the RU cleanup prompt assertion
@@ -126,5 +128,87 @@ describe("selectMessages()", () => {
   it("agent shape with only agentName -> [user] (no system prompt — no regression)", () => {
     const msgs = selectMessages(body({ agentName: "Whispr", text: "do the thing" }), "en");
     expect(msgs).toEqual([{ role: "user", content: "do the thing" }]);
+  });
+});
+
+describe("selectModelAndExtras() — LAYER 2 model routing + thinking-off", () => {
+  const CLEANUP_MODEL = "qwen3.6-cleanup";
+  const DEFAULT_MODEL = "qwen3.6-plus";
+
+  it("cleanup shape -> cleanupModel + thinking-off extras", () => {
+    const res = selectModelAndExtras(body(), {
+      cleanupModel: CLEANUP_MODEL,
+      defaultModel: DEFAULT_MODEL,
+    });
+    expect(res.model).toBe(CLEANUP_MODEL);
+    expect(res.extras).toBeDefined();
+    expect(
+      (res.extras as { extra_body?: { chat_template_kwargs?: { enable_thinking?: boolean } } })
+        .extra_body?.chat_template_kwargs?.enable_thinking,
+    ).toBe(false);
+  });
+
+  it("cleanup shape with model==='' falls through to cleanupModel (|| not ??)", () => {
+    const res = selectModelAndExtras(body({ model: "" }), {
+      cleanupModel: CLEANUP_MODEL,
+      defaultModel: DEFAULT_MODEL,
+    });
+    expect(res.model).toBe(CLEANUP_MODEL);
+    expect(res.extras).toBeDefined();
+  });
+
+  it("agent shape (agentName) -> defaultModel chain, NO thinking-off extras", () => {
+    const res = selectModelAndExtras(body({ agentName: "Whispr" }), {
+      cleanupModel: CLEANUP_MODEL,
+      defaultModel: DEFAULT_MODEL,
+    });
+    expect(res.model).toBe(DEFAULT_MODEL);
+    expect(res.extras).toBeUndefined();
+  });
+
+  it("agent shape (systemPrompt) -> defaultModel, no extras", () => {
+    const res = selectModelAndExtras(body({ systemPrompt: "be a pirate" }), {
+      cleanupModel: CLEANUP_MODEL,
+      defaultModel: DEFAULT_MODEL,
+    });
+    expect(res.model).toBe(DEFAULT_MODEL);
+    expect(res.extras).toBeUndefined();
+  });
+
+  it("explicit non-empty body.model wins (model-only -> agent branch)", () => {
+    const res = selectModelAndExtras(body({ model: "gpt-4o-mini" }), {
+      cleanupModel: CLEANUP_MODEL,
+      defaultModel: DEFAULT_MODEL,
+    });
+    // model non-empty -> NOT cleanup shape -> agent branch -> model wins.
+    expect(res.model).toBe("gpt-4o-mini");
+    expect(res.extras).toBeUndefined();
+  });
+
+  it("explicit non-empty body.model wins in the agent branch", () => {
+    const res = selectModelAndExtras(body({ agentName: "Whispr", model: "gpt-4o-mini" }), {
+      cleanupModel: CLEANUP_MODEL,
+      defaultModel: DEFAULT_MODEL,
+    });
+    expect(res.model).toBe("gpt-4o-mini");
+  });
+
+  it("agent shape falls back to DEFAULT_CHAT_MODEL when defaultModel omitted", () => {
+    const res = selectModelAndExtras(body({ agentName: "Whispr" }), {
+      cleanupModel: CLEANUP_MODEL,
+    });
+    expect(res.model).toBe("qwen3.6-plus");
+  });
+
+  it("cleanup shape falls back to DEFAULT_CHAT_MODEL when cleanupModel omitted", () => {
+    const res = selectModelAndExtras(body(), { defaultModel: DEFAULT_MODEL });
+    expect(res.model).toBe("qwen3.6-plus");
+    expect(res.extras).toBeDefined();
+  });
+
+  it("QWEN_THINKING_OFF_EXTRAS has the documented Qwen3 chat-template shape", () => {
+    expect(QWEN_THINKING_OFF_EXTRAS).toEqual({
+      extra_body: { chat_template_kwargs: { enable_thinking: false } },
+    });
   });
 });

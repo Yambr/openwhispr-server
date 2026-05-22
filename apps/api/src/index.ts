@@ -292,6 +292,8 @@ export interface BuildAppOptions {
     sttModel: string;
     chatModel: string;
     realtimeModel: string;
+    /** R33 — fast cleanup-class alias for /api/reason dictation cleanup. */
+    cleanupModel: string;
   };
   /**
    * Phase 03 / Plan 07 (LITELLM-03, D-04): the LITELLM_MASTER_KEY string
@@ -869,6 +871,8 @@ if (import.meta.url === `file://${process.argv[1]}`) {
       sttModel: litellmConfig.defaultSttModel,
       chatModel: litellmConfig.defaultChatModel,
       realtimeModel: litellmConfig.defaultRealtimeModel,
+      // R33 — same source-of-truth as the client construction above.
+      cleanupModel: litellmConfig.defaultCleanupModel,
     };
   } catch (err) {
     // Phase 13 review HI-02 / Plan 51-13b: do NOT log `err.message` —

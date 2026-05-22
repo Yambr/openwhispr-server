@@ -3,6 +3,7 @@
 import { describe, expect, it } from "vitest";
 import {
   DEFAULT_CHAT_MODEL,
+  DEFAULT_CLEANUP_MODEL,
   DEFAULT_LITELLM_BASE_URL,
   DEFAULT_REALTIME_MODEL,
   DEFAULT_STT_MODEL,
@@ -116,6 +117,29 @@ describe("loadLitellmConfigFromEnv", () => {
       LITELLM_REALTIME_MODEL: "",
     });
     expect(cfg.defaultRealtimeModel).toBe(DEFAULT_REALTIME_MODEL);
+  });
+
+  // R33 — cleanup-class alias is operator-owned via REASONING_CLEANUP_MODEL.
+  it("defaults defaultCleanupModel to DEFAULT_CLEANUP_MODEL when unset (R33)", () => {
+    const cfg = loadLitellmConfigFromEnv({ LITELLM_MASTER_KEY: "sk-master-x" });
+    expect(cfg.defaultCleanupModel).toBe(DEFAULT_CLEANUP_MODEL);
+    expect(cfg.defaultCleanupModel).toBe("qwen3.6-cleanup");
+  });
+
+  it("honors REASONING_CLEANUP_MODEL override (R33)", () => {
+    const cfg = loadLitellmConfigFromEnv({
+      LITELLM_MASTER_KEY: "sk-master-x",
+      REASONING_CLEANUP_MODEL: "corp-cleanup-internal",
+    });
+    expect(cfg.defaultCleanupModel).toBe("corp-cleanup-internal");
+  });
+
+  it("treats an empty REASONING_CLEANUP_MODEL as unset (falls back to default)", () => {
+    const cfg = loadLitellmConfigFromEnv({
+      LITELLM_MASTER_KEY: "sk-master-x",
+      REASONING_CLEANUP_MODEL: "",
+    });
+    expect(cfg.defaultCleanupModel).toBe(DEFAULT_CLEANUP_MODEL);
   });
 
   it("falls back to default base URL when LITELLM_BASE_URL is empty string", () => {
