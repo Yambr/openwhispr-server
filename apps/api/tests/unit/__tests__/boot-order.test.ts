@@ -57,7 +57,11 @@ const CALL_LINE = /^\s*assertBYOKConfig\(\)\s*;?\s*$/m;
 const OTEL_IMPORT_LINE = /^import\s+["']\.\/otel-bootstrap\.js["']\s*;?\s*$/m;
 const SSRF_IMPORT_LINE =
   /^import\s+\{\s*installGlobalSSRF\s*\}\s+from\s+["']\.\/bootstrap\.js["']\s*;?\s*$/m;
-const SSRF_CALL_LINE = /^installGlobalSSRF\(\)\s*;?\s*$/m;
+// R24 — installGlobalSSRF()'s return value is captured into a
+// `ssrfDispatcher` const so it can be bound explicitly to the LiteLLM
+// client's `request` seam. Accept both the bare-statement form and the
+// `const <id> = installGlobalSSRF();` capture form.
+const SSRF_CALL_LINE = /^(?:const\s+\w+\s*=\s*)?installGlobalSSRF\(\)\s*;?\s*$/m;
 
 describe("boot-order (Phase 14 / Plan 04 / Task 3)", () => {
   describe("apps/api/src/index.ts", () => {
