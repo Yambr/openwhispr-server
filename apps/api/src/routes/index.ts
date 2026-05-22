@@ -22,6 +22,7 @@ import {
   DEFAULT_REALTIME_TRANSCRIPTION,
   type RealtimeConfig,
 } from "../config/realtime.js";
+import { loadSttSettingsConfigFromEnv, type SttSettingsConfig } from "../config/stt-settings.js";
 import type { WebSearchConfig } from "../config/web-search.js";
 import type { RedisLike } from "../lib/idempotency-cache.js";
 import type { AuthLike } from "../middleware/dual-auth.js";
@@ -261,6 +262,16 @@ export interface AllRoutesDeps {
    * `litellm` backend with the bundled OpenAI GA URL default.
    */
   realtimeConfig?: RealtimeConfig;
+  /**
+   * AUDIT-LIB-02 (LIB-9) — operator-owned STT / note-recording env-default
+   * settings (the bottom tier of the settings-resolution chain). Resolved
+   * via `loadSttSettingsConfigFromEnv()` at the `index.ts` env boundary
+   * (LOCKER-01) and threaded into the stt-config / note-recording-config
+   * route deps. Omitted -> resolved here from `process.env` defaults via
+   * the same `config/` loader (the env read still happens inside the
+   * `config/` boundary).
+   */
+  sttSettingsConfig?: SttSettingsConfig;
 }
 
 /**
@@ -372,9 +383,13 @@ export function buildAllRoutes(deps: AllRoutesDeps): readonly RoutePlugin[] {
     // chain is user_settings -> tenant_settings -> process.env.
     // availableProviders on /api/stt-config is computed at request time
     // from per-provider env keys (D-19), NEVER read from JSONB.
-    buildSttConfigRoutes({ db: deps.db } satisfies SttConfigDeps),
+    buildSttConfigRoutes({
+      db: deps.db,
+      sttSettingsConfig: deps.sttSettingsConfig ?? loadSttSettingsConfigFromEnv(),
+    } satisfies SttConfigDeps),
     buildNoteRecordingConfigRoutes({
       db: deps.db,
+      sttSettingsConfig: deps.sttSettingsConfig ?? loadSttSettingsConfigFromEnv(),
     } satisfies NoteRecordingConfigDeps),
     // Phase 05 / Plan 03 — WIRE-08 POST /api/agent/web-search. Registers
     // UNCONDITIONALLY (Pitfall #6): even when no provider key is wired,

@@ -1,5 +1,10 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 // Phase 05 / Plan 04 / Task 1 — settings-resolver helper tests.
+// AUDIT-LIB-02 (LIB-9) — the resolver no longer reads `process.env`; the
+// env-default tier is a validated `SttSettingsConfig` threaded in as a
+// dependency. These tests build that config via `loadSttSettingsConfigFromEnv`
+// against an injected env snapshot (the same `config/` loader production
+// uses) so the chain semantics still exercise real env resolution.
 //
 // Pure unit coverage with a recording fake tx — no Postgres needed for
 // the chain semantics. The companion route integration tests
@@ -8,26 +13,25 @@
 // SQL parameterization round-trips.
 //
 // Coverage matrix:
-//   * resolveSttConfig — empty rows -> env defaults
-//   * resolveSttConfig — tenant override wins over env
-//   * resolveSttConfig — user override wins over tenant + env
+//   * resolveSttConfig — empty rows -> config defaults
+//   * resolveSttConfig — tenant override wins over config
+//   * resolveSttConfig — user override wins over tenant + config
 //   * resolveSttConfig — empty JSONB object falls through cleanly
 //   * resolveSttConfig — NULL row falls through cleanly
-//   * computeAvailableProviders — reads at request time per D-19
-//   * computeAvailableProviders — order is stable (openai, groq,
-//     assemblyai, deepgram)
+//   * computeAvailableProviders — returns the config's provider list
+//   * computeAvailableProviders — order is stable
 //   * availableProviders is NEVER sourced from settings tables
-//   * resolveNoteRecordingConfig — empty rows -> defaults
-//   * resolveNoteRecordingConfig — tenant override wins
-//   * resolveNoteRecordingConfig — user override wins
-//   * resolveNoteRecordingConfig — env override of formats list parses
-//     comma-separated
-//   * resolveNoteRecordingConfig — env NOTE_RECORDING_DIARIZATION_ENABLED
-//     ='false' disables diarization
-//   * SQL fragments reference tenant_settings AND user_settings (RLS
-//     contract — both tables are touched within the same withTenant tx)
+//   * resolveNoteRecordingConfig — empty rows -> config defaults
+//   * resolveNoteRecordingConfig — tenant / user overrides win
+//   * resolveNoteRecordingConfig — config-driven formats / diarization /
+//     numeric defaults
+//   * SQL fragments reference tenant_settings AND user_settings
 
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
+import {
+  loadSttSettingsConfigFromEnv,
+  type SttSettingsConfig,
+} from "../../../../src/config/stt-settings.js";
 import {
   computeAvailableProviders,
   resolveNoteRecordingConfig,
@@ -36,6 +40,11 @@ import {
 
 const TENANT = "00000000-0000-0000-0000-000000000000";
 const USER = "11111111-1111-1111-1111-111111111111";
+
+/** Build a validated SttSettingsConfig from an injected env snapshot. */
+function cfg(env: Record<string, string> = {}): SttSettingsConfig {
+  return loadSttSettingsConfigFromEnv(env as NodeJS.ProcessEnv);
+}
 
 interface Recorded {
   sql: string;
@@ -104,160 +113,124 @@ function makeFakeTx(opts: FakeTxOpts = {}): {
   return { tx, recorded };
 }
 
-const STT_ENV_KEYS = [
-  "STT_DEFAULT_MODEL",
-  "STT_DEFAULT_LANGUAGE",
-  "OPENAI_API_KEY",
-  "GROQ_API_KEY",
-  "ASSEMBLYAI_API_KEY",
-  "DEEPGRAM_API_KEY",
-] as const;
-const NOTE_ENV_KEYS = [
-  "NOTE_RECORDING_MAX_DURATION_SECONDS",
-  "NOTE_RECORDING_SAMPLE_RATE_HZ",
-  "NOTE_RECORDING_ALLOWED_FORMATS",
-  "NOTE_RECORDING_DIARIZATION_ENABLED",
-] as const;
-
-const ENV_SNAPSHOT: Record<string, string | undefined> = {};
-
-beforeEach(() => {
-  for (const k of [...STT_ENV_KEYS, ...NOTE_ENV_KEYS]) {
-    ENV_SNAPSHOT[k] = process.env[k];
-    delete process.env[k];
-  }
-});
-
-afterEach(() => {
-  for (const k of [...STT_ENV_KEYS, ...NOTE_ENV_KEYS]) {
-    if (ENV_SNAPSHOT[k] === undefined) {
-      delete process.env[k];
-    } else {
-      process.env[k] = ENV_SNAPSHOT[k];
-    }
-    delete ENV_SNAPSHOT[k];
-  }
-  vi.unstubAllEnvs();
-});
-
 describe("resolveSttConfig", () => {
-  it("returns env defaults when both tenant and user rows are empty", async () => {
+  it("returns config defaults when both tenant and user rows are empty", async () => {
     const { tx } = makeFakeTx();
-    const out = await resolveSttConfig(tx, TENANT, USER);
+    const out = await resolveSttConfig(tx, TENANT, USER, cfg());
     expect(out.defaultModel).toBe("whisper-1");
     expect(out.defaultLanguage).toBe("auto");
     expect(out.availableProviders).toEqual([]);
   });
 
-  it("returns env override when set (no tenant/user values)", async () => {
-    process.env.STT_DEFAULT_MODEL = "whisper-large-v3";
-    process.env.STT_DEFAULT_LANGUAGE = "en";
+  it("returns config-tier env override when set (no tenant/user values)", async () => {
     const { tx } = makeFakeTx();
-    const out = await resolveSttConfig(tx, TENANT, USER);
+    const out = await resolveSttConfig(
+      tx,
+      TENANT,
+      USER,
+      cfg({ STT_DEFAULT_MODEL: "whisper-large-v3", STT_DEFAULT_LANGUAGE: "en" }),
+    );
     expect(out.defaultModel).toBe("whisper-large-v3");
     expect(out.defaultLanguage).toBe("en");
   });
 
-  it("tenant override wins over env", async () => {
-    process.env.STT_DEFAULT_MODEL = "whisper-1";
-    const { tx } = makeFakeTx({
-      tenantSttConfig: { defaultModel: "large-v3" },
-    });
-    const out = await resolveSttConfig(tx, TENANT, USER);
+  it("tenant override wins over config default", async () => {
+    const { tx } = makeFakeTx({ tenantSttConfig: { defaultModel: "large-v3" } });
+    const out = await resolveSttConfig(tx, TENANT, USER, cfg({ STT_DEFAULT_MODEL: "whisper-1" }));
     expect(out.defaultModel).toBe("large-v3");
   });
 
-  it("user override wins over tenant override + env", async () => {
-    process.env.STT_DEFAULT_MODEL = "whisper-1";
+  it("user override wins over tenant override + config", async () => {
     const { tx } = makeFakeTx({
       tenantSttConfig: { defaultModel: "large-v3" },
       userSttOverrides: { defaultModel: "tiny" },
     });
-    const out = await resolveSttConfig(tx, TENANT, USER);
+    const out = await resolveSttConfig(tx, TENANT, USER, cfg({ STT_DEFAULT_MODEL: "whisper-1" }));
     expect(out.defaultModel).toBe("tiny");
   });
 
   it("falls through cleanly when JSONB rows are empty objects", async () => {
-    const { tx } = makeFakeTx({
-      tenantSttConfig: {},
-      userSttOverrides: {},
-    });
-    const out = await resolveSttConfig(tx, TENANT, USER);
+    const { tx } = makeFakeTx({ tenantSttConfig: {}, userSttOverrides: {} });
+    const out = await resolveSttConfig(tx, TENANT, USER, cfg());
     expect(out.defaultModel).toBe("whisper-1");
     expect(out.defaultLanguage).toBe("auto");
   });
 
   it("falls through cleanly when the rows are missing entirely", async () => {
     const { tx } = makeFakeTx({ tenantRowMissing: true, userRowMissing: true });
-    const out = await resolveSttConfig(tx, TENANT, USER);
+    const out = await resolveSttConfig(tx, TENANT, USER, cfg());
     expect(out.defaultModel).toBe("whisper-1");
   });
 
   it("queries both tenant_settings and user_settings (RLS contract)", async () => {
     const { tx, recorded } = makeFakeTx();
-    await resolveSttConfig(tx, TENANT, USER);
+    await resolveSttConfig(tx, TENANT, USER, cfg());
     const sqls = recorded.map((r) => r.sql).join("\n");
     expect(sqls).toMatch(/FROM tenant_settings/);
     expect(sqls).toMatch(/FROM user_settings/);
-    // tenantId + userId are bound parameters, NOT interpolated
     const params = recorded.flatMap((r) => r.params);
     expect(params).toContain(TENANT);
     expect(params).toContain(USER);
   });
 });
 
-describe("computeAvailableProviders (D-19 — request-time read of process.env)", () => {
+describe("computeAvailableProviders (D-19 — config-resolved provider list)", () => {
   it("returns empty when no provider keys are set", () => {
-    expect(computeAvailableProviders()).toEqual([]);
+    expect(computeAvailableProviders(cfg())).toEqual([]);
   });
 
-  it("returns each provider exactly when its env var is set", () => {
-    process.env.OPENAI_API_KEY = "sk-xxx";
-    expect(computeAvailableProviders()).toEqual(["openai"]);
+  it("returns each provider exactly when its key is present", () => {
+    expect(computeAvailableProviders(cfg({ OPENAI_API_KEY: "sk-xxx" }))).toEqual(["openai"]);
   });
 
   it("returns providers in stable order: openai, groq, assemblyai, deepgram", () => {
-    process.env.DEEPGRAM_API_KEY = "x";
-    process.env.OPENAI_API_KEY = "x";
-    process.env.ASSEMBLYAI_API_KEY = "x";
-    process.env.GROQ_API_KEY = "x";
-    expect(computeAvailableProviders()).toEqual(["openai", "groq", "assemblyai", "deepgram"]);
+    const config = cfg({
+      DEEPGRAM_API_KEY: "x",
+      OPENAI_API_KEY: "x",
+      ASSEMBLYAI_API_KEY: "x",
+      GROQ_API_KEY: "x",
+    });
+    expect(computeAvailableProviders(config)).toEqual(["openai", "groq", "assemblyai", "deepgram"]);
+  });
+
+  it("returns a defensive copy (mutating the result does not mutate config)", () => {
+    const config = cfg({ OPENAI_API_KEY: "x" });
+    const first = computeAvailableProviders(config);
+    first.push("tampered");
+    expect(computeAvailableProviders(config)).toEqual(["openai"]);
   });
 });
 
 describe("availableProviders never sourced from settings tables (D-19)", () => {
   it("ignores availableProviders set in tenant or user JSONB", async () => {
-    // No env keys set
     const { tx } = makeFakeTx({
       tenantSttConfig: { availableProviders: ["fake-tenant-provider"] },
       userSttOverrides: { availableProviders: ["fake-user-provider"] },
     });
-    const out = await resolveSttConfig(tx, TENANT, USER);
-    // Comes from env (empty) — NOT from JSONB
+    const out = await resolveSttConfig(tx, TENANT, USER, cfg());
     expect(out.availableProviders).toEqual([]);
     expect(out.availableProviders).not.toContain("fake-tenant-provider");
     expect(out.availableProviders).not.toContain("fake-user-provider");
   });
 
-  it("reflects a freshly-set env key without re-querying settings tables", async () => {
-    process.env.OPENAI_API_KEY = "sk-from-env";
+  it("reflects a provider key present in the resolved config", async () => {
     const { tx } = makeFakeTx();
-    const out = await resolveSttConfig(tx, TENANT, USER);
+    const out = await resolveSttConfig(tx, TENANT, USER, cfg({ OPENAI_API_KEY: "sk-x" }));
     expect(out.availableProviders).toEqual(["openai"]);
   });
 });
 
 describe("resolveNoteRecordingConfig", () => {
-  it("returns defaults when both tenant and user rows are empty", async () => {
+  it("returns config defaults when both tenant and user rows are empty", async () => {
     const { tx } = makeFakeTx();
-    const out = await resolveNoteRecordingConfig(tx, TENANT, USER);
+    const out = await resolveNoteRecordingConfig(tx, TENANT, USER, cfg());
     expect(out.maxDurationSeconds).toBe(7200);
     expect(out.sampleRateHz).toBe(16000);
     expect(out.allowedFormats).toEqual(["webm", "ogg", "wav", "m4a"]);
     expect(out.diarizationEnabled).toBe(true);
   });
 
-  it("tenant override wins over defaults", async () => {
+  it("tenant override wins over config defaults", async () => {
     const { tx } = makeFakeTx({
       tenantNoteRecordingConfig: {
         maxDurationSeconds: 3600,
@@ -266,7 +239,7 @@ describe("resolveNoteRecordingConfig", () => {
         diarizationEnabled: false,
       },
     });
-    const out = await resolveNoteRecordingConfig(tx, TENANT, USER);
+    const out = await resolveNoteRecordingConfig(tx, TENANT, USER, cfg());
     expect(out.maxDurationSeconds).toBe(3600);
     expect(out.sampleRateHz).toBe(48000);
     expect(out.allowedFormats).toEqual(["wav"]);
@@ -275,53 +248,61 @@ describe("resolveNoteRecordingConfig", () => {
 
   it("user override wins over tenant override", async () => {
     const { tx } = makeFakeTx({
-      tenantNoteRecordingConfig: {
-        maxDurationSeconds: 3600,
-        diarizationEnabled: false,
-      },
-      userNoteRecordingOverrides: {
-        maxDurationSeconds: 600,
-        diarizationEnabled: true,
-      },
+      tenantNoteRecordingConfig: { maxDurationSeconds: 3600, diarizationEnabled: false },
+      userNoteRecordingOverrides: { maxDurationSeconds: 600, diarizationEnabled: true },
     });
-    const out = await resolveNoteRecordingConfig(tx, TENANT, USER);
+    const out = await resolveNoteRecordingConfig(tx, TENANT, USER, cfg());
     expect(out.maxDurationSeconds).toBe(600);
     expect(out.diarizationEnabled).toBe(true);
   });
 
-  it("env NOTE_RECORDING_DIARIZATION_ENABLED='false' disables diarization", async () => {
-    process.env.NOTE_RECORDING_DIARIZATION_ENABLED = "false";
+  it("config NOTE_RECORDING_DIARIZATION_ENABLED='false' disables diarization", async () => {
     const { tx } = makeFakeTx();
-    const out = await resolveNoteRecordingConfig(tx, TENANT, USER);
+    const out = await resolveNoteRecordingConfig(
+      tx,
+      TENANT,
+      USER,
+      cfg({ NOTE_RECORDING_DIARIZATION_ENABLED: "false" }),
+    );
     expect(out.diarizationEnabled).toBe(false);
   });
 
-  it("env NOTE_RECORDING_ALLOWED_FORMATS comma-splits, trims, drops blanks", async () => {
-    process.env.NOTE_RECORDING_ALLOWED_FORMATS = "wav, mp3 ,, flac";
+  it("config NOTE_RECORDING_ALLOWED_FORMATS comma-splits, trims, drops blanks", async () => {
     const { tx } = makeFakeTx();
-    const out = await resolveNoteRecordingConfig(tx, TENANT, USER);
+    const out = await resolveNoteRecordingConfig(
+      tx,
+      TENANT,
+      USER,
+      cfg({ NOTE_RECORDING_ALLOWED_FORMATS: "wav, mp3 ,, flac" }),
+    );
     expect(out.allowedFormats).toEqual(["wav", "mp3", "flac"]);
   });
 
-  it("env max/sample-rate numeric overrides apply", async () => {
-    process.env.NOTE_RECORDING_MAX_DURATION_SECONDS = "120";
-    process.env.NOTE_RECORDING_SAMPLE_RATE_HZ = "44100";
+  it("config max/sample-rate numeric overrides apply", async () => {
     const { tx } = makeFakeTx();
-    const out = await resolveNoteRecordingConfig(tx, TENANT, USER);
+    const out = await resolveNoteRecordingConfig(
+      tx,
+      TENANT,
+      USER,
+      cfg({
+        NOTE_RECORDING_MAX_DURATION_SECONDS: "120",
+        NOTE_RECORDING_SAMPLE_RATE_HZ: "44100",
+      }),
+    );
     expect(out.maxDurationSeconds).toBe(120);
     expect(out.sampleRateHz).toBe(44100);
   });
 
   it("falls through cleanly when JSONB row is missing", async () => {
     const { tx } = makeFakeTx({ tenantRowMissing: true, userRowMissing: true });
-    const out = await resolveNoteRecordingConfig(tx, TENANT, USER);
+    const out = await resolveNoteRecordingConfig(tx, TENANT, USER, cfg());
     expect(out.maxDurationSeconds).toBe(7200);
     expect(out.sampleRateHz).toBe(16000);
   });
 
   it("queries both tenant_settings and user_settings (RLS contract)", async () => {
     const { tx, recorded } = makeFakeTx();
-    await resolveNoteRecordingConfig(tx, TENANT, USER);
+    await resolveNoteRecordingConfig(tx, TENANT, USER, cfg());
     const sqls = recorded.map((r) => r.sql).join("\n");
     expect(sqls).toMatch(/FROM tenant_settings/);
     expect(sqls).toMatch(/FROM user_settings/);

@@ -107,6 +107,7 @@ import {
   type RealtimeConfig,
   RealtimeConfigError,
 } from "./config/realtime.js";
+import { loadSttSettingsConfigFromEnv, type SttSettingsConfig } from "./config/stt-settings.js";
 import { loadWebSearchConfigFromEnv, type WebSearchConfig } from "./config/web-search.js";
 
 validateIngressBoot();
@@ -409,6 +410,15 @@ export interface BuildAppOptions {
    * injected deps so no route file reads `process.env` (LOCKER-01).
    */
   realtimeConfig?: RealtimeConfig;
+  /**
+   * AUDIT-LIB-02 (LIB-9) — operator-owned STT / note-recording env-default
+   * settings (bottom tier of the settings-resolution chain). Resolved from
+   * env via `loadSttSettingsConfigFromEnv()` and threaded to
+   * `buildAllRoutes`; the stt-config / note-recording-config routes
+   * consume it via injected deps so `lib/settings-resolver.ts` no longer
+   * reads `process.env` (LOCKER-01).
+   */
+  sttSettingsConfig?: SttSettingsConfig;
 }
 
 export const buildApp = async (opts: BuildAppOptions = {}): Promise<FastifyInstance> => {
@@ -694,6 +704,9 @@ export const buildApp = async (opts: BuildAppOptions = {}): Promise<FastifyInsta
       ...(opts.webSearchConfig ? { webSearchConfig: opts.webSearchConfig } : {}),
       ...(opts.diarizationConfig ? { diarizationConfig: opts.diarizationConfig } : {}),
       ...(opts.realtimeConfig ? { realtimeConfig: opts.realtimeConfig } : {}),
+      // AUDIT-LIB-02 — operator-owned STT / note-recording env-default
+      // settings resolved from env at the entrypoint boundary (LOCKER-01).
+      ...(opts.sttSettingsConfig ? { sttSettingsConfig: opts.sttSettingsConfig } : {}),
     });
     for (const plugin of routes) {
       await app.register(plugin);
@@ -999,6 +1012,11 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   // behavior-preserving for default deployments.
   buildOpts.webSearchConfig = loadWebSearchConfigFromEnv();
   buildOpts.diarizationConfig = loadDiarizationConfigFromEnv();
+  // AUDIT-LIB-02 — resolve the STT / note-recording env-default settings
+  // (bottom tier of the settings-resolution chain) at the entrypoint env
+  // boundary (LOCKER-01). The Zod loader yields documented defaults for
+  // unset/malformed vars, so this is behavior-preserving.
+  buildOpts.sttSettingsConfig = loadSttSettingsConfigFromEnv();
   // R31 — resolve the realtime-relay backend config (REALTIME_BACKEND /
   // OPENAI_REALTIME_URL / OPENAI_API_KEY) at the entrypoint env boundary
   // (LOCKER-01). Already validated boot-fatally above; this second call

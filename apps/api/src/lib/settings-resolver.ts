@@ -29,6 +29,7 @@
 
 import type { ExecutableTx } from "@openwhispr/data";
 import { sql } from "drizzle-orm";
+import type { SttSettingsConfig } from "../config/stt-settings.js";
 
 interface StringRow {
   stt_config?: Record<string, unknown> | null;
@@ -52,17 +53,18 @@ function asStringArray(value: unknown): readonly string[] | undefined {
 }
 
 /**
- * D-19 — derive `availableProviders` at every request from process.env.
- * Order is stable (openai, groq, assemblyai, deepgram) so the desktop
- * client can compare arrays via straight equality.
+ * D-19 — `availableProviders` is the provider-key presence list resolved
+ * at the `config/` env boundary by `loadSttSettingsConfigFromEnv()`.
+ *
+ * AUDIT-LIB-02 (LIB-9): this function previously read `process.env`
+ * directly (outside the LOCKER-01 `config/` boundary). It now returns a
+ * defensive COPY of the pre-resolved list threaded through `SttSettingsConfig`,
+ * so the resolver no longer touches `process.env`. Order is stable
+ * (openai, groq, assemblyai, deepgram) so the desktop client can compare
+ * arrays via straight equality.
  */
-export function computeAvailableProviders(): string[] {
-  const out: string[] = [];
-  if (process.env.OPENAI_API_KEY) out.push("openai");
-  if (process.env.GROQ_API_KEY) out.push("groq");
-  if (process.env.ASSEMBLYAI_API_KEY) out.push("assemblyai");
-  if (process.env.DEEPGRAM_API_KEY) out.push("deepgram");
-  return out;
+export function computeAvailableProviders(config: SttSettingsConfig): string[] {
+  return [...config.availableProviders];
 }
 
 /**
@@ -79,6 +81,7 @@ export async function resolveSttConfig(
   tx: ExecutableTx,
   tenantId: string,
   userId: string,
+  config: SttSettingsConfig,
 ): Promise<{
   defaultModel: string;
   defaultLanguage: string;
@@ -102,17 +105,15 @@ export async function resolveSttConfig(
   const defaultModel =
     (typeof userCfg.defaultModel === "string" ? userCfg.defaultModel : undefined) ??
     (typeof tenantCfg.defaultModel === "string" ? tenantCfg.defaultModel : undefined) ??
-    process.env.STT_DEFAULT_MODEL ??
-    "whisper-1";
+    config.sttDefaultModel;
   const defaultLanguage =
     (typeof userCfg.defaultLanguage === "string" ? userCfg.defaultLanguage : undefined) ??
     (typeof tenantCfg.defaultLanguage === "string" ? tenantCfg.defaultLanguage : undefined) ??
-    process.env.STT_DEFAULT_LANGUAGE ??
-    "auto";
+    config.sttDefaultLanguage;
   return {
     defaultModel,
     defaultLanguage,
-    availableProviders: computeAvailableProviders(),
+    availableProviders: computeAvailableProviders(config),
   };
 }
 
@@ -134,6 +135,7 @@ export async function resolveNoteRecordingConfig(
   tx: ExecutableTx,
   tenantId: string,
   userId: string,
+  config: SttSettingsConfig,
 ): Promise<{
   maxDurationSeconds: number;
   sampleRateHz: number;
@@ -155,28 +157,23 @@ export async function resolveNoteRecordingConfig(
   const tenantCfg = asRecord(tenantRow.rows?.[0]?.note_recording_config);
   const userCfg = asRecord(userRow.rows?.[0]?.note_recording_overrides);
 
-  const envFormats = (process.env.NOTE_RECORDING_ALLOWED_FORMATS ?? "webm,ogg,wav,m4a")
-    .split(",")
-    .map((s) => s.trim())
-    .filter(Boolean);
-
   const maxDurationSeconds =
     (typeof userCfg.maxDurationSeconds === "number" ? userCfg.maxDurationSeconds : undefined) ??
     (typeof tenantCfg.maxDurationSeconds === "number" ? tenantCfg.maxDurationSeconds : undefined) ??
-    Number(process.env.NOTE_RECORDING_MAX_DURATION_SECONDS ?? 7200);
+    config.noteRecordingMaxDurationSeconds;
   const sampleRateHz =
     (typeof userCfg.sampleRateHz === "number" ? userCfg.sampleRateHz : undefined) ??
     (typeof tenantCfg.sampleRateHz === "number" ? tenantCfg.sampleRateHz : undefined) ??
-    Number(process.env.NOTE_RECORDING_SAMPLE_RATE_HZ ?? 16000);
+    config.noteRecordingSampleRateHz;
   const allowedFormats = (asStringArray(userCfg.allowedFormats) ??
     asStringArray(tenantCfg.allowedFormats) ??
-    envFormats) as string[];
+    config.noteRecordingAllowedFormats) as string[];
   const diarizationEnabled =
     (typeof userCfg.diarizationEnabled === "boolean" ? userCfg.diarizationEnabled : undefined) ??
     (typeof tenantCfg.diarizationEnabled === "boolean"
       ? tenantCfg.diarizationEnabled
       : undefined) ??
-    process.env.NOTE_RECORDING_DIARIZATION_ENABLED !== "false";
+    config.noteRecordingDiarizationEnabled;
 
   return {
     maxDurationSeconds,

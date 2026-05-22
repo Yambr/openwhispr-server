@@ -51,7 +51,7 @@ apps/web/src/app/(public)/setup/page.tsx:40  # 53-28-comment-narrative-fp — JS
 # better-auth-handler.ts:79 entry removed in Phase 57 / Track E — the
 # `req.headers.host ?? "localhost"` fallback line was deleted entirely
 # (api-routes-rest:CR-01); no localhost literal remains in the file.
-apps/api/src/index.ts:1022  # (R25 +14) issue-31-debt-hardcode-litellm-port-4000 (drift +34 by 55-05b; +12 by 57-E; +20 by 57-F; +32 by 60-A; +8 by 62-02; +14 by R24; +32 by quick-260522-envmodels; +70 by quick-260522-tokenproviders; +27 by phase-68 web-search+diarization config DI block) (+46 by R31 realtime-config wiring) (R33 +4 cleanup-model wiring) (+5 by quick-58 AUDIT-LIB-01 parseTimeoutEnv shared-helper rewrite + import)
+apps/api/src/index.ts:1040  # (R25 +14) issue-31-debt-hardcode-litellm-port-4000 (drift +34 by 55-05b; +12 by 57-E; +20 by 57-F; +32 by 60-A; +8 by 62-02; +14 by R24; +32 by quick-260522-envmodels; +70 by quick-260522-tokenproviders; +27 by phase-68 web-search+diarization config DI block) (+46 by R31 realtime-config wiring) (R33 +4 cleanup-model wiring) (+5 by quick-58 AUDIT-LIB-01 parseTimeoutEnv shared-helper rewrite + import) (+21 by quick-58 AUDIT-LIB-02 stt-settings config wiring)
 apps/api/src/config/litellm.ts:29  # 53-42-anti-footgun-sentinel — validateLitellmBoot detects this exact dev-overlay default; must be inline for the guard to reject prod boot with it
 apps/api/src/config/litellm.ts:63  # 53-42-anti-footgun-sentinel-msg — same sentinel quoted in the FATAL message so operators see the exact value that triggered refusal
 
@@ -69,7 +69,7 @@ apps/api/src/lib/cookie-domain.ts:21  # comment-only-narrative-issue-31-fp
 apps/api/src/lib/cookie-domain.ts:34  # comment-only-narrative-issue-31-fp
 apps/api/src/lib/cookie-domain.ts:41  # comment-only-narrative-issue-31-fp
 apps/api/src/otel-bootstrap.ts:42  # comment-only-narrative-issue-31-fp
-apps/api/src/routes/index.ts:319  # comment-only-narrative-issue-31-fp (drift +10 by R22 verify-email-complete wiring; +13 by quick-260522-envmodels litellmModels wiring; +19 by quick-260522-tokenproviders tokenProviders deps block; +22 by phase-68 web-search+diarization config DI block) (+10 by R31 RealtimeConfig wiring) (+4 by R31 DEFECT 6 multi-line realtime-config import) (R33 +2 cleanup-model wiring)
+apps/api/src/routes/index.ts:330  # comment-only-narrative-issue-31-fp (drift +10 by R22 verify-email-complete wiring; +13 by quick-260522-envmodels litellmModels wiring; +19 by quick-260522-tokenproviders tokenProviders deps block; +22 by phase-68 web-search+diarization config DI block) (+10 by R31 RealtimeConfig wiring) (+4 by R31 DEFECT 6 multi-line realtime-config import) (R33 +2 cleanup-model wiring) (+14 by quick-58 AUDIT-LIB-02 sttSettingsConfig field + import)
 apps/api/src/routes/locale.ts:10  # comment-only-narrative-issue-31-fp
 apps/api/src/routes/reason.ts:27  # comment-only-narrative-issue-31-fp
 apps/api/src/routes/tokens/_call-provider.ts:34  # comment-only-jsdoc-timeout-ms-not-port-issue-31-fp
