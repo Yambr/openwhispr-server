@@ -34,9 +34,43 @@ surface, see `packages/contract-tests/src/negative-matrix.test.ts`
 | Route                            | Method | Auth   | Notes |
 | -------------------------------- | ------ | ------ | ----- |
 | `/api/transcribe`                | POST   | bearer | multipart audio → Whisper via LiteLLM |
-| `/api/reason`                    | POST   | bearer | LLM completion; locked vocabulary |
+| `/api/reason`                    | POST   | bearer | LLM completion; shape-keyed prompt + model routing (R33) |
 | `/v1/audio/diarization`          | POST   | bearer | pyannote pass-through; idempotency cache |
 | `/v1/realtime`                   | WSS    | bearer | OpenAI Realtime / Speaches reverse-proxy |
+
+#### `/api/reason` — prompt selection + model routing (R33)
+
+`/api/reason` serves two request classes off the SAME body schema; the
+server selects the persona and model from the request **shape** alone —
+the immutable desktop client sends no `systemPrompt` on the cloud
+cleanup path.
+
+**Cleanup shape** — `agentName` absent (`null`/missing) AND `systemPrompt`
+absent AND `model` empty/absent (`null`, missing, or `""`). This is the
+dictation-cleanup path. The server:
+
+- prepends a **localized cleanup system message** (`prompts.cleanupPrompt`
+  from `apps/api/src/i18n/locales/{en,ru}.json`; locale resolved from
+  `body.language` → `body.locale` → request `Accept-Language` → `en`).
+  The `{{agentName}}` token inside the prompt is intentionally a literal
+  (anti-injection framing), not interpolated;
+- routes to the operator-owned **cleanup-class model**
+  (`REASONING_CLEANUP_MODEL`, bundled default `qwen3.6-cleanup`);
+- disables reasoning/thinking by sending
+  `extra_body.chat_template_kwargs.enable_thinking: false` in the
+  upstream chat-completions **request body** (Qwen3 chat-template kwarg —
+  it is NOT a `litellm_config.yaml` setting).
+
+**Agent shape** — `agentName` set OR `systemPrompt` provided OR `model`
+non-empty. Conversational behaviour: `systemPrompt` (when present) is the
+system message, an `agentName`-only request sends no system message,
+the model is `body.model` → `LITELLM_DEFAULT_CHAT_MODEL` →
+`DEFAULT_CHAT_MODEL`, and **no** thinking-off field is sent.
+
+An explicit non-empty `body.model` always wins in both shapes. The
+response shape (`text`/`model`/`provider`/`promptMode`/`matchType`) is
+unchanged — `promptMode`/`matchType` remain the constant `"default"`
+echo (R23).
 
 ### Phase 4 — Streaming + Token Mints (WIRE-07, WIRE-13..15, SCALE-05)
 
