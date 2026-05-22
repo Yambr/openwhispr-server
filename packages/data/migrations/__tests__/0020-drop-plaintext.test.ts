@@ -182,8 +182,18 @@ describe("0020 forward: plaintext-era pre-encryption sessions_previous_token_idx
   });
 });
 
-describe("uniqueness contract: both fp-layer AND amendment plaintext-layer indexes coexist", () => {
-  it("sessions_token_fp_unique is a full UNIQUE INDEX on token_fp (no WHERE) — fingerprint-layer contract from Plan 33-05", async () => {
+describe("uniqueness contract: post-0030 fingerprint-only session-token index", () => {
+  // Migration 0030 (R20 / Phase 57, commit 6133c2ba) superseded the
+  // Plan 33-05 + Plan 51-24 shapes asserted by the original two tests:
+  //   * `sessions_token_unique_partial` (plaintext-token partial index
+  //     from 0026/Plan 51-24) was DROPPED — Phase 57 re-added
+  //     `session.token` to ENCRYPTED_COLUMNS_MAP, so the plaintext
+  //     `token` column is NULL at rest and that index covered zero rows.
+  //   * `sessions_token_fp_unique` was recreated as a PARTIAL unique
+  //     index `WHERE token_fp IS NOT NULL` — 0026 relaxed `token_fp` to
+  //     nullable, so a FULL unique index would collide on residual
+  //     NULL-token_fp rows from a pre-fix DB.
+  it("sessions_token_fp_unique is a PARTIAL UNIQUE INDEX on token_fp (WHERE token_fp IS NOT NULL) — post-0030 contract", async () => {
     const pool = new Pool({ connectionString: boot!.ownerUri });
     try {
       const { rows } = await pool.query<{ indexdef: string }>(
@@ -195,29 +205,23 @@ describe("uniqueness contract: both fp-layer AND amendment plaintext-layer index
       const def = rows[0]!.indexdef;
       expect(def).toMatch(/CREATE UNIQUE INDEX/i);
       expect(def).toMatch(/\(token_fp\)/i);
-      // Full unique, NOT partial — preserved from Plan 33-05.
-      expect(def).not.toMatch(/WHERE/i);
+      // Partial after migration 0030 — residual NULL-token_fp rows must
+      // not collide (Postgres allows multiple NULLs in a partial index).
+      expect(def).toMatch(/WHERE.*token_fp.*IS NOT NULL/i);
     } finally {
       await pool.end();
     }
   });
 
-  it("sessions_token_unique_partial is a partial UNIQUE INDEX on plaintext token — amendment contract from Plan 51-24", async () => {
+  it("sessions_token_unique_partial is GONE — dropped by migration 0030 (plaintext token NULL at rest)", async () => {
     const pool = new Pool({ connectionString: boot!.ownerUri });
     try {
-      const { rows } = await pool.query<{ indexdef: string }>(
-        `SELECT indexdef FROM pg_indexes
+      const { rows } = await pool.query<{ count: string }>(
+        `SELECT count(*)::text AS count FROM pg_indexes
           WHERE schemaname='public' AND tablename='sessions'
             AND indexname='sessions_token_unique_partial'`,
       );
-      expect(rows).toHaveLength(1);
-      const def = rows[0]!.indexdef;
-      expect(def).toMatch(/CREATE UNIQUE INDEX/i);
-      expect(def).toMatch(/\(token\)/i);
-      // Partial — Postgres-MVCC NULL coexistence at fp layer demands
-      // this to be partial on the plaintext side (Better Auth-bypass
-      // writes never populate token_fp).
-      expect(def).toMatch(/WHERE.*token.*IS NOT NULL/i);
+      expect(rows[0]!.count).toBe("0");
     } finally {
       await pool.end();
     }
