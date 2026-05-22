@@ -18,6 +18,12 @@ on:
 concurrency:
   group: e2e-cjm-${{ github.ref }}
   cancel-in-progress: true
+# CodeQL #36 (actions/missing-workflow-permissions) — least-privilege
+# GITHUB_TOKEN. This lane only checks out the repo and runs an e2e
+# compose stack; it never writes to the repo, posts comments, or
+# publishes artifacts, so read-only `contents` is sufficient.
+permissions:
+  contents: read
 jobs:
   e2e-cjm:
     runs-on: ubuntu-latest
