@@ -27,22 +27,50 @@ function declarationWindow(src: string, name: string): string {
   return src.slice(Math.max(0, idx - 400), idx);
 }
 
+const CONFIG_SRC = resolve(TEST_DIR, "../../src/config.ts");
+
 describe("Plan 51-15b — internal-only litellm-client constants pinned with @internal", () => {
   // D2/D6 — `DEFAULT_STT_MODEL` was relocated from index.ts to config.ts
   // (it is now the env-default for `LITELLM_STT_MODEL` and a deliberate
   // part of the config public API, re-exported alongside DEFAULT_CHAT_MODEL).
   // It is therefore no longer an internal-only index.ts export.
-  const NAMES = [
-    "BUNDLED_MODEL_PROVIDER",
-    "PROVIDER_ENV_VAR",
-    "DEFAULT_HEADERS_TIMEOUT_MS",
-    "DEFAULT_BODY_TIMEOUT_MS",
-  ];
+  //
+  // R32 — `DEFAULT_HEADERS_TIMEOUT_MS` / `DEFAULT_BODY_TIMEOUT_MS` were
+  // likewise relocated from index.ts to config.ts (they are now the
+  // env-defaults for `LITELLM_HEADERS_TIMEOUT_MS` / `LITELLM_BODY_TIMEOUT_MS`).
+  // index.ts re-exports them via `export { ... } from "./config.js"` for
+  // back-compat — so the `@internal` JSDoc marker now lives at the
+  // canonical config.ts declaration, not at an `export const` in index.ts.
+  const NAMES = ["BUNDLED_MODEL_PROVIDER", "PROVIDER_ENV_VAR"];
 
   it.each(NAMES)("`%s` declaration carries @internal JSDoc marker", (name) => {
     const src = readFileSync(SRC, "utf8");
     const window = declarationWindow(src, name);
     expect(window, `declaration not found for ${name}`).not.toBe("");
     expect(/@internal\b/.test(window)).toBe(true);
+  });
+
+  // R32 — the relocated timeout env-defaults. The `@internal` contract
+  // travels with the canonical config.ts declaration.
+  const CONFIG_INTERNAL_NAMES = [
+    "DEFAULT_HEADERS_TIMEOUT_MS",
+    "DEFAULT_BODY_TIMEOUT_MS",
+    "DEFAULT_ERROR_DRAIN_TIMEOUT_MS",
+  ];
+
+  it.each(
+    CONFIG_INTERNAL_NAMES,
+  )("`%s` config.ts declaration carries @internal JSDoc marker", (name) => {
+    const src = readFileSync(CONFIG_SRC, "utf8");
+    const window = declarationWindow(src, name);
+    expect(window, `declaration not found for ${name}`).not.toBe("");
+    expect(/@internal\b/.test(window)).toBe(true);
+  });
+
+  it.each(CONFIG_INTERNAL_NAMES)("`%s` is re-exported from index.ts for back-compat", (name) => {
+    const src = readFileSync(SRC, "utf8");
+    // The re-export is an `export { ... } from "./config.js"` block;
+    // assert the name appears as a re-exported identifier.
+    expect(new RegExp(`\\b${name}\\b`).test(src), `${name} not re-exported by index.ts`).toBe(true);
   });
 });

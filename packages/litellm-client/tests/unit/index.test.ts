@@ -37,6 +37,16 @@ function baseConfig(overrides: Partial<LitellmClientConfig> = {}): LitellmClient
       pyannote: "hf-test",
     },
     defaultChatModel: "qwen3.6-plus",
+    defaultSttModel: "whisper-large-v3",
+    defaultRealtimeModel: "gpt-realtime",
+    // R32 — the timeout posture is now config-sourced. The runtime path
+    // reads `config.headersTimeoutMs` / `config.bodyTimeoutMs` /
+    // `config.errorDrainTimeoutMs` as the per-call defaults; baseConfig
+    // mirrors the prior hardcoded literals so the HI-1 timeout tests stay
+    // pinned to 30s / 120s / 15s unless an individual test overrides.
+    headersTimeoutMs: 30_000,
+    bodyTimeoutMs: 120_000,
+    errorDrainTimeoutMs: 15_000,
     ...overrides,
   };
 }
@@ -769,6 +779,95 @@ describe("buildLitellmClient — HI-1 timeouts + AbortSignal", () => {
     expect(opts.headersTimeout).toBe(10_000);
     expect(opts.bodyTimeout).toBe(120_000); // default retained when override omitted
     expect(opts.signal).toBe(ac.signal);
+  });
+
+  // R32 — the per-call defaults now come from `config` (env-tunable via
+  // LITELLM_HEADERS_TIMEOUT_MS / LITELLM_BODY_TIMEOUT_MS) rather than a
+  // hardcoded literal. A config with non-default timeouts must flow
+  // through to undici for chatCompletions, audioTranscriptions AND
+  // passthrough — and a per-call override still wins over the config value.
+  it("R32: chatCompletions uses config.headersTimeoutMs / bodyTimeoutMs as defaults", async () => {
+    const spy = vi.fn(async () => ({
+      statusCode: 200,
+      headers: {},
+      body: { text: async () => "{}" },
+    }));
+    const client = buildLitellmClient(
+      baseConfig({ headersTimeoutMs: 11_000, bodyTimeoutMs: 222_000 }),
+      {
+        isOverride: false,
+        request: spy as unknown as typeof import("undici").request,
+      },
+    );
+    await client.chatCompletions({
+      model: "qwen3.6-plus",
+      messages: [{ role: "user", content: "hi" }],
+      userId: "u1",
+      requestId: "r1",
+    });
+    const opts = spy.mock.calls[0][1] as Record<string, unknown>;
+    expect(opts.headersTimeout).toBe(11_000);
+    expect(opts.bodyTimeout).toBe(222_000);
+  });
+
+  it("R32: a per-call timeout override still wins over config.headersTimeoutMs", async () => {
+    const spy = vi.fn(async () => ({
+      statusCode: 200,
+      headers: {},
+      body: { text: async () => "{}" },
+    }));
+    const client = buildLitellmClient(
+      baseConfig({ headersTimeoutMs: 11_000, bodyTimeoutMs: 222_000 }),
+      {
+        isOverride: false,
+        request: spy as unknown as typeof import("undici").request,
+      },
+    );
+    await client.chatCompletions({
+      model: "qwen3.6-plus",
+      messages: [{ role: "user", content: "hi" }],
+      userId: "u1",
+      requestId: "r1",
+      headersTimeout: 3_000,
+    });
+    const opts = spy.mock.calls[0][1] as Record<string, unknown>;
+    expect(opts.headersTimeout).toBe(3_000);
+    // bodyTimeout falls through to the config default (no per-call override).
+    expect(opts.bodyTimeout).toBe(222_000);
+  });
+
+  it("R32: audioTranscriptions + passthrough use config-sourced timeout defaults", async () => {
+    const spy = vi.fn(async () => ({
+      statusCode: 200,
+      headers: {},
+      body: { text: async () => "{}" },
+    }));
+    const client = buildLitellmClient(
+      baseConfig({ headersTimeoutMs: 13_000, bodyTimeoutMs: 130_000 }),
+      {
+        isOverride: false,
+        request: spy as unknown as typeof import("undici").request,
+      },
+    );
+    await client.audioTranscriptions({
+      model: "whisper-large-v3",
+      body: Readable.from([Buffer.from("audio")]),
+      contentType: "multipart/form-data; boundary=zzz",
+      userId: "u1",
+      requestId: "r1",
+    });
+    const transcribeOpts = spy.mock.calls[0][1] as Record<string, unknown>;
+    expect(transcribeOpts.headersTimeout).toBe(13_000);
+    expect(transcribeOpts.bodyTimeout).toBe(130_000);
+
+    await client.passthrough("/v1/health", {
+      method: "GET",
+      userId: "u1",
+      requestId: "r1",
+    });
+    const passthroughOpts = spy.mock.calls[1][1] as Record<string, unknown>;
+    expect(passthroughOpts.headersTimeout).toBe(13_000);
+    expect(passthroughOpts.bodyTimeout).toBe(130_000);
   });
 
   it("passthrough defaults headersTimeout/bodyTimeout and forwards signal", async () => {

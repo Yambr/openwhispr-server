@@ -126,6 +126,82 @@ describe("loadLitellmConfigFromEnv", () => {
     expect(cfg.baseUrl).toBe(DEFAULT_LITELLM_BASE_URL);
   });
 
+  // R32 — timeout env-overrides. The undici headers/body timeouts and the
+  // non-2xx error-drain bound were hardcoded literals in index.ts. The
+  // config loader is the canonical env boundary; it now surfaces them as
+  // `headersTimeoutMs` / `bodyTimeoutMs` / `errorDrainTimeoutMs` so an
+  // operator can retarget the timeout posture without a code change.
+  it("R32: defaults timeouts to the prior literals when unset", () => {
+    const cfg = loadLitellmConfigFromEnv({ LITELLM_MASTER_KEY: "sk-master-x" });
+    expect(cfg.headersTimeoutMs).toBe(30_000);
+    expect(cfg.bodyTimeoutMs).toBe(120_000);
+    expect(cfg.errorDrainTimeoutMs).toBe(15_000);
+  });
+
+  it("R32: honors LITELLM_HEADERS_TIMEOUT_MS override", () => {
+    const cfg = loadLitellmConfigFromEnv({
+      LITELLM_MASTER_KEY: "sk-master-x",
+      LITELLM_HEADERS_TIMEOUT_MS: "45000",
+    });
+    expect(cfg.headersTimeoutMs).toBe(45_000);
+  });
+
+  it("R32: honors LITELLM_BODY_TIMEOUT_MS override", () => {
+    const cfg = loadLitellmConfigFromEnv({
+      LITELLM_MASTER_KEY: "sk-master-x",
+      LITELLM_BODY_TIMEOUT_MS: "300000",
+    });
+    expect(cfg.bodyTimeoutMs).toBe(300_000);
+  });
+
+  it("R32: honors LITELLM_ERROR_DRAIN_TIMEOUT_MS override", () => {
+    const cfg = loadLitellmConfigFromEnv({
+      LITELLM_MASTER_KEY: "sk-master-x",
+      LITELLM_ERROR_DRAIN_TIMEOUT_MS: "5000",
+    });
+    expect(cfg.errorDrainTimeoutMs).toBe(5_000);
+  });
+
+  it("R32: treats an empty timeout env var as unset (falls back to default)", () => {
+    const cfg = loadLitellmConfigFromEnv({
+      LITELLM_MASTER_KEY: "sk-master-x",
+      LITELLM_HEADERS_TIMEOUT_MS: "",
+      LITELLM_BODY_TIMEOUT_MS: "",
+      LITELLM_ERROR_DRAIN_TIMEOUT_MS: "",
+    });
+    expect(cfg.headersTimeoutMs).toBe(30_000);
+    expect(cfg.bodyTimeoutMs).toBe(120_000);
+    expect(cfg.errorDrainTimeoutMs).toBe(15_000);
+  });
+
+  it("R32: treats a non-integer timeout env var as unset (falls back to default)", () => {
+    const cfg = loadLitellmConfigFromEnv({
+      LITELLM_MASTER_KEY: "sk-master-x",
+      LITELLM_HEADERS_TIMEOUT_MS: "not-a-number",
+      LITELLM_BODY_TIMEOUT_MS: "12.5",
+      LITELLM_ERROR_DRAIN_TIMEOUT_MS: "-1",
+    });
+    expect(cfg.headersTimeoutMs).toBe(30_000);
+    expect(cfg.bodyTimeoutMs).toBe(120_000);
+    expect(cfg.errorDrainTimeoutMs).toBe(15_000);
+  });
+
+  it("R32: tolerates surrounding whitespace in a timeout env var", () => {
+    const cfg = loadLitellmConfigFromEnv({
+      LITELLM_MASTER_KEY: "sk-master-x",
+      LITELLM_HEADERS_TIMEOUT_MS: "  60000  ",
+    });
+    expect(cfg.headersTimeoutMs).toBe(60_000);
+  });
+
+  it("R32: treats a zero timeout env var as unset (falls back to default)", () => {
+    const cfg = loadLitellmConfigFromEnv({
+      LITELLM_MASTER_KEY: "sk-master-x",
+      LITELLM_BODY_TIMEOUT_MS: "0",
+    });
+    expect(cfg.bodyTimeoutMs).toBe(120_000);
+  });
+
   it("defaults env to process.env when no argument supplied", () => {
     // Smoke-call the no-arg path so the default-parameter branch is
     // covered. process.env in the vitest runner has no LITELLM_MASTER_KEY
