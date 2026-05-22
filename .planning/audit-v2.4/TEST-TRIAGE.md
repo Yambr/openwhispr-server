@@ -52,3 +52,31 @@ GREEN was never fully landed, or the base drifted back. This + the ~33 other pre
 `tests-integration` / `|api|` failures are a **pre-existing test-debt backlog on `main`**
 and are out of scope for v2.4 (an audit-and-publish milestone). Recommend a dedicated
 test-debt phase. Logged here rather than silently "fixed" per CLAUDE.md Hard Rules 1 + 2.
+
+## Resolution (2026-05-23) — backlog cleared
+
+Per user directive, the pre-existing failing-test backlog was fixed before publish.
+Final full-suite verification — every project GREEN, zero failures:
+
+| Project | Tests |
+|---|---|
+| api | 1722 passed |
+| web | 1036 passed |
+| worker | 220 passed |
+| data | 542 passed |
+| tests-integration | 149 passed |
+| tools | 771 passed |
+| litellm-client | 136 passed |
+| observability | 31 passed |
+| wire-schemas | 145 passed |
+| byok-guard | 128 passed |
+| auth-stub / i18n-stub | 1 + 1 passed |
+
+19 failures resolved across 13 commits: 13 stale conformance tests realigned with the
+compose/env files they had drifted from (Phases 14-66 evolved the files; tests lagged),
+1 generated-artifact regenerated (`litellm-aliases.generated.json` from current yaml),
+1 real production i18n gap fixed (`VERIFY_EMAIL_COMPLETE_NO_SESSION` missing en+ru),
+2 transient/flake confirmed green in isolation. No production logic bugs found beyond
+the one i18n gap. The `tests-self-tests` Docker-gated self-tests (`api-container-healthy`,
+`migrate-gates-api`) are CI-environment tests requiring a booted stack — not part of
+`pnpm test`; out of scope here.
