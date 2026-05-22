@@ -757,6 +757,103 @@ describe("POST /api/agent/stream", () => {
     }
   });
 
+  it("Test 8b — client disconnect destroy()s the upstream Readable body within 100ms (undici socket FIN — closes the AbortSignal-under-wrapped-Agent disconnect gap)", async () => {
+    // Per the advisor study (2026-05-23) that resolved the deferred
+    // undici-7.25 AbortSignal-under-wrapped-Agent question: undici 8 is
+    // contraindicated (active per-request-dispatcher regressions). The
+    // correct fix is to keep 7.25 and rely on `upstream.body.destroy()`
+    // from the `req.raw.once("close")` listener — that's what closes
+    // the undici socket since the `signal:` parameter is intentionally
+    // omitted (stream.ts L223-244). This test pins that the destroy()
+    // call actually fires on client disconnect, closing the 1000-
+    // concurrent in-flight-POST risk this codebase is sized for.
+    //
+    // Strategy: stub `chatCompletionsStream` to return a controllable
+    // upstream Readable that NEVER ends; trigger raw.emit("close") and
+    // assert `body.destroyed === true` within 100ms (matches Test 8's
+    // SLO budget for client-disconnect propagation).
+    const { Readable } = await import("node:stream");
+    const controllableBody = new Readable({ read() {} });
+    // Wire upstream that never completes (keeps the route in the drain
+    // loop until disconnect tears it down).
+    const stubbedClient = fakeLitellm({
+      async chatCompletionsStream() {
+        return {
+          statusCode: 200,
+          headers: {},
+          trailers: {},
+          opaque: null,
+          context: {},
+          body: controllableBody as unknown as import("undici").Dispatcher.ResponseData<unknown>["body"],
+        };
+      },
+    });
+
+    const app = Fastify({ logger: false, trustProxy: true });
+    registerErrorHandler(app);
+    await app.register(zodTypeProvider);
+    let capturedReq: import("fastify").FastifyRequest | null = null;
+    app.addHook("onRequest", async (req) => {
+      const auth = req.headers.authorization;
+      const value = Array.isArray(auth) ? auth[0] : auth;
+      if (value !== "Bearer ok-u1") throw new AuthError("unauthorized");
+      (req as unknown as { user: { id: string; email: string } }).user = {
+        id: "u1",
+        email: "u1@test.local",
+      };
+      capturedReq = req;
+    });
+    await app.register(
+      buildAgentStreamRoutes({
+        db: fakeDb() as never,
+        litellm: stubbedClient,
+      }),
+    );
+    await app.ready();
+    try {
+      const injectPromise = app.inject({
+        method: "POST",
+        url: "/api/agent/stream",
+        headers: { authorization: "Bearer ok-u1", "content-type": "application/json" },
+        payload: { messages: [{ role: "user", content: "hi" }] },
+      });
+      // Wait for the route to wire the close listener (proves
+      // `upstreamBodyRef` has been assigned in the handler).
+      const startedAt = Date.now();
+      while (capturedReq === null && Date.now() - startedAt < 1000) {
+        await new Promise((r) => setTimeout(r, 5));
+      }
+      expect(capturedReq).not.toBeNull();
+      // Push one chunk so the route advances past the headers-flush
+      // and assigns upstreamBodyRef (the assignment in stream.ts L310
+      // happens at the bridge step before drain).
+      controllableBody.push("data: {}\n\n");
+      await new Promise((r) => setTimeout(r, 30));
+      // Pre-condition: body is alive.
+      expect(controllableBody.destroyed).toBe(false);
+      // Fire client disconnect — the route's req.raw.once("close")
+      // listener (stream.ts L195-205) must call upstreamBodyRef.destroy().
+      const raw = (capturedReq as { raw: import("node:stream").Readable }).raw;
+      raw.emit("close");
+      // SLO budget — destroy() should propagate synchronously inside the
+      // listener; allow a tick for the scheduler.
+      const destroyDeadline = Date.now() + 100;
+      while (!controllableBody.destroyed && Date.now() < destroyDeadline) {
+        await new Promise((r) => setTimeout(r, 5));
+      }
+      expect(controllableBody.destroyed).toBe(true);
+      try {
+        await injectPromise;
+      } catch {
+        /* expected post-abort */
+      }
+    } finally {
+      // Best-effort cleanup if the route didn't destroy (test failure path).
+      if (!controllableBody.destroyed) controllableBody.destroy();
+      await app.close();
+    }
+  });
+
   it("Test 9 — upstream non-2xx → ONE finish chunk with finishReason 'upstream_error' (status 200 already sent)", async () => {
     agent.get(LITELLM_BASE).intercept({ path: LITELLM_PATH, method: "POST" }).reply(503, "boom");
 
