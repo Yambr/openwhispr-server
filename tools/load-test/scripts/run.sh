@@ -58,17 +58,26 @@ cd "$ROOT"
 # `service "grafana" has neither an image nor a build context`. The
 # observability overlay must be layered BEFORE the load-test overlay so
 # the partial fragments merge onto a complete base.
-# Observability overlay (grafana/loki/tempo/mimir/otel-collector) — see the
-# comment above. Storage overlay (minio + S3_* defaults) — Phase 14's BYOK
-# guard refuses to boot the api when `S3_ENDPOINT` is unset AND the storage
-# overlay is not enabled; the load-test stack must layer it so the api
-# starts. Both overlays are slim-core extractions the load-test predates.
+# Phase 14's slim-core split extracted observability / storage / ingress
+# into separate overlays AND added a BYOK boot guard
+# (packages/byok-guard) that REFUSES to start the api unless each of the
+# three overlays is either enabled OR its BYOK env is set:
+#   - BYOK_OBSERVABILITY_REQUIRED -> compose/docker-compose.observability.yml
+#   - BYOK_STORAGE_REQUIRED       -> compose/docker-compose.storage.yml (minio + S3_*)
+#   - BYOK_INGRESS_REQUIRED       -> compose/docker-compose.ingress.yml (INGRESS_TLS_CERT_PATH)
+# The observability overlay ALSO supplies the full grafana/loki/tempo/
+# mimir/otel-collector service definitions that docker-compose.load-test.yml
+# only patches. `run.sh` predates all three extractions and layered none
+# of them, so the merged project errored on grafana and the api
+# crash-looped on the BYOK guard. Layer all three.
 COMPOSE_OBS="-f compose/docker-compose.observability.yml"
 COMPOSE_STORAGE="-f compose/docker-compose.storage.yml"
+COMPOSE_INGRESS="-f compose/docker-compose.ingress.yml"
+COMPOSE_OVERLAYS="${COMPOSE_OBS} ${COMPOSE_STORAGE} ${COMPOSE_INGRESS}"
 if [ "$PROFILE" = "realistic" ]; then
-  COMPOSE_BASE="docker compose -f docker-compose.yml ${COMPOSE_OBS} ${COMPOSE_STORAGE} -f compose/docker-compose.load-test.yml -f compose/docker-compose.load-test.realistic.yml --profile $COMPOSE_PROFILE"
+  COMPOSE_BASE="docker compose -f docker-compose.yml ${COMPOSE_OVERLAYS} -f compose/docker-compose.load-test.yml -f compose/docker-compose.load-test.realistic.yml --profile $COMPOSE_PROFILE"
 else
-  COMPOSE_BASE="docker compose -f docker-compose.yml ${COMPOSE_OBS} ${COMPOSE_STORAGE} -f compose/docker-compose.load-test.yml --profile $COMPOSE_PROFILE"
+  COMPOSE_BASE="docker compose -f docker-compose.yml ${COMPOSE_OVERLAYS} -f compose/docker-compose.load-test.yml --profile $COMPOSE_PROFILE"
 fi
 if [ "${OPENWHISPR_LOADTEST_KEEP_STACK:-0}" = "1" ]; then
   trap 'printf "OPENWHISPR_LOADTEST_KEEP_STACK=1 — stack left running for forensic capture. Tear down with: %s down\n" "$COMPOSE_BASE" >&2' EXIT INT TERM
