@@ -77,11 +77,11 @@
     "migrate:rollback": "pnpm --filter @openwhispr/data exec drizzle-kit drop"
   },
   "devDependencies": {
-    "@axe-core/playwright": "4.11.2",
-    "@biomejs/biome": "2.4.14",
-    "@commitlint/cli": "21.0.0",
-    "@commitlint/config-conventional": "21.0.0",
-    "@cucumber/cucumber": "12.8.2",
+    "@axe-core/playwright": "4.11.3",
+    "@biomejs/biome": "2.4.15",
+    "@commitlint/cli": "21.0.1",
+    "@commitlint/config-conventional": "21.0.1",
+    "@cucumber/cucumber": "12.9.0",
     "@playwright/test": "1.60.0",
     "@stryker-mutator/core": "9.6.1",
     "@stryker-mutator/vitest-runner": "9.6.1",
@@ -92,8 +92,8 @@
     "@vitest/coverage-v8": "4.1.5",
     "drizzle-orm": "0.45.2",
     "fastify": "^5.0.0",
-    "lefthook": "2.1.6",
-    "pg": "8.20.0",
+    "lefthook": "2.1.8",
+    "pg": "8.21.0",
     "playwright-bdd": "8.5.1",
     "remark-parse": "^11.0.0",
     "remark-stringify": "^11.0.0",
@@ -104,6 +104,6 @@
     "undici": "7.25.0",
     "unified": "^11.0.5",
     "vitest": "4.1.5",
-    "yaml": "^2.8.4"
+    "yaml": "^2.9.0"
   }
 }
