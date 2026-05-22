@@ -4,7 +4,9 @@
     "qwen3.6-plus",
     "gemini-3-flash",
     "gpt-4o-mini",
+    "qwen3.6-cleanup",
     "whisper-large-v3",
+    "realtime-default",
     "gpt-realtime",
     "gpt-realtime-mini",
     "gpt-4o-realtime-preview"
@@ -13,6 +15,7 @@
     "qwen3.6-plus": "openrouter",
     "gemini-3-flash": "openrouter",
     "gpt-4o-mini": "openrouter",
+    "qwen3.6-cleanup": "openrouter",
     "whisper-large-v3": "groq"
   }
 }
