@@ -67,7 +67,15 @@ async function buildApp(opts: { upstream: string; authed?: boolean }): Promise<F
     }
   });
   const litellm = { baseUrl: opts.upstream } as unknown as LitellmClient;
-  await app.register(buildRealtimeRoutes({ litellm, masterKey: TEST_MASTER_KEY }));
+  await app.register(
+    buildRealtimeRoutes({
+      litellm,
+      masterKey: TEST_MASTER_KEY,
+      realtimeModel: "realtime-default",
+      backend: "litellm",
+      openaiRealtimeUrl: "wss://api.openai.com/v1/realtime",
+    }),
+  );
   await app.ready();
   return app;
 }

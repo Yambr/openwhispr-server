@@ -17,6 +17,7 @@ import type { ExecutableTx, TransactionalDb } from "@openwhispr/data";
 import type { LitellmClient } from "@openwhispr/litellm-client";
 import type { FastifyInstance } from "fastify";
 import type { DiarizationConfig } from "../config/diarization.js";
+import { DEFAULT_OPENAI_REALTIME_URL, type RealtimeConfig } from "../config/realtime.js";
 import type { WebSearchConfig } from "../config/web-search.js";
 import type { RedisLike } from "../lib/idempotency-cache.js";
 import type { AuthLike } from "../middleware/dual-auth.js";
@@ -245,6 +246,15 @@ export interface AllRoutesDeps {
    * bundled-default literals.
    */
   diarizationConfig?: DiarizationConfig;
+  /**
+   * R31 — operator-owned realtime-relay backend configuration
+   * (`REALTIME_BACKEND`, `OPENAI_REALTIME_URL`, and — in `direct` mode —
+   * `OPENAI_API_KEY`). Resolved via `loadRealtimeConfigFromEnv()` at the
+   * `index.ts` env boundary (LOCKER-01) and threaded into the frame-aware
+   * `/v1/realtime` relay deps. Omitted -> the relay defaults to the
+   * `litellm` backend with the bundled OpenAI GA URL default.
+   */
+  realtimeConfig?: RealtimeConfig;
 }
 
 /**
@@ -515,29 +525,41 @@ export function buildAllRoutes(deps: AllRoutesDeps): readonly RoutePlugin[] {
       ...(deps.litellmModels ? { defaultModel: deps.litellmModels.chatModel } : {}),
     };
     plugins.push(buildReasonRoutes(reasonDeps));
-    // Phase 03 / Plan 07 (LITELLM-03, D-04): WSS /v1/realtime reverse-
-    // proxy. Registered only when LITELLM_MASTER_KEY was loadable at
-    // boot (its absence is the canonical "operator hasn't wired
-    // realtime yet" signal — the centralized notFoundHandler emits a
-    // 404 envelope on /v1/realtime which is the right operator UX,
-    // distinct from a transient-looking 503 on a registered-but-dead
-    // route). The same master-key string is injected on upstream-bound
-    // upgrade headers (`authorization: Bearer ${masterKey}`) so the
-    // desktop's opaque bearer never reaches LiteLLM.
-    if (deps.litellmMasterKey) {
+  }
+  // R31 — WSS /v1/realtime frame-aware relay. Registered independently of
+  // the `deps.litellm` gate above because the `direct` backend bypasses
+  // LiteLLM entirely (an operator can run `REALTIME_BACKEND=direct` with
+  // no bundled LiteLLM at all). Registration rule:
+  //   * `direct` backend  — register when an OPENAI_API_KEY is configured
+  //     (the relay refuses the upgrade at request time if it is missing,
+  //     but with no key at all there is nothing to wire — leave /v1/realtime
+  //     unregistered so notFoundHandler emits the canonical 404).
+  //   * `litellm` backend — register when LITELLM_MASTER_KEY + the LiteLLM
+  //     client were loadable at boot (the relay derives its upstream from
+  //     `litellm.baseUrl` and authenticates with the master key).
+  // When neither precondition holds, /v1/realtime stays unregistered and
+  // the centralized notFoundHandler emits the canonical 404 envelope.
+  {
+    const realtimeConfig = deps.realtimeConfig;
+    const backend = realtimeConfig?.backend ?? "litellm";
+    const litellmReady = Boolean(deps.litellm && deps.litellmMasterKey);
+    const directReady = backend === "direct" && Boolean(realtimeConfig?.openaiApiKey);
+    if ((backend === "litellm" && litellmReady) || directReady) {
       const realtimeDeps: RealtimeDeps = {
-        litellm: deps.litellm,
-        masterKey: deps.litellmMasterKey,
         // D1 — the realtime model alias forced onto the upstream-bound
-        // `?model=` query string by realtime.ts (T-03-07-05). LiteLLM
-        // routes /v1/realtime on this query param, so it becomes pure
-        // operator config: the desktop client sends no model. Read from
-        // LITELLM_REALTIME_MODEL here (the route-assembly seam — same
-        // place MOCK_DIARIZATION / SPEACHES_DIARIZATION_URL are read);
-        // default `realtime-default` matches the alias shipped in
-        // compose/litellm/litellm_config*.yaml. Operators retarget the
-        // alias in litellm_config.yaml (OpenAI→Speaches), not here.
+        // `?model=` query string by realtime.ts (T-03-07-05). Read from
+        // LITELLM_REALTIME_MODEL here (the route-assembly seam); default
+        // `realtime-default` matches the alias shipped in
+        // compose/litellm/litellm_config*.yaml. Used only in litellm mode.
         realtimeModel: process.env.LITELLM_REALTIME_MODEL?.trim() || "realtime-default",
+        backend,
+        openaiRealtimeUrl: realtimeConfig?.openaiRealtimeUrl ?? DEFAULT_OPENAI_REALTIME_URL,
+        ...(deps.litellm ? { litellm: deps.litellm } : {}),
+        ...(deps.litellmMasterKey ? { masterKey: deps.litellmMasterKey } : {}),
+        ...(realtimeConfig?.openaiApiKey ? { openaiApiKey: realtimeConfig.openaiApiKey } : {}),
+        ...(realtimeConfig?.openaiRealtimeModel
+          ? { openaiRealtimeModel: realtimeConfig.openaiRealtimeModel }
+          : {}),
       };
       plugins.push(buildRealtimeRoutes(realtimeDeps));
     }

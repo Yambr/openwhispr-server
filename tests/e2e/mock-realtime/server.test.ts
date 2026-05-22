@@ -7,7 +7,12 @@
 
 import { afterEach, describe, expect, it } from "vitest";
 import WebSocket from "ws";
-import { type StopHandle, startMockRealtimeServer } from "./server.js";
+import {
+  BETA_SHAPE_REJECT_CODE,
+  detectBetaShape,
+  type StopHandle,
+  startMockRealtimeServer,
+} from "./server.js";
 
 describe("mock-realtime WS server", () => {
   let handle: StopHandle | undefined;
@@ -147,19 +152,107 @@ describe("mock-realtime WS server", () => {
     await new Promise<void>((res) => ws.once("close", () => res()));
   });
 
-  it("ignores known message types other than response.create", async () => {
-    // Coverage: branch where msg.type !== 'response.create'.
+  it("replies to GA session.update with session.updated echoing the session payload", async () => {
     handle = await startMockRealtimeServer({ port: 0 });
     const ws = new WebSocket(handle.url);
     await new Promise<void>((res) => ws.once("message", () => res()));
-    ws.send(JSON.stringify({ type: "session.update" }));
-    // Then a response.create to confirm the channel is still alive.
-    ws.send(JSON.stringify({ type: "response.create" }));
+    ws.send(JSON.stringify({ type: "session.update", session: { type: "transcription" } }));
     const reply = await new Promise<string>((res) => {
       ws.once("message", (data) => res(data.toString()));
     });
-    expect(JSON.parse(reply).type).toBe("response.done");
+    const parsed = JSON.parse(reply);
+    expect(parsed.type).toBe("session.updated");
+    expect(parsed.session.type).toBe("transcription");
     ws.close();
     await new Promise<void>((res) => ws.once("close", () => res()));
+  });
+
+  // ─── R31 — GA-shape assertion (the regression-catching layer) ──────────
+
+  it("R31: rejects an upgrade carrying the Beta-only ?intent= query param", async () => {
+    handle = await startMockRealtimeServer({ port: 0 });
+    // Append ?intent= to the otherwise-clean mock URL.
+    const betaUrl = handle.url + "?intent=transcription";
+    const ws = new WebSocket(betaUrl);
+    const outcome = await new Promise<{ errorFrame?: unknown; code: number }>((resolve) => {
+      let errorFrame: unknown;
+      ws.on("message", (d) => {
+        errorFrame = JSON.parse(d.toString());
+      });
+      ws.on("close", (code) => resolve({ errorFrame, code }));
+    });
+    expect(outcome.code).toBe(BETA_SHAPE_REJECT_CODE);
+    expect((outcome.errorFrame as { error?: { code?: string } }).error?.code).toBe(
+      "beta_api_shape_disabled",
+    );
+  });
+
+  it("R31: rejects an upgrade carrying the OpenAI-Beta opt-in header", async () => {
+    handle = await startMockRealtimeServer({ port: 0 });
+    const ws = new WebSocket(handle.url, { headers: { "OpenAI-Beta": "realtime=v1" } });
+    const code = await new Promise<number>((resolve) => {
+      ws.on("close", (c) => resolve(c));
+    });
+    expect(code).toBe(BETA_SHAPE_REJECT_CODE);
+  });
+
+  it("R31: rejects a Beta transcription_session.update frame on the upstream leg", async () => {
+    handle = await startMockRealtimeServer({ port: 0 });
+    const ws = new WebSocket(handle.url);
+    await new Promise<void>((res) => ws.once("message", () => res())); // drain session.created
+    ws.send(JSON.stringify({ type: "transcription_session.update", session: {} }));
+    const outcome = await new Promise<{ errorFrame?: unknown; code: number }>((resolve) => {
+      let errorFrame: unknown;
+      ws.on("message", (d) => {
+        errorFrame = JSON.parse(d.toString());
+      });
+      ws.on("close", (code) => resolve({ errorFrame, code }));
+    });
+    expect(outcome.code).toBe(BETA_SHAPE_REJECT_CODE);
+    expect((outcome.errorFrame as { error?: { code?: string } }).error?.code).toBe(
+      "beta_api_shape_disabled",
+    );
+  });
+
+  it("R31: accepts a clean GA upgrade (no ?intent=, no OpenAI-Beta header)", async () => {
+    handle = await startMockRealtimeServer({ port: 0 });
+    const ws = new WebSocket(handle.url);
+    const first = await new Promise<string>((res, rej) => {
+      ws.once("message", (d) => res(d.toString()));
+      ws.once("error", rej);
+    });
+    expect(JSON.parse(first).type).toBe("session.created");
+    ws.close();
+    await new Promise<void>((res) => ws.once("close", () => res()));
+  });
+
+  it("R31: assertGaShape:false restores legacy accept-anything behaviour", async () => {
+    handle = await startMockRealtimeServer({ port: 0, assertGaShape: false });
+    const ws = new WebSocket(handle.url + "?intent=transcription");
+    const first = await new Promise<string>((res, rej) => {
+      ws.once("message", (d) => res(d.toString()));
+      ws.once("error", rej);
+    });
+    // With the assertion off, the Beta-shaped upgrade is accepted.
+    expect(JSON.parse(first).type).toBe("session.created");
+    ws.close();
+    await new Promise<void>((res) => ws.once("close", () => res()));
+  });
+});
+
+describe("detectBetaShape — pure GA-shape detector", () => {
+  it("flags a ?intent= query param", () => {
+    expect(detectBetaShape("/v1/realtime?intent=transcription", {})).toMatch(/intent/);
+  });
+  it("flags an OpenAI-Beta header (lowercased by Node)", () => {
+    expect(detectBetaShape("/v1/realtime", { "openai-beta": "realtime=v1" })).toMatch(
+      /OpenAI-Beta/,
+    );
+  });
+  it("returns null for a clean GA request", () => {
+    expect(detectBetaShape("/v1/realtime?model=x", { authorization: "Bearer k" })).toBeNull();
+  });
+  it("returns null when the raw URL is undefined and no Beta header", () => {
+    expect(detectBetaShape(undefined, {})).toBeNull();
   });
 });

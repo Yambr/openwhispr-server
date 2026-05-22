@@ -1,0 +1,83 @@
+R31 — drop the hardcoded `OpenAI-Beta: realtime=v1` header from LiteLLM's
+OpenAI realtime WebSocket leg.
+
+⚠️  STATUS — PARTIAL / DEFENSE-IN-DEPTH ONLY
+============================================
+This patch removes the `OpenAI-Beta` header from
+`OpenAIRealtime._get_additional_headers` — the header source the R31
+investigation originally identified. LIVE VERIFICATION (debug session
+r31-realtime-ga-shape) PROVED THIS IS INSUFFICIENT: LiteLLM 1.83.14's
+actual OpenAI realtime WS path still sends `OpenAI-Beta: realtime=v1`
+from a DIFFERENT, un-traced code path, and OpenAI still answers
+`beta_api_shape_disabled`. The bundled `litellm` realtime backend
+therefore CANNOT complete an OpenAI Realtime GA session on 1.83.14.
+
+The supported, verified-working path is the `direct` realtime backend
+(`REALTIME_BACKEND=direct`, now the DEFAULT) — the Fastify relay connects
+straight to OpenAI's GA `/v1/realtime`, bypassing LiteLLM. This patch is
+retained as defense-in-depth: it is correct as far as it goes, and if a
+future LiteLLM release routes the OpenAI realtime leg through
+`_get_additional_headers`, the patch closes the header there. Track
+LiteLLM for a proper OpenAI Realtime GA release before relying on the
+`litellm` backend.
+
+WHY THIS PATCH EXISTS
+=====================
+OpenAI retired the Realtime *Beta* API. Its GA `/v1/realtime` surface
+rejects any connection that carries the `OpenAI-Beta: realtime=v1` header
+(or the Beta-only `?intent=` query param) with
+`invalid_request_error.beta_api_shape_disabled`, closing the socket 4000.
+
+LiteLLM 1.83.14's `OpenAIRealtime._get_additional_headers()` returns that
+header UNCONDITIONALLY for every `openai/` realtime model. There is no
+config knob, no `extra_headers` path, and no GA switch in any released
+LiteLLM version — the OpenAI realtime WS provider hardcodes it. (Contrast:
+the `XAIRealtime` subclass overrides `_get_additional_headers` to drop the
+Beta header, and the Azure provider has a `LITELLM_AZURE_REALTIME_PROTOCOL`
+GA/beta switch — the OpenAI provider has neither.)
+
+This patch makes the OpenAI provider behave like the `XAIRealtime`
+precedent: `_get_additional_headers` returns ONLY the `Authorization`
+header. The OpenWhispr api `?intent=` strip (apps/api/src/routes/realtime.ts)
+handles the URL-level half of the GA shape; this patch handles the
+header-level half.
+
+SCOPE
+=====
+Affects ONLY the `litellm` realtime backend (`REALTIME_BACKEND=litellm`,
+the default). The `direct` backend bypasses LiteLLM entirely and never
+needs this patch.
+
+STALE BYTECODE GOTCHA
+=====================
+The LiteLLM base image ships PRE-COMPILED `.pyc` files. CPython uses
+hash-based, `UNCHECKED` `.pyc` invalidation for them — it never re-checks
+the `.py` source. A `sed` on the source therefore SILENTLY NO-OPS unless
+the corresponding `__pycache__/*.pyc` is also deleted. The Dockerfile
+drops every `__pycache__` tree after the sed. If you ever apply this
+patch by another means, you MUST also clear the bytecode cache.
+
+RE-APPLYING ON LITELLM BUMPS
+============================
+This patch is applied by `compose/litellm/Dockerfile` via a line-anchored
+`sed` against `/app/litellm/llms/openai/realtime/handler.py`. On every
+LiteLLM image bump:
+  1. Re-pin the base image tag in compose/litellm/Dockerfile.
+  2. Rebuild: `docker compose build litellm`.
+  3. The Dockerfile's post-patch grep assertion FAILS the build if the
+     anchored line is gone (LiteLLM refactored the method) — at which
+     point this patch must be re-derived against the new source.
+Track upstream for a native GA switch (LiteLLM issue/PR search:
+"OpenAI realtime GA", "_get_additional_headers OpenAI-Beta"); when one
+lands, this patch is retired in favour of config.
+
+TARGET FILE (LiteLLM 1.83.14)
+=============================
+  /app/litellm/llms/openai/realtime/handler.py
+
+  def _get_additional_headers(self, api_key: str) -> dict:
+      ...
+      return {
+          "Authorization": f"Bearer {api_key}",
+          "OpenAI-Beta": "realtime=v1",          <-- LINE REMOVED BY PATCH
+      }

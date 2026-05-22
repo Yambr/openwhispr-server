@@ -68,7 +68,14 @@ export default defineConfig([
     // import edge still exists, so we keep `yaml` external and have the
     // hoisted prod node_modules resolve it at runtime. Same shape as
     // `pg`/`better-auth`: external for ESM-incompatibility reasons.
-    external: ["pg", "pg-native", "better-auth", "yaml"],
+    // R31 — `ws` + `@fastify/websocket` kept external. `ws` ships
+    // pre-bundled CJS that does a top-level `require('events')` /
+    // `require('stream')`; tsup's ESM bundler turns those into the
+    // unsupported `Dynamic require of "..."` runtime crash if it inlines
+    // the module. The frame-aware /v1/realtime relay (routes/realtime.ts)
+    // statically imports both, so they MUST resolve from the hoisted prod
+    // node_modules at runtime — same shape as `pg` / `better-auth` / `yaml`.
+    external: ["pg", "pg-native", "better-auth", "yaml", "ws", "@fastify/websocket"],
     onSuccess: async () => {
       await copyLocalesToDist();
     },

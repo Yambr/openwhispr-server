@@ -119,7 +119,11 @@ describe("e2e — WSS /v1/realtime 5-min hermetic soak (SCALE-05)", () => {
         if (sessionCreatedAtMs !== null) return;
         try {
           const msg = JSON.parse(data.toString()) as { type?: string };
-          if (msg.type === "session.created") {
+          // R31 — the frame-aware /v1/realtime relay translates the GA
+          // upstream `session.created` into the desktop client's Beta
+          // `transcription_session.created`. Accept either so the soak
+          // gate is robust across both vocabularies.
+          if (msg.type === "session.created" || msg.type === "transcription_session.created") {
             sessionCreatedAtMs = Date.now();
             clearTimeout(sessionTimer);
             resolveSession();
