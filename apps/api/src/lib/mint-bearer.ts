@@ -30,6 +30,7 @@
 // + provider name, NEVER the IdP response body — IdP body may contain
 // PII or attacker-controlled values.
 import type { ExecutableTx, TransactionalDb } from "@openwhispr/data";
+import { LRUCache } from "lru-cache";
 import { z } from "zod";
 import type { MintBearer, MintBearerArgs } from "../routes/auth-callback.js";
 
@@ -121,23 +122,35 @@ function requireEnv(name: string): string {
 // HI-04 — bounded, TTL'd cache for the OIDC discovery doc.
 //
 // OIDC Discovery 1.0 §4 explicitly permits caching the metadata
-// document. The previous implementation used a bare process-lifetime
+// document. The original implementation used a bare process-lifetime
 // `Map` with NO TTL and NO size bound: a poisoned discovery response
 // (token-endpoint swap) was cached for the entire process life, and a
 // rotated/refreshed IdP could not recover without a pod roll.
 //
-// `MAX_CACHE_ENTRIES` bounds the issuer set (eviction is oldest-first);
-// `DISCOVERY_TTL_MS` (60 min positive TTL) lets a refreshed IdP recover
-// on the next callback. Each entry carries an absolute `expiresAt`.
+// `lru-cache` (the same library `dep-check.ts` uses) provides the
+// bounded-size + TTL semantics natively: `max` evicts the
+// least-recently-used issuer on overflow; `ttl` (60 min) lets a
+// refreshed IdP recover on the next callback — an expired entry is a
+// transparent miss (`get` returns `undefined`), triggering a re-fetch.
 const MAX_CACHE_ENTRIES = 16;
 const DISCOVERY_TTL_MS = 60 * 60 * 1000;
 
-interface DiscoveryCacheEntry {
-  doc: OidcDiscoveryDoc;
-  expiresAt: number;
-}
-
-const discoveryCache = new Map<string, DiscoveryCacheEntry>();
+const discoveryCache = new LRUCache<string, OidcDiscoveryDoc>({
+  max: MAX_CACHE_ENTRIES,
+  ttl: DISCOVERY_TTL_MS,
+  // `Date.now()` is the TTL clock. `lru-cache` defaults to
+  // `performance.now()` when `performance` is present; at a 60-minute
+  // TTL granularity a wall-clock-vs-monotonic distinction is immaterial,
+  // and `Date.now()` keeps the TTL deterministically controllable under
+  // test fake timers.
+  perf: { now: () => Date.now() },
+  // `ttlResolution: 0` disables `lru-cache`'s 1-second `now()` memoization
+  // (which it normally refreshes via an internal `setTimeout`). At a
+  // 60-minute TTL the per-read clock call is negligible, and disabling
+  // the memoization makes expiry depend solely on the injected `perf`
+  // clock — no reliance on a background timer firing.
+  ttlResolution: 0,
+});
 
 /**
  * HI-04 — assert an OIDC endpoint URL is an https:// URL whose origin
@@ -186,10 +199,10 @@ function assertEndpointAffiliated(label: string, endpoint: string, issuerOrigin:
  */
 async function discoverOidc(issuerUrl: string): Promise<OidcDiscoveryDoc> {
   const issuer = issuerUrl.replace(/\/+$/, "");
-  const now = Date.now();
+  // An expired entry is a transparent miss — `get` returns `undefined`
+  // once the TTL elapses, so no manual expiry/delete bookkeeping.
   const cached = discoveryCache.get(issuer);
-  if (cached && cached.expiresAt > now) return cached.doc;
-  if (cached) discoveryCache.delete(issuer);
+  if (cached) return cached;
 
   const url = `${issuer}/.well-known/openid-configuration`;
   const res = await fetch(url);
@@ -212,12 +225,9 @@ async function discoverOidc(issuerUrl: string): Promise<OidcDiscoveryDoc> {
   assertEndpointAffiliated("token_endpoint", doc.token_endpoint, issuerOrigin);
   assertEndpointAffiliated("userinfo_endpoint", doc.userinfo_endpoint, issuerOrigin);
 
-  // HI-04 — bound the cache size; evict oldest on overflow.
-  if (discoveryCache.size >= MAX_CACHE_ENTRIES) {
-    const oldestKey = discoveryCache.keys().next().value;
-    if (oldestKey !== undefined) discoveryCache.delete(oldestKey);
-  }
-  discoveryCache.set(issuer, { doc, expiresAt: now + DISCOVERY_TTL_MS });
+  // HI-04 — cache only after zod-validation + origin-affiliation pass;
+  // `lru-cache` bounds the size (LRU eviction) and applies the TTL.
+  discoveryCache.set(issuer, doc);
   return doc;
 }
 
