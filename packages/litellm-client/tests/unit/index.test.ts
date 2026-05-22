@@ -47,6 +47,14 @@ function baseConfig(overrides: Partial<LitellmClientConfig> = {}): LitellmClient
     headersTimeoutMs: 30_000,
     bodyTimeoutMs: 120_000,
     errorDrainTimeoutMs: 15_000,
+    // litellm-patterns A4 — retry-loop posture. The production default
+    // total attempts is 3; tests default to single-attempt mode
+    // (`retryMaxAttempts: 1`) so the legacy single-shot assertions
+    // (request-count, headers, body shape, MockAgent intercept counts)
+    // stay accurate. The A4 retry tests override per-case.
+    retryMaxAttempts: 1,
+    retryBaseMs: 1,
+    retryCapMs: 5,
     ...overrides,
   };
 }
@@ -1377,5 +1385,159 @@ describe("litellm-patterns A3 — typed upstream error at throw sites", () => {
       const e = err as LitellmUpstreamError;
       expect(e.kind).toBe("server");
     }
+  });
+});
+
+// litellm-patterns A4 — RED tests for the Retry-After-aware retry layer.
+// `chatCompletions` retries; `chatCompletionsStream` does NOT (a
+// partially-consumed SSE body cannot be safely replayed).
+describe("litellm-patterns A4 — chatCompletions retry behavior", () => {
+  it("retries a 429 once then succeeds (Retry-After honored)", async () => {
+    let calls = 0;
+    agent
+      .get(BASE)
+      .intercept({ path: "/v1/chat/completions", method: "POST" })
+      .reply(() => {
+        calls += 1;
+        if (calls === 1) {
+          return {
+            statusCode: 429,
+            data: "slow down",
+            // Small retry-after so the test stays fast.
+            responseOptions: { headers: { "retry-after": "0" } },
+          };
+        }
+        return { statusCode: 200, data: { ok: true }, responseOptions: {} };
+      })
+      .times(2);
+
+    const client = buildLitellmClient(
+      baseConfig({ retryMaxAttempts: 3, retryBaseMs: 1, retryCapMs: 50 }),
+      { isOverride: false },
+    );
+    const res = await client.chatCompletions({
+      model: "qwen3.6-plus",
+      messages: [{ role: "user", content: "hi" }],
+      userId: "u1",
+      requestId: "r1",
+    });
+    expect(res.statusCode).toBe(200);
+    expect(calls).toBe(2);
+  });
+
+  it("rethrows after retryMaxAttempts on persistent 503", async () => {
+    let calls = 0;
+    agent
+      .get(BASE)
+      .intercept({ path: "/v1/chat/completions", method: "POST" })
+      .reply(() => {
+        calls += 1;
+        return { statusCode: 503, data: "upstream down", responseOptions: {} };
+      })
+      .times(3);
+
+    const client = buildLitellmClient(
+      baseConfig({ retryMaxAttempts: 3, retryBaseMs: 1, retryCapMs: 5 }),
+      { isOverride: false },
+    );
+    await expect(
+      client.chatCompletions({
+        model: "qwen3.6-plus",
+        messages: [{ role: "user", content: "hi" }],
+        userId: "u1",
+        requestId: "r1",
+      }),
+    ).rejects.toBeInstanceOf(LitellmUpstreamError);
+    expect(calls).toBe(3);
+  });
+
+  it("does NOT retry a 401 (kind=auth)", async () => {
+    let calls = 0;
+    agent
+      .get(BASE)
+      .intercept({ path: "/v1/chat/completions", method: "POST" })
+      .reply(() => {
+        calls += 1;
+        return { statusCode: 401, data: "denied", responseOptions: {} };
+      })
+      .times(3);
+
+    const client = buildLitellmClient(
+      baseConfig({ retryMaxAttempts: 3, retryBaseMs: 1, retryCapMs: 5 }),
+      { isOverride: false },
+    );
+    await expect(
+      client.chatCompletions({
+        model: "qwen3.6-plus",
+        messages: [{ role: "user", content: "hi" }],
+        userId: "u1",
+        requestId: "r1",
+      }),
+    ).rejects.toBeInstanceOf(LitellmUpstreamError);
+    expect(calls).toBe(1);
+  });
+
+  it("aborts immediately when req.signal fires mid-backoff", async () => {
+    const ctrl = new AbortController();
+    let calls = 0;
+    agent
+      .get(BASE)
+      .intercept({ path: "/v1/chat/completions", method: "POST" })
+      .reply(() => {
+        calls += 1;
+        // Trigger the abort during the post-first-attempt backoff so the
+        // retry loop sees a pre-aborted signal before doing the second
+        // request.
+        setTimeout(() => ctrl.abort(), 5);
+        return { statusCode: 503, data: "down", responseOptions: {} };
+      })
+      .times(3);
+
+    const client = buildLitellmClient(
+      // Use a long backoff so the abort fires inside abortableSleep.
+      baseConfig({ retryMaxAttempts: 3, retryBaseMs: 200, retryCapMs: 200 }),
+      { isOverride: false },
+    );
+    await expect(
+      client.chatCompletions({
+        model: "qwen3.6-plus",
+        messages: [{ role: "user", content: "hi" }],
+        userId: "u1",
+        requestId: "r1",
+        signal: ctrl.signal,
+      }),
+    ).rejects.toBeInstanceOf(LitellmUpstreamError);
+    // Exactly one attempt: the first 503 fired, then abort short-circuited.
+    expect(calls).toBe(1);
+  });
+
+  it("chatCompletionsStream is NOT retried on a 429 (one attempt only)", async () => {
+    let calls = 0;
+    agent
+      .get(BASE)
+      .intercept({ path: "/v1/chat/completions", method: "POST" })
+      .reply(() => {
+        calls += 1;
+        return {
+          statusCode: 429,
+          data: "slow",
+          responseOptions: { headers: { "retry-after": "0" } },
+        };
+      })
+      .times(3);
+
+    const client = buildLitellmClient(
+      baseConfig({ retryMaxAttempts: 3, retryBaseMs: 1, retryCapMs: 5 }),
+      { isOverride: false },
+    );
+    await expect(
+      client.chatCompletionsStream({
+        model: "qwen3.6-plus",
+        messages: [{ role: "user", content: "hi" }],
+        userId: "u1",
+        requestId: "r1",
+      }),
+    ).rejects.toBeInstanceOf(LitellmUpstreamError);
+    expect(calls).toBe(1);
   });
 });
