@@ -2,9 +2,9 @@
 gsd_state_version: 1.0
 milestone: v2.4
 milestone_name: — OSS-Publish Readiness
-status: Pending discuss-phase 57
-last_updated: "2026-05-22T16:30:00.000Z"
-last_activity: "2026-05-22 — v2.4 OSS-Publish milestone opened. Deep audit complete (3 research waves + 1 verification wave): 45 raw findings → 27 confirmed fixable (HACK-C1 verified already-fixed). 16 net-new REQ-IDs appended to REQUIREMENTS.md; phases 57-62 appended to ROADMAP.md. Findings overlapping open phases 15/16/41/53 fold into those. Audit report at .planning/audit-v2.4/AUDIT-FINDINGS.md. Next: discuss-phase 57 (security + CI-blocker fixes)."
+status: Phase 57 CLOSED — Phase 58 next
+last_updated: "2026-05-22T17:48:00.000Z"
+last_activity: "2026-05-22 — Phase 57 CLOSED. 6 commits (ac391b97/5b270182/6294e61c/d3cf16b4/24b18462 + allowlist sync). AUDIT-SEC-01: migration 0031 reinstates SECURITY DEFINER lookup_session_by_previous_token_fp(bytea); AUTH-04 overlap window restored; 4/4 integration tests GREEN on real Postgres. AUDIT-CI-01: tsc --noEmit exits 0. AUDIT-CI-02/03/04: zod-drift test fixed, e2e compose-helper contract-test overlay, worker-RLS test re-enabled with docker skipIf. LOCKER-06 allowlist re-synced after line drift (no --no-verify needed going forward). All cited tests independently re-run by orchestrator (15 unit + 4 integration GREEN). Next: Phase 58 (audit hardening + library adoption)."
 progress:
   total_phases: 72
   completed_phases: 27
