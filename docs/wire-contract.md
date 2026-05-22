@@ -195,6 +195,37 @@ WIRE-16 (envelope passthrough invariant) is asserted by
 WIRE-29 (negative-matrix CONTRACT-01 extension) is the regression net
 proving WIRE-16 holds across the entire surface.
 
+#### Sync-endpoint INPUT contract — lenient input, strict output (R35)
+
+The immutable desktop client stores rows in local SQLite. Two of its
+field shapes do not match the strict RFC-3339 / enum forms the server
+emits, so the cloud-sync POST endpoints accept a deliberately **lenient
+INPUT** while the `Cloud*` **RESPONSE** schemas remain **strict**. The
+input/output asymmetry is intentional and load-bearing.
+
+- **`created_at` / `updated_at` (transcription / note / conversation
+  INPUT).** Accepted in BOTH RFC-3339 `T`-form (`"2026-05-22T16:05:11Z"`)
+  AND the SQLite space form `"YYYY-MM-DD HH:MM:SS"`
+  (`"2026-05-22 16:05:11"`), optionally with fractional seconds and/or a
+  `Z`/`±HH:MM` offset. The value is normalized server-side to canonical
+  RFC-3339 (`packages/wire-schemas/src/input-datetime.ts` —
+  `INPUT_DATETIME`). Structurally-invalid strings and impossible calendar
+  dates (`"2026-02-30 ..."`, month 13) are still rejected with 400.
+  `folders` has no datetime INPUT field. Note: the sync routes today let
+  Postgres apply the column default for these timestamps; the client
+  string is validated then discarded.
+- **`status` (transcription INPUT only).** Accepted as any string ≤ 256
+  chars (the client's local SQLite `status` is unconstrained free text).
+  An unknown value is mapped server-side to a canonical
+  `TranscriptionStatus` (`pending|processing|completed|failed`, fallback
+  `completed`) before the row is stored — see `normalizeTranscriptionStatus()`
+  in `apps/api/src/routes/transcriptions/shape.ts`.
+- **`Cloud*` RESPONSE schemas stay strict.** `CloudTranscription`,
+  `CloudNote`, `CloudConversation`, `CloudMessage`, `CloudFolder` and
+  `SearchResult` keep `z.string().datetime({ offset: true })` for every
+  datetime and the 4-value `TranscriptionStatusSchema` enum for status.
+  The server never emits the SQLite space form or a non-enum status.
+
 ---
 
 ## v2 Deferred
