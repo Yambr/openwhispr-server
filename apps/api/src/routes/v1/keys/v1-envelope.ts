@@ -41,6 +41,7 @@ import {
   ServiceUnavailable,
   ValidationError,
 } from "../../../errors.js";
+import type { RoutePlugin } from "../../index.js";
 
 const JSON_CT = "application/json; charset=utf-8";
 
@@ -150,8 +151,12 @@ export function registerV1EnvelopeErrorHandler(app: FastifyInstance): void {
  * a scope that uses the v1 envelope error handler. Used by each of the
  * v1/keys/{list,create,revoke} route plugins so their throws are
  * translated to the v1 envelope rather than the global `{error}` shape.
+ *
+ * Returns a one-arg `RoutePlugin` (the shape `buildAllRoutes` expects) —
+ * the wrapped function only consumes `app`, so it satisfies both the
+ * single-arg `RoutePlugin` contract and Fastify's plugin registration.
  */
-export function withV1Envelope(inner: FastifyPluginAsync): FastifyPluginAsync {
+export function withV1Envelope(inner: FastifyPluginAsync): RoutePlugin {
   return async (app) => {
     await app.register(async (scope) => {
       registerV1EnvelopeErrorHandler(scope);

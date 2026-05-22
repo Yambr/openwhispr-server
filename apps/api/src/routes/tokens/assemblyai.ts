@@ -119,10 +119,17 @@ export const buildAssemblyAITokenRoutes = (opts: { tokenUrl?: string } = {}) =>
         });
 
         if (!r.ok) {
-          // HI-03 (Phase 62): code+literal pair — `r.message` (the upstream
-          // failure detail) is logged server-side, NOT carried on
-          // `.message`. The error handler emits the class-default literal.
-          req.log.warn({ providerMessage: r.message }, "AssemblyAI token mint upstream failure");
+          // HI-03 (Phase 62): code+literal pair — the upstream failure
+          // detail is logged server-side, NOT carried on `.message`. The
+          // error handler emits the class-default literal.
+          // CallProviderResult is a discriminated union on `status`:
+          // the 503 arm carries `message`, the 400 arm `upstreamBody`.
+          req.log.warn(
+            {
+              providerMessage: r.status === 503 ? r.message : r.upstreamBody,
+            },
+            "AssemblyAI token mint upstream failure",
+          );
           throw new ServiceUnavailable("SERVICE_UNAVAILABLE", "Service temporarily unavailable");
         }
 

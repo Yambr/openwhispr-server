@@ -86,9 +86,16 @@ export const buildDeepgramTokenRoutes = (opts: { tokenUrl?: string } = {}) =>
         });
 
         if (!r.ok) {
-          // HI-03 (Phase 62): code+literal pair — `r.message` is logged
-          // server-side, NOT carried on `.message`.
-          req.log.warn({ providerMessage: r.message }, "Deepgram token mint upstream failure");
+          // HI-03 (Phase 62): code+literal pair — the upstream failure
+          // detail is logged server-side, NOT carried on `.message`.
+          // CallProviderResult is a discriminated union on `status`:
+          // the 503 arm carries `message`, the 400 arm `upstreamBody`.
+          req.log.warn(
+            {
+              providerMessage: r.status === 503 ? r.message : r.upstreamBody,
+            },
+            "Deepgram token mint upstream failure",
+          );
           throw new ServiceUnavailable("SERVICE_UNAVAILABLE", "Service temporarily unavailable");
         }
 
