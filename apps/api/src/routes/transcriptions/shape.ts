@@ -14,6 +14,20 @@
 // NOTE: tenant_id, user_id, duration_seconds exist in the DB but are
 // intentionally OMITTED from the wire shape (D-22 byte-for-byte).
 
+import { TranscriptionStatusSchema } from "@openwhispr/wire-schemas";
+
+// R35 (quick-task 20260522) — the immutable client's local SQLite
+// `transcriptions.status` is unconstrained free TEXT; the INPUT schema
+// now tolerates any string. The DB column is free `text` (no CHECK), but
+// `rowToCloudTranscription` echoes `row.status` into the strict
+// `CloudTranscriptionSchema` RESPONSE. To keep the documented RESPONSE
+// contract honest, map an unknown input status to a canonical
+// `TranscriptionStatus` before insert — the SERVER stores its own
+// canonical status; the raw client value is the client's local concern.
+export function normalizeTranscriptionStatus(status: string): string {
+  return TranscriptionStatusSchema.safeParse(status).success ? status : "completed";
+}
+
 export interface CloudTranscriptionRow {
   id: string;
   tenant_id?: string;
