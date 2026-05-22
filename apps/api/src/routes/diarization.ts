@@ -60,11 +60,19 @@ import {
 } from "../lib/pyannote-client.js";
 
 /** Polling cadence — 1500ms is the smallest interval that pyannote.ai's
- * status endpoint can sustain without rate-limiting at 1000 concurrent jobs. */
+ * status endpoint can sustain without rate-limiting at 1000 concurrent jobs.
+ *
+ * Phase 68 — this is now only the BUNDLED DEFAULT. Operators retune the live
+ * cadence via `PYANNOTE_POLL_INTERVAL_MS` (resolved in config/diarization.ts
+ * and threaded into `DiarizationDeps.pollIntervalMs`). The constant remains
+ * the fallback when no dep is injected. */
 export const POLL_INTERVAL_MS = 1_500;
 
 /** Hard ceiling — 5 minutes. Beyond this we 504 with the jobId so the
- * caller can resume polling itself if it really needs to (rare). */
+ * caller can resume polling itself if it really needs to (rare).
+ *
+ * Phase 68 — bundled default only; overridable via `PYANNOTE_POLL_CEILING_MS`
+ * (config/diarization.ts → `DiarizationDeps.pollCeilingMs`). */
 export const POLL_CEILING_MS = 300_000;
 
 /** Mount path locked by docs/wire-contracts-phase-3.md (Plan 01 D-09). */
@@ -124,12 +132,40 @@ export interface DiarizationDeps {
    * boundary by supplying a stub returning a synthesised Response.
    */
   speachesFetch?: typeof fetch;
+  /**
+   * Phase 68 — operator-owned pyannote.ai REST base URL, resolved from
+   * `PYANNOTE_BASE_URL` at the `index.ts` env boundary (config/diarization.ts).
+   * Threaded into the pyannote client factory. When omitted, the client
+   * falls back to its bundled default (`https://api.pyannote.ai`).
+   */
+  pyannoteBaseUrl?: string;
+  /**
+   * Phase 68 — operator-owned job-status poll cadence in ms, resolved from
+   * `PYANNOTE_POLL_INTERVAL_MS`. When omitted, falls back to the
+   * `POLL_INTERVAL_MS` bundled default.
+   */
+  pollIntervalMs?: number;
+  /**
+   * Phase 68 — operator-owned hard poll ceiling in ms, resolved from
+   * `PYANNOTE_POLL_CEILING_MS`. When omitted, falls back to the
+   * `POLL_CEILING_MS` bundled default.
+   */
+  pollCeilingMs?: number;
+  /**
+   * Phase 68 — operator-owned Speaches local-diarization model alias,
+   * resolved from `SPEACHES_DIARIZATION_MODEL`. When omitted, falls back to
+   * the `SPEACHES_DIARIZATION_MODEL` bundled default.
+   */
+  speachesModel?: string;
 }
 
 /**
- * Speaches local-diarization model. Hard-coded so api callers don't need
- * to know it; matches the realistic-profile PRELOAD_MODELS entry in
- * docker-compose.load-test.yml.
+ * Speaches local-diarization model — BUNDLED DEFAULT only.
+ *
+ * Phase 68 — operators retune the live alias via the
+ * `SPEACHES_DIARIZATION_MODEL` env var (config/diarization.ts →
+ * `DiarizationDeps.speachesModel`). Matches the realistic-profile
+ * PRELOAD_MODELS entry in docker-compose.load-test.yml.
  */
 export const SPEACHES_DIARIZATION_MODEL = "pyannote/speaker-diarization-community-1";
 
@@ -155,6 +191,11 @@ export const buildDiarizationRoutes = (deps: DiarizationDeps) =>
   };
 
 function handleDiarization(deps: DiarizationDeps, idem: IdempotencyCache) {
+  // Phase 68 — resolve the operator-tunable knobs ONCE at handler build
+  // time. Fall back to the bundled-default constants when no dep was
+  // threaded from the env boundary (config/diarization.ts).
+  const pollIntervalMs = deps.pollIntervalMs ?? POLL_INTERVAL_MS;
+  const pollCeilingMs = deps.pollCeilingMs ?? POLL_CEILING_MS;
   return async (req: FastifyRequest, reply: FastifyReply) => {
     if (!req.user || !req.tenant) {
       // Defensive — dualAuthHook should have thrown.
@@ -182,7 +223,12 @@ function handleDiarization(deps: DiarizationDeps, idem: IdempotencyCache) {
     // the body just to throw it away wastes the desktop's upload.)
     let pyannote: PyannoteClient;
     try {
-      pyannote = deps.pyannoteFactory ? deps.pyannoteFactory() : createPyannoteClient();
+      // Phase 68 — pass the operator-owned base URL (PYANNOTE_BASE_URL) to
+      // the factory. Omitted-dep → factory falls back to its bundled
+      // default. The test seam (pyannoteFactory) still takes precedence.
+      pyannote = deps.pyannoteFactory
+        ? deps.pyannoteFactory()
+        : createPyannoteClient(deps.pyannoteBaseUrl ? { baseUrl: deps.pyannoteBaseUrl } : {});
     } catch (err) {
       if (err instanceof MissingPyannoteKeyError) {
         // Pitfall #8: 503 (NOT 401) — the desktop's tokenStore treats
@@ -309,7 +355,7 @@ function handleDiarization(deps: DiarizationDeps, idem: IdempotencyCache) {
 
     const startedAt = Date.now();
     try {
-      while (Date.now() - startedAt < POLL_CEILING_MS) {
+      while (Date.now() - startedAt < pollCeilingMs) {
         if (abortController.signal.aborted) {
           // Client disconnected — pyannote job continues; idem cache
           // retains jobId for retry. No response — connection is gone.
@@ -338,7 +384,7 @@ function handleDiarization(deps: DiarizationDeps, idem: IdempotencyCache) {
         }
         // status === 'created' | 'running' — wait then poll again.
         try {
-          await sleep(POLL_INTERVAL_MS, undefined, {
+          await sleep(pollIntervalMs, undefined, {
             signal: abortController.signal,
           });
         } catch {
@@ -409,6 +455,10 @@ function mapPyannoteError(err: unknown, reply: FastifyReply, req: FastifyRequest
 function handleSpeachesDiarization(deps: DiarizationDeps) {
   const baseUrl = deps.speachesDiarizationUrl as string; // guarded at registration
   const fetchImpl: typeof fetch = deps.speachesFetch ?? globalThis.fetch;
+  // Phase 68 — operator-tunable model alias (SPEACHES_DIARIZATION_MODEL),
+  // resolved once at handler build time; bundled-default constant when no
+  // dep was threaded from the env boundary.
+  const speachesModel = deps.speachesModel ?? SPEACHES_DIARIZATION_MODEL;
   return async (req: FastifyRequest, reply: FastifyReply) => {
     if (!req.user || !req.tenant) {
       throw new AuthError("UNAUTHORIZED", "unauthorized");
@@ -488,7 +538,7 @@ function handleSpeachesDiarization(deps: DiarizationDeps) {
     const head = Buffer.from(
       `--${boundary}${CRLF}` +
         `Content-Disposition: form-data; name="model"${CRLF}${CRLF}` +
-        `${SPEACHES_DIARIZATION_MODEL}${CRLF}` +
+        `${speachesModel}${CRLF}` +
         `--${boundary}${CRLF}` +
         `Content-Disposition: form-data; name="file"; filename="${fileName}"${CRLF}` +
         `Content-Type: ${fileMime}${CRLF}${CRLF}`,

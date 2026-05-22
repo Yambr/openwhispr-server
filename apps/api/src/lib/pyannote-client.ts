@@ -150,13 +150,26 @@ export interface PyannoteClient {
 
 export interface CreatePyannoteClientOptions {
   apiKey?: string;
+  /**
+   * pyannote.ai REST base URL. Phase 68 — production threads the
+   * operator-owned value here from `PYANNOTE_BASE_URL` (resolved in
+   * apps/api/src/config/diarization.ts and passed via the diarization
+   * route deps). This lib file never reads `process.env` itself
+   * (LOCKER-01); when the caller omits `baseUrl` the bundled
+   * `DEFAULT_BASE_URL` literal is used (matches the historical default).
+   */
   baseUrl?: string;
   /** Test seam — defaults to undici's global request (honors setGlobalDispatcher). */
   request?: typeof request;
   dispatcher?: Dispatcher;
 }
 
-const DEFAULT_BASE_URL = "https://api.pyannote.ai";
+/**
+ * Bundled default pyannote.ai base URL. Phase 68 — operators override the
+ * live value via the `PYANNOTE_BASE_URL` env var; this constant is only the
+ * in-lib fallback for callers (and tests) that omit `opts.baseUrl`.
+ */
+export const DEFAULT_BASE_URL = "https://api.pyannote.ai";
 
 export function createPyannoteClient(opts: CreatePyannoteClientOptions = {}): PyannoteClient {
   const apiKey = opts.apiKey ?? process.env.PYANNOTE_API_KEY;

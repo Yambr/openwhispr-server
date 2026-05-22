@@ -1750,5 +1750,90 @@ describe("POST /v1/audio/diarization", () => {
         await appA.close();
       }
     });
+
+    // Phase 68 — operator-tunable Speaches model alias. The route no longer
+    // bakes `pyannote/speaker-diarization-community-1` as a hardcoded form
+    // value; when `speachesModel` is threaded via DiarizationDeps (resolved
+    // from SPEACHES_DIARIZATION_MODEL at the env boundary), the outbound
+    // multipart `model` field carries the operator's override. Omitting the
+    // dep preserves the bundled-default alias.
+    it("forwards the injected speachesModel in the outbound multipart `model` field", async () => {
+      let outBody = "";
+      const speachesFetch = vi.fn(async (_input: string | URL | Request, init?: RequestInit) => {
+        const b = init?.body;
+        if (b && typeof (b as Buffer).length === "number") {
+          outBody = (b as Buffer).toString("utf8");
+        }
+        return new Response(JSON.stringify({ segments: [] }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        });
+      });
+      const a = Fastify({ logger: false });
+      registerErrorHandler(a);
+      a.register(fastifyMultipart, {
+        attachFieldsToBody: false as const,
+        limits: { fileSize: 100 * 1024 * 1024 },
+      });
+      a.register(zodTypeProvider);
+      a.addHook("onRequest", async (req) => {
+        req.user = { id: TEST_USER, email: "fixture@conformance.test" };
+        req.tenant = TEST_TENANT;
+      });
+      a.register(
+        buildDiarizationRoutes({
+          redis: makeFakeRedis(),
+          speachesDiarizationUrl: "http://speaches.internal.test:8000",
+          speachesFetch: speachesFetch as unknown as typeof fetch,
+          speachesModel: "pyannote/speaker-diarization-3.1",
+        }),
+      );
+      try {
+        const { body, contentType } = multipartBody("audio");
+        const res = await a.inject({
+          method: "POST",
+          url: "/v1/audio/diarization",
+          headers: { "content-type": contentType },
+          payload: body,
+        });
+        expect(res.statusCode).toBe(200);
+        expect(speachesFetch).toHaveBeenCalledTimes(1);
+        // The outbound multipart body must carry the operator override,
+        // NOT the bundled-default alias.
+        expect(outBody).toContain('name="model"');
+        expect(outBody).toContain("pyannote/speaker-diarization-3.1");
+        expect(outBody).not.toContain("pyannote/speaker-diarization-community-1");
+      } finally {
+        await a.close();
+      }
+    });
+
+    it("falls back to the bundled-default model alias when speachesModel is omitted", async () => {
+      let outBody = "";
+      const speachesFetch = vi.fn(async (_input: string | URL | Request, init?: RequestInit) => {
+        const b = init?.body;
+        if (b && typeof (b as Buffer).length === "number") {
+          outBody = (b as Buffer).toString("utf8");
+        }
+        return new Response(JSON.stringify({ segments: [] }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        });
+      });
+      const appC = buildSpeachesApp({ speachesFetch: speachesFetch as unknown as typeof fetch });
+      try {
+        const { body, contentType } = multipartBody("audio");
+        const res = await appC.inject({
+          method: "POST",
+          url: "/v1/audio/diarization",
+          headers: { "content-type": contentType },
+          payload: body,
+        });
+        expect(res.statusCode).toBe(200);
+        expect(outBody).toContain("pyannote/speaker-diarization-community-1");
+      } finally {
+        await appC.close();
+      }
+    });
   });
 });
