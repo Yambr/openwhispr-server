@@ -108,27 +108,20 @@ describe("recordPreviousToken (Phase 02.12 plain-text)", () => {
   });
 });
 
-describe("tryPreviousToken (Phase 02.12 plain-text)", () => {
+describe("tryPreviousToken (AUDIT-SEC-01 — SECURITY DEFINER lookup)", () => {
   it("returns null for an unknown bearer", async () => {
     const db = { execute: vi.fn().mockResolvedValue({ rows: [] }) };
     const out = await tryPreviousToken(db, "unknown-bearer");
     expect(out).toBeNull();
-    // Only the SECURITY DEFINER lookup runs when the bearer is unknown
-    // (no email follow-up needed).
+    // A single SECURITY DEFINER function call resolves the lookup —
+    // no follow-up SELECT (the function's JOIN users returns email).
     expect(db.execute).toHaveBeenCalledTimes(1);
   });
 
   it("returns {userId, tenantId, email} when the SECURITY DEFINER function returns a row (WR-05)", async () => {
-    let call = 0;
     const db = {
-      execute: vi.fn().mockImplementation(async () => {
-        call += 1;
-        if (call === 1) {
-          return {
-            rows: [{ user_id: "user-uuid-1", tenant_id: "tenant-uuid-1" }],
-          };
-        }
-        return { rows: [{ email: "user1@example.test" }] };
+      execute: vi.fn().mockResolvedValue({
+        rows: [{ user_id: "user-uuid-1", tenant_id: "tenant-uuid-1", email: "user1@example.test" }],
       }),
     };
     const out = await tryPreviousToken(db, "old-bearer");
@@ -137,19 +130,14 @@ describe("tryPreviousToken (Phase 02.12 plain-text)", () => {
       tenantId: "tenant-uuid-1",
       email: "user1@example.test",
     });
+    // Single round-trip — the function's JOIN users carries the email.
+    expect(db.execute).toHaveBeenCalledTimes(1);
   });
 
-  it("WR-05: returns email=null (NOT empty string) when the user row was deleted mid-rotation", async () => {
-    let call = 0;
+  it("WR-05: returns email=null (NOT empty string) when the function yields a NULL email", async () => {
     const db = {
-      execute: vi.fn().mockImplementation(async () => {
-        call += 1;
-        if (call === 1) {
-          return {
-            rows: [{ user_id: "user-uuid-1", tenant_id: "tenant-uuid-1" }],
-          };
-        }
-        return { rows: [] };
+      execute: vi.fn().mockResolvedValue({
+        rows: [{ user_id: "user-uuid-1", tenant_id: "tenant-uuid-1", email: null }],
       }),
     };
     const out = await tryPreviousToken(db, "old-bearer");
@@ -162,59 +150,7 @@ describe("tryPreviousToken (Phase 02.12 plain-text)", () => {
     expect(out?.tenantId).toBe("tenant-uuid-1");
   });
 
-  it("WR-05: returns email=null when the email follow-up query throws (defensive)", async () => {
-    let call = 0;
-    const db = {
-      execute: vi.fn().mockImplementation(async () => {
-        call += 1;
-        if (call === 1) {
-          return {
-            rows: [{ user_id: "user-uuid-1", tenant_id: "tenant-uuid-1" }],
-          };
-        }
-        throw new Error("RLS denied");
-      }),
-    };
-    const out = await tryPreviousToken(db, "old-bearer");
-    expect(out).not.toBeNull();
-    expect(out?.email).toBeNull();
-  });
-
-  it("HI-05 — the follow-up email SELECT is tenant-scoped (AND tenant_id = <resolved>::uuid)", async () => {
-    // HI-05 (REVIEW api-core HIGH / Phase 62): the email follow-up SELECT
-    // must be explicitly bound to the tenant the sessions row resolved.
-    //
-    // A true cross-tenant repro is not constructible on the v1 slim stack
-    // (CLAUDE.md Constraint 16 — single-default-tenant RLS posture: exactly
-    // one tenant exists), so the regression-shape assertion is on the
-    // emitted SQL: the email query MUST carry the `tenant_id` predicate
-    // bound to the SAME tenant_id the first (sessions) query returned.
-    let call = 0;
-    const captured: Array<{ sql: string; params: unknown[] }> = [];
-    const RESOLVED_TENANT = "tenant-uuid-hi05";
-    const db = {
-      execute: vi.fn().mockImplementation(async (q: unknown) => {
-        call += 1;
-        captured.push(chunksToText(q));
-        if (call === 1) {
-          return { rows: [{ user_id: "user-uuid-hi05", tenant_id: RESOLVED_TENANT }] };
-        }
-        return { rows: [{ email: "hi05@example.test" }] };
-      }),
-    };
-    const out = await tryPreviousToken(db, "old-bearer");
-    expect(out?.email).toBe("hi05@example.test");
-    // Two queries ran — the sessions probe, then the email follow-up.
-    expect(captured.length).toBe(2);
-    const emailQuery = captured[1]!;
-    // The follow-up SELECT targets `users` and carries the tenant_id gate.
-    expect(emailQuery.sql).toMatch(/SELECT\s+email\s+FROM\s+users/i);
-    expect(emailQuery.sql).toMatch(/tenant_id\s*=/i);
-    // The predicate is bound to the SAME tenant the sessions row resolved.
-    expect(emailQuery.params).toContain(RESOLVED_TENANT);
-  });
-
-  it("Phase 33 / Plan 33-04 — issues a SHA-256 fingerprint probe against sessions.previous_token_fp (no SECURITY DEFINER function call)", async () => {
+  it("AUDIT-SEC-01 — calls the SECURITY DEFINER function lookup_session_by_previous_token_fp(bytea), not a bare RLS-bound SELECT", async () => {
     const captured: { sql: string; params: unknown[] } = { sql: "", params: [] };
     const db = {
       execute: vi.fn().mockImplementation(async (q: unknown) => {
@@ -223,10 +159,13 @@ describe("tryPreviousToken (Phase 02.12 plain-text)", () => {
       }),
     };
     await tryPreviousToken(db, "rotated-token");
-    // Migration 0019b dropped lookup_session_by_previous_token; the query
-    // now references the fp index directly.
-    expect(captured.sql).not.toMatch(/lookup_session_by_previous_token/);
-    expect(captured.sql).toMatch(/previous_token_fp/);
+    // Migration 0031 reinstates the SECURITY DEFINER function — calling
+    // it (instead of a bare `SELECT ... FROM sessions`) is what bypasses
+    // the fail-closed RLS policy on the RLS-subject app pool.
+    expect(captured.sql).toMatch(/lookup_session_by_previous_token_fp/);
+    // The bare `FROM sessions` probe MUST be gone — that was the dead
+    // overlap-window bug (RLS matched zero rows with no tenant GUC).
+    expect(captured.sql).not.toMatch(/FROM\s+sessions/i);
     // The bearer plaintext is hashed in-process before binding — the
     // bound param is the bytea(32) SHA-256 digest, NOT the plaintext.
     const { createHash } = await import("node:crypto");
@@ -234,7 +173,7 @@ describe("tryPreviousToken (Phase 02.12 plain-text)", () => {
     const bufferParam = captured.params.find((p): p is Buffer => p instanceof Buffer);
     expect(bufferParam).toBeDefined();
     expect(bufferParam?.equals(expectedFp)).toBe(true);
-    // The plaintext bearer must NOT appear as a query param post-33-04.
+    // The plaintext bearer must NOT appear as a query param.
     expect(captured.params).not.toContain("rotated-token");
   });
 });

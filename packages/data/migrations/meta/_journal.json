@@ -225,6 +225,13 @@
       "when": 1781539200000,
       "tag": "0030_session_token_fp_unique_restore",
       "breakpoints": true
+    },
+    {
+      "idx": 32,
+      "version": "7",
+      "when": 1781625600000,
+      "tag": "0031_restore_previous_token_fp_lookup",
+      "breakpoints": true
     }
   ]
 }

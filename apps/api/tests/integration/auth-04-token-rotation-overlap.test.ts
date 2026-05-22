@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 // Phase 58 / Track C — data:CR-04 regression lock.
+// AUDIT-SEC-01 (HACK-C2) — overlap-window-dead fix + regression lock.
 //
 // Characterization / regression test for the AUTH-04 5-minute
 // token-rotation overlap window.
@@ -19,6 +20,18 @@
 // `tryPreviousToken` resolves the old bearer by fingerprint within the
 // 5-minute window.
 //
+// AUDIT-SEC-01 (HACK-C2): the deployed dual-auth hook wires the
+// `tryPreviousToken` adapter onto `opts.db` === `makeAppDb()` — the
+// RLS-SUBJECT `openwhispr_app` role — and invokes it BEFORE `req.tenant`
+// is resolved, so `app.tenant_id` is unset. Pre-fix `tryPreviousToken`
+// issued a BARE `SELECT ... FROM sessions WHERE previous_token_fp = ...`;
+// `sessions` carries FORCE ROW LEVEL SECURITY with a fail-closed policy
+// (migration 0018), so with no GUC the SELECT matched ZERO rows and the
+// overlap window was DEAD. Migration 0031 reinstates a SECURITY DEFINER
+// function `lookup_session_by_previous_token_fp(bytea)` — definer rights
+// bypass RLS without the caller knowing the tenant — and
+// `tryPreviousToken` now calls it. The app-role pool resolves the row.
+//
 // This test boots a real Postgres (testcontainers), applies all
 // migrations, seeds a tenant + user + session row, exercises the exact
 // production writer the onSend hook calls, then asserts:
@@ -28,8 +41,9 @@
 //      (user_id, tenant_id) inside the overlap window.
 //   3. an EXPIRED `previous_token_expires_at` no longer matches — the
 //      5-minute window is bounded, not open-ended.
-//
-// Finding verified ALREADY-CLOSED; this test locks it against a revert.
+//   4. `tryPreviousToken` resolves the row on the RLS-SUBJECT
+//      `openwhispr_app` pool with NO `app.tenant_id` GUC — exactly how
+//      the deployed dual-auth hook calls it (AUDIT-SEC-01 fix).
 
 import { createHash } from "node:crypto";
 import { dirname, resolve } from "node:path";
@@ -208,13 +222,12 @@ describe("data:CR-04 — AUTH-04 5-minute token-rotation overlap", () => {
     // window resolves to the same (user_id, tenant_id) — the AUTH-04
     // overlap is functional, in-flight requests during rotation do not 401.
     //
-    // `tryPreviousToken` is documented (packages/data/src/sessions/
-    // lookup-by-previous-token.ts header) to run on a BYPASSRLS pool:
-    // the dual-auth hook calls it BEFORE the tenant is known, and
-    // `sessions` has FORCE ROW LEVEL SECURITY — a plain SELECT with no
-    // `app.tenant_id` GUC matches zero rows. Exercised here on the owner
-    // (BYPASSRLS) connection, which is its contract.
-    const match = await tryPreviousToken(drizzle(ownerPool), OLD_BEARER_WINDOW);
+    // Post AUDIT-SEC-01 fix: `tryPreviousToken` calls the SECURITY
+    // DEFINER function `lookup_session_by_previous_token_fp(bytea)`
+    // (migration 0031). The function's definer rights bypass RLS, so
+    // this resolves correctly on the RLS-SUBJECT `openwhispr_app` pool
+    // — which is exactly how the deployed dual-auth hook invokes it.
+    const match = await tryPreviousToken(drizzle(appPool), OLD_BEARER_WINDOW);
     expect(match).not.toBeNull();
     expect(match?.userId).toBe(userId);
     expect(match?.tenantId).toBe(tenantId);
@@ -249,44 +262,45 @@ describe("data:CR-04 — AUTH-04 5-minute token-rotation overlap", () => {
       [sessionId],
     );
 
-    // tryPreviousToken filters `previous_token_expires_at > now()` — an
-    // expired window MUST NOT authenticate the stale bearer. Run on the
-    // BYPASSRLS owner connection (the helper's documented contract) so
-    // this assertion isolates the window-bounding logic, not RLS.
-    const match = await tryPreviousToken(drizzle(ownerPool), OLD_BEARER_EXPIRED);
+    // tryPreviousToken's SECURITY DEFINER function filters
+    // `previous_token_expires_at > now()` — an expired window MUST NOT
+    // authenticate the stale bearer. Run on the RLS-subject app pool
+    // (the deployed wiring) so this assertion exercises the production
+    // path and isolates the window-bounding logic.
+    const match = await tryPreviousToken(drizzle(appPool), OLD_BEARER_EXPIRED);
     expect(match).toBeNull();
   }, 60_000);
 
   // ───────────────────────────────────────────────────────────────────
-  // data:CR-04 — production-wiring characterization.
+  // AUDIT-SEC-01 (HACK-C2) — production-wiring fix verification.
   //
-  // `recordPreviousToken` (writer) is functional — proven above. The
-  // helper `tryPreviousToken` (reader) is functional ON A BYPASSRLS
-  // connection — proven above. BUT the deployed binary
-  // (apps/api/src/index.ts:470-495) wires the dual-auth hook's
-  // `tryPreviousToken` adapter onto `opts.db` === makeAppDb() — the
-  // RLS-SUBJECT `openwhispr_app` role. `sessions` carries
-  // FORCE ROW LEVEL SECURITY (migration 0000_initial.sql:115), and the
-  // dual-auth hook invokes the adapter BEFORE any tenant is resolved,
-  // so `app.tenant_id` is unset and the lookup SELECT matches zero
-  // rows. The AUTH-04 overlap window is therefore non-functional in
-  // production via the standard wiring — a different mechanism than
-  // the reviewer's drizzleAdapter scope, but a real gap.
+  // The deployed binary wires the dual-auth hook's `tryPreviousToken`
+  // adapter onto `opts.db` === `makeAppDb()` — the RLS-SUBJECT
+  // `openwhispr_app` role — and invokes it BEFORE any tenant is
+  // resolved, so `app.tenant_id` is unset. `sessions` carries FORCE ROW
+  // LEVEL SECURITY (migration 0018 fail-closed policy).
   //
-  // This test PINS that behavior so the SUMMARY / deferred-items entry
-  // is anchored to executable evidence. It is NOT a "fix" — re-routing
-  // the adapter onto a BYPASSRLS pool is a production change deferred
-  // under CLAUDE.md hard rule 1 (see .planning/deferred-items.md).
-  it("data:CR-04 — characterizes the wiring gap: tryPreviousToken on the RLS-subject app role matches zero rows", async () => {
+  // PRE-FIX: `tryPreviousToken` issued a bare SELECT against `sessions`,
+  // which the RLS policy matched to ZERO rows — the AUTH-04 overlap
+  // window was dead in production.
+  //
+  // POST-FIX (migration 0031): `tryPreviousToken` calls the SECURITY
+  // DEFINER function `lookup_session_by_previous_token_fp(bytea)`. Its
+  // definer (table-owner) rights bypass RLS without the caller knowing
+  // the tenant, so the lookup resolves on the standard app pool. This
+  // test asserts the FIX: the app-role connection — exactly the
+  // deployed wiring — resolves the rotated bearer.
+  it("AUDIT-SEC-01 — tryPreviousToken resolves on the RLS-subject app role via SECURITY DEFINER lookup", async () => {
     const tenantId = "00000000-0000-0000-0000-0000000000c7";
     await ownerPool.query(
       `INSERT INTO tenants (id, name) VALUES ($1, 'cr04-rls-tenant')
        ON CONFLICT (id) DO NOTHING`,
       [tenantId],
     );
+    const email = `cr04-rls-${Date.now()}@example.test`;
     const userRes = await ownerPool.query<{ id: string }>(
       `INSERT INTO users (tenant_id, email) VALUES ($1, $2) RETURNING id`,
-      [tenantId, `cr04-rls-${Date.now()}@example.test`],
+      [tenantId, email],
     );
     const userId = userRes.rows[0]?.id as string;
     const tokenFp = createHash("sha256").update(NEW_BEARER, "utf8").digest();
@@ -299,15 +313,16 @@ describe("data:CR-04 — AUTH-04 5-minute token-rotation overlap", () => {
 
     await recordPreviousToken(drizzle(appPool) as never, tenantId, sessionId, NEW_BEARER);
 
-    // BYPASSRLS owner connection — the helper's contract — resolves it.
-    const ownerMatch = await tryPreviousToken(drizzle(ownerPool), NEW_BEARER);
-    expect(ownerMatch).not.toBeNull();
-    expect(ownerMatch?.userId).toBe(userId);
-
     // RLS-subject app connection with NO `app.tenant_id` set — exactly
-    // how the deployed dual-auth hook calls it — matches zero rows.
-    // This is the residual gap captured in deferred-items.md.
+    // how the deployed dual-auth hook calls it. The SECURITY DEFINER
+    // function resolves the row despite the fail-closed RLS policy.
     const appMatch = await tryPreviousToken(drizzle(appPool), NEW_BEARER);
-    expect(appMatch).toBeNull();
+    expect(appMatch).not.toBeNull();
+    expect(appMatch?.userId).toBe(userId);
+    expect(appMatch?.tenantId).toBe(tenantId);
+    // WR-05: the SECURITY DEFINER function's `JOIN users` surfaces the
+    // matched user's email in the same round-trip — no follow-up SELECT
+    // against the RLS-fail-closed `users` table on this tenant-less pool.
+    expect(appMatch?.email).toBe(email);
   }, 60_000);
 });

@@ -91,14 +91,17 @@ function makeFakeDb(opts: FakeDbBuildOpts = {}) {
         const row = stateRows.get(id);
         return row ? { rows: [row] } : { rows: [] };
       }
-      // Phase 33 / Plan 33-04 — migration 0019b dropped the
-      // `lookup_session_by_previous_token` SECURITY DEFINER function.
-      // Production now SELECTs against `sessions.previous_token_fp` with
-      // a bytea(32) SHA-256 fingerprint param. The fake matches the new
-      // shape (`previous_token_fp` in the SQL text) and returns the
-      // configured match.
-      if (/previous_token_fp/i.test(text) && /FROM\s+sessions/i.test(text)) {
-        return opts.previousTokenMatch ? { rows: [opts.previousTokenMatch] } : { rows: [] };
+      // AUDIT-SEC-01 (HACK-C2) — migration 0031 reinstated the
+      // SECURITY DEFINER function `lookup_session_by_previous_token_fp(
+      // bytea)`; `tryPreviousToken` now SELECTs from that function with
+      // a bytea(32) SHA-256 fingerprint param (definer rights bypass the
+      // fail-closed `sessions` RLS policy). The fake matches the new
+      // shape and returns the configured match (with an `email` field —
+      // the function's JOIN users surfaces it in the same round-trip).
+      if (/lookup_session_by_previous_token_fp/i.test(text)) {
+        return opts.previousTokenMatch
+          ? { rows: [{ email: null, ...opts.previousTokenMatch }] }
+          : { rows: [] };
       }
       if (/UPDATE\s+sessions/i.test(text)) {
         return { rows: [] };

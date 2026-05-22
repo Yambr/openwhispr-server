@@ -88,94 +88,72 @@ export interface PreviousTokenMatch {
   userId: string;
   tenantId: string;
   /**
-   * WR-05: the matched user's email, fetched via a follow-up SELECT
-   * AFTER the SECURITY DEFINER lookup resolves the tenant. Surfaced to
-   * downstream consumers (audit logs, ledger metadata) so they don't
-   * silently observe an empty-string sentinel synthesized by buildApp's
-   * minimal-mode tryPrev adapter. `null` when the user row was deleted
-   * mid-rotation — fail-loud over silent "" placeholder.
+   * WR-05: the matched user's email, returned by the SECURITY DEFINER
+   * lookup's `JOIN users`. Surfaced to downstream consumers (audit logs,
+   * ledger metadata) so they don't silently observe an empty-string
+   * sentinel synthesized by buildApp's minimal-mode tryPrev adapter.
+   * `null` when the user row was deleted mid-rotation (the JOIN matches
+   * nothing — but the whole lookup then returns `null` anyway) — kept
+   * nullable for the defence-in-depth fail-loud contract.
    */
   email: string | null;
 }
 
 /**
- * Look up a session by its `previous_token`. Calls the SECURITY DEFINER
- * function `lookup_session_by_previous_token(text)` defined in migration
- * 0005_session_token_plain.sql (Phase 02.12), which:
- *   1. Bypasses RLS deliberately (the caller doesn't yet know the
- *      tenant — that's exactly what we're resolving).
- *   2. Returns ONLY (user_id, tenant_id) tuples — no row data — so a
- *      malicious caller probing arbitrary tokens learns nothing beyond
- *      "this token maps to <opaque ids>".
- *   3. Filters by `previous_token_expires_at > now()` so expired
- *      overlap windows do not match.
+ * Look up a session by its rotated previous bearer.
+ *
+ * AUDIT-SEC-01 (HACK-C2) fix — calls the SECURITY DEFINER function
+ * `lookup_session_by_previous_token_fp(bytea)` defined in migration
+ * `0031_restore_previous_token_fp_lookup.sql`, which:
+ *   1. Bypasses RLS deliberately, via its definer (table-owner) rights —
+ *      the caller doesn't yet know the tenant, that's exactly what we're
+ *      resolving. The `sessions` table carries FORCE ROW LEVEL SECURITY
+ *      with a fail-closed policy (migration 0018); a bare SELECT issued
+ *      through the RLS-subject `openwhispr_app` pool with no
+ *      `app.tenant_id` GUC matches ZERO rows. That was the dead-overlap
+ *      bug — the SECURITY DEFINER attribute is what fixes it.
+ *   2. Returns ONLY (user_id, tenant_id, email) — no row data, no token
+ *      material — so a caller probing arbitrary fingerprints learns
+ *      nothing beyond "this fingerprint maps to <opaque ids>".
+ *   3. Filters by `previous_token_expires_at > now()` so expired overlap
+ *      windows do not match — the 5-minute window stays bounded.
  *
  * Returns `null` when the bearer is not a recently-rotated previous
  * token (the dual-auth hook then emits its 401 envelope).
  *
- * The DB connection used here is the standard appDb — the function's
- * SECURITY DEFINER attribute is what bypasses RLS, NOT the connection
- * role. This is the SAFEST shape: the role can EXECUTE the function but
- * cannot SELECT from sessions directly.
+ * The DB connection used here is the standard appDb (`makeAppDb()`) —
+ * the function's SECURITY DEFINER attribute is what bypasses RLS, NOT
+ * the connection role. This is the SAFEST shape: the role can EXECUTE
+ * the function but cannot SELECT from `sessions` directly, and no
+ * BYPASSRLS connection is threaded into request paths.
+ *
+ * History: migration 0005 first shipped a SECURITY DEFINER lookup keyed
+ * on a plaintext `previous_token` column; migration 0019b retired it
+ * when the storage shape moved, and the Node-side helper that replaced
+ * it issued a bare RLS-bound SELECT — which the RLS-subject app pool
+ * could never satisfy without a tenant GUC. Migration 0031 reinstates
+ * the SECURITY DEFINER lookup, keyed on the `previous_token_fp` bytea
+ * fingerprint sidecar that is the post-Phase-33 storage shape.
  */
 export async function tryPreviousToken(
   db: { execute(query: unknown): Promise<unknown> },
   bearerToken: string,
 ): Promise<PreviousTokenMatch | null> {
-  // Phase 33 / Plan 33-04 — the migration-0005 SECURITY DEFINER function
-  // `lookup_session_by_previous_token(text)` was dropped by migration
-  // 0019b. We now SHA-256 the plaintext bearer and SELECT against the
-  // partial unique index `sessions_previous_token_fp_idx` over the
-  // bytea(32) fingerprint column. Identical AUTH-04 5-minute overlap
-  // CONTRACT — only the lookup mechanism changed (Node-side hash + index
-  // probe replaces SECURITY DEFINER call). The `db.execute` interface
-  // here is the same `TransactionalDb` shape Plan 08 wired; we issue a
-  // single drizzle `sql` query that matches the helper in
-  // packages/data/src/sessions/lookup-by-previous-token.ts (Node-side
-  // helper exists for the integration-test fingerprint codepath without
-  // needing drizzle).
+  // SHA-256 the candidate bearer and resolve via the SECURITY DEFINER
+  // function. The function's `JOIN users` returns the matched user's
+  // email in the same round-trip (WR-05) — no follow-up SELECT against
+  // the RLS-fail-closed `users` table on this tenant-less pool.
   const { createHash } = await import("node:crypto");
   const fp = createHash("sha256").update(bearerToken, "utf8").digest();
   const r = (await db.execute(
-    sql`SELECT user_id, tenant_id
-          FROM sessions
-         WHERE previous_token_fp = ${fp}
-           AND previous_token_expires_at IS NOT NULL
-           AND previous_token_expires_at > now()
-         LIMIT 1`,
-  )) as { rows: Array<{ user_id: string; tenant_id: string }> };
+    sql`SELECT user_id, tenant_id, email
+          FROM lookup_session_by_previous_token_fp(${fp})`,
+  )) as { rows: Array<{ user_id: string; tenant_id: string; email: string | null }> };
   const first = r.rows[0];
   if (!first) return null;
-  // WR-05: resolve email so downstream consumers (audit logs, ledger
-  // metadata, dual-auth synthesized user objects) see a real value.
-  // Pre-fix, buildApp's minimal-mode tryPrev adapter hard-coded
-  // `email: ""` because the SECURITY DEFINER function only returned
-  // the (user_id, tenant_id) pair — that empty-string sentinel
-  // silently propagated through middleware.
-  //
-  // HI-05 (REVIEW api-core HIGH / Phase 62): the follow-up SELECT is
-  // now EXPLICITLY tenant-scoped — `AND tenant_id = <resolved>::uuid`.
-  // Previously the SELECT relied solely on the post-condition that
-  // `first.user_id` belongs to `first.tenant_id`; a race during a
-  // user-move / admin-impersonation flow could desync those. The
-  // predicate pins the lookup to the tenant the sessions row already
-  // resolved, so a row whose `tenant_id` does not match is never read.
-  // (The function still runs on the standard `openwhispr_app` role —
-  // this is belt-and-braces at the SQL level. `users.id` is a primary
-  // key so the query stays bounded.)
-  let email: string | null = null;
-  try {
-    const er = (await db.execute(
-      sql`SELECT email FROM users
-           WHERE id = ${first.user_id}::uuid
-             AND tenant_id = ${first.tenant_id}::uuid
-           LIMIT 1`,
-    )) as { rows: Array<{ email: string }> };
-    email = er.rows[0]?.email ?? null;
-  } catch {
-    // Row deleted mid-rotation or RLS blocked the read — surface null
-    // so consumers fail loud rather than receiving a silent "".
-    email = null;
-  }
-  return { userId: first.user_id, tenantId: first.tenant_id, email };
+  return {
+    userId: first.user_id,
+    tenantId: first.tenant_id,
+    email: first.email ?? null,
+  };
 }
