@@ -41,8 +41,11 @@ import type { LitellmClientConfig, LitellmProviderKeys } from "./config.js";
 // package-internal callers/tests.
 import { DEFAULT_LITELLM_BASE_URL, DEFAULT_STT_MODEL } from "./config.js";
 import {
+  classifyUpstreamStatus,
+  type LitellmErrorKind,
   LitellmUpstreamError,
   MissingProviderKeyError,
+  parseRetryAfterMs,
   SsrfDispatcherNotInstalledError,
 } from "./errors.js";
 import { loadBundledModelProviders } from "./model-aliases.js";
@@ -356,6 +359,21 @@ async function drainWithTimeout(
   return Promise.race([body.text(), timeoutPromise]);
 }
 
+/**
+ * litellm-patterns A3 — build the {@link LitellmUpstreamError} options
+ * object at a non-2xx throw site: classify the status and parse the
+ * upstream `Retry-After`. `retryAfterMs` is added ONLY when present so the
+ * optional field stays genuinely absent under `exactOptionalPropertyTypes`.
+ */
+function upstreamErrorOptions(
+  status: number,
+  retryAfterHeader: string | string[] | undefined,
+): { kind: LitellmErrorKind; retryAfterMs?: number } {
+  const kind = classifyUpstreamStatus(status);
+  const retryAfterMs = parseRetryAfterMs(retryAfterHeader, Date.now());
+  return retryAfterMs === undefined ? { kind } : { kind, retryAfterMs };
+}
+
 export function buildLitellmClient(
   config: LitellmClientConfig,
   opts: BuildLitellmClientOptions = {},
@@ -417,7 +435,14 @@ export function buildLitellmClient(
   ): Promise<Dispatcher.ResponseData<unknown>> {
     if (res.statusCode >= 400) {
       const bodyText = await res.body.text();
-      throw new LitellmUpstreamError(res.statusCode, bodyText);
+      // litellm-patterns A3 — classify the status and parse the upstream
+      // `Retry-After` header so callers (the A4 retry layer) can branch on
+      // `err.kind` / `err.retryAfterMs` without re-deriving status ranges.
+      throw new LitellmUpstreamError(
+        res.statusCode,
+        bodyText,
+        upstreamErrorOptions(res.statusCode, res.headers["retry-after"]),
+      );
     }
     return res;
   }
@@ -514,7 +539,13 @@ export function buildLitellmClient(
       // upstream-broken from upstream-slow in logs.
       if (res.statusCode >= 400) {
         const bodyText = await drainWithTimeout(res.body, config.errorDrainTimeoutMs);
-        throw new LitellmUpstreamError(res.statusCode, bodyText);
+        // litellm-patterns A3 — same classification as `ensureOk` so a
+        // streaming caller also sees `err.kind` / `err.retryAfterMs`.
+        throw new LitellmUpstreamError(
+          res.statusCode,
+          bodyText,
+          upstreamErrorOptions(res.statusCode, res.headers["retry-after"]),
+        );
       }
       return res;
     },
@@ -625,6 +656,13 @@ export {
   parsePositiveIntEnv,
   parsePositiveNumberEnv,
 } from "./env-parse.js";
+// litellm-patterns A3 — `classifyUpstreamStatus` / `parseRetryAfterMs` /
+// `LitellmUpstreamErrorOptions` / `LitellmErrorKind` are package-internal
+// (consumed by the `index.ts` throw sites + the `LitellmUpstreamError.kind`
+// field in `errors.ts`) and are intentionally NOT re-exported from the
+// package entrypoint — re-exporting a symbol with no cross-package
+// production consumer creates a LOCKER-04 dead export. A future apps/api
+// consumer that needs `LitellmErrorKind` re-adds the re-export here.
 export {
   LitellmUpstreamError,
   MissingProviderKeyError,
