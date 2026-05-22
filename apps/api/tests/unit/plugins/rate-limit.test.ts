@@ -836,4 +836,49 @@ describe("rate-limit OPENWHISPR_DISABLE_RATE_LIMIT env switch (Phase 8 Plan 01)"
     );
     expect(hit).toBeDefined();
   });
+
+  describe("AUDIT-HARD-02 — in-process IP store is bounded", () => {
+    // LIB-2: the in-process (no-Valkey) IP counter MUST evict past a cap
+    // so an IP-spray DoS cannot grow the store without bound. With an
+    // unbounded `Map` the victim IP's count would persist across the
+    // spray; with the bounded lru-cache the LRU (untouched) bucket is
+    // evicted and the victim's counter restarts from 1.
+
+    it("evicts the least-recently-used IP bucket past inProcessIpStoreMax", async () => {
+      const app = Fastify({ logger: false, trustProxy: true });
+      registerErrorHandler(app);
+      // IP-tier ceiling of 1 → the SECOND request from any single IP
+      // 429s *if* its bucket is still tracked. Tiny cap (2 buckets) so a
+      // 2-IP spray evicts the least-recently-used (victim) bucket.
+      // `redis` omitted → the in-process store is exercised.
+      await app.register(rateLimitPlugin, {
+        globalIpCeiling: 1,
+        inProcessIpStoreMax: 2,
+      });
+      app.route({
+        method: "GET",
+        url: "/api/probe",
+        config: { rateLimit: { max: 1000, timeWindow: "1 minute" } },
+        handler: async () => ({ ok: true }),
+      });
+      await app.ready();
+
+      const hit = (ip: string) =>
+        app.inject({ method: "GET", url: "/api/probe", headers: { "x-forwarded-for": ip } });
+
+      // Seed the victim bucket (IP-tier count → 1, still under ceiling).
+      expect((await hit("10.9.9.9")).statusCode).toBe(200);
+      // Spray two more distinct IPs — the cap is 2, so the victim is the
+      // least-recently-used entry and gets evicted from the store.
+      await hit("10.1.1.1");
+      await hit("10.2.2.2");
+
+      // The victim's next request: with the bounded store its bucket was
+      // evicted, so the IP-tier counter restarts at 1 → 200. With the
+      // pre-fix unbounded Map the bucket would have survived at count 1
+      // and this second hit would push it to 2 > ceiling → 429.
+      expect((await hit("10.9.9.9")).statusCode).toBe(200);
+      await app.close();
+    });
+  });
 });

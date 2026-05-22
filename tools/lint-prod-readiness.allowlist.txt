@@ -120,7 +120,7 @@ apps/api/src/middleware/dual-auth.ts:227  # issue-31-04-debt-LOCKER-04-dead-expo
 apps/api/src/middleware/require-cookie-only.ts:26  # issue-31-04-debt-LOCKER-04-dead-export-phase-38
 apps/api/src/middleware/require-cookie-only.ts:51  # issue-31-04-debt-LOCKER-04-dead-export-phase-38
 apps/api/src/middleware/require-cookie-only.ts:62  # issue-31-04-debt-LOCKER-04-dead-export-phase-38
-apps/api/src/plugins/rate-limit.ts:55  # issue-31-04-debt-LOCKER-04-dead-export-phase-38
+apps/api/src/plugins/rate-limit.ts:56  # issue-31-04-debt-LOCKER-04-dead-export-phase-38
 apps/api/src/plugins/request-log.ts:23  # issue-31-04-debt-LOCKER-04-dead-export-phase-38
 apps/api/src/plugins/request-log.ts:26  # issue-31-04-debt-LOCKER-04-dead-export-phase-38
 apps/api/src/plugins/request-log.ts:36  # issue-31-04-debt-LOCKER-04-dead-export-phase-38
