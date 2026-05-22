@@ -93,7 +93,7 @@ helm install openwhispr openwhispr/openwhispr --version 1.0.0
 
 Operators who want the OCI distribution channel (ghcr.io) instead of
 the GitHub Pages index — the `v*` server-release lane publishes the
-same chart at `oci://ghcr.io/openwhispr/charts/openwhispr` via
+same chart at `oci://ghcr.io/yambr/charts/openwhispr` via
 [`.github/workflows/helm-release.yml`](./.github/workflows/helm-release.yml).
 
 > **Status: Phase 10 (i18n, docs, OSS housekeeping).** Wire surface
