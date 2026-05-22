@@ -169,13 +169,19 @@ describe("POST /api/reason", () => {
     expect(parsed.promptMode).toBe("default");
     expect(parsed.matchType).toBe("default");
 
-    // D-06: client.chatCompletions called with default model.
+    // D-06: client.chatCompletions called with default model. R33 — this
+    // bare `{text}` body is the CLEANUP shape; with no `cleanupModel` dep
+    // injected the cleanup branch falls back to DEFAULT_CHAT_MODEL.
     expect(calls).toHaveLength(1);
     expect(calls[0]?.model).toBe("qwen3.6-plus");
     // D-03: userId pulled from req.user.id, NOT body.
     expect(calls[0]?.userId).toBe(TEST_USER);
     expect(typeof calls[0]?.requestId).toBe("string");
-    expect(calls[0]?.messages).toEqual([{ role: "user", content: "hello" }]);
+    // R33 — cleanup shape prepends the localized cleanup system message.
+    expect(calls[0]?.messages).toHaveLength(2);
+    expect(calls[0]?.messages[0]?.role).toBe("system");
+    expect(calls[0]?.messages[0]?.content).toContain("text cleanup tool");
+    expect(calls[0]?.messages[1]).toEqual({ role: "user", content: "hello" });
 
     // Ledger row written with kind='reason_tokens', units=15 (mock total_tokens).
     const insert = recorded.find((r) => /INSERT INTO usage_ledger/i.test(r.sql));
@@ -191,7 +197,10 @@ describe("POST /api/reason", () => {
   // D3a — the default chat model is operator-owned (LITELLM_DEFAULT_CHAT_MODEL
   // → litellm config → injected `defaultModel` dep). When `body.model` is
   // absent the route MUST use the injected value, not a baked literal.
-  it("uses the injected defaultModel when body.model is omitted (D3a)", async () => {
+  // R33 — `defaultModel` is the AGENT-shape default; `agentName` makes
+  // this body the agent shape so the `defaultModel` chain applies (a bare
+  // `{text}` body is the cleanup shape and uses `cleanupModel` instead).
+  it("uses the injected defaultModel for the agent shape when body.model is omitted (D3a)", async () => {
     const { db } = makeFakeDb();
     const calls: ChatCompletionRequest[] = [];
     const litellm = makeFakeLitellm({
@@ -207,7 +216,7 @@ describe("POST /api/reason", () => {
       method: "POST",
       url: "/api/reason",
       headers: { "content-type": "application/json" },
-      payload: JSON.stringify({ text: "hello" }),
+      payload: JSON.stringify({ text: "hello", agentName: "Whispr" }),
     });
     expect(res.statusCode).toBe(200);
     const parsed = ReasonResponse.parse(res.json());
@@ -219,6 +228,9 @@ describe("POST /api/reason", () => {
 
   // D3a — R28: `body.model` may arrive explicitly null; the route must
   // treat null like absent and fall through to the injected default.
+  // R33 — agent shape (`agentName` set) so the `defaultModel` chain
+  // applies; the cleanup-shape null-model path is covered by the R33
+  // cleanup tests below.
   it("treats body.model=null like absent and uses the injected default (D3a/R28)", async () => {
     const { db } = makeFakeDb();
     const calls: ChatCompletionRequest[] = [];
@@ -228,7 +240,7 @@ describe("POST /api/reason", () => {
       method: "POST",
       url: "/api/reason",
       headers: { "content-type": "application/json" },
-      payload: JSON.stringify({ text: "hello", model: null }),
+      payload: JSON.stringify({ text: "hello", model: null, agentName: "Whispr" }),
     });
     expect(res.statusCode).toBe(200);
     expect(calls[0]?.model).toBe("corp-chat-internal");
@@ -316,9 +328,16 @@ describe("POST /api/reason", () => {
     const parsed = ReasonResponse.parse(res.json());
     expect(parsed.text).toBe("mocked reasoning");
     expect(parsed.model).toBe("qwen3.6-plus");
-    // Handler still forwards only `text` to LiteLLM as the user message.
+    // R33 — this body carries `agentName` + `systemPrompt` + explicit
+    // `model`, so it is the AGENT shape: the provided `systemPrompt` is
+    // used as the system message and `text` is the user message.
     expect(calls).toHaveLength(1);
-    expect(calls[0]?.messages).toEqual([{ role: "user", content: "raw transcript" }]);
+    expect(calls[0]?.messages).toEqual([
+      { role: "system", content: "Optional system override" },
+      { role: "user", content: "raw transcript" },
+    ]);
+    // Agent shape -> NO thinking-off extras.
+    expect(calls[0]?.extras).toBeUndefined();
   });
 
   it("accepts an UNDOCUMENTED extra body field (.passthrough() — R23 forward-compat)", async () => {
@@ -576,5 +595,105 @@ describe("POST /api/reason", () => {
     expect(parsed.model).toBe("qwen3.6-plus");
     expect(calls).toHaveLength(1);
     expect(calls[0]?.model).toBe("qwen3.6-plus");
+  });
+
+  // R33 — the cleanup request shape (no agentName, no systemPrompt,
+  // empty/absent model) is the dictation-cleanup path. The route must
+  // (a) prepend the localized cleanup system message, (b) route to the
+  // injected cleanup-class model, (c) carry the Qwen3 thinking-OFF field
+  // `extra_body.chat_template_kwargs.enable_thinking:false` in `extras`.
+  it("R33 — cleanup-shape request -> cleanup persona + cleanup model + thinking-off", async () => {
+    const { db } = makeFakeDb();
+    const calls: ChatCompletionRequest[] = [];
+    const litellm = makeFakeLitellm({
+      calls,
+      upstreamJson: {
+        model: "qwen3.6-cleanup",
+        choices: [{ message: { role: "assistant", content: "One, two, three." } }],
+        usage: { total_tokens: 9 },
+      },
+    });
+    app = buildApp({ db, litellm, defaultModel: "qwen3.6-plus", cleanupModel: "qwen3.6-cleanup" });
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/reason",
+      headers: { "content-type": "application/json" },
+      // Cloud cleanup body the immutable client sends: text only.
+      payload: JSON.stringify({ text: "one two three" }),
+    });
+    expect(res.statusCode).toBe(200);
+    expect(calls).toHaveLength(1);
+    const call = calls[0];
+    if (!call) throw new Error("expected one upstream call");
+
+    // (b) routed to the injected cleanup-class model.
+    expect(call.model).toBe("qwen3.6-cleanup");
+
+    // (a) cleanup system message prepended; user message is the verbatim
+    // transcript. The {{agentName}} placeholder survives literally.
+    expect(call.messages).toHaveLength(2);
+    expect(call.messages[0]?.role).toBe("system");
+    expect(call.messages[0]?.content).toContain("text cleanup tool");
+    expect(call.messages[0]?.content).toContain("{{agentName}}");
+    expect(call.messages[1]).toEqual({ role: "user", content: "one two three" });
+
+    // (c) thinking-OFF travels in the request body via `extras`.
+    expect(call.extras).toBeDefined();
+    expect(call.extras).toEqual({
+      extra_body: { chat_template_kwargs: { enable_thinking: false } },
+    });
+  });
+
+  it("R33 — cleanup-shape with locale 'ru' selects the RU cleanup prompt", async () => {
+    const { db } = makeFakeDb();
+    const calls: ChatCompletionRequest[] = [];
+    const litellm = makeFakeLitellm({ calls });
+    app = buildApp({ db, litellm, defaultModel: "qwen3.6-plus", cleanupModel: "qwen3.6-cleanup" });
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/reason",
+      headers: { "content-type": "application/json" },
+      payload: JSON.stringify({ text: "one two three", language: "ru" }),
+    });
+    expect(res.statusCode).toBe(200);
+    const call = calls[0];
+    if (!call) throw new Error("expected one upstream call");
+    expect(call.messages[0]?.role).toBe("system");
+    // RU prompt — assert a stable non-Cyrillic structural property: the
+    // {{agentName}} placeholder is present and the EN marker is NOT.
+    expect(call.messages[0]?.content).toContain("{{agentName}}");
+    expect(call.messages[0]?.content).not.toContain("text cleanup tool");
+    expect(call.model).toBe("qwen3.6-cleanup");
+  });
+
+  it("R33 — agent-shape request -> conversational call, default model, NO thinking-off", async () => {
+    const { db } = makeFakeDb();
+    const calls: ChatCompletionRequest[] = [];
+    const litellm = makeFakeLitellm({
+      calls,
+      upstreamJson: {
+        model: "qwen3.6-plus",
+        choices: [{ message: { role: "assistant", content: "agent reply" } }],
+        usage: { total_tokens: 4 },
+      },
+    });
+    app = buildApp({ db, litellm, defaultModel: "qwen3.6-plus", cleanupModel: "qwen3.6-cleanup" });
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/reason",
+      headers: { "content-type": "application/json" },
+      // agentName set -> agent shape (no systemPrompt -> no system message).
+      payload: JSON.stringify({ text: "summarize this", agentName: "Whispr" }),
+    });
+    expect(res.statusCode).toBe(200);
+    const call = calls[0];
+    if (!call) throw new Error("expected one upstream call");
+
+    // Agent shape -> default conversational model, NOT the cleanup model.
+    expect(call.model).toBe("qwen3.6-plus");
+    // agentName-only -> no system message (today's behaviour, not regressed).
+    expect(call.messages).toEqual([{ role: "user", content: "summarize this" }]);
+    // Agent shape -> no thinking-off extras in the request body.
+    expect(call.extras).toBeUndefined();
   });
 });

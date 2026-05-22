@@ -35,7 +35,6 @@
 
 import { type ExecutableTx, type TransactionalDb, withTenant } from "@openwhispr/data";
 import {
-  DEFAULT_CHAT_MODEL,
   type LitellmClient,
   LitellmUpstreamError,
   MissingProviderKeyError,
@@ -44,6 +43,11 @@ import { ReasonRequest, type ReasonResponse } from "@openwhispr/wire-schemas";
 import { sql } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
 import { AuthError, ServiceUnavailable, UpstreamError } from "../errors.js";
+import {
+  resolveLocale,
+  selectMessages,
+  selectModelAndExtras,
+} from "../lib/reason-prompt-select.js";
 
 export interface ReasonDeps {
   db: TransactionalDb<ExecutableTx>;
@@ -116,17 +120,38 @@ export const buildReasonRoutes = (deps: ReasonDeps) =>
         // Manual zod parse so .strict() rejection raises ZodError —
         // mapped to 400 by the centralized error handler.
         const body = ReasonRequest.parse(req.body);
-        // D3a — `body.model` (caller) wins; else the operator-owned
-        // default (LITELLM_DEFAULT_CHAT_MODEL via deps.defaultModel); else
-        // the bundled `DEFAULT_CHAT_MODEL` env-default. R28: `body.model`
-        // may arrive explicitly `null` — `??` treats null like absent.
-        const model = body.model ?? deps.defaultModel ?? DEFAULT_CHAT_MODEL;
+        // R33 — prompt + model selection is keyed on the request SHAPE.
+        // The cleanup shape (no agentName, no systemPrompt, empty/absent
+        // model) gets the localized cleanup persona + a fast cleanup-class
+        // model with reasoning/thinking disabled; the agent shape keeps
+        // the conversational behaviour. See lib/reason-prompt-select.ts.
+        // The cleanup prompt is a localized i18n resource — its locale is
+        // resolved from body.language/locale, then the request's
+        // Accept-Language-driven `req.language`, then "en".
+        const locale = resolveLocale(body, req.language);
+        const messages = selectMessages(body, locale);
+        // D3a — explicit `body.model` (caller) wins; else for the cleanup
+        // shape the operator-owned `deps.cleanupModel`, for the agent
+        // shape `deps.defaultModel` (LITELLM_DEFAULT_CHAT_MODEL); else the
+        // bundled `DEFAULT_CHAT_MODEL`. R28: `body.model` may arrive
+        // explicitly `null` — treated like absent.
+        const { model, extras } = selectModelAndExtras(body, {
+          ...(deps.cleanupModel !== undefined ? { cleanupModel: deps.cleanupModel } : {}),
+          ...(deps.defaultModel !== undefined ? { defaultModel: deps.defaultModel } : {}),
+        });
 
         let upstreamJson: UpstreamChatJson;
         try {
           const upstream = await deps.litellm.chatCompletions({
             model,
-            messages: [{ role: "user", content: body.text }],
+            messages,
+            // R33 — for the cleanup shape `extras` carries the Qwen3
+            // thinking-OFF chat-template kwarg
+            // (extra_body.chat_template_kwargs.enable_thinking:false); the
+            // litellm-client spreads it top-level into the request body
+            // and LiteLLM forwards it to the upstream. The agent shape
+            // receives no `extras` (thinking left as-is).
+            ...(extras !== undefined ? { extras } : {}),
             // D-03 — per-user attribution via OpenAI-compatible `user`
             // field. The shared client always overrides body.user with
             // req.user.id; T-03-05-01 mitigation belt-and-suspenders.
