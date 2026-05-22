@@ -41,19 +41,21 @@ describe("Plan 52-04b — api routes cascade typecheck", () => {
     expect(src).toMatch(/split\(\/\[-_\]\/\)\[0\]\s*\?\?\s*""/);
   });
 
-  it("realtime.ts encodes the fastify-http-proxy ws-types drift via a typed LegacyWsClientOptions extension (NOT a blanket @ts-expect-error)", () => {
+  it("realtime.ts carries no @fastify/http-proxy ws-types suppression (R31 direct-ws relay)", () => {
     const src = readFileSync(resolve(SRC, "routes/realtime.ts"), "utf8");
-    // Plan 53 superseded the Plan 52 `@ts-expect-error issue-52:`
-    // approach with a localized typed extension — LOCKER-02 prefers a
-    // narrow `as` cast on a typed extension over a sprawling
-    // suppression. The runtime contract (closure shape `(headers,
-    // request) => newHeaders`) is unchanged from Phase 08.5 e2e proof;
-    // only the static typing approach evolved.
-    expect(src).toMatch(/type\s+LegacyWsClientOptions\s*=/);
-    expect(src).toMatch(/rewriteRequestHeaders\?:\s*\(/);
-    // The legacy `@ts-expect-error issue-52:` MUST NOT return — it
-    // would mask a future genuine wsClientOptions API regression.
+    // R31 (commit fcea86f9) rebuilt /v1/realtime as a dual-backend
+    // frame-aware GA relay using the `ws` package directly — the
+    // `@fastify/http-proxy` wsUpstream mount (and its
+    // `wsClientOptions.rewriteRequestHeaders` type drift) is gone.
+    // The Plan 52/53 typing workaround is therefore obsolete; the file
+    // must carry NEITHER the legacy `@ts-expect-error issue-52:` NOR a
+    // residual `LegacyWsClientOptions` extension, and must not import
+    // `@fastify/http-proxy` at all.
     expect(src).not.toMatch(/@ts-expect-error\s+issue-52:/);
+    expect(src).not.toMatch(/type\s+LegacyWsClientOptions\s*=/);
+    expect(src).not.toMatch(/from\s+["']@fastify\/http-proxy["']/);
+    // The relay drives the `ws` package directly.
+    expect(src).toMatch(/from\s+["']ws["']/);
   });
 
   it("tokens/_call-provider conditionally spreads body to comply with exactOptionalPropertyTypes", () => {
