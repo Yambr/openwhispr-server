@@ -57,6 +57,8 @@ let agent: MockAgent;
 interface TestAppOpts {
   /** Map "Bearer <tok>" → user id; missing/unknown bearer → 401. */
   bearerMap?: Record<string, string>;
+  /** Optional operator-overridden AssemblyAI token endpoint base URL. */
+  tokenUrl?: string;
 }
 
 async function buildTestApp(opts: TestAppOpts = {}): Promise<FastifyInstance> {
@@ -83,7 +85,9 @@ async function buildTestApp(opts: TestAppOpts = {}): Promise<FastifyInstance> {
       email: `${userId}@test.local`,
     };
   });
-  await app.register(buildAssemblyAITokenRoutes());
+  await app.register(
+    buildAssemblyAITokenRoutes(opts.tokenUrl !== undefined ? { tokenUrl: opts.tokenUrl } : {}),
+  );
   await app.ready();
   return app;
 }
@@ -258,6 +262,34 @@ describe("POST /api/streaming-token (AssemblyAI v3)", () => {
         headers: { authorization: "Bearer ok-u2" },
       });
       expect(u2Ok.statusCode).toBe(200);
+    } finally {
+      await app.close();
+    }
+  });
+
+  it("calls a caller-supplied tokenUrl instead of the bundled default host", async () => {
+    // Operator-overridden ASSEMBLYAI_TOKEN_URL is threaded into the route
+    // factory by index.ts (the env boundary). The route appends the
+    // dynamic expires_in_seconds query param to whatever base URL it is
+    // given — proving the host literal is no longer baked into the route.
+    const CUSTOM_HOST = "https://assemblyai.proxy.internal";
+    agent
+      .get(CUSTOM_HOST)
+      .intercept({ path: "/edge/v3/token?expires_in_seconds=60", method: "GET" })
+      .reply(200, ASSEMBLYAI_FIXTURE, { headers: { "content-type": "application/json" } });
+
+    const app = await buildTestApp({
+      bearerMap: { "Bearer ok-u1": "u1" },
+      tokenUrl: `${CUSTOM_HOST}/edge/v3/token`,
+    });
+    try {
+      const r = await app.inject({
+        method: "POST",
+        url: "/api/streaming-token",
+        headers: { authorization: "Bearer ok-u1" },
+      });
+      expect(r.statusCode).toBe(200);
+      expect(r.json()).toEqual({ token: ASSEMBLYAI_FIXTURE.token });
     } finally {
       await app.close();
     }

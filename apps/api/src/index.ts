@@ -340,6 +340,25 @@ export interface BuildAppOptions {
     signUpEmail: SetupAdminSignUpEmail;
     renameTenant?: SetupAdminRenameTenant;
   };
+  /**
+   * Operator-owned streaming-token-provider configuration (endpoint URLs,
+   * Whisper model alias, provider HTTP timeouts) lifted out of TypeScript
+   * route literals. Production resolves these from env vars in the
+   * entrypoint (`OPENAI_REALTIME_TOKEN_URL`, `OPENAI_REALTIME_WHISPER_MODEL`,
+   * `ASSEMBLYAI_TOKEN_URL`, `DEEPGRAM_TOKEN_URL`, `PROVIDER_TOTAL_TIMEOUT_MS`,
+   * `PROVIDER_CONNECT_TIMEOUT_MS`) and passes them through to
+   * `buildAllRoutes`; the token-mint route handlers receive them via
+   * injected deps so no route file reads `process.env` (LOCKER-01). When
+   * omitted, each route falls back to its bundled-default literal.
+   */
+  tokenProviders?: {
+    openaiRealtimeTokenUrl?: string;
+    openaiRealtimeWhisperModel?: string;
+    assemblyaiTokenUrl?: string;
+    deepgramTokenUrl?: string;
+    providerTotalTimeoutMs?: number;
+    providerConnectTimeoutMs?: number;
+  };
 }
 
 export const buildApp = async (opts: BuildAppOptions = {}): Promise<FastifyInstance> => {
@@ -616,6 +635,10 @@ export const buildApp = async (opts: BuildAppOptions = {}): Promise<FastifyInsta
       // routes/index.ts gates POST /api/setup/admin on
       // `deps.setupAdmin` being truthy and silently drops the route.
       ...(opts.setupAdmin ? { setupAdmin: opts.setupAdmin } : {}),
+      // Operator-owned streaming-token-provider config (endpoint URLs,
+      // Whisper alias, provider timeouts) resolved from env at the
+      // entrypoint boundary so the token-mint routes never bake a literal.
+      ...(opts.tokenProviders ? { tokenProviders: opts.tokenProviders } : {}),
     });
     for (const plugin of routes) {
       await app.register(plugin);
@@ -852,9 +875,56 @@ if (import.meta.url === `file://${process.argv[1]}`) {
     );
   }
   const mockDiarization = process.env.MOCK_DIARIZATION === "true";
+  // Streaming-token-provider config — resolved from env HERE (the
+  // entrypoint is a LOCKER-01-sanctioned env-reading boundary) so the
+  // token-mint route files (openai-realtime / assemblyai / deepgram /
+  // _call-provider) never read `process.env`. Empty/blank values are
+  // treated as unset so a blank .env line does not shadow the bundled
+  // default. Non-numeric timeout values are dropped (the route falls back
+  // to its bundled-default ceiling) and warn-logged for operator visibility.
+  const tokenProviders: NonNullable<BuildAppOptions["tokenProviders"]> = {};
+  const trimEnv = (raw: string | undefined): string | undefined => {
+    const v = raw?.trim();
+    return v && v.length > 0 ? v : undefined;
+  };
+  const openaiRealtimeTokenUrl = trimEnv(process.env.OPENAI_REALTIME_TOKEN_URL);
+  if (openaiRealtimeTokenUrl) tokenProviders.openaiRealtimeTokenUrl = openaiRealtimeTokenUrl;
+  const openaiRealtimeWhisperModel = trimEnv(process.env.OPENAI_REALTIME_WHISPER_MODEL);
+  if (openaiRealtimeWhisperModel)
+    tokenProviders.openaiRealtimeWhisperModel = openaiRealtimeWhisperModel;
+  const assemblyaiTokenUrl = trimEnv(process.env.ASSEMBLYAI_TOKEN_URL);
+  if (assemblyaiTokenUrl) tokenProviders.assemblyaiTokenUrl = assemblyaiTokenUrl;
+  const deepgramTokenUrl = trimEnv(process.env.DEEPGRAM_TOKEN_URL);
+  if (deepgramTokenUrl) tokenProviders.deepgramTokenUrl = deepgramTokenUrl;
+  const parseTimeoutEnv = (raw: string | undefined, name: string): number | undefined => {
+    const v = trimEnv(raw);
+    if (v === undefined) return undefined;
+    const n = Number(v);
+    if (!Number.isFinite(n) || n <= 0) {
+      bootLog.warn(
+        { event: "token.provider.timeout.invalid", env_var: name },
+        `${name} is not a positive number; falling back to the bundled-default provider timeout`,
+      );
+      return undefined;
+    }
+    return n;
+  };
+  const providerTotalTimeoutMs = parseTimeoutEnv(
+    process.env.PROVIDER_TOTAL_TIMEOUT_MS,
+    "PROVIDER_TOTAL_TIMEOUT_MS",
+  );
+  if (providerTotalTimeoutMs !== undefined)
+    tokenProviders.providerTotalTimeoutMs = providerTotalTimeoutMs;
+  const providerConnectTimeoutMs = parseTimeoutEnv(
+    process.env.PROVIDER_CONNECT_TIMEOUT_MS,
+    "PROVIDER_CONNECT_TIMEOUT_MS",
+  );
+  if (providerConnectTimeoutMs !== undefined)
+    tokenProviders.providerConnectTimeoutMs = providerConnectTimeoutMs;
   const buildOpts: BuildAppOptions = { db, auth };
   if (litellm) buildOpts.litellm = litellm;
   if (litellmMasterKey) buildOpts.litellmMasterKey = litellmMasterKey;
+  if (Object.keys(tokenProviders).length > 0) buildOpts.tokenProviders = tokenProviders;
   // D2/D3a/D4 — forward the operator-owned model aliases resolved by
   // `loadLitellmConfigFromEnv()` so transcribe / reason / realtime-token
   // routes never bake a model literal. Set only when the litellm config
