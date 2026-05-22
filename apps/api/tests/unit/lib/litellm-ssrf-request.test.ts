@@ -27,6 +27,20 @@ function baseConfig(): LitellmClientConfig {
     masterKey: "sk-master-test",
     providerKeys: { openrouter: "sk-or-test", groq: "gsk-test", pyannote: "hf-test" },
     defaultChatModel: "qwen3.6-plus",
+    defaultSttModel: "whisper-large-v3",
+    defaultRealtimeModel: "gpt-realtime",
+    defaultCleanupModel: "qwen3.6-cleanup",
+    // R32 timeout posture — mirror the prior hardcoded literals.
+    headersTimeoutMs: 30_000,
+    bodyTimeoutMs: 120_000,
+    errorDrainTimeoutMs: 15_000,
+    // litellm-patterns A4 — single-attempt mode so the MockAgent
+    // intercept-once contract holds (the R24 SSRF-binding assertion is
+    // about the *one* request reaching the bound dispatcher, not about
+    // retry behavior).
+    retryMaxAttempts: 1,
+    retryBaseMs: 250,
+    retryCapMs: 8_000,
   };
 }
 
