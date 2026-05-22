@@ -16,6 +16,8 @@
 import type { ExecutableTx, TransactionalDb } from "@openwhispr/data";
 import type { LitellmClient } from "@openwhispr/litellm-client";
 import type { FastifyInstance } from "fastify";
+import type { DiarizationConfig } from "../config/diarization.js";
+import type { WebSearchConfig } from "../config/web-search.js";
 import type { RedisLike } from "../lib/idempotency-cache.js";
 import type { AuthLike } from "../middleware/dual-auth.js";
 import { type AgentStreamDeps, buildAgentStreamRoutes } from "./agent/stream.js";
@@ -227,6 +229,22 @@ export interface AllRoutesDeps {
     providerTotalTimeoutMs?: number;
     providerConnectTimeoutMs?: number;
   };
+  /**
+   * Phase 68 — operator-owned web-search adapter configuration (Tavily /
+   * Yandex upstream URLs + request timeouts). Resolved via
+   * `loadWebSearchConfigFromEnv()` at the `index.ts` env boundary
+   * (LOCKER-01); the web-search route builds a config-tuned provider
+   * registry from it. Omitted -> shared literal-default registry.
+   */
+  webSearchConfig?: WebSearchConfig;
+  /**
+   * Phase 68 — operator-owned diarization configuration (pyannote.ai
+   * base URL, poll cadence/ceiling, Speaches model alias). Resolved via
+   * `loadDiarizationConfigFromEnv()` at the `index.ts` env boundary
+   * (LOCKER-01) and threaded into the diarization route deps. Omitted ->
+   * bundled-default literals.
+   */
+  diarizationConfig?: DiarizationConfig;
 }
 
 /**
@@ -273,6 +291,10 @@ export function buildAllRoutes(deps: AllRoutesDeps): readonly RoutePlugin[] {
   const authProvidersDeps: AuthProvidersDeps = {};
   const capabilitiesDeps: CapabilitiesDeps = { db: deps.db };
   const setupStateDeps: SetupStateDeps = { db: deps.db };
+  // Phase 68 — typed web-search deps local; threads the optional
+  // env-resolved adapter config without an inline conditional spread.
+  const webSearchDeps: WebSearchDeps = { db: deps.db };
+  if (deps.webSearchConfig) webSearchDeps.webSearchConfig = deps.webSearchConfig;
   const plugins: RoutePlugin[] = [
     buildBetterAuthHandlerRoutes(betterAuthHandlerDeps),
     // Phase 15 / Plan 02 — public GET /api/locale (Accept-Language →
@@ -344,7 +366,7 @@ export function buildAllRoutes(deps: AllRoutesDeps): readonly RoutePlugin[] {
     // CONTRACT-01 negative matrix can enumerate it. Provider selection
     // honors WEB_SEARCH_PROVIDER at boot via resolveWebSearchProvider()
     // (D-02 boot-fatal on unknown value).
-    buildWebSearchRoutes({ db: deps.db } satisfies WebSearchDeps),
+    buildWebSearchRoutes(webSearchDeps),
     // Phase 05 / Plan 05 — WIRE-22 notes CRUD family (6 routes here;
     // /api/notes/search lands in the same plan but is registered below
     // alongside the rest of the search/notes block to keep the route
@@ -532,6 +554,15 @@ export function buildAllRoutes(deps: AllRoutesDeps): readonly RoutePlugin[] {
       redis: deps.redis,
       mockMode: deps.mockDiarization === true || process.env.MOCK_DIARIZATION === "true",
     };
+    // Phase 68 — thread the env-resolved diarization config (pyannote.ai
+    // base URL, poll cadence/ceiling, Speaches model). Mutation-after-
+    // declaration matches the speachesDiarizationUrl pattern below.
+    if (deps.diarizationConfig) {
+      diarizationDeps.pyannoteBaseUrl = deps.diarizationConfig.pyannoteBaseUrl;
+      diarizationDeps.pollIntervalMs = deps.diarizationConfig.pollIntervalMs;
+      diarizationDeps.pollCeilingMs = deps.diarizationConfig.pollCeilingMs;
+      diarizationDeps.speachesModel = deps.diarizationConfig.speachesModel;
+    }
     // Phase 08.6-02: SPEACHES_DIARIZATION_URL switches the route to a
     // local Speaches branch (sync multipart POST → /v1/audio/diarization).
     // Used by the load-test-realistic profile. When unset, the pyannote.ai

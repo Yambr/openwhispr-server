@@ -101,6 +101,8 @@ validateBetterAuthSecretBoot();
 // the route handler always has a trustworthy env-derived origin. Same
 // loud-fail posture as validateEncryptionBoot / validateBetterAuthSecretBoot.
 import { validateIngressBoot } from "./config/auth.js";
+import { type DiarizationConfig, loadDiarizationConfigFromEnv } from "./config/diarization.js";
+import { loadWebSearchConfigFromEnv, type WebSearchConfig } from "./config/web-search.js";
 
 validateIngressBoot();
 
@@ -359,6 +361,21 @@ export interface BuildAppOptions {
     providerTotalTimeoutMs?: number;
     providerConnectTimeoutMs?: number;
   };
+  /**
+   * Phase 68 — operator-owned web-search adapter configuration
+   * (Tavily / Yandex upstream URLs + request timeouts). Resolved from env
+   * via `loadWebSearchConfigFromEnv()` and threaded to `buildAllRoutes`
+   * so no adapter file reads `process.env` (LOCKER-01).
+   */
+  webSearchConfig?: WebSearchConfig;
+  /**
+   * Phase 68 — operator-owned diarization configuration (pyannote.ai
+   * base URL, poll cadence/ceiling, Speaches model alias). Resolved from
+   * env via `loadDiarizationConfigFromEnv()` and threaded to
+   * `buildAllRoutes`; consumed via injected deps so no route/lib file
+   * reads `process.env` (LOCKER-01).
+   */
+  diarizationConfig?: DiarizationConfig;
 }
 
 export const buildApp = async (opts: BuildAppOptions = {}): Promise<FastifyInstance> => {
@@ -639,6 +656,10 @@ export const buildApp = async (opts: BuildAppOptions = {}): Promise<FastifyInsta
       // Whisper alias, provider timeouts) resolved from env at the
       // entrypoint boundary so the token-mint routes never bake a literal.
       ...(opts.tokenProviders ? { tokenProviders: opts.tokenProviders } : {}),
+      // Phase 68 — operator-owned web-search + diarization adapter config
+      // resolved from env at the entrypoint boundary (LOCKER-01).
+      ...(opts.webSearchConfig ? { webSearchConfig: opts.webSearchConfig } : {}),
+      ...(opts.diarizationConfig ? { diarizationConfig: opts.diarizationConfig } : {}),
     });
     for (const plugin of routes) {
       await app.register(plugin);
@@ -932,6 +953,12 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   if (litellmModels) buildOpts.litellmModels = litellmModels;
   if (redis) buildOpts.redis = redis;
   if (mockDiarization) buildOpts.mockDiarization = true;
+  // Phase 68 — resolve the operator-owned web-search + diarization adapter
+  // config from env HERE, at the entrypoint env boundary (LOCKER-01). The
+  // loaders return bundled-default literals when no var is set, so this is
+  // behavior-preserving for default deployments.
+  buildOpts.webSearchConfig = loadWebSearchConfigFromEnv();
+  buildOpts.diarizationConfig = loadDiarizationConfigFromEnv();
   // Phase 6 / Plan 06-04 (OBS-05, D-P2) — wire the /readyz dep-check.
   // Reuses the same pg.Pool returned by makeAppDb and the ioredis client
   // already constructed for rate-limit/diarization. When either is
