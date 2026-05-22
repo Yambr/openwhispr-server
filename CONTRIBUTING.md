@@ -61,7 +61,7 @@ Sub-targets (for fix-until-green loops on a single failing stage):
 ```bash
 make lint                 # biome + lint-english
 make typecheck            # tsc -p (every workspace)
-make test                 # vitest run --coverage (>= 85% lines / >= 80% branches)
+make test                 # vitest run --coverage (>= 90% lines / branches / functions / statements)
 make contract-test        # wire-surface contracts (mock-LiteLLM)
 make smoke                # vitest probes against live https://*.localhost
 make e2e-cjm              # Playwright + Cucumber on a hermetic compose project
@@ -74,9 +74,9 @@ projects (tests/integration, tests/self-tests, …) don't get pulled
 into a package run:
 
 ```bash
-pnpm --filter @openwhispr/api    test   # 147 files / 1299 tests, ~98s
+pnpm --filter @openwhispr/api    test   # ~98s
 pnpm --filter @openwhispr/worker test   # ~20s
-pnpm --filter @openwhispr/web    test   # 65 files / 963 tests, ~15s
+pnpm --filter @openwhispr/web    test   # ~15s
 pnpm --filter @openwhispr/data   test   # testcontainers, ~minutes
 ```
 
