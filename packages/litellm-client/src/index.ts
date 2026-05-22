@@ -305,10 +305,18 @@ function parseMultipartBoundary(contentType: string): string | null {
  * Phase 51 / Plan 51-06 (REVIEW CR-12) — drain an undici response body
  * under a hard timeout. The 2xx path keeps `bodyTimeout: 0` (long-lived
  * SSE), so on the non-2xx error path we cannot rely on undici to bound
- * `res.body.text()`. This helper races the drain against a setTimeout
- * and, on timeout, destroys the body so the dispatcher slot does not
- * leak. The returned string carries `"<drain-timeout-after-Nms>"` so
- * the LitellmUpstreamError surfaces the operator-visible marker.
+ * `res.body.text()`. The returned string carries
+ * `"<drain-timeout-after-Nms>"` on timeout so the LitellmUpstreamError
+ * surfaces the operator-visible marker.
+ *
+ * AUDIT-LIB-03 (LIB-4) — the timer is the Node 24 builtin
+ * `AbortSignal.timeout(ms)` rather than a hand-rolled
+ * setTimeout/clearTimeout/unref trio. undici's `BodyReadable.text()`
+ * takes no `signal` argument, so the abort path is wired by listening
+ * for the signal's `abort` event and destroying the body there; the
+ * drain is raced against an abort-resolved promise. The builtin timer
+ * is internally unref'd (process exit is not held open) and needs no
+ * explicit clear.
  *
  * Inputs:
  *   * `body` — anything with `text(): Promise<string>` + an optional
@@ -321,24 +329,22 @@ async function drainWithTimeout(
   body: { text(): Promise<string>; destroy?(err?: Error): void },
   timeoutMs: number,
 ): Promise<string> {
-  let timer: NodeJS.Timeout | undefined;
+  const signal = AbortSignal.timeout(timeoutMs);
   const timeoutPromise = new Promise<string>((resolve) => {
-    timer = setTimeout(() => {
-      try {
-        body.destroy?.(new Error(`drain-timeout-after-${timeoutMs}ms`));
-      } catch {
-        /* best-effort: stream may already be settled */
-      }
-      resolve(`<drain-timeout-after-${timeoutMs}ms>`);
-    }, timeoutMs);
-    // Allow process exit if every other handle is closed.
-    timer.unref?.();
+    signal.addEventListener(
+      "abort",
+      () => {
+        try {
+          body.destroy?.(new Error(`drain-timeout-after-${timeoutMs}ms`));
+        } catch {
+          /* best-effort: stream may already be settled */
+        }
+        resolve(`<drain-timeout-after-${timeoutMs}ms>`);
+      },
+      { once: true },
+    );
   });
-  try {
-    return await Promise.race([body.text(), timeoutPromise]);
-  } finally {
-    if (timer) clearTimeout(timer);
-  }
+  return Promise.race([body.text(), timeoutPromise]);
 }
 
 export function buildLitellmClient(
