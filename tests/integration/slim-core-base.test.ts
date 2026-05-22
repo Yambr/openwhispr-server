@@ -78,9 +78,24 @@ describe("Phase 14 / Plan 14-01 — slim-core base conformance", () => {
     expect(keys).toEqual(SLIM_CORE);
   });
 
-  it("Test 2: no surviving service declares a `profiles:` key", () => {
+  // Phase 58 / AUDIT-HARD-04 — mailpit (a dev SMTP trap) was un-gated and
+  // started in the production default stack. The fix added
+  // `profiles: [dev]` to mailpit. A `profiles:`-gated dev service is the
+  // CORRECT slim-base posture: it does NOT start on a bare `docker compose
+  // up`. The original assertion ("no service may declare profiles:") was
+  // written before any dev-profiled service existed and is wrong for a
+  // profile-gated mailpit. The invariant we actually want: every service
+  // that DOES declare `profiles:` must be gated to a non-default profile
+  // (so it stays out of the slim default set).
+  it("Test 2: any service declaring `profiles:` is gated to a non-default profile", () => {
     for (const [name, svc] of Object.entries(services)) {
-      expect(svc.profiles, `service ${name} must not declare profiles:`).toBeUndefined();
+      if (svc.profiles === undefined) continue;
+      const profiles = Array.isArray(svc.profiles) ? svc.profiles : [svc.profiles];
+      expect(profiles.length > 0, `service ${name} declares an empty profiles: list`).toBe(true);
+      expect(
+        profiles.includes("default"),
+        `service ${name} must NOT be in the "default" profile — profiles: gating exists to keep it OUT of the slim base`,
+      ).toBe(false);
     }
   });
 
