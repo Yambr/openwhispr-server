@@ -1,61 +1,61 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
-// Phase 03 / Plan 07 / Task 1 — WSS /v1/realtime route tests.
+// Phase 03 / Plan 07 — WSS /v1/realtime route tests.
+// R31 — rewritten for the frame-aware relay (replaced the
+// @fastify/http-proxy passthrough). Covers BOTH backend modes.
 //
 // Strategy:
-//   * Spin up a real `ws.WebSocketServer` on an ephemeral localhost port
-//     to act as a fake LiteLLM upstream. This lets us assert exactly
-//     what headers + URL the proxy forwards on the upgrade — the only
-//     reliable way to verify rewriteRequestHeaders without mocking
-//     @fastify/http-proxy itself (CLAUDE.md: no mocks of the proxy lib).
-//   * The Fastify app under test is built via the same handcrafted
-//     buildApp pattern used by reason.test.ts / transcribe.test.ts: a
-//     bare Fastify instance + registerErrorHandler + an onRequest hook
-//     that synthesizes `req.user` so the dual-auth path is satisfied
-//     without dragging Better Auth into the test.
-//   * Auth-fail test uses `app.inject` because Fastify v5 fires the
-//     onRequest → preHandler chain on inject() too — preHandler throws
-//     AuthError → centralized handler emits the canonical 401 envelope
-//     BEFORE any upgrade attempt is made.
+//   * A real `ws.WebSocketServer` on an ephemeral localhost port stands
+//     in for the upstream (LiteLLM in `litellm` mode, OpenAI in `direct`
+//     mode). It captures the upgrade URL + headers so we can assert
+//     exactly what the relay forwarded — the only reliable way to verify
+//     the GA-shape contract (no ?intent=, no OpenAI-Beta header).
+//   * The Fastify app under test mounts the realtime route with an
+//     onRequest hook that synthesizes `req.user` so the dual-auth path is
+//     satisfied without dragging Better Auth into the test.
+//   * Auth-fail test uses `app.inject` — Fastify fires onRequest →
+//     preValidation on inject(), so AuthError → canonical 401 envelope
+//     BEFORE any upgrade is attempted.
 
-import { createServer } from "node:http";
+import { createServer, type IncomingMessage } from "node:http";
 import type { AddressInfo } from "node:net";
 import type { LitellmClient } from "@openwhispr/litellm-client";
 import Fastify, { type FastifyInstance } from "fastify";
 import { afterEach, describe, expect, it } from "vitest";
-import WebSocket, { type RawData, WebSocketServer } from "ws";
+import { type RawData, WebSocket, WebSocketServer } from "ws";
 import { registerErrorHandler } from "../../../src/error-handler.js";
 import {
   buildRealtimeRoutes,
-  buildRewriteRequestHeaders,
+  buildUpstreamHeaders,
+  buildUpstreamUrl,
   httpToWsScheme,
+  type RealtimeDeps,
 } from "../../../src/routes/realtime.js";
 
-const TEST_TENANT = "00000000-0000-0000-0000-000000000000";
 const TEST_USER = "11111111-1111-1111-1111-111111111111";
 const TEST_MASTER_KEY = "sk-litellm-master-test-only";
-// D1 — server-injected realtime model alias. The desktop sends no model;
-// the preHandler forces `?model=<this>` onto the upstream-bound URL.
 const TEST_REALTIME_MODEL = "realtime-default";
 
 interface UpstreamCapture {
   url?: string;
-  headers?: Record<string, string | string[] | undefined>;
+  headers?: IncomingMessage["headers"];
 }
 
 /**
- * Stand up a real ws upstream on a random localhost port. The returned
- * promise resolves once the server is listening; the `capture` ref is
- * mutated on the first upgrade. `close()` shuts the upstream down so
- * Fastify can flush its outbound socket and the test exits cleanly.
+ * Stand up a real ws upstream on a random localhost port. It captures the
+ * first upgrade's URL + headers and, on connection, sends a GA
+ * `session.created` frame and echoes every `transcription_session.update`
+ * it receives as a GA `session.updated`.
  */
 async function startUpstream(): Promise<{
-  url: string;
+  httpUrl: string;
   close: () => Promise<void>;
   capture: UpstreamCapture;
-  // Resolves when the upstream has accepted an upgrade and captured headers/url.
   upgraded: Promise<void>;
+  /** Frames the upstream received from the relay (parsed JSON). */
+  received: Array<Record<string, unknown>>;
 }> {
   const capture: UpstreamCapture = {};
+  const received: Array<Record<string, unknown>> = [];
   const http = createServer();
   const wss = new WebSocketServer({ server: http });
   let resolveUpgraded!: () => void;
@@ -66,9 +66,13 @@ async function startUpstream(): Promise<{
     capture.url = request.url;
     capture.headers = request.headers;
     resolveUpgraded();
-    // Echo any frame so the client can confirm the channel is live.
+    socket.send(JSON.stringify({ type: "session.created", session: { id: "sess_test" } }));
     socket.on("message", (data: RawData) => {
-      socket.send(data);
+      try {
+        received.push(JSON.parse(data.toString()));
+      } catch {
+        /* ignore non-JSON */
+      }
     });
   });
   await new Promise<void>((res) => {
@@ -79,18 +83,13 @@ async function startUpstream(): Promise<{
     await new Promise<void>((res) => wss.close(() => res()));
     await new Promise<void>((res) => http.close(() => res()));
   };
-  return { url: `http://127.0.0.1:${port}`, close, capture, upgraded };
+  return { httpUrl: `http://127.0.0.1:${port}`, close, capture, upgraded, received };
 }
 
-/**
- * Build a Fastify app with the realtime route mounted, an onRequest
- * hook that populates req.user / req.tenant when `authed` is true,
- * and the centralized error handler so AuthError → 401 envelope.
- */
+/** Build a Fastify app with the realtime relay mounted. */
 async function buildApp(opts: {
-  upstream: string;
+  deps: Partial<RealtimeDeps> & { litellm: LitellmClient };
   authed?: boolean;
-  realtimeModel?: string;
 }): Promise<FastifyInstance> {
   const app = Fastify({ logger: false });
   registerErrorHandler(app);
@@ -100,25 +99,30 @@ async function buildApp(opts: {
         id: TEST_USER,
         email: "fixture@conformance.test",
       };
-      (req as unknown as { tenant: string }).tenant = TEST_TENANT;
     });
   }
-  // Stub LitellmClient — we only consume `baseUrl` in the realtime route.
-  const litellm = {
-    baseUrl: opts.upstream,
-  } as unknown as LitellmClient;
-  await app.register(
-    buildRealtimeRoutes({
-      litellm,
-      masterKey: TEST_MASTER_KEY,
-      realtimeModel: opts.realtimeModel ?? TEST_REALTIME_MODEL,
-    }),
-  );
+  const deps: RealtimeDeps = {
+    masterKey: TEST_MASTER_KEY,
+    realtimeModel: TEST_REALTIME_MODEL,
+    backend: "litellm",
+    openaiRealtimeUrl: "wss://api.openai.com/v1/realtime",
+    ...opts.deps,
+  };
+  await app.register(buildRealtimeRoutes(deps));
   await app.ready();
   return app;
 }
 
-describe("httpToWsScheme — WR-03 case-insensitive scheme conversion", () => {
+/** Open a WS to the relay and wait for `open`. */
+function dial(url: string, headers?: Record<string, string>): Promise<WebSocket> {
+  return new Promise((resolve, reject) => {
+    const ws = headers ? new WebSocket(url, { headers }) : new WebSocket(url);
+    ws.once("open", () => resolve(ws));
+    ws.once("error", (err) => reject(err));
+  });
+}
+
+describe("httpToWsScheme — case-insensitive scheme conversion", () => {
   it("converts http:// to ws://", () => {
     expect(httpToWsScheme("http://litellm:4000")).toBe("ws://litellm:4000");
   });
@@ -127,108 +131,102 @@ describe("httpToWsScheme — WR-03 case-insensitive scheme conversion", () => {
       "wss://litellm.example.com:4000",
     );
   });
-  it("normalizes uppercase HTTPS:// to wss:// (regression test for sloppy $1 capture)", () => {
-    // Pre-fix: `replace(/^http(s?):/i, "ws$1:")` produced "wsS://" because
-    // the $1 capture preserved the uppercase S. The new implementation
-    // writes the literal replacement string and yields a clean "wss://".
+  it("normalizes uppercase HTTPS:// to wss://", () => {
     expect(httpToWsScheme("HTTPS://litellm:4000")).toBe("wss://litellm:4000");
   });
-  it("normalizes uppercase HTTP:// to ws://", () => {
-    expect(httpToWsScheme("HTTP://litellm:4000")).toBe("ws://litellm:4000");
+});
+
+describe("buildUpstreamUrl — DEFECT 1 (?intent strip) + ?model/?user injection", () => {
+  const litellmDeps: RealtimeDeps = {
+    litellm: { baseUrl: "http://litellm:4000" } as unknown as LitellmClient,
+    masterKey: TEST_MASTER_KEY,
+    realtimeModel: TEST_REALTIME_MODEL,
+    backend: "litellm",
+    openaiRealtimeUrl: "wss://api.openai.com/v1/realtime",
+  };
+
+  it("litellm mode: strips ?intent=, forces ?model and ?user", () => {
+    const out = buildUpstreamUrl(litellmDeps, "/v1/realtime?intent=transcription", TEST_USER);
+    const u = new URL(out);
+    expect(u.protocol).toBe("ws:");
+    expect(u.searchParams.get("intent")).toBeNull();
+    expect(u.searchParams.get("model")).toBe(TEST_REALTIME_MODEL);
+    expect(u.searchParams.get("user")).toBe(TEST_USER);
   });
-  it("normalizes mixed-case Https:// to wss://", () => {
-    expect(httpToWsScheme("Https://litellm:4000")).toBe("wss://litellm:4000");
+
+  it("litellm mode: overwrites a client-supplied ?model and ?user (tamper-normalization)", () => {
+    const out = buildUpstreamUrl(
+      litellmDeps,
+      "/v1/realtime?model=gpt-realtime&user=attacker&intent=transcription",
+      TEST_USER,
+    );
+    const u = new URL(out);
+    expect(u.searchParams.get("model")).toBe(TEST_REALTIME_MODEL);
+    expect(u.searchParams.get("user")).toBe(TEST_USER);
+    expect(u.searchParams.get("intent")).toBeNull();
+  });
+
+  it("direct mode: targets the configured OpenAI URL, strips ?intent, forces the OpenAI ?model, NO ?user", () => {
+    const directDeps: RealtimeDeps = {
+      ...litellmDeps,
+      backend: "direct",
+      openaiRealtimeModel: "gpt-realtime",
+    };
+    const out = buildUpstreamUrl(directDeps, "/v1/realtime?intent=transcription", TEST_USER);
+    const u = new URL(out);
+    expect(`${u.protocol}//${u.host}${u.pathname}`).toBe("wss://api.openai.com/v1/realtime");
+    expect(u.searchParams.get("intent")).toBeNull();
+    // OpenAI's GA /v1/realtime requires a real OpenAI model name.
+    expect(u.searchParams.get("model")).toBe("gpt-realtime");
+    // OpenAI has no spend-attribution param — the relay must NOT leak the
+    // openwhispr user id to a third party.
+    expect(u.searchParams.get("user")).toBeNull();
+  });
+
+  it("direct mode: a client-supplied ?model is never forwarded (operator-controlled)", () => {
+    const directDeps: RealtimeDeps = {
+      ...litellmDeps,
+      backend: "direct",
+      openaiRealtimeModel: "gpt-realtime",
+    };
+    const u = new URL(buildUpstreamUrl(directDeps, "/v1/realtime?model=attacker-model", TEST_USER));
+    expect(u.searchParams.get("model")).toBe("gpt-realtime");
   });
 });
 
-describe("WSS /v1/realtime route — D-27 wsClientOptions tightening (Phase 04 Plan 07)", () => {
-  // These tests assert the @fastify/http-proxy register call options
-  // match D-27 (handshakeTimeout 10000ms, wsReconnect false) by
-  // intercepting the register invocation via a Fastify decorator
-  // wrapper. Direct option introspection is the only way to verify
-  // these are applied — they affect failure-mode behavior that is
-  // expensive and flaky to elicit at runtime in unit tests.
+describe("buildUpstreamHeaders — credential swap + NO OpenAI-Beta header", () => {
+  const base: RealtimeDeps = {
+    litellm: { baseUrl: "http://litellm:4000" } as unknown as LitellmClient,
+    masterKey: TEST_MASTER_KEY,
+    realtimeModel: TEST_REALTIME_MODEL,
+    backend: "litellm",
+    openaiRealtimeUrl: "wss://api.openai.com/v1/realtime",
+  };
 
-  // Capture register options for the http-proxy plugin using a
-  // module-level spy installed via Fastify's onRoute hook + a small
-  // adapter app that records the options object.
-  it("registers @fastify/http-proxy with wsClientOptions.handshakeTimeout=10000 (D-27)", async () => {
-    // Read the buildRealtimeRoutes source via dynamic introspection: the
-    // returned plugin calls app.register(fastifyHttpProxy, opts). We
-    // wrap fastify.register to capture opts.
-    const upstream = await startUpstream();
-    try {
-      const app = Fastify({ logger: false });
-      registerErrorHandler(app);
-      const captured: Array<Record<string, unknown>> = [];
-      const origRegister = app.register.bind(app);
-      // @ts-expect-error — runtime monkey-patch for test introspection.
-      app.register = (plugin: unknown, opts?: Record<string, unknown>) => {
-        if (opts && typeof opts === "object") captured.push(opts);
-        return origRegister(plugin as never, opts as never);
-      };
-      const litellm = { baseUrl: upstream.url } as unknown as LitellmClient;
-      await app.register(
-        buildRealtimeRoutes({
-          litellm,
-          masterKey: TEST_MASTER_KEY,
-          realtimeModel: TEST_REALTIME_MODEL,
-        }),
-      );
-      await app.ready();
-      // Find the http-proxy register call (the one with `wsUpstream`).
-      const proxyOpts = captured.find((o) => typeof o.wsUpstream === "string");
-      expect(proxyOpts).toBeDefined();
-      expect(proxyOpts).toHaveProperty("wsClientOptions");
-      const wsClientOptions = proxyOpts?.wsClientOptions as Record<string, unknown>;
-      expect(wsClientOptions.handshakeTimeout).toBe(10000);
-      await app.close();
-    } finally {
-      await upstream.close();
-    }
+  it("litellm mode: master-key bearer + spend-logs metadata, NO OpenAI-Beta", () => {
+    const h = buildUpstreamHeaders(base, TEST_USER, "req-1");
+    expect(h.authorization).toBe(`Bearer ${TEST_MASTER_KEY}`);
+    const meta = JSON.parse(h["x-litellm-spend-logs-metadata"]);
+    expect(meta.openwhispr_user_id).toBe(TEST_USER);
+    expect(meta.openwhispr_request_id).toBe("req-1");
+    expect(h["openai-beta"]).toBeUndefined();
+    expect(h["OpenAI-Beta"]).toBeUndefined();
   });
 
-  it("registers @fastify/http-proxy with wsReconnect omitted (D-27 — reconnect off by default in 11.4.4+)", async () => {
-    // Phase 53 — `@fastify/http-proxy@11.4.4` narrowed `wsReconnect` from
-    // `boolean` to `WebSocketReconnectOptions` (object) AND made it
-    // optional. The canonical "disable reconnect" posture is now to omit
-    // the property — auto-reconnect is OFF by default when absent. The
-    // T-04-RECONNECT-LOOP intent is preserved without forcing a boolean.
-    // The pin shifted from "literal false" to "absent" (Plan 52-04b
-    // dropped the literal false; this test follows production).
-    const upstream = await startUpstream();
-    try {
-      const app = Fastify({ logger: false });
-      registerErrorHandler(app);
-      const captured: Array<Record<string, unknown>> = [];
-      const origRegister = app.register.bind(app);
-      // @ts-expect-error issue-53: runtime monkey-patch for test introspection.
-      app.register = (plugin: unknown, opts?: Record<string, unknown>) => {
-        if (opts && typeof opts === "object") captured.push(opts);
-        return origRegister(plugin as never, opts as never);
-      };
-      const litellm = { baseUrl: upstream.url } as unknown as LitellmClient;
-      await app.register(
-        buildRealtimeRoutes({
-          litellm,
-          masterKey: TEST_MASTER_KEY,
-          realtimeModel: TEST_REALTIME_MODEL,
-        }),
-      );
-      await app.ready();
-      const proxyOpts = captured.find((o) => typeof o.wsUpstream === "string");
-      expect(proxyOpts).toBeDefined();
-      // wsReconnect MUST be absent (undefined). Adding a literal `false`
-      // would now fail typecheck under @fastify/http-proxy@11.4.4 types.
-      expect(proxyOpts?.wsReconnect).toBeUndefined();
-      await app.close();
-    } finally {
-      await upstream.close();
-    }
+  it("direct mode: OpenAI api-key bearer only, NO OpenAI-Beta, NO spend-logs", () => {
+    const h = buildUpstreamHeaders(
+      { ...base, backend: "direct", openaiApiKey: "sk-direct" },
+      TEST_USER,
+      "req-2",
+    );
+    expect(h.authorization).toBe("Bearer sk-direct");
+    expect(h["x-litellm-spend-logs-metadata"]).toBeUndefined();
+    expect(h["openai-beta"]).toBeUndefined();
+    expect(h["OpenAI-Beta"]).toBeUndefined();
   });
 });
 
-describe("WSS /v1/realtime route", () => {
+describe("WSS /v1/realtime route — relay behaviour", () => {
   let app: FastifyInstance | undefined;
   let upstream: Awaited<ReturnType<typeof startUpstream>> | undefined;
 
@@ -243,27 +241,24 @@ describe("WSS /v1/realtime route", () => {
     }
   });
 
-  it("registers /v1/realtime when LitellmClient + masterKey are supplied", async () => {
+  it("registers /v1/realtime", async () => {
     upstream = await startUpstream();
-    app = await buildApp({ upstream: upstream.url });
-    const tree = app.printRoutes({ commonPrefix: false });
-    // @fastify/http-proxy mounts an HTTP-side route at the prefix in
-    // addition to the WS upgrade handler — the printed tree includes it.
-    expect(tree).toContain("/v1/realtime");
+    app = await buildApp({
+      deps: { litellm: { baseUrl: upstream.httpUrl } as unknown as LitellmClient },
+    });
+    expect(app.printRoutes({ commonPrefix: false })).toContain("/v1/realtime");
   });
 
   it("rejects WS upgrade with 401 envelope when no req.user (auth fail)", async () => {
     upstream = await startUpstream();
-    app = await buildApp({ upstream: upstream.url, authed: false });
-    // Fastify's inject() fires the onRequest → preHandler chain. The
-    // realtime preHandler throws AuthError when req.user is absent;
-    // the centralized error handler emits the canonical 401 envelope.
+    app = await buildApp({
+      deps: { litellm: { baseUrl: upstream.httpUrl } as unknown as LitellmClient },
+      authed: false,
+    });
     const res = await app.inject({
       method: "GET",
       url: "/v1/realtime",
       headers: {
-        // Headers that would normally accompany a WS upgrade — included
-        // so the proxy doesn't short-circuit on the HTTP-only path.
         connection: "Upgrade",
         upgrade: "websocket",
         "sec-websocket-key": "dGhlIHNhbXBsZSBub25jZQ==",
@@ -271,286 +266,90 @@ describe("WSS /v1/realtime route", () => {
       },
     });
     expect(res.statusCode).toBe(401);
-    const json = res.json();
-    expect(json).toMatchObject({ error: expect.any(String) });
-    // Master-key shape MUST NOT leak into a 401 response (T-03-07-01).
-    expect(JSON.stringify(json)).not.toContain("sk-litellm-master");
+    expect(JSON.stringify(res.json())).not.toContain("sk-litellm-master");
   });
 
-  it("forwards WS upgrade to upstream with master-key + spend-logs headers and ?user=<userId> on the URL", async () => {
+  it("litellm mode: forwards the upgrade with master-key + GA-shape URL (no ?intent), ?user injected", async () => {
     upstream = await startUpstream();
-    app = await buildApp({ upstream: upstream.url });
-    // Listen on an ephemeral port so the WS client can dial us.
-    await app.listen({ port: 0, host: "127.0.0.1" });
-    const proxyAddr = app.server.address() as AddressInfo;
-    const wsUrl = `ws://127.0.0.1:${proxyAddr.port}/v1/realtime`;
-
-    // Send a desktop-shaped bearer that MUST NOT reach the upstream.
-    const desktopBearer = "Bearer opaque-desktop-token";
-    const ws = new WebSocket(wsUrl, {
-      headers: { authorization: desktopBearer },
+    app = await buildApp({
+      deps: { litellm: { baseUrl: upstream.httpUrl } as unknown as LitellmClient },
     });
-    await new Promise<void>((res, rej) => {
-      ws.once("open", () => res());
-      ws.once("error", (err) => rej(err));
+    await app.listen({ port: 0, host: "127.0.0.1" });
+    const port = (app.server.address() as AddressInfo).port;
+    const ws = await dial(`ws://127.0.0.1:${port}/v1/realtime?intent=transcription`, {
+      authorization: "Bearer opaque-desktop-token",
     });
     await upstream.upgraded;
 
-    // 1. Master key replaced the desktop bearer (T-03-07-01 mitigation).
-    const auth = upstream.capture.headers?.authorization;
-    expect(auth).toBe(`Bearer ${TEST_MASTER_KEY}`);
-    expect(auth).not.toBe(desktopBearer);
-
-    // 2. Spend-logs metadata header carries openwhispr_request_id +
-    //    openwhispr_user_id (D-03 attribution / OBS-04 correlation).
-    const meta = upstream.capture.headers?.["x-litellm-spend-logs-metadata"];
-    expect(typeof meta).toBe("string");
-    const parsed = JSON.parse(meta as string);
-    expect(parsed.openwhispr_user_id).toBe(TEST_USER);
-    expect(typeof parsed.openwhispr_request_id).toBe("string");
-    expect(parsed.openwhispr_request_id.length).toBeGreaterThan(0);
-
-    // 3. ?user=<userId> appended to the upstream URL (LITELLM-04 / D-03).
-    expect(upstream.capture.url).toBeDefined();
-    const upstreamUrl = new URL(upstream.capture.url ?? "", "http://internal");
-    expect(upstreamUrl.pathname).toBe("/v1/realtime");
-    expect(upstreamUrl.searchParams.get("user")).toBe(TEST_USER);
+    expect(upstream.capture.headers?.authorization).toBe(`Bearer ${TEST_MASTER_KEY}`);
+    expect(upstream.capture.headers?.["openai-beta"]).toBeUndefined();
+    const u = new URL(upstream.capture.url ?? "", "http://internal");
+    expect(u.searchParams.get("intent")).toBeNull();
+    expect(u.searchParams.get("user")).toBe(TEST_USER);
+    expect(u.searchParams.get("model")).toBe(TEST_REALTIME_MODEL);
 
     ws.close();
     await new Promise<void>((res) => ws.once("close", () => res()));
   });
 
-  it("overwrites a caller-supplied ?user= query with the authenticated user id (T-03-07-04 mitigation)", async () => {
+  it("direct mode: refuses the WS upgrade when no OPENAI_API_KEY is configured", async () => {
     upstream = await startUpstream();
-    app = await buildApp({ upstream: upstream.url });
-    await app.listen({ port: 0, host: "127.0.0.1" });
-    const proxyAddr = app.server.address() as AddressInfo;
-    // The desktop sends `?user=attacker` — the preHandler MUST replace it.
-    const wsUrl = `ws://127.0.0.1:${proxyAddr.port}/v1/realtime?user=attacker-id&intent=transcription`;
-    const ws = new WebSocket(wsUrl);
-    await new Promise<void>((res, rej) => {
-      ws.once("open", () => res());
-      ws.once("error", (err) => rej(err));
-    });
-    await upstream.upgraded;
-    const upstreamUrl = new URL(upstream.capture.url ?? "", "http://internal");
-    expect(upstreamUrl.searchParams.get("user")).toBe(TEST_USER);
-    // Other query params (e.g. ?intent=transcription) are preserved.
-    expect(upstreamUrl.searchParams.get("intent")).toBe("transcription");
-    ws.close();
-    await new Promise<void>((res) => ws.once("close", () => res()));
-  });
-
-  it("forces ?model=<deps.realtimeModel> on the upstream URL when the client sends no model (D1 / T-03-07-05)", async () => {
-    upstream = await startUpstream();
-    app = await buildApp({ upstream: upstream.url });
-    await app.listen({ port: 0, host: "127.0.0.1" });
-    const proxyAddr = app.server.address() as AddressInfo;
-    // The desktop opens /v1/realtime with NO ?model= — the OpenAI Realtime
-    // protocol would otherwise carry a provider-specific model in-band.
-    const wsUrl = `ws://127.0.0.1:${proxyAddr.port}/v1/realtime`;
-    const ws = new WebSocket(wsUrl);
-    await new Promise<void>((res, rej) => {
-      ws.once("open", () => res());
-      ws.once("error", (err) => rej(err));
-    });
-    await upstream.upgraded;
-    const upstreamUrl = new URL(upstream.capture.url ?? "", "http://internal");
-    // The server-configured alias is injected as a query param.
-    expect(upstreamUrl.searchParams.get("model")).toBe(TEST_REALTIME_MODEL);
-    // ?user= injection is unaffected (no regression).
-    expect(upstreamUrl.searchParams.get("user")).toBe(TEST_USER);
-    ws.close();
-    await new Promise<void>((res) => ws.once("close", () => res()));
-  });
-
-  it("overwrites a caller-supplied ?model= query with the server alias (D1 tamper-normalization / T-03-07-05)", async () => {
-    upstream = await startUpstream();
-    app = await buildApp({ upstream: upstream.url });
-    await app.listen({ port: 0, host: "127.0.0.1" });
-    const proxyAddr = app.server.address() as AddressInfo;
-    // The desktop sends a provider-specific `?model=gpt-realtime` (or a
-    // tampered value) — the preHandler MUST overwrite it, exactly like ?user=.
-    const wsUrl = `ws://127.0.0.1:${proxyAddr.port}/v1/realtime?model=gpt-realtime&intent=transcription`;
-    const ws = new WebSocket(wsUrl);
-    await new Promise<void>((res, rej) => {
-      ws.once("open", () => res());
-      ws.once("error", (err) => rej(err));
-    });
-    await upstream.upgraded;
-    const upstreamUrl = new URL(upstream.capture.url ?? "", "http://internal");
-    // Client-supplied model is discarded; the operator-configured alias wins.
-    expect(upstreamUrl.searchParams.get("model")).toBe(TEST_REALTIME_MODEL);
-    expect(upstreamUrl.searchParams.get("model")).not.toBe("gpt-realtime");
-    // ?user= still forced; unrelated params preserved.
-    expect(upstreamUrl.searchParams.get("user")).toBe(TEST_USER);
-    expect(upstreamUrl.searchParams.get("intent")).toBe("transcription");
-    ws.close();
-    await new Promise<void>((res) => ws.once("close", () => res()));
-  });
-
-  it("injects whichever realtimeModel the deps carry (operator config seam — D1)", async () => {
-    upstream = await startUpstream();
-    // A different operator alias proves the value is pure injected config,
-    // not a route-level literal.
-    app = await buildApp({ upstream: upstream.url, realtimeModel: "speaches-realtime" });
-    await app.listen({ port: 0, host: "127.0.0.1" });
-    const proxyAddr = app.server.address() as AddressInfo;
-    const ws = new WebSocket(`ws://127.0.0.1:${proxyAddr.port}/v1/realtime`);
-    await new Promise<void>((res, rej) => {
-      ws.once("open", () => res());
-      ws.once("error", (err) => rej(err));
-    });
-    await upstream.upgraded;
-    const upstreamUrl = new URL(upstream.capture.url ?? "", "http://internal");
-    expect(upstreamUrl.searchParams.get("model")).toBe("speaches-realtime");
-    ws.close();
-    await new Promise<void>((res) => ws.once("close", () => res()));
-  });
-
-  // ----- Stage B back-fill — close residual branch gaps to 90/90/90/90 ----
-
-  it("buildRewriteRequestHeaders falls back to user='anonymous' when user.id is missing (line 115 idx 1)", () => {
-    // Direct unit test on the exported closure factory.
-    const rh = buildRewriteRequestHeaders(TEST_MASTER_KEY);
-    // Case A: user is undefined.
-    const out1 = rh({ authorization: "Bearer client" }, { id: "req-1" });
-    expect(JSON.parse(out1["x-litellm-spend-logs-metadata"]!).openwhispr_user_id).toBe("anonymous");
-    // Case B: user object present but id missing.
-    const out2 = rh({}, { id: "req-2", user: {} });
-    expect(JSON.parse(out2["x-litellm-spend-logs-metadata"]!).openwhispr_user_id).toBe("anonymous");
-    // Sanity: when user.id is set, it's used verbatim.
-    const out3 = rh({}, { id: "req-3", user: { id: "real-user" } });
-    expect(JSON.parse(out3["x-litellm-spend-logs-metadata"]!).openwhispr_user_id).toBe("real-user");
-    // Master key always swapped in; inbound bearer always stripped.
-    expect(out1.authorization).toBe(`Bearer ${TEST_MASTER_KEY}`);
-    expect(out1.authorization).not.toBe("Bearer client");
-  });
-
-  it("buildRewriteRequestHeaders strips both 'authorization' and 'Authorization' casings", () => {
-    const rh = buildRewriteRequestHeaders(TEST_MASTER_KEY);
-    const out = rh(
-      {
-        authorization: "Bearer lower",
-        // @ts-expect-error — legacy mixed-case casing intentionally provided.
-        Authorization: "Bearer upper",
+    app = await buildApp({
+      deps: {
+        litellm: { baseUrl: upstream.httpUrl } as unknown as LitellmClient,
+        backend: "direct",
+        // no openaiApiKey
       },
-      { id: "r" },
-    );
-    // Final authorization is the master-key bearer (we set last).
-    expect(out.authorization).toBe(`Bearer ${TEST_MASTER_KEY}`);
-    // No stale upper-case Authorization left behind.
-    expect((out as Record<string, unknown>).Authorization).toBeUndefined();
-  });
-
-  it("buildRewriteRequestHeaders strips the client-origin 'OpenAI-Beta' header (R31 / T-03-07-06)", () => {
-    // R31 — OpenAI Realtime is GA. A desktop client sending
-    // `OpenAI-Beta: realtime=v1` would otherwise leak the retired
-    // Beta-API opt-in through Fastify -> LiteLLM -> OpenAI, which
-    // rejects it (`beta_api_shape_disabled`) and the WS closes 1011.
-    // The proxy is the GA contract boundary — it MUST strip the header
-    // regardless of what any client sends.
-    const rh = buildRewriteRequestHeaders(TEST_MASTER_KEY);
-    const out = rh(
-      {
-        // @ts-expect-error — literal client casing intentionally provided.
-        "OpenAI-Beta": "realtime=v1",
-        "content-type": "application/json",
+    });
+    const res = await app.inject({
+      method: "GET",
+      url: "/v1/realtime",
+      headers: {
+        connection: "Upgrade",
+        upgrade: "websocket",
+        "sec-websocket-key": "dGhlIHNhbXBsZSBub25jZQ==",
+        "sec-websocket-version": "13",
       },
-      { id: "r" },
-    );
-    // The Beta opt-in is gone in BOTH casings.
-    expect((out as Record<string, unknown>)["OpenAI-Beta"]).toBeUndefined();
-    expect((out as Record<string, unknown>)["openai-beta"]).toBeUndefined();
+    });
+    expect(res.statusCode).toBe(401);
   });
 
-  it("buildRewriteRequestHeaders strips 'openai-beta' in lowercase canonical Node casing (R31)", () => {
-    const rh = buildRewriteRequestHeaders(TEST_MASTER_KEY);
-    const out = rh({ "openai-beta": "realtime=v1" }, { id: "r" });
-    expect((out as Record<string, unknown>)["openai-beta"]).toBeUndefined();
-    expect((out as Record<string, unknown>)["OpenAI-Beta"]).toBeUndefined();
-  });
-
-  it("buildRewriteRequestHeaders preserves headers outside the strip set (R31 — targeted, not blanket)", () => {
-    // Regression guard: the OpenAI-Beta strip must not become a blanket
-    // header wipe. A benign header passes through untouched.
-    const rh = buildRewriteRequestHeaders(TEST_MASTER_KEY);
-    const out = rh({ "content-type": "application/json" }, { id: "r" });
-    expect((out as Record<string, unknown>)["content-type"]).toBe("application/json");
-  });
-
-  it("preHandler tolerates a missing req.raw.url (line 145 fallback to req.url)", async () => {
-    // Pin line 145 binary-expr idx 1. Drive the preHandler directly with
-    // a stub request whose `raw.url` is undefined; it must read from
-    // `req.url` instead. We import the route builder and access its
-    // preHandler via the registered route's options object.
+  it("translates frames bidirectionally: client Beta update -> upstream GA, upstream GA created -> client Beta", async () => {
     upstream = await startUpstream();
-    app = await buildApp({ upstream: upstream.url });
+    app = await buildApp({
+      deps: { litellm: { baseUrl: upstream.httpUrl } as unknown as LitellmClient },
+    });
+    await app.listen({ port: 0, host: "127.0.0.1" });
+    const port = (app.server.address() as AddressInfo).port;
+    const ws = await dial(`ws://127.0.0.1:${port}/v1/realtime?intent=transcription`);
 
-    // Find the registered route and pluck its preHandler.
-    let capturedPreHandler: ((req: unknown, reply: unknown) => Promise<void>) | undefined;
-    type RouteOpts = {
-      url?: string;
-      preHandler?: (req: unknown, reply: unknown) => Promise<void>;
-    };
-    // Fastify v5 exposes routes via printRoutes; intercept registration
-    // via app.addHook('onRoute', ...).
-    const localApp = Fastify({ logger: false });
-    registerErrorHandler(localApp);
-    localApp.addHook("onRequest", async (req) => {
-      (req as unknown as { user: { id: string } }).user = { id: TEST_USER };
+    // The relay forwards the upstream's GA session.created back to the
+    // client AS the Beta transcription_session.created.
+    const firstFrame = await new Promise<Record<string, unknown>>((resolve) => {
+      ws.once("message", (raw: RawData) => resolve(JSON.parse(raw.toString())));
     });
-    localApp.addHook("onRoute", (route: RouteOpts) => {
-      if (route.url === "/v1/realtime" && route.preHandler) {
-        capturedPreHandler = route.preHandler;
-      }
-    });
-    const litellm = { baseUrl: upstream.url } as unknown as LitellmClient;
-    await localApp.register(
-      buildRealtimeRoutes({
-        litellm,
-        masterKey: TEST_MASTER_KEY,
-        realtimeModel: TEST_REALTIME_MODEL,
+    expect(firstFrame.type).toBe("transcription_session.created");
+
+    // The client sends a Beta transcription_session.update; the upstream
+    // must receive the GA session.update{ session.type: "transcription" }.
+    ws.send(
+      JSON.stringify({
+        type: "transcription_session.update",
+        session: { input_audio_format: "pcm16" },
       }),
     );
-    await localApp.ready();
-    expect(capturedPreHandler).toBeDefined();
-
-    // Synthesize a Fastify-shaped request: raw.url undefined, req.url set.
-    const fakeReq = {
-      user: { id: TEST_USER },
-      raw: { url: undefined },
-      url: "/v1/realtime?intent=hello",
-    };
-    await capturedPreHandler?.(fakeReq, {});
-    // After preHandler the raw.url MUST be rewritten with ?user=...
-    expect((fakeReq.raw as { url?: string }).url).toBeDefined();
-    const u = new URL((fakeReq.raw as { url: string }).url, "http://internal");
-    expect(u.searchParams.get("user")).toBe(TEST_USER);
-    expect(u.searchParams.get("intent")).toBe("hello");
-    // D1 — the server-injected model alias is forced even on the
-    // req.url fallback path.
-    expect(u.searchParams.get("model")).toBe(TEST_REALTIME_MODEL);
-    await localApp.close();
-  });
-
-  it("derives the upstream ws:// URL from litellm.baseUrl (http→ws scheme swap)", async () => {
-    // Indirect assertion via behavioral observation: if the scheme swap
-    // were broken (e.g. left as http://), @fastify/http-proxy would emit
-    // a non-WS-protocol error during register or upgrade. We assert the
-    // upgrade succeeds against an `http://` baseUrl, proving the derived
-    // `ws://` upstream URL is what the proxy used.
-    upstream = await startUpstream();
-    expect(upstream.url.startsWith("http://")).toBe(true);
-    app = await buildApp({ upstream: upstream.url });
-    await app.listen({ port: 0, host: "127.0.0.1" });
-    const proxyAddr = app.server.address() as AddressInfo;
-    const ws = new WebSocket(`ws://127.0.0.1:${proxyAddr.port}/v1/realtime`);
-    await new Promise<void>((res, rej) => {
-      ws.once("open", () => res());
-      ws.once("error", (err) => rej(err));
+    await new Promise<void>((resolve) => {
+      const check = () => {
+        if (upstream?.received.some((f) => f.type === "session.update")) resolve();
+        else setTimeout(check, 10);
+      };
+      check();
     });
-    await upstream.upgraded;
+    const gaUpdate = upstream.received.find((f) => f.type === "session.update");
+    expect(gaUpdate).toBeDefined();
+    expect((gaUpdate?.session as Record<string, unknown>).type).toBe("transcription");
+    expect((gaUpdate?.session as Record<string, unknown>).input_audio_format).toBe("pcm16");
+
     ws.close();
     await new Promise<void>((res) => ws.once("close", () => res()));
   });

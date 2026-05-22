@@ -153,7 +153,17 @@ services:
   #   - migrate completed : ensureLitellmDatabase() in the runner is the
   #     existing-volume safety net (HIGH-1)
   litellm:
-    image: ghcr.io/berriai/litellm:main-v1.83.14-stable
+    # R31 — bundled LiteLLM built from compose/litellm/Dockerfile, which
+    # carries the OpenAI-Beta-header patch (DEFECT 2 — debug session
+    # r31-realtime-ga-beta-shape). The Dockerfile FROM-pins the same
+    # ghcr.io/berriai/litellm:main-v1.83.14-stable tag this used to pull
+    # directly; the only delta is the dropped `OpenAI-Beta: realtime=v1`
+    # header on LiteLLM's OpenAI realtime WS leg. `image:` names the
+    # locally built tag so `docker compose build litellm` is explicit.
+    build:
+      context: ./compose/litellm
+      dockerfile: Dockerfile
+    image: openwhispr-litellm:r31-patched
     networks: [openwhispr_internal]
     environment:
       LITELLM_MASTER_KEY: ${LITELLM_MASTER_KEY}
@@ -313,6 +323,19 @@ services:
       # matches the litellm_config.yaml alias; operators retarget the
       # alias in litellm_config, not here (OpenAI→Speaches one-line swap).
       LITELLM_REALTIME_MODEL: ${LITELLM_REALTIME_MODEL:-realtime-default}
+      # R31 — frame-aware /v1/realtime relay backend selector. `direct`
+      # (default) relays straight to OpenAI's GA /v1/realtime; `litellm`
+      # relays via the bundled LiteLLM. `direct` is the default because the
+      # bundled LiteLLM 1.83.14 cannot complete an OpenAI Realtime GA
+      # session (debug session r31-realtime-ga-shape). `direct` mode reads
+      # OPENAI_API_KEY on the api service (below).
+      REALTIME_BACKEND: ${REALTIME_BACKEND:-direct}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      # R31 — direct-mode upstream override (e.g. egress proxy / Azure
+      # OpenAI). Unset → the public GA wss://api.openai.com/v1/realtime.
+      OPENAI_REALTIME_URL: ${OPENAI_REALTIME_URL:-}
+      # R31 — direct-mode `?model=` (real OpenAI model; default gpt-realtime).
+      OPENAI_REALTIME_MODEL: ${OPENAI_REALTIME_MODEL:-}
       # Phase 03 D-07 REVISED — pyannote.ai key is consumed by the Fastify
       # diarization route (apps/api/src/routes/diarization.ts in Plan 06),
       # NOT by the LiteLLM sidecar. Forwarded only to the api container.

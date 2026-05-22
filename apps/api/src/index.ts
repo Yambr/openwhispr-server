@@ -102,6 +102,11 @@ validateBetterAuthSecretBoot();
 // loud-fail posture as validateEncryptionBoot / validateBetterAuthSecretBoot.
 import { validateIngressBoot } from "./config/auth.js";
 import { type DiarizationConfig, loadDiarizationConfigFromEnv } from "./config/diarization.js";
+import {
+  loadRealtimeConfigFromEnv,
+  type RealtimeConfig,
+  RealtimeConfigError,
+} from "./config/realtime.js";
 import { loadWebSearchConfigFromEnv, type WebSearchConfig } from "./config/web-search.js";
 
 validateIngressBoot();
@@ -124,6 +129,23 @@ try {
   // biome-ignore lint/suspicious/noConsole: pre-logger boot path — stderr is the only sink.
   console.error(`FATAL ${err instanceof Error ? err.message : String(err)}`);
   process.exit(78);
+}
+
+// R31 — realtime-relay backend boot gate. `REALTIME_BACKEND` selects the
+// frame-aware /v1/realtime relay's upstream (`litellm` default, or
+// `direct` straight to OpenAI). An unrecognized value is a config typo
+// that would otherwise surface only when a desktop client first dials
+// realtime — refuse to boot (EX_CONFIG 78), same loud-fail posture as
+// validateIngressBoot / validateSafetyKnobsBoot.
+try {
+  loadRealtimeConfigFromEnv();
+} catch (err) {
+  if (err instanceof RealtimeConfigError) {
+    // biome-ignore lint/suspicious/noConsole: pre-logger boot path — stderr is the only sink.
+    console.error(`FATAL ${err.message}`);
+    process.exit(78);
+  }
+  throw err;
 }
 
 // Phase 6 / Plan 03 / Task 1 (D-T3 load order) — OTel SDK must start
@@ -376,6 +398,14 @@ export interface BuildAppOptions {
    * reads `process.env` (LOCKER-01).
    */
   diarizationConfig?: DiarizationConfig;
+  /**
+   * R31 — operator-owned realtime-relay backend configuration
+   * (`REALTIME_BACKEND`, `OPENAI_REALTIME_URL`, `OPENAI_API_KEY`).
+   * Resolved from env via `loadRealtimeConfigFromEnv()` and threaded to
+   * `buildAllRoutes`; the frame-aware /v1/realtime relay consumes it via
+   * injected deps so no route file reads `process.env` (LOCKER-01).
+   */
+  realtimeConfig?: RealtimeConfig;
 }
 
 export const buildApp = async (opts: BuildAppOptions = {}): Promise<FastifyInstance> => {
@@ -660,6 +690,7 @@ export const buildApp = async (opts: BuildAppOptions = {}): Promise<FastifyInsta
       // resolved from env at the entrypoint boundary (LOCKER-01).
       ...(opts.webSearchConfig ? { webSearchConfig: opts.webSearchConfig } : {}),
       ...(opts.diarizationConfig ? { diarizationConfig: opts.diarizationConfig } : {}),
+      ...(opts.realtimeConfig ? { realtimeConfig: opts.realtimeConfig } : {}),
     });
     for (const plugin of routes) {
       await app.register(plugin);
@@ -959,6 +990,21 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   // behavior-preserving for default deployments.
   buildOpts.webSearchConfig = loadWebSearchConfigFromEnv();
   buildOpts.diarizationConfig = loadDiarizationConfigFromEnv();
+  // R31 — resolve the realtime-relay backend config (REALTIME_BACKEND /
+  // OPENAI_REALTIME_URL / OPENAI_API_KEY) at the entrypoint env boundary
+  // (LOCKER-01). Already validated boot-fatally above; this second call
+  // is the value the frame-aware /v1/realtime relay actually consumes.
+  // In `direct` mode with no OPENAI_API_KEY the relay refuses the WS
+  // upgrade at request time (operator-actionable) rather than booting
+  // into a broken state.
+  const realtimeConfig = loadRealtimeConfigFromEnv();
+  buildOpts.realtimeConfig = realtimeConfig;
+  if (realtimeConfig.backend === "direct" && !realtimeConfig.openaiApiKey) {
+    bootLog.warn(
+      { event: "realtime.direct.key.missing" },
+      "REALTIME_BACKEND=direct but OPENAI_API_KEY is unset; /v1/realtime upgrades will be refused until the key is configured",
+    );
+  }
   // Phase 6 / Plan 06-04 (OBS-05, D-P2) — wire the /readyz dep-check.
   // Reuses the same pg.Pool returned by makeAppDb and the ioredis client
   // already constructed for rate-limit/diarization. When either is
