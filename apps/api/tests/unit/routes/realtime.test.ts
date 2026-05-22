@@ -136,7 +136,7 @@ describe("httpToWsScheme — case-insensitive scheme conversion", () => {
   });
 });
 
-describe("buildUpstreamUrl — DEFECT 1 (?intent strip) + ?model/?user injection", () => {
+describe("buildUpstreamUrl — forces ?intent=transcription + ?model/?user injection", () => {
   const litellmDeps: RealtimeDeps = {
     litellm: { baseUrl: "http://litellm:4000" } as unknown as LitellmClient,
     masterKey: TEST_MASTER_KEY,
@@ -145,28 +145,31 @@ describe("buildUpstreamUrl — DEFECT 1 (?intent strip) + ?model/?user injection
     openaiRealtimeUrl: "wss://api.openai.com/v1/realtime",
   };
 
-  it("litellm mode: strips ?intent=, forces ?model and ?user", () => {
+  it("litellm mode: forces ?intent=transcription, ?model and ?user", () => {
     const out = buildUpstreamUrl(litellmDeps, "/v1/realtime?intent=transcription", TEST_USER);
     const u = new URL(out);
     expect(u.protocol).toBe("ws:");
-    expect(u.searchParams.get("intent")).toBeNull();
+    // GA opens a TRANSCRIPTION session only with ?intent=transcription —
+    // the relay forces it (R31 LIVE-RUN FINDING; not a Beta-only param).
+    expect(u.searchParams.get("intent")).toBe("transcription");
     expect(u.searchParams.get("model")).toBe(TEST_REALTIME_MODEL);
     expect(u.searchParams.get("user")).toBe(TEST_USER);
   });
 
-  it("litellm mode: overwrites a client-supplied ?model and ?user (tamper-normalization)", () => {
+  it("litellm mode: overwrites a client-supplied ?model/?user/?intent (tamper-normalization)", () => {
     const out = buildUpstreamUrl(
       litellmDeps,
-      "/v1/realtime?model=gpt-realtime&user=attacker&intent=transcription",
+      "/v1/realtime?model=gpt-realtime&user=attacker&intent=conversation",
       TEST_USER,
     );
     const u = new URL(out);
     expect(u.searchParams.get("model")).toBe(TEST_REALTIME_MODEL);
     expect(u.searchParams.get("user")).toBe(TEST_USER);
-    expect(u.searchParams.get("intent")).toBeNull();
+    // A client-supplied intent is overwritten with the forced value.
+    expect(u.searchParams.get("intent")).toBe("transcription");
   });
 
-  it("direct mode: targets the configured OpenAI URL, strips ?intent, forces the OpenAI ?model, NO ?user", () => {
+  it("direct mode: targets the configured OpenAI URL, forces ?intent=transcription, NO ?model, NO ?user", () => {
     const directDeps: RealtimeDeps = {
       ...litellmDeps,
       backend: "direct",
@@ -175,9 +178,12 @@ describe("buildUpstreamUrl — DEFECT 1 (?intent strip) + ?model/?user injection
     const out = buildUpstreamUrl(directDeps, "/v1/realtime?intent=transcription", TEST_USER);
     const u = new URL(out);
     expect(`${u.protocol}//${u.host}${u.pathname}`).toBe("wss://api.openai.com/v1/realtime");
-    expect(u.searchParams.get("intent")).toBeNull();
-    // OpenAI's GA /v1/realtime requires a real OpenAI model name.
-    expect(u.searchParams.get("model")).toBe("gpt-realtime");
+    // ?intent=transcription is REQUIRED for a GA transcription session.
+    expect(u.searchParams.get("intent")).toBe("transcription");
+    // NO ?model= — a GA transcription session takes its model in-band via
+    // session.update; a conversational ?model=gpt-realtime would flip GA
+    // back to a realtime session that rejects the transcription update.
+    expect(u.searchParams.get("model")).toBeNull();
     // OpenAI has no spend-attribution param — the relay must NOT leak the
     // openwhispr user id to a third party.
     expect(u.searchParams.get("user")).toBeNull();
@@ -190,7 +196,8 @@ describe("buildUpstreamUrl — DEFECT 1 (?intent strip) + ?model/?user injection
       openaiRealtimeModel: "gpt-realtime",
     };
     const u = new URL(buildUpstreamUrl(directDeps, "/v1/realtime?model=attacker-model", TEST_USER));
-    expect(u.searchParams.get("model")).toBe("gpt-realtime");
+    // Direct mode sends NO ?model= at all — the client value is dropped.
+    expect(u.searchParams.get("model")).toBeNull();
   });
 });
 
@@ -269,7 +276,7 @@ describe("WSS /v1/realtime route — relay behaviour", () => {
     expect(JSON.stringify(res.json())).not.toContain("sk-litellm-master");
   });
 
-  it("litellm mode: forwards the upgrade with master-key + GA-shape URL (no ?intent), ?user injected", async () => {
+  it("litellm mode: forwards the upgrade with master-key + GA transcription URL (?intent=transcription kept), ?user injected", async () => {
     upstream = await startUpstream();
     app = await buildApp({
       deps: { litellm: { baseUrl: upstream.httpUrl } as unknown as LitellmClient },
@@ -284,7 +291,9 @@ describe("WSS /v1/realtime route — relay behaviour", () => {
     expect(upstream.capture.headers?.authorization).toBe(`Bearer ${TEST_MASTER_KEY}`);
     expect(upstream.capture.headers?.["openai-beta"]).toBeUndefined();
     const u = new URL(upstream.capture.url ?? "", "http://internal");
-    expect(u.searchParams.get("intent")).toBeNull();
+    // ?intent=transcription MUST reach the upstream — GA needs it to open
+    // a transcription session.
+    expect(u.searchParams.get("intent")).toBe("transcription");
     expect(u.searchParams.get("user")).toBe(TEST_USER);
     expect(u.searchParams.get("model")).toBe(TEST_REALTIME_MODEL);
 
@@ -347,8 +356,11 @@ describe("WSS /v1/realtime route — relay behaviour", () => {
     });
     const gaUpdate = upstream.received.find((f) => f.type === "session.update");
     expect(gaUpdate).toBeDefined();
-    expect((gaUpdate?.session as Record<string, unknown>).type).toBe("transcription");
-    expect((gaUpdate?.session as Record<string, unknown>).input_audio_format).toBe("pcm16");
+    const gaSession = gaUpdate?.session as Record<string, Record<string, Record<string, unknown>>>;
+    expect(gaSession.type).toBe("transcription");
+    // The flat Beta `input_audio_format: "pcm16"` must be restructured
+    // into the nested GA `audio.input.format` object (R31 DEFECT 4).
+    expect(gaSession.audio.input.format).toEqual({ type: "audio/pcm", rate: 24_000 });
 
     ws.close();
     await new Promise<void>((res) => ws.once("close", () => res()));

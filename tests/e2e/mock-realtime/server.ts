@@ -9,21 +9,29 @@
 //   * `session.created` on connect (with a `sess_<ts>` id)
 //   * `session.updated` reply for every `session.update` frame
 //   * `response.done` reply for every `response.create` frame
+//   * DATA PATH (R31 third layer): on `input_audio_buffer.commit` it emits
+//     a GA transcription RESULT — an `input_audio_buffer.committed`, a
+//     `conversation.item.input_audio_transcription.delta` and a
+//     `.completed` carrying a non-empty transcript. It ALSO asserts the
+//     GA-shaped `session.update` payload (nested `audio.input.format`
+//     OBJECT) — a relay that forwarded the flat Beta payload (DEFECT 4)
+//     fails the connection.
 //
-// ─── R31: WHY THIS MOCK NOW ASSERTS GA SHAPE ────────────────────────────
-// R31 (the OpenAI Realtime Beta→GA migration bug) regressed TWICE because
-// the test layer never asserted what shape reached the upstream. The old
-// mock accepted ANY connection unconditionally — it never inspected the
-// upgrade URL or headers — so a relay that forwarded the retired Beta
-// `?intent=` query param or the `OpenAI-Beta: realtime=v1` header passed
-// every test and failed live.
+// ─── R31: WHY THIS MOCK ASSERTS GA SHAPE ────────────────────────────────
+// R31 (the OpenAI Realtime Beta→GA migration bug) regressed repeatedly
+// because the test layer never asserted what shape reached the upstream.
+// The old mock accepted ANY connection unconditionally.
 //
-// This mock now REJECTS any upgrade that carries the Beta API shape:
-//   * a `?intent=` query param  → close 4400 (the GA `/v1/realtime`
-//     surface removed `?intent=`), OR
-//   * an `OpenAI-Beta` request header → close 4400 (GA rejects the Beta
-//     opt-in header with `beta_api_shape_disabled`).
-// A relay that regresses to the Beta shape now FAILS at the test level.
+// This mock REJECTS (close 4400, in-band `beta_api_shape_disabled` error):
+//   * an `OpenAI-Beta` request header — the retired Beta opt-in header,
+//   * an upgrade MISSING `?intent=transcription` — GA opens a transcription
+//     session ONLY with that param (R31 LIVE-RUN FINDING; a stripped intent
+//     makes GA open a conversational session that rejects the transcription
+//     `session.update`),
+//   * a Beta `transcription_session.*` frame on the upstream leg,
+//   * a flat Beta `session.update` payload (DEFECT 4 — GA needs the nested
+//     `audio.input.format` object).
+// A relay that regresses ANY of these layers FAILS at the test level.
 //
 // Topology in the R31 regression test (apps/api ── relay ──> this mock).
 
@@ -55,30 +63,89 @@ export interface StopHandle {
 export const BETA_SHAPE_REJECT_CODE = 4400;
 
 /**
- * Inspect an upgrade request for the retired OpenAI Realtime *Beta* API
- * shape. Returns a human-readable reason string when Beta shape is
- * detected, or `null` when the request is clean GA shape.
+ * The transcript the mock emits on a committed audio buffer. The R31
+ * data-path test asserts the client receives exactly this — a non-empty
+ * transcript proves the append→commit→result data path is bridged.
+ */
+export const MOCK_TRANSCRIPT = "The quick brown fox jumps over the lazy dog";
+
+/**
+ * Detect the flat Beta `session.update` payload shape (R31 DEFECT 4).
  *
+ * GA requires `session.audio.input.format` to be an OBJECT; the immutable
+ * client sends the flat Beta triplet (`input_audio_format` as a bare
+ * string, `input_audio_transcription`, `turn_detection` directly under
+ * `session`). A relay that fails to restructure the payload forwards the
+ * flat shape and GA answers "Invalid type for 'session.audio.input.format'".
+ *
+ * Returns a reason string when a Beta-shaped session payload is detected,
+ * or `null` when the payload is clean GA (nested) shape. Exported for
+ * direct unit-assertion.
+ */
+export function detectBetaSessionPayload(session: unknown): string | null {
+  if (typeof session !== "object" || session === null || Array.isArray(session)) {
+    return null;
+  }
+  const s = session as Record<string, unknown>;
+  if ("input_audio_format" in s) {
+    return `flat Beta field "input_audio_format" present on session (GA expects audio.input.format object)`;
+  }
+  if ("input_audio_transcription" in s) {
+    return `flat Beta field "input_audio_transcription" present on session (GA expects audio.input.transcription)`;
+  }
+  // A `turn_detection` directly under `session` (rather than under
+  // `audio.input`) is the flat Beta shape too.
+  if ("turn_detection" in s) {
+    return `flat Beta field "turn_detection" present directly on session (GA expects audio.input.turn_detection)`;
+  }
+  // GA `audio.input.format`, when present, MUST be an object.
+  const audio = s.audio;
+  if (typeof audio === "object" && audio !== null) {
+    const input = (audio as Record<string, unknown>).input;
+    if (typeof input === "object" && input !== null) {
+      const format = (input as Record<string, unknown>).format;
+      if (format !== undefined && (typeof format !== "object" || format === null)) {
+        return `GA audio.input.format is not an object (got ${typeof format})`;
+      }
+    }
+  }
+  return null;
+}
+
+/**
+ * Inspect an upgrade request for the retired OpenAI Realtime *Beta* API
+ * shape, OR for a malformed transcription-session connect.
+ *
+ * Returns a human-readable reason string when a problem is detected, or
+ * `null` when the request is a clean GA transcription-session upgrade.
  * Exported so the R31 regression test can unit-assert the detection
  * directly without standing up a server.
+ *
+ * Two checks:
+ *   1. The `OpenAI-Beta` opt-in header — the ONLY upgrade-level Beta
+ *      marker. GA rejects it with `beta_api_shape_disabled`.
+ *   2. `?intent=transcription` MUST be present (R31 LIVE-RUN FINDING).
+ *      GA decides the session TYPE at connect time: `?intent=transcription`
+ *      opens a transcription session; its absence opens a conversational
+ *      realtime session whose `session.update` rejects a
+ *      `session.type:"transcription"` payload with `invalid_parameter`
+ *      ("Passing a transcription session update event to a realtime
+ *      session is not allowed"). A relay that drops `?intent=` regresses
+ *      the fifth R31 layer — the mock fails it here.
  */
 export function detectBetaShape(
   rawUrl: string | undefined,
   headers: Record<string, string | string[] | undefined>,
 ): string | null {
-  // DEFECT 1 — the Beta-only `?intent=` query param. GA `/v1/realtime`
-  // removed it; its presence means a relay forwarded the Beta URL shape.
-  if (rawUrl) {
-    const u = new URL(rawUrl, "http://internal");
-    if (u.searchParams.has("intent")) {
-      return `Beta-only "?intent=" query param present (value="${u.searchParams.get("intent")}")`;
-    }
-  }
-  // DEFECT 2 — the `OpenAI-Beta` opt-in header. GA rejects it with
-  // `beta_api_shape_disabled`. Header names are case-insensitive; Node
-  // lowercases them on `IncomingMessage.headers`.
+  // The `OpenAI-Beta` opt-in header — header names are case-insensitive;
+  // Node lowercases them on `IncomingMessage.headers`.
   if (headers["openai-beta"] !== undefined) {
     return `Beta opt-in header "OpenAI-Beta: ${String(headers["openai-beta"])}" present`;
+  }
+  // GA transcription session requires ?intent=transcription on the URL.
+  const intent = rawUrl ? new URL(rawUrl, "http://internal").searchParams.get("intent") : null;
+  if (intent !== "transcription") {
+    return `?intent=transcription missing (got intent=${JSON.stringify(intent)}) — GA would open a conversational realtime session that rejects the transcription session.update`;
   }
   return null;
 }
@@ -134,8 +201,33 @@ export async function startMockRealtimeServer(
       }),
     );
 
-    socket.on("message", (raw: Buffer | ArrayBuffer | Buffer[]) => {
-      let msg: { type?: string; session?: unknown };
+    // R31 data path — count audio bytes appended so a `commit` with a
+    // non-empty buffer yields a transcript and an empty buffer does not.
+    let appendedAudioBytes = 0;
+
+    const rejectBeta = (reason: string): void => {
+      socket.send(
+        JSON.stringify({
+          type: "error",
+          error: {
+            type: "invalid_request_error",
+            code: "beta_api_shape_disabled",
+            message: `mock-realtime GA assertion: ${reason}`,
+          },
+        }),
+      );
+      socket.close(BETA_SHAPE_REJECT_CODE, "beta_api_shape_disabled");
+    };
+
+    socket.on("message", (raw: Buffer | ArrayBuffer | Buffer[], isBinary?: boolean) => {
+      // Binary frames are audio payloads — count their bytes, no JSON.
+      if (isBinary) {
+        appendedAudioBytes += Buffer.isBuffer(raw)
+          ? raw.length
+          : Buffer.from(raw as ArrayBuffer).byteLength;
+        return;
+      }
+      let msg: { type?: string; session?: unknown; audio?: unknown };
       try {
         msg = JSON.parse(String(raw));
       } catch {
@@ -149,29 +241,75 @@ export async function startMockRealtimeServer(
         typeof msg.type === "string" &&
         msg.type.startsWith("transcription_session.")
       ) {
-        socket.send(
-          JSON.stringify({
-            type: "error",
-            error: {
-              type: "invalid_request_error",
-              code: "beta_api_shape_disabled",
-              message: `mock-realtime GA assertion: Beta frame "${msg.type}" received (GA expects "session.*")`,
-            },
-          }),
-        );
-        socket.close(BETA_SHAPE_REJECT_CODE, "beta_api_shape_disabled");
+        rejectBeta(`Beta frame "${msg.type}" received (GA expects "session.*")`);
         return;
       }
       if (msg.type === "session.update") {
+        // R31 DEFECT 4 — assert the session PAYLOAD is GA-shaped (nested
+        // audio.input.format object), not the flat Beta triplet. A relay
+        // that renamed the frame but left the payload flat fails here.
+        if (assertGaShape) {
+          const betaPayload = detectBetaSessionPayload(msg.session);
+          if (betaPayload !== null) {
+            rejectBeta(`session.update payload is Beta-shaped — ${betaPayload}`);
+            return;
+          }
+        }
         // GA acknowledges a session.update with session.updated, echoing
         // the session payload back so the test can assert the translated
-        // `{ type: "transcription" }` discriminator round-trips.
+        // GA shape round-trips.
         socket.send(
           JSON.stringify({
             type: "session.updated",
             session: msg.session ?? {},
           }),
         );
+        return;
+      }
+      if (msg.type === "input_audio_buffer.append") {
+        // GA `input_audio_buffer.append` carries base64 audio in `audio`.
+        // No server confirmation event (matches real OpenAI GA).
+        if (typeof msg.audio === "string") {
+          appendedAudioBytes += Buffer.from(msg.audio, "base64").length;
+        }
+        return;
+      }
+      if (msg.type === "input_audio_buffer.commit") {
+        // GA: committing triggers transcription. With an empty buffer GA
+        // emits an `input_audio_buffer_commit_empty` error; with audio it
+        // emits committed → transcription delta → transcription completed.
+        if (appendedAudioBytes === 0) {
+          socket.send(
+            JSON.stringify({
+              type: "error",
+              error: {
+                type: "invalid_request_error",
+                code: "input_audio_buffer_commit_empty",
+                message: "buffer too small to commit",
+              },
+            }),
+          );
+          return;
+        }
+        const itemId = `item_${Date.now()}`;
+        socket.send(JSON.stringify({ type: "input_audio_buffer.committed", item_id: itemId }));
+        // GA streams the transcript word-by-word as deltas, then a final
+        // completed event. Beta consumes these event names verbatim.
+        socket.send(
+          JSON.stringify({
+            type: "conversation.item.input_audio_transcription.delta",
+            item_id: itemId,
+            delta: MOCK_TRANSCRIPT,
+          }),
+        );
+        socket.send(
+          JSON.stringify({
+            type: "conversation.item.input_audio_transcription.completed",
+            item_id: itemId,
+            transcript: MOCK_TRANSCRIPT,
+          }),
+        );
+        appendedAudioBytes = 0;
         return;
       }
       if (msg.type === "response.create") {

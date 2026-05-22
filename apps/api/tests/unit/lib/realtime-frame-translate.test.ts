@@ -12,10 +12,34 @@ import {
   MAX_REALTIME_FRAME_BYTES,
   parseRealtimeFrame,
   type RealtimeFrame,
-  stripIntentParam,
   translateClientToUpstream,
   translateUpstreamToClient,
 } from "../../../src/lib/realtime-frame-translate.js";
+
+/** PCM sample rate the immutable desktop client streams (24 kHz). */
+const REALTIME_PCM_SAMPLE_RATE = 24_000;
+
+/**
+ * Drive the Beta→GA session-payload transform through the public mapper:
+ * wrap `session` in a `transcription_session.update` frame, translate it,
+ * and return the resulting GA `session` object. The flat→nested payload
+ * restructuring is an internal helper of `translateClientToUpstream`; this
+ * exercises it via the public surface (no test-only export needed).
+ */
+function betaToGaSessionPayload(session: Record<string, unknown>): Record<string, unknown> {
+  const ga = translateClientToUpstream({ type: "transcription_session.update", session });
+  return ga.session as Record<string, unknown>;
+}
+
+/**
+ * Drive the GA→Beta session-payload transform through the public mapper:
+ * wrap `session` in a GA `session.updated` frame, translate it, and return
+ * the resulting flat Beta `session` object.
+ */
+function gaToBetaSessionPayload(session: Record<string, unknown>): Record<string, unknown> {
+  const beta = translateUpstreamToClient({ type: "session.updated", session });
+  return beta.session as Record<string, unknown>;
+}
 
 describe("parseRealtimeFrame", () => {
   it("parses a well-formed frame with a string type", () => {
@@ -71,18 +95,154 @@ describe("parseRealtimeFrame", () => {
   });
 });
 
+describe("betaToGaSessionPayload — DEFECT 4 flat→nested transform", () => {
+  it("nests the exact flat Beta payload the immutable client sends", () => {
+    // This is verbatim the `session` object from
+    // openwhispr/src/helpers/openaiRealtimeStreaming.js handleMessage().
+    const ga = betaToGaSessionPayload({
+      input_audio_format: "pcm16",
+      input_audio_transcription: { model: "gpt-4o-mini-transcribe" },
+      turn_detection: {
+        type: "server_vad",
+        threshold: 0.6,
+        silence_duration_ms: 600,
+        prefix_padding_ms: 500,
+      },
+    });
+    expect(ga).toEqual({
+      type: "transcription",
+      audio: {
+        input: {
+          format: { type: "audio/pcm", rate: REALTIME_PCM_SAMPLE_RATE },
+          transcription: { model: "gpt-4o-mini-transcribe" },
+          turn_detection: {
+            type: "server_vad",
+            threshold: 0.6,
+            silence_duration_ms: 600,
+            prefix_padding_ms: 500,
+          },
+        },
+      },
+    });
+  });
+
+  it("maps g711 audio formats to their GA mime types", () => {
+    expect(
+      (
+        betaToGaSessionPayload({ input_audio_format: "g711_ulaw" }).audio as Record<
+          string,
+          Record<string, unknown>
+        >
+      ).input.format,
+    ).toEqual({ type: "audio/pcmu" });
+    expect(
+      (
+        betaToGaSessionPayload({ input_audio_format: "g711_alaw" }).audio as Record<
+          string,
+          Record<string, unknown>
+        >
+      ).input.format,
+    ).toEqual({ type: "audio/pcma" });
+  });
+
+  it("carries an explicit null turn_detection through (manual-commit mode)", () => {
+    const ga = betaToGaSessionPayload({
+      input_audio_format: "pcm16",
+      turn_detection: null,
+    });
+    expect((ga.audio as Record<string, Record<string, unknown>>).input.turn_detection).toBeNull();
+  });
+
+  it("preserves an already-GA-shaped audio.input.format object unchanged", () => {
+    const ga = betaToGaSessionPayload({
+      input_audio_format: { type: "audio/pcm", rate: 16_000 },
+    });
+    expect((ga.audio as Record<string, Record<string, unknown>>).input.format).toEqual({
+      type: "audio/pcm",
+      rate: 16_000,
+    });
+  });
+
+  it("preserves non-audio top-level fields (e.g. include)", () => {
+    const ga = betaToGaSessionPayload({
+      input_audio_format: "pcm16",
+      include: ["item.input_audio_transcription.logprobs"],
+    });
+    expect(ga.include).toEqual(["item.input_audio_transcription.logprobs"]);
+  });
+
+  it("merges a client-supplied nested audio object", () => {
+    const ga = betaToGaSessionPayload({
+      input_audio_transcription: { model: "gpt-4o-transcribe" },
+      audio: { output: { voice: "alloy" }, input: { noise_reduction: { type: "near_field" } } },
+    });
+    const audio = ga.audio as Record<string, Record<string, unknown>>;
+    expect(audio.output).toEqual({ voice: "alloy" });
+    expect(audio.input.noise_reduction).toEqual({ type: "near_field" });
+    expect(audio.input.transcription).toEqual({ model: "gpt-4o-transcribe" });
+  });
+
+  it("returns a bare {type:transcription} when the session is empty", () => {
+    expect(betaToGaSessionPayload({})).toEqual({ type: "transcription" });
+  });
+});
+
+describe("gaToBetaSessionPayload — inverse nested→flat transform", () => {
+  it("flattens a GA session payload back to Beta field names", () => {
+    const beta = gaToBetaSessionPayload({
+      type: "transcription",
+      audio: {
+        input: {
+          format: { type: "audio/pcm", rate: 24_000 },
+          transcription: { model: "gpt-4o-mini-transcribe" },
+          turn_detection: { type: "server_vad" },
+        },
+      },
+    });
+    expect(beta).toEqual({
+      input_audio_format: "pcm16",
+      input_audio_transcription: { model: "gpt-4o-mini-transcribe" },
+      turn_detection: { type: "server_vad" },
+    });
+    // The GA `type` discriminator must NOT survive into the Beta payload.
+    expect(beta.type).toBeUndefined();
+  });
+
+  it("round-trips betaToGa → gaToBeta back to the original flat shape", () => {
+    const original = {
+      input_audio_format: "pcm16",
+      input_audio_transcription: { model: "gpt-4o-mini-transcribe" },
+      turn_detection: { type: "server_vad", threshold: 0.6 },
+    };
+    expect(gaToBetaSessionPayload(betaToGaSessionPayload(original))).toEqual(original);
+  });
+
+  it("is tolerant of a GA payload with no audio object", () => {
+    expect(gaToBetaSessionPayload({ type: "transcription", id: "sess_1" })).toEqual({
+      id: "sess_1",
+    });
+  });
+});
+
 describe("translateClientToUpstream — Beta → GA", () => {
-  it("rewrites transcription_session.update to session.update with type:transcription", () => {
+  it("rewrites transcription_session.update to session.update with nested GA payload", () => {
     const beta: RealtimeFrame = {
       type: "transcription_session.update",
-      session: { input_audio_format: "pcm16", language: "en" },
+      session: {
+        input_audio_format: "pcm16",
+        input_audio_transcription: { model: "gpt-4o-mini-transcribe", language: "en" },
+      },
     };
     const ga = translateClientToUpstream(beta);
     expect(ga.type).toBe("session.update");
     expect(ga.session).toEqual({
-      input_audio_format: "pcm16",
-      language: "en",
       type: "transcription",
+      audio: {
+        input: {
+          format: { type: "audio/pcm", rate: REALTIME_PCM_SAMPLE_RATE },
+          transcription: { model: "gpt-4o-mini-transcribe", language: "en" },
+        },
+      },
     });
   });
 
@@ -111,12 +271,22 @@ describe("translateClientToUpstream — Beta → GA", () => {
     expect(ga.type).toBe("session.update");
   });
 
-  it("passes non-Beta frames through unchanged (same reference)", () => {
+  it("passes input_audio_buffer.append through unchanged (byte-identical Beta/GA)", () => {
     const audioFrame: RealtimeFrame = {
       type: "input_audio_buffer.append",
       audio: "base64data",
     };
     expect(translateClientToUpstream(audioFrame)).toBe(audioFrame);
+  });
+
+  it("passes input_audio_buffer.commit through unchanged (byte-identical Beta/GA)", () => {
+    const commit: RealtimeFrame = { type: "input_audio_buffer.commit" };
+    expect(translateClientToUpstream(commit)).toBe(commit);
+  });
+
+  it("passes input_audio_buffer.clear through unchanged", () => {
+    const clear: RealtimeFrame = { type: "input_audio_buffer.clear" };
+    expect(translateClientToUpstream(clear)).toBe(clear);
   });
 
   it("does NOT rewrite a GA session.update the client might already send", () => {
@@ -140,12 +310,51 @@ describe("translateUpstreamToClient — GA → Beta", () => {
     expect(beta.type).toBe("transcription_session.updated");
   });
 
-  it("passes transcription delta frames through unchanged", () => {
+  it("flattens the GA session payload on session.updated back to Beta shape", () => {
+    const beta = translateUpstreamToClient({
+      type: "session.updated",
+      session: {
+        type: "transcription",
+        audio: {
+          input: {
+            format: { type: "audio/pcm", rate: 24_000 },
+            transcription: { model: "gpt-4o-mini-transcribe" },
+          },
+        },
+      },
+    });
+    expect(beta.type).toBe("transcription_session.updated");
+    expect(beta.session).toEqual({
+      input_audio_format: "pcm16",
+      input_audio_transcription: { model: "gpt-4o-mini-transcribe" },
+    });
+  });
+
+  it("passes transcription delta result frames through unchanged (byte-identical Beta/GA)", () => {
     const delta: RealtimeFrame = {
       type: "conversation.item.input_audio_transcription.delta",
       delta: "hello",
     };
     expect(translateUpstreamToClient(delta)).toBe(delta);
+  });
+
+  it("passes transcription completed result frames through unchanged (byte-identical Beta/GA)", () => {
+    const done: RealtimeFrame = {
+      type: "conversation.item.input_audio_transcription.completed",
+      transcript: "The quick brown fox",
+    };
+    expect(translateUpstreamToClient(done)).toBe(done);
+  });
+
+  it("passes input_audio_buffer.committed / speech_* events through unchanged", () => {
+    for (const type of [
+      "input_audio_buffer.committed",
+      "input_audio_buffer.speech_started",
+      "input_audio_buffer.speech_stopped",
+    ]) {
+      const f: RealtimeFrame = { type };
+      expect(translateUpstreamToClient(f)).toBe(f);
+    }
   });
 
   it("passes GA error frames through unchanged (client already speaks error)", () => {
@@ -163,39 +372,38 @@ describe("translateUpstreamToClient — GA → Beta", () => {
 });
 
 describe("round-trip — Beta in, GA at upstream, Beta back to client", () => {
-  it("client transcription_session.update survives as session.update; GA session.created comes back as transcription_session.created", () => {
+  it("client transcription_session.update survives as nested GA session.update", () => {
     const clientFrame: RealtimeFrame = {
       type: "transcription_session.update",
-      session: { language: "ru" },
+      session: {
+        input_audio_format: "pcm16",
+        input_audio_transcription: { model: "gpt-4o-mini-transcribe" },
+        turn_detection: { type: "server_vad" },
+      },
     };
     const upstreamSaw = translateClientToUpstream(clientFrame);
     expect(upstreamSaw.type).toBe("session.update");
+    // The GA upstream MUST receive the nested object shape — the flat
+    // Beta shape is what produced the empty-transcript bug (DEFECT 4).
+    const session = upstreamSaw.session as Record<string, Record<string, Record<string, unknown>>>;
+    expect(session.type).toBe("transcription");
+    expect(session.audio.input.format).toEqual({ type: "audio/pcm", rate: 24_000 });
+    expect(session.audio.input.transcription).toEqual({ model: "gpt-4o-mini-transcribe" });
 
     const upstreamReply: RealtimeFrame = { type: "session.created", session: {} };
     const clientGetsBack = translateUpstreamToClient(upstreamReply);
     expect(clientGetsBack.type).toBe("transcription_session.created");
   });
-});
 
-describe("stripIntentParam — DEFECT 1", () => {
-  it("removes ?intent= from an origin-form path, preserving others", () => {
-    expect(stripIntentParam("/v1/realtime?intent=transcription&model=x")).toBe(
-      "/v1/realtime?model=x",
-    );
-  });
-
-  it("removes ?intent= when it is the only param", () => {
-    expect(stripIntentParam("/v1/realtime?intent=transcription")).toBe("/v1/realtime");
-  });
-
-  it("is a no-op on a path with no intent param", () => {
-    expect(stripIntentParam("/v1/realtime?model=x")).toBe("/v1/realtime?model=x");
-  });
-
-  it("removes ?intent= from an absolute ws:// URL", () => {
-    const out = stripIntentParam("wss://api.openai.com/v1/realtime?intent=transcription&model=x");
-    expect(out).not.toContain("intent");
-    expect(out).toContain("model=x");
-    expect(out).toContain("wss://api.openai.com/v1/realtime");
+  it("a GA transcription result event survives untranslated to the client", () => {
+    // The relay must NOT mangle the result events — the empty-transcript
+    // symptom would persist if a result frame were dropped or renamed.
+    const gaResult: RealtimeFrame = {
+      type: "conversation.item.input_audio_transcription.completed",
+      transcript: "The quick brown fox jumps over the lazy dog",
+    };
+    const toClient = translateUpstreamToClient(gaResult);
+    expect(toClient.type).toBe("conversation.item.input_audio_transcription.completed");
+    expect(toClient.transcript).toBe("The quick brown fox jumps over the lazy dog");
   });
 });

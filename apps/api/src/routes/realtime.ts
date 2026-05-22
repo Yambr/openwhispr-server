@@ -22,10 +22,8 @@
 // ─── R31: WHY THIS IS NO LONGER A TRANSPARENT PASSTHROUGH ───────────────
 // The previous mount used `@fastify/http-proxy` wsUpstream — a transparent,
 // payload-opaque WS passthrough (the original T-03-07 posture). That
-// architecture CANNOT bridge the Beta↔GA gap because the gap is in-band:
-//   * DEFECT 1 — the client opens `/v1/realtime?intent=transcription`;
-//     `?intent=` is a Beta-only query param GA rejects. A passthrough
-//     forwards it verbatim.
+// architecture CANNOT bridge the Beta↔GA gap because the gap is in-band.
+// R31 surfaced FIVE layers, fixed across two debug rounds:
 //   * DEFECT 2 — in `litellm` mode, LiteLLM 1.83.14 injects the retired
 //     `OpenAI-Beta: realtime=v1` header on its own OpenAI leg from a code
 //     path the documented `OpenAIRealtime._get_additional_headers`
@@ -34,18 +32,35 @@
 //     LiteLLM entirely and the relay controls every upstream header.
 //   * DEFECT 3 — the client waits for `transcription_session.created`
 //     (Beta), GA emits `session.created`; the client's first frame is
-//     `transcription_session.update` (Beta), GA wants
-//     `session.update{ session.type: "transcription" }`. Only a
-//     frame-aware relay can translate these.
+//     `transcription_session.update` (Beta), GA wants `session.update`.
+//   * DEFECT 4 — the `transcription_session.update` PAYLOAD: the client
+//     sends the FLAT Beta `session` shape (`input_audio_format` string,
+//     `input_audio_transcription`, `turn_detection` directly under
+//     `session`); GA requires the NESTED `audio.input.{format,transcription,
+//     turn_detection}` shape (`format` an object `{type:"audio/pcm",
+//     rate:24000}`). A frame-name-only translation left the session
+//     unconfigured → zero transcripts.
+//   * DEFECT 5 — `?intent=transcription` is NOT a retired Beta param. GA
+//     decides the session TYPE at connect time: WITH `?intent=transcription`
+//     it opens a transcription session; WITHOUT it (the earlier wrong
+//     "DEFECT 1 — strip intent" fix) GA opens a conversational realtime
+//     session that rejects the transcription `session.update` with
+//     `invalid_parameter`. The relay therefore FORCES `?intent=transcription`
+//     and sends NO conversational `?model=` in direct mode.
 //
 // ─── Beta↔GA translation contract (R31) ────────────────────────────────
 // Implemented as pure functions in lib/realtime-frame-translate.ts:
 //   client → upstream:  transcription_session.update → session.update
-//                       (session re-tagged { type: "transcription" });
-//                       all other frames pass through.
-//   upstream → client:  session.created → transcription_session.created,
-//                       session.updated → transcription_session.updated;
-//                       all other frames pass through.
+//                       (frame renamed AND payload restructured flat→nested
+//                       GA shape, session re-tagged { type: "transcription"
+//                       }); input_audio_buffer.append/.commit pass through
+//                       (byte-identical Beta/GA); all other frames pass.
+//   upstream → client:  session.created → transcription_session.created;
+//                       session.updated → transcription_session.updated
+//                       (payload flattened nested→flat back to Beta);
+//                       transcription result events
+//                       (conversation.item.input_audio_transcription.*)
+//                       pass through (byte-identical); all other frames pass.
 //
 // ─── Two env-switchable upstream backends (R31) ─────────────────────────
 //   * `direct` (default) — relay → `wss://api.openai.com/v1/realtime`
@@ -99,7 +114,6 @@ import type { RealtimeBackend } from "../config/realtime.js";
 import { AuthError } from "../errors.js";
 import {
   parseRealtimeFrame,
-  stripIntentParam,
   translateClientToUpstream,
   translateUpstreamToClient,
 } from "../lib/realtime-frame-translate.js";
@@ -168,39 +182,56 @@ export interface RealtimeDeps {
 }
 
 /**
+ * The realtime `?intent=` value that opens an OpenAI GA *transcription*
+ * session. GA decides the session TYPE at connect time from this param:
+ * `?intent=transcription` → transcription session; its absence → a
+ * conversational realtime session (whose `session.update` rejects a
+ * `session.type:"transcription"` payload). See R31 LIVE-RUN FINDING:
+ * `?intent=` is NOT a retired Beta param — GA still requires it for the
+ * transcription surface. The relay therefore FORCES it (the only mode
+ * this relay supports is transcription).
+ */
+const REALTIME_TRANSCRIPTION_INTENT = "transcription";
+
+/**
  * Build the per-upgrade upstream URL.
  *
- * `litellm` mode: derive `ws(s)://<litellm-base>/v1/realtime`, strip the
- * Beta-only `?intent=` (DEFECT 1), force `?model=` (the LiteLLM routing
- * alias) and `?user=`.
- * `direct` mode: start from the configured GA URL (already has no
- * `?intent=`); force `?model=<deps.openaiRealtimeModel>` — OpenAI's GA
- * `/v1/realtime` REQUIRES a real OpenAI model name (it rejects a
- * model-less connect with `missing_model` and the LiteLLM routing alias
- * with `invalid_model`). DO NOT inject `?user=` — OpenAI has no
- * spend-attribution param and we must not leak the openwhispr user id to
- * a third party.
+ * BOTH modes force `?intent=transcription` — GA's `/v1/realtime` opens a
+ * *transcription* session only when that param is present (R31 LIVE-RUN
+ * FINDING; the earlier "DEFECT 1 — strip intent" diagnosis was wrong: a
+ * stripped intent makes GA open a conversational session that rejects the
+ * transcription `session.update`).
+ *
+ * `direct` mode: start from the configured GA URL, force
+ * `?intent=transcription`. DO NOT set `?model=` — a GA transcription
+ * session takes its model from `session.update.audio.input.transcription.
+ * model`, and a conversational `?model=gpt-realtime` would flip GA back
+ * to a realtime session. DO NOT inject `?user=` — OpenAI has no
+ * spend-attribution param and we must not leak the openwhispr user id.
+ *
+ * `litellm` mode: derive `ws(s)://<litellm-base>/v1/realtime`, force
+ * `?intent=transcription`, `?model=` (the LiteLLM routing alias — LiteLLM
+ * routes `/v1/realtime` on this param) and `?user=` (spend attribution).
  *
  * Exported for direct unit-testing of the URL-construction logic.
  */
 export function buildUpstreamUrl(deps: RealtimeDeps, rawClientUrl: string, userId: string): string {
   // The client's raw URL is an origin-form path: `/v1/realtime?intent=...`.
-  // Pull its query params (minus the Beta-only `intent`).
-  const clientQuery = new URL(stripIntentParam(rawClientUrl), "http://internal").searchParams;
+  // Pull its query params; the relay owns intent/user/model and overwrites
+  // them below, so client-supplied values for those are ignored.
+  const clientQuery = new URL(rawClientUrl, "http://internal").searchParams;
 
   if (deps.backend === "direct") {
     const u = new URL(deps.openaiRealtimeUrl);
-    // Carry forward any benign client params; drop intent/user/model
-    // (model is operator-controlled, never client-supplied — D1).
+    // Carry forward any benign client params; the relay owns
+    // intent/user/model.
     for (const [k, v] of clientQuery) {
       if (k !== "intent" && k !== "user" && k !== "model") u.searchParams.set(k, v);
     }
-    // OpenAI's GA /v1/realtime REQUIRES a real OpenAI model name on
-    // `?model=` (model-less connect → `missing_model`; LiteLLM alias →
-    // `invalid_model`). `openaiRealtimeModel` is always populated in
-    // direct mode (defaults to `gpt-realtime`); the `?? deps.realtimeModel`
-    // fallback only guards a hand-constructed deps object in tests.
-    u.searchParams.set("model", deps.openaiRealtimeModel ?? deps.realtimeModel);
+    // FORCE the transcription intent — GA opens a transcription session
+    // only with this param. No `?model=`: the GA transcription session
+    // model is supplied in-band via `session.update`.
+    u.searchParams.set("intent", REALTIME_TRANSCRIPTION_INTENT);
     // No `?user=` — OpenAI has no spend-attribution param and we do not
     // leak the openwhispr user id to a third party.
     return u.toString();
@@ -215,7 +246,11 @@ export function buildUpstreamUrl(deps: RealtimeDeps, rawClientUrl: string, userI
   for (const [k, v] of clientQuery) {
     if (k !== "intent" && k !== "user" && k !== "model") u.searchParams.set(k, v);
   }
-  // D1 / T-03-07-05 — force the operator-configured model alias.
+  // FORCE the transcription intent — LiteLLM forwards it to OpenAI's GA
+  // `/v1/realtime`, which needs it to open a transcription session.
+  u.searchParams.set("intent", REALTIME_TRANSCRIPTION_INTENT);
+  // D1 / T-03-07-05 — force the operator-configured model alias (LiteLLM
+  // routes `/v1/realtime` on `?model=`).
   u.searchParams.set("model", deps.realtimeModel);
   // D-03 / LITELLM-04 — per-user spend attribution.
   u.searchParams.set("user", userId);

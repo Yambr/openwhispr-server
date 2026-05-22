@@ -37,6 +37,7 @@ import { Pool } from "pg";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import { type RawData, WebSocket } from "ws";
 import {
+  MOCK_TRANSCRIPT,
   type StopHandle,
   startMockRealtimeServer,
 } from "../../../../tests/e2e/mock-realtime/server.js";
@@ -265,9 +266,11 @@ describe("R31 — frame-aware /v1/realtime relay GA-shape regression (litellm + 
     expect(created.type).toBe("transcription_session.created");
 
     // Bidirectional — the client sends a Beta `transcription_session.
-    // update`; the GA-asserting mock would close 4400 on a Beta frame, so
-    // a `session.updated` reply proves the relay translated it to GA
-    // `session.update`. The mock echoes the session payload back.
+    // update`; the GA-asserting mock would close 4400 on a Beta frame OR
+    // on a flat Beta session payload (DEFECT 4), so a `session.updated`
+    // reply proves the relay translated BOTH the frame name AND the
+    // payload to GA shape. The mock echoes the (GA-shaped) payload back;
+    // the relay flattens it GA→Beta so the client sees Beta field names.
     ws.send(
       JSON.stringify({
         type: "transcription_session.update",
@@ -275,7 +278,11 @@ describe("R31 — frame-aware /v1/realtime relay GA-shape regression (litellm + 
       }),
     );
     const updated = await awaitFrame(ws, (f) => f.type === "transcription_session.updated");
-    expect((updated.session as Record<string, unknown>).type).toBe("transcription");
+    // The GA `type` discriminator is dropped on the way back; the Beta
+    // client reads the flat `input_audio_format` field instead.
+    const updatedSession = updated.session as Record<string, unknown>;
+    expect(updatedSession.type).toBeUndefined();
+    expect(updatedSession.input_audio_format).toBe("pcm16");
 
     ws.close();
     await new Promise<void>((res) => ws.once("close", () => res()));
@@ -313,6 +320,146 @@ describe("R31 — frame-aware /v1/realtime relay GA-shape regression (litellm + 
     ws.send(JSON.stringify({ type: "transcription_session.update", session: {} }));
     const updated = await awaitFrame(ws, (f) => f.type === "transcription_session.updated");
     expect(updated.type).toBe("transcription_session.updated");
+
+    ws.close();
+    await new Promise<void>((res) => ws.once("close", () => res()));
+  }, 60_000);
+
+  it("litellm mode DATA PATH: append→commit yields a non-empty transcription result at the client", async () => {
+    // R31 third layer (DEFECT 4). The mock asserts the GA-shaped
+    // session.update payload (nested audio.input.format object). It then
+    // drives the data path: append audio, commit, emit GA transcription
+    // result events. The client must receive a NON-EMPTY transcript — the
+    // exact symptom (segments:0, textLength:0) the live client reported.
+    mock = await startMockRealtimeServer({ port: 0 });
+    const litellmHttp = mock.url.replace(/^ws:/, "http:").replace(/\/v1\/realtime$/, "");
+    const booted = await bootRealtimeApp({
+      litellm: { baseUrl: litellmHttp } as unknown as LitellmClient,
+      masterKey: TEST_MASTER_KEY,
+      realtimeModel: TEST_REALTIME_MODEL,
+      backend: "litellm",
+      openaiRealtimeUrl: "wss://api.openai.com/v1/realtime",
+    });
+    app = booted.app;
+
+    const token = await signInFreshUser();
+    const ws = new WebSocket(`${booted.wsBase}/v1/realtime?intent=transcription`, {
+      headers: { authorization: `Bearer ${token}` },
+    });
+    await new Promise<void>((res, rej) => {
+      ws.once("open", () => res());
+      ws.once("error", rej);
+    });
+
+    await awaitFrame(ws, (f) => f.type === "transcription_session.created");
+
+    // The immutable client sends the FLAT Beta session.update payload —
+    // verbatim the shape from openwhispr/src/helpers/openaiRealtimeStreaming.js.
+    // If the relay forwards it flat (DEFECT 4) the GA-asserting mock closes
+    // 4400 and the awaited transcript frame never arrives.
+    ws.send(
+      JSON.stringify({
+        type: "transcription_session.update",
+        session: {
+          input_audio_format: "pcm16",
+          input_audio_transcription: { model: "gpt-4o-mini-transcribe" },
+          turn_detection: {
+            type: "server_vad",
+            threshold: 0.6,
+            silence_duration_ms: 600,
+            prefix_padding_ms: 500,
+          },
+        },
+      }),
+    );
+    await awaitFrame(ws, (f) => f.type === "transcription_session.updated");
+
+    // Stream real PCM16 audio (silence is fine — the mock counts bytes).
+    const pcmChunk = Buffer.alloc(24_000 * 2); // 1s of 24kHz 16-bit PCM.
+    ws.send(
+      JSON.stringify({ type: "input_audio_buffer.append", audio: pcmChunk.toString("base64") }),
+    );
+    // The client's explicit commit frame (disconnect path).
+    ws.send(JSON.stringify({ type: "input_audio_buffer.commit" }));
+
+    // The transcription RESULT must reach the client with a non-empty
+    // transcript — this is the resolution criterion.
+    const completed = await awaitFrame(
+      ws,
+      (f) => f.type === "conversation.item.input_audio_transcription.completed",
+    );
+    expect(completed.transcript).toBe(MOCK_TRANSCRIPT);
+    expect(typeof completed.transcript).toBe("string");
+    expect((completed.transcript as string).length).toBeGreaterThan(0);
+
+    ws.close();
+    await new Promise<void>((res) => ws.once("close", () => res()));
+  }, 60_000);
+
+  it("direct mode DATA PATH: append→commit yields a non-empty transcription result at the client", async () => {
+    mock = await startMockRealtimeServer({ port: 0 });
+    const booted = await bootRealtimeApp({
+      litellm: { baseUrl: "http://litellm.invalid:4000" } as unknown as LitellmClient,
+      masterKey: TEST_MASTER_KEY,
+      realtimeModel: TEST_REALTIME_MODEL,
+      backend: "direct",
+      openaiRealtimeUrl: mock.url,
+      openaiApiKey: "sk-direct-r31-test",
+    });
+    app = booted.app;
+
+    const token = await signInFreshUser();
+    const ws = new WebSocket(`${booted.wsBase}/v1/realtime?intent=transcription`, {
+      headers: { authorization: `Bearer ${token}` },
+    });
+    await new Promise<void>((res, rej) => {
+      ws.once("open", () => res());
+      ws.once("error", rej);
+    });
+
+    await awaitFrame(ws, (f) => f.type === "transcription_session.created");
+
+    ws.send(
+      JSON.stringify({
+        type: "transcription_session.update",
+        session: {
+          input_audio_format: "pcm16",
+          input_audio_transcription: { model: "gpt-4o-mini-transcribe" },
+          turn_detection: { type: "server_vad" },
+        },
+      }),
+    );
+    await awaitFrame(ws, (f) => f.type === "transcription_session.updated");
+
+    // Collect ALL data-path frames with a persistent listener — the mock
+    // emits committed→delta→completed back-to-back, so sequential
+    // awaitFrame calls would race (a frame can arrive between two awaits).
+    const dataFrames: Array<Record<string, unknown>> = [];
+    ws.on("message", (raw: RawData) => {
+      try {
+        dataFrames.push(JSON.parse(raw.toString()));
+      } catch {
+        /* ignore */
+      }
+    });
+
+    const pcmChunk = Buffer.alloc(24_000 * 2);
+    ws.send(
+      JSON.stringify({ type: "input_audio_buffer.append", audio: pcmChunk.toString("base64") }),
+    );
+    ws.send(JSON.stringify({ type: "input_audio_buffer.commit" }));
+
+    // Wait until the completed transcription result lands.
+    await awaitFrame(ws, (f) => f.type === "conversation.item.input_audio_transcription.completed");
+    const delta = dataFrames.find(
+      (f) => f.type === "conversation.item.input_audio_transcription.delta",
+    );
+    expect(delta).toBeDefined();
+    expect(typeof delta?.delta).toBe("string");
+    const completed = dataFrames.find(
+      (f) => f.type === "conversation.item.input_audio_transcription.completed",
+    );
+    expect(completed?.transcript).toBe(MOCK_TRANSCRIPT);
 
     ws.close();
     await new Promise<void>((res) => ws.once("close", () => res()));

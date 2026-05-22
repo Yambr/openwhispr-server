@@ -1,10 +1,72 @@
 ---
 status: resolved
-trigger: "R31 (client-filed blocker, reopened TWICE) — OpenAI Realtime via WSS /v1/realtime reverse-proxy fails with invalid_request_error.beta_api_shape_disabled in-band WS error event; transcription_session.created never arrives; WS closes 4000."
+trigger: "R31 (client-filed blocker, reopened THRICE) — control path fixed by fcea86f9 but data path not bridged: session opens, audio sent (134KB), zero transcription results back (segments:0, textLength:0), commit timeout."
 created: 2026-05-22T10:46:59Z
-updated: 2026-05-22T13:18:00Z
+updated: 2026-05-22T16:45:00Z
 resolved_commit: fcea86f9
 ---
+
+## RESOLVED 2026-05-22 (data-path round) — DEFECT 4 + DEFECT 5
+
+The data path is now bridged. Two more defects fixed on top of fcea86f9:
+
+- DEFECT 4 — `transcription_session.update` PAYLOAD was not restructured.
+  `translateClientToUpstream` renamed the frame but forwarded the FLAT
+  Beta `session` shape. GA requires the NESTED `audio.input.{format,
+  transcription,turn_detection}` shape with `format` an object
+  `{type:"audio/pcm",rate:24000}`. Fixed by a flat↔nested payload
+  transform (`betaToGaSessionPayload` / `gaToBetaSessionPayload` in
+  lib/realtime-frame-translate.ts), both directions.
+
+- DEFECT 5 — fcea86f9's "DEFECT 1" (strip `?intent=`) was MISDIAGNOSED.
+  `?intent=transcription` is NOT a retired Beta param. GA decides the
+  session TYPE at connect time: WITH `?intent=transcription` it opens a
+  transcription session; WITHOUT it (and with `?model=gpt-realtime`) it
+  opens a conversational realtime session that rejects the transcription
+  `session.update` with `invalid_parameter`. Fixed: the relay now FORCES
+  `?intent=transcription` and sends NO `?model=` in direct mode (the GA
+  transcription model is supplied in-band via `session.update.audio.input.
+  transcription.model`). `stripIntentParam` deleted.
+
+`input_audio_buffer.append`/`.commit` and the transcription RESULT events
+(`conversation.item.input_audio_transcription.delta/.completed`) are
+byte-identical Beta↔GA — they pass through untranslated, correctly.
+
+LIVE VERIFIED (twice, real OpenAI GA, REALTIME_BACKEND=direct default,
+real OPENAI_API_KEY): a real WS realtime session streamed 134144 bytes of
+real PCM16/24k speech ("The quick brown fox...") and received back
+  conversation.item.input_audio_transcription.completed
+  transcript: "The quick brown fox jumps over the lazy dog."
+segments:1, textLength:44 — the exact inverse of the reported symptom
+(segments:0, textLength:0, commit timeout).
+
+## REOPENED 2026-05-22 — THIRD LAYER (DEFECT 4: session.update payload shape)
+
+fcea86f9 translated only the 3 CONTROL frames (frame-type renames). It did
+NOT translate the `transcription_session.update` PAYLOAD. The immutable
+client sends the flat Beta shape:
+  session: { input_audio_format:"pcm16",
+             input_audio_transcription:{model},
+             turn_detection:{type:"server_vad",...} }
+`translateClientToUpstream` renamed the frame to `session.update` and
+injected `session.type:"transcription"` but left the payload FLAT. GA
+rejects the flat shape ("Invalid type for 'session.audio.input.format':
+expected an object"). GA requires the NESTED shape:
+  session: { type:"transcription",
+             audio:{ input:{
+               format:{type:"audio/pcm",rate:24000},
+               transcription:{model,language?},
+               turn_detection:{...} } } }
+Session.update silently fails -> GA never configures transcription ->
+audio appended but no transcription -> segments:0, commit timeout.
+
+`input_audio_buffer.append` / `.commit` are IDENTICAL Beta vs GA — pass
+through fine. `conversation.item.input_audio_transcription.delta/.completed`
+are IDENTICAL Beta vs GA — pass through fine. The ONLY data-path defect is
+the `session.update` payload restructuring. Fix = a payload transform in
+`translateClientToUpstream`, both backends, plus the inverse on
+`session.updated` so the client's (non-preconfigured) `transcription_session.
+updated` consumer still works.
 
 ## RESOLUTION (2026-05-22, commit fcea86f9)
 
@@ -154,3 +216,28 @@ fix: |
 
 verification:
 files_changed: []
+
+## LIVE-RUN FINDING 2026-05-22 — DEFECT 1 WAS MISDIAGNOSED (the FIFTH layer)
+
+Live run against real OpenAI GA (direct backend, real OPENAI_API_KEY,
+real 134144-byte PCM16/24k speech "The quick brown fox..."):
+  WS opened
+  <- transcription_session.created
+  <- ERROR invalid_request_error.invalid_parameter
+     "Passing a transcription session update event to a realtime
+      session is not allowed."
+
+ROOT CAUSE (corrected): GA decides session TYPE at connect time.
+`?intent=transcription` opens a TRANSCRIPTION session; its absence (plus
+`?model=gpt-realtime`) opens a conversational REALTIME session. fcea86f9
+stripped `?intent=` (its "DEFECT 1") AND forced `?model=gpt-realtime` —
+so GA opened a REALTIME session, then rejected the transcription
+`session.update`. GA STILL uses `wss://api.openai.com/v1/realtime?intent=
+transcription` for transcription sessions (verified: OpenAI GA docs +
+live run). The original `beta_api_shape_disabled` was caused ONLY by the
+`OpenAI-Beta` header, never by `?intent=`.
+
+FIX (corrected): in `direct` mode KEEP `?intent=transcription` on the
+upstream URL and DO NOT force `?model=` (a transcription session takes
+its model from `session.update.audio.input.transcription.model`).
+`stripIntentParam` must NOT strip intent for the GA transcription path.
