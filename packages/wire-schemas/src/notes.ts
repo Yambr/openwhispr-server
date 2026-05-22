@@ -13,8 +13,13 @@
  * Phase 39 — HIGH sweep: `.strict()` on NoteInput, tightened primitives
  * on CloudNote (UUID + ISO-8601 datetime), bounded long-text fields,
  * symmetrical `note_type` enum, non-neg integer counts, `0|1` boolean-ish.
+ *
+ * R35 (quick-task 20260522) — INPUT `created_at`/`updated_at` accept the
+ * SQLite space form via the lenient `INPUT_DATETIME`. `CloudNoteSchema`
+ * (RESPONSE) stays strict RFC-3339.
  */
 import { z } from "zod";
+import { INPUT_DATETIME } from "./input-datetime.js";
 
 export const NoteTypeSchema = z.enum(["personal", "meeting", "upload"]);
 export type NoteType = z.infer<typeof NoteTypeSchema>;
@@ -52,8 +57,8 @@ export const NoteInputSchema = z
     transcript: z.string().max(TRANSCRIPT_MAX).nullable().optional(),
     enhanced_at_content_hash: z.string().max(HASH_MAX).nullable().optional(),
     folder_id: z.string().max(SHORT_TEXT).nullable().optional(),
-    created_at: ISO_DATETIME.optional(),
-    updated_at: ISO_DATETIME.optional(),
+    created_at: INPUT_DATETIME.optional(),
+    updated_at: INPUT_DATETIME.optional(),
   })
   .strict();
 export type NoteInput = z.infer<typeof NoteInputSchema>;

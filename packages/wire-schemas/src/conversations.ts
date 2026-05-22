@@ -6,8 +6,13 @@
  * Phase 39 — HIGH sweep: `.strict()` on inputs (incl. nested messages),
  * UUID + ISO-8601 on output, bounded message content + metadata (max 4 KB
  * stringified, bounded keys + scalar values).
+ *
+ * R35 (quick-task 20260522) — INPUT `created_at`/`updated_at` accept the
+ * SQLite space form via the lenient `INPUT_DATETIME`. The Cloud* RESPONSE
+ * schemas stay strict RFC-3339.
  */
 import { z } from "zod";
+import { INPUT_DATETIME } from "./input-datetime.js";
 
 const ISO_DATETIME = z.string().datetime({ offset: true });
 const UUID = z.string().uuid();
@@ -36,8 +41,8 @@ export const ConversationInputSchema = z
   .object({
     client_conversation_id: CLIENT_ID.optional(),
     title: z.string().max(TITLE_MAX).optional(),
-    created_at: ISO_DATETIME.optional(),
-    updated_at: ISO_DATETIME.optional(),
+    created_at: INPUT_DATETIME.optional(),
+    updated_at: INPUT_DATETIME.optional(),
     messages: z
       .array(
         z
