@@ -12,6 +12,7 @@
 import { SttConfigResponseSchema } from "@openwhispr/wire-schemas";
 import Fastify, { type FastifyInstance } from "fastify";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { loadSttSettingsConfigFromEnv } from "../../../../src/config/stt-settings.js";
 import { registerErrorHandler } from "../../../../src/error-handler.js";
 import { zodTypeProvider } from "../../../../src/plugins/zod-type-provider.js";
 import { buildSttConfigRoutes } from "../../../../src/routes/stt-config.js";
@@ -72,9 +73,13 @@ function makeFakeDb(opts: FakeDbOpts = {}): {
   return { db, recorded };
 }
 
+// AUDIT-LIB-02 — the route now consumes a resolved `sttSettingsConfig`
+// (env-default tier) injected as a dependency. `buildApp` resolves it from
+// an optional env snapshot via the same `config/` loader production uses,
+// so the tests exercise real env validation without mutating `process.env`.
 function buildApp(
-  deps: Parameters<typeof buildSttConfigRoutes>[0],
-  opts?: { authed?: boolean },
+  deps: { db: Parameters<typeof buildSttConfigRoutes>[0]["db"] },
+  opts?: { authed?: boolean; env?: Record<string, string> },
 ): FastifyInstance {
   const app = Fastify({ logger: false });
   registerErrorHandler(app);
@@ -85,7 +90,12 @@ function buildApp(
       req.tenant = TEST_TENANT;
     });
   }
-  app.register(buildSttConfigRoutes(deps));
+  app.register(
+    buildSttConfigRoutes({
+      db: deps.db,
+      sttSettingsConfig: loadSttSettingsConfigFromEnv((opts?.env ?? {}) as NodeJS.ProcessEnv),
+    }),
+  );
   return app;
 }
 
@@ -161,28 +171,31 @@ describe("GET /api/stt-config", () => {
     expect(params).toContain(TEST_USER);
   });
 
-  it("user override wins over tenant + env in the rendered response", async () => {
-    process.env.STT_DEFAULT_MODEL = "whisper-1";
+  it("user override wins over tenant + config-tier env in the rendered response", async () => {
     const { db } = makeFakeDb({
       tenantStt: { defaultModel: "large-v3" },
       userStt: { defaultModel: "tiny" },
     });
-    app = buildApp({ db });
+    app = buildApp({ db }, { env: { STT_DEFAULT_MODEL: "whisper-1" } });
     const res = await app.inject({ method: "GET", url: "/api/stt-config" });
     expect(res.statusCode).toBe(200);
     const parsed = SttConfigResponseSchema.parse(res.json());
     expect(parsed.defaultModel).toBe("tiny");
   });
 
-  it("availableProviders reflects per-request env at response time (D-19)", async () => {
-    const { db } = makeFakeDb();
-    app = buildApp({ db });
-    // First call: no provider keys -> empty list.
+  it("availableProviders reflects the provider keys resolved at boot (D-19)", async () => {
+    // AUDIT-LIB-02 — provider-key presence is resolved once at the config
+    // boundary (LOCKER-01) and threaded in. In the Docker deployment model
+    // process env is fixed for a container's lifetime, so boot-time
+    // resolution is equivalent to the former per-request read.
+    const { db: emptyDb } = makeFakeDb();
+    app = buildApp({ db: emptyDb });
     let res = await app.inject({ method: "GET", url: "/api/stt-config" });
     expect(SttConfigResponseSchema.parse(res.json()).availableProviders).toEqual([]);
-    // Set env keys WITHOUT touching settings tables.
-    process.env.OPENAI_API_KEY = "sk-x";
-    process.env.GROQ_API_KEY = "gsk-x";
+    await app.close();
+
+    const { db: keyedDb } = makeFakeDb();
+    app = buildApp({ db: keyedDb }, { env: { OPENAI_API_KEY: "sk-x", GROQ_API_KEY: "gsk-x" } });
     res = await app.inject({ method: "GET", url: "/api/stt-config" });
     expect(SttConfigResponseSchema.parse(res.json()).availableProviders).toEqual([
       "openai",

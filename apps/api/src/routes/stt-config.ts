@@ -29,11 +29,18 @@
 
 import { type ExecutableTx, type TransactionalDb, withTenant } from "@openwhispr/data";
 import type { FastifyInstance } from "fastify";
+import type { SttSettingsConfig } from "../config/stt-settings.js";
 import { AuthError } from "../errors.js";
 import { resolveSttConfig } from "../lib/settings-resolver.js";
 
 export interface SttConfigDeps {
   db: TransactionalDb<ExecutableTx>;
+  /**
+   * AUDIT-LIB-02 — env-default tier of the settings chain, resolved at
+   * the `index.ts` env boundary via `loadSttSettingsConfigFromEnv()`.
+   * The route no longer reads `process.env`.
+   */
+  sttSettingsConfig: SttSettingsConfig;
 }
 
 export const buildSttConfigRoutes = (deps: SttConfigDeps) =>
@@ -50,7 +57,7 @@ export const buildSttConfigRoutes = (deps: SttConfigDeps) =>
         const tenantId = req.tenant;
         const userId = req.user.id;
         const body = await withTenant(deps.db, tenantId, (tx) =>
-          resolveSttConfig(tx, tenantId, userId),
+          resolveSttConfig(tx, tenantId, userId, deps.sttSettingsConfig),
         );
         return reply.code(200).send(body);
       },

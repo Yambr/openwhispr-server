@@ -7,7 +7,8 @@
 
 import { NoteRecordingConfigResponseSchema } from "@openwhispr/wire-schemas";
 import Fastify, { type FastifyInstance } from "fastify";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
+import { loadSttSettingsConfigFromEnv } from "../../../../src/config/stt-settings.js";
 import { registerErrorHandler } from "../../../../src/error-handler.js";
 import { zodTypeProvider } from "../../../../src/plugins/zod-type-provider.js";
 import { buildNoteRecordingConfigRoutes } from "../../../../src/routes/note-recording-config.js";
@@ -68,9 +69,12 @@ function makeFakeDb(opts: FakeDbOpts = {}): {
   return { db, recorded };
 }
 
+// AUDIT-LIB-02 — the route consumes a resolved `sttSettingsConfig`
+// (env-default tier) injected as a dependency. `buildApp` resolves it from
+// an optional env snapshot via the same `config/` loader production uses.
 function buildApp(
-  deps: Parameters<typeof buildNoteRecordingConfigRoutes>[0],
-  opts?: { authed?: boolean },
+  deps: { db: Parameters<typeof buildNoteRecordingConfigRoutes>[0]["db"] },
+  opts?: { authed?: boolean; env?: Record<string, string> },
 ): FastifyInstance {
   const app = Fastify({ logger: false });
   registerErrorHandler(app);
@@ -81,35 +85,14 @@ function buildApp(
       req.tenant = TEST_TENANT;
     });
   }
-  app.register(buildNoteRecordingConfigRoutes(deps));
+  app.register(
+    buildNoteRecordingConfigRoutes({
+      db: deps.db,
+      sttSettingsConfig: loadSttSettingsConfigFromEnv((opts?.env ?? {}) as NodeJS.ProcessEnv),
+    }),
+  );
   return app;
 }
-
-const ENV_KEYS = [
-  "NOTE_RECORDING_MAX_DURATION_SECONDS",
-  "NOTE_RECORDING_SAMPLE_RATE_HZ",
-  "NOTE_RECORDING_ALLOWED_FORMATS",
-  "NOTE_RECORDING_DIARIZATION_ENABLED",
-] as const;
-const SNAPSHOT: Record<string, string | undefined> = {};
-
-beforeEach(() => {
-  for (const k of ENV_KEYS) {
-    SNAPSHOT[k] = process.env[k];
-    delete process.env[k];
-  }
-});
-
-afterEach(() => {
-  for (const k of ENV_KEYS) {
-    if (SNAPSHOT[k] === undefined) {
-      delete process.env[k];
-    } else {
-      process.env[k] = SNAPSHOT[k];
-    }
-    delete SNAPSHOT[k];
-  }
-});
 
 describe("GET /api/note-recording-config", () => {
   let app: FastifyInstance | undefined;
@@ -164,13 +147,12 @@ describe("GET /api/note-recording-config", () => {
     expect(params).toContain(TEST_USER);
   });
 
-  it("user override wins over tenant + env in the rendered response", async () => {
-    process.env.NOTE_RECORDING_MAX_DURATION_SECONDS = "7200";
+  it("user override wins over tenant + config-tier env in the rendered response", async () => {
     const { db } = makeFakeDb({
       tenantNote: { maxDurationSeconds: 3600, diarizationEnabled: false },
       userNote: { maxDurationSeconds: 600 },
     });
-    app = buildApp({ db });
+    app = buildApp({ db }, { env: { NOTE_RECORDING_MAX_DURATION_SECONDS: "7200" } });
     const res = await app.inject({
       method: "GET",
       url: "/api/note-recording-config",
@@ -183,10 +165,9 @@ describe("GET /api/note-recording-config", () => {
     expect(parsed.diarizationEnabled).toBe(false);
   });
 
-  it("env NOTE_RECORDING_DIARIZATION_ENABLED='false' disables diarization", async () => {
-    process.env.NOTE_RECORDING_DIARIZATION_ENABLED = "false";
+  it("config NOTE_RECORDING_DIARIZATION_ENABLED='false' disables diarization", async () => {
     const { db } = makeFakeDb();
-    app = buildApp({ db });
+    app = buildApp({ db }, { env: { NOTE_RECORDING_DIARIZATION_ENABLED: "false" } });
     const res = await app.inject({
       method: "GET",
       url: "/api/note-recording-config",
@@ -195,10 +176,9 @@ describe("GET /api/note-recording-config", () => {
     expect(parsed.diarizationEnabled).toBe(false);
   });
 
-  it("env NOTE_RECORDING_ALLOWED_FORMATS comma-splits / trims", async () => {
-    process.env.NOTE_RECORDING_ALLOWED_FORMATS = "wav,mp3, flac";
+  it("config NOTE_RECORDING_ALLOWED_FORMATS comma-splits / trims", async () => {
     const { db } = makeFakeDb();
-    app = buildApp({ db });
+    app = buildApp({ db }, { env: { NOTE_RECORDING_ALLOWED_FORMATS: "wav,mp3, flac" } });
     const res = await app.inject({
       method: "GET",
       url: "/api/note-recording-config",
