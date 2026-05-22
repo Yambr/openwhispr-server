@@ -107,6 +107,19 @@
 //     client header onto the upstream leg — the upstream header set is
 //     constructed from scratch (credential + spend-logs metadata only),
 //     so a client `OpenAI-Beta` header cannot reach the upstream.
+//
+// ─── T-03-07 close-behavior refinement ─────────────────────────────────
+// On an upstream WS-handshake REJECTION the upstream `ws` client emits
+// `unexpected-response` carrying the HTTP response. The relay reads
+// `res.statusCode` and closes the desktop client with a MEANINGFUL wire
+// close code via the pure `mapUpstreamStatusToCloseCode` mapper (401/403
+// → 1008, 429 → 1013, other → 1011) instead of the previous flat 1011.
+// The 1008/1011/1013 codes are passed straight to `clientSocket.close`
+// (NOT routed through `safeCode`, which only admits 1000-1003 + 3000-4999
+// and would clobber 1008/1013 → 1011). The reason strings are fixed per
+// class and never derived from the upstream body. The generic
+// `on("error")` 1011 fallback is retained for non-handshake errors.
+//
 //   * T-03-07-07 (R31 — frame-parse attack surface): this relay PARSES
 //     in-band WS frames (it is no longer payload-opaque — the T-03-07
 //     transparent-passthrough posture is DELIBERATELY AMENDED here, and
@@ -125,6 +138,7 @@ import type { FastifyInstance, FastifyRequest } from "fastify";
 import { type RawData, WebSocket } from "ws";
 import type { RealtimeBackend } from "../config/realtime.js";
 import { AuthError } from "../errors.js";
+import { mapUpstreamStatusToCloseCode } from "../lib/realtime-close-code.js";
 import {
   buildRelaySessionUpdateFrame,
   parseRealtimeFrame,
@@ -449,12 +463,37 @@ export function bridgeRealtimeSockets(
     if (clientSocket.readyState === WebSocket.OPEN) {
       // Surface the upstream failure in-band before tearing down so the
       // desktop client sees a definitive close rather than a silent drop.
+      // Generic non-handshake fallback — the `unexpected-response` handler
+      // below owns the meaningful per-class close codes for handshake
+      // rejections (T-03-07 close-behavior refinement).
       try {
         clientSocket.close(1011, "realtime upstream error");
       } catch {
         clientSocket.terminate();
       }
     }
+  });
+
+  // T-03-07 close-behavior refinement — the `ws` client emits
+  // `unexpected-response` when the upstream REJECTS the WS handshake with
+  // an HTTP response. Map `res.statusCode` to a meaningful client-facing
+  // WS close code so the desktop client can distinguish a 401 (bad key)
+  // from a 503 (down) from a 429 (rate-limited). The mapped 1008/1011/1013
+  // codes are passed DIRECTLY to `clientSocket.close` — they are valid
+  // wire codes but fall outside `safeCode`'s 1000-1003 + 3000-4999 window,
+  // so routing them through `closeBoth`/`safeCode` would clobber them.
+  upstreamSocket.on("unexpected-response", (_req, res) => {
+    const { code, reason } = mapUpstreamStatusToCloseCode(res.statusCode ?? 0);
+    if (clientSocket.readyState === WebSocket.OPEN) {
+      try {
+        clientSocket.close(code, reason);
+      } catch {
+        clientSocket.terminate();
+      }
+    }
+    // Tear down the upstream leg itself — a rejected handshake leaves the
+    // upstream `ws` client in a non-OPEN state with no close frame to send.
+    upstreamSocket.terminate();
   });
 }
 

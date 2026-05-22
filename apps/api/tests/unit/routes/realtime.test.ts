@@ -94,6 +94,36 @@ async function startUpstream(): Promise<{
   return { httpUrl: `http://127.0.0.1:${port}`, close, capture, upgraded, received };
 }
 
+/**
+ * Stand up an HTTP server on a random localhost port that REJECTS every
+ * WS upgrade with a fixed HTTP status. The relay's upstream `ws` client
+ * sees this as an `unexpected-response` event (T-03-07 close-behavior
+ * refinement) — used to assert the per-class client close code.
+ */
+async function startRejectingUpstream(status: number): Promise<{
+  httpUrl: string;
+  close: () => Promise<void>;
+}> {
+  const http = createServer((_req, res) => {
+    res.statusCode = status;
+    res.end("upstream rejected");
+  });
+  // Reject the raw upgrade with the same status — `ws` surfaces a
+  // non-101 upgrade response as `unexpected-response`.
+  http.on("upgrade", (_req, socket) => {
+    socket.write(`HTTP/1.1 ${status} Rejected\r\nConnection: close\r\nContent-Length: 0\r\n\r\n`);
+    socket.destroy();
+  });
+  await new Promise<void>((res) => {
+    http.listen(0, "127.0.0.1", () => res());
+  });
+  const port = (http.address() as AddressInfo).port;
+  const close = async () => {
+    await new Promise<void>((res) => http.close(() => res()));
+  };
+  return { httpUrl: `http://127.0.0.1:${port}`, close };
+}
+
 /** Build a Fastify app with the realtime relay mounted. */
 async function buildApp(opts: {
   deps: Partial<RealtimeDeps> & { litellm: LitellmClient };
@@ -402,4 +432,30 @@ describe("WSS /v1/realtime route — relay behaviour", () => {
     ws.close();
     await new Promise<void>((res) => ws.once("close", () => res()));
   });
+
+  // T-03-07 close-behavior refinement — an upstream WS-handshake rejection
+  // closes the desktop client with a MEANINGFUL per-class close code.
+  for (const { status, expectedCode, expectedReason } of [
+    { status: 401, expectedCode: 1008, expectedReason: "realtime upstream unauthorized" },
+    { status: 503, expectedCode: 1011, expectedReason: "realtime upstream unavailable" },
+    { status: 429, expectedCode: 1013, expectedReason: "realtime upstream rate limited" },
+  ]) {
+    it(`upstream handshake ${status} -> client close ${expectedCode} ("${expectedReason}")`, async () => {
+      const rejecting = await startRejectingUpstream(status);
+      app = await buildApp({
+        deps: { litellm: { baseUrl: rejecting.httpUrl } as unknown as LitellmClient },
+      });
+      await app.listen({ port: 0, host: "127.0.0.1" });
+      const port = (app.server.address() as AddressInfo).port;
+
+      const ws = new WebSocket(`ws://127.0.0.1:${port}/v1/realtime?intent=transcription`);
+      const { code, reason } = await new Promise<{ code: number; reason: string }>((resolve) => {
+        ws.once("close", (c, r) => resolve({ code: c, reason: r.toString() }));
+      });
+      expect(code).toBe(expectedCode);
+      expect(reason).toBe(expectedReason);
+
+      await rejecting.close();
+    });
+  }
 });
