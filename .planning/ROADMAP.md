@@ -154,6 +154,41 @@ v2.4 phases cover only the net-new findings + the publish-pipeline stages. Work-
   GitHub-standard README with UI screenshots + purpose explanation; release tag. Gated on
   57-61 all green.
 
+### Closed inserted phases — checklist reconciliation (added 2026-05-22)
+
+These inserted phases (02.x / 01.2 / 06.1 / 18.1.x cascades) were tracked only via `### Phase`
+detail sections and never received a top-level checklist entry — `gsd-sdk roadmap.analyze`
+therefore read them as incomplete and picked stale `02.4` as `current`. Each entry below is
+verified CLOSED against disk (`.planning/phases/<n>-*/...-SUMMARY.md` present) — this reconciles
+the checklist with reality, no work re-opened.
+
+- [x] **Phase 01.2: Fix postgres init env passthrough** — CLOSED (SUMMARY on disk)
+- [x] **Phase 02.1: Fix apps/api/Dockerfile pnpm v10 deploy** — CLOSED (SUMMARY on disk)
+- [x] **Phase 02.2: Externalize pg native module from api tsup bundle** — CLOSED (SUMMARY on disk)
+- [x] **Phase 02.3: Add seed compose service for contract-test** — CLOSED (SUMMARY on disk)
+- [x] **Phase 02.4: Backfill TDD coverage for Phase 02.x cascade** — CLOSED (parent SUMMARY; plans 03/06 aggregated)
+- [x] **Phase 02.5: Better Auth drizzle schema** — CLOSED (5/5 plans+summaries)
+- [x] **Phase 02.6: Fix apps/api/src/index.ts entrypoint** — CLOSED (SUMMARY on disk)
+- [x] **Phase 02.7: Phase 02 contract-test conformance gaps** — CLOSED (7 plans / 8 summaries)
+- [x] **Phase 02.8: Better Auth ID type vs Postgres uuid mismatch** — CLOSED (SUMMARY on disk)
+- [x] **Phase 02.9: Better Auth email-validator rejects @local fixtures** — CLOSED (SUMMARY on disk)
+- [x] **Phase 02.10: Group A — signInFixture Origin header** — CLOSED (SUMMARY on disk)
+- [x] **Phase 02.12: Better Auth session.token field** — CLOSED (SUMMARY on disk)
+- [x] **Phase 02.13: OIDC env provisioning for contract-test profile** — CLOSED (SUMMARY on disk)
+- [x] **Phase 02.14: Group E — host-side contract-test runner DNS** — CLOSED (SUMMARY on disk)
+- [x] **Phase 02.15: Group G — api 302 ECONNREFUSED in-cluster** — CLOSED (SUMMARY on disk)
+- [x] **Phase 02.16: Group H — api OAuth callback completion 500** — CLOSED (SUMMARY on disk)
+- [x] **Phase 02.17: Group E variant — mycorp-whispr scheme test** — CLOSED (SUMMARY on disk)
+- [x] **Phase 02.18: Group F — Better Auth rate-limiter client IP** — CLOSED (SUMMARY on disk)
+- [x] **Phase 02.19: Group F E2E closure — Traefik forwardedHeaders** — CLOSED (SUMMARY on disk)
+- [x] **Phase 02.20: Group I — verification-status unverified-user test** — CLOSED (SUMMARY on disk)
+- [x] **Phase 02.21: Group C residuals — 3 pre-existing carries** — CLOSED (SUMMARY on disk)
+- [x] **Phase 02.22: TLS bootstrap two-tier CA chain** — CLOSED 2026-05-11 (pre-disk-tracking; detail section)
+- [x] **Phase 06.1: tempo + mimir minimal filesystem-backed configs** — CLOSED (SUMMARY on disk)
+- [x] **Phase 18.1: v2 test-debt closure** — CLOSED (7/7 plans+summaries)
+- [x] **Phase 18.1.1: aggregate-sweep test debt + UICONF drift closure** — CLOSED (6/6 plans+summaries)
+- [x] **Phase 18.1.2: infrastructure-bound test debt** — CLOSED (6/6 plans+summaries)
+
 ## Phase Details
 
 ### Phase 0: Repo Bootstrap & Constitutional CI
@@ -1300,6 +1335,81 @@ Coverage: 11/11 vitest for `maybeLocalizeBetterAuthError` + 6/6 vitest for the @
   7. **41.g** small-pkgs: `@openwhispr/i18n` ships real en/ru locale bundles OR is renamed to `-stub` with `private: true` (decision after verifying Phase 10's full-i18n coverage already lives elsewhere); CI parity test between `byok-guard` provider list and `observability/redact` provider list (drift = test failure); `EmailSender.ts:115` `SMTP_SECURE` parser accepts `1`/`true`/`yes`/`on` case-insensitive (closes silent TLS downgrade). All seven sub-plans GREEN at ≥ 90/90/90/90 coverage per diff; passes Phase 31 lockers; E2E (per DISCIPLINE Rule 3) for each user-visible route touched; audit trail complete per DISCIPLINE Rule 10.
 **Plans**: TBD via `/gsd-plan-phase 41` (seven sub-plans 41.a..41.g — one per package scope; can parallelize within the phase per gsd-executor wave logic).
 **UI hint**: no
+
+### Phase 57: Audit security + CI-blocker fixes (v2.4)
+**Goal**: The five highest-priority audit findings — one security hole and four CI-blockers — are closed under strict TDD, restoring a green CI baseline before any OSS publish work proceeds.
+**Depends on**: nothing — runs first in v2.4.
+**Requirements**: AUDIT-SEC-01, AUDIT-CI-01, AUDIT-CI-02, AUDIT-CI-03, AUDIT-CI-04
+**Success Criteria** (what must be TRUE):
+  1. **AUDIT-SEC-01**: `apps/api/src/lib/token-rotation.ts` previous-token lookup executes against a BYPASSRLS owner pool (or a restored SECURITY DEFINER function), so the AUTH-04 5-minute bearer overlap window works. Stale comment at `token-rotation.ts:116-119` corrected. RED characterization test boots `buildApp` + real Postgres, drives force-rotate → old-token-still-admitted within the window.
+  2. **AUDIT-CI-01**: `pnpm --filter @openwhispr/api exec tsc --noEmit` exits 0 — TS2322 (`routes/index.ts` `FastifyPluginAsync`/`RoutePlugin`) and TS2339 (`tokens/assemblyai.ts` + `tokens/deepgram.ts` `.message` on a union arm) resolved.
+  3. **AUDIT-CI-02**: `plan-52-06-stream-zod-drift.test.ts` passes — the obsolete `translate-tools.ts` regex assertion is updated or removed.
+  4. **AUDIT-CI-03**: `make e2e-test` reaches the first test body — `compose-helper.ts` passes the contract-test overlay so the `seed` service resolves.
+  5. **AUDIT-CI-04**: the worker-RLS property test is re-enabled as `describe.skipIf(dockerUnavailable)` (no hard `test.skip`).
+  6. All diffs ≥ 90/90/90/90 coverage; audit trail complete per DISCIPLINE Rule 10.
+**Plans**: TBD via `/gsd-plan-phase 57`.
+**UI hint**: no
+
+### Phase 58: Audit hardening + library adoption (v2.4)
+**Goal**: Mechanical hardening and reinvented-wheel findings from the audit are closed — auth-route throttling, bounded IP store, dead-config removal, and Zod/AbortSignal library adoption — each TDD-paired.
+**Depends on**: Phase 57.
+**Requirements**: AUDIT-HARD-01..05, AUDIT-LIB-01..03, AUDIT-DOC-01
+**Success Criteria** (what must be TRUE):
+  1. `app.all('/api/auth/*')` carries an explicit per-route `config.rateLimit` tighter than the global IP floor (AUDIT-HARD-01).
+  2. `inProcessIpStore()` uses `lru-cache` with bounded `{max, ttl}` — no unbounded `Map` (AUDIT-HARD-02).
+  3. `encryption/backfill.ts` `for(;;)` loop has a safety iteration cap (AUDIT-HARD-03).
+  4. `mailpit` in `docker-compose.yml` carries `profiles: [dev]` (AUDIT-HARD-04); dead `NEXT_PUBLIC_OIDC_PROVIDERS` removed from compose + example env (AUDIT-HARD-05).
+  5. The 5 positive-int env parsers unify on one Zod helper (AUDIT-LIB-01); `lib/settings-resolver.ts` env reads move to a Zod `config/stt-settings.ts` (AUDIT-LIB-02); `drainWithTimeout` + `_call-provider.ts` timer use `AbortSignal.timeout()` (AUDIT-LIB-03).
+  6. `EMAIL_FALLBACK_NONFATAL` documented in `.env.*.example` (AUDIT-DOC-01).
+  7. All diffs ≥ 90/90/90/90 coverage; audit trail complete.
+**Plans**: TBD via `/gsd-plan-phase 58`.
+**UI hint**: no
+
+### Phase 59: Documentation truth pass (v2.4)
+**Goal**: Every one of the 15 verified doc-vs-code lies is corrected and the docs are swept OSS-ready; 5 stale TECH_DEBT.md entries are pruned.
+**Depends on**: Phase 58 (some fixes change behavior the docs describe).
+**Requirements**: AUDIT-DOCS-01
+**Success Criteria** (what must be TRUE):
+  1. README quickstart uses the correct Traefik URLs, fixture name (`sample-1s.wav`), response field (`duration`), `/readyz` shape, and landing route; test counts refreshed.
+  2. `litellm-target-spec.md`, `architecture.md`, `CONTRIBUTING.md`, `security.md`, `observability.md`, `wire-contracts-phase-3.md` corrected per AUDIT-FINDINGS DOC-1..19.
+  3. 5 stale TECH_DEBT.md entries (verified already-resolved) removed.
+  4. Doc-only — verified against code; no test gate, but every claim re-checked.
+**Plans**: TBD via `/gsd-plan-phase 59`.
+**UI hint**: no
+
+### Phase 60: CI builds + smoke tests for OSS publish (v2.4)
+**Goal**: GitHub Actions release-build workflow producing multi-arch images plus a smoke-test job booting the embedded-litellm stack, with cross-references wired to the upstream `openwhispr` Electron client.
+**Depends on**: Phase 57 (green CI baseline).
+**Requirements**: (v2.4 publish-pipeline)
+**Success Criteria** (what must be TRUE):
+  1. A release workflow builds api/web/worker multi-arch (amd64+arm64) images.
+  2. A smoke-test CI job boots `compose/docker-compose.embedded-litellm.yml` and round-trips sign-up + `/api/transcribe`.
+  3. README + repo metadata cross-reference the upstream `openwhispr` desktop client.
+**Plans**: TBD via `/gsd-plan-phase 60`.
+**UI hint**: no
+
+### Phase 61: Load tests for publish (v2.4)
+**Goal**: The k6 load profiles are built and run (mock plateau + paid smoke per cost-discipline), with results published into `docs/operations.md`.
+**Depends on**: Phase 57, Phase 60.
+**Requirements**: (v2.4 publish-pipeline)
+**Success Criteria** (what must be TRUE):
+  1. `make load-test PROFILE=mock` runs a plateau and produces a results artifact.
+  2. Paid providers receive smoke-only (≤5 VU × ≤60s) per the loadtest-cost-discipline rule.
+  3. `docs/operations.md` SLO tables updated with the run numbers.
+**Plans**: TBD via `/gsd-plan-phase 61`.
+**UI hint**: no
+
+### Phase 62: OSS publish (v2.4)
+**Goal**: The project is published — first-ever public push to `github.com/Yambr/openwhispr-server` with a GitHub-standard README (UI screenshots + purpose explanation) and a release tag.
+**Depends on**: Phases 57, 58, 59, 60, 61 all green.
+**Requirements**: (v2.4 publish-pipeline)
+**Success Criteria** (what must be TRUE):
+  1. Full project history pushed to the GitHub remote.
+  2. README rewritten to GitHub-standard: purpose, screenshots of the web UI, quickstart, badges.
+  3. A release tag is cut.
+**Plans**: TBD via `/gsd-plan-phase 62`.
+**UI hint**: yes
+
 ### Phase 21: Anti-shortcut Locker Infrastructure (v2.1 — CRITICAL)
 **Goal**: Make all subsequent Phase 22..39 work safe from agent shortcuts. Ship 5 new linters that the pre-commit hook, CI, and branch-protection refuse to merge without. After this phase, no agent can introduce `.skip`/`.only` Gherkin, `retries > 0` in any playwright.config.ts, a `*.steps.ts` without a sibling `__tests__/*.test.ts`, a `[test-fix]`-labelled PR that touches production source, or per-phase coverage below 90/90/90/90 on strict packages.
 **Depends on**: nothing — must land first.

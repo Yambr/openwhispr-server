@@ -1,10 +1,10 @@
 ---
 gsd_state_version: 1.0
-milestone: v2.3
-milestone_name: — Cross-repo client contract conformance
-status: Pending discuss-phase 19.3
-last_updated: "2026-05-21T00:28:09.792Z"
-last_activity: "2026-05-16 — Phase 19.2 CLOSED with SERVER-ERRORS Entry 11 cascade resolved through 3 production layers (client query-param + multipart-injection + LiteLLM config `groq/` prefix). 7 commits: `8680485` / `e80b047` / `c2a5e79` / `1f60ff0` / `c5112d9` / `9e1db63` / `c4a49d6`. `@cjm-4.1` GREEN end-to-end (1.8s). Earlier 2026-05-16 — Phase 19.1 CLOSED + Phase 19a CLOSED + Phase 19b CLOSED. ROADMAP entries still pending for 19.3 (ba-i18n @cjm-1.4) and 19.4 (locale-e2e @cjm-6.1)."
+milestone: v2.4
+milestone_name: — OSS-Publish Readiness
+status: Pending discuss-phase 57
+last_updated: "2026-05-22T16:30:00.000Z"
+last_activity: "2026-05-22 — v2.4 OSS-Publish milestone opened. Deep audit complete (3 research waves + 1 verification wave): 45 raw findings → 27 confirmed fixable (HACK-C1 verified already-fixed). 16 net-new REQ-IDs appended to REQUIREMENTS.md; phases 57-62 appended to ROADMAP.md. Findings overlapping open phases 15/16/41/53 fold into those. Audit report at .planning/audit-v2.4/AUDIT-FINDINGS.md. Next: discuss-phase 57 (security + CI-blocker fixes)."
 progress:
   total_phases: 72
   completed_phases: 27
