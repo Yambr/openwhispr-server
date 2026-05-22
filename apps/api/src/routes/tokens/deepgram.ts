@@ -22,8 +22,25 @@ import { parseTtlSeconds } from "./_parse-ttl.js";
 /** Default token TTL in seconds when DEEPGRAM_TOKEN_TTL is not set. */
 const DEFAULT_TTL_SECONDS = 30;
 
-export const buildDeepgramTokenRoutes = () =>
+/**
+ * Bundled-default Deepgram Grant Token endpoint. Stays a literal ONLY as
+ * the fallback when no operator-owned `DEEPGRAM_TOKEN_URL` is injected
+ * (test isolation / a deployment that never set the env var). Production
+ * threads the operator value from `index.ts` (the env-reading boundary —
+ * LOCKER-01) via the route factory's `tokenUrl` option — no `process.env`
+ * read in this route file.
+ */
+const DEFAULT_TOKEN_URL = "https://api.deepgram.com/v1/auth/grant";
+
+/**
+ * Route factory options. `tokenUrl` is the operator-owned Deepgram Grant
+ * Token endpoint URL; omitted in test isolation, where the route falls
+ * back to `DEFAULT_TOKEN_URL`. Inlined (not an exported interface) so it
+ * does not become a LOCKER-04 dead export.
+ */
+export const buildDeepgramTokenRoutes = (opts: { tokenUrl?: string } = {}) =>
   async function deepgramTokenRoutes(app: FastifyInstance): Promise<void> {
+    const tokenUrl = opts.tokenUrl ?? DEFAULT_TOKEN_URL;
     app.route({
       method: "POST",
       url: "/api/deepgram-streaming-token",
@@ -54,7 +71,7 @@ export const buildDeepgramTokenRoutes = () =>
           req.log,
         );
         const r = await callProvider({
-          url: "https://api.deepgram.com/v1/auth/grant",
+          url: tokenUrl,
           method: "POST",
           // D-15: Deepgram Grant Token uses the "Token <key>" auth scheme.
           // NOT "Bearer", NOT bare key. Pinned by deepgram.test.ts header

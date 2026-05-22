@@ -301,7 +301,11 @@ export function buildAllRoutes(deps: AllRoutesDeps): readonly RoutePlugin[] {
         ? { tokenUrl: deps.tokenProviders.assemblyaiTokenUrl }
         : {},
     ),
-    buildDeepgramTokenRoutes(),
+    buildDeepgramTokenRoutes(
+      deps.tokenProviders?.deepgramTokenUrl !== undefined
+        ? { tokenUrl: deps.tokenProviders.deepgramTokenUrl }
+        : {},
+    ),
     // D4 — pass the operator-owned realtime model alias so the token-mint
     // route does not bake `gpt-realtime` as a literal.
     buildOpenAIRealtimeTokenRoutes(

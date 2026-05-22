@@ -19,7 +19,7 @@ apps/api/src/index.ts:685  # (R25 +14) issue-31-debt-NODE_ENV-shortcircuit-code 
 apps/api/src/index.ts:686  # (R25 +14) issue-62-HI-02-debug-fetch-prod-veto-code (62-02 — entrypoint debug-fetch gate; NODE_ENV==='test' branch retained alongside the HI-02 NODE_ENV!=='production' veto; +5 by R24; +17 by quick-260522-envmodels; +23 by quick-260522-tokenproviders)
 apps/api/src/lib/ssrf-dispatcher.ts:59  # issue-31-DI-fallback-jsdoc
 apps/api/src/lib/ssrf-dispatcher.ts:163  # issue-31-DI-fallback
-apps/api/src/routes/index.ts:545  # issue-31-debt-NODE_ENV-shortcircuit (drifted 485 → 512 by quick-260522-envmodels litellmModels wiring, → 522 by D1 realtimeModel wiring, → 545 by quick-260522-tokenproviders tokenProviders deps block)
+apps/api/src/routes/index.ts:549  # issue-31-debt-NODE_ENV-shortcircuit (drifted 485 → 512 by quick-260522-envmodels litellmModels wiring, → 522 by D1 realtimeModel wiring, → 545 by quick-260522-tokenproviders tokenProviders deps block, → 549 by deepgram tokenUrl wiring)
 apps/api/src/routes/test-only.ts:18  # issue-31-debt-test-only-jsdoc-header
 apps/api/src/routes/test-only.ts:220  # issue-31-debt-test-only-jsdoc (drifted 122 → 168 → 200 across Phases 56/57/59 — plugin jsdoc NODE_ENV narrative)
 apps/api/src/routes/test-only.ts:232  # issue-31-debt-test-only-gate (drifted 128 → 174 → 180 → 212 across Phases 56/57/59 — registration gate, NODE_ENV!=='production' veto term)
