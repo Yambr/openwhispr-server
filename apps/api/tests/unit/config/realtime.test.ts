@@ -6,6 +6,7 @@ import {
   DEFAULT_OPENAI_REALTIME_MODEL,
   DEFAULT_OPENAI_REALTIME_URL,
   DEFAULT_REALTIME_BACKEND,
+  DEFAULT_REALTIME_TRANSCRIPTION_MODEL,
   loadRealtimeConfigFromEnv,
   RealtimeConfigError,
 } from "../../../src/config/realtime.js";
@@ -92,5 +93,44 @@ describe("loadRealtimeConfigFromEnv", () => {
         OPENAI_REALTIME_MODEL: "gpt-realtime",
       }).openaiRealtimeModel,
     ).toBeUndefined();
+  });
+
+  // R31 DEFECT 6 — relay-injected transcription session config.
+  it("defaults the relay-injected transcription config (BOTH backends)", () => {
+    for (const backend of ["direct", "litellm"] as const) {
+      const t = loadRealtimeConfigFromEnv({ REALTIME_BACKEND: backend }).transcription;
+      expect(t.model).toBe(DEFAULT_REALTIME_TRANSCRIPTION_MODEL);
+      expect(t.model).toBe("gpt-4o-transcribe");
+      expect(t.inputAudioRate).toBe(24_000);
+      expect(t.vadThreshold).toBe(0.6);
+      expect(t.vadSilenceMs).toBe(600);
+      expect(t.vadPrefixPaddingMs).toBe(500);
+    }
+  });
+
+  it("honors REALTIME_TRANSCRIPTION_MODEL + audio/VAD overrides", () => {
+    const t = loadRealtimeConfigFromEnv({
+      REALTIME_TRANSCRIPTION_MODEL: "internal-asr-alias",
+      REALTIME_INPUT_AUDIO_RATE: "16000",
+      REALTIME_VAD_THRESHOLD: "0.42",
+      REALTIME_VAD_SILENCE_MS: "800",
+      REALTIME_VAD_PREFIX_PADDING_MS: "250",
+    }).transcription;
+    expect(t.model).toBe("internal-asr-alias");
+    expect(t.inputAudioRate).toBe(16_000);
+    expect(t.vadThreshold).toBe(0.42);
+    expect(t.vadSilenceMs).toBe(800);
+    expect(t.vadPrefixPaddingMs).toBe(250);
+  });
+
+  it("falls back to defaults for blank or non-numeric VAD knobs", () => {
+    const t = loadRealtimeConfigFromEnv({
+      REALTIME_INPUT_AUDIO_RATE: "not-a-number",
+      REALTIME_VAD_THRESHOLD: "  ",
+      REALTIME_VAD_SILENCE_MS: "-5",
+    }).transcription;
+    expect(t.inputAudioRate).toBe(24_000);
+    expect(t.vadThreshold).toBe(0.6);
+    expect(t.vadSilenceMs).toBe(600);
   });
 });

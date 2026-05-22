@@ -42,6 +42,7 @@ import {
   startMockRealtimeServer,
 } from "../../../../tests/e2e/mock-realtime/server.js";
 import { buildAuth } from "../../src/auth.js";
+import { DEFAULT_REALTIME_TRANSCRIPTION } from "../../src/config/realtime.js";
 import { registerErrorHandler } from "../../src/error-handler.js";
 import { buildDualAuthHook } from "../../src/middleware/dual-auth.js";
 import { buildRealtimeRoutes, type RealtimeDeps } from "../../src/routes/realtime.js";
@@ -211,6 +212,7 @@ describe("R31 — frame-aware /v1/realtime relay GA-shape regression (litellm + 
       litellm: { baseUrl: litellmHttp } as unknown as LitellmClient,
       masterKey: TEST_MASTER_KEY,
       realtimeModel: TEST_REALTIME_MODEL,
+      transcription: DEFAULT_REALTIME_TRANSCRIPTION,
       backend: "litellm",
       openaiRealtimeUrl: "wss://api.openai.com/v1/realtime",
     });
@@ -244,6 +246,7 @@ describe("R31 — frame-aware /v1/realtime relay GA-shape regression (litellm + 
       litellm: { baseUrl: litellmHttp } as unknown as LitellmClient,
       masterKey: TEST_MASTER_KEY,
       realtimeModel: TEST_REALTIME_MODEL,
+      transcription: DEFAULT_REALTIME_TRANSCRIPTION,
       backend: "litellm",
       openaiRealtimeUrl: "wss://api.openai.com/v1/realtime",
     });
@@ -299,6 +302,7 @@ describe("R31 — frame-aware /v1/realtime relay GA-shape regression (litellm + 
       litellm: { baseUrl: "http://litellm.invalid:4000" } as unknown as LitellmClient,
       masterKey: TEST_MASTER_KEY,
       realtimeModel: TEST_REALTIME_MODEL,
+      transcription: DEFAULT_REALTIME_TRANSCRIPTION,
       backend: "direct",
       openaiRealtimeUrl: mock.url,
       openaiApiKey: "sk-direct-r31-test",
@@ -337,6 +341,7 @@ describe("R31 — frame-aware /v1/realtime relay GA-shape regression (litellm + 
       litellm: { baseUrl: litellmHttp } as unknown as LitellmClient,
       masterKey: TEST_MASTER_KEY,
       realtimeModel: TEST_REALTIME_MODEL,
+      transcription: DEFAULT_REALTIME_TRANSCRIPTION,
       backend: "litellm",
       openaiRealtimeUrl: "wss://api.openai.com/v1/realtime",
     });
@@ -402,6 +407,7 @@ describe("R31 — frame-aware /v1/realtime relay GA-shape regression (litellm + 
       litellm: { baseUrl: "http://litellm.invalid:4000" } as unknown as LitellmClient,
       masterKey: TEST_MASTER_KEY,
       realtimeModel: TEST_REALTIME_MODEL,
+      transcription: DEFAULT_REALTIME_TRANSCRIPTION,
       backend: "direct",
       openaiRealtimeUrl: mock.url,
       openaiApiKey: "sk-direct-r31-test",
@@ -465,12 +471,151 @@ describe("R31 — frame-aware /v1/realtime relay GA-shape regression (litellm + 
     await new Promise<void>((res) => ws.once("close", () => res()));
   }, 60_000);
 
+  it("PRECONFIGURED MODE (direct): silent client (NO session.update) → relay injects GA session.update → non-empty transcript", async () => {
+    // R31 DEFECT 6 — THE regression test for the FOURTH round. The real
+    // cloud desktop client runs PRECONFIGURED: it sends NO
+    // `session.update`/`transcription_session.update` at all (ipcHandlers.js
+    // `preconfigured: isCloud`; openaiRealtimeStreaming.js:135). c069f369's
+    // `betaToGaSessionPayload` transform translated a frame this client
+    // NEVER sends → the GA transcription session was never configured →
+    // segments:0, textLength:0, commit timeout (the live symptom).
+    //
+    // The fix: the RELAY itself injects a GA `session.update` on upstream
+    // open. This test exercises EXACTLY the preconfigured client: it sends
+    // only `input_audio_buffer.append` + `.commit`, never a session update.
+    //
+    // Assertions:
+    //   1. The GA-asserting mock RECEIVED a relay-originated `session.update`
+    //      with the correct nested transcription config — a relay that
+    //      stops injecting leaves `receivedSessionUpdates()` empty.
+    //   2. End-to-end: silent client → relay-injected config → append+commit
+    //      → NON-EMPTY transcript reaches the client. The mock gates the
+    //      transcript on a configured session, so a missing injection
+    //      yields committed-but-no-transcript and this test FAILS.
+    mock = await startMockRealtimeServer({ port: 0 });
+    const booted = await bootRealtimeApp({
+      litellm: { baseUrl: "http://litellm.invalid:4000" } as unknown as LitellmClient,
+      masterKey: TEST_MASTER_KEY,
+      realtimeModel: TEST_REALTIME_MODEL,
+      transcription: DEFAULT_REALTIME_TRANSCRIPTION,
+      backend: "direct",
+      openaiRealtimeUrl: mock.url,
+      openaiApiKey: "sk-direct-r31-test",
+    });
+    app = booted.app;
+
+    const token = await signInFreshUser();
+    const ws = new WebSocket(`${booted.wsBase}/v1/realtime?intent=transcription`, {
+      headers: { authorization: `Bearer ${token}` },
+    });
+    await new Promise<void>((res, rej) => {
+      ws.once("open", () => res());
+      ws.once("error", rej);
+    });
+
+    // The preconfigured client completes its startup handshake on
+    // `transcription_session.created` and sends NO update.
+    await awaitFrame(ws, (f) => f.type === "transcription_session.created");
+
+    // Collect all data-path frames with a persistent listener.
+    const dataFrames: Array<Record<string, unknown>> = [];
+    ws.on("message", (raw: RawData) => {
+      try {
+        dataFrames.push(JSON.parse(raw.toString()));
+      } catch {
+        /* ignore */
+      }
+    });
+
+    // EXACTLY the preconfigured client: ONLY append + commit, no update.
+    const pcmChunk = Buffer.alloc(24_000 * 2);
+    ws.send(
+      JSON.stringify({ type: "input_audio_buffer.append", audio: pcmChunk.toString("base64") }),
+    );
+    ws.send(JSON.stringify({ type: "input_audio_buffer.commit" }));
+
+    // The transcript MUST come back non-empty — proving the relay
+    // configured the session despite the silent client.
+    const completed = await awaitFrame(
+      ws,
+      (f) => f.type === "conversation.item.input_audio_transcription.completed",
+    );
+    expect(completed.transcript).toBe(MOCK_TRANSCRIPT);
+    expect((completed.transcript as string).length).toBeGreaterThan(0);
+
+    // Assertion 1 — the mock RECEIVED a relay-originated session.update.
+    const updates = mock.receivedSessionUpdates();
+    expect(updates.length).toBeGreaterThanOrEqual(1);
+    const injected = updates[0] as {
+      session?: {
+        type?: string;
+        audio?: { input?: { format?: unknown; transcription?: { model?: string } } };
+      };
+    };
+    expect(injected.session?.type).toBe("transcription");
+    expect(injected.session?.audio?.input?.format).toEqual({
+      type: "audio/pcm",
+      rate: DEFAULT_REALTIME_TRANSCRIPTION.inputAudioRate,
+    });
+    expect(injected.session?.audio?.input?.transcription?.model).toBe(
+      DEFAULT_REALTIME_TRANSCRIPTION.model,
+    );
+
+    ws.close();
+    await new Promise<void>((res) => ws.once("close", () => res()));
+  }, 60_000);
+
+  it("PRECONFIGURED MODE (litellm): silent client → relay injects GA session.update → non-empty transcript", async () => {
+    // Same as above for the `litellm` backend — DEFECT 6 fix must carry on
+    // BOTH backends (resolution criterion (c)).
+    mock = await startMockRealtimeServer({ port: 0 });
+    const litellmHttp = mock.url.replace(/^ws:/, "http:").replace(/\/v1\/realtime$/, "");
+    const booted = await bootRealtimeApp({
+      litellm: { baseUrl: litellmHttp } as unknown as LitellmClient,
+      masterKey: TEST_MASTER_KEY,
+      realtimeModel: TEST_REALTIME_MODEL,
+      transcription: DEFAULT_REALTIME_TRANSCRIPTION,
+      backend: "litellm",
+      openaiRealtimeUrl: "wss://api.openai.com/v1/realtime",
+    });
+    app = booted.app;
+
+    const token = await signInFreshUser();
+    const ws = new WebSocket(`${booted.wsBase}/v1/realtime?intent=transcription`, {
+      headers: { authorization: `Bearer ${token}` },
+    });
+    await new Promise<void>((res, rej) => {
+      ws.once("open", () => res());
+      ws.once("error", rej);
+    });
+    await awaitFrame(ws, (f) => f.type === "transcription_session.created");
+
+    const pcmChunk = Buffer.alloc(24_000 * 2);
+    ws.send(
+      JSON.stringify({ type: "input_audio_buffer.append", audio: pcmChunk.toString("base64") }),
+    );
+    ws.send(JSON.stringify({ type: "input_audio_buffer.commit" }));
+
+    const completed = await awaitFrame(
+      ws,
+      (f) => f.type === "conversation.item.input_audio_transcription.completed",
+    );
+    expect(completed.transcript).toBe(MOCK_TRANSCRIPT);
+
+    const updates = mock.receivedSessionUpdates();
+    expect(updates.length).toBeGreaterThanOrEqual(1);
+
+    ws.close();
+    await new Promise<void>((res) => ws.once("close", () => res()));
+  }, 60_000);
+
   it("direct mode with no OPENAI_API_KEY refuses the WS upgrade (401)", async () => {
     mock = await startMockRealtimeServer({ port: 0 });
     const booted = await bootRealtimeApp({
       litellm: { baseUrl: "http://litellm.invalid:4000" } as unknown as LitellmClient,
       masterKey: TEST_MASTER_KEY,
       realtimeModel: TEST_REALTIME_MODEL,
+      transcription: DEFAULT_REALTIME_TRANSCRIPTION,
       backend: "direct",
       openaiRealtimeUrl: mock.url,
       // openaiApiKey deliberately absent

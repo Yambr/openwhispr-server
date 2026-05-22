@@ -9,9 +9,11 @@
 
 import { describe, expect, it } from "vitest";
 import {
+  buildRelaySessionUpdateFrame,
   MAX_REALTIME_FRAME_BYTES,
   parseRealtimeFrame,
   type RealtimeFrame,
+  type RelayTranscriptionConfig,
   translateClientToUpstream,
   translateUpstreamToClient,
 } from "../../../src/lib/realtime-frame-translate.js";
@@ -405,5 +407,71 @@ describe("round-trip — Beta in, GA at upstream, Beta back to client", () => {
     const toClient = translateUpstreamToClient(gaResult);
     expect(toClient.type).toBe("conversation.item.input_audio_transcription.completed");
     expect(toClient.transcript).toBe("The quick brown fox jumps over the lazy dog");
+  });
+});
+
+describe("buildRelaySessionUpdateFrame — R31 DEFECT 6 relay-originated session config", () => {
+  const config: RelayTranscriptionConfig = {
+    model: "gpt-4o-transcribe-diarize",
+    inputAudioRate: 24_000,
+    vadThreshold: 0.6,
+    vadSilenceMs: 600,
+    vadPrefixPaddingMs: 500,
+  };
+
+  it("builds a GA session.update frame with the canonical nested transcription shape", () => {
+    const frame = buildRelaySessionUpdateFrame(config);
+    expect(frame.type).toBe("session.update");
+    const session = frame.session as {
+      type: string;
+      audio: { input: Record<string, unknown> };
+    };
+    // The GA discriminator — without it GA opens a conversational session.
+    expect(session.type).toBe("transcription");
+    // The nested GA `audio.input.format` OBJECT (DEFECT 4 shape) — a flat
+    // string is rejected by GA.
+    expect(session.audio.input.format).toEqual({ type: "audio/pcm", rate: 24_000 });
+  });
+
+  it("threads the operator-configured transcription model in-band", () => {
+    const frame = buildRelaySessionUpdateFrame({ ...config, model: "internal-asr-alias" });
+    const session = frame.session as {
+      audio: { input: { transcription: { model: string } } };
+    };
+    // The GA transcription session takes its model from
+    // session.audio.input.transcription.model — operator-controlled.
+    expect(session.audio.input.transcription.model).toBe("internal-asr-alias");
+  });
+
+  it("threads the operator-configured sample rate and server_vad params", () => {
+    const frame = buildRelaySessionUpdateFrame({
+      ...config,
+      inputAudioRate: 16_000,
+      vadThreshold: 0.42,
+      vadSilenceMs: 800,
+      vadPrefixPaddingMs: 250,
+    });
+    const input = (
+      frame.session as {
+        audio: { input: Record<string, Record<string, unknown>> };
+      }
+    ).audio.input;
+    expect(input.format).toEqual({ type: "audio/pcm", rate: 16_000 });
+    expect(input.turn_detection).toEqual({
+      type: "server_vad",
+      threshold: 0.42,
+      silence_duration_ms: 800,
+      prefix_padding_ms: 250,
+    });
+  });
+
+  it("produces a frame the GA-shape detector accepts (not flat Beta)", () => {
+    // The relay-injected frame must NOT carry the flat Beta triplet —
+    // `input_audio_format`/`input_audio_transcription`/`turn_detection`
+    // directly under `session`. They live under `audio.input`.
+    const session = buildRelaySessionUpdateFrame(config).session as Record<string, unknown>;
+    expect(session.input_audio_format).toBeUndefined();
+    expect(session.input_audio_transcription).toBeUndefined();
+    expect(session.turn_detection).toBeUndefined();
   });
 });

@@ -74,6 +74,13 @@ async function buildApp(opts: { upstream: string; authed?: boolean }): Promise<F
       realtimeModel: "realtime-default",
       backend: "litellm",
       openaiRealtimeUrl: "wss://api.openai.com/v1/realtime",
+      transcription: {
+        model: "gpt-4o-transcribe-diarize",
+        inputAudioRate: 24_000,
+        vadThreshold: 0.6,
+        vadSilenceMs: 600,
+        vadPrefixPaddingMs: 500,
+      },
     }),
   );
   await app.ready();
