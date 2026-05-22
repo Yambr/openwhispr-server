@@ -124,6 +124,36 @@ Source: `/Users/dev/openwhispr/.planning/phases/08-client-server-audit/SERVER-RE
 
 - [x] **Phase 56: Client Contract Conformance** — CLOSED 2026-05-19. 11 atomic sub-plans (56-01..56-11) landed all 12 R-rows on local `main` (GitHub `origin/main` push deferred per user direction — that remote is at "Initial commit" with no project history yet). Wave-1 solo: 56-01 R1 `POST /api/_test/seed-tenant` (`d4b06a6`, BLOCKER unblocking 22/28 client e2e scenarios). Wave-2 parallel ×7: 56-02 R8 notes CRUD 201/201/204 (`eb0f363`), 56-03 R9 folders CRUD 201/201/204 + note-detach cascade (`e0d14b4`), 56-04 R10 conversations + messages 201/201/204 + soft-cascade (content in `d1725ea`, marker `c36d627`), 56-05 R11 transcriptions 201/201/204 + atomic batch-delete (`dc9e875`), 56-07 R3 `/api/openai-realtime-token` `language` plumb-through to `session.input_audio_transcription` (content in `c897393`, marker `c6c13b4`), 56-08 R4 drop `Deprecation`+`Link` headers from `/api/health` (`3e99215`), 56-09 R5 `verification-status` tolerates `?email=` mismatch via session-derived identity (`57b4c48`). Wave-3 solo HALT-at-tip: 56-06 R12 V1Response discriminated `{success,data?,error?,code?}` envelope on /api/v1/keys/* + scoped error handler (`b30c21e`). Wave-4 verify-only: 56-10 R2 stripe/referrals no-positive-assertion confirmed (negative-matrix asserts 404 on all 7 paths), R6 slim-core compose boots clean (7/7 services healthy), R7 `docker compose build api` exit 0. **Lessons learned:** (a) parallel squash-merges to shared `main` race — two attribution swaps + one empty squash + one stash dance during wave 2; (b) wave-3 HALT-at-tip pattern (executor RGRG on branch only; orchestrator drives squash via `git format-patch + git apply --3way` from main) eliminated the race entirely — **use HALT-at-tip for all future parallel-executor work**. Phase docs at `.planning/phases/56-client-contract-conformance/{CONTEXT,PLAN,VERIFICATION}.md`. Out-of-phase observations filed: `tests/e2e/phase-05-transcriptions.spec.ts` 200-code assertions need next-e2e sweep; api container `LITELLM_MASTER_KEY` boot gate is a pre-existing slim-profile env gap (operator sets env in `.env`).
 
+### v2.4 — OSS-Publish Readiness (milestone opened 2026-05-22)
+
+Source: `.planning/audit-v2.4/AUDIT-FINDINGS.md` — deep audit (3 research waves + 1 verification
+wave) for the open-source publish. Findings already covered by open phases (15 FSL/refactor,
+16 comment audit, 41.x security, 53 web routing, 11 cloud profiles) are NOT re-listed here —
+v2.4 phases cover only the net-new findings + the publish-pipeline stages. Work-order:
+57 → 58 → 59 → 60 → 61 → 62 (62 last — first-ever public push depends on everything green).
+
+- [ ] **Phase 57: Audit security + CI-blocker fixes** — AUDIT-SEC-01 (HACK-C2 tryPreviousToken
+  BYPASSRLS pool / SECURITY DEFINER restore — characterization test on real Postgres) +
+  AUDIT-CI-01 (TS2322/TS2339 typecheck errors) + AUDIT-CI-02 (failing zod-drift unit test) +
+  AUDIT-CI-03 (e2e `seed`-service overlay) + AUDIT-CI-04 (worker-RLS `test.skip` → `skipIf`).
+  Strict TDD; unblocks a green CI baseline before any publish.
+- [ ] **Phase 58: Audit hardening + library adoption** — AUDIT-HARD-01..05 (auth-route rateLimit,
+  `lru-cache` IP store, backfill loop cap, mailpit `profiles:[dev]`, dead OIDC env var) +
+  AUDIT-LIB-01..03 (Zod env-parser unification, `config/stt-settings.ts`, `AbortSignal.timeout`) +
+  AUDIT-DOC-01 (`EMAIL_FALLBACK_NONFATAL` docs). TDD-paired mechanical fixes.
+- [ ] **Phase 59: Documentation truth pass** — AUDIT-DOCS-01: fix all 15 verified doc-vs-code
+  lies (README quickstart, litellm-target-spec, architecture.md, CONTRIBUTING.md, security.md,
+  observability.md, wire-contracts-phase-3.md) + prune 5 stale TECH_DEBT.md entries + full
+  docs sweep for OSS-readiness. Doc-only; verified against code, no test gate.
+- [ ] **Phase 60: CI builds + smoke tests for OSS publish** — GitHub Actions: release build
+  workflow (multi-arch api/web/worker images), smoke-test job booting the embedded-litellm
+  compose stack, cross-reference wiring to the upstream `openwhispr` Electron client repo.
+- [ ] **Phase 61: Load tests for publish** — build + run the k6 load profiles (mock plateau +
+  paid smoke per cost-discipline), publish results into `docs/operations.md` SLO tables.
+- [ ] **Phase 62: OSS publish** — first-ever public push to `github.com/Yambr/openwhispr-server`;
+  GitHub-standard README with UI screenshots + purpose explanation; release tag. Gated on
+  57-61 all green.
+
 ## Phase Details
 
 ### Phase 0: Repo Bootstrap & Constitutional CI

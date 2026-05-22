@@ -707,6 +707,80 @@ Driven entirely by `.planning/review/REVIEW-INDEX.md` (10 CRITICAL + 35 HIGH fro
 
 ---
 
+## v2.4 — OSS-Publish Audit Findings (added 2026-05-22)
+
+Net-new findings from the v2.4 deep audit (3 research waves + 1 verification wave) NOT already
+covered by phases 11/15/16/41/53. Source: `.planning/audit-v2.4/AUDIT-FINDINGS.md`. Findings
+already covered by existing phases are noted, not re-listed (HACK-H3 partial→41.b, LIB-3→41.f,
+HACK-M4→16, HACK-M8 + DOC-5 license→15, HACK-C1 verified already-fixed).
+
+### Security
+
+- [ ] **AUDIT-SEC-01** (HACK-C2): `apps/api/src/lib/token-rotation.ts` runs the previous-token
+  lookup as a plain `SELECT` on the FORCE-RLS `sessions` table via the RLS-subject app pool,
+  before `req.tenant` is set — `app.tenant_id` GUC unset → zero rows. AUTH-04 5-minute bearer
+  overlap window is dead. Phase 33 migration `0019b` retired the SECURITY DEFINER function the
+  stale comment at `token-rotation.ts:116-119` still describes. FIX: thread a BYPASSRLS owner
+  pool (or reinstate a SECURITY DEFINER function) for the lookup; correct the comment.
+  Characterization test booting `buildApp` + real Postgres driving force-rotate→old-token path.
+
+### Hardening / antipatterns
+
+- [ ] **AUDIT-HARD-01** (HACK-H2): `app.all('/api/auth/*')` in `better-auth-handler.ts` has no
+  per-route `config.rateLimit` — auth endpoints rely solely on the global IP floor. Add explicit
+  tighter throttle.
+- [ ] **AUDIT-HARD-02** (LIB-2): `inProcessIpStore()` in `plugins/rate-limit.ts` is an unbounded
+  `Map` — memory leak under IP-spray. Swap to `lru-cache` (already a dep) with `{max, ttl}`.
+- [ ] **AUDIT-HARD-03** (HACK-L5): `encryption/backfill.ts` `for(;;)` loop has no iteration cap.
+  Add a safety bound.
+- [ ] **AUDIT-HARD-04** (HACK-M2): `mailpit` service in `docker-compose.yml` has no `profiles:`
+  key — dev SMTP trap starts in the default production stack. Add `profiles: [dev]`.
+- [ ] **AUDIT-HARD-05** (HACK-M3): dead `NEXT_PUBLIC_OIDC_PROVIDERS` var still in
+  `docker-compose.yml` build args + `.env.full.example` — no longer read by web src. Remove.
+
+### CI-blocking
+
+- [ ] **AUDIT-CI-01** (HACK-H4): pre-existing typecheck errors — TS2322 `routes/index.ts:478-485`
+  (`FastifyPluginAsync` not assignable to `RoutePlugin`) + TS2339 `tokens/assemblyai.ts:125` /
+  `tokens/deepgram.ts:91` (`.message` on a union arm lacking it). Narrow before access; fix arity.
+- [ ] **AUDIT-CI-02** (HACK-H6): `plan-52-06-stream-zod-drift.test.ts` fails — regex no longer
+  matches `translate-tools.ts`. Update or delete the obsolete assertion.
+- [ ] **AUDIT-CI-03** (HACK-H5): `tests/e2e/compose-helper.ts` invokes the `seed` service which
+  lives only in `compose/docker-compose.contract-test.yml`, not bare compose — `make e2e-test`
+  fails in setup. Pass the contract-test overlay.
+- [ ] **AUDIT-CI-04** (HACK-M1): hard `test.skip` on the worker-RLS property test
+  (`worker-rls-property.test.ts:274`). Re-enable as `describe.skipIf(dockerUnavailable)`.
+
+### Code-quality / library adoption
+
+- [ ] **AUDIT-LIB-01** (LIB-1): 5 copies of a positive-int env parser under 4 names
+  (`config/diarization.ts`, `config/web-search.ts`, `config/realtime.ts`,
+  `litellm-client/config.ts`, `index.ts`). Unify on Zod `z.coerce.number().int().positive()`.
+- [ ] **AUDIT-LIB-02** (LIB-9): `lib/settings-resolver.ts` reads `process.env` outside the
+  config boundary with raw `Number()` casts. New `config/stt-settings.ts` Zod schema, DI-threaded.
+- [ ] **AUDIT-LIB-03** (LIB-4/LIB-5): `drainWithTimeout` (`litellm-client/index.ts`) and the
+  `AbortController`+`setTimeout` block in `tokens/_call-provider.ts` reinvent `AbortSignal.timeout()`
+  (Node 24 builtin). Replace.
+- [ ] **AUDIT-DOC-01** (HACK-M6): `EMAIL_FALLBACK_NONFATAL` undocumented in any `.env.*.example`.
+  Document it.
+
+### Documentation truth pass
+
+- [ ] **AUDIT-DOCS-01** (DOC-1..19): 15 verified doc-vs-code lies — README quickstart curls
+  (`localhost:3000` vs Traefik, wrong fixture `sample.wav`, wrong field `duration_s`, wrong
+  `/readyz` shape, wrong landing route, stale test counts), `litellm-target-spec.md`
+  (`.env.example` non-existent, stale YAML), `architecture.md` (NDJSON vocab `text-delta`→`content`,
+  LiteLLM image tag, "eight units"→nine), `CONTRIBUTING.md` (85/80→90/90/90/90 coverage),
+  `security.md` (Apache-2.0→FSL — overlaps Phase 15), `observability.md` (`/api/health` not a
+  pure alias of `/livez`), `wire-contracts-phase-3.md` (`wordsUsed` = minutes not word count).
+  Also: prune 5 stale TECH_DEBT.md entries verified already-resolved (TD-mailpit noopSender,
+  TD-12.a, TD-12.c, TD-13.a, TD-13.d).
+
+**v2.4 coverage:** 16 net-new REQ-IDs (1 SEC + 5 HARD + 4 CI + 4 LIB/DOC + 1 DOCS-bundle +
+remainder folded into existing phases 15/16/41/53).
+
+---
+
 *Requirements defined: 2026-05-08*
 *v2 requirements added: 2026-05-14 — 61 REQ-IDs across 10 categories driven by TECH_DEBT.md.*
 *v2 traceability mapped: 2026-05-14 by gsd-roadmapper — 7 phases (12–18), 100% coverage, work-order 13 → 12 → 14 → 15 → 16 → 17 → 18.*
