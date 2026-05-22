@@ -438,8 +438,19 @@ describe("transcriptions schemas", () => {
     expect(TranscriptionInputSchema.safeParse({ text: "hi", evil: 1 }).success).toBe(false);
   });
 
-  it("TranscriptionInput rejects status outside the canonical enum", () => {
-    expect(TranscriptionInputSchema.safeParse({ text: "x", status: "pwned" }).success).toBe(false);
+  // R35 (quick-task 20260522) — the transcription INPUT `status` is now a
+  // tolerant bounded free-text string (the immutable client's local SQLite
+  // `status` is unconstrained TEXT). The strict 4-value enum is enforced
+  // only on the `CloudTranscription` RESPONSE (see line ~493). The route
+  // normalizes an unknown input status to a canonical value before insert.
+  it("TranscriptionInput accepts a free-text status (R35 — input is tolerant)", () => {
+    expect(TranscriptionInputSchema.safeParse({ text: "x", status: "pwned" }).success).toBe(true);
+  });
+
+  it("TranscriptionInput still rejects an oversize status string (>256)", () => {
+    expect(TranscriptionInputSchema.safeParse({ text: "x", status: "z".repeat(257) }).success).toBe(
+      false,
+    );
   });
 
   it("TranscriptionInput rejects negative + non-integer audio_duration_ms", () => {
