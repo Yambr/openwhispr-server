@@ -18,6 +18,7 @@ import { MockAgent, setGlobalDispatcher } from "undici";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   createPyannoteClient,
+  DEFAULT_BASE_URL,
   MissingPyannoteKeyError,
   PyannoteAuthError,
   PyannoteBadRequestError,
@@ -68,6 +69,46 @@ describe("createPyannoteClient — factory", () => {
       expect((err as Error).message).toMatch(/PYANNOTE_API_KEY/);
       expect((err as Error).message).toMatch(/\.env|LITELLM_BASE_URL/);
     }
+  });
+
+  // Phase 68 — operator-tunable base URL. The lib exposes DEFAULT_BASE_URL
+  // as the in-lib fallback; production threads the env-resolved value via
+  // `opts.baseUrl`. The constant is unchanged from the historical literal.
+  it("DEFAULT_BASE_URL matches the historical pyannote.ai literal", () => {
+    expect(DEFAULT_BASE_URL).toBe("https://api.pyannote.ai");
+  });
+});
+
+describe("createPyannoteClient — Phase 68 env-driven base URL", () => {
+  it("hits the injected baseUrl override for createMediaInput", async () => {
+    const customBase = "https://pyannote-mirror.internal";
+    agent
+      .get(customBase)
+      .intercept({ path: "/v1/media/input", method: "POST" })
+      .reply(
+        200,
+        { url: "https://upload.example/key123" },
+        { headers: { "content-type": "application/json" } },
+      );
+
+    const client = createPyannoteClient({ apiKey: "k", baseUrl: customBase });
+    const out = await client.createMediaInput();
+    expect(out.url).toBe("https://upload.example/key123");
+  });
+
+  it("defaults to api.pyannote.ai when baseUrl is omitted", async () => {
+    agent
+      .get(DEFAULT_BASE_URL)
+      .intercept({ path: "/v1/media/input", method: "POST" })
+      .reply(
+        200,
+        { url: "https://upload.example/keyXYZ" },
+        { headers: { "content-type": "application/json" } },
+      );
+
+    const client = createPyannoteClient({ apiKey: "k" });
+    const out = await client.createMediaInput();
+    expect(out.url).toBe("https://upload.example/keyXYZ");
   });
 });
 
