@@ -59,10 +59,29 @@ export function run(
 }
 
 /**
- * Convenience: `docker compose ...args` with the canonical hermetic env.
+ * Canonical compose `-f` file list for the hermetic e2e stack.
+ *
+ * The `seed` (and `contract-test-runner`) services live ONLY in the
+ * contract-test overlay — they are not part of the bare
+ * `docker-compose.yml`. `--profile contract-test` alone cannot surface
+ * a service that is absent from the merged config, so the overlay file
+ * must be passed via `-f` on EVERY compose invocation (matching the CI
+ * `contract-test` cell: `-f docker-compose.yml -f compose/docker-compose.contract-test.yml`).
+ * Without it, `compose run --rm seed` fails with `no such service: seed`.
+ */
+export const COMPOSE_FILE_ARGS: readonly string[] = [
+  "-f",
+  "docker-compose.yml",
+  "-f",
+  "compose/docker-compose.contract-test.yml",
+] as const;
+
+/**
+ * Convenience: `docker compose -f ... ...args` with the canonical
+ * hermetic env and the contract-test overlay layered in.
  */
 export async function compose(...args: string[]): Promise<number> {
-  return run("docker", ["compose", ...args], {
+  return run("docker", ["compose", ...COMPOSE_FILE_ARGS, ...args], {
     env: { ...HERMETIC_ENV },
   });
 }
@@ -80,11 +99,14 @@ export async function bringStackUp(): Promise<void> {
 
   // Bring up the `default` profile. Two design choices:
   //
-  // 1. NOT `--profile contract-test`: the contract-test profile carries
-  //    `seed` (one-shot) and `contract-test-runner` (vitest container
-  //    that exits after its own in-cluster suite finishes). Including
-  //    them in `up --wait` would cause `--wait` to fail on runner exit.
-  //    Seed is invoked separately via `run --rm seed` below.
+  // 1. ONLY `--profile default` (not `--profile contract-test`): the
+  //    contract-test profile carries `seed` (one-shot) and
+  //    `contract-test-runner` (vitest container that exits after its
+  //    own in-cluster suite finishes). Bringing them up here would
+  //    drag a self-exiting runner into the started set. The
+  //    contract-test overlay FILE is still passed via `COMPOSE_FILE_ARGS`
+  //    so `seed` exists in the merged config; seed is invoked separately
+  //    via `run --rm seed` below.
   //
   // 2. NO `--wait`: the observability stack (grafana in particular) is
   //    flaky on cold-cache laptops and occasionally reports unhealthy
