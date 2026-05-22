@@ -27,7 +27,13 @@
  */
 
 import { execFileSync } from "node:child_process";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
+
+const REPO_ROOT = process.cwd().endsWith("/tests/integration")
+  ? resolve(process.cwd(), "../..")
+  : process.cwd();
 
 // Phase 14 / Plan 14-03 — slim-core inverted the base: traefik +
 // fixture-idp + contract-test-runner moved to overlays. This suite
@@ -119,10 +125,23 @@ describe.skipIf(!HAS_DOCKER)(
       expect(runner).toMatch(/read_only:\s*true/);
     });
 
-    it("contract-test-runner does NOT carry AUTH_TRUSTED_ORIGINS_EXTRA (it is a seed-side concern)", () => {
-      const merged = composeConfig(["default", "contract-test"]);
-      const runner = extractServiceBlock(merged, "contract-test-runner");
-      expect(runner).not.toMatch(/AUTH_TRUSTED_ORIGINS_EXTRA/);
+    // R19 — `AUTH_TRUSTED_ORIGINS_EXTRA` was promoted to an active key in
+    // the slim `.env` template, and `contract-test-runner` carries
+    // `env_file: .env`, so the docker-compose-MERGED config now shows the
+    // var on the runner (inherited from the shared .env — harmless: the
+    // runner is a vitest CLIENT, not an auth server). The D-03 invariant
+    // is narrower: the contract-test OVERLAY must not ADD
+    // AUTH_TRUSTED_ORIGINS_EXTRA to the runner's explicit `environment:`
+    // block (that is a seed-side / api-side concern). Assert against the
+    // overlay file's literal environment map, not the env_file-expanded
+    // merge.
+    it("contract-test overlay does NOT add AUTH_TRUSTED_ORIGINS_EXTRA to the runner's environment block (seed-side concern)", () => {
+      const overlay = readFileSync(
+        resolve(REPO_ROOT, "compose/docker-compose.contract-test.yml"),
+        "utf8",
+      );
+      const runnerBlock = extractServiceBlock(`\n${overlay}`, "contract-test-runner");
+      expect(runnerBlock).not.toMatch(/AUTH_TRUSTED_ORIGINS_EXTRA/);
     });
 
     it("api service still carries AUTH_TRUSTED_ORIGINS_EXTRA for the in-cluster seed POST", () => {
