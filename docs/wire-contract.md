@@ -170,7 +170,7 @@ new keys rather than renaming `locale`.
 | Route                                 | Method      | Auth    | WIRE | Notes |
 | ------------------------------------- | ----------- | ------- | ---- | ----- |
 | `/api/streaming-usage`                | POST        | bearer  | 09   | idempotent ledger insert |
-| `/api/usage`                          | GET         | bearer  | 10   | SUM aggregator |
+| `/api/usage`                          | GET         | bearer  | 10   | SUM aggregator; response `{wordsUsed, wordsRemaining, plan:"unlimited", limitReached:false, isSubscribed:true, isTrial:false}` — R34: `isSubscribed`/`isTrial` are read by the desktop useUsage hook, `canSync()` gates cloud sync on `isSubscribed` |
 | `/api/agent/web-search`               | POST        | bearer  | 08   | Tavily + Yandex adapters (D-02 boot-fatal on unknown provider) |
 | `/api/stt-config`                     | GET         | bearer  | 11   | user_settings → tenant_settings → env defaults |
 | `/api/note-recording-config`          | GET         | bearer  | 12   | same resolution chain |

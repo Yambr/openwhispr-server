@@ -169,11 +169,21 @@ describe("integration — GET /api/usage (real Postgres)", () => {
       wordsRemaining: number;
       plan: string;
       limitReached: boolean;
+      isSubscribed: boolean;
+      isTrial: boolean;
     };
     expect(body.wordsUsed).toBe(0);
     expect(body.wordsRemaining).toBe(999_999_999);
     expect(body.plan).toBe("unlimited");
     expect(body.limitReached).toBe(false);
+    // R34 — the immutable desktop client's useUsage hook reads
+    // `isSubscribed` / `isTrial` off the /api/usage response and gates
+    // SyncService.canSync() on `isSubscribed`. The corporate `unlimited`
+    // plan is fully-entitled, so isSubscribed MUST be true (else cloud
+    // sync of transcriptions/notes/conversations never starts and the
+    // web dashboard stays empty). It is not a trial.
+    expect(body.isSubscribed).toBe(true);
+    expect(body.isTrial).toBe(false);
   });
 
   it("SUM(units) reflects all kinds (D-14): transcribe + reason + streaming + web-search", async () => {
