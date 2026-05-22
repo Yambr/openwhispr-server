@@ -226,6 +226,14 @@ input/output asymmetry is intentional and load-bearing.
   maps every message `metadata: m.metadata ? (...) : null`, so a message
   without metadata carries an explicit `null`; `.optional()` alone
   rejected it and 400'd every conversation sync.
+- **`note_type` (note INPUT) — R37.** Accepted as any string ≤ 1024
+  chars (the client's local SQLite `note_type` is unconstrained free
+  text `TEXT NOT NULL DEFAULT 'personal'` — it can hold values outside
+  the canonical enum, e.g. `"note"`). An unknown value is mapped
+  server-side to a canonical `NoteType` (`personal|meeting|upload`,
+  fallback `personal`) before the row is stored — see
+  `normalizeNoteType()` in `apps/api/src/routes/notes/shape.ts`. The
+  `CloudNote` RESPONSE `note_type` stays the strict enum.
 - **`Cloud*` RESPONSE schemas stay strict.** `CloudTranscription`,
   `CloudNote`, `CloudConversation`, `CloudMessage`, `CloudFolder` and
   `SearchResult` keep `z.string().datetime({ offset: true })` for every

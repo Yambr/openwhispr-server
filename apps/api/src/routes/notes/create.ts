@@ -21,7 +21,7 @@ import { NoteInputSchema } from "@openwhispr/wire-schemas";
 import type { FastifyInstance } from "fastify";
 import { AuthError } from "../../errors.js";
 import { createOrReturnExisting } from "../../lib/client-id-upsert.js";
-import { type CloudNoteRow, rowToCloudNote } from "./shape.js";
+import { type CloudNoteRow, normalizeNoteType, rowToCloudNote } from "./shape.js";
 
 export interface NotesCreateDeps {
   db: TransactionalDb<ExecutableTx>;
@@ -52,7 +52,9 @@ export const buildNotesCreateRoutes = (deps: NotesCreateDeps) =>
             folder_id: body.folder_id ?? null,
             title: body.title ?? null,
             content: body.content ?? "",
-            note_type: body.note_type ?? "personal",
+            // R37 — normalize a client free-text note_type to a
+            // canonical NoteType (see notes/shape.ts normalizeNoteType).
+            note_type: normalizeNoteType(body.note_type),
             enhanced_content: body.enhanced_content ?? null,
             enhancement_prompt: body.enhancement_prompt ?? null,
             source_file: body.source_file ?? null,

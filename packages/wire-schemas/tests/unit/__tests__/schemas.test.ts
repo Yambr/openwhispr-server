@@ -64,8 +64,23 @@ describe("notes schemas", () => {
     expect(NoteInputSchema.safeParse({ title: "x", sneaky: "value" }).success).toBe(false);
   });
 
-  it("NoteInput rejects an unknown note_type", () => {
-    expect(NoteInputSchema.safeParse({ note_type: "bogus" }).success).toBe(false);
+  it("R37 — NoteInput accepts a free-text note_type (client SQLite column is unconstrained)", () => {
+    // The client's local `note_type` column is `TEXT NOT NULL DEFAULT
+    // 'personal'` — it can hold values outside the canonical enum
+    // (e.g. "note"). The INPUT schema must accept any short string;
+    // the route normalizes it to a canonical NoteType before storing.
+    expect(NoteInputSchema.safeParse({ note_type: "note" }).success).toBe(true);
+    expect(NoteInputSchema.safeParse({ note_type: "personal" }).success).toBe(true);
+    expect(NoteInputSchema.safeParse({ note_type: null }).success).toBe(true);
+    expect(NoteInputSchema.safeParse({}).success).toBe(true);
+  });
+
+  it("R37 — CloudNote RESPONSE note_type stays the strict enum", () => {
+    // The lenient INPUT is asymmetric with the strict RESPONSE — the
+    // server normalizes before emitting, so CloudNoteSchema.note_type
+    // still rejects a non-enum value.
+    expect(CloudNoteSchema.shape.note_type.safeParse("note").success).toBe(false);
+    expect(CloudNoteSchema.shape.note_type.safeParse("personal").success).toBe(true);
   });
 
   it("NoteInput rejects negative + non-integer expected_speaker_count", () => {

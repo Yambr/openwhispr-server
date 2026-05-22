@@ -8,6 +8,25 @@
 // the SINGLE place row→wire serialization happens — every route MUST
 // route through rowToCloudNote() so the wire-shape drift is impossible.
 
+import { NoteTypeSchema } from "@openwhispr/wire-schemas";
+
+/**
+ * R37 — normalize a client-supplied `note_type` to a canonical
+ * `NoteType`. The client's local SQLite `note_type` column is
+ * unconstrained free text, so a synced note may carry a value outside
+ * the `["personal","meeting","upload"]` enum (e.g. `"note"`). The INPUT
+ * schema accepts any short string; this maps an unknown/absent value to
+ * the `"personal"` default before the row is stored, so the row — and
+ * therefore the strict `CloudNoteSchema` response — always carries a
+ * valid enum value. Mirrors `normalizeTranscriptionStatus` (R35).
+ */
+export function normalizeNoteType(noteType: string | null | undefined): string {
+  if (noteType != null && NoteTypeSchema.safeParse(noteType).success) {
+    return noteType;
+  }
+  return "personal";
+}
+
 export interface CloudNoteRow {
   id: string;
   tenant_id?: string;
