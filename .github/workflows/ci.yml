@@ -709,6 +709,13 @@ jobs:
   smoke:
     runs-on: ubuntu-24.04
     timeout-minutes: 10
+    env:
+      # Select the hermetic mock LiteLLM config — no real provider keys,
+      # no outbound egress. The production config (litellm_config.yaml)
+      # probes OpenRouter / Groq / OpenAI at boot and fails its
+      # /health/liveliness check without real keys, causing `up --wait`
+      # to time out with "dependency failed to start: litellm unhealthy".
+      LITELLM_CONFIG_FILE: litellm_config.contract.yaml
     steps:
       - uses: actions/checkout@v5
       - uses: pnpm/action-setup@v4
