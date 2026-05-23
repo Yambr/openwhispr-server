@@ -24,6 +24,13 @@ allowBuilds:
 # (default-export only) and the api container crashes on boot.
 overrides:
   lru-cache: ^11.3.6
+  # @babel/helper-compilation-targets@7.x pins `lru-cache: ^5.1.1` and uses
+  # the v5 CommonJS default-export constructor API (`new _lruCache({...})`).
+  # The global v11 override above broke it (v11 exports only the named
+  # `LRUCache`, not a default constructor) — mutation-quick CI failed with
+  # `TypeError: _lruCache is not a constructor`. Scope the babel transitive
+  # back to v5 while leaving every other consumer (apps/api etc.) on v11.
+  "@babel/helper-compilation-targets>lru-cache": ^5.1.1
   # v2.5-A + Wave 2 — force patched versions for transitive packages
   # flagged by Dependabot CVE alerts. Selectors scope the bump to the
   # vulnerable ranges only, leaving already-patched copies untouched.
