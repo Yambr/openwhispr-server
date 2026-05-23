@@ -1057,10 +1057,18 @@ jobs:
             files: "-f docker-compose.yml -f compose/docker-compose.storage.yml"
             profiles: "--profile default"
           - cell: load-test-mock
-            files: "-f docker-compose.yml -f compose/docker-compose.load-test.yml"
+            # Match tools/load-test/scripts/run.sh:73-80: observability +
+            # storage + ingress overlays MUST be layered before load-test
+            # so the load-test overlay's mimir/grafana profile-extension
+            # stubs (compose/docker-compose.load-test.yml lines 332-361)
+            # resolve to real service definitions. Phase 14 slim-core split
+            # extracted those services out of docker-compose.yml; the
+            # load-test overlay only patches profiles, never re-declares
+            # images. CI lint was the only caller missing this layering.
+            files: "-f docker-compose.yml -f compose/docker-compose.observability.yml -f compose/docker-compose.storage.yml -f compose/docker-compose.ingress.yml -f compose/docker-compose.load-test.yml"
             profiles: "--profile load-test-mock"
           - cell: load-test-realistic
-            files: "-f docker-compose.yml -f compose/docker-compose.load-test.yml -f compose/docker-compose.load-test.realistic.yml"
+            files: "-f docker-compose.yml -f compose/docker-compose.observability.yml -f compose/docker-compose.storage.yml -f compose/docker-compose.ingress.yml -f compose/docker-compose.load-test.yml -f compose/docker-compose.load-test.realistic.yml"
             profiles: "--profile load-test-realistic"
           - cell: e2e
             files: "-f docker-compose.yml -f compose/e2e/docker-compose.e2e.yml"
