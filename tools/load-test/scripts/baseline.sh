@@ -90,7 +90,8 @@ if [ "${OPENWHISPR_LOADTEST_REUSE_STACK:-0}" = "1" ]; then
   printf 'baseline.sh: reuse-stack mode — assuming load-test-realistic is already healthy\n' >&2
 else
   # Mirror run.sh's lifecycle: preflight, build, up, pre-warm, smoke.
-  sh tools/load-test/scripts/preflight.sh --yes
+  # preflight.sh requires bash (uses `set -o pipefail`); see run.sh.
+  bash tools/load-test/scripts/preflight.sh --yes
   $COMPOSE_BASE build
   $COMPOSE_BASE up -d --wait
   # Phase 08.5-01 Task 4 — pre-warm auto-enters strict mode when

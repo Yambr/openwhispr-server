@@ -86,7 +86,10 @@ else
 fi
 
 # 1. Preflight (docker resources, ports, git tree).
-sh tools/load-test/scripts/preflight.sh --yes
+# preflight.sh uses `set -o pipefail` which dash (Ubuntu /bin/sh) rejects;
+# invoke via bash explicitly so the script's own #!/usr/bin/env bash
+# shebang's contract is honored regardless of caller.
+bash tools/load-test/scripts/preflight.sh --yes
 
 # 2. Build images (mock-litellm and any other profile-scoped builds).
 $COMPOSE_BASE build
