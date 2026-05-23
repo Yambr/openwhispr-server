@@ -6,7 +6,7 @@
 
 import { Agent, setGlobalDispatcher, WebSocket } from "undici";
 
-import { expect, freshTenant, Given, signedInAs, Then, When } from "../support/fixtures";
+import { expect, Then, When } from "../support/fixtures";
 
 // Allow self-signed mkcert certs for *.localhost dev wiring.
 setGlobalDispatcher(new Agent({ connect: { rejectUnauthorized: false } }));
@@ -84,23 +84,16 @@ export async function openRealtime(
   });
 }
 
-Given("a signed-in user", async function (this, ctx) {
-  const { apiBaseURL, mailpitApiUrl, tenantId } = ctx as {
-    apiBaseURL: string;
-    mailpitApiUrl: string;
-    tenantId: string;
-  };
-  const s = stateFor(tenantId);
-  const id = freshTenant(tenantId);
-  s.cookie = await signedInAs(apiBaseURL, mailpitApiUrl, id);
-});
+// Canonical `Given "a signed-in user"` lives in steps/shared/auth-shared.steps.ts;
+// it writes the session cookie onto ctx.cookie. Local state.cookie reads
+// fall back to ctx.cookie via the inline `?? ctxCookie` pattern.
 
 When(
   "the user opens wss:\\/\\/api.localhost:8443\\/v1\\/realtime with the session cookie",
   async function (this, ctx) {
-    const { tenantId } = ctx as { tenantId: string };
+    const { tenantId, cookie: ctxCookie } = ctx as { tenantId: string; cookie?: string };
     const s = stateFor(tenantId);
-    const res = await openRealtime("wss://api.localhost:8443/v1/realtime", s.cookie, {
+    const res = await openRealtime("wss://api.localhost:8443/v1/realtime", s.cookie ?? ctxCookie, {
       maxWaitMs: 5_000,
       closeAfterFirstFrame: true,
     });

@@ -6,17 +6,26 @@ Deferred to a dedicated cleanup phase.
 
 ## What's broken
 
-1. **Duplicate step definitions** across 6 files all declaring
-   `Given "a signed-in user"`:
-   - tests/e2e-cjm/steps/agent-stream.steps.ts:94
-   - tests/e2e-cjm/steps/byok-corporate-litellm.steps.ts:84
-   - tests/e2e-cjm/steps/byok-key-rotation.steps.ts:116
-   - tests/e2e-cjm/steps/diarization.steps.ts:137
-   - tests/e2e-cjm/steps/realtime-stream.steps.ts:87
-   - tests/e2e-cjm/steps/web-search.steps.ts:75
+1. ~~**Duplicate step definitions** across 6 files all declaring
+   `Given "a signed-in user"`~~ — **CLOSED in quick/r34
+   (`quick/r34-dedupe-signed-in-user-step`).** The canonical step now
+   lives at `tests/e2e-cjm/steps/shared/auth-shared.steps.ts`; it
+   writes the session cookie onto `ctx.cookie` (declared on
+   `CjmFixtures` in `support/world.ts`). The 6 prior duplicate blocks
+   were deleted; downstream When/Then handlers fall back to
+   `ctx.cookie` via inline `(s.cookie ?? ctxCookie)` reads or a tiny
+   per-file `cookieFor(ctx, s)` helper. bddgen no longer reports
+   `Error: Multiple definitions matched scenario step`.
 
-   playwright-bdd 8.5.1 rejects with:
-   `Error: Multiple definitions matched scenario step`
+   **Follow-up surfaced** (not closed here, per quick scope):
+   playwright-bdd 8.5.1's `fixtureParameterNames` check now refuses
+   handler signatures whose first runtime argument is not an object-
+   destructure pattern (`function ({ apiBaseURL, ... }, ctx)`). The
+   existing 6 step files use `function (this, ctx)`; TS type-strip
+   reduces this to `function (ctx)` at runtime, which the gen-time
+   guard rejects. Tracked as the next e2e-cjm-load defect; needs a
+   sweep to convert every handler in `tests/e2e-cjm/steps/**/*.steps.ts`
+   to the destructured-first-arg form before the suite can run.
 
 2. The dedicated cucumber-expression cleanup quick (Wave 2 #18 =
    `07160543`) covered the two bare-slash step expressions that

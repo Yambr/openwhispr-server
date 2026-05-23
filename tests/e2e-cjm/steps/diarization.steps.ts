@@ -15,7 +15,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { Agent, FormData, fetch as undiciFetch } from "undici";
 
-import { expect, freshTenant, Given, signedInAs, Then, When } from "../support/fixtures";
+import { expect, Given, Then, When } from "../support/fixtures";
 
 // Phase 28 — playwright-bdd loader runs under ESM, where `__dirname` is
 // not defined. Mirror the transcribe.steps.ts fixture resolver (try repo
@@ -134,16 +134,9 @@ export function isDiarizationBody(
   return true;
 }
 
-Given("a signed-in user", async function (this, ctx) {
-  const { apiBaseURL, mailpitApiUrl, tenantId } = ctx as {
-    apiBaseURL: string;
-    mailpitApiUrl: string;
-    tenantId: string;
-  };
-  const s = stateFor(tenantId);
-  const id = freshTenant(tenantId);
-  s.cookie = await signedInAs(apiBaseURL, mailpitApiUrl, id);
-});
+// Canonical `Given "a signed-in user"` lives in steps/shared/auth-shared.steps.ts;
+// it writes the session cookie onto ctx.cookie. Local state.cookie reads
+// below fall back to ctx.cookie via the inline `?? ctxCookie` pattern.
 
 Given("a wav fixture is available", async function (this, ctx) {
   const { tenantId } = ctx as { tenantId: string };
@@ -154,10 +147,18 @@ Given("a wav fixture is available", async function (this, ctx) {
 When(
   "the user POSTs the wav to \\/v1\\/audio\\/diarization as multipart\\/form-data",
   async function (this, ctx) {
-    const { apiBaseURL, tenantId } = ctx as { apiBaseURL: string; tenantId: string };
+    const {
+      apiBaseURL,
+      tenantId,
+      cookie: ctxCookie,
+    } = ctx as {
+      apiBaseURL: string;
+      tenantId: string;
+      cookie?: string;
+    };
     const s = stateFor(tenantId);
     if (!s.wavBytes) throw new Error("wav fixture not loaded");
-    const res = await postDiarizationMultipart(apiBaseURL, s.cookie ?? "", s.wavBytes);
+    const res = await postDiarizationMultipart(apiBaseURL, s.cookie ?? ctxCookie ?? "", s.wavBytes);
     s.status = res.status;
     s.body = res.body as ScenarioState["body"];
     s.rawText = res.rawText;
@@ -167,12 +168,20 @@ When(
 When(
   "the user POSTs {string} content to \\/v1\\/audio\\/diarization",
   async function (this, ctx, contentType: string) {
-    const { apiBaseURL, tenantId } = ctx as { apiBaseURL: string; tenantId: string };
+    const {
+      apiBaseURL,
+      tenantId,
+      cookie: ctxCookie,
+    } = ctx as {
+      apiBaseURL: string;
+      tenantId: string;
+      cookie?: string;
+    };
     const s = stateFor(tenantId);
     if (contentType !== "text/plain") {
       throw new Error(`Phase 28 step only models text/plain; got ${contentType}`);
     }
-    const res = await postDiarizationTextPlain(apiBaseURL, s.cookie ?? "");
+    const res = await postDiarizationTextPlain(apiBaseURL, s.cookie ?? ctxCookie ?? "");
     s.status = res.status;
     s.body = res.body as ScenarioState["body"];
     s.rawText = res.rawText;

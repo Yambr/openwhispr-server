@@ -10,7 +10,7 @@
 
 import { Agent, fetch as undiciFetch } from "undici";
 
-import { expect, freshTenant, Given, signedInAs, Then, When } from "../support/fixtures";
+import { expect, Then, When } from "../support/fixtures";
 
 interface ScenarioState {
   cookie?: string;
@@ -91,23 +91,24 @@ export function parseNdjson(body: string): Array<{ type: string; [k: string]: un
   return out;
 }
 
-Given("a signed-in user", async function (this, ctx) {
-  const { apiBaseURL, mailpitApiUrl, tenantId } = ctx as {
-    apiBaseURL: string;
-    mailpitApiUrl: string;
-    tenantId: string;
-  };
-  const s = stateFor(tenantId);
-  const id = freshTenant(tenantId);
-  s.cookie = await signedInAs(apiBaseURL, mailpitApiUrl, id);
-});
+// Canonical `Given "a signed-in user"` lives in steps/shared/auth-shared.steps.ts;
+// it writes the session cookie onto ctx.cookie. Local state.cookie falls back
+// to ctx.cookie where read below.
 
 When(
   "the user POSTs to \\/api\\/agent\\/stream with prompt {string}",
   async function (this, ctx, prompt: string) {
-    const { apiBaseURL, tenantId } = ctx as { apiBaseURL: string; tenantId: string };
+    const {
+      apiBaseURL,
+      tenantId,
+      cookie: ctxCookie,
+    } = ctx as {
+      apiBaseURL: string;
+      tenantId: string;
+      cookie?: string;
+    };
     const s = stateFor(tenantId);
-    const res = await postAgentStream(apiBaseURL, s.cookie, prompt);
+    const res = await postAgentStream(apiBaseURL, s.cookie ?? ctxCookie, prompt);
     s.status = res.status;
     s.contentType = res.contentType;
     s.rawBody = res.rawBody;
