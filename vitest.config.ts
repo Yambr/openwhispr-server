@@ -180,6 +180,14 @@ export default defineConfig({
       provider: "v8",
       reporter: ["text", "json-summary", "json", "lcov"],
       reportsDirectory: "./coverage",
+      // Vitest defaults `reportOnFailure: false`, meaning a single failed
+      // test file aborts the whole coverage finalize step — including the
+      // `json-summary` reporter — and CI's `davelosert/vitest-coverage-
+      // report-action` step crashes with ENOENT on
+      // `coverage/coverage-summary.json`. Flip it on so coverage is always
+      // written, regardless of test outcome; the test step's own non-zero
+      // exit code remains the legitimate failure signal for CI.
+      reportOnFailure: true,
       // `all: false` reports only on files actually loaded during a test.
       // With placeholder modules at 5 LOC each, v8's bundle-level sourcemap
       // reports phantom lines (8, 26, 40-43) that don't exist in source —
