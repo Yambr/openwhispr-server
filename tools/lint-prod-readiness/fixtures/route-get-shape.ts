@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: FSL-1.1-ALv2
 // Fixture for tools/lint-prod-readiness.test.ts.
 // Verb-style `app.get(url, opts, handler)` shape with `rateLimit: false`
 // on a NON-health URL. Health-class waiver does not apply.

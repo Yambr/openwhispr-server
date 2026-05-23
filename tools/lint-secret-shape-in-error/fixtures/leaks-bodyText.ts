@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: FSL-1.1-ALv2
 // Fixture for tools/lint-secret-shape-in-error.test.ts.
 // A class extending `Error` with a public `bodyText: string` field that is
 // NOT truncated in the constructor. The linter must emit a single
