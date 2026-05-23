@@ -385,6 +385,25 @@ services:
       # `docker compose restart api` is enough to pick up edits. Read-only
       # so the container cannot mutate the host tree.
       LOCALES_DIR: /app/locales
+      # R25 SSRF allowlist for the bundled compose-internal services.
+      # Commit 54719dc8 switched the api docker HEALTHCHECK from /api/health
+      # (liveness) to /api/ready (deep cloud-ready) — /api/ready calls
+      # depCheck("litellm") which fires an undici GET against
+      # http://litellm:4000/health/readiness through the process-wide SSRF
+      # dispatcher (apps/api/src/lib/ssrf-dispatcher.ts). The dispatcher
+      # is default-deny when OUTBOUND_ALLOWED_HOSTS is empty, so the probe
+      # was returning `host_not_allowed` → litellm_upstream.ok=false →
+      # /api/ready 503 → container unhealthy → `docker compose up --wait`
+      # exited 1 for every operator running the bundled stack.
+      # The bundled service names (litellm, valkey, postgres, mailpit) are
+      # first-party trusted by construction — they're services THIS file
+      # itself stands up alongside the api. Promoting them from the
+      # dev-tools overlay (where they used to live as a workaround) to the
+      # base means every `docker compose up` boots healthy out of the box,
+      # AND operators overriding LITELLM_BASE_URL / SMTP_HOST / etc. to
+      # corporate hostnames extend the allowlist via .env.
+      OUTBOUND_ALLOWED_HOSTS: ${OUTBOUND_ALLOWED_HOSTS:-litellm,valkey,postgres,mailpit}
+      OUTBOUND_PRIVATE_HOST_ALLOWLIST: ${OUTBOUND_PRIVATE_HOST_ALLOWLIST:-litellm,valkey,postgres,mailpit}
     volumes:
       # Phase 10 / Plan 10-01d — see LOCALES_DIR comment above.
       - ./apps/api/src/i18n/locales:/app/locales:ro
