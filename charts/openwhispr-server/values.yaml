@@ -1,0 +1,11 @@
+# Default values for openwhispr-server (scaffold; full values land in Step 2).
+#
+# Per .planning/quick/20260523-3chart-split/PLAN.md (Advisor #2 verdict 1b):
+# cross-chart credentials (POSTGRES_APP_PASSWORD + LITELLM_MASTER_KEY) are
+# loaded via secretKeyRef from a sibling chart's Secret (or a BYOK Secret
+# the operator manages out-of-band).
+#
+# Release-name convention (verdict 3a): if the chart is installed as
+# `<prefix>-server`, the default sibling Secret refs resolve to
+# `<prefix>-postgres-app` and `<prefix>-litellm-master-key`. Operators
+# can override either ref explicitly to point at any BYOK Secret.
