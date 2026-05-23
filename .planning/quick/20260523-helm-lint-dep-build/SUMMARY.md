@@ -23,4 +23,4 @@ YAML validated. No permissions change.
 
 ## Commit
 
-`<set after commit>`
+`0594a6d5` — `ci(helm-lint): add helm dependency build step before helm lint`
