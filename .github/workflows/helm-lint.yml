@@ -48,8 +48,27 @@ jobs:
 
       - name: Generate ephemeral CI secrets
         id: secrets
+        # Keys must mirror the FULL set in
+        # `charts/openwhispr/templates/_helpers.tpl::openwhispr.requiredSecretKeys`.
+        # The secrets.yaml fail-gate iterates that list and fails the
+        # render unless every key has a non-empty, non-placeholder value.
         run: |
-          for k in litellmMasterKey openrouterApiKey openaiApiKey pyannoteApiKey hfToken postgresOwnerPassword pgbouncerAdminPassword betterAuthSecret; do
+          for k in \
+            litellmMasterKey \
+            openrouterApiKey \
+            openaiApiKey \
+            pyannoteApiKey \
+            hfToken \
+            postgresOwnerPassword \
+            postgresAppPassword \
+            pgbouncerAdminPassword \
+            betterAuthSecret \
+            valkeyPassword \
+            minioRootPassword \
+            traefikAdminPassword \
+            grafanaAdminPassword \
+            masterKek \
+            backupAgeIdentity; do
             v=$(openssl rand -base64 32 | tr -d '\n=' | cut -c1-40)
             echo "${k}=${v}" >> "$GITHUB_OUTPUT"
           done
@@ -76,8 +95,15 @@ jobs:
             --set-string secrets.pyannoteApiKey=${{ steps.secrets.outputs.pyannoteApiKey }} \
             --set-string secrets.hfToken=${{ steps.secrets.outputs.hfToken }} \
             --set-string secrets.postgresOwnerPassword=${{ steps.secrets.outputs.postgresOwnerPassword }} \
+            --set-string secrets.postgresAppPassword=${{ steps.secrets.outputs.postgresAppPassword }} \
             --set-string secrets.pgbouncerAdminPassword=${{ steps.secrets.outputs.pgbouncerAdminPassword }} \
-            --set-string secrets.betterAuthSecret=${{ steps.secrets.outputs.betterAuthSecret }}
+            --set-string secrets.betterAuthSecret=${{ steps.secrets.outputs.betterAuthSecret }} \
+            --set-string secrets.valkeyPassword=${{ steps.secrets.outputs.valkeyPassword }} \
+            --set-string secrets.minioRootPassword=${{ steps.secrets.outputs.minioRootPassword }} \
+            --set-string secrets.traefikAdminPassword=${{ steps.secrets.outputs.traefikAdminPassword }} \
+            --set-string secrets.grafanaAdminPassword=${{ steps.secrets.outputs.grafanaAdminPassword }} \
+            --set-string secrets.masterKek=${{ steps.secrets.outputs.masterKek }} \
+            --set-string secrets.backupAgeIdentity=${{ steps.secrets.outputs.backupAgeIdentity }}
 
       - name: helm template (validate render with valid secrets)
         run: |
@@ -89,8 +115,15 @@ jobs:
             --set-string secrets.pyannoteApiKey=${{ steps.secrets.outputs.pyannoteApiKey }} \
             --set-string secrets.hfToken=${{ steps.secrets.outputs.hfToken }} \
             --set-string secrets.postgresOwnerPassword=${{ steps.secrets.outputs.postgresOwnerPassword }} \
+            --set-string secrets.postgresAppPassword=${{ steps.secrets.outputs.postgresAppPassword }} \
             --set-string secrets.pgbouncerAdminPassword=${{ steps.secrets.outputs.pgbouncerAdminPassword }} \
             --set-string secrets.betterAuthSecret=${{ steps.secrets.outputs.betterAuthSecret }} \
+            --set-string secrets.valkeyPassword=${{ steps.secrets.outputs.valkeyPassword }} \
+            --set-string secrets.minioRootPassword=${{ steps.secrets.outputs.minioRootPassword }} \
+            --set-string secrets.traefikAdminPassword=${{ steps.secrets.outputs.traefikAdminPassword }} \
+            --set-string secrets.grafanaAdminPassword=${{ steps.secrets.outputs.grafanaAdminPassword }} \
+            --set-string secrets.masterKek=${{ steps.secrets.outputs.masterKek }} \
+            --set-string secrets.backupAgeIdentity=${{ steps.secrets.outputs.backupAgeIdentity }} \
             > /tmp/rendered.yaml
           test -s /tmp/rendered.yaml
 
