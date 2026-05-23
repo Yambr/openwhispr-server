@@ -20,7 +20,7 @@ services:
       pgbouncer:
         condition: service_healthy
     environment:
-      DATABASE_URL: postgresql://${POSTGRES_APP_USER}:${POSTGRES_APP_PASSWORD}@pgbouncer:5432/${POSTGRES_DB:-openwhispr}
+      DATABASE_URL: postgresql://${POSTGRES_APP_USER:-openwhispr_app}:${POSTGRES_APP_PASSWORD}@pgbouncer:5432/${POSTGRES_DB:-openwhispr}
     # Phase 20 / SR-20.1 + SR-20.2 — re-declare in overlay (T-20-03).
     restart: unless-stopped
     deploy:
@@ -42,7 +42,7 @@ services:
     environment:
       DB_HOST: postgres
       DB_PORT: "5432"
-      DB_USER: ${POSTGRES_APP_USER}
+      DB_USER: ${POSTGRES_APP_USER:-openwhispr_app}
       DB_PASSWORD: ${POSTGRES_APP_PASSWORD}
       DB_NAME: ${POSTGRES_DB:-openwhispr}
       POOL_MODE: transaction

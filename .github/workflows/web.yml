@@ -119,6 +119,12 @@ jobs:
           if [ -x tools/bootstrap.sh ]; then
             tools/bootstrap.sh --ci || true
           fi
+          # Overlay-required secrets that live OUTSIDE the slim contract.
+          # See .github/workflows/e2e-cjm.yml for the long-form rationale.
+          {
+            echo "MINIO_ROOT_PASSWORD=$(openssl rand -base64 32 | tr -d '\n=' | tr '+/' '-_')"
+            echo "GRAFANA_ADMIN_PASSWORD=$(openssl rand -base64 32 | tr -d '\n=' | tr '+/' '-_')"
+          } >> .env
       - name: Add /etc/hosts entry for api.localhost
         run: |
           echo "127.0.0.1 api.localhost auth.localhost" | sudo tee -a /etc/hosts
