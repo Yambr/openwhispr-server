@@ -437,6 +437,15 @@ describe("applyHeaderHash (HI-01)", () => {
     expect(out).toBe("#!/usr/bin/env bash\n# SPDX-License-Identifier: FSL-1.1-ALv2\necho hi\n");
   });
 
+  it("appends header on a fresh line when the file is a shebang with no trailing newline", () => {
+    // Edge case: a script file that is literally just the shebang line
+    // with no LF — readFileSync returns "#!/usr/bin/env bash" with no \n.
+    // The codemod must still produce a valid two-line file rather than
+    // gluing the header onto the shebang line.
+    const out = applyHeaderHash("#!/usr/bin/env bash");
+    expect(out).toBe("#!/usr/bin/env bash\n# SPDX-License-Identifier: FSL-1.1-ALv2\n");
+  });
+
   it("is idempotent — second application is a no-op", () => {
     const once = applyHeaderHash("foo:\n");
     const twice = applyHeaderHash(once);
