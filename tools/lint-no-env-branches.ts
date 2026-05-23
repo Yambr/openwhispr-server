@@ -84,6 +84,7 @@ const IGNORE = [
   "**/*.test.tsx",
   "**/bootstrap.ts",
   "**/config/*.ts",
+  "**/config.ts",
   "**/otel-bootstrap.ts",
   "**/*.config.ts",
 ];
