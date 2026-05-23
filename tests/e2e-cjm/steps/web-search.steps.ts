@@ -12,7 +12,7 @@
 
 import { Agent, fetch as undiciFetch } from "undici";
 
-import { expect, freshTenant, Given, signedInAs, Then, When } from "../support/fixtures";
+import { expect, Given, Then, When } from "../support/fixtures";
 
 interface ScenarioState {
   cookie?: string;
@@ -72,16 +72,9 @@ export async function postWebSearch(
   return { status: res.status, body: parsed, rawText };
 }
 
-Given("a signed-in user", async function (this, ctx) {
-  const { apiBaseURL, mailpitApiUrl, tenantId } = ctx as {
-    apiBaseURL: string;
-    mailpitApiUrl: string;
-    tenantId: string;
-  };
-  const s = stateFor(tenantId);
-  const id = freshTenant(tenantId);
-  s.cookie = await signedInAs(apiBaseURL, mailpitApiUrl, id);
-});
+// Canonical `Given "a signed-in user"` lives in steps/shared/auth-shared.steps.ts;
+// it writes the session cookie onto ctx.cookie. Local state.cookie reads
+// fall back to ctx.cookie via the inline `?? ctxCookie` pattern.
 
 Given(
   "WEB_SEARCH_PROVIDER is configured to {string}",
@@ -107,9 +100,17 @@ Given(
 When(
   "the user POSTs to \\/api\\/agent\\/web-search with query {string} and numResults {int}",
   async function (this, ctx, query: string, numResults: number) {
-    const { apiBaseURL, tenantId } = ctx as { apiBaseURL: string; tenantId: string };
+    const {
+      apiBaseURL,
+      tenantId,
+      cookie: ctxCookie,
+    } = ctx as {
+      apiBaseURL: string;
+      tenantId: string;
+      cookie?: string;
+    };
     const s = stateFor(tenantId);
-    const res = await postWebSearch(apiBaseURL, s.cookie ?? "", { query, numResults });
+    const res = await postWebSearch(apiBaseURL, s.cookie ?? ctxCookie ?? "", { query, numResults });
     s.status = res.status;
     s.body = res.body;
     s.rawText = res.rawText;

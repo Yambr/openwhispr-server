@@ -7,7 +7,7 @@
 
 import { Agent, FormData, fetch as undiciFetch } from "undici";
 
-import { expect, freshTenant, Given, signedInAs, Then, When } from "../support/fixtures";
+import { expect, Given, Then, When } from "../support/fixtures";
 
 interface ScenarioState {
   cookie?: string;
@@ -81,22 +81,24 @@ Given(
   },
 );
 
-Given("a signed-in user", async function (this, ctx) {
-  const { apiBaseURL, mailpitApiUrl, tenantId } = ctx as {
-    apiBaseURL: string;
-    mailpitApiUrl: string;
-    tenantId: string;
-  };
-  const s = stateFor(tenantId);
-  s.cookie = await signedInAs(apiBaseURL, mailpitApiUrl, freshTenant(tenantId));
-});
+// Canonical `Given "a signed-in user"` lives in steps/shared/auth-shared.steps.ts;
+// it writes the session cookie onto ctx.cookie. Local state.cookie falls back
+// to ctx.cookie where read below.
 
 When("the user POSTs a wav fixture to \\/api\\/transcribe", async function (this, ctx) {
-  const { apiBaseURL, tenantId } = ctx as { apiBaseURL: string; tenantId: string };
+  const {
+    apiBaseURL,
+    tenantId,
+    cookie: ctxCookie,
+  } = ctx as {
+    apiBaseURL: string;
+    tenantId: string;
+    cookie?: string;
+  };
   const s = stateFor(tenantId);
   // 64-byte silent WAV stub — Phase 19.2 wired transcribe end-to-end
   // so a minimal payload is sufficient.
-  const res = await postTranscribeWav(apiBaseURL, s.cookie ?? "", Buffer.alloc(64, 0));
+  const res = await postTranscribeWav(apiBaseURL, s.cookie ?? ctxCookie ?? "", Buffer.alloc(64, 0));
   s.status = res.status;
   s.body = res.body;
   s.rawText = res.rawText;

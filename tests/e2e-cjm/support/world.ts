@@ -56,6 +56,14 @@ export interface CjmFixtures {
   /** Per-scenario tenant id (UUID v4). */
   tenantId: string;
   /**
+   * Session cookie populated by the canonical `Given "a signed-in user"`
+   * step (see `steps/shared/auth-shared.steps.ts`). Per-scenario step
+   * files read this via `ctx.cookie` instead of re-running sign-in.
+   * Mutated by the shared Given handler; downstream When/Then handlers
+   * fall back to this when their local state map has no cookie yet.
+   */
+  cookie?: string;
+  /**
    * Wait for a verification email sent to `toAddress`. Closure-binds the
    * `mailpitApiUrl` fixture so steps don't repeat the env-resolution dance.
    */
@@ -99,6 +107,12 @@ export const test = base.extend<CjmFixtures>({
   // biome-ignore lint/correctness/noEmptyPattern: Playwright fixture API.
   extractVerificationLink: async ({}, use) => {
     await use(extractVerificationLink);
+  },
+  // biome-ignore lint/correctness/noEmptyPattern: Playwright fixture API.
+  cookie: async ({}, use) => {
+    // Default is undefined; the shared Given step mutates ctx.cookie
+    // in-place on sign-in. See steps/shared/auth-shared.steps.ts.
+    await use(undefined);
   },
 });
 

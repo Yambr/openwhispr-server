@@ -118,7 +118,10 @@ export default defineConfig({
         test: {
           name: "tests-e2e-cjm-steps",
           root: p("tests/e2e-cjm/steps"),
-          include: ["__tests__/*.test.ts"],
+          // Include sibling __tests__/ at both the steps/ root and nested
+          // subdirectories like steps/shared/__tests__/ (quick/r34 added
+          // the canonical Given handler under shared/).
+          include: ["__tests__/*.test.ts", "*/__tests__/*.test.ts"],
         },
       },
       // Phase 53 / Plan 53-01 — browser-diagnostics helper unit tests.

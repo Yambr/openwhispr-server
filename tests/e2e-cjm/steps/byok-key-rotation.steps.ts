@@ -4,7 +4,7 @@
 import { randomUUID } from "node:crypto";
 import { Agent, fetch as undiciFetch } from "undici";
 
-import { expect, freshTenant, Given, signedInAs, Then, When } from "../support/fixtures";
+import { expect, Then, When } from "../support/fixtures";
 
 interface KeyRecord {
   id: string;
@@ -113,21 +113,20 @@ function extractCreatedId(body: unknown): string | undefined {
   return typeof id === "string" ? id : undefined;
 }
 
-Given("a signed-in user", async function (this, ctx) {
-  const { apiBaseURL, mailpitApiUrl, tenantId } = ctx as {
-    apiBaseURL: string;
-    mailpitApiUrl: string;
-    tenantId: string;
-  };
-  const s = stateFor(tenantId);
-  const id = freshTenant(tenantId);
-  s.cookie = await signedInAs(apiBaseURL, mailpitApiUrl, id);
-});
+// Canonical `Given "a signed-in user"` lives in steps/shared/auth-shared.steps.ts;
+// it writes the session cookie onto ctx.cookie. Local state.cookie reads
+// fall back to ctx.cookie via cookieFor().
+function cookieFor(ctx: unknown, s: ScenarioState): string {
+  if (s.cookie) return s.cookie;
+  const c = (ctx as { cookie?: string }).cookie;
+  if (c) s.cookie = c;
+  return s.cookie ?? "";
+}
 
 When("the user creates an api key named {string}", async function (this, ctx, name: string) {
   const { apiBaseURL, tenantId } = ctx as { apiBaseURL: string; tenantId: string };
   const s = stateFor(tenantId);
-  const res = await createKey(apiBaseURL, s.cookie ?? "", name);
+  const res = await createKey(apiBaseURL, cookieFor(ctx, s), name);
   const id = extractCreatedId(res.body);
   if (!s.oldKeyId) s.oldKeyId = id;
   else s.newKeyId = id;
@@ -138,7 +137,7 @@ When("the user creates an api key named {string}", async function (this, ctx, na
 When("the user creates a second api key named {string}", async function (this, ctx, name: string) {
   const { apiBaseURL, tenantId } = ctx as { apiBaseURL: string; tenantId: string };
   const s = stateFor(tenantId);
-  const res = await createKey(apiBaseURL, s.cookie ?? "", name);
+  const res = await createKey(apiBaseURL, cookieFor(ctx, s), name);
   s.newKeyId = extractCreatedId(res.body);
   s.lastStatus = res.status;
   s.lastBody = res.body;
@@ -148,12 +147,12 @@ When("the user revokes the first key", async function (this, ctx) {
   const { apiBaseURL, tenantId } = ctx as { apiBaseURL: string; tenantId: string };
   const s = stateFor(tenantId);
   if (!s.oldKeyId) throw new Error("step ordering: first create did not return an id");
-  const res = await revokeKey(apiBaseURL, s.cookie ?? "", s.oldKeyId);
+  const res = await revokeKey(apiBaseURL, cookieFor(ctx, s), s.oldKeyId);
   s.revokeStatus = res.status;
   s.lastStatus = res.status;
   s.lastBody = res.body;
   s.lastRawText = res.rawText;
-  const list = await listKeys(apiBaseURL, s.cookie ?? "");
+  const list = await listKeys(apiBaseURL, cookieFor(ctx, s));
   s.list = list.body.data ?? [];
 });
 
@@ -163,7 +162,7 @@ When(
     const { apiBaseURL, tenantId } = ctx as { apiBaseURL: string; tenantId: string };
     const s = stateFor(tenantId);
     const fakeId = randomUUID();
-    const res = await revokeKey(apiBaseURL, s.cookie ?? "", fakeId);
+    const res = await revokeKey(apiBaseURL, cookieFor(ctx, s), fakeId);
     s.lastStatus = res.status;
     s.lastBody = res.body;
     s.lastRawText = res.rawText;
