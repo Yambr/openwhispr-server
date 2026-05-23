@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: FSL-1.1-ALv2
 // Fixture for tools/lint-shell-credential-interpolation.test.ts.
 // `spawn('bash', ['-c', `...${DATABASE_URL}...`])` interpolates a
 // credential-shaped binding into the shell argv. Linter must flag this

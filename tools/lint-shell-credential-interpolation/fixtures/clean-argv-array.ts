@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: FSL-1.1-ALv2
 // Fixture for tools/lint-shell-credential-interpolation.test.ts.
 // Safe pattern (Phase 36.a closure): the credential is passed as a
 // SEPARATE argv element with `shell: false`, NOT interpolated into a
