@@ -544,6 +544,16 @@ e2e-cjm:
 		-f tests/e2e-cjm/compose-overrides.yml \
 		--profile default up -d --build --wait; \
 	pnpm tsx tests/e2e-cjm/support/wait-for-readiness.ts; \
+	# playwright-bdd 8.x does NOT auto-generate specs via `playwright
+	# test`; the generation runs only via the dedicated `bddgen` CLI
+	# (see node_modules/playwright-bdd/dist/cli/commands/test.ts).
+	# Without an explicit `bddgen` invocation the .bdd-gen/ output dir
+	# stays empty and playwright reports "Error: No tests found". Locally
+	# this was hidden by a cached .bdd-gen/ from prior runs — CI is
+	# always fresh, so the bug manifested on every push. Run bddgen
+	# explicitly before `playwright test`, scoped via the same config so
+	# `outputDir: ".bdd-gen"` resolves to tests/e2e-cjm/.bdd-gen/. \
+	(cd tests/e2e-cjm && pnpm exec bddgen --config playwright.config.ts); \
 	if [ -n "$$SCENARIO" ]; then \
 		pnpm exec playwright test --grep "$$SCENARIO" --config tests/e2e-cjm/playwright.config.ts; \
 	else \
