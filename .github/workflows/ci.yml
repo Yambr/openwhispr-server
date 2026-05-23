@@ -801,6 +801,10 @@ jobs:
             -e 's|^AUTH_URL=.*|AUTH_URL=https://api.localhost|' \
             -e 's|^OPENWHISPR_API_URL=.*|OPENWHISPR_API_URL=https://api.localhost|' \
             .env.ci.template
+          # https://… INGRESS_BASE_URL requires INGRESS_TLS_CERT_PATH so the
+          # BYOK ingress row passes. Point at the Traefik cert shipped in
+          # compose/traefik/certs (bootstrap.sh generates it on first run).
+          echo "INGRESS_TLS_CERT_PATH=/etc/traefik/certs/local.crt" >> .env.ci.template
           cp .env.ci.template .env
           if [ -x tools/bootstrap.sh ]; then
             BOOTSTRAP_ENV_TEMPLATE="$(pwd)/.env.ci.template" tools/bootstrap.sh --ci || true
