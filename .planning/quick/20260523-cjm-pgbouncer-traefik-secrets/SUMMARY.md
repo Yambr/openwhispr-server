@@ -52,4 +52,4 @@ e2e drive actual user journeys.
 
 ## Commit
 
-`<set after commit>`
+`df9e13d5` — `ci(cjm,axe): uncomment PGBOUNCER + TRAEFIK admin passwords pre-bootstrap`

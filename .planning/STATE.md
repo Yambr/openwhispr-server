@@ -109,6 +109,7 @@ Last activity: 2026-05-16 — Phase 19.2 CLOSED with SERVER-ERRORS Entry 11 casc
 | 260523-smoke-diagnostics-timeout | CI smoke: per-service log dump for slim-core + `--wait-timeout 600` for embedded-smoke (litellm cold-start headroom + api `/api/ready` 503 diagnostics) | 2026-05-23 | 8e6fa508 | [20260523-smoke-diagnostics-timeout](./quick/20260523-smoke-diagnostics-timeout/) |
 | 260523-codeql-test-route-tree-ignore | CodeQL: extend `paths-ignore` to `**/__test/**` (test-only Fastify route tree; clears false-positive `js/request-forgery` #20). Adjacent alerts #14/#15/#17/#19 polynomial-redos already mitigated in code; #21/#33 false positives — all dismiss on next scan | 2026-05-23 | 6d1be516 | [20260523-codeql-test-route-tree-ignore](./quick/20260523-codeql-test-route-tree-ignore/) |
 | 260523-helm-lint-dep-build | `helm-lint` workflow: add `helm dependency build` step (Chart.yaml declares 3 OCI sub-chart deps — valkey/minio/cert-manager — that helm lint requires resolved on disk) | 2026-05-23 | 0594a6d5 | [20260523-helm-lint-dep-build](./quick/20260523-helm-lint-dep-build/) |
+| 260523-cjm-pgbouncer-traefik-secrets | e2e-cjm + conformance-axe: uncomment `PGBOUNCER_ADMIN_PASSWORD` + `TRAEFIK_ADMIN_PASSWORD` before `bootstrap.sh` (root-caused via Wave 2 #3 log-dump artifact — migrate refused on default-secrets deny-list) | 2026-05-23 | df9e13d5 | [20260523-cjm-pgbouncer-traefik-secrets](./quick/20260523-cjm-pgbouncer-traefik-secrets/) |
 
 ## Accumulated Context
 
