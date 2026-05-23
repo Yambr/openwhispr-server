@@ -123,7 +123,7 @@ gh issue create \
 
 ```bash
 # Driver does this idempotently; manual command shown for reference.
-gh api -X PUT /repos/openwhispr/openwhispr-server/branches/main/protection \
+gh api -X PUT /repos/Yambr/openwhispr-server/branches/main/protection \
   -f required_status_checks='null' \
   -F enforce_admins=true \
   -f required_pull_request_reviews='null' \
@@ -148,7 +148,7 @@ Run from a fresh `mktemp -d` directory, NOT the operator's working tree:
 ```bash
 WORKDIR=$(mktemp -d -t scrub-workdir-XXXXXX)
 cd "$WORKDIR"
-git clone --mirror https://github.com/openwhispr/openwhispr-server.git openwhispr-server.git
+git clone --mirror https://github.com/Yambr/openwhispr-server.git openwhispr-server.git
 cd openwhispr-server.git
 git filter-repo --path speaches-audio.md --invert-paths --force
 ```
@@ -200,15 +200,15 @@ re-sign with the original key, then `git push --force --tags origin`.
 
 ```bash
 # Enumerate + delete all cache entries.
-for id in $(gh api /repos/openwhispr/openwhispr-server/actions/caches \
+for id in $(gh api /repos/Yambr/openwhispr-server/actions/caches \
               --jq '.actions_caches[].id'); do
-  gh api -X DELETE "/repos/openwhispr/openwhispr-server/actions/caches/$id"
+  gh api -X DELETE "/repos/Yambr/openwhispr-server/actions/caches/$id"
 done
 
 # Bump the CACHE_VERSION repo variable so any cache key reading it busts.
 gh variable set CACHE_VERSION \
   --body "$(date +%s)" \
-  --repo openwhispr/openwhispr-server
+  --repo Yambr/openwhispr-server
 ```
 
 **Consumer workflows** that should reference `CACHE_VERSION` in their
@@ -233,7 +233,7 @@ rest. The driver applies this fallback automatically.
 
 ```bash
 # Driver replays from the rollback JSON stored in Stage 3.
-gh api -X PUT /repos/openwhispr/openwhispr-server/branches/main/protection \
+gh api -X PUT /repos/Yambr/openwhispr-server/branches/main/protection \
   --input /tmp/scrub-protection-rollback.<RANDOM>.json
 ```
 
@@ -313,7 +313,7 @@ The original rule is preserved in `/tmp/scrub-protection-rollback.*.json`.
 Open it, edit any drifted fields, then replay manually:
 
 ```bash
-gh api -X PUT /repos/openwhispr/openwhispr-server/branches/main/protection \
+gh api -X PUT /repos/Yambr/openwhispr-server/branches/main/protection \
   --input /tmp/scrub-protection-rollback.<RANDOM>.json
 ```
 
@@ -362,7 +362,7 @@ you go; do not skip steps; do not run them out of order.
       `.github/ISSUE_TEMPLATE/fsl-history-scrub-advance.md`. Pin it.
       Post link in discussions. **Wait ≥ 24 hours.**
 - [ ] **C5.** Lock `main` branch protection via
-      `gh api -X PUT /repos/openwhispr/openwhispr-server/branches/main/protection ...`
+      `gh api -X PUT /repos/Yambr/openwhispr-server/branches/main/protection ...`
       (Stage 3 above; the driver does this for you when `--force`).
 - [ ] **C6.** Run `bash tools/history-scrub.sh --force` from a fresh
       clone. Watch each stage echo. Do NOT interrupt mid-stage.

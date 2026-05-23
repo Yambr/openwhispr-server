@@ -14,7 +14,7 @@
 # side effect of this bugfix.
 
 FROM edoburu/pgbouncer:v1.25.1-p0
-LABEL org.opencontainers.image.source="https://github.com/openwhispr/openwhispr-server" \
+LABEL org.opencontainers.image.source="https://github.com/Yambr/openwhispr-server" \
       org.opencontainers.image.licenses="FSL-1.1-ALv2"
 
 COPY bootstrap.sh /usr/local/bin/bootstrap.sh

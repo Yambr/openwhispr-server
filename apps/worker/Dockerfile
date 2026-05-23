@@ -76,7 +76,7 @@ RUN pnpm install --frozen-lockfile --prod --ignore-scripts \
 
 # ----- runtime -----
 FROM node:24-alpine AS runtime
-LABEL org.opencontainers.image.source="https://github.com/openwhispr/openwhispr-server" \
+LABEL org.opencontainers.image.source="https://github.com/Yambr/openwhispr-server" \
       org.opencontainers.image.licenses="FSL-1.1-ALv2"
 WORKDIR /app
 

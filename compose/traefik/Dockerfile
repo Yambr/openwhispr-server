@@ -21,7 +21,7 @@
 #   * marks the script 0755 in the same COPY instruction to keep the
 #     image one layer thinner.
 FROM traefik:v3.6
-LABEL org.opencontainers.image.source="https://github.com/openwhispr/openwhispr-server" \
+LABEL org.opencontainers.image.source="https://github.com/Yambr/openwhispr-server" \
       org.opencontainers.image.licenses="FSL-1.1-ALv2"
 
 COPY --chmod=0755 fd-probe.sh /usr/local/bin/fd-probe.sh

@@ -19,7 +19,7 @@
 # at 17.5 (matches docker-compose.yml) so a fresh build is reproducible.
 
 FROM postgres:17.5-alpine
-LABEL org.opencontainers.image.source="https://github.com/openwhispr/openwhispr-server" \
+LABEL org.opencontainers.image.source="https://github.com/Yambr/openwhispr-server" \
       org.opencontainers.image.licenses="FSL-1.1-ALv2"
 
 ARG PG_PARTMAN_VERSION=5.2.4

@@ -19,7 +19,7 @@
 # so only the test package's dep graph (vitest + zod + tough-cookie +
 # transitives) is fetched.
 FROM node:24-alpine
-LABEL org.opencontainers.image.source="https://github.com/openwhispr/openwhispr-server" \
+LABEL org.opencontainers.image.source="https://github.com/Yambr/openwhispr-server" \
       org.opencontainers.image.licenses="FSL-1.1-ALv2"
 
 WORKDIR /app

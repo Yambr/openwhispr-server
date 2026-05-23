@@ -66,7 +66,7 @@ export function AuthShell({
           <span className="font-mono">v1.0.4</span>
           <span aria-hidden="true">·</span>
           <a
-            href="https://github.com/openwhispr/openwhispr-server/actions"
+            href="https://github.com/Yambr/openwhispr-server/actions"
             target="_blank"
             rel="noopener noreferrer"
             className="hover:text-foreground"
@@ -74,7 +74,7 @@ export function AuthShell({
             {t("common.auth.shell.footer.status.text")}
           </a>
           <a
-            href="https://github.com/openwhispr/openwhispr-server#readme"
+            href="https://github.com/Yambr/openwhispr-server#readme"
             target="_blank"
             rel="noopener noreferrer"
             className="hover:text-foreground"
@@ -82,7 +82,7 @@ export function AuthShell({
             {t("common.auth.shell.footer.docs.text")}
           </a>
           <a
-            href="https://github.com/openwhispr/openwhispr-server"
+            href="https://github.com/Yambr/openwhispr-server"
             target="_blank"
             rel="noopener noreferrer"
             className="hover:text-foreground"

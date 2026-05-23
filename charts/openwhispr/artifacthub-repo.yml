@@ -10,7 +10,7 @@
 # repositoryID is a unique UUID-v4 identifier; it lets ArtifactHub
 # associate this gh-pages URL with the same repo across re-registrations
 # (e.g. if the chart's GH Pages URL ever moves between
-# `openwhispr/openwhispr-server` mirrors). Generate via `uuidgen` once;
+# `Yambr/openwhispr-server` mirrors). Generate via `uuidgen` once;
 # never rotate.
 repositoryID: 7e3a7c40-3f99-4f01-8d4a-2f2c8c5f5c01
 

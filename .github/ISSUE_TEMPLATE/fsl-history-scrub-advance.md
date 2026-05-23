@@ -16,7 +16,7 @@ assignees: []
 
 ## What is happening
 
-The `main` branch of `openwhispr/openwhispr-server` will be **rewritten
+The `main` branch of `Yambr/openwhispr-server` will be **rewritten
 via `git filter-repo`** on **`<UTC TIMESTAMP, e.g. 2026-05-16T14:00Z>`**
 to remove the stale reference file `speaches-audio.md` from history.
 This is the Phase 15-04 atomic event — see

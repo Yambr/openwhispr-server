@@ -58,7 +58,7 @@ storage:
 pooler:
   enabled: true
 
-# kind-e2e-verify-20260523 — migrate Job's image (ghcr.io/openwhispr/
+# kind-e2e-verify-20260523 — migrate Job's image (ghcr.io/Yambr/
 # openwhispr-migrate:0.9.0-rc1) is not publicly available; the kind
 # bringup script never builds + loads a dedicated migrate image. The api
 # image already bundles /app/packages/data/dist/migrate.cjs (used by the
@@ -93,7 +93,7 @@ postgres:
   # kind-loaded locally-built image (see Plan 09.1-3 prep — `docker tag`
   # + `kind load docker-image`). Matches the `:17.X-*` schema-validator
   # regex enforced in postgres-cluster.yaml.
-  imageName: ghcr.io/openwhispr/cnpg-postgres-17-pgpartman:17.5
+  imageName: ghcr.io/Yambr/cnpg-postgres-17-pgpartman:17.5
 
 # Finding 09.1-F6 — Bitnami's 2024 Secure Images migration removed
 # point-version tags from the canonical `bitnami/*` namespace. The
@@ -197,7 +197,7 @@ litellm:
 testProbe:
   enabled: true
   image:
-    repository: ghcr.io/openwhispr/openwhispr-test-probe
+    repository: ghcr.io/Yambr/openwhispr-test-probe
     tag: "0.9.0-rc1"
     pullPolicy: IfNotPresent
   sloDeadlineMs: 300000

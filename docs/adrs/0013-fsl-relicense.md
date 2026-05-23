@@ -197,7 +197,7 @@ pre-fsl-relicense-2026-05-15 tag are asked to record their consent to the
 FSL-1.1-ALv2 relicense on a per-contributor basis. The retroactive consent
 record lives at:
 
-- **Tracking issue:** https://github.com/openwhispr/openwhispr-server/issues/TBD-RETROACTIVE-CONSENT
+- **Tracking issue:** https://github.com/Yambr/openwhispr-server/issues/TBD-RETROACTIVE-CONSENT
   (the issue number is filled in by 15-04 once the tracking issue is
   authored against the post-scrub HEAD; see the 15-04 runbook).
 - **Cutoff SHA:** the post-scrub HEAD SHA (filled by 15-04). Commits at or
