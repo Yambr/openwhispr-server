@@ -48,6 +48,16 @@ host:
 storage:
   enabled: true
 
+# kind-e2e-verify-20260523 — api/worker DATABASE_URL helper hardcodes
+# `<fullname>-pg-pooler` (CNPG Pooler CRD) which is a separate sub-
+# resource gated on pooler.enabled. With pooler.enabled=false (slim
+# default) the helper produces a hostname that DNS-fails at runtime
+# (ENOTFOUND openwhispr-pg-pooler -> 500 on every sign-up/sign-in).
+# Enable Pooler in kind smoke so sign-up resolves to a real Service.
+# Cloud-HA / corporate overlays already set this to true.
+pooler:
+  enabled: true
+
 # kind-e2e-verify-20260523 — migrate Job's image (ghcr.io/openwhispr/
 # openwhispr-migrate:0.9.0-rc1) is not publicly available; the kind
 # bringup script never builds + loads a dedicated migrate image. The api
