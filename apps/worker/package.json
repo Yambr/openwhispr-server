@@ -13,16 +13,16 @@
   },
   "dependencies": {
     "@opentelemetry/api": "^1.9.0",
-    "@opentelemetry/exporter-metrics-otlp-grpc": "^0.217.0",
-    "@opentelemetry/instrumentation-pino": "^0.63.0",
-    "@opentelemetry/sdk-node": "^0.217.0",
+    "@opentelemetry/exporter-metrics-otlp-grpc": "^0.218.0",
+    "@opentelemetry/instrumentation-pino": "^0.64.0",
+    "@opentelemetry/sdk-node": "^0.218.0",
     "@openwhispr/byok-guard": "workspace:*",
     "@openwhispr/data": "workspace:*",
     "@openwhispr/email": "workspace:*",
     "@openwhispr/observability": "workspace:*",
-    "bullmq": "^5.16.0",
-    "ioredis": "^5.4.1",
-    "pg": "8.20.0",
+    "bullmq": "^5.77.1",
+    "ioredis": "^5.10.1",
+    "pg": "8.21.0",
     "pino": "^9.4.0",
     "zod": "4.4.3"
   },
@@ -30,10 +30,10 @@
     "@fast-check/vitest": "0.4.1",
     "@testcontainers/postgresql": "^11.14.0",
     "@types/pg": "^8.20.0",
-    "fast-check": "4.7.0",
+    "fast-check": "4.8.0",
     "testcontainers": "^11.14.0",
     "tsup": "^8.3.0",
-    "tsx": "^4.19.0",
+    "tsx": "^4.22.3",
     "typescript": "^5.6.0"
   }
 }
