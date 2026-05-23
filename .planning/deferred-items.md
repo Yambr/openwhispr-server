@@ -11,6 +11,30 @@ record. Keep this file under ~200 lines.
 
 ---
 
+## CI `test` job — accumulated integration-test regressions
+
+**Discovered:** 2026-05-23 running v2.4 CI on main (run 26337800406 / job 77534390453).
+
+The vitest `test` job has ~10 distinct red files that pre-date the CI red sweep I'm closing. None are related to recent commits; they are accumulated drift since the suite was last all-green. Bucketed:
+
+- `tests-integration/compose-overlays.test.ts` — 7 failed of 30
+- `tests-integration/traefik-network-alias.test.ts` — 8/9
+- `tests-integration/contract-test-runner-compose.test.ts` — 3/5
+- `tests-integration/oidc-env-wiring.test.ts` — 4/4
+- `tests-integration/observability-stack-up.test.ts` — 5/6 (`Missing chart resource(s): quibblr` typo + YAML `!reset` unresolved tag warnings)
+- `tools/lint-gitleaks-hook.test.ts` — 1/4
+- `tools/lint-migrations.test.ts` — 3/36
+- `api/tests/support/__tests__/shared-pg.test.ts` — 1/5
+- `data/tests/encryption/plan-52-02-cleanedwhere-import.test.ts` — 1/4
+
+The 2 `tests-self-tests` `docker compose up --wait` failures listed alongside in the run summary are **already closed by commit 07dfa407** (LITELLM_MASTER_KEY added to fixtureSecrets) — they will go green on the next run.
+
+These are heterogeneous regressions, NOT one root cause. Each needs its own per-file investigation: read the failure assertion, find the production drift that broke it, write the targeted fix. Scope is multi-day, not a quick-task. Track as a dedicated phase ("Phase X: test-job suite recovery") with one plan per failing file.
+
+DO NOT mass-skip or relax thresholds — each red is signal about a real production-code drift that the test was designed to catch.
+
+---
+
 ## Phase 61 — load-test path reconciliation (env-template / compose-default contract)
 
 **Discovered:** 2026-05-22 running `make load-smoke` for v2.4 Phase 61.
