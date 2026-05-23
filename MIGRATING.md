@@ -105,4 +105,4 @@ POST-SCRUB-HEAD-SHA: <filled-by-15-04-execution>
 - **License rationale, alternatives, retroactive consent:** [ADR-0013](docs/adrs/0013-fsl-relicense.md).
 - **DCO `Signed-off-by:` requirement:** [`CONTRIBUTING.md`](CONTRIBUTING.md).
 - **History scrub runbook (atomic event, 15-04):** `docs/runbooks/15-04-history-scrub.md` (authored in plan 15-04).
-- **Open an issue:** https://github.com/openwhispr/openwhispr-server/issues/new.
+- **Open an issue:** https://github.com/Yambr/openwhispr-server/issues/new.

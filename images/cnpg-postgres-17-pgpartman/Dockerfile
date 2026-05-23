@@ -34,6 +34,6 @@ RUN set -eux; \
 
 USER 26
 
-LABEL org.opencontainers.image.source="https://github.com/openwhispr/openwhispr-server" \
+LABEL org.opencontainers.image.source="https://github.com/Yambr/openwhispr-server" \
       org.opencontainers.image.description="CloudNativePG-compatible Postgres 17 with pg_partman pre-installed" \
       org.opencontainers.image.licenses="FSL-1.1-ALv2"

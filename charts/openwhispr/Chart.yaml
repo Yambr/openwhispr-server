@@ -15,9 +15,9 @@ type: application
 version: 1.0.0
 appVersion: "0.9.0-rc1"
 kubeVersion: ">=1.28.0-0"
-home: https://github.com/openwhispr/openwhispr-server
+home: https://github.com/Yambr/openwhispr-server
 sources:
-  - https://github.com/openwhispr/openwhispr-server
+  - https://github.com/Yambr/openwhispr-server
 keywords:
   - openwhispr
   - transcription
@@ -27,7 +27,7 @@ keywords:
   - self-hosted
 maintainers:
   - name: OpenWhispr Maintainers
-    url: https://github.com/openwhispr/openwhispr-server
+    url: https://github.com/Yambr/openwhispr-server
 annotations:
   # Renders only Cluster-prereq-friendly resources by default. Wave 0 chart
   # ships skeleton only (ServiceAccount + Secrets path). Subsequent waves

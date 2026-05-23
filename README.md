@@ -19,7 +19,10 @@ pointing the desktop client at your own deployment is a single base-URL
 change with no client code modifications.
 
 The desktop client lives in its own repository:
-**[github.com/openwhispr/openwhispr](https://github.com/openwhispr/openwhispr)**.
+**[github.com/Yambr/openwhispr](https://github.com/Yambr/openwhispr)**
+(the fork is intentionally stripped and is being reassembled; its
+configurable base-URL surface is what makes pointing at a self-hosted
+server a one-env-var change).
 
 ## Screenshots
 

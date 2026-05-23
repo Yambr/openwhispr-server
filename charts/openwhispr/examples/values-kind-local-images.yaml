@@ -1,6 +1,6 @@
 # Phase kind-e2e-verify-20260523 — image overrides for locally-built
 # Docker images loaded via `kind load docker-image`. Layered on TOP of
-# values-kind.yaml to retarget repositories from ghcr.io/openwhispr/* to
+# values-kind.yaml to retarget repositories from ghcr.io/Yambr/* to
 # the bare local image names produced by `docker compose build`.
 image:
   api:

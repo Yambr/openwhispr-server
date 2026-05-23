@@ -46,7 +46,7 @@ docker run --rm --entrypoint /bin/sh openwhispr-cnpg-postgres-17-pgpartman:local
 
 Multi-arch publish happens via `.github/workflows/release.yml`'s buildx job
 on every `git tag v*` push. Both `linux/amd64` and `linux/arm64` land in the
-manifest list at `ghcr.io/openwhispr/openwhispr-cnpg-postgres-17-pgpartman`.
+manifest list at `ghcr.io/Yambr/openwhispr-cnpg-postgres-17-pgpartman`.
 
 ## Tag scheme
 
