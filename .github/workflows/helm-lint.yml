@@ -55,11 +55,17 @@ jobs:
           done
 
       - name: helm dependency build
-        # Chart.yaml declares 3 OCI sub-chart deps (valkey, minio,
-        # cert-manager) that helm lint / helm template require resolved
-        # before render. On a fresh CI checkout charts/ is empty, so
-        # dep-build must run first.
-        run: helm dependency build charts/openwhispr
+        # Chart.yaml declares 3 sub-chart deps:
+        #   - valkey         (oci://registry-1.docker.io/bitnamicharts) — no `helm repo add` needed
+        #   - minio          (oci://registry-1.docker.io/bitnamicharts) — no `helm repo add` needed
+        #   - cert-manager   (https://charts.jetstack.io)               — HTTPS Helm repo, MUST be added
+        # On a fresh CI checkout charts/ is empty, so dep-build must run
+        # first. cert-manager's HTTPS repo requires explicit `helm repo
+        # add` (OCI repos are auto-resolved by URL scheme).
+        run: |
+          helm repo add jetstack https://charts.jetstack.io
+          helm repo update
+          helm dependency build charts/openwhispr
 
       - name: helm lint
         run: |
