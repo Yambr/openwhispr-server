@@ -233,7 +233,19 @@ jobs:
         with: { node-version: '24', cache: 'pnpm' }
       - run: pnpm install --frozen-lockfile
       - name: Run constitutional self-tests
-        run: pnpm vitest run tests/self-tests/
+        # vitest 4 workspace projects route file resolution per-project
+        # root, so the positional path `tests/self-tests/` no longer
+        # selects any files (each project's root is its own subtree). The
+        # Plan 44-01 `tests-self-tests` project entry in vitest.config.ts
+        # is the canonical selector — invoke it directly. Without this,
+        # the job exited 1 with "No test files found", silently bypassing
+        # every constitutional invariant since the v3->v4 vitest migration.
+        run: pnpm exec vitest run --project tests-self-tests --reporter=verbose
+      - name: Capture docker compose logs on failure
+        if: failure()
+        run: |
+          docker compose -p openwhispr ps -a || true
+          docker compose -p openwhispr logs --tail 200 || true
       - name: Tooling version sanity check
         run: |
           pnpm exec biome --version
