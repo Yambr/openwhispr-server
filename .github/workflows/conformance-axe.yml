@@ -83,6 +83,23 @@ jobs:
           echo "INGRESS_TLS_CERT_PATH=/etc/traefik/certs/local.crt" >> .env
       - name: docker compose build
         run: docker compose -f docker-compose.yml -f compose/docker-compose.embedded-litellm.yml build api worker web
+      - name: Patch e2e-cjm overrides with CI api-healthcheck swap
+        # See .github/workflows/e2e-cjm.yml header for rationale.
+        # conformance-axe shares the same Makefile-driven `-f` chain
+        # via tests/conformance/ui-spec/bootStack(), so the same
+        # appended override applies. CI-only.
+        run: |
+          {
+            echo ""
+            echo "  # CI-only healthcheck swap — see workflow step."
+            echo "  api:"
+            echo "    healthcheck:"
+            echo '      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://127.0.0.1:3000/api/health"]'
+            echo "      interval: 10s"
+            echo "      timeout: 3s"
+            echo "      retries: 5"
+            echo "      start_period: 60s"
+          } >> tests/e2e-cjm/compose-overrides.yml
       - name: Run UICONF-05 axe baseline (boots stack via bootStack())
         env:
           E2E_CJM: "1"
