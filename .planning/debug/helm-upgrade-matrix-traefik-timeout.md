@@ -62,6 +62,6 @@ started: "First observed on run 26331965866; reproduced on 26342214899; both job
 
 root_cause: "Traefik chart's default service.type=LoadBalancer causes helm --wait to block waiting for EXTERNAL-IP assignment, which never happens in a kind cluster (no MetalLB / cloud-provider-kind in CI setup). The pod itself starts cleanly in 2 seconds."
 fix: "Override --set service.type=ClusterIP in the Install Traefik step of .github/workflows/helm-upgrade-matrix.yml. Reference values file (charts/openwhispr/examples/traefik-values.yaml) intentionally keeps the LoadBalancer default for real-operator cloud K8s deployments."
-verification: "(pending fresh CI run)"
+verification: "Confirmed on fresh CI run 26342774975 (job 77547569236) — 'Install Traefik' step completed successfully (green ✓) in well under the 5m budget. Job subsequently failed at a downstream step ('Helm install N-1') which is a SEPARATE issue out of scope for this fix."
 files_changed:
   - .github/workflows/helm-upgrade-matrix.yml
