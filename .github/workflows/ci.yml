@@ -133,7 +133,7 @@ jobs:
         # jetstack + helm dependency build` recipe as helm-lint.yml so
         # the chart-related vitest cases don't fail with "missing in
         # charts/ directory: valkey, minio, cert-manager".
-        uses: azure/setup-helm@v4
+        uses: azure/setup-helm@v5
         with:
           version: v3.16.4
       - name: helm dependency build
