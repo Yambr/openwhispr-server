@@ -172,6 +172,18 @@ export function fixtureSecrets(overrides: Record<string, string> = {}): Record<s
     MASTER_KEK: FIXTURE_MASTER_KEK_VALID_32_BYTES,
     BACKUP_AGE_IDENTITY: strong("BACKUP_AGE_IDENTITY"),
     BETTER_AUTH_SECRET: strong("BETTER_AUTH_SECRET"),
+    // packages/litellm-client/src/config.ts:200 throws "LITELLM_MASTER_KEY
+    // is required" when this is unset → apps/api catch at index.ts:891
+    // skips litellm client construction → /api/ready returns 503 by
+    // design (readiness.ts:116, docker-compose.yml:398-402) → api
+    // container healthcheck fails → `docker compose up --wait api` exits
+    // 1. The `litellm:` compose service also interpolates ${LITELLM_MASTER_KEY}
+    // with no `:-` default (docker-compose.yml:176), so an unset value
+    // makes the litellm container itself boot with an empty master key
+    // and fail /health/liveliness. Both failures were silently hidden
+    // for months by the broken vitest filter (commit 5aaa3bab fixed
+    // the filter; this commit makes the self-test fixture honest).
+    LITELLM_MASTER_KEY: strong("LITELLM_MASTER_KEY"),
     OPENWHISPR_KEY_PROVIDER: "env",
     // Phase 31 / BYOK guard rows (packages/byok-guard/src/index.ts) —
     // every overlay's required env is checked at api boot regardless of
