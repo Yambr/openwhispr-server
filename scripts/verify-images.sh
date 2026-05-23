@@ -43,10 +43,53 @@ fi
 
 # Extract `image:` values from the compose file. Handles optional quoting.
 # Skips commented `# image:` lines via the leading-whitespace regex.
+#
+# Locally-built services (those declaring a `build:` block at the service
+# level) name their resulting image via `image:` for `docker compose build`
+# tagging purposes — but that tag does not exist in any remote registry, so
+# `docker buildx imagetools inspect` would always report MISSING.  We skip
+# such service-level `image:` entries by tracking the most recent service
+# block and whether it contains a `build:` directive.
+#
+# Bash 3.2 compatible (no associative arrays). The awk pass emits one
+# image-string per line for services that have NO `build:` directive.
 extract_images() {
-  grep -E '^[[:space:]]*image:[[:space:]]+' "$COMPOSE_FILE" \
-    | sed -E 's/^[[:space:]]*image:[[:space:]]+["'"'"']?([^"'"'"' ]+)["'"'"']?[[:space:]]*$/\1/' \
-    | grep -v '^#' || true
+  awk '
+    # Detect a new top-level service (indent == 2 spaces, key with colon, not "image:" / "build:")
+    /^  [a-zA-Z0-9_-]+:[[:space:]]*$/ {
+      # Flush the previous service if it had an image and no build.
+      if (svc_image != "" && !svc_has_build) print svc_image
+      svc_image = ""
+      svc_has_build = 0
+      in_svc = 1
+      next
+    }
+    # Detect a build directive at service level (indent == 4 spaces).
+    in_svc && /^    build:[[:space:]]*/ {
+      svc_has_build = 1
+      next
+    }
+    # Capture image: at service level (indent == 4 spaces).
+    in_svc && /^    image:[[:space:]]+/ {
+      line = $0
+      sub(/^[[:space:]]*image:[[:space:]]+/, "", line)
+      sub(/^["'"'"']/, "", line)
+      sub(/["'"'"'][[:space:]]*$/, "", line)
+      sub(/[[:space:]]+$/, "", line)
+      svc_image = line
+      next
+    }
+    # Any non-indented line ends the current service tracking.
+    /^[^[:space:]]/ {
+      if (svc_image != "" && !svc_has_build) print svc_image
+      svc_image = ""
+      svc_has_build = 0
+      in_svc = 0
+    }
+    END {
+      if (svc_image != "" && !svc_has_build) print svc_image
+    }
+  ' "$COMPOSE_FILE"
 }
 
 fail_count=0

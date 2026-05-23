@@ -270,7 +270,10 @@ jobs:
           SQL
       - name: Apply migrations as owner
         env:
-          DATABASE_URL_OWNER: postgres://openwhispr_owner:${{ env.POSTGRES_OWNER_PASSWORD }}@127.0.0.1:5432/openwhispr
+          # GHA `services: postgres` does not support TLS; opt out so
+          # buildPoolConfig() returns ssl=false (sslmode=disable is the
+          # canonical libpq escape hatch — see packages/data/src/client.ts).
+          DATABASE_URL_OWNER: postgres://openwhispr_owner:${{ env.POSTGRES_OWNER_PASSWORD }}@127.0.0.1:5432/openwhispr?sslmode=disable
         run: pnpm migrate
       - name: Run RLS-introspection lint
         env:
@@ -325,7 +328,10 @@ jobs:
           SQL
       - name: Forward apply (round 1)
         env:
-          DATABASE_URL_OWNER: postgres://openwhispr_owner:${{ env.POSTGRES_OWNER_PASSWORD }}@127.0.0.1:5432/openwhispr
+          # GHA `services: postgres` does not support TLS; opt out so
+          # buildPoolConfig() returns ssl=false (sslmode=disable is the
+          # canonical libpq escape hatch — see packages/data/src/client.ts).
+          DATABASE_URL_OWNER: postgres://openwhispr_owner:${{ env.POSTGRES_OWNER_PASSWORD }}@127.0.0.1:5432/openwhispr?sslmode=disable
         run: pnpm migrate
       - name: pg_dump schema-only (pre)
         env:
@@ -336,7 +342,7 @@ jobs:
       - name: Drop public + _meta and forward apply (round 2)
         env:
           PGPASSWORD: ${{ env.POSTGRES_OWNER_PASSWORD }}
-          DATABASE_URL_OWNER: postgres://openwhispr_owner:${{ env.POSTGRES_OWNER_PASSWORD }}@127.0.0.1:5432/openwhispr
+          DATABASE_URL_OWNER: postgres://openwhispr_owner:${{ env.POSTGRES_OWNER_PASSWORD }}@127.0.0.1:5432/openwhispr?sslmode=disable
         run: |
           psql -h 127.0.0.1 -U openwhispr_owner -d openwhispr -v ON_ERROR_STOP=1 <<SQL
           DROP SCHEMA public CASCADE;
@@ -664,6 +670,12 @@ jobs:
       - uses: actions/setup-node@v5
         with: { node-version: '24', cache: 'pnpm' }
       - run: pnpm install --frozen-lockfile
+      - name: Bootstrap fixture .env
+        run: |
+          cp .env.slim.example .env
+          if [ -x tools/bootstrap.sh ]; then
+            tools/bootstrap.sh --ci || true
+          fi
       - name: Boot slim-core stack
         run: |
           docker compose -f docker-compose.yml \
