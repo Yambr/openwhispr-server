@@ -405,7 +405,11 @@ jobs:
         env:
           PGPASSWORD: ${{ env.POSTGRES_OWNER_PASSWORD }}
         run: |
-          pg_dump --schema-only --no-owner --no-privileges \
+          # Use the container's pg_dump (matches server version exactly);
+          # the runner's host pg_dump is pinned at an older major and
+          # aborts with "server version mismatch" against postgres 17.5.
+          docker exec -e PGPASSWORD="$PGPASSWORD" pg-ci \
+            pg_dump --schema-only --no-owner --no-privileges \
             -h 127.0.0.1 -U openwhispr_owner -d openwhispr > /tmp/schema-pre.sql
       - name: Drop public + _meta and forward apply (round 2)
         env:
@@ -424,7 +428,8 @@ jobs:
         env:
           PGPASSWORD: ${{ env.POSTGRES_OWNER_PASSWORD }}
         run: |
-          pg_dump --schema-only --no-owner --no-privileges \
+          docker exec -e PGPASSWORD="$PGPASSWORD" pg-ci \
+            pg_dump --schema-only --no-owner --no-privileges \
             -h 127.0.0.1 -U openwhispr_owner -d openwhispr > /tmp/schema-post.sql
       - name: Diff schema dumps (must be empty after preamble normalization)
         run: |
@@ -770,6 +775,11 @@ jobs:
           # composite of POSTGRES_OWNER_PASSWORD (bootstrap fills the password).
           grep -q '^DATABASE_URL_OWNER=' .env.ci.template || \
             echo 'DATABASE_URL_OWNER=postgres://openwhispr_owner:${POSTGRES_OWNER_PASSWORD}@postgres:5432/openwhispr?sslmode=disable' >> .env.ci.template
+          # LITELLM_CONFIG_FILE selects the hermetic contract config so the
+          # litellm container's /health/liveliness check passes without
+          # outbound provider keys. docker compose reads .env BEFORE the
+          # host env block, so we have to write it into the template.
+          echo "LITELLM_CONFIG_FILE=litellm_config.contract.yaml" >> .env.ci.template
           cp .env.ci.template .env
           if [ -x tools/bootstrap.sh ]; then
             BOOTSTRAP_ENV_TEMPLATE="$(pwd)/.env.ci.template" tools/bootstrap.sh --ci || true
