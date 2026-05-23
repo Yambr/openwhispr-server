@@ -59,7 +59,7 @@ jobs:
         # When chart-releaser-action publishes a new release, bump the
         # pin via dependabot or a manual PR; do NOT consume the floating
         # major tag (`@v1`) in production CI.
-        uses: helm/chart-releaser-action@v1.6.0
+        uses: helm/chart-releaser-action@v1.7.0
         with:
           charts_dir: charts
           # `skip_existing: true` makes the workflow idempotent across
