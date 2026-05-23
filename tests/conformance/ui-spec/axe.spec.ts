@@ -32,12 +32,25 @@ import { bootStack, tearStack } from "../../e2e-cjm/support/compose-harness";
 
 let userStackWasRunning = false;
 
+// `bootStack()` budgets 240_000ms (compose-harness `DEFAULT_BOOT_TIMEOUT_MS`)
+// for cold image-pull + container-start + Traefik-fronted /api/health
+// readiness. Playwright's default hook timeout is 30_000ms — 8× too short
+// on a CI runner with no Docker layer cache (verified: CI run 26342214898
+// terminated mid-`docker compose pull` at the 30s mark). We therefore extend
+// the per-hook timeout via `test.setTimeout()` inside the hook body — the
+// Playwright-documented way to lengthen an individual hook's budget without
+// affecting per-test timeouts. 300_000ms = bootStack budget (240s) + 60s
+// margin for `docker compose up` orchestration overhead before readiness
+// polling starts. The afterAll budget (120_000ms) covers `docker compose
+// down -v --remove-orphans` teardown on a fully-booted stack.
 test.beforeAll(async () => {
+  test.setTimeout(300_000);
   const result = await bootStack();
   userStackWasRunning = result.userStackWasRunning;
 });
 
 test.afterAll(async () => {
+  test.setTimeout(120_000);
   await tearStack({ userStackWasRunning });
 });
 
