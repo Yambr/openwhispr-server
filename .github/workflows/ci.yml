@@ -257,8 +257,11 @@ jobs:
           PGPASSWORD: super-pw
         run: |
           psql -h 127.0.0.1 -U postgres_super -d openwhispr -v ON_ERROR_STOP=1 <<SQL
-          CREATE ROLE openwhispr_owner WITH LOGIN BYPASSRLS PASSWORD '${POSTGRES_OWNER_PASSWORD}';
+          CREATE ROLE openwhispr_owner WITH LOGIN BYPASSRLS CREATEROLE PASSWORD '${POSTGRES_OWNER_PASSWORD}';
           CREATE ROLE openwhispr_app   WITH LOGIN          PASSWORD '${POSTGRES_APP_PASSWORD}';
+          -- Migration 0024 issues ALTER ROLE openwhispr_app SET app.tenant_id …
+          -- Postgres 16+ requires ADMIN OPTION on the target role for ALTER ROLE … SET.
+          GRANT openwhispr_app TO openwhispr_owner WITH ADMIN OPTION;
           ALTER DATABASE openwhispr OWNER TO openwhispr_owner;
           ALTER SCHEMA public OWNER TO openwhispr_owner;
           DO \$\$
@@ -325,8 +328,11 @@ jobs:
           PGPASSWORD: super-pw
         run: |
           psql -h 127.0.0.1 -U postgres_super -d openwhispr -v ON_ERROR_STOP=1 <<SQL
-          CREATE ROLE openwhispr_owner WITH LOGIN BYPASSRLS PASSWORD '${POSTGRES_OWNER_PASSWORD}';
+          CREATE ROLE openwhispr_owner WITH LOGIN BYPASSRLS CREATEROLE PASSWORD '${POSTGRES_OWNER_PASSWORD}';
           CREATE ROLE openwhispr_app   WITH LOGIN          PASSWORD '${POSTGRES_APP_PASSWORD}';
+          -- Migration 0024 issues ALTER ROLE openwhispr_app SET app.tenant_id …
+          -- Postgres 16+ requires ADMIN OPTION on the target role for ALTER ROLE … SET.
+          GRANT openwhispr_app TO openwhispr_owner WITH ADMIN OPTION;
           ALTER DATABASE openwhispr OWNER TO openwhispr_owner;
           ALTER SCHEMA public OWNER TO openwhispr_owner;
           SQL
@@ -681,9 +687,26 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - name: Bootstrap fixture .env
         run: |
-          cp .env.slim.example .env
+          # The slim template (5-key operator contract) comments out
+          # PGBOUNCER_ADMIN_PASSWORD + TRAEFIK_ADMIN_PASSWORD and omits
+          # MINIO_ROOT_PASSWORD + GRAFANA_ADMIN_PASSWORD entirely. The
+          # api/migrate container entrypoint (check-default-secrets.ts)
+          # ALWAYS requires the full REQUIRED_KEYS set, so build a CI
+          # template that uncomments + appends the missing slots, then run
+          # bootstrap.sh against it via BOOTSTRAP_ENV_TEMPLATE so the
+          # generator fills every slot.
+          cp .env.slim.example .env.ci.template
+          sed -i \
+            -e 's/^# *PGBOUNCER_ADMIN_PASSWORD=/PGBOUNCER_ADMIN_PASSWORD=/' \
+            -e 's/^# *TRAEFIK_ADMIN_PASSWORD=/TRAEFIK_ADMIN_PASSWORD=/' \
+            .env.ci.template
+          grep -q '^MINIO_ROOT_PASSWORD=' .env.ci.template || \
+            echo 'MINIO_ROOT_PASSWORD=PLACEHOLDER_BOOTSTRAP_WILL_REPLACE' >> .env.ci.template
+          grep -q '^GRAFANA_ADMIN_PASSWORD=' .env.ci.template || \
+            echo 'GRAFANA_ADMIN_PASSWORD=PLACEHOLDER_BOOTSTRAP_WILL_REPLACE' >> .env.ci.template
+          cp .env.ci.template .env
           if [ -x tools/bootstrap.sh ]; then
-            tools/bootstrap.sh --ci || true
+            BOOTSTRAP_ENV_TEMPLATE="$(pwd)/.env.ci.template" tools/bootstrap.sh --ci || true
           fi
       - name: Boot slim-core stack
         run: |
