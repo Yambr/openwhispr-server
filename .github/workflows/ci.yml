@@ -225,20 +225,10 @@ jobs:
   # RLS plus a tenant_id-referencing policy.
   lint-rls:
     runs-on: ubuntu-24.04
-    services:
-      postgres:
-        image: postgres:17-alpine
-        env:
-          POSTGRES_USER: postgres_super
-          POSTGRES_PASSWORD: super-pw
-          POSTGRES_DB: openwhispr
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd "pg_isready -U postgres_super -d openwhispr"
-          --health-interval 5s
-          --health-timeout 5s
-          --health-retries 12
+    # NOTE: postgres is NOT declared under `services:` — we need the
+    # custom openwhispr/postgres image (pg_partman 5.2.4 baked in) because
+    # migration 0014 partitions audit_log via pg_partman. `services:`
+    # can only reference pulled images, so we build + `docker run` below.
     env:
       POSTGRES_OWNER_PASSWORD: owner-pw
       POSTGRES_APP_PASSWORD: app-pw
@@ -252,6 +242,23 @@ jobs:
       - uses: actions/setup-node@v5
         with: { node-version: '24', cache: 'pnpm' }
       - run: pnpm install --frozen-lockfile
+      - name: Build + start custom postgres (pg_partman 5.2.4)
+        run: |
+          docker build -t openwhispr/postgres:ci ./compose/postgres
+          docker run -d --name pg-ci \
+            -e POSTGRES_USER=postgres_super \
+            -e POSTGRES_PASSWORD=super-pw \
+            -e POSTGRES_DB=openwhispr \
+            -p 5432:5432 \
+            openwhispr/postgres:ci
+          # Wait for readiness (60s budget).
+          for i in $(seq 1 60); do
+            if docker exec pg-ci pg_isready -U postgres_super -d openwhispr >/dev/null 2>&1; then
+              echo "postgres ready after ${i}s"
+              break
+            fi
+            sleep 1
+          done
       - name: Bootstrap roles (mirror init/00-roles.sql)
         env:
           PGPASSWORD: super-pw
@@ -297,20 +304,10 @@ jobs:
   # and de-facto rollback equivalence.
   test-migration:
     runs-on: ubuntu-24.04
-    services:
-      postgres:
-        image: postgres:17-alpine
-        env:
-          POSTGRES_USER: postgres_super
-          POSTGRES_PASSWORD: super-pw
-          POSTGRES_DB: openwhispr
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd "pg_isready -U postgres_super -d openwhispr"
-          --health-interval 5s
-          --health-timeout 5s
-          --health-retries 12
+    # NOTE: postgres is NOT declared under `services:` — we need the
+    # custom openwhispr/postgres image (pg_partman 5.2.4 baked in) because
+    # migration 0014 partitions audit_log via pg_partman. `services:`
+    # can only reference pulled images, so we build + `docker run` below.
     env:
       POSTGRES_OWNER_PASSWORD: owner-pw
       POSTGRES_APP_PASSWORD: app-pw
@@ -324,6 +321,22 @@ jobs:
       - uses: actions/setup-node@v5
         with: { node-version: '24', cache: 'pnpm' }
       - run: pnpm install --frozen-lockfile
+      - name: Build + start custom postgres (pg_partman 5.2.4)
+        run: |
+          docker build -t openwhispr/postgres:ci ./compose/postgres
+          docker run -d --name pg-ci \
+            -e POSTGRES_USER=postgres_super \
+            -e POSTGRES_PASSWORD=super-pw \
+            -e POSTGRES_DB=openwhispr \
+            -p 5432:5432 \
+            openwhispr/postgres:ci
+          for i in $(seq 1 60); do
+            if docker exec pg-ci pg_isready -U postgres_super -d openwhispr >/dev/null 2>&1; then
+              echo "postgres ready after ${i}s"
+              break
+            fi
+            sleep 1
+          done
       - name: Bootstrap roles (mirror init/00-roles.sql)
         env:
           PGPASSWORD: super-pw
@@ -720,9 +733,13 @@ jobs:
           # --profile default — every service in compose/docker-compose.embedded-litellm.yml
           # declares an explicit profile, so without this flag compose selects
           # zero services and reports "no service selected".
+          # storage.yml — api refuses to boot with BYOK_STORAGE_REQUIRED
+          # unless either S3_ENDPOINT is set OR the storage overlay is
+          # enabled (which ships a MinIO sidecar fulfilling the contract).
           docker compose -f docker-compose.yml \
             -f compose/docker-compose.embedded-litellm.yml \
             -f compose/docker-compose.ingress.yml \
+            -f compose/docker-compose.storage.yml \
             --profile default \
             up -d --wait
       - name: Run smoke probes
