@@ -92,6 +92,15 @@ describe("findViolations", () => {
     expect(violations).toEqual([]);
   });
 
+  it("F3e: a file literally named config.ts (outside a config/ directory) is IGNORE-skipped — boundary intent covers package-level config-builders like packages/litellm-client/src/config.ts", async () => {
+    touch(
+      "packages/litellm-client/src/config.ts",
+      "if (env.NODE_ENV === 'production') { /* HI-3 https veto at the boundary */ }\n",
+    );
+    const violations = await findViolations(root);
+    expect(violations).toEqual([]);
+  });
+
   it("F4: node_modules is NOT scanned", async () => {
     touch(
       "apps/api/src/node_modules/foo/index.ts",
