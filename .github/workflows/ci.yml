@@ -346,10 +346,25 @@ jobs:
             -e POSTGRES_DB=openwhispr \
             -p 5432:5432 \
             openwhispr/postgres:ci
-          for i in $(seq 1 60); do
-            if docker exec pg-ci pg_isready -U postgres_super -d openwhispr >/dev/null 2>&1; then
-              echo "postgres ready after ${i}s"
-              break
+          # See lint-rls comment: require 5 consecutive host-side connects
+          # because the postgres entrypoint runs initdb → trust-start →
+          # SIGTERM → final restart, and a single connect can land in the
+          # transient trust-start window.
+          ok=0
+          for i in $(seq 1 120); do
+            if PGPASSWORD=super-pw psql -h 127.0.0.1 -U postgres_super -d openwhispr -c 'SELECT 1' >/dev/null 2>&1; then
+              ok=$((ok + 1))
+              if [ "$ok" -ge 5 ]; then
+                echo "postgres steadily ready after ${i}s (5 consecutive connects)"
+                break
+              fi
+            else
+              ok=0
+            fi
+            if [ "$i" = "120" ]; then
+              echo "postgres did not become steadily ready in 120s — container logs:"
+              docker logs pg-ci || true
+              exit 1
             fi
             sleep 1
           done
