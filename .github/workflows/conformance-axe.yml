@@ -71,6 +71,16 @@ jobs:
           } >> .env
           # Mirror e2e-cjm.yml — migrate refuses without DATABASE_URL_OWNER.
           echo 'DATABASE_URL_OWNER=postgres://openwhispr_owner:${POSTGRES_OWNER_PASSWORD}@postgres:5432/openwhispr?sslmode=disable' >> .env
+          # Mirror e2e-cjm.yml — api refuses NODE_ENV=production without
+          # an HTTPS origin. Pin every origin/auth URL to Traefik's
+          # TLS-terminating https://api.localhost.
+          sed -i \
+            -e 's|^INGRESS_BASE_URL=.*|INGRESS_BASE_URL=https://api.localhost|' \
+            -e 's|^BETTER_AUTH_URL=.*|BETTER_AUTH_URL=https://api.localhost|' \
+            -e 's|^AUTH_URL=.*|AUTH_URL=https://api.localhost|' \
+            -e 's|^OPENWHISPR_API_URL=.*|OPENWHISPR_API_URL=https://api.localhost|' \
+            .env
+          echo "INGRESS_TLS_CERT_PATH=/etc/traefik/certs/local.crt" >> .env
       - name: docker compose build
         run: docker compose -f docker-compose.yml -f compose/docker-compose.embedded-litellm.yml build api worker web
       - name: Run UICONF-05 axe baseline (boots stack via bootStack())
