@@ -77,6 +77,18 @@ jobs:
             ".cr-release-packages/openwhispr-${{ steps.tag.outputs.value }}.tgz" \
             "oci://ghcr.io/${owner}/charts"
 
+      # chart-releaser-action does an internal `git commit` against the
+      # gh-pages worktree (to add the packaged chart + regenerated
+      # index.yaml). Without a configured git identity the runner errors
+      # with `fatal: empty ident name not allowed` and the action exits
+      # 128 before any artifact lands in gh-pages. Set the canonical
+      # github-actions[bot] identity here — same identity used by every
+      # GitHub-native auto-PR / auto-commit step.
+      - name: Configure git identity for chart-releaser
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
       - name: Run chart-releaser (GitHub Pages index)
         uses: helm/chart-releaser-action@v1.7.0
         with:
