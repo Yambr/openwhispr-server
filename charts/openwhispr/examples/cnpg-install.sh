@@ -23,5 +23,13 @@ kubectl wait --for=condition=Available \
   --timeout=300s \
   deployment/cnpg-cloudnative-pg
 
-echo "CloudNativePG operator ready. Verify CRDs:"
-kubectl get crd | grep cloudnative-pg.io
+# Wait for the CRD to register — the operator pod can be Available
+# before `kubectl get crd` shows the cloudnative-pg.io group.
+kubectl wait --for=condition=Established \
+  --timeout=120s \
+  crd/clusters.postgresql.cnpg.io
+
+echo "CloudNativePG operator ready. CRDs:"
+# `|| true` — informational print, do not fail the install script if
+# grep finds no match (the Established wait above is the real signal).
+kubectl get crd 2>&1 | grep cloudnative-pg.io || true
