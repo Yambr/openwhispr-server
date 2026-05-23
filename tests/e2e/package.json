@@ -12,7 +12,7 @@
   "dependencies": {
     "testcontainers": "^11.14.0",
     "tough-cookie": "5.1.2",
-    "ws": "^8.20.0",
+    "ws": "^8.21.0",
     "zod": "4.4.3"
   },
   "devDependencies": {
