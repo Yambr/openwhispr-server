@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: FSL-1.1-ALv2
 // Fixture for tools/lint-secret-shape-in-error.test.ts.
 // `bodyText` field is `private readonly`, which the linter treats as the
 // preferred Phase 37 / CR-9 mitigation (combined with a custom `toJSON()`).

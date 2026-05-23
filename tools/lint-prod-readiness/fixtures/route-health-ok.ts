@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: FSL-1.1-ALv2
 // Fixture for tools/lint-prod-readiness.test.ts.
 // A Fastify `app.route` for a /api/health URL — `rateLimit: false` is
 // permitted only on health-probe URLs, and `schema:` is also waived.
