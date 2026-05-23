@@ -257,11 +257,12 @@ jobs:
           PGPASSWORD: super-pw
         run: |
           psql -h 127.0.0.1 -U postgres_super -d openwhispr -v ON_ERROR_STOP=1 <<SQL
-          CREATE ROLE openwhispr_owner WITH LOGIN BYPASSRLS CREATEROLE PASSWORD '${POSTGRES_OWNER_PASSWORD}';
+          -- SUPERUSER mirrors the privileges the postgres image's
+          -- init/00-roles.sh grants in the production stack — required for
+          -- migration 0024's ALTER ROLE openwhispr_app SET app.tenant_id
+          -- (custom GUCs need superuser to register).
+          CREATE ROLE openwhispr_owner WITH LOGIN BYPASSRLS CREATEROLE SUPERUSER PASSWORD '${POSTGRES_OWNER_PASSWORD}';
           CREATE ROLE openwhispr_app   WITH LOGIN          PASSWORD '${POSTGRES_APP_PASSWORD}';
-          -- Migration 0024 issues ALTER ROLE openwhispr_app SET app.tenant_id …
-          -- Postgres 16+ requires ADMIN OPTION on the target role for ALTER ROLE … SET.
-          GRANT openwhispr_app TO openwhispr_owner WITH ADMIN OPTION;
           ALTER DATABASE openwhispr OWNER TO openwhispr_owner;
           ALTER SCHEMA public OWNER TO openwhispr_owner;
           DO \$\$
@@ -328,11 +329,12 @@ jobs:
           PGPASSWORD: super-pw
         run: |
           psql -h 127.0.0.1 -U postgres_super -d openwhispr -v ON_ERROR_STOP=1 <<SQL
-          CREATE ROLE openwhispr_owner WITH LOGIN BYPASSRLS CREATEROLE PASSWORD '${POSTGRES_OWNER_PASSWORD}';
+          -- SUPERUSER mirrors the privileges the postgres image's
+          -- init/00-roles.sh grants in the production stack — required for
+          -- migration 0024's ALTER ROLE openwhispr_app SET app.tenant_id
+          -- (custom GUCs need superuser to register).
+          CREATE ROLE openwhispr_owner WITH LOGIN BYPASSRLS CREATEROLE SUPERUSER PASSWORD '${POSTGRES_OWNER_PASSWORD}';
           CREATE ROLE openwhispr_app   WITH LOGIN          PASSWORD '${POSTGRES_APP_PASSWORD}';
-          -- Migration 0024 issues ALTER ROLE openwhispr_app SET app.tenant_id …
-          -- Postgres 16+ requires ADMIN OPTION on the target role for ALTER ROLE … SET.
-          GRANT openwhispr_app TO openwhispr_owner WITH ADMIN OPTION;
           ALTER DATABASE openwhispr OWNER TO openwhispr_owner;
           ALTER SCHEMA public OWNER TO openwhispr_owner;
           SQL
@@ -704,6 +706,11 @@ jobs:
             echo 'MINIO_ROOT_PASSWORD=PLACEHOLDER_BOOTSTRAP_WILL_REPLACE' >> .env.ci.template
           grep -q '^GRAFANA_ADMIN_PASSWORD=' .env.ci.template || \
             echo 'GRAFANA_ADMIN_PASSWORD=PLACEHOLDER_BOOTSTRAP_WILL_REPLACE' >> .env.ci.template
+          # migrate container refuses to run without DATABASE_URL_OWNER. Slim
+          # template only ships the app DSN — synthesize the owner DSN as a
+          # composite of POSTGRES_OWNER_PASSWORD (bootstrap fills the password).
+          grep -q '^DATABASE_URL_OWNER=' .env.ci.template || \
+            echo 'DATABASE_URL_OWNER=postgres://openwhispr_owner:${POSTGRES_OWNER_PASSWORD}@postgres:5432/openwhispr?sslmode=disable' >> .env.ci.template
           cp .env.ci.template .env
           if [ -x tools/bootstrap.sh ]; then
             BOOTSTRAP_ENV_TEMPLATE="$(pwd)/.env.ci.template" tools/bootstrap.sh --ci || true
