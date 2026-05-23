@@ -80,6 +80,21 @@ jobs:
           # the bootstrap-generated POSTGRES_OWNER_PASSWORD at compose
           # time. Mirrors the slim-core smoke job in ci.yml.
           echo 'DATABASE_URL_OWNER=postgres://openwhispr_owner:${POSTGRES_OWNER_PASSWORD}@postgres:5432/openwhispr?sslmode=disable' >> .env
+          # api refuses to boot under NODE_ENV=production without an
+          # HTTPS origin ("FATAL ingress-boot: NODE_ENV=production requires
+          # an HTTPS origin"). The Traefik ingress overlay terminates TLS
+          # at https://api.localhost; pin every origin/auth URL to that
+          # endpoint. Mirrors ci.yml smoke job lines 798-807.
+          sed -i \
+            -e 's|^INGRESS_BASE_URL=.*|INGRESS_BASE_URL=https://api.localhost|' \
+            -e 's|^BETTER_AUTH_URL=.*|BETTER_AUTH_URL=https://api.localhost|' \
+            -e 's|^AUTH_URL=.*|AUTH_URL=https://api.localhost|' \
+            -e 's|^OPENWHISPR_API_URL=.*|OPENWHISPR_API_URL=https://api.localhost|' \
+            .env
+          # https://… INGRESS_BASE_URL requires INGRESS_TLS_CERT_PATH so
+          # the BYOK ingress row passes. Point at the Traefik cert
+          # bootstrap.sh generated above.
+          echo "INGRESS_TLS_CERT_PATH=/etc/traefik/certs/local.crt" >> .env
       - name: docker compose build
         run: docker compose -f docker-compose.yml -f compose/docker-compose.embedded-litellm.yml build api worker web
       - name: make e2e-cjm
