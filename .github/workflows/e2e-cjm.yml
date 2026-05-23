@@ -69,6 +69,31 @@ jobs:
           E2E_CJM: "1"
           CI: "true"
         run: make e2e-cjm
+      - name: Dump compose logs on failure
+        # Diagnostics-only: when migrate / api / web exit non-zero during
+        # boot the playwright trace is empty because no test ran. This
+        # captures per-service docker logs so the real cause is visible
+        # in the artifact instead of requiring a re-run with ssh.
+        if: failure()
+        run: |
+          mkdir -p compose-logs
+          docker ps -a > compose-logs/_docker-ps.txt 2>&1 || true
+          # `make e2e-cjm` boots the stack under project name `e2e-cjm`.
+          # Use the same -f / -p shape so we hit the right project.
+          for svc in migrate postgres valkey litellm api worker web minio traefik mailpit pgbouncer otel-collector loki tempo prometheus grafana speaches; do
+            docker compose -p e2e-cjm \
+              -f docker-compose.yml \
+              -f compose/docker-compose.embedded-litellm.yml \
+              logs --no-color --tail=500 "$svc" \
+              > "compose-logs/${svc}.log" 2>&1 || true
+          done
+      - name: Upload compose logs on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: compose-logs
+          path: compose-logs/
+          retention-days: 7
       - name: Assert no testcontainers leaked
         if: always()
         run: |
