@@ -51,6 +51,17 @@ jobs:
           if [ -x tools/bootstrap.sh ]; then
             tools/bootstrap.sh --ci || true
           fi
+          # Overlay-required secrets that live OUTSIDE the slim contract
+          # (storage + observability overlays). The slim template
+          # intentionally omits them (`tests/integration/env-slim-example.test.ts`
+          # locks the active-key set); the e2e-cjm stack layers the
+          # storage overlay and embedded-litellm overlay which bring up
+          # minio + grafana, so their roots MUST be set or those
+          # containers boot blank-passworded (minio refuses to start).
+          {
+            echo "MINIO_ROOT_PASSWORD=$(openssl rand -base64 32 | tr -d '\n=' | tr '+/' '-_')"
+            echo "GRAFANA_ADMIN_PASSWORD=$(openssl rand -base64 32 | tr -d '\n=' | tr '+/' '-_')"
+          } >> .env
       - name: docker compose build
         run: docker compose -f docker-compose.yml -f compose/docker-compose.embedded-litellm.yml build api worker web
       - name: make e2e-cjm
