@@ -98,33 +98,28 @@ jobs:
       - name: docker compose build
         run: docker compose -f docker-compose.yml -f compose/docker-compose.embedded-litellm.yml build api worker web
       - name: Patch e2e-cjm overrides with CI api-healthcheck swap
-        # The Makefile e2e-cjm target layers tests/e2e-cjm/compose-overrides.yml
-        # LAST in its `-f` chain (last overlay wins). Appending the
-        # healthcheck override to that file is the cleanest way to swap
-        # api's docker healthcheck from /api/ready (cloud-plane readiness)
-        # to /api/health (liveness) WITHOUT mutating the Makefile target.
+        # Swap api's docker healthcheck from /api/ready (cloud-plane
+        # readiness — gates on LiteLLM client + upstream reachability,
+        # racy in hermetic compose) to /api/health (always-200 liveness
+        # once the server listens) for THIS CI lane.
         #
-        # Why this is needed: /api/ready gates the container's healthy
-        # state on LiteLLM client construction + upstream reachability.
-        # In a hermetic compose project, that probe races litellm's
-        # ~4-min cold-start + the SSRF dispatcher integration. When the
-        # probe returns 503 the container is `unhealthy`, depends_on
-        # waiters tear the stack down, and the e2e suite never actually
-        # drives any request — see Wave 2 #12 (this commit) summary in
-        # .planning/audit-v2.4/CI-STABILIZATION-WAVE2.md.
-        # CI-only modification; never committed back to the repo.
+        # The previous naive `cat >> compose-overrides.yml` produced a
+        # duplicate `api:` mapping key — the overlay already declares
+        # `services.api.environment.INGRESS_BASE_URL` — which compose
+        # rejects with "mapping key 'api' already defined" (confirmed
+        # CI run 26329667945). Use `yq` to MERGE healthcheck into the
+        # existing api block. yq comes pre-installed on ubuntu-latest
+        # GH runners (mikefarah/yq v4). CI-only modification.
         run: |
-          {
-            echo ""
-            echo "  # CI-only healthcheck swap — see workflow step."
-            echo "  api:"
-            echo "    healthcheck:"
-            echo '      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://127.0.0.1:3000/api/health"]'
-            echo "      interval: 10s"
-            echo "      timeout: 3s"
-            echo "      retries: 5"
-            echo "      start_period: 60s"
-          } >> tests/e2e-cjm/compose-overrides.yml
+          yq -i '.services.api.healthcheck = {
+            "test": ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://127.0.0.1:3000/api/health"],
+            "interval": "10s",
+            "timeout": "3s",
+            "retries": 5,
+            "start_period": "60s"
+          }' tests/e2e-cjm/compose-overrides.yml
+          echo "--- compose-overrides.yml after yq merge ---"
+          cat tests/e2e-cjm/compose-overrides.yml
       - name: make e2e-cjm
         env:
           E2E_CJM: "1"
