@@ -830,14 +830,29 @@ jobs:
       - name: Run smoke probes
         run: pnpm smoke
       - name: Dump container logs on failure
+        # Per-service dump (was a single concatenated file). The api
+        # healthcheck targets /api/ready (R25 cloud-plane readiness),
+        # which 503s on missing SSRF marker / no LiteLLM client /
+        # unreachable LiteLLM upstream — root-causing requires reading
+        # the api log specifically, not 200 mixed lines from 15 services.
         if: failure()
         run: |
-          docker compose logs --tail=200 --no-color > smoke-logs.txt || true
+          mkdir -p compose-logs
+          docker ps -a > compose-logs/_docker-ps.txt 2>&1 || true
+          for svc in migrate postgres valkey litellm api worker web minio traefik mailpit pgbouncer otel-collector loki tempo prometheus grafana; do
+            docker compose -f docker-compose.yml \
+              -f compose/docker-compose.embedded-litellm.yml \
+              -f compose/docker-compose.ingress.yml \
+              -f compose/docker-compose.storage.yml \
+              --profile default \
+              logs --no-color --tail=500 "$svc" \
+              > "compose-logs/${svc}.log" 2>&1 || true
+          done
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4
         if: failure()
         with:
           name: smoke-logs
-          path: smoke-logs.txt
+          path: compose-logs/
       - name: Tear down
         if: always()
         run: docker compose down -v --remove-orphans || true
@@ -887,11 +902,17 @@ jobs:
             build api web worker migrate
       - name: Bring up embedded-litellm stack (--wait)
         run: |
+          # --wait-timeout 600 mirrors the slim-core smoke job rationale:
+          # litellm runs prisma migrate deploy at first boot (~118 migrations
+          # against the bundled co-tenant DB); on a cold GH runner this
+          # takes 4-5 minutes. The docker compose default `up --wait`
+          # ceiling is 5 min, tripping just before /health/liveliness
+          # becomes ready.
           docker compose \
             -f docker-compose.yml \
             -f compose/docker-compose.embedded-litellm.yml \
             -f compose/docker-compose.ingress.yml \
-            up -d --wait
+            up -d --wait --wait-timeout 600
       - name: Run sign-up + transcribe smoke probe
         env:
           SMOKE_BASE_URL: https://api.localhost
