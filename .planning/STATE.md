@@ -104,6 +104,9 @@ Last activity: 2026-05-16 — Phase 19.2 CLOSED with SERVER-ERRORS Entry 11 casc
 |---|-------------|------|--------|-----------|
 | 260516-kya | Secret-leak hard gate: gitleaks pre-commit + pre-push hooks | 2026-05-16 | f4090ee | [260516-kya-implement-secret-leak-hard-gate-gitleaks](./quick/260516-kya-implement-secret-leak-hard-gate-gitleaks/) |
 | 260523-lint-locker01-config-glob | LOCKER-01: extend boundary glob to `**/config.ts` (unblock CI lint-english on `packages/litellm-client/src/config.ts:205` HI-3 veto) | 2026-05-23 | d0ceec92 | [20260523-lint-locker01-config-glob](./quick/20260523-lint-locker01-config-glob/) |
+| 260523-i18n-completeness-script-path | Point `apps/api` `test:i18n-completeness` script at the moved `tests/unit/i18n/__tests__/` path (unblock CI `i18n-completeness` job after apps-tree reorg) | 2026-05-23 | 5450bfca | [20260523-i18n-completeness-script-path](./quick/20260523-i18n-completeness-script-path/) |
+| 260523-ci-compose-log-dump | Dump compose logs as artifact when `e2e-cjm` / `conformance-axe` fail — diagnostics-only; unblocks migrate exit-1 root-causing on next failing run | 2026-05-23 | 88821ff7 | [20260523-ci-compose-log-dump](./quick/20260523-ci-compose-log-dump/) |
+| 260523-smoke-diagnostics-timeout | CI smoke: per-service log dump for slim-core + `--wait-timeout 600` for embedded-smoke (litellm cold-start headroom + api `/api/ready` 503 diagnostics) | 2026-05-23 | 8e6fa508 | [20260523-smoke-diagnostics-timeout](./quick/20260523-smoke-diagnostics-timeout/) |
 
 ## Accumulated Context
 

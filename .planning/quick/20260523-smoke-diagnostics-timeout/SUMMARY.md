@@ -37,4 +37,4 @@ After the next failing CI run downloads, read `api.log` from the artifact to ide
 
 ## Commit
 
-`<set after commit>`
+`8e6fa508` — `ci(smoke): per-service log dump + 600s wait-timeout for embedded-smoke`
