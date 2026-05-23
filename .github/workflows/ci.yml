@@ -124,6 +124,23 @@ jobs:
           docker version
           docker info
       - run: pnpm install --frozen-lockfile
+      - name: Setup Helm + resolve chart deps
+        # tests/integration/lint-compose-chart-parity.test.ts runs
+        # `helm template charts/openwhispr ...` which requires the OCI
+        # + HTTPS sub-chart deps (valkey, minio, cert-manager) to be
+        # resolved on disk. On a fresh CI checkout charts/openwhispr/
+        # charts/ is empty; this step performs the same `helm repo add
+        # jetstack + helm dependency build` recipe as helm-lint.yml so
+        # the chart-related vitest cases don't fail with "missing in
+        # charts/ directory: valkey, minio, cert-manager".
+        uses: azure/setup-helm@v4
+        with:
+          version: v3.16.4
+      - name: helm dependency build
+        run: |
+          helm repo add jetstack https://charts.jetstack.io
+          helm repo update
+          helm dependency build charts/openwhispr
       - run: pnpm test
       - uses: davelosert/vitest-coverage-report-action@3c50566c523e04813df28de8f7c48dd97d663f1c  # v2.11.2
         if: always()
