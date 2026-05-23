@@ -103,6 +103,7 @@ Last activity: 2026-05-16 — Phase 19.2 CLOSED with SERVER-ERRORS Entry 11 casc
 | # | Description | Date | Commit | Directory |
 |---|-------------|------|--------|-----------|
 | 260516-kya | Secret-leak hard gate: gitleaks pre-commit + pre-push hooks | 2026-05-16 | f4090ee | [260516-kya-implement-secret-leak-hard-gate-gitleaks](./quick/260516-kya-implement-secret-leak-hard-gate-gitleaks/) |
+| 260523-lint-locker01-config-glob | LOCKER-01: extend boundary glob to `**/config.ts` (unblock CI lint-english on `packages/litellm-client/src/config.ts:205` HI-3 veto) | 2026-05-23 | d0ceec92 | [20260523-lint-locker01-config-glob](./quick/20260523-lint-locker01-config-glob/) |
 
 ## Accumulated Context
 

@@ -29,7 +29,7 @@ The LOCKER-01 NODE_ENV-branch lint was failing on CI (`lint-english` step, compo
 
 ## Commit
 
-To be set after `git commit`.
+`d0ceec92` — `fix(lint): treat files named config.ts as LOCKER-01 boundary`
 
 ## Follow-up
 
