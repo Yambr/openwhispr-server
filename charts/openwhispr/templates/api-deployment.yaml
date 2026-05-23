@@ -171,6 +171,34 @@ spec:
               value: {{ printf "http://%s-api:3000,https://%s%s" (include "openwhispr.fullname" .) .Values.host.api (ternary (printf ",%s" .Values.api.env.authTrustedOriginsExtra) "" (ne (default "" .Values.api.env.authTrustedOriginsExtra) "")) | quote }}
             - name: AUTH_URL
               value: "https://{{ .Values.host.api }}"
+            # R20+R19 (2026-05-23) — INGRESS_BASE_URL is the canonical
+            # operator-facing host knob read by validateIngressBoot() +
+            # Better Auth handler. AUTH_URL fallback above still works
+            # (chart pre-R20 only set AUTH_URL), but surfacing the
+            # preferred var lets operators tune the verification-email
+            # link host without mutating AUTH_URL. Defaults to the same
+            # value — overridable via .Values.api.env.ingressBaseUrl.
+            - name: INGRESS_BASE_URL
+              value: {{ default (printf "https://%s" .Values.host.api) .Values.api.env.ingressBaseUrl | quote }}
+            # litellm-patterns A4 (2026-05-23) — retry layer for
+            # chatCompletions. All three have safe in-code defaults
+            # (3 attempts / 250ms base / 8000ms cap); the chart renders
+            # them only when the operator overrides via
+            # .Values.litellm.retry.{maxAttempts,baseMs,capMs}.
+            {{- with .Values.litellm.retry }}
+            {{- if .maxAttempts }}
+            - name: LITELLM_RETRY_MAX_ATTEMPTS
+              value: {{ .maxAttempts | quote }}
+            {{- end }}
+            {{- if .baseMs }}
+            - name: LITELLM_RETRY_BASE_MS
+              value: {{ .baseMs | quote }}
+            {{- end }}
+            {{- if .capMs }}
+            - name: LITELLM_RETRY_CAP_MS
+              value: {{ .capMs | quote }}
+            {{- end }}
+            {{- end }}
             {{- if .Values.api.env.disableEmailVerification }}
             # Phase 09.2 F35 — helm test probe runs synthetic signup
             # without an email inbox. values-kind.yaml sets this to true;
