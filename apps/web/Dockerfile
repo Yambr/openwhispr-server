@@ -151,6 +151,6 @@ EXPOSE 3000
 # BusyBox wget ships in alpine — no apk add needed. Healthcheck targets
 # the in-container plaintext port; Traefik terminates TLS upstream.
 HEALTHCHECK --interval=10s --timeout=3s --retries=3 --start-period=30s \
-  CMD wget --quiet --tries=1 --spider http://localhost:3000/api/health || exit 1
+  CMD wget --quiet --tries=1 --spider http://127.0.0.1:3000/api/health || exit 1
 
 CMD ["node", "apps/web/server.js"]

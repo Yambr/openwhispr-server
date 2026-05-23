@@ -17,7 +17,7 @@
 #   - prod-deps: separate `pnpm install --prod --node-linker=hoisted` produces
 #     a flat node_modules with NO pnpm symlinks, safe to COPY across stages.
 #   - runtime: minimal node:24-alpine image, USER node, BusyBox wget healthcheck
-#     on plain http://localhost:3000/api/health (Traefik terminates TLS upstream).
+#     on plain http://127.0.0.1:3000/api/health (Traefik terminates TLS upstream).
 #
 # The ENTRYPOINT chains the defense-in-depth secrets check
 # (apps/api/dist/scripts/check-default-secrets.cjs) before `exec`-ing into the
@@ -179,8 +179,21 @@ EXPOSE 3000
 # BusyBox wget ships in alpine — no apk add needed. Healthcheck targets
 # the in-container plaintext port; Traefik terminates TLS upstream so
 # we never need --no-check-certificate semantics here.
+#
+# CI-SMOKE-API-UNHEALTHY fix — use IPv4 literal (`127.0.0.1`), NEVER the
+# `localhost` hostname. Docker injects BOTH `127.0.0.1 localhost` AND
+# `::1 localhost ip6-…` into the container's `/etc/hosts`. BusyBox wget
+# calls `getaddrinfo` and may receive the IPv6 address first (depends on
+# the host kernel's `gai.conf` — GHA ubuntu-24.04 runners differ from
+# Docker Desktop on macOS). The api Fastify listen binds `0.0.0.0:3000`
+# (IPv4 only — Fastify does NOT dual-bind for `0.0.0.0`), so when wget
+# gets `::1` first it hits `Address not available` and exits non-zero
+# WITHOUT falling back (BusyBox wget has no happy-eyeballs / address-
+# iteration). The healthcheck then reports `unhealthy` even though api
+# is listening fine on v4. Regression test:
+# tools/lint-compose-healthcheck-target.test.ts.
 HEALTHCHECK --interval=10s --timeout=3s --retries=3 --start-period=30s \
-  CMD wget --quiet --tries=1 --spider http://localhost:3000/api/health || exit 1
+  CMD wget --quiet --tries=1 --spider http://127.0.0.1:3000/api/health || exit 1
 
 # Chain: fd-probe.sh (fd-limit gate) -> entrypoint.sh (default-secrets gate)
 # -> node (CMD). Probe runs BEFORE the secrets check per plan 08-04 must_haves.
