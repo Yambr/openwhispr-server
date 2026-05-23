@@ -23,11 +23,27 @@ jobs:
       # lefthook L1 (pre-commit) + L2 (pre-push). Single source of
       # truth; allowlist drift between CI and local hooks is
       # structurally impossible.
-      - uses: gitleaks/gitleaks-action@ff98106e4c7b2bc287b24eaf42907196329070c7  # v2.3.9
-        with:
-          config-path: .gitleaks.toml
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      # gitleaks/gitleaks-action v2 license-gates personal accounts
+      # even on PUBLIC repos: it calls GET /user, sees owner.type ===
+      # "User" (not "Organization"), and refuses to run without
+      # GITLEAKS_LICENSE. Yambr/openwhispr-server is a personal repo;
+      # no paid license to buy. Replace the action with a direct CLI
+      # install. Same engine, same .gitleaks.toml, no license gate.
+      - name: Install gitleaks
+        run: |
+          GITLEAKS_VERSION="8.30.1"
+          curl -sSfL "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz" \
+            | sudo tar -xz -C /usr/local/bin gitleaks
+          gitleaks version
+      - name: Run gitleaks detect
+        run: |
+          gitleaks detect \
+            --source . \
+            --config .gitleaks.toml \
+            --redact \
+            --verbose \
+            --no-banner \
+            --exit-code 1
 
   trivy-fs:
     runs-on: ubuntu-24.04
