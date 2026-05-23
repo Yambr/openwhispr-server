@@ -48,3 +48,26 @@ ee90182b → d0ceec92 → 156d017b → 5450bfca → 88821ff7 → 8e6fa508 → 05
        → 360e740c (parallel agent: chart fix) → 6d1be516 → 94ae0127
        → 0594a6d5 → 26d76a1a
 ```
+
+## Wave 3 follow-up — commitlint legitimization (advisor audit item #1)
+
+The advisor audit on 2026-05-23 flagged Wave 2 commit `934a93f4`
+(`chore(commitlint): relax body-max-line-length + subject-case for
+Dependabot`) as a global rule-disablement that silently honor-systems
+Conventional Commits for every human contributor. The Cyrillic ban
+(DOCS-09, level 2) was preserved, but the two relaxed rules now applied
+universally.
+
+**Fix (option A — split configs):**
+
+- `commitlint.config.cjs` restored to strict (Cyrillic ban only).
+- `commitlint.config.dependabot.cjs` (new) extends the strict config and
+  layers `body-max-line-length: [0, "always"]` + `subject-case: [0, "always"]`.
+- `.github/workflows/ci.yml` `commitlint` job selects the config via
+  `${{ github.actor == 'dependabot[bot]' && ... || ... }}`.
+- `lefthook.yml` `commit-msg` hook untouched — local commits stay strict.
+- New regression test at `tools/__tests__/commitlint-config.test.ts`
+  asserts both configs behave as required, including DOCS-09 universal.
+
+Replaces honor-system with workflow-level scoping. Dependabot PRs still
+merge; humans regain Conventional Commits enforcement at CI gate.

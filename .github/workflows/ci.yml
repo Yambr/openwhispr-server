@@ -68,9 +68,14 @@ jobs:
     steps:
       - uses: actions/checkout@v5
         with: { fetch-depth: 0 }
+      # Strict (`commitlint.config.cjs`) for human authors; relaxed
+      # (`commitlint.config.dependabot.cjs`) only for `dependabot[bot]`.
+      # The DOCS-09 Cyrillic ban (level 2) survives in BOTH configs;
+      # only `body-max-line-length` and `subject-case` are relaxed for
+      # dependency bumps. See `commitlint.config.dependabot.cjs`.
       - uses: wagoid/commitlint-github-action@b948419dd99f3fd78a6548d48f94e3df7f6bf3ed  # v6.2.1
         with:
-          configFile: commitlint.config.cjs
+          configFile: ${{ github.actor == 'dependabot[bot]' && 'commitlint.config.dependabot.cjs' || 'commitlint.config.cjs' }}
 
   typecheck:
     runs-on: ubuntu-24.04
