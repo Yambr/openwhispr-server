@@ -143,7 +143,7 @@ Given("a signed-in user whose session has fully expired", async function (this, 
 });
 
 When(
-  "the user issues an authenticated GET to /api/health near the rotation threshold",
+  "the user issues an authenticated GET to \\/api\\/health near the rotation threshold",
   async function (this, ctx) {
     const { apiBaseURL, tenantId } = ctx as { apiBaseURL: string; tenantId: string };
     const s = stateFor(tenantId);
