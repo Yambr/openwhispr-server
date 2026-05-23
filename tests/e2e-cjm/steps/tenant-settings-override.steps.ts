@@ -7,6 +7,7 @@
 import { Agent, fetch as undiciFetch } from "undici";
 
 import { expect, freshTenant, Given, signedInAs, Then, When } from "../support/fixtures";
+import { recordLastResponse } from "./shared/response-shared.steps";
 
 interface ScenarioState {
   cookie?: string;
@@ -103,15 +104,13 @@ When(
     s.status = res.status;
     s.body = res.body;
     s.rawText = res.rawText;
+    recordLastResponse(tenantId, { status: res.status, body: res.body, rawText: res.rawText });
   },
 );
 
-Then(
-  "the response status is {int}",
-  async function (this, { tenantId }: { tenantId: string }, expected: number) {
-    expect(stateFor(tenantId).status).toBe(expected);
-  },
-);
+// Canonical `Then "the response status is {int}"` lives in
+// steps/shared/response-shared.steps.ts; it reads the per-tenant snapshot
+// the When handler above mirror-writes via recordLastResponse().
 
 Then(
   "subsequent GET \\/api\\/stt-config returns model {string}",
@@ -126,22 +125,5 @@ Then(
   },
 );
 
-Then(
-  /^the body is the typed envelope shape "\{ error: \{ code, message \} \}"$/,
-  async function (this, { tenantId }: { tenantId: string }) {
-    expect(stateFor(tenantId).body).toMatchObject({
-      error: expect.objectContaining({
-        code: expect.any(String),
-        message: expect.any(String),
-      }),
-    });
-  },
-);
-
-Then(
-  "the error code matches {string}",
-  async function (this, { tenantId }: { tenantId: string }, regex: string) {
-    const code = (stateFor(tenantId).body as { error?: { code?: string } })?.error?.code ?? "";
-    expect(code).toMatch(new RegExp(regex));
-  },
-);
+// Canonical body/envelope/error-code Then handlers live in
+// steps/shared/response-shared.steps.ts.

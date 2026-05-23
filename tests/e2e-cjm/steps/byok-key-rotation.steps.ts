@@ -5,6 +5,7 @@ import { randomUUID } from "node:crypto";
 import { Agent, fetch as undiciFetch } from "undici";
 
 import { expect, Then, When } from "../support/fixtures";
+import { recordLastResponse } from "./shared/response-shared.steps";
 
 interface KeyRecord {
   id: string;
@@ -140,6 +141,7 @@ When(
     else s.newKeyId = id;
     s.lastStatus = res.status;
     s.lastBody = res.body;
+    recordLastResponse(tenantId, { status: res.status, body: res.body });
   },
 );
 
@@ -159,6 +161,7 @@ When(
     s.newKeyId = extractCreatedId(res.body);
     s.lastStatus = res.status;
     s.lastBody = res.body;
+    recordLastResponse(tenantId, { status: res.status, body: res.body });
   },
 );
 
@@ -179,6 +182,7 @@ When(
     s.lastStatus = res.status;
     s.lastBody = res.body;
     s.lastRawText = res.rawText;
+    recordLastResponse(tenantId, { status: res.status, body: res.body, rawText: res.rawText });
     const list = await listKeys(apiBaseURL, cookieFor(ctxCookie, s));
     s.list = list.body.data ?? [];
   },
@@ -200,6 +204,7 @@ When(
     s.lastStatus = res.status;
     s.lastBody = res.body;
     s.lastRawText = res.rawText;
+    recordLastResponse(tenantId, { status: res.status, body: res.body, rawText: res.rawText });
   },
 );
 
@@ -210,12 +215,8 @@ Then(
   },
 );
 
-Then(
-  "the response status is {int}",
-  async function (this, { tenantId }: { tenantId: string }, expected: number) {
-    expect(stateFor(tenantId).lastStatus).toBe(expected);
-  },
-);
+// Canonical `Then "the response status is {int}"` lives in
+// steps/shared/response-shared.steps.ts.
 
 Then(
   "listing keys shows the new key with revoked_at null",
@@ -237,31 +238,8 @@ Then(
   },
 );
 
-Then(
-  /^the body is the typed envelope shape "\{ error: \{ code, message \} \}"$/,
-  async function (this, { tenantId }: { tenantId: string }) {
-    expect(stateFor(tenantId).lastBody).toMatchObject({
-      error: expect.objectContaining({
-        code: expect.any(String),
-        message: expect.any(String),
-      }),
-    });
-  },
-);
+// Canonical body/envelope/error-code Then handlers live in
+// steps/shared/response-shared.steps.ts.
 
-Then(
-  "the error code matches {string}",
-  async function (this, { tenantId }: { tenantId: string }, regex: string) {
-    const code = (stateFor(tenantId).lastBody as { error?: { code?: string } })?.error?.code ?? "";
-    expect(code).toMatch(new RegExp(regex));
-  },
-);
-
-Then(
-  "the body MUST NOT contain a Node.js stack trace",
-  async function (this, { tenantId }: { tenantId: string }) {
-    expect(stateFor(tenantId).lastRawText ?? "").not.toMatch(
-      /at Object\.<anonymous>|node_modules\//,
-    );
-  },
-);
+// Canonical "the body MUST NOT contain a Node.js stack trace" Then handler
+// lives in steps/shared/response-shared.steps.ts.

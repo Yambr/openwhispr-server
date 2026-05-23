@@ -13,6 +13,7 @@
 import { Agent, fetch as undiciFetch } from "undici";
 
 import { expect, freshTenant, Given, signedInAs, Then, When } from "../support/fixtures";
+import { recordLastResponse } from "./shared/response-shared.steps";
 
 interface ScenarioState {
   tenantA: { tenantId: string; cookie: string; jobIdA?: string };
@@ -172,6 +173,11 @@ When(
       throw new Error("Background did not record T_B's job id");
     }
     s.response = await readTranscribeJob(apiBaseURL, s.tenantA.cookie, s.tenantB.jobIdB);
+    recordLastResponse(tenantId, {
+      status: s.response.status,
+      body: s.response.body,
+      rawText: s.response.rawText,
+    });
   },
 );
 
@@ -183,31 +189,19 @@ When(
       throw new Error("@cjm-15.2 missing T_A's own job id from Background");
     }
     s.response = await readTranscribeJob(apiBaseURL, s.tenantA.cookie, s.tenantA.jobIdA);
-  },
-);
-
-Then(
-  "the response status is {int}",
-  async function (this, { tenantId }: { tenantId: string }, expectedStatus: number) {
-    const s = stateFor(tenantId);
-    if (!s.response) throw new Error("step ordering: no response captured");
-    expect(s.response.status).toBe(expectedStatus);
-  },
-);
-
-Then(
-  /^the body is the typed envelope shape "\{ error: \{ code, message \} \}"$/,
-  async function (this, { tenantId }: { tenantId: string }) {
-    const s = stateFor(tenantId);
-    if (!s.response) throw new Error("step ordering: no response captured");
-    expect(s.response.body).toMatchObject({
-      error: expect.objectContaining({
-        code: expect.any(String),
-        message: expect.any(String),
-      }),
+    recordLastResponse(tenantId, {
+      status: s.response.status,
+      body: s.response.body,
+      rawText: s.response.rawText,
     });
   },
 );
+
+// Canonical `Then "the response status is {int}"` lives in
+// steps/shared/response-shared.steps.ts.
+
+// Canonical body/envelope Then handler lives in
+// steps/shared/response-shared.steps.ts.
 
 Then(
   "the body MUST NOT leak the resource's existence",
@@ -222,14 +216,8 @@ Then(
   },
 );
 
-Then(
-  "the body MUST NOT contain a Node.js stack trace",
-  async function (this, { tenantId }: { tenantId: string }) {
-    const s = stateFor(tenantId);
-    if (!s.response) throw new Error("step ordering: no response captured");
-    expect(s.response.rawText).not.toMatch(/at Object\.<anonymous>|node_modules\//);
-  },
-);
+// Canonical "the body MUST NOT contain a Node.js stack trace" Then handler
+// lives in steps/shared/response-shared.steps.ts.
 
 Then("the body contains the job record", async function (this, { tenantId }: { tenantId: string }) {
   const s = stateFor(tenantId);
