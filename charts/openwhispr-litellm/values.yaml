@@ -1,0 +1,6 @@
+# Default values for openwhispr-litellm (scaffold; full values land in Step 2).
+#
+# Per .planning/quick/20260523-3chart-split/PLAN.md: this chart ships a
+# minimal LiteLLM Proxy Deployment + Service + ConfigMap + master-key
+# Secret. Upstream provider keys (OPENROUTER/OPENAI/ANTHROPIC/BEDROCK)
+# are injected via env from a BYOK Secret the operator manages.

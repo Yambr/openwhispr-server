@@ -1,0 +1,38 @@
+apiVersion: v2
+name: openwhispr-postgres
+description: |
+  OpenWhispr Postgres — CloudNativePG (CNPG) Cluster + Pooler for the
+  OpenWhispr server. Ships the CNPG Cluster CR, transaction-mode Pooler,
+  owner-credentials Secret, pooler userlist Secret, and optional backup
+  configuration. Install ONLY when the operator does not already run
+  Postgres for OpenWhispr — otherwise the `openwhispr-server` chart
+  supports BYOK Postgres via `database.host` / `database.passwordSecretRef`.
+  Requires the CloudNativePG operator (≥ 1.29.x) installed as a cluster
+  prerequisite.
+type: application
+# Version 1.0.0 marks the 3-chart-split first public release per
+# .planning/quick/20260523-3chart-split/PLAN.md. NO Chart.yaml
+# dependencies — the CNPG operator is a cluster prerequisite, not a
+# sub-chart, so this chart is a thin wrapper around CNPG CRDs +
+# OpenWhispr-shaped defaults (PG 17 pin, transaction-mode Pooler,
+# pgPartman extension).
+version: 1.0.0
+appVersion: "1.0.0"
+kubeVersion: ">=1.28.0-0"
+home: https://github.com/Yambr/openwhispr-server
+sources:
+  - https://github.com/Yambr/openwhispr-server
+keywords:
+  - openwhispr
+  - postgresql
+  - postgres
+  - cloudnativepg
+  - cnpg
+  - pgbouncer
+  - self-hosted
+maintainers:
+  - name: OpenWhispr Maintainers
+    url: https://github.com/Yambr/openwhispr-server
+annotations:
+  category: Database
+  licenses: FSL-1.1-ALv2

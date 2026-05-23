@@ -1,0 +1,36 @@
+apiVersion: v2
+name: openwhispr-server
+description: |
+  OpenWhispr Server — the api/web/worker control plane for the OpenWhispr
+  Electron desktop client. Ships the application Deployments, Services,
+  HPAs, PDBs, ServiceMonitors, IngressRoutes, Certificates, OTel
+  Collector DaemonSet, migrate Job, and ConfigMaps. BYOK-first: bring
+  your own Postgres (via `database.host` / `database.passwordSecretRef`)
+  and your own LiteLLM (via `litellm.baseUrl` / `litellm.masterKeySecretRef`)
+  — or install the companion `openwhispr-postgres` + `openwhispr-litellm`
+  charts.
+type: application
+# Version 1.0.0 marks the 3-chart-split first public release per
+# .planning/quick/20260523-3chart-split/PLAN.md (Advisor verdict 2a +
+# v0.9.1 yanked + restart at 1.0.0). NO Chart.yaml dependencies — Valkey,
+# MinIO, cert-manager are operator prerequisites (BYOK), and the companion
+# postgres/litellm charts install independently to honour the "I already
+# have a stack" use case.
+version: 1.0.0
+appVersion: "1.0.0"
+kubeVersion: ">=1.28.0-0"
+home: https://github.com/Yambr/openwhispr-server
+sources:
+  - https://github.com/Yambr/openwhispr-server
+keywords:
+  - openwhispr
+  - transcription
+  - speech-to-text
+  - self-hosted
+  - byok
+maintainers:
+  - name: OpenWhispr Maintainers
+    url: https://github.com/Yambr/openwhispr-server
+annotations:
+  category: Application
+  licenses: FSL-1.1-ALv2

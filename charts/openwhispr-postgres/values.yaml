@@ -1,0 +1,6 @@
+# Default values for openwhispr-postgres (scaffold; full values land in Step 2).
+#
+# Per .planning/quick/20260523-3chart-split/PLAN.md: this chart wraps the
+# CNPG Cluster + Pooler CRDs with OpenWhispr-shaped defaults (PG 17 pin,
+# transaction-mode pooler, pgPartman extension). CNPG operator (≥ 1.29.x)
+# is a cluster prerequisite — install via the operator's chart, not here.
