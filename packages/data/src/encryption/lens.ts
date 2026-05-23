@@ -583,6 +583,21 @@ export function wrapAdapter(
         return cb(wrapAdapter(trxWithRefusal, providers, columnMap));
       }),
     createSchema: inner.createSchema?.bind(inner),
+    // Better Auth 1.6.11 added `consumeOne` to DBAdapter — a
+    // transactional findOne+delete used by the verification-token
+    // cleanup path (one-shot consume). Delegate to inner with the
+    // same `rewriteWhere` we apply to findOne so encrypted columns +
+    // fingerprint lookups (R20) work transparently. Inner adapters
+    // that don't implement `consumeOne` get a synth fallback from
+    // the BA factory (transaction(findMany+deleteMany)).
+    consumeOne: async (args) => {
+      const where = rewriteWhere(args.model, args.where, columnMap) as CleanedWhere[];
+      const result = (await inner.consumeOne({ ...args, where })) as Record<string, unknown> | null;
+      if (result && typeof result === "object") {
+        await decryptRow(args.model, result);
+      }
+      return result as never;
+    },
     options: inner.options,
   };
 }
