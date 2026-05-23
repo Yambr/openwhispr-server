@@ -174,10 +174,27 @@ jobs:
       - name: Dump diagnostics on failure
         if: failure()
         run: |
-          kubectl -n openwhispr get all
-          kubectl -n openwhispr describe pods
-          kubectl -n openwhispr logs deploy/ow-openwhispr-api --tail=200 || true
-          kubectl -n openwhispr get events --sort-by=.lastTimestamp | tail -30
+          # Multi-namespace dump — the helm install steps target traefik,
+          # cert-manager, cnpg-system, AND openwhispr; restricting kubectl
+          # to `-n openwhispr` blinded every pre-openwhispr failure (e.g.
+          # the "helm upgrade --install traefik ... context deadline
+          # exceeded" failure on run 26331965866 produced 0 lines of
+          # kubectl evidence because traefik lives in namespace `traefik`,
+          # not `openwhispr`). Iterate every namespace this job touches.
+          for ns in openwhispr traefik cert-manager cnpg-system; do
+            echo "===== namespace: $ns ====="
+            kubectl get ns "$ns" >/dev/null 2>&1 || { echo "  (namespace not created — skipping)"; continue; }
+            kubectl -n "$ns" get all || true
+            echo "----- describe pods -----"
+            kubectl -n "$ns" describe pods || true
+            echo "----- events -----"
+            kubectl -n "$ns" get events --sort-by=.lastTimestamp | tail -50 || true
+            echo "----- pod logs (last 200 lines, all containers) -----"
+            for pod in $(kubectl -n "$ns" get pods -o name 2>/dev/null); do
+              echo "··· $pod ···"
+              kubectl -n "$ns" logs "$pod" --all-containers --tail=200 --prefix=true || true
+            done
+          done
 
       - name: Tear down kind cluster
         if: always()
