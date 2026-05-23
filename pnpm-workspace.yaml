@@ -24,12 +24,18 @@ allowBuilds:
 # (default-export only) and the api container crashes on boot.
 overrides:
   lru-cache: ^11.3.6
-  # v2.5-A — force patched versions for transitive packages flagged by
-  # Dependabot CVE alerts. Selectors scope the bump to the vulnerable
-  # ranges only, leaving already-patched copies untouched.
+  # v2.5-A + Wave 2 — force patched versions for transitive packages
+  # flagged by Dependabot CVE alerts. Selectors scope the bump to the
+  # vulnerable ranges only, leaving already-patched copies untouched.
   protobufjs@<7.5.8: ">=7.5.8 <8.0.0"
   protobufjs@>=8.0.0 <8.2.0: ">=8.2.0"
   esbuild@<0.25.0: ">=0.25.0 <0.26.0"
   postcss@<8.5.10: ">=8.5.10"
   qs@<6.15.2: ">=6.15.2"
   uuid@<11.1.1: ">=11.1.1 <12.0.0"
+  # Wave 2 (post-CodeQL audit): ws<8.20.1 has WebSocket DoS via
+  # unhandled exceptions during upgrade negotiation (CVE-2026-44292 /
+  # -44294 / -44288 / -44289 / -44290 / -44291 / -44293). Force every
+  # consumer to the patched line; pnpm-lock currently has ws@8.18.1
+  # and ws@2.18.0 alongside the patched 8.20.1.
+  ws@<8.20.1: ">=8.20.1 <9.0.0"
