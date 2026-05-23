@@ -295,6 +295,10 @@ jobs:
             END IF;
           END \$\$;
           SQL
+      - name: Provision pg_partman extension (mirror init/02-pg-partman.sql)
+        env:
+          PGPASSWORD: super-pw
+        run: psql -h 127.0.0.1 -U postgres_super -d openwhispr -v ON_ERROR_STOP=1 -f packages/data/migrations/init/02-pg-partman.sql
       - name: Apply migrations as owner
         env:
           # GHA `services: postgres` does not support TLS; opt out so
@@ -382,6 +386,10 @@ jobs:
           ALTER DATABASE openwhispr OWNER TO openwhispr_owner;
           ALTER SCHEMA public OWNER TO openwhispr_owner;
           SQL
+      - name: Provision pg_partman extension (mirror init/02-pg-partman.sql)
+        env:
+          PGPASSWORD: super-pw
+        run: psql -h 127.0.0.1 -U postgres_super -d openwhispr -v ON_ERROR_STOP=1 -f packages/data/migrations/init/02-pg-partman.sql
       - name: Forward apply (round 1)
         env:
           # GHA `services: postgres` does not support TLS; opt out so
