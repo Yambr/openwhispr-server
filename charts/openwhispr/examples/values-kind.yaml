@@ -42,6 +42,37 @@ host:
   api: api.localtest.me
   web: web.localtest.me
 
+# kind-e2e-verify-20260523 — byok-guard storageRow ALWAYS requires
+# S3_ENDPOINT (no NODE_ENV gate). Enable the MinIO sub-chart so the
+# chart renders the S3_* env block in api/worker Deployments.
+storage:
+  enabled: true
+
+# kind-e2e-verify-20260523 — migrate Job's image (ghcr.io/openwhispr/
+# openwhispr-migrate:0.9.0-rc1) is not publicly available; the kind
+# bringup script never builds + loads a dedicated migrate image. The api
+# image already bundles /app/packages/data/dist/migrate.cjs (used by the
+# migrate-job's `command:` which fully overrides the api ENTRYPOINT
+# chain). Reuse the locally-loaded openwhispr-api:kind-local image for
+# the migrate Job so kind can pull-policy: IfNotPresent and skip the
+# 403 from ghcr.io. Production overlays keep the dedicated migrate
+# image. ALSO pin top-level image.pullPolicy to IfNotPresent so all
+# kind-local images survive helm upgrade rollouts.
+image:
+  pullPolicy: IfNotPresent
+  api:
+    repository: openwhispr-api
+    tag: kind-local
+  worker:
+    repository: openwhispr-worker
+    tag: kind-local
+  web:
+    repository: openwhispr-web
+    tag: kind-local
+  migrate:
+    repository: openwhispr-api
+    tag: kind-local
+
 certManager:
   enabled: true
   clusterIssuer: selfsigned-cluster-issuer
@@ -97,14 +128,34 @@ observability:
   otelCollector:
     enabled: false
 
+worker:
+  replicas: 1
+  env:
+    # kind-e2e-verify-20260523 — same byok-guard SMTP gate as api.
+    nodeEnv: development
+
 api:
   replicas: 1
   autoscaling:
     enabled: false
   env:
+    # kind-e2e-verify-20260523 — byok-guard devToolsRow demands SMTP_HOST
+    # when NODE_ENV=production (packages/byok-guard/src/index.ts:281).
+    # The kind smoke profile has no mail backend wired; flip to
+    # `development` so the dev-tools row short-circuits cleanly. Production
+    # overlays keep the values.yaml default `production`.
+    nodeEnv: development
     # Phase 09.2 F35 — helm test probe runs synthetic signup with no
     # inbox; verify-email step would otherwise block the SLO probe.
     disableEmailVerification: true
+    # kind-e2e-verify-20260523 — byok-guard ingressRow requires
+    # INGRESS_TLS_CERT_PATH when INGRESS_BASE_URL starts with `https://`
+    # (packages/byok-guard/src/index.ts:239). In kind smoke we have
+    # no real TLS chain — Traefik terminates with cert-manager
+    # self-signed but the api process itself does not consume a
+    # cert path. Pin INGRESS_BASE_URL to plain http:// so the ingress
+    # row short-circuits cleanly. Production overlays MUST use https.
+    ingressBaseUrl: "http://api.localtest.me"
 
 # Finding 09.1-F21 — bootstrap script installs Traefik 33.2.1 without
 # exposing the :9000 admin API (Traefik chart default closes it). The
@@ -119,7 +170,6 @@ ingress:
 web:
   replicas: 1
 
-worker:
   autoscaling:
     enabled: false
 
