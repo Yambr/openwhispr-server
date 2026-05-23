@@ -53,21 +53,19 @@ jobs:
         # CI-safe randoms so docker compose does not boot with blank
         # POSTGRES_*/VALKEY_*/MINIO_*/GRAFANA_*/LITELLM_MASTER_KEY values.
         run: |
-          # Mirror the e2e-cjm.yml fix: uncomment the slim-template
-          # PGBOUNCER_ADMIN_PASSWORD + TRAEFIK_ADMIN_PASSWORD so
-          # bootstrap.sh fills them — otherwise migrate refuses to start
-          # and api never boots ("dependency failed to start").
           cp .env.slim.example .env
-          sed -i \
-            -e 's/^# *PGBOUNCER_ADMIN_PASSWORD=/PGBOUNCER_ADMIN_PASSWORD=/' \
-            -e 's/^# *TRAEFIK_ADMIN_PASSWORD=/TRAEFIK_ADMIN_PASSWORD=/' \
-            .env
           if [ -x tools/bootstrap.sh ]; then
             tools/bootstrap.sh --ci || true
           fi
-          # Overlay-required secrets that live OUTSIDE the slim contract.
           # See .github/workflows/e2e-cjm.yml for the long-form rationale.
+          # Slim template ships PGBOUNCER_ADMIN / TRAEFIK_ADMIN /
+          # MINIO_ROOT / GRAFANA_ADMIN passwords COMMENTED OUT (5-key
+          # operator contract); bootstrap.sh only iterates over keys
+          # present in the template, so commented-out lines are invisible
+          # to it and must be appended here directly.
           {
+            echo "PGBOUNCER_ADMIN_PASSWORD=$(openssl rand -base64 32 | tr -d '\n=' | tr '+/' '-_')"
+            echo "TRAEFIK_ADMIN_PASSWORD=$(openssl rand -base64 32 | tr -d '\n=' | tr '+/' '-_')"
             echo "MINIO_ROOT_PASSWORD=$(openssl rand -base64 32 | tr -d '\n=' | tr '+/' '-_')"
             echo "GRAFANA_ADMIN_PASSWORD=$(openssl rand -base64 32 | tr -d '\n=' | tr '+/' '-_')"
           } >> .env
