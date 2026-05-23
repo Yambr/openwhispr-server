@@ -7,7 +7,7 @@
   "main": "./src/index.ts",
   "scripts": {
     "test": "vitest run --project=api",
-    "test:i18n-completeness": "vitest run src/i18n/__tests__/i18n-completeness.test.ts",
+    "test:i18n-completeness": "vitest run tests/unit/i18n/__tests__/i18n-completeness.test.ts",
     "build": "tsup",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "dev": "tsx watch src/index.ts"
