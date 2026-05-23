@@ -84,6 +84,20 @@ jobs:
         run: bash charts/openwhispr/examples/cnpg-install.sh
 
       - name: Install Traefik
+        # CI-only override: service.type=ClusterIP. The reference values file
+        # (charts/openwhispr/examples/traefik-values.yaml) intentionally keeps
+        # the chart default service.type=LoadBalancer because that IS correct
+        # for real-operator cloud K8s deployments (EKS/GKE/AKS provision an
+        # actual LB). kind, however, ships no LoadBalancer controller (no
+        # MetalLB, no cloud-provider-kind), so a LoadBalancer Service stays
+        # EXTERNAL-IP=<pending> forever and `helm --wait` blocks until the
+        # 5-minute deadline — even though the Traefik pod itself reaches
+        # Ready in ~2s. Root cause confirmed via the multi-namespace failure
+        # dump on run 26342214899 / job 77546104692:
+        #   pod/traefik-... 1/1 Running   0   5m
+        #   service/traefik LoadBalancer 10.96.248.221 <pending>  ...
+        # Overriding to ClusterIP here unblocks --wait without weakening the
+        # operator-facing reference values, which still ship LoadBalancer.
         run: |
           helm repo add traefik https://traefik.github.io/charts
           helm repo update traefik
@@ -91,6 +105,7 @@ jobs:
             --namespace traefik --create-namespace \
             --version 32.1.1 \
             -f charts/openwhispr/examples/traefik-values.yaml \
+            --set service.type=ClusterIP \
             --wait --timeout 5m
 
       - name: Install cert-manager
