@@ -270,6 +270,19 @@ litellm:
   config:
     model_list: []
     router_settings: {}
+  # litellm-patterns A4 (2026-05-23) — Retry-After-aware retry layer for
+  # api → LiteLLM chatCompletions calls. All three fields have safe in-code
+  # defaults at packages/litellm-client/src/config.ts (3 attempts /
+  # 250ms base / 8000ms cap). The chart only renders the env binding when
+  # an operator explicitly sets a value here, so leaving these blank keeps
+  # the API behavior identical to the in-code default.
+  # NOTE: applies ONLY to chatCompletions. chatCompletionsStream and
+  # audioTranscriptions are intentionally NOT retried (partial-body /
+  # single-use-stream constraints — see A4 plan).
+  retry:
+    maxAttempts: ""
+    baseMs: ""
+    capMs: ""
 
 # api / web / worker — Wave 2 implements Deployments + HPAs.
 api:
@@ -320,6 +333,12 @@ api:
     # Production operators add IdP / SSO / customer custom-domain origins
     # here. Default empty.
     authTrustedOriginsExtra: ""
+    # R20+R19 (2026-05-23) — canonical ingress base URL. When unset, the
+    # chart defaults to `https://<host.api>` (matches AUTH_URL). Override
+    # when the external operator-facing host differs from the chart's
+    # `host.api` value (rare — split-horizon DNS scenarios, no-Traefik
+    # slim deploys mapped via NodePort, etc).
+    ingressBaseUrl: ""
     # Phase 09.2 F35 — true only for kind smoke / dev profiles where the
     # helm test probe synthetic signup has no inbox. Production overlays
     # NEVER set this to true.
