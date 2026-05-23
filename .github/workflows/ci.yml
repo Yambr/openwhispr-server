@@ -422,7 +422,11 @@ jobs:
           CREATE SCHEMA public;
           ALTER SCHEMA public OWNER TO openwhispr_owner;
           DROP SCHEMA IF EXISTS _meta CASCADE;
+          -- Drop + recreate partman so round 2's create_parent('public.audit_log')
+          -- doesn't collide on part_config_parent_table_pkey.
+          DROP SCHEMA IF EXISTS partman CASCADE;
           SQL
+          PGPASSWORD=super-pw psql -h 127.0.0.1 -U postgres_super -d openwhispr -v ON_ERROR_STOP=1 -f packages/data/migrations/init/02-pg-partman.sql
           pnpm migrate
       - name: pg_dump schema-only (post)
         env:
@@ -780,6 +784,15 @@ jobs:
           # outbound provider keys. docker compose reads .env BEFORE the
           # host env block, so we have to write it into the template.
           echo "LITELLM_CONFIG_FILE=litellm_config.contract.yaml" >> .env.ci.template
+          # The api container runs with NODE_ENV=production and refuses
+          # plaintext-HTTP origins. The ingress overlay terminates TLS at
+          # https://api.localhost, so pin every URL key to that origin.
+          sed -i \
+            -e 's|^INGRESS_BASE_URL=.*|INGRESS_BASE_URL=https://api.localhost|' \
+            -e 's|^BETTER_AUTH_URL=.*|BETTER_AUTH_URL=https://api.localhost|' \
+            -e 's|^AUTH_URL=.*|AUTH_URL=https://api.localhost|' \
+            -e 's|^OPENWHISPR_API_URL=.*|OPENWHISPR_API_URL=https://api.localhost|' \
+            .env.ci.template
           cp .env.ci.template .env
           if [ -x tools/bootstrap.sh ]; then
             BOOTSTRAP_ENV_TEMPLATE="$(pwd)/.env.ci.template" tools/bootstrap.sh --ci || true
