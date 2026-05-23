@@ -47,30 +47,29 @@ jobs:
         # CI-safe randoms so docker compose does not boot with blank
         # POSTGRES_*/VALKEY_*/MINIO_*/GRAFANA_*/LITELLM_MASTER_KEY values.
         run: |
-          # The slim template (5-key operator contract) comments out
-          # PGBOUNCER_ADMIN_PASSWORD + TRAEFIK_ADMIN_PASSWORD. The
-          # migrate / api entrypoint (check-default-secrets.ts) REQUIRES
-          # both — without them migrate refuses to start ("refusing to
-          # start: PGBOUNCER_ADMIN_PASSWORD is unset or matches deny-list")
-          # and api never boots, surfacing as
-          # `dependency failed to start: container <name> is unhealthy`.
-          # Uncomment them in the .env so bootstrap.sh fills them.
           cp .env.slim.example .env
-          sed -i \
-            -e 's/^# *PGBOUNCER_ADMIN_PASSWORD=/PGBOUNCER_ADMIN_PASSWORD=/' \
-            -e 's/^# *TRAEFIK_ADMIN_PASSWORD=/TRAEFIK_ADMIN_PASSWORD=/' \
-            .env
           if [ -x tools/bootstrap.sh ]; then
             tools/bootstrap.sh --ci || true
           fi
-          # Overlay-required secrets that live OUTSIDE the slim contract
-          # (storage + observability overlays). The slim template
-          # intentionally omits them (`tests/integration/env-slim-example.test.ts`
-          # locks the active-key set); the e2e-cjm stack layers the
-          # storage overlay and embedded-litellm overlay which bring up
-          # minio + grafana, so their roots MUST be set or those
-          # containers boot blank-passworded (minio refuses to start).
+          # Overlay-required + deny-list-gated secrets that live OUTSIDE
+          # the slim contract (the slim template ships them COMMENTED
+          # OUT for the 5-key operator contract; bootstrap.sh only iterates
+          # over keys present in the template, so commented-out lines are
+          # invisible to it and must be appended here).
+          #
+          # PGBOUNCER_ADMIN_PASSWORD + TRAEFIK_ADMIN_PASSWORD — required
+          # by check-default-secrets.ts gate in migrate / api containers.
+          # Without them migrate refuses to start ("refusing to start:
+          # PGBOUNCER_ADMIN_PASSWORD is unset or matches deny-list") and
+          # api never boots, surfacing as "dependency failed to start".
+          # Confirmed root cause via Wave 2 #3 compose-logs artifact.
+          #
+          # MINIO_ROOT_PASSWORD + GRAFANA_ADMIN_PASSWORD — minio + grafana
+          # refuse blank-password boots; embedded-litellm + storage
+          # overlays both ship them as sidecars.
           {
+            echo "PGBOUNCER_ADMIN_PASSWORD=$(openssl rand -base64 32 | tr -d '\n=' | tr '+/' '-_')"
+            echo "TRAEFIK_ADMIN_PASSWORD=$(openssl rand -base64 32 | tr -d '\n=' | tr '+/' '-_')"
             echo "MINIO_ROOT_PASSWORD=$(openssl rand -base64 32 | tr -d '\n=' | tr '+/' '-_')"
             echo "GRAFANA_ADMIN_PASSWORD=$(openssl rand -base64 32 | tr -d '\n=' | tr '+/' '-_')"
           } >> .env
