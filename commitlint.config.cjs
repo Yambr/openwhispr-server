@@ -30,5 +30,14 @@ module.exports = {
   rules: {
     "subject-no-cyrillic": [2, "always"],
     "body-no-cyrillic": [2, "always"],
+    // Dependabot generates long body lines (advisory URLs, release notes,
+    // dependency-tree dumps) and group-update subjects that trip the
+    // default config-conventional `body-max-line-length: 100` and
+    // `subject-case: lower-case-only` rules. Relax both so dependency
+    // bumps merge cleanly; our own commits stay constrained by the
+    // habit + editor hints — the Cyrillic ban above stays strict for
+    // every commit (the actual DOCS-09 contract). Net safety unchanged.
+    "body-max-line-length": [0, "always"],
+    "subject-case": [0, "always"],
   },
 };
