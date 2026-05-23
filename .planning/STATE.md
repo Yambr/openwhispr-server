@@ -107,6 +107,7 @@ Last activity: 2026-05-16 — Phase 19.2 CLOSED with SERVER-ERRORS Entry 11 casc
 | 260523-i18n-completeness-script-path | Point `apps/api` `test:i18n-completeness` script at the moved `tests/unit/i18n/__tests__/` path (unblock CI `i18n-completeness` job after apps-tree reorg) | 2026-05-23 | 5450bfca | [20260523-i18n-completeness-script-path](./quick/20260523-i18n-completeness-script-path/) |
 | 260523-ci-compose-log-dump | Dump compose logs as artifact when `e2e-cjm` / `conformance-axe` fail — diagnostics-only; unblocks migrate exit-1 root-causing on next failing run | 2026-05-23 | 88821ff7 | [20260523-ci-compose-log-dump](./quick/20260523-ci-compose-log-dump/) |
 | 260523-smoke-diagnostics-timeout | CI smoke: per-service log dump for slim-core + `--wait-timeout 600` for embedded-smoke (litellm cold-start headroom + api `/api/ready` 503 diagnostics) | 2026-05-23 | 8e6fa508 | [20260523-smoke-diagnostics-timeout](./quick/20260523-smoke-diagnostics-timeout/) |
+| 260523-codeql-test-route-tree-ignore | CodeQL: extend `paths-ignore` to `**/__test/**` (test-only Fastify route tree; clears false-positive `js/request-forgery` #20). Adjacent alerts #14/#15/#17/#19 polynomial-redos already mitigated in code; #21/#33 false positives — all dismiss on next scan | 2026-05-23 | 6d1be516 | [20260523-codeql-test-route-tree-ignore](./quick/20260523-codeql-test-route-tree-ignore/) |
 
 ## Accumulated Context
 

@@ -27,4 +27,4 @@ Added `**/__test/**` to `.github/codeql/codeql-config.yml` `paths-ignore`, with 
 
 ## Commit
 
-`<set after commit>`
+`6d1be516` — `ci(codeql): add **/__test/** to paths-ignore for test-only route tree` (cherry-picked from stray branch `chart/kind-e2e-verify-20260523` onto main after a parallel `360e740c` chart commit jumped ahead)
