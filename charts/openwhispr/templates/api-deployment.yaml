@@ -161,6 +161,19 @@ spec:
               value: "http://{{ include "openwhispr.minioHost" . }}:9000"
             - name: S3_ENDPOINT
               value: "http://{{ include "openwhispr.minioHost" . }}:9000"
+            # byok-guard partner keys — S3_ACCESS_KEY/SECRET_KEY/BUCKET
+            # are required whenever S3_ENDPOINT is set. Bound to the MinIO
+            # sub-chart's root credentials (rootUser literal + rootPassword
+            # from the inline Secret rendered by secrets.helmValues).
+            - name: S3_ACCESS_KEY
+              value: {{ .Values.minio.auth.rootUser | default "minio" | quote }}
+            - name: S3_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $fullname }}-secrets
+                  key: MINIO_ROOT_PASSWORD
+            - name: S3_BUCKET
+              value: "openwhispr"
             {{- end }}
             - name: LITELLM_BASE_URL
               value: {{ include "openwhispr.litellmBaseUrl" . | quote }}
@@ -171,6 +184,18 @@ spec:
             # remove this env override.
             - name: OTEL_SDK_DISABLED
               value: "true"
+            # kind-e2e-verify-20260523 — byok-guard observability row
+            # requires either a real OTLP endpoint OR the literal
+            # `disabled` sentinel (case-insensitive, per Plan 51-16).
+            # OTEL_SDK_DISABLED alone is NOT enough; the guard checks
+            # for OTEL_EXPORTER_OTLP_ENDPOINT specifically. When the
+            # observability sub-chart is gated off
+            # (.Values.observability.embedded=false) we must set the
+            # sentinel or the api refuses to boot.
+            {{- if not .Values.observability.embedded }}
+            - name: OTEL_EXPORTER_OTLP_ENDPOINT
+              value: "disabled"
+            {{- end }}
             # Phase 09.2 F35 — Better Auth's trustedOrigins gate rejects
             # POST requests whose Origin (or Referer) does not match. The
             # in-cluster api Service URL must be admitted so the helm-test

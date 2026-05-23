@@ -112,12 +112,28 @@ spec:
               value: "http://{{ include "openwhispr.minioHost" . }}:9000"
             - name: S3_ENDPOINT
               value: "http://{{ include "openwhispr.minioHost" . }}:9000"
+            # byok-guard partner keys (parity with api-deployment).
+            - name: S3_ACCESS_KEY
+              value: {{ .Values.minio.auth.rootUser | default "minio" | quote }}
+            - name: S3_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $fullname }}-secrets
+                  key: MINIO_ROOT_PASSWORD
+            - name: S3_BUCKET
+              value: "openwhispr"
             {{- end }}
             - name: LITELLM_BASE_URL
               value: {{ include "openwhispr.litellmBaseUrl" . | quote }}
             # Finding 09.1-F30 — see api-deployment.yaml note.
             - name: OTEL_SDK_DISABLED
               value: "true"
+            # kind-e2e-verify-20260523 — byok-guard observability
+            # sentinel (see api-deployment.yaml note).
+            {{- if not .Values.observability.embedded }}
+            - name: OTEL_EXPORTER_OTLP_ENDPOINT
+              value: "disabled"
+            {{- end }}
           # Finding 09.1-F32 — worker is a pure BullMQ consumer; it does
           # NOT run an HTTP server (no Fastify, no /healthz route). The
           # chart's httpGet probe was fiction. Switched to an exec probe
