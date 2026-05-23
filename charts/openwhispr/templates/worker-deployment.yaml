@@ -128,6 +128,11 @@ spec:
             # Finding 09.1-F30 — see api-deployment.yaml note.
             - name: OTEL_SDK_DISABLED
               value: "true"
+            # R20+R19 / kind-e2e-verify-20260523 — worker imports
+            # byok-guard too and fails ingressRow boot check without
+            # INGRESS_BASE_URL. Mirror the api-deployment binding.
+            - name: INGRESS_BASE_URL
+              value: {{ default (printf "https://%s" .Values.host.api) .Values.api.env.ingressBaseUrl | quote }}
             # kind-e2e-verify-20260523 — byok-guard observability
             # sentinel (see api-deployment.yaml note).
             {{- if not .Values.observability.embedded }}
