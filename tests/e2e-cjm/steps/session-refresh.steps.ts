@@ -112,40 +112,49 @@ export function isSessionCookieCleared(setCookieValue: string): boolean {
   return false;
 }
 
-Given("a signed-in user with an active bearer token", async function (this, ctx) {
-  const { apiBaseURL, mailpitApiUrl, tenantId } = ctx as {
-    apiBaseURL: string;
-    mailpitApiUrl: string;
-    tenantId: string;
-  };
-  const s = stateFor(tenantId);
-  const id = freshTenant(tenantId);
-  s.cookie = await signedInAs(apiBaseURL, mailpitApiUrl, id);
-  s.inboundToken = extractInboundToken(s.cookie);
-});
+Given(
+  "a signed-in user with an active bearer token",
+  async function (
+    this,
+    {
+      apiBaseURL,
+      mailpitApiUrl,
+      tenantId,
+    }: { apiBaseURL: string; mailpitApiUrl: string; tenantId: string },
+  ) {
+    const s = stateFor(tenantId);
+    const id = freshTenant(tenantId);
+    s.cookie = await signedInAs(apiBaseURL, mailpitApiUrl, id);
+    s.inboundToken = extractInboundToken(s.cookie);
+  },
+);
 
-Given("a signed-in user whose session has fully expired", async function (this, ctx) {
-  // Phase 27 happy-path lands in this commit; the EXPIRED-session
-  // negative twin requires a session-clock-jump fixture not yet wired
-  // into the CJM compose stack. We sign in normally and tag the scenario
-  // `@expected-red @after-phase-27.next` until a future plan lands a
-  // `tools/expire-session.ts` helper that pokes the database directly to
-  // age the session record. The step records the precondition so when
-  // the helper lands, only this body changes.
-  const { apiBaseURL, mailpitApiUrl, tenantId } = ctx as {
-    apiBaseURL: string;
-    mailpitApiUrl: string;
-    tenantId: string;
-  };
-  const s = stateFor(tenantId);
-  const id = freshTenant(tenantId);
-  s.cookie = await signedInAs(apiBaseURL, mailpitApiUrl, id);
-});
+Given(
+  "a signed-in user whose session has fully expired",
+  async function (
+    this,
+    {
+      apiBaseURL,
+      mailpitApiUrl,
+      tenantId,
+    }: { apiBaseURL: string; mailpitApiUrl: string; tenantId: string },
+  ) {
+    // Phase 27 happy-path lands in this commit; the EXPIRED-session
+    // negative twin requires a session-clock-jump fixture not yet wired
+    // into the CJM compose stack. We sign in normally and tag the scenario
+    // `@expected-red @after-phase-27.next` until a future plan lands a
+    // `tools/expire-session.ts` helper that pokes the database directly to
+    // age the session record. The step records the precondition so when
+    // the helper lands, only this body changes.
+    const s = stateFor(tenantId);
+    const id = freshTenant(tenantId);
+    s.cookie = await signedInAs(apiBaseURL, mailpitApiUrl, id);
+  },
+);
 
 When(
   "the user issues an authenticated GET to \\/api\\/health near the rotation threshold",
-  async function (this, ctx) {
-    const { apiBaseURL, tenantId } = ctx as { apiBaseURL: string; tenantId: string };
+  async function (this, { apiBaseURL, tenantId }: { apiBaseURL: string; tenantId: string }) {
     const s = stateFor(tenantId);
     const res = await authenticatedGet(apiBaseURL, "/api/health", s.cookie ?? "");
     s.status = res.status;
@@ -155,31 +164,36 @@ When(
   },
 );
 
-When("the user issues an authenticated GET to \\/api\\/health", async function (this, ctx) {
-  const { apiBaseURL, tenantId } = ctx as { apiBaseURL: string; tenantId: string };
-  const s = stateFor(tenantId);
-  const res = await authenticatedGet(apiBaseURL, "/api/health", s.cookie ?? "");
-  s.status = res.status;
-  s.headers = res.headers;
-  s.rawBody = res.rawBody;
-  s.body = res.body;
-});
+When(
+  "the user issues an authenticated GET to \\/api\\/health",
+  async function (this, { apiBaseURL, tenantId }: { apiBaseURL: string; tenantId: string }) {
+    const s = stateFor(tenantId);
+    const res = await authenticatedGet(apiBaseURL, "/api/health", s.cookie ?? "");
+    s.status = res.status;
+    s.headers = res.headers;
+    s.rawBody = res.rawBody;
+    s.body = res.body;
+  },
+);
 
-Then("the response status is {int}", async function (this, ctx, expected: number) {
-  const { tenantId } = ctx as { tenantId: string };
-  expect(stateFor(tenantId).status).toBe(expected);
-});
+Then(
+  "the response status is {int}",
+  async function (this, { tenantId }: { tenantId: string }, expected: number) {
+    expect(stateFor(tenantId).status).toBe(expected);
+  },
+);
 
-Then('the response carries a "set-auth-token" header', async function (this, ctx) {
-  const { tenantId } = ctx as { tenantId: string };
-  const s = stateFor(tenantId);
-  expect(s.headers?.has("set-auth-token")).toBe(true);
-});
+Then(
+  'the response carries a "set-auth-token" header',
+  async function (this, { tenantId }: { tenantId: string }) {
+    const s = stateFor(tenantId);
+    expect(s.headers?.has("set-auth-token")).toBe(true);
+  },
+);
 
 Then(
   "the new bearer token is non-empty and not equal to the inbound token",
-  async function (this, ctx) {
-    const { tenantId } = ctx as { tenantId: string };
+  async function (this, { tenantId }: { tenantId: string }) {
     const s = stateFor(tenantId);
     const newToken = s.headers?.get("set-auth-token") ?? "";
     expect(newToken.length).toBeGreaterThan(0);
@@ -189,21 +203,24 @@ Then(
   },
 );
 
-Then('the response does NOT carry a "set-auth-token" header', async function (this, ctx) {
-  const { tenantId } = ctx as { tenantId: string };
-  expect(stateFor(tenantId).headers?.has("set-auth-token") ?? false).toBe(false);
-});
+Then(
+  'the response does NOT carry a "set-auth-token" header',
+  async function (this, { tenantId }: { tenantId: string }) {
+    expect(stateFor(tenantId).headers?.has("set-auth-token") ?? false).toBe(false);
+  },
+);
 
-Then("the response Set-Cookie header clears the session cookie", async function (this, ctx) {
-  const { tenantId } = ctx as { tenantId: string };
-  const setCookie = stateFor(tenantId).headers?.get("set-cookie") ?? "";
-  expect(isSessionCookieCleared(setCookie)).toBe(true);
-});
+Then(
+  "the response Set-Cookie header clears the session cookie",
+  async function (this, { tenantId }: { tenantId: string }) {
+    const setCookie = stateFor(tenantId).headers?.get("set-cookie") ?? "";
+    expect(isSessionCookieCleared(setCookie)).toBe(true);
+  },
+);
 
 Then(
   /^the body is the typed envelope shape "\{ error: \{ code, message \} \}"$/,
-  async function (this, ctx) {
-    const { tenantId } = ctx as { tenantId: string };
+  async function (this, { tenantId }: { tenantId: string }) {
     const body = stateFor(tenantId).body;
     expect(body).toMatchObject({
       error: expect.objectContaining({
@@ -214,7 +231,9 @@ Then(
   },
 );
 
-Then("the body MUST NOT contain a Node.js stack trace", async function (this, ctx) {
-  const { tenantId } = ctx as { tenantId: string };
-  expect(stateFor(tenantId).rawBody ?? "").not.toMatch(/at Object\.<anonymous>|node_modules\//);
-});
+Then(
+  "the body MUST NOT contain a Node.js stack trace",
+  async function (this, { tenantId }: { tenantId: string }) {
+    expect(stateFor(tenantId).rawBody ?? "").not.toMatch(/at Object\.<anonymous>|node_modules\//);
+  },
+);

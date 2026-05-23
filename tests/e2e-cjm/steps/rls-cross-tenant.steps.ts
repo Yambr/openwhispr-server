@@ -113,72 +113,91 @@ export async function readTranscribeJob(
   return { status: res.status, body, rawText };
 }
 
-Given("two fresh email-password tenants T_A and T_B exist", async function (this, ctx) {
-  // playwright-bdd injects fixtures on `this` per createBdd(test) — the
-  // scenario-level `tenantId` fixture is the canonical isolation handle.
-  const { apiBaseURL, mailpitApiUrl, tenantId } = ctx as {
-    apiBaseURL: string;
-    mailpitApiUrl: string;
-    tenantId: string;
-  };
-  const s = stateFor(tenantId);
-  s.tenantA = await provisionTenant(apiBaseURL, mailpitApiUrl, {
-    tenantId: `${tenantId}-A`,
-  });
-  s.tenantB = await provisionTenant(apiBaseURL, mailpitApiUrl, {
-    tenantId: `${tenantId}-B`,
-  });
-});
+Given(
+  "two fresh email-password tenants T_A and T_B exist",
+  async function (
+    this,
+    {
+      apiBaseURL,
+      mailpitApiUrl,
+      tenantId,
+    }: { apiBaseURL: string; mailpitApiUrl: string; tenantId: string },
+  ) {
+    // playwright-bdd injects fixtures on `this` per createBdd(test) — the
+    // scenario-level `tenantId` fixture is the canonical isolation handle.
+    const s = stateFor(tenantId);
+    s.tenantA = await provisionTenant(apiBaseURL, mailpitApiUrl, {
+      tenantId: `${tenantId}-A`,
+    });
+    s.tenantB = await provisionTenant(apiBaseURL, mailpitApiUrl, {
+      tenantId: `${tenantId}-B`,
+    });
+  },
+);
 
-Given("T_A has a signed-in session", async (ctx) => {
+Given(
+  "T_A has a signed-in session",
   // `provisionTenant` already returns a signed-in cookie — this step is a
-  // narrative beat that the Background covers in step 1. No-op.
-  void ctx;
-});
+  // narrative beat that the Background covers in step 1. No-op. The
+  // destructured `tenantId` is unused but required for playwright-bdd 8.x
+  // fixture-injection contract.
+  async function (this, { tenantId: _tenantId }: { tenantId: string }) {
+    // no-op
+  },
+);
 
-Given("T_B has a transcribe job recorded with a known id", async function (this, ctx) {
-  const { apiBaseURL, tenantId } = ctx as { apiBaseURL: string; tenantId: string };
-  const s = stateFor(tenantId);
-  const { jobId } = await recordTranscribeJob(apiBaseURL, s.tenantB.cookie);
-  s.tenantB.jobIdB = jobId;
-});
+Given(
+  "T_B has a transcribe job recorded with a known id",
+  async function (this, { apiBaseURL, tenantId }: { apiBaseURL: string; tenantId: string }) {
+    const s = stateFor(tenantId);
+    const { jobId } = await recordTranscribeJob(apiBaseURL, s.tenantB.cookie);
+    s.tenantB.jobIdB = jobId;
+  },
+);
 
-Given("T_A also has a transcribe job recorded with a known id", async function (this, ctx) {
-  const { apiBaseURL, tenantId } = ctx as { apiBaseURL: string; tenantId: string };
-  const s = stateFor(tenantId);
-  const { jobId } = await recordTranscribeJob(apiBaseURL, s.tenantA.cookie);
-  s.tenantA.jobIdA = jobId;
-});
+Given(
+  "T_A also has a transcribe job recorded with a known id",
+  async function (this, { apiBaseURL, tenantId }: { apiBaseURL: string; tenantId: string }) {
+    const s = stateFor(tenantId);
+    const { jobId } = await recordTranscribeJob(apiBaseURL, s.tenantA.cookie);
+    s.tenantA.jobIdA = jobId;
+  },
+);
 
-When("T_A requests the transcribe job from T_B by id", async function (this, ctx) {
-  const { apiBaseURL, tenantId } = ctx as { apiBaseURL: string; tenantId: string };
-  const s = stateFor(tenantId);
-  if (!s.tenantB.jobIdB) {
-    throw new Error("Background did not record T_B's job id");
-  }
-  s.response = await readTranscribeJob(apiBaseURL, s.tenantA.cookie, s.tenantB.jobIdB);
-});
+When(
+  "T_A requests the transcribe job from T_B by id",
+  async function (this, { apiBaseURL, tenantId }: { apiBaseURL: string; tenantId: string }) {
+    const s = stateFor(tenantId);
+    if (!s.tenantB.jobIdB) {
+      throw new Error("Background did not record T_B's job id");
+    }
+    s.response = await readTranscribeJob(apiBaseURL, s.tenantA.cookie, s.tenantB.jobIdB);
+  },
+);
 
-When("T_A requests their own transcribe job by id", async function (this, ctx) {
-  const { apiBaseURL, tenantId } = ctx as { apiBaseURL: string; tenantId: string };
-  const s = stateFor(tenantId);
-  if (!s.tenantA.jobIdA) {
-    throw new Error("@cjm-15.2 missing T_A's own job id from Background");
-  }
-  s.response = await readTranscribeJob(apiBaseURL, s.tenantA.cookie, s.tenantA.jobIdA);
-});
+When(
+  "T_A requests their own transcribe job by id",
+  async function (this, { apiBaseURL, tenantId }: { apiBaseURL: string; tenantId: string }) {
+    const s = stateFor(tenantId);
+    if (!s.tenantA.jobIdA) {
+      throw new Error("@cjm-15.2 missing T_A's own job id from Background");
+    }
+    s.response = await readTranscribeJob(apiBaseURL, s.tenantA.cookie, s.tenantA.jobIdA);
+  },
+);
 
-Then("the response status is {int}", async function (this, ctx, expectedStatus: number) {
-  const { tenantId } = ctx as { tenantId: string };
-  const s = stateFor(tenantId);
-  if (!s.response) throw new Error("step ordering: no response captured");
-  expect(s.response.status).toBe(expectedStatus);
-});
+Then(
+  "the response status is {int}",
+  async function (this, { tenantId }: { tenantId: string }, expectedStatus: number) {
+    const s = stateFor(tenantId);
+    if (!s.response) throw new Error("step ordering: no response captured");
+    expect(s.response.status).toBe(expectedStatus);
+  },
+);
 
 Then(
   /^the body is the typed envelope shape "\{ error: \{ code, message \} \}"$/,
-  async function (this, ctx) {
-    const { tenantId } = ctx as { tenantId: string };
+  async function (this, { tenantId }: { tenantId: string }) {
     const s = stateFor(tenantId);
     if (!s.response) throw new Error("step ordering: no response captured");
     expect(s.response.body).toMatchObject({
@@ -190,26 +209,29 @@ Then(
   },
 );
 
-Then("the body MUST NOT leak the resource's existence", async function (this, ctx) {
-  const { tenantId } = ctx as { tenantId: string };
-  const s = stateFor(tenantId);
-  if (!s.response) throw new Error("step ordering: no response captured");
-  const code = (s.response.body as { error?: { code?: string } })?.error?.code ?? "";
-  // 404 paths code === "not_found"; a "forbidden_*" code would reveal
-  // that the resource exists. Asserting on the code is more reliable
-  // than asserting the absence of words in a free-form message.
-  expect(code).toMatch(/^not_found$/);
-});
+Then(
+  "the body MUST NOT leak the resource's existence",
+  async function (this, { tenantId }: { tenantId: string }) {
+    const s = stateFor(tenantId);
+    if (!s.response) throw new Error("step ordering: no response captured");
+    const code = (s.response.body as { error?: { code?: string } })?.error?.code ?? "";
+    // 404 paths code === "not_found"; a "forbidden_*" code would reveal
+    // that the resource exists. Asserting on the code is more reliable
+    // than asserting the absence of words in a free-form message.
+    expect(code).toMatch(/^not_found$/);
+  },
+);
 
-Then("the body MUST NOT contain a Node.js stack trace", async function (this, ctx) {
-  const { tenantId } = ctx as { tenantId: string };
-  const s = stateFor(tenantId);
-  if (!s.response) throw new Error("step ordering: no response captured");
-  expect(s.response.rawText).not.toMatch(/at Object\.<anonymous>|node_modules\//);
-});
+Then(
+  "the body MUST NOT contain a Node.js stack trace",
+  async function (this, { tenantId }: { tenantId: string }) {
+    const s = stateFor(tenantId);
+    if (!s.response) throw new Error("step ordering: no response captured");
+    expect(s.response.rawText).not.toMatch(/at Object\.<anonymous>|node_modules\//);
+  },
+);
 
-Then("the body contains the job record", async function (this, ctx) {
-  const { tenantId } = ctx as { tenantId: string };
+Then("the body contains the job record", async function (this, { tenantId }: { tenantId: string }) {
   const s = stateFor(tenantId);
   if (!s.response) throw new Error("step ordering: no response captured");
   expect(s.response.body).toMatchObject({ id: expect.any(String) });

@@ -138,24 +138,21 @@ export function isDiarizationBody(
 // it writes the session cookie onto ctx.cookie. Local state.cookie reads
 // below fall back to ctx.cookie via the inline `?? ctxCookie` pattern.
 
-Given("a wav fixture is available", async function (this, ctx) {
-  const { tenantId } = ctx as { tenantId: string };
+Given("a wav fixture is available", async function (this, { tenantId }: { tenantId: string }) {
   const s = stateFor(tenantId);
   s.wavBytes = readFileSync(FIXTURE_WAV);
 });
 
 When(
   "the user POSTs the wav to \\/v1\\/audio\\/diarization as multipart\\/form-data",
-  async function (this, ctx) {
-    const {
+  async function (
+    this,
+    {
       apiBaseURL,
       tenantId,
       cookie: ctxCookie,
-    } = ctx as {
-      apiBaseURL: string;
-      tenantId: string;
-      cookie?: string;
-    };
+    }: { apiBaseURL: string; tenantId: string; cookie?: string },
+  ) {
     const s = stateFor(tenantId);
     if (!s.wavBytes) throw new Error("wav fixture not loaded");
     const res = await postDiarizationMultipart(apiBaseURL, s.cookie ?? ctxCookie ?? "", s.wavBytes);
@@ -167,16 +164,15 @@ When(
 
 When(
   "the user POSTs {string} content to \\/v1\\/audio\\/diarization",
-  async function (this, ctx, contentType: string) {
-    const {
+  async function (
+    this,
+    {
       apiBaseURL,
       tenantId,
       cookie: ctxCookie,
-    } = ctx as {
-      apiBaseURL: string;
-      tenantId: string;
-      cookie?: string;
-    };
+    }: { apiBaseURL: string; tenantId: string; cookie?: string },
+    contentType: string,
+  ) {
     const s = stateFor(tenantId);
     if (contentType !== "text/plain") {
       throw new Error(`Phase 28 step only models text/plain; got ${contentType}`);
@@ -188,22 +184,25 @@ When(
   },
 );
 
-Then("the response status is {int}", async function (this, ctx, expected: number) {
-  const { tenantId } = ctx as { tenantId: string };
-  expect(stateFor(tenantId).status).toBe(expected);
-});
+Then(
+  "the response status is {int}",
+  async function (this, { tenantId }: { tenantId: string }, expected: number) {
+    expect(stateFor(tenantId).status).toBe(expected);
+  },
+);
 
-Then('the body has a numeric "duration" field greater than 0', async function (this, ctx) {
-  const { tenantId } = ctx as { tenantId: string };
-  const body = stateFor(tenantId).body ?? {};
-  expect(typeof body.duration).toBe("number");
-  expect(body.duration as number).toBeGreaterThan(0);
-});
+Then(
+  'the body has a numeric "duration" field greater than 0',
+  async function (this, { tenantId }: { tenantId: string }) {
+    const body = stateFor(tenantId).body ?? {};
+    expect(typeof body.duration).toBe("number");
+    expect(body.duration as number).toBeGreaterThan(0);
+  },
+);
 
 Then(
   'the body has a "segments" array with at least {int} item',
-  async function (this, ctx, n: number) {
-    const { tenantId } = ctx as { tenantId: string };
+  async function (this, { tenantId }: { tenantId: string }, n: number) {
     const body = stateFor(tenantId).body ?? {};
     expect(Array.isArray(body.segments)).toBe(true);
     expect((body.segments as DiarizationSegment[]).length).toBeGreaterThanOrEqual(n);
@@ -212,8 +211,7 @@ Then(
 
 Then(
   "every segment carries numeric start, numeric end, string speaker",
-  async function (this, ctx) {
-    const { tenantId } = ctx as { tenantId: string };
+  async function (this, { tenantId }: { tenantId: string }) {
     const segments = (stateFor(tenantId).body?.segments ?? []) as DiarizationSegment[];
     for (const seg of segments) {
       expect(typeof seg.start).toBe("number");
@@ -225,8 +223,7 @@ Then(
 
 Then(
   /^the body is the typed envelope shape "\{ error: \{ code, message \} \}"$/,
-  async function (this, ctx) {
-    const { tenantId } = ctx as { tenantId: string };
+  async function (this, { tenantId }: { tenantId: string }) {
     const body = stateFor(tenantId).body;
     expect(body).toMatchObject({
       error: expect.objectContaining({
@@ -237,7 +234,9 @@ Then(
   },
 );
 
-Then("the body MUST NOT contain a Node.js stack trace", async function (this, ctx) {
-  const { tenantId } = ctx as { tenantId: string };
-  expect(stateFor(tenantId).rawText ?? "").not.toMatch(/at Object\.<anonymous>|node_modules\//);
-});
+Then(
+  "the body MUST NOT contain a Node.js stack trace",
+  async function (this, { tenantId }: { tenantId: string }) {
+    expect(stateFor(tenantId).rawText ?? "").not.toMatch(/at Object\.<anonymous>|node_modules\//);
+  },
+);

@@ -65,18 +65,16 @@ export async function postTranscribeWav(
 
 Given(
   "the api is booted with LITELLM_BASE_URL pointing at mock-corp-litellm",
-  async function (this, ctx) {
+  async function (this, { tenantId }: { tenantId: string }) {
     // Live wiring lands in Phase 44 compose overlay; the precondition is
     // a narrative beat. Test recorded so the step set is complete.
-    const { tenantId } = ctx as { tenantId: string };
     void stateFor(tenantId);
   },
 );
 
 Given(
   "the api is booted with LITELLM_BASE_URL pointing at an unreachable host",
-  async function (this, ctx) {
-    const { tenantId } = ctx as { tenantId: string };
+  async function (this, { tenantId }: { tenantId: string }) {
     void stateFor(tenantId);
   },
 );
@@ -85,42 +83,47 @@ Given(
 // it writes the session cookie onto ctx.cookie. Local state.cookie falls back
 // to ctx.cookie where read below.
 
-When("the user POSTs a wav fixture to \\/api\\/transcribe", async function (this, ctx) {
-  const {
-    apiBaseURL,
-    tenantId,
-    cookie: ctxCookie,
-  } = ctx as {
-    apiBaseURL: string;
-    tenantId: string;
-    cookie?: string;
-  };
-  const s = stateFor(tenantId);
-  // 64-byte silent WAV stub — Phase 19.2 wired transcribe end-to-end
-  // so a minimal payload is sufficient.
-  const res = await postTranscribeWav(apiBaseURL, s.cookie ?? ctxCookie ?? "", Buffer.alloc(64, 0));
-  s.status = res.status;
-  s.body = res.body;
-  s.rawText = res.rawText;
-});
+When(
+  "the user POSTs a wav fixture to \\/api\\/transcribe",
+  async function (
+    this,
+    {
+      apiBaseURL,
+      tenantId,
+      cookie: ctxCookie,
+    }: { apiBaseURL: string; tenantId: string; cookie?: string },
+  ) {
+    const s = stateFor(tenantId);
+    // 64-byte silent WAV stub — Phase 19.2 wired transcribe end-to-end
+    // so a minimal payload is sufficient.
+    const res = await postTranscribeWav(
+      apiBaseURL,
+      s.cookie ?? ctxCookie ?? "",
+      Buffer.alloc(64, 0),
+    );
+    s.status = res.status;
+    s.body = res.body;
+    s.rawText = res.rawText;
+  },
+);
 
-Then("the response status is {int}", async function (this, ctx, expected: number) {
-  const { tenantId } = ctx as { tenantId: string };
-  expect(stateFor(tenantId).status).toBe(expected);
-});
+Then(
+  "the response status is {int}",
+  async function (this, { tenantId }: { tenantId: string }, expected: number) {
+    expect(stateFor(tenantId).status).toBe(expected);
+  },
+);
 
-Then('the body has a "text" field', async function (this, ctx) {
-  const { tenantId } = ctx as { tenantId: string };
+Then('the body has a "text" field', async function (this, { tenantId }: { tenantId: string }) {
   const body = stateFor(tenantId).body as { text?: unknown };
   expect(typeof body.text).toBe("string");
 });
 
 Then(
   "mock-corp-litellm observed exactly {int} inbound request",
-  async function (this, ctx, expected: number) {
+  async function (this, { tenantId }: { tenantId: string }, expected: number) {
     // Live assertion needs a mock-corp-litellm /__observed endpoint
     // (deferred to Phase 44 wiring). For now we record the precondition.
-    const { tenantId } = ctx as { tenantId: string };
     const s = stateFor(tenantId);
     s.mockObservedCount = expected; // narrative placeholder
     expect(s.mockObservedCount).toBe(expected);
@@ -129,8 +132,7 @@ Then(
 
 Then(
   /^the body is the typed envelope shape "\{ error: \{ code, message \} \}"$/,
-  async function (this, ctx) {
-    const { tenantId } = ctx as { tenantId: string };
+  async function (this, { tenantId }: { tenantId: string }) {
     expect(stateFor(tenantId).body).toMatchObject({
       error: expect.objectContaining({
         code: expect.any(String),
@@ -140,7 +142,9 @@ Then(
   },
 );
 
-Then("the body MUST NOT contain a Node.js stack trace", async function (this, ctx) {
-  const { tenantId } = ctx as { tenantId: string };
-  expect(stateFor(tenantId).rawText ?? "").not.toMatch(/at Object\.<anonymous>|node_modules\//);
-});
+Then(
+  "the body MUST NOT contain a Node.js stack trace",
+  async function (this, { tenantId }: { tenantId: string }) {
+    expect(stateFor(tenantId).rawText ?? "").not.toMatch(/at Object\.<anonymous>|node_modules\//);
+  },
+);

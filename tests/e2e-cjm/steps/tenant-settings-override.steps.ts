@@ -76,20 +76,28 @@ export async function getSttConfig(
   return { status: res.status, body: (await res.json().catch(() => ({}))) as { model?: string } };
 }
 
-Given("a signed-in admin", async function (this, ctx) {
-  const { apiBaseURL, mailpitApiUrl, tenantId } = ctx as {
-    apiBaseURL: string;
-    mailpitApiUrl: string;
-    tenantId: string;
-  };
-  const s = stateFor(tenantId);
-  s.cookie = await signedInAs(apiBaseURL, mailpitApiUrl, freshTenant(tenantId));
-});
+Given(
+  "a signed-in admin",
+  async function (
+    this,
+    {
+      apiBaseURL,
+      mailpitApiUrl,
+      tenantId,
+    }: { apiBaseURL: string; mailpitApiUrl: string; tenantId: string },
+  ) {
+    const s = stateFor(tenantId);
+    s.cookie = await signedInAs(apiBaseURL, mailpitApiUrl, freshTenant(tenantId));
+  },
+);
 
 When(
   "the admin PUTs \\/api\\/stt-config with model {string}",
-  async function (this, ctx, model: string) {
-    const { apiBaseURL, tenantId } = ctx as { apiBaseURL: string; tenantId: string };
+  async function (
+    this,
+    { apiBaseURL, tenantId }: { apiBaseURL: string; tenantId: string },
+    model: string,
+  ) {
     const s = stateFor(tenantId);
     const res = await putSttConfig(apiBaseURL, s.cookie ?? "", { model });
     s.status = res.status;
@@ -98,15 +106,20 @@ When(
   },
 );
 
-Then("the response status is {int}", async function (this, ctx, expected: number) {
-  const { tenantId } = ctx as { tenantId: string };
-  expect(stateFor(tenantId).status).toBe(expected);
-});
+Then(
+  "the response status is {int}",
+  async function (this, { tenantId }: { tenantId: string }, expected: number) {
+    expect(stateFor(tenantId).status).toBe(expected);
+  },
+);
 
 Then(
   "subsequent GET \\/api\\/stt-config returns model {string}",
-  async function (this, ctx, expected: string) {
-    const { apiBaseURL, tenantId } = ctx as { apiBaseURL: string; tenantId: string };
+  async function (
+    this,
+    { apiBaseURL, tenantId }: { apiBaseURL: string; tenantId: string },
+    expected: string,
+  ) {
     const s = stateFor(tenantId);
     const res = await getSttConfig(apiBaseURL, s.cookie ?? "");
     expect(res.body.model).toBe(expected);
@@ -115,8 +128,7 @@ Then(
 
 Then(
   /^the body is the typed envelope shape "\{ error: \{ code, message \} \}"$/,
-  async function (this, ctx) {
-    const { tenantId } = ctx as { tenantId: string };
+  async function (this, { tenantId }: { tenantId: string }) {
     expect(stateFor(tenantId).body).toMatchObject({
       error: expect.objectContaining({
         code: expect.any(String),
@@ -126,8 +138,10 @@ Then(
   },
 );
 
-Then("the error code matches {string}", async function (this, ctx, regex: string) {
-  const { tenantId } = ctx as { tenantId: string };
-  const code = (stateFor(tenantId).body as { error?: { code?: string } })?.error?.code ?? "";
-  expect(code).toMatch(new RegExp(regex));
-});
+Then(
+  "the error code matches {string}",
+  async function (this, { tenantId }: { tenantId: string }, regex: string) {
+    const code = (stateFor(tenantId).body as { error?: { code?: string } })?.error?.code ?? "";
+    expect(code).toMatch(new RegExp(regex));
+  },
+);

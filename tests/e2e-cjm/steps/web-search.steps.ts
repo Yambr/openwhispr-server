@@ -78,37 +78,35 @@ export async function postWebSearch(
 
 Given(
   "WEB_SEARCH_PROVIDER is configured to {string}",
-  async function (this, ctx, provider: string) {
+  async function (this, { tenantId }: { tenantId: string }, provider: string) {
     // Precondition is set by the operator at compose-up time; we record it
     // here for narrative clarity. The live test stack MUST boot with
     // WEB_SEARCH_PROVIDER=mock per Phase 5 wiring; @cjm-13.2 is tagged
     // `@expected-red @after-phase-26.next` until a compose overlay flips
     // the provider per-scenario (deferred to a follow-up phase).
-    const { tenantId } = ctx as { tenantId: string };
     stateFor(tenantId).providerConfig = provider;
   },
 );
 
 Given(
   "WEB_SEARCH_PROVIDER is configured to {string} without TAVILY_API_KEY",
-  async function (this, ctx, provider: string) {
-    const { tenantId } = ctx as { tenantId: string };
+  async function (this, { tenantId }: { tenantId: string }, provider: string) {
     stateFor(tenantId).providerConfig = `${provider}-no-key`;
   },
 );
 
 When(
   "the user POSTs to \\/api\\/agent\\/web-search with query {string} and numResults {int}",
-  async function (this, ctx, query: string, numResults: number) {
-    const {
+  async function (
+    this,
+    {
       apiBaseURL,
       tenantId,
       cookie: ctxCookie,
-    } = ctx as {
-      apiBaseURL: string;
-      tenantId: string;
-      cookie?: string;
-    };
+    }: { apiBaseURL: string; tenantId: string; cookie?: string },
+    query: string,
+    numResults: number,
+  ) {
     const s = stateFor(tenantId);
     const res = await postWebSearch(apiBaseURL, s.cookie ?? ctxCookie ?? "", { query, numResults });
     s.status = res.status;
@@ -117,15 +115,16 @@ When(
   },
 );
 
-Then("the response status is {int}", async function (this, ctx, expected: number) {
-  const { tenantId } = ctx as { tenantId: string };
-  expect(stateFor(tenantId).status).toBe(expected);
-});
+Then(
+  "the response status is {int}",
+  async function (this, { tenantId }: { tenantId: string }, expected: number) {
+    expect(stateFor(tenantId).status).toBe(expected);
+  },
+);
 
 Then(
   "the body contains a results array with at least {int} item",
-  async function (this, ctx, n: number) {
-    const { tenantId } = ctx as { tenantId: string };
+  async function (this, { tenantId }: { tenantId: string }, n: number) {
     const body = stateFor(tenantId).body as { results?: unknown[] };
     expect(Array.isArray(body.results)).toBe(true);
     expect(body.results!.length).toBeGreaterThanOrEqual(n);
@@ -134,8 +133,7 @@ Then(
 
 Then(
   "every result item has the three string fields title, url, snippet",
-  async function (this, ctx) {
-    const { tenantId } = ctx as { tenantId: string };
+  async function (this, { tenantId }: { tenantId: string }) {
     const body = stateFor(tenantId).body as {
       results: Array<{ title: unknown; url: unknown; snippet: unknown }>;
     };
@@ -149,8 +147,7 @@ Then(
 
 Then(
   /^the body is the typed envelope shape "\{ error: \{ code, message \} \}"$/,
-  async function (this, ctx) {
-    const { tenantId } = ctx as { tenantId: string };
+  async function (this, { tenantId }: { tenantId: string }) {
     const body = stateFor(tenantId).body;
     expect(body).toMatchObject({
       error: expect.objectContaining({
@@ -161,13 +158,17 @@ Then(
   },
 );
 
-Then("the error code is {string}", async function (this, ctx, code: string) {
-  const { tenantId } = ctx as { tenantId: string };
-  const body = stateFor(tenantId).body as { error?: { code?: string } };
-  expect(body.error?.code).toBe(code);
-});
+Then(
+  "the error code is {string}",
+  async function (this, { tenantId }: { tenantId: string }, code: string) {
+    const body = stateFor(tenantId).body as { error?: { code?: string } };
+    expect(body.error?.code).toBe(code);
+  },
+);
 
-Then("the body MUST NOT contain a Node.js stack trace", async function (this, ctx) {
-  const { tenantId } = ctx as { tenantId: string };
-  expect(stateFor(tenantId).rawText ?? "").not.toMatch(/at Object\.<anonymous>|node_modules\//);
-});
+Then(
+  "the body MUST NOT contain a Node.js stack trace",
+  async function (this, { tenantId }: { tenantId: string }) {
+    expect(stateFor(tenantId).rawText ?? "").not.toMatch(/at Object\.<anonymous>|node_modules\//);
+  },
+);
