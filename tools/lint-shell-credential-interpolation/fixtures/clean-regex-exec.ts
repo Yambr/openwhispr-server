@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: FSL-1.1-ALv2
 // Fixture for tools/lint-shell-credential-interpolation.test.ts.
 // `regex.exec(value)` is the RegExp method, NOT child_process.exec.
 // The linter MUST NOT flag this even though the identifier `exec` is
