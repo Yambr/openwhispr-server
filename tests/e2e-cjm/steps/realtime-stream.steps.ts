@@ -90,8 +90,7 @@ export async function openRealtime(
 
 When(
   "the user opens wss:\\/\\/api.localhost:8443\\/v1\\/realtime with the session cookie",
-  async function (this, ctx) {
-    const { tenantId, cookie: ctxCookie } = ctx as { tenantId: string; cookie?: string };
+  async function (this, { tenantId, cookie: ctxCookie }: { tenantId: string; cookie?: string }) {
     const s = stateFor(tenantId);
     const res = await openRealtime("wss://api.localhost:8443/v1/realtime", s.cookie ?? ctxCookie, {
       maxWaitMs: 5_000,
@@ -104,8 +103,7 @@ When(
 
 When(
   "wss:\\/\\/api.localhost:8443\\/v1\\/realtime is opened WITHOUT any bearer or cookie",
-  async function (this, ctx) {
-    const { tenantId } = ctx as { tenantId: string };
+  async function (this, { tenantId }: { tenantId: string }) {
     const s = stateFor(tenantId);
     const res = await openRealtime("wss://api.localhost:8443/v1/realtime", undefined, {
       maxWaitMs: 3_000,
@@ -118,32 +116,33 @@ When(
 
 Then(
   "the server sends at least one frame within {int} seconds",
-  async function (this, ctx, _seconds: number) {
-    const { tenantId } = ctx as { tenantId: string };
+  async function (this, { tenantId }: { tenantId: string }, _seconds: number) {
     const s = stateFor(tenantId);
     expect(s.framesReceived.length).toBeGreaterThanOrEqual(1);
   },
 );
 
-Then("the client closes the session", async function (this, ctx) {
+Then("the client closes the session", async function (this, { tenantId }: { tenantId: string }) {
   // The When step already closed; this is a narrative beat.
-  const { tenantId } = ctx as { tenantId: string };
   void stateFor(tenantId);
 });
 
-Then("the close code is 1000 or 1005", async function (this, ctx) {
-  const { tenantId } = ctx as { tenantId: string };
+Then("the close code is 1000 or 1005", async function (this, { tenantId }: { tenantId: string }) {
   const code = stateFor(tenantId).closeCode ?? -1;
   expect([1000, 1005]).toContain(code);
 });
 
-Then("the connection closes with code 4401 or 4403 or 1008 or 1006", async function (this, ctx) {
-  const { tenantId } = ctx as { tenantId: string };
-  const code = stateFor(tenantId).closeCode ?? -1;
-  expect([4401, 4403, 1008, 1006]).toContain(code);
-});
+Then(
+  "the connection closes with code 4401 or 4403 or 1008 or 1006",
+  async function (this, { tenantId }: { tenantId: string }) {
+    const code = stateFor(tenantId).closeCode ?? -1;
+    expect([4401, 4403, 1008, 1006]).toContain(code);
+  },
+);
 
-Then("no application frame was received before the close", async function (this, ctx) {
-  const { tenantId } = ctx as { tenantId: string };
-  expect(stateFor(tenantId).framesReceived.length).toBe(0);
-});
+Then(
+  "no application frame was received before the close",
+  async function (this, { tenantId }: { tenantId: string }) {
+    expect(stateFor(tenantId).framesReceived.length).toBe(0);
+  },
+);

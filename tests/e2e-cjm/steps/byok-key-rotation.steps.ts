@@ -116,89 +116,130 @@ function extractCreatedId(body: unknown): string | undefined {
 // Canonical `Given "a signed-in user"` lives in steps/shared/auth-shared.steps.ts;
 // it writes the session cookie onto ctx.cookie. Local state.cookie reads
 // fall back to ctx.cookie via cookieFor().
-function cookieFor(ctx: unknown, s: ScenarioState): string {
+function cookieFor(ctxCookie: string | undefined, s: ScenarioState): string {
   if (s.cookie) return s.cookie;
-  const c = (ctx as { cookie?: string }).cookie;
-  if (c) s.cookie = c;
+  if (ctxCookie) s.cookie = ctxCookie;
   return s.cookie ?? "";
 }
 
-When("the user creates an api key named {string}", async function (this, ctx, name: string) {
-  const { apiBaseURL, tenantId } = ctx as { apiBaseURL: string; tenantId: string };
-  const s = stateFor(tenantId);
-  const res = await createKey(apiBaseURL, cookieFor(ctx, s), name);
-  const id = extractCreatedId(res.body);
-  if (!s.oldKeyId) s.oldKeyId = id;
-  else s.newKeyId = id;
-  s.lastStatus = res.status;
-  s.lastBody = res.body;
-});
+When(
+  "the user creates an api key named {string}",
+  async function (
+    this,
+    {
+      apiBaseURL,
+      tenantId,
+      cookie: ctxCookie,
+    }: { apiBaseURL: string; tenantId: string; cookie?: string },
+    name: string,
+  ) {
+    const s = stateFor(tenantId);
+    const res = await createKey(apiBaseURL, cookieFor(ctxCookie, s), name);
+    const id = extractCreatedId(res.body);
+    if (!s.oldKeyId) s.oldKeyId = id;
+    else s.newKeyId = id;
+    s.lastStatus = res.status;
+    s.lastBody = res.body;
+  },
+);
 
-When("the user creates a second api key named {string}", async function (this, ctx, name: string) {
-  const { apiBaseURL, tenantId } = ctx as { apiBaseURL: string; tenantId: string };
-  const s = stateFor(tenantId);
-  const res = await createKey(apiBaseURL, cookieFor(ctx, s), name);
-  s.newKeyId = extractCreatedId(res.body);
-  s.lastStatus = res.status;
-  s.lastBody = res.body;
-});
+When(
+  "the user creates a second api key named {string}",
+  async function (
+    this,
+    {
+      apiBaseURL,
+      tenantId,
+      cookie: ctxCookie,
+    }: { apiBaseURL: string; tenantId: string; cookie?: string },
+    name: string,
+  ) {
+    const s = stateFor(tenantId);
+    const res = await createKey(apiBaseURL, cookieFor(ctxCookie, s), name);
+    s.newKeyId = extractCreatedId(res.body);
+    s.lastStatus = res.status;
+    s.lastBody = res.body;
+  },
+);
 
-When("the user revokes the first key", async function (this, ctx) {
-  const { apiBaseURL, tenantId } = ctx as { apiBaseURL: string; tenantId: string };
-  const s = stateFor(tenantId);
-  if (!s.oldKeyId) throw new Error("step ordering: first create did not return an id");
-  const res = await revokeKey(apiBaseURL, cookieFor(ctx, s), s.oldKeyId);
-  s.revokeStatus = res.status;
-  s.lastStatus = res.status;
-  s.lastBody = res.body;
-  s.lastRawText = res.rawText;
-  const list = await listKeys(apiBaseURL, cookieFor(ctx, s));
-  s.list = list.body.data ?? [];
-});
+When(
+  "the user revokes the first key",
+  async function (
+    this,
+    {
+      apiBaseURL,
+      tenantId,
+      cookie: ctxCookie,
+    }: { apiBaseURL: string; tenantId: string; cookie?: string },
+  ) {
+    const s = stateFor(tenantId);
+    if (!s.oldKeyId) throw new Error("step ordering: first create did not return an id");
+    const res = await revokeKey(apiBaseURL, cookieFor(ctxCookie, s), s.oldKeyId);
+    s.revokeStatus = res.status;
+    s.lastStatus = res.status;
+    s.lastBody = res.body;
+    s.lastRawText = res.rawText;
+    const list = await listKeys(apiBaseURL, cookieFor(ctxCookie, s));
+    s.list = list.body.data ?? [];
+  },
+);
 
 When(
   "the user POSTs \\/api\\/v1\\/keys\\/:id\\/revoke with an unknown uuid",
-  async function (this, ctx) {
-    const { apiBaseURL, tenantId } = ctx as { apiBaseURL: string; tenantId: string };
+  async function (
+    this,
+    {
+      apiBaseURL,
+      tenantId,
+      cookie: ctxCookie,
+    }: { apiBaseURL: string; tenantId: string; cookie?: string },
+  ) {
     const s = stateFor(tenantId);
     const fakeId = randomUUID();
-    const res = await revokeKey(apiBaseURL, cookieFor(ctx, s), fakeId);
+    const res = await revokeKey(apiBaseURL, cookieFor(ctxCookie, s), fakeId);
     s.lastStatus = res.status;
     s.lastBody = res.body;
     s.lastRawText = res.rawText;
   },
 );
 
-Then("the response status for the revoke is {int}", async function (this, ctx, expected: number) {
-  const { tenantId } = ctx as { tenantId: string };
-  expect(stateFor(tenantId).revokeStatus).toBe(expected);
-});
+Then(
+  "the response status for the revoke is {int}",
+  async function (this, { tenantId }: { tenantId: string }, expected: number) {
+    expect(stateFor(tenantId).revokeStatus).toBe(expected);
+  },
+);
 
-Then("the response status is {int}", async function (this, ctx, expected: number) {
-  const { tenantId } = ctx as { tenantId: string };
-  expect(stateFor(tenantId).lastStatus).toBe(expected);
-});
+Then(
+  "the response status is {int}",
+  async function (this, { tenantId }: { tenantId: string }, expected: number) {
+    expect(stateFor(tenantId).lastStatus).toBe(expected);
+  },
+);
 
-Then("listing keys shows the new key with revoked_at null", async function (this, ctx) {
-  const { tenantId } = ctx as { tenantId: string };
-  const s = stateFor(tenantId);
-  const newKey = (s.list ?? []).find((k) => k.id === s.newKeyId);
-  expect(newKey).toBeDefined();
-  expect(newKey?.revoked_at).toBeNull();
-});
+Then(
+  "listing keys shows the new key with revoked_at null",
+  async function (this, { tenantId }: { tenantId: string }) {
+    const s = stateFor(tenantId);
+    const newKey = (s.list ?? []).find((k) => k.id === s.newKeyId);
+    expect(newKey).toBeDefined();
+    expect(newKey?.revoked_at).toBeNull();
+  },
+);
 
-Then("listing keys shows the old key with revoked_at non-null", async function (this, ctx) {
-  const { tenantId } = ctx as { tenantId: string };
-  const s = stateFor(tenantId);
-  const oldKey = (s.list ?? []).find((k) => k.id === s.oldKeyId);
-  expect(oldKey).toBeDefined();
-  expect(oldKey?.revoked_at).not.toBeNull();
-});
+Then(
+  "listing keys shows the old key with revoked_at non-null",
+  async function (this, { tenantId }: { tenantId: string }) {
+    const s = stateFor(tenantId);
+    const oldKey = (s.list ?? []).find((k) => k.id === s.oldKeyId);
+    expect(oldKey).toBeDefined();
+    expect(oldKey?.revoked_at).not.toBeNull();
+  },
+);
 
 Then(
   /^the body is the typed envelope shape "\{ error: \{ code, message \} \}"$/,
-  async function (this, ctx) {
-    const { tenantId } = ctx as { tenantId: string };
+  async function (this, { tenantId }: { tenantId: string }) {
     expect(stateFor(tenantId).lastBody).toMatchObject({
       error: expect.objectContaining({
         code: expect.any(String),
@@ -208,13 +249,19 @@ Then(
   },
 );
 
-Then("the error code matches {string}", async function (this, ctx, regex: string) {
-  const { tenantId } = ctx as { tenantId: string };
-  const code = (stateFor(tenantId).lastBody as { error?: { code?: string } })?.error?.code ?? "";
-  expect(code).toMatch(new RegExp(regex));
-});
+Then(
+  "the error code matches {string}",
+  async function (this, { tenantId }: { tenantId: string }, regex: string) {
+    const code = (stateFor(tenantId).lastBody as { error?: { code?: string } })?.error?.code ?? "";
+    expect(code).toMatch(new RegExp(regex));
+  },
+);
 
-Then("the body MUST NOT contain a Node.js stack trace", async function (this, ctx) {
-  const { tenantId } = ctx as { tenantId: string };
-  expect(stateFor(tenantId).lastRawText ?? "").not.toMatch(/at Object\.<anonymous>|node_modules\//);
-});
+Then(
+  "the body MUST NOT contain a Node.js stack trace",
+  async function (this, { tenantId }: { tenantId: string }) {
+    expect(stateFor(tenantId).lastRawText ?? "").not.toMatch(
+      /at Object\.<anonymous>|node_modules\//,
+    );
+  },
+);
