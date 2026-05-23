@@ -536,7 +536,7 @@ e2e-cjm:
 		echo "0" > .e2e-cjm-user-was-running; \
 	fi
 	@set -e; \
-	trap '$(MAKE) -s e2e-cjm-teardown' EXIT INT TERM; \
+	trap '$(MAKE) -s e2e-cjm-dump-logs; $(MAKE) -s e2e-cjm-teardown' EXIT INT TERM; \
 	docker compose -p e2e-cjm \
 		-f docker-compose.yml -f compose/docker-compose.embedded-litellm.yml \
 		-f compose/docker-compose.storage.yml \
@@ -549,6 +549,25 @@ e2e-cjm:
 	else \
 		pnpm exec playwright test --grep-invert "@expected-red" --config tests/e2e-cjm/playwright.config.ts; \
 	fi
+
+e2e-cjm-dump-logs:
+	@# Capture compose state + per-service logs BEFORE teardown wipes
+	@# the containers. Writes to compose-logs/ in the repo root; the
+	@# CI workflow's `if: failure()` upload-artifact step picks the
+	@# directory up. Idempotent — overwrites each invocation.
+	@mkdir -p compose-logs
+	@docker compose -p e2e-cjm ps -a > compose-logs/_docker-ps.txt 2>&1 || true
+	@for svc in migrate postgres valkey litellm api worker web minio traefik mailpit pgbouncer otel-collector loki tempo prometheus grafana speaches; do \
+		docker compose -p e2e-cjm \
+			-f docker-compose.yml \
+			-f compose/docker-compose.embedded-litellm.yml \
+			-f compose/docker-compose.storage.yml \
+			-f compose/docker-compose.ingress.yml \
+			-f tests/e2e-cjm/compose-overrides.yml \
+			logs --no-color --tail=500 "$$svc" \
+			> "compose-logs/$$svc.log" 2>&1 || true; \
+	done
+	@echo "e2e-cjm-dump-logs: wrote compose-logs/ ($$(ls compose-logs/ | wc -l) files)"
 
 e2e-cjm-teardown:
 	-@docker compose -p e2e-cjm \
