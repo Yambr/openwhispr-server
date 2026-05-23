@@ -37,7 +37,15 @@ describe("Plan 52-02 — lens.ts CleanedWhere import drift", () => {
     const pkg = JSON.parse(readFileSync(PKG, "utf8")) as {
       dependencies?: Record<string, string>;
     };
-    expect(pkg.dependencies?.["@better-auth/core"]).toBe("1.6.9");
+    // Direct-dependency invariant: must be present and pinned to a 1.6.x
+    // version >= 1.6.9 (the release that moved CleanedWhere into
+    // @better-auth/core/db/adapter — see file header). The minor/patch
+    // float is owned by dependabot; this test guards the structural
+    // direct-dep relationship + the floor version where the import path
+    // under test became valid.
+    const version = pkg.dependencies?.["@better-auth/core"];
+    expect(version).toBeDefined();
+    expect(version).toMatch(/^1\.6\.(?:9|1\d|[2-9]\d)$/);
   });
 
   it("dead `cleanedToWhere()` helper is removed (LOCKER-04 dead-code)", () => {
