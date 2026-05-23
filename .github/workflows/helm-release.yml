@@ -47,7 +47,16 @@ jobs:
             helm registry login ghcr.io -u "${{ github.actor }}" --password-stdin
 
       - name: Helm dependency build
-        run: helm dependency build charts/openwhispr
+        run: |
+          # charts/openwhispr/Chart.yaml declares jetstack/cert-manager as
+          # an HTTPS sub-chart (alongside the OCI valkey/minio refs); helm
+          # dependency build refuses with "no repository definition for
+          # https://charts.jetstack.io. Please add the missing repos via
+          # 'helm repo add'" until the repo is registered. Same fix that
+          # ci.yml's test job + helm-lint.yml both apply.
+          helm repo add jetstack https://charts.jetstack.io
+          helm repo update
+          helm dependency build charts/openwhispr
 
       - name: Helm package
         run: |
@@ -59,9 +68,14 @@ jobs:
 
       - name: Push chart to GHCR OCI
         run: |
+          # GHCR rejects uppercase in repository names — `github.repository_owner`
+          # echoes the org slug verbatim (e.g. `Yambr`). Lowercase via shell
+          # parameter expansion. Same fix that release.yml applies for image
+          # tag computation.
+          owner=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
           helm push \
             ".cr-release-packages/openwhispr-${{ steps.tag.outputs.value }}.tgz" \
-            "oci://ghcr.io/${{ github.repository_owner }}/charts"
+            "oci://ghcr.io/${owner}/charts"
 
       - name: Run chart-releaser (GitHub Pages index)
         uses: helm/chart-releaser-action@v1.7.0
