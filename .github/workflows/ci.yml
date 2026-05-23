@@ -385,6 +385,10 @@ jobs:
           CREATE ROLE openwhispr_app   WITH LOGIN          PASSWORD '${POSTGRES_APP_PASSWORD}';
           ALTER DATABASE openwhispr OWNER TO openwhispr_owner;
           ALTER SCHEMA public OWNER TO openwhispr_owner;
+          -- Normalize the schema comment so round 1 and round 2 produce
+          -- byte-stable pg_dump output (initdb's default differs across
+          -- pg minor versions; force the empty-string form here).
+          COMMENT ON SCHEMA public IS '';
           SQL
       - name: Provision pg_partman extension (mirror init/02-pg-partman.sql)
         env:
@@ -421,6 +425,10 @@ jobs:
           DROP SCHEMA public CASCADE;
           CREATE SCHEMA public;
           ALTER SCHEMA public OWNER TO openwhispr_owner;
+          -- Restore the canonical empty comment so the round-2 pg_dump
+          -- matches round-1 byte-for-byte (vanilla postgres ships
+          -- `COMMENT ON SCHEMA public IS ''` from initdb).
+          COMMENT ON SCHEMA public IS '';
           DROP SCHEMA IF EXISTS _meta CASCADE;
           -- Drop + recreate partman so round 2's create_parent('public.audit_log')
           -- doesn't collide on part_config_parent_table_pkey.
