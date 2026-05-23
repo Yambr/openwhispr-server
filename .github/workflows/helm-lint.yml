@@ -54,6 +54,13 @@ jobs:
             echo "${k}=${v}" >> "$GITHUB_OUTPUT"
           done
 
+      - name: helm dependency build
+        # Chart.yaml declares 3 OCI sub-chart deps (valkey, minio,
+        # cert-manager) that helm lint / helm template require resolved
+        # before render. On a fresh CI checkout charts/ is empty, so
+        # dep-build must run first.
+        run: helm dependency build charts/openwhispr
+
       - name: helm lint
         run: |
           helm lint charts/openwhispr \
