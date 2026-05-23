@@ -251,11 +251,20 @@ jobs:
             -e POSTGRES_DB=openwhispr \
             -p 5432:5432 \
             openwhispr/postgres:ci
-          # Wait for readiness (60s budget).
-          for i in $(seq 1 60); do
-            if docker exec pg-ci pg_isready -U postgres_super -d openwhispr >/dev/null 2>&1; then
+          # Wait until postgres accepts host-side TCP connections — the
+          # in-container pg_isready returns ready during the entrypoint's
+          # initdb / write-tests / restart cycle, before TCP is bound.
+          # We probe the host-mapped 127.0.0.1:5432 socket the rest of
+          # the job actually uses.
+          for i in $(seq 1 90); do
+            if PGPASSWORD=super-pw psql -h 127.0.0.1 -U postgres_super -d openwhispr -c 'SELECT 1' >/dev/null 2>&1; then
               echo "postgres ready after ${i}s"
               break
+            fi
+            if [ "$i" = "90" ]; then
+              echo "postgres did not become ready in 90s — container logs:"
+              docker logs pg-ci || true
+              exit 1
             fi
             sleep 1
           done
