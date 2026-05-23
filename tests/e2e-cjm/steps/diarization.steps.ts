@@ -16,6 +16,7 @@ import { resolve } from "node:path";
 import { Agent, FormData, fetch as undiciFetch } from "undici";
 
 import { expect, Given, Then, When } from "../support/fixtures";
+import { recordLastResponse } from "./shared/response-shared.steps";
 
 // Phase 28 — playwright-bdd loader runs under ESM, where `__dirname` is
 // not defined. Mirror the transcribe.steps.ts fixture resolver (try repo
@@ -159,6 +160,7 @@ When(
     s.status = res.status;
     s.body = res.body as ScenarioState["body"];
     s.rawText = res.rawText;
+    recordLastResponse(tenantId, { status: res.status, body: res.body, rawText: res.rawText });
   },
 );
 
@@ -181,15 +183,12 @@ When(
     s.status = res.status;
     s.body = res.body as ScenarioState["body"];
     s.rawText = res.rawText;
+    recordLastResponse(tenantId, { status: res.status, body: res.body, rawText: res.rawText });
   },
 );
 
-Then(
-  "the response status is {int}",
-  async function (this, { tenantId }: { tenantId: string }, expected: number) {
-    expect(stateFor(tenantId).status).toBe(expected);
-  },
-);
+// Canonical `Then "the response status is {int}"` lives in
+// steps/shared/response-shared.steps.ts.
 
 Then(
   'the body has a numeric "duration" field greater than 0',
@@ -221,22 +220,8 @@ Then(
   },
 );
 
-Then(
-  /^the body is the typed envelope shape "\{ error: \{ code, message \} \}"$/,
-  async function (this, { tenantId }: { tenantId: string }) {
-    const body = stateFor(tenantId).body;
-    expect(body).toMatchObject({
-      error: expect.objectContaining({
-        code: expect.any(String),
-        message: expect.any(String),
-      }),
-    });
-  },
-);
+// Canonical body/envelope Then handler lives in
+// steps/shared/response-shared.steps.ts.
 
-Then(
-  "the body MUST NOT contain a Node.js stack trace",
-  async function (this, { tenantId }: { tenantId: string }) {
-    expect(stateFor(tenantId).rawText ?? "").not.toMatch(/at Object\.<anonymous>|node_modules\//);
-  },
-);
+// Canonical "the body MUST NOT contain a Node.js stack trace" Then handler
+// lives in steps/shared/response-shared.steps.ts.

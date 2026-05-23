@@ -11,6 +11,7 @@
 import { Agent, fetch as undiciFetch } from "undici";
 
 import { expect, Then, When } from "../support/fixtures";
+import { recordLastResponse } from "./shared/response-shared.steps";
 
 interface ScenarioState {
   cookie?: string;
@@ -111,6 +112,7 @@ When(
     s.status = res.status;
     s.contentType = res.contentType;
     s.rawBody = res.rawBody;
+    recordLastResponse(tenantId, { status: res.status, rawText: res.rawBody });
   },
 );
 
@@ -122,6 +124,7 @@ When(
     s.status = res.status;
     s.contentType = res.contentType;
     s.rawBody = res.rawBody;
+    recordLastResponse(tenantId, { status: res.status, rawText: res.rawBody });
   },
 );
 
@@ -169,32 +172,12 @@ Then(
   },
 );
 
-Then(
-  "the response status is {int}",
-  async function (this, { tenantId }: { tenantId: string }, expectedStatus: number) {
-    const s = stateFor(tenantId);
-    expect(s.status).toBe(expectedStatus);
-  },
-);
+// Canonical `Then "the response status is {int}"` lives in
+// steps/shared/response-shared.steps.ts.
 
-Then(
-  /^the body is the typed envelope shape "\{ error: \{ code, message \} \}"$/,
-  async function (this, { tenantId }: { tenantId: string }) {
-    const s = stateFor(tenantId);
-    const body = JSON.parse(s.rawBody ?? "{}");
-    expect(body).toMatchObject({
-      error: expect.objectContaining({
-        code: expect.any(String),
-        message: expect.any(String),
-      }),
-    });
-  },
-);
+// Canonical body/envelope Then handler lives in
+// steps/shared/response-shared.steps.ts (it parses rawText fallback when
+// the per-feature handler only mirror-wrote rawText, as we do here).
 
-Then(
-  "the body MUST NOT contain a Node.js stack trace",
-  async function (this, { tenantId }: { tenantId: string }) {
-    const s = stateFor(tenantId);
-    expect(s.rawBody ?? "").not.toMatch(/at Object\.<anonymous>|node_modules\//);
-  },
-);
+// Canonical "the body MUST NOT contain a Node.js stack trace" Then handler
+// lives in steps/shared/response-shared.steps.ts.
