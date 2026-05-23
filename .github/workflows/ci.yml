@@ -748,7 +748,7 @@ jobs:
   # `docker compose logs --tail=200` per memory feedback_check_loki_after_tests.
   smoke:
     runs-on: ubuntu-24.04
-    timeout-minutes: 10
+    timeout-minutes: 20
     env:
       # Select the hermetic mock LiteLLM config — no real provider keys,
       # no outbound egress. The production config (litellm_config.yaml)
@@ -813,12 +813,16 @@ jobs:
           # storage.yml — api refuses to boot with BYOK_STORAGE_REQUIRED
           # unless either S3_ENDPOINT is set OR the storage overlay is
           # enabled (which ships a MinIO sidecar fulfilling the contract).
+          # --wait-timeout 600 — litellm runs prisma migrate deploy at first
+          # boot (~118 migrations against the bundled co-tenant DB); on a
+          # cold GH runner this takes 4-5 minutes. Default `up --wait`
+          # ceiling of 5 min trips just before /health/liveliness comes up.
           docker compose -f docker-compose.yml \
             -f compose/docker-compose.embedded-litellm.yml \
             -f compose/docker-compose.ingress.yml \
             -f compose/docker-compose.storage.yml \
             --profile default \
-            up -d --wait
+            up -d --wait --wait-timeout 600
       - name: Run smoke probes
         run: pnpm smoke
       - name: Dump container logs on failure
