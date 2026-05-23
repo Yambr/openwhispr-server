@@ -125,7 +125,7 @@ jobs:
               "start_period": "60s"
             } |
             .services.web.healthcheck = {
-              "test": ["CMD-SHELL", "wget --quiet --tries=1 --spider --server-response http://127.0.0.1:3000/ 2>&1 | awk '/HTTP\\// {print $2}' | grep -qE '^(2|3)' || exit 1"],
+              "test": ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://127.0.0.1:3000/"],
               "interval": "10s",
               "timeout": "5s",
               "retries": 6,
