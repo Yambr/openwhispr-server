@@ -69,6 +69,17 @@ paths-ignore:
   - '**/*.test.tsx'
   - '**/*.spec.ts'
   - '**/*.spec.tsx'
+  # --- Test-only Fastify route trees (singular `__test/`) ---
+  # These live under `apps/api/src/routes/__test/` and house probe
+  # routes (e.g. /api/__test/fetch) used by e2e SSRF / token / leak
+  # tests. They are REFUSED at production-veto time (NODE_ENV check
+  # in apps/api/src/index.ts + their own per-route registration veto),
+  # so they are unreachable in any production bundle. CodeQL still
+  # follows them as if they were live routes, producing false-positive
+  # js/request-forgery (#20) / js/polynomial-redos / js/missing-rate-
+  # limiting alerts on infrastructure that exists ONLY to drive the
+  # real defence under test.
+  - '**/__test/**'
   # --- Test fixtures ---
   - '**/fixtures/**'
   # --- Dedicated test-only probe tool (no production importer) ---
