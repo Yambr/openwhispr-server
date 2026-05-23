@@ -175,7 +175,12 @@ describe("gitleaks lefthook integration (L1 pre-commit + L2 pre-push)", () => {
     const wf = join(REPO_ROOT, ".github", "workflows", "security.yml");
     expect(existsSync(wf)).toBe(true);
     const text = require("node:fs").readFileSync(wf, "utf8");
-    expect(text).toMatch(/config-path:\s*\.gitleaks\.toml/);
+    // Accept either form:
+    //   - gitleaks-action `config-path: .gitleaks.toml` (deprecated; license-
+    //     gated on personal repos, see comment block in security.yml)
+    //   - direct CLI `--config .gitleaks.toml` (current; no license gate)
+    // Both bind CI's L3 gate to the SAME single-source-of-truth ruleset.
+    expect(text).toMatch(/(?:config-path:\s*|--config\s+)\.gitleaks\.toml/);
   });
 
   it("install-hooks.cjs bootstraps tools/install-gitleaks.sh", () => {
