@@ -274,6 +274,10 @@ jobs:
           # buildPoolConfig() returns ssl=false (sslmode=disable is the
           # canonical libpq escape hatch — see packages/data/src/client.ts).
           DATABASE_URL_OWNER: postgres://openwhispr_owner:${{ env.POSTGRES_OWNER_PASSWORD }}@127.0.0.1:5432/openwhispr?sslmode=disable
+          # RLS-introspection only needs the app schema on `openwhispr`. The
+          # bootstrap role lacks CREATEDB (canonical 00-roles.sql.tpl shape),
+          # so opt out of ensureLitellmDatabase().
+          SKIP_LITELLM_DB_AUTOCREATE: '1'
         run: pnpm migrate
       - name: Run RLS-introspection lint
         env:
@@ -332,6 +336,10 @@ jobs:
           # buildPoolConfig() returns ssl=false (sslmode=disable is the
           # canonical libpq escape hatch — see packages/data/src/client.ts).
           DATABASE_URL_OWNER: postgres://openwhispr_owner:${{ env.POSTGRES_OWNER_PASSWORD }}@127.0.0.1:5432/openwhispr?sslmode=disable
+          # Schema-stability test runs against `openwhispr` only. Owner role
+          # lacks CREATEDB (canonical 00-roles.sql.tpl) → opt out of
+          # ensureLitellmDatabase().
+          SKIP_LITELLM_DB_AUTOCREATE: '1'
         run: pnpm migrate
       - name: pg_dump schema-only (pre)
         env:
@@ -343,6 +351,7 @@ jobs:
         env:
           PGPASSWORD: ${{ env.POSTGRES_OWNER_PASSWORD }}
           DATABASE_URL_OWNER: postgres://openwhispr_owner:${{ env.POSTGRES_OWNER_PASSWORD }}@127.0.0.1:5432/openwhispr?sslmode=disable
+          SKIP_LITELLM_DB_AUTOCREATE: '1'
         run: |
           psql -h 127.0.0.1 -U openwhispr_owner -d openwhispr -v ON_ERROR_STOP=1 <<SQL
           DROP SCHEMA public CASCADE;
@@ -678,9 +687,13 @@ jobs:
           fi
       - name: Boot slim-core stack
         run: |
+          # --profile default — every service in compose/docker-compose.embedded-litellm.yml
+          # declares an explicit profile, so without this flag compose selects
+          # zero services and reports "no service selected".
           docker compose -f docker-compose.yml \
             -f compose/docker-compose.embedded-litellm.yml \
             -f compose/docker-compose.ingress.yml \
+            --profile default \
             up -d --wait
       - name: Run smoke probes
         run: pnpm smoke
