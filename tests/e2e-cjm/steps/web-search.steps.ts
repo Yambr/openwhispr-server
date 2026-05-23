@@ -105,7 +105,7 @@ Given(
 );
 
 When(
-  "the user POSTs to /api/agent/web-search with query {string} and numResults {int}",
+  "the user POSTs to \\/api\\/agent\\/web-search with query {string} and numResults {int}",
   async function (this, ctx, query: string, numResults: number) {
     const { apiBaseURL, tenantId } = ctx as { apiBaseURL: string; tenantId: string };
     const s = stateFor(tenantId);
