@@ -86,12 +86,12 @@ cat >"$STUB_DIR/k6" <<'EOF'
 exit 99
 EOF
 chmod +x "$STUB_DIR/k6"
-# Stub sh-invoked helpers (preflight + pre-warm) by shadowing them inside
+# Stub bash-invoked helpers (preflight + pre-warm) by shadowing them inside
 # a scratch tree we point ROOT at — simpler: prepend STUB to PATH for the
 # docker+k6 fakes, then bypass preflight by running with a side-channel.
 # We cannot rebind ROOT cheaply; instead, set PATH so `docker` is a stub,
-# patch preflight by stubbing `sh tools/load-test/scripts/preflight.sh`.
-# The script uses literal `sh tools/load-test/scripts/preflight.sh` — we
+# patch preflight by stubbing `bash tools/load-test/scripts/preflight.sh`.
+# The script uses literal `bash tools/load-test/scripts/preflight.sh` — we
 # replace the preflight script with a no-op via bind-style shadow: copy
 # run.sh into the stub dir with preflight + build calls neutered. Cleanest
 # is invoking run.sh with PATH containing only stubs PLUS the system PATH,
@@ -100,7 +100,7 @@ RUN_COPY="$STUB_DIR/run.sh"
 # Neutralise preflight + pnpm build + docker compose build/up — leave only
 # the trap wiring and k6 invocation to exercise the keep-stack branch.
 sed \
-  -e 's|sh tools/load-test/scripts/preflight.sh --yes|true|' \
+  -e 's|bash tools/load-test/scripts/preflight.sh --yes|true|' \
   -e 's|\$COMPOSE_BASE build|true|' \
   -e 's|\$COMPOSE_BASE up -d --wait|true|' \
   -e 's|(cd tools/load-test && pnpm run build)|true|' \
