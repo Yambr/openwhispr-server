@@ -16,8 +16,11 @@ type: application
 # .planning/quick/20260523-3chart-split/PLAN.md. NO Chart.yaml
 # dependencies — this chart is a thin LiteLLM Proxy wrapper; upstream
 # LLM providers are env-driven.
-version: 1.0.0
-appVersion: "1.0.0"
+# WIP: 3-chart split scaffold only. Templates are NOT yet populated.
+# Do NOT consume this chart yet. Stable umbrella chart remains
+# charts/openwhispr/ (version 0.9.x).
+version: 0.0.0-wip
+appVersion: "0.0.0-wip"
 kubeVersion: ">=1.28.0-0"
 home: https://github.com/Yambr/openwhispr-server
 sources:

@@ -16,8 +16,13 @@ type: application
 # MinIO, cert-manager are operator prerequisites (BYOK), and the companion
 # postgres/litellm charts install independently to honour the "I already
 # have a stack" use case.
-version: 1.0.0
-appVersion: "1.0.0"
+# WIP: 3-chart split scaffold only. Templates are NOT yet populated.
+# Do NOT consume this chart yet. Stable umbrella chart remains
+# charts/openwhispr/ (version 0.9.x) until split execution completes
+# across multiple sessions per the PLAN. Version sentinel keeps
+# chart-releaser from publishing a half-built artifact on any v* tag.
+version: 0.0.0-wip
+appVersion: "0.0.0-wip"
 kubeVersion: ">=1.28.0-0"
 home: https://github.com/Yambr/openwhispr-server
 sources:
