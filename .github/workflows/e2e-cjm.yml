@@ -73,6 +73,13 @@ jobs:
             echo "MINIO_ROOT_PASSWORD=$(openssl rand -base64 32 | tr -d '\n=' | tr '+/' '-_')"
             echo "GRAFANA_ADMIN_PASSWORD=$(openssl rand -base64 32 | tr -d '\n=' | tr '+/' '-_')"
           } >> .env
+          # migrate container refuses to run without DATABASE_URL_OWNER
+          # ("migrate: DATABASE_URL_OWNER not set — refusing to run as owner").
+          # The slim template only ships the app DSN (DATABASE_URL);
+          # synthesize the owner DSN as a composite that interpolates
+          # the bootstrap-generated POSTGRES_OWNER_PASSWORD at compose
+          # time. Mirrors the slim-core smoke job in ci.yml.
+          echo 'DATABASE_URL_OWNER=postgres://openwhispr_owner:${POSTGRES_OWNER_PASSWORD}@postgres:5432/openwhispr?sslmode=disable' >> .env
       - name: docker compose build
         run: docker compose -f docker-compose.yml -f compose/docker-compose.embedded-litellm.yml build api worker web
       - name: make e2e-cjm
