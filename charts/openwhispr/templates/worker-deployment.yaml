@@ -105,7 +105,12 @@ spec:
             {{- if .Values.storage.enabled }}
             # Plan 14-06 / BYOK-01 — MINIO_ENDPOINT injection gated on the
             # top-level `storage.enabled` toggle (parity with api-deployment).
+            # kind-e2e-verify-20260523 — also set S3_ENDPOINT for byok-guard
+            # boot check (packages/byok-guard reads S3_ENDPOINT canonical
+            # name, not the MINIO_ENDPOINT legacy alias).
             - name: MINIO_ENDPOINT
+              value: "http://{{ include "openwhispr.minioHost" . }}:9000"
+            - name: S3_ENDPOINT
               value: "http://{{ include "openwhispr.minioHost" . }}:9000"
             {{- end }}
             - name: LITELLM_BASE_URL

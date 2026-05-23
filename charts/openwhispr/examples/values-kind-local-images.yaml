@@ -1,0 +1,32 @@
+# Phase kind-e2e-verify-20260523 — image overrides for locally-built
+# Docker images loaded via `kind load docker-image`. Layered on TOP of
+# values-kind.yaml to retarget repositories from ghcr.io/openwhispr/* to
+# the bare local image names produced by `docker compose build`.
+image:
+  api:
+    repository: openwhispr-api
+    tag: kind-local
+    pullPolicy: IfNotPresent
+  worker:
+    repository: openwhispr-worker
+    tag: kind-local
+    pullPolicy: IfNotPresent
+  web:
+    repository: openwhispr-web
+    tag: kind-local
+    pullPolicy: IfNotPresent
+  migrate:
+    # Reuse the api image — both bundle /app/packages/data/dist/migrate.cjs
+    # and the kind-local api image is the only one guaranteed present on
+    # nodes after a docker prune (no separate openwhispr-migrate build
+    # needed for the smoke profile).
+    repository: openwhispr-api
+    tag: kind-local
+    pullPolicy: IfNotPresent
+
+# Enable the bundled MinIO sub-chart so api/worker BYOK guard finds the
+# S3_ENDPOINT it requires. values-kind.yaml configures minio.* but does
+# NOT flip the top-level storage.enabled gate (Plan 14-06 rename) —
+# without this the slim-core path activates and the api refuses to boot.
+storage:
+  enabled: true

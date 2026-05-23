@@ -149,7 +149,17 @@ spec:
             # (slim-core default) the api MUST find a `S3_ENDPOINT` value in
             # the operator-supplied Secret or hit the BYOK loud-fail boot
             # guard (plan 14-04 assertBYOKConfig).
+            #
+            # kind-e2e-verify-20260523 — packages/byok-guard reads
+            # `S3_ENDPOINT` (the wire-schemas canonical name), NOT
+            # `MINIO_ENDPOINT`. Without S3_ENDPOINT the boot guard refuses
+            # to start even with storage.enabled=true and minio Running.
+            # Set both: S3_ENDPOINT for byok-guard / runtime S3 client,
+            # MINIO_ENDPOINT retained as legacy alias for any older code
+            # paths that still reference it.
             - name: MINIO_ENDPOINT
+              value: "http://{{ include "openwhispr.minioHost" . }}:9000"
+            - name: S3_ENDPOINT
               value: "http://{{ include "openwhispr.minioHost" . }}:9000"
             {{- end }}
             - name: LITELLM_BASE_URL
