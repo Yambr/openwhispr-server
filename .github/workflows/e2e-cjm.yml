@@ -97,27 +97,41 @@ jobs:
           echo "INGRESS_TLS_CERT_PATH=/etc/traefik/certs/local.crt" >> .env
       - name: docker compose build
         run: docker compose -f docker-compose.yml -f compose/docker-compose.embedded-litellm.yml build api worker web
-      - name: Patch e2e-cjm overrides with CI api-healthcheck swap
-        # Swap api's docker healthcheck from /api/ready (cloud-plane
-        # readiness — gates on LiteLLM client + upstream reachability,
-        # racy in hermetic compose) to /api/health (always-200 liveness
-        # once the server listens) for THIS CI lane.
+      - name: Patch e2e-cjm overrides with CI healthcheck swaps
+        # Swap two docker healthchecks for THIS CI lane:
         #
-        # The previous naive `cat >> compose-overrides.yml` produced a
-        # duplicate `api:` mapping key — the overlay already declares
-        # `services.api.environment.INGRESS_BASE_URL` — which compose
-        # rejects with "mapping key 'api' already defined" (confirmed
-        # CI run 26329667945). Use `yq` to MERGE healthcheck into the
-        # existing api block. yq comes pre-installed on ubuntu-latest
-        # GH runners (mikefarah/yq v4). CI-only modification.
+        # 1. api: /api/ready (cloud-plane readiness gates on LiteLLM
+        #    client + upstream reachability, racy in hermetic compose)
+        #    → /api/health (always-200 liveness once the server listens).
+        # 2. web: /api/health (proxied via Next.js rewrites → api:3000,
+        #    flaky in the boot window — confirmed CI run 26329918118
+        #    where api was healthy serving its own loopback but web
+        #    never produced a successful proxy probe within the 60 s
+        #    window) → /favicon.ico (a static asset Next.js serves
+        #    directly once `Ready in 194ms` fires, no upstream hop).
+        #
+        # Uses yq merge (not cat-append) to avoid duplicate-`api:`
+        # mapping keys against the existing
+        # services.api.environment.INGRESS_BASE_URL declaration in the
+        # base overlay. yq comes pre-installed on ubuntu-latest GH
+        # runners. CI-only modification.
         run: |
-          yq -i '.services.api.healthcheck = {
-            "test": ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://127.0.0.1:3000/api/health"],
-            "interval": "10s",
-            "timeout": "3s",
-            "retries": 5,
-            "start_period": "60s"
-          }' tests/e2e-cjm/compose-overrides.yml
+          yq -i '
+            .services.api.healthcheck = {
+              "test": ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://127.0.0.1:3000/api/health"],
+              "interval": "10s",
+              "timeout": "3s",
+              "retries": 5,
+              "start_period": "60s"
+            } |
+            .services.web.healthcheck = {
+              "test": ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://127.0.0.1:3000/favicon.ico"],
+              "interval": "10s",
+              "timeout": "3s",
+              "retries": 5,
+              "start_period": "60s"
+            }
+          ' tests/e2e-cjm/compose-overrides.yml
           echo "--- compose-overrides.yml after yq merge ---"
           cat tests/e2e-cjm/compose-overrides.yml
       - name: make e2e-cjm
