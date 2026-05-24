@@ -54,3 +54,15 @@ worker:
 observability:
   serviceMonitor:
     enabled: false
+
+# BYOK LiteLLM (external): SKIP_LITELLM_DB_AUTOCREATE=1 tells the migrate
+# Job not to attempt CREATE DATABASE for an embedded LiteLLM instance.
+# Without this flag, the migrate Job errors out with
+# `permission denied to create database (SQLSTATE 42501)` because the
+# CNPG-managed owner role does not have CREATEDB privilege by default.
+# Operators running the companion `openwhispr-litellm` chart (embedded
+# mode, single shared Postgres) leave this unset — the migrate Job
+# creates the `litellm` database alongside `openwhispr` on first install.
+extraEnv:
+  - name: SKIP_LITELLM_DB_AUTOCREATE
+    value: "1"
