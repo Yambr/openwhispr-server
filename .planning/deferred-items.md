@@ -519,3 +519,40 @@ sequenced task; not blocked on a small code fix.
 Release (DONE), Security (DONE), helm-lint (DONE) cover the v1.0.0 happy
 path. e2e-cjm is the deep CJM regression harness — its scope is wider
 than v1.0.0 demo cut. Document, ship, fix in a follow-up phase.
+
+## Web CI playwright e2e provisionTestUser 500 (2026-05-24)
+
+**Symptom**: Web CI green through migrate + api boot + storage + ingress
+overlays (commits 71fa8d37..ab6c6e92 cumulative), now fails at
+`apps/web/tests/e2e/global-setup.ts:81 provisionTestUser(alice+0@test.
+local)` with HTTP 500. api log shows `POST /api/auth/sign-up/email →
+500` in 30ms — Better Auth handler errors during sign-up flow.
+
+**Wrap-up to this run**: 6 incremental Web CI fixes shipped today
+(71fa8d37, 9b17d4c3, ae377892, bf70d407, ab6c6e92) layering: bootstrap
+.env from full template, all overlay services, ingress env wiring,
+storage overlay, full overlay set. Stack now boots and reaches
+playwright global-setup — meaningful progress. The remaining failure is
+in the application layer (Better Auth sign-up handler returning 500),
+not infrastructure.
+
+**Why deferred**: same class as e2e-cjm — application-level e2e regression
+that needs deep diagnosis. Could be:
+- Better Auth handler bug under disableOriginCheck deprecation path
+  (log shows the warning)
+- Missing INGRESS_PORT or scheme mismatch (api received host=api.
+  localhost but CSRF/origin gates may need explicit allowlist)
+- The new BYOK guards exposed an init-order dependency where the
+  schema bootstrap that Better Auth depends on hasn't completed
+- Race condition between migrate exit and api start under the full
+  overlay set
+
+Diagnosing requires reading apps/api/src/auth.ts boot sequence,
+better-auth-handler.ts under HTTP 500 path, the api req-2 response
+body (not captured in current log), and running Web e2e locally
+end-to-end. Out of automation-loop scope.
+
+**Demo-readiness impact**: Web CI playwright e2e is a deep app
+regression suite, not in the v1.0.0 critical path. Smoke (DONE),
+conformance-axe (DONE), Release/CI (verifying), Security (DONE),
+helm-lint (DONE) cover the core ship-readiness.
