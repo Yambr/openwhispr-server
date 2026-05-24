@@ -6,6 +6,14 @@
 //   * Production loud-fail gate: throws at construction when
 //     `NODE_ENV === "production"` and `SMTP_HOST` is unset. Dev fallback
 //     (warn + no-op sender) is retained only for non-production.
+//   * k8s-mode bypass (Quick-task 260524-u00 / Task A2): when
+//     `OPENWHISPR_DEPLOYMENT_MODE=k8s` AND `SMTP_HOST` is unset, the
+//     production loud-fail is downgraded to a warn-only no-op so the
+//     api/worker pods boot before the operator has rotated in the SMTP
+//     Secret. Sign-up and every non-email flow keep working; once the
+//     Secret is provisioned and pods restart, email delivery resumes.
+//     Compose-mode (no `OPENWHISPR_DEPLOYMENT_MODE`) keeps the original
+//     throw — `.env` operators are expected to set SMTP_HOST before prod.
 //   * Explicit `SMTP_SECURE` env override (defaults to the `port === 465`
 //     heuristic when unset).
 //   * Explicit `SMTP_REJECT_UNAUTHORIZED` env (defaults to `true`); set to
@@ -25,6 +33,7 @@
 //   SMTP_PASSWORD             (optional; auth attached only with USER)
 //   SMTP_FROM                 (default "no-reply@openwhispr.local")
 //   NODE_ENV                  ("production" enforces SMTP_HOST presence)
+import { isK8sDeploymentMode } from "@openwhispr/byok-guard";
 import nodemailer, { type Transporter } from "nodemailer";
 
 /**
@@ -100,6 +109,29 @@ export function createEmailSender(opts: CreateEmailSenderOpts): EmailSender {
   const from = env.SMTP_FROM ?? "no-reply@openwhispr.local";
 
   if (!host) {
+    // k8s-mode bypass (Quick-task 260524-u00 / Task A2): the chart-
+    // baked OPENWHISPR_DEPLOYMENT_MODE=k8s env tells us SMTP is an
+    // operator-rotated Kubernetes Secret that may not exist yet on
+    // first install. Degrade to a warn-only no-op instead of throwing
+    // so sign-up + every non-email flow boots; email delivery resumes
+    // after the Secret is provisioned and pods restart. Compose-mode
+    // (env unset / "compose") keeps the original throw — `.env` ops
+    // are expected to set SMTP_HOST before going to prod.
+    if (env.NODE_ENV === "production" && isK8sDeploymentMode(env)) {
+      log.warn(
+        { event: "email.smtp_not_configured_k8s_mode" },
+        "SMTP not configured in k8s deployment mode; emails skipped until operator provisions SMTP Secret",
+      );
+      return {
+        async send({ to, subject }) {
+          log.warn(
+            { to, subject, event: "email.skipped_k8s_mode" },
+            "email skipped (k8s mode, SMTP Secret not provisioned)",
+          );
+          return { delivered: false, reason: "smtp-not-configured-k8s" };
+        },
+      };
+    }
     // Production loud-fail (must_have truth #7): refusing to silently
     // swallow verification emails in prod is non-negotiable. Throw at
     // module init so the api/worker boot crashes loudly instead of

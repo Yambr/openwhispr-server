@@ -14,6 +14,7 @@
     "build": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
+    "@openwhispr/byok-guard": "workspace:*",
     "nodemailer": "^8.0.7"
   },
   "devDependencies": {
