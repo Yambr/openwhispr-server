@@ -20,14 +20,21 @@ image:
   # template-only fixes between image releases). Override at deploy
   # time if you pin a specific image tag.
   #
-  # Chart 1.0.6 + image v1.0.4 ship the quick-260524-u00-eight-fixes
-  # batch atomically: chart-side (B1 worker probe path, B2 DATABASE_URL_OWNER
-  # wiring, B3 LITELLM_DATABASE_URL secretRef, B3b OPENWHISPR_DEPLOYMENT_MODE
-  # baked into ConfigMap) + image-side (A2 email k8s-mode bypass, A3 worker
-  # CJS import.meta guard, A4 worker VALKEY_URL parser, A5 POST /api/locale).
+  # Chart 1.0.7 — F1 follow-up patch on top of chart 1.0.6: api Deployment
+  # was missing DATABASE_URL_OWNER projection (B2 wired worker + migrate
+  # Job only). apps/api/src/index.ts:1066 reads it to construct probeOwnerPool,
+  # and routes/index.ts:511 silently skips POST /api/setup/admin registration
+  # without it — first-run admin onboarding 404'd in chart 1.0.5/1.0.6 prod.
+  # Discovered live on openwhispr.yambr.com 2026-05-24 while testing the
+  # /setup wizard. No image change required (api code already correct);
+  # pure chart wiring miss + regression guard test in tools/.
+  #
+  # Chart 1.0.6 lineage (kept here for upgrade-path documentation):
+  #   B1 worker probe path / B2 DATABASE_URL_OWNER worker+migrate /
+  #   B3 LITELLM_DATABASE_URL / B3b OPENWHISPR_DEPLOYMENT_MODE ConfigMap +
+  #   image v1.0.4 (A1 byok-guard export / A2 email k8s bypass / A3 worker
+  #   CJS guard / A4 worker VALKEY_URL parser / A5 POST /api/locale).
   # Companion openwhispr-postgres chart 1.1.0 ships the rolconfig fix (B4).
-  # Operators MUST have image v1.0.4 published BEFORE installing chart 1.0.6 —
-  # the release pipeline pushes v1.0.4 image tags FIRST, then chart-v1.0.6.
   tag: "1.0.4"
   api:     { repository: openwhispr-api }
   web:     { repository: openwhispr-web }
