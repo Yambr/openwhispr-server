@@ -1,5 +1,6 @@
 name: helm-upgrade-matrix
 
+# Retriggered post v1.0.0 chart release to exercise real N-1 (v1.0.0) -> HEAD transition.
 # DEPLOY-04 gate. Installs the previous (N-1) chart version on a kind cluster
 # with CNPG + Traefik + cert-manager, seeds deterministic data, upgrades to
 # the HEAD chart, then runs `helm test` (DEPLOY-05 SLO probe) and the
