@@ -41,6 +41,18 @@ jobs:
             # Convenience tag includes PG minor so the chart's values.schema.json
             # regex (`^.+:17\.[0-9]+.*$`) is always satisfied without manual edits.
             pg_minor: "17.6"
+          # Compose / testcontainer variant: alpine + pg_partman 5.2.4 built
+          # from source with NO_BGW=1. Consumed by docker-compose.yml,
+          # compose/docker-compose.embedded-litellm.yml, and ~22 integration
+          # tests via `PostgreSqlContainer("ghcr.io/<owner>/openwhispr-postgres-17-pgpartman:...")`.
+          # Distinct from the CNPG variant above (pg_partman 5.1.0 apt-package,
+          # debian-trixie base, BGW preload) — see
+          # .planning/quick/20260524-postgres-ghcr-publish/CONTEXT.md for the
+          # keep-two-images rationale.
+          - name: postgres-17-pgpartman
+            context: compose/postgres
+            dockerfile: Dockerfile
+            pg_minor: "17.5"
           - name: api
             context: .
             dockerfile: apps/api/Dockerfile
