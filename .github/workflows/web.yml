@@ -137,6 +137,24 @@ jobs:
         run: pnpm --filter @openwhispr/web exec playwright install --with-deps chromium
       - name: Build docker images
         run: docker compose build
+      - name: Seed required secrets into .env for compose up
+        # The api/worker/litellm boot-time guards refuse to start when any
+        # required secret is empty or matches the deny-list (DEPLOY-03).
+        # Generate ephemeral 40-char random values for CI, scoped to this
+        # job only. Production operators populate these from a real KMS.
+        run: |
+          {
+            for k in LITELLM_MASTER_KEY OPENROUTER_API_KEY OPENAI_API_KEY \
+                     PYANNOTE_API_KEY HF_TOKEN \
+                     POSTGRES_OWNER_PASSWORD POSTGRES_APP_PASSWORD \
+                     PGBOUNCER_ADMIN_PASSWORD BETTER_AUTH_SECRET \
+                     VALKEY_PASSWORD MINIO_ROOT_PASSWORD \
+                     TRAEFIK_ADMIN_PASSWORD GRAFANA_ADMIN_PASSWORD \
+                     MASTER_KEK BACKUP_AGE_IDENTITY; do
+              v=$(openssl rand -base64 32 | tr -d '\n=' | cut -c1-40)
+              echo "${k}=${v}"
+            done
+          } >> .env
       - name: Bring up stack (default profile)
         run: docker compose --profile default up -d --wait
       - name: Run Playwright e2e
