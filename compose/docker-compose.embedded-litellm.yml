@@ -495,10 +495,12 @@ services:
       start_period: 240s
     restart: unless-stopped
     # Phase 20 / SR-20.1 — memory cap.
+    # 1.5G mirrors base — see docker-compose.yml `litellm` comment for the
+    # CI red-sweep evidence on the 1G→1.5G bump (2026-05-24).
     deploy:
       resources:
         limits:
-          memory: 1G
+          memory: 1536M
           cpus: "2.0"
 
   # Phase 2 Plan 02 — API container. Closes Phase 1 D-08 / SC#1 partial:

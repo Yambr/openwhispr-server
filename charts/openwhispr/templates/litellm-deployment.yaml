@@ -144,7 +144,11 @@ spec:
               memory: 512Mi
             limits:
               cpu: 1000m
-              memory: 1Gi
+              # 1.5Gi mirrors docker-compose.yml `litellm` cap (see comment
+              # there for 2026-05-24 CI red-sweep evidence on the bump).
+              # The compose ↔ chart parity is enforced by
+              # tools/lint-compose-chart-parity + lint-compose-resources.
+              memory: 1536Mi
       volumes:
         - name: config
           configMap:
