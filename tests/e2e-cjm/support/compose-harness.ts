@@ -68,6 +68,8 @@ export const USER_PROJECT = "openwhispr";
  *
  *   - observability — Phase 13 trace-propagation assertions.
  *   - pgbouncer    — production-parity pooler.
+ *   - storage      — MinIO + S3_ENDPOINT wiring (BYOK guard refuses boot
+ *                    without it).
  *   - dev-tools    — mailpit for verification-email assertions.
  *   - ingress      — Traefik (`https://api.localhost/api/health` readiness URL
  *                    below depends on this overlay being layered).
@@ -77,6 +79,7 @@ export const COMPOSE_FILES: readonly string[] = [
   "compose/docker-compose.embedded-litellm.yml",
   "compose/docker-compose.observability.yml",
   "compose/docker-compose.pgbouncer.yml",
+  "compose/docker-compose.storage.yml",
   "compose/docker-compose.dev-tools.yml",
   "compose/docker-compose.ingress.yml",
 ] as const;
