@@ -3,26 +3,19 @@ name: openwhispr-server
 description: |
   OpenWhispr Server — the api/web/worker control plane for the OpenWhispr
   Electron desktop client. Ships the application Deployments, Services,
-  HPAs, PDBs, ServiceMonitors, IngressRoutes, Certificates, OTel
-  Collector DaemonSet, migrate Job, and ConfigMaps. BYOK-first: bring
-  your own Postgres (via `database.host` / `database.passwordSecretRef`)
-  and your own LiteLLM (via `litellm.baseUrl` / `litellm.masterKeySecretRef`)
-  — or install the companion `openwhispr-postgres` + `openwhispr-litellm`
-  charts.
+  migrate Job, ConfigMap, and ServiceAccount. BYOK-first: bring your
+  own Postgres, Redis/Valkey, S3, SMTP, LiteLLM, and OAuth providers via
+  externally-managed Kubernetes Secrets — or install the companion
+  `openwhispr-postgres` and `openwhispr-litellm` charts.
 type: application
-# Version 1.0.0 marks the 3-chart-split first public release per
-# .planning/quick/20260523-3chart-split/PLAN.md (Advisor verdict 2a +
-# v0.9.1 yanked + restart at 1.0.0). NO Chart.yaml dependencies — Valkey,
-# MinIO, cert-manager are operator prerequisites (BYOK), and the companion
-# postgres/litellm charts install independently to honour the "I already
-# have a stack" use case.
-# WIP: 3-chart split scaffold only. Templates are NOT yet populated.
-# Do NOT consume this chart yet. Stable umbrella chart remains
-# charts/openwhispr/ (version 0.9.x) until split execution completes
-# across multiple sessions per the PLAN. Version sentinel keeps
-# chart-releaser from publishing a half-built artifact on any v* tag.
-version: 0.0.0-wip
-appVersion: "0.0.0-wip"
+# Version 1.0.0 marks the MVP scope first public release per
+# .planning/quick/20260523-3chart-split/PLAN.md. The prior
+# `oci://ghcr.io/yambr/charts/openwhispr:1.0.{0,1,2}` monolith was
+# yanked. NO Chart.yaml dependencies — Postgres, Valkey, LiteLLM, S3,
+# SMTP, cert-manager, and ingress controllers are all operator
+# prerequisites (BYOK).
+version: 1.0.0
+appVersion: "1.0.0"
 kubeVersion: ">=1.28.0-0"
 home: https://github.com/Yambr/openwhispr-server
 sources:
