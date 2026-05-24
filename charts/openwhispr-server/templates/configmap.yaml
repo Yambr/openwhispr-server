@@ -1,0 +1,17 @@
+{{/*
+Non-secret env shared by api / web / worker, sourced from `.Values.env`.
+Keys are envFrom'd into every pod alongside the operator-managed
+Secret. Anything that is a credential MUST live in the Secret, not
+here — values.yaml ships only NODE_ENV / LOG_LEVEL by default.
+*/}}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "openwhispr-server.configName" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "openwhispr-server.labels" . | nindent 4 }}
+data:
+  {{- range $k, $v := .Values.env }}
+  {{ $k }}: {{ $v | quote }}
+  {{- end }}
