@@ -1,0 +1,31 @@
+{{/*
+api ServiceMonitor — Prometheus Operator CRD.
+Gated on `.Values.observability.serviceMonitor.enabled` because the CRD
+is a cluster prerequisite; chart install on a cluster without Prometheus
+Operator would otherwise fail with "no matches for kind ServiceMonitor".
+*/}}
+{{- if .Values.observability.serviceMonitor.enabled -}}
+{{- $fullname := include "openwhispr-server.fullname" . -}}
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: {{ $fullname }}-api
+  namespace: {{ default .Release.Namespace .Values.observability.serviceMonitor.namespace }}
+  labels:
+    {{- include "openwhispr-server.labels" . | nindent 4 }}
+    app.kubernetes.io/component: api
+    {{- with .Values.observability.serviceMonitor.labels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+spec:
+  selector:
+    matchLabels:
+      {{- include "openwhispr-server.api.selectorLabels" . | nindent 6 }}
+  namespaceSelector:
+    matchNames:
+      - {{ .Release.Namespace }}
+  endpoints:
+    - port: http
+      path: /api/metrics
+      interval: 30s
+{{- end }}
