@@ -352,6 +352,69 @@ describe("assertBYOKConfig (Phase 14 / Plan 04 / Task 1; Phase 19 / Plan 02 thro
       expect(new BYOKGuardError("x")).toBeInstanceOf(BYOKGuardError);
     });
   });
+
+  // OPENWHISPR_DEPLOYMENT_MODE=k8s kill-switch (downstream Yambr fix).
+  // K8s operators bring observability / storage / ingress via Kubernetes-
+  // native primitives (ServiceMonitor / envFromSecret / HTTPRoute), not
+  // docker compose overlays. The compose-era loud-fail rows are not
+  // applicable in k8s mode; the kill-switch short-circuits them while
+  // leaving compose-mode behavior untouched (backward compatible default).
+  describe("OPENWHISPR_DEPLOYMENT_MODE=k8s bypass", () => {
+    it("k8s mode — empty env (no S3/OTEL/INGRESS) does not throw", () => {
+      const env = { OPENWHISPR_DEPLOYMENT_MODE: "k8s" } as NodeJS.ProcessEnv;
+      const { record, threwGuardError } = runWithCapture(env);
+      expect(threwGuardError).toBe(false);
+      expect(record).toBeNull();
+    });
+
+    it("k8s mode — case-insensitive (K8S)", () => {
+      const env = { OPENWHISPR_DEPLOYMENT_MODE: "K8S" } as NodeJS.ProcessEnv;
+      const { threwGuardError } = runWithCapture(env);
+      expect(threwGuardError).toBe(false);
+    });
+
+    it("k8s mode — whitespace-tolerant ( k8s )", () => {
+      const env = { OPENWHISPR_DEPLOYMENT_MODE: "  k8s  " } as NodeJS.ProcessEnv;
+      const { threwGuardError } = runWithCapture(env);
+      expect(threwGuardError).toBe(false);
+    });
+
+    it("compose mode (default, unset) — still enforces storage/observability/ingress", () => {
+      const env = {} as NodeJS.ProcessEnv;
+      const { threwGuardError, record } = runWithCapture(env);
+      expect(threwGuardError).toBe(true);
+      // First-violation-only: storage row fires first in declaration order.
+      expect(record?.code).toBe("BYOK_STORAGE_REQUIRED");
+    });
+
+    it("compose mode (explicit) — still enforces", () => {
+      const env = { OPENWHISPR_DEPLOYMENT_MODE: "compose" } as NodeJS.ProcessEnv;
+      const { threwGuardError } = runWithCapture(env);
+      expect(threwGuardError).toBe(true);
+    });
+
+    it("unrelated value — not 'k8s', still enforces", () => {
+      const env = { OPENWHISPR_DEPLOYMENT_MODE: "something-else" } as NodeJS.ProcessEnv;
+      const { threwGuardError } = runWithCapture(env);
+      expect(threwGuardError).toBe(true);
+    });
+
+    it("k8s mode — emits structured info log on bypass (operator visibility)", () => {
+      const { stream, lines } = makeLineCollector();
+      const logger = pino({ name: "boot", level: "info" }, stream);
+      const env = { OPENWHISPR_DEPLOYMENT_MODE: "k8s" } as NodeJS.ProcessEnv;
+      expect(() => assertBYOKConfig(env, { logger })).not.toThrow();
+      // At least one record emitted, mentioning the bypass + mode.
+      expect(lines.length).toBeGreaterThan(0);
+      const record = JSON.parse(lines[0] as string) as {
+        msg?: string;
+        event?: string;
+        mode?: string;
+      };
+      expect(record.event).toBe("byok.bypassed");
+      expect(record.mode).toBe("k8s");
+    });
+  });
 });
 
 /** Silent logger that swallows fatal records (used by BYOKGuardError contract tests). */

@@ -311,10 +311,48 @@ const BYOK_MATRIX: readonly RowEvaluator[] = [
  * @param env  - environment to inspect (defaults to `process.env`)
  * @param opts - optional logger injection point for tests
  */
+/**
+ * Detect the `OPENWHISPR_DEPLOYMENT_MODE=k8s` kill-switch.
+ *
+ * Downstream k8s consumers (Yambr et al.) bring observability, storage,
+ * and ingress via Kubernetes-native primitives (ServiceMonitor,
+ * envFromSecret, HTTPRoute, etc.) — not docker compose overlays. The
+ * compose-era `storage` / `observability` / `ingress` rows in the BYOK
+ * matrix loud-fail in that environment even though every real
+ * application secret (MASTER_KEK, BETTER_AUTH_SECRET, DATABASE_URL,
+ * LITELLM_*, S3_*) is correctly provided via Kubernetes Secrets.
+ *
+ * When this env var is set to `k8s` (case-insensitive, whitespace-
+ * tolerant), `assertBYOKConfig` short-circuits ALL matrix rows and
+ * returns void. The `pgbouncer` (DATABASE_URL) and `dev-tools` (SMTP)
+ * rows are bypassed alongside the compose-era trio because operators
+ * provide them via the same external-Secret mechanism — the in-app
+ * code paths that actually consume DATABASE_URL / SMTP_HOST still
+ * fail loudly at first use, so we don't lose the safety net, only
+ * the compose-overlay framing.
+ *
+ * Default (unset, or any non-`k8s` value): compose-mode behavior is
+ * preserved — full BYOK matrix evaluated.
+ */
+function isK8sDeploymentMode(env: NodeJS.ProcessEnv): boolean {
+  return normEnv(env.OPENWHISPR_DEPLOYMENT_MODE)?.toLowerCase() === "k8s";
+}
+
 export function assertBYOKConfig(
   env: NodeJS.ProcessEnv = process.env,
   opts?: AssertBYOKConfigOpts,
 ): void {
+  if (isK8sDeploymentMode(env)) {
+    // Operator-visibility log: one structured info record so the
+    // bypass is auditable in Loki / kubectl logs without surprising
+    // operators who grep for guard activity.
+    const logger = opts?.logger ?? createBootLogger();
+    logger.info(
+      { event: "byok.bypassed", mode: "k8s" },
+      "byok-guard bypassed: OPENWHISPR_DEPLOYMENT_MODE=k8s",
+    );
+    return;
+  }
   for (const row of BYOK_MATRIX) {
     const record = row(env);
     if (record === null) continue;
