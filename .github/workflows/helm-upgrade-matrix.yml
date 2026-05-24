@@ -31,6 +31,7 @@ on:
       - "tools/test-probe/**"
       - "tools/seed-test-data.js"
       - "tools/integrity-check.js"
+      - ".chart-versions/previous"
 
 permissions:
   contents: read
