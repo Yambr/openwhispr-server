@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
-import { execFileSync } from "node:child_process";
+import { spawnSync } from "node:child_process";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
@@ -53,21 +53,20 @@ function runCheck(env: Record<string, string | undefined>): RunResult {
   for (const [k, v] of Object.entries(env)) {
     if (v !== undefined) cleanEnv[k] = v;
   }
-  try {
-    const stdout = execFileSync("pnpm", ["exec", "tsx", SCRIPT], {
-      encoding: "utf8",
-      env: cleanEnv,
-      stdio: ["ignore", "pipe", "pipe"],
-    });
-    return { code: 0, stdout, stderr: "" };
-  } catch (err: unknown) {
-    const e = err as { status: number | null; stdout?: Buffer | string; stderr?: Buffer | string };
-    return {
-      code: e.status ?? 1,
-      stdout: e.stdout?.toString() ?? "",
-      stderr: e.stderr?.toString() ?? "",
-    };
-  }
+  // spawnSync (not execFileSync) so stderr is captured on BOTH success
+  // and failure paths — execFileSync only returns stderr inside the
+  // thrown error object on non-zero exit, hiding the success-path
+  // "deployment mode = …" operator-visibility log from the test surface.
+  const r = spawnSync("pnpm", ["exec", "tsx", SCRIPT], {
+    encoding: "utf8",
+    env: cleanEnv,
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+  return {
+    code: r.status ?? 1,
+    stdout: r.stdout ?? "",
+    stderr: r.stderr ?? "",
+  };
 }
 
 function strongValueFor(key: string): string {
@@ -104,6 +103,144 @@ describe("DATA-06: apps/api/scripts/check-default-secrets.ts", () => {
     expect(r.stderr).toMatch(/MASTER_KEK/);
     expect(r.stderr).not.toMatch(/POSTGRES_OWNER_PASSWORD/);
   }, 30_000);
+
+  describe("OPENWHISPR_DEPLOYMENT_MODE=k8s deployment mode", () => {
+    // K8s operators provide infra credentials (Postgres / Valkey / MinIO /
+    // Traefik / Grafana / age-backup) via Kubernetes Secrets bound to
+    // their own platform primitives — NOT the compose-era env vars this
+    // entrypoint script enforces. In k8s mode REQUIRED_KEYS shrinks to
+    // just the application-secret essentials (MASTER_KEK + BETTER_AUTH_SECRET)
+    // — everything else is operator-managed out-of-band.
+
+    function k8sMinimalEnv(): Record<string, string> {
+      return {
+        MASTER_KEK: strongValueFor("MASTER_KEK"),
+        BETTER_AUTH_SECRET: strongValueFor("BETTER_AUTH_SECRET"),
+      };
+    }
+
+    it("k8s mode — exits 0 with only MASTER_KEK + BETTER_AUTH_SECRET set", () => {
+      const env = { ...k8sMinimalEnv(), OPENWHISPR_DEPLOYMENT_MODE: "k8s" };
+      const r = runCheck(env);
+      expect(r.code).toBe(0);
+    }, 30_000);
+
+    it("k8s mode — still rejects MASTER_KEK matching deny-list", () => {
+      const env = { ...k8sMinimalEnv(), OPENWHISPR_DEPLOYMENT_MODE: "k8s" };
+      env.MASTER_KEK = "changeme";
+      const r = runCheck(env);
+      expect(r.code).toBe(1);
+      expect(r.stderr).toMatch(/MASTER_KEK/);
+    }, 30_000);
+
+    it("k8s mode — still rejects unset MASTER_KEK", () => {
+      const env: Record<string, string> = {
+        BETTER_AUTH_SECRET: strongValueFor("BETTER_AUTH_SECRET"),
+        OPENWHISPR_DEPLOYMENT_MODE: "k8s",
+      };
+      const r = runCheck(env);
+      expect(r.code).toBe(1);
+      expect(r.stderr).toMatch(/MASTER_KEK/);
+    }, 30_000);
+
+    it("k8s mode — still rejects unset BETTER_AUTH_SECRET", () => {
+      const env: Record<string, string> = {
+        MASTER_KEK: strongValueFor("MASTER_KEK"),
+        OPENWHISPR_DEPLOYMENT_MODE: "k8s",
+      };
+      const r = runCheck(env);
+      expect(r.code).toBe(1);
+      expect(r.stderr).toMatch(/BETTER_AUTH_SECRET/);
+    }, 30_000);
+
+    it("k8s mode — does NOT require POSTGRES_OWNER_PASSWORD or other compose-era keys", () => {
+      const env = { ...k8sMinimalEnv(), OPENWHISPR_DEPLOYMENT_MODE: "k8s" };
+      const r = runCheck(env);
+      expect(r.code).toBe(0);
+      // Stderr should NOT name any of the compose-era-only keys.
+      const composeOnly = [
+        "POSTGRES_OWNER_PASSWORD",
+        "POSTGRES_APP_PASSWORD",
+        "PGBOUNCER_ADMIN_PASSWORD",
+        "VALKEY_PASSWORD",
+        "MINIO_ROOT_PASSWORD",
+        "TRAEFIK_ADMIN_PASSWORD",
+        "GRAFANA_ADMIN_PASSWORD",
+        "BACKUP_AGE_IDENTITY",
+      ];
+      for (const key of composeOnly) {
+        expect(r.stderr, `does not mention ${key}`).not.toMatch(new RegExp(key));
+      }
+    }, 30_000);
+
+    it("k8s mode — case-insensitive: K8S accepted", () => {
+      const env = { ...k8sMinimalEnv(), OPENWHISPR_DEPLOYMENT_MODE: "K8S" };
+      const r = runCheck(env);
+      expect(r.code).toBe(0);
+    }, 30_000);
+
+    it("k8s mode — case-insensitive: K8s accepted", () => {
+      const env = { ...k8sMinimalEnv(), OPENWHISPR_DEPLOYMENT_MODE: "K8s" };
+      const r = runCheck(env);
+      expect(r.code).toBe(0);
+    }, 30_000);
+
+    it("k8s mode — whitespace-tolerant: ' k8s ' accepted", () => {
+      const env = { ...k8sMinimalEnv(), OPENWHISPR_DEPLOYMENT_MODE: " k8s " };
+      const r = runCheck(env);
+      expect(r.code).toBe(0);
+    }, 30_000);
+
+    it("k8s mode — trailing whitespace 'k8s ' accepted", () => {
+      const env = { ...k8sMinimalEnv(), OPENWHISPR_DEPLOYMENT_MODE: "k8s " };
+      const r = runCheck(env);
+      expect(r.code).toBe(0);
+    }, 30_000);
+
+    it("compose mode (default, unset) — still requires all 10 keys", () => {
+      const env = k8sMinimalEnv(); // OPENWHISPR_DEPLOYMENT_MODE NOT set
+      const r = runCheck(env);
+      expect(r.code).toBe(1);
+      // All compose-era keys should be reported as missing.
+      const composeOnly = [
+        "POSTGRES_OWNER_PASSWORD",
+        "POSTGRES_APP_PASSWORD",
+        "PGBOUNCER_ADMIN_PASSWORD",
+        "VALKEY_PASSWORD",
+        "MINIO_ROOT_PASSWORD",
+        "TRAEFIK_ADMIN_PASSWORD",
+        "GRAFANA_ADMIN_PASSWORD",
+        "BACKUP_AGE_IDENTITY",
+      ];
+      for (const key of composeOnly) {
+        expect(r.stderr, `mentions ${key}`).toMatch(new RegExp(key));
+      }
+    }, 30_000);
+
+    it("compose mode (explicit) — still requires all 10 keys", () => {
+      const env = { ...k8sMinimalEnv(), OPENWHISPR_DEPLOYMENT_MODE: "compose" };
+      const r = runCheck(env);
+      expect(r.code).toBe(1);
+      expect(r.stderr).toMatch(/POSTGRES_OWNER_PASSWORD/);
+    }, 30_000);
+
+    it("unrelated value — not 'k8s', still requires all 10 keys", () => {
+      const env = { ...k8sMinimalEnv(), OPENWHISPR_DEPLOYMENT_MODE: "kubernetes" };
+      const r = runCheck(env);
+      expect(r.code).toBe(1);
+      expect(r.stderr).toMatch(/POSTGRES_OWNER_PASSWORD/);
+    }, 30_000);
+
+    it("k8s mode — logs chosen mode to stderr for operator visibility", () => {
+      const env = { ...k8sMinimalEnv(), OPENWHISPR_DEPLOYMENT_MODE: "k8s" };
+      const r = runCheck(env);
+      expect(r.code).toBe(0);
+      // Mode line written to stderr (not stdout — preserves stdout for
+      // structured downstream consumers).
+      expect(r.stderr).toMatch(/deployment mode/i);
+      expect(r.stderr).toMatch(/k8s/);
+    }, 30_000);
+  });
 
   it("honors DENY_LIST_PATH env override", () => {
     // Use a custom deny-list that does NOT contain "changeme" but DOES contain
