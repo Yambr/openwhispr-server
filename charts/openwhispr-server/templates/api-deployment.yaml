@@ -77,6 +77,21 @@ spec:
                 secretKeyRef:
                   name: {{ required "values.database.appUrlSecretRef.name is required" .Values.database.appUrlSecretRef.name }}
                   key: {{ .Values.database.appUrlSecretRef.key }}
+            # Quick-task 260524-u00 / Task B2 (api side) — api also needs
+            # DATABASE_URL_OWNER. apps/api/src/index.ts builds a probeOwnerPool
+            # from it (only when set), and POST /api/setup/admin is registered
+            # ONLY when probeOwnerPool && auth are both truthy (index.ts:1105).
+            # Without this env, the first-run admin bootstrap wizard at
+            # /setup posts to /api/setup/admin and gets 404 — observed live
+            # on chart 1.0.5 prod openwhispr.yambr.com 2026-05-24. Required
+            # because admin role flip (UPDATE users SET role='admin') and
+            # tenant rename (UPDATE tenants SET name) need BYPASSRLS owner
+            # connection that the regular DATABASE_URL app role cannot do.
+            - name: DATABASE_URL_OWNER
+              valueFrom:
+                secretKeyRef:
+                  name: {{ required "values.database.ownerUrlSecretRef.name is required (api needs DATABASE_URL_OWNER for POST /api/setup/admin first-run bootstrap)" .Values.database.ownerUrlSecretRef.name }}
+                  key: {{ .Values.database.ownerUrlSecretRef.key }}
             {{- if .Values.redis.enabled }}
             - name: VALKEY_URL
               valueFrom:
