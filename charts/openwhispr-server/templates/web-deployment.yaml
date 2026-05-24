@@ -1,0 +1,126 @@
+{{/*
+web Deployment — Next.js 15 SSR pod on port 3001.
+
+Same env wiring as api (same chart-owned Secret + ConfigMap + the
+three operator-supplied envFrom secrets + the four envs DATABASE_URL,
+VALKEY_URL, LITELLM_BASE_URL, LITELLM_MASTER_KEY).
+*/}}
+{{- $fullname := include "openwhispr-server.fullname" . -}}
+{{- $webTag := default .Chart.AppVersion .Values.image.tag -}}
+{{- if .Values.image.web.tag }}{{- $webTag = .Values.image.web.tag -}}{{- end }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $fullname }}-web
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "openwhispr-server.labels" . | nindent 4 }}
+    app.kubernetes.io/component: web
+spec:
+  replicas: {{ .Values.web.replicas }}
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 25%
+      maxUnavailable: 0
+  selector:
+    matchLabels:
+      {{- include "openwhispr-server.web.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "openwhispr-server.web.selectorLabels" . | nindent 8 }}
+    spec:
+      serviceAccountName: {{ include "openwhispr-server.serviceAccountName" . }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      containers:
+        - name: web
+          image: "{{ .Values.image.registry }}/{{ .Values.image.web.repository }}:{{ $webTag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          ports:
+            - name: http
+              containerPort: 3001
+              protocol: TCP
+          envFrom:
+            - secretRef:
+                name: {{ include "openwhispr-server.secretsName" . }}
+            - configMapRef:
+                name: {{ include "openwhispr-server.configName" . }}
+            {{- with .Values.s3.envFromSecret }}
+            - secretRef:
+                name: {{ . }}
+            {{- end }}
+            {{- with .Values.smtp.envFromSecret }}
+            - secretRef:
+                name: {{ . }}
+            {{- end }}
+            {{- with .Values.auth.envFromSecret }}
+            - secretRef:
+                name: {{ . }}
+            {{- end }}
+          env:
+            - name: HOSTNAME
+              value: "0.0.0.0"
+            - name: PORT
+              value: "3001"
+            - name: INTERNAL_API_URL
+              value: "http://{{ $fullname }}-api:3000"
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ required "values.database.appUrlSecretRef.name is required" .Values.database.appUrlSecretRef.name }}
+                  key: {{ .Values.database.appUrlSecretRef.key }}
+            {{- if .Values.redis.enabled }}
+            - name: VALKEY_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ required "values.redis.urlSecretRef.name is required when redis.enabled=true" .Values.redis.urlSecretRef.name }}
+                  key: {{ .Values.redis.urlSecretRef.key }}
+            {{- end }}
+            - name: LITELLM_BASE_URL
+              value: {{ required "values.litellm.baseUrl is required" .Values.litellm.baseUrl | quote }}
+            - name: LITELLM_MASTER_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ required "values.litellm.masterKeySecretRef.name is required" .Values.litellm.masterKeySecretRef.name }}
+                  key: {{ .Values.litellm.masterKeySecretRef.key }}
+            {{- with .Values.extraEnv }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          startupProbe:
+            httpGet:
+              path: /api/health
+              port: 3001
+            failureThreshold: 30
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /api/health
+              port: 3001
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /api/health
+              port: 3001
+            initialDelaySeconds: 30
+            periodSeconds: 30
+          resources:
+            {{- toYaml .Values.web.resources | nindent 12 }}
+          # readOnlyRootFilesystem needs both /tmp and the Next.js ISR
+          # cache directory to be writable.
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+            - name: next-cache
+              mountPath: /app/apps/web/.next/cache
+      volumes:
+        - name: tmp
+          emptyDir:
+            sizeLimit: 64Mi
+        - name: next-cache
+          emptyDir:
+            sizeLimit: 256Mi

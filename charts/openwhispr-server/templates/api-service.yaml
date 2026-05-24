@@ -1,0 +1,22 @@
+{{/*
+api Service — ClusterIP fronting the api Deployment on port 3000.
+Port name `http` so ServiceMonitor / IngressRoute can route by name.
+*/}}
+{{- $fullname := include "openwhispr-server.fullname" . -}}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $fullname }}-api
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "openwhispr-server.labels" . | nindent 4 }}
+    app.kubernetes.io/component: api
+spec:
+  type: ClusterIP
+  selector:
+    {{- include "openwhispr-server.api.selectorLabels" . | nindent 4 }}
+  ports:
+    - name: http
+      port: 3000
+      targetPort: 3000
+      protocol: TCP

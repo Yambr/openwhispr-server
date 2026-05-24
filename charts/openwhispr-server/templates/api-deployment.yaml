@@ -1,0 +1,124 @@
+{{/*
+api Deployment — Fastify HTTP server on port 3000.
+
+Env wiring (MVP; peer-approved):
+  - envFrom: <secretsName> (chart-owned operator Secret —
+        BETTER_AUTH_SECRET, MASTER_KEK, PYANNOTE_API_KEY,
+        TAVILY_API_KEY, YANDEX_SEARCH_API_KEY, YANDEX_FOLDER_ID)
+  - envFrom: <configName> (NODE_ENV, LOG_LEVEL, anything in .Values.env)
+  - envFrom: .Values.s3.envFromSecret (S3_*)
+  - envFrom: .Values.smtp.envFromSecret (SMTP_*)
+  - envFrom: .Values.auth.envFromSecret (OAUTH_*, OIDC_*)
+  - env DATABASE_URL <- .Values.database.appUrlSecretRef
+  - env VALKEY_URL   <- .Values.redis.urlSecretRef (gated)
+  - env LITELLM_BASE_URL    = .Values.litellm.baseUrl
+  - env LITELLM_MASTER_KEY <- .Values.litellm.masterKeySecretRef
+  - env entries from .Values.extraEnv appended verbatim
+*/}}
+{{- $fullname := include "openwhispr-server.fullname" . -}}
+{{- $apiTag := default .Chart.AppVersion .Values.image.tag -}}
+{{- if .Values.image.api.tag }}{{- $apiTag = .Values.image.api.tag -}}{{- end }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $fullname }}-api
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "openwhispr-server.labels" . | nindent 4 }}
+    app.kubernetes.io/component: api
+spec:
+  replicas: {{ .Values.api.replicas }}
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 25%
+      maxUnavailable: 0
+  selector:
+    matchLabels:
+      {{- include "openwhispr-server.api.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "openwhispr-server.api.selectorLabels" . | nindent 8 }}
+    spec:
+      serviceAccountName: {{ include "openwhispr-server.serviceAccountName" . }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      containers:
+        - name: api
+          image: "{{ .Values.image.registry }}/{{ .Values.image.api.repository }}:{{ $apiTag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          ports:
+            - name: http
+              containerPort: 3000
+              protocol: TCP
+          envFrom:
+            - secretRef:
+                name: {{ include "openwhispr-server.secretsName" . }}
+            - configMapRef:
+                name: {{ include "openwhispr-server.configName" . }}
+            {{- with .Values.s3.envFromSecret }}
+            - secretRef:
+                name: {{ . }}
+            {{- end }}
+            {{- with .Values.smtp.envFromSecret }}
+            - secretRef:
+                name: {{ . }}
+            {{- end }}
+            {{- with .Values.auth.envFromSecret }}
+            - secretRef:
+                name: {{ . }}
+            {{- end }}
+          env:
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ required "values.database.appUrlSecretRef.name is required" .Values.database.appUrlSecretRef.name }}
+                  key: {{ .Values.database.appUrlSecretRef.key }}
+            {{- if .Values.redis.enabled }}
+            - name: VALKEY_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ required "values.redis.urlSecretRef.name is required when redis.enabled=true" .Values.redis.urlSecretRef.name }}
+                  key: {{ .Values.redis.urlSecretRef.key }}
+            {{- end }}
+            - name: LITELLM_BASE_URL
+              value: {{ required "values.litellm.baseUrl is required" .Values.litellm.baseUrl | quote }}
+            - name: LITELLM_MASTER_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ required "values.litellm.masterKeySecretRef.name is required" .Values.litellm.masterKeySecretRef.name }}
+                  key: {{ .Values.litellm.masterKeySecretRef.key }}
+            {{- with .Values.extraEnv }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          startupProbe:
+            httpGet:
+              path: /api/health
+              port: 3000
+            failureThreshold: 30
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /api/health
+              port: 3000
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /api/live
+              port: 3000
+            initialDelaySeconds: 30
+            periodSeconds: 30
+          resources:
+            {{- toYaml .Values.api.resources | nindent 12 }}
+          # readOnlyRootFilesystem requires a writable scratch path.
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir:
+            sizeLimit: 64Mi
