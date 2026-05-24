@@ -1,0 +1,16 @@
+# Files allowed to retain `openwhispr/postgres:<tag>` references.
+# Each entry is a POSIX path relative to the repo root.
+# Add entries ONLY for files that MUST mention the forbidden token by
+# design (the lint script itself; its tests; planning docs describing
+# the historical pattern). New entries require a commit-body rationale.
+tools/lint-no-dockerhub-pg-image.ts
+tools/lint-no-dockerhub-pg-image.test.ts
+# Original source-build Dockerfile comment documents the legacy local
+# build tag — the Dockerfile is still consumed by ci.yml's lint-rls /
+# test-migration jobs which build under tag `:ci` locally.
+compose/postgres/Dockerfile
+# RESEARCH / CONTEXT / PLAN for the 2026-05-24 GHCR-publish quick task
+# discuss the forbidden pattern they removed.
+.planning/quick/20260524-postgres-ghcr-publish/RESEARCH.md
+.planning/quick/20260524-postgres-ghcr-publish/CONTEXT.md
+.planning/quick/20260524-postgres-ghcr-publish/PLAN.md

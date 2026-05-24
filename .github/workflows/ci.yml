@@ -43,6 +43,7 @@ jobs:
       - run: pnpm lint:colocated-tests
       - run: pnpm lint:phase-tag-comments
       - run: pnpm lint:dockerfile-tls
+      - run: pnpm lint:no-dockerhub-pg-image
       # Phase 31 / Plan 07 / LOCKER-08 — aggregate lockers gate.
       # `make lint:lockers` fans out to all six locker binaries via the
       # `lint:lockers` aggregate package.json script. LOCKER-04/05/06

@@ -23,6 +23,8 @@
     "lint:colocated-tests": "tsx tools/lint-colocated-tests.ts",
     "lint:phase-tag-comments": "tsx tools/lint-phase-tag-comments.ts",
     "lint:dockerfile-tls": "tsx tools/lint-dockerfile-tls.ts",
+    "lint:no-dockerhub-pg-image": "tsx tools/lint-no-dockerhub-pg-image.ts",
+    "test:lint-no-dockerhub-pg-image": "vitest run tools/lint-no-dockerhub-pg-image.test.ts --coverage --coverage.include=tools/lint-no-dockerhub-pg-image.ts --coverage.exclude= --coverage.all=false --coverage.thresholds.lines=90 --coverage.thresholds.branches=90 --coverage.thresholds.functions=90 --coverage.thresholds.statements=90",
     "lint:gitleaks": "gitleaks detect --redact --config=.gitleaks.toml --no-git --no-banner",
     "lint:gitleaks:staged": "gitleaks protect --staged --redact --config=.gitleaks.toml --no-banner",
     "lint:no-env-branches": "tsx tools/lint-no-env-branches.ts",
