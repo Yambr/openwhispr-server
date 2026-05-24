@@ -16,11 +16,15 @@
 image:
   registry: ghcr.io/yambr
   pullPolicy: IfNotPresent
-  tag: ""  # default to .Chart.AppVersion
+  # Chart version can diverge from image version (chart shipping
+  # template-only fixes between image releases). Override at deploy
+  # time if you pin a specific image tag.
+  tag: "1.0.0"
   api:     { repository: openwhispr-api }
   web:     { repository: openwhispr-web }
   worker:  { repository: openwhispr-worker }
-  migrate: { repository: openwhispr-migrate }
+  # NOTE: migrate Job reuses the api image (migrate.cjs is bundled there).
+  # No separate openwhispr-migrate image is published.
 
 secrets:
   # external-managed (default): chart renders NO Secret resource. The
