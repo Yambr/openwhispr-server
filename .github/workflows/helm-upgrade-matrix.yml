@@ -166,6 +166,22 @@ jobs:
             --set-string secrets.backupAgeIdentity=${{ steps.secrets.outputs.backupAgeIdentity }} \
             --wait --timeout 10m
 
+      - name: Diagnostic dump on N-1 install failure
+        if: failure()
+        run: |
+          echo "::group::Pods (all namespaces)"
+          kubectl get pods --all-namespaces -o wide || true
+          echo "::endgroup::"
+          echo "::group::Events (openwhispr ns, sorted by time)"
+          kubectl get events -n openwhispr --sort-by=.lastTimestamp || true
+          echo "::endgroup::"
+          echo "::group::Describe pods (openwhispr ns)"
+          kubectl describe pods -n openwhispr || true
+          echo "::endgroup::"
+          echo "::group::Helm status"
+          helm status ow -n openwhispr || true
+          echo "::endgroup::"
+
       - name: Seed deterministic test data into N-1 cluster
         run: |
           kubectl -n openwhispr wait --for=condition=available deployment/ow-openwhispr-api --timeout=5m
