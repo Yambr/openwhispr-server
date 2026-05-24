@@ -8,14 +8,13 @@ MUST bypass any transaction-mode pooler (Drizzle DDL requires a
 session-pinned connection).
 
 Hard pins:
-  - image tag = .Values.image.migrate.tag default .Chart.AppVersion
+  - image tag = .Values.image.tag default .Chart.AppVersion (reuses api image)
   - backoffLimit = .Values.migrate.backoffLimit (default 3)
   - activeDeadlineSeconds = .Values.migrate.activeDeadlineSeconds (default 600)
 */}}
 {{- if .Values.migrate.enabled -}}
 {{- $fullname := include "openwhispr-server.fullname" . -}}
 {{- $migrateTag := default .Chart.AppVersion .Values.image.tag -}}
-{{- if .Values.image.migrate.tag }}{{- $migrateTag = .Values.image.migrate.tag -}}{{- end }}
 apiVersion: batch/v1
 kind: Job
 metadata:
@@ -50,7 +49,10 @@ spec:
         {{- toYaml .Values.podSecurityContext | nindent 8 }}
       containers:
         - name: migrate
-          image: "{{ .Values.image.registry }}/{{ .Values.image.migrate.repository }}:{{ $migrateTag }}"
+          # Reuses the api image — packages/data/dist/migrate.cjs is bundled
+          # there (apps/api/Dockerfile copies packages/data). No separate
+          # openwhispr-migrate image is published; the chart never needed one.
+          image: "{{ .Values.image.registry }}/{{ .Values.image.api.repository }}:{{ $migrateTag }}"
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           securityContext:
             {{- toYaml .Values.securityContext | nindent 12 }}
