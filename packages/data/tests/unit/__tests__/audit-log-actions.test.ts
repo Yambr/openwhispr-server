@@ -17,7 +17,7 @@ import {
   DEFAULT_TENANT_ID,
 } from "../../../src/__tests__/helpers.js";
 
-const PARTMAN_IMAGE = "openwhispr/postgres:17.5-pgpartman";
+const PARTMAN_IMAGE = "ghcr.io/yambr/openwhispr-postgres-17-pgpartman:17.5-bootstrap-1";
 
 export const AUDIT_LOG_ACTIONS = [
   "auth.signin",

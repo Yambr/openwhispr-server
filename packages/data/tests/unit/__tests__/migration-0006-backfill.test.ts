@@ -44,7 +44,9 @@ SUITE("Phase 5 / Plan 01 — migration 0006 backfill", () => {
   beforeAll(async () => {
     if (!READY) return;
     // Phase 6 / Plan 02 — migration 0014 requires pg_partman.
-    pg = await new PostgreSqlContainer("openwhispr/postgres:17.5-pgpartman")
+    pg = await new PostgreSqlContainer(
+      "ghcr.io/yambr/openwhispr-postgres-17-pgpartman:17.5-bootstrap-1",
+    )
       .withDatabase("openwhispr")
       .withUsername("postgres_super")
       .withPassword("super-pw")

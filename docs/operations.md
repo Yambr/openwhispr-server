@@ -58,24 +58,26 @@ test suite locally:
    over HTTPS (e2e suite + Phase-6 e2e-quick). See "Air-gap mkcert
    installation" below for offline operator instructions.
 
-3. **`openwhispr/postgres:17.5-pgpartman` image.** The shared-pg fixture
-   pins to this locally-built image (`compose/postgres/Dockerfile` —
+3. **`ghcr.io/yambr/openwhispr-postgres-17-pgpartman:17.5-bootstrap-1` image.** The shared-pg fixture
+   pins to the published GHCR image (`compose/postgres/Dockerfile` —
    Postgres 17.5 with pg_partman 5.2.4 in the `partman` schema; migration
    `packages/data/migrations/0014_audit_log_partition.sql` fails without
    it). The standard `postgres:17-alpine` upstream image does NOT ship
-   pg_partman. Build or pull on first use:
+   pg_partman. Pull on first use:
 
    ```sh
-   make build-pg-partman           # builds from compose/postgres/Dockerfile
-   # OR pull directly (Phase 19 / SR-19.5 canonical recipe):
-   docker pull openwhispr/postgres:17.5-pgpartman
+   # Canonical recipe (image published by .github/workflows/release.yml):
+   docker pull ghcr.io/yambr/openwhispr-postgres-17-pgpartman:17.5-bootstrap-1
+   # OR build locally from source (offline / dev iteration):
+   docker build ./compose/postgres -t ghcr.io/yambr/openwhispr-postgres-17-pgpartman:17.5-bootstrap-1
    # OR if the image is mirrored to your internal registry:
-   docker pull <registry>/openwhispr/postgres:17.5-pgpartman
+   docker pull <internal-registry>/openwhispr-postgres-17-pgpartman:17.5-bootstrap-1
    ```
 
-   The CI `test` job builds this image as part of `pnpm test`'s setup
-   step; developers must build it once and let the testcontainers reuse
-   daemon keep it warm thereafter.
+   The CI `test` job pulls from GHCR via testcontainers; CI's `lint-rls`
+   + `test-migration` jobs build locally with tag `:ci` for in-job
+   self-containment. Local devs pull once and let the testcontainers
+   reuse daemon keep the image warm thereafter.
 
    **Background:** Phase 18.1.2 / Plan 05 introduced the shared-pg
    fixture and surfaced the missing-image symptom on fresh clones via

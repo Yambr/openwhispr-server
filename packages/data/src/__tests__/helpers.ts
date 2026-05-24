@@ -41,12 +41,12 @@ export interface BootResult {
 export interface BootOptions {
   /**
    * Override the Postgres container image. Phase 6 / Plan 02 introduces
-   * `openwhispr/postgres:17.5-pgpartman` (postgres:17.5-alpine + pg_partman
+   * `ghcr.io/yambr/openwhispr-postgres-17-pgpartman:17.5-bootstrap-1` (postgres:17.5-alpine + pg_partman
    * 5.2.4) for the audit_log partitioning tests. Default remains the stock
    * upstream image so Phase 1–5 tests are unaffected.
    *
    * The image MUST be locally available (built via
-   * `docker build ./compose/postgres -t openwhispr/postgres:17.5-pgpartman`)
+   * `docker build ./compose/postgres -t ghcr.io/yambr/openwhispr-postgres-17-pgpartman:17.5-bootstrap-1`)
    * because testcontainers does not pull from a registry by default.
    */
   image?: string;
@@ -66,11 +66,11 @@ export async function bootMigratedPostgres(opts: BootOptions = {}): Promise<Boot
   const ownerPassword = "owner-pw-test";
   const appPassword = "app-pw-test";
   // Phase 6 / Plan 02 — migration 0014 requires pg_partman. The default
-  // image is therefore `openwhispr/postgres:17.5-pgpartman` (built by
+  // image is therefore `ghcr.io/yambr/openwhispr-postgres-17-pgpartman:17.5-bootstrap-1` (built by
   // compose/postgres/Dockerfile). Existing Phase 1-5 tests inherit this
   // change transparently: pg_partman's presence is benign for any
   // migration that does not invoke it.
-  const image = opts.image ?? "openwhispr/postgres:17.5-pgpartman";
+  const image = opts.image ?? "ghcr.io/yambr/openwhispr-postgres-17-pgpartman:17.5-bootstrap-1";
   // pg_partman is always provisioned when running migrations because 0014
   // calls partman.create_parent at apply time. Callers can pass
   // `withPgPartman: false` only if they pin a non-default image that
@@ -176,7 +176,8 @@ export const DEFAULT_TENANT_ID = "00000000-0000-0000-0000-000000000000";
  * 0013 must reference this image and call `provisionPgPartman()` on the
  * superuser pool before granting privileges to openwhispr_owner.
  */
-export const POSTGRES_PARTMAN_IMAGE = "openwhispr/postgres:17.5-pgpartman";
+export const POSTGRES_PARTMAN_IMAGE =
+  "ghcr.io/yambr/openwhispr-postgres-17-pgpartman:17.5-bootstrap-1";
 
 /**
  * Idempotently provision the `partman` schema + pg_partman extension on a

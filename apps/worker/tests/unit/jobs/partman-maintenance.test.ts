@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 // Phase 6 Plan 06-08 — GREEN tests for partman-maintenance (D-A4).
 //
-// Requires the openwhispr/postgres:17.5-pgpartman image (built locally —
+// Requires the ghcr.io/yambr/openwhispr-postgres-17-pgpartman:17.5-bootstrap-1 image (built locally —
 // see compose/postgres/Dockerfile). When the image is unavailable on the
 // host (CI without the build step) the suite is skipped.
 //
@@ -26,7 +26,7 @@ import { canRunDocker } from "../../../src/lib/can-run-docker.js";
 
 const SUITE = canRunDocker() ? describe : describe.skip;
 
-const PARTMAN_IMAGE = "openwhispr/postgres:17.5-pgpartman";
+const PARTMAN_IMAGE = "ghcr.io/yambr/openwhispr-postgres-17-pgpartman:17.5-bootstrap-1";
 
 interface Harness {
   container: StartedPostgreSqlContainer;

@@ -18,10 +18,10 @@
 // orchestrator's per-worktree protocol — the helper must live inside the
 // apps/api package surface.
 //
-// The local image `openwhispr/postgres:17.5-pgpartman` (built from
+// The local image `ghcr.io/yambr/openwhispr-postgres-17-pgpartman:17.5-bootstrap-1` (built from
 // compose/postgres/Dockerfile) is required for migration 0014 to succeed;
 // the executor's earlier diagnosis that this image was unavailable was
-// incorrect — `docker image ls openwhispr/postgres:17.5-pgpartman` shows
+// incorrect — `docker image ls ghcr.io/yambr/openwhispr-postgres-17-pgpartman:17.5-bootstrap-1` shows
 // 88e79d6ba7de present locally.
 
 import { dirname, resolve } from "node:path";
@@ -59,7 +59,7 @@ export const MIGRATIONS_FOLDER = resolve(
 // (audit_log partition) requires the `partman` schema + extension to be
 // present BEFORE drizzle runs the migration set; the base postgres:17-alpine
 // image is missing pg_partman and would fail with SQLSTATE 3F000.
-export const PARTMAN_IMAGE = "openwhispr/postgres:17.5-pgpartman";
+export const PARTMAN_IMAGE = "ghcr.io/yambr/openwhispr-postgres-17-pgpartman:17.5-bootstrap-1";
 
 export const DEFAULT_TENANT_ID = "00000000-0000-0000-0000-000000000000";
 

@@ -110,7 +110,9 @@ beforeAll(async () => {
     "0000000000000000000000000000000000000000000000000000000000000000";
   process.env.OPENWHISPR_DISABLE_EMAIL_VERIFICATION = "1";
 
-  container = await new PostgreSqlContainer("openwhispr/postgres:17.5-pgpartman")
+  container = await new PostgreSqlContainer(
+    "ghcr.io/yambr/openwhispr-postgres-17-pgpartman:17.5-bootstrap-1",
+  )
     .withDatabase("openwhispr")
     .withUsername("postgres_super")
     .withPassword("super-pw")

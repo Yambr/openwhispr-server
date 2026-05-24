@@ -19,7 +19,7 @@ import { Pool } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { type BootResult, bootMigratedPostgres } from "../../src/__tests__/helpers.js";
 
-const PARTMAN_IMAGE = "openwhispr/postgres:17.5-pgpartman";
+const PARTMAN_IMAGE = "ghcr.io/yambr/openwhispr-postgres-17-pgpartman:17.5-bootstrap-1";
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const MIGRATIONS_DIR = resolve(__dirname, "..");
 

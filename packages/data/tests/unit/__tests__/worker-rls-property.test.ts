@@ -94,7 +94,9 @@ let harness: Harness | undefined;
 
 async function bootHarness(): Promise<Harness> {
   const network = await new Network().start();
-  const pg = await new PostgreSqlContainer("openwhispr/postgres:17.5-pgpartman")
+  const pg = await new PostgreSqlContainer(
+    "ghcr.io/yambr/openwhispr-postgres-17-pgpartman:17.5-bootstrap-1",
+  )
     .withNetwork(network)
     .withNetworkAliases("postgres")
     .withDatabase("openwhispr")
