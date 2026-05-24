@@ -77,5 +77,7 @@ observability:
 extraEnv:
   - name: SKIP_LITELLM_DB_AUTOCREATE
     value: "1"
-  - name: OPENWHISPR_DEPLOYMENT_MODE
-    value: k8s
+  # OPENWHISPR_DEPLOYMENT_MODE=k8s is now baked into the chart-owned
+  # ConfigMap (values.yaml `env:` block; chart 1.0.6+). Removed from
+  # extraEnv to avoid the redundant double-projection. Operators on
+  # chart 1.0.5 or earlier MUST keep it here until they upgrade.

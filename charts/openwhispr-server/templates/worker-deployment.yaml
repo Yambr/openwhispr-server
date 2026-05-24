@@ -62,6 +62,17 @@ spec:
                 secretKeyRef:
                   name: {{ required "values.database.appUrlSecretRef.name is required" .Values.database.appUrlSecretRef.name }}
                   key: {{ .Values.database.appUrlSecretRef.key }}
+            # Quick-task 260524-u00 / Task B2 — worker loud-fails at boot
+            # without DATABASE_URL_OWNER (apps/worker/src/index.ts:102 +
+            # apps/worker/src/db/app-pool.ts:151-154). Chart 1.0.5 forced
+            # operators to extraEnv this — peer's chart-1.0.5 values-yambr.yaml
+            # carried the workaround. Wired natively from the same secretRef
+            # the migrate Job already uses.
+            - name: DATABASE_URL_OWNER
+              valueFrom:
+                secretKeyRef:
+                  name: {{ required "values.database.ownerUrlSecretRef.name is required (worker needs DATABASE_URL_OWNER for BYPASSRLS pool + partman maintenance)" .Values.database.ownerUrlSecretRef.name }}
+                  key: {{ .Values.database.ownerUrlSecretRef.key }}
             {{- if .Values.redis.enabled }}
             - name: VALKEY_URL
               valueFrom:
@@ -76,6 +87,19 @@ spec:
                 secretKeyRef:
                   name: {{ required "values.litellm.masterKeySecretRef.name is required" .Values.litellm.masterKeySecretRef.name }}
                   key: {{ .Values.litellm.masterKeySecretRef.key }}
+            # Quick-task 260524-u00 / Task B3 — worker-only LITELLM_DATABASE_URL
+            # (apps/worker/src/db/litellm-pool.ts:15 — ingest-litellm-spend +
+            # reconciliation-daily-check jobs query the LiteLLM database
+            # directly, NOT through PgBouncer per Pitfall #9). Optional —
+            # only consumed when operator runs external LiteLLM with a
+            # dedicated DB; emitted only when secretRef.name is set.
+            {{- if .Values.litellm.databaseUrlSecretRef.name }}
+            - name: LITELLM_DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.litellm.databaseUrlSecretRef.name }}
+                  key: {{ .Values.litellm.databaseUrlSecretRef.key }}
+            {{- end }}
             {{- with .Values.extraEnv }}
             {{- toYaml . | nindent 12 }}
             {{- end }}
