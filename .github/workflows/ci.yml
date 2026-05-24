@@ -130,6 +130,18 @@ jobs:
           docker version
           docker info
       - run: pnpm install --frozen-lockfile
+      - name: Bootstrap fixture .env
+        # Several integration tests run `docker compose config` against
+        # docker-compose.yml / compose/*.yml, which declare
+        # `env_file: .env` on api/worker/contract-test-runner blocks.
+        # Docker Compose v2 errors when an explicitly-named env_file is
+        # absent ("env file ... not found"), causing every overlay-merge
+        # assertion in compose-overlays / oidc-env-wiring /
+        # traefik-network-alias / contract-test-runner-compose /
+        # observability-stack-up to fail before it reaches its own
+        # logic. Mirror the contract-test / e2e jobs which do the same
+        # bootstrap step.
+        run: cp .env.slim.example .env
       - name: Setup Helm + resolve chart deps
         # tests/integration/lint-compose-chart-parity.test.ts runs
         # `helm template charts/openwhispr ...` which requires the OCI
