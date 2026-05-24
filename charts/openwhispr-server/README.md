@@ -171,6 +171,25 @@ kubectl create secret generic openwhispr-litellm \
 
 (The `LITELLM_BASE_URL` is plain `.Values.litellm.baseUrl`, not a Secret.)
 
+**BYOK external LiteLLM (operator opt-out):** if your `litellm.baseUrl`
+points at an *existing* LiteLLM instance (not the companion
+`openwhispr-litellm` chart), set `SKIP_LITELLM_DB_AUTOCREATE=1` via
+`extraEnv` so the migrate Job doesn't try to `CREATE DATABASE litellm`
+on first install. Without this flag the migrate Job errors with
+`permission denied to create database (SQLSTATE 42501)` because the
+CNPG-managed owner role does not have `CREATEDB` privilege by default.
+
+```yaml
+extraEnv:
+  - name: SKIP_LITELLM_DB_AUTOCREATE
+    value: "1"
+```
+
+Operators running embedded LiteLLM (single shared Postgres) leave this
+unset — the migrate Job creates the `litellm` database alongside
+`openwhispr` on first install. See `packages/data/src/migrate.ts:142`
+for the opt-out path.
+
 ### `openwhispr-s3`
 
 `envFrom`-mounted. Keys: `S3_ENDPOINT`, `S3_BUCKET`, `S3_ACCESS_KEY`,
