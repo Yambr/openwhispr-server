@@ -1,0 +1,23 @@
+# helm-values overlay — chart renders the owner + app Secrets inline.
+# Operators supply both passwords via `--set-string` on the CLI or via
+# a separate values overlay merged on top.
+#
+# Example:
+#   helm install ow-pg charts/openwhispr-postgres \
+#     -f charts/openwhispr-postgres/examples/values-helm-values.yaml \
+#     --set-string secrets.ownerPassword=$(openssl rand -base64 24) \
+#     --set-string secrets.appPassword=$(openssl rand -base64 24)
+
+secrets:
+  mode: helm-values
+  cnpgManaged: false
+  ownerPassword: ""  # required at install time
+  appPassword: ""    # required at install time
+
+postgres:
+  replicas: 3
+  storageSize: 20Gi
+
+pooler:
+  enabled: true
+  instances: 2

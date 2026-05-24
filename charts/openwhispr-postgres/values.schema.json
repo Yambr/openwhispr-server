@@ -1,0 +1,106 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "openwhispr-postgres chart values",
+  "type": "object",
+  "additionalProperties": true,
+  "properties": {
+    "postgres": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "imageName": {
+          "type": "string",
+          "pattern": "^.+:17\\.[0-9]+.*$",
+          "description": "Must pin Postgres major version 17. CNPG default catalog ships PG 18 — refusing to install on non-17 image."
+        },
+        "replicas": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 10
+        },
+        "storageSize": { "type": "string", "minLength": 1 },
+        "storageClass": { "type": "string" },
+        "databaseName": { "type": "string", "minLength": 1 },
+        "ownerRole": { "type": "string", "minLength": 1 },
+        "appRole": { "type": "string", "minLength": 1 },
+        "litellmDatabaseName": { "type": "string", "minLength": 1 },
+        "backup": {
+          "type": "object",
+          "additionalProperties": true,
+          "properties": {
+            "enabled": { "type": "boolean" },
+            "bucket": { "type": "string" },
+            "s3Endpoint": { "type": "string" },
+            "accessKeyId": { "type": "string" },
+            "secretAccessKey": { "type": "string" }
+          }
+        },
+        "monitoring": {
+          "type": "object",
+          "additionalProperties": true,
+          "properties": {
+            "enablePodMonitor": { "type": "boolean" }
+          }
+        }
+      }
+    },
+    "pooler": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "instances": { "type": "integer", "minimum": 1, "maximum": 10 },
+        "type": { "type": "string", "enum": ["rw", "ro"] },
+        "poolMode": { "type": "string", "enum": ["session", "transaction", "statement"] },
+        "maxClientConn": { "type": "string", "pattern": "^[0-9]+$" },
+        "defaultPoolSize": { "type": "string", "pattern": "^[0-9]+$" },
+        "reservePoolSize": { "type": "string", "pattern": "^[0-9]+$" },
+        "monitoring": {
+          "type": "object",
+          "additionalProperties": true,
+          "properties": {
+            "enablePodMonitor": { "type": "boolean" }
+          }
+        }
+      }
+    },
+    "secrets": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "mode": {
+          "type": "string",
+          "enum": ["helm-values", "eso", "external-managed"]
+        },
+        "cnpgManaged": { "type": "boolean" },
+        "ownerPassword": {
+          "type": "string",
+          "not": { "enum": ["CHANGE_ME", "changeme"] }
+        },
+        "appPassword": {
+          "type": "string",
+          "not": { "enum": ["CHANGE_ME", "changeme"] }
+        }
+      },
+      "required": ["mode"],
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "mode": { "const": "helm-values" },
+              "cnpgManaged": { "const": false }
+            },
+            "required": ["mode"]
+          },
+          "then": {
+            "properties": {
+              "ownerPassword": { "minLength": 1 },
+              "appPassword": { "minLength": 1 }
+            },
+            "required": ["ownerPassword", "appPassword"]
+          }
+        }
+      ]
+    }
+  }
+}

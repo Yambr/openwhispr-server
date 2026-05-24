@@ -1,0 +1,134 @@
+{{/*
+CloudNativePG Cluster CR (postgresql.cnpg.io/v1).
+
+Hard constraints baked in (carried over from the pre-split monolith):
+  - imageName MUST match `^.+:17\.[0-9]+.*$` (CNPG default catalog ships
+    PG 18; values.schema.json refuses non-17 images).
+  - shared_preload_libraries includes `pg_partman_bgw` (required for
+    migration 0014 audit_log partitioning).
+  - postInitApplicationSQL creates the `pg_partman` extension in schema
+    `partman`.
+  - Three instances default (HA quorum); override to 1 for OSS single-node.
+  - barmanObjectStore renders only when `postgres.backup.enabled=true`.
+
+NOTE: helm --wait does NOT wait on CRDs. The server chart's migrate Job
+ships a `pg_isready` initContainer to bridge the bootstrap gap.
+*/}}
+{{- $fullname := include "openwhispr-postgres.fullname" . -}}
+{{- $clusterName := include "openwhispr-postgres.clusterName" . -}}
+apiVersion: postgresql.cnpg.io/v1
+kind: Cluster
+metadata:
+  name: {{ $clusterName }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "openwhispr-postgres.labels" . | nindent 4 }}
+spec:
+  instances: {{ .Values.postgres.replicas }}
+  imageName: {{ .Values.postgres.imageName | quote }}
+  primaryUpdateStrategy: unsupervised
+
+  postgresql:
+    parameters:
+      max_connections: "200"
+      shared_buffers: "512MB"
+    # CNPG >=1.22 rejects `shared_preload_libraries` inside `parameters`;
+    # must be a first-class spec field.
+    shared_preload_libraries:
+      - pg_partman_bgw
+    pg_hba:
+      - host all all all scram-sha-256
+
+  bootstrap:
+    initdb:
+      database: {{ .Values.postgres.databaseName | quote }}
+      owner: {{ .Values.postgres.ownerRole | quote }}
+      {{- if not .Values.secrets.cnpgManaged }}
+      secret:
+        name: {{ include "openwhispr-postgres.ownerSecretName" . }}
+      {{- end }}
+      postInitSQL:
+        # Owner needs BYPASSRLS so the migrate Job's backfills succeed
+        # without per-tenant policy interception.
+        - ALTER ROLE {{ .Values.postgres.ownerRole }} BYPASSRLS;
+        - ALTER ROLE {{ .Values.postgres.ownerRole }} CREATEDB;
+        - ALTER ROLE {{ .Values.postgres.ownerRole }} CREATEROLE;
+        - CREATE DATABASE {{ .Values.postgres.litellmDatabaseName }} OWNER {{ .Values.postgres.ownerRole }};
+        # CNPG renders postInitSQL items into `psql -c "..."`. Bare `$$`
+        # inside the double-quoted shell string is consumed as `$$` = PID.
+        # Doubling to `$$$$` so the shell collapses it back to `$$`
+        # before psql sees it.
+        - |
+          DO $$$$
+          BEGIN
+            IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = '{{ .Values.postgres.appRole }}') THEN
+              CREATE ROLE {{ .Values.postgres.appRole }} WITH LOGIN NOBYPASSRLS;
+            END IF;
+          END $$$$;
+        - GRANT {{ .Values.postgres.appRole }} TO {{ .Values.postgres.ownerRole }} WITH ADMIN OPTION;
+        # PG 17 separates ALTER ROLE attribute changes from ALTER ROLE
+        # SET <parameter>. Migrations call ALTER ROLE openwhispr_app
+        # SET app.tenant_id, so grant SET on the parameter.
+        - GRANT SET ON PARAMETER "app.tenant_id" TO {{ .Values.postgres.ownerRole }};
+      postInitApplicationSQL:
+        - CREATE SCHEMA IF NOT EXISTS partman;
+        - CREATE EXTENSION IF NOT EXISTS pg_partman SCHEMA partman;
+        # pg_partman's create_parent() needs DDL inside partman + CREATE
+        # on public. Make the application owner the OWNER of partman.
+        - ALTER SCHEMA partman OWNER TO {{ .Values.postgres.ownerRole }};
+        - GRANT ALL ON SCHEMA partman TO {{ .Values.postgres.ownerRole }};
+        - GRANT ALL ON ALL TABLES IN SCHEMA partman TO {{ .Values.postgres.ownerRole }};
+        - GRANT ALL ON ALL SEQUENCES IN SCHEMA partman TO {{ .Values.postgres.ownerRole }};
+        - GRANT ALL ON ALL FUNCTIONS IN SCHEMA partman TO {{ .Values.postgres.ownerRole }};
+        - ALTER DEFAULT PRIVILEGES IN SCHEMA partman GRANT ALL ON TABLES TO {{ .Values.postgres.ownerRole }};
+        - ALTER DEFAULT PRIVILEGES IN SCHEMA partman GRANT ALL ON SEQUENCES TO {{ .Values.postgres.ownerRole }};
+
+  storage:
+    size: {{ .Values.postgres.storageSize }}
+    {{- with .Values.postgres.storageClass }}
+    storageClass: {{ . | quote }}
+    {{- end }}
+
+  {{- if .Values.postgres.backup.enabled }}
+  backup:
+    retentionPolicy: "30d"
+    barmanObjectStore:
+      destinationPath: s3://{{ required "postgres.backup.bucket is required when postgres.backup.enabled=true" .Values.postgres.backup.bucket }}/cnpg
+      {{- with .Values.postgres.backup.s3Endpoint }}
+      endpointURL: {{ . | quote }}
+      {{- end }}
+      s3Credentials:
+        accessKeyId:
+          name: {{ include "openwhispr-postgres.backupSecretName" . }}
+          key: ACCESS_KEY_ID
+        secretAccessKey:
+          name: {{ include "openwhispr-postgres.backupSecretName" . }}
+          key: SECRET_ACCESS_KEY
+      wal:
+        compression: gzip
+  {{- end }}
+
+  monitoring:
+    enablePodMonitor: {{ .Values.postgres.monitoring.enablePodMonitor }}
+
+  # Two-role model: openwhispr_app is the runtime user (NOBYPASSRLS) that
+  # api/web/worker connect as via the Pooler. CNPG's managed.roles is the
+  # canonical mechanism: operator reconciles ALTER ROLE on every drift,
+  # reads password from the referenced Secret on each reconcile.
+  managed:
+    roles:
+      - name: {{ .Values.postgres.appRole }}
+        ensure: present
+        login: true
+        bypassrls: false
+        comment: "OpenWhispr runtime user — NOBYPASSRLS, used by api/web/worker via Pooler"
+        {{- if not .Values.secrets.cnpgManaged }}
+        passwordSecret:
+          name: {{ include "openwhispr-postgres.appSecretName" . }}
+        {{- end }}
+        connectionLimit: 200
+        # CNPG treats inRoles as authoritative — empty list would REVOKE
+        # the postInitSQL grant on next reconcile. Declare the membership
+        # so CNPG owns + preserves it.
+        inRoles:
+          - {{ .Values.postgres.ownerRole }}

@@ -1,0 +1,33 @@
+{{/*
+CloudNativePG Pooler CR (postgresql.cnpg.io/v1, kind: Pooler).
+Transaction-mode PgBouncer in front of the CNPG Cluster's primary.
+
+Consumers (openwhispr-server api/web/worker) connect via:
+  postgres://<app-role>@<release>-pg-pooler:5432/<database>
+
+CNPG creates a single Service named after the Pooler resource (no `-rw`
+suffix; only Cluster CR creates -rw/-r/-ro variants).
+*/}}
+{{- if .Values.pooler.enabled -}}
+{{- $fullname := include "openwhispr-postgres.fullname" . -}}
+apiVersion: postgresql.cnpg.io/v1
+kind: Pooler
+metadata:
+  name: {{ $fullname }}-pg-pooler
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "openwhispr-postgres.labels" . | nindent 4 }}
+spec:
+  cluster:
+    name: {{ include "openwhispr-postgres.clusterName" . }}
+  instances: {{ .Values.pooler.instances }}
+  type: {{ .Values.pooler.type }}
+  pgbouncer:
+    poolMode: {{ .Values.pooler.poolMode }}
+    parameters:
+      max_client_conn: {{ .Values.pooler.maxClientConn | quote }}
+      default_pool_size: {{ .Values.pooler.defaultPoolSize | quote }}
+      reserve_pool_size: {{ .Values.pooler.reservePoolSize | quote }}
+  monitoring:
+    enablePodMonitor: {{ .Values.pooler.monitoring.enablePodMonitor }}
+{{- end }}
