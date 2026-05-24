@@ -79,6 +79,9 @@ spec:
             {{- with .Values.extraEnv }}
             {{- toYaml . | nindent 12 }}
             {{- end }}
+            {{- with .Values.worker.extraEnv }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
           # Worker is a pure BullMQ consumer (no Fastify, no /healthz);
           # probes confirm the node process is alive.
           startupProbe:
