@@ -13,15 +13,30 @@
 // Hermetic — no DB, no testcontainer. Builds a minimal Fastify app via
 // `app.register(buildLocaleRoutes())` and uses `app.inject({...})`.
 
+import fastifyCookie from "@fastify/cookie";
+import type { ExecutableTx, TransactionalDb } from "@openwhispr/data";
 import Fastify, { type FastifyInstance } from "fastify";
 import { afterEach, describe, expect, it } from "vitest";
 import { i18nPlugin } from "../../../../src/i18n/init.js";
+import { zodTypeProvider } from "../../../../src/plugins/zod-type-provider.js";
 import { buildLocaleRoutes } from "../../../../src/routes/locale.js";
+
+// Quick-task 260524-u00 / Task A5 — buildLocaleRoutes now takes deps.db so
+// the new POST sibling can UPDATE users.locale under withTenant(). These GET
+// tests don't touch the DB; a permissive stub satisfies the type contract.
+const stubDb = {} as unknown as TransactionalDb<ExecutableTx>;
 
 async function buildApp(): Promise<FastifyInstance> {
   const app = Fastify({ logger: false });
+  // Quick-task 260524-u00 / Task A5 — the new POST sibling uses Zod schemas
+  // via @fastify/type-provider-zod (same as every other LOCKER-04 route);
+  // the validator+serializer compilers MUST be wired before route registration
+  // or Fastify rejects the schema with "data/required must be array".
+  // @fastify/cookie is needed because the POST handler calls reply.setCookie.
+  await app.register(zodTypeProvider);
+  await app.register(fastifyCookie);
   await app.register(i18nPlugin);
-  await app.register(buildLocaleRoutes());
+  await app.register(buildLocaleRoutes({ db: stubDb }));
   await app.ready();
   return app;
 }
@@ -86,5 +101,108 @@ describe("GET /api/locale — route behavior", () => {
     const res = await app.inject({ method: "GET", url: "/api/locale" });
     const body = res.json() as Record<string, unknown>;
     expect(Object.keys(body).sort()).toEqual(["locale"]);
+  });
+});
+
+// Quick-task 260524-u00 / Task A5 — POST /api/locale.
+//
+// Hermetic — no DB call exercised because req.user is undefined in unit
+// tests (no auth hook wired). The authenticated UPDATE path is exercised
+// end-to-end in apps/api/tests/integration/locale-route.test.ts under
+// the existing real-Postgres testcontainer pattern (Task A5 sub-task).
+// Here we lock the wire contract: status code, body shape, Set-Cookie
+// header, Zod validation, and the no-store cache header.
+describe("POST /api/locale — anonymous + wire contract", () => {
+  let app: FastifyInstance | undefined;
+  afterEach(async () => {
+    if (app) {
+      await app.close();
+      app = undefined;
+    }
+  });
+
+  it("returns 200 + { locale: 'ru' } and Set-Cookie i18next=ru for body {locale:'ru'}", async () => {
+    app = await buildApp();
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/locale",
+      payload: { locale: "ru" },
+    });
+    expect(res.statusCode).toBe(200);
+    const body = res.json() as { locale: string };
+    expect(body).toEqual({ locale: "ru" });
+    const setCookie = res.headers["set-cookie"];
+    const cookies = Array.isArray(setCookie) ? setCookie : [setCookie ?? ""];
+    expect(cookies.join("; ")).toMatch(/i18next=ru/);
+    expect(cookies.join("; ")).toMatch(/HttpOnly/i);
+    expect(cookies.join("; ")).toMatch(/SameSite=Lax/i);
+    expect(cookies.join("; ")).toMatch(/Path=\//);
+    // 1 year max-age (60*60*24*365 = 31536000)
+    expect(cookies.join("; ")).toMatch(/Max-Age=31536000/i);
+  });
+
+  it("returns 200 + { locale: 'en' } and Set-Cookie i18next=en for body {locale:'en'}", async () => {
+    app = await buildApp();
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/locale",
+      payload: { locale: "en" },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toEqual({ locale: "en" });
+    const setCookie = res.headers["set-cookie"];
+    const cookies = Array.isArray(setCookie) ? setCookie : [setCookie ?? ""];
+    expect(cookies.join("; ")).toMatch(/i18next=en/);
+  });
+
+  it("returns 400 for an unsupported locale value (Zod enum)", async () => {
+    app = await buildApp();
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/locale",
+      payload: { locale: "xx" },
+    });
+    expect(res.statusCode).toBe(400);
+  });
+
+  it("returns 400 for an empty body (Zod required)", async () => {
+    app = await buildApp();
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/locale",
+      payload: {},
+    });
+    expect(res.statusCode).toBe(400);
+  });
+
+  it("returns 400 for extra fields (Zod .strict)", async () => {
+    app = await buildApp();
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/locale",
+      payload: { locale: "ru", extra: "smuggled" },
+    });
+    expect(res.statusCode).toBe(400);
+  });
+
+  it("response body keys are EXACTLY ['locale'] — info-leak gate", async () => {
+    app = await buildApp();
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/locale",
+      payload: { locale: "en" },
+    });
+    const body = res.json() as Record<string, unknown>;
+    expect(Object.keys(body).sort()).toEqual(["locale"]);
+  });
+
+  it("sets cache-control: no-store (mirror of GET sibling)", async () => {
+    app = await buildApp();
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/locale",
+      payload: { locale: "ru" },
+    });
+    expect(res.headers["cache-control"]).toBe("no-store");
   });
 });
