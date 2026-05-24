@@ -20,14 +20,15 @@ image:
   # template-only fixes between image releases). Override at deploy
   # time if you pin a specific image tag.
   #
-  # Chart 1.0.3 ships the OPENWHISPR_DEPLOYMENT_MODE=k8s kill-switch
-  # baked into the api image entrypoint (apps/api/scripts/check-
-  # default-secrets.ts) and the boot-time byok-guard. Operators MUST
-  # have image tag v1.0.3 published BEFORE installing chart 1.0.3 —
-  # the chart points at images that must exist in the registry first.
-  # Release order: release.yml publishes v1.0.3 images → chart tag
-  # openwhispr-server-1.0.3 → operator helm upgrade.
-  tag: "1.0.3"
+  # Chart 1.0.6 + image v1.0.4 ship the quick-260524-u00-eight-fixes
+  # batch atomically: chart-side (B1 worker probe path, B2 DATABASE_URL_OWNER
+  # wiring, B3 LITELLM_DATABASE_URL secretRef, B3b OPENWHISPR_DEPLOYMENT_MODE
+  # baked into ConfigMap) + image-side (A2 email k8s-mode bypass, A3 worker
+  # CJS import.meta guard, A4 worker VALKEY_URL parser, A5 POST /api/locale).
+  # Companion openwhispr-postgres chart 1.1.0 ships the rolconfig fix (B4).
+  # Operators MUST have image v1.0.4 published BEFORE installing chart 1.0.6 —
+  # the release pipeline pushes v1.0.4 image tags FIRST, then chart-v1.0.6.
+  tag: "1.0.4"
   api:     { repository: openwhispr-api }
   web:     { repository: openwhispr-web }
   worker:  { repository: openwhispr-worker }
