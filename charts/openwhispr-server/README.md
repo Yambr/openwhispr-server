@@ -160,9 +160,10 @@ kubectl create secret generic openwhispr-redis \
 
 ### `openwhispr-litellm`
 
-| Key          | Value                                  |
-| ------------ | -------------------------------------- |
-| `master-key` | The LiteLLM proxy master key (`sk-…`)  |
+| Key          | Value                                                                          |
+| ------------ | ------------------------------------------------------------------------------ |
+| `master-key` | The LiteLLM proxy master key (`sk-…`)                                          |
+| `url`        | **(chart 1.0.6+, optional, worker-only)** `LITELLM_DATABASE_URL` direct conn  |
 
 ```bash
 kubectl create secret generic openwhispr-litellm \
@@ -170,6 +171,16 @@ kubectl create secret generic openwhispr-litellm \
 ```
 
 (The `LITELLM_BASE_URL` is plain `.Values.litellm.baseUrl`, not a Secret.)
+
+**`LITELLM_DATABASE_URL` (chart 1.0.6+ / worker-only).** When the
+operator runs external LiteLLM with a dedicated database, set
+`litellm.databaseUrlSecretRef.name` to project a direct-to-Postgres URL
+(NOT through PgBouncer per Pitfall #9) into the worker Deployment.
+Consumed by the `ingest-litellm-spend` + `reconciliation-daily-check`
+jobs that query the LiteLLM database for usage ledgers and spend logs.
+Leave the ref empty (`name: ""`) when running embedded LiteLLM
+(single shared Postgres — `openwhispr` and `litellm` databases live in
+the same Cluster, worker reuses the same owner pool).
 
 **BYOK external LiteLLM (operator opt-out):** if your `litellm.baseUrl`
 points at an *existing* LiteLLM instance (not the companion
@@ -192,52 +203,65 @@ for the opt-out path.
 
 ### k8s deployment mode (`OPENWHISPR_DEPLOYMENT_MODE=k8s`)
 
-**Chart 1.0.3+ / image v1.0.3+.** The api container ENTRYPOINT (`apps/
-api/scripts/check-default-secrets.ts`) and the boot-time `byok-guard`
-default to the compose-era contract: they refuse to start if any of
+**Chart 1.0.6+ / image v1.0.4+ — baked into the chart-owned ConfigMap;
+operators no longer need to set this via `extraEnv`.** Prior chart
+versions (1.0.3 through 1.0.5) required operators to add the env
+explicitly via `extraEnv:` block.
+
+The api container ENTRYPOINT (`apps/api/scripts/check-default-secrets.ts`),
+the boot-time `byok-guard` (`packages/byok-guard/src/index.ts`), AND the
+`@openwhispr/email` factory (`packages/email/src/EmailSender.ts`) default
+to the compose-era contract: they refuse to start if any of
 `POSTGRES_OWNER_PASSWORD`, `POSTGRES_APP_PASSWORD`,
 `PGBOUNCER_ADMIN_PASSWORD`, `VALKEY_PASSWORD`, `MINIO_ROOT_PASSWORD`,
 `TRAEFIK_ADMIN_PASSWORD`, `GRAFANA_ADMIN_PASSWORD`, `BACKUP_AGE_IDENTITY`,
-`S3_ENDPOINT` (+ partner keys), `OTEL_EXPORTER_OTLP_ENDPOINT`, or
-`INGRESS_BASE_URL` is unset — because the default self-host profile
-stands up Postgres / Valkey / MinIO / Traefik / Grafana / age-backup /
-Tempo / Loki itself via docker compose overlays.
+`S3_ENDPOINT` (+ partner keys), `OTEL_EXPORTER_OTLP_ENDPOINT`,
+`INGRESS_BASE_URL`, OR `SMTP_HOST` (in production) is unset — because
+the default self-host profile stands up Postgres / Valkey / MinIO /
+Traefik / Grafana / age-backup / Tempo / Loki / SMTP itself via docker
+compose overlays.
 
 In a k8s deployment **none of that applies**. Postgres comes from CNPG,
 Valkey/Redis from your cluster operator, S3 from MinIO-as-a-service or
 AWS S3, observability from your platform's `ServiceMonitor` →
 Prometheus/Mimir stack, ingress from the operator-chosen Gateway/Ingress
-controller. The compose-era env contract is not just irrelevant — it
-actively prevents the pod from starting.
+controller, SMTP from an operator-rotated Kubernetes Secret bound at
+chart deploy time (or absent — see below). The compose-era env contract
+is not just irrelevant — it actively prevents the pod from starting.
 
-**Set `OPENWHISPR_DEPLOYMENT_MODE=k8s`** to opt out of the compose-era
-guards. The k8s gate shrinks the entrypoint REQUIRED_KEYS list to just
-`MASTER_KEK` + `BETTER_AUTH_SECRET` (in-app crypto roots, deny-list
-enforcement preserved) and bypasses the boot-time `byok-guard` matrix
-for storage/observability/ingress/pgbouncer/dev-tools rows.
+`OPENWHISPR_DEPLOYMENT_MODE=k8s` (chart 1.0.6+ now bakes this into the
+shared ConfigMap; api/web/worker pull it via `envFrom`) opts out of the
+compose-era guards. The k8s gate:
 
-```yaml
-extraEnv:
-  - name: OPENWHISPR_DEPLOYMENT_MODE
-    value: k8s
-```
+- shrinks the entrypoint REQUIRED_KEYS list to just `MASTER_KEK` +
+  `BETTER_AUTH_SECRET` (in-app crypto roots — deny-list enforcement
+  preserved);
+- bypasses the boot-time `byok-guard` matrix for
+  storage/observability/ingress/pgbouncer/dev-tools rows;
+- **(NEW chart 1.0.6 / image v1.0.4)** downgrades the email factory's
+  production SMTP_HOST loud-fail to a warn-only no-op sender — sign-up
+  + every non-email flow boots before the operator has rotated in the
+  SMTP Secret. Once `auth.envFromSecret` projects `SMTP_HOST` and pods
+  restart, email delivery resumes. Compose-mode keeps the throw.
 
 The kill-switch is case-insensitive (`k8s`, `K8S`, `K8s`) and
 whitespace-tolerant (` k8s `, `k8s\n`). Default (unset, `=compose`, or
 any other value): compose-era behavior preserved — fully backward
 compatible.
 
-Both guards emit a one-line operator-visibility log on activation:
+All three guards emit a one-line operator-visibility log on activation:
 
 ```
 check-default-secrets: deployment mode = k8s
 {"level":30,"event":"byok.bypassed","mode":"k8s","msg":"byok-guard bypassed: OPENWHISPR_DEPLOYMENT_MODE=k8s"}
+{"level":40,"event":"email.smtp_not_configured_k8s_mode","msg":"SMTP not configured in k8s deployment mode; emails skipped until operator provisions SMTP Secret"}
 ```
 
-See `apps/api/scripts/check-default-secrets.ts` and `packages/byok-
-guard/src/index.ts` for the implementation; tests cover the case-
-insensitive trim, the deny-list-still-enforced contract, and the
-backward-compat default path.
+See `apps/api/scripts/check-default-secrets.ts`,
+`packages/byok-guard/src/index.ts`, and `packages/email/src/EmailSender.ts`
+for the implementations; tests cover case-insensitive trim, the deny-list-
+still-enforced contract, and the compose-mode regression guard (k8s bypass
+NEVER applies when `OPENWHISPR_DEPLOYMENT_MODE` is unset or `=compose`).
 
 ### `openwhispr-s3`
 
@@ -306,6 +330,55 @@ The chart has exactly two toggles.
   - catch-all → web Service
 
 There is **no Gateway API mode** in this MVP.
+
+## Chart 1.0.6 + image v1.0.4 — eight-fix atomic release
+
+Chart 1.0.6 + image v1.0.4 bundle eight peer-reported fixes (see
+`.planning/quick/20260524-chart-1-0-6-image-v1-0-4-eight-fixes`):
+
+| # | Layer     | Fix                                                                                                  |
+| - | --------- | ---------------------------------------------------------------------------------------------------- |
+| 1 | chart     | Worker probe path corrected: `/app/apps/worker/dist/index.cjs` (was `/app/dist/index.js` → kubelet killed pods every 30s) |
+| 2 | chart     | `DATABASE_URL_OWNER` wired into worker Deployment natively (worker loud-fails without it; was operator extraEnv workaround) |
+| 3 | chart     | `LITELLM_DATABASE_URL` wired into worker conditionally (`litellm.databaseUrlSecretRef`)              |
+| 3b| chart     | `OPENWHISPR_DEPLOYMENT_MODE=k8s` baked into ConfigMap (was operator extraEnv workaround)             |
+| 4 | postgres  | `ALTER ROLE app SET app.tenant_id = '00…0'` in CNPG `postInitApplicationSQL` (Better Auth singleton fix; postgres-chart 1.1.0) |
+| 5 | image     | Worker BullMQ connection: refactored from split `VALKEY_HOST/PORT/PASSWORD` to single `VALKEY_URL` (api parity) |
+| 6 | image     | `createEmailSender` k8s-mode SMTP bypass — sign-up boots before operator provisions SMTP Secret      |
+| 7 | image     | Worker `template-renderer.ts` CJS `import.meta.url` guard (bundle previously crashed on module init) |
+| 8 | image     | New POST `/api/locale` endpoint (frontend lang-switcher was 404'ing on chart 1.0.5)                  |
+
+**Upgrade flow for operators on chart 1.0.5 / image v1.0.3:**
+
+1. Bump `targetRevision: 1.0.6` (Argo CD) or `helm upgrade --version 1.0.6`.
+2. Delete the now-redundant `extraEnv` entries from your `values.yaml`:
+   - `OPENWHISPR_DEPLOYMENT_MODE: k8s` (chart bakes via ConfigMap)
+   - `DATABASE_URL_OWNER` (chart wires via `database.ownerUrlSecretRef`)
+   - `VALKEY_HOST` / `VALKEY_PORT` / `VALKEY_PASSWORD` (worker reads
+     `VALKEY_URL` now; chart already projects from `redis.urlSecretRef`)
+3. If you have a separate LiteLLM database, set
+   `litellm.databaseUrlSecretRef.name: openwhispr-litellm` +
+   `litellm.databaseUrlSecretRef.key: url` and add `url` to the
+   `openwhispr-litellm` Secret.
+4. Apply. Worker probes will now succeed; sign-up works without manual
+   `kubectl exec ALTER ROLE`; POST /api/locale returns 200.
+
+**BYOK Postgres operators (NOT using openwhispr-postgres chart):** the
+B4 `ALTER ROLE app SET app.tenant_id = '00…0'` rolconfig fix only fires
+inside the openwhispr-postgres chart's CNPG bootstrap. Operators
+running managed Postgres (RDS, Aurora, Cloud SQL, on-prem) must run
+this one-liner themselves before first install — otherwise sign-up
+fails with `users.tenant_id NULL constraint violation`:
+
+```sql
+ALTER ROLE openwhispr SET app.tenant_id = '00000000-0000-0000-0000-000000000000';
+```
+
+Substitute `openwhispr` with your application role name (whatever you
+configured for `DATABASE_URL` in `openwhispr-database` Secret). See
+CLAUDE.md Constraint 16 (RLS posture ledger) for the v1 single-tenant
+debt rationale; v2 (request-scoped Better Auth adapter) removes this
+requirement entirely.
 
 ## Rendered kinds
 
