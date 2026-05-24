@@ -334,7 +334,7 @@ const BYOK_MATRIX: readonly RowEvaluator[] = [
  * Default (unset, or any non-`k8s` value): compose-mode behavior is
  * preserved — full BYOK matrix evaluated.
  */
-function isK8sDeploymentMode(env: NodeJS.ProcessEnv): boolean {
+export function isK8sDeploymentMode(env: NodeJS.ProcessEnv): boolean {
   return normEnv(env.OPENWHISPR_DEPLOYMENT_MODE)?.toLowerCase() === "k8s";
 }
 
