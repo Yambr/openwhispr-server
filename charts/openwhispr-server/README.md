@@ -190,6 +190,55 @@ unset — the migrate Job creates the `litellm` database alongside
 `openwhispr` on first install. See `packages/data/src/migrate.ts:142`
 for the opt-out path.
 
+### k8s deployment mode (`OPENWHISPR_DEPLOYMENT_MODE=k8s`)
+
+**Chart 1.0.3+ / image v1.0.3+.** The api container ENTRYPOINT (`apps/
+api/scripts/check-default-secrets.ts`) and the boot-time `byok-guard`
+default to the compose-era contract: they refuse to start if any of
+`POSTGRES_OWNER_PASSWORD`, `POSTGRES_APP_PASSWORD`,
+`PGBOUNCER_ADMIN_PASSWORD`, `VALKEY_PASSWORD`, `MINIO_ROOT_PASSWORD`,
+`TRAEFIK_ADMIN_PASSWORD`, `GRAFANA_ADMIN_PASSWORD`, `BACKUP_AGE_IDENTITY`,
+`S3_ENDPOINT` (+ partner keys), `OTEL_EXPORTER_OTLP_ENDPOINT`, or
+`INGRESS_BASE_URL` is unset — because the default self-host profile
+stands up Postgres / Valkey / MinIO / Traefik / Grafana / age-backup /
+Tempo / Loki itself via docker compose overlays.
+
+In a k8s deployment **none of that applies**. Postgres comes from CNPG,
+Valkey/Redis from your cluster operator, S3 from MinIO-as-a-service or
+AWS S3, observability from your platform's `ServiceMonitor` →
+Prometheus/Mimir stack, ingress from the operator-chosen Gateway/Ingress
+controller. The compose-era env contract is not just irrelevant — it
+actively prevents the pod from starting.
+
+**Set `OPENWHISPR_DEPLOYMENT_MODE=k8s`** to opt out of the compose-era
+guards. The k8s gate shrinks the entrypoint REQUIRED_KEYS list to just
+`MASTER_KEK` + `BETTER_AUTH_SECRET` (in-app crypto roots, deny-list
+enforcement preserved) and bypasses the boot-time `byok-guard` matrix
+for storage/observability/ingress/pgbouncer/dev-tools rows.
+
+```yaml
+extraEnv:
+  - name: OPENWHISPR_DEPLOYMENT_MODE
+    value: k8s
+```
+
+The kill-switch is case-insensitive (`k8s`, `K8S`, `K8s`) and
+whitespace-tolerant (` k8s `, `k8s\n`). Default (unset, `=compose`, or
+any other value): compose-era behavior preserved — fully backward
+compatible.
+
+Both guards emit a one-line operator-visibility log on activation:
+
+```
+check-default-secrets: deployment mode = k8s
+{"level":30,"event":"byok.bypassed","mode":"k8s","msg":"byok-guard bypassed: OPENWHISPR_DEPLOYMENT_MODE=k8s"}
+```
+
+See `apps/api/scripts/check-default-secrets.ts` and `packages/byok-
+guard/src/index.ts` for the implementation; tests cover the case-
+insensitive trim, the deny-list-still-enforced contract, and the
+backward-compat default path.
+
 ### `openwhispr-s3`
 
 `envFrom`-mounted. Keys: `S3_ENDPOINT`, `S3_BUCKET`, `S3_ACCESS_KEY`,

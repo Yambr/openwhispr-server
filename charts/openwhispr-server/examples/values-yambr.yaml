@@ -63,6 +63,19 @@ observability:
 # Operators running the companion `openwhispr-litellm` chart (embedded
 # mode, single shared Postgres) leave this unset — the migrate Job
 # creates the `litellm` database alongside `openwhispr` on first install.
+#
+# OPENWHISPR_DEPLOYMENT_MODE=k8s opts out of the compose-era BYOK guards
+# baked into the api container ENTRYPOINT (apps/api/scripts/check-default-
+# secrets.ts) and the boot-time byok-guard (packages/byok-guard). In k8s
+# deployments Postgres / Valkey / MinIO / Traefik / Grafana / age-backup
+# credentials are operator-managed via Kubernetes Secrets bound to
+# platform primitives (CNPG, ServiceMonitor, HTTPRoute, snapshot-based
+# backups, etc.) and the compose-era POSTGRES_OWNER_PASSWORD /
+# VALKEY_PASSWORD / TRAEFIK_ADMIN_PASSWORD env contract does not apply.
+# MASTER_KEK + BETTER_AUTH_SECRET deny-list enforcement is preserved
+# in k8s mode — both are in-app crypto roots.
 extraEnv:
   - name: SKIP_LITELLM_DB_AUTOCREATE
     value: "1"
+  - name: OPENWHISPR_DEPLOYMENT_MODE
+    value: k8s
