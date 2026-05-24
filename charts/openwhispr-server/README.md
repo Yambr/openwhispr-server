@@ -24,10 +24,42 @@ complete reference values file.
 
 The operator MUST provide:
 
-1. **Postgres 17** (the companion `openwhispr-postgres` chart, a CNPG
-   cluster you already run, or any managed Postgres). A `postgres://`
-   URL for the runtime app role AND another for the owner role
-   (migrations).
+1. **Postgres 17 with `pg_partman` extension** (the companion
+   `openwhispr-postgres` chart, a CNPG cluster you already run, or any
+   managed Postgres). A `postgres://` URL for the runtime app role AND
+   another for the owner role (migrations).
+
+   **Hard requirements** for the Postgres cluster:
+   - **PG 17.** Migration 0033 uses envelope-encryption columns introduced
+     in PG 17. PG 16 is NOT supported — there is no in-script PG 16
+     fallback path.
+   - **`pg_partman` extension installed** in the image. Stock CNPG /
+     Docker Hub `postgres:17` images do NOT include pg_partman.
+     Migration 0014 calls `partman.create_parent(...)` and fails with
+     `schema "partman" does not exist (SQLSTATE 3F000)` if it's missing.
+     Use the published `ghcr.io/yambr/openwhispr-cnpg-postgres-17-pgpartman`
+     image for CNPG, or apt-install `postgresql-17-partman` into your
+     own image (Debian Trixie has the native package).
+   - **`shared_preload_libraries` includes `pg_partman_bgw`.** The
+     background worker drives partition maintenance. For CNPG:
+     ```yaml
+     spec:
+       postgresql:
+         shared_preload_libraries: [pg_partman_bgw]
+         parameters:
+           pg_partman_bgw.interval: "3600"
+           pg_partman_bgw.role: openwhispr_owner
+           pg_partman_bgw.dbname: openwhispr
+     ```
+   - **Owner role has `BYPASSRLS`** (see `openwhispr-database` Secret
+     section below for full reasoning).
+
+   **Dedicated vs shared cluster:** for production, run openwhispr on
+   its own CNPG Cluster, NOT shared with other apps. openwhispr's
+   `shared_preload_libraries`, BYPASSRLS owner, partman maintenance
+   schedule, and backup policy diverge from typical web-app clusters.
+   A shared cluster forces every coexisting app to accept openwhispr's
+   tuning. For stage, dedicated also gives full prod-parity smoke.
 2. **Redis or Valkey** (if `redis.enabled=true`, default). A `redis://`
    URL.
 3. **LiteLLM proxy** (the companion `openwhispr-litellm` chart, your
