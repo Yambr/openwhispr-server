@@ -138,13 +138,15 @@ jobs:
       - name: Build docker images
         run: docker compose build
       - name: Bootstrap .env (random ephemeral secrets + URL wiring)
-        # tools/bootstrap.sh is the canonical .env generator — it reads
-        # .env.slim.example for the full key list, fills random 40-char
-        # values for every missing secret AND the URL wiring keys
-        # (DATABASE_URL_OWNER, S3_*, INGRESS_BASE_URL, etc.) that the
-        # api/worker/migrate boot-time guards require. Same path operators
-        # follow for first-run quickstart; CI just runs it non-interactively.
-        run: bash tools/bootstrap.sh
+        # tools/bootstrap.sh is the canonical .env generator — reads the
+        # selected template for the full key list and fills random 40-char
+        # values for every secret + URL wiring key. Web CI runs the
+        # `--profile default` compose stack which includes pgbouncer,
+        # minio, traefik, grafana — overlay services whose admin passwords
+        # are declared in .env.full.example (not .env.slim.example, which
+        # is the OSS-quickstart slim core only). Use the full template so
+        # all 4 overlay admin keys get values too.
+        run: BOOTSTRAP_ENV_TEMPLATE=.env.full.example bash tools/bootstrap.sh
       - name: Bring up stack (default profile)
         run: docker compose --profile default up -d --wait
       - name: Run Playwright e2e
