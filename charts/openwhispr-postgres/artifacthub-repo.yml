@@ -1,0 +1,16 @@
+# ArtifactHub repository metadata for openwhispr-postgres.
+#
+# Consumed by ArtifactHub (https://artifacthub.io/) when the chart's
+# gh-pages-hosted Helm repository is registered.
+#
+# repositoryID is a unique UUID-v4 identifier — DISTINCT from the
+# openwhispr-server and openwhispr-litellm chart UUIDs so ArtifactHub
+# treats the three charts as independent repositories. Generated once
+# via `uuidgen`; never rotate.
+repositoryID: 1c3b2a90-1f01-4d02-95a1-7b2e8f1c0001
+
+owners:
+  - name: OpenWhispr Maintainers
+    email: maintainers@openwhispr.example.com
+
+ignore: []

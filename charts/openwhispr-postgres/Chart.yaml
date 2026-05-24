@@ -16,11 +16,8 @@ type: application
 # sub-chart, so this chart is a thin wrapper around CNPG CRDs +
 # OpenWhispr-shaped defaults (PG 17 pin, transaction-mode Pooler,
 # pgPartman extension).
-# WIP: 3-chart split scaffold only. Templates are NOT yet populated.
-# Do NOT consume this chart yet. Stable umbrella chart remains
-# charts/openwhispr/ (version 0.9.x).
-version: 0.0.0-wip
-appVersion: "0.0.0-wip"
+version: 1.0.0
+appVersion: "1.0.0"
 kubeVersion: ">=1.28.0-0"
 home: https://github.com/Yambr/openwhispr-server
 sources:

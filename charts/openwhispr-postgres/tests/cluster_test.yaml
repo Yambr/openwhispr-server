@@ -1,0 +1,41 @@
+suite: openwhispr-postgres / CNPG Cluster
+templates:
+  - postgres-cluster.yaml
+tests:
+  - it: pins PG 17 image
+    set:
+      secrets.mode: external-managed
+    asserts:
+      - matchRegex:
+          path: spec.imageName
+          pattern: ":17\\.[0-9]+.*$"
+
+  - it: declares pg_partman_bgw in shared_preload_libraries
+    set:
+      secrets.mode: external-managed
+    asserts:
+      - contains:
+          path: spec.postgresql.shared_preload_libraries
+          content: pg_partman_bgw
+
+  - it: omits passwordSecret references when cnpgManaged=true
+    set:
+      secrets.mode: helm-values
+      secrets.cnpgManaged: true
+    asserts:
+      - notExists:
+          path: spec.bootstrap.initdb.secret
+      - notExists:
+          path: spec.managed.roles[0].passwordSecret
+
+  - it: wires passwordSecret refs when cnpgManaged=false
+    set:
+      secrets.mode: external-managed
+      secrets.cnpgManaged: false
+    asserts:
+      - equal:
+          path: spec.bootstrap.initdb.secret.name
+          value: RELEASE-NAME-openwhispr-postgres-pg-owner
+      - equal:
+          path: spec.managed.roles[0].passwordSecret.name
+          value: RELEASE-NAME-openwhispr-postgres-pg-app

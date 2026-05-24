@@ -1,0 +1,20 @@
+# external-managed overlay — chart renders ZERO Secret manifests. The
+# operator supplies the owner + app Secrets out-of-band via SealedSecrets
+# / Vault / etc. The CNPG Cluster + Pooler reference the Secrets by name:
+#   <release>-pg-owner   (basic-auth, keys: username, password, POSTGRES_OWNER_PASSWORD)
+#   <release>-pg-app     (basic-auth, keys: username, password, POSTGRES_APP_PASSWORD)
+#
+# Both names follow the helper template:
+#   {{ include "openwhispr-postgres.ownerSecretName" . }}
+#   {{ include "openwhispr-postgres.appSecretName" . }}
+
+secrets:
+  mode: external-managed
+
+postgres:
+  replicas: 3
+  storageSize: 20Gi
+
+pooler:
+  enabled: true
+  instances: 2

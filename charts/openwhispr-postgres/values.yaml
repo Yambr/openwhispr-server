@@ -1,6 +1,82 @@
-# Default values for openwhispr-postgres (scaffold; full values land in Step 2).
+# Default values for openwhispr-postgres.
 #
-# Per .planning/quick/20260523-3chart-split/PLAN.md: this chart wraps the
-# CNPG Cluster + Pooler CRDs with OpenWhispr-shaped defaults (PG 17 pin,
-# transaction-mode pooler, pgPartman extension). CNPG operator (≥ 1.29.x)
-# is a cluster prerequisite — install via the operator's chart, not here.
+# Per .planning/quick/20260523-3chart-split/PLAN.md (Advisor #2 verdicts
+# 1b + 2a + 3a): this chart owns ONLY the Postgres data plane (CNPG
+# Cluster + Pooler + owner/app secrets + optional barman backup).
+# Credentials surface to the application chart (openwhispr-server) via
+# the CNPG-emitted `<cluster>-app` Secret OR a chart-rendered Secret in
+# helm-values mode — the server chart's `database.passwordSecretRef`
+# resolves the ref at deploy time.
+
+# Postgres via CloudNativePG operator (cluster prerequisite). Image MUST
+# be a PG 17 tag — values.schema.json enforces `:17.<minor>` substring;
+# CNPG default catalog ships PG 18 and we refuse to install on it.
+postgres:
+  imageName: ghcr.io/yambr/openwhispr-cnpg-postgres-17-pgpartman:17.6-1.0.1
+  replicas: 3
+  storageSize: 20Gi
+  storageClass: ""
+  # Application database created at initdb time. Override only if the
+  # operator wants a non-default name.
+  databaseName: openwhispr
+  ownerRole: openwhispr_owner
+  appRole: openwhispr_app
+  # Embedded LiteLLM expects a dedicated `litellm` database alongside
+  # the main openwhispr DB; created via postInitSQL. Operators with
+  # their own LiteLLM (BYOK) ignore — the extra DB is harmless.
+  litellmDatabaseName: litellm
+  backup:
+    enabled: false
+    bucket: ""
+    s3Endpoint: ""
+    # Required when backup.enabled=true and secrets.mode=helm-values.
+    accessKeyId: ""
+    secretAccessKey: ""
+  monitoring:
+    enablePodMonitor: false
+
+# CNPG Pooler CRD — transaction-mode PgBouncer. Default ON because the
+# server chart's `database.host` default resolves to `<release>-pg-pooler`
+# (the Pooler Service name).
+pooler:
+  enabled: true
+  instances: 2
+  # type: rw exposes a read-write Pooler that routes to the primary.
+  type: rw
+  poolMode: transaction
+  # Compose pgbouncer.ini parity:
+  #   max_client_conn 1000, default_pool_size 100, reserve_pool_size 20.
+  maxClientConn: "1000"
+  defaultPoolSize: "100"
+  reservePoolSize: "20"
+  monitoring:
+    enablePodMonitor: false
+
+# Secrets mode.
+#
+# helm-values:      render owner + app + (optional) backup Secret inline.
+# eso:              skip inline render; operator manages an ExternalSecret
+#                   for each Secret name out-of-band.
+# external-managed: skip everything — operator brings the Secrets via
+#                   SealedSecrets / Vault / etc. Chart renders zero secret
+#                   manifests; the CNPG Cluster references the Secrets by
+#                   name (helper computes default `<release>-pg-owner` and
+#                   `<release>-pg-app`).
+#
+# When CNPG auto-generates the bootstrap password (cnpgManaged = true),
+# the chart does NOT render an owner Secret. The resulting CNPG-emitted
+# `<cluster>-superuser` and `<cluster>-app` Secrets are then the
+# canonical refs the server chart's `database.passwordSecretRef` consumes.
+# Documented in README "Two CNPG password paths".
+secrets:
+  mode: helm-values
+  # When true: the chart skips the explicit -pg-owner / -pg-app inline
+  # Secrets and lets CNPG generate them. Server chart
+  # `database.passwordSecretRef` should then point at the CNPG-managed
+  # `<cluster>-app` Secret.
+  cnpgManaged: false
+  # Passwords for helm-values mode. Only consumed when secrets.mode ==
+  # "helm-values" AND secrets.cnpgManaged == false. Empty values trigger
+  # render-time `fail`. Schema enforces non-placeholder.
+  ownerPassword: ""
+  appPassword: ""

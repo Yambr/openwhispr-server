@@ -1,0 +1,19 @@
+# CNPG-managed credentials overlay — let CloudNativePG auto-generate the
+# bootstrap owner password + the openwhispr_app password.
+#
+# When using this overlay the chart renders ZERO Secret manifests; CNPG
+# emits its own `<cluster>-superuser` and `<cluster>-app` Secrets. The
+# openwhispr-server chart must then point `database.passwordSecretRef`
+# at `<release>-pg-app` (the CNPG-managed Secret).
+
+secrets:
+  mode: helm-values
+  cnpgManaged: true
+
+postgres:
+  replicas: 1
+  storageSize: 10Gi
+
+pooler:
+  enabled: true
+  instances: 1
