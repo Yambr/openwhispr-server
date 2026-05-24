@@ -87,6 +87,34 @@ kubectl create secret generic openwhispr-database \
   --from-literal=owner-url="postgres://openwhispr_owner:...@pg:5432/openwhispr"
 ```
 
+**Required role privileges for `owner-url`:** the role MUST have
+`BYPASSRLS` — `packages/data` is hard-coded to expect a BYPASSRLS owner
+for DDL + row-backfill INSERT statements (see `packages/data/src/
+client.ts:10-14` and `packages/data/src/encryption/backfill.ts:21`).
+Without it, the first install fails the tenant-settings backfill with
+`new row violates row-level security policy for table "tenant_settings"
+(SQLSTATE 42501)`. Note that `SET LOCAL row_security = off` is a
+no-op for non-BYPASSRLS roles — there is no in-script workaround.
+
+**Single-role setup** (one DB role for everything): grant BYPASSRLS to
+the single role and point both `app-url` and `owner-url` at it.
+```sql
+ALTER ROLE openwhispr BYPASSRLS;
+```
+RLS still applies to runtime app traffic because `app.tenant_id` is
+unset in the bare app session — BYPASSRLS only matters when the role
+explicitly opens a session without setting tenant context (which the
+migration Job does and runtime code does not).
+
+**Two-role setup** (defence-in-depth, recommended for prod): create a
+separate `openwhispr_owner` role with BYPASSRLS used ONLY for the
+migration Job, and a non-BYPASSRLS `openwhispr_app` role for runtime
+pods. The runtime role cannot bypass RLS even if a future bug forgets
+to set the tenant GUC.
+
+For CNPG operators: add the BYPASSRLS grant to your Cluster's
+`bootstrap.postInitSQL` so re-installs preserve it.
+
 ### `openwhispr-redis`
 
 | Key   | Format                            |
