@@ -12,7 +12,7 @@ type: application
 # via `.github/workflows/chart-release.yml`; server releases continue on
 # `v*` via `.github/workflows/helm-release.yml`. First release on the
 # chart-v* lane is 1.0.0.
-version: 1.0.0
+version: 1.0.1
 appVersion: "0.9.0-rc1"
 kubeVersion: ">=1.28.0-0"
 home: https://github.com/Yambr/openwhispr-server
