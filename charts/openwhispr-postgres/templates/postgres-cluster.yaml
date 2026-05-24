@@ -82,6 +82,28 @@ spec:
         - GRANT ALL ON ALL FUNCTIONS IN SCHEMA partman TO {{ .Values.postgres.ownerRole }};
         - ALTER DEFAULT PRIVILEGES IN SCHEMA partman GRANT ALL ON TABLES TO {{ .Values.postgres.ownerRole }};
         - ALTER DEFAULT PRIVILEGES IN SCHEMA partman GRANT ALL ON SEQUENCES TO {{ .Values.postgres.ownerRole }};
+        # Quick-task 260524-u00 / Task B4 — bind app.tenant_id default GUC
+        # on the application role at Cluster bootstrap. Better Auth's
+        # drizzleAdapter is a module-singleton constructed once at api boot
+        # and reused for every auth request; it does NOT call set_config()
+        # per-request, so bare INSERTs into the 4 identity tables (users,
+        # sessions, account, verification) need the GUC pre-bound or
+        # tenant_id resolves to NULL and violates the NOT NULL constraint.
+        # Peer's chart-1.0.5 prod incident: sign-up failed with users.tenant_id
+        # NULL violation; fixed live by manual `ALTER ROLE openwhispr SET
+        # app.tenant_id = '00...0'`. This line bakes it into the chart so
+        # future fresh installs don't need the manual fix. Compose users
+        # are already covered by migration 0024's DO $$ ALTER ROLE block;
+        # BYOK Postgres operators need to run this SQL themselves (see
+        # chart README "Prerequisites" section).
+        #
+        # Accepted v1 single-installation-single-tenant debt — exactly one
+        # tenant exists, so no live cross-tenant exposure. v2 fix
+        # (request-scoped per-request Better Auth adapter, "D3") is in
+        # .planning/deferred-items.md and removes this need entirely.
+        # See CLAUDE.md Constraint 16 "RLS posture ledger" for the full
+        # posture documentation.
+        - ALTER ROLE {{ .Values.postgres.appRole }} SET app.tenant_id = '00000000-0000-0000-0000-000000000000';
 
   storage:
     size: {{ .Values.postgres.storageSize }}
