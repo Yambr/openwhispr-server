@@ -59,7 +59,7 @@ pooler:
   enabled: true
 
 # kind-e2e-verify-20260523 — migrate Job's image (ghcr.io/Yambr/
-# openwhispr-migrate:0.9.0-rc1) is not publicly available; the kind
+# openwhispr-migrate:1.0.1) is not publicly available; the kind
 # bringup script never builds + loads a dedicated migrate image. The api
 # image already bundles /app/packages/data/dist/migrate.cjs (used by the
 # migrate-job's `command:` which fully overrides the api ENTRYPOINT
@@ -198,7 +198,7 @@ testProbe:
   enabled: true
   image:
     repository: ghcr.io/Yambr/openwhispr-test-probe
-    tag: "0.9.0-rc1"
+    tag: "1.0.1"
     pullPolicy: IfNotPresent
   sloDeadlineMs: 300000
   # Finding 09.1-F34 — probe runs inside the cluster; host.api
