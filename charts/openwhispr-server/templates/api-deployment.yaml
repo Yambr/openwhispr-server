@@ -99,19 +99,23 @@ spec:
             {{- end }}
           startupProbe:
             httpGet:
-              path: /api/health
+              path: {{ .Values.api.healthCheck.path | default "/api/health" }}
               port: 3000
             failureThreshold: 30
             periodSeconds: 10
           readinessProbe:
             httpGet:
-              path: /api/health
+              path: {{ .Values.api.healthCheck.path | default "/api/health" }}
               port: 3000
             initialDelaySeconds: 10
             periodSeconds: 10
           livenessProbe:
             httpGet:
-              path: /api/live
+              # Was `/api/live` in 1.0.4 — that route returns 404, kubelet
+              # killed pods every ~30s. Switched to /api/health (same path
+              # as startup + readiness). Operators with a dedicated
+              # liveness route override via .Values.api.healthCheck.path.
+              path: {{ .Values.api.healthCheck.path | default "/api/health" }}
               port: 3000
             initialDelaySeconds: 30
             periodSeconds: 30

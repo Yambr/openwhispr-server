@@ -96,6 +96,11 @@ api:
   # LOCALES_DIR — api bundle is ESM with import.meta.url, worker is CJS
   # and needs an explicit path).
   extraEnv: []
+  # Override the path used by startup/readiness/liveness probes.
+  # Default `/api/health` is correct for all current apps/api routes;
+  # the dedicated `/api/live` route does NOT exist as of 1.0.5.
+  healthCheck:
+    path: "/api/health"
 
 web:
   replicas: 1
