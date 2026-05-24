@@ -22,7 +22,7 @@ tests:
     asserts:
       - matchRegex:
           path: spec.containers[0].image
-          pattern: "^ghcr\\.io/Yambr/openwhispr-test-probe:[0-9].*$"
+          pattern: "^ghcr\\.io/yambr/openwhispr-test-probe:[0-9].*$"
       - equal:
           path: spec.containers[0].name
           value: probe
@@ -68,7 +68,7 @@ tests:
     asserts:
       - equal:
           path: spec.containers[0].image
-          value: "ghcr.io/Yambr/openwhispr-test-probe:0.9.1-rc2"
+          value: "ghcr.io/yambr/openwhispr-test-probe:0.9.1-rc2"
 
   - it: renders nothing when testProbe.enabled=false
     set:

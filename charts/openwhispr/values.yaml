@@ -14,20 +14,20 @@
 # Image registry/tag defaults. Per Plan 09-04+ the api/web/worker tags
 # default to .Chart.AppVersion when empty.
 image:
-  registry: ghcr.io/Yambr
+  registry: ghcr.io/yambr
   pullPolicy: IfNotPresent
   pullSecrets: []
   api:
-    repository: ghcr.io/Yambr/openwhispr-api
+    repository: ghcr.io/yambr/openwhispr-api
     tag: ""
   web:
-    repository: ghcr.io/Yambr/openwhispr-web
+    repository: ghcr.io/yambr/openwhispr-web
     tag: ""
   worker:
-    repository: ghcr.io/Yambr/openwhispr-worker
+    repository: ghcr.io/yambr/openwhispr-worker
     tag: ""
   migrate:
-    repository: ghcr.io/Yambr/openwhispr-migrate
+    repository: ghcr.io/yambr/openwhispr-migrate
     tag: ""
 
 # Service account configuration.
@@ -151,7 +151,7 @@ postgres:
   # Tag must contain `:17.<minor>` segment per values.schema.json (T-09-02).
   # Wave 1 (09-04) publishes the real `openwhispr/cnpg-postgres-17-pgpartman`
   # image; this default tag pre-encodes the PG 17.6 minor.
-  imageName: ghcr.io/Yambr/openwhispr-cnpg-postgres-17-pgpartman:17.6-0.9.0-rc1
+  imageName: ghcr.io/yambr/openwhispr-cnpg-postgres-17-pgpartman:17.6-0.9.0-rc1
   replicas: 3
   storageSize: 20Gi
   storageClass: ""
@@ -449,7 +449,7 @@ host:
 testProbe:
   enabled: true
   image:
-    repository: ghcr.io/Yambr/openwhispr-test-probe
+    repository: ghcr.io/yambr/openwhispr-test-probe
     tag: "" # defaults to .Chart.AppVersion
     pullPolicy: IfNotPresent
   sloDeadlineMs: 300000

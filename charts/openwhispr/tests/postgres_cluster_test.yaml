@@ -70,7 +70,7 @@ tests:
         external:
           storeRef: vault-clusterstore
       postgres:
-        imageName: ghcr.io/Yambr/openwhispr-cnpg-postgres-17-pgpartman:17.6-0.9.0-rc1
+        imageName: ghcr.io/yambr/openwhispr-cnpg-postgres-17-pgpartman:17.6-0.9.0-rc1
         replicas: 3
         storageSize: 20Gi
         backup:
