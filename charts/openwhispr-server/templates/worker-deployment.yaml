@@ -89,7 +89,7 @@ spec:
               command:
                 - sh
                 - -c
-                - "pgrep -f 'node /app/dist/index.js' >/dev/null"
+                - "pgrep -f '/app/apps/worker/dist/index.cjs' >/dev/null"
             failureThreshold: 30
             periodSeconds: 10
           readinessProbe:
@@ -97,7 +97,7 @@ spec:
               command:
                 - sh
                 - -c
-                - "pgrep -f 'node /app/dist/index.js' >/dev/null"
+                - "pgrep -f '/app/apps/worker/dist/index.cjs' >/dev/null"
             initialDelaySeconds: 10
             periodSeconds: 10
           livenessProbe:
@@ -105,7 +105,7 @@ spec:
               command:
                 - sh
                 - -c
-                - "pgrep -f 'node /app/dist/index.js' >/dev/null"
+                - "pgrep -f '/app/apps/worker/dist/index.cjs' >/dev/null"
             initialDelaySeconds: 30
             periodSeconds: 30
           resources:
