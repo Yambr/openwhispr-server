@@ -63,13 +63,38 @@ type LocaleBundle = Record<TemplateId, LoadedTemplate>;
 type Bundles = Record<SupportedLocale, LocaleBundle>;
 
 /**
+ * Resolve the directory of the current module. Pure helper exported for
+ * unit testability (Quick-task 260524-u00 / Task A3).
+ *
+ * The worker is bundled by tsup with `format: ["cjs"]` (see
+ * apps/worker/tsup.config.ts). In a CJS bundle `import.meta` is undefined
+ * at runtime, so touching `import.meta.url` throws `TypeError: Cannot read
+ * properties of undefined (reading 'url')` before the worker can open any
+ * queue connection. Mirrors apps/api/scripts/check-default-secrets.ts:32-36
+ * — prefer ESM's `import.meta.url`, fall back to CJS's runtime-injected
+ * `__dirname`, degrade to empty string only when neither is available
+ * (resolveLocalesDir's readFileSync probe then surfaces a meaningful ENOENT
+ * rather than an opaque TypeError).
+ */
+export function _resolveHere(meta: ImportMeta | undefined, dirname_: string | undefined): string {
+  if (meta !== undefined && typeof meta.url === "string") {
+    return dirname(fileURLToPath(meta.url));
+  }
+  if (dirname_ !== undefined) return dirname_;
+  return "";
+}
+
+/**
  * Resolve the absolute path of the worker's locales directory. Mirrors
  * apps/api/src/i18n/init.ts:resolveLocalesDir for symmetry.
  */
 function resolveLocalesDir(): string {
   const fromEnv = process.env.LOCALES_DIR;
   if (fromEnv && fromEnv.length > 0) return fromEnv;
-  const here = dirname(fileURLToPath(import.meta.url));
+  const here = _resolveHere(
+    typeof import.meta !== "undefined" ? import.meta : undefined,
+    typeof __dirname !== "undefined" ? __dirname : undefined,
+  );
   // Source tree: <here>/locales (this module sits at src/i18n/).
   // Post-tsup dist bundle: <here>/i18n/locales (copied by Plan 10-01d).
   try {
