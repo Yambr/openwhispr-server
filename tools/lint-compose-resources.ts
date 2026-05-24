@@ -73,7 +73,17 @@ export const SHORT_LIVED_ALLOWLIST: ReadonlySet<string> = new Set<string>([
  */
 export const MEMORY_FLOORS_BYTES: Readonly<Record<string, number>> = {
   postgres: 2 * 1024 ** 3,
-  litellm: 1 * 1024 ** 3,
+  // Raised 1G→1.5G on 2026-05-24 — CI red-sweep evidence: with
+  // num_workers=2 and post-R31 stale-pycache deletion, uvicorn child
+  // workers OOM-kill at peak boot (985 MiB / 1 GiB observed locally
+  // during prisma migrate deploy + child re-spawn loop). The
+  // harness-self-check `migrate-gates-api.test.ts` reported
+  // `container openwhispr-self-test-litellm-1 is unhealthy` because the
+  // worker never bound :4000 long enough for `/health/liveliness`.
+  // Floor lives in lockstep with `charts/openwhispr/templates/litellm-
+  // deployment.yaml` `resources.limits.memory` (cross-checked by
+  // lint-compose-chart-parity).
+  litellm: Math.floor(1.5 * 1024 ** 3),
   api: 1 * 1024 ** 3,
   worker: 512 * 1024 ** 2,
   web: 384 * 1024 ** 2,

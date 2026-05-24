@@ -52,9 +52,11 @@ services:
       # via `os.environ/OPENAI_API_KEY` so the key never lands in a file.
       OPENAI_API_KEY: ${OPENAI_API_KEY:?OPENAI_API_KEY is required for the live-soak overlay}
     # Phase 20 / SR-20.1 + SR-20.2 — re-declare in overlay (T-20-03).
+    # 1.5G mirrors base — see docker-compose.yml `litellm` comment for the
+    # CI red-sweep evidence on the 1G→1.5G bump (2026-05-24).
     restart: unless-stopped
     deploy:
       resources:
         limits:
-          memory: 1G
+          memory: 1536M
           cpus: "2.0"

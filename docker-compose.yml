@@ -235,11 +235,20 @@ services:
       # in the Phase 02 self-tests. 120s gives 1.5× empirical max.
       start_period: 600s
     restart: unless-stopped
-    # Phase 20 / SR-20.1 — memory cap. Mirrors chart limits.memory: 1Gi.
+    # Phase 20 / SR-20.1 — memory cap. Mirrors chart limits.memory: 1.5Gi.
+    # Raised 1G→1.5G 2026-05-24 — `harness-self-check` CI red sweep
+    # surfaced `litellm-1 is unhealthy` because uvicorn child workers
+    # (num_workers=2) OOM-kill at peak boot when the cgroup is 1G. Local
+    # repro: docker stats reports 985 MiB/1024 MiB during prisma migrate
+    # deploy + first worker spawn; `INFO: Child process [N] died` loops
+    # in the litellm log; `/health/liveliness` never accepts long enough
+    # for compose `up --wait`. 1.5G gives ~750MB per worker + ~100MB
+    # parent + ~150MB headroom. Floor enforced by
+    # tools/lint-compose-resources.ts (MEMORY_FLOORS_BYTES.litellm).
     deploy:
       resources:
         limits:
-          memory: 1G
+          memory: 1536M
           cpus: "2.0"
 
   # Phase 2 Plan 02 — API container. Closes Phase 1 D-08 / SC#1 partial:
