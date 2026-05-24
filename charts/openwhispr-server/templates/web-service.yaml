@@ -1,0 +1,21 @@
+{{/*
+web Service — ClusterIP fronting the Next.js SSR pod on port 3001.
+*/}}
+{{- $fullname := include "openwhispr-server.fullname" . -}}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $fullname }}-web
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "openwhispr-server.labels" . | nindent 4 }}
+    app.kubernetes.io/component: web
+spec:
+  type: ClusterIP
+  selector:
+    {{- include "openwhispr-server.web.selectorLabels" . | nindent 4 }}
+  ports:
+    - name: http
+      port: 3001
+      targetPort: 3001
+      protocol: TCP
