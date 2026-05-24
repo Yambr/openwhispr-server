@@ -26,7 +26,12 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { bootStack, tearStack } from "./compose-harness.js";
+import {
+  bootStack,
+  DEFAULT_SCENARIO_ENV_OVERRIDES,
+  DEV_TOOLS_OVERLAY,
+  tearStack,
+} from "./compose-harness.js";
 
 // Lightweight EventEmitter-shaped child mock. We model the subset bootStack
 // touches: `on('close'|'error', cb)` and pipe-mode `stdout` / `stderr`
@@ -259,6 +264,151 @@ describe("bootStack — expectExit + stderr capture", () => {
     // Even on timeout, harness collects whatever stderr/logs exist so tests
     // can diagnose stuck boots.
     expect(typeof result.stderr).toBe("string");
+  });
+});
+
+describe("bootStack — default scenario env-overrides (rate-limit propagation)", () => {
+  // Source-of-truth: brief from orchestrator + memory `feedback_cjm_steps_need_unit_tests`.
+  // Ad-hoc scenario stacks (e2e-cjm-byok-<hash>) spawned with their own slim
+  // composeFiles inherit the rate-limit kill switch via two paths:
+  //
+  //   1. dev-tools overlay auto-appended to composeFiles unless the caller
+  //      opted out via `disableRateLimitOverlayAutoInclude: true`.
+  //   2. `OPENWHISPR_DISABLE_RATE_LIMIT=1` merged into envOverrides so the
+  //      authored env-file carries the value as well (defence-in-depth).
+  //
+  // Without this, Better Auth's per-IP limiter starts returning 429 after
+  // ~70 specs and the BYOK/auth-bearing follow-on scenarios cascade-fail.
+  it("merges OPENWHISPR_DISABLE_RATE_LIMIT=1 into the authored env-file by default", async () => {
+    const router = (_cmd: string, args: string[]): FakeChildSpec => {
+      if (args.includes("ps") && args.includes("-q")) return { stdout: "" };
+      return { exitCode: 0 };
+    };
+    const { spawnFn, calls } = makeSpawnRecorder(router);
+
+    await bootStack({
+      composeFiles: ["docker-compose.yml"],
+      // Caller passes a scenario-specific override; the rate-limit kill
+      // switch MUST be merged in by the harness without the caller having
+      // to remember to do it themselves.
+      envOverrides: { S3_ENDPOINT: "https://s3.corp.example.com" },
+      scratchDir,
+      scenarioId: "default-overrides-merge",
+      spawnFn,
+      waitForReadinessFn: waitOk,
+      inheritStdio: false,
+      skipUserStackStop: true,
+    });
+
+    const upCall = calls.find((c) => c.joined.includes(" up "));
+    expect(upCall, "expected an `up` call").toBeTruthy();
+    const envPath = upCall?.args[upCall.args.indexOf("--env-file") + 1] as string;
+    const contents = readFileSync(envPath, "utf8");
+    // Caller-supplied override survives the merge.
+    expect(contents).toMatch(/^S3_ENDPOINT=https:\/\/s3\.corp\.example\.com$/m);
+    // Default rate-limit kill switch is injected by the harness.
+    expect(contents).toMatch(/^OPENWHISPR_DISABLE_RATE_LIMIT=1$/m);
+  });
+
+  it("authors an env-file with the defaults even when caller passes no envOverrides", async () => {
+    const router = (_cmd: string, args: string[]): FakeChildSpec => {
+      if (args.includes("ps") && args.includes("-q")) return { stdout: "" };
+      return { exitCode: 0 };
+    };
+    const { spawnFn, calls } = makeSpawnRecorder(router);
+
+    await bootStack({
+      composeFiles: ["docker-compose.yml"],
+      // No envOverrides — pre-fix this code path skipped --env-file entirely
+      // and the scenario stack would NOT inherit the rate-limit kill switch.
+      scratchDir,
+      scenarioId: "no-caller-overrides",
+      spawnFn,
+      waitForReadinessFn: waitOk,
+      inheritStdio: false,
+      skipUserStackStop: true,
+    });
+
+    const upCall = calls.find((c) => c.joined.includes(" up "));
+    expect(upCall?.joined).toMatch(/--env-file\s+\S+\.env\s+/);
+    const envPath = upCall?.args[upCall.args.indexOf("--env-file") + 1] as string;
+    expect(readFileSync(envPath, "utf8")).toMatch(/^OPENWHISPR_DISABLE_RATE_LIMIT=1$/m);
+  });
+
+  it("auto-appends the dev-tools overlay to scenario composeFiles", async () => {
+    const router = (_cmd: string, args: string[]): FakeChildSpec => {
+      if (args.includes("ps") && args.includes("-q")) return { stdout: "" };
+      return { exitCode: 0 };
+    };
+    const { spawnFn, calls } = makeSpawnRecorder(router);
+
+    await bootStack({
+      // Caller supplies a slim list that omits dev-tools (the BYOK pattern).
+      composeFiles: ["docker-compose.yml", "compose/docker-compose.storage.yml"],
+      scratchDir,
+      scenarioId: "auto-overlay",
+      spawnFn,
+      waitForReadinessFn: waitOk,
+      inheritStdio: false,
+      skipUserStackStop: true,
+    });
+
+    const upCall = calls.find((c) => c.joined.includes(" up "));
+    expect(upCall, "expected an `up` call").toBeTruthy();
+    // The dev-tools overlay path MUST be in the argv as a `-f` operand.
+    expect(upCall?.joined).toContain(`-f ${DEV_TOOLS_OVERLAY}`);
+  });
+
+  it("does NOT double-append the dev-tools overlay when caller already included it", async () => {
+    const router = (_cmd: string, args: string[]): FakeChildSpec => {
+      if (args.includes("ps") && args.includes("-q")) return { stdout: "" };
+      return { exitCode: 0 };
+    };
+    const { spawnFn, calls } = makeSpawnRecorder(router);
+
+    await bootStack({
+      composeFiles: ["docker-compose.yml", DEV_TOOLS_OVERLAY],
+      scratchDir,
+      scenarioId: "no-double-append",
+      spawnFn,
+      waitForReadinessFn: waitOk,
+      inheritStdio: false,
+      skipUserStackStop: true,
+    });
+
+    const upCall = calls.find((c) => c.joined.includes(" up "));
+    const occurrences = upCall?.args.filter((a) => a === DEV_TOOLS_OVERLAY).length ?? 0;
+    expect(occurrences).toBe(1);
+  });
+
+  it("honours disableRateLimitOverlayAutoInclude opt-out (no overlay, no default overrides)", async () => {
+    const router = (_cmd: string, args: string[]): FakeChildSpec => {
+      if (args.includes("ps") && args.includes("-q")) return { stdout: "" };
+      return { exitCode: 0 };
+    };
+    const { spawnFn, calls } = makeSpawnRecorder(router);
+
+    await bootStack({
+      composeFiles: ["docker-compose.yml"],
+      disableRateLimitOverlayAutoInclude: true,
+      scratchDir,
+      scenarioId: "opt-out",
+      spawnFn,
+      waitForReadinessFn: waitOk,
+      inheritStdio: false,
+      skipUserStackStop: true,
+    });
+
+    const upCall = calls.find((c) => c.joined.includes(" up "));
+    expect(upCall?.joined).not.toContain(DEV_TOOLS_OVERLAY);
+    // Without caller-supplied envOverrides AND with opt-out, no --env-file
+    // is authored (legacy pre-fix behaviour preserved).
+    expect(upCall?.joined).not.toMatch(/--env-file/);
+  });
+
+  it("freezes the DEFAULT_SCENARIO_ENV_OVERRIDES constant to prevent mutation by callers", () => {
+    expect(Object.isFrozen(DEFAULT_SCENARIO_ENV_OVERRIDES)).toBe(true);
+    expect(DEFAULT_SCENARIO_ENV_OVERRIDES.OPENWHISPR_DISABLE_RATE_LIMIT).toBe("1");
   });
 });
 
