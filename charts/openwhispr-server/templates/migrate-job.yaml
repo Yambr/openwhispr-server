@@ -1,0 +1,80 @@
+{{/*
+Migration Helm hook Job — runs Drizzle migrations against the operator-
+supplied owner-URL Secret BEFORE the api/web/worker Deployments install
+(pre-install) or roll (pre-upgrade).
+
+DATABASE_URL_OWNER is read from .Values.database.ownerUrlSecretRef and
+MUST bypass any transaction-mode pooler (Drizzle DDL requires a
+session-pinned connection).
+
+Hard pins:
+  - image tag = .Values.image.migrate.tag default .Chart.AppVersion
+  - backoffLimit = .Values.migrate.backoffLimit (default 3)
+  - activeDeadlineSeconds = .Values.migrate.activeDeadlineSeconds (default 600)
+*/}}
+{{- if .Values.migrate.enabled -}}
+{{- $fullname := include "openwhispr-server.fullname" . -}}
+{{- $migrateTag := default .Chart.AppVersion .Values.image.tag -}}
+{{- if .Values.image.migrate.tag }}{{- $migrateTag = .Values.image.migrate.tag -}}{{- end }}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  # Suffix with .Release.Revision so each install/upgrade renders a new
+  # Job (k8s Job spec is immutable post-create).
+  name: {{ $fullname }}-migrate-{{ .Release.Revision }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "openwhispr-server.labels" . | nindent 4 }}
+    app.kubernetes.io/component: migrate
+    openwhispr.dev/migrate-revision: "{{ .Release.Revision }}"
+  annotations:
+    "helm.sh/hook": pre-install,pre-upgrade
+    "helm.sh/hook-weight": "0"
+    "helm.sh/hook-delete-policy": before-hook-creation
+spec:
+  ttlSecondsAfterFinished: 3600
+  backoffLimit: {{ .Values.migrate.backoffLimit }}
+  activeDeadlineSeconds: {{ .Values.migrate.activeDeadlineSeconds }}
+  template:
+    metadata:
+      labels:
+        {{- include "openwhispr-server.labels" . | nindent 8 }}
+        app.kubernetes.io/component: migrate
+    spec:
+      restartPolicy: Never
+      serviceAccountName: {{ include "openwhispr-server.serviceAccountName" . }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      containers:
+        - name: migrate
+          image: "{{ .Values.image.registry }}/{{ .Values.image.migrate.repository }}:{{ $migrateTag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          command:
+            - node
+            - /app/packages/data/dist/migrate.cjs
+          env:
+            - name: DATABASE_URL_OWNER
+              valueFrom:
+                secretKeyRef:
+                  name: {{ required "values.database.ownerUrlSecretRef.name is required when migrate.enabled=true" .Values.database.ownerUrlSecretRef.name }}
+                  key: {{ .Values.database.ownerUrlSecretRef.key }}
+            {{- with .Values.extraEnv }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir:
+            sizeLimit: 64Mi
+{{- end }}
