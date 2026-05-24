@@ -15,11 +15,49 @@ Postgres via `database.host` / `database.passwordSecretRef`.
 
 ```bash
 helm install ow-postgres oci://ghcr.io/yambr/charts/openwhispr-postgres \
-  --version 1.0.0 \
+  --version 1.1.0 \
   -f charts/openwhispr-postgres/examples/values-helm-values.yaml \
   --set-string secrets.ownerPassword=$(openssl rand -base64 24) \
   --set-string secrets.appPassword=$(openssl rand -base64 24)
 ```
+
+## Chart 1.1.0 — `app.tenant_id` rolconfig fix
+
+Chart 1.1.0 adds one line to CNPG `postInitApplicationSQL`:
+
+```sql
+ALTER ROLE <appRole> SET app.tenant_id = '00000000-0000-0000-0000-000000000000';
+```
+
+**Why:** Better Auth's `drizzleAdapter` is a module singleton
+constructed once at api boot and reused for every auth request — it
+does not call `set_config('app.tenant_id', ...)` per request. Bare
+INSERTs into the 4 identity tables (`users`, `sessions`, `account`,
+`verification`) therefore need the GUC pre-bound on the application
+role or `tenant_id` resolves to NULL and violates the NOT NULL
+constraint.
+
+Without this fix, fresh installs of `openwhispr-server` chart 1.0.5 +
+image v1.0.3 failed sign-up with `users.tenant_id NULL constraint
+violation`, requiring manual `kubectl exec ... ALTER ROLE` correction
+on every Cluster.
+
+Coverage: chart 1.1.0 fires automatically on NEW CNPG Clusters.
+Existing Clusters (operators already on chart 1.0.0) are NOT affected
+by `helm upgrade` because `postInitApplicationSQL` only runs at
+Cluster bootstrap — but those operators already applied the manual
+ALTER ROLE during the chart 1.0.5 incident, so the upgrade is a no-op
+for them.
+
+**BYOK Postgres (NOT using openwhispr-postgres chart):** operators
+running managed Postgres (RDS, Aurora, Cloud SQL, on-prem) must run
+the one-liner themselves before first install — see the
+openwhispr-server chart README "BYOK Postgres operators" section.
+
+This is accepted v1 single-installation-single-tenant debt per
+CLAUDE.md Constraint 16 (RLS posture ledger); v2 fix (request-scoped
+per-request Better Auth adapter, "D3") in
+`.planning/deferred-items.md` removes this need entirely.
 
 ## Secrets modes
 
