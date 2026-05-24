@@ -148,14 +148,21 @@ jobs:
         # all 4 overlay admin keys get values too.
         run: BOOTSTRAP_ENV_TEMPLATE=.env.full.example bash tools/bootstrap.sh
       - name: Bring up stack (default profile)
-        # storage overlay wires MinIO + S3_ENDPOINT so the api's BYOK
-        # guard (BYOK_STORAGE_REQUIRED) passes. Without it the api
-        # refuses to start. Mirrors the e2e-cjm bootStack fix in
-        # tests/e2e-cjm/support/compose-harness.ts (d480e26a).
+        # The api's BYOK guards refuse to start when ANY overlay-bound
+        # env is unset AND the matching overlay is not layered. Layer
+        # the full overlay set to satisfy every guard: storage (S3),
+        # observability (OTEL), embedded-litellm (LLM proxy), pgbouncer
+        # (production pooler), dev-tools (mailpit), ingress (Traefik).
+        # Mirrors tests/e2e-cjm/support/compose-harness.ts:COMPOSE_FILES.
         run: |
           docker compose \
             -f docker-compose.yml \
+            -f compose/docker-compose.embedded-litellm.yml \
+            -f compose/docker-compose.observability.yml \
+            -f compose/docker-compose.pgbouncer.yml \
             -f compose/docker-compose.storage.yml \
+            -f compose/docker-compose.dev-tools.yml \
+            -f compose/docker-compose.ingress.yml \
             --profile default up -d --wait
       - name: Run Playwright e2e
         run: pnpm --filter @openwhispr/web exec playwright test
