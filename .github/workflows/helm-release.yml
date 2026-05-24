@@ -12,6 +12,11 @@ on:
   push:
     tags:
       - "v*"
+      # 3-chart-split publish path — `openwhispr-server-<version>`
+      # triggers ONLY the server chart's publish job, decoupled from the
+      # monolith chart's `v*` tag space. Tag the server chart by pushing
+      # e.g. `openwhispr-server-1.0.0`.
+      - "openwhispr-server-*"
 
 permissions:
   contents: write       # release commit + PR create
@@ -24,6 +29,10 @@ concurrency:
 
 jobs:
   release:
+    # Monolith `openwhispr` chart publish path — `v*` tags only.
+    # 3-chart-split `openwhispr-server-*` tags are handled by the
+    # `release-server` job below.
+    if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
@@ -121,3 +130,65 @@ jobs:
             Auto-opened by `.github/workflows/helm-release.yml`.
           add-paths: |
             .chart-versions/previous
+
+  release-server:
+    # 3-chart-split publish path — fires ONLY on `openwhispr-server-*`
+    # tags. Pushes the server chart to its own OCI namespace,
+    # decoupled from the monolith `v*` tag space.
+    if: startsWith(github.ref, 'refs/tags/openwhispr-server-')
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Resolve server chart tag (strip openwhispr-server- prefix)
+        id: tag
+        run: |
+          ref="${GITHUB_REF_NAME#openwhispr-server-}"
+          echo "value=${ref}" >> "$GITHUB_OUTPUT"
+
+      - name: Setup Helm
+        uses: azure/setup-helm@v5
+        with:
+          version: v3.16.4
+
+      - name: Log in to GHCR
+        run: |
+          echo "${{ secrets.GITHUB_TOKEN }}" | \
+            helm registry login ghcr.io -u "${{ github.actor }}" --password-stdin
+
+      - name: Helm lint server chart
+        run: |
+          helm lint charts/openwhispr-server
+
+      - name: Helm package server chart
+        run: |
+          mkdir -p .cr-release-packages
+          helm package charts/openwhispr-server \
+            --version "${{ steps.tag.outputs.value }}" \
+            --app-version "${{ steps.tag.outputs.value }}" \
+            --destination .cr-release-packages
+
+      - name: Push server chart to GHCR OCI
+        run: |
+          # GHCR rejects uppercase in repository names — lowercase the
+          # owner slug. Server chart lives at its own OCI path
+          # (`charts/openwhispr-server`), decoupled from the monolith.
+          owner=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
+          helm push \
+            ".cr-release-packages/openwhispr-server-${{ steps.tag.outputs.value }}.tgz" \
+            "oci://ghcr.io/${owner}/charts"
+
+      - name: Configure git identity for chart-releaser
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+      - name: Run chart-releaser (GitHub Pages index)
+        uses: helm/chart-releaser-action@v1.7.0
+        with:
+          charts_dir: charts
+          skip_existing: true
+        env:
+          CR_TOKEN: ${{ secrets.GITHUB_TOKEN }}

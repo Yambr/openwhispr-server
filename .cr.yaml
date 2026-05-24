@@ -1,0 +1,15 @@
+# chart-releaser config — used by helm/chart-releaser-action in
+# .github/workflows/helm-release.yml. The action auto-discovers
+# every chart under `chart-dirs` and adds packages it can find in
+# `package-path` to the GitHub Pages index.
+#
+# 3-chart-split release: chart-releaser sees `openwhispr`,
+# `openwhispr-server`, `openwhispr-postgres`, and `openwhispr-litellm`
+# under `charts/`. With `skip-existing: true` (also set in the
+# workflow), only the NEW package emitted by `helm package` in the
+# per-tag job actually lands on gh-pages — other charts' tarballs are
+# absent from `.cr-release-packages/` so they don't get republished.
+chart-dirs:
+  - charts
+package-path: .cr-release-packages
+skip-existing: true
