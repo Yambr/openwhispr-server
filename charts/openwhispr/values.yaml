@@ -151,7 +151,7 @@ postgres:
   # Tag must contain `:17.<minor>` segment per values.schema.json (T-09-02).
   # Wave 1 (09-04) publishes the real `openwhispr/cnpg-postgres-17-pgpartman`
   # image; this default tag pre-encodes the PG 17.6 minor.
-  imageName: ghcr.io/yambr/openwhispr-cnpg-postgres-17-pgpartman:17.6-0.9.0-rc1
+  imageName: ghcr.io/yambr/openwhispr-cnpg-postgres-17-pgpartman:17.6-1.0.1
   replicas: 3
   storageSize: 20Gi
   storageClass: ""
