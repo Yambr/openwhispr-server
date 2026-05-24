@@ -1,0 +1,56 @@
+# Example: yambr deployment (peer-approved Secret naming).
+#
+# This values file is the canonical reference for the BYOK / external-
+# managed Secret layout. Operators pre-create six Kubernetes Secrets
+# (see `kubectl create secret generic …` snippets in README) and the
+# chart wires every env binding via secretKeyRef / envFrom.
+
+secrets:
+  mode: external-managed
+  secretName: openwhispr-server-secrets
+
+database:
+  appUrlSecretRef:
+    name: openwhispr-database
+    key: app-url
+  ownerUrlSecretRef:
+    name: openwhispr-database
+    key: owner-url
+
+redis:
+  enabled: true
+  urlSecretRef:
+    name: openwhispr-redis
+    key: url
+
+litellm:
+  baseUrl: http://openwhispr-litellm:4000
+  masterKeySecretRef:
+    name: openwhispr-litellm
+    key: master-key
+
+s3:
+  envFromSecret: openwhispr-s3
+
+smtp:
+  envFromSecret: openwhispr-smtp
+
+auth:
+  envFromSecret: openwhispr-auth
+
+# Operator brings own ingress; chart renders no Ingress/IngressRoute/
+# Gateway resources.
+ingress:
+  controller: none
+
+# Single-node RKE2; replicas pinned.
+api:
+  replicas: 1
+web:
+  replicas: 1
+worker:
+  replicas: 1
+
+observability:
+  serviceMonitor:
+    enabled: false
