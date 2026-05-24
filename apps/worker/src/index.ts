@@ -70,7 +70,6 @@ import "./otel-bootstrap.js";
 import { createEmailSender } from "@openwhispr/email";
 import { makePino } from "@openwhispr/observability";
 import { type ConnectionOptions, Worker } from "bullmq";
-import { Redis as IORedis } from "ioredis";
 import { Pool } from "pg";
 import { loadWorkerConfig } from "./config/worker-config.js";
 import { makeAppOwnerPool } from "./db/app-pool.js";
@@ -93,6 +92,7 @@ import {
 } from "./jobs/usage-rollup-daily.js";
 import { runShutdown } from "./lib/shutdown.js";
 import { drainStaleVkrKeys } from "./lib/vkr-drain.js";
+import { buildRedisConnection } from "./queue/connection.js";
 import { buildQueueRegistry, closeQueueRegistry, QUEUE_NAMES } from "./queues.js";
 import { installSchedulers } from "./scheduler.js";
 
@@ -127,12 +127,14 @@ const templateRenderer = createTemplateRenderer();
 // side effect). See that module for the Plan 14-05 rationale.
 
 async function main(): Promise<void> {
-  const redis = new IORedis({
-    host: process.env["VALKEY_HOST"] ?? "valkey",
-    port: Number(process.env["VALKEY_PORT"] ?? "6379"),
-    ...(process.env["VALKEY_PASSWORD"] ? { password: process.env["VALKEY_PASSWORD"] } : {}),
-    maxRetriesPerRequest: null,
-  });
+  // Quick-task 260524-u00 / Task A4 — VALKEY_URL parity with api/web.
+  // Pre-fix the worker read split VALKEY_HOST/PORT/PASSWORD env (asymmetric
+  // with api's apps/api/src/plugins/rate-limit.ts:193 `new Redis(VALKEY_URL)`
+  // pattern). The chart projected VALKEY_URL from a single secretRef but
+  // operators had to extraEnv the split keys for the worker — peer's
+  // chart-1.0.5 values-yambr.yaml carries that workaround. buildRedisConnection
+  // centralises URL parsing so all three services consume the same secret shape.
+  const redis = buildRedisConnection();
   const connection: ConnectionOptions = redis;
 
   // Phase 14 / Plan 05 — transient cleanup of stale BullMQ keys from

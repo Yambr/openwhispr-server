@@ -126,9 +126,10 @@ services:
     env_file: .env
     environment:
       NODE_ENV: production
-      VALKEY_HOST: valkey
-      VALKEY_PORT: "6379"
-      VALKEY_PASSWORD: ${VALKEY_PASSWORD}
+      # Quick-task 260524-u00 / Task A4 — worker now parses VALKEY_URL
+      # natively (apps/worker/src/queue/connection.ts). Replaces split
+      # VALKEY_HOST/PORT/PASSWORD env. Single secret shape across services.
+      VALKEY_URL: ${VALKEY_URL:-redis://:${VALKEY_PASSWORD}@valkey:6379/0}
       LITELLM_BASE_URL: ${LITELLM_BASE_URL:?LITELLM_BASE_URL is required for Variant B — set it in .env to the corporate LiteLLM URL}
       LITELLM_VIRTUAL_KEY: ${LITELLM_VIRTUAL_KEY:-}
       LOCALES_DIR: /app/locales

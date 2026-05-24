@@ -668,9 +668,10 @@ services:
     env_file: .env
     environment:
       NODE_ENV: production
-      VALKEY_HOST: valkey
-      VALKEY_PORT: "6379"
-      VALKEY_PASSWORD: ${VALKEY_PASSWORD}
+      # Quick-task 260524-u00 / Task A4 — worker now parses VALKEY_URL
+      # natively (apps/worker/src/queue/connection.ts). Replaces split
+      # VALKEY_HOST/PORT/PASSWORD env. Single secret shape across services.
+      VALKEY_URL: ${VALKEY_URL:-redis://:${VALKEY_PASSWORD}@valkey:6379/0}
       # Direct postgres connection (NOT pgbouncer). Defaults to the same
       # owner credentials used by the migrate runner; an operator can set
       # LITELLM_READ_DATABASE_URL explicitly to point at a different
