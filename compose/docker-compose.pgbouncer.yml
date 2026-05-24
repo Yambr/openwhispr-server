@@ -20,7 +20,16 @@ services:
       pgbouncer:
         condition: service_healthy
     environment:
-      DATABASE_URL: postgresql://${POSTGRES_APP_USER:-openwhispr_app}:${POSTGRES_APP_PASSWORD}@pgbouncer:5432/${POSTGRES_DB:-openwhispr}
+      # `?sslmode=disable` is REQUIRED. The pgbouncer container in this
+      # stack does not terminate client-side TLS (see
+      # compose/pgbouncer/pgbouncer.ini — no client_tls_* keys), so the
+      # `pg` driver in packages/data/src/client.ts MUST be told to skip
+      # TLS. Without this suffix, every api query short-circuits with
+      # `Error: The server does not support SSL connections` and routes
+      # like /api/auth/sign-up/email return HTTP 500 (regression caught by
+      # Web e2e CI run 26350470878). Mirrors the canonical pattern in
+      # .env.full.example:56 / .env.slim.example:308.
+      DATABASE_URL: postgresql://${POSTGRES_APP_USER:-openwhispr_app}:${POSTGRES_APP_PASSWORD}@pgbouncer:5432/${POSTGRES_DB:-openwhispr}?sslmode=disable
     # Phase 20 / SR-20.1 + SR-20.2 — re-declare in overlay (T-20-03).
     restart: unless-stopped
     deploy:

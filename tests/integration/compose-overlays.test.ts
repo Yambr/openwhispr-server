@@ -337,6 +337,15 @@ describe("Phase 14 / Plan 14-03 — pgbouncer overlay", () => {
     expect(dep.pgbouncer?.condition).toBe("service_healthy");
     const env = envMap(api);
     expect(env.DATABASE_URL).toMatch(/pgbouncer:5432/);
+    // Regression: the pgbouncer container in this stack does NOT terminate
+    // client-side TLS (see compose/pgbouncer/pgbouncer.ini — no client_tls_*
+    // keys), so the `pg` driver in packages/data/src/client.ts MUST be told
+    // to skip TLS via `?sslmode=disable`. Without this suffix, every api
+    // query short-circuits with `Error: The server does not support SSL
+    // connections` (observed in Web e2e CI run 26350470878 where
+    // /api/auth/sign-up/email returned HTTP 500 in 30ms). Mirrors the
+    // canonical pattern in .env.full.example:56 / .env.slim.example:308.
+    expect(env.DATABASE_URL).toMatch(/[?&]sslmode=disable\b/);
   });
 
   it("re-injects migrate.depends_on.pgbouncer: service_healthy (sequencing barrier)", () => {
