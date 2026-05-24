@@ -69,7 +69,7 @@ import { buildFoldersCreateRoutes, type FoldersCreateDeps } from "./folders/crea
 import { buildFoldersDeleteRoutes, type FoldersDeleteDeps } from "./folders/delete.js";
 import { buildFoldersListRoutes, type FoldersListDeps } from "./folders/list.js";
 import { buildFoldersUpdateRoutes, type FoldersUpdateDeps } from "./folders/update.js";
-import { buildLocaleRoutes } from "./locale.js";
+import { buildLocaleRoutes, type LocaleDeps } from "./locale.js";
 import {
   buildNoteRecordingConfigRoutes,
   type NoteRecordingConfigDeps,
@@ -281,6 +281,10 @@ export interface AllRoutesDeps {
  */
 export function buildAllRoutes(deps: AllRoutesDeps): readonly RoutePlugin[] {
   const checkUserDeps: CheckUserDeps = { db: deps.db };
+  // Quick-task 260524-u00 / Task A5 — POST /api/locale persists users.locale
+  // when the caller is authenticated; deps now carry the same db handle as
+  // checkUserDeps so the route can UPDATE under withTenant().
+  const localeDeps: LocaleDeps = { db: deps.db };
   const verificationDeps: VerificationStatusDeps = {
     db: deps.db,
     auth: deps.auth,
@@ -328,7 +332,7 @@ export function buildAllRoutes(deps: AllRoutesDeps): readonly RoutePlugin[] {
     // negotiated locale). Registered UNCONDITIONALLY: no deps, no auth,
     // payload of the @cjm-traefik-host-split Gherkin oracle proving the
     // api.localhost host-split routing reaches this Fastify container.
-    buildLocaleRoutes(),
+    buildLocaleRoutes(localeDeps),
     buildAuthProvidersRoutes(authProvidersDeps),
     buildCapabilitiesRoutes(capabilitiesDeps),
     buildSetupStateRoutes(setupStateDeps),
