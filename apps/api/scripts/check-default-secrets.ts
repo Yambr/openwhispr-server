@@ -58,7 +58,12 @@ const deny = readFileSync(denyPath, "utf8")
   .map((l) => l.trim())
   .filter((l) => l.length > 0 && !l.startsWith("#"));
 
-const REQUIRED_KEYS = [
+// Compose-era key list: full 10-key contract assumed by the default
+// docker-compose self-host profile. POSTGRES_*, PGBOUNCER_*, VALKEY_*,
+// MINIO_*, TRAEFIK_*, GRAFANA_*, BACKUP_AGE_IDENTITY all originate from
+// services the compose bundle stands up itself, so the entrypoint MUST
+// refuse to start if any are unset or carry deny-list values.
+const COMPOSE_REQUIRED_KEYS = [
   "POSTGRES_OWNER_PASSWORD",
   "POSTGRES_APP_PASSWORD",
   "PGBOUNCER_ADMIN_PASSWORD",
@@ -70,6 +75,29 @@ const REQUIRED_KEYS = [
   "BACKUP_AGE_IDENTITY",
   "BETTER_AUTH_SECRET",
 ] as const;
+
+// K8s-mode key list: only the application-secret essentials the app
+// process itself reads directly. Everything else (Postgres / Valkey /
+// MinIO / Traefik / Grafana / age-backup) is operator-managed via
+// Kubernetes Secrets bound to platform primitives outside this
+// container's purview. MASTER_KEK + BETTER_AUTH_SECRET MUST still be
+// enforced — they are the in-app crypto roots and a deny-list value
+// here is a CRIT-FIX-class regression.
+const K8S_REQUIRED_KEYS = ["MASTER_KEK", "BETTER_AUTH_SECRET"] as const;
+
+// OPENWHISPR_DEPLOYMENT_MODE kill-switch (downstream Yambr fix).
+// Case-insensitive + whitespace-tolerant — operators paste from kubectl
+// describe / Helm values output where trailing newlines and capital-K
+// variants are common-typo territory.
+const deploymentMode = (process.env.OPENWHISPR_DEPLOYMENT_MODE ?? "").trim().toLowerCase();
+const isK8sMode = deploymentMode === "k8s";
+
+const REQUIRED_KEYS = isK8sMode ? K8S_REQUIRED_KEYS : COMPOSE_REQUIRED_KEYS;
+
+// One-line stderr log of the chosen mode so operators can audit which
+// gate the entrypoint applied. Written to stderr (fd 2) to preserve
+// stdout for any downstream structured-log consumer.
+process.stderr.write(`check-default-secrets: deployment mode = ${isK8sMode ? "k8s" : "compose"}\n`);
 
 const offenders: string[] = [];
 for (const k of REQUIRED_KEYS) {
