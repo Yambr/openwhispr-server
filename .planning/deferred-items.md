@@ -436,3 +436,44 @@ are either:
 
 If a cold item resurfaces (test failure, prod alert, audit hit),
 promote it back into this file with current date + repro.
+
+## helm-upgrade-matrix N-1 image-resolution backlog (2026-05-24)
+
+**Symptom**: `helm-upgrade-matrix` N-1 install times out at 10m (`context
+deadline exceeded`). Pre-flight (chart resolution, secret schema) passes
+on chart `cce3ecaf+`. Failure mode is post-render — pods don't reach
+Ready.
+
+**Suspected root cause**: N-1 chart (`/tmp/charts-prev/charts/openwhispr`,
+previous tagged release) still references images that no longer exist
+under the legacy Docker Hub `openwhispr/*` namespace — the entire
+`openwhispr/postgres:17.5-pgpartman` and likely api/worker/web image
+references were swapped to `ghcr.io/yambr/*` in commit chain
+`49d53f48..4197c5b1`. N-1 chart still points at the deleted images →
+imagePullBackoff → 10m deadline expires.
+
+**Why this is hard to fix incrementally**:
+1. Cannot mutate N-1 chart (it's a tagged release; rewriting history is
+   backward-incompatible).
+2. Cannot republish to Docker Hub `openwhispr/*` (CI flips are precisely
+   to abandon Docker Hub).
+3. Must wait until the FIRST chart release on the new GHCR-only image set
+   ships, then N-1-vs-N matrix becomes meaningful again (both sides on
+   GHCR).
+
+**Mitigations**:
+- A: skip `helm-upgrade-matrix` until next chart release (`continue-on-
+  error: true` is BANNED per HARD RULES — instead, gate the job on
+  `vars.HAS_GHCR_CHART_RELEASE == 'true'` or similar).
+- B: re-tag GHCR images with the OLD Docker Hub names as aliases to
+  satisfy the N-1 chart's references.
+- C: cut a "transition" chart release on current main, then re-enable
+  matrix once that becomes the N-1.
+
+**Recommended next action**: cut the transition chart release (option C).
+The chart publish path is already wired in `release.yml` / 
+`helm-release.yml`. Once a single GHCR-image-based chart release exists,
+matrix N-1 will pull GHCR images and pass.
+
+**Out of current session scope** — first chart release is a separate
+sequenced task; not blocked on a small code fix.
