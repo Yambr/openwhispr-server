@@ -97,6 +97,41 @@ export const DEFAULT_BOOT_TIMEOUT_MS = 240_000;
 /** Default scratch dir for envOverrides temp files (gitignored). */
 export const DEFAULT_SCRATCH_DIR = resolve(REPO_ROOT, "tests/e2e-cjm/.scratch");
 
+/**
+ * Path of the dev-tools overlay that injects `OPENWHISPR_DISABLE_RATE_LIMIT=1`
+ * directly into the api service `environment:` block. The slim e2e-cjm
+ * sweep makes hundreds of `/api/auth/*` calls per worker; without this
+ * override Better Auth's per-IP anti-abuse limiter starts returning
+ * HTTP 429 around the 70th spec and cascades follow-on auth-bearing
+ * scenarios into 401/redirect failure modes.
+ *
+ * Ad-hoc scenario stacks (e.g. `e2e-cjm-byok-<hash>`) spawned by
+ * {@link bootStack} with their own `composeFiles` list do NOT pick up
+ * the outer Makefile-booted overlay set — so the harness defensively
+ * appends this overlay to every scenario boot unless the caller opts
+ * out via {@link BootStackOptions.disableRateLimitOverlayAutoInclude}.
+ */
+export const DEV_TOOLS_OVERLAY = "compose/docker-compose.dev-tools.yml";
+
+/**
+ * Default per-scenario envOverrides merged with the caller-supplied map.
+ * Keys named here are inherited by every spawned scenario stack unless
+ * the caller's `envOverrides` shadows them. This is the "scenario stacks
+ * inherit the rate-limit kill switch by default" guarantee that prevents
+ * the BYOK loud-fail / slim-core scenarios from being starved by Better
+ * Auth's per-IP limiter when the sweep runs auth-heavy specs back-to-back.
+ *
+ * Source-of-truth: `compose/docker-compose.dev-tools.yml` (the production
+ * overlay sets the same value for the outer e2e-cjm stack). This default
+ * exists to mirror that posture on per-scenario stacks where the overlay
+ * file alone is not sufficient (because base `docker-compose.yml` does
+ * not declare `OPENWHISPR_DISABLE_RATE_LIMIT` in its api env block, so
+ * `--env-file` substitution is a no-op without the overlay also present).
+ */
+export const DEFAULT_SCENARIO_ENV_OVERRIDES: Readonly<Record<string, string>> = Object.freeze({
+  OPENWHISPR_DISABLE_RATE_LIMIT: "1",
+});
+
 /** Default budget when expectExit is set: short window for fast-fail boots. */
 export const DEFAULT_EXPECT_EXIT_TIMEOUT_MS = 15_000;
 /** Default poll interval for the api-container exit-status loop. */
@@ -154,6 +189,15 @@ export interface BootStackOptions {
   expectExitTimeoutMs?: number;
   /** Override the expect-exit polling interval (default 500ms). */
   expectExitIntervalMs?: number;
+  /**
+   * Opt out of the auto-include of `compose/docker-compose.dev-tools.yml`
+   * and the auto-merge of {@link DEFAULT_SCENARIO_ENV_OVERRIDES}. Defaults
+   * to `false` — every scenario inherits the rate-limit kill switch + the
+   * dev-tools overlay unless the caller explicitly opts out. Set to `true`
+   * for scenarios that need to assert production-shape rate-limit
+   * behaviour (none today; reserved for future contract tests).
+   */
+  disableRateLimitOverlayAutoInclude?: boolean;
 }
 
 export interface BootStackResult {
@@ -354,7 +398,15 @@ async function pollApiExit(
  */
 export async function bootStack(opts: BootStackOptions = {}): Promise<BootStackResult> {
   const projectName = opts.projectName ?? E2E_PROJECT;
-  const composeFiles = opts.composeFiles ?? COMPOSE_FILES;
+  const baseComposeFiles = opts.composeFiles ?? COMPOSE_FILES;
+  // Defensive auto-include: scenario stacks that select their own slim
+  // compose-file set (e.g. BYOK loud-fail scenarios) miss the rate-limit
+  // kill switch the outer e2e-cjm stack gets via the dev-tools overlay.
+  // Append the overlay unless the caller explicitly opted out.
+  const composeFiles =
+    opts.disableRateLimitOverlayAutoInclude || baseComposeFiles.includes(DEV_TOOLS_OVERLAY)
+      ? baseComposeFiles
+      : [...baseComposeFiles, DEV_TOOLS_OVERLAY];
   const healthUrl = opts.healthUrl ?? DEFAULT_HEALTH_URL;
   const timeoutMs = opts.timeoutMs ?? DEFAULT_BOOT_TIMEOUT_MS;
   const waitFn = opts.waitForReadinessFn ?? waitForReadiness;
@@ -381,10 +433,23 @@ export async function bootStack(opts: BootStackOptions = {}): Promise<BootStackR
   // 2. Author the temp env file BEFORE the up call, so compose picks it up
   //    via --env-file. Phase 14 / Plan 14-07 deviation: NO process.env
   //    mutation (per CLAUDE.md anti-workaround).
+  //
+  //    The default overrides ({@link DEFAULT_SCENARIO_ENV_OVERRIDES}) are
+  //    merged FIRST so caller-supplied overrides win on key collision.
+  //    The temp file is authored even when the caller supplied no
+  //    overrides, so the rate-limit kill switch reaches every spawned
+  //    scenario stack (paired with the auto-included dev-tools overlay
+  //    above; the overlay's `environment:` block declares the var, the
+  //    env-file just makes sure variable substitution stays consistent
+  //    if a future overlay refactor switches to `${VAR}` form).
   let envFilePath: string | undefined;
-  if (opts.envOverrides) {
+  const mergedOverrides: Record<string, string | undefined> | undefined =
+    opts.disableRateLimitOverlayAutoInclude
+      ? opts.envOverrides
+      : { ...DEFAULT_SCENARIO_ENV_OVERRIDES, ...(opts.envOverrides ?? {}) };
+  if (mergedOverrides) {
     const scenarioId = opts.scenarioId ?? `cjm-${Date.now()}`;
-    envFilePath = writeEnvOverrideFile(scratchDir, scenarioId, opts.envOverrides);
+    envFilePath = writeEnvOverrideFile(scratchDir, scenarioId, mergedOverrides);
   }
 
   // 3. `compose -p e2e-cjm [--env-file …] -f docker-compose.yml … --profile default up -d [--wait]`
