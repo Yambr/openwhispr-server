@@ -11,6 +11,38 @@ record. Keep this file under ~200 lines.
 
 ---
 
+## helm-unittest port to 3-chart shape
+
+**Discovered:** 2026-05-24 executing `.planning/quick/20260523-3chart-split/PLAN.md` (Step 5 / Advisor #2 verdict 4c).
+
+The 28 monolith helm-unittest specs from `charts/openwhispr/tests/` were
+archived to `charts-archive/openwhispr-unittest-pre-split/` (outside
+`charts/` so `helm lint charts/*` does not parse them). Each spec asserts
+against the old monolith `openwhispr.*` helper names and the full
+9-component template inventory.
+
+The 3-chart split (openwhispr-server / -postgres / -litellm) ships
+fresh minimal helm-unittest specs (3-5 per chart) covering the
+critical paths: secret-ref defaults resolve, image tags pinned,
+ServiceMonitor/IngressRoute/HTTPRoute toggles work, ingress.controller
+matrix (traefik | gateway-api | none), secrets.mode matrix (helm-values
+| eso | external-managed).
+
+**Deferred:** porting the full 28-file matrix to the 3-chart shape (api
+hardening assertions, OTel collector RBAC, cert-manager ACME flag matrix,
+storage/mailpit toggles, examples-render coverage for all 13 overlay
+files). Multi-day effort; not blocking v1.0.0 release.
+
+**Fix (own phase):** "Port pre-split helm-unittest specs to 3-chart
+layout". Each archived spec maps to ONE of the 3 new charts; rewrite
+templates list + per-chart helper names. Acceptance: every assertion
+in the archived spec set has an equivalent in one of the 3 new
+charts/openwhispr-*/tests/ dirs. Until then, the smoke spec set + CI
+`helm template` matrix + `tools/lint-compose-chart-parity.ts` are
+the only chart-rendering coverage.
+
+---
+
 ## CI `test` job — accumulated integration-test regressions
 
 **Discovered:** 2026-05-23 running v2.4 CI on main (run 26337800406 / job 77534390453).
