@@ -21,7 +21,7 @@
 // the fixture rejects fast so callers can `describe.skip` from beforeAll
 // without paying the Docker connection-attempt timeout.
 //
-// Plan 03 retry #4 — image pinned to `openwhispr/postgres:17.5-pgpartman`
+// Plan 03 retry #4 — image pinned to `ghcr.io/yambr/openwhispr-postgres-17-pgpartman:17.5-bootstrap-1`
 // (built locally via compose/postgres/Dockerfile). Migration 0014 invokes
 // partman.create_parent, which requires pg_partman 5.x installed in the
 // `partman` schema. Plan 02 originally shipped this fixture pinned to
@@ -44,7 +44,8 @@ let cached: Promise<StartedPostgreSqlContainer> | null = null;
  * D-22 — this is a LOCAL image, not a registry pull. CI builds it via
  * `make build-pg-partman`; developers run the same target on first use.
  */
-export const SHARED_POSTGRES_IMAGE = "openwhispr/postgres:17.5-pgpartman";
+export const SHARED_POSTGRES_IMAGE =
+  "ghcr.io/yambr/openwhispr-postgres-17-pgpartman:17.5-bootstrap-1";
 
 /**
  * Lazily start (or attach to, via `withReuse()`) a Postgres 17.5 +

@@ -49,7 +49,7 @@ describe.skipIf(dockerSkipped)(
     // `postgres:17-alpine`, which lacks pg_partman. Migration 0014 invokes
     // partman.create_parent, so any integration test that runs the full
     // migration set against the shared container is wedged until the image
-    // is swapped for `openwhispr/postgres:17.5-pgpartman`. This assertion
+    // is swapped for `ghcr.io/yambr/openwhispr-postgres-17-pgpartman:17.5-bootstrap-1`. This assertion
     // is the RED leg of the forward-fix: the extension MUST exist in the
     // partman schema after provisionPgPartman() runs on the shared container.
     let pool: Pool;

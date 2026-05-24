@@ -47,7 +47,9 @@ async function bootMigrated(): Promise<Booted> {
   // CREATEROLE + GRANT ADMIN OPTION, so migration 0003 (ALTER ROLE
   // openwhispr_app SET app.tenant_id …) failed with PG 42501; the helper
   // grants both, transitively closing D-11.
-  const container = await new PostgreSqlContainer("openwhispr/postgres:17.5-pgpartman")
+  const container = await new PostgreSqlContainer(
+    "ghcr.io/yambr/openwhispr-postgres-17-pgpartman:17.5-bootstrap-1",
+  )
     .withDatabase("openwhispr")
     .withUsername("postgres_super")
     .withPassword("super-pw")

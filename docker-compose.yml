@@ -47,7 +47,7 @@ services:
       dockerfile: Dockerfile
       args:
         PG_PARTMAN_VERSION: "5.2.4"
-    image: openwhispr/postgres:17.5-pgpartman
+    image: ghcr.io/yambr/openwhispr-postgres-17-pgpartman:17.5-bootstrap-1
     networks: [openwhispr_internal]
     environment:
       # USER names are canonical (not secrets) — slim-template (5-key

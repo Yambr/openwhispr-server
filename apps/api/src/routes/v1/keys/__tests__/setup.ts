@@ -46,12 +46,12 @@ export interface BootedPostgres {
 
 // Phase 6 / Plan 02 — migration 0014 converts audit_log to a monthly
 // RANGE-partitioned parent managed by pg_partman 5.2.4. The custom
-// `openwhispr/postgres:17.5-pgpartman` image ships the extension files
+// `ghcr.io/yambr/openwhispr-postgres-17-pgpartman:17.5-bootstrap-1` image ships the extension files
 // (built by compose/postgres/Dockerfile); tests that apply the full
 // migration set MUST use this image and CREATE EXTENSION pg_partman
 // before running migrate(). Without the switch, migration 0014 fails
 // with `schema "partman" does not exist`.
-const PARTMAN_IMAGE = "openwhispr/postgres:17.5-pgpartman";
+const PARTMAN_IMAGE = "ghcr.io/yambr/openwhispr-postgres-17-pgpartman:17.5-bootstrap-1";
 
 export async function bootMigratedPostgres(): Promise<BootedPostgres> {
   const ownerPw = "owner-pw-test";

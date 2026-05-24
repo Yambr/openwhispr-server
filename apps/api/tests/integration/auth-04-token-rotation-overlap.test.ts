@@ -85,7 +85,9 @@ beforeAll(async () => {
   process.env.MASTER_KEK = process.env.MASTER_KEK ?? Buffer.alloc(32).toString("base64url");
   process.env.OPENWHISPR_KEY_PROVIDER = process.env.OPENWHISPR_KEY_PROVIDER ?? "env";
 
-  container = await new PostgreSqlContainer("openwhispr/postgres:17.5-pgpartman")
+  container = await new PostgreSqlContainer(
+    "ghcr.io/yambr/openwhispr-postgres-17-pgpartman:17.5-bootstrap-1",
+  )
     .withDatabase("openwhispr")
     .withUsername("postgres_super")
     .withPassword("super-pw")

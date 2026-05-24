@@ -51,7 +51,9 @@ beforeAll(async () => {
   // same shape that `packages/data/src/__tests__/helpers.ts`
   // `bootMigratedPostgres` builds for unit tests; we re-do it inline here
   // to keep the e2e suite free of cross-package internal imports.
-  container = await new PostgreSqlContainer("openwhispr/postgres:17.5-pgpartman")
+  container = await new PostgreSqlContainer(
+    "ghcr.io/yambr/openwhispr-postgres-17-pgpartman:17.5-bootstrap-1",
+  )
     .withDatabase("openwhispr")
     .withUsername("postgres_super")
     .withPassword("super-pw")

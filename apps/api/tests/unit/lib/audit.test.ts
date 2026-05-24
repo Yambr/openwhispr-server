@@ -46,7 +46,7 @@ const MIGRATIONS_FOLDER = resolve(
   "data",
   "migrations",
 );
-const PARTMAN_IMAGE = "openwhispr/postgres:17.5-pgpartman";
+const PARTMAN_IMAGE = "ghcr.io/yambr/openwhispr-postgres-17-pgpartman:17.5-bootstrap-1";
 
 let container: StartedPostgreSqlContainer;
 
