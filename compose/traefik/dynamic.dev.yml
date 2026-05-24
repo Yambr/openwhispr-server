@@ -38,6 +38,21 @@ http:
       entryPoints: [web, websecure]
       tls: {}
 
+    # Phase 15 / D-22 / R32 — `app.localhost` is the canonical alias
+    # documented in dynamic.dev.yml's header comment (line 18) and used
+    # by `tests/conformance/ui-spec/playwright.config.ts:34` as the
+    # axe-baseline + e2e-cjm `baseURL`. The base dynamic.yml only
+    # routes `app.${PUBLIC_DOMAIN}` in production; the dev/test alias
+    # was never declared, so every axe probe got Traefik's default
+    # 404-page (which itself fails 5 WCAG rules: no <title>, no lang,
+    # etc.). Reuse the same `web-svc` backend — `app` and `web` are the
+    # same Next.js shell behind two host aliases.
+    web-app-alias:
+      rule: "Host(`app.localhost`)"
+      service: web-svc
+      entryPoints: [web, websecure]
+      tls: {}
+
   services:
     web-svc:
       loadBalancer:
