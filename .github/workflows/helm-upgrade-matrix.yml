@@ -121,7 +121,7 @@ jobs:
       - name: Generate ephemeral CI secrets
         id: secrets
         run: |
-          for k in litellmMasterKey openrouterApiKey openaiApiKey pyannoteApiKey hfToken postgresOwnerPassword postgresAppPassword pgbouncerAdminPassword betterAuthSecret; do
+          for k in litellmMasterKey openrouterApiKey openaiApiKey pyannoteApiKey hfToken postgresOwnerPassword postgresAppPassword pgbouncerAdminPassword betterAuthSecret valkeyPassword minioRootPassword traefikAdminPassword grafanaAdminPassword masterKek backupAgeIdentity; do
             v=$(openssl rand -base64 32 | tr -d '\n=' | cut -c1-40)
             echo "${k}=${v}" >> "$GITHUB_OUTPUT"
           done
@@ -157,6 +157,12 @@ jobs:
             --set-string secrets.postgresAppPassword=${{ steps.secrets.outputs.postgresAppPassword }} \
             --set-string secrets.pgbouncerAdminPassword=${{ steps.secrets.outputs.pgbouncerAdminPassword }} \
             --set-string secrets.betterAuthSecret=${{ steps.secrets.outputs.betterAuthSecret }} \
+            --set-string secrets.valkeyPassword=${{ steps.secrets.outputs.valkeyPassword }} \
+            --set-string secrets.minioRootPassword=${{ steps.secrets.outputs.minioRootPassword }} \
+            --set-string secrets.traefikAdminPassword=${{ steps.secrets.outputs.traefikAdminPassword }} \
+            --set-string secrets.grafanaAdminPassword=${{ steps.secrets.outputs.grafanaAdminPassword }} \
+            --set-string secrets.masterKek=${{ steps.secrets.outputs.masterKek }} \
+            --set-string secrets.backupAgeIdentity=${{ steps.secrets.outputs.backupAgeIdentity }} \
             --wait --timeout 10m
 
       - name: Seed deterministic test data into N-1 cluster
@@ -179,6 +185,12 @@ jobs:
             --set-string secrets.postgresAppPassword=${{ steps.secrets.outputs.postgresAppPassword }} \
             --set-string secrets.pgbouncerAdminPassword=${{ steps.secrets.outputs.pgbouncerAdminPassword }} \
             --set-string secrets.betterAuthSecret=${{ steps.secrets.outputs.betterAuthSecret }} \
+            --set-string secrets.valkeyPassword=${{ steps.secrets.outputs.valkeyPassword }} \
+            --set-string secrets.minioRootPassword=${{ steps.secrets.outputs.minioRootPassword }} \
+            --set-string secrets.traefikAdminPassword=${{ steps.secrets.outputs.traefikAdminPassword }} \
+            --set-string secrets.grafanaAdminPassword=${{ steps.secrets.outputs.grafanaAdminPassword }} \
+            --set-string secrets.masterKek=${{ steps.secrets.outputs.masterKek }} \
+            --set-string secrets.backupAgeIdentity=${{ steps.secrets.outputs.backupAgeIdentity }} \
             --wait --timeout 10m
 
       - name: helm test (DEPLOY-05 SLO probe)
