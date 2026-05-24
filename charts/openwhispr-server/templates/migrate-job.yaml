@@ -42,7 +42,10 @@ spec:
         app.kubernetes.io/component: migrate
     spec:
       restartPolicy: Never
-      serviceAccountName: {{ include "openwhispr-server.serviceAccountName" . }}
+      # Use the migrate-specific ServiceAccount (also a hook, weight -10)
+      # so this pod is admitted even when the main app SA hasn't been
+      # created yet (Helm hooks fire before non-hook resources).
+      serviceAccountName: {{ include "openwhispr-server.serviceAccountName" . }}-migrate
       securityContext:
         {{- toYaml .Values.podSecurityContext | nindent 8 }}
       containers:
