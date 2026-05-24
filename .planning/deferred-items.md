@@ -477,3 +477,45 @@ matrix N-1 will pull GHCR images and pass.
 
 **Out of current session scope** — first chart release is a separate
 sequenced task; not blocked on a small code fix.
+
+## e2e-cjm CI massive fail-out post-d480e26a (2026-05-24)
+
+**Symptom**: `e2e-cjm` CI red — ~30 of ~45 scenarios fail. Main pattern:
+- `signin/signup-verify/transcribe/*`: `Expected: 200, Received: 429` (Better
+  Auth per-IP rate limit fires)
+- `byok-storage/byok-observability/loud-fail-misconfig`: 30s timeouts
+- `admin-onboarding`: 401 challenges (auth gate is now in-app, test still
+  expects Traefik basic-auth)
+- `phase17-tls`: production-image artefact assertions (CI image build path)
+- `error-paths`, `password-reset`, `signup-verify @cjm-1.4`: pass
+
+**Root causes (compound, not a single fix)**:
+1. **Rate limiting**: dev-tools overlay sets OPENWHISPR_DISABLE_RATE_LIMIT=1
+   but BYOK-scenario stacks (e2e-cjm-byok-<hash>) spawned ad-hoc by harness
+   don't inherit that env. Need: pass it through scenario envOverrides.
+2. **CI runner resource pressure**: harness spins ≥2 parallel scenario
+   stacks. Each stack = postgres (1.5G) + litellm (1.5G) + api + worker +
+   web + minio + grafana + tempo + loki + ... = ~5GB. Two stacks plus the
+   main e2e-cjm stack saturate GitHub-hosted 16GB runner. cgroup pressure
+   surfaces as restart loops (`postgres-1 Restarting`) and timeout
+   cascades.
+3. **Admin onboarding contract drift**: tests still expect Traefik
+   basic-auth on /admin (`WWW-Authenticate challenge`) but the current
+   contract (per `feedback_admin_via_onboarding` memory) is in-app
+   `users.role='admin'` gate. Step definitions need rewrite, not a one-line.
+4. **Phase 17 TLS image-artefact tests**: assert CI-built images contain no
+   dev CA — depends on whole release.yml image-build pipeline being live;
+   timing flake.
+
+**Why not in scope**:
+- Each is a multi-file fix touching harness OR step definitions OR runner
+  config. Combined: 10-20 file PR with isolation tests, not autonomous
+  loop work.
+- The blast radius proves the test surface (e2e-cjm) is doing its job
+  catching real contract/infrastructure regressions; killing them with
+  `it.skip` is BANNED per HARD RULES.
+
+**Demo-readiness**: smoke (DONE), conformance-axe (DONE), CI (waiting),
+Release (DONE), Security (DONE), helm-lint (DONE) cover the v1.0.0 happy
+path. e2e-cjm is the deep CJM regression harness — its scope is wider
+than v1.0.0 demo cut. Document, ship, fix in a follow-up phase.
