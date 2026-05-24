@@ -91,18 +91,25 @@ api:
   resources:
     requests: { cpu: 200m, memory: 512Mi }
     limits:   { cpu: 1000m, memory: 1Gi }
+  # api-specific env appended AFTER shared .Values.extraEnv. Use when
+  # api and worker need different values for the same key (e.g.
+  # LOCALES_DIR — api bundle is ESM with import.meta.url, worker is CJS
+  # and needs an explicit path).
+  extraEnv: []
 
 web:
   replicas: 1
   resources:
     requests: { cpu: 100m, memory: 256Mi }
     limits:   { cpu: 500m, memory: 512Mi }
+  extraEnv: []
 
 worker:
   replicas: 1
   resources:
     requests: { cpu: 200m, memory: 512Mi }
     limits:   { cpu: 1000m, memory: 1Gi }
+  extraEnv: []
 
 migrate:
   enabled: true
