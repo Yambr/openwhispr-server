@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v2.4
 milestone_name: — OSS-Publish Readiness
-status: v2.4 + v2.5 COMPLETE — Dependabot 28→0, secret-scan 1→0, code-scan rescanning
-last_updated: "2026-05-22T18:55:00.000Z"
-last_activity: "2026-05-22 — Phases 57+58 CLOSED. Phase 57: 6 commits — AUDIT-SEC-01 (migration 0031 SECURITY DEFINER lookup, AUTH-04 restored) + AUDIT-CI-01..04. Phase 58: 11 commits — AUDIT-HARD-01..05 (auth rateLimit, lru-cache IP store, backfill cap, mailpit dev profile, dead OIDC var removed), AUDIT-LIB-01..03 (Zod env-parser unification, config/stt-settings.ts, AbortSignal.timeout), AUDIT-DOC-01 (EMAIL_FALLBACK_NONFATAL docs). Full-suite triage: ran v2.4 HEAD vs pre-v2.4 baseline 3b504fa3 — 39 failures at HEAD, ALL pre-existing on main EXCEPT one slim-core-base Test-2 regression (Phase-58 mailpit profile), now fixed. Zero net new test failures vs main. Pre-existing main test-debt (~38 failures) logged in .planning/audit-v2.4/TEST-TRIAGE.md, out of v2.4 scope. Next: Phase 59 (documentation truth pass)."
+status: Awaiting next milestone
+last_updated: "2026-05-25T12:07:14.672Z"
+last_activity: 2026-05-25 — Milestone v2.4 completed and archived
 progress:
-  total_phases: 72
+  total_phases: 78
   completed_phases: 27
   total_plans: 188
-  completed_plans: 208
-  percent: 38
+  completed_plans: 214
+  percent: 35
 ---
 
 # Project State: OpenWhispr Server
@@ -25,10 +25,10 @@ progress:
 
 ## Current Position
 
-Phase: Phase 19.4 locale-e2e (@cjm-6.1) — discuss-phase queued. v2.1 milestone RE-OPENED 2026-05-16 for downstream cjm-tag flips (19.3 just closed); v2.2 (Pre-OSS Security and Hygiene) work pauses until v2.1 final closure.
+Phase: Milestone v2.4 complete
 Plan: —
-Status: Pending discuss-phase 19.3
-Last activity: 2026-05-16 — Phase 19.2 CLOSED with SERVER-ERRORS Entry 11 cascade resolved through 3 production layers (client query-param + multipart-injection + LiteLLM config `groq/` prefix). 7 commits: `8680485` / `e80b047` / `c2a5e79` / `1f60ff0` / `c5112d9` / `9e1db63` / `c4a49d6`. `@cjm-4.1` GREEN end-to-end (1.8s). Earlier 2026-05-16 — Phase 19.1 CLOSED + Phase 19a CLOSED + Phase 19b CLOSED. ROADMAP entries still pending for 19.3 (ba-i18n @cjm-1.4) and 19.4 (locale-e2e @cjm-6.1).
+Status: Awaiting next milestone
+Last activity: 2026-05-25 — Milestone v2.4 completed and archived
 
 ## Performance Metrics
 
@@ -260,3 +260,50 @@ Last activity: 2026-05-16 — Phase 19.2 CLOSED with SERVER-ERRORS Entry 11 casc
 - [Phase 18.1.2]: SERVER-ERRORS.md introduced as append-only ledger for production-side issues uncovered during test fixes; Entries 1-5 enumerate the 33 pre-existing test failures (verified pre-existing via `git stash` probe) for future production-fix phases.
 - [Phase 18.1.2]: v2.1 milestone advances from CLOSED-WITH-FOLLOWUP → CLOSED. Phase 18.1.1's 37-failure followup work is fully resolved (4 closed by Phase 18.1.2 surface fixes; 33 reclassified to pre-existing production-debt ledger per stash verification).
 - [Phase ?]: Phase 31 CLOSED; LOCKER-04 BLOCKING flip deferred to Phase 41
+
+## Deferred Items
+
+Items acknowledged and deferred at v2.4 milestone close on 2026-05-25.
+Source: `gsd-sdk query audit-open` pre-close scan; total 25 items.
+None block OSS publish — repo is public, charts releasing, all 13 CRITICALs closed.
+
+| Category | Item | Status |
+|----------|------|--------|
+| debug | ci-red-sweep-issue-a-litellm-unhealthy | diagnosed |
+| debug | ci-red-sweep-issue-b-integration-regressions | awaiting_human_verify |
+| debug | conformance-axe-beforeall-timeout | fixing |
+| debug | helm-upgrade-matrix-traefik-timeout | fixing |
+| debug | r31-realtime-ga-beta-shape | awaiting_human_verify |
+| uat_gap | phase-02 02-HUMAN-UAT.md | partial (3 pending) |
+| uat_gap | phase-04 04-HUMAN-UAT.md | partial (1 pending) |
+| uat_gap | phase-05 05-HUMAN-UAT.md | partial (5 pending) |
+| verification_gap | phase-01 01-VERIFICATION.md | human_needed |
+| verification_gap | phase-02 02-VERIFICATION.md | human_needed |
+| verification_gap | phase-04 04-VERIFICATION.md | human_needed |
+| verification_gap | phase-15 15-VERIFICATION.md | human_needed |
+| verification_gap | phase-17 17-VERIFICATION.md | human_needed |
+| quick_task | d1-realtime-model-injection (20260522) | missing |
+| quick_task | env-driven-model-hardcode (20260522) | missing |
+| quick_task | 3chart-split (20260523) | missing |
+| quick_task | helm-drift-verify (20260523) | missing |
+| quick_task | helm-kind-bringup (20260523) | missing |
+| quick_task | litellm-patterns-a1a2 (20260523) | missing |
+| quick_task | litellm-patterns-a3a4 (20260523) | missing |
+| quick_task | upgrade-matrix-traefik-fix (20260523) | missing |
+| quick_task | postgres-ghcr-publish (20260524) | missing |
+| quick_task | self-test-litellm-health (20260524) | missing |
+| quick_task | smoke-tests-fix-option-a (20260524) | missing |
+| context_question | phase-14 14-CONTEXT.md | 2 open questions |
+
+Plus 4 v2.4 milestone deferrals tracked in `.planning/deferred-items.md`:
+
+- DEF-15-SCRUB (history-scrub.sh pre-flight bug + force-push deferral)
+- DEF-61.5 (.env.full.example INGRESS_TLS_CERT_PATH gap)
+- DEF-61.6 (.env.slim.example vs base-compose hard-references gap)
+- DEF-62-README-POLISH (OSS-marketing polish)
+
+These items will be re-surfaced in v2.5+ planning for triage.
+
+## Operator Next Steps
+
+- Start the next milestone with /gsd-new-milestone
