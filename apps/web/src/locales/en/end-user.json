@@ -572,6 +572,32 @@
           "text": "Your email has been confirmed. Sign in to continue."
         }
       },
+      "verify-error": {
+        "default": {
+          "title": {
+            "text": "Verification failed"
+          },
+          "body": {
+            "text": "We could not confirm this verification link. Sign up again to receive a fresh email."
+          }
+        },
+        "link-expired": {
+          "title": {
+            "text": "Verification link expired"
+          },
+          "body": {
+            "text": "This verification link is no longer valid. Sign up again or request a new verification email to continue."
+          }
+        },
+        "invalid_token": {
+          "title": {
+            "text": "Invalid verification link"
+          },
+          "body": {
+            "text": "This verification link was not recognized. Please request a new one."
+          }
+        }
+      },
       "form": {
         "email": {
           "label": "Email"

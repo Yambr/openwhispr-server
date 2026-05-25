@@ -414,7 +414,15 @@ describe("GET /api/auth/verify-email-complete", () => {
       expect(res.headers.location).toBe("/app");
     });
 
-    it("Sec-Fetch-Site: none + no session → still 401 (auth runs before fallback)", async () => {
+    it("Sec-Fetch-Site: none + no session → 302 /sign-in?error=link-expired (UX-friendly browser path)", async () => {
+      // SEED-F8-UX — when a browser hits this route with no session
+      // (expired Better Auth verify-email token), Sec-Fetch-Site: none
+      // identifies a top-level navigation and the route renders an
+      // actionable redirect to the sign-in page with an error param,
+      // instead of dumping a raw JSON envelope at the user.
+      // The auth check still happens BEFORE the redirect (we never
+      // grant a free 302 to an authenticated route from an unverified
+      // user), but the 401-path now branches on Accept / Sec-Fetch-Site.
       const { auth } = makeAuth(null);
       const app = buildApp(auth);
       const res = await app.inject({
@@ -422,7 +430,114 @@ describe("GET /api/auth/verify-email-complete", () => {
         url: "/api/auth/verify-email-complete",
         headers: { "sec-fetch-site": "none" },
       });
+      expect(res.statusCode).toBe(302);
+      expect(res.headers.location).toBe("/sign-in?error=link-expired");
+      // No raw error envelope in the body — the user reads the banner
+      // on the sign-in page.
+      expect(res.headers.location).not.toContain("VERIFY_EMAIL_COMPLETE_NO_SESSION");
+    });
+  });
+
+  // SEED-F8-UX — browser-flow content negotiation for the 401 path.
+  // The route returns the canonical {error:...} envelope to API consumers
+  // (JSON Accept header) but renders an actionable UX path for browsers
+  // (302 to /sign-in?error=link-expired). Without this branch the user
+  // sees the raw 401 envelope rendered as JSON text in their address bar
+  // — surfaced by a real prod user 2026-05-25 18:08 UTC.
+  describe("F8-UX — browser-flow 401 returns redirect, not raw JSON envelope", () => {
+    it("Accept: text/html + no session → 302 /sign-in?error=link-expired", async () => {
+      const { auth } = makeAuth(null);
+      const app = buildApp(auth);
+      const res = await app.inject({
+        method: "GET",
+        url: "/api/auth/verify-email-complete",
+        headers: { accept: "text/html,application/xhtml+xml" },
+      });
+      expect(res.statusCode).toBe(302);
+      expect(res.headers.location).toBe("/sign-in?error=link-expired");
+    });
+
+    it("Accept: text/html + Sec-Fetch-Site: none + no session → 302 (both signals agree)", async () => {
+      const { auth } = makeAuth(null);
+      const app = buildApp(auth);
+      const res = await app.inject({
+        method: "GET",
+        url: "/api/auth/verify-email-complete",
+        headers: {
+          accept: "text/html,application/xhtml+xml,application/xml;q=0.9",
+          "sec-fetch-site": "none",
+        },
+      });
+      expect(res.statusCode).toBe(302);
+      expect(res.headers.location).toBe("/sign-in?error=link-expired");
+    });
+
+    it("Accept: application/json + no session → 401 envelope (API consumer)", async () => {
+      // API consumers (curl, the desktop client probing this URL,
+      // monitoring scripts) MUST keep the canonical 401 envelope so
+      // automated logic can parse the failure mode.
+      const { auth } = makeAuth(null);
+      const app = buildApp(auth);
+      const res = await app.inject({
+        method: "GET",
+        url: "/api/auth/verify-email-complete",
+        headers: { accept: "application/json" },
+      });
       expect(res.statusCode).toBe(401);
+      expect(() => ErrorEnvelope.parse(res.json())).not.toThrow();
+      expect(res.headers.location).toBeUndefined();
+    });
+
+    it("no Accept header + no session → 401 envelope (default to API path, conservative)", async () => {
+      // When neither Accept nor Sec-Fetch-Site signal a browser, default
+      // to the API envelope — older browsers without Sec-Fetch-Site that
+      // also omit Accept: text/html are rare; the conservative default
+      // preserves backward-compatibility with anything probing this URL.
+      const { auth } = makeAuth(null);
+      const app = buildApp(auth);
+      const res = await app.inject({
+        method: "GET",
+        url: "/api/auth/verify-email-complete",
+      });
+      expect(res.statusCode).toBe(401);
+      expect(() => ErrorEnvelope.parse(res.json())).not.toThrow();
+    });
+
+    it("browser ?error=<code> passthrough + no session → 302 carries the upstream error code", async () => {
+      // Better Auth's verify-email error path appends ?error=<code>;
+      // when the user lands here with both the upstream error AND no
+      // session AND a browser context, route to /sign-in with the
+      // specific upstream code so the banner can be informative.
+      const { auth } = makeAuth(null);
+      const app = buildApp(auth);
+      const res = await app.inject({
+        method: "GET",
+        url: "/api/auth/verify-email-complete?error=invalid_token",
+        headers: { accept: "text/html" },
+      });
+      expect(res.statusCode).toBe(302);
+      // Echo the upstream error code so the SignInForm banner can
+      // distinguish (e.g.) "link expired" from "invalid token".
+      expect(res.headers.location).toBe("/sign-in?error=invalid_token");
+    });
+
+    it("session present + Accept: text/html → normal redirect path wins (UX branch only triggers on 401)", async () => {
+      // The UX branch is for the NO-SESSION error path only. A happy-
+      // path verify with a session must still 302 to the desktop bridge
+      // (or web origin) — Accept: text/html does not change happy-path
+      // routing.
+      const { auth } = makeAuth(RESOLVED_SESSION("tok"));
+      const app = buildApp(auth);
+      const res = await app.inject({
+        method: "GET",
+        url: "/api/auth/verify-email-complete",
+        headers: {
+          accept: "text/html",
+          cookie: "openwhispr.session_token=signed.value",
+        },
+      });
+      expect(res.statusCode).toBe(302);
+      expect(res.headers.location).toBe(`${BRIDGE_PREFIX}tok`);
     });
   });
 });

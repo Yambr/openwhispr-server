@@ -81,6 +81,14 @@ export function SignInForm(): React.JSX.Element {
   // to `/app`; we deliberately keep them on /sign-in so the password-entry
   // confirms intent (defense against shared-device credential phishing).
   const verifiedJustNow = searchParams.get("verified") === "1";
+  // SEED-F8-UX — verify-email-complete 302s back here with `?error=<code>`
+  // when the verification link expired / was invalid / etc. Replaces the
+  // raw JSON envelope the user used to see in their address bar with an
+  // actionable banner. `?error=link-expired` is the default; Better Auth's
+  // upstream `?error=` query is passed through verbatim (regex-validated
+  // on the server to `[a-zA-Z0-9_-]+`).
+  const verifyError = searchParams.get("error");
+  const verifyErrorCode = verifyError && /^[a-zA-Z0-9_-]+$/.test(verifyError) ? verifyError : null;
   const [submitting, setSubmitting] = useState(false);
   const [state, setState] = useState<SignInState>({ kind: "idle" });
 
@@ -155,6 +163,20 @@ export function SignInForm(): React.JSX.Element {
           <Alert role="status" data-testid="signin-verified-alert">
             <AlertTitle>{t("end-user.signin.verified.title.text")}</AlertTitle>
             <AlertDescription>{t("end-user.signin.verified.body.text")}</AlertDescription>
+          </Alert>
+        ) : null}
+        {verifyErrorCode && state.kind === "idle" ? (
+          <Alert variant="destructive" role="alert" data-testid="signin-verify-error-alert">
+            <AlertTitle>
+              {t(`end-user.signin.verify-error.${verifyErrorCode}.title.text`, {
+                defaultValue: t("end-user.signin.verify-error.default.title.text"),
+              })}
+            </AlertTitle>
+            <AlertDescription>
+              {t(`end-user.signin.verify-error.${verifyErrorCode}.body.text`, {
+                defaultValue: t("end-user.signin.verify-error.default.body.text"),
+              })}
+            </AlertDescription>
           </Alert>
         ) : null}
         {state.kind === "error-unverified" ? (

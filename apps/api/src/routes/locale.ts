@@ -146,16 +146,42 @@ export const buildLocaleRoutes = (deps: LocaleDeps) =>
         // Cookie is set regardless (anonymous users on /sign-in /sign-up
         // get only the cookie path; i18next-http-middleware picks it up
         // on subsequent requests via its default cookie LanguageDetector
-        // with cookieName='i18next'). Secure flag follows the request
-        // protocol — Fastify honours x-forwarded-proto via trustProxy:true
-        // configured in apps/api/src/index.ts:439.
+        // with cookieName='i18next').
+        //
+        // SEED-F-LOCALE — `httpOnly: false` so the web LanguageSwitcher
+        // can verify the cookie via `document.cookie` after the POST
+        // resolves (the previous `httpOnly: true` was the wrong choice
+        // for a non-credential preference cookie: locale is plaintext
+        // user-visible state, not a security boundary). The user-visible
+        // cookie also lets browser devtools / playwright traces confirm
+        // the cookie is set, which is how peer ykoolfs5 surfaced the
+        // F-LOCALE no-op bug 2026-05-25 18:53 UTC.
+        //
+        // Two cookie names: `i18next` (back-compat — i18next-http-
+        // middleware's built-in LanguageDetector cookieName default;
+        // honored by the server on the next request) AND `NEXT_LOCALE`
+        // (the Next.js middleware locale-negotiation convention; honored
+        // by the web SSR layer on next render). Setting both keeps the
+        // server + web SSR aligned without a separate translation layer.
+        //
+        // Secure flag follows the request protocol — Fastify honours
+        // x-forwarded-proto via trustProxy:true configured in
+        // apps/api/src/index.ts:439.
+        const isSecure = req.protocol === "https";
         return reply
           .setCookie("i18next", body.locale, {
-            httpOnly: true,
+            httpOnly: false,
             sameSite: "lax",
             path: "/",
             maxAge: 60 * 60 * 24 * 365,
-            secure: req.protocol === "https",
+            secure: isSecure,
+          })
+          .setCookie("NEXT_LOCALE", body.locale, {
+            httpOnly: false,
+            sameSite: "lax",
+            path: "/",
+            maxAge: 60 * 60 * 24 * 365,
+            secure: isSecure,
           })
           .header("cache-control", "no-store")
           .code(200)

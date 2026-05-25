@@ -115,6 +115,34 @@ function isSafeRelativePath(value: string): boolean {
   return true;
 }
 
+/**
+ * SEED-F8-UX — detect whether this request looks like a top-level
+ * browser navigation (the user clicked a verification link in their
+ * inbox), as opposed to an API consumer (curl, the desktop client
+ * probing, monitoring scripts).
+ *
+ * Two signals, either suffices:
+ *  - `Accept: text/html` — the browser standard ask for the document
+ *    representation. API clients ask for `application/json` or omit
+ *    Accept entirely.
+ *  - `Sec-Fetch-Site: none` — emitted by modern browsers on top-level
+ *    navigation (address bar, external link, email-client link click).
+ *    Electron's loopback bridge doesn't fire HTTP from a browser
+ *    context, so this signal is unique to web users.
+ *
+ * Conservative default: missing both signals → API path. Older
+ * browsers without Sec-Fetch-Site that also omit Accept are rare; the
+ * default preserves backward-compatibility with anything probing the
+ * URL programmatically.
+ */
+function isBrowserRequest(req: { headers: Record<string, unknown> }): boolean {
+  const accept = req.headers["accept"];
+  if (typeof accept === "string" && accept.includes("text/html")) return true;
+  const secFetchSite = req.headers["sec-fetch-site"];
+  if (secFetchSite === "none") return true;
+  return false;
+}
+
 export const buildVerifyEmailCompleteRoutes = (deps: VerifyEmailCompleteDeps) =>
   async function verifyEmailCompleteRoutes(app: FastifyInstance): Promise<void> {
     const { auth } = deps;
@@ -159,8 +187,32 @@ export const buildVerifyEmailCompleteRoutes = (deps: VerifyEmailCompleteDeps) =>
         // (the single envelope-emission point). Auth check runs BEFORE
         // origin-routing so a crafted `?origin=` from an unverified
         // user gets no redirect.
+        //
+        // SEED-F8-UX — a browser request hitting the 401 path (expired
+        // verify-email token, the most common failure mode) gets a
+        // redirect to /sign-in?error=<code> with an actionable banner
+        // instead of a raw JSON envelope in the address bar. API
+        // consumers (Accept: application/json / no Accept) keep the
+        // canonical envelope. Surfaced by a real user 2026-05-25 18:08
+        // UTC who saw the canonical 401 error envelope rendered as raw
+        // JSON in their address bar and complained about the UX.
         const token = session?.session?.token;
         if (!session || !token) {
+          if (isBrowserRequest(req)) {
+            // Pass through the upstream Better Auth ?error=<code> when
+            // present so the banner can render a specific message
+            // ("invalid token" vs "expired"). Default to link-expired
+            // since the most common cause of "no session here" is an
+            // expired verification token.
+            const { error: upstreamError } = (req.query ?? {}) as {
+              error?: string;
+            };
+            const code =
+              upstreamError && /^[a-z0-9_-]+$/i.test(upstreamError)
+                ? upstreamError
+                : "link-expired";
+            return reply.redirect(`/sign-in?error=${encodeURIComponent(code)}`, 302);
+          }
           throw new AuthError(
             "VERIFY_EMAIL_COMPLETE_NO_SESSION",
             "no verified session on verify-email-complete request",

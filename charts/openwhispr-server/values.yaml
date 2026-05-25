@@ -20,6 +20,26 @@ image:
   # template-only fixes between image releases). Override at deploy
   # time if you pin a specific image tag.
   #
+  # Chart 1.0.9 + image v1.0.6 — 4 post-F8 follow-up seeds atomic release.
+  #   * SEED-F8-UX: expired verify-email link returns HTML 302 redirect to
+  #     /sign-in?error=link-expired for browser flows (Accept: text/html
+  #     or Sec-Fetch-Site: none), replacing the raw JSON 401 envelope a
+  #     real user complained about 2026-05-25 18:08 UTC. API consumers
+  #     (Accept: application/json) keep the canonical envelope.
+  #   * SEED-F-LOCALE: POST /api/locale now emits BOTH `i18next` and
+  #     `NEXT_LOCALE` Set-Cookie headers (peer reported chart 1.0.8
+  #     emitted no Set-Cookie at all). httpOnly:false so document.cookie
+  #     surfaces them to the LanguageSwitcher (locale is preference, not
+  #     credential). Closes the bilingual-launch promise on the web.
+  #   * SEED-37: worker `import.meta.url` CJS guard verified already
+  #     shipped in v1.0.4 (`_resolveHere` helper); operator workaround
+  #     `LOCALES_DIR=/app/apps/worker/dist/i18n/locales` in overlay can
+  #     be removed — `__dirname` is bundled by tsup correctly.
+  #   * SEED-47: docs/operations.md now carries the Resend domain-
+  #     verification runbook (DKIM/SPF DNS records → SMTP_FROM flip).
+  #     No code change; operator-side DNS work.
+  # Zero values.yaml schema changes from chart 1.0.8 for operators.
+  #
   # Chart 1.0.8 + image v1.0.5 — F8 verify-email web-flow callback fix.
   # R22 (image v1.0.4) introduced /api/auth/verify-email-complete that
   # 302s to the Electron desktop auth-bridge loopback listener — correct
@@ -41,7 +61,7 @@ image:
   #   image v1.0.4 (A1 byok-guard export / A2 email k8s bypass / A3 worker
   #   CJS guard / A4 worker VALKEY_URL parser / A5 POST /api/locale).
   # Companion openwhispr-postgres chart 1.1.0 ships the rolconfig fix (B4).
-  tag: "1.0.5"
+  tag: "1.0.6"
   api:     { repository: openwhispr-api }
   web:     { repository: openwhispr-web }
   worker:  { repository: openwhispr-worker }

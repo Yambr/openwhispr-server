@@ -444,6 +444,52 @@ docker compose --profile dev up -d mailpit
 
 mailpit is **profile-gated**; the default `docker compose up` never starts it.
 
+### Resend domain verification (production)
+
+The default `SMTP_FROM=onboarding@resend.dev` is Resend's shared
+**dev-sandbox sender**. It works out-of-the-box (no DNS setup needed)
+but has two limitations in production:
+
+1. **Branding** — emails look like they come from `onboarding@resend.dev`,
+   not your operator domain.
+2. **Plus-addressing rejection** — Resend testing-mode rejects
+   plus-addressed recipients (e.g. `user+test@example.com`). This
+   blocks QA workflows that rely on plus-addressing for fan-out test
+   accounts on a single inbox.
+
+To switch to a branded sender (`no-reply@your-domain.tld`):
+
+**1. Verify the domain in Resend.** In the Resend dashboard, add your
+   sending domain and obtain the DKIM + SPF + MX records Resend generates
+   per-domain.
+
+**2. Publish DNS records.** Add the records to your DNS provider
+   (Cloudflare, Route53, etc.). Wait for DNS propagation (typically
+   1–15 minutes; up to 24h for some providers).
+
+**3. Confirm verification in Resend.** The dashboard shows green
+   checkmarks on DKIM/SPF when records resolve correctly. Until all
+   three are green, sending from the new domain returns
+   `403 The domain is not verified` and the worker logs
+   `event=email.failed status=403`.
+
+**4. Flip `SMTP_FROM`.** Update operator values:
+
+   ```yaml
+   # values.yaml (or .env)
+   SMTP_FROM: "OpenWhispr <no-reply@your-domain.tld>"
+   ```
+
+   Restart the worker (`docker compose restart worker` / roll the
+   Deployment in K8s).
+
+**5. Verify end-to-end.** Trigger a real sign-up; confirm the
+   verification email arrives with the new FROM and that
+   plus-addressing flows now work without 403s.
+
+Until step 5 passes, leave `SMTP_FROM=onboarding@resend.dev` so
+verification email delivery does not break for in-flight users.
+
 ### Rotating BETTER_AUTH_SECRET
 
 `BETTER_AUTH_SECRET` is the HMAC key Better Auth uses to sign opaque bearer
