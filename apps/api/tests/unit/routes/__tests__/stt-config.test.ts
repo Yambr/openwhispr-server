@@ -143,9 +143,29 @@ describe("GET /api/stt-config", () => {
     const res = await app.inject({ method: "GET", url: "/api/stt-config" });
     expect(res.statusCode).toBe(200);
     const parsed = SttConfigResponseSchema.parse(res.json());
-    expect(parsed.defaultModel).toBe("whisper-1");
+    expect(parsed.defaultModel).toBe("openwhispr-default");
     expect(parsed.defaultLanguage).toBe("auto");
     expect(parsed.availableProviders).toEqual([]);
+  });
+
+  // LEAK 1 regression (2026-05-25, peer wd6g78xz openwhispr client v1.7.8).
+  // The previous default was `whisper-1` (OpenAI upstream alias) which
+  // leaked through to lockdown-branded desktop builds as the displayed
+  // STT model. The server now hands out the canonical `openwhispr-*`
+  // namespace; operators that wire a non-bundled upstream override
+  // STT_DEFAULT_MODEL, and the alias mapping stays in their LiteLLM
+  // config out of view of the client.
+  it("LEAK 1: defaultModel carries the canonical openwhispr-* prefix (no upstream-name leak)", async () => {
+    const { db } = makeFakeDb();
+    app = buildApp({ db });
+    const res = await app.inject({ method: "GET", url: "/api/stt-config" });
+    expect(res.statusCode).toBe(200);
+    const parsed = SttConfigResponseSchema.parse(res.json());
+    expect(parsed.defaultModel).toMatch(/^openwhispr-/);
+    // Sanity: the previous-default upstream alias must NOT come through
+    // by default (operator override via STT_DEFAULT_MODEL is still
+    // permitted and exercised by the user/tenant override tests).
+    expect(parsed.defaultModel).not.toBe("whisper-1");
   });
 
   it("returns 401 envelope when req.user is absent (defensive guard)", async () => {

@@ -75,6 +75,25 @@ model_list:
       api_key: "fake-key-for-mock"
       mode: realtime
 
+  # Canonical `openwhispr-*` namespace — parity with bundled-default
+  # litellm_config.yaml. Hermetic CI uses these to exercise the same
+  # alias surface the production client (openwhispr v1.7.8+) sends.
+  - model_name: openwhispr-default
+    litellm_params:
+      model: groq/whisper-large-v3
+      api_key: "fake-key-for-mock"
+      mock_response: '{"text":"mocked transcript","language":"en","duration":1.0,"segments":[]}'
+  - model_name: openwhispr-reason
+    litellm_params:
+      model: openai/gpt-4o-mini
+      api_key: "fake-key-for-mock"
+      mock_response: '{"id":"chatcmpl-mock","object":"chat.completion","created":1000,"model":"openwhispr-reason","choices":[{"index":0,"message":{"role":"assistant","content":"mock"},"finish_reason":"stop"}],"usage":{"prompt_tokens":1,"completion_tokens":1,"total_tokens":2}}'
+  - model_name: openwhispr-realtime
+    litellm_params:
+      model: openai/gpt-realtime
+      api_key: "fake-key-for-mock"
+      mode: realtime
+
   # Phase 04 / Plan 08 / Task 1f (D-29) — streaming mock for /api/agent/stream
   # contract + e2e first-line latency tests. When `stream:true` is set on
   # the upstream chat-completions request, LiteLLM serves the multi-line

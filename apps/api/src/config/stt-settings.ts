@@ -19,8 +19,20 @@
 
 import { z } from "zod";
 
-/** Default STT model when `STT_DEFAULT_MODEL` is unset. */
-export const DEFAULT_STT_MODEL = "whisper-1";
+/**
+ * Default STT model when `STT_DEFAULT_MODEL` is unset.
+ *
+ * LEAK 1 fix (2026-05-25, peer wd6g78xz openwhispr client v1.7.8). Was
+ * `"whisper-1"` — the OpenAI upstream alias — which leaked through to the
+ * desktop client via /api/stt-config:defaultModel and caused lockdown-branded
+ * builds to show "OpenAI Whisper" instead of "OpenWhispr Cloud" in Settings.
+ * The canonical `openwhispr-default` alias is the server-owned namespace
+ * (see compose/litellm/litellm_config.yaml entries `openwhispr-default` /
+ * `openwhispr-reason` / `openwhispr-realtime`). Operators that wire a
+ * different upstream override via `STT_DEFAULT_MODEL`; the alias mapping
+ * lives in their LiteLLM config and is invisible to the client.
+ */
+export const DEFAULT_STT_MODEL = "openwhispr-default";
 /** Default STT language when `STT_DEFAULT_LANGUAGE` is unset. */
 export const DEFAULT_STT_LANGUAGE = "auto";
 /** Default note-recording max duration (seconds). */

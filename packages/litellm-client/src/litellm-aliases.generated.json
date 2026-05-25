@@ -9,13 +9,18 @@
     "realtime-default",
     "gpt-realtime",
     "gpt-realtime-mini",
-    "gpt-4o-realtime-preview"
+    "gpt-4o-realtime-preview",
+    "openwhispr-default",
+    "openwhispr-reason",
+    "openwhispr-realtime"
   ],
   "bundledProviders": {
     "qwen3.6-plus": "openrouter",
     "gemini-3-flash": "openrouter",
     "gpt-4o-mini": "openrouter",
     "qwen3.6-cleanup": "openrouter",
-    "whisper-large-v3": "groq"
+    "whisper-large-v3": "groq",
+    "openwhispr-default": "groq",
+    "openwhispr-reason": "openrouter"
   }
 }
