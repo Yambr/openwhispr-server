@@ -54,7 +54,7 @@
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { buildDesktopBridgeRedirect } from "../config/desktop-bridge.js";
-import { AuthError } from "../errors.js";
+import { AuthError, ValidationError } from "../errors.js";
 import { VERIFY_EMAIL_COMPLETE_PATH } from "../lib/verification-callback-url.js";
 import { type AuthLike, fastifyHeadersToWebHeaders } from "../middleware/dual-auth.js";
 
@@ -72,16 +72,48 @@ export interface VerifyEmailCompleteDeps {
 
 /**
  * Querystring schema. The route is normally reached by a query-less 302
- * from Better Auth's `verify-email` handler, but that handler's
- * error-redirect path appends `?error=<code>` when verification itself
- * failed (`email-verification.mjs:151-155`). `error` is therefore
- * accepted as an OPTIONAL passthrough param so a failed-verification
- * 302 does not 400 at the schema layer — the handler still emits a
- * clean 4xx envelope below because no session cookie exists in that
- * case. `.strict()` rejects any other unexpected query parameter.
+ * from Better Auth's `verify-email` handler, but two optional params can
+ * appear:
+ *  - `error=<code>` — Better Auth's verify-email error-redirect path
+ *    appends this when verification itself failed
+ *    (`email-verification.mjs:151-155`); accepted as a passthrough so
+ *    a failed-verification 302 does not 400 at the schema layer.
+ *  - `origin=<relative-path>` (F8) — the original client-supplied
+ *    `callbackURL` from sign-up, preserved by
+ *    `rewriteVerificationCallbackUrl`. When present, the handler
+ *    routes the post-verify 302 back to the web app instead of the
+ *    desktop loopback bridge. The handler enforces the same
+ *    relative-only allow-list as the rewrite hook (belt-and-suspenders
+ *    — never trust a single layer for open-redirect prevention).
+ * `.strict()` rejects any other unexpected query parameter.
  * LOCKER-04 requires every non-health route to declare `schema:`.
  */
-const VerifyEmailCompleteQuery = z.object({ error: z.string().max(256).optional() }).strict();
+const VerifyEmailCompleteQuery = z
+  .object({
+    error: z.string().max(256).optional(),
+    origin: z.string().max(2048).optional(),
+  })
+  .strict();
+
+/**
+ * F8 — defense-in-depth check on `?origin=` before consuming it as a
+ * 302 target. Mirrors `isEchoableOrigin` in `verification-callback-url.ts`
+ * (the rewrite hook) — never trust a single layer for open-redirect
+ * prevention. Accepts ONLY same-origin relative paths:
+ *  - starts with single `/`, not `//` (protocol-relative cross-origin)
+ *  - not `/\…` (Windows path-style normalization edge case)
+ *  - non-empty
+ *
+ * Absolute URLs like `https://attacker.example/...` cannot pass because
+ * they don't start with `/`. The route caller checks `origin !== "/"`
+ * separately (that's the desktop-default branch, not a web target).
+ */
+function isSafeRelativePath(value: string): boolean {
+  if (value === "" || value === "/") return false;
+  if (!value.startsWith("/")) return false;
+  if (value.startsWith("//") || value.startsWith("/\\")) return false;
+  return true;
+}
 
 export const buildVerifyEmailCompleteRoutes = (deps: VerifyEmailCompleteDeps) =>
   async function verifyEmailCompleteRoutes(app: FastifyInstance): Promise<void> {
@@ -124,7 +156,9 @@ export const buildVerifyEmailCompleteRoutes = (deps: VerifyEmailCompleteDeps) =>
         // redirect quirk, a direct hit on this URL without first
         // verifying, or an expired cookie. NEVER 500, NEVER hang. The
         // AuthError is mapped to 401 by the centralized error handler
-        // (the single envelope-emission point).
+        // (the single envelope-emission point). Auth check runs BEFORE
+        // origin-routing so a crafted `?origin=` from an unverified
+        // user gets no redirect.
         const token = session?.session?.token;
         if (!session || !token) {
           throw new AuthError(
@@ -133,11 +167,66 @@ export const buildVerifyEmailCompleteRoutes = (deps: VerifyEmailCompleteDeps) =>
           );
         }
 
-        // The raw Better Auth session token is the bearer the Electron
-        // client replays through its auth-bridge. It resolves through the
-        // SAME dual-auth path as a `sign-in/email` token (the R20
-        // fingerprint lens) — no second session kind. The redirect target
-        // is the SERVER-FIXED desktop-bridge literal; no open-redirect.
+        // F8 — branch on the optional `origin` state-param preserved by
+        // the rewrite hook. Three cases:
+        //  - Explicit `origin=/` → desktop bridge (Better Auth default
+        //    for desktop sign-up that didn't set callbackURL; this is
+        //    the strongest signal of intent — explicit `/` from the
+        //    rewrite hook means "this sign-up did not carry a web
+        //    destination").
+        //  - Explicit `origin=<relative-path>` (not `/`) → 302 to that
+        //    path; the session cookie is already in the browser jar
+        //    from the verify-email handler one hop ago.
+        //  - Absent → fall through to Sec-Fetch-Site fallback for
+        //    legacy emails, then desktop bridge as the safe default.
+        // Absolute URLs / protocol-relative `//host` paths / backslash-
+        // prefixed paths → reject as a defense-in-depth guard (the
+        // rewrite hook also drops these, but never trust a single
+        // layer for open-redirect prevention).
+        const { origin } = (req.query ?? {}) as { origin?: string };
+        if (origin !== undefined && origin !== "" && origin !== "/") {
+          if (!isSafeRelativePath(origin)) {
+            throw new ValidationError(
+              "VERIFY_EMAIL_COMPLETE_INVALID_ORIGIN",
+              "origin must be a same-origin relative path",
+            );
+          }
+          // Web-flow: 302 to the relative path. NO bearer_token appended
+          // — the session cookie is already seated in the browser jar.
+          return reply.redirect(origin, 302);
+        }
+
+        // F8 (option 3) — legacy-email fallback. ONLY applies when
+        // `origin` is fully absent. An explicit `origin=/` skips this
+        // branch (it's a strong signal that the rewrite hook saw a
+        // desktop sign-up — keep R22 bridge behavior). For legacy
+        // emails (shipped before F8 — no `?origin=` query at all), a
+        // `Sec-Fetch-Site: none` header identifies a top-level browser
+        // navigation: web-flow user clicking the link from their inbox.
+        // The Electron desktop client's verify-email click does NOT
+        // come through a browser context, so `Sec-Fetch-Site: none`
+        // uniquely identifies a web-flow user clicking a legacy email.
+        // Redirect them to the web sign-in page instead of the dead
+        // loopback bridge. The session cookie is already in their
+        // browser jar.
+        //
+        // Silent degrade to desktop-bridge behavior if Sec-Fetch-Site is
+        // missing (older browsers / curl / Electron's own request) OR
+        // anything other than `none` (cross-site / same-origin —
+        // shouldn't happen on a verify-email click, but if it does,
+        // honor the safer R22 default rather than a guess).
+        const secFetchSite = req.headers["sec-fetch-site"];
+        if (origin === undefined && secFetchSite === "none") {
+          return reply.redirect("/sign-in?verified=1", 302);
+        }
+
+        // Desktop-flow (R22 backward-compat): the raw Better Auth
+        // session token is the bearer the Electron client replays
+        // through its auth-bridge. It resolves through the SAME
+        // dual-auth path as a `sign-in/email` token (the R20
+        // fingerprint lens) — no second session kind. The redirect
+        // target is the SERVER-FIXED desktop-bridge literal; no
+        // open-redirect.
         const target = buildDesktopBridgeRedirect(token);
         return reply.redirect(target, 302);
       },

@@ -14,9 +14,17 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { I18nProvider } from "@/lib/i18n-client";
 
+// Test-scoped URLSearchParams override — most tests run with no query
+// (default); F8 tests use `setMockSearch("?verified=1")` to simulate the
+// post-verify-email landing.
+let mockSearchParams = new URLSearchParams();
+function setMockSearch(query: string): void {
+  mockSearchParams = new URLSearchParams(query.startsWith("?") ? query.slice(1) : query);
+}
+
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ push: vi.fn(), replace: vi.fn(), refresh: vi.fn() }),
-  useSearchParams: () => new URLSearchParams(),
+  useSearchParams: () => mockSearchParams,
   usePathname: () => "/sign-in",
 }));
 vi.mock("next/link", () => ({
@@ -81,6 +89,12 @@ const resources = {
           sent: {
             text: "Verification email sent. Check your inbox.",
           },
+        },
+        // F8 — verify-email-complete 302s back to /sign-in?verified=1 for
+        // web-flow sign-ups.
+        verified: {
+          title: { text: "Email verified" },
+          body: { text: "Your email has been confirmed. Sign in to continue." },
         },
         action: {
           forgotPassword: {
@@ -148,6 +162,9 @@ describe("SignInForm (Phase 07.1 / Plan 07 — U1)", () => {
   beforeEach(() => {
     signInEmail.mockReset();
     signInSocial.mockReset();
+    // F8 — reset query-string between tests so the verify-email banner
+    // test cannot leak its `?verified=1` state into siblings.
+    setMockSearch("");
     // Default: all three providers configured (matches the pre-Plan-12-04 default).
     stubProvidersFetch([
       { id: "google", name: "Google" },
@@ -493,5 +510,78 @@ describe("SignInForm (Phase 07.1 / Plan 07 — U1)", () => {
     expect(
       screen.queryByRole("button", { name: /resend verification email/i }),
     ).not.toBeInTheDocument();
+  });
+
+  // F8 — verify-email-complete 302s back to /sign-in?verified=1 for
+  // web-flow sign-ups. SignInForm shows a "Email verified" success banner
+  // so the user understands their email is now confirmed and they can
+  // sign in normally.
+  describe("F8 — ?verified=1 success banner", () => {
+    it("renders a 'Email verified' banner when the URL carries ?verified=1", async () => {
+      setMockSearch("?verified=1");
+      const { SignInForm } = await import("../SignInForm");
+      render(
+        <Wrap>
+          <SignInForm />
+        </Wrap>,
+      );
+      // Banner is visible to assistive tech via role="status".
+      expect(screen.getByTestId("signin-verified-alert")).toBeInTheDocument();
+      expect(screen.getByText(/email verified/i)).toBeInTheDocument();
+      expect(screen.getByText(/your email has been confirmed/i)).toBeInTheDocument();
+    });
+
+    it("does NOT render the verified banner on a plain /sign-in load (no query)", async () => {
+      setMockSearch("");
+      const { SignInForm } = await import("../SignInForm");
+      render(
+        <Wrap>
+          <SignInForm />
+        </Wrap>,
+      );
+      expect(screen.queryByTestId("signin-verified-alert")).not.toBeInTheDocument();
+    });
+
+    it("does NOT render the verified banner for ?verified=0 or other values", async () => {
+      // Only the literal `1` triggers the banner — ?verified=0,
+      // ?verified=true, ?verified=garbage all fall through.
+      setMockSearch("?verified=0");
+      const { SignInForm } = await import("../SignInForm");
+      render(
+        <Wrap>
+          <SignInForm />
+        </Wrap>,
+      );
+      expect(screen.queryByTestId("signin-verified-alert")).not.toBeInTheDocument();
+    });
+
+    it("dismisses the verified banner when a sign-in error is surfaced", async () => {
+      // Once the user attempts sign-in and hits a generic error, the
+      // verified banner gets out of the way (state.kind !== "idle"
+      // hides it) so the actionable error message takes precedence.
+      setMockSearch("?verified=1");
+      signInEmail.mockResolvedValueOnce({
+        data: null,
+        error: { code: "GENERIC", message: "boom" },
+      });
+      const { SignInForm } = await import("../SignInForm");
+      const user = userEvent.setup();
+      render(
+        <Wrap>
+          <SignInForm />
+        </Wrap>,
+      );
+      // Initial render: banner present.
+      expect(screen.getByTestId("signin-verified-alert")).toBeInTheDocument();
+      // Submit triggers error-generic state.
+      await user.type(screen.getByLabelText(/email/i), "alice@test.local");
+      await user.type(screen.getByLabelText(/password/i), "Pwa9!testStrong");
+      await user.click(screen.getByRole("button", { name: /^sign in$/i }));
+      await waitFor(() => {
+        expect(screen.getByText(/sign-in failed/i)).toBeInTheDocument();
+      });
+      // Banner is no longer visible.
+      expect(screen.queryByTestId("signin-verified-alert")).not.toBeInTheDocument();
+    });
   });
 });

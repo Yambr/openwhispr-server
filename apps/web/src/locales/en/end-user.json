@@ -564,6 +564,14 @@
           "text": "Verification email sent. Check your inbox."
         }
       },
+      "verified": {
+        "title": {
+          "text": "Email verified"
+        },
+        "body": {
+          "text": "Your email has been confirmed. Sign in to continue."
+        }
+      },
       "form": {
         "email": {
           "label": "Email"

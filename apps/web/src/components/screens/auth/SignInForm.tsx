@@ -73,6 +73,14 @@ export function SignInForm(): React.JSX.Element {
   const searchParams = useSearchParams();
   // HI-01 — validated post-sign-in destination from the `?from=` param.
   const destination = safeFromParam(searchParams.get("from"));
+  // F8 — verify-email-complete 302s back here with `?verified=1` after a
+  // web-flow sign-up. Show a success banner so the user understands their
+  // email is now confirmed and they can sign in normally. The Better Auth
+  // session cookie is already in the browser jar from the verify-email
+  // handler one hop ago, so the user could in principle be auto-redirected
+  // to `/app`; we deliberately keep them on /sign-in so the password-entry
+  // confirms intent (defense against shared-device credential phishing).
+  const verifiedJustNow = searchParams.get("verified") === "1";
   const [submitting, setSubmitting] = useState(false);
   const [state, setState] = useState<SignInState>({ kind: "idle" });
 
@@ -141,6 +149,12 @@ export function SignInForm(): React.JSX.Element {
           <Alert variant="destructive" role="alert">
             <AlertTitle>{t("end-user.signin.error.title.text")}</AlertTitle>
             <AlertDescription>{t("end-user.signin.error.body.text")}</AlertDescription>
+          </Alert>
+        ) : null}
+        {verifiedJustNow && state.kind === "idle" ? (
+          <Alert role="status" data-testid="signin-verified-alert">
+            <AlertTitle>{t("end-user.signin.verified.title.text")}</AlertTitle>
+            <AlertDescription>{t("end-user.signin.verified.body.text")}</AlertDescription>
           </Alert>
         ) : null}
         {state.kind === "error-unverified" ? (

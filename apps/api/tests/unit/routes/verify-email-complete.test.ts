@@ -192,4 +192,237 @@ describe("GET /api/auth/verify-email-complete", () => {
     expect(res.statusCode).toBeGreaterThanOrEqual(500);
     expect(() => ErrorEnvelope.parse(res.json())).not.toThrow();
   });
+
+  // F8 — web-flow detection via `?origin=<relative-path>` state-param.
+  // The rewrite hook (verification-callback-url.ts) carries the original
+  // client-supplied callbackURL through to this route, so we can route
+  // back to the web app (cookie already in browser jar) instead of
+  // 302-ing to the desktop loopback bridge.
+  describe("F8 — origin state-param routing", () => {
+    it("origin=relative-path → 302 to ${origin}, NO bearer_token in URL (cookie in browser jar)", async () => {
+      // Web sign-up sets `callbackURL: "/sign-in?verified=1"` which the
+      // rewrite hook preserves as `&origin=/sign-in?verified=1`. The
+      // Better Auth verify-email handler 302s here AFTER setting the
+      // session cookie on the response, so the browser already carries
+      // the cookie when it follows the next 302 to ${origin}. No need to
+      // expose the raw bearer in the URL (which would leak into history
+      // / referer).
+      const { auth } = makeAuth(RESOLVED_SESSION("raw-token"));
+      const app = buildApp(auth);
+      const res = await app.inject({
+        method: "GET",
+        url: "/api/auth/verify-email-complete?origin=/sign-in%3Fverified%3D1",
+        headers: { cookie: "openwhispr.session_token=signed.value" },
+      });
+      expect(res.statusCode).toBe(302);
+      // 302 target is the original relative path — verbatim, no
+      // bearer_token appended, no host added.
+      expect(res.headers.location).toBe("/sign-in?verified=1");
+      // No bearer leakage anywhere in the URL.
+      expect(res.headers.location).not.toContain("bearer_token");
+      expect(res.headers.location).not.toContain("raw-token");
+    });
+
+    it("origin=/ → desktop bridge (Better Auth default, backward-compat with R22)", async () => {
+      const { auth } = makeAuth(RESOLVED_SESSION("tok"));
+      const app = buildApp(auth);
+      const res = await app.inject({
+        method: "GET",
+        url: "/api/auth/verify-email-complete?origin=%2F",
+        headers: { cookie: "openwhispr.session_token=signed.value" },
+      });
+      expect(res.statusCode).toBe(302);
+      expect(res.headers.location).toBe(`${BRIDGE_PREFIX}tok`);
+    });
+
+    it("origin absent → desktop bridge (legacy verification emails / R22 backward-compat)", async () => {
+      // Pre-F8 emails carry no `?origin=` query — the route must keep
+      // routing them to the desktop bridge.
+      const { auth } = makeAuth(RESOLVED_SESSION("tok"));
+      const app = buildApp(auth);
+      const res = await app.inject({
+        method: "GET",
+        url: "/api/auth/verify-email-complete",
+        headers: { cookie: "openwhispr.session_token=signed.value" },
+      });
+      expect(res.statusCode).toBe(302);
+      expect(res.headers.location).toBe(`${BRIDGE_PREFIX}tok`);
+    });
+
+    it("origin=absolute-URL → 400 (open-redirect guard)", async () => {
+      // Defense in depth: the rewrite hook drops absolute URLs, but if
+      // an attacker crafts a verification link with an absolute origin
+      // bypass somehow, the route MUST reject — never honor an absolute
+      // redirect target.
+      const { auth } = makeAuth(RESOLVED_SESSION("tok"));
+      const app = buildApp(auth);
+      const res = await app.inject({
+        method: "GET",
+        url: `/api/auth/verify-email-complete?origin=${encodeURIComponent("https://attacker.example/phish")}`,
+        headers: { cookie: "openwhispr.session_token=signed.value" },
+      });
+      expect(res.statusCode).toBe(400);
+      // Body is the canonical {error:...} envelope.
+      expect(() => ErrorEnvelope.parse(res.json())).not.toThrow();
+      expect(res.headers.location).toBeUndefined();
+    });
+
+    it("origin=protocol-relative //host → 400 (open-redirect guard)", async () => {
+      const { auth } = makeAuth(RESOLVED_SESSION("tok"));
+      const app = buildApp(auth);
+      const res = await app.inject({
+        method: "GET",
+        url: `/api/auth/verify-email-complete?origin=${encodeURIComponent("//attacker.example/path")}`,
+        headers: { cookie: "openwhispr.session_token=signed.value" },
+      });
+      expect(res.statusCode).toBe(400);
+    });
+
+    it("origin=backslash-prefixed `/\\foo` → 400 (Windows path-style bypass)", async () => {
+      // Some browsers normalize `/\foo` as protocol-relative in some
+      // edge cases — reject explicitly.
+      const { auth } = makeAuth(RESOLVED_SESSION("tok"));
+      const app = buildApp(auth);
+      const res = await app.inject({
+        method: "GET",
+        url: `/api/auth/verify-email-complete?origin=${encodeURIComponent("/\\evil.example")}`,
+        headers: { cookie: "openwhispr.session_token=signed.value" },
+      });
+      expect(res.statusCode).toBe(400);
+    });
+
+    it("origin=relative-with-existing-query → 302 verbatim (no bearer_token appended)", async () => {
+      // The route does NOT mutate the origin path — the web app owns the
+      // destination shape.
+      const { auth } = makeAuth(RESOLVED_SESSION("tok"));
+      const app = buildApp(auth);
+      const path = "/welcome?source=email&utm=verify";
+      const res = await app.inject({
+        method: "GET",
+        url: `/api/auth/verify-email-complete?origin=${encodeURIComponent(path)}`,
+        headers: { cookie: "openwhispr.session_token=signed.value" },
+      });
+      expect(res.statusCode).toBe(302);
+      expect(res.headers.location).toBe(path);
+    });
+
+    it("origin=relative-path with no session → still 401 (auth check runs first)", async () => {
+      // The route MUST resolve the session before consulting origin —
+      // an unverified user with a crafted origin must not get a free
+      // redirect anywhere.
+      const { auth } = makeAuth(null);
+      const app = buildApp(auth);
+      const res = await app.inject({
+        method: "GET",
+        url: "/api/auth/verify-email-complete?origin=%2Fapp",
+      });
+      expect(res.statusCode).toBe(401);
+      expect(() => ErrorEnvelope.parse(res.json())).not.toThrow();
+      expect(res.headers.location).toBeUndefined();
+    });
+  });
+
+  // F8 (option 3) — legacy-email fallback via Sec-Fetch-Site detection.
+  // Pre-F8 verification emails carry no `?origin=` query, but the
+  // verify-email-complete route can still distinguish web-flow users
+  // (top-level browser navigation, Sec-Fetch-Site: none) from the
+  // Electron desktop client (which doesn't issue HTTP from a browser
+  // context and won't send Sec-Fetch-Site: none). Web users on legacy
+  // emails get 302 to /sign-in?verified=1 instead of the dead loopback.
+  describe("F8 option-3 — Sec-Fetch-Site fallback for legacy emails", () => {
+    it("origin absent + Sec-Fetch-Site: none → 302 to /sign-in?verified=1 (legacy web-flow fallback)", async () => {
+      const { auth } = makeAuth(RESOLVED_SESSION("tok"));
+      const app = buildApp(auth);
+      const res = await app.inject({
+        method: "GET",
+        url: "/api/auth/verify-email-complete",
+        headers: {
+          cookie: "openwhispr.session_token=signed.value",
+          "sec-fetch-site": "none",
+        },
+      });
+      expect(res.statusCode).toBe(302);
+      expect(res.headers.location).toBe("/sign-in?verified=1");
+      // No bearer leakage in the URL.
+      expect(res.headers.location).not.toContain("bearer_token");
+    });
+
+    it("origin absent + Sec-Fetch-Site missing → desktop bridge (older browsers / Electron / curl)", async () => {
+      // Conservative default: only `Sec-Fetch-Site: none` triggers the
+      // web fallback. Missing header means we can't disambiguate, so
+      // honor the R22 desktop-bridge default.
+      const { auth } = makeAuth(RESOLVED_SESSION("tok"));
+      const app = buildApp(auth);
+      const res = await app.inject({
+        method: "GET",
+        url: "/api/auth/verify-email-complete",
+        headers: { cookie: "openwhispr.session_token=signed.value" },
+      });
+      expect(res.statusCode).toBe(302);
+      expect(res.headers.location).toBe(`${BRIDGE_PREFIX}tok`);
+    });
+
+    it("origin absent + Sec-Fetch-Site: cross-site → desktop bridge (not a verify-email click pattern)", async () => {
+      // `cross-site` shouldn't happen on a verify-email click — it
+      // would mean the link was loaded from a different origin's page.
+      // Don't second-guess; honor the R22 default.
+      const { auth } = makeAuth(RESOLVED_SESSION("tok"));
+      const app = buildApp(auth);
+      const res = await app.inject({
+        method: "GET",
+        url: "/api/auth/verify-email-complete",
+        headers: {
+          cookie: "openwhispr.session_token=signed.value",
+          "sec-fetch-site": "cross-site",
+        },
+      });
+      expect(res.statusCode).toBe(302);
+      expect(res.headers.location).toBe(`${BRIDGE_PREFIX}tok`);
+    });
+
+    it("origin=/ + Sec-Fetch-Site: none → STILL desktop bridge (explicit '/' wins over fallback)", async () => {
+      // If the rewrite hook explicitly emitted `origin=/` (which it
+      // doesn't today, but defensive coverage), the explicit value
+      // wins over the implicit Sec-Fetch-Site heuristic.
+      const { auth } = makeAuth(RESOLVED_SESSION("tok"));
+      const app = buildApp(auth);
+      const res = await app.inject({
+        method: "GET",
+        url: "/api/auth/verify-email-complete?origin=%2F",
+        headers: {
+          cookie: "openwhispr.session_token=signed.value",
+          "sec-fetch-site": "none",
+        },
+      });
+      expect(res.statusCode).toBe(302);
+      expect(res.headers.location).toBe(`${BRIDGE_PREFIX}tok`);
+    });
+
+    it("origin=relative + Sec-Fetch-Site: none → explicit origin wins", async () => {
+      // Explicit origin always trumps the implicit fallback.
+      const { auth } = makeAuth(RESOLVED_SESSION("tok"));
+      const app = buildApp(auth);
+      const res = await app.inject({
+        method: "GET",
+        url: "/api/auth/verify-email-complete?origin=%2Fapp",
+        headers: {
+          cookie: "openwhispr.session_token=signed.value",
+          "sec-fetch-site": "none",
+        },
+      });
+      expect(res.statusCode).toBe(302);
+      expect(res.headers.location).toBe("/app");
+    });
+
+    it("Sec-Fetch-Site: none + no session → still 401 (auth runs before fallback)", async () => {
+      const { auth } = makeAuth(null);
+      const app = buildApp(auth);
+      const res = await app.inject({
+        method: "GET",
+        url: "/api/auth/verify-email-complete",
+        headers: { "sec-fetch-site": "none" },
+      });
+      expect(res.statusCode).toBe(401);
+    });
+  });
 });
