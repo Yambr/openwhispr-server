@@ -615,3 +615,44 @@ diff-noise (mechanical regenerate). Not in v1.0.0 critical path.
 
 **Next action**: pnpm vitest --update tests/integration/*.test.ts then
 commit snapshot delta. Out of automation-loop scope.
+
+## DEF-15-SCRUB-2026-05-25: history-scrub.sh pre-flight bug + force-push deferral
+
+**Source**: Phase 15-04 deferred FSL-06/FSL-07 force-push execution.
+
+**Context**: `tools/history-scrub.sh` Check 6 (`if ! (cd "${REPO_ROOT}" && git log --all --diff-filter=A --pretty=format: --name-only 2>/dev/null | grep -qx "${TARGET_PATH}")`) reports "target file 'speaches-audio.md' not found in git history (no addition commit)" even though `git log --all --diff-filter=A --pretty=format: --name-only | grep -x speaches-audio.md` standalone returns the file and exits 0.
+
+**Reproduction**: `bash tools/history-scrub.sh --dry-run` → pre-flight stage exits 1 at Check 6.
+
+**Suspected root cause**: subshell + `set -euo pipefail` + `grep -q` early-exit. `grep -q` finds match and exits early, possibly causing `git log` to receive SIGPIPE; under `pipefail` the subshell may register failure. Standalone reproduction with `set -euo pipefail` returns exit 0, so the bug may be in interaction with `if !` + nested cd subshell. Needs targeted debugging.
+
+**Why deferred (operator decision 2026-05-25)**:
+1. Repo public since 2026-05-08 at `github.com/Yambr/openwhispr-server` — file already indexable.
+2. forks_count=0, stargazers=0, network_count=0 — no downstream consumers to break.
+3. `speaches-audio.md` content is operator-facing Speaches Whisper setup documentation — not credentials, not PII, not a license violation in itself.
+4. 11 open PR (10 dependabot + 1 chart-bump) would become unmergeable; dependabot will rebase automatically but chart-bump would need manual recreation.
+5. Working-tree delete already staged (`D speaches-audio.md` in earlier commits).
+6. Removing from history does NOT remove from external mirrors / Google Cache / archive.org if any indexing occurred.
+
+**Next action when re-attempting**:
+1. Fix history-scrub.sh Check 6 — likely needs `|| true` after `grep -qx` to mask SIGPIPE under `pipefail`, OR restructure as 2-pass (build name list to var, then `grep -qx` against the var).
+2. Add regression test in `tools/history-scrub.test.sh` that exercises the actual condition with a real fixture repo.
+3. Re-run `--dry-run` to confirm pre-flight passes through all 10 stages.
+4. Close 11 open PR with explanatory comment OR merge the 3 chart-bump PR (PRs 18/22/23) before scrub.
+5. Execute `--force` from a fresh mirror clone (Stage 4 of runbook).
+
+**Risk register update**: Phase 62 (OSS publish) no longer gated on Phase 15 scrub execution; the FSL relicense itself is fully landed on tip-of-main and effective for new clones.
+
+## DEF-62-README-POLISH-2026-05-25: README polish + UI screenshots
+
+**Source**: Phase 62 (OSS publish) closure note.
+
+**Context**: v2.4 Phase 62 closed as "de-facto effective" — repo is public, history pushed, OCI charts releasing. But ROADMAP Success Criterion #2 reads: "README rewritten to GitHub-standard: purpose, screenshots of the web UI, quickstart, badges." Current README is functional (operator-facing) but lacks GitHub front-page polish.
+
+**Why deferred**: Not a publish blocker. The repo is already discoverable; FSL relicense, security review, SLO tables, and operator quickstart are all in place. README polish is OSS-marketing, not OSS-readiness.
+
+**Next action when re-attempting**:
+1. Capture `apps/web/` screenshots: `/`, `/sign-up`, `/admin`, `/setup`. Use Playwright + `page.screenshot()` from `tests/e2e-cjm/`.
+2. Add badges: build status, license (FSL-1.1-ALv2), chart version, Codecov / coverage.
+3. Restructure README: top section = purpose + 1 screenshot + 1-line install; middle = quickstart; bottom = links to `docs/`.
+4. Verify all README links resolve via `markdown-link-check`.
