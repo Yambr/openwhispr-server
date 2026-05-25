@@ -194,6 +194,30 @@ describe("SignUpForm (Phase 07.1 / Plan 07 — U2)", () => {
     });
   });
 
+  it("F8 — passes callbackURL: '/sign-in?verified=1' so the server routes the verify-email-complete 302 back to the web app, not the desktop loopback bridge", async () => {
+    // R22 introduced verify-email-complete that 302s to 127.0.0.1:5199
+    // (Electron loopback). For a web-flow sign-up the rewrite hook
+    // preserves the original `callbackURL` as `?origin=...` on the
+    // verification link. The verify-email-complete route then branches
+    // on `?origin=` and 302s back to the relative path. This test pins
+    // the web client's contribution to that handshake.
+    signUpEmail.mockResolvedValueOnce({ data: { user: {} }, error: null });
+    const { SignUpForm } = await import("../SignUpForm");
+    const user = userEvent.setup();
+    render(
+      <Wrap>
+        <SignUpForm />
+      </Wrap>,
+    );
+    await user.type(screen.getByLabelText(/name/i), "Bob");
+    await user.type(screen.getByLabelText(/email/i), "bob@test.local");
+    await user.type(screen.getByLabelText(/^password$/i), "Pwa9!testStrong");
+    await user.click(screen.getByRole("button", { name: /^sign up$/i }));
+    await waitFor(() => expect(signUpEmail).toHaveBeenCalledTimes(1));
+    const call = signUpEmail.mock.calls[0]?.[0] as { callbackURL?: string };
+    expect(call.callbackURL).toBe("/sign-in?verified=1");
+  });
+
   it("renders duplicate-email error when Better Auth returns USER_ALREADY_EXISTS", async () => {
     signUpEmail.mockResolvedValueOnce({
       data: null,

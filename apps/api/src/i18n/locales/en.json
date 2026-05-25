@@ -49,6 +49,7 @@
     "USER_NOT_FOUND": "User not found",
     "EMAIL_NOT_VERIFIED": "Email is not verified",
     "VERIFY_EMAIL_COMPLETE_NO_SESSION": "No verified session on this verification request",
+    "VERIFY_EMAIL_COMPLETE_INVALID_ORIGIN": "Invalid verification callback origin",
     "FAILED_TO_GET_SESSION": "Failed to get session",
     "INVALID_TOKEN": "Invalid or expired token",
     "ID_TOKEN_NOT_SUPPORTED": "id_token is not supported",

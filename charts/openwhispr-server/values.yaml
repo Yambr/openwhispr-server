@@ -20,22 +20,28 @@ image:
   # template-only fixes between image releases). Override at deploy
   # time if you pin a specific image tag.
   #
-  # Chart 1.0.7 — F1 follow-up patch on top of chart 1.0.6: api Deployment
-  # was missing DATABASE_URL_OWNER projection (B2 wired worker + migrate
-  # Job only). apps/api/src/index.ts:1066 reads it to construct probeOwnerPool,
-  # and routes/index.ts:511 silently skips POST /api/setup/admin registration
-  # without it — first-run admin onboarding 404'd in chart 1.0.5/1.0.6 prod.
-  # Discovered live on openwhispr.yambr.com 2026-05-24 while testing the
-  # /setup wizard. No image change required (api code already correct);
-  # pure chart wiring miss + regression guard test in tools/.
+  # Chart 1.0.8 + image v1.0.5 — F8 verify-email web-flow callback fix.
+  # R22 (image v1.0.4) introduced /api/auth/verify-email-complete that
+  # 302s to the Electron desktop auth-bridge loopback listener — correct
+  # for desktop clients, broken for web users (dead loopback in browser).
+  # F8 preserves the original sign-up callbackURL as ?origin= state-param
+  # on the verification link; the route branches on origin to route web
+  # users back to /sign-in?verified=1 (cookie already in browser jar).
+  # Adds a Sec-Fetch-Site: none fallback for legacy emails shipped before
+  # the fix (24h transition window per Better Auth default expiresIn).
+  # Discovered live on openwhispr.yambr.com 2026-05-25 by operator gitops;
+  # zero env-var / values changes required for operator — pure code fix.
   #
-  # Chart 1.0.6 lineage (kept here for upgrade-path documentation):
+  # Chart 1.0.7 lineage (kept here for upgrade-path documentation):
+  #   F1 api DATABASE_URL_OWNER Deployment projection (first-run /setup
+  #   admin onboarding 404 fix on top of chart 1.0.6).
+  # Chart 1.0.6 lineage:
   #   B1 worker probe path / B2 DATABASE_URL_OWNER worker+migrate /
   #   B3 LITELLM_DATABASE_URL / B3b OPENWHISPR_DEPLOYMENT_MODE ConfigMap +
   #   image v1.0.4 (A1 byok-guard export / A2 email k8s bypass / A3 worker
   #   CJS guard / A4 worker VALKEY_URL parser / A5 POST /api/locale).
   # Companion openwhispr-postgres chart 1.1.0 ships the rolconfig fix (B4).
-  tag: "1.0.4"
+  tag: "1.0.5"
   api:     { repository: openwhispr-api }
   web:     { repository: openwhispr-web }
   worker:  { repository: openwhispr-worker }

@@ -89,6 +89,15 @@ export function SignUpForm(): React.JSX.Element {
         name: values.name,
         email: values.email,
         password: values.password,
+        // F8 — tell the server this sign-up is from a web browser, not
+        // the desktop client. The server's `sendVerificationEmail` hook
+        // preserves this as `?origin=` on the verification link; the
+        // `verify-email-complete` route then 302s back here instead of
+        // to the Electron desktop auth-bridge loopback listener (see
+        // apps/api/src/config/desktop-bridge.ts for the address). The
+        // desktop client sends no `callbackURL` — defaults to "/" —
+        // and continues to land on the desktop bridge.
+        callbackURL: "/sign-in?verified=1",
       })) as { data: unknown; error: { code?: string; message?: string } | null };
       if (result.error) {
         const code = result.error.code ?? "";

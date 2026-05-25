@@ -49,6 +49,7 @@
     "USER_NOT_FOUND": "Пользователь не найден",
     "EMAIL_NOT_VERIFIED": "Электронная почта не подтверждена",
     "VERIFY_EMAIL_COMPLETE_NO_SESSION": "Нет подтверждённой сессии для этого запроса подтверждения",
+    "VERIFY_EMAIL_COMPLETE_INVALID_ORIGIN": "Некорректный адрес возврата для подтверждения",
     "FAILED_TO_GET_SESSION": "Не удалось получить сессию",
     "INVALID_TOKEN": "Недействительный или просроченный токен",
     "ID_TOKEN_NOT_SUPPORTED": "id_token не поддерживается",

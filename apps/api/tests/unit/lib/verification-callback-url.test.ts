@@ -65,4 +65,77 @@ describe("rewriteVerificationCallbackUrl", () => {
   it("VERIFY_EMAIL_COMPLETE_PATH is the canonical verify-email-complete route path", () => {
     expect(VERIFY_EMAIL_COMPLETE_PATH).toBe("/api/auth/verify-email-complete");
   });
+
+  // F8 — preserve original callbackURL as `?origin=` state-param so the
+  // verify-email-complete route can branch on desktop (loopback bridge)
+  // vs web (relative same-origin path) flow.
+  describe("F8 — origin preservation for web-flow detection", () => {
+    it("preserves a relative non-default callbackURL as &origin= query param", () => {
+      const original = `${BASE}/verify-email?token=jwt&callbackURL=${encodeURIComponent(
+        "/sign-in?verified=1",
+      )}`;
+      const rewritten = rewriteVerificationCallbackUrl(original);
+      const url = new URL(rewritten);
+      // The primary callbackURL still points at the server-controlled
+      // verify-email-complete route (Better Auth originCheck admits it).
+      expect(url.searchParams.get("callbackURL")).toBe(VERIFY_EMAIL_COMPLETE_PATH);
+      // But the original web destination is preserved in `origin` so the
+      // route handler can route the post-verify 302 back to the web app.
+      expect(url.searchParams.get("origin")).toBe("/sign-in?verified=1");
+    });
+
+    it("does not add &origin= when callbackURL is the Better Auth default '/'", () => {
+      const original = `${BASE}/verify-email?token=jwt&callbackURL=%2F`;
+      const url = new URL(rewriteVerificationCallbackUrl(original));
+      // Default `/` means desktop sign-up (no client-supplied callback) —
+      // omitting origin preserves R22 desktop-bridge backward-compat.
+      expect(url.searchParams.get("origin")).toBeNull();
+    });
+
+    it("does not add &origin= when callbackURL is absent", () => {
+      const original = `${BASE}/verify-email?token=only-token`;
+      const url = new URL(rewriteVerificationCallbackUrl(original));
+      expect(url.searchParams.get("origin")).toBeNull();
+    });
+
+    it("URL-encodes origin to survive nested query strings", () => {
+      // Web app may send a callbackURL carrying its own query params; the
+      // round-trip through &origin= must not lose them.
+      const inner = "/sign-in?verified=1&redirect=%2Fapp";
+      const original = `${BASE}/verify-email?token=jwt&callbackURL=${encodeURIComponent(inner)}`;
+      const url = new URL(rewriteVerificationCallbackUrl(original));
+      // URL constructor decodes a single layer of percent-encoding on
+      // searchParams.get — round-trip must recover the inner value exactly.
+      expect(url.searchParams.get("origin")).toBe(inner);
+    });
+
+    it("does not echo an absolute-URL callbackURL into origin (Better Auth strips those, but be defensive)", () => {
+      // Better Auth's originCheck strips/rejects absolute-URL callbackURLs
+      // unless they match the trusted-origins allow-list — so by the time
+      // the link reaches sendVerificationEmail, callbackURL should already
+      // be either relative or the trusted origin. Belt-and-suspenders:
+      // only relative paths get echoed to origin; absolute URLs are dropped
+      // so the verify-email-complete route never receives an absolute
+      // origin it would have to reject.
+      const original = `${BASE}/verify-email?token=jwt&callbackURL=${encodeURIComponent(
+        "https://attacker.example/phish",
+      )}`;
+      const url = new URL(rewriteVerificationCallbackUrl(original));
+      // Absolute URLs are NOT echoed — only relative paths are.
+      expect(url.searchParams.get("origin")).toBeNull();
+      // Primary rewrite is unchanged.
+      expect(url.searchParams.get("callbackURL")).toBe(VERIFY_EMAIL_COMPLETE_PATH);
+    });
+
+    it("does not echo a protocol-relative `//host` callbackURL into origin", () => {
+      // `//attacker.example/path` is technically relative-looking but
+      // resolves to a foreign origin in browsers. Treat as absolute and
+      // drop.
+      const original = `${BASE}/verify-email?token=jwt&callbackURL=${encodeURIComponent(
+        "//attacker.example/path",
+      )}`;
+      const url = new URL(rewriteVerificationCallbackUrl(original));
+      expect(url.searchParams.get("origin")).toBeNull();
+    });
+  });
 });
