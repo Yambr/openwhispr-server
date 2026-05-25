@@ -87,16 +87,75 @@ sibling LanguageSwitcher) on `/sign-in`
 - Sign-in page hardcoded `lang="en"` on server-render; client `<LanguageSwitcher>`
   is not reactive enough to flip it client-side
 
-### Investigation steps
+### Evidence dump from peer (2026-05-25 18:53 UTC, MCP playwright)
 
-1. Read `apps/api/src/routes/locale.ts` (`POST /api/locale`) — does it
-   `reply.setCookie("NEXT_LOCALE", lang, {...})`?
-2. Read `apps/web/src/components/.../LanguageSwitcher.tsx` — does the
-   click handler `router.refresh()` after the fetch resolves?
-3. Read `apps/web/src/middleware.ts` — locale negotiation from cookie?
-4. Read `apps/web/src/app/(public)/layout.tsx` — `<html lang={...}>` from
-   what source?
-5. Reproduce locally: docker compose up + Playwright reproduction
+Anonymous client, no prior cookies, `https://openwhispr.yambr.com/sign-in`
+served by api Pod `ow-openwhispr-server-api-5996979d88-7247g` (chart 1.0.8,
+api v1.0.5).
+
+Request:
+```http
+POST /api/locale HTTP/2
+Content-Type: application/json
+Body: {"locale":"ru"}
+```
+
+Response:
+```http
+HTTP/2 200
+cache-control: no-store
+content-language: ru
+content-length: 15
+content-type: application/json; charset=utf-8
+x-ratelimit-limit: 10
+x-ratelimit-remaining: 9
+
+{"locale":"ru"}
+```
+
+**Critical finding — NO `Set-Cookie` header in response.** The endpoint
+just echoes the payload. Zero persistence.
+
+Before vs After in same JS context:
+- `document.documentElement.lang` — `"en"` → `"en"` (no change)
+- `document.cookie` — `""` → `""` (empty)
+- body text — English → English (no change)
+
+Pure no-op: server returns 200 echo, client does not call
+`router.refresh()` / `window.location.reload()` / write a cookie itself.
+
+### Root-cause hypothesis (confirmed by evidence above)
+
+**Both** layers are broken:
+
+1. **Server** — `POST /api/locale` does NOT emit `Set-Cookie`. Should
+   include something like `Set-Cookie: NEXT_LOCALE=ru; Path=/;
+   Max-Age=31536000; SameSite=Lax; Secure; HttpOnly=false` so SSR on the
+   next page render gets the right `<html lang>` + bundle.
+
+2. **Client** — `LanguageSwitcher.onClick` after `fetch('/api/locale')`
+   does NOT call `router.refresh()` (Next.js App Router) or
+   `window.location.reload()`. So even if (1) is fixed and a cookie
+   lands, SSR re-render is not triggered.
+
+Both layers must be fixed atomically. The peer is correct that an
+alternative client-side-only path (i18next.changeLanguage + reactive
+provider) would skip the reload at the cost of dropping SSR locale
+parity — defer that choice to the user when triaging this seed.
+
+### Investigation steps (now reduced)
+
+1. Read `apps/api/src/routes/locale.ts` — confirm it does NOT call
+   `reply.setCookie(...)`. Add Set-Cookie emission.
+2. Read `apps/web/.../LanguageSwitcher.tsx` — confirm onClick does NOT
+   refresh after fetch. Add `router.refresh()` or
+   `window.location.reload()` based on user preference.
+3. Read `apps/web/src/middleware.ts` — confirm locale negotiation reads
+   the cookie name we're about to set.
+4. Read `apps/web/src/app/(public)/layout.tsx` — `<html lang={...}>`
+   source-of-truth.
+5. Reproduce locally; add e2e test (real browser click) for the full
+   round-trip.
 
 ### Tests
 
