@@ -96,6 +96,26 @@ const resources = {
           title: { text: "Email verified" },
           body: { text: "Your email has been confirmed. Sign in to continue." },
         },
+        // SEED-F8-UX — verify-email-complete 302 with ?error=<code> for
+        // browser flows on expired/invalid verification links.
+        "verify-error": {
+          default: {
+            title: { text: "Verification failed" },
+            body: {
+              text: "We could not confirm this verification link. Sign up again to receive a fresh email.",
+            },
+          },
+          "link-expired": {
+            title: { text: "Verification link expired" },
+            body: {
+              text: "This verification link is no longer valid. Sign up again or request a new verification email to continue.",
+            },
+          },
+          invalid_token: {
+            title: { text: "Invalid verification link" },
+            body: { text: "This verification link was not recognized. Please request a new one." },
+          },
+        },
         action: {
           forgotPassword: {
             // Phase 55-01-a — D-UX2 reversed; muted "coming soon" copy
@@ -582,6 +602,94 @@ describe("SignInForm (Phase 07.1 / Plan 07 — U1)", () => {
       });
       // Banner is no longer visible.
       expect(screen.queryByTestId("signin-verified-alert")).not.toBeInTheDocument();
+    });
+  });
+
+  // SEED-F8-UX — verify-email-complete 302s back to /sign-in?error=<code>
+  // when the verification link expired (most common) or was invalid.
+  // Replaces the raw JSON envelope the user saw in their address bar
+  // 2026-05-25 18:08 UTC.
+  describe("SEED-F8-UX — ?error=<code> verification-failure banner", () => {
+    it("renders the link-expired banner with specific copy when ?error=link-expired", async () => {
+      setMockSearch("?error=link-expired");
+      const { SignInForm } = await import("../SignInForm");
+      render(
+        <Wrap>
+          <SignInForm />
+        </Wrap>,
+      );
+      expect(screen.getByTestId("signin-verify-error-alert")).toBeInTheDocument();
+      expect(screen.getByText(/verification link expired/i)).toBeInTheDocument();
+      expect(screen.getByText(/this verification link is no longer valid/i)).toBeInTheDocument();
+    });
+
+    it("renders the invalid_token banner when ?error=invalid_token", async () => {
+      setMockSearch("?error=invalid_token");
+      const { SignInForm } = await import("../SignInForm");
+      render(
+        <Wrap>
+          <SignInForm />
+        </Wrap>,
+      );
+      expect(screen.getByTestId("signin-verify-error-alert")).toBeInTheDocument();
+      expect(screen.getByText(/invalid verification link/i)).toBeInTheDocument();
+    });
+
+    it("falls back to the default verify-error banner for unknown ?error=<code>", async () => {
+      // Server-side regex permits [a-zA-Z0-9_-]+ — unknown but well-formed
+      // codes still render an actionable (generic) banner rather than
+      // dumping the raw code.
+      setMockSearch("?error=some_unknown_code");
+      const { SignInForm } = await import("../SignInForm");
+      render(
+        <Wrap>
+          <SignInForm />
+        </Wrap>,
+      );
+      expect(screen.getByTestId("signin-verify-error-alert")).toBeInTheDocument();
+      expect(screen.getByText(/verification failed/i)).toBeInTheDocument();
+    });
+
+    it("rejects ?error=<unsafe-value> client-side — banner suppressed", async () => {
+      // Server-side regex blocks anything beyond [a-zA-Z0-9_-], but
+      // defense-in-depth: the client-side regex also validates so an
+      // attacker who somehow plants a payload in the URL cannot inject
+      // arbitrary translation keys.
+      setMockSearch("?error=foo%2Fbar");
+      const { SignInForm } = await import("../SignInForm");
+      render(
+        <Wrap>
+          <SignInForm />
+        </Wrap>,
+      );
+      expect(screen.queryByTestId("signin-verify-error-alert")).not.toBeInTheDocument();
+    });
+
+    it("does NOT render the verify-error banner on a plain /sign-in load", async () => {
+      setMockSearch("");
+      const { SignInForm } = await import("../SignInForm");
+      render(
+        <Wrap>
+          <SignInForm />
+        </Wrap>,
+      );
+      expect(screen.queryByTestId("signin-verify-error-alert")).not.toBeInTheDocument();
+    });
+
+    it("verify-error banner co-exists with the verified banner only if both query params are present (rare edge case)", async () => {
+      // Defensive: if some race results in both ?verified=1 AND ?error=,
+      // both alerts render (idle state, both pass guards). UI gracefully
+      // shows both — the visual hierarchy is success-then-error so the
+      // user can see they reached the right page after verification.
+      setMockSearch("?verified=1&error=link-expired");
+      const { SignInForm } = await import("../SignInForm");
+      render(
+        <Wrap>
+          <SignInForm />
+        </Wrap>,
+      );
+      expect(screen.getByTestId("signin-verified-alert")).toBeInTheDocument();
+      expect(screen.getByTestId("signin-verify-error-alert")).toBeInTheDocument();
     });
   });
 });

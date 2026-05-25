@@ -134,7 +134,11 @@ describe("POST /api/locale — anonymous + wire contract", () => {
     const setCookie = res.headers["set-cookie"];
     const cookies = Array.isArray(setCookie) ? setCookie : [setCookie ?? ""];
     expect(cookies.join("; ")).toMatch(/i18next=ru/);
-    expect(cookies.join("; ")).toMatch(/HttpOnly/i);
+    // SEED-F-LOCALE — httpOnly:false so the web client (LanguageSwitcher
+    // + browser devtools / playwright traces) can read the cookie via
+    // document.cookie. Locale is a non-credential preference, not a
+    // security boundary.
+    expect(cookies.join("; ")).not.toMatch(/HttpOnly/i);
     expect(cookies.join("; ")).toMatch(/SameSite=Lax/i);
     expect(cookies.join("; ")).toMatch(/Path=\//);
     // 1 year max-age (60*60*24*365 = 31536000)
@@ -204,5 +208,45 @@ describe("POST /api/locale — anonymous + wire contract", () => {
       payload: { locale: "ru" },
     });
     expect(res.headers["cache-control"]).toBe("no-store");
+  });
+
+  // SEED-F-LOCALE — Next.js middleware reads `NEXT_LOCALE` cookie for
+  // SSR locale negotiation; i18next-http-middleware reads `i18next` for
+  // API-side negotiation. Setting both keeps server + web SSR aligned
+  // without a translation layer. Peer ykoolfs5 surfaced 2026-05-25 18:53
+  // UTC that the POST was 200-OK but emitted no Set-Cookie at all in
+  // chart 1.0.8 — both layers must set their respective cookies.
+  it("SEED-F-LOCALE — sets both `i18next` and `NEXT_LOCALE` cookies", async () => {
+    app = await buildApp();
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/locale",
+      payload: { locale: "ru" },
+    });
+    expect(res.statusCode).toBe(200);
+    const setCookie = res.headers["set-cookie"];
+    const cookies = Array.isArray(setCookie) ? setCookie : [setCookie ?? ""];
+    const joined = cookies.join("; ");
+    // i18next for the API-side i18next-http-middleware LanguageDetector
+    expect(joined).toMatch(/i18next=ru/);
+    // NEXT_LOCALE for the Next.js web SSR middleware
+    expect(joined).toMatch(/NEXT_LOCALE=ru/);
+    // Two distinct Set-Cookie response headers (not joined into one)
+    expect(cookies.length).toBeGreaterThanOrEqual(2);
+  });
+
+  it("SEED-F-LOCALE — Set-Cookie headers omit HttpOnly so web client reads them", async () => {
+    app = await buildApp();
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/locale",
+      payload: { locale: "en" },
+    });
+    const setCookie = res.headers["set-cookie"];
+    const cookies = Array.isArray(setCookie) ? setCookie : [setCookie ?? ""];
+    // Locale is not a credential; httpOnly would block the client-side
+    // LanguageSwitcher from reading the cookie via document.cookie which
+    // is the F-LOCALE peer surfaced as silently no-op behavior.
+    expect(cookies.join("; ")).not.toMatch(/HttpOnly/i);
   });
 });
