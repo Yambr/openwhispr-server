@@ -117,7 +117,7 @@ describe("resolveSttConfig", () => {
   it("returns config defaults when both tenant and user rows are empty", async () => {
     const { tx } = makeFakeTx();
     const out = await resolveSttConfig(tx, TENANT, USER, cfg());
-    expect(out.defaultModel).toBe("whisper-1");
+    expect(out.defaultModel).toBe("openwhispr-default");
     expect(out.defaultLanguage).toBe("auto");
     expect(out.availableProviders).toEqual([]);
   });
@@ -152,14 +152,14 @@ describe("resolveSttConfig", () => {
   it("falls through cleanly when JSONB rows are empty objects", async () => {
     const { tx } = makeFakeTx({ tenantSttConfig: {}, userSttOverrides: {} });
     const out = await resolveSttConfig(tx, TENANT, USER, cfg());
-    expect(out.defaultModel).toBe("whisper-1");
+    expect(out.defaultModel).toBe("openwhispr-default");
     expect(out.defaultLanguage).toBe("auto");
   });
 
   it("falls through cleanly when the rows are missing entirely", async () => {
     const { tx } = makeFakeTx({ tenantRowMissing: true, userRowMissing: true });
     const out = await resolveSttConfig(tx, TENANT, USER, cfg());
-    expect(out.defaultModel).toBe("whisper-1");
+    expect(out.defaultModel).toBe("openwhispr-default");
   });
 
   it("queries both tenant_settings and user_settings (RLS contract)", async () => {

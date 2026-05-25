@@ -105,6 +105,35 @@ model_list:
       api_key: os.environ/OPENAI_API_KEY
       mode: realtime
 
+  # ---- Canonical `openwhispr-*` namespace (LEAK 1 fix, peer-coordinated
+  # with openwhispr client v1.7.8 wd6g78xz on 2026-05-25). The desktop
+  # client's provider-lockdown verifier and operator-facing UI greps for
+  # the `openwhispr-*` prefix to distinguish server-canonical aliases
+  # from upstream-provider names that the client must NOT display
+  # (`gpt-4o-mini-transcribe` lit up in v1.7.7; root cause was the
+  # absence of a server-side canonical name for transcription). These
+  # entries are pure aliases — same backing providers as
+  # `whisper-large-v3` / `gpt-4o-mini` / `realtime-default` above; the
+  # legacy names are retained for backward compatibility with desktop
+  # builds < v1.7.8. Corporate operators retarget the upstream by
+  # overriding `litellm_params.model` here without renaming the alias. ----
+  - model_name: openwhispr-default
+    litellm_params:
+      model: groq/whisper-large-v3
+      api_base: https://api.groq.com/openai/v1
+      api_key: os.environ/GROQ_API_KEY
+
+  - model_name: openwhispr-reason
+    litellm_params:
+      model: openrouter/openai/gpt-4o-mini
+      api_key: os.environ/OPENROUTER_API_KEY
+
+  - model_name: openwhispr-realtime
+    litellm_params:
+      model: openai/gpt-realtime
+      api_key: os.environ/OPENAI_API_KEY
+      mode: realtime
+
 general_settings:
   master_key: os.environ/LITELLM_MASTER_KEY
   database_url: os.environ/LITELLM_DATABASE_URL
