@@ -44,10 +44,17 @@ function SheetContent({
   children,
   side = "right",
   showCloseButton = true,
+  closeLabel,
   ...props
 }: React.ComponentProps<typeof SheetPrimitive.Content> & {
   side?: "top" | "right" | "bottom" | "left";
   showCloseButton?: boolean;
+  // Pre-prod blocker B2 (quick 260526-lgn): REQUIRED localized label
+  // for the close-button's sr-only span. No default — every call-site
+  // MUST pass a localized string (e.g. t("common:common.action.close.label")).
+  // Even when showCloseButton={false} the caller passes it; trivial
+  // overhead, much simpler typing than a discriminated union.
+  closeLabel: string;
 }) {
   return (
     <SheetPortal>
@@ -72,7 +79,7 @@ function SheetContent({
         {showCloseButton && (
           <SheetPrimitive.Close className="absolute top-4 right-4 rounded-xs opacity-70 ring-offset-background transition-opacity hover:opacity-100 focus:ring-2 focus:ring-ring focus:ring-offset-2 focus:outline-hidden disabled:pointer-events-none data-[state=open]:bg-secondary">
             <XIcon className="size-4" />
-            <span className="sr-only">Close</span>
+            <span className="sr-only">{closeLabel}</span>
           </SheetPrimitive.Close>
         )}
       </SheetPrimitive.Content>
