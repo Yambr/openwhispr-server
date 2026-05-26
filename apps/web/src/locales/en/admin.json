@@ -1,5 +1,19 @@
 {
   "admin": {
+    "forbidden": {
+      "title": {
+        "text": "403 — Forbidden"
+      },
+      "body_prefix": {
+        "text": "Your account does not have the "
+      },
+      "body_middle": {
+        "text": " role. The /admin surface is restricted to operators. If you believe this is wrong, ask the install owner to promote your account via the setup wizard or by setting "
+      },
+      "body_suffix": {
+        "text": " for your user."
+      }
+    },
     "index": {
       "title": {
         "heading": {
