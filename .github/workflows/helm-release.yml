@@ -192,3 +192,69 @@ jobs:
           skip_existing: true
         env:
           CR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build enriched chart Release body
+        id: body
+        env:
+          CHART_VERSION: ${{ steps.tag.outputs.value }}
+          REF_NAME: ${{ github.ref_name }}
+          REPO_OWNER: ${{ github.repository_owner }}
+        run: |
+          # Owner-lowercase per GHCR rules (same parameter-expansion
+          # pattern used by the OCI push step above).
+          owner=$(echo "${REPO_OWNER}" | tr '[:upper:]' '[:lower:]')
+          # Read appVersion from Chart.yaml at checkout time — this is
+          # the image tag the chart pins by default. yq is preinstalled
+          # on ubuntu-24.04 runners.
+          app_version=$(yq '.appVersion' charts/openwhispr-server/Chart.yaml)
+          cat > body.md <<EOF
+          # OpenWhispr Server Chart ${REF_NAME}
+
+          Helm chart for the OpenWhispr Server backend. Ships api/web/worker Deployments, migrate Job, ConfigMap, ServiceAccount. BYOK-first — Postgres / Valkey / S3 / SMTP / LiteLLM / OAuth provided as externally-managed Kubernetes Secrets.
+
+          ## Pinned image version
+
+          This chart pins image **\`v${app_version}\`** as its default \`appVersion\`. See the matching [image release v${app_version}](https://github.com/Yambr/openwhispr-server/releases/tag/v${app_version}) for the GHCR pull commands of all 6 images.
+
+          ## Pull the chart
+
+          \`\`\`bash
+          helm pull oci://ghcr.io/${owner}/charts/openwhispr-server --version ${CHART_VERSION}
+          \`\`\`
+
+          ## Install (BYOK example)
+
+          \`\`\`bash
+          helm install openwhispr \\
+            oci://ghcr.io/${owner}/charts/openwhispr-server \\
+            --version ${CHART_VERSION} \\
+            --namespace openwhispr --create-namespace \\
+            --values your-values.yaml
+          \`\`\`
+
+          See [docs/operations.md](https://github.com/Yambr/openwhispr-server/blob/main/docs/operations.md) for the full operator runbook (Secret prerequisites, ingress wiring, cert-manager, observability, corporate-LiteLLM override).
+
+          ## Chart contents
+
+          This Release page exposes the packaged chart as \`openwhispr-server-${CHART_VERSION}.tgz\` (asset below). The same artifact lives in **GHCR OCI** at \`oci://ghcr.io/${owner}/charts/openwhispr-server:${CHART_VERSION}\` — prefer \`helm pull\` over the .tgz attachment for production use.
+          EOF
+          echo "wrote body.md ($(wc -l < body.md) lines)"
+
+      - name: Publish enriched body to GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CHART_VERSION: ${{ steps.tag.outputs.value }}
+        run: |
+          # Create-if-not-exists guard (R3 mitigation): chart-releaser-action
+          # normally creates the Release with the .tgz attached, but
+          # `skip_existing: true` can no-op on edge cases. If the Release
+          # is missing we create it ourselves AND attach the .tgz. If it
+          # exists we just overwrite the body via `gh release edit`.
+          if gh release view "${GITHUB_REF_NAME}" >/dev/null 2>&1; then
+            gh release edit "${GITHUB_REF_NAME}" --notes-file body.md
+          else
+            gh release create "${GITHUB_REF_NAME}" \
+              --title "OpenWhispr Server Chart ${GITHUB_REF_NAME}" \
+              --notes-file body.md \
+              ".cr-release-packages/openwhispr-server-${CHART_VERSION}.tgz"
+          fi

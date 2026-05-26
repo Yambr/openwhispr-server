@@ -20,6 +20,17 @@ image:
   # template-only fixes between image releases). Override at deploy
   # time if you pin a specific image tag.
   #
+  # Chart 1.0.13 + image v1.0.10 — workflow-only release: GitHub
+  # Releases page now surfaces a Release object per image tag (v*) with
+  # multi-arch pull commands for all 6 GHCR images + paired-chart xref,
+  # AND enriches the chart-tag (openwhispr-server-*) Release body with
+  # helm pull / install snippets + paired-image xref. NO runtime
+  # behavior change vs v1.0.9 — same realtime ?language= query +
+  # REALTIME_DEFAULT_LANGUAGE env fallback, same DB schema, same wire
+  # surface. Tagging this revision exists solely to fire the modified
+  # workflows in CI and verify the Release page output end-to-end.
+  # See .planning/quick/260526-pxb-release-page-image-chart-visibility/.
+  #
   # Chart 1.0.12 + image v1.0.9 — realtime `?language=` query +
   # `REALTIME_DEFAULT_LANGUAGE` env fallback (peer wd6g78xz prod
   # incident 2026-05-26 follow-up, Yambr fork). The immutable cloud
@@ -125,7 +136,7 @@ image:
   #   image v1.0.4 (A1 byok-guard export / A2 email k8s bypass / A3 worker
   #   CJS guard / A4 worker VALKEY_URL parser / A5 POST /api/locale).
   # Companion openwhispr-postgres chart 1.1.0 ships the rolconfig fix (B4).
-  tag: "1.0.9"
+  tag: "1.0.10"
   api:     { repository: openwhispr-api }
   web:     { repository: openwhispr-web }
   worker:  { repository: openwhispr-worker }
