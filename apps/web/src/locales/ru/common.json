@@ -2,6 +2,7 @@
   "common": {
     "action": {
       "cancel": { "label": "Отмена" },
+      "close": { "label": "Закрыть" },
       "confirm": { "label": "Подтвердить" },
       "copy": { "label": "Копировать" },
       "yes": { "label": "Да" },
