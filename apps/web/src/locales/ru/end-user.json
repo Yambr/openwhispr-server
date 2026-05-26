@@ -652,7 +652,10 @@
       "step": {
         "identity": { "title": { "text": "Учётная запись" } },
         "workspace": { "title": { "text": "Рабочая область" } },
-        "review": { "title": { "text": "Проверка" } }
+        "review": { "title": { "text": "Проверка" } },
+        "completed": {
+          "aria": { "label": "Завершено" }
+        }
       },
       "form": {
         "name": { "label": "Имя" },

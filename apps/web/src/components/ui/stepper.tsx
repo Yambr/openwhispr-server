@@ -115,6 +115,15 @@ export interface StepIndicatorProps extends React.ComponentProps<"div"> {
   status: StepStatus;
   /** 1-indexed numeric label for the indicator badge. */
   index: number;
+  /**
+   * Pre-prod blocker B3 (quick 260526-lgn): REQUIRED localized label
+   * for the sr-only span announced when status==="complete" (e.g.
+   * t("end-user:end-user.setup.step.completed.aria.label")). No
+   * default — every call-site MUST pass a localized string. The prop
+   * is required even when this step is not yet complete; trivial
+   * overhead, simpler typing than a conditional discriminated union.
+   */
+  completedLabel: string;
 }
 
 /**
@@ -124,6 +133,7 @@ export interface StepIndicatorProps extends React.ComponentProps<"div"> {
 export function StepIndicator({
   status,
   index,
+  completedLabel,
   className,
   ...props
 }: StepIndicatorProps): React.JSX.Element {
@@ -143,7 +153,7 @@ export function StepIndicator({
       {status === "complete" ? (
         <>
           <Check className="size-4" aria-hidden="true" />
-          <span className="sr-only">Completed</span>
+          <span className="sr-only">{completedLabel}</span>
         </>
       ) : (
         <span aria-hidden="true">{index}</span>
