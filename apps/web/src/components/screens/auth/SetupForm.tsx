@@ -233,7 +233,11 @@ export function SetupForm(): React.JSX.Element {
               const status = getStepStatus(idx, currentStep);
               return (
                 <Step key={id} status={status} isLast={idx === SECTION_IDS.length - 1}>
-                  <StepIndicator status={status} index={idx + 1} />
+                  <StepIndicator
+                    status={status}
+                    index={idx + 1}
+                    completedLabel={t("end-user:end-user.setup.step.completed.aria.label")}
+                  />
                   <StepLabel status={status}>{stepLabels[idx]}</StepLabel>
                 </Step>
               );

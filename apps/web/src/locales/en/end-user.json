@@ -650,7 +650,10 @@
       "step": {
         "identity": { "title": { "text": "Identity" } },
         "workspace": { "title": { "text": "Workspace" } },
-        "review": { "title": { "text": "Review" } }
+        "review": { "title": { "text": "Review" } },
+        "completed": {
+          "aria": { "label": "Completed" }
+        }
       },
       "form": {
         "name": { "label": "Name" },
