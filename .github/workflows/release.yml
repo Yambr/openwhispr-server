@@ -129,3 +129,100 @@ jobs:
           sbom: true
           cache-from: type=gha,scope=${{ matrix.name }}
           cache-to: type=gha,mode=max,scope=${{ matrix.name }}
+
+  create-image-release:
+    # Forward-only Release surface for `v*` image tags. Prior to this job,
+    # `gh release view v1.0.<N>` returned "release not found" because
+    # nothing in the workflow chain created a Release object for image
+    # tags (chart tags get one via chart-releaser-action in
+    # .github/workflows/helm-release.yml, image tags got nothing).
+    #
+    # Fires only on `tags/v*` push, NEVER on workflow_dispatch (no canonical
+    # tag exists there to attach the Release to). Needs the full 6-image
+    # matrix to finish green so the Release body's pull commands are not
+    # hallucinations.
+    #
+    # Job-level `permissions: { contents: write }` keeps the workflow-level
+    # `contents: read` permission narrow; only this single Release-creating
+    # job widens the surface (R1 mitigation in PLAN.md).
+    #
+    # Cross-workflow note: helm-release.yml's monolith `release` job also
+    # fires on `v*` tags (yanked chart). chart-releaser-action runs first
+    # (~2 min) and may create the v* Release with a chart body; this job
+    # finishes after ~25 min and softprops/action-gh-release@v2 overwrites
+    # the body with the canonical image-release content (R8 mitigation).
+    needs: [build-image]
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Resolve image tag
+        id: tag
+        run: |
+          # Strip leading `v` from ref tags so the body's pull commands
+          # match the image tags pushed by the matrix job above
+          # (lines 75-84 establish the same pattern).
+          ref="${GITHUB_REF_NAME#v}"
+          echo "value=${ref}" >> "$GITHUB_OUTPUT"
+
+      - name: Build Release body
+        id: body
+        env:
+          REF_NAME: ${{ github.ref_name }}
+          VERSION: ${{ steps.tag.outputs.value }}
+          REPO_OWNER: ${{ github.repository_owner }}
+        run: |
+          # GHCR lowercase rule applies to the owner slug; mirror the
+          # parameter-expansion pattern from lines 99-107.
+          owner=$(echo "${REPO_OWNER}" | tr '[:upper:]' '[:lower:]')
+          # Read the chart's appVersion as a sanity hint for operators
+          # who want to confirm chart/image pairing. Falls through
+          # silently if yq is missing (preinstalled on ubuntu-24.04).
+          chart_app_version=$(yq '.appVersion' charts/openwhispr-server/Chart.yaml 2>/dev/null || echo "${VERSION}")
+          cat > body.md <<EOF
+          # OpenWhispr Server ${REF_NAME}
+
+          Self-hosted OpenWhispr backend — see [README](https://github.com/Yambr/openwhispr-server#readme) and [operations runbook](https://github.com/Yambr/openwhispr-server/blob/main/docs/operations.md).
+
+          ## Container images
+
+          All 6 images are published to **GHCR** (multi-architecture: \`linux/amd64\` + \`linux/arm64\`, provenance + SBOM attached).
+
+          \`\`\`bash
+          docker pull ghcr.io/${owner}/openwhispr-api:${VERSION}
+          docker pull ghcr.io/${owner}/openwhispr-web:${VERSION}
+          docker pull ghcr.io/${owner}/openwhispr-worker:${VERSION}
+          docker pull ghcr.io/${owner}/openwhispr-test-probe:${VERSION}
+          docker pull ghcr.io/${owner}/openwhispr-postgres-17-pgpartman:${VERSION}        # also tagged :17.5-${VERSION}
+          docker pull ghcr.io/${owner}/openwhispr-cnpg-postgres-17-pgpartman:${VERSION}   # also tagged :17.6-${VERSION}
+          \`\`\`
+
+          Browse all OpenWhispr packages: <https://github.com/${REPO_OWNER}?tab=packages&q=openwhispr->
+
+          ## Helm chart
+
+          The matching chart release is published separately on tag \`openwhispr-server-<chart-version>\` and pulls these images by default. See [chart releases](https://github.com/Yambr/openwhispr-server/releases?q=openwhispr-server-) for the chart version that pins image \`${VERSION}\` as its \`appVersion\` (current default in this repo: chart with appVersion \`${chart_app_version}\`).
+
+          \`\`\`bash
+          helm pull oci://ghcr.io/${owner}/charts/openwhispr-server --version <chart-version>
+          \`\`\`
+
+          ## Install
+
+          See [docs/operations.md](https://github.com/Yambr/openwhispr-server/blob/main/docs/operations.md) for the canonical installation runbook (single-VM docker-compose, Kubernetes Helm, and corporate-LiteLLM override).
+          EOF
+          echo "wrote body.md ($(wc -l < body.md) lines)"
+
+      - name: Create or update GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: OpenWhispr Server ${{ github.ref_name }}
+          body_path: body.md
+          draft: false
+          prerelease: false
+          generate_release_notes: false
+          token: ${{ secrets.GITHUB_TOKEN }}
