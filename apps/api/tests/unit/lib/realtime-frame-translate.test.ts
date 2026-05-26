@@ -33,16 +33,6 @@ function betaToGaSessionPayload(session: Record<string, unknown>): Record<string
   return ga.session as Record<string, unknown>;
 }
 
-/**
- * Drive the GA→Beta session-payload transform through the public mapper:
- * wrap `session` in a GA `session.updated` frame, translate it, and return
- * the resulting flat Beta `session` object.
- */
-function gaToBetaSessionPayload(session: Record<string, unknown>): Record<string, unknown> {
-  const beta = translateUpstreamToClient({ type: "session.updated", session });
-  return beta.session as Record<string, unknown>;
-}
-
 describe("parseRealtimeFrame", () => {
   it("parses a well-formed frame with a string type", () => {
     const r = parseRealtimeFrame('{"type":"session.created","session":{"id":"sess_1"}}');
@@ -189,43 +179,6 @@ describe("betaToGaSessionPayload — DEFECT 4 flat→nested transform", () => {
   });
 });
 
-describe("gaToBetaSessionPayload — inverse nested→flat transform", () => {
-  it("flattens a GA session payload back to Beta field names", () => {
-    const beta = gaToBetaSessionPayload({
-      type: "transcription",
-      audio: {
-        input: {
-          format: { type: "audio/pcm", rate: 24_000 },
-          transcription: { model: "gpt-4o-mini-transcribe" },
-          turn_detection: { type: "server_vad" },
-        },
-      },
-    });
-    expect(beta).toEqual({
-      input_audio_format: "pcm16",
-      input_audio_transcription: { model: "gpt-4o-mini-transcribe" },
-      turn_detection: { type: "server_vad" },
-    });
-    // The GA `type` discriminator must NOT survive into the Beta payload.
-    expect(beta.type).toBeUndefined();
-  });
-
-  it("round-trips betaToGa → gaToBeta back to the original flat shape", () => {
-    const original = {
-      input_audio_format: "pcm16",
-      input_audio_transcription: { model: "gpt-4o-mini-transcribe" },
-      turn_detection: { type: "server_vad", threshold: 0.6 },
-    };
-    expect(gaToBetaSessionPayload(betaToGaSessionPayload(original))).toEqual(original);
-  });
-
-  it("is tolerant of a GA payload with no audio object", () => {
-    expect(gaToBetaSessionPayload({ type: "transcription", id: "sess_1" })).toEqual({
-      id: "sess_1",
-    });
-  });
-});
-
 describe("translateClientToUpstream — Beta → GA", () => {
   it("rewrites transcription_session.update to session.update with nested GA payload", () => {
     const beta: RealtimeFrame = {
@@ -297,23 +250,28 @@ describe("translateClientToUpstream — Beta → GA", () => {
   });
 });
 
-describe("translateUpstreamToClient — GA → Beta", () => {
-  it("rewrites session.created to transcription_session.created", () => {
-    const beta = translateUpstreamToClient({
+describe("translateUpstreamToClient — passthrough (GA→GA per current client contract)", () => {
+  it("passes session.created through unchanged", () => {
+    const frame: RealtimeFrame = {
       type: "session.created",
       session: { id: "sess_1" },
-    });
-    expect(beta.type).toBe("transcription_session.created");
-    expect(beta.session).toEqual({ id: "sess_1" });
+    };
+    const result = translateUpstreamToClient(frame);
+    // Same-reference passthrough — the actually-shipping client speaks GA
+    // throughout (case "session.created" handler in its switch table).
+    expect(result).toBe(frame);
+    expect(result.type).toBe("session.created");
   });
 
-  it("rewrites session.updated to transcription_session.updated", () => {
-    const beta = translateUpstreamToClient({ type: "session.updated", session: {} });
-    expect(beta.type).toBe("transcription_session.updated");
+  it("passes session.updated through unchanged (no rename, no payload flatten)", () => {
+    const frame: RealtimeFrame = { type: "session.updated", session: {} };
+    const result = translateUpstreamToClient(frame);
+    expect(result).toBe(frame);
+    expect(result.type).toBe("session.updated");
   });
 
-  it("flattens the GA session payload on session.updated back to Beta shape", () => {
-    const beta = translateUpstreamToClient({
+  it("passes a session.updated frame with a nested GA payload through unchanged (no GA→Beta flatten)", () => {
+    const frame: RealtimeFrame = {
       type: "session.updated",
       session: {
         type: "transcription",
@@ -324,12 +282,12 @@ describe("translateUpstreamToClient — GA → Beta", () => {
           },
         },
       },
-    });
-    expect(beta.type).toBe("transcription_session.updated");
-    expect(beta.session).toEqual({
-      input_audio_format: "pcm16",
-      input_audio_transcription: { model: "gpt-4o-mini-transcribe" },
-    });
+    };
+    const result = translateUpstreamToClient(frame);
+    // The GA payload is forwarded BYTE-FOR-BYTE — same reference, no
+    // nested→flat restructuring. The client now reads the GA shape itself.
+    expect(result).toBe(frame);
+    expect(result.session).toBe(frame.session);
   });
 
   it("passes transcription delta result frames through unchanged (byte-identical Beta/GA)", () => {
@@ -373,8 +331,8 @@ describe("translateUpstreamToClient — GA → Beta", () => {
   });
 });
 
-describe("round-trip — Beta in, GA at upstream, Beta back to client", () => {
-  it("client transcription_session.update survives as nested GA session.update", () => {
+describe("round-trip — client emits GA, server passes through both directions", () => {
+  it("client transcription_session.update survives as nested GA session.update; upstream session.created passes through unchanged", () => {
     const clientFrame: RealtimeFrame = {
       type: "transcription_session.update",
       session: {
@@ -392,9 +350,13 @@ describe("round-trip — Beta in, GA at upstream, Beta back to client", () => {
     expect(session.audio.input.format).toEqual({ type: "audio/pcm", rate: 24_000 });
     expect(session.audio.input.transcription).toEqual({ model: "gpt-4o-mini-transcribe" });
 
+    // Upstream replies with GA session.created. The actually-shipping client
+    // handles `case "session.created"` directly — the server passes the
+    // frame through with no rename.
     const upstreamReply: RealtimeFrame = { type: "session.created", session: {} };
     const clientGetsBack = translateUpstreamToClient(upstreamReply);
-    expect(clientGetsBack.type).toBe("transcription_session.created");
+    expect(clientGetsBack).toBe(upstreamReply);
+    expect(clientGetsBack.type).toBe("session.created");
   });
 
   it("a GA transcription result event survives untranslated to the client", () => {

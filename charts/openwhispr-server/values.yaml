@@ -20,6 +20,24 @@ image:
   # template-only fixes between image releases). Override at deploy
   # time if you pin a specific image tag.
   #
+  # Chart 1.0.11 + image v1.0.8 — realtime translate passthrough fix
+  # (peer wd6g78xz prod incident 2026-05-26). Server's
+  # translateUpstreamToClient previously renamed upstream GA
+  # `session.created` to Beta `transcription_session.created` (and
+  # session.updated likewise, with payload flatten). The actually-shipping
+  # immutable OpenWhispr / Yambr-fork desktop client speaks OpenAI
+  # Realtime GA throughout (client switch table handles
+  # `case "session.created"` / `case "session.updated"`; zero references
+  # to `transcription_session.*`). Prior Beta-rename landed the client
+  # switch on the default branch, pendingResolve never fired, 15s WSS
+  # connection timeout, 0 transcription frames received in real-mic
+  # tests on prod k8s. translateUpstreamToClient is now full passthrough
+  # for the upstream→client leg; translateClientToUpstream unchanged
+  # (the legacy transcription_session.update→session.update rewrite
+  # remains as defence-in-depth for any future Beta-speaking client).
+  # No chart-side env-var or values changes required for operators —
+  # pure server code fix.
+  #
   # Chart 1.0.10 + image v1.0.7 — LEAK 1 fix coordinated with openwhispr
   # client v1.7.8 (peer wd6g78xz, 2026-05-25). Two atomic pieces:
   #   1. Three canonical `openwhispr-*` model aliases land in
@@ -85,7 +103,7 @@ image:
   #   image v1.0.4 (A1 byok-guard export / A2 email k8s bypass / A3 worker
   #   CJS guard / A4 worker VALKEY_URL parser / A5 POST /api/locale).
   # Companion openwhispr-postgres chart 1.1.0 ships the rolconfig fix (B4).
-  tag: "1.0.7"
+  tag: "1.0.8"
   api:     { repository: openwhispr-api }
   web:     { repository: openwhispr-web }
   worker:  { repository: openwhispr-worker }
