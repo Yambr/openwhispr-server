@@ -136,7 +136,7 @@
 import type { LitellmClient } from "@openwhispr/litellm-client";
 import type { FastifyInstance, FastifyRequest } from "fastify";
 import { type RawData, WebSocket } from "ws";
-import type { RealtimeBackend } from "../config/realtime.js";
+import { REALTIME_LANGUAGE_WHITELIST, type RealtimeBackend } from "../config/realtime.js";
 import { AuthError } from "../errors.js";
 import { mapUpstreamStatusToCloseCode } from "../lib/realtime-close-code.js";
 import {
@@ -261,9 +261,12 @@ export function buildUpstreamUrl(deps: RealtimeDeps, rawClientUrl: string, userI
   if (deps.backend === "direct") {
     const u = new URL(deps.openaiRealtimeUrl);
     // Carry forward any benign client params; the relay owns
-    // intent/user/model.
+    // intent/user/model. v1.0.9: `language` is consumed in-band on the
+    // GA `session.update.audio.input.transcription.language` field and
+    // MUST NOT survive onto the upstream URL.
     for (const [k, v] of clientQuery) {
-      if (k !== "intent" && k !== "user" && k !== "model") u.searchParams.set(k, v);
+      if (k !== "intent" && k !== "user" && k !== "model" && k !== "language")
+        u.searchParams.set(k, v);
     }
     // FORCE the transcription intent — GA opens a transcription session
     // only with this param. No `?model=`: the GA transcription session
@@ -280,8 +283,11 @@ export function buildUpstreamUrl(deps: RealtimeDeps, rawClientUrl: string, userI
   }
   const base = httpToWsScheme(deps.litellm.baseUrl).replace(/\/+$/, "");
   const u = new URL(`${base}/v1/realtime`);
+  // v1.0.9: same strip-set as the direct branch — `language` is consumed
+  // in-band on the relay-originated `session.update`, never on the URL.
   for (const [k, v] of clientQuery) {
-    if (k !== "intent" && k !== "user" && k !== "model") u.searchParams.set(k, v);
+    if (k !== "intent" && k !== "user" && k !== "model" && k !== "language")
+      u.searchParams.set(k, v);
   }
   // FORCE the transcription intent — LiteLLM forwards it to OpenAI's GA
   // `/v1/realtime`, which needs it to open a transcription session.
@@ -546,6 +552,43 @@ export const buildRealtimeRoutes = (deps: RealtimeDeps) =>
         const upstreamUrl = buildUpstreamUrl(deps, rawUrl, userId);
         const headers = buildUpstreamHeaders(deps, userId, req.id);
 
+        // v1.0.9 — per-upgrade language resolution.
+        //
+        // Fallback chain: `?language=` query (preferred) →
+        // `deps.transcription.language` (loaded from
+        // `REALTIME_DEFAULT_LANGUAGE` env) → omit field (OpenAI
+        // auto-detect path). A query value not in
+        // `REALTIME_LANGUAGE_WHITELIST` is dropped + logged at warn
+        // level; the env fallback then applies (so a typo on the
+        // wire does NOT silently un-configure a single-language
+        // tenant).
+        //
+        // The resolved value is written into a SHALLOW CLONE of
+        // `deps.transcription` — never into the deps singleton itself.
+        // Mutating the singleton would race concurrent upgrades on the
+        // same Fastify instance (M9 property test).
+        const queryUrl = new URL(rawUrl, "http://internal");
+        const rawLang = queryUrl.searchParams.get("language")?.trim().toLowerCase();
+        let resolvedLanguage: string | undefined = deps.transcription.language;
+        if (rawLang !== undefined && rawLang.length > 0) {
+          if ((REALTIME_LANGUAGE_WHITELIST as readonly string[]).includes(rawLang)) {
+            resolvedLanguage = rawLang;
+          } else {
+            req.log.warn(
+              {
+                event: "realtime.language.invalid",
+                value: rawLang,
+                falling_back_to_env_default: deps.transcription.language !== undefined,
+              },
+              "realtime ?language= query value not in whitelist; falling back",
+            );
+          }
+        }
+        const perUpgradeTranscription: RelayTranscriptionConfig = {
+          ...deps.transcription,
+          ...(resolvedLanguage !== undefined ? { language: resolvedLanguage } : {}),
+        };
+
         // Phase 04 / Plan 07 / D-27 — 10s upstream handshake ceiling.
         // Without it a stuck-connecting upstream (TCP up, WS upgrade never
         // completes) would hold the desktop client's session open
@@ -554,7 +597,7 @@ export const buildRealtimeRoutes = (deps: RealtimeDeps) =>
           headers,
           handshakeTimeout: 10_000,
         });
-        bridgeRealtimeSockets(clientSocket, upstreamSocket, deps.transcription, req.log);
+        bridgeRealtimeSockets(clientSocket, upstreamSocket, perUpgradeTranscription, req.log);
       },
     );
   };

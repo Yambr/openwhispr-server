@@ -8,6 +8,7 @@
 // unit level — one of the two test layers that close the R31 gap.
 
 import { describe, expect, it } from "vitest";
+import { REALTIME_LANGUAGE_WHITELIST } from "../../../src/config/realtime.js";
 import {
   buildRelaySessionUpdateFrame,
   MAX_REALTIME_FRAME_BYTES,
@@ -435,5 +436,68 @@ describe("buildRelaySessionUpdateFrame — R31 DEFECT 6 relay-originated session
     expect(session.input_audio_format).toBeUndefined();
     expect(session.input_audio_transcription).toBeUndefined();
     expect(session.turn_detection).toBeUndefined();
+  });
+});
+
+describe("buildRelaySessionUpdateFrame language injection (v1.0.9)", () => {
+  // v1.0.9 — the relay-originated `session.update` carries an optional
+  // `language` hint inside `session.audio.input.transcription`. Resolved by
+  // the route layer from `?language=` query (per-upgrade) or
+  // `REALTIME_DEFAULT_LANGUAGE` env (fallback). When unresolved the field
+  // is OMITTED from the frame so OpenAI's auto-detect path is used. The
+  // injection is the smallest possible additive: a conditional spread on
+  // the `transcription` object. The translator helpers
+  // (`translateClientToUpstream` / `translateUpstreamToClient`) stay
+  // untouched per the v1.0.8 full-passthrough contract.
+  const baseConfig: RelayTranscriptionConfig = {
+    model: "gpt-4o-transcribe",
+    inputAudioRate: 24_000,
+    vadThreshold: 0.6,
+    vadSilenceMs: 600,
+    vadPrefixPaddingMs: 500,
+  };
+
+  it("M1: when config.language is set, the built frame carries transcription.language", () => {
+    // The route layer resolves `?language=ru` and writes it into the
+    // per-upgrade transcription config; the builder must forward that
+    // value into the GA `session.audio.input.transcription.language`
+    // field so OpenAI's GA decoder skips its multi-script auto-detect
+    // pass on each short VAD segment.
+    const frame = buildRelaySessionUpdateFrame({ ...baseConfig, language: "ru" });
+    const transcription = (
+      frame.session as {
+        audio: { input: { transcription: { model: string; language?: string } } };
+      }
+    ).audio.input.transcription;
+    expect(transcription.language).toBe("ru");
+    // The model field is unaffected.
+    expect(transcription.model).toBe("gpt-4o-transcribe");
+  });
+
+  it("M4: when config.language is undefined, the field is OMITTED (not 'undefined')", () => {
+    // OpenAI's GA `session.update` validator REJECTS a literal
+    // `{ "language": undefined }` payload (it survives JSON.stringify
+    // as a missing key, but if the spread emitted `language: undefined`
+    // a sibling field-presence assertion would mis-fire). The builder
+    // must conditionally spread — `'language' in transcription === false`
+    // is the contract.
+    const frame = buildRelaySessionUpdateFrame(baseConfig);
+    const transcription = (
+      frame.session as {
+        audio: { input: { transcription: Record<string, unknown> } };
+      }
+    ).audio.input.transcription;
+    expect("language" in transcription).toBe(false);
+  });
+
+  it("M6: REALTIME_LANGUAGE_WHITELIST is exported and frozen to ['en','ru'] for v1", () => {
+    // The whitelist is a single exported constant — widening it to more
+    // languages (`zh`, `ja`, …) is gated on widening the DB
+    // `users.locale` CHECK constraint. Documented in
+    // docs/operations.md §REALTIME_DEFAULT_LANGUAGE. The route's query
+    // validator and the env validator BOTH consult this constant; any
+    // drift between them would silently un-validate one of the two
+    // paths.
+    expect(REALTIME_LANGUAGE_WHITELIST).toEqual(["en", "ru"]);
   });
 });

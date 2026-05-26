@@ -118,6 +118,22 @@ export const DEFAULT_REALTIME_VAD_SILENCE_MS = 600;
 export const DEFAULT_REALTIME_VAD_PREFIX_PADDING_MS = 500;
 
 /**
+ * v1.0.9 — accepted set of language hints carried by the
+ * relay-originated GA `session.update`'s
+ * `session.audio.input.transcription.language` field. Matches the v1
+ * `users.locale` DB CHECK constraint. Widening (e.g. `zh`, `ja`, `hi`)
+ * is gated on a CHECK-constraint migration and BELONGS to its own
+ * phase — `REALTIME_LANGUAGE_WHITELIST` is the single point of truth
+ * for both the env validator (this module) and the route's query
+ * validator (`routes/realtime.ts`). See `docs/operations.md`
+ * §REALTIME_DEFAULT_LANGUAGE for the operator runbook.
+ */
+export const REALTIME_LANGUAGE_WHITELIST = ["en", "ru"] as const;
+
+/** A language hint accepted by the v1.0.9 query / env resolution chain. */
+export type RealtimeLanguage = (typeof REALTIME_LANGUAGE_WHITELIST)[number];
+
+/**
  * R31 DEFECT 6 — transcription-session config carried by the
  * relay-injected GA `session.update` frame. The relay ORIGINATES this
  * frame on upstream open (the preconfigured cloud client never sends its
@@ -132,6 +148,14 @@ export interface RealtimeTranscriptionConfig {
   vadThreshold: number;
   vadSilenceMs: number;
   vadPrefixPaddingMs: number;
+  /**
+   * v1.0.9 — optional ISO-639-1 language hint forwarded into
+   * `session.audio.input.transcription.language`. `undefined` = field
+   * OMITTED on the wire = OpenAI auto-detect path. Resolved by the route
+   * layer per-upgrade from `?language=` query (preferred) →
+   * `REALTIME_DEFAULT_LANGUAGE` env (fallback) → omit.
+   */
+  language?: RealtimeLanguage;
 }
 
 /** Resolved realtime-relay configuration. */
@@ -236,6 +260,25 @@ export function loadRealtimeConfigFromEnv(env: NodeJS.ProcessEnv = process.env):
       ? (trim(env.OPENAI_REALTIME_MODEL) ?? DEFAULT_OPENAI_REALTIME_MODEL)
       : undefined;
 
+  // v1.0.9 — optional language hint resolved from env. Surfaces an
+  // OpenAI-Realtime-GA `session.audio.input.transcription.language`
+  // field on the relay-originated `session.update`. An unrecognized
+  // value is BOOT-FATAL (RealtimeConfigError → EX_CONFIG exit at the
+  // entrypoint) so operators see the typo rather than silently falling
+  // through to OpenAI's auto-detect.
+  const rawLanguage = trim(env.REALTIME_DEFAULT_LANGUAGE)?.toLowerCase();
+  let language: RealtimeLanguage | undefined;
+  if (rawLanguage !== undefined) {
+    if ((REALTIME_LANGUAGE_WHITELIST as readonly string[]).includes(rawLanguage)) {
+      language = rawLanguage as RealtimeLanguage;
+    } else {
+      throw new RealtimeConfigError(
+        `REALTIME_DEFAULT_LANGUAGE="${rawLanguage}" is not a recognized language. ` +
+          `Valid values: ${REALTIME_LANGUAGE_WHITELIST.join(", ")}.`,
+      );
+    }
+  }
+
   // R31 DEFECT 6 — transcription-session config carried by the
   // relay-injected `session.update`. Resolved for BOTH backends (the
   // preconfigured client never sends its own update).
@@ -257,6 +300,10 @@ export function loadRealtimeConfigFromEnv(env: NodeJS.ProcessEnv = process.env):
       env.REALTIME_VAD_PREFIX_PADDING_MS,
       DEFAULT_REALTIME_VAD_PREFIX_PADDING_MS,
     ),
+    // v1.0.9 — conditional assignment via spread keeps `'language' in
+    // transcription === false` when unset (matches the wire-frame
+    // omission contract enforced by `buildRelaySessionUpdateFrame`).
+    ...(language !== undefined ? { language } : {}),
   };
 
   return { backend, openaiRealtimeUrl, openaiApiKey, openaiRealtimeModel, transcription };

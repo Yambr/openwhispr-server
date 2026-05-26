@@ -628,6 +628,75 @@ If a nightly run fails, download the `realtime-soak-log` artifact (JSONL,
 one event per line) — the close-frame attribution column tells you
 whether the failure was ingress-side or upstream-side.
 
+### `REALTIME_DEFAULT_LANGUAGE` — language hint for the relay's `session.update`
+
+> **v1.0.9 / chart 1.0.12.** Server-side language injection for the
+> OpenAI Realtime GA `session.audio.input.transcription.language`
+> field, coordinated with the openwhispr client patch ≥ v1.7.9 that
+> sends `?language=` on its WSS upgrade URL.
+
+The preconfigured cloud client opens `/v1/realtime` without any
+language hint. OpenAI's GA decoder runs an auto-detect pass per VAD
+segment, and on short utterances (≤ ~2 seconds, typical for dictation)
+the multi-script detector frequently latches onto a wrong script —
+Russian speech surfaces as Maltese / Korean / Japanese / Hindi
+transcripts. The fix is to set the `language` field on the GA
+`session.update` the relay originates.
+
+**Fallback chain (per WSS upgrade):**
+
+1. `?language=<code>` query param on the client's WSS URL — preferred,
+   PER-USER granularity. Requires **openwhispr client ≥ v1.7.9**.
+2. `REALTIME_DEFAULT_LANGUAGE=<code>` env var — fallback, GLOBAL for
+   the api process. Recommended for single-language tenants OR while
+   pre-v1.7.9 client binaries are still in the field.
+3. Omit — OpenAI auto-detect path (the pre-1.0.9 behavior; subject to
+   the multi-script drift symptom).
+
+**Whitelist (v1):** `en`, `ru` — matches the DB `users.locale` CHECK
+constraint. Widening (`zh`, `ja`, `hi`, …) is gated on a CHECK-
+constraint migration and a corresponding update to the single
+exported `REALTIME_LANGUAGE_WHITELIST` constant in
+`apps/api/src/config/realtime.ts` — env validator and route query
+validator BOTH consult this constant.
+
+**Validation:**
+
+- Env: an unrecognized `REALTIME_DEFAULT_LANGUAGE` value is
+  **BOOT-FATAL** — `loadRealtimeConfigFromEnv` throws
+  `RealtimeConfigError`, the entrypoint catches it and exits with
+  **EX_CONFIG (78)**, same pattern as `REALTIME_BACKEND`. Operators
+  see the typo immediately in container stdout rather than silently
+  falling through to OpenAI's auto-detect path.
+- Query: an unrecognized `?language=` value is **dropped + logged
+  at warn level** (`event: realtime.language.invalid`), and the env
+  fallback then applies (so a typo on the wire does NOT silently
+  un-configure a single-language tenant). The relay-originated
+  upstream URL strips `?language=` in BOTH backend modes — the hint
+  travels in-band on the GA `session.update`, never on the URL.
+
+**Configuration example (single-language Russian tenant):**
+
+```yaml
+# In your externally-managed Kubernetes Secret consumed by the api
+# Deployment via envFrom — no chart values.yaml schema change.
+stringData:
+  REALTIME_DEFAULT_LANGUAGE: ru
+```
+
+Cross-references:
+- Source: `apps/api/src/config/realtime.ts`,
+  `apps/api/src/lib/realtime-frame-translate.ts`,
+  `apps/api/src/routes/realtime.ts`.
+- Tests: `apps/api/tests/unit/routes/realtime-language.test.ts`
+  (M2 / M3 / M5 / M6 / M7 / M8 / M9 matrix) and
+  `apps/api/tests/unit/lib/realtime-frame-translate.test.ts`
+  (M1 / M4 / M6).
+- Companion client change: openwhispr Yambr-fork ≥ v1.7.9 — adds
+  `?language=` to the WSS URL build in
+  `src/helpers/openaiRealtimeStreaming.js`. Coordinated with peer
+  `wd6g78xz`.
+
 ## Phase 4 — Streaming + Realtime env vars
 
 Phase 4 added three env-keyed token-mint endpoints. Each refuses to
