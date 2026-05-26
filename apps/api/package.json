@@ -33,7 +33,7 @@
     "@openwhispr/wire-schemas": "workspace:*",
     "@redis/client": "^5.12.1",
     "better-auth": "1.6.11",
-    "bullmq": "^5.77.1",
+    "bullmq": "^5.77.3",
     "drizzle-orm": "0.45.2",
     "fast-xml-parser": "^5.3.4",
     "fastify": "^5.0.0",
@@ -45,7 +45,7 @@
     "ioredis": "5.10.1",
     "ipaddr.js": "^2.4.0",
     "lru-cache": "^11.5.0",
-    "nodemailer": "8.0.7",
+    "nodemailer": "8.0.8",
     "pino": "^9.5.0",
     "undici": "7.25.0",
     "zod": "4.4.3"
