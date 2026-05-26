@@ -20,6 +20,28 @@ image:
   # template-only fixes between image releases). Override at deploy
   # time if you pin a specific image tag.
   #
+  # Chart 1.0.12 + image v1.0.9 — realtime `?language=` query +
+  # `REALTIME_DEFAULT_LANGUAGE` env fallback (peer wd6g78xz prod
+  # incident 2026-05-26 follow-up, Yambr fork). The immutable cloud
+  # OpenWhispr client connects to /v1/realtime with no language hint;
+  # OpenAI's GA decoder auto-detects per VAD segment and on short
+  # Russian utterances frequently latches onto Maltese / Korean /
+  # Japanese / Hindi, producing garbage transcripts. The server now
+  # surfaces a `language` field on
+  # `session.audio.input.transcription` in the relay-originated GA
+  # `session.update`, resolved per-WSS-upgrade from `?language=` query
+  # (preferred; requires openwhispr client ≥ v1.7.9 — peer wd6g78xz
+  # ships the client patch in parallel) → `REALTIME_DEFAULT_LANGUAGE`
+  # env (fallback) → omit (OpenAI auto-detect). Whitelist for v1 is
+  # `'en' | 'ru'` matching the DB `users.locale` CHECK constraint;
+  # widening is a future migration. Operators on a single-language
+  # tenant set `REALTIME_DEFAULT_LANGUAGE=ru` in their server Secret
+  # to fix the user immediately, BEFORE the client patch propagates.
+  # Boot-fatal (EX_CONFIG exit 78) if the env value is not in the
+  # whitelist — operators see the typo rather than silently falling
+  # through. NO values.yaml schema changes from chart 1.0.11; the env
+  # var rides on the operator's existing app Secret (envFrom).
+  #
   # Chart 1.0.11 + image v1.0.8 — realtime translate passthrough fix
   # (peer wd6g78xz prod incident 2026-05-26). Server's
   # translateUpstreamToClient previously renamed upstream GA
@@ -103,7 +125,7 @@ image:
   #   image v1.0.4 (A1 byok-guard export / A2 email k8s bypass / A3 worker
   #   CJS guard / A4 worker VALKEY_URL parser / A5 POST /api/locale).
   # Companion openwhispr-postgres chart 1.1.0 ships the rolconfig fix (B4).
-  tag: "1.0.8"
+  tag: "1.0.9"
   api:     { repository: openwhispr-api }
   web:     { repository: openwhispr-web }
   worker:  { repository: openwhispr-worker }

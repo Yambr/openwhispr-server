@@ -373,12 +373,17 @@ describe("WSS /v1/realtime route — relay behaviour", () => {
     const port = (app.server.address() as AddressInfo).port;
     const ws = await dial(`ws://127.0.0.1:${port}/v1/realtime?intent=transcription`);
 
-    // The relay forwards the upstream's GA session.created back to the
-    // client AS the Beta transcription_session.created.
+    // v1.0.8 — translateUpstreamToClient is now a full passthrough
+    // (the actually-shipping client speaks OpenAI Realtime GA
+    // throughout — its switch table handles `case "session.created"`
+    // directly). The relay forwards the upstream's GA session.created
+    // back to the client UNCHANGED. Prior Beta-rename
+    // (`transcription_session.created`) landed the client switch on
+    // the default branch and caused the 2026-05-26 prod incident.
     const firstFrame = await new Promise<Record<string, unknown>>((resolve) => {
       ws.once("message", (raw: RawData) => resolve(JSON.parse(raw.toString())));
     });
-    expect(firstFrame.type).toBe("transcription_session.created");
+    expect(firstFrame.type).toBe("session.created");
 
     // R31 DEFECT 6 — the relay ITSELF injects a GA session.update on
     // upstream open (the preconfigured client may send none). Wait for it.

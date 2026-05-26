@@ -216,6 +216,15 @@ export interface RelayTranscriptionConfig {
   vadThreshold: number;
   vadSilenceMs: number;
   vadPrefixPaddingMs: number;
+  /**
+   * v1.0.9 — optional ISO-639-1 language hint. When set, the builder
+   * spreads it into `session.audio.input.transcription.language`;
+   * when undefined the field is OMITTED from the wire frame (OpenAI's
+   * auto-detect path is used). Mirrors `RealtimeTranscriptionConfig`
+   * in `config/realtime.ts` so the route layer can pass either object
+   * to the builder unmodified.
+   */
+  language?: string;
 }
 
 /**
@@ -262,7 +271,17 @@ export function buildRelaySessionUpdateFrame(config: RelayTranscriptionConfig): 
       audio: {
         input: {
           format: { type: "audio/pcm", rate: config.inputAudioRate },
-          transcription: { model: config.model },
+          // v1.0.9 — conditional spread on `language`: when undefined
+          // the field is OMITTED from the wire frame (the GA validator
+          // accepts a missing field as "auto-detect", but rejects a
+          // literal `language: null`). The route layer resolves the
+          // value per-upgrade from `?language=` query (preferred) or
+          // `REALTIME_DEFAULT_LANGUAGE` env (fallback). See
+          // `docs/operations.md` §REALTIME_DEFAULT_LANGUAGE.
+          transcription: {
+            model: config.model,
+            ...(config.language ? { language: config.language } : {}),
+          },
           turn_detection: {
             type: "server_vad",
             threshold: config.vadThreshold,
