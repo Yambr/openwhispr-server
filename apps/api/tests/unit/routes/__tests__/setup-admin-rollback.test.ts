@@ -33,6 +33,15 @@ import {
   seedTenant,
 } from "../../../../src/routes/__tests__/setup.js";
 
+// Quick-task 260527-im6 — the role-flip path now lives ONLY in the
+// Bearer-token branch (email branch defers the flip to the
+// afterEmailVerification hook). These rollback tests must therefore
+// supply a Bearer header + envClaimTokenBuffer so the handler enters
+// the synchronous Bearer path the rollback covers.
+const BEARER_TOKEN_HEX = "0123456789abcdef0123456789abcdee0123456789abcdef0123456789abcd00";
+const BEARER_TOKEN_BUFFER = Buffer.from(BEARER_TOKEN_HEX, "hex");
+const BEARER_HEADER_VALUE = `Bearer ${BEARER_TOKEN_HEX}`;
+
 let booted: BootedPostgres;
 
 beforeAll(async () => {
@@ -133,11 +142,13 @@ describe("Phase 35 / 35.c — setup-admin step-4 rollback (CR-4)", () => {
       db: booted.db,
       ownerPool: failingPool,
       signUpEmail,
+      envClaimTokenBuffer: BEARER_TOKEN_BUFFER,
     });
 
     const res = await app.inject({
       method: "POST",
       url: "/api/setup/admin",
+      headers: { authorization: BEARER_HEADER_VALUE },
       payload: {
         email: "first@example.com",
         password: "Sufficiently-Long-Pwd-123",
@@ -177,12 +188,14 @@ describe("Phase 35 / 35.c — setup-admin step-4 rollback (CR-4)", () => {
       db: booted.db,
       ownerPool: failingPool,
       signUpEmail,
+      envClaimTokenBuffer: BEARER_TOKEN_BUFFER,
     });
 
     // Attempt 1 — fails at step 4, rolls back.
     const res1 = await app.inject({
       method: "POST",
       url: "/api/setup/admin",
+      headers: { authorization: BEARER_HEADER_VALUE },
       payload: {
         email: "second@example.com",
         password: "Sufficiently-Long-Pwd-123",
@@ -199,6 +212,7 @@ describe("Phase 35 / 35.c — setup-admin step-4 rollback (CR-4)", () => {
     const res2 = await app.inject({
       method: "POST",
       url: "/api/setup/admin",
+      headers: { authorization: BEARER_HEADER_VALUE },
       payload: {
         email: "second@example.com",
         password: "Sufficiently-Long-Pwd-123",
@@ -235,12 +249,14 @@ describe("Phase 35 / 35.c — setup-admin step-4 rollback (CR-4)", () => {
       db: booted.db,
       ownerPool: failingPool,
       signUpEmail,
+      envClaimTokenBuffer: BEARER_TOKEN_BUFFER,
     });
     const errorSpy = vi.fn();
     app.log.error = errorSpy as never;
     const res = await app.inject({
       method: "POST",
       url: "/api/setup/admin",
+      headers: { authorization: BEARER_HEADER_VALUE },
       payload: {
         email: "third@example.com",
         password: "Sufficiently-Long-Pwd-123",

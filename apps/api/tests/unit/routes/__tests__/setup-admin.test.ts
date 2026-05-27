@@ -48,6 +48,15 @@ import {
   seedTenant,
 } from "../../../../src/routes/__tests__/setup.js";
 
+// Quick-task 260527-im6 — Bearer-mode test token. The Bearer branch
+// flips role synchronously (the original 12-03 contract); the email
+// branch leaves role NULL and returns `pending_verification: true`.
+// Cases that assert role='admin' immediately MUST supply this Bearer.
+// Token shape: lowercase hex64 NOT matching any BAD_TOKEN_PATTERNS.
+const BEARER_TOKEN_HEX = "0123456789abcdef0123456789abcdee0123456789abcdef0123456789abcd00";
+const BEARER_TOKEN_BUFFER = Buffer.from(BEARER_TOKEN_HEX, "hex");
+const BEARER_HEADER_VALUE = `Bearer ${BEARER_TOKEN_HEX}`;
+
 let booted: BootedPostgres;
 
 beforeAll(async () => {
@@ -133,17 +142,19 @@ describe("POST /api/setup/admin — idempotent claim + workspace + rollback cont
     }
   });
 
-  it("(1) winner branch: 201 + setup_state=completed + role=admin + tenants.name persisted", async () => {
+  it("(1) winner branch [Bearer mode]: 201 + setup_state=completed + role=admin + tenants.name persisted", async () => {
     const fakeAuth = makeFakeAuth({ ownerPool: booted.ownerPool });
     app = await buildSetupAdminApp({
       db: booted.db,
       ownerPool: booted.ownerPool,
       signUpEmail: fakeAuth.signUpEmail,
+      envClaimTokenBuffer: BEARER_TOKEN_BUFFER,
     });
 
     const res = await app.inject({
       method: "POST",
       url: "/api/setup/admin",
+      headers: { authorization: BEARER_HEADER_VALUE },
       payload: {
         email: "admin@acme.test",
         password: "CorrectHorseBattery9",
@@ -182,7 +193,7 @@ describe("POST /api/setup/admin — idempotent claim + workspace + rollback cont
     expect(tenantRes.rows[0]?.name).toBe("Acme Inc");
   });
 
-  it("(2) race-loser: pre-completed state -> 200 alreadyCompleted:true, tenants.name unchanged", async () => {
+  it("(2) race-loser [Bearer mode]: pre-completed state -> 200 alreadyCompleted:true, tenants.name unchanged", async () => {
     // Pre-flip + pre-seed an existing admin.
     await resetSetupState(booted.ownerPool, "completed");
     await booted.ownerPool.query(
@@ -195,11 +206,13 @@ describe("POST /api/setup/admin — idempotent claim + workspace + rollback cont
       db: booted.db,
       ownerPool: booted.ownerPool,
       signUpEmail: fakeAuth.signUpEmail,
+      envClaimTokenBuffer: BEARER_TOKEN_BUFFER,
     });
 
     const res = await app.inject({
       method: "POST",
       url: "/api/setup/admin",
+      headers: { authorization: BEARER_HEADER_VALUE },
       payload: {
         email: "second@acme.test",
         password: "CorrectHorseBattery9",
@@ -329,17 +342,19 @@ describe("POST /api/setup/admin — idempotent claim + workspace + rollback cont
     expect(sixth.statusCode).toBe(429);
   });
 
-  it("(5) role-escalation guard: body {role:'admin'} extra field is ignored; role is set server-side", async () => {
+  it("(5) role-escalation guard [Bearer mode]: body {role:'admin'} extra field is ignored; role is set server-side", async () => {
     const fakeAuth = makeFakeAuth({ ownerPool: booted.ownerPool });
     app = await buildSetupAdminApp({
       db: booted.db,
       ownerPool: booted.ownerPool,
       signUpEmail: fakeAuth.signUpEmail,
+      envClaimTokenBuffer: BEARER_TOKEN_BUFFER,
     });
 
     const res = await app.inject({
       method: "POST",
       url: "/api/setup/admin",
+      headers: { authorization: BEARER_HEADER_VALUE },
       payload: {
         email: "escalation@acme.test",
         password: "CorrectHorseBattery9",
@@ -398,7 +413,16 @@ describe("POST /api/setup/admin — idempotent claim + workspace + rollback cont
     expect(colRes.rows).toHaveLength(0);
   });
 
-  it("(extra) invalid body shape -> 400 INVALID_BODY (Zod safeParse rejection branch)", async () => {
+  it("(extra) invalid body shape -> 400 (validation rejection; signUpEmail NOT called)", async () => {
+    // Quick-task 260527-im6 / P13 — the route declares `schema: { body }`
+    // for pre-emptive LOCKER-04 compliance, so Fastify's zod validator
+    // compiler rejects malformed bodies BEFORE the handler runs. The
+    // error envelope is now the canonical 400 from the centralised
+    // error-handler (`{error:{message:"Invalid request"}}` with no
+    // `code` field -- matches the ZodError / fastify-validation branch
+    // at apps/api/src/error-handler.ts:141-166). The legacy
+    // `error.code='INVALID_BODY'` assertion is replaced by the status
+    // + signUpEmail-not-called pair.
     const fakeAuth = makeFakeAuth({ ownerPool: booted.ownerPool });
     app = await buildSetupAdminApp({
       db: booted.db,
@@ -408,12 +432,10 @@ describe("POST /api/setup/admin — idempotent claim + workspace + rollback cont
     const res = await app.inject({
       method: "POST",
       url: "/api/setup/admin",
-      // Missing required `workspace` + bad email → safeParse fails.
+      // Missing required `workspace` + bad email → validation fails.
       payload: { email: "x", password: "tooshort", name: "" },
     });
     expect(res.statusCode).toBe(400);
-    const body = res.json() as { error: { code: string } };
-    expect(body.error.code).toBe("INVALID_BODY");
     expect(fakeAuth.calls).toHaveLength(0);
   });
 
@@ -464,7 +486,7 @@ describe("POST /api/setup/admin — idempotent claim + workspace + rollback cont
     expect(fakeAuth.calls[0]?.body.locale).toBe("en");
   });
 
-  it("(7) tenant_rename failure path: db.update(tenants) throws -> 201 with warnings; admin still created", async () => {
+  it("(7) tenant_rename failure path [Bearer mode]: db.update(tenants) throws -> 201 with warnings; admin still created", async () => {
     // Inject a `renameTenant` callable into the route deps and provide
     // an always-throwing version (T-12.03-05 sub-test 7). Mirrors the
     // AuthLike DI pattern already established for signUpEmail and
@@ -478,11 +500,13 @@ describe("POST /api/setup/admin — idempotent claim + workspace + rollback cont
       ownerPool: booted.ownerPool,
       signUpEmail: fakeAuth.signUpEmail,
       renameTenant,
+      envClaimTokenBuffer: BEARER_TOKEN_BUFFER,
     });
 
     const res = await app.inject({
       method: "POST",
       url: "/api/setup/admin",
+      headers: { authorization: BEARER_HEADER_VALUE },
       payload: {
         email: "warn@acme.test",
         password: "CorrectHorseBattery9",

@@ -106,6 +106,20 @@ spec:
                 secretKeyRef:
                   name: {{ required "values.litellm.masterKeySecretRef.name is required" .Values.litellm.masterKeySecretRef.name }}
                   key: {{ .Values.litellm.masterKeySecretRef.key }}
+            {{- /* Quick-task 260527-im6 — Admin Claim Mode A. When the
+                  operator wires a setupClaim Secret, project the
+                  OPENWHISPR_SETUP_CLAIM_TOKEN env var so the api can
+                  validate it at boot and the route can accept matching
+                  Bearer headers. Omitted when setupClaim.tokenSecretRef
+                  is unset (Mode B / email-only via SMTP).
+            */}}
+            {{- if and .Values.setupClaim .Values.setupClaim.tokenSecretRef .Values.setupClaim.tokenSecretRef.name }}
+            - name: OPENWHISPR_SETUP_CLAIM_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.setupClaim.tokenSecretRef.name }}
+                  key: {{ .Values.setupClaim.tokenSecretRef.key | default "token" }}
+            {{- end }}
             {{- with .Values.extraEnv }}
             {{- toYaml . | nindent 12 }}
             {{- end }}

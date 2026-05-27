@@ -217,7 +217,24 @@ export interface AllRoutesDeps {
     ownerPool: import("pg").Pool;
     signUpEmail: SetupAdminSignUpEmail;
     renameTenant?: SetupAdminRenameTenant;
+    /**
+     * Quick-task 260527-im6 / A1 — parsed env-token Buffer from
+     * `validateSetupClaimBoot`. Threaded into the route's
+     * `SetupAdminDeps.envClaimTokenBuffer` so the Bearer branch's
+     * timing-safe compare runs against the same parsed reference.
+     * Undefined when env-token mode is disabled.
+     */
+    envClaimTokenBuffer?: Buffer;
   };
+  /**
+   * Quick-task 260527-im6 / C2+A2 — strict-equality allowlist of origins
+   * (canonical INGRESS_BASE_URL + ADDITIONAL_ALLOWED_ORIGINS), pre-
+   * validated at boot by `getAllowedOrigins`. Threaded into BOTH the
+   * setup-admin and setup-state route deps so the Origin preHandler
+   * uses the same array. When undefined, the routes fall back to
+   * canonical-only / no-guard behaviour (legacy fixtures).
+   */
+  setupAllowedOrigins?: ReadonlyArray<string>;
   /**
    * Operator-owned streaming-token-provider configuration lifted out of
    * TypeScript route literals. Production threads these from `index.ts`
@@ -322,6 +339,10 @@ export function buildAllRoutes(deps: AllRoutesDeps): readonly RoutePlugin[] {
   const authProvidersDeps: AuthProvidersDeps = {};
   const capabilitiesDeps: CapabilitiesDeps = { db: deps.db };
   const setupStateDeps: SetupStateDeps = { db: deps.db };
+  // Quick-task 260527-im6 / C2 — Origin allowlist defence-in-depth.
+  if (deps.setupAllowedOrigins && deps.setupAllowedOrigins.length > 0) {
+    setupStateDeps.allowedOrigins = deps.setupAllowedOrigins;
+  }
   // Phase 68 — typed web-search deps local; threads the optional
   // env-resolved adapter config without an inline conditional spread.
   const webSearchDeps: WebSearchDeps = { db: deps.db };
@@ -515,6 +536,14 @@ export function buildAllRoutes(deps: AllRoutesDeps): readonly RoutePlugin[] {
         ownerPool: deps.setupAdmin.ownerPool,
         signUpEmail: deps.setupAdmin.signUpEmail,
         ...(deps.setupAdmin.renameTenant ? { renameTenant: deps.setupAdmin.renameTenant } : {}),
+        // Quick-task 260527-im6 / A1+A2 — thread parsed env-token Buffer
+        // + Origin allowlist from index.ts's boot-time setup-claim wiring.
+        ...(deps.setupAdmin.envClaimTokenBuffer
+          ? { envClaimTokenBuffer: deps.setupAdmin.envClaimTokenBuffer }
+          : {}),
+        ...(deps.setupAllowedOrigins && deps.setupAllowedOrigins.length > 0
+          ? { allowedOrigins: deps.setupAllowedOrigins }
+          : {}),
       }),
     );
   }

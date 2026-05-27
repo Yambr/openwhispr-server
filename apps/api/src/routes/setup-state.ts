@@ -25,9 +25,18 @@
 import type { ExecutableTx, TransactionalDb } from "@openwhispr/data";
 import { sql } from "drizzle-orm";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
+import { makeOriginGuard } from "./setup-admin.js";
 
 export interface SetupStateDeps {
   db: TransactionalDb<ExecutableTx>;
+  /**
+   * Quick-task 260527-im6 / C2 — defence-in-depth Origin allowlist.
+   * Same strict-equality array used by /api/setup/admin. When omitted
+   * (legacy unit-test fixtures pre-dating the deps field), the
+   * preHandler is not attached -- preserves backward-compat with the
+   * 12-02 test harness which does not declare INGRESS_BASE_URL.
+   */
+  allowedOrigins?: ReadonlyArray<string>;
 }
 
 export type SetupStatus = "pending" | "completed" | "skipped_legacy";
@@ -59,6 +68,16 @@ async function readSetupStatus(db: TransactionalDb<ExecutableTx>): Promise<Setup
 
 export const buildSetupStateRoutes = (deps: SetupStateDeps) =>
   async function setupStateRoutes(app: FastifyInstance): Promise<void> {
+    // Quick-task 260527-im6 / C2 — Origin allowlist defence-in-depth.
+    // When the deps carry a pre-validated allowed-origins array
+    // (production wiring threads canonical INGRESS_BASE_URL +
+    // ADDITIONAL_ALLOWED_ORIGINS), attach the same strict-equality
+    // guard the setup-admin route uses. Legacy unit-test fixtures that
+    // omit the field continue to work unchanged.
+    let originGuard: ReturnType<typeof makeOriginGuard> | undefined;
+    if (deps.allowedOrigins && deps.allowedOrigins.length > 0) {
+      originGuard = makeOriginGuard({ allowedOrigins: deps.allowedOrigins });
+    }
     app.route({
       method: "GET",
       url: "/api/setup-state",
@@ -73,6 +92,7 @@ export const buildSetupStateRoutes = (deps: SetupStateDeps) =>
       // `auth: false`, the global hook short-circuits with 401 BEFORE
       // the handler runs and the wizard never renders the claim form.
       config: { auth: false, rateLimit: { max: 30, timeWindow: "1 minute" } },
+      ...(originGuard ? { preHandler: originGuard } : {}),
       handler: async (_req: FastifyRequest, reply: FastifyReply) => {
         const status = await readSetupStatus(deps.db);
         const body: SetupStateResponse = { status };

@@ -136,6 +136,14 @@ afterAll(async () => {
   await container?.stop();
 }, 60_000);
 
+// Quick-task 260527-im6 — Bearer-mode test token. The role-flip is now
+// synchronous ONLY in the Bearer-token branch; the email branch defers
+// it to the afterEmailVerification hook. The F4 POSITIVE assertion
+// (role='admin' immediately after POST) requires Bearer mode.
+const F4_BEARER_HEX = "0123456789abcdef0123456789abcdee0123456789abcdef0123456789abcd00";
+const F4_BEARER_BUFFER = Buffer.from(F4_BEARER_HEX, "hex");
+const F4_BEARER_HEADER = `Bearer ${F4_BEARER_HEX}`;
+
 describe("F4: POST /api/setup/admin route wiring (regression guard for F1)", () => {
   it("POSITIVE: buildApp WITH setupAdmin opt → POST /api/setup/admin returns 201 + role='admin'", async () => {
     // Mirror what apps/api/src/index.ts:1106-1141 builds in production
@@ -170,7 +178,14 @@ describe("F4: POST /api/setup/admin route wiring (regression guard for F1)", () 
     const app: FastifyInstance = await buildApp({
       db: appDb as never,
       auth: auth as never,
-      setupAdmin: { ownerPool, signUpEmail: signUpEmailAdapter },
+      setupAdmin: {
+        ownerPool,
+        signUpEmail: signUpEmailAdapter,
+        // Quick-task 260527-im6 / A1 — supply the pre-parsed env-token
+        // Buffer so the request below (which sends a matching Bearer)
+        // hits the synchronous Bearer branch the F4 assertions rely on.
+        envClaimTokenBuffer: F4_BEARER_BUFFER,
+      },
     });
     try {
       await app.ready();
@@ -179,6 +194,7 @@ describe("F4: POST /api/setup/admin route wiring (regression guard for F1)", () 
       const res = await app.inject({
         method: "POST",
         url: "/api/setup/admin",
+        headers: { authorization: F4_BEARER_HEADER },
         payload: {
           email,
           password: "F4!Str0ngAdmin",

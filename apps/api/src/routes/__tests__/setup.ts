@@ -298,6 +298,22 @@ export interface BuildSetupAdminAppOpts {
   signUpEmail: SetupAdminSignUpEmail;
   renameTenant?: SetupAdminRenameTenant;
   withRateLimit?: boolean;
+  /**
+   * Quick-task 260527-im6 / A1 — pre-parsed env-token Buffer (mirrors
+   * production `validateSetupClaimBoot` output). When supplied, the
+   * Bearer branch will accept matching hex64 Bearers; when omitted,
+   * any Bearer presented yields 403 SETUP_TOKEN_NOT_CONFIGURED and
+   * no-Bearer requests hit the email branch.
+   */
+  envClaimTokenBuffer?: Buffer;
+  /**
+   * Quick-task 260527-im6 / A2 — strict-equality allowed-origin array.
+   * When supplied, the Origin preHandler is attached and rejects
+   * mismatching / missing origins with 403 ORIGIN_MISMATCH. Existing
+   * tests that omit this field continue to work without an Origin
+   * guard (backward-compat for the 12-03 contract assertions).
+   */
+  allowedOrigins?: ReadonlyArray<string>;
 }
 
 /**
@@ -308,6 +324,12 @@ export interface BuildSetupAdminAppOpts {
 export async function buildSetupAdminApp(opts: BuildSetupAdminAppOpts): Promise<FastifyInstance> {
   const app = Fastify({ logger: false, trustProxy: true });
   registerErrorHandler(app);
+  // Quick-task 260527-im6 — the setup-admin route now declares
+  // `schema: { body }` (pre-emptive LOCKER-04 migration). Register
+  // the zod-type-provider compilers here so Fastify can build the
+  // validation schema at registration time.
+  const { zodTypeProvider } = await import("../../plugins/zod-type-provider.js");
+  await app.register(zodTypeProvider);
   if (opts.withRateLimit) {
     const rateLimit = (await import("@fastify/rate-limit")).default;
     await app.register(rateLimit, { global: false });
@@ -318,6 +340,8 @@ export async function buildSetupAdminApp(opts: BuildSetupAdminAppOpts): Promise<
     ownerPool: opts.ownerPool,
     signUpEmail: opts.signUpEmail,
     ...(opts.renameTenant ? { renameTenant: opts.renameTenant } : {}),
+    ...(opts.envClaimTokenBuffer ? { envClaimTokenBuffer: opts.envClaimTokenBuffer } : {}),
+    ...(opts.allowedOrigins ? { allowedOrigins: opts.allowedOrigins } : {}),
   };
   await app.register(buildSetupAdminRoutes(deps));
   await app.ready();

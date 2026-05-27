@@ -20,6 +20,24 @@ image:
   # template-only fixes between image releases). Override at deploy
   # time if you pin a specific image tag.
   #
+  # Chart 1.0.14 + image v1.0.11 — Hybrid admin-claim hardening
+  # (quick-task 260527-im6). Closes 4 audit findings on the
+  # /api/setup/admin onboarding surface:
+  #   * HIGH  Dim 5 — role flip is now gated behind verified email
+  #     (afterEmailVerification hook) OR a synchronous Bearer-token
+  #     branch (OPENWHISPR_SETUP_CLAIM_TOKEN, hex64).
+  #   * MEDIUM Dim 8 — pre-claim CSRF window closed by an Origin
+  #     allowlist preHandler (canonical INGRESS_BASE_URL +
+  #     ADDITIONAL_ALLOWED_ORIGINS, strict-equality).
+  #   * MEDIUM Dim 9 — Origin guard also attached to /api/setup-state.
+  #   * LOW   O1   — `admin.role_changed` audit row emitted on
+  #     EVERY first-admin promotion (Bearer + email branches).
+  # Boot-fatal (EX_CONFIG exit 78) when setup_state.status='pending'
+  # AND neither claim path is configured. Operators MUST pick one
+  # mode at install time — see docs/operations.md §Admin Claim Modes.
+  # New optional values.yaml knob: `setupClaim.tokenSecretRef` (see
+  # below).
+  #
   # Chart 1.0.13 + image v1.0.10 — workflow-only release: GitHub
   # Releases page now surfaces a Release object per image tag (v*) with
   # multi-arch pull commands for all 6 GHCR images + paired-chart xref,
@@ -136,7 +154,7 @@ image:
   #   image v1.0.4 (A1 byok-guard export / A2 email k8s bypass / A3 worker
   #   CJS guard / A4 worker VALKEY_URL parser / A5 POST /api/locale).
   # Companion openwhispr-postgres chart 1.1.0 ships the rolconfig fix (B4).
-  tag: "1.0.10"
+  tag: "1.0.11"
   api:     { repository: openwhispr-api }
   web:     { repository: openwhispr-web }
   worker:  { repository: openwhispr-worker }
@@ -197,6 +215,23 @@ smtp:
 # OAuth / OIDC providers. envFrom pulls OAUTH_* and OIDC_* keys.
 auth:
   envFromSecret: ""
+
+# Quick-task 260527-im6 — admin-claim mode selector. When `setupClaim.tokenSecretRef.name`
+# is set, the chart projects `OPENWHISPR_SETUP_CLAIM_TOKEN` into the api Deployment
+# environment from the referenced Kubernetes Secret. The server then runs in Mode A
+# (env-token mode): POST /api/setup/admin requires `Authorization: Bearer <hex64>`
+# matching the projected value. When unset, the chart projects no env var; the server
+# runs in Mode B (verified-email mode) provided SMTP_HOST is configured via your
+# `auth.envFromSecret` Secret. See docs/operations.md §Admin Claim Modes.
+#
+# Boot-fatal (EX_CONFIG exit 78) when setup_state.status='pending' AND neither
+# OPENWHISPR_SETUP_CLAIM_TOKEN nor SMTP_HOST is configured.
+setupClaim:
+  tokenSecretRef: {}
+  # Example (override at install):
+  # tokenSecretRef:
+  #   name: openwhispr-setup-claim
+  #   key: token
 
 ingress:
   controller: none  # | traefik (fallback for OSS)

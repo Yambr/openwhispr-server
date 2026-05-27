@@ -232,6 +232,25 @@ export interface BuildAuthOptions {
    * `apps/api/src/index.ts`; tests pass a mock or leave it unset.
    */
   enqueueEmail?: (payload: EmailDeliveryPayload) => Promise<void>;
+  /**
+   * Quick-task 260527-im6 / D3 — atomic post-verify role-flip + audit
+   * emission for the hybrid admin-claim email branch.
+   *
+   * Production wires a closure (constructed in `apps/api/src/index.ts`)
+   * that:
+   *   1. atomically UPDATEs setup_state.status from 'pending' to
+   *      'completed' (RETURNING — idempotent on retry);
+   *   2. UPDATEs users.role to 'admin' via the BYPASSRLS ownerPool
+   *      (gated by email_verified=true defence-in-depth);
+   *   3. emits `recordAudit('admin.role_changed', ...)` inside a
+   *      withTenant transaction (closes audit-log gap O1).
+   *
+   * Tests inject a spy; pre-im6 buildAuth fakes that omit it are
+   * preserved (closure is optional, hook defensively no-ops when
+   * absent — backward-compat for every existing buildAuth() unit-test
+   * fixture in apps/api/tests/unit/__tests__/auth-*.test.ts).
+   */
+  completeSetupAdmin?: (user: { id: string; email: string; tenantId?: string }) => Promise<void>;
 }
 
 // Phase 12 / Plan 12-02 / Task 1 — OIDC env-reading logic moved to
@@ -649,6 +668,36 @@ export function buildAuth(opts: BuildAuthOptions): AuthInstance {
           subject: "Verify your OpenWhispr account",
           text: `Click to verify: ${verificationUrl}`,
           html: `<p>Click to verify: <a href="${verificationUrl}">${verificationUrl}</a></p>`,
+        });
+      },
+      // Quick-task 260527-im6 / D3 — hybrid admin-claim email branch.
+      //
+      // Fires at email-verification.mjs:267 AFTER
+      // `updateUserByEmail({emailVerified:true})` lands (line 266) and
+      // BEFORE auto-sign-in session-cookie creation (lines 268-287) +
+      // the success redirect (line 288). Vendored proof:
+      // node_modules/.pnpm/better-auth@1.6.11_*/node_modules/better-auth/
+      // dist/api/routes/email-verification.mjs.
+      //
+      // Defensive: BA's adapter writes emailVerified=true BEFORE this
+      // hook runs, so the predicate is structurally guaranteed true.
+      // We re-check before delegating to keep the closure body honest
+      // about its precondition (RESEARCH P1.2).
+      //
+      // The hook delegates to `opts.completeSetupAdmin` when wired by
+      // production; absent it (every legacy `buildAuth()` test fixture
+      // that omits the option), the hook is a defensive no-op so
+      // backward-compat is preserved.
+      afterEmailVerification: async (
+        user: { id: string; email: string; emailVerified?: boolean; tenantId?: string },
+        _request?: Request,
+      ) => {
+        if (!user.emailVerified) return;
+        if (!opts.completeSetupAdmin) return;
+        await opts.completeSetupAdmin({
+          id: user.id,
+          email: user.email,
+          ...(user.tenantId ? { tenantId: user.tenantId } : {}),
         });
       },
     },
