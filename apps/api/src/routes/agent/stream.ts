@@ -34,8 +34,11 @@
 //      mitigation — never written to wire). Dispatcher.ResponseData.headers
 //      is a Record, not a Headers Map.
 //   6. Drain via for-await over sseToNdjson({body: Readable.toWeb(upstream.body), acc}).
-//   7. try/catch around the drain: on mid-stream error, emit a
-//      finish(stream_error) chunk if writable. finally: end the response.
+//   7. try/catch around the drain: on mid-stream error, emit ONE terminal
+//      `{type:"error", error, code, provider}` chunk via
+//      `emitTerminalErrorChunk` (CONTEXT.md D1 / 260528-0cm). The error
+//      chunk IS terminal; no done chunk follows. finally: end the
+//      response.
 //
 // CRITICAL — after reply.hijack() Fastify's global error handler is
 // bypassed. Errors INSIDE the drain land in our try/catch and surface
@@ -49,13 +52,10 @@ import {
   type LitellmClient,
   LitellmUpstreamError,
 } from "@openwhispr/litellm-client";
-import {
-  type AgentChatMessage,
-  type AgentLegacyTool,
-  AgentStreamRequestSchema,
-} from "@openwhispr/wire-schemas";
+import { AgentStreamRequestSchema } from "@openwhispr/wire-schemas";
 import type { FastifyInstance } from "fastify";
 import { AuthError } from "../../errors.js";
+import { classifyUpstreamError } from "../../lib/agent-upstream-error-classify.js";
 import { type StreamChunk, sseToNdjson } from "../../lib/sse-parser.js";
 import { createToolCallAccumulator } from "../../lib/tool-call-accumulator.js";
 import type { ZodTypeProvider } from "../../plugins/zod-type-provider.js";
@@ -85,29 +85,14 @@ function resolveModel(bodyModel: string | undefined): string {
   return bodyModel ?? process.env.DEFAULT_AGENT_MODEL ?? DEFAULT_AGENT_MODEL;
 }
 
-/** Emit a single terminal `done` chunk + end the response, if still writable. */
-function endWithFinish(raw: import("node:http").ServerResponse, finishReason: string): void {
-  /* v8 ignore next */
-  if (raw.writableEnded) return;
-  const chunk: StreamChunk = {
-    // R32 — terminal marker the desktop client recognises is `type:"done"`.
-    type: "done",
-    finishReason,
-    usage: { promptTokens: 0, completionTokens: 0 },
-  };
-  try {
-    raw.write(`${JSON.stringify(chunk)}\n`);
-    /* v8 ignore next 3 -- socket-already-closed defensive guard; raced-only */
-  } catch {
-    // Socket closed mid-write — give up; the client already disconnected.
-  }
-  try {
-    raw.end();
-    /* v8 ignore next 3 -- socket-already-closed defensive guard; raced-only */
-  } catch {
-    // ditto.
-  }
-}
+// 260528-0cm — `endWithFinish` removed. Previously emitted a synthetic
+// terminal `done` chunk carrying a sentinel `finishReason` on both
+// preflight and drain failures; replaced by the `emitTerminalErrorChunk`
+// closure inside the handler (see lifecycle step 7 above + CONTEXT.md
+// D1 / D4 locks).
+//
+// The successful-drain `finally` arm at the bottom of the handler calls
+// `raw.end()` directly — it never needed the `endWithFinish` wrapper.
 
 export const buildAgentStreamRoutes = (deps: AgentStreamDeps) =>
   async function agentStreamRoutes(app: FastifyInstance): Promise<void> {
@@ -249,6 +234,67 @@ export const buildAgentStreamRoutes = (deps: AgentStreamDeps) =>
         // Deferred follow-up: investigate undici 7.25 `signal:` + custom
         // wrapped `Agent` interaction (research candidate cause #4 — likely
         // related to openclaw/openclaw#19147 / #46685 / #61448).
+        //
+        // 260528-0cm — Hoist resolvedModel so the preflight catch (no
+        // response yet) and drain catch (response started) can both bind
+        // it into the structured `agent.stream.upstream_failure` log
+        // event without re-deriving the chain.
+        const resolvedModel = resolveModel(body.model ?? undefined);
+
+        // 260528-0cm — Shared closure that maps a thrown value to the
+        // terminal `{type:"error",...}` wire chunk + the structured
+        // `agent.stream.upstream_failure` log event. Used by BOTH the
+        // preflight catch (L307 below) AND the drain catch (L370 below).
+        // CONTEXT.md D1-D4 locked semantics:
+        //   D1 — emit ONE terminal type:"error" chunk; no done follows.
+        //   D2 — provider:"litellm" iff err instanceof LitellmUpstreamError;
+        //        "unknown" otherwise. provider is encoded HERE (route),
+        //        not inside `classifyUpstreamError` (helper).
+        //   D3 — `error` is the canonical English from the helper
+        //        (already secret-redacted + canonical-message-mapped);
+        //        raw upstream body goes ONLY to `req.log.error`.
+        //   D4 — req.log.warn → req.log.error for these paths.
+        const emitTerminalErrorChunk = (
+          err: unknown,
+          opts: { litellmCallId?: string | undefined },
+        ): void => {
+          const classified = classifyUpstreamError(err);
+          const provider: "litellm" | "unknown" =
+            err instanceof LitellmUpstreamError ? "litellm" : "unknown";
+          const retryAfterMs = err instanceof LitellmUpstreamError ? err.retryAfterMs : undefined;
+
+          req.log.error(
+            {
+              event: "agent.stream.upstream_failure",
+              upstream_status: classified.upstreamStatus,
+              upstream_body_truncated: classified.upstreamBody,
+              code: classified.code,
+              provider,
+              kind: classified.kind,
+              model: resolvedModel,
+              litellm_call_id: opts.litellmCallId,
+              retry_after_ms: retryAfterMs,
+              request_id: req.id,
+            },
+            "agent stream upstream call failed",
+          );
+
+          if (!raw.writableEnded) {
+            const chunk: StreamChunk = {
+              type: "error",
+              error: classified.error,
+              code: classified.code,
+              provider,
+            };
+            try {
+              raw.write(`${JSON.stringify(chunk)}\n`);
+              /* v8 ignore next 3 -- defensive: socket closed mid-write */
+            } catch {
+              // socket already closed — nothing more to do.
+            }
+          }
+        };
+
         let upstream: Awaited<ReturnType<typeof deps.litellm.chatCompletionsStream>>;
         try {
           // Phase 52 / Plan 52-06 — the desktop's wire shape allows
@@ -263,23 +309,26 @@ export const buildAgentStreamRoutes = (deps: AgentStreamDeps) =>
             content: typeof m.content === "string" ? m.content : JSON.stringify(m.content),
           }));
           upstream = await deps.litellm.chatCompletionsStream({
-            model: resolveModel(body.model ?? undefined),
+            model: resolvedModel,
             messages: llmMessages,
             userId,
             requestId: req.id,
             extras,
           });
         } catch (err) {
-          // Upstream connect failure (network/abort thrown by the HTTP
-          // client) OR LitellmUpstreamError (non-2xx) — both map to a
-          // single upstream_error finish chunk under HTTP 200 because the
-          // reply has already been hijacked.
-          if (err instanceof LitellmUpstreamError) {
-            req.log.warn({ status: err.status }, "agent.stream upstream non-2xx");
-          } else {
-            req.log.warn({ err: (err as Error).message }, "agent.stream upstream connect failed");
+          // 260528-0cm — Map upstream failure to the {type:"error",...}
+          // wire envelope. The client renderer treats type:"error" as
+          // terminal; we do NOT emit a subsequent `done` chunk.
+          // CONTEXT.md D1 / D2 / D3 / D4 locked.
+          emitTerminalErrorChunk(err, { litellmCallId: undefined });
+          if (!raw.writableEnded) {
+            try {
+              raw.end();
+              /* v8 ignore next 3 -- defensive: socket closed mid-end */
+            } catch {
+              // socket already closed.
+            }
           }
-          endWithFinish(raw, "upstream_error");
           return reply;
         }
 
@@ -317,24 +366,13 @@ export const buildAgentStreamRoutes = (deps: AgentStreamDeps) =>
             raw.write(`${JSON.stringify(chunk)}\n`);
           }
         } catch (err) {
-          // (7) Mid-stream error — synthesize a stream_error finish chunk
-          //     so the desktop NDJSON consumer never hangs on a half-open
-          //     stream. Then fall through to the finally to end the response.
-          req.log.warn({ err: (err as Error).message }, "agent.stream drain error");
-          if (!raw.writableEnded) {
-            const finish: StreamChunk = {
-              // R32 — terminal marker the desktop client recognises.
-              type: "done",
-              finishReason: "stream_error",
-              usage: { promptTokens: 0, completionTokens: 0 },
-            };
-            try {
-              raw.write(`${JSON.stringify(finish)}\n`);
-              /* v8 ignore next 3 -- defensive: socket closed mid-write */
-            } catch {
-              // socket already closed — nothing more to do.
-            }
-          }
+          // (7) 260528-0cm — Drain-side failure shares the wire shape
+          //     with preflight: ONE terminal `{type:"error",...}` chunk
+          //     replaces the previous `done.stream_error` chunk.
+          //     CONTEXT.md D1 lock — the error chunk IS terminal; no
+          //     `done` follows. The `finally` block below handles
+          //     raw.end() — do NOT duplicate it here.
+          emitTerminalErrorChunk(err, { litellmCallId });
         } finally {
           if (!raw.writableEnded) {
             try {

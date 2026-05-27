@@ -24,10 +24,15 @@
 //  6. stream:true + stream_options:{include_usage:true} + user forwarded
 //  7. x-litellm-call-id captured server-side only — NEVER in wire response
 //  8. Client disconnect aborts upstream (signal.aborted within 100ms)
-//  9. Upstream non-2xx → ONE finish chunk with finishReason:'upstream_error'
-// 10. Mid-stream error → finish chunk with finishReason:'stream_error'
+//  9. Upstream non-2xx → ONE terminal type:"error" chunk (260528-0cm rev)
+// 10. Mid-stream error → terminal type:"error" chunk (260528-0cm rev)
 // 11. Unauthenticated → 401 BEFORE the handler hijacks the reply
 // 12. X-Accel-Buffering: no on response (forward-compat for nginx)
+//
+// 260528-0cm — Tests 9 / 10 / 17 / 18 rewritten to assert the new wire
+// envelope: `{type:"error", error, code, provider}` replacing the
+// previous `{type:"done", finishReason:"upstream_error"|"stream_error"}`
+// chunks. Closes HIGH bug from peer 9zn786o0.
 
 import { existsSync, readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
@@ -69,6 +74,23 @@ function fakeLitellm(overrides?: Partial<LitellmClient>): LitellmClient {
         pyannote: "hf-test",
       },
       defaultChatModel: "qwen3.6-plus",
+      // 260528-0cm — Tests 9/10 exercise the non-2xx drain path which
+      // reads `config.errorDrainTimeoutMs` into `AbortSignal.timeout(ms)`.
+      // The pre-260528-0cm fakeLitellm omitted these fields and undici's
+      // 503 reply path threw a TypeError ("delay argument must be of
+      // type number") instead of the expected LitellmUpstreamError.
+      // Production callers always go through `loadLitellmConfigFromEnv`
+      // which fills these from defaults — only the test fixture was
+      // missing them.
+      defaultSttModel: "whisper-1",
+      defaultRealtimeModel: "gpt-4o-realtime-preview",
+      defaultCleanupModel: "qwen3.6-plus",
+      headersTimeoutMs: 30_000,
+      bodyTimeoutMs: 30_000,
+      errorDrainTimeoutMs: 5_000,
+      retryMaxAttempts: 1,
+      retryBaseMs: 100,
+      retryCapMs: 1_000,
     },
     { isOverride: true }, // skip provider-key precheck (test uses arbitrary models)
   );
@@ -854,7 +876,7 @@ describe("POST /api/agent/stream", () => {
     }
   });
 
-  it("Test 9 — upstream non-2xx → ONE finish chunk with finishReason 'upstream_error' (status 200 already sent)", async () => {
+  it("Test 9 (260528-0cm) — upstream 503 → ONE terminal type:'error' chunk (code:upstream_unknown, provider:litellm)", async () => {
     agent.get(LITELLM_BASE).intercept({ path: LITELLM_PATH, method: "POST" }).reply(503, "boom");
 
     const app = await buildTestApp({ bearerMap: { "Bearer ok-u1": "u1" } });
@@ -868,15 +890,27 @@ describe("POST /api/agent/stream", () => {
       expect(r.statusCode).toBe(200);
       const lines = r.body.split("\n").filter((l) => l.length > 0);
       expect(lines).toHaveLength(1);
-      const finish = JSON.parse(lines[0]) as { type: string; finishReason: string };
-      expect(finish.type).toBe("done");
-      expect(finish.finishReason).toBe("upstream_error");
+      const chunk = JSON.parse(lines[0]) as {
+        type: string;
+        error: string;
+        code: string;
+        provider: string;
+      };
+      expect(chunk.type).toBe("error");
+      expect(chunk.code).toBe("upstream_unknown");
+      expect(chunk.provider).toBe("litellm");
+      expect(typeof chunk.error).toBe("string");
+      expect(chunk.error.length).toBeGreaterThan(0);
+      // D4 — `finishReason:"upstream_error"` literal must not appear.
+      expect(r.body).not.toContain('"finishReason":"upstream_error"');
+      // D1 — no `done` chunk follows the terminal `error` chunk.
+      expect(r.body).not.toContain('"type":"done"');
     } finally {
       await app.close();
     }
   });
 
-  it("Test 10 — mid-stream drain error (raw.write throws after N writes) emits finish chunk with finishReason 'stream_error'", async () => {
+  it("Test 10 (260528-0cm) — mid-stream drain error → terminal type:'error' chunk (code:upstream_unknown, provider:unknown)", async () => {
     agent
       .get(LITELLM_BASE)
       .intercept({ path: LITELLM_PATH, method: "POST" })
@@ -901,19 +935,18 @@ describe("POST /api/agent/stream", () => {
     app.addHook("preHandler", async (_req, reply) => {
       // Wrap raw.write so the FIRST chunk write succeeds (capturing the
       // text-delta), then subsequent writes from the drain throw — the
-      // route's try/catch must surface this as a stream_error finish chunk
-      // (which itself goes through a separate try/catch for socket-already-
-      // closed safety).
+      // route's try/catch must surface this as a terminal type:"error"
+      // chunk (260528-0cm: replaces the previous synthetic done.stream_error).
       const raw = reply.raw;
       const origWrite = raw.write.bind(raw);
       let n = 0;
-      let inFinish = false;
+      let inError = false;
       raw.write = ((chunk: unknown, ...rest: unknown[]) => {
         const text = String(chunk);
-        // Allow the synthetic finish(stream_error) chunk through so the
+        // Allow the synthetic terminal type:"error" chunk through so the
         // wire response actually contains it.
-        if (text.includes("stream_error")) inFinish = true;
-        if (n >= 1 && !inFinish) {
+        if (text.includes('"type":"error"')) inError = true;
+        if (n >= 1 && !inError) {
           throw new Error("simulated mid-stream socket error");
         }
         writes.push(text);
@@ -937,9 +970,19 @@ describe("POST /api/agent/stream", () => {
       });
       expect(r.statusCode).toBe(200);
       const lines = r.body.split("\n").filter((l) => l.length > 0);
-      const last = JSON.parse(lines.at(-1) as string) as { type: string; finishReason: string };
-      expect(last.type).toBe("done");
-      expect(last.finishReason).toBe("stream_error");
+      const last = JSON.parse(lines.at(-1) as string) as {
+        type: string;
+        code: string;
+        provider: string;
+        error: string;
+      };
+      expect(last.type).toBe("error");
+      // Drain-side raw.write throw is a plain Error (NOT a
+      // LitellmUpstreamError) — provider:"unknown" per D2 lock.
+      expect(last.code).toBe("upstream_unknown");
+      expect(last.provider).toBe("unknown");
+      // D4 — `finishReason:"stream_error"` literal must not appear.
+      expect(r.body).not.toContain('"finishReason":"stream_error"');
     } finally {
       await app.close();
     }
@@ -1146,7 +1189,7 @@ describe("POST /api/agent/stream", () => {
     expect(source).toMatch(/Readable\.toWeb/);
   });
 
-  it("Test 17 (08.2 RED→GREEN) — upstream connect throw (fetch failed analogue) maps to ONE upstream_error finish chunk under HTTP 200", async () => {
+  it("Test 17 (260528-0cm) — upstream connect throw (fetch failed analogue) → terminal type:'error' chunk (code:upstream_unknown, provider:unknown)", async () => {
     // Stub chatCompletionsStream on the deps to throw with the same error
     // shape undici emits at the connect/dispatch boundary. Reproduces the
     // live production-mode failure observed in the 08.1 forensic-probe run.
@@ -1184,25 +1227,31 @@ describe("POST /api/agent/stream", () => {
       expect(r.headers["content-type"]).toBe("application/x-ndjson");
       const lines = r.body.split("\n").filter((l) => l.length > 0);
       expect(lines).toHaveLength(1);
-      const finish = JSON.parse(lines[0]) as {
+      const chunk = JSON.parse(lines[0]) as {
         type: string;
-        finishReason: string;
-        usage: { promptTokens: number; completionTokens: number };
+        code: string;
+        provider: string;
+        error: string;
       };
-      expect(finish).toEqual({
-        type: "done",
-        finishReason: "upstream_error",
-        usage: { promptTokens: 0, completionTokens: 0 },
-      });
-      // hijack-before-await: no JSON error envelope competes with the
-      // finish chunk on the wire.
-      expect(r.body).not.toContain('"error"');
+      // Plain Error (not LitellmUpstreamError) — `fetch failed` does not
+      // carry a recognized timeout error code, so the classifier maps it
+      // to upstream_unknown, NOT upstream_timeout. Provider is "unknown"
+      // because it isn't a LitellmUpstreamError instance (D2 lock).
+      expect(chunk.type).toBe("error");
+      expect(chunk.code).toBe("upstream_unknown");
+      expect(chunk.provider).toBe("unknown");
+      expect(typeof chunk.error).toBe("string");
+      expect(chunk.error.length).toBeGreaterThan(0);
+      // D4 — no `finishReason:"upstream_error"` literal on the wire.
+      expect(r.body).not.toContain('"finishReason":"upstream_error"');
+      // D1 — no `done` chunk follows the terminal error chunk.
+      expect(r.body).not.toContain('"type":"done"');
     } finally {
       await app.close();
     }
   });
 
-  it("Test 18 (08.2 RED→GREEN) — LitellmUpstreamError (non-2xx via client) maps to ONE upstream_error finish chunk under HTTP 200", async () => {
+  it("Test 18 (260528-0cm) — LitellmUpstreamError(502) → terminal type:'error' chunk (code:upstream_unknown, provider:litellm)", async () => {
     const litellm = fakeLitellm({
       chatCompletionsStream: () =>
         Promise.reject(new LitellmUpstreamError(502, "upstream timed out")),
@@ -1237,9 +1286,74 @@ describe("POST /api/agent/stream", () => {
       expect(r.statusCode).toBe(200);
       const lines = r.body.split("\n").filter((l) => l.length > 0);
       expect(lines).toHaveLength(1);
-      const finish = JSON.parse(lines[0]) as { type: string; finishReason: string };
-      expect(finish.type).toBe("done");
-      expect(finish.finishReason).toBe("upstream_error");
+      const chunk = JSON.parse(lines[0]) as {
+        type: string;
+        code: string;
+        provider: string;
+        error: string;
+      };
+      expect(chunk.type).toBe("error");
+      expect(chunk.code).toBe("upstream_unknown");
+      // LitellmUpstreamError → provider:"litellm" per D2 lock.
+      expect(chunk.provider).toBe("litellm");
+      expect(typeof chunk.error).toBe("string");
+      expect(chunk.error.length).toBeGreaterThan(0);
+    } finally {
+      await app.close();
+    }
+  });
+
+  it("Test 18b (260528-0cm) — LitellmUpstreamError(400, model_not_found body) → code:upstream_invalid_model, NO model name leaked", async () => {
+    const litellm = fakeLitellm({
+      chatCompletionsStream: () =>
+        Promise.reject(
+          new LitellmUpstreamError(400, "Invalid model name passed in model=openai/gpt-oss-120b"),
+        ),
+    });
+
+    const app = Fastify({ logger: false, trustProxy: true });
+    registerErrorHandler(app);
+    await app.register(zodTypeProvider);
+    app.addHook("onRequest", async (req) => {
+      const auth = req.headers.authorization;
+      const value = Array.isArray(auth) ? auth[0] : auth;
+      if (value !== "Bearer ok-u1") throw new AuthError("unauthorized");
+      (req as unknown as { user: { id: string; email: string } }).user = {
+        id: "u1",
+        email: "u1@test.local",
+      };
+    });
+    await app.register(
+      buildAgentStreamRoutes({
+        db: fakeDb() as never,
+        litellm,
+      }),
+    );
+    await app.ready();
+    try {
+      const r = await app.inject({
+        method: "POST",
+        url: "/api/agent/stream",
+        headers: { authorization: "Bearer ok-u1", "content-type": "application/json" },
+        payload: {
+          messages: [{ role: "user", content: "hi" }],
+          model: "openai/gpt-oss-120b",
+        },
+      });
+      expect(r.statusCode).toBe(200);
+      const lines = r.body.split("\n").filter((l) => l.length > 0);
+      expect(lines).toHaveLength(1);
+      const chunk = JSON.parse(lines[0]) as {
+        type: string;
+        code: string;
+        provider: string;
+        error: string;
+      };
+      expect(chunk.type).toBe("error");
+      expect(chunk.code).toBe("upstream_invalid_model");
+      expect(chunk.provider).toBe("litellm");
+      // Canonical message is provider-/model-name-agnostic.
+      expect(chunk.error).not.toContain("openai/gpt-oss-120b");
     } finally {
       await app.close();
     }

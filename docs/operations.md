@@ -1739,6 +1739,135 @@ tenants` succeed.
 
 ---
 
+## Agent stream error contract
+
+> **Wire surface:** `POST /api/agent/stream` returns NDJSON
+> (`Content-Type: application/x-ndjson`). Every line is a JSON object
+> tagged by a `type` discriminant. Prior to 260528-0cm (v1.0.13)
+> upstream failures collapsed every 4xx/5xx + every connect/abort error
+> into an opaque `{type:"done", finishReason:"upstream_error"}` chunk
+> the desktop renderer could not bind to a user-facing error UI —
+> producing empty assistant bubbles for every signed-up free-tier user.
+> v1.0.13 introduces a dedicated `{type:"error", error, code, provider}`
+> terminal envelope + a structured `agent.stream.upstream_failure` log
+> event for operator observability.
+
+### NDJSON wire shape per chunk type
+
+| `type`        | Payload fields                                                | Terminal? |
+| ------------- | ------------------------------------------------------------- | --------- |
+| `"content"`   | `text: string`                                                | No        |
+| `"tool_call"` | `id, name, arguments` (accumulator output; client-executable) | No        |
+| `"done"`      | `finishReason: string, usage: {promptTokens, completionTokens}` | Yes (happy path) |
+| `"error"`     | `error: string, code: AgentErrorCode, provider: "litellm" \| "unknown"` | Yes (NO `done` follows) |
+
+**Terminal-frame rule:** an `error` chunk is itself terminal — the
+server NEVER emits a `done` chunk after it (CONTEXT.md D1 lock). Mid-stream
+failures preserve the preceding `content` chunks on the wire and append
+ONE terminal `error` chunk.
+
+### `AgentErrorCode` taxonomy
+
+| Code                       | Trigger condition                                                                       | Operator-facing meaning                                                   | Suggested operator action                                                                                                                                |
+| -------------------------- | --------------------------------------------------------------------------------------- | ------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `upstream_auth`            | LiteLLM upstream 401 or 403 (or `kind:"auth"`)                                          | Upstream provider rejected the API key.                                   | Rotate the failing alias's API key (`OPENROUTER_API_KEY` / `GROQ_API_KEY` / `OPENAI_API_KEY` / vendor-specific); redeploy the LiteLLM container.       |
+| `upstream_rate_limit`      | LiteLLM upstream 429 (with or without `Retry-After`)                                    | Upstream provider returned rate-limit / throttling.                       | If sustained: bump LiteLLM concurrency limits OR upgrade upstream provider tier. The `retry_after_ms` field in the log carries the parsed hint.        |
+| `upstream_quota_exceeded`  | LiteLLM upstream 402                                                                    | Upstream provider quota/billing limit hit.                                | Top up provider billing; verify spend caps in LiteLLM dashboard.                                                                                         |
+| `upstream_invalid_model`   | LiteLLM 404, or 400 whose body matches `/invalid model name\|model_not_found\|not.found/i` | Requested model alias does not exist in the upstream catalog.            | Verify `compose/litellm/litellm_config.yaml` `model_list` against the client's `chatAgentModel` selector; check for alias drift after rebuilds.        |
+| `upstream_timeout`         | `AbortError` / `UND_ERR_*_TIMEOUT` / `ECONNREFUSED` / `ECONNRESET` / `ETIMEDOUT` / `ENOTFOUND` / `EAI_AGAIN` / `UND_ERR_ABORTED` / `UND_ERR_SOCKET` | Network/abort failure reaching upstream.                                  | Investigate the LiteLLM → upstream-provider network path; check undici dispatcher logs; rule out provider degradation.                                  |
+| `upstream_unknown`         | Any other upstream 4xx/5xx, plain Error, TypeError, null/undefined throw                | Unclassified upstream failure.                                            | Read `upstream_body_truncated` field in the log binding for diagnosis; treat as provider degradation until classified.                                  |
+
+### Log event schema — `agent.stream.upstream_failure`
+
+Every preflight + drain failure produces exactly ONE `req.log.error` line
+with the binding shape below (no `req.log.warn` is emitted for these
+paths — see CONTEXT.md D4 lock):
+
+```json
+{
+  "level": "error",
+  "event": "agent.stream.upstream_failure",
+  "upstream_status": 429,
+  "upstream_body_truncated": "Rate limit exceeded for ... [redacted] ...",
+  "code": "upstream_rate_limit",
+  "provider": "litellm",
+  "kind": "rate_limit",
+  "model": "openwhispr-default",
+  "litellm_call_id": "abcd1234-...",
+  "retry_after_ms": 30000,
+  "request_id": "req-XXXX",
+  "msg": "agent stream upstream call failed"
+}
+```
+
+Per-field operator notes:
+
+| Field                       | Meaning                                                                                                                                              | LogQL probe                                                                                       |
+| --------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------- |
+| `event`                     | Fixed string for stream-failure correlation across deployments.                                                                                      | `{app="openwhispr-api"} \| json \| event="agent.stream.upstream_failure"`                          |
+| `upstream_status`           | LiteLLM HTTP status (LitellmUpstreamError path) or `null` for network/abort/non-Error throws.                                                        | `... \| upstream_status=429`                                                                       |
+| `upstream_body_truncated`   | Redacted (no credential shapes) + truncated to ≤500 chars upstream payload. NEVER serialized onto the wire.                                          | `... \| upstream_body_truncated =~ "(?i)retry"`                                                    |
+| `code`                      | The `AgentErrorCode` discriminant (taxonomy above).                                                                                                  | `... \| code="upstream_auth"`                                                                      |
+| `provider`                  | `"litellm"` when upstream returned an HTTP error envelope; `"unknown"` for network/abort/dispatch failures. Server-self-attestation, not a verifiable claim. | `... \| provider="litellm"`                                                                  |
+| `kind`                      | LiteLLM `LitellmErrorKind` passthrough (`"auth" \| "rate_limit" \| "server" \| "client"`) or `null`.                                                  | `... \| kind="rate_limit"`                                                                         |
+| `model`                     | Resolved upstream model alias (body → env → yaml fallback chain).                                                                                    | `... \| model="qwen3.6-plus"`                                                                      |
+| `litellm_call_id`           | The `x-litellm-call-id` header value, or `undefined` for preflight failures (no response yet).                                                       | `... \| litellm_call_id != ""`                                                                     |
+| `retry_after_ms`            | Parsed + capped (≤60s) `Retry-After` for 429 cases; `undefined` otherwise.                                                                           | `... \| retry_after_ms > 0`                                                                        |
+| `request_id`                | The Fastify-generated `req.id` for end-to-end correlation.                                                                                           | `... \| request_id="req-XXXX"`                                                                     |
+
+### Operator alerts to consider
+
+Suggested Loki/Grafana alert recipes (tune thresholds per traffic profile):
+
+- **`upstream_auth` sustained rate > 1/min for 5 min** — rotate the failing
+  provider API key (read `model` field to identify the alias). Noise floor:
+  ~0 (any non-zero rate is actionable).
+- **`upstream_invalid_model` sustained rate > 2/min for 5 min** — desktop
+  client / server alias mismatch. Verify `model_list` against the client's
+  selector. Noise floor: ~0 in steady-state.
+- **`upstream_quota_exceeded` ANY occurrence** — top up provider billing;
+  verify spend caps. Noise floor: 0.
+- **`upstream_rate_limit` sustained > 5/min for 10 min** — bump LiteLLM
+  concurrency OR upgrade upstream tier. Noise floor: low-single-digit per
+  hour acceptable.
+- **`upstream_timeout` sustained > 3/min for 10 min** — investigate
+  LiteLLM↔upstream network path. Noise floor: 0–1/hour acceptable.
+- **`upstream_unknown` sustained > 1/min for 5 min** — read
+  `upstream_body_truncated` for forensic detail. Noise floor: 0.
+
+LogQL template: `{app="openwhispr-api"} | json | event="agent.stream.upstream_failure" | code="<code>"`.
+
+For correlation with the actual upstream provider behind LiteLLM
+(groq / openai / openrouter / anthropic): pivot by `litellm_call_id`
+into LiteLLM Proxy's own log stream — the proxy's logs carry
+`metadata.llm_provider` per LiteLLM observability conventions. This
+field is populated whenever the drain-side catch fires (the header was
+already captured pre-fix); preflight-side catches have
+`litellm_call_id: undefined` because no upstream response existed.
+
+### i18n future
+
+Canonical `chunk.error` messages are English-only in v1. Runtime i18n
+via i18next is a follow-up phase. The internal `CANONICAL_ERROR_MESSAGES`
+const at `apps/api/src/lib/agent-upstream-error-classify.ts` is the
+canonical `code → English-text` source the future i18n catalog will
+adopt.
+
+### Cross-references
+
+- Source of truth for codes + messages:
+  [`apps/api/src/lib/agent-upstream-error-classify.ts`](../apps/api/src/lib/agent-upstream-error-classify.ts).
+- Emitter (preflight + drain catches): [`apps/api/src/routes/agent/stream.ts`](../apps/api/src/routes/agent/stream.ts).
+- Peer-filed bug report: [`.planning/debug/agent-stream-upstream-error-2026-05-28.md`](../.planning/debug/agent-stream-upstream-error-2026-05-28.md).
+- Helper unit coverage:
+  [`apps/api/tests/unit/lib/agent-upstream-error-classify.test.ts`](../apps/api/tests/unit/lib/agent-upstream-error-classify.test.ts).
+- Route mapping coverage:
+  [`apps/api/tests/unit/routes/agent/__tests__/stream-error-mapping.test.ts`](../apps/api/tests/unit/routes/agent/__tests__/stream-error-mapping.test.ts).
+- Integration contract:
+  [`apps/api/tests/integration/agent-stream-error-contract.test.ts`](../apps/api/tests/integration/agent-stream-error-contract.test.ts).
+
+---
+
 ## Future phases
 
 - **Phase 10 (this document):** full operator handbook (deploy / upgrade
