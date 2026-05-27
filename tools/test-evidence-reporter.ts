@@ -333,7 +333,20 @@ export function writeFragmentsAtomic(input: WriteFragmentsInput): void {
 
   const pid = process.pid;
   for (const frag of fragments) {
-    const finalPath = resolve(evidenceDir, `${frag.commit_sha}-${frag.project}.json`);
+    // Encode project name with `encodeURIComponent` so scoped package
+    // names like `@openwhispr/byok-guard` do not introduce path
+    // separators into the fragment filename. The validator
+    // (`tools/lint-pre-push-test-evidence.ts:resolveFragmentPath`)
+    // applies the same encoding when probing for fragments; the
+    // projects-self-test (`tools/test-evidence-projects-self-test.ts`)
+    // applies `decodeURIComponent` when reading filenames back into
+    // project names. Plain ASCII project names ("api", "web", …) are
+    // pass-through under `encodeURIComponent`. Quick 260527-pj6 / W4
+    // discovery — silent path-separator break for scoped projects.
+    const finalPath = resolve(
+      evidenceDir,
+      `${frag.commit_sha}-${encodeURIComponent(frag.project)}.json`,
+    );
     const tmpPath = `${finalPath}.tmp.${pid}`;
 
     // Step 3: refuse if final path is a pre-existing symlink.

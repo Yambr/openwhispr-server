@@ -393,6 +393,48 @@ describe("F10 — project grouping → one fragment per project", () => {
   });
 });
 
+describe("F10b — scoped project name (Quick 260527-pj6 / W4 fix)", () => {
+  it("encodeURIComponent escapes path separators in scoped names", () => {
+    // Scoped project names like `@openwhispr/byok-guard` contain a `/`
+    // which would otherwise resolve as a directory separator inside
+    // `<evidenceDir>/<sha>-<project>.json`. The reporter MUST encode
+    // the project segment so the filename stays in the evidence dir
+    // and the validator's matching `encodeURIComponent` (see
+    // `tools/lint-pre-push-test-evidence.ts:resolveFragmentPath`) and
+    // the self-test's `decodeURIComponent` round-trip cleanly.
+    const src = writeSource(
+      "scoped.test.ts",
+      ["import { it } from 'vitest';", "it('scoped', () => {});", ""].join("\n"),
+    );
+    const sha = "c".repeat(40);
+    const modules = [
+      fakeModule({
+        moduleId: src,
+        projectName: "@openwhispr/byok-guard",
+        cases: [{ name: "scoped", state: "passed", line: 2 }],
+      }),
+    ];
+    writeFragmentsAtomic({
+      fragments: buildFragmentsForTest({
+        testModules: modules,
+        commitSha: sha,
+        projectRoot: workspace,
+      }),
+      evidenceDir,
+      stderr: { write: () => {} },
+    });
+    // Single file, scoped name URI-encoded so the `/` does not split
+    // into a subdirectory.
+    const entries = readdirSync(evidenceDir);
+    expect(entries).toEqual([`${sha}-${encodeURIComponent("@openwhispr/byok-guard")}.json`]);
+    // Round-trip: decode back to the original project name.
+    const projectFromFilename = decodeURIComponent(
+      entries[0]!.slice(`${sha}-`.length, -".json".length),
+    );
+    expect(projectFromFilename).toBe("@openwhispr/byok-guard");
+  });
+});
+
 describe("error message truncation per LOCKER-05", () => {
   it("truncates error_message_truncated to ≤ 1000 chars", () => {
     const src = writeSource(
