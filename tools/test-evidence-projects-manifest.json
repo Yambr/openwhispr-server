@@ -1,0 +1,28 @@
+{
+  "schema": 1,
+  "description": "Canonical 22-project list for the pre-push test-evidence gate (Quick 260527-pj6). The pre-push validator REFUSES the push if any of these projects lacks a .test-evidence/<sha>-<project>.json fragment. Parity with the live vitest.config.ts `projects[]` is enforced by tools/test-evidence-projects-manifest.test.ts.",
+  "projects": [
+    "api",
+    "web",
+    "worker",
+    "@openwhispr/byok-guard",
+    "@openwhispr/contract-tests",
+    "data",
+    "@openwhispr/email",
+    "@openwhispr/litellm-client",
+    "load-test",
+    "test-probe",
+    "mock-litellm",
+    "e2e",
+    "mock-realtime",
+    "@openwhispr/auth-stub",
+    "@openwhispr/i18n-stub",
+    "@openwhispr/observability",
+    "@openwhispr/wire-schemas",
+    "tools",
+    "tests-e2e-cjm-steps",
+    "tests-e2e-cjm-support",
+    "tests-integration",
+    "tests-self-tests"
+  ]
+}
