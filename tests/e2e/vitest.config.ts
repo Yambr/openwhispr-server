@@ -20,6 +20,9 @@ const E2E_ENABLED = process.env.E2E === "1";
 
 export default defineConfig({
   test: {
+    // Quick 260527-pj6 — explicit project name pins the per-workspace
+    // evidence-fragment filename. See tools/test-evidence-projects-manifest.json.
+    name: "e2e",
     include: E2E_ENABLED ? ["**/*.e2e.test.ts"] : [],
     exclude: ["node_modules/**", "dist/**"],
     reporters: ["verbose"],

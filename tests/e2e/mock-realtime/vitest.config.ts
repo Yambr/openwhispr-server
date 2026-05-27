@@ -13,6 +13,9 @@ import { defineConfig } from "vitest/config";
 // this config is the one that fires.
 export default defineConfig({
   test: {
+    // Quick 260527-pj6 — explicit project name pins the per-workspace
+    // evidence-fragment filename. See tools/test-evidence-projects-manifest.json.
+    name: "mock-realtime",
     include: ["**/*.test.ts"],
     coverage: {
       provider: "v8",
