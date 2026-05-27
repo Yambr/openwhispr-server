@@ -28,6 +28,13 @@ export default defineConfig({
     // Failures are swallowed inside the hook — globalTeardown must NEVER
     // abort the test report.
     globalTeardown: ["./tools/global-vitest-teardown.ts"],
+    // Quick 260527-pj6 / Wave 1.T2 — pre-push test-evidence gate.
+    // The custom reporter writes per-project fragments to
+    // `.test-evidence/<sha>-<project>.json` on every `pnpm test` run.
+    // Pre-push validator (tools/lint-pre-push-test-evidence.ts) refuses
+    // any commit whose fragments are missing, failed, or contain
+    // unannotated skips. See docs/test-evidence-gate.md.
+    reporters: ["default", p("tools/test-evidence-reporter.ts")],
     // Phase 15 / Plan 02 (STRUCT-01) — Vitest 3.2+ `projects` array
     // replacing the deprecated `workspace` field (CONTEXT Q4). Each
     // entry is a glob to a workspace vitest.config.ts that declares

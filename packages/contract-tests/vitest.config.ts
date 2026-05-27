@@ -9,7 +9,16 @@
 // retry: 0 — flaky tests fail loudly so the root cause must be fixed
 // rather than masked. testTimeout: 60s accommodates the 100-concurrent
 // rotation test and full sign-in flow round trips.
+import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import { defineConfig } from "vitest/config";
+
+// Quick 260527-pj6 / Wave 1.T2 — anchor the evidence-reporter path
+// against the repo root, not the child workspace dir. The path-string
+// reporter form is resolved relative to the cwd where vitest starts;
+// this absolute resolve is the cross-workspace-safe form documented
+// in PLAN scope item 6 (B1 BLOCKER fix).
+const ROOT_DIR = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 
 export default defineConfig({
   test: {
@@ -25,7 +34,11 @@ export default defineConfig({
     // test files were moved out of `src/` into `tests/unit/` so they no
     // longer ship in the package tarball; only `tests/**` is scanned.
     include: ["tests/**/*.test.ts"],
-    reporters: ["dot"],
+    // Quick 260527-pj6 / Wave 1.T2 — explicit reporter array MUST
+    // include the evidence reporter because mergeConfig REPLACES the
+    // root config's `reporters:` (RESEARCH R8.2). Without this line
+    // the workspace's evidence fragment is silently dropped.
+    reporters: ["dot", resolve(ROOT_DIR, "tools/test-evidence-reporter.ts")],
     testTimeout: 60_000,
     hookTimeout: 60_000,
     retry: 0,
