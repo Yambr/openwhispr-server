@@ -24,11 +24,11 @@ operators following this server should use the Yambr signed builds.
    the variant matrix — embedded LiteLLM is the default OSS quickstart).
 3. Point the client at your server's base URL. The exact env var or
    settings field the client reads is documented in the client's own
-   README — see <https://github.com/Yambr/openwhispr#configuration>.
+   README — see <https://github.com/Yambr/openwhispr>.
 4. Open the client; sign up or sign in. The client opens its embedded
    auth surface against the server, completes email verification (the
    server sends mail via SMTP — see [`operations.md`](./operations.md)
-   §Resend domain verification if you want a branded sender), and stores
+   §Branded sender via Resend SMTP if you want a branded sender), and stores
    the resulting bearer token locally.
 5. Press the hotkey and speak. The audio is streamed to the server,
    transcribed via the configured LiteLLM provider, and the text is

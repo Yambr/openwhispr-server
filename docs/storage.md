@@ -3,11 +3,25 @@
 v1 convention for object storage. When enabled, OpenWhispr Server uses a single
 S3-compatible bucket (bundled MinIO by default) with per-tenant key prefixes.
 
-> **Object storage is OPTIONAL.** The base server boots without any
-> `S3_*` configuration. Storage is required only when you enable the
-> `--with-storage` overlay (audio uploads / attachments) OR configure
-> the `audit-archive` worker job via `AUDIT_ARCHIVE_EXPORTER`. If
-> neither applies, leave all four `S3_*` env vars unset.
+> **Storage boot contract.** `packages/byok-guard/src/index.ts` requires
+> `S3_ENDPOINT` (and partner keys `S3_ACCESS_KEY` / `S3_SECRET_KEY` /
+> `S3_BUCKET` when endpoint is set) by default in compose-mode boot.
+> Three legitimate ways to satisfy it:
+> 1. **Bundled MinIO** — bring up the `--with-storage` overlay; it sets
+>    `S3_ENDPOINT=http://minio:9000` automatically.
+> 2. **External S3 (AWS / GCS / R2 / corporate MinIO)** — set all four
+>    `S3_*` vars in `.env`.
+> 3. **Kubernetes** — set `OPENWHISPR_DEPLOYMENT_MODE=k8s`. The guard
+>    bypasses the compose-overlay rows entirely; supply secrets via
+>    `envFromSecret` instead. Application code that actually touches
+>    S3 (audio uploads, `audit-archive` worker job) still fails loudly
+>    at first use if the secret is missing — the safety net stays.
+>
+> S3 is only USED by audio uploads / attachments / the optional
+> `audit-archive` job. Deployments that don't exercise these paths can
+> still satisfy the guard via any of the three options above (e.g. by
+> setting `OPENWHISPR_DEPLOYMENT_MODE=k8s`); they will simply never hit
+> the S3 code paths at runtime.
 
 ## Bucket Layout
 
