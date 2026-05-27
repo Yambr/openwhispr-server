@@ -13,6 +13,9 @@ import { defineConfig } from "vitest/config";
 
 export default defineConfig({
   test: {
+    // Quick 260527-pj6 — explicit project name pins the per-workspace
+    // evidence-fragment filename. See tools/test-evidence-projects-manifest.json.
+    name: "@openwhispr/contract-tests",
     // Phase 15 / Plan 02 (STRUCT-01) — tests live under tests/unit/.
     // Phase 56 (R9 folders, R11 transcriptions, R8 notes) — per-resource
     // CONTRACT-01 wire-shape tests (folders-shape.test.ts,

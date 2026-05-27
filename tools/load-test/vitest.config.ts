@@ -15,6 +15,9 @@ import { defineConfig } from "vitest/config";
 
 export default defineConfig({
   test: {
+    // Quick 260527-pj6 — explicit project name pins the per-workspace
+    // evidence-fragment filename. See tools/test-evidence-projects-manifest.json.
+    name: "load-test",
     include: ["src/**/*.test.ts", "scripts/**/*.test.ts"],
     coverage: {
       provider: "v8",

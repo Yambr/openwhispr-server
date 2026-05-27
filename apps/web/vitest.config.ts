@@ -27,6 +27,11 @@ export default defineConfig({
     },
   },
   test: {
+    // Quick 260527-pj6 — explicit project name pins the per-workspace
+    // evidence-fragment filename written by tools/test-evidence-reporter.ts.
+    // The pre-push validator joins the manifest list at
+    // tools/test-evidence-projects-manifest.json against this name.
+    name: "web",
     environment: "happy-dom",
     setupFiles: ["./vitest.setup.ts"],
     globals: false,

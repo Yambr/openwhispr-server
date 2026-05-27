@@ -10,6 +10,9 @@ export default mergeConfig(
   rootConfig,
   defineConfig({
     test: {
+      // Quick 260527-pj6 — explicit project name pins the per-workspace
+      // evidence-fragment filename. See tools/test-evidence-projects-manifest.json.
+      name: "@openwhispr/byok-guard",
       coverage: {
         include: ["src/**/*.ts"],
         thresholds: {
