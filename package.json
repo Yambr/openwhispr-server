@@ -72,6 +72,7 @@
     "lint:vitest-reporter-inheritance": "tsx tools/lint-vitest-reporter-inheritance.ts",
     "test:lint-vitest-reporter-inheritance": "vitest run tools/__tests__/lint-vitest-reporter-inheritance.test.ts --coverage --coverage.include=tools/lint-vitest-reporter-inheritance.ts --coverage.exclude= --coverage.all=false --coverage.thresholds.lines=90 --coverage.thresholds.branches=90 --coverage.thresholds.functions=90 --coverage.thresholds.statements=90",
     "test:test-evidence-projects-manifest": "vitest run tools/__tests__/test-evidence-projects-manifest.test.ts",
+    "test:test-evidence-reporter": "vitest run tools/__tests__/test-evidence-reporter.test.ts --coverage --coverage.include=tools/test-evidence-reporter.ts --coverage.exclude= --coverage.all=false --coverage.thresholds.lines=90 --coverage.thresholds.branches=90 --coverage.thresholds.functions=90 --coverage.thresholds.statements=90",
     "typecheck": "pnpm -r exec tsc --noEmit",
     "test": "vitest run --coverage",
     "test:watch": "vitest",
