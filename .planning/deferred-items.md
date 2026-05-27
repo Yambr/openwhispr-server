@@ -656,3 +656,34 @@ commit snapshot delta. Out of automation-loop scope.
 2. Add badges: build status, license (FSL-1.1-ALv2), chart version, Codecov / coverage.
 3. Restructure README: top section = purpose + 1 screenshot + 1-line install; middle = quickstart; bottom = links to `docs/`.
 4. Verify all README links resolve via `markdown-link-check`.
+
+## DEF-260527-PJ6-SKIP-AUDIT-BACKLOG: SKIP-REASON audit backlog (35 sites)
+
+**Source**: Quick 260527-pj6 (pre-push test-evidence gate, v1.0.12 / chart 1.0.15).
+
+**Context**: The Wave 1 codemod (`tools/codemod-skip-annotations.ts`) inserted 35 placeholder annotations of shape
+
+```
+// SKIP-REASON: pre-260527-pj6 — original reason unknown, audit required
+```
+
+above pre-existing `.skip` / `.todo` call sites across `apps/web/tests/e2e/` and a handful of other test files, so the SKIP-REASON lint gate could land BLOCKING from day one without losing the audit trail. Each placeholder is a tracked TODO with precise `<file>:<line>` location enumerated in:
+
+```
+.planning/quick/260527-pj6-pre-push-test-evidence-gate/SKIP-AUDIT-BACKLOG.md
+```
+
+(4-column format: file path | line number | current placeholder | suggested investigation steps.)
+
+**Why deferred**: The codemod normalised the lint gate at landing time. Real reasons require domain context the codemod cannot infer — `git blame` on each `.skip(` line, reading the original PR description, and classifying per the SKIP-REASON taxonomy (`requires-docker` / `topology-gated` / `setup-complete` / `deferred-fix`) is a per-site human investigation.
+
+**Next action when re-attempting** (per row, follow-up Quick):
+1. `git blame <file>:<line>` to find the PR that introduced the `.skip` call.
+2. Read PR description for the skip rationale.
+3. Classify per taxonomy in `docs/test-evidence-gate.md §4`.
+4. Replace the placeholder line with the real `// SKIP-REASON: <classification> — <one-line rationale>`.
+5. Run `pnpm test:all` to regenerate the evidence fragment; confirm the lint still passes.
+6. Drop the row from `SKIP-AUDIT-BACKLOG.md`.
+7. Commit per-row OR per-spec-file (operator preference); reference the original PR's commit SHA in the body.
+
+**Acceptance criterion**: `SKIP-AUDIT-BACKLOG.md` reduces to zero rows; every site carries a real classified reason; the placeholder pattern `pre-260527-pj6` no longer matches any source file (`rg "pre-260527-pj6" apps packages tests` → empty).

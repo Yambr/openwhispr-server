@@ -20,6 +20,28 @@ image:
   # template-only fixes between image releases). Override at deploy
   # time if you pin a specific image tag.
   #
+  # Chart 1.0.15 + image v1.0.12 — workflow + tooling release: hard
+  # pre-push test-evidence gate (quick 260527-pj6). Closes the
+  # "tests pass locally but the push happens before tests finish"
+  # anti-pattern. Vitest custom reporter (tools/test-evidence-reporter.ts)
+  # writes one .test-evidence/<sha>-<project>.json fragment per
+  # workspace at end of every `vitest run`; pre-push hook
+  # (tools/lint-pre-push-test-evidence.ts) reads stdin in Git
+  # pre-push format, enumerates each pushed commit, asserts the
+  # full 22-project manifest is covered with exit_code === 0 and
+  # zero unannotated `.skip` / `.todo` sites. CI bypass via
+  # `GITHUB_ACTIONS=true` / `CI=true`. SKIP-REASON annotation
+  # enforced via a separate AST-aware linter; 35 legacy sites carry
+  # placeholder annotations pending audit (cross-referenced in
+  # `.planning/deferred-items.md`). Workspace reporter inheritance
+  # locked by a pre-commit linter (defence-in-depth for
+  # `mergeConfig` reporters[] replacement gotcha). BLOCKING from
+  # day one — no `--warn-only`, no allowlist; `git push --no-verify`
+  # is constitutionally prohibited (CLAUDE.md hard-rule 4 extended).
+  # NO runtime behavior change vs v1.0.11 — same wire surface, same
+  # DB schema, same admin-claim flow. Operator runbook:
+  # `docs/test-evidence-gate.md`.
+  #
   # Chart 1.0.14 + image v1.0.11 — Hybrid admin-claim hardening
   # (quick-task 260527-im6). Closes 4 audit findings on the
   # /api/setup/admin onboarding surface:
@@ -154,7 +176,7 @@ image:
   #   image v1.0.4 (A1 byok-guard export / A2 email k8s bypass / A3 worker
   #   CJS guard / A4 worker VALKEY_URL parser / A5 POST /api/locale).
   # Companion openwhispr-postgres chart 1.1.0 ships the rolconfig fix (B4).
-  tag: "1.0.11"
+  tag: "1.0.12"
   api:     { repository: openwhispr-api }
   web:     { repository: openwhispr-web }
   worker:  { repository: openwhispr-worker }
