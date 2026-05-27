@@ -2,17 +2,7 @@
 
 > Pairs with the [OpenWhispr desktop client](https://github.com/Yambr/openwhispr) — signed builds at [releases](https://github.com/Yambr/openwhispr/releases). Pairing guide: [`docs/client.md`](../../docs/client.md).
 
-Production-grade Helm chart for OpenWhispr Server. Wraps the 18-service compose
-stack into a single chart suitable for fresh `kind` clusters, single-node
-self-host installs, and multi-AZ HA production clusters.
-
-This chart is built and verified in Phase 9 of the OpenWhispr roadmap. Wave 0
-(this commit) ships the skeleton: `Chart.yaml`, `values.yaml`,
-`values.schema.json`, `_helpers.tpl`, `NOTES.txt`, ServiceAccount, the two
-secrets paths (helm-values + ESO), example overlays, and helm-lint CI.
-Subsequent waves add the data plane (CNPG Cluster, Pooler, Valkey, MinIO),
-app plane (api/web/worker/litellm/migrate), and ingress + observability
-(IngressRoute, cert-manager Certificate, OTel Collector DaemonSet).
+Production-grade Helm chart wrapping the compose stack into a single chart suitable for fresh `kind` clusters and multi-AZ HA clusters.
 
 ## Cluster prerequisites
 
@@ -23,8 +13,7 @@ installed out-of-band, in the order listed:
    `ImageCatalog` CRDs. Install one-line with `examples/cnpg-install.sh`.
 2. **Traefik 3** — must be configured with two TLS entrypoints,
    `websecure :443` (short-JSON) and `websecure-realtime :8443` (long-WSS).
-   Reference values in `examples/traefik-values.yaml`. Phase 04 Plan 05
-   locked this two-entrypoint topology to prevent slow-WSS DoS bleed.
+   Reference values in `examples/traefik-values.yaml`. The chart enforces two TLS entrypoints (one for JSON routes, one for realtime WSS) so the long idle timeout of realtime cannot starve short-JSON request slots.
 3. **cert-manager** — provides the `Certificate` CRD. Install with the
    official one-liner (see cert-manager docs).
 4. **(Optional) LGTM stack** — Loki + Grafana + Tempo + Mimir for
@@ -41,13 +30,12 @@ installed out-of-band, in the order listed:
   the 8 required values. Render-time `fail` gates refuse to install when any
   required key is empty or set to a placeholder string (`CHANGE_ME`). The
   `values.schema.json` enforces `minLength: 32` defense-in-depth. The Secret
-  gets `helm.sh/resource-policy: keep` so it survives `helm uninstall` (per
-  T-09-09 — prevents Better Auth secret regression on upgrade).
+  gets `helm.sh/resource-policy: keep` so it survives `helm uninstall` (prevents Better Auth secret regression on upgrade).
 - `eso` — chart renders an `ExternalSecret` referencing your `SecretStore`
   (Vault, AWS Secrets Manager, Azure KV, GCP Secret Manager). Render-time
-  fail gates and inline Secret are SKIPPED (per pitfall #5 — helm fail
+  fail gates and inline Secret are SKIPPED (helm fail
   evaluates BEFORE ESO syncs). Refuse-to-start enforcement instead runs as a
-  pod-start initContainer in Plan 09-06.
+  pod-start initContainer.
 
 The 8 required keys:
 
