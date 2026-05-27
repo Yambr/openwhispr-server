@@ -1299,6 +1299,74 @@ WAL timestamp within retention. Retention defaults to 14 days; tune via
 | `helm test` fails with `transcribe-non-200`                       | LiteLLM upstream unreachable, or transcribe SLO budget exceeded.       | `kubectl -n openwhispr logs deploy/ow-openwhispr-litellm` for the embedded LiteLLM (or check `LITELLM_BASE_URL` connectivity in external mode); `kubectl logs <test-pod>` for the probe's structured JSON `step` field.                                                       |
 | Upgrade-matrix CI fails on integrity-check                        | Migration dropped or mutated `transcriptions` columns the seed depends on. | Inspect `tools/seed-test-data.js` — if a column was renamed legitimately, update SEED_ROWS + integrity-check to match the new schema. If unintended, the upgrade-matrix has caught a regression — revert.                                                                    |
 
+## Live version verification
+
+Every api replica exposes the build it was assembled from on `/api/health`:
+
+```bash
+curl -s https://openwhispr.example.com/api/health | jq
+# {
+#   "status": "ok",
+#   "migrations_completed": true,
+#   "version": "1.0.14",
+#   "commit_sha": "ae565bb8d5c8f3a2...",
+#   "image_tag": "1.0.14"
+# }
+```
+
+The three build fields are populated at image build time by
+`docker/build-push-action@v7` `build-args`
+(`BUILD_VERSION` / `BUILD_SHA` / `IMAGE_TAG`), which set `ARG`s in
+`apps/api/Dockerfile`'s runtime stage, which set
+`OPENWHISPR_BUILD_VERSION` / `OPENWHISPR_BUILD_SHA` /
+`OPENWHISPR_IMAGE_TAG` environment variables in the image, which are
+read once at process boot by
+`apps/api/src/config/build-info.ts`'s `parseBuildInfoFromEnv()`.
+
+### `"unknown"` semantics
+
+Any of the three fields reading `"unknown"` means the image was built
+outside the canonical `release.yml` workflow (local `docker build`,
+third-party rebuild, malformed CI override). Production installs SHOULD
+see real values on all three; a `"unknown"` triplet on a production
+replica is operator-actionable — rebuild via the canonical workflow and
+re-deploy.
+
+### Rollout verification (replaces `kubectl get pods -o jsonpath`)
+
+When a new image is rolled out across N replicas, drift between replicas
+during the rollout window can be observed by polling `/api/health` from
+the ingress (no `kubectl` needed):
+
+```bash
+for i in $(seq 1 10); do
+  curl -s https://openwhispr.example.com/api/health \
+    | jq -r '"\(.version) \(.commit_sha[0:8]) \(.image_tag)"'
+done | sort | uniq -c
+# Expected once converged (all replicas on the new image):
+#   10 1.0.14 ae565bb8 1.0.14
+```
+
+A mid-rollout poll will show two distinct triplets (old + new) — useful
+for confirming the rollout is in progress without scraping pod metadata.
+
+### Drift detection
+
+To detect images built outside the canonical workflow on any production
+replica:
+
+```bash
+curl -s https://openwhispr.example.com/api/health \
+  | jq -r 'select(.version=="unknown" or .commit_sha=="unknown" or .image_tag=="unknown")'
+# Expected on production: NO output (empty stdout).
+# Output present -> image rebuilt outside release.yml; rebuild via the
+# canonical workflow.
+```
+
+The widening is strictly additive — `migrations_completed` and `status`
+fields remain wire-compatible with every prior `/api/health` consumer
+including the Electron client's BACKEND_SPEC parser.
+
 ## Upgrade runbook
 
 OpenWhispr Server follows semver across the chart, the api image, and
