@@ -8,21 +8,7 @@
 A drop-in OpenWhispr backend any organization can self-host — open-source
 out of the box, corporate-LiteLLM-ready by env override.
 
-## The OpenWhispr desktop client
-
-This repository is the **self-hosted backend** for the OpenWhispr desktop
-application — an Electron client that registers a custom URL scheme,
-captures audio, and round-trips transcription / reasoning / realtime
-through this server. It implements the wire surface (`BACKEND_SPEC.md` /
-`OAUTH_SPEC.md` / `SELF_HOSTING.md`) the client expects byte-for-byte, so
-pointing the desktop client at your own deployment is a single base-URL
-change with no client code modifications.
-
-The desktop client lives in its own repository:
-**[github.com/Yambr/openwhispr](https://github.com/Yambr/openwhispr)**
-(the fork is intentionally stripped and is being reassembled; its
-configurable base-URL surface is what makes pointing at a self-hosted
-server a one-env-var change).
+> **Pairs with the [OpenWhispr desktop client](https://github.com/Yambr/openwhispr)** — download signed builds from [releases](https://github.com/Yambr/openwhispr/releases). Pairing guide: [`docs/client.md`](./docs/client.md).
 
 ## Screenshots
 

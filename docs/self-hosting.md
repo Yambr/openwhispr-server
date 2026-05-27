@@ -1,11 +1,8 @@
 # Self-Hosting Guide
 
-> **Phase 0 / Phase 4.** This document is a stub seeded by Phase 4 Plan 10
-> for the realtime ingress topology + Phase 4 env-var disclosures the
-> desktop client depends on. The full self-hosting handbook lands in
-> Phase 10 (DOCS-03) — until then, this file is the source of truth for
-> the Phase 4 operator-facing surface; deploy / upgrade / scale topics
-> live in [`operations.md`](./operations.md).
+> Pairs with the [OpenWhispr desktop client](https://github.com/Yambr/openwhispr) — install signed builds from [releases](https://github.com/Yambr/openwhispr/releases), then follow the pairing walkthrough in [`client.md`](./client.md).
+>
+> This document covers self-hosting the *server* (variant matrix, realtime ingress, env disclosures). Deploy / upgrade / scale runbooks live in [`operations.md`](./operations.md).
 
 ## Variant A — Embedded LiteLLM (default OSS quickstart)
 
