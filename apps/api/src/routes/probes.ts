@@ -29,6 +29,7 @@
 // `config.rateLimit=false` (kubelet probes at periodSeconds=10 across 1000
 // pods would otherwise saturate the limiter).
 import type { FastifyInstance } from "fastify";
+import { BUILD_INFO_UNKNOWN, type BuildInfo } from "../config/build-info.js";
 import type { DepCheck } from "../lib/dep-check.js";
 
 let startupComplete = false;
@@ -75,13 +76,25 @@ export interface ProbesDeps {
    * cascades a kubelet restart on a migrations-probe hiccup.
    */
   readonly migrationsCheck?: () => Promise<boolean>;
+  /**
+   * Quick-task 260528-370 — optional build-info DTO consulted by
+   * `/api/health` to populate the three additive fields
+   * (`version`, `commit_sha`, `image_tag`). Production wires
+   * `parseBuildInfoFromEnv()` at the entrypoint; tests inject a
+   * deterministic snapshot. When omitted, all three response fields
+   * report `BUILD_INFO_UNKNOWN` (`"unknown"`) — operator-actionable
+   * signal that boot did not wire `parseBuildInfoFromEnv()`, distinct
+   * from a release image built outside the canonical `release.yml`
+   * workflow.
+   */
+  readonly buildInfo?: BuildInfo;
 }
 
 export const registerProbes = async (
   app: FastifyInstance,
   deps: ProbesDeps = {},
 ): Promise<void> => {
-  const { depCheck, migrationsCheck } = deps;
+  const { depCheck, migrationsCheck, buildInfo } = deps;
 
   app.route({
     method: "GET",
@@ -143,7 +156,24 @@ export const registerProbes = async (
           migrations_completed = false;
         }
       }
-      return reply.send({ status: "ok" as const, migrations_completed });
+      // Quick-task 260528-370 — surface build provenance so operators
+      // can prove which image is serving each replica without
+      // `kubectl get pods -o jsonpath`. When `deps.buildInfo` is
+      // undefined (test harness or boot wiring forgot to call
+      // `parseBuildInfoFromEnv()`), all three fields report the
+      // documented `BUILD_INFO_UNKNOWN` sentinel — distinct from the
+      // image-built-outside-release.yml case which would surface
+      // `"unknown"` from the env-fallback path at parser time.
+      const version = buildInfo?.version ?? BUILD_INFO_UNKNOWN;
+      const commit_sha = buildInfo?.commitSha ?? BUILD_INFO_UNKNOWN;
+      const image_tag = buildInfo?.imageTag ?? BUILD_INFO_UNKNOWN;
+      return reply.send({
+        status: "ok" as const,
+        migrations_completed,
+        version,
+        commit_sha,
+        image_tag,
+      });
     },
   });
 };
