@@ -13,7 +13,7 @@ scenarios.
 |---|---|---|---|---|
 | **A** | `compose/docker-compose.embedded-litellm.yml` | `charts/openwhispr/examples/values-embedded-litellm.yaml` | Embedded LiteLLM Proxy, hosted providers via `.env` keys (OpenRouter / OpenAI) | Default OSS self-host. No GPU; relies on hosted APIs. |
 | **B** | `docker-compose.external-litellm.yml` | `charts/openwhispr/examples/values-external-litellm.yaml` (canonical; `values-corporate-litellm.yaml` retained as deprecated alias) | External corporate LiteLLM (Bedrock proxy, vLLM, internal gateway) | Enterprise operator pointing at an existing on-prem LiteLLM. |
-| **C** | Variant A overlay + Speaches container (Plan 11-03) | values overlay with `bundledAi.enabled=true` | Embedded LiteLLM + local Speaches (gated pyannote weights) | GPU-equipped operators wanting fully-offline transcription + diarization. |
+| **C** | Variant A overlay + Speaches container (local Speaches) | values overlay with `bundledAi.enabled=true` | Embedded LiteLLM + local Speaches (gated pyannote weights) | GPU-equipped operators wanting fully-offline transcription + diarization. |
 
 ## Quick start — Variant A
 
@@ -56,7 +56,7 @@ helm install openwhispr ./charts/openwhispr \
 ```
 
 The chart's secrets template enforces every key at render time — empty
-values fail the install fast (DEPLOY-03 / T-09-01).
+values fail the install fast.
 
 ### Variant A is HF_TOKEN-free
 
@@ -69,9 +69,9 @@ when `bundledAi.enabled=true`. Variant A leaves that flag at its baked-in
 - the `secret-presence-probe` initContainer never checks for HF_TOKEN.
 
 Upgrade safety is verified empirically by the kind-cluster upgrade test
-authored in Plan 11-05 (asserts that operators upgrading from a pre-11
-chart with a populated HF_TOKEN value do not lose any of the other 12
-required keys when the new chart drops HF_TOKEN from the required list).
+authored to assert that operators upgrading from pre-bundled-AI versions
+of the chart with a populated HF_TOKEN value do not lose any of the other 12
+required keys when the new chart drops HF_TOKEN from the required list.
 
 ## Quick start — Variant B (external/corporate LiteLLM)
 

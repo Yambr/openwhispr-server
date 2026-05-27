@@ -6,8 +6,7 @@
 
 ## Variant A — Embedded LiteLLM (default OSS quickstart)
 
-Plan 11-01 promoted the embedded-LiteLLM compose + chart bundle to the
-canonical OSS entrypoint. Fresh operators should start there:
+The embedded-LiteLLM compose + chart bundle is the canonical OSS entrypoint. Fresh operators should start there:
 
 - **Compose:** `compose/docker-compose.embedded-litellm.yml`
 - **Chart values:** `charts/openwhispr/examples/values-embedded-litellm.yaml`

@@ -1,8 +1,7 @@
 # Storage Conventions
 
 OpenWhispr Server uses a single MinIO bucket with per-tenant key prefixes for
-all object storage. This document captures the v1 convention agreed by phase
-1 decisions D-27 and D-28.
+all object storage. v1 convention for object storage.
 
 ## Bucket Layout
 
@@ -14,10 +13,7 @@ all object storage. This document captures the v1 convention agreed by phase
 | Object lock     | Off in v1                                            |
 | Server-side enc | MinIO SSE-S3 default (per-tenant KMS in Phase 6+)    |
 
-A single bucket avoids per-tenant bucket-creation latency and the AWS S3
-limit of 100 buckets per account (irrelevant for MinIO, but the API layer
-is also expected to talk to AWS S3 in cloud deployments — keeping the
-bucket count to one keeps the operational story uniform).
+A single bucket avoids per-tenant bucket-creation latency and is S3-compatible with cloud deployments (AWS S3, GCS via S3 interop, Cloudflare R2).
 
 ## Key Prefix Convention
 

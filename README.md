@@ -117,7 +117,7 @@ make tls-trust
 #    provider. The cheapest path is GROQ_API_KEY (Whisper-large-v3).
 $EDITOR .env   # set every REPLACE_ME including BETTER_AUTH_SECRET and at least one provider key
 
-# 4. Bring the Variant A stack up (canonical default per Plan 11-01).
+# 4. Bring the Variant A stack up (canonical default).
 docker compose -f compose/docker-compose.embedded-litellm.yml up -d
 docker compose -f compose/docker-compose.embedded-litellm.yml ps   # confirm api, worker, postgres, valkey, litellm are healthy
 
@@ -168,8 +168,7 @@ Chart releases are decoupled from server releases — chart semver moves
 on the `chart-v*` tag namespace and the packaged chart + index.yaml are
 published to the repository's `gh-pages` branch via
 `helm/chart-releaser-action` (see
-[`.github/workflows/chart-release.yml`](./.github/workflows/chart-release.yml)
-and [STRUCT-03 research](./.planning/phases/15-repo-refactor-fsl-relicense-history-scrub-v2/15-RESEARCH-helm-location.md)).
+[`.github/workflows/chart-release.yml`](./.github/workflows/chart-release.yml)).
 
 ```bash
 # Register the Helm repository (one-time):
@@ -188,11 +187,7 @@ the GitHub Pages index — the `v*` server-release lane publishes the
 same chart at `oci://ghcr.io/yambr/charts/openwhispr` via
 [`.github/workflows/helm-release.yml`](./.github/workflows/helm-release.yml).
 
-> **Status: Phase 10 (i18n, docs, OSS housekeeping).** Wire surface
-> (Phase 2-5), operational substrate (Phase 6-7), load-test + SLOs
-> (Phase 8), Helm chart (Phase 9), and server-side + web-side i18n
-> (Phase 10 / 10-01..02) are all in place. This release closes the
-> documentation suite (DOCS-01..06).
+> **Status:** Wire surface, operational substrate, load-test + SLOs, Helm chart, and i18n (en + ru) are in place.
 
 ## Provider keys
 
@@ -204,10 +199,10 @@ is unset).
 
 | Env var              | Used by                                                                                                                  | Where to get a key                                  |
 | -------------------- | ------------------------------------------------------------------------------------------------------------------------ | --------------------------------------------------- |
-| `OPENROUTER_API_KEY` | Chat / reasoning via `/api/reason` (D-06 default `qwen3.6-plus`, D-10 fallback)                                          | <https://openrouter.ai/keys>                        |
-| `GROQ_API_KEY`       | Whisper-large-v3 STT via `/api/transcribe` (D-11 — fastest hosted Whisper)                                               | <https://console.groq.com/keys>                     |
-| `OPENAI_API_KEY`     | Realtime WSS direct via `WSS /v1/realtime` (D-12 — `gpt-realtime` GA)                                                    | <https://platform.openai.com/api-keys>              |
-| `PYANNOTE_API_KEY`   | Diarization via `/v1/audio/diarization` (D-07 REVISED — consumed by the Fastify route, **NOT** the LiteLLM container)    | <https://dashboard.pyannote.ai/>                    |
+| `OPENROUTER_API_KEY` | Chat / reasoning via `/api/reason` (default `qwen3.6-plus`, with fallback)                                               | <https://openrouter.ai/keys>                        |
+| `GROQ_API_KEY`       | Whisper-large-v3 STT via `/api/transcribe` (fastest hosted Whisper)                                                      | <https://console.groq.com/keys>                     |
+| `OPENAI_API_KEY`     | Realtime WSS direct via `WSS /v1/realtime` (`gpt-realtime` GA)                                                           | <https://platform.openai.com/api-keys>              |
+| `PYANNOTE_API_KEY`   | Diarization via `/v1/audio/diarization` (consumed by the Fastify route, **NOT** the LiteLLM container)                   | <https://dashboard.pyannote.ai/>                    |
 
 Corporate operators set `LITELLM_BASE_URL=https://litellm.corp.example.com`
 instead of pasting individual provider keys; the corporate proxy holds
