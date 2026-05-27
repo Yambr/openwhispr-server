@@ -306,8 +306,8 @@ Community conduct is governed by
 | Pooler           | PgBouncer 1.23+ transaction mode                  |
 | Cache / queue substrate | Valkey 8.x (Redis 7.4-compatible)          |
 | Job queue        | BullMQ                                            |
-| LLM gateway      | LiteLLM Proxy v1.83.7-stable+                     |
-| Object storage   | MinIO (S3-compatible)                             |
+| LLM gateway      | LiteLLM Proxy v1.83.14-stable+                    |
+| Object storage   | MinIO (S3-compatible, optional)                   |
 | Observability    | OTel SDK -> Collector -> Tempo + Mimir + Loki + Grafana |
 | Ingress (K8s)    | Traefik 3                                         |
 | Web              | Next.js 15 (App Router) + React 19 + Tailwind 4   |
