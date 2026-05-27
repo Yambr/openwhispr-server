@@ -129,6 +129,21 @@ jobs:
           sbom: true
           cache-from: type=gha,scope=${{ matrix.name }}
           cache-to: type=gha,mode=max,scope=${{ matrix.name }}
+          # Quick-task 260528-370 — build-info propagation. Only
+          # apps/api/Dockerfile's runtime stage declares matching ARGs;
+          # the other 5 matrix entries (cnpg-postgres-17-pgpartman,
+          # postgres-17-pgpartman, web, worker, test-probe) silently
+          # drop unused build-args without warning (Docker behavior),
+          # so a single block here serves all 6 images without a
+          # per-matrix conditional. `steps.tag.outputs.value` is the
+          # resolved tag (e.g. "1.0.14"); BUILD_VERSION and IMAGE_TAG
+          # are identical today but retain separate slots for forward
+          # compatibility with chart-only releases that ship the same
+          # image under a new tag.
+          build-args: |
+            BUILD_VERSION=${{ steps.tag.outputs.value }}
+            BUILD_SHA=${{ github.sha }}
+            IMAGE_TAG=${{ steps.tag.outputs.value }}
 
   create-image-release:
     # Forward-only Release surface for `v*` image tags. Prior to this job,
