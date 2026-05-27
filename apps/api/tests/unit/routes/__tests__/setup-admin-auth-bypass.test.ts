@@ -44,6 +44,13 @@ const STUB_DEPS: SetupAdminDeps = {
 async function buildAppWithFakeAuthHook(): Promise<FastifyInstance> {
   const app = Fastify({ logger: false });
 
+  // Quick-task 260527-im6 — the setup-admin route now declares
+  // `schema: { body }` (pre-emptive LOCKER-04 migration). Register the
+  // zod-type-provider compilers here so Fastify can build the
+  // validation schema at registration time.
+  const { zodTypeProvider } = await import("../../../../src/plugins/zod-type-provider.js");
+  await app.register(zodTypeProvider);
+
   // Stand-in for `buildDualAuthHook` — emits 401 unless the route opted
   // out via `req.routeOptions.config.auth === false`. This is the exact
   // contract the real `dual-auth.ts:136` honors.

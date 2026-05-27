@@ -175,11 +175,20 @@ import fastifyMultipart from "@fastify/multipart";
 // deleted in the same commit.
 import { redactUrl } from "@openwhispr/byok-guard";
 import type { ExecutableTx, TransactionalDb } from "@openwhispr/data";
+// Quick-task 260527-im6 — production wiring imports for the hybrid
+// admin-claim closure (`completeSetupAdmin`) constructed inside the
+// entrypoint bootstrap. `ExecutableTx` + `TransactionalDb` already
+// imported above (data package types); only the helpers we now call
+// inside the closure body land here.
+import { withTenant } from "@openwhispr/data";
 import type { LitellmClient } from "@openwhispr/litellm-client";
 import { parsePositiveNumberEnv } from "@openwhispr/litellm-client";
+import { sql } from "drizzle-orm";
 import Fastify, { type FastifyBaseLogger, type FastifyInstance } from "fastify";
 import { registerErrorHandler } from "./error-handler.js";
 import { i18nPlugin } from "./i18n/init.js";
+import { recordAudit } from "./lib/audit.js";
+import { resolveDefaultTenantId } from "./lib/default-tenant.js";
 import { type DepCheck, makeDepCheck } from "./lib/dep-check.js";
 import type { RedisLike } from "./lib/idempotency-cache.js";
 import { makeSsrfBoundRequest } from "./lib/litellm-ssrf-request.js";
@@ -367,7 +376,22 @@ export interface BuildAppOptions {
     ownerPool: import("pg").Pool;
     signUpEmail: SetupAdminSignUpEmail;
     renameTenant?: SetupAdminRenameTenant;
+    /**
+     * Quick-task 260527-im6 / A1 — parsed env-token Buffer from
+     * `validateSetupClaimBoot`. Threaded into the route's deps so the
+     * Bearer-branch timing-safe compare runs against the boot-parsed
+     * Buffer (no re-parse).
+     */
+    envClaimTokenBuffer?: Buffer;
   };
+  /**
+   * Quick-task 260527-im6 / C2 + A2 — strict-equality allowed-origin
+   * allowlist (canonical INGRESS_BASE_URL + ADDITIONAL_ALLOWED_ORIGINS)
+   * threaded into BOTH the setup-admin and setup-state route deps so
+   * the Origin preHandler uses the same array. When omitted, the
+   * routes operate without an Origin guard (legacy test-harness shape).
+   */
+  setupAllowedOrigins?: ReadonlyArray<string>;
   /**
    * Operator-owned streaming-token-provider configuration (endpoint URLs,
    * Whisper model alias, provider HTTP timeouts) lifted out of TypeScript
@@ -695,6 +719,10 @@ export const buildApp = async (opts: BuildAppOptions = {}): Promise<FastifyInsta
       // routes/index.ts gates POST /api/setup/admin on
       // `deps.setupAdmin` being truthy and silently drops the route.
       ...(opts.setupAdmin ? { setupAdmin: opts.setupAdmin } : {}),
+      // Quick-task 260527-im6 / A2 — strict-equality allowed-origin
+      // allowlist threaded into BOTH setup-admin and setup-state route
+      // deps for the Origin preHandler.
+      ...(opts.setupAllowedOrigins ? { setupAllowedOrigins: opts.setupAllowedOrigins } : {}),
       // Operator-owned streaming-token-provider config (endpoint URLs,
       // Whisper alias, provider timeouts) resolved from env at the
       // entrypoint boundary so the token-mint routes never bake a literal.
@@ -832,14 +860,17 @@ if (import.meta.url === `file://${process.argv[1]}`) {
       );
     }
   }
-  // Phase 55-05b — capture the raw Better Auth instance separately so
-  // the setup-admin signUpEmail adapter below can call
-  // `auth.api.signUpEmail` without re-widening the AuthLike type (which
-  // would either force a fresh `as unknown as` cast — LOCKER-02 cap —
-  // or pollute the AuthLike interface with a signUpEmail field every
-  // existing fake would need to stub).
-  const authRaw = buildAuth(enqueueEmail ? { db, enqueueEmail } : { db });
-  const auth = authRaw as unknown as AuthLike;
+  // Quick-task 260527-im6 — Better Auth instance construction is
+  // RELOCATED below (after probeOwnerPool exists) so the hybrid admin-
+  // claim email branch can DI the `completeSetupAdmin` closure which
+  // references `probeOwnerPool`. See `// === 260527-im6 ===` block.
+  // Forward-declare `auth` so downstream `buildOpts` assignment still
+  // type-checks (Better Auth's universal handler hooks consume it).
+  // The variable is assigned RIGHT BEFORE `buildApp(buildOpts)` so any
+  // attempted intermediate read produces an unmistakeable TDZ error
+  // rather than silently degraded behaviour.
+  let authRaw: ReturnType<typeof buildAuth> | undefined;
+  let auth: AuthLike | undefined;
   // Phase 03 / Plan 04: construct the shared LiteLLM client when
   // LITELLM_MASTER_KEY is configured. Missing key -> log a one-line
   // warning and skip; transcribe/reason/diarization/realtime routes are
@@ -995,7 +1026,8 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   );
   if (providerConnectTimeoutMs !== undefined)
     tokenProviders.providerConnectTimeoutMs = providerConnectTimeoutMs;
-  const buildOpts: BuildAppOptions = { db, auth };
+  // `auth` assigned post-setup-claim-boot below; see `// === 260527-im6 ===`.
+  const buildOpts: BuildAppOptions = { db };
   if (litellm) buildOpts.litellm = litellm;
   if (litellmMasterKey) buildOpts.litellmMasterKey = litellmMasterKey;
   if (Object.keys(tokenProviders).length > 0) buildOpts.tokenProviders = tokenProviders;
@@ -1085,6 +1117,134 @@ if (import.meta.url === `file://${process.argv[1]}`) {
       return false;
     }
   };
+  // === 260527-im6 ===
+  //
+  // Hybrid admin-claim boot wiring. Runs HERE (after probeOwnerPool is
+  // constructed, before buildApp) because:
+  //   * `validateSetupClaimBoot` reads setup_state.status -- requires db.
+  //   * `completeSetupAdmin` closure references probeOwnerPool.
+  //   * `auth` consumes the completeSetupAdmin closure via BuildAuthOptions,
+  //     so `buildAuth(...)` must be DEFERRED until the closure exists.
+  //
+  // Boot-fatal posture: validateSetupClaimBoot defaults to process.exit(78)
+  // when status='pending' AND no claim path is configured.
+  const { validateSetupClaimBoot, getAllowedOrigins } = await import("./config/setup-claim.js");
+  const setupClaimValidation = await validateSetupClaimBoot({ db });
+
+  // A2 -- assemble the allowed-origins array once from canonical
+  // INGRESS_BASE_URL + ADDITIONAL_ALLOWED_ORIGINS. Each entry is
+  // pre-validated origin-only; the route preHandler uses Set.has()
+  // strict-equality lookup.
+  const { ingressBaseUrl } = validateIngressBoot();
+  const allowedOrigins = getAllowedOrigins({ ingressBaseUrl }).all;
+
+  // Production `completeSetupAdmin` closure. Fires from the Better Auth
+  // `afterEmailVerification` hook on the email-verify branch (after BA
+  // writes `emailVerified=true` for the wizard's freshly-created admin).
+  // The closure is the single source of truth for the atomic transition:
+  //   (a) UPDATE setup_state SET status='completed', completed_at=now()
+  //       WHERE id=1 AND status='pending' RETURNING ... — idempotent by
+  //       WHERE-predicate, safe on retry.
+  //   (b) UPDATE users SET role='admin' WHERE id=$1 AND email_verified=true
+  //       — defensive predicate (BA wrote emailVerified=true at adapter
+  //       line 266 BEFORE the hook fires; the WHERE clause is belt-and-
+  //       suspenders, NOT belt-only).
+  //   (c) On (b) rowCount=0 → defensive rollback of (a) (the role-flip
+  //       target row vanished between BA's write and our UPDATE; rare).
+  //   (d) recordAudit('admin.role_changed', ...) inside withTenant so the
+  //       audit row is tenant-bound and RLS-policed.
+  let completeSetupAdmin:
+    | ((u: { id: string; email: string; tenantId?: string }) => Promise<void>)
+    | undefined;
+  if (probeOwnerPool) {
+    completeSetupAdmin = async (user) => {
+      // (a) Atomic UPDATE-RETURNING claim. Race-safe under PgBouncer
+      //     txn-mode. A second hook firing on a stale link sees status
+      //     already 'completed' and the UPDATE rowCount=0 → safe no-op.
+      let claimed = false;
+      await db.transaction(async (tx: ExecutableTx) => {
+        const result = (await tx.execute(sql`
+          UPDATE setup_state
+             SET status = 'completed', completed_at = now()
+           WHERE id = 1 AND status = 'pending'
+           RETURNING status
+        `)) as { rowCount?: number; rows?: unknown[] };
+        const n = result.rowCount ?? result.rows?.length ?? 0;
+        if (n > 0) claimed = true;
+      });
+      if (!claimed) return;
+
+      // (b) Role flip via the BYPASSRLS ownerPool.
+      const flipResult = await probeOwnerPool.query<{ id: string }>(
+        `UPDATE users SET role = 'admin' WHERE id = $1 AND email_verified = true RETURNING id`,
+        [user.id],
+      );
+      if ((flipResult.rowCount ?? 0) === 0) {
+        // (c) Defensive rollback — claimed setup_state but role-flip
+        //     target row vanished. Re-open the gate so the operator can
+        //     retry rather than wedge the wizard.
+        await probeOwnerPool.query(
+          `UPDATE setup_state SET status='pending', completed_at=NULL WHERE id = 1`,
+        );
+        return;
+      }
+
+      // (d) Audit emission inside withTenant. Cyrillic guard +
+      //     forbidden-key sweep + JSONB INSERT in recordAudit; if it
+      //     throws, the audit row simply does not land (caller is the
+      //     BA hook; throwing here would bubble to a 500 on the verify-
+      //     email request, which is worse than a missing audit). Wrap
+      //     in try/catch so the success path is irreversible once the
+      //     role flipped, matching the best-effort posture on the
+      //     Bearer branch.
+      try {
+        const tenantIdForAudit = user.tenantId ?? (await resolveDefaultTenantId());
+        await withTenant(db, tenantIdForAudit, async (tx) => {
+          await recordAudit(
+            tx,
+            {
+              tenant_id: tenantIdForAudit,
+              actor_user_id: user.id,
+              request_id: crypto.randomUUID(),
+              ip: null,
+              user_agent: "afterEmailVerification-hook",
+            },
+            "admin.role_changed",
+            {
+              target_user_id: user.id,
+              before: "user", // D4-locked choice (CC4)
+              after: "admin",
+            },
+          );
+        });
+      } catch (err) {
+        bootLog.warn(
+          { err, userId: user.id, event: "admin_role_changed_audit_emit_failed" },
+          "afterEmailVerification audit emission failed (role flip already committed)",
+        );
+      }
+    };
+  }
+
+  // Construct Better Auth NOW that the closure exists. We pass
+  // `completeSetupAdmin` only when probeOwnerPool was wired so the email
+  // branch can actually flip the role; without probeOwnerPool the hook
+  // is defensively no-op (the route falls back to the Bearer-only mode).
+  authRaw = buildAuth({
+    db,
+    ...(enqueueEmail ? { enqueueEmail } : {}),
+    ...(completeSetupAdmin ? { completeSetupAdmin } : {}),
+  });
+  auth = authRaw as unknown as AuthLike;
+  buildOpts.auth = auth;
+
+  // A1 -- thread the parsed env-token Buffer (or undefined) + the
+  // strict-equality allowed-origins array into the route deps so the
+  // setup-admin handler's Bearer branch + Origin preHandler consume
+  // them WITHOUT re-parsing or re-deriving.
+  buildOpts.setupAllowedOrigins = allowedOrigins;
+  // === /260527-im6 ===
+
   // Phase 55-05b / BUG-55-05-SETUP-ADMIN-ROUTE-UNWIRED — wire the
   // first-run admin bootstrap route. Without this block, the wizard's
   // submit step POSTs to /api/setup/admin and gets a 404 envelope
@@ -1111,6 +1271,12 @@ if (import.meta.url === `file://${process.argv[1]}`) {
         // (`user.id`, `user.email`) via a narrow return-shape type;
         // the `as` cast on the call result is single-step (NOT `as
         // unknown as`) because authRaw retains its full inferred type.
+        if (!authRaw) {
+          return {
+            data: null,
+            error: { code: "AUTH_NOT_CONSTRUCTED", message: "Better Auth not constructed" },
+          };
+        }
         const result = await authRaw.api.signUpEmail({ body: call.body });
         const user = (result as { user?: { id?: string; email?: string } }).user;
         if (!user?.id || !user.email) {
@@ -1138,6 +1304,11 @@ if (import.meta.url === `file://${process.argv[1]}`) {
     buildOpts.setupAdmin = {
       ownerPool: probeOwnerPool,
       signUpEmail: setupAdminSignUpEmail,
+      // A1 -- reuse the parsed Buffer from validateSetupClaimBoot; do
+      // NOT call parseSetupClaimToken again here.
+      ...(setupClaimValidation.envTokenBuffer
+        ? { envClaimTokenBuffer: setupClaimValidation.envTokenBuffer }
+        : {}),
     };
   } else {
     bootLog.warn(

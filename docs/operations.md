@@ -523,6 +523,156 @@ against an existing user row (or `INSERT` a fresh user via Better Auth's
 admin API if no row exists). Sign in via the standard /sign-in flow;
 AdminLayout admits the session on next request.
 
+### Admin Claim Modes (hybrid hardening — v1.0.11+)
+
+> Closes audit findings HIGH Dim 5 (email-verify bypass), MEDIUM Dim 8/9
+> (CSRF / Origin allowlist), LOW O1 (audit-log emission gap). Quick-task
+> `260527-im6` -- see `.planning/quick/260527-im6-admin-claim-hybrid-hardening/CONTEXT.md`
+> for the locked design decisions.
+
+OpenWhispr enforces ONE of two paths for the first-admin onboarding. The
+server **refuses to boot** (exit 78 EX_CONFIG) when
+`setup_state.status='pending'` AND neither path is configured. Pick a
+mode at provision time; switch later by setting the appropriate env vars
+and re-rolling the api Deployment.
+
+#### Mode A -- Env token (`OPENWHISPR_SETUP_CLAIM_TOKEN`)
+
+Use for: corporate / Kubernetes deployments where SMTP is not yet
+wired; operator-recovery flows; smoke tests on fresh deploys.
+
+1. Generate the token. Single canonical recipe:
+   ```bash
+   openssl rand -hex 32
+   ```
+   Output is exactly 64 lowercase hex chars (256 bits). Do NOT reuse any
+   value from this docs page -- the boot validator's exact-string
+   reject-allowlist will refuse boot if you paste an example value
+   verbatim. The validator also refuses low-entropy / well-known
+   patterns (all zeros, all `a`s, repeated `deadbeef`, etc.).
+
+2. Set it in your deployment env.
+
+   **docker-compose `.env`:**
+   ```
+   OPENWHISPR_SETUP_CLAIM_TOKEN=<your-generated-hex64>
+   ```
+
+   **Kubernetes (SealedSecret):**
+   ```bash
+   kubectl -n openwhispr create secret generic openwhispr-setup-claim \
+     --from-literal=token=<your-generated-hex64> \
+     --dry-run=client -o yaml \
+     | kubeseal --controller-name=sealed-secrets-controller \
+                --format yaml > setup-claim-sealed.yaml
+   ```
+   Then reference in your `values.yaml`:
+   ```yaml
+   setupClaim:
+     tokenSecretRef:
+       name: openwhispr-setup-claim
+       key: token
+   ```
+
+3. Claim the wizard. The desktop / web client must send:
+   ```http
+   POST /api/setup/admin
+   Origin: https://your-instance.example.com   ← MUST match INGRESS_BASE_URL
+                                                  OR be a member of
+                                                  ADDITIONAL_ALLOWED_ORIGINS
+   Authorization: Bearer <your-generated-hex64>
+   Content-Type: application/json
+
+   {"email":"admin@example.com","password":"...","name":"...","workspace":"...","timezone":"..."}
+   ```
+   Response: `201` with `{"admin":{"email":"..."}, "alreadyCompleted":false}`.
+   The admin user is created and `role='admin'` is set synchronously.
+   No email verification is required -- this mode bypasses the email
+   path by design (it is the operator-recovery / corporate-internal
+   path).
+
+#### Mode B -- Verified email (no env token)
+
+Use for: self-host OSS / single-VM deployments where SMTP is configured.
+
+1. Configure SMTP (existing knobs -- see `### Configuring SMTP` above).
+   Verify the transport with a smoke send before exposing the instance.
+
+2. Claim the wizard. `POST /api/setup/admin` WITHOUT a Bearer header.
+   Response:
+   ```json
+   201 {"admin":{"email":"..."}, "alreadyCompleted":false, "pending_verification":true}
+   ```
+   The user is created with `role=NULL` and `setup_state.status='pending'`.
+   A verification email is dispatched automatically via the existing
+   Better Auth `sendVerificationEmail` chain.
+
+3. Click the verification link in the inbox. The
+   `afterEmailVerification` hook fires atomically:
+   - sets `users.role='admin'`,
+   - sets `setup_state.status='completed'`,
+   - emits an `admin.role_changed` row to `audit_log`.
+
+#### Origin allowlist -- `ADDITIONAL_ALLOWED_ORIGINS` (dev / multi-host)
+
+`POST /api/setup/admin` and `GET /api/setup-state` reject any request
+whose `Origin` header does NOT match `INGRESS_BASE_URL` exactly. For
+multi-host deployments or local dev where the wizard is served from a
+different port (e.g. Next dev on `:5173` while the api binds `:4000`),
+set:
+
+```
+ADDITIONAL_ALLOWED_ORIGINS=http://localhost:5173,https://app.example.com
+```
+
+Format rules (boot-validated, exit 78 on violation):
+
+- Comma-separated; whitespace around each entry is trimmed.
+- EACH entry must be a full `scheme://host[:port]` origin -- no path,
+  no query, no hash. Trailing slashes are stripped via `URL.origin`
+  semantics.
+- Each entry is added to the **strict-equality** allowlist. The Origin
+  guard runs `Set.has(request.Origin)` -- there is NO wildcard, NO
+  suffix match, NO `startsWith`. Adding `https://example.com` does NOT
+  allow `https://app.example.com`.
+- Empty entries are skipped silently; a malformed entry refuses boot.
+
+Dev `.env.local` recipe (typical):
+
+```
+INGRESS_BASE_URL=http://localhost:4000
+ADDITIONAL_ALLOWED_ORIGINS=http://localhost:5173
+```
+
+#### Recovery
+
+If you mis-paste the env token, the boot validator refuses to start
+with a stderr line naming the failing predicate. Fix the env value and
+restart.
+
+If a verification email bounces or the link expires, the operator can
+re-trigger via `POST /api/auth/send-verification-email`. The wizard is
+`setup_state='pending'` until a successful verify lands, so the
+operator can also clear the half-created user via
+`DELETE FROM users WHERE email=$1 AND email_verified=false` (BYPASSRLS
+psql shell) and re-submit the wizard.
+
+24h cleanup of stale unverified-pending-admin rows is NOT bundled with
+this release; tracked separately as a worker-job follow-up.
+
+#### Audit trail
+
+Every successful first-admin promotion (both modes) emits an
+`audit_log` row with `action='admin.role_changed'` and payload
+`{target_user_id, before:'user', after:'admin'}`. Query it with:
+
+```sql
+SELECT action, payload->>'target_user_id', payload->>'before', payload->>'after', created_at
+  FROM audit_log
+ WHERE action = 'admin.role_changed'
+ ORDER BY id DESC LIMIT 1;
+```
+
 ### Default-secrets entrypoint check
 
 The API container refuses to boot if any required env var holds a deny-list
