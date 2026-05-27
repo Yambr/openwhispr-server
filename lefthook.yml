@@ -90,6 +90,18 @@ pre-commit:
     steps-have-unit-tests:
       glob: "tests/e2e-cjm/steps/**/*.ts"
       run: pnpm lint:steps-have-unit-tests
+    # Quick 260527-pj6 — Vitest reporter inheritance drift defender.
+    # Catches future workspace additions whose `reporters:` array
+    # silently drops the evidence reporter at commit-time, not push-time.
+    # See docs/test-evidence-gate.md §11.6 (workspace inheritance contract).
+    vitest-reporter-inheritance:
+      glob: "vitest.config.ts"
+      run: pnpm exec tsx tools/lint-vitest-reporter-inheritance.ts
+      fail_text: |
+        Vitest evidence reporter missing from one or more workspace vitest.config.ts.
+        Each workspace's `reporters:` array MUST include the evidence reporter,
+        OR the workspace MUST omit `reporters:` entirely (to inherit from root).
+        See docs/test-evidence-gate.md §11.6 for the inheritance contract.
 pre-push:
   parallel: true
   commands:
@@ -110,6 +122,24 @@ pre-push:
     web-test:
       glob: "apps/web/**"
       run: pnpm --filter @openwhispr/web test:unit
+    # Quick 260527-pj6 — L2 pre-push test-evidence gate.
+    # use_stdin: true is MANDATORY — lefthook 2.1.8 uses a pseudo-TTY by
+    # default and never closes the child's stdin (lefthook docs
+    # `configuration/use_stdin/`); without the flag the gate would
+    # deadlock every `git push`. Only ONE pre-push command can consume
+    # stdin (lefthook hard-limit, RESEARCH R2.3 #2); the other two
+    # commands above (`gitleaks` uses `bash -c` inline; `web-test`
+    # runs `pnpm`) do NOT read stdin, so `test-evidence` is the sole
+    # stdin consumer. Regression-locked in
+    # `tools/__tests__/lint-lefthook-stdin-config.test.ts`.
+    test-evidence:
+      use_stdin: true
+      run: pnpm exec tsx tools/lint-pre-push-test-evidence.ts
+      fail_text: |
+        Pre-push test-evidence gate REFUSED.
+        See docs/test-evidence-gate.md for recovery steps.
+        --no-verify is constitutionally banned (CLAUDE.md hard-rule 4 — same
+        posture as gitleaks).
 commit-msg:
   commands:
     commitlint:
