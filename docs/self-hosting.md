@@ -19,6 +19,13 @@ Variant A does NOT require `HF_TOKEN`. The chart's
 weights). The relocated `HF_TOKEN` block in `.env.example` lives under a
 `# Variant C only` banner; ignore it for Variant A.
 
+**Provider key scoping.** `PYANNOTE_API_KEY` is required only when
+`/v1/audio/diarization` routes to pyannote.ai. When
+`SPEACHES_DIARIZATION_URL` is set (Variant C, local Speaches), the
+pyannote key is bypassed entirely. `HF_TOKEN` is required only for
+Variant C (Speaches needs it to download gated pyannote weights).
+Variant A operators using hosted providers skip both.
+
 ## Realtime ingress (`:8443`)
 
 Phase 4 (Plan 05) split the Traefik ingress into two TLS entrypoints
