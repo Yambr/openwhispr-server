@@ -127,12 +127,31 @@ export interface ReporterDeps {
   commitSha: string | null;
   projectRoot: string;
   stderr: { write: (s: string) => void };
+  /**
+   * Quick 260527-pj6 / Wave 4.T5 — list of vitest project names that
+   * the current run was configured for, captured from `vitest.projects[]`
+   * at `onInit` time. Used to emit empty-but-passing fragments for
+   * projects that loaded their config but yielded zero test modules
+   * (e.g. `tests/e2e/vitest.config.ts` when `E2E !== "1"` so its
+   * `include:` is `[]`). Without these placeholder fragments the
+   * pre-push gate would refuse every push because the `e2e` manifest
+   * entry has no evidence. Optional + default `[]` for back-compat
+   * with the unit tests which inject deps directly.
+   */
+  configuredProjectNames?: ReadonlyArray<string>;
 }
 
 interface BuildFragmentsInput {
   testModules: Iterable<FakeReporterModule>;
   commitSha: string;
   projectRoot: string;
+  /**
+   * Quick 260527-pj6 / Wave 4.T5 — when present, the fragment builder
+   * emits an empty (total=0 pass=0) fragment for any project name in
+   * this list that didn't appear in `testModules`. Mirrors the
+   * deps.configuredProjectNames contract above.
+   */
+  configuredProjectNames?: ReadonlyArray<string>;
 }
 
 /**
@@ -181,7 +200,7 @@ function findSkipReason(lines: string[], oneBasedCallLine: number): string | nul
  * project name. Exported for unit testing.
  */
 export function buildFragmentsForTest(input: BuildFragmentsInput): EvidenceFragment[] {
-  const { testModules, commitSha, projectRoot } = input;
+  const { testModules, commitSha, projectRoot, configuredProjectNames } = input;
   /** project name → accumulator */
   const byProject = new Map<string, EvidenceFragment>();
 
@@ -264,6 +283,24 @@ export function buildFragmentsForTest(input: BuildFragmentsInput): EvidenceFragm
         });
       }
       // r.state === "pending" — should not happen at run end; ignore.
+    }
+  }
+
+  // Quick 260527-pj6 / Wave 4.T5 — backfill empty fragments for any
+  // configured project that didn't yield a test module. The classic
+  // trigger is `tests/e2e/vitest.config.ts` whose `include:` collapses
+  // to `[]` when `E2E !== "1"` — the reporter would otherwise emit no
+  // fragment and the pre-push gate would refuse every push.
+  // Empty fragments carry `reason: "passed"`, `exit_code: 0`, and
+  // `total: 0` so they look like a clean no-op to the validator.
+  if (configuredProjectNames) {
+    for (const name of configuredProjectNames) {
+      // Skip blank names — root vitest config has an empty `name: ""`
+      // on its root project (`getRootProject().name === ""`) which
+      // would otherwise generate a `<sha>-.json` fragment.
+      if (name.length === 0) continue;
+      if (byProject.has(name)) continue;
+      init(name);
     }
   }
 
@@ -477,9 +514,26 @@ export default class TestEvidenceReporter {
   /** Captured at `onInit` time. */
   private watchMode = false;
 
-  /** Hook 1 — capture watch mode so we can short-circuit at run end. */
-  onInit(vitest: { config?: { watch?: boolean } }): void {
+  /** Quick 260527-pj6 / Wave 4.T5 — captured at `onInit` time. The
+   *  set of project names the current vitest run was configured
+   *  with. Used to emit empty-but-passing fragments for projects
+   *  whose `include:` collapses to `[]` (e.g. e2e gated on `E2E=1`). */
+  private configuredProjectNames: string[] = [];
+
+  /** Hook 1 — capture watch mode + configured project list. */
+  onInit(vitest: {
+    config?: { watch?: boolean };
+    projects?: ReadonlyArray<{ name?: string }>;
+  }): void {
     this.watchMode = vitest.config?.watch === true;
+    // Capture the configured project list verbatim (project names may
+    // be the empty string for the root config; we filter blanks at
+    // fragment-emission time, not here).
+    if (Array.isArray(vitest.projects)) {
+      this.configuredProjectNames = vitest.projects
+        .map((p) => p?.name ?? "")
+        .filter((n): n is string => typeof n === "string");
+    }
   }
 
   /** Hook 2 — main entry point. */
@@ -494,6 +548,7 @@ export default class TestEvidenceReporter {
       commitSha: resolveCommitSha(projectRoot),
       projectRoot,
       stderr: process.stderr,
+      configuredProjectNames: this.configuredProjectNames,
     };
     this.onTestRunEndForTest(testModules, _unhandledErrors, reason, deps);
   }
@@ -517,7 +572,14 @@ export default class TestEvidenceReporter {
       deps.stderr.write("[evidence] skipping write (run interrupted)\n");
       return;
     }
-    if (testModules.length === 0) {
+    // Quick 260527-pj6 / Wave 4.T5 — we no longer bail when
+    // testModules is empty IF configuredProjectNames is non-empty
+    // (the backfill path emits placeholder fragments for every
+    // configured project so the pre-push gate sees coverage).
+    // Without configuredProjectNames we keep the legacy bail-out so
+    // hermetic unit tests stay deterministic.
+    const hasConfigured = (deps.configuredProjectNames?.length ?? 0) > 0;
+    if (testModules.length === 0 && !hasConfigured) {
       // Nothing to record — silent return.
       return;
     }
@@ -535,6 +597,7 @@ export default class TestEvidenceReporter {
       testModules,
       commitSha: sha,
       projectRoot: deps.projectRoot,
+      configuredProjectNames: deps.configuredProjectNames,
     });
     // Fragment-level reason is set during buildFragmentsForTest:
     // any `failed` test case flips `frag.reason = "failed"` +
