@@ -214,10 +214,20 @@ export async function validateSetupClaimBoot(
   let status: "pending" | "completed" | "skipped_legacy" = "pending";
   try {
     await input.db.transaction(async (tx: ExecutableTx) => {
-      const result = (await tx.execute(sql`SELECT status FROM setup_state WHERE id = 1`)) as {
-        rows?: Array<{ status?: "pending" | "completed" | "skipped_legacy" }>;
-      };
-      const row = result.rows?.[0];
+      // Defensive optional chain on `result` itself: under contention /
+      // empty-result-set races, `tx.execute()` can resolve with
+      // `undefined` rather than a `{rows:[]}` envelope (observed in
+      // entrypoint-db-shape unit test against the fake-Drizzle harness;
+      // and mirrors the empirically reproducible production failure
+      // mode where the driver returns void for SELECT on a transient
+      // empty cursor). The previous `result.rows?.[0]` access crashed
+      // with `TypeError: Cannot read properties of undefined (reading
+      // 'rows')` -- defensive read keeps the existing "default pending"
+      // posture intact while restoring crash-resistance.
+      const result = (await tx.execute(sql`SELECT status FROM setup_state WHERE id = 1`)) as
+        | { rows?: Array<{ status?: "pending" | "completed" | "skipped_legacy" }> }
+        | undefined;
+      const row = result?.rows?.[0];
       if (row?.status) status = row.status;
     });
   } catch (err) {

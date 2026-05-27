@@ -185,6 +185,82 @@ describe("F2 — un-annotated skip", () => {
   });
 });
 
+describe("F2b — suite-level runtime skip (location.line === 0)", () => {
+  // Quick 260527-pj6 / Wave 4.T5 — Blocker 3 (Path 3a, reporter-side fix).
+  //
+  // Vitest emits `location.line === 0` for tests that are skipped at the
+  // SUITE level rather than the per-call level: `.skipIf(predicate)` /
+  // `.runIf(predicate)` and `describe.skip(...)` produce a synthetic
+  // suite-level skip with no source line to annotate. The annotation
+  // contract (`// SKIP-REASON: <body>` above the call) is by construction
+  // impossible to satisfy at the suite level — there is no "call" line.
+  //
+  // Path 3a treats `line === 0` as a suite-level skip: NOT counted in
+  // `unannotated_skip`, AND a new `suite_level: true` field on the skip
+  // entry so the validator (and humans reading the fragment) can see
+  // these as a distinct class from forgot-to-annotate misses. The
+  // upstream concern (the predicate-generating helper itself ought to
+  // be annotated) is logged as a separate WARN by the lint pass, not
+  // gated by the evidence reporter.
+  it("treats location.line === 0 as suite-level: not counted as unannotated", () => {
+    const src = writeSource(
+      "skipif.test.ts",
+      [
+        "import { describe, it } from 'vitest';",
+        "const SHOULD_SKIP = process.env.CI !== '1';",
+        "describe.skipIf(SHOULD_SKIP)('gated', () => {",
+        "  it('runs only when SHOULD_SKIP is false', () => {});",
+        "});",
+      ].join("\n"),
+    );
+    const mod = fakeModule({
+      moduleId: src,
+      projectName: "api",
+      // Vitest synthesises a suite-level skip with line === 0.
+      cases: [
+        { name: "runs only when SHOULD_SKIP is false", state: "skipped", mode: "skip", line: 0 },
+      ],
+    });
+    const [frag] = buildFragmentsForTest({
+      testModules: [mod],
+      commitSha: "3".repeat(40),
+      projectRoot: workspace,
+    });
+    expect(frag?.skip).toBe(1);
+    expect(frag?.unannotated_skip).toBe(0); // <-- the critical assertion
+    expect(frag?.skips[0]?.annotated).toBe(false);
+    expect(frag?.skips[0]?.suite_level).toBe(true);
+    expect(frag?.skips[0]?.line).toBe(0);
+    expect(frag?.skips[0]?.skip_reason).toBeNull();
+  });
+
+  it("regular per-call .skip on line > 0 still counts as unannotated when missing SKIP-REASON", () => {
+    // Negative twin — make sure the suite-level branch doesn't
+    // accidentally swallow per-call misses.
+    const src = writeSource(
+      "regular.test.ts",
+      [
+        "import { describe, it } from 'vitest';",
+        "describe('outer', () => {",
+        "  it.skip('orphan', () => {});",
+        "});",
+      ].join("\n"),
+    );
+    const mod = fakeModule({
+      moduleId: src,
+      projectName: "api",
+      cases: [{ name: "orphan", state: "skipped", mode: "skip", line: 3 }],
+    });
+    const [frag] = buildFragmentsForTest({
+      testModules: [mod],
+      commitSha: "4".repeat(40),
+      projectRoot: workspace,
+    });
+    expect(frag?.unannotated_skip).toBe(1);
+    expect(frag?.skips[0]?.suite_level).toBe(false);
+  });
+});
+
 describe("F3 — watch mode → no fragment written", () => {
   it("returns early when vitest.config.watch === true", () => {
     const mod = fakeModule({
@@ -833,8 +909,18 @@ describe("memoisation across two cases in the same module", () => {
   });
 });
 
-describe("location.line === undefined treated as unannotated", () => {
-  it("emits skip without annotation when source location is unknown", () => {
+describe("location.line === undefined treated as suite-level (Wave 4.T5 Path 3a)", () => {
+  it("emits skip with suite_level=true when source location is unknown (no per-call line to annotate)", () => {
+    // Quick 260527-pj6 / Wave 4.T5 — Blocker 3 (Path 3a). When Vitest
+    // emits no `location` (or `location.line === 0`) the per-call
+    // annotation contract is by construction unsatisfiable; the entry
+    // is recorded with `suite_level: true` and NOT counted as
+    // unannotated_skip. The lint pass against the predicate-helper
+    // upstream is the right place to enforce annotation.
+    //
+    // The legacy posture (pre-Wave-4.T5) treated `location: undefined`
+    // as `unannotated_skip += 1` (see the prior assertion this test
+    // replaced) — the change is deliberate.
     const src = writeSource(
       "noloc.test.ts",
       ["import { it } from 'vitest';", "it.skip('x', () => {});"].join("\n"),
@@ -860,7 +946,10 @@ describe("location.line === undefined treated as unannotated", () => {
       commitSha: "e".repeat(40),
       projectRoot: workspace,
     });
-    expect(frag?.unannotated_skip).toBe(1);
+    expect(frag?.unannotated_skip).toBe(0);
+    expect(frag?.skips[0]?.suite_level).toBe(true);
+    expect(frag?.skips[0]?.annotated).toBe(false);
+    expect(frag?.skips[0]?.line).toBe(0);
   });
 });
 
