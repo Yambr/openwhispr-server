@@ -101,6 +101,7 @@ validateBetterAuthSecretBoot();
 // the route handler always has a trustworthy env-derived origin. Same
 // loud-fail posture as validateEncryptionBoot / validateBetterAuthSecretBoot.
 import { validateIngressBoot } from "./config/auth.js";
+import { type BuildInfo, parseBuildInfoFromEnv } from "./config/build-info.js";
 import { type DiarizationConfig, loadDiarizationConfigFromEnv } from "./config/diarization.js";
 import {
   loadRealtimeConfigFromEnv,
@@ -355,6 +356,18 @@ export interface BuildAppOptions {
    * probe cadence). Tests inject fakes.
    */
   migrationsCheck?: () => Promise<boolean>;
+  /**
+   * Quick-task 260528-370 — optional build-info DTO threaded through
+   * `registerProbes` into the `GET /api/health` response
+   * (`version` + `commit_sha` + `image_tag` fields). Production resolves
+   * this once at boot via `parseBuildInfoFromEnv()` reading
+   * `OPENWHISPR_BUILD_VERSION` / `OPENWHISPR_BUILD_SHA` /
+   * `OPENWHISPR_IMAGE_TAG`; tests inject deterministic snapshots without
+   * mutating `process.env`. When omitted, `buildApp` invokes
+   * `parseBuildInfoFromEnv()` itself so the field is always populated
+   * (defaults to the BUILD_INFO_UNKNOWN triplet when env vars are unset).
+   */
+  buildInfo?: BuildInfo;
   /**
    * Phase 55-05b / BUG-55-05-SETUP-ADMIN-ROUTE-UNWIRED — production
    * wiring for the first-run admin bootstrap route. When supplied,
@@ -748,9 +761,18 @@ export const buildApp = async (opts: BuildAppOptions = {}): Promise<FastifyInsta
   // mount `./routes/health.js`; that registration has been folded into
   // `registerProbes` so there's a single source-of-truth for the health
   // surface across the app's lifecycle.
+  // Quick-task 260528-370 — resolve build-info once per buildApp call.
+  // Production resolves at boot via parseBuildInfoFromEnv() reading the
+  // OPENWHISPR_BUILD_* env vars set by apps/api/Dockerfile's runtime stage
+  // (populated via release.yml's docker/build-push-action build-args).
+  // Tests inject deterministic snapshots via `opts.buildInfo` to avoid
+  // mutating process.env. LOCKER-01: parseBuildInfoFromEnv lives under
+  // config/ which is the env-reading allowlist.
+  const buildInfo: BuildInfo = opts.buildInfo ?? parseBuildInfoFromEnv();
   await registerProbes(app, {
     ...(opts.depCheck ? { depCheck: opts.depCheck } : {}),
     ...(opts.migrationsCheck ? { migrationsCheck: opts.migrationsCheck } : {}),
+    buildInfo,
   });
 
   // R25 — GET /api/ready: the Cloud-plane readiness probe (compose

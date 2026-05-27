@@ -222,7 +222,16 @@ describe("/api/health alias (back-compat with apps/api/src/health.test.ts)", () 
     // no migrationsCheck dep is wired, the field defaults to `false` so
     // the harness/operator gets an actionable "migrations runner has not
     // been wired into the boot" signal (distinct from runtime DB outage).
-    expect(res.json()).toEqual({ status: "ok", migrations_completed: false });
+    // Quick-task 260528-370 — additive build-info triplet. When no
+    // buildInfo dep is wired, all three fields surface "unknown" (the
+    // documented BUILD_INFO_UNKNOWN sentinel).
+    expect(res.json()).toEqual({
+      status: "ok",
+      migrations_completed: false,
+      version: "unknown",
+      commit_sha: "unknown",
+      image_tag: "unknown",
+    });
     await app.close();
   });
 
@@ -273,7 +282,16 @@ describe("/api/health migrations_completed (Plan 13-01 / Task 13-01-05)", () => 
     const app = await makeAppWithMigrationsCheck(migrationsCheck);
     const res = await app.inject({ method: "GET", url: "/api/health" });
     expect(res.statusCode).toBe(200);
-    expect(res.json()).toEqual({ status: "ok", migrations_completed: true });
+    // Quick-task 260528-370 — additive build-info triplet defaults to
+    // BUILD_INFO_UNKNOWN when no buildInfo dep is wired (this case only
+    // wires migrationsCheck).
+    expect(res.json()).toEqual({
+      status: "ok",
+      migrations_completed: true,
+      version: "unknown",
+      commit_sha: "unknown",
+      image_tag: "unknown",
+    });
     expect(calls).toHaveLength(1);
     await app.close();
   });
@@ -283,7 +301,13 @@ describe("/api/health migrations_completed (Plan 13-01 / Task 13-01-05)", () => 
     const app = await makeAppWithMigrationsCheck(migrationsCheck);
     const res = await app.inject({ method: "GET", url: "/api/health" });
     expect(res.statusCode).toBe(200);
-    expect(res.json()).toEqual({ status: "ok", migrations_completed: false });
+    expect(res.json()).toEqual({
+      status: "ok",
+      migrations_completed: false,
+      version: "unknown",
+      commit_sha: "unknown",
+      image_tag: "unknown",
+    });
     await app.close();
   });
 
@@ -297,7 +321,13 @@ describe("/api/health migrations_completed (Plan 13-01 / Task 13-01-05)", () => 
     // migration probe hiccups. The field reports false to surface the
     // hiccup without cascading into a kubelet restart loop.
     expect(res.statusCode).toBe(200);
-    expect(res.json()).toEqual({ status: "ok", migrations_completed: false });
+    expect(res.json()).toEqual({
+      status: "ok",
+      migrations_completed: false,
+      version: "unknown",
+      commit_sha: "unknown",
+      image_tag: "unknown",
+    });
     await app.close();
   });
 
