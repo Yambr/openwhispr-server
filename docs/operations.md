@@ -444,11 +444,12 @@ docker compose --profile dev up -d mailpit
 
 mailpit is **profile-gated**; the default `docker compose up` never starts it.
 
-### Resend domain verification (production)
+### Branded sender via Resend SMTP (production)
 
-The default `SMTP_FROM=onboarding@resend.dev` is Resend's shared
-**dev-sandbox sender**. It works out-of-the-box (no DNS setup needed)
-but has two limitations in production:
+OpenWhispr Server sends mail via SMTP (nodemailer). The default
+`SMTP_FROM=onboarding@resend.dev` reflects Resend's free SMTP relay
+as the OSS quickstart provider — it works without DNS setup but has
+two limitations:
 
 1. **Branding** — emails look like they come from `onboarding@resend.dev`,
    not your operator domain.
@@ -457,7 +458,13 @@ but has two limitations in production:
    blocks QA workflows that rely on plus-addressing for fan-out test
    accounts on a single inbox.
 
-To switch to a branded sender (`no-reply@your-domain.tld`):
+To switch to a branded sender (`no-reply@your-domain.tld`) while
+still using Resend SMTP:
+
+> Operators on AWS SES, Postfix, Mailgun, or other SMTP providers skip
+> this section — only the SMTP_HOST / SMTP_PORT / SMTP_USER /
+> SMTP_PASSWORD / SMTP_FROM env vars matter, and the verification steps
+> are provider-specific.
 
 **1. Verify the domain in Resend.** In the Resend dashboard, add your
    sending domain and obtain the DKIM + SPF + MX records Resend generates
