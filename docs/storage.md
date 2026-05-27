@@ -1,7 +1,7 @@
 # Storage Conventions
 
-OpenWhispr Server uses a single MinIO bucket with per-tenant key prefixes for
-all object storage. v1 convention for object storage.
+v1 convention for object storage. When enabled, OpenWhispr Server uses a single
+S3-compatible bucket (bundled MinIO by default) with per-tenant key prefixes.
 
 > **Object storage is OPTIONAL.** The base server boots without any
 > `S3_*` configuration. Storage is required only when you enable the
