@@ -83,6 +83,20 @@ export interface EvidenceFragmentForTest {
     mode: "skip" | "todo";
     annotated: boolean;
     skip_reason: string | null;
+    /**
+     * Quick 260527-pj6 / Wave 4.T5 — Blocker 3 (Path 3a). True iff the
+     * test was skipped at the SUITE level (`.skipIf` / `.runIf` /
+     * `describe.skip`) — Vitest emits `location.line === 0` for these,
+     * and the per-call SKIP-REASON annotation contract is by
+     * construction unsatisfiable. The reporter DOES NOT count
+     * suite-level skips in `unannotated_skip`; the validator therefore
+     * treats them as observed-but-not-blocking.
+     *
+     * Field is OPTIONAL on the validator side for back-compat with any
+     * fragments written by a reporter on a pre-Wave-4.T5 commit (which
+     * would omit it). Treat `undefined` as `false` (the legacy posture).
+     */
+    suite_level?: boolean;
   }>;
 }
 

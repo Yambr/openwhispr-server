@@ -25,7 +25,7 @@
  *     "total": N, "pass": N, "fail": N, "skip": N, "todo": N,
  *     "unannotated_skip": N,
  *     "failures": [{ "file": <rel>, "name": <fullName>, "error_message_truncated": <≤1000> }],
- *     "skips":    [{ "file": <rel>, "line": N, "name": <fullName>, "mode": "skip|todo", "annotated": bool, "skip_reason": text|null }]
+ *     "skips":    [{ "file": <rel>, "line": N, "name": <fullName>, "mode": "skip|todo", "annotated": bool, "skip_reason": text|null, "suite_level": bool }]
  *   }
  *
  * Atomic-write contract (TOCTOU-safe):
@@ -119,6 +119,22 @@ export interface EvidenceFragment {
     mode: "skip" | "todo";
     annotated: boolean;
     skip_reason: string | null;
+    /**
+     * Quick 260527-pj6 / Wave 4.T5 — Blocker 3 (Path 3a, reporter-side fix).
+     *
+     * Vitest emits `location.line === 0` for tests skipped at the SUITE
+     * level (`.skipIf(predicate)`, `.runIf(predicate)`,
+     * `describe.skip(...)`, etc.) — there is no per-call source line to
+     * scan for `// SKIP-REASON:`. The annotation contract is by
+     * construction impossible to satisfy at the suite level.
+     *
+     * When `line === 0` the reporter sets `suite_level: true` AND does
+     * NOT count the entry in `unannotated_skip`. The upstream concern
+     * (annotating the predicate helper itself) is a separate static-lint
+     * warning, not an evidence-gate-blocking violation. Validator and
+     * humans can still see suite-level skips in this array.
+     */
+    suite_level: boolean;
   }>;
 }
 
@@ -264,9 +280,18 @@ export function buildFragmentsForTest(input: BuildFragmentsInput): EvidenceFragm
         if (mode === "todo") frag.todo += 1;
         else frag.skip += 1;
         const line = tc.location?.line ?? 0;
+        // Quick 260527-pj6 / Wave 4.T5 — Blocker 3 (Path 3a). A
+        // `location.line === 0` flag from Vitest indicates a suite-level
+        // skip (`.skipIf(predicate)`, `.runIf(...)`, `describe.skip(...)`)
+        // where the annotation contract cannot be satisfied per-call.
+        // Mark `suite_level: true` and DO NOT count toward
+        // `unannotated_skip`. The companion lint warning (against the
+        // helper that produces the predicate) is the appropriate place
+        // to enforce annotation upstream.
+        const suite_level = line === 0;
         const reason = line > 0 ? findSkipReason(moduleLines, line) : null;
         const annotated = reason !== null;
-        if (!annotated) {
+        if (!annotated && !suite_level) {
           frag.unannotated_skip += 1;
           // Exit code remains 0 here — the validator (not the
           // reporter) decides whether to refuse on
@@ -280,6 +305,7 @@ export function buildFragmentsForTest(input: BuildFragmentsInput): EvidenceFragm
           mode,
           annotated,
           skip_reason: reason,
+          suite_level,
         });
       }
       // r.state === "pending" — should not happen at run end; ignore.

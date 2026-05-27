@@ -20,11 +20,20 @@
 //      (tests/e2e/mock-realtime) which now ASSERTS GA shape: it REJECTS
 //      any upstream connection carrying `?intent=` or an `OpenAI-Beta`
 //      header, and rejects Beta frame vocabulary.
-//   4. Asserts the bidirectional Beta↔GA translation end-to-end.
+//   4. Asserts the GA-shape contract end-to-end. Post-v1.0.8 (commit
+//      2803c1a8 — `translateUpstreamToClient` is now full passthrough),
+//      the upstream→client leg is byte-identical: GA `session.created`/
+//      `session.updated` reach the client unchanged. The client→upstream
+//      leg still rewrites the legacy Beta `transcription_session.update`
+//      to GA `session.update` (defence-in-depth for any future
+//      Beta-speaking client; the actually-shipping client already emits
+//      GA directly per the v1.0.8 fix).
 //   5. Covers BOTH backend modes — `litellm` and `direct`.
 //
-// A Beta-vs-GA regression (the `?intent=` strip removed, the OpenAI-Beta
-// header re-added, the frame translation broken) FAILS this test.
+// A regression that breaks the `?intent=transcription` preserve, re-
+// attaches the `OpenAI-Beta` header, drops the GA→GA passthrough on the
+// upstream→client leg, or breaks the relay-self-injected GA session.update
+// (DEFECT 6) FAILS this test.
 
 import { dirname as pathDirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -236,12 +245,13 @@ describe("R31 — frame-aware /v1/realtime relay GA-shape regression (litellm + 
     expect(result.status).toBe(401);
   }, 60_000);
 
-  it("litellm mode: a real signed-in user reaches the GA-asserting upstream and gets transcription_session.created", async () => {
+  it("litellm mode: a real signed-in user reaches the GA-asserting upstream and gets session.created", async () => {
     // The mock REJECTS `?intent=` and `OpenAI-Beta`. If the relay failed
     // to strip `?intent=` (DEFECT 1) or attached an OpenAI-Beta header
     // (DEFECT 2), the mock would close the upstream 4400 and the relay
-    // would propagate a close — `transcription_session.created` would
-    // never arrive and this test would FAIL.
+    // would propagate a close — the GA `session.created` would never
+    // arrive at the client (passthrough — see v1.0.8 fix 2803c1a8) and
+    // this test would FAIL.
     mock = await startMockRealtimeServer({ port: 0 });
     const litellmHttp = mock.url.replace(/^ws:/, "http:").replace(/\/v1\/realtime$/, "");
     const booted = await bootRealtimeApp({
@@ -264,30 +274,43 @@ describe("R31 — frame-aware /v1/realtime relay GA-shape regression (litellm + 
       ws.once("error", rej);
     });
 
-    // DEFECT 3 — the client waits for the Beta `transcription_session.
-    // created`; the GA upstream emits `session.created`; the relay must
-    // translate it back.
-    const created = await awaitFrame(ws, (f) => f.type === "transcription_session.created");
-    expect(created.type).toBe("transcription_session.created");
+    // v1.0.8 passthrough (commit 2803c1a8) — the actually-shipping
+    // desktop client speaks OpenAI Realtime GA throughout (its switch
+    // table handles `case "session.created"`/`case "session.updated"`).
+    // The relay's `translateUpstreamToClient` is a pure passthrough; the
+    // GA `session.created` arrives at the client unchanged. A regression
+    // re-introducing the legacy Beta rewrite (`transcription_session.*`)
+    // would land the client switch on the default branch and timeout
+    // (peer wd6g78xz live reproduction on prod k8s 2026-05-26).
+    const created = await awaitFrame(ws, (f) => f.type === "session.created");
+    expect(created.type).toBe("session.created");
 
     // Bidirectional — the client sends a Beta `transcription_session.
     // update`; the GA-asserting mock would close 4400 on a Beta frame OR
     // on a flat Beta session payload (DEFECT 4), so a `session.updated`
     // reply proves the relay translated BOTH the frame name AND the
     // payload to GA shape. The mock echoes the (GA-shaped) payload back;
-    // the relay flattens it GA→Beta so the client sees Beta field names.
+    // the relay passes it through unchanged (v1.0.8 passthrough).
+    //
+    // The relay self-injects its own GA `session.update` on upstream
+    // open (DEFECT 6) and SWALLOWS the matching `session.updated` echo
+    // via `relaySessionUpdateEchoPending`. So the FIRST `session.updated`
+    // the client sees is the reply to this client-originated update.
     ws.send(
       JSON.stringify({
         type: "transcription_session.update",
         session: { input_audio_format: "pcm16" },
       }),
     );
-    const updated = await awaitFrame(ws, (f) => f.type === "transcription_session.updated");
-    // The GA `type` discriminator is dropped on the way back; the Beta
-    // client reads the flat `input_audio_format` field instead.
+    const updated = await awaitFrame(ws, (f) => f.type === "session.updated");
+    // GA shape — nested `audio.input.format` object, NOT the flat Beta
+    // `input_audio_format` string. v1.0.8 deliberately removed the
+    // GA→Beta flatten on the upstream→client leg.
     const updatedSession = updated.session as Record<string, unknown>;
-    expect(updatedSession.type).toBeUndefined();
-    expect(updatedSession.input_audio_format).toBe("pcm16");
+    expect(updatedSession.type).toBe("transcription");
+    const updatedAudio = updatedSession.audio as Record<string, unknown>;
+    const updatedInput = updatedAudio.input as Record<string, unknown>;
+    expect(updatedInput.format).toEqual({ type: "audio/pcm", rate: 24_000 });
 
     ws.close();
     await new Promise<void>((res) => ws.once("close", () => res()));
@@ -320,12 +343,15 @@ describe("R31 — frame-aware /v1/realtime relay GA-shape regression (litellm + 
       ws.once("error", rej);
     });
 
-    const created = await awaitFrame(ws, (f) => f.type === "transcription_session.created");
-    expect(created.type).toBe("transcription_session.created");
+    // v1.0.8 passthrough (commit 2803c1a8) — GA frames pass through unchanged.
+    const created = await awaitFrame(ws, (f) => f.type === "session.created");
+    expect(created.type).toBe("session.created");
 
     ws.send(JSON.stringify({ type: "transcription_session.update", session: {} }));
-    const updated = await awaitFrame(ws, (f) => f.type === "transcription_session.updated");
-    expect(updated.type).toBe("transcription_session.updated");
+    // The relay-injected session.updated echo is swallowed; the
+    // client-originated reply is the first session.updated the client sees.
+    const updated = await awaitFrame(ws, (f) => f.type === "session.updated");
+    expect(updated.type).toBe("session.updated");
 
     ws.close();
     await new Promise<void>((res) => ws.once("close", () => res()));
@@ -358,7 +384,8 @@ describe("R31 — frame-aware /v1/realtime relay GA-shape regression (litellm + 
       ws.once("error", rej);
     });
 
-    await awaitFrame(ws, (f) => f.type === "transcription_session.created");
+    // v1.0.8 passthrough — GA `session.created` reaches the client unchanged.
+    await awaitFrame(ws, (f) => f.type === "session.created");
 
     // The immutable client sends the FLAT Beta session.update payload —
     // verbatim the shape from openwhispr/src/helpers/openaiRealtimeStreaming.js.
@@ -379,7 +406,9 @@ describe("R31 — frame-aware /v1/realtime relay GA-shape regression (litellm + 
         },
       }),
     );
-    await awaitFrame(ws, (f) => f.type === "transcription_session.updated");
+    // Relay-injected echo swallowed; first session.updated the client sees
+    // is the reply to its own update.
+    await awaitFrame(ws, (f) => f.type === "session.updated");
 
     // Stream real PCM16 audio (silence is fine — the mock counts bytes).
     const pcmChunk = Buffer.alloc(24_000 * 2); // 1s of 24kHz 16-bit PCM.
@@ -425,7 +454,8 @@ describe("R31 — frame-aware /v1/realtime relay GA-shape regression (litellm + 
       ws.once("error", rej);
     });
 
-    await awaitFrame(ws, (f) => f.type === "transcription_session.created");
+    // v1.0.8 passthrough — GA `session.created` reaches the client unchanged.
+    await awaitFrame(ws, (f) => f.type === "session.created");
 
     ws.send(
       JSON.stringify({
@@ -437,7 +467,9 @@ describe("R31 — frame-aware /v1/realtime relay GA-shape regression (litellm + 
         },
       }),
     );
-    await awaitFrame(ws, (f) => f.type === "transcription_session.updated");
+    // Relay-injected echo swallowed; first session.updated the client sees
+    // is the reply to its own update.
+    await awaitFrame(ws, (f) => f.type === "session.updated");
 
     // Collect ALL data-path frames with a persistent listener — the mock
     // emits committed→delta→completed back-to-back, so sequential
@@ -515,9 +547,11 @@ describe("R31 — frame-aware /v1/realtime relay GA-shape regression (litellm + 
       ws.once("error", rej);
     });
 
-    // The preconfigured client completes its startup handshake on
-    // `transcription_session.created` and sends NO update.
-    await awaitFrame(ws, (f) => f.type === "transcription_session.created");
+    // v1.0.8 passthrough — the actually-shipping desktop client speaks
+    // GA throughout; the preconfigured client completes its startup
+    // handshake on the GA `session.created` directly (its switch table
+    // handles `case "session.created"`).
+    await awaitFrame(ws, (f) => f.type === "session.created");
 
     // Collect all data-path frames with a persistent listener.
     const dataFrames: Array<Record<string, unknown>> = [];
@@ -590,7 +624,8 @@ describe("R31 — frame-aware /v1/realtime relay GA-shape regression (litellm + 
       ws.once("open", () => res());
       ws.once("error", rej);
     });
-    await awaitFrame(ws, (f) => f.type === "transcription_session.created");
+    // v1.0.8 passthrough — preconfigured client awaits GA `session.created`.
+    await awaitFrame(ws, (f) => f.type === "session.created");
 
     const pcmChunk = Buffer.alloc(24_000 * 2);
     ws.send(
