@@ -3,6 +3,12 @@
 OpenWhispr Server uses a single MinIO bucket with per-tenant key prefixes for
 all object storage. v1 convention for object storage.
 
+> **Object storage is OPTIONAL.** The base server boots without any
+> `S3_*` configuration. Storage is required only when you enable the
+> `--with-storage` overlay (audio uploads / attachments) OR configure
+> the `audit-archive` worker job via `AUDIT_ARCHIVE_EXPORTER`. If
+> neither applies, leave all four `S3_*` env vars unset.
+
 ## Bucket Layout
 
 | Field           | Value                                                |
