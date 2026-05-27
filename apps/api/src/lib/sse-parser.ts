@@ -15,6 +15,7 @@
 // inspect `acc.hasPending()` and decline to flush — we do not flush
 // implicitly here, only on finish_reason="tool_calls".
 
+import type { AgentErrorCode } from "./agent-upstream-error-classify.js";
 import type { ToolCallAccumulator, ToolCallChunk } from "./tool-call-accumulator.js";
 
 // R32 — wire vocabulary. The immutable desktop client's cloud stream
@@ -25,6 +26,11 @@ import type { ToolCallAccumulator, ToolCallChunk } from "./tool-call-accumulator
 // so every chunk was silently dropped and the chat window stayed empty.
 // `tool-result` is intentionally absent: tools execute on the CLIENT, so
 // the server never emits a tool-result chunk on the wire.
+//
+// 260528-0cm — gained type:"error" variant emitted ONLY by the
+// agent.stream route catch blocks (preflight + drain). The
+// translateChunk generator below NEVER yields it — adversarial upstream
+// SSE frames cannot impersonate a server-emitted terminal error chunk.
 export type StreamChunk =
   | { type: "content"; text: string }
   | ToolCallChunk
@@ -32,6 +38,12 @@ export type StreamChunk =
       type: "done";
       finishReason: string;
       usage: { promptTokens: number; completionTokens: number };
+    }
+  | {
+      type: "error";
+      error: string;
+      code: AgentErrorCode;
+      provider: "litellm" | "unknown";
     };
 
 export interface SseToNdjsonInput {
