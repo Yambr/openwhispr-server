@@ -14,9 +14,16 @@
 // shares the SAME compose stack instance and the same fixture user
 // rate-limit buckets at Better Auth. Sequential execution keeps the
 // rate-limit interactions deterministic.
+import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import { defineConfig } from "vitest/config";
 
 const E2E_ENABLED = process.env.E2E === "1";
+
+// Quick 260527-pj6 / Wave 1.T2 — anchor the evidence-reporter path
+// against the repo root so the relative-from-child workspace doesn't
+// re-resolve against `tests/e2e`. See PLAN scope item 6 (B1 BLOCKER fix).
+const ROOT_DIR = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 
 export default defineConfig({
   test: {
@@ -25,7 +32,10 @@ export default defineConfig({
     name: "e2e",
     include: E2E_ENABLED ? ["**/*.e2e.test.ts"] : [],
     exclude: ["node_modules/**", "dist/**"],
-    reporters: ["verbose"],
+    // Quick 260527-pj6 / Wave 1.T2 — explicit reporter array MUST
+    // include the evidence reporter; mergeConfig REPLACES the root
+    // config's `reporters:` (RESEARCH R8.2).
+    reporters: ["verbose", resolve(ROOT_DIR, "tools/test-evidence-reporter.ts")],
     // Compose stack-up dominates wall time; 10 minutes covers worst-case
     // cold image pulls on CI runners.
     testTimeout: 600_000,
