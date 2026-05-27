@@ -44,6 +44,7 @@ const WEB_BASE = "http://localhost:3000";
 test.describe("@phase55-acceptance @long-form — admin pages happy path (slim)", () => {
   test.beforeEach(async ({ page }, testInfo) => {
     // eslint-disable-next-line prettier/prettier -- single-line skip required by Plan 55-18 done-gate grep
+    // SKIP-REASON: pre-260527-pj6 — original reason unknown, audit required
     test.skip(
       testInfo.project.name !== "slim",
       "Phase 55-18 acceptance suite runs against slim topology only — traefik path covered by Phase 53 a2/a3 sweep + CJM suite",

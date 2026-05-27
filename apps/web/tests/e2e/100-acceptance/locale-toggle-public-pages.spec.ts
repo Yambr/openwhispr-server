@@ -97,6 +97,7 @@ function switcher(page: import("@playwright/test").Page): import("@playwright/te
 
 test.describe("@phase55-acceptance @long-form — locale toggle on public pages (slim)", () => {
   test.beforeEach(async ({ page }, testInfo) => {
+    // SKIP-REASON: pre-260527-pj6 — original reason unknown, audit required
     test.skip(
       testInfo.project.name !== "slim",
       "Phase 55-03-a acceptance suite runs against slim topology only — traefik path covered by Phase 53 sweep + CJM suite",

@@ -56,6 +56,7 @@ const test = base.extend({
 
 test.describe("@phase55-acceptance @long-form — list load-more on 3 screens (slim)", () => {
   test.beforeEach(async ({ page, context }, testInfo) => {
+    // SKIP-REASON: pre-260527-pj6 — original reason unknown, audit required
     test.skip(
       testInfo.project.name !== "slim",
       "Phase 55-14 acceptance suite runs against slim topology only",

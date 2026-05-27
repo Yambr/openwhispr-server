@@ -43,6 +43,7 @@ test.use({ storageState: { cookies: [], origins: [] } });
 
 test.describe("@phase54-acceptance @long-form — full flow (slim OOB)", () => {
   test.beforeEach(async ({ page }, testInfo) => {
+    // SKIP-REASON: pre-260527-pj6 — original reason unknown, audit required
     test.skip(
       testInfo.project.name !== "slim",
       "Phase 54 acceptance suite runs against slim topology only — traefik path is covered by Phase 53 sweep + 100-fullflow",
