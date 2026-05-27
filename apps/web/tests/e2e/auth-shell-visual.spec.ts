@@ -60,6 +60,7 @@ test.describe("AuthShell visual regression (Phase 18.1.1 / Plan 05)", () => {
     const finalUrl = new URL(page.url());
     const onSetup = finalUrl.pathname === "/setup";
     if (!response?.ok() || !onSetup) {
+      // SKIP-REASON: pre-260527-pj6 — original reason unknown, audit required
       test.skip(true, "setup already completed — skipping visual regression");
       return;
     }

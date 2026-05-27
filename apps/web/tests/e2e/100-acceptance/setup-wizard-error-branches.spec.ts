@@ -82,6 +82,7 @@ async function fillWizard(page: import("@playwright/test").Page): Promise<void> 
 test.describe("@phase55-acceptance @long-form — setup wizard error + warning branches (slim)", () => {
   test.beforeEach(async ({ page, request }, testInfo) => {
     // eslint-disable-next-line prettier/prettier -- single-line skip required by Plan 55-16 done-gate grep
+    // SKIP-REASON: pre-260527-pj6 — original reason unknown, audit required
     test.skip(
       testInfo.project.name !== "slim",
       "Phase 55-16 acceptance suite runs against slim topology only — traefik path covered by Phase 53 sweep + CJM suite",

@@ -20,6 +20,7 @@ test.describe("@phase55-acceptance @long-form — conv detail load-earlier (slim
   test.use({ storageState: storageStatePath(0) });
 
   test.beforeEach(async ({ page }, testInfo) => {
+    // SKIP-REASON: pre-260527-pj6 — original reason unknown, audit required
     test.skip(
       testInfo.project.name !== "slim",
       "Phase 55-17 acceptance suite runs against slim topology only",

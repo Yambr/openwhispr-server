@@ -86,6 +86,7 @@ interface SeedRow {
 // the surface the Phase 33-05 atomic closure removes. Skipping is the
 // honest signal — the test asserted production behaviour that no longer
 // exists post-0020.
+// SKIP-REASON: pre-260527-pj6 — original reason unknown, audit required
 describe.skip("runBackfill — integration on real PG testcontainer (obsolete post-0020)", () => {
   let boot: BootResult;
   let ownerPool: Pool;

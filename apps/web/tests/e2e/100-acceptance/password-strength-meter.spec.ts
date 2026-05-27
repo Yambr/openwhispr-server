@@ -36,6 +36,7 @@ test.use({ storageState: { cookies: [], origins: [] } });
 test.describe("@phase55-acceptance @long-form — password strength meter (slim)", () => {
   test.beforeEach(async ({ page }, testInfo) => {
     // eslint-disable-next-line prettier/prettier -- single-line skip required by Plan 55-02-a done-gate grep
+    // SKIP-REASON: pre-260527-pj6 — original reason unknown, audit required
     test.skip(
       testInfo.project.name !== "slim",
       "Phase 55-02-a acceptance suite runs against slim topology only — traefik path covered by Phase 53 sweep + CJM suite",

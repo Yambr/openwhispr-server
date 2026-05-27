@@ -34,6 +34,7 @@ test.use({ storageState: { cookies: [], origins: [] } });
 
 test.describe("@phase55-acceptance @long-form — sign-up generic error (slim)", () => {
   test.beforeEach(async ({ page }, testInfo) => {
+    // SKIP-REASON: pre-260527-pj6 — original reason unknown, audit required
     test.skip(
       testInfo.project.name !== "slim",
       "Phase 55-15-b acceptance suite runs against slim topology only",
