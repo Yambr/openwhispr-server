@@ -122,6 +122,21 @@ LABEL org.opencontainers.image.source="https://github.com/Yambr/openwhispr-serve
       org.opencontainers.image.licenses="FSL-1.1-ALv2"
 WORKDIR /app
 
+# Quick-task 260528-370 — build provenance threaded from
+# `docker/build-push-action@v7` `build-args` in `.github/workflows/release.yml`.
+# Defaults to the literal `unknown` so a local `docker build apps/api` (no
+# `--build-arg`) still produces a runnable image; the literal triplet on a
+# production replica is operator-actionable (rebuild via release.yml).
+# Defense-in-depth: `apps/api/src/config/build-info.ts` ALSO truncates each
+# field to 120 chars and treats whitespace as unset, so a malformed ARG
+# cannot corrupt the wire response.
+ARG BUILD_VERSION=unknown
+ARG BUILD_SHA=unknown
+ARG IMAGE_TAG=unknown
+ENV OPENWHISPR_BUILD_VERSION=$BUILD_VERSION \
+    OPENWHISPR_BUILD_SHA=$BUILD_SHA \
+    OPENWHISPR_IMAGE_TAG=$IMAGE_TAG
+
 ENV NODE_ENV=production
 
 # `node` user (uid 1000) ships in node:*-alpine — no useradd needed.
