@@ -1,5 +1,7 @@
 # openwhispr Helm chart
 
+> Pairs with the [OpenWhispr desktop client](https://github.com/Yambr/openwhispr) — signed builds at [releases](https://github.com/Yambr/openwhispr/releases). Pairing guide: [`docs/client.md`](../../docs/client.md).
+
 Production-grade Helm chart for OpenWhispr Server. Wraps the 18-service compose
 stack into a single chart suitable for fresh `kind` clusters, single-node
 self-host installs, and multi-AZ HA production clusters.

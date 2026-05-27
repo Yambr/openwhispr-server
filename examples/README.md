@@ -1,5 +1,7 @@
 # OpenWhispr Server — operator quickstarts
 
+> Pairs with the [OpenWhispr desktop client](https://github.com/Yambr/openwhispr) — signed builds at [releases](https://github.com/Yambr/openwhispr/releases). Pairing guide: [`docs/client.md`](../docs/client.md).
+
 This directory documents the operator variants OpenWhispr ships and provides
 copy-paste quickstart blocks for each. Variant A is the default OSS entry
 point; Variants B and C trade defaults for specific corporate / GPU local
