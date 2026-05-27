@@ -80,3 +80,6 @@ tests/e2e-cjm/.scratch/
 # Contains workdir.path + protection-rollback.json scoped to a single
 # RUN_ID under .scrub-state/<RUN_ID>/. Never checked in.
 .scrub-state/
+
+# Test evidence (local-only ephemeral, Quick 260527-pj6)
+.test-evidence/
