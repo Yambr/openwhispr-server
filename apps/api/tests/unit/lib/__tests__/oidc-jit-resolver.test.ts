@@ -147,6 +147,14 @@ describe("resolveJitDecision — rejection codes", () => {
     );
     expect(decision).toEqual({ ok: false, code: "invalid_oidc_profile" });
   });
+
+  it("mode 7: named-claim tenant value is not a string → invalid_oidc_profile", () => {
+    const decision = resolveJitDecision(
+      { tenant: 999 as unknown as string, groups: ["eng"] },
+      cfg({ tenantClaim: "tenant", tenantMapping: { x: "acme" }, roleMapping: { eng: "member" } }),
+    );
+    expect(decision).toEqual({ ok: false, code: "invalid_oidc_profile" });
+  });
 });
 
 describe("resolveJitDecision — role tie-break (mode 4)", () => {
@@ -168,6 +176,18 @@ describe("resolveJitDecision — role tie-break (mode 4)", () => {
     );
     expect(decision).toEqual({ ok: true, tenantId: "acme", role: "viewer" });
   });
+
+  it("ranks a matched role absent from rolePriority below every listed role", () => {
+    // viewer is NOT in rolePriority → ranks lowest; member (listed) wins.
+    const decision = resolveJitDecision(
+      { email: "alice@acme.example", groups: ["g-member", "g-viewer"] },
+      cfg({
+        roleMapping: { "g-member": "member", "g-viewer": "viewer" },
+        rolePriority: ["admin", "member"],
+      }),
+    );
+    expect(decision).toEqual({ ok: true, tenantId: "acme", role: "member" });
+  });
 });
 
 describe("resolveJitDecision — default role (no group match, defaultRole non-null)", () => {
@@ -177,6 +197,16 @@ describe("resolveJitDecision — default role (no group match, defaultRole non-n
       cfg({ defaultRole: "member" }),
     );
     expect(decision).toEqual({ ok: true, tenantId: "acme", role: "member" });
+  });
+});
+
+describe("resolveJitDecision — invalid OIDC_DEFAULT_ROLE", () => {
+  it("rejects with forbidden_no_role_mapping when defaultRole is outside admin|member|viewer", () => {
+    const decision = resolveJitDecision(
+      { email: "frank@acme.example", groups: ["okta-everyone"] },
+      cfg({ defaultRole: "superuser" }),
+    );
+    expect(decision).toEqual({ ok: false, code: "forbidden_no_role_mapping" });
   });
 });
 
