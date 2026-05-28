@@ -17,10 +17,13 @@ import { check, index, jsonb, pgTable, text, timestamp, uuid } from "drizzle-orm
 import { tenants } from "./tenants.js";
 
 /**
- * D-A6 — canonical 18-action enumeration. The same list is enforced at
- * the database layer via the `audit_log_action_check` CHECK constraint
- * created by migration 0014. Application code should reference
- * `AuditLogAction` as the union type when emitting audit rows.
+ * D-A6 — canonical action enumeration. Originally 18 actions (migration
+ * 0014); extended to 21 by D-69-2 (Phase 69 / Plan 69-02) with the three
+ * SSO just-in-time provisioning actions. The same list is enforced at the
+ * database layer via the `audit_log_action_check` CHECK constraint —
+ * created by migration 0014, swapped (DROP/ADD without ONLY so it cascades
+ * to all monthly partition children) by migration 0032. Application code
+ * should reference `AuditLogAction` as the union type when emitting rows.
  */
 export const AUDIT_LOG_ACTIONS = [
   "auth.signin",
@@ -41,6 +44,12 @@ export const AUDIT_LOG_ACTIONS = [
   "security.cross_tenant_attempt",
   "security.rate_limit_exceeded",
   "security.ssrf_blocked",
+  // D-69-2 (Phase 69 / Plan 69-02) — SSO JIT provisioning audit actions.
+  // Payloads carry NO PII (no email/name/sub/raw-groups); see the no-PII
+  // zod schemas in apps/api/src/lib/audit.ts.
+  "sso.jit.user.created",
+  "sso.jit.role.updated",
+  "sso.jit.rejected",
 ] as const;
 
 export type AuditLogAction = (typeof AUDIT_LOG_ACTIONS)[number];
@@ -75,7 +84,8 @@ export const auditLog = pgTable(
         'key.issued','key.revoked','settings.tenant_changed','settings.user_changed',
         'admin.tenant_created','admin.tenant_suspended','admin.user_impersonated',
         'admin.role_changed','security.cross_tenant_attempt',
-        'security.rate_limit_exceeded','security.ssrf_blocked'
+        'security.rate_limit_exceeded','security.ssrf_blocked',
+        'sso.jit.user.created','sso.jit.role.updated','sso.jit.rejected'
       )`,
     ),
   }),

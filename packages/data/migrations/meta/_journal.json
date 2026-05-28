@@ -232,6 +232,13 @@
       "when": 1781625600000,
       "tag": "0031_restore_previous_token_fp_lookup",
       "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "7",
+      "when": 1781712000000,
+      "tag": "0032_audit_log_sso_actions",
+      "breakpoints": true
     }
   ]
 }
