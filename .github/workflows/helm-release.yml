@@ -1,17 +1,23 @@
 name: helm-release
 
-# Chart release on tag push (v*). Packages charts/openwhispr/, pushes the
-# OCI artifact to ghcr.io/<owner>/charts/openwhispr, then opens a follow-up
-# PR that bumps .chart-versions/previous to the just-released tag — so the
-# next helm-upgrade-matrix.yml run exercises the real N-1 → N transition.
+# Server-chart publish on tag push (`openwhispr-server-*`). Packages
+# charts/openwhispr-server/, pushes the OCI artifact to
+# ghcr.io/<owner>/charts/openwhispr-server, regenerates the gh-pages
+# chart-releaser index, and publishes an enriched GitHub Release body.
 #
-# The follow-up PR pattern decouples the release tag from the version-pin
-# commit, keeping the released ref clean.
+# A pre-package gate waits for the three application images the chart
+# pins (openwhispr-{api,web,worker} at the chart's appVersion) to exist
+# on GHCR before publishing, so the server chart is never released while
+# it pins images the slow release.yml build has not yet produced.
+#
+# This workflow no longer publishes the monolith `charts/openwhispr`
+# chart — that lives in the separate `.github/workflows/chart-release.yml`
+# (`chart-v*`) lane. release.yml (a separate file) keeps its own `v*`
+# trigger for the application image builds.
 
 on:
   push:
     tags:
-      - "v*"
       # 3-chart-split publish path — `openwhispr-server-<version>`
       # triggers ONLY the server chart's publish job, decoupled from the
       # monolith chart's `v*` tag space. Tag the server chart by pushing
@@ -19,118 +25,14 @@ on:
       - "openwhispr-server-*"
 
 permissions:
-  contents: write       # release commit + PR create
+  contents: write       # release commit + chart-releaser gh-pages push
   packages: write       # GHCR OCI push
-  pull-requests: write  # peter-evans/create-pull-request
 
 concurrency:
   group: helm-release-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:
-  release:
-    # Monolith `openwhispr` chart publish path — `v*` tags only.
-    # 3-chart-split `openwhispr-server-*` tags are handled by the
-    # `release-server` job below.
-    if: startsWith(github.ref, 'refs/tags/v')
-    runs-on: ubuntu-24.04
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - name: Resolve chart tag (strip leading v)
-        id: tag
-        run: |
-          ref="${GITHUB_REF_NAME#v}"
-          echo "value=${ref}" >> "$GITHUB_OUTPUT"
-
-      - name: Setup Helm
-        uses: azure/setup-helm@v5
-        with:
-          version: v3.16.4
-
-      - name: Log in to GHCR
-        run: |
-          echo "${{ secrets.GITHUB_TOKEN }}" | \
-            helm registry login ghcr.io -u "${{ github.actor }}" --password-stdin
-
-      - name: Helm dependency build
-        run: |
-          # charts/openwhispr/Chart.yaml declares jetstack/cert-manager as
-          # an HTTPS sub-chart (alongside the OCI valkey/minio refs); helm
-          # dependency build refuses with "no repository definition for
-          # https://charts.jetstack.io. Please add the missing repos via
-          # 'helm repo add'" until the repo is registered. Same fix that
-          # ci.yml's test job + helm-lint.yml both apply.
-          helm repo add jetstack https://charts.jetstack.io
-          helm repo update
-          helm dependency build charts/openwhispr
-
-      - name: Helm package
-        run: |
-          mkdir -p .cr-release-packages
-          helm package charts/openwhispr \
-            --version "${{ steps.tag.outputs.value }}" \
-            --app-version "${{ steps.tag.outputs.value }}" \
-            --destination .cr-release-packages
-
-      - name: Push chart to GHCR OCI
-        run: |
-          # GHCR rejects uppercase in repository names — `github.repository_owner`
-          # echoes the org slug verbatim (e.g. `Yambr`). Lowercase via shell
-          # parameter expansion. Same fix that release.yml applies for image
-          # tag computation.
-          owner=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
-          helm push \
-            ".cr-release-packages/openwhispr-${{ steps.tag.outputs.value }}.tgz" \
-            "oci://ghcr.io/${owner}/charts"
-
-      # chart-releaser-action does an internal `git commit` against the
-      # gh-pages worktree (to add the packaged chart + regenerated
-      # index.yaml). Without a configured git identity the runner errors
-      # with `fatal: empty ident name not allowed` and the action exits
-      # 128 before any artifact lands in gh-pages. Set the canonical
-      # github-actions[bot] identity here — same identity used by every
-      # GitHub-native auto-PR / auto-commit step.
-      - name: Configure git identity for chart-releaser
-        run: |
-          git config --global user.name "github-actions[bot]"
-          git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
-
-      - name: Run chart-releaser (GitHub Pages index)
-        uses: helm/chart-releaser-action@v1.7.0
-        with:
-          charts_dir: charts
-          skip_existing: true
-        env:
-          CR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Update .chart-versions/previous on default branch
-        run: |
-          echo "${{ steps.tag.outputs.value }}" > .chart-versions/previous
-
-      - name: Open follow-up PR bumping .chart-versions/previous
-        uses: peter-evans/create-pull-request@v8.1.1
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          branch: chore/bump-chart-versions-previous-${{ steps.tag.outputs.value }}
-          base: main
-          commit-message: |
-            chore: bump .chart-versions/previous to ${{ steps.tag.outputs.value }} post-release
-          title: |
-            chore: bump .chart-versions/previous to ${{ steps.tag.outputs.value }} post-release
-          body: |
-            Released chart version `${{ steps.tag.outputs.value }}` to GHCR OCI registry.
-
-            This PR updates `.chart-versions/previous` so that the next
-            `helm-upgrade-matrix.yml` run exercises the real
-            N-1 → HEAD transition starting from this tag.
-
-            Auto-opened by `.github/workflows/helm-release.yml`.
-          add-paths: |
-            .chart-versions/previous
-
   release-server:
     # 3-chart-split publish path — fires ONLY on `openwhispr-server-*`
     # tags. Pushes the server chart to its own OCI namespace,
@@ -157,6 +59,72 @@ jobs:
         run: |
           echo "${{ secrets.GITHUB_TOKEN }}" | \
             helm registry login ghcr.io -u "${{ github.actor }}" --password-stdin
+
+      - name: Wait for pinned images on GHCR
+        env:
+          # Secrets / owner flow via env bindings only — never inlined into
+          # the shell logic below, so they cannot leak into a logged command.
+          REPO_OWNER: ${{ github.repository_owner }}
+          GHCR_USER: ${{ github.actor }}
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # `set -x` is deliberately OFF: tracing would echo the docker-login
+          # pipeline (token via stdin) and the manifest-inspect refs. We keep
+          # -euo pipefail for fail-fast without leaking the credential.
+          set -euo pipefail
+
+          # GHCR rejects uppercase in repository names — lowercase the owner
+          # slug (same parameter-expansion pattern used elsewhere in this file).
+          owner=$(echo "${REPO_OWNER}" | tr '[:upper:]' '[:lower:]')
+
+          # The chart pins api/web/worker images at its appVersion by default.
+          # Poll for exactly that tag. yq is preinstalled on ubuntu-24.04.
+          app_version=$(yq '.appVersion' charts/openwhispr-server/Chart.yaml)
+          if [ -z "${app_version}" ] || [ "${app_version}" = "null" ]; then
+            echo "ERROR: could not read appVersion from charts/openwhispr-server/Chart.yaml" >&2
+            exit 1
+          fi
+
+          # Authenticate for manifest reads. Token via stdin so it is never on
+          # the command line or in the job log (docker masks the stdin secret).
+          echo "${GHCR_TOKEN}" | docker login ghcr.io -u "${GHCR_USER}" --password-stdin
+
+          services="api web worker"
+          deadline=$(( $(date +%s) + 1500 ))   # ~25 min budget (image build ~20 min)
+          interval=30
+
+          echo "Waiting for pinned images at tag '${app_version}' (api/web/worker) on ghcr.io/${owner} ..."
+          while true; do
+            missing=""
+            for svc in ${services}; do
+              ref="ghcr.io/${owner}/openwhispr-${svc}:${app_version}"
+              # `docker manifest inspect` exits 0 iff the manifest / OCI image
+              # index exists and is readable (works for multi-arch indices).
+              # Output redirected to /dev/null — it is noisy, not secret.
+              if ! docker manifest inspect "${ref}" >/dev/null 2>&1; then
+                missing="${missing} openwhispr-${svc}"
+              fi
+            done
+
+            if [ -z "${missing}" ]; then
+              echo "All pinned images present at tag '${app_version}':"
+              for svc in ${services}; do
+                echo "  - ghcr.io/${owner}/openwhispr-${svc}:${app_version}"
+              done
+              exit 0
+            fi
+
+            now=$(date +%s)
+            if [ "${now}" -ge "${deadline}" ]; then
+              echo "ERROR: timed out after ~25m waiting for image(s) at tag '${app_version}':${missing}" >&2
+              echo "Refusing to publish the server chart while it pins missing image(s)." >&2
+              echo "Verify the release.yml image build for v${app_version} succeeded, then re-run." >&2
+              exit 1
+            fi
+
+            echo "Still missing at tag '${app_version}':${missing} — retrying in ${interval}s ..."
+            sleep "${interval}"
+          done
 
       - name: Helm lint server chart
         run: |
