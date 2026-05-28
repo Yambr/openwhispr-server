@@ -3,9 +3,13 @@
 /**
  * lint-pre-push-test-evidence.ts — Quick 260527-pj6 / Wave 2.
  *
- * Pre-push hook validator that refuses `git push` to origin for any
- * pushed commit SHA without `.test-evidence/<sha>-<project>.json`
+ * Pre-push hook validator that refuses `git push` to origin for the
+ * TIP commit of each pushed ref without `.test-evidence/<sha>-<project>.json`
  * fragments covering all 22 canonical Vitest projects.
+ *
+ * Tip-only: intermediate commits in a push are TDD process artifacts
+ * (a `test: red` commit fails by design); the gate validates the tip
+ * tree state that actually lands.
  *
  * Git pre-push protocol (man githooks(5) §pre-push):
  *   stdin: <local_ref> <local_sha> <remote_ref> <remote_sha>\n
@@ -13,14 +17,14 @@
  *   Empty remote_sha = NEW REF; localSha == "0"*40 = DELETION.
  *
  * Refusal criteria (ANY → exit 1):
- *   - Any pushed commit SHA lacks a fragment for one of the 22
- *     canonical project names.
+ *   - The TIP commit of any pushed ref lacks a fragment for one of the
+ *     22 canonical project names.
  *   - Any fragment has `exit_code !== 0`.
  *   - Any fragment has `fail > 0`.
  *   - Any fragment has `unannotated_skip > 0`.
  *   - Any fragment is malformed JSON.
  *   - Any fragment path resolves through a symlink (TOCTOU defence).
- *   - Any pushed SHA from stdin or `git rev-list` is not 40-hex.
+ *   - Any pushed SHA from stdin is not 40-hex.
  *
  * CI bypass:
  *   `GITHUB_ACTIONS === "true"` OR `CI === "true"` → exit 0 + log
@@ -134,10 +138,17 @@ function parseStdin(stdin: string): ParsedStdin {
 }
 
 /** Enumerate the commit SHAs that need evidence for a single push
- *  line. Returns the list of 40-hex SHAs OR throws an Error if any
- *  malformed SHA is encountered. */
+ *  line. Returns ONLY the tip commit (`[localSha]`) for a normal push,
+ *  `[]` for a deletion, and `[]` when the tip is already on a remote
+ *  (the F13 already-validated optimization). Throws an Error if the
+ *  localSha is malformed.
+ *
+ *  Tip-only rationale: intermediate commits in a push are TDD process
+ *  artifacts (a `test: red` commit fails by design and can never carry
+ *  passing evidence); what lands/deploys is the tip tree state, so the
+ *  gate validates exactly the tip. */
 function enumerateCommitsForRef(line: PushLine, repoRoot: string): string[] {
-  const { localSha, remoteSha } = line;
+  const { localSha } = line;
 
   // Deletion: localSha is all-zero → nothing to validate.
   if (localSha === NULL_SHA) {
@@ -149,14 +160,13 @@ function enumerateCommitsForRef(line: PushLine, repoRoot: string): string[] {
     throw new Error(`malformed SHA from pre-push stdin: ${localSha}`);
   }
 
-  // New ref OR remoteSha is null → rev-list local --not --remotes.
-  const argv =
-    remoteSha === NULL_SHA
-      ? ["rev-list", localSha, "--not", "--remotes"]
-      : ["rev-list", `${remoteSha}..${localSha}`];
+  // Probe whether the tip is already on a remote. If `rev-list <tip>
+  // --not --remotes` is empty, the commit (e.g. a tag push of an
+  // already-validated commit) is already on a remote → nothing to
+  // validate (F13 optimization).
   let out: string;
   try {
-    out = execFileSync("git", argv, {
+    out = execFileSync("git", ["rev-list", localSha, "--not", "--remotes"], {
       cwd: repoRoot,
       encoding: "utf8",
       stdio: ["ignore", "pipe", "pipe"],
@@ -169,19 +179,17 @@ function enumerateCommitsForRef(line: PushLine, repoRoot: string): string[] {
     );
     /* c8 ignore stop */
   }
-  const shas = out
+  const probe = out
     .split("\n")
     .map((s) => s.trim())
     .filter((s) => s.length > 0);
-  for (const s of shas) {
-    if (!validateSha(s)) {
-      /* c8 ignore start — git rev-list never emits malformed SHAs;
-       *  the validator is defence-in-depth against tampering. */
-      throw new Error(`malformed SHA from git rev-list: ${s}`);
-      /* c8 ignore stop */
-    }
+  if (probe.length === 0) {
+    return [];
   }
-  return shas;
+
+  // The tip is new-to-remotes → validate exactly the tip. localSha was
+  // already validated as 40-hex above; we do not return the probe list.
+  return [localSha];
 }
 
 /** Sanitised glob for fragment files. We do NOT use a real glob
