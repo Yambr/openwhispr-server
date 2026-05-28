@@ -34,6 +34,12 @@ const SECRET_SHAPE_BEARER_JWT = /Bearer\s+ey[A-Za-z0-9_-]+/;
 const SECRET_SHAPE_AKIA = /AKIA[A-Z0-9]{16}/;
 const SECRET_SHAPE_AIZA = /AIza[A-Za-z0-9_-]{35}/;
 
+// 260528-fzu — content-chunk error prefix (U+274C CROSS MARK + single
+// space), mirroring the production literal. The route emits a
+// { type:"content", text } line BEFORE the structured { type:"error" }
+// line so the immutable desktop client renders the error in the bubble.
+const ERROR_CONTENT_PREFIX = "❌ ";
+
 interface WireChunk {
   type: string;
   error?: string;
@@ -160,14 +166,19 @@ describe("260528-0cm — /api/agent/stream wire-contract integration (MockAgent)
       expect(r.statusCode).toBe(200);
       expect(r.headers["content-type"]).toBe("application/x-ndjson");
       const chunks = parseChunks(r.body);
-      expect(chunks).toHaveLength(1);
-      const chunk = chunks[0]!;
+      // 260528-fzu — content-before-error ordering: 2 lines on preflight.
+      expect(chunks).toHaveLength(2);
+      const contentChunk = chunks[0]!;
+      const chunk = chunks[chunks.length - 1]!;
       expect(chunk.type).toBe("error");
       expect(chunk.code).toBe("upstream_auth");
       expect(chunk.provider).toBe("litellm");
       expect(chunk.error).toBe(
         "Upstream model provider rejected the request (authentication failure). Contact your operator.",
       );
+      expect(contentChunk.type).toBe("content");
+      expect(contentChunk.text?.startsWith(ERROR_CONTENT_PREFIX)).toBe(true);
+      expect(contentChunk.text).toBe(ERROR_CONTENT_PREFIX + chunk.error);
       assertNoSecretShapes(r.body);
     } finally {
       await app.close();
@@ -192,12 +203,17 @@ describe("260528-0cm — /api/agent/stream wire-contract integration (MockAgent)
       });
       expect(r.statusCode).toBe(200);
       const chunks = parseChunks(r.body);
-      expect(chunks).toHaveLength(1);
-      const chunk = chunks[0]!;
+      // 260528-fzu — content-before-error ordering: 2 lines on preflight.
+      expect(chunks).toHaveLength(2);
+      const contentChunk = chunks[0]!;
+      const chunk = chunks[chunks.length - 1]!;
       expect(chunk.type).toBe("error");
       expect(chunk.code).toBe("upstream_rate_limit");
       expect(chunk.provider).toBe("litellm");
       expect(chunk.error?.endsWith("(retry in ~30s)")).toBe(true);
+      expect(contentChunk.type).toBe("content");
+      expect(contentChunk.text?.startsWith(ERROR_CONTENT_PREFIX)).toBe(true);
+      expect(contentChunk.text).toBe(ERROR_CONTENT_PREFIX + chunk.error);
       assertNoSecretShapes(r.body);
     } finally {
       await app.close();
@@ -219,11 +235,16 @@ describe("260528-0cm — /api/agent/stream wire-contract integration (MockAgent)
         payload: { messages: [{ role: "user", content: "hi" }] },
       });
       const chunks = parseChunks(r.body);
-      expect(chunks).toHaveLength(1);
-      const chunk = chunks[0]!;
+      // 260528-fzu — content-before-error ordering: 2 lines on preflight.
+      expect(chunks).toHaveLength(2);
+      const contentChunk = chunks[0]!;
+      const chunk = chunks[chunks.length - 1]!;
       expect(chunk.type).toBe("error");
       expect(chunk.code).toBe("upstream_unknown");
       expect(chunk.provider).toBe("litellm");
+      expect(contentChunk.type).toBe("content");
+      expect(contentChunk.text?.startsWith(ERROR_CONTENT_PREFIX)).toBe(true);
+      expect(contentChunk.text).toBe(ERROR_CONTENT_PREFIX + chunk.error);
     } finally {
       await app.close();
     }
@@ -268,6 +289,12 @@ describe("260528-0cm — /api/agent/stream wire-contract integration (MockAgent)
       expect(last.code).toBe("upstream_unknown");
       // Per PLAN-CHECK rev 2 tightening: drain-side raw Error → provider:"unknown".
       expect(last.provider).toBe("unknown");
+      // 260528-fzu — the LAST content chunk (immediately before the
+      // terminal error chunk on the drain path) is the error-prefixed text
+      // and equals PREFIX + the terminal error chunk's error.
+      const lastContent = contentChunks[contentChunks.length - 1]!;
+      expect(lastContent.text?.startsWith(ERROR_CONTENT_PREFIX)).toBe(true);
+      expect(lastContent.text).toBe(ERROR_CONTENT_PREFIX + last.error);
       const doneChunks = chunks.filter((c) => c.type === "done");
       expect(doneChunks).toHaveLength(0);
     } finally {
@@ -296,8 +323,10 @@ describe("260528-0cm — /api/agent/stream wire-contract integration (MockAgent)
         },
       });
       const chunks = parseChunks(r.body);
-      expect(chunks).toHaveLength(1);
-      const chunk = chunks[0]!;
+      // 260528-fzu — content-before-error ordering: 2 lines on preflight.
+      expect(chunks).toHaveLength(2);
+      const contentChunk = chunks[0]!;
+      const chunk = chunks[chunks.length - 1]!;
       expect(chunk.type).toBe("error");
       expect(chunk.code).toBe("upstream_invalid_model");
       expect(chunk.provider).toBe("litellm");
@@ -306,6 +335,11 @@ describe("260528-0cm — /api/agent/stream wire-contract integration (MockAgent)
       );
       // No model name leaked into wire `error`.
       expect(chunk.error).not.toContain("openai/gpt-oss-120b");
+      expect(contentChunk.type).toBe("content");
+      expect(contentChunk.text?.startsWith(ERROR_CONTENT_PREFIX)).toBe(true);
+      expect(contentChunk.text).toBe(ERROR_CONTENT_PREFIX + chunk.error);
+      // No model name leaked into the content line either.
+      expect(contentChunk.text).not.toContain("openai/gpt-oss-120b");
     } finally {
       await app.close();
     }
@@ -334,11 +368,16 @@ describe("260528-0cm — /api/agent/stream wire-contract integration (MockAgent)
         payload: { messages: [{ role: "user", content: "hi" }] },
       });
       const chunks = parseChunks(r.body);
-      expect(chunks).toHaveLength(1);
-      const chunk = chunks[0]!;
+      // 260528-fzu — content-before-error ordering: 2 lines on preflight.
+      expect(chunks).toHaveLength(2);
+      const contentChunk = chunks[0]!;
+      const chunk = chunks[chunks.length - 1]!;
       expect(chunk.type).toBe("error");
       expect(chunk.code).toBe("upstream_timeout");
       expect(chunk.provider).toBe("unknown");
+      expect(contentChunk.type).toBe("content");
+      expect(contentChunk.text?.startsWith(ERROR_CONTENT_PREFIX)).toBe(true);
+      expect(contentChunk.text).toBe(ERROR_CONTENT_PREFIX + chunk.error);
     } finally {
       await app.close();
     }
