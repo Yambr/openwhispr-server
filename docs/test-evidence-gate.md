@@ -7,17 +7,23 @@
 
 ## 1 — What the gate does
 
-The gate closes the **"tests pass locally but the push happens before tests finish"** anti-pattern. After this lands, every `git push` to `origin` is REFUSED for any pushed commit SHA without `.test-evidence/<sha>-<project>.json` fragments covering **all 22** canonical vitest projects, OR with any fragment whose `exit_code !== 0` or `state !== "passed"`, OR with any un-annotated `.skip` / `.todo` site.
+The gate closes the **"tests pass locally but the push happens before tests finish"** anti-pattern. After this lands, every `git push` to `origin` is REFUSED when the TIP commit of any pushed ref lacks `.test-evidence/<sha>-<project>.json` fragments covering **all 22** canonical vitest projects, OR with any fragment whose `exit_code !== 0` or `state !== "passed"`, OR with any un-annotated `.skip` / `.todo` site.
 
 ### Three-layer defence (gitleaks parity)
 
 | Layer | Where | When | What |
 |---|---|---|---|
 | **L1 — Reporter** | `tools/test-evidence-reporter.ts` | At every `vitest run` invocation | Writes one `.test-evidence/<sha>-<project>.json` fragment per workspace project at end of test run. Atomic write (`tmp+rename`); refuses symlink targets; canonicalises evidence dir via `realpathSync`. |
-| **L2 — Pre-push validator** | `tools/lint-pre-push-test-evidence.ts` via lefthook `pre-push.commands.test-evidence` | At every `git push` from a developer workstation | Reads pre-push stdin, enumerates each pushed commit SHA, asserts the full 22-project manifest is covered per SHA, all `exit_code === 0`, no un-annotated skips. |
+| **L2 — Pre-push validator** | `tools/lint-pre-push-test-evidence.ts` via lefthook `pre-push.commands.test-evidence` | At every `git push` from a developer workstation | Reads pre-push stdin, validates the TIP commit of each pushed ref, asserts the full 22-project manifest is covered on the tip, all `exit_code === 0`, no un-annotated skips. |
 | **L3 — CI redundant validator** | (deferred per CONTEXT — out of scope this Quick) | At every PR / push event in GitHub Actions | Re-runs L2 against the GitHub event-SHA range. Catches developers who bypass L2 with `--no-verify` (constitutionally prohibited). |
 
 CI environments (`GITHUB_ACTIONS=true` or `CI=true`) bypass L2 with a stderr audit log — CI runs tests directly with its own coverage gates, so requiring evidence from L1 would deadlock.
+
+### Why tip-only (TDD compatibility)
+
+The gate validates **only the TIP commit of each pushed ref**, not every commit in the push range. A `test: red` commit has failing tests BY DESIGN — the test exists, the implementation does not yet — so a red commit can never produce passing evidence. Validating every commit in a push range would therefore make the gate structurally incompatible with the constitutional RED→GREEN→REFACTOR discipline (a proper red→green→refactor history would always deadlock).
+
+What gets merged and deployed is the final tree state at the TIP of the push, so the gate validates exactly that: the tip's evidence. Intermediate red/green commits are TDD process artifacts, not deploy artifacts. (Reference Quick 260528-eqn.)
 
 ## 2 — Normal developer flow
 
@@ -38,8 +44,8 @@ git commit -m "feat(area): description"
 
 # 4. Push (gate fires on pre-push)
 git push
-# ↳ Hook reads the local→remote ref tuples from stdin, enumerates the pushed
-#   commit range, and validates evidence per SHA. Passes → push proceeds.
+# ↳ Hook reads the local→remote ref tuples from stdin, takes the TIP commit
+#   of each pushed ref, and validates evidence for that tip. Passes → push proceeds.
 #   Fails → REFUSED with a structured stderr describing the missing/failing
 #   project, and a remediation hint.
 ```

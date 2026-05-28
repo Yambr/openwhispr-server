@@ -19,11 +19,13 @@
  *   F11 — multi-ref stdin (4 lines, mixed branches + tag)
  *   F12 — deletion push (localSha = "0".repeat(40)) → skipped per-line
  *   F13 — tag push of already-validated commit → rev-list empty → exit 0
- *   F14 — new-branch push (remoteSha = "0".repeat(40)) → enumerates each commit
+ *   F14 — new-branch push (remoteSha = "0".repeat(40)) → validates only the tip
  *   F15 — malformed SHA from stdin → exit 1 with `malformed SHA`
  *   F16 — path-traversal attempt → rejected
- *   F17 — force-push reverse-range (--force-with-lease) → enumerates unique commits
+ *   F17 — force-push (--force-with-lease) → validates only the tip of the
+ *         pushed range (TDD-compatible); refuses when the TIP lacks evidence
  *   F18 — force-push deletion semantics → identical to F12
+ *   F19 — tip-only TDD-compat: red intermediate commits + green tip → exit 0
  */
 import { execFileSync } from "node:child_process";
 import { chmodSync, mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
@@ -349,6 +351,7 @@ describe("F10 — CI=true bypasses with stderr log", () => {
 
 describe("F11 — multi-ref push (4 stdin lines)", () => {
   it("validates each ref independently", () => {
+    // Tip-only: each ref contributes exactly its own localSha (its tip).
     const sha1 = commitInRepo(root, "k1", "first");
     const sha2 = commitInRepo(root, "k2", "second");
     writeAllClean(sha2); // sha2 is clean; sha1 will be missing.
@@ -388,10 +391,18 @@ describe("F13 — tag push of already-validated commit → rev-list empty", () =
 });
 
 describe("F14 — new-branch push (remoteSha = 0..0)", () => {
-  it("enumerates each commit via rev-list <localSha> --not --remotes", () => {
-    const sha = commitInRepo(root, "fresh", "fresh");
-    writeAllClean(sha);
-    const stdin = `refs/heads/new-feature ${sha} refs/heads/new-feature ${NULL_SHA}\n`;
+  it("validates only the tip commit (intermediate commits need no evidence)", () => {
+    // Build a 3-commit chain c1 → c2 → tip. Under the OLD range-based impl,
+    // `rev-list <tip> --not --remotes` enumerates ALL THREE commits, so the
+    // missing c1/c2 evidence would refuse the push. Under tip-only, only the
+    // tip's evidence is inspected → exit 0.
+    const c1 = commitInRepo(root, "c1", "c1");
+    const c2 = commitInRepo(root, "c2", "c2");
+    const tip = commitInRepo(root, "tip", "tip");
+    void c1;
+    void c2;
+    writeAllClean(tip); // evidence on the TIP only.
+    const stdin = `refs/heads/new-feature ${tip} refs/heads/new-feature ${NULL_SHA}\n`;
     const r = runValidator(stdin);
     expect(r.exitCode).toBe(0);
   });
@@ -426,8 +437,8 @@ describe("F16 — path-traversal attempt via symlink replacing a real fragment",
   });
 });
 
-describe("F17 — force-push reverse-range (--force-with-lease)", () => {
-  it("enumerates unique-to-localSha commits via rev-list remoteSha..localSha", () => {
+describe("F17 — force-push (--force-with-lease)", () => {
+  it("validates only the tip d (non-tip c needs no evidence)", () => {
     // Build divergent history:
     //   M -- A -- B  (was on remote)
     //    \
@@ -443,32 +454,69 @@ describe("F17 — force-push reverse-range (--force-with-lease)", () => {
     const d = commitInRepo(root, "D", "D");
     // Reference variables to satisfy lint and document the history.
     void a;
+    void c;
     // Push: remoteSha = b (last remote-known); localSha = d (force-push tip).
-    // rev-list b..d enumerates [c, d].
-    writeAllClean(c);
-    writeAllClean(d);
+    // Tip-only: only d's evidence is inspected. Under the OLD range impl
+    // (rev-list b..d → [c, d]) the missing c evidence would refuse → RED.
+    writeAllClean(d); // evidence on the TIP d only; c intentionally missing.
     const stdin = `refs/heads/main ${d} refs/heads/main ${b}\n`;
     const r = runValidator(stdin);
     expect(r.exitCode).toBe(0);
   });
-  it("refuses when one of the force-pushed commits has no evidence", () => {
+  it("refuses when the TIP commit itself has no evidence (non-tip gaps are now allowed)", () => {
     const m = commitInRepo(root, "M", "M");
     const b = commitInRepo(root, "A", "A");
     execFileSync("git", ["update-ref", "refs/remotes/origin/main", b], { cwd: root });
     execFileSync("git", ["reset", "--hard", "-q", m], { cwd: root });
     const c = commitInRepo(root, "C", "C");
     const d = commitInRepo(root, "D", "D");
-    writeAllClean(d); // only d has evidence; c missing.
+    // Evidence on the NON-tip c only; the TIP d is missing → still REFUSED,
+    // and the refusal names the TIP d (not the non-tip c). This proves the
+    // tip is still guarded.
+    writeAllClean(c);
     const stdin = `refs/heads/main ${d} refs/heads/main ${b}\n`;
     const r = runValidator(stdin);
     expect(r.exitCode).toBe(1);
-    expect(r.stderr).toMatch(new RegExp(c));
+    expect(r.stderr).toMatch(new RegExp(d));
   });
 });
 
 describe("F18 — force-push deletion semantics", () => {
   it("skips the deletion line with no other refs to validate", () => {
     const stdin = `(delete) ${NULL_SHA} refs/heads/feature ${"b".repeat(40)}\n`;
+    const r = runValidator(stdin);
+    expect(r.exitCode).toBe(0);
+  });
+});
+
+describe("F19 — tip-only TDD-compat: red intermediate commits, green tip → exit 0", () => {
+  it("accepts a push whose intermediate commits are red but whose tip is green", () => {
+    // Load-bearing TDD-compatibility regression proof.
+    //
+    // A constitutional red→green→refactor history looks like:
+    //   base — c1 (`test: red`, fails BY DESIGN) — c2 (intermediate) — tip (green)
+    //
+    // c1 can never produce passing evidence (the test exists, the impl does
+    // not), so a per-commit-range gate would deadlock the discipline. Tip-only
+    // validates the tip tree state that actually lands → exit 0.
+    const base = commitInRepo(root, "base", "base");
+    const c1 = commitInRepo(root, "c1", "test: red");
+    const c2 = commitInRepo(root, "c2", "wip");
+    const tip = commitInRepo(root, "tip", "feat: green");
+    void c2;
+    // Model a real TDD red commit: a single FAILING fragment for c1 (a red
+    // commit has no full 22-project evidence by design — only the failing run).
+    writeFragment(c1, "api", {
+      reason: "failed",
+      exit_code: 1,
+      total: 1,
+      pass: 0,
+      fail: 1,
+      failures: [{ file: "x.test.ts", name: "red", error_message_truncated: "intentional red" }],
+    });
+    // The TIP has full, clean evidence.
+    writeAllClean(tip);
+    const stdin = `refs/heads/main ${tip} refs/heads/main ${base}\n`;
     const r = runValidator(stdin);
     expect(r.exitCode).toBe(0);
   });
