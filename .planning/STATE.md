@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v2.4
 milestone_name: — OSS-Publish Readiness
-status: Awaiting next milestone
-last_updated: "2026-05-25T12:07:14.672Z"
-last_activity: 2026-05-25 — Milestone v2.4 completed and archived
+status: executing
+last_updated: "2026-05-28T22:58:28.065Z"
+last_activity: 2026-05-28 -- Phase 69 execution started
 progress:
-  total_phases: 78
+  total_phases: 79
   completed_phases: 27
-  total_plans: 188
+  total_plans: 194
   completed_plans: 214
-  percent: 35
+  percent: 34
 ---
 
 # Project State: OpenWhispr Server
@@ -21,14 +21,14 @@ progress:
 
 **Core value:** A drop-in OpenWhispr backend any organization can self-host — open-source out of the box, corporate-LiteLLM-ready by env override.
 
-**Current focus:** Phase 08.5 Waves 1+2 CLOSED 2026-05-13 (8 atomic commits: 4491369, 5bf0755, 937a4fe, 2f9d63a, 879549e, 20ac211, b7b5933, e6c7b34). Realistic compose overlay un-mocks LiteLLM under load-test-realistic; Speaches PRELOAD_MODELS + HF cache path corrected; pre-warm `--strict` mode auto-engages under realistic; litellm_config.realistic.yaml routes whisper-large-v3 → Speaches; k6 baseline scenario (`baseline.ts`) + runner (`baseline.sh`) wired with operator H100 env-override contract (BASELINE_VUS / BASELINE_DURATION_SUSTAIN); run.sh realistic branch layers third overlay, exports LOADTEST_PROFILE=realistic, defaults SMOKE_DURATION=60s. **Wave 3 BLOCKED on operator auth gates: HF_TOKEN, OPENROUTER_API_KEY, OPENAI_API_KEY all PLACEHOLDER in `.env`.** Status doc at `.planning/phases/08.5-…/08.5-03-STATUS.md`. Phase 08.2 (agent-stream undici dispatcher fix) CLOSED 2026-05-12. Three atomic commits across two plans landed Option A from 08.2-RESEARCH.md scorecard. Plan 08.2-01 (`feat(08.2-01): add chatCompletionsStream to @openwhispr/litellm-client`, commit `6040ed5`) extended the shared client with a streaming method returning Dispatcher.ResponseData (Node Readable body NOT pre-consumed on 2xx); 7 RED→GREEN tests against MockAgent + doRequest spy; coverage 100/98/100/100; T-08.2-01 mitigation verified (no per-call dispatcher option). Plan 08.2-02 (`fix(08.2-02): replace undici.fetch in agent/stream with shared litellm-client streaming method`, commit `741a009`; `fix(08.2-02): stop forwarding signal to litellm client in agent/stream (live-probe finding)`, commit `ae0dcc3`) refactored the route + delivered a deviation-after-live-probe: empirical evidence showed `undici 7.25` + `signal:AbortSignal` + the process-wide SSRF-wrapped Agent fails at connect/dispatch even on `undici.request`; removing the signal at the route call site restored content-bearing SSE. 17/17 unit tests GREEN; coverage 100/90.47/100/100 on stream.ts; SSRF dispatcher untouched, 54/54 SSRF tests GREEN. Live forensic-probe artifact at `.planning/phases/08.2-agent-stream-undici-dispatcher-fix/forensics/forensic-probe-output-post-fix.json` shows 12 text-delta chunks then a `{"type":"finish","finishReason":"stop"}` chunk — original upstream_error symptom eliminated. Plan 08-08 unblocked. Realistic profile remains DEFERRED per RESEARCH.md §Pitfall 2. Phases 0/1/2/3/4/5/6/7/07.1/08.1/08.2 closed; Phase 8 partially done (08-01..08-07 closed; 08-08 next).
+**Current focus:** Phase 69 — sso-jit-live-keycloak
 
 ## Current Position
 
-Phase: Milestone v2.4 complete
-Plan: —
-Status: Awaiting next milestone
-Last activity: 2026-05-28 — Completed quick task 260528-o73: chart anti-drift canonical litellm model_list example + NOTES warning (#64)
+Phase: 69 (sso-jit-live-keycloak) — EXECUTING
+Plan: 1 of 6
+Status: Executing Phase 69
+Last activity: 2026-05-28 -- Phase 69 execution started
 
 ## Performance Metrics
 

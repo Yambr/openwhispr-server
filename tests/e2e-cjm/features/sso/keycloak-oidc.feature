@@ -1,13 +1,20 @@
 # SPDX-License-Identifier: FSL-1.1-ALv2
 # Phase 18 / Plan 01 / Wave 4 — SSO journey scenarios.
 #
-# Six scenarios under @phase-18 @sso:
-#   1. @cjm-sso-1.1 — First-time JIT user creation from OIDC ID token
-#   2. @cjm-sso-1.2 — Returning OIDC user has name/email re-synced from claims
-#   3. @cjm-sso-1.3 — Group-to-role downgrade revokes admin on next sign-in (negative twin)
-#   4. @cjm-sso-1.4 — Tenant assignment derived from email domain claim
-#   5. @cjm-sso-1.5 — Cross-tenant isolation — RLS rejects tenant A user from tenant B rows (negative twin)
-#   6. @cjm-sso-1.6 — Loud-fail (rejected) when Keycloak provider config references missing realm (negative twin)
+# Seven scenarios under @phase-18 @sso (scenario 1.5 split into 1.5a + 1.5b
+# per D-69-3 — the original conflated two distinct mechanisms):
+#   1.  @cjm-sso-1.1  — First-time JIT user creation from OIDC ID token
+#   2.  @cjm-sso-1.2  — Returning OIDC user has name/email re-synced from claims
+#   3.  @cjm-sso-1.3  — Group-to-role downgrade revokes admin on next sign-in (negative twin)
+#   4.  @cjm-sso-1.4  — Tenant assignment derived from email domain claim
+#   5a. (sso-1.5a)    — Returning OIDC user with a CHANGED tenant claim is
+#                       rejected at sign-in time with 403 forbidden_tenant_mismatch
+#                       (negative twin; resolver failure-mode #6 — an auth-layer
+#                       rejection, NOT a data read)
+#   5b. (sso-1.5b)    — Cross-tenant read in a FAIL-CLOSED app table returns 404
+#                       not_found, not leaking the row's existence (negative twin;
+#                       a clone of the proven @cjm-15.* RLS-read pattern)
+#   6.  @cjm-sso-1.6  — Loud-fail (rejected) when Keycloak provider config references missing realm (negative twin)
 #
 # All scenarios carry the expected-red tag until Phase 19 (v3) implements
 # the JIT provisioning surface. Step defs in tests/e2e-cjm/steps/sso.steps.ts
@@ -45,11 +52,18 @@ Feature: Keycloak OIDC SSO with JIT user provisioning
     When a user with email "bob@acme.example" signs in via OIDC for the first time
     Then a User row is created with tenant "acme"
 
-  @cjm-sso-1.5 @expected-red @after-phase-19 @after-keycloak-up
-  Scenario: Cross-tenant isolation — RLS rejects tenant A user from tenant B rows (negative twin)
-    Given a User row exists for tenant "acme" and another exists for tenant "globex"
-    When the tenant "acme" user issues an authenticated request scoped to tenant "globex"
-    Then the row-level-security policy rejects the request with a 403 forbidden_tenant_mismatch error
+  @cjm-sso-1.5a @expected-red @after-phase-19 @after-keycloak-up
+  Scenario: Returning OIDC user with a changed tenant claim is rejected at sign-in (negative twin)
+    Given a User row already exists for tenant "acme" with email "carol@acme.example"
+    When the returning user signs in via OIDC presenting a changed tenant claim "globex"
+    Then sign-in is rejected with a 403 forbidden_tenant_mismatch error
+    And an audit_log row is emitted with action "sso.jit.rejected"
+
+  @cjm-sso-1.5b @expected-red @after-phase-19 @after-keycloak-up
+  Scenario: Cross-tenant read in a fail-closed table returns 404 not_found (negative twin)
+    Given a JIT user is provisioned for tenant "acme" and a transcription row exists for tenant "globex"
+    When the tenant "acme" user issues an authenticated read scoped to tenant "globex"'s transcription row
+    Then the read returns 404 not_found and the row's existence is not leaked
 
   @cjm-sso-1.6 @expected-red @after-phase-19 @after-keycloak-up
   Scenario: Loud-fail rejected when Keycloak provider config references missing realm (negative twin)

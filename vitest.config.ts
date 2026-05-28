@@ -131,6 +131,23 @@ export default defineConfig({
           include: ["__tests__/*.test.ts", "*/__tests__/*.test.ts"],
         },
       },
+      // Phase 69 / Plan 69-05 — scripts/ shell-tooling unit tests. The
+      // repo's bash CLI scripts (seed-keycloak-realm.sh, verify-images.sh)
+      // are exercised by sibling __tests__/*.test.ts files that boundary-
+      // mock the external surface (per feedback_cjm_steps_need_unit_tests).
+      // scripts/ has no inline vitest.config.ts and was not matched by any
+      // project entry, so this restores discovery for `pnpm test
+      // seed-keycloak-realm`. scripts/** stays excluded from the coverage
+      // include glob (bash is not TS source), matching the existing
+      // coverage.exclude entry.
+      {
+        extends: true,
+        test: {
+          name: "scripts",
+          root: p("scripts"),
+          include: ["__tests__/*.test.ts"],
+        },
+      },
       // Phase 53 / Plan 53-01 — browser-diagnostics helper unit tests.
       // Sibling to the Gherkin step modules; picks up *.test.ts files
       // colocated with the helper module in tests/e2e-cjm/support/.

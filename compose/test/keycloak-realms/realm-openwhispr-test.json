@@ -1,0 +1,88 @@
+{
+  "realm": "acme",
+  "enabled": true,
+  "sslRequired": "none",
+  "registrationAllowed": false,
+  "loginWithEmailAllowed": true,
+  "duplicateEmailsAllowed": false,
+  "resetPasswordAllowed": false,
+  "editUsernameAllowed": false,
+  "groups": [
+    { "name": "openwhispr-engineering", "path": "/openwhispr-engineering" },
+    { "name": "openwhispr-admin", "path": "/openwhispr-admin" },
+    { "name": "okta-everyone", "path": "/okta-everyone" }
+  ],
+  "clientScopes": [
+    {
+      "name": "groups",
+      "description": "OpenWhispr group-membership scope: emits the user's flat group names in both the id_token and the userinfo response (A1 — the desktop bearer-mint path reads groups from userinfo).",
+      "protocol": "openid-connect",
+      "attributes": {
+        "include.in.token.scope": "true",
+        "display.on.consent.screen": "false"
+      },
+      "protocolMappers": [
+        {
+          "name": "groups",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-group-membership-mapper",
+          "consentRequired": false,
+          "config": {
+            "claim.name": "groups",
+            "full.path": "false",
+            "id.token.claim": "true",
+            "access.token.claim": "true",
+            "userinfo.token.claim": "true",
+            "introspection.token.claim": "true"
+          }
+        }
+      ]
+    }
+  ],
+  "clients": [
+    {
+      "clientId": "openwhispr-backend",
+      "name": "OpenWhispr Backend (test fixture)",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": false,
+      "secret": "openwhispr-backend-test-secret",
+      "standardFlowEnabled": true,
+      "directAccessGrantsEnabled": true,
+      "serviceAccountsEnabled": false,
+      "redirectUris": [
+        "https://api.localhost/api/auth/oauth2/callback/keycloak",
+        "https://api.localhost/api/auth/callback/keycloak",
+        "https://api.localhost/api/desktop/callback"
+      ],
+      "webOrigins": ["https://api.localhost"],
+      "defaultClientScopes": ["email", "profile", "groups"],
+      "optionalClientScopes": [],
+      "attributes": {
+        "post.logout.redirect.uris": "+"
+      }
+    }
+  ],
+  "users": [
+    {
+      "username": "alice",
+      "email": "alice@acme.example",
+      "emailVerified": true,
+      "enabled": true,
+      "firstName": "Alice",
+      "lastName": "Engineer",
+      "credentials": [{ "type": "password", "value": "alice-test-password", "temporary": false }],
+      "groups": ["/openwhispr-engineering", "/okta-everyone"]
+    },
+    {
+      "username": "carol",
+      "email": "carol@acme.example",
+      "emailVerified": true,
+      "enabled": true,
+      "firstName": "Carol",
+      "lastName": "Returning",
+      "credentials": [{ "type": "password", "value": "carol-test-password", "temporary": false }],
+      "groups": ["/openwhispr-engineering"]
+    }
+  ]
+}
