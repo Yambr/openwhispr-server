@@ -36,3 +36,27 @@ Secrets mode: {{ .Values.secrets.mode }}.
   Refuse-to-start enforcement moves to a pod-start initContainer in
   Plan 09-06 once api/worker Deployments land.
 {{- end }}
+{{- if and .Values.litellm.embedded (eq (len .Values.litellm.config.model_list) 0) }}
+
+==================================== WARNING ====================================
+
+  The embedded LiteLLM Proxy model_list is empty -- no models are registered.
+
+  Consequence: the OpenWhispr agent route will return "Invalid model name" /
+  "no healthy deployments for this model" for every request until you populate
+  litellm.config.model_list with the canonical server aliases. The agent chat
+  will appear broken (empty reply bubble).
+
+  Fix: set litellm.config.model_list with the canonical aliases. A ready-to-use
+  example with all 12 server-baked aliases ships at:
+
+    charts/openwhispr/examples/values-embedded-litellm.yaml
+
+  The agent default model is qwen3.6-plus (DEFAULT_AGENT_MODEL = the first
+  alias). The model_name values are sent VERBATIM to LiteLLM -- do NOT replace
+  them with full provider paths.
+
+  Reference: chart-drift guard for incident #64.
+
+=================================================================================
+{{- end }}
