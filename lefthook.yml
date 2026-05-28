@@ -122,19 +122,32 @@ pre-push:
     web-test:
       glob: "apps/web/**"
       run: pnpm --filter @openwhispr/web test:unit
-    # Quick 260527-pj6 — L2 pre-push test-evidence gate.
-    # use_stdin: true is MANDATORY — lefthook 2.1.8 uses a pseudo-TTY by
-    # default and never closes the child's stdin (lefthook docs
-    # `configuration/use_stdin/`); without the flag the gate would
-    # deadlock every `git push`. Only ONE pre-push command can consume
-    # stdin (lefthook hard-limit, RESEARCH R2.3 #2); the other two
-    # commands above (`gitleaks` uses `bash -c` inline; `web-test`
-    # runs `pnpm`) do NOT read stdin, so `test-evidence` is the sole
-    # stdin consumer. Regression-locked in
-    # `tools/__tests__/lint-lefthook-stdin-config.test.ts`.
-    test-evidence:
+  # Quick 260528-kqv — L2 pre-push test-evidence gate, moved from
+  # `pre-push.commands.test-evidence` to a `pre-push.scripts` entry.
+  # WHY a SCRIPT not a COMMAND: lefthook 2.1.8 skips every pre-push
+  # COMMAND whose `run` has no file template when the push file-diff is
+  # empty ("(skip) no matching push files", build_command.go:72-80, #57)
+  # — which left the gate DORMANT on an in-sync branch. The gate
+  # validates COMMITS via the pre-push stdin protocol, not files, so it
+  # MUST run on every push; lefthook's SCRIPT build path
+  # (build_script.go) never applies the push-files skip, so the script
+  # runs unconditionally.
+  # use_stdin: true is MANDATORY — lefthook 2.1.8 uses a pseudo-TTY by
+  # default and never closes the child's stdin (lefthook docs
+  # `configuration/use_stdin/`); without the flag the gate would
+  # deadlock every `git push`. Only ONE pre-push entry (command OR
+  # script) can consume stdin (lefthook hard-limit, RESEARCH R2.3 #2);
+  # the two commands above (`gitleaks` uses `bash -c` inline; `web-test`
+  # runs `pnpm`) do NOT read stdin, so `test-evidence.sh` is the sole
+  # stdin consumer. Regression-locked (commands + scripts) in
+  # `tools/__tests__/lint-lefthook-stdin-config.test.ts`.
+  # The script body lives at `.lefthook/pre-push/test-evidence.sh`
+  # (lefthook's default source_dir `.lefthook`); it must be executable
+  # (mode 100755) or lefthook skips it ("not a regular file").
+  scripts:
+    "test-evidence.sh":
+      runner: bash
       use_stdin: true
-      run: pnpm exec tsx tools/lint-pre-push-test-evidence.ts
       fail_text: |
         Pre-push test-evidence gate REFUSED.
         See docs/test-evidence-gate.md for recovery steps.
