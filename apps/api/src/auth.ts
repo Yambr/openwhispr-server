@@ -50,6 +50,8 @@ import { genericOAuth } from "better-auth/plugins/generic-oauth";
 import { validateAuthBoot, validateIngressBoot, validateOriginBoot } from "./config/auth.js";
 import { cookieDomainConfig } from "./lib/cookie-domain.js";
 import { resolveDefaultTenantId } from "./lib/default-tenant.js";
+import { readJitConfig } from "./lib/oidc-jit-config.js";
+import { buildJitDatabaseHooks, makeMapProfileToUser } from "./lib/oidc-jit-hooks.js";
 import { readOidcProvidersForRegistration } from "./lib/oidc-providers.js";
 import { rewriteVerificationCallbackUrl } from "./lib/verification-callback-url.js";
 
@@ -335,6 +337,13 @@ function rateLimitDisabled(): boolean {
 export function buildAuth(opts: BuildAuthOptions): AuthInstance {
   const { db } = opts;
   const oidcProviders = readOidcProvidersForRegistration();
+  // Phase 69 / Plan 69-03 — SSO JIT config. `null` (OIDC_TENANT_CLAIM unset)
+  // disables JIT entirely: no mapProfileToUser is added to the genericOAuth
+  // config entries and no databaseHooks are registered, preserving the exact
+  // pre-69 behaviour for every legacy buildAuth() fixture.
+  const jitConfig = readJitConfig();
+  // Logger handle threaded into the JIT seams (databaseHooks have no req.log).
+  const jitLog = opts.log ?? fallbackLog;
   // Email service: caller can inject for tests; production path
   // constructs the nodemailer-backed service from env. The dev fallback
   // (SMTP_HOST unset) inside makeEmailService preserves the < 5 min
@@ -377,11 +386,31 @@ export function buildAuth(opts: BuildAuthOptions): AuthInstance {
             // `genericOAuth.config` parameter is the mutable shape
             // `GenericOAuthConfig[]`. Spread into a fresh array to drop
             // the readonly modifier without copying any element semantics.
-            config: [...oidcProviders],
+            //
+            // Phase 69 / Plan 69-03 — when JIT is enabled, attach the
+            // claim-projection seam to each provider entry. mapProfileToUser
+            // is the ONLY raw-claim seam on the web path (D-69-1): its return
+            // is spread onto the user, projecting the resolved tenantId/role.
+            config: oidcProviders.map((provider) =>
+              jitConfig
+                ? {
+                    ...provider,
+                    mapProfileToUser: makeMapProfileToUser(jitConfig, { db, log: jitLog }),
+                  }
+                : { ...provider },
+            ),
           }),
         ]
       : []),
   ];
+
+  // Phase 69 / Plan 69-03 — the 4 JIT databaseHooks (fire on BOTH the web
+  // genericOAuth path and the desktop createOAuthUser path). Built once and
+  // spread into the betterAuth({...}) options ONLY when JIT is enabled, so a
+  // null jitConfig leaves `databaseHooks` absent (legacy backward-compat).
+  const jitDatabaseHooks = jitConfig
+    ? buildJitDatabaseHooks({ db, jitConfig, log: jitLog })
+    : undefined;
 
   return betterAuth({
     // Phase 8 / Plan 01 — load-test bypass. When the switch is OFF (the
@@ -493,6 +522,29 @@ export function buildAuth(opts: BuildAuthOptions): AuthInstance {
           type: "string",
           required: false,
           defaultValue: null,
+          input: false,
+        },
+        // Phase 69 / Plan 69-03 (A3) — JIT tenant marker. `input: false`
+        // mirrors `role`: the value is NEVER read from a public request body.
+        // The genericOAuth mapProfileToUser seam projects `tenantId` onto the
+        // OAuth-constructed user, which Better Auth passes straight to
+        // `createUser` → `createWithHooks` (NOT through `parseInputData`), so
+        // the projected value reaches the drizzle adapter's column whitelist.
+        //
+        // CRITICAL: NO `defaultValue` here. `parseInputData` (db/schema.mjs:70)
+        // injects an additionalField's `defaultValue` on EVERY create — the
+        // email/password sign-up route runs `parseUserInput`, so a
+        // `defaultValue: null` would write `tenant_id = NULL` and OVERRIDE the
+        // rolconfig-bound column DEFAULT (migration 0003/0024), breaking the
+        // NOT-NULL constraint for non-JIT signups. Omitting the default leaves
+        // the field absent from non-JIT inserts → the GUC-backed DB DEFAULT
+        // applies (regression-guarded by better-auth-envelope-at-rest.test.ts).
+        // The `users.tenant_id` column already exists (migration 0000); this
+        // entry only registers the Better-Auth-side field so a projected value
+        // is forwarded rather than dropped by the adapter whitelist.
+        tenantId: {
+          type: "string",
+          required: false,
           input: false,
         },
       },
@@ -801,6 +853,9 @@ export function buildAuth(opts: BuildAuthOptions): AuthInstance {
       // flips this on in production. Never `trustedOrigins:['*']`.
       ...(validateOriginBoot().relaxNullOrigin ? { disableOriginCheck: true } : {}),
     },
+    // Phase 69 / Plan 69-03 — JIT databaseHooks. Conditional spread: absent
+    // when JIT is disabled (jitConfig null), so legacy fixtures see no hooks.
+    ...(jitDatabaseHooks ? { databaseHooks: jitDatabaseHooks } : {}),
     plugins,
   }) as unknown as AuthInstance;
 }
