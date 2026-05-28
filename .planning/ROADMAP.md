@@ -1617,6 +1617,16 @@ v1: 101 requirements → 11 phases (no orphans, no duplicates). v2: 61 requireme
 
 **v2 distribution:** Phase 12=13, Phase 13=12, Phase 14=7, Phase 15=14, Phase 16=4, Phase 17=6, Phase 18=5 → 61 total ✓
 
+### Phase 69: SSO JIT provisioning + live-Keycloak e2e
+
+**Goal:** Implement OIDC JIT user provisioning (tenant/role mapping from id_token claims) per `SPEC-ldap-keycloak.md`, replace the expected-red `@cjm-sso-1.*` step stubs in `tests/e2e-cjm/steps/sso.steps.ts` with real implementations, ship `compose/test/keycloak` realm-import JSON + seed script (in a path SEPARATE from the empty dir so `@cjm-sso-1.6` loud-fail stays valid), and prove a GREEN end-to-end OIDC login against a live Keycloak container (authorize → callback → bearer mint → desktop deep-link) plus all 6 `@cjm-sso` scenarios. New production code lands in `apps/api/src/auth.ts` (`databaseHooks` + `mapProfileToUser`) and a new `apps/api/src/lib/oidc-jit-config.ts` (mirrors `lib/oidc-providers.ts` triplet-validation shape). Strict TDD, ≥90/90/90/90 coverage on diff, E2E mandatory.
+**Requirements**: SSO-IMPL-01 (JIT user provisioning code — tenant/role from id_token claims, the v3 deferral of SSO-02's SPEC), SSO-IMPL-02 (7 loud-fail env vars + boot validation in `oidc-jit-config.ts`), SSO-IMPL-03 (5 Better Auth extension points wired: `mapProfileToUser` + 4 `databaseHooks`), SSO-IMPL-04 (7 rejection codes + 3 structured log events + audit rows), SSO-IMPL-05 (live-Keycloak e2e GREEN — realm-import + seed + 6 `@cjm-sso-1.*` scenarios un-redded). NOTE: closed spec-only SSO-01..05 (Phase 18) are the *documentation* predecessors; these IMPL IDs are the v3 *implementation* tracked under the new milestone.
+**Depends on:** Phase 18 (SPEC-ldap-keycloak.md + ADR-0012 + keycloak.yml fixture stub), Phase 12 (genericOAuth wiring in auth.ts + lib/oidc-providers.ts)
+**Plans:** 0 plans
+
+Plans:
+- [ ] TBD (run /gsd-plan-phase 69 to break down)
+
 ---
 *Roadmap created: 2026-05-08 after baseline pivot (defer Stripe/referrals/quotas to v2; bundle LiteLLM with OSS models; UI-SPEC only)*
 *Last updated: 2026-05-09 — Phase 02.7 plan list populated (7 plans across 3 waves).*
