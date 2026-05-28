@@ -29,8 +29,13 @@ describe("Plan 52-05 — auth.ts typecheck", () => {
     expect(src).not.toMatch(/child\(\):\s*typeof\s+fallbackLog/);
   });
 
-  it("spreads oidcProviders into a mutable array for genericOAuth.config", () => {
-    expect(src).toMatch(/config:\s*\[\.\.\.oidcProviders\]/);
+  it("builds genericOAuth.config as a fresh mutable array (drops the readonly modifier)", () => {
+    // Phase 69 / Plan 69-03 — the readonly→mutable fix is now expressed via
+    // `oidcProviders.map(...)`, which returns a fresh mutable
+    // GenericOAuthConfig[] (and attaches the JIT mapProfileToUser seam per
+    // provider). `.map()` drops the `readonly` modifier exactly as the prior
+    // `[...oidcProviders]` spread did, so the TS4104 fix intent is preserved.
+    expect(src).toMatch(/config:\s*oidcProviders\.map\(/);
     // Pre-fix direct readonly pass must not return.
     expect(src).not.toMatch(/config:\s*oidcProviders\s*,/);
   });

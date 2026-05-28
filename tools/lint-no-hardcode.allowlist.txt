@@ -39,7 +39,7 @@ packages/data/src/schema/tenants.ts:4  # canonical-default-tenant
 # bucket (e) PERMANENT docker-compose-internal-url, because they are the
 # canonical docker-compose service-address defaults the CLAUDE.md OOB-boot
 # rule depends on.
-apps/api/src/auth.ts:448  # comment-only-narrative-issue-31-fp (57-E baseURL comment references the localhost fallback being removed; drift was 425, +3 by 57-E; +1 by R22) (+19 by quick-260527-im6 completeSetupAdmin field, biome compaction)
+apps/api/src/auth.ts:477  # comment-only-narrative-issue-31-fp (57-E baseURL comment references the localhost fallback being removed; drift was 425, +3 by 57-E; +1 by R22) (+19 by quick-260527-im6 completeSetupAdmin field, biome compaction) (+26 by 69-03 JIT wiring)
 apps/api/src/routes/test-only.ts:291  # issue-31-debt-hardcode-localhost-3000 (drifted 181 → 227 → 234 → 266 across Phases 56/57/59 — force-rotate AUTH_URL fallback)
 # better-auth-handler.ts:49 entry removed in Phase 57 / Track E — the
 # buildRequestUrl comment no longer references `localhost` (the
@@ -62,8 +62,8 @@ apps/api/src/config/litellm.ts:63  # 53-42-anti-footgun-sentinel-msg — same se
 # `/* ... */` comment that narrates the env-driven default, the routing
 # pattern, or the security boundary — it is NOT a runtime literal. Removing
 # the prose would degrade self-documenting source.
-apps/api/src/auth.ts:454  # comment-only-narrative-issue-31-fp (drift +13 by 55-05b; +49 by 57-A.2; +5 by 57-E; +1 by R22) (+19 by quick-260527-im6)
-apps/api/src/auth.ts:455  # comment-only-narrative-issue-31-fp (drift +13 by 55-05b; +49 by 57-A.2; +5 by 57-E; +1 by R22) (+19 by quick-260527-im6)
+apps/api/src/auth.ts:483  # comment-only-narrative-issue-31-fp (drift +13 by 55-05b; +49 by 57-A.2; +5 by 57-E; +1 by R22) (+19 by quick-260527-im6) (+29 by 69-03 JIT wiring + biome import reorder)
+apps/api/src/auth.ts:484  # comment-only-narrative-issue-31-fp (drift +13 by 55-05b; +49 by 57-A.2; +5 by 57-E; +1 by R22) (+19 by quick-260527-im6) (+29 by 69-03 JIT wiring + biome import reorder)
 apps/api/src/lib/audit.ts:88  # comment-only-narrative-issue-31-fp
 apps/api/src/lib/cookie-domain.ts:21  # comment-only-narrative-issue-31-fp
 apps/api/src/lib/cookie-domain.ts:34  # comment-only-narrative-issue-31-fp
