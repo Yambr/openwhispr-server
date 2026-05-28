@@ -14,7 +14,7 @@ The gate closes the **"tests pass locally but the push happens before tests fini
 | Layer | Where | When | What |
 |---|---|---|---|
 | **L1 — Reporter** | `tools/test-evidence-reporter.ts` | At every `vitest run` invocation | Writes one `.test-evidence/<sha>-<project>.json` fragment per workspace project at end of test run. Atomic write (`tmp+rename`); refuses symlink targets; canonicalises evidence dir via `realpathSync`. |
-| **L2 — Pre-push validator** | `tools/lint-pre-push-test-evidence.ts` via lefthook `pre-push.commands.test-evidence` | At every `git push` from a developer workstation | Reads pre-push stdin, validates the TIP commit of each pushed ref, asserts the full 22-project manifest is covered on the tip, all `exit_code === 0`, no un-annotated skips. |
+| **L2 — Pre-push validator** | `tools/lint-pre-push-test-evidence.ts` via lefthook `pre-push.scripts['test-evidence.sh']` (script `.lefthook/pre-push/test-evidence.sh`) | At every `git push` from a developer workstation | Reads pre-push stdin, validates the TIP commit of each pushed ref, asserts the full 22-project manifest is covered on the tip, all `exit_code === 0`, no un-annotated skips. (It is a SCRIPT not a command because lefthook commands get file-skipped on an empty push diff, leaving the gate dormant on an in-sync branch — #57.) |
 | **L3 — CI redundant validator** | (deferred per CONTEXT — out of scope this Quick) | At every PR / push event in GitHub Actions | Re-runs L2 against the GitHub event-SHA range. Catches developers who bypass L2 with `--no-verify` (constitutionally prohibited). |
 
 CI environments (`GITHUB_ACTIONS=true` or `CI=true`) bypass L2 with a stderr audit log — CI runs tests directly with its own coverage gates, so requiring evidence from L1 would deadlock.
@@ -303,6 +303,6 @@ These placeholders pass the lint at landing time. Each placeholder is a tracked 
 - **DISCIPLINE** "test coverage ≥ 90/90/90/90" — every new tool ships with its `.test.ts` at the constitutional floor (enforced by per-tool `test:*` scripts in `package.json`).
 - **TDD** — RED→GREEN→REFACTOR; tests landed in the same atomic commit as implementation, per Quick 260527-pj6 wave structure.
 - **LOCKER-05** — error message truncation: fragment field `error_message_truncated` is capped at 1000 chars per record.
-- **LOCKER-06** — no shell credential interpolation: `lefthook.yml` runs `pnpm exec tsx tools/lint-pre-push-test-evidence.ts` directly; codemod / validator / projects-self-test spawn Git via argv-array `spawnSync('git', [...], { shell: false })`.
+- **LOCKER-06** — no shell credential interpolation: the pre-push script `.lefthook/pre-push/test-evidence.sh` execs `pnpm exec tsx tools/lint-pre-push-test-evidence.ts` in argv form (no `*_URL/*_KEY/*_TOKEN` interpolation, `set -euo pipefail`); codemod / validator / projects-self-test spawn Git via argv-array `spawnSync('git', [...], { shell: false })`.
 
 End of operator runbook.
