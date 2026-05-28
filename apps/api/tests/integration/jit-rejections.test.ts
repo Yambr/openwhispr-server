@@ -225,6 +225,31 @@ describe("SSO-IMPL-04 — sso.jit.rejected audit emission (real Postgres)", () =
     expect(logged?.sub).toBeUndefined();
   });
 
+  it("rejection still throws (best-effort audit) when the audit INSERT fails on a dead pool", async () => {
+    // Real infra failure (NO mock): a freshly-opened app pool is ended before
+    // the rejection, so the emitRejected audit INSERT hits a real "pool ended"
+    // error. The rejection MUST still propagate (the audit is best-effort) and
+    // the failure is logged via sso.jit.rejected.audit_emit_failed.
+    const host = container.getHost();
+    const port = container.getMappedPort(5432);
+    const deadPool = new Pool({
+      connectionString: `postgres://openwhispr_app:app-pw@${host}:${port}/openwhispr`,
+    });
+    const deadDb = drizzle(deadPool);
+    await deadPool.end();
+
+    const mapProfile = makeMapProfileToUser(JIT_CONFIG, { db: deadDb, log: testLog });
+    await expect(mapProfile({ groups: ["openwhispr-engineering"] })).rejects.toBeInstanceOf(
+      JitRejectionError,
+    );
+
+    const failLog = warnings.find((w) => w.event === "sso.jit.rejected.audit_emit_failed");
+    expect(failLog).toBeDefined();
+    // No row landed (the INSERT failed) — proves the catch fired, not a silent skip.
+    const rows = await ownerPool.query(`SELECT 1 FROM audit_log WHERE action = 'sso.jit.rejected'`);
+    expect(rows.rowCount).toBe(0);
+  });
+
   it("a successful projection writes NO sso.jit.rejected row", async () => {
     const mapProfile = makeMapProfileToUser(JIT_CONFIG, { db: appDb, log: testLog });
     const projected = await mapProfile({

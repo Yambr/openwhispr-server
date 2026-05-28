@@ -351,4 +351,106 @@ describe("SSO-IMPL-03 — JIT databaseHooks + mapProfileToUser (real Postgres)",
     expect(typeof hooks.user.update.before).toBe("function");
     expect(typeof hooks.user.update.after).toBe("function");
   });
+
+  // ── Branch-coverage for the defensive hook edges ──────────────────────────
+  it("create.before with no projected tenant rejects invalid_oidc_profile (defence-in-depth)", async () => {
+    const hooks = buildJitDatabaseHooks({ db: appDb, jitConfig: JIT_CONFIG, log: testLog });
+    await expect(
+      hooks.user.create.before({ email: "x@acme.example", name: "X" } as never, null),
+    ).rejects.toBeInstanceOf(JitRejectionError);
+  });
+
+  it("create.after is a no-op when no valid role projected (no audit row)", async () => {
+    const hooks = buildJitDatabaseHooks({ db: appDb, jitConfig: JIT_CONFIG, log: testLog });
+    await hooks.user.create.after(
+      { id: crypto.randomUUID(), tenantId: ACME_TENANT_ID } as never,
+      null,
+    );
+    const rows = await ownerPool.query(
+      `SELECT 1 FROM audit_log WHERE action = 'sso.jit.user.created'`,
+    );
+    expect(rows.rowCount).toBe(0);
+  });
+
+  it("update.before passes through untouched for a non-JIT update (no id / no tenant)", async () => {
+    const hooks = buildJitDatabaseHooks({ db: appDb, jitConfig: JIT_CONFIG, log: testLog });
+    const result = await hooks.user.update.before({ email: "no-id@acme.example" } as never, null);
+    expect(result).not.toBe(false);
+    expect((result as { data: Record<string, unknown> }).data.email).toBe("no-id@acme.example");
+  });
+
+  it("update.before passes through when the role is unchanged (no re-sync)", async () => {
+    const id = crypto.randomUUID();
+    await withTenant(appDb, ACME_TENANT_ID, async (tx) => {
+      await tx.execute(
+        sql`INSERT INTO users (id, tenant_id, email, name, role)
+            VALUES (${id}, ${ACME_TENANT_ID}, ${"frank@acme.example"}, ${"Frank"}, ${"member"})`,
+      );
+    });
+    const hooks = buildJitDatabaseHooks({ db: appDb, jitConfig: JIT_CONFIG, log: testLog });
+    const result = await hooks.user.update.before(
+      { id, email: "frank@acme.example", tenantId: ACME_TENANT_ID, role: "member" } as never,
+      null,
+    );
+    const data = (result as { data: Record<string, unknown> }).data;
+    expect(data.role).toBe("member");
+    expect(data.__jitRoleBefore).toBeUndefined();
+  });
+
+  it("update.after is a no-op when no role re-sync was carried (no audit row)", async () => {
+    const hooks = buildJitDatabaseHooks({ db: appDb, jitConfig: JIT_CONFIG, log: testLog });
+    await hooks.user.update.after(
+      { id: crypto.randomUUID(), tenantId: ACME_TENANT_ID, role: "member" } as never,
+      null,
+    );
+    const rows = await ownerPool.query(
+      `SELECT 1 FROM audit_log WHERE action = 'sso.jit.role.updated'`,
+    );
+    expect(rows.rowCount).toBe(0);
+  });
+
+  it("update.after records the revocation_downgrade reason verbatim", async () => {
+    const id = crypto.randomUUID();
+    await withTenant(appDb, ACME_TENANT_ID, async (tx) => {
+      await tx.execute(
+        sql`INSERT INTO users (id, tenant_id, email, name, role)
+            VALUES (${id}, ${ACME_TENANT_ID}, ${"gita@acme.example"}, ${"Gita"}, ${"viewer"})`,
+      );
+    });
+    const hooks = buildJitDatabaseHooks({ db: appDb, jitConfig: JIT_CONFIG, log: testLog });
+    await hooks.user.update.after(
+      {
+        id,
+        tenantId: ACME_TENANT_ID,
+        role: "viewer",
+        __jitRoleBefore: "admin",
+        __jitRoleReason: "revocation_downgrade",
+      } as never,
+      null,
+    );
+    const audit = await ownerPool.query<{ payload: Record<string, unknown> }>(
+      `SELECT payload FROM audit_log WHERE action = 'sso.jit.role.updated'`,
+    );
+    expect(audit.rows[0]?.payload.reason).toBe("revocation_downgrade");
+  });
+
+  it("update.before tolerates an existing row whose role column is NULL (coerced empty, re-sync runs)", async () => {
+    const id = crypto.randomUUID();
+    await withTenant(appDb, ACME_TENANT_ID, async (tx) => {
+      await tx.execute(
+        sql`INSERT INTO users (id, tenant_id, email, name, role)
+            VALUES (${id}, ${ACME_TENANT_ID}, ${"hana@acme.example"}, ${"Hana"}, ${null})`,
+      );
+    });
+    const hooks = buildJitDatabaseHooks({ db: appDb, jitConfig: JIT_CONFIG, log: testLog });
+    const result = await hooks.user.update.before(
+      { id, email: "hana@acme.example", tenantId: ACME_TENANT_ID, role: "member" } as never,
+      null,
+    );
+    const data = (result as { data: Record<string, unknown> }).data;
+    // existing.role coerces NULL → "" so the incoming "member" is a change → re-sync.
+    expect(data.role).toBe("member");
+    expect(data.__jitRoleBefore).toBe("");
+    expect(data.__jitRoleReason).toBe("group_change");
+  });
 });
