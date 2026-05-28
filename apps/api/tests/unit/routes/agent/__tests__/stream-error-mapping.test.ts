@@ -57,6 +57,14 @@ const SECRET_SHAPE_BEARER_JWT = /Bearer\s+ey[A-Za-z0-9_-]+/;
 const SECRET_SHAPE_AKIA = /AKIA[A-Z0-9]{16}/;
 const SECRET_SHAPE_AIZA = /AIza[A-Za-z0-9_-]{35}/;
 
+// 260528-fzu — content-chunk error prefix. The route now emits a
+// { type:"content", text } line BEFORE the structured { type:"error" }
+// line so the immutable desktop client (which only renders
+// content/tool_calls/tool_result) shows the error text in the chat bubble.
+// The prefix is the U+274C CROSS MARK glyph followed by a single space,
+// mirroring the production literal exactly.
+const ERROR_CONTENT_PREFIX = "❌ ";
+
 interface ChunkOnWire {
   type: string;
   error?: string;
@@ -343,8 +351,15 @@ describe("260528-0cm — agent stream wire envelope per AgentErrorCode", () => {
         expect(r.statusCode).toBe(200);
         expect(r.headers["content-type"]).toBe("application/x-ndjson");
         const chunks = parseChunks(r.body);
-        expect(chunks).toHaveLength(1);
-        const chunk = chunks[0]!;
+        // 260528-fzu — content chunk emitted BEFORE the structured error
+        // chunk: exactly 2 lines on the preflight failure path.
+        expect(chunks).toHaveLength(2);
+        // chunks[0] — the content chunk carrying the error text.
+        const contentChunk = chunks[0]!;
+        expect(contentChunk.type).toBe("content");
+        expect(contentChunk.text?.startsWith(ERROR_CONTENT_PREFIX)).toBe(true);
+        // chunks[1] — the unchanged structured error chunk.
+        const chunk = chunks[1]!;
         expect(chunk.type).toBe("error");
         expect(chunk.code).toBe(tc.expectedCode);
         expect(chunk.provider).toBe(tc.expectedProvider);
@@ -357,9 +372,13 @@ describe("260528-0cm — agent stream wire envelope per AgentErrorCode", () => {
         if (tc.expectedErrorContains !== undefined) {
           expect(chunk.error).toContain(tc.expectedErrorContains);
         }
+        // 260528-fzu — content text equals PREFIX + the error chunk's error.
+        expect(contentChunk.text).toBe(ERROR_CONTENT_PREFIX + chunk.error);
         // D1 — no done chunk follows the terminal error chunk.
         expect(r.body).not.toContain('"type":"done"');
-        // Chunk shape is exactly the 4-key set per T-260528-0cm-03.
+        // Chunk shape is exactly the 4-key set per T-260528-0cm-03 —
+        // assert against the ERROR chunk so the structured-error shape
+        // stays locked at {code,error,provider,type}.
         expect(Object.keys(chunk).sort()).toEqual(["code", "error", "provider", "type"]);
       } finally {
         await app.close();
@@ -483,12 +502,22 @@ describe("260528-0cm — secret-shape redaction at the wire boundary", () => {
         payload: { messages: [{ role: "user", content: "hi" }] },
       });
       const chunks = parseChunks(r.body);
-      const chunk = chunks[0]!;
+      // 260528-fzu — the structured error chunk is now the LAST line; the
+      // content chunk (chunks[0]) precedes it.
+      const contentChunk = chunks[0]!;
+      const chunk = chunks[chunks.length - 1]!;
       // (a/b) wire `error` carries no secret-shape substring.
       expect(chunk.error).not.toMatch(SECRET_SHAPE_SK);
       expect(chunk.error).not.toMatch(SECRET_SHAPE_BEARER_JWT);
       expect(chunk.error).not.toMatch(SECRET_SHAPE_AKIA);
       expect(chunk.error).not.toMatch(SECRET_SHAPE_AIZA);
+      // 260528-fzu — the content chunk carries the same canonical redacted
+      // message, so it must pass the same secret-shape nots.
+      expect(contentChunk.type).toBe("content");
+      expect(contentChunk.text).not.toMatch(SECRET_SHAPE_SK);
+      expect(contentChunk.text).not.toMatch(SECRET_SHAPE_BEARER_JWT);
+      expect(contentChunk.text).not.toMatch(SECRET_SHAPE_AKIA);
+      expect(contentChunk.text).not.toMatch(SECRET_SHAPE_AIZA);
       // (c) wire chunk shape is exactly the 4-key set — no
       // `upstream_body_truncated` key leaks onto the wire.
       expect(Object.keys(chunk)).not.toContain("upstream_body_truncated");
@@ -523,7 +552,8 @@ describe("260528-0cm — mid-stream drain parity", () => {
       });
       expect(r.statusCode).toBe(200);
       const chunks = parseChunks(r.body);
-      // First N content chunks preserved.
+      // First N real streamed content chunks preserved, plus the new
+      // trailing error-prefixed content chunk (260528-fzu).
       const contentChunks = chunks.filter((c) => c.type === "content");
       expect(contentChunks.length).toBeGreaterThanOrEqual(1);
       // Terminal chunk is type:"error", NOT type:"done".
@@ -532,6 +562,12 @@ describe("260528-0cm — mid-stream drain parity", () => {
       expect(last?.code).toBe("upstream_unknown");
       // Drain-side raw Error → provider:"unknown" per D2.
       expect(last?.provider).toBe("unknown");
+      // 260528-fzu — the LAST content chunk (immediately before the
+      // terminal error chunk on the drain path) is the error-prefixed
+      // text and equals PREFIX + the error chunk's error.
+      const lastContent = contentChunks[contentChunks.length - 1]!;
+      expect(lastContent.text?.startsWith(ERROR_CONTENT_PREFIX)).toBe(true);
+      expect(lastContent.text).toBe(ERROR_CONTENT_PREFIX + last?.error);
       // D1 — no done chunk anywhere.
       const doneChunks = chunks.filter((c) => c.type === "done");
       expect(doneChunks).toHaveLength(0);

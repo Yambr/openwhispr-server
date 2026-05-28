@@ -280,6 +280,26 @@ export const buildAgentStreamRoutes = (deps: AgentStreamDeps) =>
           );
 
           if (!raw.writableEnded) {
+            // 260528-fzu — emit a content chunk carrying the error text
+            // BEFORE the structured error chunk. The immutable desktop
+            // client's stream consumer only renders content / tool_calls /
+            // tool_result chunks; it has NO case for type:"error", so the
+            // structured chunk alone renders an empty bubble. Prefixing the
+            // canonical (already secret-redacted) error message with the
+            // U+274C cross-mark glyph + space makes the failure visible
+            // without changing the client. The structured error chunk below
+            // is kept unchanged for structured / future-client consumers.
+            const contentChunk: StreamChunk = {
+              type: "content",
+              text: `❌ ${classified.error}`,
+            };
+            try {
+              raw.write(`${JSON.stringify(contentChunk)}\n`);
+              /* v8 ignore next 3 -- defensive: socket closed mid-write */
+            } catch {
+              // socket already closed — nothing more to do.
+            }
+
             const chunk: StreamChunk = {
               type: "error",
               error: classified.error,
