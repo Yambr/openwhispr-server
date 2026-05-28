@@ -53,6 +53,12 @@ import { buildAgentStreamRoutes } from "../../../../src/routes/agent/stream.js";
 const LITELLM_BASE = "http://litellm.test:4000";
 const LITELLM_PATH = "/v1/chat/completions";
 
+// 260528-fzu — content-chunk error prefix (U+274C CROSS MARK + single
+// space). On upstream failure the route now emits a { type:"content", text }
+// line BEFORE the structured { type:"error" } line so the immutable desktop
+// client (content/tool_calls/tool_result only) renders the error bubble.
+const ERROR_CONTENT_PREFIX = "❌ ";
+
 let agent: MockAgent;
 
 /**
@@ -889,8 +895,10 @@ describe("POST /api/agent/stream", () => {
       });
       expect(r.statusCode).toBe(200);
       const lines = r.body.split("\n").filter((l) => l.length > 0);
-      expect(lines).toHaveLength(1);
-      const chunk = JSON.parse(lines[0]) as {
+      // 260528-fzu — content-before-error ordering: 2 lines on preflight.
+      expect(lines).toHaveLength(2);
+      const contentChunk = JSON.parse(lines[0]) as { type: string; text: string };
+      const chunk = JSON.parse(lines[1]) as {
         type: string;
         error: string;
         code: string;
@@ -901,6 +909,10 @@ describe("POST /api/agent/stream", () => {
       expect(chunk.provider).toBe("litellm");
       expect(typeof chunk.error).toBe("string");
       expect(chunk.error.length).toBeGreaterThan(0);
+      // 260528-fzu — content chunk carries the error text, PREFIX + error.
+      expect(contentChunk.type).toBe("content");
+      expect(contentChunk.text.startsWith(ERROR_CONTENT_PREFIX)).toBe(true);
+      expect(contentChunk.text).toBe(ERROR_CONTENT_PREFIX + chunk.error);
       // D4 — `finishReason:"upstream_error"` literal must not appear.
       expect(r.body).not.toContain('"finishReason":"upstream_error"');
       // D1 — no `done` chunk follows the terminal `error` chunk.
@@ -1226,8 +1238,10 @@ describe("POST /api/agent/stream", () => {
       expect(r.statusCode).toBe(200);
       expect(r.headers["content-type"]).toBe("application/x-ndjson");
       const lines = r.body.split("\n").filter((l) => l.length > 0);
-      expect(lines).toHaveLength(1);
-      const chunk = JSON.parse(lines[0]) as {
+      // 260528-fzu — content-before-error ordering: 2 lines on preflight.
+      expect(lines).toHaveLength(2);
+      const contentChunk = JSON.parse(lines[0]) as { type: string; text: string };
+      const chunk = JSON.parse(lines[1]) as {
         type: string;
         code: string;
         provider: string;
@@ -1242,6 +1256,10 @@ describe("POST /api/agent/stream", () => {
       expect(chunk.provider).toBe("unknown");
       expect(typeof chunk.error).toBe("string");
       expect(chunk.error.length).toBeGreaterThan(0);
+      // 260528-fzu — content chunk carries the error text, PREFIX + error.
+      expect(contentChunk.type).toBe("content");
+      expect(contentChunk.text.startsWith(ERROR_CONTENT_PREFIX)).toBe(true);
+      expect(contentChunk.text).toBe(ERROR_CONTENT_PREFIX + chunk.error);
       // D4 — no `finishReason:"upstream_error"` literal on the wire.
       expect(r.body).not.toContain('"finishReason":"upstream_error"');
       // D1 — no `done` chunk follows the terminal error chunk.
@@ -1285,8 +1303,10 @@ describe("POST /api/agent/stream", () => {
       });
       expect(r.statusCode).toBe(200);
       const lines = r.body.split("\n").filter((l) => l.length > 0);
-      expect(lines).toHaveLength(1);
-      const chunk = JSON.parse(lines[0]) as {
+      // 260528-fzu — content-before-error ordering: 2 lines on preflight.
+      expect(lines).toHaveLength(2);
+      const contentChunk = JSON.parse(lines[0]) as { type: string; text: string };
+      const chunk = JSON.parse(lines[1]) as {
         type: string;
         code: string;
         provider: string;
@@ -1298,6 +1318,10 @@ describe("POST /api/agent/stream", () => {
       expect(chunk.provider).toBe("litellm");
       expect(typeof chunk.error).toBe("string");
       expect(chunk.error.length).toBeGreaterThan(0);
+      // 260528-fzu — content chunk carries the error text, PREFIX + error.
+      expect(contentChunk.type).toBe("content");
+      expect(contentChunk.text.startsWith(ERROR_CONTENT_PREFIX)).toBe(true);
+      expect(contentChunk.text).toBe(ERROR_CONTENT_PREFIX + chunk.error);
     } finally {
       await app.close();
     }
@@ -1342,8 +1366,10 @@ describe("POST /api/agent/stream", () => {
       });
       expect(r.statusCode).toBe(200);
       const lines = r.body.split("\n").filter((l) => l.length > 0);
-      expect(lines).toHaveLength(1);
-      const chunk = JSON.parse(lines[0]) as {
+      // 260528-fzu — content-before-error ordering: 2 lines on preflight.
+      expect(lines).toHaveLength(2);
+      const contentChunk = JSON.parse(lines[0]) as { type: string; text: string };
+      const chunk = JSON.parse(lines[1]) as {
         type: string;
         code: string;
         provider: string;
@@ -1354,6 +1380,12 @@ describe("POST /api/agent/stream", () => {
       expect(chunk.provider).toBe("litellm");
       // Canonical message is provider-/model-name-agnostic.
       expect(chunk.error).not.toContain("openai/gpt-oss-120b");
+      // 260528-fzu — content chunk carries the error text, PREFIX + error,
+      // and likewise leaks no model name.
+      expect(contentChunk.type).toBe("content");
+      expect(contentChunk.text.startsWith(ERROR_CONTENT_PREFIX)).toBe(true);
+      expect(contentChunk.text).toBe(ERROR_CONTENT_PREFIX + chunk.error);
+      expect(contentChunk.text).not.toContain("openai/gpt-oss-120b");
     } finally {
       await app.close();
     }
