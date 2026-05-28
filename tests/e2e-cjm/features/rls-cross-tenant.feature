@@ -3,7 +3,7 @@
 #
 # D-12: NO Cucumber `retry:` config anywhere — retry-on-flake is BANNED.
 #
-# Companion to @cjm-sso-1.5 (after-phase-19, @expected-red). This file
+# Companion to @cjm-sso-1.5b (after-phase-19, @expected-red). This file
 # covers the bundled email-password path so an RLS regression cannot slip
 # past the test suite while SSO ships.
 

@@ -535,15 +535,49 @@ e2e-cjm:
 	else \
 		echo "0" > .e2e-cjm-user-was-running; \
 	fi
+	@# Phase 69 / Plan 69-05 (SSO-IMPL-05) — wire the live Keycloak fixture
+	@# ONLY when the run targets the SSO scenarios (SCENARIO matches @sso).
+	@# The default (non-SSO) run is left byte-for-byte unchanged so Keycloak
+	@# is NOT booted for the base suite — preserving @cjm-sso-1.6's
+	@# empty-realm-import observation. When SSO is selected we add
+	@# `-f compose/test/keycloak.yml --profile sso`, poll Keycloak's
+	@# /health/ready, then seed realm `acme` via the Admin REST API
+	@# (scripts/seed-keycloak-realm.sh) BEFORE bddgen/playwright so the
+	@# import does not race the container.
 	@set -e; \
 	trap '$(MAKE) -s e2e-cjm-dump-logs; $(MAKE) -s e2e-cjm-teardown' EXIT INT TERM; \
+	KC_COMPOSE=""; KC_PROFILE=""; \
+	case "$$SCENARIO" in \
+		*sso*) KC_COMPOSE="-f compose/test/keycloak.yml"; KC_PROFILE="--profile sso"; \
+			echo "e2e-cjm: SSO run detected — adding compose/test/keycloak.yml (--profile sso)";; \
+	esac; \
 	docker compose -p e2e-cjm \
 		-f docker-compose.yml -f compose/docker-compose.embedded-litellm.yml \
 		-f compose/docker-compose.storage.yml \
 		-f compose/docker-compose.ingress.yml \
 		-f tests/e2e-cjm/compose-overrides.yml \
-		--profile default up -d --build --wait; \
+		$$KC_COMPOSE \
+		--profile default $$KC_PROFILE up -d --build --wait; \
 	pnpm tsx tests/e2e-cjm/support/wait-for-readiness.ts; \
+	if [ -n "$$KC_COMPOSE" ]; then \
+		echo "e2e-cjm: waiting for Keycloak /health/ready then seeding realm 'acme'"; \
+		KC_READY_URL="$${KC_READY_URL:-http://127.0.0.1:9000/health/ready}"; \
+		kc_ready=0; \
+		for attempt in $$(seq 1 60); do \
+			if curl -fsS "$$KC_READY_URL" 2>/dev/null | grep -q '"status": *"UP"'; then \
+				kc_ready=1; break; \
+			fi; \
+			sleep 2; \
+		done; \
+		if [ "$$kc_ready" != "1" ]; then \
+			echo "e2e-cjm: Keycloak never reported /health/ready UP within 120s" >&2; \
+			exit 1; \
+		fi; \
+		KC_URL="$${KC_URL:-http://127.0.0.1:8089}" \
+		KC_ADMIN_USER="$${KC_ADMIN_USER:-admin}" \
+		KC_ADMIN_PASSWORD="$${KC_ADMIN_PASSWORD:-admin}" \
+			bash scripts/seed-keycloak-realm.sh; \
+	fi; \
 	# playwright-bdd 8.x does NOT auto-generate specs via `playwright
 	# test`; the generation runs only via the dedicated `bddgen` CLI
 	# (see node_modules/playwright-bdd/dist/cli/commands/test.ts).
