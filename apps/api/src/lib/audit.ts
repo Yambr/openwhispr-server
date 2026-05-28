@@ -126,6 +126,21 @@ const passwordChangeMethod = z.enum(["self", "admin_forced"]);
 const keyRevokeReason = z.enum(["rotated", "manual", "compromised"]);
 const sha256Hex = z.string().length(64);
 
+// D-69-2 — SSO JIT provisioning enums. `rolesEnum` is the canonical
+// application role set (mirrors users.role); the SSO payloads carry the
+// role verbatim (non-PII). `tenantClaimMode` / `roleUpdateReason` /
+// `jitRejectionCode` are the closed value sets locked in 69-DECISIONS.md.
+const rolesEnum = z.enum(["admin", "member", "viewer"]);
+const tenantClaimMode = z.enum(["named_claim", "email_domain"]);
+const roleUpdateReason = z.enum(["group_change", "revocation_downgrade"]);
+const jitRejectionCode = z.enum([
+  "forbidden_missing_tenant_claim",
+  "forbidden_unknown_tenant",
+  "forbidden_no_role_mapping",
+  "forbidden_tenant_mismatch",
+  "invalid_oidc_profile",
+]);
+
 /**
  * Per-action payload schemas. The `satisfies Record<AuditAction, …>`
  * cast is what catches a missing entry at compile time if a new
@@ -178,6 +193,34 @@ export const auditPayloadSchemas = {
     rule: z.string().min(1),
     mode: z.enum(["enforce", "warn"]).optional(),
   }),
+  // D-69-2 — SSO JIT provisioning audit payloads. NO PII: email / name /
+  // sub / raw groups / the email_domain literal MUST NOT enter the
+  // payload. `.strict()` REJECTS any extra key (PII or otherwise) instead
+  // of silently stripping it, so a leak fails loud at the recordAudit
+  // chokepoint. The winning group is carried ONLY as a SHA-256 hash,
+  // mirroring settings.*_changed before/after_hash.
+  "sso.jit.user.created": z
+    .object({
+      tenant_id: hexUuid,
+      role: rolesEnum,
+      tenant_claim_mode: tenantClaimMode,
+      matched_group_hash: sha256Hex.optional(),
+    })
+    .strict(),
+  "sso.jit.role.updated": z
+    .object({
+      tenant_id: hexUuid,
+      before: rolesEnum,
+      after: rolesEnum,
+      reason: roleUpdateReason,
+    })
+    .strict(),
+  "sso.jit.rejected": z
+    .object({
+      tenant_id: hexUuid,
+      code: jitRejectionCode,
+    })
+    .strict(),
 } as const satisfies Record<AuditAction, z.ZodTypeAny>;
 
 /**
