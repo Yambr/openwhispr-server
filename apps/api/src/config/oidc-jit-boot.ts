@@ -60,7 +60,12 @@ export function validateJitBoot(
     roleMappingSchema,
     onFail,
   );
-  return { tenantMapping, roleMapping };
+  // Conditional spread: under exactOptionalPropertyTypes an optional prop must be
+  // omitted rather than assigned an explicit `undefined`.
+  return {
+    ...(tenantMapping !== undefined ? { tenantMapping } : {}),
+    ...(roleMapping !== undefined ? { roleMapping } : {}),
+  };
 }
 
 function parseMapping<T>(

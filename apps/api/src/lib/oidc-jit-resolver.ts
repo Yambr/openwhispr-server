@@ -162,9 +162,15 @@ function matchRoles(
 }
 
 function highestPriorityRole(roles: readonly JitRole[], priority: readonly string[]): JitRole {
-  let best = roles[0];
+  const [first, ...rest] = roles;
+  if (first === undefined) {
+    // Unreachable: the sole caller guards on `matchedRoles.length > 0`. The explicit
+    // narrowing keeps the function total under noUncheckedIndexedAccess without a suppression.
+    throw new Error("highestPriorityRole called with no roles");
+  }
+  let best = first;
   let bestRank = rankOf(best, priority);
-  for (const role of roles.slice(1)) {
+  for (const role of rest) {
     const rank = rankOf(role, priority);
     if (rank < bestRank) {
       best = role;

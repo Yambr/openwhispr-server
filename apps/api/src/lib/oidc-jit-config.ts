@@ -78,9 +78,11 @@ export function readJitConfig(env: NodeJS.ProcessEnv = DEFAULT_ENV): JitConfig |
 
   return {
     tenantClaim: env.OIDC_TENANT_CLAIM,
-    tenantMapping: mappings.tenantMapping,
+    // Conditional spread: under exactOptionalPropertyTypes an optional prop must be
+    // omitted entirely rather than assigned an explicit `undefined`.
+    ...(mappings.tenantMapping !== undefined ? { tenantMapping: mappings.tenantMapping } : {}),
     groupClaim: present(env.OIDC_GROUP_CLAIM) ? env.OIDC_GROUP_CLAIM : DEFAULT_GROUP_CLAIM,
-    roleMapping: mappings.roleMapping,
+    ...(mappings.roleMapping !== undefined ? { roleMapping: mappings.roleMapping } : {}),
     rolePriority: parseRolePriority(env.OIDC_ROLE_PRIORITY),
     defaultRole: parseDefaultRole(env.OIDC_DEFAULT_ROLE),
     revocationMode: present(env.OIDC_REVOCATION_MODE)
