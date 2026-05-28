@@ -1622,10 +1622,15 @@ v1: 101 requirements → 11 phases (no orphans, no duplicates). v2: 61 requireme
 **Goal:** Implement OIDC JIT user provisioning (tenant/role mapping from id_token claims) per `SPEC-ldap-keycloak.md`, replace the expected-red `@cjm-sso-1.*` step stubs in `tests/e2e-cjm/steps/sso.steps.ts` with real implementations, ship `compose/test/keycloak` realm-import JSON + seed script (in a path SEPARATE from the empty dir so `@cjm-sso-1.6` loud-fail stays valid), and prove a GREEN end-to-end OIDC login against a live Keycloak container (authorize → callback → bearer mint → desktop deep-link) plus all 6 `@cjm-sso` scenarios. New production code lands in `apps/api/src/auth.ts` (`databaseHooks` + `mapProfileToUser`) and a new `apps/api/src/lib/oidc-jit-config.ts` (mirrors `lib/oidc-providers.ts` triplet-validation shape). Strict TDD, ≥90/90/90/90 coverage on diff, E2E mandatory.
 **Requirements**: SSO-IMPL-01 (JIT user provisioning code — tenant/role from id_token claims, the v3 deferral of SSO-02's SPEC), SSO-IMPL-02 (7 loud-fail env vars + boot validation in `oidc-jit-config.ts`), SSO-IMPL-03 (5 Better Auth extension points wired: `mapProfileToUser` + 4 `databaseHooks`), SSO-IMPL-04 (7 rejection codes + 3 structured log events + audit rows), SSO-IMPL-05 (live-Keycloak e2e GREEN — realm-import + seed + 6 `@cjm-sso-1.*` scenarios un-redded). NOTE: closed spec-only SSO-01..05 (Phase 18) are the *documentation* predecessors; these IMPL IDs are the v3 *implementation* tracked under the new milestone.
 **Depends on:** Phase 18 (SPEC-ldap-keycloak.md + ADR-0012 + keycloak.yml fixture stub), Phase 12 (genericOAuth wiring in auth.ts + lib/oidc-providers.ts)
-**Plans:** 0 plans
+**Plans:** 6 plans across 5 waves
 
 Plans:
-- [ ] TBD (run /gsd-plan-phase 69 to break down)
+- [ ] 69-01-PLAN.md — Wave 0: pure JIT config loader (oidc-jit-config.ts) + config/ JSON-parse boot validator + pure resolveJitDecision (7 rejection codes, tie-break, revocation), RED-first, 100% branch [SSO-IMPL-02, SSO-IMPL-01]
+- [ ] 69-02-PLAN.md — Wave 1: audit enum 18->21 + 3 no-PII zod payloads + migration 0032 (DROP/ADD CHECK without ONLY) + down, one atomic TDD commit (D-69-2) [SSO-IMPL-04]
+- [ ] 69-03-PLAN.md — Wave 2: auth.ts mapProfileToUser + 4 databaseHooks + tenantId additionalField; 5 rejection codes->403/400 + 3 sso.jit.* audit events; real PG/PgBouncer/Valkey testcontainers (D-69-1 web, D-69-2) [SSO-IMPL-03, SSO-IMPL-04]
+- [ ] 69-04-PLAN.md — Wave 3: desktop mint-bearer seam — widen scope+userinfo, call shared resolveJitDecision, pass tenantId/role into createOAuthUser; SSRF/token/rotation/channel-scheme unchanged (D-69-1 desktop) [SSO-IMPL-01, SSO-IMPL-03]
+- [ ] 69-05-PLAN.md — Wave 1: realm-openwhispr-test.json (separate path, userinfo group mapper) + Admin-REST seed script (LOCKER-06) + keycloak.yml wired into make e2e-cjm; split @cjm-sso-1.5 into 1.5a/1.5b (D-69-3) [SSO-IMPL-05]
+- [ ] 69-06-PLAN.md — Wave 4: real sso.steps.ts (7 scenarios) + sibling unit tests + un-red feature + update sso-step-drift.test.ts; live-Keycloak @sso e2e 7/7 GREEN incl. desktop bearer deep-link [SSO-IMPL-05]
 
 ---
 *Roadmap created: 2026-05-08 after baseline pivot (defer Stripe/referrals/quotas to v2; bundle LiteLLM with OSS models; UI-SPEC only)*
