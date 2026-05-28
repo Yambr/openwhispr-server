@@ -229,9 +229,29 @@ export const auditPayloadSchemas = {
  */
 export type AuditPayload<A extends AuditAction> = z.infer<(typeof auditPayloadSchemas)[A]>;
 
-function rejectForbidden(payload: Record<string, unknown>): void {
+/**
+ * Phase 69 / Plan 69-03 — per-action carve-outs from the forbidden-key sweep.
+ *
+ * `FORBIDDEN_AUDIT_KEYS` blocks `code` because the OAuth authorization `code`
+ * is a one-time secret that must never reach the JSONB column. But the
+ * `sso.jit.rejected` action (D-69-2) legitimately carries a `code` key whose
+ * value is a CLOSED, non-secret rejection-code enum (`jitRejectionCode`),
+ * `.strict()`-validated above — there is no secret to leak. Without this
+ * carve-out the action is structurally UNWRITABLE (the sweep throws on every
+ * emit), so the SPEC-mandated `sso.jit.rejected` audit row could never land.
+ * The allowance is scoped to (action, key) pairs so `code` stays forbidden for
+ * every other action and the OAuth-secret protection is unchanged.
+ */
+const FORBIDDEN_KEY_ACTION_ALLOWLIST: ReadonlyMap<AuditAction, ReadonlySet<string>> = new Map([
+  ["sso.jit.rejected", new Set(["code"])],
+]);
+
+function rejectForbidden(payload: Record<string, unknown>, action: AuditAction): void {
+  const allowed = FORBIDDEN_KEY_ACTION_ALLOWLIST.get(action);
   for (const key of Object.keys(payload)) {
-    if (FORBIDDEN_AUDIT_KEY_SET.has(key.toLowerCase())) {
+    const lower = key.toLowerCase();
+    if (allowed?.has(lower)) continue;
+    if (FORBIDDEN_AUDIT_KEY_SET.has(lower)) {
       throw new Error(`audit payload contains forbidden key: ${key} (D-A7 / T-bearer-leak)`);
     }
   }
@@ -340,7 +360,7 @@ export async function recordAudit<A extends AuditAction>(
   // strips unknown keys for the declared schema, but we want to reject
   // (not silently drop) so a programmer mistake fails loudly. Run the
   // sweep over the raw input.
-  rejectForbidden(payload as Record<string, unknown>);
+  rejectForbidden(payload as Record<string, unknown>, action);
 
   // Phase 10 / Plan 10-01d — Cyrillic guard (T-10-01). Scans BOTH the
   // caller-supplied payload AND the ctx user_agent because both flow
