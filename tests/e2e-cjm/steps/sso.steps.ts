@@ -39,9 +39,16 @@ import {
   REPO_ROOT,
   tearStack,
 } from "../support/compose-harness.js";
-import { expect, Given, Then, When } from "../support/fixtures";
+import {
+  expect,
+  freshTenant,
+  Given,
+  provisionVerifiedTenant,
+  Then,
+  When,
+} from "../support/fixtures";
 import { After } from "../support/world";
-import { provisionTenant, readTranscribeJob, recordTranscribeJob } from "./rls-cross-tenant.steps";
+import { readTranscribeJob, recordTranscribeJob } from "./rls-cross-tenant.steps";
 
 // ---------------------------------------------------------------------------
 // Constants — Keycloak realm `acme` seeded fixture (LOCKER-03 allows localhost +
@@ -642,12 +649,26 @@ Given(
   "a JIT user is provisioned for tenant {string} and a transcription row exists for tenant {string}",
   async ({ apiBaseURL, mailpitApiUrl, tenantId }, _tenantA: string, _tenantB: string) => {
     const s = stateFor(tenantId);
-    const a = await provisionTenant(apiBaseURL, mailpitApiUrl, { tenantId: `${tenantId}-A` });
-    const b = await provisionTenant(apiBaseURL, mailpitApiUrl, { tenantId: `${tenantId}-B` });
-    const { jobId } = await recordTranscribeJob(apiBaseURL, b.cookie);
+    // Two genuinely-provisioned email-password tenants (real sign-up + Mailpit
+    // verify + sign-in → valid session cookie). The legacy provisionTenant →
+    // signedInAs path was a sign-in-only stub (no signup), so its cookie was
+    // invalid and /api/transcribe 401'd — which is why this scenario + its
+    // rls-cross-tenant twin were @expected-red. provisionVerifiedTenant closes
+    // that gap. Each tenant fails open to DEFAULT_TENANT_ID at the row level
+    // (rule 16); the transcription row is fail-CLOSED, so a cross-session read
+    // of T_B's row by T_A's session must surface as 404 not_found (no leak).
+    // Fresh random identities (NOT derived from tenantId): freshTenant() slugs
+    // the email from the first 8 chars of the id, so `${tenantId}-A` and
+    // `${tenantId}-B` would collide on the same email. Distinct UUIDs → distinct
+    // emails → two genuinely separate tenants.
+    const aId = freshTenant();
+    const bId = freshTenant();
+    const aCookie = await provisionVerifiedTenant(apiBaseURL, mailpitApiUrl, aId);
+    const bCookie = await provisionVerifiedTenant(apiBaseURL, mailpitApiUrl, bId);
+    const { jobId } = await recordTranscribeJob(apiBaseURL, bCookie);
     s.rls = {
-      tenantA: { tenantId: a.tenantId, cookie: a.cookie },
-      tenantB: { tenantId: b.tenantId, cookie: b.cookie, jobId },
+      tenantA: { tenantId: aId.tenantId, cookie: aCookie },
+      tenantB: { tenantId: bId.tenantId, cookie: bCookie, jobId },
     };
     expect(jobId, "T_B transcribe job id missing").toBeTruthy();
   },

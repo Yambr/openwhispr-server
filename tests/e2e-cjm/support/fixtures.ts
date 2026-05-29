@@ -24,6 +24,8 @@
 import { randomUUID } from "node:crypto";
 import { Agent, fetch as undiciFetch } from "undici";
 
+import { DEFAULT_MAILPIT_API_URL, waitForEmail } from "./mailpit-helper.js";
+
 export { After, AfterAll, Before, BeforeAll, expect, Given, Step, Then, test, When } from "./world";
 
 /** Per-scenario fresh-tenant identity envelope. */
@@ -105,6 +107,80 @@ export async function signedInAs(
   const cookieHeader =
     setCookie.length > 0 ? setCookie.map((c) => c.split(";", 1)[0]).join("; ") : null;
   return { cookieHeader, status: res.status };
+}
+
+/** Extract a Better Auth verify-email URL from a Mailpit message body. */
+function extractVerificationUrl(html: string, text: string): string | undefined {
+  const re =
+    /https?:\/\/[^\s"'<>]+\/(?:verify-email|api\/auth\/verify-email)\?[^\s"'<>]*token=[^\s"'<>&]+/i;
+  return html.match(re)?.[0] ?? text.match(re)?.[0];
+}
+
+/**
+ * Full programmatic tenant provisioning: real sign-up → wait for the Mailpit
+ * verification email → follow the verify link → sign in → return the session
+ * Cookie-header string. This is the flow the legacy `signedInAs` doc promised
+ * but never implemented (its body only signs in, so an unverified/absent user
+ * 400s). Dedicated helper so callers that need a genuinely authenticated
+ * session (e.g. the @cjm-sso-1.5b cross-tenant RLS scenario) get a valid cookie
+ * without disturbing the legacy `signedInAs` callers.
+ *
+ * Mirrors the proven auth.steps.ts Wave-1 flow (signup retry-on-429 →
+ * waitForEmail subjectContains "Verify" → GET verify link → sign-in 200).
+ */
+export async function provisionVerifiedTenant(
+  apiBaseURL: string,
+  mailpitApiUrl: string,
+  identity: FreshTenant,
+): Promise<string> {
+  const startedAt = new Date().toISOString();
+  // 1. Sign up (retry on 429 — Better Auth rate-limit window carry-over).
+  let signupStatus = 0;
+  for (let attempt = 0; attempt < 15; attempt++) {
+    const res = await postJsonRaw(`${apiBaseURL}/api/auth/sign-up/email`, {
+      email: identity.email,
+      password: identity.password,
+      name: identity.displayName,
+    });
+    signupStatus = res.status;
+    if (signupStatus !== 429) break;
+    await new Promise((r) => setTimeout(r, 2000));
+  }
+  // 200 fresh signup OR 422 already-registered are both acceptable (idempotent
+  // re-runs reuse the same per-tenant email).
+  if (signupStatus !== 200 && signupStatus !== 422) {
+    throw new Error(`provisionVerifiedTenant: sign-up for ${identity.email} → ${signupStatus}`);
+  }
+  // 2. Wait for + follow the verification email (skip when already-registered:
+  // a 422 means the user exists + is already verified from a prior run).
+  if (signupStatus === 200) {
+    const msg = await waitForEmail(identity.email, {
+      baseUrl: mailpitApiUrl || DEFAULT_MAILPIT_API_URL,
+      timeoutMs: 30_000,
+      notBefore: startedAt,
+      subjectContains: "Verify",
+    });
+    const verifyUrl = extractVerificationUrl(msg.HTML ?? "", msg.Text ?? "");
+    if (!verifyUrl) {
+      throw new Error(`provisionVerifiedTenant: no verify URL in mailpit message ${msg.ID}`);
+    }
+    const dispatcher = localhostDispatcher(verifyUrl);
+    const verifyRes = await undiciFetch(verifyUrl, {
+      method: "GET",
+      redirect: "manual",
+      ...(dispatcher ? { dispatcher } : {}),
+    });
+    // Better Auth verify-email 200s or 302s to the callbackURL — both = verified.
+    if (![200, 302, 303].includes(verifyRes.status)) {
+      throw new Error(`provisionVerifiedTenant: verify link → ${verifyRes.status}`);
+    }
+  }
+  // 3. Sign in → capture the session cookie.
+  const { cookieHeader, status } = await signedInAs(apiBaseURL, identity.email, identity.password);
+  if (status !== 200 || !cookieHeader) {
+    throw new Error(`provisionVerifiedTenant: sign-in for ${identity.email} → ${status}`);
+  }
+  return cookieHeader;
 }
 
 /** Issue a fetch with the localhost dispatcher and (optionally) a cookie header. */
