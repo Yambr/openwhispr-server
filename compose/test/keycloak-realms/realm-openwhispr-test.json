@@ -8,9 +8,18 @@
   "resetPasswordAllowed": false,
   "editUsernameAllowed": false,
   "groups": [
-    { "name": "openwhispr-engineering", "path": "/openwhispr-engineering" },
-    { "name": "openwhispr-admin", "path": "/openwhispr-admin" },
-    { "name": "okta-everyone", "path": "/okta-everyone" }
+    {
+      "name": "openwhispr-engineering",
+      "path": "/openwhispr-engineering"
+    },
+    {
+      "name": "openwhispr-admin",
+      "path": "/openwhispr-admin"
+    },
+    {
+      "name": "okta-everyone",
+      "path": "/okta-everyone"
+    }
   ],
   "clientScopes": [
     {
@@ -37,6 +46,79 @@
           }
         }
       ]
+    },
+    {
+      "name": "email",
+      "protocol": "openid-connect",
+      "attributes": {
+        "include.in.token.scope": "true",
+        "display.on.consent.screen": "true"
+      },
+      "protocolMappers": [
+        {
+          "name": "email",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-attribute-mapper",
+          "consentRequired": false,
+          "config": {
+            "userinfo.token.claim": "true",
+            "user.attribute": "email",
+            "id.token.claim": "true",
+            "access.token.claim": "true",
+            "claim.name": "email",
+            "jsonType.label": "String"
+          }
+        },
+        {
+          "name": "email verified",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-property-mapper",
+          "consentRequired": false,
+          "config": {
+            "userinfo.token.claim": "true",
+            "user.attribute": "emailVerified",
+            "id.token.claim": "true",
+            "access.token.claim": "true",
+            "claim.name": "email_verified",
+            "jsonType.label": "boolean"
+          }
+        }
+      ]
+    },
+    {
+      "name": "profile",
+      "protocol": "openid-connect",
+      "attributes": {
+        "include.in.token.scope": "true",
+        "display.on.consent.screen": "true"
+      },
+      "protocolMappers": [
+        {
+          "name": "full name",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-full-name-mapper",
+          "consentRequired": false,
+          "config": {
+            "id.token.claim": "true",
+            "access.token.claim": "true",
+            "userinfo.token.claim": "true"
+          }
+        },
+        {
+          "name": "username",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-property-mapper",
+          "consentRequired": false,
+          "config": {
+            "userinfo.token.claim": "true",
+            "user.attribute": "username",
+            "id.token.claim": "true",
+            "access.token.claim": "true",
+            "claim.name": "preferred_username",
+            "jsonType.label": "String"
+          }
+        }
+      ]
     }
   ],
   "clients": [
@@ -56,8 +138,8 @@
         "https://api.localhost/api/auth/desktop-callback/oidc"
       ],
       "webOrigins": ["https://api.localhost"],
-      "defaultClientScopes": ["email", "profile", "groups"],
-      "optionalClientScopes": [],
+      "defaultClientScopes": ["email", "profile"],
+      "optionalClientScopes": ["groups"],
       "attributes": {
         "post.logout.redirect.uris": "+"
       }
@@ -71,7 +153,13 @@
       "enabled": true,
       "firstName": "Alice",
       "lastName": "Engineer",
-      "credentials": [{ "type": "password", "value": "alice-test-password", "temporary": false }],
+      "credentials": [
+        {
+          "type": "password",
+          "value": "alice-test-password",
+          "temporary": false
+        }
+      ],
       "groups": ["/openwhispr-engineering", "/okta-everyone"]
     },
     {
@@ -81,7 +169,13 @@
       "enabled": true,
       "firstName": "Carol",
       "lastName": "Returning",
-      "credentials": [{ "type": "password", "value": "carol-test-password", "temporary": false }],
+      "credentials": [
+        {
+          "type": "password",
+          "value": "carol-test-password",
+          "temporary": false
+        }
+      ],
       "groups": ["/openwhispr-engineering"]
     },
     {
@@ -91,7 +185,13 @@
       "enabled": true,
       "firstName": "Dave",
       "lastName": "Admin",
-      "credentials": [{ "type": "password", "value": "dave-test-password", "temporary": false }],
+      "credentials": [
+        {
+          "type": "password",
+          "value": "dave-test-password",
+          "temporary": false
+        }
+      ],
       "groups": ["/openwhispr-admin", "/openwhispr-engineering"]
     },
     {
@@ -101,7 +201,13 @@
       "enabled": true,
       "firstName": "Bob",
       "lastName": "Domain",
-      "credentials": [{ "type": "password", "value": "bob-test-password", "temporary": false }],
+      "credentials": [
+        {
+          "type": "password",
+          "value": "bob-test-password",
+          "temporary": false
+        }
+      ],
       "groups": ["/openwhispr-engineering"]
     }
   ]

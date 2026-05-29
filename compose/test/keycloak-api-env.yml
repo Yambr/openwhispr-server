@@ -121,6 +121,12 @@ services:
       OIDC_ISSUER_URL: https://keycloak.localhost/realms/acme
       OIDC_CLIENT_ID: openwhispr-backend
       OIDC_CLIENT_SECRET: openwhispr-backend-test-secret
+      # desktop-signin.ts:184 defaults the authorize URL to `${issuer}/authorize`
+      # (Auth0-style). Keycloak's is `${issuer}/protocol/openid-connect/auth` (per
+      # the realm discovery doc) → desktop flow 404s without this. desktop-signin.ts:182
+      # documents OIDC_AUTHORIZE_URL as the operator escape hatch for this exact
+      # non-standard-path case; a real Keycloak operator sets it identically.
+      OIDC_AUTHORIZE_URL: https://keycloak.localhost/realms/acme/protocol/openid-connect/auth
       # --- 7 JIT env vars (oidc-jit-config.ts) --------------------------------
       # tenant claim: email_domain mode. The seeded realm emits no bespoke tenant
       # claim — only standard email/profile + groups — so the tenant key is the
