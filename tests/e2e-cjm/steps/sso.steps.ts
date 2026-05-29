@@ -399,9 +399,9 @@ async function getSession(
  * `sso.jit.rejected` — oidc-jit-hooks.ts. No audit-read route exists, so the
  * structured log is the honest e2e proof that the audit path executed.
  */
-async function assertJitLogEvent(event: string): Promise<void> {
+async function readApiLogs(): Promise<string> {
   const { spawn } = await import("node:child_process");
-  const logs = await new Promise<string>((resolve) => {
+  return new Promise<string>((resolve) => {
     let out = "";
     const child = spawn(
       "docker",
@@ -417,6 +417,21 @@ async function assertJitLogEvent(event: string): Promise<void> {
     child.on("close", () => resolve(out));
     child.on("error", () => resolve(out));
   });
+}
+
+async function assertJitLogEvent(event: string): Promise<void> {
+  // The sso.jit.* events are emitted to the api's stdout, then captured by
+  // docker's json-log driver — Pino's flush + the driver's buffering add a small
+  // latency, so a single grep right after the sign-in completes is RACY (the
+  // line may not be visible yet; observed flaking @cjm-sso-1.1). Poll the logs
+  // for a bounded window so the assertion is deterministic regardless of flush
+  // timing — the event either lands within ~10s or it genuinely never fired.
+  let logs = "";
+  for (let attempt = 0; attempt < 20; attempt++) {
+    logs = await readApiLogs();
+    if (logs.includes(event)) return;
+    await new Promise((r) => setTimeout(r, 500));
+  }
   expect(logs, `expected JIT log event "${event}" in api logs`).toContain(event);
 }
 
@@ -696,6 +711,24 @@ async function readUsageWords(apiBaseURL: string, cookie: string): Promise<numbe
   return typeof body.wordsUsed === "number" ? body.wordsUsed : Number(body.wordsUsed ?? 0);
 }
 
+/**
+ * Poll GET /api/usage until `wordsUsed > 0` (or the budget expires). reason.ts
+ * awaits the usage_ledger INSERT before responding 200, but the SEPARATE
+ * /api/usage read runs on a DIFFERENT pooled backend (PgBouncer transaction
+ * mode), so the freshly-committed row can be invisible for a few ms — a single
+ * immediate read flaked at 0 (@cjm-sso-1.5b). Polling makes the
+ * write→read visibility deterministic without weakening the assertion.
+ */
+async function readUsageWordsUntilPositive(apiBaseURL: string, cookie: string): Promise<number> {
+  let words = 0;
+  for (let attempt = 0; attempt < 20; attempt++) {
+    words = await readUsageWords(apiBaseURL, cookie);
+    if (words > 0) return words;
+    await new Promise((r) => setTimeout(r, 500));
+  }
+  return words;
+}
+
 Given(
   "a JIT user is provisioned for tenant {string} and a transcription row exists for tenant {string}",
   async ({ apiBaseURL, mailpitApiUrl, tenantId }, _tenantA: string, _tenantB: string) => {
@@ -713,7 +746,9 @@ Given(
     const status = await reasonOnce(apiBaseURL, bCookie);
     expect(status, "T_B reason call must 200 (mock chat-completion)").toBe(200);
     // Confirm B's row landed (B sees non-zero usage) before the isolation read.
-    const bWords = await readUsageWords(apiBaseURL, bCookie);
+    // Poll: the ledger INSERT commits inside reason's handler, but the separate
+    // /api/usage read can lag a few ms across PgBouncer-pooled backends.
+    const bWords = await readUsageWordsUntilPositive(apiBaseURL, bCookie);
     expect(bWords, "T_B should see its own usage_ledger row").toBeGreaterThan(0);
     s.rls = {
       tenantA: { tenantId: aId.tenantId, cookie: aCookie },
