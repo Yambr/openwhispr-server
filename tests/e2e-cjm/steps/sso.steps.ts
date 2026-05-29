@@ -245,9 +245,15 @@ async function desktopOidcLogin(
   user: { username: string; password: string },
 ): Promise<DesktopLoginResult> {
   const apiDispatcher = dispatcherFor(apiBaseURL);
-  const protocol = `${CHANNEL_SCHEME}://`;
+  // The desktop-signin scheme allow-list validates `protocol` as a BARE RFC 3986
+  // scheme name (e.g. `openwhispr-app`) — NOT `openwhispr-app://`, which fails the
+  // grammar (`scheme = ALPHA *( ALPHA / DIGIT / "+" / "-" / "." )`, no `://`). The
+  // `callbackURL` is the full custom-scheme URL. Mirrors the passing unit fixture
+  // apps/api/tests/unit/routes/desktop-signin.test.ts:173 (`openwhispr://cb` + `openwhispr`).
+  const protocol = CHANNEL_SCHEME;
+  const callbackURL = `${CHANNEL_SCHEME}://cb`;
   const signinUrl = `${apiBaseURL}/api/desktop-signin/oidc?callbackURL=${encodeURIComponent(
-    protocol,
+    callbackURL,
   )}&protocol=${encodeURIComponent(protocol)}`;
 
   // (1) Kick off the flow → 302 to the Keycloak authorize URL.
