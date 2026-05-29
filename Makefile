@@ -578,15 +578,7 @@ e2e-cjm:
 		KC_ADMIN_PASSWORD="$${KC_ADMIN_PASSWORD:-admin}" \
 			bash scripts/seed-keycloak-realm.sh; \
 	fi; \
-	# playwright-bdd 8.x does NOT auto-generate specs via `playwright
-	# test`; the generation runs only via the dedicated `bddgen` CLI
-	# (see node_modules/playwright-bdd/dist/cli/commands/test.ts).
-	# Without an explicit `bddgen` invocation the .bdd-gen/ output dir
-	# stays empty and playwright reports "Error: No tests found". Locally
-	# this was hidden by a cached .bdd-gen/ from prior runs — CI is
-	# always fresh, so the bug manifested on every push. Run bddgen
-	# explicitly before `playwright test`, scoped via the same config so
-	# `outputDir: ".bdd-gen"` resolves to tests/e2e-cjm/.bdd-gen/. \
+	echo "e2e-cjm: bddgen (playwright-bdd 8.x specs are generated only by the bddgen CLI, never by 'playwright test' — without this the .bdd-gen/ dir is empty and playwright reports 'No tests found')"; \
 	(cd tests/e2e-cjm && pnpm exec bddgen --config playwright.config.ts); \
 	if [ -n "$$SCENARIO" ]; then \
 		pnpm exec playwright test --grep "$$SCENARIO" --config tests/e2e-cjm/playwright.config.ts; \
