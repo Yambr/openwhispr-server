@@ -78,7 +78,21 @@ services:
       # overlay. Matches the base default (docker-compose.yml:283
       # `${INGRESS_BASE_URL:-https://api.localhost}`); the OIDC callback URLs are
       # https://api.localhost/api/auth/oauth2/callback/oidc accordingly.
+      #
+      # NOTE: this machine's local `.env` carries INGRESS_BASE_URL=http://api.localhost
+      # (dev without TLS). docker compose interpolates `.env` into the
+      # `${INGRESS_BASE_URL:-…}` defaults in the base + compose-overrides, so the
+      # api would otherwise boot with an http origin under NODE_ENV=production
+      # (embedded-litellm.yml:522) and trip validateIngressBoot. This literal
+      # https value wins (last overlay in the @sso chain) and matches the Traefik
+      # TLS vhost the @sso run actually terminates.
       INGRESS_BASE_URL: https://api.localhost
+      # An https INGRESS_BASE_URL makes the BYOK ingress guard require
+      # INGRESS_TLS_CERT_PATH to be SET (packages/byok-guard ingressRow — it only
+      # checks presence; the api never reads the file, TLS termination is Traefik's
+      # job via its own /certs mount). Point it at the cert Traefik already serves
+      # for *.localhost so the guard is satisfied without mounting anything into api.
+      INGRESS_TLS_CERT_PATH: /certs/local.crt
       # --- OIDC triple (genericOAuth registration via oidc-providers.ts) ------
       # Provider id is derived as "oidc" (oidc-providers.ts:105). The realm's
       # client `openwhispr-backend` registers the matching redirect URIs for the
