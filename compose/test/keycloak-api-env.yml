@@ -60,9 +60,19 @@ services:
           # host browser does. Mirrors the api.localhost / auth.localhost aliases.
           - keycloak.localhost
     volumes:
-      # Add the keycloak.localhost router/service to Traefik's file provider
-      # directory (providers.file.directory: /etc/traefik/dynamic). Additive —
-      # does not touch the base dynamic.yml / dynamic.dev.yml mounts.
+      # Docker Compose REPLACES a service's `volumes:` list on overlay merge (it
+      # does NOT merge them like `environment:`). So this list must RE-DECLARE
+      # every base traefik mount from compose/docker-compose.ingress.yml verbatim,
+      # then ADD the keycloak.localhost dynamic-config file. Omitting the base
+      # mounts silently drops traefik.yml / dynamic.yml / certs and breaks all
+      # routing (incl. the keycloak.localhost route this overlay exists to add →
+      # authorize 404). Keep in sync with ingress.yml's traefik.volumes.
+      - ./compose/traefik/traefik.yml:/etc/traefik/traefik.yml:ro
+      - ./compose/traefik/dynamic.yml:/etc/traefik/dynamic/dynamic.yml:ro
+      - ./compose/traefik/dynamic.dev.yml:/etc/traefik/dynamic/dynamic.dev.yml:ro
+      - ./compose/traefik/certs:/certs:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      # The keycloak.localhost router/service (added on top of the base mounts).
       - ./compose/test/keycloak-traefik-dynamic.yml:/etc/traefik/dynamic/keycloak.yml:ro
 
   api:
