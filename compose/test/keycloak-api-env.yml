@@ -67,6 +67,18 @@ services:
 
   api:
     environment:
+      # --- ingress origin (validateIngressBoot, NODE_ENV=production) -----------
+      # The @sso run layers compose/docker-compose.ingress.yml (Traefik + the
+      # keycloak.localhost router below) AND tests/e2e-cjm/compose-overrides.yml.
+      # That overrides INGRESS_BASE_URL to the hermetic non-ingress default
+      # `http://localhost:4000` — but the @sso chain DOES run Traefik with TLS,
+      # and NODE_ENV=production (docker-compose.yml:273) requires an HTTPS origin
+      # (apps/api/src/config/auth.ts validateIngressBoot → FATAL on http). Pin the
+      # canonical Traefik https origin so the api boots healthy under the ingress
+      # overlay. Matches the base default (docker-compose.yml:283
+      # `${INGRESS_BASE_URL:-https://api.localhost}`); the OIDC callback URLs are
+      # https://api.localhost/api/auth/oauth2/callback/oidc accordingly.
+      INGRESS_BASE_URL: https://api.localhost
       # --- OIDC triple (genericOAuth registration via oidc-providers.ts) ------
       # Provider id is derived as "oidc" (oidc-providers.ts:105). The realm's
       # client `openwhispr-backend` registers the matching redirect URIs for the
