@@ -1,0 +1,28 @@
+# SPDX-License-Identifier: FSL-1.1-ALv2
+# Phase 69 / Plan 69-06 (D-69-4 Option A) — @sso-only Traefik route for Keycloak.
+#
+# Mounted into Traefik's file-provider directory (/etc/traefik/dynamic/) ONLY by
+# the keycloak-api-env.yml overlay, which the Makefile layers exclusively for the
+# @sso e2e run. Routes the canonical-public `https://keycloak.localhost` vhost to
+# the in-network Keycloak container so the host browser AND the api container's
+# server-side OIDC discovery fetch both reach Keycloak at the SAME issuer origin
+# (see keycloak-api-env.yml header for the split-horizon rationale).
+#
+# The `*.localhost` wildcard TLS cert (compose/traefik/certs/local.crt SAN)
+# already covers keycloak.localhost — no new cert provisioning needed.
+
+http:
+  routers:
+    keycloak:
+      rule: "Host(`keycloak.localhost`)"
+      service: keycloak-svc
+      entryPoints: [websecure]
+      tls: {}
+  services:
+    keycloak-svc:
+      loadBalancer:
+        servers:
+          # Keycloak listens on 8080 inside the openwhispr_internal network
+          # (compose/test/keycloak.yml maps 8089:8080 to the host; in-network
+          # traffic uses the container port directly).
+          - url: "http://keycloak:8080"

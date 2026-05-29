@@ -548,8 +548,8 @@ e2e-cjm:
 	trap '$(MAKE) -s e2e-cjm-dump-logs; $(MAKE) -s e2e-cjm-teardown' EXIT INT TERM; \
 	KC_COMPOSE=""; KC_PROFILE=""; \
 	case "$$SCENARIO" in \
-		*sso*) KC_COMPOSE="-f compose/test/keycloak.yml"; KC_PROFILE="--profile sso"; \
-			echo "e2e-cjm: SSO run detected — adding compose/test/keycloak.yml (--profile sso)";; \
+		*sso*) KC_COMPOSE="-f compose/test/keycloak.yml -f compose/test/keycloak-api-env.yml"; KC_PROFILE="--profile sso"; \
+			echo "e2e-cjm: SSO run detected — adding compose/test/keycloak.yml + keycloak-api-env.yml (--profile sso, @sso-only api↔Keycloak fixture wiring per D-69-4)";; \
 	esac; \
 	docker compose -p e2e-cjm \
 		-f docker-compose.yml -f compose/docker-compose.embedded-litellm.yml \

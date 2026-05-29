@@ -1,0 +1,113 @@
+# SPDX-License-Identifier: FSL-1.1-ALv2
+# Phase 69 / Plan 69-06 (D-69-4 Option A) — @sso-only api↔Keycloak wiring fixture.
+#
+# This overlay is a TEST FIXTURE, NOT a production default change. It mirrors the
+# docker-compose.yml:330 fixture-idp precedent
+# (`OIDC_ISSUER_URL: ${OIDC_ISSUER_URL:-http://fixture-idp:9000}`) — an env
+# override applied ONLY when the e2e run targets the @sso scenarios (the Makefile
+# layers `-f compose/test/keycloak-api-env.yml` exclusively inside the
+# `case "$SCENARIO" in *sso*)` branch). The base docker-compose.yml api env block
+# stays byte-for-byte unchanged: in production the OPERATOR sets the OIDC + JIT env
+# (SPEC-ldap-keycloak.md:90-93 worked acme example IS operator config).
+#
+# It wires the api (and worker, which runs the same image) to the seeded Keycloak
+# realm `acme` (compose/test/keycloak-realms/realm-openwhispr-test.json, imported
+# at runtime via scripts/seed-keycloak-realm.sh) and sets the 7 JIT env vars so
+# `readJitConfig()` returns a non-null config and `resolveJitDecision` resolves
+# for the seeded users alice@acme.example / carol@acme.example.
+#
+# --- Split-horizon fix (the load-bearing wiring decision) ---------------------
+# The Playwright browser runs on the HOST; the api container runs INSIDE the
+# `openwhispr_internal` docker network. Both must reach Keycloak at the SAME
+# issuer URL or the OIDC issuer claim in the token mismatches the discovery
+# origin (Better Auth rejects it) and the browser cannot resolve the
+# in-network `keycloak:8080` authorize redirect.
+#
+# Solution: route Keycloak through the SAME Traefik instance the api uses,
+# at `https://keycloak.localhost` (covered by the existing `*.localhost`
+# wildcard cert — compose/traefik/certs/local.crt SAN). Traefik gets a
+# network alias for `keycloak.localhost` so the api container's in-network
+# discovery fetch ALSO resolves it to Traefik (mirrors the api.localhost /
+# auth.localhost aliases in compose/docker-compose.ingress.yml). Keycloak is
+# told its public hostname is `https://keycloak.localhost` via KC_HOSTNAME +
+# X-Forwarded proxy headers so every absolute URL it emits in the discovery
+# document + the issuer claim is consistent for browser AND server.
+#
+# The Traefik router for keycloak.localhost is added via the file-provider
+# dynamic config mounted below (compose/test/keycloak-traefik.yml is folded
+# into this same overlay as a dynamic-config bind on the traefik service).
+
+services:
+  keycloak:
+    environment:
+      # Public hostname Keycloak advertises in discovery + the issuer claim.
+      # KC_HOSTNAME_STRICT stays false (set in compose/test/keycloak.yml) so
+      # admin-REST seeding via 127.0.0.1:8089 still works; KC_HOSTNAME pins the
+      # frontend/issuer URL used by the OIDC flow itself.
+      KC_HOSTNAME: https://keycloak.localhost
+      KC_HOSTNAME_BACKCHANNEL_DYNAMIC: "true"
+      # Honour Traefik's X-Forwarded-* so Keycloak knows it is behind TLS
+      # termination and builds https:// URLs.
+      KC_PROXY_HEADERS: xforwarded
+      KC_HTTP_ENABLED: "true"
+
+  traefik:
+    networks:
+      openwhispr_internal:
+        aliases:
+          # In-network resolution of keycloak.localhost → Traefik, so the api
+          # container's server-side OIDC discovery fetch hits the same vhost the
+          # host browser does. Mirrors the api.localhost / auth.localhost aliases.
+          - keycloak.localhost
+    volumes:
+      # Add the keycloak.localhost router/service to Traefik's file provider
+      # directory (providers.file.directory: /etc/traefik/dynamic). Additive —
+      # does not touch the base dynamic.yml / dynamic.dev.yml mounts.
+      - ./compose/test/keycloak-traefik-dynamic.yml:/etc/traefik/dynamic/keycloak.yml:ro
+
+  api:
+    environment:
+      # --- OIDC triple (genericOAuth registration via oidc-providers.ts) ------
+      # Provider id is derived as "oidc" (oidc-providers.ts:105). The realm's
+      # client `openwhispr-backend` registers the matching redirect URIs for the
+      # provider-id "oidc" callbacks (oauth2/callback/oidc + desktop-callback/oidc).
+      OIDC_ISSUER_URL: https://keycloak.localhost/realms/acme
+      OIDC_CLIENT_ID: openwhispr-backend
+      OIDC_CLIENT_SECRET: openwhispr-backend-test-secret
+      # --- 7 JIT env vars (oidc-jit-config.ts) --------------------------------
+      # tenant claim: email_domain mode. The seeded realm emits no bespoke tenant
+      # claim — only standard email/profile + groups — so the tenant key is the
+      # email domain (alice@acme.example / carol@acme.example → "acme.example").
+      OIDC_TENANT_CLAIM: email_domain
+      # acme.example → the seeded DEFAULT tenant. The users table fails OPEN to the
+      # default tenant (CLAUDE.md rule 16 / migration 0024): a JIT create projecting
+      # a NON-default tenant would be silently rewritten by the GUC-bound column
+      # DEFAULT, so the mapping MUST resolve to DEFAULT_TENANT_ID for the row to
+      # carry the asserted tenant. (DEFAULT_TENANT_ID is LOCKER-03 allowlisted.)
+      OIDC_TENANT_MAPPING: '{"acme.example":"00000000-0000-0000-0000-000000000000"}'
+      OIDC_GROUP_CLAIM: groups
+      # group → role exact-match (SPEC: exact-match JSON only). The realm groups are
+      # openwhispr-engineering / openwhispr-admin / okta-everyone.
+      OIDC_ROLE_MAPPING: '{"openwhispr-engineering":"member","openwhispr-admin":"admin"}'
+      OIDC_ROLE_PRIORITY: "admin > member > viewer"
+      # Non-null default so a returning admin whose admin group is revoked downgrades
+      # to member (revocation_downgrade) instead of being rejected.
+      OIDC_DEFAULT_ROLE: member
+      OIDC_REVOCATION_MODE: downgrade_to_default
+
+  worker:
+    environment:
+      # The worker runs the same image; keep its JIT/OIDC env consistent so any
+      # worker-side auth helper reads the identical config (defence-in-depth —
+      # the JIT seams live in the api, but env drift between api/worker is a
+      # known operator footgun the chart-bump memory warns about).
+      OIDC_ISSUER_URL: https://keycloak.localhost/realms/acme
+      OIDC_CLIENT_ID: openwhispr-backend
+      OIDC_CLIENT_SECRET: openwhispr-backend-test-secret
+      OIDC_TENANT_CLAIM: email_domain
+      OIDC_TENANT_MAPPING: '{"acme.example":"00000000-0000-0000-0000-000000000000"}'
+      OIDC_GROUP_CLAIM: groups
+      OIDC_ROLE_MAPPING: '{"openwhispr-engineering":"member","openwhispr-admin":"admin"}'
+      OIDC_ROLE_PRIORITY: "admin > member > viewer"
+      OIDC_DEFAULT_ROLE: member
+      OIDC_REVOCATION_MODE: downgrade_to_default

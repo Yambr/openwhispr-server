@@ -51,9 +51,9 @@
       "directAccessGrantsEnabled": true,
       "serviceAccountsEnabled": false,
       "redirectUris": [
-        "https://api.localhost/api/auth/oauth2/callback/keycloak",
-        "https://api.localhost/api/auth/callback/keycloak",
-        "https://api.localhost/api/desktop/callback"
+        "https://api.localhost/api/auth/oauth2/callback/oidc",
+        "https://api.localhost/api/auth/callback/oidc",
+        "https://api.localhost/api/auth/desktop-callback/oidc"
       ],
       "webOrigins": ["https://api.localhost"],
       "defaultClientScopes": ["email", "profile", "groups"],
@@ -83,6 +83,16 @@
       "lastName": "Returning",
       "credentials": [{ "type": "password", "value": "carol-test-password", "temporary": false }],
       "groups": ["/openwhispr-engineering"]
+    },
+    {
+      "username": "dave",
+      "email": "dave@acme.example",
+      "emailVerified": true,
+      "enabled": true,
+      "firstName": "Dave",
+      "lastName": "Admin",
+      "credentials": [{ "type": "password", "value": "dave-test-password", "temporary": false }],
+      "groups": ["/openwhispr-admin", "/openwhispr-engineering"]
     }
   ]
 }
