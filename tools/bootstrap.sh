@@ -367,8 +367,9 @@ DNS.5 = auth.localhost
 DNS.6 = grafana.localhost
 DNS.7 = minio-console.localhost
 DNS.8 = mailpit.localhost
-DNS.9 = api.example.test
-DNS.10 = auth.example.test
+DNS.9 = keycloak.localhost
+DNS.10 = api.example.test
+DNS.11 = auth.example.test
 IP.1 = 127.0.0.1
 IP.2 = ::1
 LEAF_EXT

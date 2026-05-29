@@ -76,7 +76,18 @@ services:
       - ./compose/test/keycloak-traefik-dynamic.yml:/etc/traefik/dynamic/keycloak.yml:ro
 
   api:
+    # The api's OIDC discovery + token fetch go to https://keycloak.localhost,
+    # which Traefik serves with the local-CA-signed *.localhost cert. Node rejects
+    # it (UNABLE_TO_VERIFY_LEAF_SIGNATURE) unless the signing root CA is trusted —
+    # the exact pattern compose/docker-compose.contract-test.yml:85,99 uses for
+    # in-network HTTPS through Traefik. Mount + trust root-ca.crt.
+    # NOTE compose REPLACES volumes on merge — re-declare the base api locales
+    # mount (docker-compose.yml) so it isn't dropped, then add root-ca.crt.
+    volumes:
+      - ./apps/api/src/i18n/locales:/app/locales:ro
+      - ./compose/traefik/certs/root-ca.crt:/certs/root-ca.crt:ro
     environment:
+      NODE_EXTRA_CA_CERTS: /certs/root-ca.crt
       # --- ingress origin (validateIngressBoot, NODE_ENV=production) -----------
       # The @sso run layers compose/docker-compose.ingress.yml (Traefik + the
       # keycloak.localhost router below) AND tests/e2e-cjm/compose-overrides.yml.
