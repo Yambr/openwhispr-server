@@ -608,11 +608,26 @@ e2e-cjm-dump-logs:
 	@echo "e2e-cjm-dump-logs: wrote compose-logs/ ($$(ls compose-logs/ | wc -l) files)"
 
 e2e-cjm-teardown:
+	@# down -v MUST list the SAME compose-file superset the `up` used, or compose
+	@# cannot resolve every service/volume and leaves volumes behind — a partial
+	@# file set left 56 e2e-cjm volumes after a run, so the NEXT run's api reused
+	@# the prior postgres data (users persisted) and @cjm-sso-1.1 took the
+	@# returning-user branch instead of first-time-create → no sso.jit.user.created
+	@# → flaky 1.1 on every 2nd+ consecutive run. Include the ingress + dev-tools
+	@# overlays AND the @sso keycloak overlays unconditionally (compose tolerates
+	@# `-f` for services that a given run never started).
 	-@docker compose -p e2e-cjm \
 		-f docker-compose.yml -f compose/docker-compose.embedded-litellm.yml \
 		-f compose/docker-compose.storage.yml \
+		-f compose/docker-compose.ingress.yml \
 		-f tests/e2e-cjm/compose-overrides.yml \
+		-f compose/docker-compose.dev-tools.yml \
+		-f compose/test/keycloak.yml -f compose/test/keycloak-api-env.yml \
 		down -v --remove-orphans
+	@# Belt-and-suspenders: sweep any e2e-cjm volume `down` still left behind
+	@# (compose skips volumes it can't associate when a service is absent).
+	-@docker volume ls -q --filter "label=com.docker.compose.project=e2e-cjm" \
+		| xargs -r docker volume rm 2>/dev/null || true
 	@if [ -f .e2e-cjm-user-was-running ] && [ "$$(cat .e2e-cjm-user-was-running)" = "1" ]; then \
 		echo "e2e-cjm-teardown: restarting user 'openwhispr' project"; \
 		docker compose -p openwhispr start; \

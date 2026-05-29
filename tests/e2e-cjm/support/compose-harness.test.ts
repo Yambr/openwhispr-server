@@ -31,6 +31,7 @@ import {
   DEFAULT_SCENARIO_ENV_OVERRIDES,
   DEV_TOOLS_OVERLAY,
   removeProjectNetworks,
+  removeProjectVolumes,
   tearStack,
 } from "./compose-harness.js";
 
@@ -739,15 +740,55 @@ describe("tearStack — temp env file cleanup", () => {
 
   it("removeProjectNetworks returns the removed network names and never throws", async () => {
     const router = (cmd: string, args: string[]): FakeChildSpec => {
-      if (cmd === "docker" && args[1] === "ls") {
+      if (cmd === "docker" && args[0] === "network" && args[1] === "ls") {
         return { stdout: "p_openwhispr_internal\np_extra\n" };
       }
-      if (cmd === "docker" && args[1] === "rm") return { exitCode: 0 };
+      if (cmd === "docker" && args[0] === "network" && args[1] === "rm") return { exitCode: 0 };
       return { exitCode: 0 };
     };
     const { spawnFn } = makeSpawnRecorder(router);
 
     const removed = await removeProjectNetworks("p", spawnFn);
     expect(removed).toEqual(["p_openwhispr_internal", "p_extra"]);
+  });
+
+  it("removeProjectVolumes sweeps label-matched volumes (stale-data leak guard)", async () => {
+    const router = (cmd: string, args: string[]): FakeChildSpec => {
+      if (cmd === "docker" && args[0] === "volume" && args[1] === "ls") {
+        return { stdout: "p_postgres_data\np_valkey_data\n" };
+      }
+      if (cmd === "docker" && args[0] === "volume" && args[1] === "rm") return { exitCode: 0 };
+      return { exitCode: 0 };
+    };
+    const { spawnFn, calls } = makeSpawnRecorder(router);
+
+    const removed = await removeProjectVolumes("p", spawnFn);
+    expect(removed).toEqual(["p_postgres_data", "p_valkey_data"]);
+    // Must filter by the compose project label, not a name glob.
+    const lsCall = calls.find((c) => c.joined.includes("volume ls"));
+    expect(lsCall?.joined).toContain("label=com.docker.compose.project=p");
+  });
+
+  it("tearStack sweeps BOTH networks and volumes by project label", async () => {
+    const router = (cmd: string, args: string[]): FakeChildSpec => {
+      if (cmd === "docker" && (args[0] === "network" || args[0] === "volume")) {
+        if (args[1] === "ls") return { stdout: `e2e-cjm-sso16-z_${args[0]}\n` };
+        if (args[1] === "rm") return { exitCode: 0 };
+      }
+      if (args.includes("ps") && args.includes("-q")) return { stdout: "" };
+      return { exitCode: 0 };
+    };
+    const { spawnFn, calls } = makeSpawnRecorder(router);
+
+    await tearStack({
+      projectName: "e2e-cjm-sso16-z",
+      composeFiles: ["docker-compose.yml"],
+      spawnFn,
+      skipUserStackRestart: true,
+      inheritStdio: false,
+    });
+
+    expect(calls.some((c) => c.joined.includes("network ls"))).toBe(true);
+    expect(calls.some((c) => c.joined.includes("volume ls"))).toBe(true);
   });
 });

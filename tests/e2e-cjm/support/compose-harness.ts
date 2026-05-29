@@ -316,14 +316,17 @@ function runDockerCapture(
 }
 
 /**
- * Remove any docker networks still carrying a compose project's label. Compose
- * `down` leaves an orphaned `<project>_*` network behind once its containers are
- * already gone (v2.23 quirk); this sweeps them by the
- * `com.docker.compose.project=<project>` label filter so the address pool isn't
- * leaked across runs. Best-effort — every step swallows errors so teardown
- * never throws. Exported for unit coverage.
+ * Remove docker resources of a given kind still carrying a compose project's
+ * label. Compose `down -v` leaves orphaned `<project>_*` networks AND volumes
+ * behind once a project's containers are already gone (v2.23 quirk: "No resource
+ * found to remove for project"). Each leaked network burns an address-pool slot;
+ * each leaked volume burns disk — both accumulate across the per-scenario
+ * sso16 projects and eventually break the next boot. Sweep by the
+ * `com.docker.compose.project=<project>` label. Best-effort — every step
+ * swallows errors so teardown never throws.
  */
-export async function removeProjectNetworks(
+async function removeProjectResources(
+  kind: "network" | "volume",
   projectName: string,
   spawnFn?: typeof spawn,
 ): Promise<string[]> {
@@ -331,7 +334,7 @@ export async function removeProjectNetworks(
   try {
     const { stdout } = await runDockerCapture(
       [
-        "network",
+        kind,
         "ls",
         "--filter",
         `label=com.docker.compose.project=${projectName}`,
@@ -345,13 +348,29 @@ export async function removeProjectNetworks(
       .map((n) => n.trim())
       .filter(Boolean);
     for (const name of names) {
-      const { exitCode } = await runDockerCapture(["network", "rm", name], spawnFn);
+      const { exitCode } = await runDockerCapture([kind, "rm", name], spawnFn);
       if (exitCode === 0) removed.push(name);
     }
   } catch {
     /* swallow — teardown MUST NOT throw */
   }
   return removed;
+}
+
+/** Sweep orphaned project networks (see {@link removeProjectResources}). */
+export async function removeProjectNetworks(
+  projectName: string,
+  spawnFn?: typeof spawn,
+): Promise<string[]> {
+  return removeProjectResources("network", projectName, spawnFn);
+}
+
+/** Sweep orphaned project volumes (see {@link removeProjectResources}). */
+export async function removeProjectVolumes(
+  projectName: string,
+  spawnFn?: typeof spawn,
+): Promise<string[]> {
+  return removeProjectResources("volume", projectName, spawnFn);
 }
 
 /** Detect whether a compose project has any running containers. */
@@ -762,6 +781,11 @@ export async function tearStack(opts: TearStackOptions = {}): Promise<{
   // network still carrying this project's compose label. Best-effort, never
   // throws (teardown must not fail the run).
   await removeProjectNetworks(projectName, spawnFn);
+  // Same quirk for volumes: `down -v` can leave the project's
+  // `<project>_postgres_data` etc. behind, so the next reuse of the api/postgres
+  // sees stale data (e.g. a JIT user that should be first-time already exists →
+  // @cjm-sso-1.1 flake). Sweep by label too.
+  await removeProjectVolumes(projectName, spawnFn);
 
   let userStackStartExitCode: number | null = null;
   if (!opts.skipUserStackRestart && opts.userStackWasRunning) {
