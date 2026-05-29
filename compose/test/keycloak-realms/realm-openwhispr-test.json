@@ -93,6 +93,16 @@
       "lastName": "Admin",
       "credentials": [{ "type": "password", "value": "dave-test-password", "temporary": false }],
       "groups": ["/openwhispr-admin", "/openwhispr-engineering"]
+    },
+    {
+      "username": "bob",
+      "email": "bob@acme.example",
+      "emailVerified": true,
+      "enabled": true,
+      "firstName": "Bob",
+      "lastName": "Domain",
+      "credentials": [{ "type": "password", "value": "bob-test-password", "temporary": false }],
+      "groups": ["/openwhispr-engineering"]
     }
   ]
 }
