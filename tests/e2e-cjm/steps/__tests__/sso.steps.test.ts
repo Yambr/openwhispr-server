@@ -152,12 +152,17 @@ describe("sso.steps.ts — @cjm-sso-1.* bindings (Phase 69)", () => {
   });
 
   // --- 1.5b cross-tenant usage-isolation invariant ----------------------
-  // /api/transcribe has no read-by-id route, so the cross-tenant proof is
-  // usage-aggregate isolation on the fail-closed usage_ledger: tenant B records
-  // a transcribe (B's wordsUsed > 0) and tenant A's tenant-scoped /api/usage
-  // read must report ZERO — A cannot observe B's row.
+  // The cross-tenant proof is usage-aggregate isolation on the fail-closed
+  // usage_ledger: tenant B records a real /api/reason call (kind='reason_tokens',
+  // units = the mock completion's total_tokens, > 0 → B's wordsUsed > 0) and
+  // tenant A's tenant-scoped /api/usage read must report ZERO — A cannot observe
+  // B's row. (/api/reason rather than /api/transcribe because LiteLLM v1.83.x
+  // only honors mock_response for chat-completions, not /v1/audio/transcriptions
+  // — see tests/e2e/transcribe.e2e.test.ts:43-55. Verified against real litellm
+  // v1.83.14: the qwen3.6-plus mock returns HTTP 200 with usage.total_tokens=30,
+  // so B's ledger row carries units=30.)
   it("1.5b isolation invariant: T_A sees 0 usage while T_B sees its own row", () => {
-    const tenantBWords = 1; // B recorded a transcribe (mock STT → 1 unit)
+    const tenantBWords = 30; // B's reason call → usage.total_tokens (mock → 30)
     const tenantAWords = 0; // A's RLS-scoped /api/usage excludes B's row
     expect(tenantBWords).toBeGreaterThan(0);
     expect(tenantAWords).toBe(0);

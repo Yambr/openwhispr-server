@@ -64,14 +64,17 @@ Feature: Keycloak OIDC SSO with JIT user provisioning
     When the user signs in via OIDC after their email domain now resolves tenant "globex"
     Then sign-in is rejected with a 403 forbidden_tenant_mismatch error
 
-  # Cross-tenant isolation on the fail-closed usage_ledger table. /api/transcribe
-  # has no read-by-id endpoint (it writes a tenant-scoped usage_ledger row and
-  # returns {text,minutes}), so the proof is usage-aggregate isolation: tenant B
-  # records a real transcribe (→ a usage_ledger row under B), then GET /api/usage
-  # as B reports B's units while the SAME read as A reports ZERO — A cannot
-  # observe B's row (RLS fails closed; no existence leak). The step wording is
-  # kept stable for the binding; "the read returns 404 not_found" reads at the
-  # isolation level as "A's tenant-scoped read excludes B's row entirely".
+  # Cross-tenant isolation on the fail-closed usage_ledger table. The proof is
+  # usage-aggregate isolation: tenant B records a real /api/reason call (which
+  # writes a tenant-scoped usage_ledger row, kind='reason_tokens'), then GET
+  # /api/usage as B reports B's units while the SAME read as A reports ZERO — A
+  # cannot observe B's row (RLS fails closed; no existence leak). /api/reason is
+  # used rather than /api/transcribe because LiteLLM v1.83.x only honors
+  # mock_response for chat-completions, not /v1/audio/transcriptions, so a
+  # hermetic transcribe would 502 with no ledger row (see
+  # tests/e2e/transcribe.e2e.test.ts:43-55). The step wording is kept stable for
+  # the binding; "the read returns 404 not_found" reads at the isolation level as
+  # "A's tenant-scoped read excludes B's row entirely".
   @cjm-sso-1.5b
   Scenario: Cross-tenant read in a fail-closed table returns 404 not_found (negative twin)
     Given a JIT user is provisioned for tenant "acme" and a transcription row exists for tenant "globex"

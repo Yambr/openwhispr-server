@@ -31,10 +31,7 @@
 // Per cjm-steps-need-unit-tests: sibling unit coverage with the HTTP/DOM boundary
 // mocked lives at __tests__/sso.steps.test.ts.
 
-import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
-
-import { Agent, FormData, fetch as undiciFetch } from "undici";
+import { Agent, fetch as undiciFetch } from "undici";
 
 import {
   type BootStackResult,
@@ -652,26 +649,35 @@ After({ tags: "@cjm-sso-1.5a" }, async () => {
 // row and returns {text,minutes} with no id, and there is no transcribe
 // read-by-id route. The faithful cross-tenant isolation proof on the SAME
 // fail-closed table (usage_ledger, RLS tenant_id = current_setting) is: tenant
-// B records a real transcribe (→ a usage_ledger row under B); then GET
+// B records a real reasoning call (→ a usage_ledger row under B); then GET
 // /api/usage as B reports B's units while the SAME read as A reports ZERO — A
 // physically cannot observe B's row (RLS fails closed). The @sso run pins
-// LITELLM_CONFIG_FILE=litellm_config.contract.yaml (Makefile) so the real
-// multipart upload returns a deterministic mock transcript (duration 1.0 →
-// usage_ledger units) with no external STT key.
+// LITELLM_CONFIG_FILE=litellm_config.contract.yaml (Makefile) so the call
+// returns a deterministic mock completion with no external key.
+//
+// WHY /api/reason and NOT /api/transcribe: LiteLLM v1.83.x's `mock_response` is
+// a chat-completions-only feature — the /v1/audio/transcriptions passthrough
+// that /api/transcribe forwards to does NOT honor it (documented in
+// tests/e2e/transcribe.e2e.test.ts:43-55; a live @sso run confirmed litellm
+// makes a real Groq call → 401 → 502 even with the contract config mounted). So
+// transcribe→200 is impossible in hermetic mode. /api/reason defaults to model
+// `qwen3.6-plus`, which DOES carry a chat-completions mock_response in
+// litellm_config.contract.yaml (usage.total_tokens:15) → deterministic 200 → an
+// idempotent `usage_ledger` INSERT (kind='reason_tokens', units=15) under
+// withTenant(B) (apps/api/src/routes/reason.ts:187-193). /api/usage SUMs ALL
+// kinds for the user under withTenant (apps/api/src/routes/usage.ts:54-58), so
+// reason_tokens lands in B's wordsUsed — the SAME tenant-scoped usage_ledger
+// read, the SAME RLS-fail-closed isolation invariant the scenario asserts.
 
-/** Path to the committed 8KB silent WAV fixture (shared with transcribe.steps). */
-const SILENT_WAV = resolve(process.cwd(), "tests/e2e-cjm/fixtures/silent.wav");
-
-/** Real multipart `/api/transcribe` upload for a session; returns the HTTP status. */
-async function transcribeOnce(apiBaseURL: string, cookie: string): Promise<number> {
-  const url = `${apiBaseURL}/api/transcribe`;
-  const wav = readFileSync(SILENT_WAV);
-  const form = new FormData();
-  form.append("file", new Blob([wav as unknown as BlobPart], { type: "audio/wav" }), "silent.wav");
+/** Real JSON `/api/reason` call for a session; returns the HTTP status. */
+async function reasonOnce(apiBaseURL: string, cookie: string): Promise<number> {
+  const url = `${apiBaseURL}/api/reason`;
   const res = await undiciFetch(url, {
     method: "POST",
-    headers: { origin: new URL(url).origin, cookie },
-    body: form,
+    headers: { "content-type": "application/json", origin: new URL(url).origin, cookie },
+    // `text` is the only required ReasonRequest field; `model` defaults to
+    // qwen3.6-plus (the mock_response-bearing alias) when omitted.
+    body: JSON.stringify({ text: "cross-tenant isolation probe" }),
     ...(dispatcherFor(url) ? { dispatcher: dispatcherFor(url) } : {}),
   });
   return res.status;
@@ -702,9 +708,10 @@ Given(
     const bId = freshTenant();
     const aCookie = await provisionVerifiedTenant(apiBaseURL, mailpitApiUrl, aId);
     const bCookie = await provisionVerifiedTenant(apiBaseURL, mailpitApiUrl, bId);
-    // B records a REAL transcribe → a usage_ledger row scoped to B's tenant.
-    const status = await transcribeOnce(apiBaseURL, bCookie);
-    expect(status, "T_B transcribe upload must 200 (mock STT)").toBe(200);
+    // B records a REAL reasoning call → a usage_ledger row scoped to B's tenant
+    // (kind='reason_tokens'; mock_response is honored for chat-completions).
+    const status = await reasonOnce(apiBaseURL, bCookie);
+    expect(status, "T_B reason call must 200 (mock chat-completion)").toBe(200);
     // Confirm B's row landed (B sees non-zero usage) before the isolation read.
     const bWords = await readUsageWords(apiBaseURL, bCookie);
     expect(bWords, "T_B should see its own usage_ledger row").toBeGreaterThan(0);
