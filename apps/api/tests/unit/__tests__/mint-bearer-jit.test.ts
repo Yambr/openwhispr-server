@@ -359,6 +359,125 @@ describe("buildMintBearer JIT seam (Phase 69 / Plan 69-04 / D-69-1)", () => {
     expect(audit).toBeDefined();
   });
 
+  // ── Structured STDOUT emit (Phase 69 fix — @cjm-sso 1.1/1.3) ─────────────
+  // The desktop path uses the RAW internal adapter (createOAuthUser); its
+  // Better-Auth create.after/update.after hooks are queued post-transaction and
+  // were observed NOT to flush a sso.jit.* stdout line under the RLS-wrapped
+  // adapter (live run15). The @cjm-sso e2e greps `docker compose logs api` for
+  // the structured event (there is no audit-read route), so mint-bearer MUST emit
+  // the event to the injected `log` itself — not rely on the queued DB hook.
+  function makeLog(): {
+    info: ReturnType<typeof vi.fn>;
+    warn: ReturnType<typeof vi.fn>;
+    events: () => string[];
+  } {
+    const info = vi.fn();
+    const warn = vi.fn();
+    return {
+      info,
+      warn,
+      events: () =>
+        [...info.mock.calls, ...warn.mock.calls]
+          .map((c) => (c[0] as { event?: string } | undefined)?.event)
+          .filter((e): e is string => typeof e === "string"),
+    };
+  }
+
+  it("new user: emits sso.jit.user.created to the structured log (not just the audit row)", async () => {
+    jitEnv();
+    const { auth, ia } = buildFakeAuth();
+    ia.findUserByEmail.mockResolvedValue(null);
+    stubFetch({
+      sub: "sub-1",
+      email: "alice@acme.example",
+      name: "Alice",
+      tenant: "acme",
+      groups: ["openwhispr-engineering"],
+    });
+    const captured: CapturedSql[] = [];
+    const db = makeFakeDb({ captured });
+    const log = makeLog();
+
+    const mint = buildMintBearer({
+      auth: auth as unknown as Parameters<typeof buildMintBearer>[0]["auth"],
+      db: db as unknown as Parameters<typeof buildMintBearer>[0]["db"],
+      log,
+    });
+    await mint(ARGS);
+
+    expect(log.events()).toContain("sso.jit.user.created");
+    const call = log.info.mock.calls.find(
+      (c) => (c[0] as { event?: string }).event === "sso.jit.user.created",
+    );
+    expect(call?.[0]).toMatchObject({ tenant_id: ACME_TENANT_ID, role: "member" });
+  });
+
+  it("returning user, group changed: emits sso.jit.role.updated to the structured log", async () => {
+    jitEnv();
+    const { auth, ia } = buildFakeAuth();
+    ia.findUserByEmail.mockResolvedValue({
+      user: { id: "aaaaaaaa-bbbb-cccc-dddd-000000000001" },
+      accounts: [],
+    });
+    stubFetch({
+      sub: "s",
+      email: "bob@acme.example",
+      tenant: "acme",
+      groups: ["openwhispr-engineering"],
+    });
+    const captured: CapturedSql[] = [];
+    const db = makeFakeDb({ captured, identityRow: { tenant_id: ACME_TENANT_ID, role: "admin" } });
+    const log = makeLog();
+
+    const mint = buildMintBearer({
+      auth: auth as unknown as Parameters<typeof buildMintBearer>[0]["auth"],
+      db: db as unknown as Parameters<typeof buildMintBearer>[0]["db"],
+      log,
+    });
+    await mint(ARGS);
+
+    expect(log.events()).toContain("sso.jit.role.updated");
+    const call = log.info.mock.calls.find(
+      (c) => (c[0] as { event?: string }).event === "sso.jit.role.updated",
+    );
+    expect(call?.[0]).toMatchObject({
+      before: "admin",
+      after: "member",
+      reason: "revocation_downgrade",
+    });
+  });
+
+  it("returning user, tenant mismatch: emits sso.jit.rejected to the structured log (warn)", async () => {
+    jitEnv();
+    const { auth, ia } = buildFakeAuth();
+    ia.findUserByEmail.mockResolvedValue({
+      user: { id: "aaaaaaaa-bbbb-cccc-dddd-000000000002" },
+      accounts: [],
+    });
+    stubFetch({
+      sub: "s",
+      email: "carol@acme.example",
+      tenant: "globex",
+      groups: ["openwhispr-engineering"],
+    });
+    const captured: CapturedSql[] = [];
+    const db = makeFakeDb({ captured, identityRow: null });
+    const log = makeLog();
+
+    const mint = buildMintBearer({
+      auth: auth as unknown as Parameters<typeof buildMintBearer>[0]["auth"],
+      db: db as unknown as Parameters<typeof buildMintBearer>[0]["db"],
+      log,
+    });
+    await expect(mint(ARGS)).rejects.toMatchObject({ code: "forbidden_tenant_mismatch" });
+
+    expect(log.events()).toContain("sso.jit.rejected");
+    const call = log.warn.mock.calls.find(
+      (c) => (c[0] as { event?: string }).event === "sso.jit.rejected",
+    );
+    expect(call?.[0]).toMatchObject({ code: "forbidden_tenant_mismatch" });
+  });
+
   it("token response failing schema validation throws (no body leak) — UNCHANGED guard", async () => {
     jitEnv();
     const { auth } = buildFakeAuth();

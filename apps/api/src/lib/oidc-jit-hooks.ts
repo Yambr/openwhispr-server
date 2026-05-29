@@ -125,6 +125,62 @@ async function emitRejected(deps: JitHookDeps, code: RejectionCode): Promise<voi
 }
 
 /**
+ * Emit `sso.jit.user.created` (structured log + audit row, own withTenant tx).
+ * Exported so BOTH the genericOAuth `create.after` hook AND the desktop
+ * mint-bearer createOAuthUser path call it — the latter uses the RAW internal
+ * adapter, which does NOT fire `databaseHooks.create.after`, so without this
+ * explicit call the desktop OIDC path provisions the user but emits no audit.
+ * Best-effort audit (a hiccup must not fail the sign-in that already committed).
+ */
+export async function emitUserCreated(
+  deps: JitHookDeps,
+  userId: string,
+  tenantId: string,
+  role: JitRole,
+): Promise<void> {
+  deps.log.info({ event: "sso.jit.user.created", tenant_id: tenantId, role });
+  try {
+    await withTenant(deps.db, tenantId, async (tx) => {
+      await recordAudit(tx, jitAuditCtx(tenantId, userId), "sso.jit.user.created", {
+        tenant_id: tenantId,
+        role,
+        tenant_claim_mode: tenantClaimMode(deps.jitConfig),
+      });
+    });
+  } catch (err) {
+    deps.log.warn({ event: "sso.jit.user.created.audit_emit_failed", err });
+  }
+}
+
+/**
+ * Emit `sso.jit.role.updated` (structured log + audit row, own withTenant tx).
+ * Exported for the same reason as `emitUserCreated` — the desktop returning-user
+ * role re-sync runs outside Better Auth's `update.after` hook.
+ */
+export async function emitRoleUpdated(
+  deps: JitHookDeps,
+  userId: string,
+  tenantId: string,
+  before: JitRole,
+  after: JitRole,
+  reason: "group_change" | "revocation_downgrade",
+): Promise<void> {
+  deps.log.info({ event: "sso.jit.role.updated", tenant_id: tenantId, before, after, reason });
+  try {
+    await withTenant(deps.db, tenantId, async (tx) => {
+      await recordAudit(tx, jitAuditCtx(tenantId, userId), "sso.jit.role.updated", {
+        tenant_id: tenantId,
+        before,
+        after,
+        reason,
+      });
+    });
+  } catch (err) {
+    deps.log.warn({ event: "sso.jit.role.updated.audit_emit_failed", err });
+  }
+}
+
+/**
  * Web claim-projection seam (D-69-1). Returns the closure Better Auth's
  * genericOAuth invokes as `mapProfileToUser(profile)`. On `ok` it projects
  * `{ tenantId, role }` onto the user; on rejection it emits `sso.jit.rejected`
@@ -189,14 +245,7 @@ export function buildJitDatabaseHooks(deps: JitHookDeps): JitDatabaseHooks {
           const tenantId = String(user.tenantId);
           const role = asJitRole(user.role);
           if (role === undefined) return;
-          deps.log.info({ event: "sso.jit.user.created", tenant_id: tenantId, role });
-          await withTenant(deps.db, tenantId, async (tx) => {
-            await recordAudit(tx, jitAuditCtx(tenantId, String(user.id)), "sso.jit.user.created", {
-              tenant_id: tenantId,
-              role,
-              tenant_claim_mode: tenantClaimMode(deps.jitConfig),
-            });
-          });
+          await emitUserCreated(deps, String(user.id), tenantId, role);
         },
       },
       update: {
@@ -262,21 +311,7 @@ export function buildJitDatabaseHooks(deps: JitHookDeps): JitDatabaseHooks {
             user.__jitRoleReason === "revocation_downgrade"
               ? "revocation_downgrade"
               : "group_change";
-          deps.log.info({
-            event: "sso.jit.role.updated",
-            tenant_id: tenantId,
-            before,
-            after,
-            reason,
-          });
-          await withTenant(deps.db, tenantId, async (tx) => {
-            await recordAudit(tx, jitAuditCtx(tenantId, String(user.id)), "sso.jit.role.updated", {
-              tenant_id: tenantId,
-              before,
-              after,
-              reason,
-            });
-          });
+          await emitRoleUpdated(deps, String(user.id), tenantId, before, after, reason);
         },
       },
     },

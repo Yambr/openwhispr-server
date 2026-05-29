@@ -320,15 +320,51 @@ async function persistRoleResync(
   });
 }
 
-/** Emit the sso.jit.role.updated audit row (own withTenant tx). */
+/**
+ * The structured-log handle threaded from `buildMintBearer({ log })`.
+ *
+ * Phase 69 fix — the desktop OIDC path uses the RAW internal adapter
+ * (`createOAuthUser`), whose Better-Auth `create.after`/`update.after` hooks are
+ * queued post-transaction and were observed NOT to flush a `sso.jit.*` line to
+ * stdout under our RLS-wrapped adapter (live run15: zero events in api stdout).
+ * The @cjm-sso e2e asserts on the STRUCTURED STDOUT log (it greps
+ * `docker compose logs api` — there is no audit-read route), so each desktop-side
+ * emit helper must `.info()`/`.warn()` the same event shape the web hooks emit
+ * (oidc-jit-hooks.ts), in ADDITION to the audit row. Optional so unit tests that
+ * build the adapter without a logger keep working.
+ */
+type MintLog = NonNullable<BuildMintBearerOpts["log"]>;
+
+/** Emit the sso.jit.user.created structured log + audit row (own withTenant tx). */
+async function emitUserCreated(
+  db: TransactionalDb<ExecutableTx>,
+  log: MintLog | undefined,
+  tenantId: string,
+  actorUserId: string,
+  role: "admin" | "member" | "viewer",
+  tenantClaimModeValue: "named_claim" | "email_domain",
+): Promise<void> {
+  log?.info?.({ event: "sso.jit.user.created", tenant_id: tenantId, role });
+  await withTenant(db, tenantId, async (tx) => {
+    await recordAudit(tx, jitAuditCtx(tenantId, actorUserId), "sso.jit.user.created", {
+      tenant_id: tenantId,
+      role,
+      tenant_claim_mode: tenantClaimModeValue,
+    });
+  });
+}
+
+/** Emit the sso.jit.role.updated structured log + audit row (own withTenant tx). */
 async function emitRoleUpdated(
   db: TransactionalDb<ExecutableTx>,
+  log: MintLog | undefined,
   tenantId: string,
   actorUserId: string,
   before: "admin" | "member" | "viewer",
   after: "admin" | "member" | "viewer",
   reason: "group_change" | "revocation_downgrade",
 ): Promise<void> {
+  log?.info?.({ event: "sso.jit.role.updated", tenant_id: tenantId, before, after, reason });
   await withTenant(db, tenantId, async (tx) => {
     await recordAudit(tx, jitAuditCtx(tenantId, actorUserId), "sso.jit.role.updated", {
       tenant_id: tenantId,
@@ -339,9 +375,10 @@ async function emitRoleUpdated(
   });
 }
 
-/** Emit the sso.jit.rejected audit row (own withTenant tx; actor_user_id=null). */
+/** Emit the sso.jit.rejected structured log + audit row (own withTenant tx; actor_user_id=null). */
 async function emitRejected(
   db: TransactionalDb<ExecutableTx>,
+  log: MintLog | undefined,
   tenantId: string,
   code:
     | "forbidden_missing_tenant_claim"
@@ -350,6 +387,7 @@ async function emitRejected(
     | "forbidden_tenant_mismatch"
     | "invalid_oidc_profile",
 ): Promise<void> {
+  log?.warn?.({ event: "sso.jit.rejected", tenant_id: tenantId, code });
   await withTenant(db, tenantId, async (tx) => {
     await recordAudit(tx, jitAuditCtx(tenantId, null), "sso.jit.rejected", {
       tenant_id: tenantId,
@@ -392,7 +430,7 @@ function buildAccountScope(jitConfig: JitConfig | null): string {
  * and returns the raw opaque bearer.
  */
 export function buildMintBearer(opts: BuildMintBearerOpts): MintBearer {
-  const { auth, db } = opts;
+  const { auth, db, log } = opts;
 
   return async function mintBearer(args: MintBearerArgs): Promise<string> {
     // Fail-fast env validation BEFORE any network call so misconfigured
@@ -502,6 +540,7 @@ export function buildMintBearer(opts: BuildMintBearerOpts): MintBearer {
         if (!resolvedTenant.ok) {
           await emitRejected(
             db,
+            log,
             await resolveRejectionTenant(resolvedTenant.code),
             resolvedTenant.code,
           );
@@ -516,7 +555,7 @@ export function buildMintBearer(opts: BuildMintBearerOpts): MintBearer {
         const decision = resolveJitDecision(claims, jitConfig, existingIdentity);
         if (!decision.ok) {
           // Mode 6 — refuse reuse + refuse mint; emit sso.jit.rejected.
-          await emitRejected(db, resolvedTenant.tenantId, decision.code);
+          await emitRejected(db, log, resolvedTenant.tenantId, decision.code);
           throw new JitRejectionError(decision.code);
         }
         // Mode 5 — the resolved role differs from the persisted role → re-sync
@@ -531,6 +570,7 @@ export function buildMintBearer(opts: BuildMintBearerOpts): MintBearer {
           await persistRoleResync(db, userId, resolvedTenant.tenantId, decision.role);
           await emitRoleUpdated(
             db,
+            log,
             resolvedTenant.tenantId,
             userId,
             beforeRole,
@@ -544,15 +584,17 @@ export function buildMintBearer(opts: BuildMintBearerOpts): MintBearer {
       // createOAuthUser USER arg so the Plan-03 databaseHooks (which fire via
       // createWithHooks) land the resolved tenant + role on the row.
       let jitFields: { tenantId: string; role: string } | undefined;
+      let jitClaimMode: "named_claim" | "email_domain" | undefined;
       if (jitConfig !== null) {
         const decision = resolveJitDecision(claims, jitConfig);
         if (!decision.ok) {
           if (db !== undefined) {
-            await emitRejected(db, await resolveRejectionTenant(decision.code), decision.code);
+            await emitRejected(db, log, await resolveRejectionTenant(decision.code), decision.code);
           }
           throw new JitRejectionError(decision.code);
         }
         jitFields = { tenantId: decision.tenantId, role: decision.role };
+        jitClaimMode = tenantClaimMode(jitConfig);
       }
       const created = await ia.createOAuthUser(
         {
@@ -571,6 +613,18 @@ export function buildMintBearer(opts: BuildMintBearerOpts): MintBearer {
         },
       );
       userId = created.user.id;
+      // Emit sso.jit.user.created HERE (not via Better-Auth's create.after
+      // databaseHook). createOAuthUser runs createWithHooks, but its create.after
+      // hooks are queued post-transaction and were observed not to flush a stdout
+      // line under the RLS-wrapped adapter on this raw-adapter path (live run15).
+      // The @cjm-sso e2e asserts on the structured stdout event, so emit it
+      // directly — mirrors the returning-user role-resync emit above.
+      if (jitFields !== undefined && jitClaimMode !== undefined && db !== undefined) {
+        const createdRole = asJitRoleLiteral(jitFields.role);
+        if (createdRole !== undefined) {
+          await emitUserCreated(db, log, jitFields.tenantId, userId, createdRole, jitClaimMode);
+        }
+      }
     }
 
     // Step 5 — mint session. dontRememberMe=false → full sessionExpiration.
