@@ -353,11 +353,35 @@ describe("SSO-IMPL-03 — JIT databaseHooks + mapProfileToUser (real Postgres)",
   });
 
   // ── Branch-coverage for the defensive hook edges ──────────────────────────
-  it("create.before with no projected tenant rejects invalid_oidc_profile (defence-in-depth)", async () => {
+  it("create.before passes a non-JIT create (no projected tenant) through untouched — plain email-password sign-up must NOT be JIT-gated", async () => {
+    // The databaseHooks fire on EVERY user create, including ordinary
+    // email-password sign-ups (whose tenant comes from the RLS GUC default, not
+    // a JIT projection). The OIDC paths (mapProfileToUser / mint-bearer) project
+    // + validate the tenant BEFORE this hook, so a create arriving WITHOUT a
+    // tenantId is a non-JIT sign-up and must pass through — NOT be rejected as
+    // invalid_oidc_profile (which 422'd normal sign-ups whenever
+    // OIDC_TENANT_CLAIM was configured; live @cjm-sso-1.5b regression).
     const hooks = buildJitDatabaseHooks({ db: appDb, jitConfig: JIT_CONFIG, log: testLog });
-    await expect(
-      hooks.user.create.before({ email: "x@acme.example", name: "X" } as never, null),
-    ).rejects.toBeInstanceOf(JitRejectionError);
+    const result = await hooks.user.create.before(
+      { email: "x@acme.example", name: "X" } as never,
+      null,
+    );
+    expect(result).not.toBe(false);
+    expect((result as { data: Record<string, unknown> }).data.email).toBe("x@acme.example");
+    // The passthrough must NOT inject a tenantId — the RLS GUC default applies.
+    expect((result as { data: Record<string, unknown> }).data.tenantId).toBeUndefined();
+  });
+
+  it("create.before keeps an OIDC-projected tenantId/role intact (JIT create passes through with projection)", async () => {
+    const hooks = buildJitDatabaseHooks({ db: appDb, jitConfig: JIT_CONFIG, log: testLog });
+    const result = await hooks.user.create.before(
+      { email: "oidc@acme.example", name: "O", tenantId: ACME_TENANT_ID, role: "member" } as never,
+      null,
+    );
+    expect(result).not.toBe(false);
+    const data = (result as { data: Record<string, unknown> }).data;
+    expect(data.tenantId).toBe(ACME_TENANT_ID);
+    expect(data.role).toBe("member");
   });
 
   it("create.after is a no-op when no valid role projected (no audit row)", async () => {

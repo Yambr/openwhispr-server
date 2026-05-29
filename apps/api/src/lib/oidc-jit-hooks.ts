@@ -228,16 +228,21 @@ export function buildJitDatabaseHooks(deps: JitHookDeps): JitDatabaseHooks {
   return {
     user: {
       create: {
-        // The resolver already projected tenantId/role in mapProfileToUser
-        // (web) or mint-bearer (desktop). create.before asserts the projection
-        // landed — a JIT create with no tenant is a programmer error, not a
-        // silent fall-through to the default tenant.
+        // The OIDC paths (web mapProfileToUser / desktop mint-bearer) project
+        // {tenantId, role} onto the user AND validate/reject the JIT decision
+        // BEFORE this hook runs, so a legitimate OIDC create always arrives with
+        // a non-empty tenantId. A create that reaches here WITHOUT a tenantId is
+        // therefore NOT an OIDC create — it is a plain email-password sign-up
+        // (whose tenant is supplied by the RLS GUC default, DEFAULT_TENANT_ID).
+        // Pass those through untouched; the databaseHooks fire on EVERY user
+        // create, so hard-rejecting a missing tenant here wrongly 422s normal
+        // sign-ups whenever OIDC_TENANT_CLAIM is configured (mirrors the
+        // update.before passthrough below; live @cjm-sso-1.5b regression).
         before: async (user) => {
-          const tenantId = user.tenantId;
-          if (typeof tenantId !== "string" || tenantId.length === 0) {
-            await emitRejected(deps, "invalid_oidc_profile");
-            throw new JitRejectionError("invalid_oidc_profile");
-          }
+          // Whether OIDC-projected (tenantId present) or a plain email-password
+          // sign-up (tenantId absent → RLS GUC default applies), pass the create
+          // through untouched. The OIDC paths already validated + projected
+          // upstream; non-JIT creates must not be JIT-gated.
           return { data: { ...user } };
         },
         // POST-commit (D-69-2): own withTenant tx for the audit row.

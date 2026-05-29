@@ -363,9 +363,65 @@ function parseComposePsJson(
 }
 
 /**
- * Poll `compose ps --format json api` until the api container reports
- * `State=exited` OR the deadline fires. Resolves with the observed exit
- * code (or null on timeout).
+ * Resolve the api container id for a project, then `docker inspect` its true
+ * last exit code + restart count. `docker compose ps --format json` reports a
+ * TRANSIENT ExitCode (0) while a container is mid restart-loop, but
+ * `inspect .State.ExitCode` carries the REAL last exit code even in the
+ * `restarting` state (empirically verified). Returns null if the container or
+ * its exit state can't be read yet.
+ */
+async function inspectApiExit(
+  projectName: string,
+  composeFiles: readonly string[],
+  envFilePath: string | undefined,
+  spawnFn: typeof spawn | undefined,
+): Promise<{ status: string; exitCode: number; restartCount: number } | null> {
+  const idArgs = [
+    ...(envFilePath ? ["--env-file", envFilePath] : []),
+    "-p",
+    projectName,
+    ...buildComposeFileArgs(composeFiles),
+    "ps",
+    "-aq",
+    "api",
+  ];
+  const { stdout: idOut } = await runComposeCapture(idArgs, { spawnFn });
+  const cid = idOut.trim().split("\n")[0]?.trim();
+  if (!cid) return null;
+  // `docker inspect` (NOT `compose`) — direct container introspection.
+  const spawnImpl = spawnFn ?? spawn;
+  const inspected = await new Promise<string>((res) => {
+    let out = "";
+    const child = spawnImpl(
+      "docker",
+      ["inspect", cid, "--format", "{{.State.Status}} {{.State.ExitCode}} {{.RestartCount}}"],
+      { cwd: REPO_ROOT, env: process.env, stdio: ["ignore", "pipe", "ignore"] },
+    );
+    (child.stdout as NodeJS.ReadableStream | null)?.on("data", (b) => {
+      out += String(b);
+    });
+    child.on("close", () => res(out));
+    child.on("error", () => res(""));
+  });
+  const [status, exitStr, restartStr] = inspected.trim().split(/\s+/);
+  if (!status) return null;
+  return {
+    status,
+    exitCode: Number.parseInt(exitStr ?? "", 10) || 0,
+    restartCount: Number.parseInt(restartStr ?? "", 10) || 0,
+  };
+}
+
+/**
+ * Poll until the api container reports a terminal loud-fail signal, then resolve
+ * its exit code (or null on timeout). A container that exits non-zero during
+ * boot with `restart: unless-stopped` does NOT settle on `State=exited` — Docker
+ * restart-loops it, so `compose ps` flickers between `restarting`/`running` and
+ * never stably shows `exited` (compose ps ExitCode reads 0 mid-loop). Detect the
+ * crash via BOTH signals: a stable `compose ps State=exited`, OR a
+ * `docker inspect` showing the container restart-looping (`restarting`, or
+ * RestartCount>0) with a non-zero last exit code. Either is an authentic
+ * loud-fail observation.
  */
 async function pollApiExit(
   projectName: string,
@@ -376,6 +432,10 @@ async function pollApiExit(
   intervalMs: number,
   spawnFn: typeof spawn | undefined,
 ): Promise<number | null> {
+  // We deliberately return the OBSERVED code even if it doesn't match
+  // expectedExit — the step layer asserts the comparison so the diagnostic
+  // surfaces in the cucumber report.
+  void expectedExit;
   const started = Date.now();
   while (Date.now() - started < timeoutMs) {
     const psArgs = [
@@ -392,12 +452,19 @@ async function pollApiExit(
     const rows = parseComposePsJson(stdout);
     const api = rows.find((r) => r.Service === "api") ?? rows[0];
     if (api && api.State === "exited") {
-      const observed = typeof api.ExitCode === "number" ? api.ExitCode : -1;
-      // We deliberately return the observed code even if it doesn't match
-      // expectedExit — the step layer asserts the comparison so the
-      // diagnostic surfaces in the cucumber report.
-      void expectedExit; // referenced for clarity; logic-equality is at step level
-      return observed;
+      return typeof api.ExitCode === "number" ? api.ExitCode : -1;
+    }
+    // Restart-loop case: a boot-time non-zero exit under `restart: unless-stopped`
+    // never settles on `exited`. `docker inspect` carries the true last exit code.
+    const inspected = await inspectApiExit(projectName, composeFiles, envFilePath, spawnFn);
+    if (
+      inspected &&
+      inspected.exitCode !== 0 &&
+      (inspected.status === "restarting" ||
+        inspected.status === "exited" ||
+        inspected.restartCount > 0)
+    ) {
+      return inspected.exitCode;
     }
     await new Promise((r) => setTimeout(r, intervalMs));
   }

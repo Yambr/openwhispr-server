@@ -265,6 +265,57 @@ describe("bootStack — expectExit + stderr capture", () => {
     // can diagnose stuck boots.
     expect(typeof result.stderr).toBe("string");
   });
+
+  it("detects a restart-looping crash via docker inspect when compose ps never shows exited (live @cjm-sso-1.6)", async () => {
+    // A boot-time non-zero exit under `restart: unless-stopped` never settles on
+    // State=exited — Docker restart-loops it, so `compose ps` flickers
+    // restarting/running with a transient ExitCode=0 (empirically verified).
+    // The harness must fall back to `docker inspect .State.ExitCode`, which
+    // carries the REAL last exit code even mid-loop.
+    const fatal = "FATAL oidc-jit-boot: OIDC_TENANT_MAPPING is not valid JSON. Refusing to boot";
+    const router = (cmd: string, args: string[]): FakeChildSpec => {
+      // openwhispr-stack running-detection.
+      if (args.includes("ps") && args.includes("-q") && args.includes("openwhispr")) {
+        return { stdout: "" };
+      }
+      // inspectApiExit's `compose ps -aq api` → return a fake container id.
+      if (args.includes("ps") && args.includes("-aq") && args.some((a) => a.startsWith("api"))) {
+        return { stdout: "deadbeefcafe\n" };
+      }
+      // exit-status poll `compose ps --format json` → ALWAYS restarting, ExitCode 0
+      // (never settles on exited — the restart-loop case).
+      if (args.includes("ps") && args.includes("--format")) {
+        return { stdout: JSON.stringify({ Service: "api", State: "restarting", ExitCode: 0 }) };
+      }
+      // `docker inspect <cid> --format ...` → the TRUE last exit code (78), mid-loop.
+      if (cmd === "docker" && args[0] === "inspect") {
+        return { stdout: "restarting 78 5\n" };
+      }
+      if (args.includes("logs") && args.includes("api")) {
+        return { stdout: `${fatal}\n` };
+      }
+      return { exitCode: 0 };
+    };
+    const { spawnFn } = makeSpawnRecorder(router);
+
+    const result = await bootStack({
+      composeFiles: ["docker-compose.yml"],
+      envOverrides: { OIDC_TENANT_CLAIM: "email_domain", OIDC_TENANT_MAPPING: "{not valid json" },
+      expectExit: 78,
+      scratchDir,
+      scenarioId: "jit-malformed-boot",
+      spawnFn,
+      waitForReadinessFn: waitOk,
+      skipUserStackStop: true,
+      inheritStdio: false,
+      expectExitTimeoutMs: 500,
+      expectExitIntervalMs: 25,
+    });
+
+    expect(result.exitCode).toBe(78);
+    expect(result.stderr).toContain("FATAL oidc-jit-boot");
+    expect(waitOk).not.toHaveBeenCalled();
+  });
 });
 
 describe("bootStack — default scenario env-overrides (rate-limit propagation)", () => {
