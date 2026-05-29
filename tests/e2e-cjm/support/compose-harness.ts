@@ -668,7 +668,17 @@ export async function tearStack(opts: TearStackOptions = {}): Promise<{
   userStackStartExitCode: number | null;
 }> {
   const projectName = opts.projectName ?? E2E_PROJECT;
-  const composeFiles = opts.composeFiles ?? COMPOSE_FILES;
+  const baseComposeFiles = opts.composeFiles ?? COMPOSE_FILES;
+  // Mirror bootStack's auto-include of the dev-tools overlay: `down` must be
+  // invoked with the SAME compose-file set the `up` used, or compose can leave
+  // the project's network behind (the `up` declared it across files the `down`
+  // didn't list). A leaked `<project>_openwhispr_internal` network per run
+  // eventually exhausts Docker's address-pool and fails the NEXT boot with
+  // "could not find an available, non-overlapping IPv4 address pool" — observed
+  // after ~18 @cjm-sso-1.6 iterations left orphaned networks.
+  const composeFiles = baseComposeFiles.includes(DEV_TOOLS_OVERLAY)
+    ? baseComposeFiles
+    : [...baseComposeFiles, DEV_TOOLS_OVERLAY];
   const spawnFn = opts.spawnFn;
   const inheritStdio = opts.inheritStdio;
 

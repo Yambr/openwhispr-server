@@ -662,4 +662,44 @@ describe("tearStack — temp env file cleanup", () => {
 
     expect(() => readFileSync(envPath, "utf8")).toThrow();
   });
+
+  it("auto-includes the dev-tools overlay in the `down` file set (matches bootStack → no leaked network)", async () => {
+    const router = (_cmd: string, args: string[]): FakeChildSpec => {
+      if (args.includes("ps") && args.includes("-q")) return { stdout: "" };
+      return { exitCode: 0 };
+    };
+    const { spawnFn, calls } = makeSpawnRecorder(router);
+
+    await tearStack({
+      composeFiles: ["docker-compose.yml"],
+      spawnFn,
+      skipUserStackRestart: true,
+      inheritStdio: false,
+    });
+
+    const downCall = calls.find((c) => c.joined.includes(" down "));
+    expect(downCall, "expected a `down` call").toBeTruthy();
+    // The down must list the dev-tools overlay (bootStack auto-includes it on
+    // `up`); a mismatched file set leaves the project network behind.
+    expect(downCall?.joined).toContain(DEV_TOOLS_OVERLAY);
+  });
+
+  it("does not double-add the dev-tools overlay when the caller already listed it", async () => {
+    const router = (_cmd: string, args: string[]): FakeChildSpec => {
+      if (args.includes("ps") && args.includes("-q")) return { stdout: "" };
+      return { exitCode: 0 };
+    };
+    const { spawnFn, calls } = makeSpawnRecorder(router);
+
+    await tearStack({
+      composeFiles: ["docker-compose.yml", DEV_TOOLS_OVERLAY],
+      spawnFn,
+      skipUserStackRestart: true,
+      inheritStdio: false,
+    });
+
+    const downCall = calls.find((c) => c.joined.includes(" down "));
+    const occurrences = (downCall?.args ?? []).filter((a) => a === DEV_TOOLS_OVERLAY).length;
+    expect(occurrences).toBe(1);
+  });
 });
