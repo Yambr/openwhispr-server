@@ -70,6 +70,13 @@ const CHANNEL_SCHEME = "openwhispr";
 
 /** Seeded realm users (realm-openwhispr-test.json). */
 const USERS = {
+  // erin is EXCLUSIVE to @cjm-sso-1.1 (first-time JIT create) — no other scenario
+  // signs her in, so her very first OIDC login is guaranteed to hit mint-bearer's
+  // new-user branch (→ sso.jit.user.created). alice is shared by 1.2's Given,
+  // which does a "first login creates alice" — so reusing alice for 1.1 raced:
+  // whichever ran first created her, and 1.1 then saw a RETURNING login emitting
+  // sso.jit.role.updated, never user.created (observed flaking 1.1).
+  erin: { username: "erin", password: "erin-test-password", email: "erin@acme.example" },
   alice: { username: "alice", password: "alice-test-password", email: "alice@acme.example" },
   carol: { username: "carol", password: "carol-test-password", email: "carol@acme.example" },
   dave: { username: "dave", password: "dave-test-password", email: "dave@acme.example" },
@@ -458,11 +465,13 @@ When(
   "a user signs in via OIDC for the first time with tenant claim {string}",
   async ({ apiBaseURL, tenantId }, _claim: string) => {
     const s = stateFor(tenantId);
-    const r = await desktopOidcLogin(apiBaseURL, USERS.alice);
-    expect(r.status, `alice OIDC login: ${r.errorCode ?? ""}`).toBe(302);
+    // erin is exclusive to 1.1 → her FIRST login deterministically creates the
+    // user (mint-bearer new-user branch → sso.jit.user.created).
+    const r = await desktopOidcLogin(apiBaseURL, USERS.erin);
+    expect(r.status, `erin OIDC login: ${r.errorCode ?? ""}`).toBe(302);
     s.bearer = r.bearer;
     s.deepLink = r.deepLink;
-    expect(s.bearer, "no bearer minted for alice").toBeTruthy();
+    expect(s.bearer, "no bearer minted for erin").toBeTruthy();
     s.session = await getSession(apiBaseURL, s.bearer as string);
   },
 );

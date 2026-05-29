@@ -163,6 +163,22 @@
       "groups": ["/openwhispr-engineering", "/okta-everyone"]
     },
     {
+      "username": "erin",
+      "email": "erin@acme.example",
+      "emailVerified": true,
+      "enabled": true,
+      "firstName": "Erin",
+      "lastName": "Firsttime",
+      "credentials": [
+        {
+          "type": "password",
+          "value": "erin-test-password",
+          "temporary": false
+        }
+      ],
+      "groups": ["/openwhispr-engineering"]
+    },
+    {
       "username": "carol",
       "email": "carol@acme.example",
       "emailVerified": true,
