@@ -118,7 +118,16 @@ describe("sso.steps.ts — @cjm-sso-1.* bindings (Phase 69)", () => {
     // Replay the exact options object the When step constructs.
     const opts = {
       projectName: "e2e-cjm-sso16-abc",
-      composeFiles: ["docker-compose.yml", "compose/docker-compose.embedded-litellm.yml"],
+      // The fast-health overlay MUST be present: it collapses litellm's
+      // depends_on health gate (start_period: 600s → ~3s) so the api boots and
+      // crashes inside budget instead of waiting out a cold litellm (the live
+      // 3.0m → 180s-timeout regression this overlay closes). Asserting its
+      // membership below guards against the overlay being dropped.
+      composeFiles: [
+        "docker-compose.yml",
+        "compose/docker-compose.embedded-litellm.yml",
+        "compose/test/litellm-fast-health.yml",
+      ],
       scenarioId: "e2e-cjm-sso16-abc",
       envOverrides: {
         OIDC_TENANT_CLAIM: "email_domain",
@@ -132,6 +141,11 @@ describe("sso.steps.ts — @cjm-sso-1.* bindings (Phase 69)", () => {
     const [calledOpts] = bootStackSpy.mock.calls[0];
     expect((calledOpts as typeof opts).expectExit).toBe(78);
     expect((calledOpts as typeof opts).envOverrides.OIDC_TENANT_MAPPING).toBe("{not valid json");
+    // The litellm-fast-health overlay must ride along so the boot is not gated
+    // by a cold litellm health probe.
+    expect((calledOpts as typeof opts).composeFiles).toContain(
+      "compose/test/litellm-fast-health.yml",
+    );
     // The Then step asserts BOTH the non-zero exit AND the FATAL log substring.
     expect(result.exitCode).toBe(78);
     expect(result.stderr).toContain("FATAL oidc-jit-boot");

@@ -98,7 +98,17 @@ services:
       # list (docker-compose.yml:414 litellm,valkey,postgres,mailpit) with the
       # Keycloak vhost. Mirrors the feedback_k8s_egress_smtp_default_deny pattern.
       OUTBOUND_ALLOWED_HOSTS: litellm,valkey,postgres,mailpit,keycloak.localhost,keycloak
-      OUTBOUND_PRIVATE_HOST_ALLOWLIST: keycloak.localhost,keycloak
+      # BOTH SSRF gates are default-deny: hostname (OUTBOUND_ALLOWED_HOSTS, above)
+      # AND private-IP (RFC1918 block-list, bypassed only via this list). The
+      # bundled litellm/valkey/postgres/mailpit resolve to docker-bridge private
+      # IPs (e.g. litellm → 192.168.x.x), so they MUST appear HERE too — not only
+      # in OUTBOUND_ALLOWED_HOSTS. Earlier this list carried only the Keycloak
+      # vhost, which silently dropped litellm from the base default
+      # (docker-compose.yml:415 litellm,valkey,postgres,mailpit): @cjm-sso-1.5b's
+      # real /api/transcribe → litellm call then tripped the RFC1918 gate with a
+      # 502 SSRFBlockedError (rfc1918_192_168; host=litellm). Restore the base
+      # bundled-service set and UNION the Keycloak hosts on top.
+      OUTBOUND_PRIVATE_HOST_ALLOWLIST: litellm,valkey,postgres,mailpit,keycloak.localhost,keycloak
       # --- ingress origin (validateIngressBoot, NODE_ENV=production) -----------
       # The @sso run layers compose/docker-compose.ingress.yml (Traefik + the
       # keycloak.localhost router below) AND tests/e2e-cjm/compose-overrides.yml.

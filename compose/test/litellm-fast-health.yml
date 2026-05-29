@@ -1,0 +1,38 @@
+# SPDX-License-Identifier: FSL-1.1-ALv2
+#
+# TEST-ONLY overlay for the @cjm-sso-1.6 boot-config loud-fail scenario.
+#
+# WHY: 1.6 boots an ISOLATED compose project (e2e-cjm-sso16-*) purely to prove
+# the api loud-fails (validateJitBoot → exit 78) on a malformed
+# OIDC_TENANT_MAPPING. The api `depends_on: litellm condition: service_healthy`
+# (docker-compose.yml:422-423), and the bundled litellm healthcheck carries a
+# `start_period: 600s` (docker-compose.yml) with a real `/health/liveliness`
+# probe — so in a COLD fresh project `docker compose up -d` blocks 60-150s+
+# waiting for litellm to report healthy BEFORE it even creates the api
+# container. The api then crashes in ~15s, but the total overran the 180s
+# Playwright step budget (live run: exactly 3.0m → "Test timeout of 180000ms").
+#
+# The malformed-mapping loud-fail is a PURE config-validation test: the api
+# never issues a single LiteLLM request before it exits 78 (validateJitBoot runs
+# in buildAuth, and the process dies there). litellm's ACTUAL health is
+# irrelevant — it only needs to satisfy the docker `depends_on` gate so the api
+# is allowed to start and crash fast.
+#
+# This overlay replaces litellm's healthcheck with a trivially-true probe and a
+# ~1s start_period so litellm flips `healthy` in ~3s, the api starts ~immediately
+# after, reaches validateJitBoot, and exits 78 well inside the budget.
+#
+# `depends_on` cannot be used to DROP the litellm dependency: compose MERGES
+# depends_on by key across files (verified on compose v2.23) — an override
+# re-adds litellm. A healthcheck override, by contrast, cleanly REPLACES the
+# `test`/`start_period` fields. Hence this approach rather than a depends_on
+# strip. This file is NEVER layered onto a real (non-1.6) run, so the genuine
+# litellm readiness gate is untouched everywhere else.
+services:
+  litellm:
+    healthcheck:
+      test: ["CMD-SHELL", "true"]
+      start_period: 1s
+      interval: 2s
+      timeout: 2s
+      retries: 2

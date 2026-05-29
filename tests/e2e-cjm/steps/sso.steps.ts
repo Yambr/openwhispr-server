@@ -755,24 +755,40 @@ Given(
   },
 );
 
-// Longer step timeout: this boots an ISOLATED compose project
-// (e2e-cjm-sso16-*) whose api service is `build:`-only with no `image:` tag, so
-// `docker compose up` resolves/rebuilds the api image for that fresh project
-// before the container can boot+crash. Even with a warm BuildKit layer cache the
-// rebuild + boot + exit-poll can approach the default 30s Playwright budget
-// (live run: 40.4s → timeout, exitCode null). Give it room so the real exit-78
-// loud-fail is observed rather than the test timing out mid-build. Pure
-// test-harness timing — the production loud-fail (validateJitBoot exit 78) is
-// already unit-proven and unchanged.
+// Compose-file set for the isolated 1.6 boot project. The litellm-fast-health
+// overlay (compose/test/litellm-fast-health.yml) replaces the bundled litellm
+// healthcheck (real /health/liveliness probe + start_period: 600s) with a
+// trivially-true probe so litellm flips `healthy` in ~3s. WHY this matters: the
+// api `depends_on: litellm condition: service_healthy` (docker-compose.yml:422),
+// so a COLD litellm gates the api's start by 60-150s+ — which overran the prior
+// 180s Playwright budget (live: exactly 3.0m timeout). The loud-fail is pure
+// config validation (validateJitBoot in buildAuth → exit 78); the api never
+// issues a LiteLLM request before it dies, so litellm's real health is
+// irrelevant — it only has to satisfy the docker depends_on gate. depends_on
+// can't be used to DROP the dep (compose MERGES it back by key); a healthcheck
+// override cleanly REPLACES it. See the overlay header for the full rationale.
+const SSO16_COMPOSE_FILES = [
+  "docker-compose.yml",
+  "compose/docker-compose.embedded-litellm.yml",
+  "compose/test/litellm-fast-health.yml",
+] as const;
+
+// Step timeout: this boots an ISOLATED compose project (e2e-cjm-sso16-*) whose
+// api service is `build:`-only with no `image:` tag, so `docker compose up`
+// resolves/rebuilds the api image for that fresh project before the container
+// can boot+crash. With the fast-health overlay collapsing the litellm gate to
+// ~3s, the critical path is rebuild (warm-cache) + api boot + exit-poll ≈ 30-60s.
+// 120s leaves comfortable headroom for a cold BuildKit cache without the prior
+// 3.0m overrun. Pure test-harness timing — the production loud-fail
+// (validateJitBoot exit 78) is already unit-proven and unchanged.
 When("the api container boots", async ({ tenantId, $test }) => {
   // Raise THIS scenario's Playwright budget (playwright-bdd 8.x has no per-step
   // `timeout` option — only `tags` — so extend via the injected $test fixture).
-  $test.setTimeout(180_000);
+  $test.setTimeout(120_000);
   const s = stateFor(tenantId);
   s.bootResult = await bootStack({
     projectName: s.bootProjectName,
-    // Slim-core base + embedded-litellm (matches the byok loud-fail precedent).
-    composeFiles: ["docker-compose.yml", "compose/docker-compose.embedded-litellm.yml"],
+    composeFiles: [...SSO16_COMPOSE_FILES],
     scenarioId: s.bootProjectName,
     envOverrides: {
       // OIDC_TENANT_CLAIM set so readJitConfig() does NOT early-return null —
@@ -781,15 +797,11 @@ When("the api container boots", async ({ tenantId, $test }) => {
       OIDC_TENANT_MAPPING: "{not valid json",
     },
     expectExit: 78,
-    // The api `depends_on` litellm + valkey with `condition: service_healthy`
-    // (docker-compose.yml:419-425), so `up -d` does NOT start the api until
-    // litellm reports healthy (~30-60s after its own boot). Only THEN does the
-    // api start → readJitConfig() → validateJitBoot() → exit 78. The default
-    // 15s expectExit poll budget expires long before the api even starts, so it
-    // never observes the crash (live: exitCode null). Give the poll enough room
-    // to span the dependency-health wait + the api boot + the restart-loop
-    // detection (kept under the 180s Playwright step budget set above).
-    expectExitTimeoutMs: 150_000,
+    // With litellm fake-healthy in ~3s the api starts almost immediately, reaches
+    // readJitConfig() → validateJitBoot() → exit 78 within ~15-25s. Poll budget
+    // spans the (now-short) dependency-health wait + api boot + restart-loop
+    // detection, kept under the 120s Playwright step budget set above.
+    expectExitTimeoutMs: 90_000,
     expectExitIntervalMs: 1_000,
     skipUserStackStop: true,
     inheritStdio: false,
@@ -813,7 +825,7 @@ After({ tags: "@cjm-sso-1.6" }, async ({ tenantId }) => {
   if (s.bootProjectName) {
     await tearStack({
       projectName: s.bootProjectName,
-      composeFiles: ["docker-compose.yml", "compose/docker-compose.embedded-litellm.yml"],
+      composeFiles: [...SSO16_COMPOSE_FILES],
       skipUserStackRestart: true,
       inheritStdio: false,
       ...(s.bootResult?.envFilePath ? { envFilePath: s.bootResult.envFilePath } : {}),
