@@ -785,13 +785,19 @@ const SSO16_COMPOSE_FILES = [
 // resolves/rebuilds the api image for that fresh project before the container
 // can boot+crash. With the fast-health overlay collapsing the litellm gate to
 // ~3s, the critical path is rebuild (warm-cache) + api boot + exit-poll ≈ 30-60s.
-// 120s leaves comfortable headroom for a cold BuildKit cache without the prior
-// 3.0m overrun. Pure test-harness timing — the production loud-fail
-// (validateJitBoot exit 78) is already unit-proven and unchanged.
+// The critical path is rebuild (warm-cache) + api boot + exit-poll. Detection
+// now fires on the FIRST observed restart (pollApiExit returns the last
+// non-zero exit as soon as restartCount>0), so the poll rarely runs its full
+// budget. Budget the step at 180s = up (~35s) + poll (≤90s) + headroom, so a
+// cold BuildKit cache or full-stack load contention can't trip the step timeout
+// before the loud-fail is observed (the live regression: up+slow-restart-loop
+// overran the prior 120s step budget → exitCode null). Pure test-harness
+// timing — the production loud-fail (validateJitBoot exit 78) is already
+// unit-proven and unchanged.
 When("the api container boots", async ({ tenantId, $test }) => {
   // Raise THIS scenario's Playwright budget (playwright-bdd 8.x has no per-step
   // `timeout` option — only `tags` — so extend via the injected $test fixture).
-  $test.setTimeout(120_000);
+  $test.setTimeout(180_000);
   const s = stateFor(tenantId);
   s.bootResult = await bootStack({
     projectName: s.bootProjectName,

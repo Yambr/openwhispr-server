@@ -365,6 +365,62 @@ describe("bootStack — expectExit + stderr capture", () => {
     expect(result.stderr).toContain("FATAL oidc-jit-boot");
     expect(waitOk).not.toHaveBeenCalled();
   });
+
+  it("detects a crash even when the poll keeps sampling the `running 0` window mid-restart (load race)", async () => {
+    // A crash-looping container oscillates between `restarting ExitCode=78`
+    // (backoff) and `running ExitCode=0` (the brief up-window before re-crash).
+    // Under full-stack load the running-window widens and the poll can keep
+    // sampling `running 0 <restartCount>0>` and miss the `restarting 78`
+    // instant. The harness must still resolve: it remembers the last non-zero
+    // exit and treats restartCount>0 as the definitive crash signal. This router
+    // returns `restarting 78` ONCE (so lastNonZeroExit is captured) then
+    // `running 0 7` forever — proving we don't hang waiting for another
+    // `restarting` window.
+    let inspectCalls = 0;
+    const fatal = "FATAL oidc-jit-boot: OIDC_TENANT_MAPPING is not valid JSON. Refusing to boot";
+    const router = (cmd: string, args: string[]): FakeChildSpec => {
+      if (args.includes("ps") && args.includes("-q") && args.includes("openwhispr")) {
+        return { stdout: "" };
+      }
+      if (args.includes("ps") && args.includes("-aq") && args.some((a) => a.startsWith("api"))) {
+        return { stdout: "deadbeefcafe\n" };
+      }
+      // compose ps --format json → never `exited` (restart-loop).
+      if (args.includes("ps") && args.includes("--format")) {
+        return { stdout: JSON.stringify({ Service: "api", State: "running", ExitCode: 0 }) };
+      }
+      if (cmd === "docker" && args[0] === "inspect") {
+        inspectCalls += 1;
+        // First inspect catches the `restarting 78` backoff window; every
+        // subsequent inspect samples the `running 0` up-window (restartCount>0).
+        return inspectCalls === 1 ? { stdout: "restarting 78 1\n" } : { stdout: "running 0 7\n" };
+      }
+      if (args.includes("logs") && args.includes("api")) {
+        return { stdout: `${fatal}\n` };
+      }
+      return { exitCode: 0 };
+    };
+    const { spawnFn } = makeSpawnRecorder(router);
+
+    const result = await bootStack({
+      composeFiles: ["docker-compose.yml"],
+      envOverrides: { OIDC_TENANT_CLAIM: "email_domain", OIDC_TENANT_MAPPING: "{not valid json" },
+      expectExit: 78,
+      scratchDir,
+      scenarioId: "jit-malformed-load-race",
+      spawnFn,
+      waitForReadinessFn: waitOk,
+      skipUserStackStop: true,
+      inheritStdio: false,
+      expectExitTimeoutMs: 500,
+      expectExitIntervalMs: 25,
+    });
+
+    // Resolved to the remembered non-zero exit (78), not null — even though the
+    // FIRST inspect already returns restarting/78, the point is the harness
+    // returns the crash code and never hangs on the running-window samples.
+    expect(result.exitCode).toBe(78);
+  });
 });
 
 describe("bootStack — default scenario env-overrides (rate-limit propagation)", () => {

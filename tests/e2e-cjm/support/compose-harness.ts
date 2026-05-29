@@ -448,6 +448,15 @@ async function pollApiExit(
   // surfaces in the cucumber report.
   void expectedExit;
   const started = Date.now();
+  // Last non-zero exit code seen across the restart loop. Under `restart:
+  // unless-stopped` a crash-looping container oscillates between
+  // `restarting ExitCode=<N>` (during backoff) and `running ExitCode=0` (the
+  // brief moment it's up before re-crashing); the `running 0` window widens the
+  // sicker the backoff gets, so a point-in-time poll can repeatedly sample
+  // `running 0` and miss the `restarting N` window — especially under full-stack
+  // load contention. We therefore remember the last non-zero exit and treat
+  // ANY observed restart (restartCount > 0) as the definitive crash signal.
+  let lastNonZeroExit: number | null = null;
   while (Date.now() - started < timeoutMs) {
     const psArgs = [
       ...(envFilePath ? ["--env-file", envFilePath] : []),
@@ -468,18 +477,27 @@ async function pollApiExit(
     // Restart-loop case: a boot-time non-zero exit under `restart: unless-stopped`
     // never settles on `exited`. `docker inspect` carries the true last exit code.
     const inspected = await inspectApiExit(projectName, composeFiles, envFilePath, spawnFn);
-    if (
-      inspected &&
-      inspected.exitCode !== 0 &&
-      (inspected.status === "restarting" ||
-        inspected.status === "exited" ||
-        inspected.restartCount > 0)
-    ) {
-      return inspected.exitCode;
+    if (inspected) {
+      if (inspected.exitCode !== 0) lastNonZeroExit = inspected.exitCode;
+      // `restarting`/`exited` with a non-zero code is an unambiguous crash.
+      if (
+        inspected.exitCode !== 0 &&
+        (inspected.status === "restarting" || inspected.status === "exited")
+      ) {
+        return inspected.exitCode;
+      }
+      // restartCount > 0 means the container HAS crashed at least once, even if
+      // this instant samples `running ExitCode=0` mid-restart. Return the last
+      // non-zero exit we saw (or, if we somehow only ever sampled the running
+      // window, the next loop captures the code — but a positive restartCount is
+      // itself proof the boot is not healthy).
+      if (inspected.restartCount > 0 && lastNonZeroExit !== null) {
+        return lastNonZeroExit;
+      }
     }
     await new Promise((r) => setTimeout(r, intervalMs));
   }
-  return null;
+  return lastNonZeroExit;
 }
 
 /**
