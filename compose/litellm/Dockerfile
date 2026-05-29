@@ -38,13 +38,23 @@ ARG REALTIME_HANDLER=/app/litellm/llms/openai/realtime/handler.py
 # build fails LOUDLY if either (a) the line was already absent (LiteLLM
 # fixed it upstream — retire this patch) or (b) the patch left it behind.
 RUN set -eux; \
-    grep -q '"OpenAI-Beta": "realtime=v1"' "${REALTIME_HANDLER}" \
-      || { echo "R31-PATCH-FATAL: OpenAI-Beta line not found in ${REALTIME_HANDLER} — LiteLLM may have changed; re-derive compose/litellm/r31-drop-openai-beta-header.patch"; exit 1; }; \
-    sed -i '/"OpenAI-Beta": "realtime=v1",/d' "${REALTIME_HANDLER}"; \
     if grep -q '"OpenAI-Beta": "realtime=v1"' "${REALTIME_HANDLER}"; then \
-      echo "R31-PATCH-FATAL: OpenAI-Beta line still present after sed"; exit 1; \
+      sed -i '/"OpenAI-Beta": "realtime=v1",/d' "${REALTIME_HANDLER}"; \
+      if grep -q '"OpenAI-Beta": "realtime=v1"' "${REALTIME_HANDLER}"; then \
+        echo "R31-PATCH-FATAL: OpenAI-Beta line still present after sed"; exit 1; \
+      fi; \
+      echo "R31-PATCH-OK: OpenAI-Beta header dropped from ${REALTIME_HANDLER}"; \
+    else \
+      # Upstream LiteLLM retired the hardcoded `OpenAI-Beta: realtime=v1` header on
+      # `main-v1.83.14-stable` (handler.py now only carries a "remove OpenAI-Beta"
+      # comment in _get_additional_headers, no literal). The patch's goal — that the
+      # header is absent — is already satisfied upstream, so this is a NO-OP, not a
+      # failure. We assert the header is genuinely gone (defence-in-depth) rather
+      # than hard-failing the build on the very outcome the patch wanted (the
+      # original guard's documented "LiteLLM fixed it upstream — retire this patch"
+      # branch). If a future base re-introduces it, the `if` re-applies the sed.
+      echo "R31-PATCH-NOOP: OpenAI-Beta realtime=v1 header already absent upstream in ${REALTIME_HANDLER} — patch retired-by-upstream, nothing to strip"; \
     fi; \
-    echo "R31-PATCH-OK: OpenAI-Beta header dropped from ${REALTIME_HANDLER}"; \
     # CRITICAL — the LiteLLM base image ships PRE-COMPILED `.pyc` bytecode.
     # CPython uses HASH-based, `UNCHECKED` `.pyc` invalidation for those
     # files: it NEVER re-checks the source and always trusts the stale
