@@ -148,13 +148,15 @@ describe("test-evidence-projects-manifest parity", () => {
     expect(ctx.liveNames.size).toBe(manifest.projects.length);
   });
 
-  it("manifest length is 22 (the canonical project count for the gate)", () => {
+  it("manifest length is 23 (the canonical project count for the gate)", () => {
+    // 23 since Phase 69-05 added the `scripts` vitest project
+    // (scripts/__tests__/seed-keycloak-realm.test.ts).
     const manifestRaw = readFileSync(
       resolve(REPO_ROOT, "tools/test-evidence-projects-manifest.json"),
       "utf8",
     );
     const manifest = JSON.parse(manifestRaw) as { projects: string[] };
-    expect(manifest.projects.length).toBe(22);
+    expect(manifest.projects.length).toBe(23);
   });
 
   it("manifest values are unique strings (no accidental dupes)", () => {

@@ -49,7 +49,15 @@ const MIGRATIONS_FOLDER = resolve(
   "migrations",
 );
 
-const ACME_TENANT_ID = "11111111-1111-1111-1111-111111111111";
+// ACME is the "accepted" tenant for a first-time JIT create. Production hardens
+// the new-user branch to REFUSE any create into a non-default tenant
+// (mint-bearer.ts:619-624 → 403 forbidden_tenant_mismatch; CLAUDE.md rule 16:
+// the users table fails CLOSED for non-default tenants, so a non-default JIT
+// create would RLS-reject at INSERT). So the accepted-create tenant MUST be
+// DEFAULT_TENANT_ID — mirrors the unit fixture (mint-bearer-jit.test.ts) and the
+// live @sso realm mapping (acme.example → 00000000…). GLOBEX stays non-default to
+// drive the unknown-tenant rejection paths.
+const ACME_TENANT_ID = "00000000-0000-0000-0000-000000000000";
 const GLOBEX_TENANT_ID = "22222222-2222-2222-2222-222222222222";
 
 const JIT_CONFIG: JitConfig = {
@@ -233,7 +241,13 @@ function buildRealAdapter(): {
                 VALUES (${id}, ${tenantId}, ${String(data.email)}, ${String(data.name)}, ${data.role ?? null})`,
           );
         });
-        await hooks.user.create.after({ id, ...data } as never, null);
+        // NOTE: the REAL desktop createOAuthUser (Better Auth's raw OAuth adapter)
+        // does NOT fire databaseHooks.create.after — that is the entire reason
+        // mint-bearer emits sso.jit.user.created DIRECTLY (mint-bearer.ts:654 /
+        // oidc-jit-hooks.ts:131). So this desktop-path mock must NOT call
+        // create.after either; doing so double-wrote the audit row (mint-bearer +
+        // hook = 2). create.before IS still exercised above (it projects the
+        // resolved tenant/role into the INSERT), matching the real seam.
         return { user: { id }, account: {} };
       },
       async createSession(userId) {
