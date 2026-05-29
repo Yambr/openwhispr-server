@@ -549,7 +549,9 @@ e2e-cjm:
 	KC_COMPOSE=""; KC_PROFILE=""; \
 	case "$$SCENARIO" in \
 		*sso*) KC_COMPOSE="-f compose/test/keycloak.yml -f compose/test/keycloak-api-env.yml"; KC_PROFILE="--profile sso"; \
-			echo "e2e-cjm: SSO run detected — adding compose/test/keycloak.yml + keycloak-api-env.yml (--profile sso, @sso-only api↔Keycloak fixture wiring per D-69-4)";; \
+			echo "e2e-cjm: SSO run detected — adding compose/test/keycloak.yml + keycloak-api-env.yml (--profile sso, @sso-only api↔Keycloak fixture wiring per D-69-4)"; \
+			: "$${LITELLM_CONFIG_FILE:=litellm_config.contract.yaml}"; export LITELLM_CONFIG_FILE; \
+			echo "e2e-cjm: SSO run uses mock-STT LiteLLM config ($$LITELLM_CONFIG_FILE) so @cjm-sso-1.5b's real /api/transcribe upload returns a deterministic 200 (usage_ledger row) WITHOUT an external STT key — the cross-tenant isolation proof reads /api/usage. OIDC scenarios 1.1-1.6 do not touch LiteLLM.";; \
 	esac; \
 	docker compose -p e2e-cjm \
 		-f docker-compose.yml -f compose/docker-compose.embedded-litellm.yml \

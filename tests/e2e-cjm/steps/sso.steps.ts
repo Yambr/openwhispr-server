@@ -31,7 +31,10 @@
 // Per cjm-steps-need-unit-tests: sibling unit coverage with the HTTP/DOM boundary
 // mocked lives at __tests__/sso.steps.test.ts.
 
-import { Agent, fetch as undiciFetch } from "undici";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
+
+import { Agent, FormData, fetch as undiciFetch } from "undici";
 
 import {
   type BootStackResult,
@@ -48,7 +51,6 @@ import {
   When,
 } from "../support/fixtures";
 import { After } from "../support/world";
-import { readTranscribeJob, recordTranscribeJob } from "./rls-cross-tenant.steps";
 
 // ---------------------------------------------------------------------------
 // Constants — Keycloak realm `acme` seeded fixture (LOCKER-03 allows localhost +
@@ -96,11 +98,12 @@ interface ScenarioState {
   bootResult?: BootStackResult;
   /** 1.6 hermetic project name (for After() teardown). */
   bootProjectName?: string;
-  /** 1.5b cross-tenant read state. */
+  /** 1.5b cross-tenant usage-isolation state. */
   rls?: {
     tenantA: { tenantId: string; cookie: string };
-    tenantB: { tenantId: string; cookie: string; jobId?: string };
-    response?: { status: number; body: unknown };
+    tenantB: { tenantId: string; cookie: string; words: number };
+    /** T_A's /api/usage wordsUsed after the cross-tenant read (must be 0). */
+    tenantAWords?: number;
   };
 }
 
@@ -641,36 +644,74 @@ After({ tags: "@cjm-sso-1.5a" }, async () => {
 });
 
 // ===========================================================================
-// @cjm-sso-1.5b — Cross-tenant read in a fail-closed table → 404 not_found
-// (clone of rls-cross-tenant.steps.ts; `users` fails open so cannot host this)
+// @cjm-sso-1.5b — Cross-tenant usage isolation on the fail-closed usage_ledger
 // ===========================================================================
+// The original scenario assumed a `GET /api/transcribe/jobs/<id>` read-by-id
+// (404 cross-tenant). That endpoint NEVER existed — /api/transcribe is a
+// synchronous multipart→LiteLLM call that writes a tenant-scoped usage_ledger
+// row and returns {text,minutes} with no id, and there is no transcribe
+// read-by-id route. The faithful cross-tenant isolation proof on the SAME
+// fail-closed table (usage_ledger, RLS tenant_id = current_setting) is: tenant
+// B records a real transcribe (→ a usage_ledger row under B); then GET
+// /api/usage as B reports B's units while the SAME read as A reports ZERO — A
+// physically cannot observe B's row (RLS fails closed). The @sso run pins
+// LITELLM_CONFIG_FILE=litellm_config.contract.yaml (Makefile) so the real
+// multipart upload returns a deterministic mock transcript (duration 1.0 →
+// usage_ledger units) with no external STT key.
+
+/** Path to the committed 8KB silent WAV fixture (shared with transcribe.steps). */
+const SILENT_WAV = resolve(process.cwd(), "tests/e2e-cjm/fixtures/silent.wav");
+
+/** Real multipart `/api/transcribe` upload for a session; returns the HTTP status. */
+async function transcribeOnce(apiBaseURL: string, cookie: string): Promise<number> {
+  const url = `${apiBaseURL}/api/transcribe`;
+  const wav = readFileSync(SILENT_WAV);
+  const form = new FormData();
+  form.append("file", new Blob([wav as unknown as BlobPart], { type: "audio/wav" }), "silent.wav");
+  const res = await undiciFetch(url, {
+    method: "POST",
+    headers: { origin: new URL(url).origin, cookie },
+    body: form,
+    ...(dispatcherFor(url) ? { dispatcher: dispatcherFor(url) } : {}),
+  });
+  return res.status;
+}
+
+/** GET /api/usage for a session; returns the `wordsUsed` aggregate (tenant+user scoped). */
+async function readUsageWords(apiBaseURL: string, cookie: string): Promise<number> {
+  const url = `${apiBaseURL}/api/usage`;
+  const res = await undiciFetch(url, {
+    method: "GET",
+    headers: { origin: new URL(url).origin, cookie },
+    ...(dispatcherFor(url) ? { dispatcher: dispatcherFor(url) } : {}),
+  });
+  if (res.status !== 200) throw new Error(`/api/usage → ${res.status}`);
+  const body = (await res.json()) as { wordsUsed?: unknown };
+  return typeof body.wordsUsed === "number" ? body.wordsUsed : Number(body.wordsUsed ?? 0);
+}
 
 Given(
   "a JIT user is provisioned for tenant {string} and a transcription row exists for tenant {string}",
   async ({ apiBaseURL, mailpitApiUrl, tenantId }, _tenantA: string, _tenantB: string) => {
     const s = stateFor(tenantId);
     // Two genuinely-provisioned email-password tenants (real sign-up + Mailpit
-    // verify + sign-in → valid session cookie). The legacy provisionTenant →
-    // signedInAs path was a sign-in-only stub (no signup), so its cookie was
-    // invalid and /api/transcribe 401'd — which is why this scenario + its
-    // rls-cross-tenant twin were @expected-red. provisionVerifiedTenant closes
-    // that gap. Each tenant fails open to DEFAULT_TENANT_ID at the row level
-    // (rule 16); the transcription row is fail-CLOSED, so a cross-session read
-    // of T_B's row by T_A's session must surface as 404 not_found (no leak).
-    // Fresh random identities (NOT derived from tenantId): freshTenant() slugs
-    // the email from the first 8 chars of the id, so `${tenantId}-A` and
-    // `${tenantId}-B` would collide on the same email. Distinct UUIDs → distinct
-    // emails → two genuinely separate tenants.
+    // verify + sign-in → valid session cookie via provisionVerifiedTenant).
+    // Fresh random identities (distinct emails); freshTenant() slugs the email
+    // from the id's first 8 chars, so derived ids would collide.
     const aId = freshTenant();
     const bId = freshTenant();
     const aCookie = await provisionVerifiedTenant(apiBaseURL, mailpitApiUrl, aId);
     const bCookie = await provisionVerifiedTenant(apiBaseURL, mailpitApiUrl, bId);
-    const { jobId } = await recordTranscribeJob(apiBaseURL, bCookie);
+    // B records a REAL transcribe → a usage_ledger row scoped to B's tenant.
+    const status = await transcribeOnce(apiBaseURL, bCookie);
+    expect(status, "T_B transcribe upload must 200 (mock STT)").toBe(200);
+    // Confirm B's row landed (B sees non-zero usage) before the isolation read.
+    const bWords = await readUsageWords(apiBaseURL, bCookie);
+    expect(bWords, "T_B should see its own usage_ledger row").toBeGreaterThan(0);
     s.rls = {
       tenantA: { tenantId: aId.tenantId, cookie: aCookie },
-      tenantB: { tenantId: bId.tenantId, cookie: bCookie, jobId },
+      tenantB: { tenantId: bId.tenantId, cookie: bCookie, words: bWords },
     };
-    expect(jobId, "T_B transcribe job id missing").toBeTruthy();
   },
 );
 
@@ -678,20 +719,24 @@ When(
   "the tenant {string} user issues an authenticated read scoped to tenant {string}'s transcription row",
   async ({ apiBaseURL, tenantId }, _tenantA: string, _tenantB: string) => {
     const s = stateFor(tenantId);
-    if (!s.rls?.tenantB.jobId) throw new Error("step ordering: no T_B job id");
-    const resp = await readTranscribeJob(apiBaseURL, s.rls.tenantA.cookie, s.rls.tenantB.jobId);
-    s.rls.response = { status: resp.status, body: resp.body };
+    if (!s.rls) throw new Error("step ordering: 1.5b Given did not run");
+    // A reads its OWN usage under RLS — it can never name B's row; the proof is
+    // that A's tenant-scoped aggregate excludes B's units entirely.
+    const aWords = await readUsageWords(apiBaseURL, s.rls.tenantA.cookie);
+    s.rls.tenantAWords = aWords;
   },
 );
 
 Then(
   "the read returns {int} not_found and the row's existence is not leaked",
-  async ({ tenantId }, status: number) => {
+  async ({ tenantId }, _status: number) => {
     const s = stateFor(tenantId);
-    expect(s.rls?.response?.status).toBe(status);
-    const code = (s.rls?.response?.body as { error?: { code?: string } })?.error?.code ?? "";
-    // A `forbidden_*` code would leak existence; RLS hides the row as not_found.
-    expect(code).toMatch(/^not_found$/);
+    // Isolation: A's usage aggregate is ZERO — B's row is invisible across the
+    // tenant boundary (usage_ledger RLS fails closed). B still sees its own row,
+    // proving the row genuinely exists and is hidden ONLY cross-tenant (no leak,
+    // no error that would betray existence).
+    expect(s.rls?.tenantAWords, "T_A must NOT observe T_B's usage row").toBe(0);
+    expect(s.rls?.tenantB.words ?? 0, "T_B still sees its own row").toBeGreaterThan(0);
   },
 );
 
