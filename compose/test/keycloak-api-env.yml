@@ -88,6 +88,17 @@ services:
       - ./compose/traefik/certs/root-ca.crt:/certs/root-ca.crt:ro
     environment:
       NODE_EXTRA_CA_CERTS: /certs/root-ca.crt
+      # --- SSRF egress allowlist for the OIDC token exchange ------------------
+      # mint-bearer's token exchange + discovery fetch hit
+      # https://keycloak.localhost (→ Traefik, a private 172.x docker IP). The
+      # ssrf-dispatcher is default-deny on both hostname (OUTBOUND_ALLOWED_HOSTS)
+      # AND private IPs (RFC1918 block-list, bypassed only via
+      # OUTBOUND_PRIVATE_HOST_ALLOWLIST). Without both, the token exchange fails
+      # with "Outbound blocked by SSRF policy". Extend the base bundled-service
+      # list (docker-compose.yml:414 litellm,valkey,postgres,mailpit) with the
+      # Keycloak vhost. Mirrors the feedback_k8s_egress_smtp_default_deny pattern.
+      OUTBOUND_ALLOWED_HOSTS: litellm,valkey,postgres,mailpit,keycloak.localhost,keycloak
+      OUTBOUND_PRIVATE_HOST_ALLOWLIST: keycloak.localhost,keycloak
       # --- ingress origin (validateIngressBoot, NODE_ENV=production) -----------
       # The @sso run layers compose/docker-compose.ingress.yml (Traefik + the
       # keycloak.localhost router below) AND tests/e2e-cjm/compose-overrides.yml.
