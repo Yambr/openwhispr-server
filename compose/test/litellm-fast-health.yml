@@ -18,16 +18,30 @@
 # irrelevant — it only needs to satisfy the docker `depends_on` gate so the api
 # is allowed to start and crash fast.
 #
-# This overlay replaces litellm's healthcheck with a trivially-true probe and a
-# ~1s start_period so litellm flips `healthy` in ~3s, the api starts ~immediately
-# after, reaches validateJitBoot, and exits 78 well inside the budget.
+# This overlay does TWO things, both 1.6-only:
 #
-# `depends_on` cannot be used to DROP the litellm dependency: compose MERGES
-# depends_on by key across files (verified on compose v2.23) — an override
-# re-adds litellm. A healthcheck override, by contrast, cleanly REPLACES the
-# `test`/`start_period` fields. Hence this approach rather than a depends_on
-# strip. This file is NEVER layered onto a real (non-1.6) run, so the genuine
-# litellm readiness gate is untouched everywhere else.
+# 1. litellm healthcheck → trivially-true probe + ~1s start_period, so litellm
+#    flips `healthy` in ~3s and the depends_on gate doesn't stall the api boot.
+#    `depends_on` cannot be used to DROP the litellm dependency: compose MERGES
+#    depends_on by key across files (verified on compose v2.23) — an override
+#    re-adds litellm. A healthcheck override, by contrast, cleanly REPLACES the
+#    `test`/`start_period` fields. Hence this approach rather than a depends_on
+#    strip.
+#
+# 2. api `restart: "no"` — the production default is `restart: unless-stopped`,
+#    which makes a boot-crash RESTART-LOOP: the container oscillates between
+#    `restarting ExitCode=78` (backoff) and `running ExitCode=0` (brief
+#    up-window), never settling on `State=exited`. Detecting the crash then
+#    depends on catching the narrow `restarting 78` window via `docker inspect`,
+#    which is RACY under full-stack load (the live @sso run: the 90s poll kept
+#    sampling the running-window and returned exitCode=null while the main
+#    e2e-cjm stack + Keycloak ran concurrently). With `restart: "no"` the api
+#    crashes EXACTLY ONCE and settles on `State=exited ExitCode=78`, which
+#    `compose ps --format json api` reports directly on the first poll tick —
+#    deterministic, no restart-loop race, no load sensitivity.
+#
+# This file is NEVER layered onto a real (non-1.6) run, so the genuine litellm
+# readiness gate AND the production restart policy are untouched everywhere else.
 services:
   litellm:
     healthcheck:
@@ -36,3 +50,6 @@ services:
       interval: 2s
       timeout: 2s
       retries: 2
+  api:
+    # One crash, then stay exited — no restart-loop to race against.
+    restart: "no"
