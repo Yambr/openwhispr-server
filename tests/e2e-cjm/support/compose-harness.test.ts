@@ -30,6 +30,7 @@ import {
   bootStack,
   DEFAULT_SCENARIO_ENV_OVERRIDES,
   DEV_TOOLS_OVERLAY,
+  removeProjectNetworks,
   tearStack,
 } from "./compose-harness.js";
 
@@ -701,5 +702,52 @@ describe("tearStack — temp env file cleanup", () => {
     const downCall = calls.find((c) => c.joined.includes(" down "));
     const occurrences = (downCall?.args ?? []).filter((a) => a === DEV_TOOLS_OVERLAY).length;
     expect(occurrences).toBe(1);
+  });
+
+  it("sweeps project-labeled networks `down` leaves behind (address-pool leak guard)", async () => {
+    const router = (cmd: string, args: string[]): FakeChildSpec => {
+      // `docker network ls --filter label=...project=<p>` → two orphaned nets.
+      if (cmd === "docker" && args[0] === "network" && args[1] === "ls") {
+        return { stdout: "e2e-cjm-sso16-abc_openwhispr_internal\n" };
+      }
+      // `docker network rm <name>` → success.
+      if (cmd === "docker" && args[0] === "network" && args[1] === "rm") {
+        return { exitCode: 0 };
+      }
+      if (args.includes("ps") && args.includes("-q")) return { stdout: "" };
+      return { exitCode: 0 };
+    };
+    const { spawnFn, calls } = makeSpawnRecorder(router);
+
+    await tearStack({
+      projectName: "e2e-cjm-sso16-abc",
+      composeFiles: ["docker-compose.yml"],
+      spawnFn,
+      skipUserStackRestart: true,
+      inheritStdio: false,
+    });
+
+    // tearStack must have queried networks by this project's compose label and
+    // issued a `network rm` for the orphan.
+    const lsCall = calls.find(
+      (c) => c.joined.includes("network ls") && c.joined.includes("e2e-cjm-sso16-abc"),
+    );
+    expect(lsCall, "expected a `docker network ls --filter label=...` call").toBeTruthy();
+    const rmCall = calls.find((c) => c.joined.includes("network rm"));
+    expect(rmCall?.args[rmCall.args.length - 1]).toBe("e2e-cjm-sso16-abc_openwhispr_internal");
+  });
+
+  it("removeProjectNetworks returns the removed network names and never throws", async () => {
+    const router = (cmd: string, args: string[]): FakeChildSpec => {
+      if (cmd === "docker" && args[1] === "ls") {
+        return { stdout: "p_openwhispr_internal\np_extra\n" };
+      }
+      if (cmd === "docker" && args[1] === "rm") return { exitCode: 0 };
+      return { exitCode: 0 };
+    };
+    const { spawnFn } = makeSpawnRecorder(router);
+
+    const removed = await removeProjectNetworks("p", spawnFn);
+    expect(removed).toEqual(["p_openwhispr_internal", "p_extra"]);
   });
 });

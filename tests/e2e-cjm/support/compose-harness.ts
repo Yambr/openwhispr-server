@@ -294,6 +294,66 @@ function runComposeCapture(
   });
 }
 
+/** Run a raw `docker` (non-compose) subcommand and capture stdout. */
+function runDockerCapture(
+  args: string[],
+  spawnFn?: typeof spawn,
+): Promise<{ exitCode: number; stdout: string }> {
+  const spawnImpl = spawnFn ?? spawn;
+  return new Promise((res) => {
+    let stdout = "";
+    const child = spawnImpl("docker", args, {
+      cwd: REPO_ROOT,
+      env: process.env,
+      stdio: ["ignore", "pipe", "ignore"],
+    });
+    (child.stdout as NodeJS.ReadableStream | null)?.on("data", (b) => {
+      stdout += String(b);
+    });
+    child.on("close", (code) => res({ exitCode: code ?? -1, stdout }));
+    child.on("error", () => res({ exitCode: -1, stdout }));
+  });
+}
+
+/**
+ * Remove any docker networks still carrying a compose project's label. Compose
+ * `down` leaves an orphaned `<project>_*` network behind once its containers are
+ * already gone (v2.23 quirk); this sweeps them by the
+ * `com.docker.compose.project=<project>` label filter so the address pool isn't
+ * leaked across runs. Best-effort — every step swallows errors so teardown
+ * never throws. Exported for unit coverage.
+ */
+export async function removeProjectNetworks(
+  projectName: string,
+  spawnFn?: typeof spawn,
+): Promise<string[]> {
+  const removed: string[] = [];
+  try {
+    const { stdout } = await runDockerCapture(
+      [
+        "network",
+        "ls",
+        "--filter",
+        `label=com.docker.compose.project=${projectName}`,
+        "--format",
+        "{{.Name}}",
+      ],
+      spawnFn,
+    );
+    const names = stdout
+      .split("\n")
+      .map((n) => n.trim())
+      .filter(Boolean);
+    for (const name of names) {
+      const { exitCode } = await runDockerCapture(["network", "rm", name], spawnFn);
+      if (exitCode === 0) removed.push(name);
+    }
+  } catch {
+    /* swallow — teardown MUST NOT throw */
+  }
+  return removed;
+}
+
 /** Detect whether a compose project has any running containers. */
 export async function isProjectRunning(
   projectName: string,
@@ -692,6 +752,16 @@ export async function tearStack(opts: TearStackOptions = {}): Promise<{
     "--remove-orphans",
   ];
   const e2eDownExitCode = await runCompose(downArgs, { spawnFn, inheritStdio });
+
+  // Belt-and-suspenders network sweep. `docker compose down` does NOT reliably
+  // remove a project network once all its containers are already gone — compose
+  // v2.23 reports "No resource found to remove for project <p>" and leaves the
+  // labeled `<project>_openwhispr_internal` network orphaned. Each leaked network
+  // consumes an address-pool slot; ~18 accumulate → the next boot fails with
+  // "could not find an available, non-overlapping IPv4 address pool". Sweep any
+  // network still carrying this project's compose label. Best-effort, never
+  // throws (teardown must not fail the run).
+  await removeProjectNetworks(projectName, spawnFn);
 
   let userStackStartExitCode: number | null = null;
   if (!opts.skipUserStackRestart && opts.userStackWasRunning) {
