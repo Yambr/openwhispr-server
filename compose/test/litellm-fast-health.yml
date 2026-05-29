@@ -4,52 +4,70 @@
 #
 # WHY: 1.6 boots an ISOLATED compose project (e2e-cjm-sso16-*) purely to prove
 # the api loud-fails (validateJitBoot → exit 78) on a malformed
-# OIDC_TENANT_MAPPING. The api `depends_on: litellm condition: service_healthy`
-# (docker-compose.yml:422-423), and the bundled litellm healthcheck carries a
-# `start_period: 600s` (docker-compose.yml) with a real `/health/liveliness`
-# probe — so in a COLD fresh project `docker compose up -d` blocks 60-150s+
-# waiting for litellm to report healthy BEFORE it even creates the api
-# container. The api then crashes in ~15s, but the total overran the 180s
-# Playwright step budget (live run: exactly 3.0m → "Test timeout of 180000ms").
+# OIDC_TENANT_MAPPING. The malformed-mapping loud-fail is a PURE config-
+# validation test: the api never issues a single LiteLLM/Valkey/OTel request
+# before it exits 78 (readJitConfig → validateJitBoot runs in buildAuth, and the
+# process dies there). So none of those dependencies' ACTUAL health matters — the
+# only thing that needs to be ready is the DB schema (migrate).
 #
-# The malformed-mapping loud-fail is a PURE config-validation test: the api
-# never issues a single LiteLLM request before it exits 78 (validateJitBoot runs
-# in buildAuth, and the process dies there). litellm's ACTUAL health is
-# irrelevant — it only needs to satisfy the docker `depends_on` gate so the api
-# is allowed to start and crash fast.
+# The blocker this overlay removes: the api's production `depends_on` waits for
+# litellm/valkey/pgbouncer/otel-collector to be `service_healthy`. otel-collector
+# itself chains to loki/tempo/mimir, whose REAL healthchecks carry start_period
+# 15s/60s/90s — AND tempo/mimir are distroless (no shell). Under the concurrent
+# full-@sso-stack load (15 main containers + this 2nd isolated stack on one
+# daemon) the api sat in `created` for 90s+ waiting on that chain, blowing the
+# exit-poll budget (live regression: exitCode null, api never started).
 #
-# This overlay does TWO things, both 1.6-only:
+# Two overrides, both 1.6-only:
 #
-# 1. litellm healthcheck → trivially-true probe + ~1s start_period, so litellm
-#    flips `healthy` in ~3s and the depends_on gate doesn't stall the api boot.
-#    `depends_on` cannot be used to DROP the litellm dependency: compose MERGES
-#    depends_on by key across files (verified on compose v2.23) — an override
-#    re-adds litellm. A healthcheck override, by contrast, cleanly REPLACES the
-#    `test`/`start_period` fields. Hence this approach rather than a depends_on
-#    strip.
+# 1. api `depends_on.*.condition` → `service_started` (was `service_healthy`)
+#    for litellm/valkey/pgbouncer/otel-collector. Compose MERGES depends_on by
+#    key and an override REPLACES the per-dependency `condition` (verified on
+#    compose v2.23), so this is a clean, version-robust downgrade — NOT a
+#    healthcheck hack on distroless images. The api now starts as soon as those
+#    containers are merely STARTED (instant) instead of HEALTHY (60-90s under
+#    load), reaches validateJitBoot, and exits 78. `migrate` is kept at
+#    `service_completed_successfully` because the api genuinely needs the schema
+#    applied before buildAuth's setup-admin DB probe.
 #
-# 2. api `restart: "no"` — the production default is `restart: unless-stopped`,
-#    which makes a boot-crash RESTART-LOOP: the container oscillates between
-#    `restarting ExitCode=78` (backoff) and `running ExitCode=0` (brief
-#    up-window), never settling on `State=exited`. Detecting the crash then
-#    depends on catching the narrow `restarting 78` window via `docker inspect`,
-#    which is RACY under full-stack load (the live @sso run: the 90s poll kept
-#    sampling the running-window and returned exitCode=null while the main
-#    e2e-cjm stack + Keycloak ran concurrently). With `restart: "no"` the api
-#    crashes EXACTLY ONCE and settles on `State=exited ExitCode=78`, which
-#    `compose ps --format json api` reports directly on the first poll tick —
-#    deterministic, no restart-loop race, no load sensitivity.
+# 2. api `restart: "no"` — the production default `restart: unless-stopped` makes
+#    a boot-crash RESTART-LOOP that never settles on `State=exited`; detecting it
+#    means catching the narrow `restarting 78` backoff window, which is racy
+#    under load. With `restart: "no"` the api crashes EXACTLY ONCE and settles on
+#    `State=exited ExitCode=78`, which `compose ps --format json api` reports on
+#    the first poll tick — deterministic, no restart-loop, no load sensitivity.
 #
-# This file is NEVER layered onto a real (non-1.6) run, so the genuine litellm
-# readiness gate AND the production restart policy are untouched everywhere else.
+# This file is NEVER layered onto a real (non-1.6) run, so the production
+# readiness gates AND restart policy are untouched everywhere else.
+# Drop host-port publishes that collide with the concurrently-running main
+# e2e-cjm stack. Under a full @sso run the main stack already binds 127.0.0.1:4000
+# (api) and 127.0.0.1:8025 (mailpit); the isolated sso16 project would fail
+# `up` with "port is already allocated", leaving every container in `created`
+# (the api never starts → never crashes → exit-poll returns null: the real live
+# regression). 1.6 reaches the api ONLY via `docker inspect` (exit-code poll), so
+# it needs no published host ports at all. `ports:` MERGES by value across compose
+# files (an override-to-`[]` is ignored), so use the `!reset` tag (honored for
+# ports on compose v2.23) to actually clear the list.
 services:
-  litellm:
-    healthcheck:
-      test: ["CMD-SHELL", "true"]
-      start_period: 1s
-      interval: 2s
-      timeout: 2s
-      retries: 2
   api:
-    # One crash, then stay exited — no restart-loop to race against.
     restart: "no"
+    ports: !reset []
+    depends_on:
+      # Schema must be applied before buildAuth's setup-admin DB probe.
+      migrate:
+        condition: service_completed_successfully
+      # Downgraded healthy→started: the loud-fail crashes before touching these.
+      litellm:
+        condition: service_started
+      valkey:
+        condition: service_started
+      pgbouncer:
+        condition: service_started
+      otel-collector:
+        condition: service_started
+      mailpit:
+        condition: service_started
+  # mailpit is in the api's depends_on closure and publishes 127.0.0.1:8025,
+  # which the main stack already holds. Clear it (see the header note on ports).
+  mailpit:
+    ports: !reset []

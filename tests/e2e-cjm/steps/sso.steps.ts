@@ -817,10 +817,21 @@ When("the api container boots", async ({ tenantId, $test }) => {
     // config-validation crash. `up -d api` + the fast-health litellm overlay
     // gets the api booting (and crashing) in well under the budget.
     targetServices: ["api"],
-    // With litellm fake-healthy in ~3s the api starts almost immediately, reaches
-    // readJitConfig() → validateJitBoot() → exit 78 within ~15-25s. Poll budget
-    // spans the (now-short) dependency-health wait + api boot + restart-loop
-    // detection, kept under the 120s Playwright step budget set above.
+    // The litellm-fast-health overlay downgrades the api's depends_on conditions
+    // from service_healthy → service_started for litellm/valkey/pgbouncer/
+    // otel-collector/mailpit (keeping migrate's service_completed_successfully),
+    // so the api starts as soon as those containers START — no waiting on the
+    // observability chain's 60-90s start_periods (the live load regression). The
+    // crash happens before any of them is touched. Pre-start `pgbouncer` (which
+    // pulls postgres — both long-running, go healthy) so the DB is ready; then
+    // `migrate` (a service_completed_successfully dep of api) runs fast during
+    // the api `up`. NOTE: we do NOT prestart migrate directly — `up -d --wait` on
+    // a one-shot container that exits 0 returns non-zero in compose v2.x, which
+    // would spuriously fail the prestart.
+    prestartServices: ["pgbouncer"],
+    // Conditions are `started` → api boots at once, reaches readJitConfig() →
+    // validateJitBoot() → exit 78 in ~15-25s, settles on `exited` (restart:no
+    // overlay). Poll detects it on the first tick; budget is generous headroom.
     expectExitTimeoutMs: 90_000,
     expectExitIntervalMs: 1_000,
     skipUserStackStop: true,
