@@ -736,6 +736,16 @@ When("the api container boots", async ({ tenantId, $test }) => {
       OIDC_TENANT_MAPPING: "{not valid json",
     },
     expectExit: 78,
+    // The api `depends_on` litellm + valkey with `condition: service_healthy`
+    // (docker-compose.yml:419-425), so `up -d` does NOT start the api until
+    // litellm reports healthy (~30-60s after its own boot). Only THEN does the
+    // api start → readJitConfig() → validateJitBoot() → exit 78. The default
+    // 15s expectExit poll budget expires long before the api even starts, so it
+    // never observes the crash (live: exitCode null). Give the poll enough room
+    // to span the dependency-health wait + the api boot + the restart-loop
+    // detection (kept under the 180s Playwright step budget set above).
+    expectExitTimeoutMs: 150_000,
+    expectExitIntervalMs: 1_000,
     skipUserStackStop: true,
     inheritStdio: false,
   });
