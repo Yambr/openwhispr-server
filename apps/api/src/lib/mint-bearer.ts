@@ -652,7 +652,26 @@ export function buildMintBearer(opts: BuildMintBearerOpts): MintBearer {
         const createdRole = asJitRoleLiteral(jitFields.role);
         if (createdRole !== undefined) {
           await emitUserCreated(db, log, jitFields.tenantId, userId, createdRole, jitClaimMode);
+        } else {
+          // Defensive: a resolved role outside the JIT literal set would silently
+          // skip the audit. Surface it instead of vanishing.
+          log?.warn?.({
+            event: "sso.jit.user.created.skipped",
+            reason: "role_not_literal",
+            role: jitFields.role,
+          });
         }
+      } else {
+        // jitConfig was null (JIT disabled) on a desktop OAuth create — expected
+        // for non-JIT deploys, but log it so a misconfigured JIT deploy (claim
+        // set yet fields unresolved) is diagnosable rather than a silent no-event.
+        log?.info?.({
+          event: "sso.jit.user.created.skipped",
+          reason: "jit_disabled_or_unresolved",
+          has_jit_fields: jitFields !== undefined,
+          has_claim_mode: jitClaimMode !== undefined,
+          has_db: db !== undefined,
+        });
       }
     }
 
