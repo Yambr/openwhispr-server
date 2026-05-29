@@ -555,7 +555,16 @@ export function buildMintBearer(opts: BuildMintBearerOpts): MintBearer {
         const decision = resolveJitDecision(claims, jitConfig, existingIdentity);
         if (!decision.ok) {
           // Mode 6 — refuse reuse + refuse mint; emit sso.jit.rejected.
-          await emitRejected(db, log, resolvedTenant.tenantId, decision.code);
+          // Emit the audit row under the REJECTION tenant (DEFAULT_TENANT_ID via
+          // resolveRejectionTenant), NOT `resolvedTenant.tenantId`. The resolved
+          // tenant is the user's NEW (mismatched) claim — by definition not a
+          // binding the user is allowed into, and in the operator mapping it may
+          // be a tenant with no seeded row at all (e.g. the test's globex.example
+          // → an unseeded UUID). Writing the audit row under it makes the
+          // withTenant() GUC + audit INSERT fail, masking the intended 403 with a
+          // 500. The rejection audit belongs under the default tenant, exactly
+          // like the unknown-tenant branch above (D-69-2; mirrors auth.signin_failed).
+          await emitRejected(db, log, await resolveRejectionTenant(decision.code), decision.code);
           throw new JitRejectionError(decision.code);
         }
         // Mode 5 — the resolved role differs from the persisted role → re-sync
@@ -592,6 +601,26 @@ export function buildMintBearer(opts: BuildMintBearerOpts): MintBearer {
             await emitRejected(db, log, await resolveRejectionTenant(decision.code), decision.code);
           }
           throw new JitRejectionError(decision.code);
+        }
+        // v1 single-installation-single-tenant invariant (CLAUDE.md rule 16):
+        // DEFAULT_TENANT_ID is the ONLY tenant a JIT create may land in. The
+        // `users` table fails CLOSED for a non-default tenant_id — Postgres RLS
+        // rejects the INSERT with "new row violates row-level security policy",
+        // which Better Auth's createOAuthUser surfaces as a DrizzleQueryError →
+        // an unmapped HTTP 500 leaking a stack trace (live @cjm-sso-1.5a:
+        // carol@globex.example resolves to the unseeded globex tenant). Refuse
+        // cleanly BEFORE createOAuthUser: emit sso.jit.rejected under the default
+        // tenant and throw the typed rejection → 403 forbidden_tenant_mismatch.
+        // Under the OSS-default email_domain claim mode a domain change is a new
+        // identity, so this is the path a real operator's Keycloak actually takes
+        // when a user's email domain maps to a non-default tenant; the mode-6
+        // returning-user reject can never fire in email_domain mode.
+        const defaultTenantId = await resolveDefaultTenantId();
+        if (decision.tenantId !== defaultTenantId) {
+          if (db !== undefined) {
+            await emitRejected(db, log, defaultTenantId, "forbidden_tenant_mismatch");
+          }
+          throw new JitRejectionError("forbidden_tenant_mismatch");
         }
         jitFields = { tenantId: decision.tenantId, role: decision.role };
         jitClaimMode = tenantClaimMode(jitConfig);

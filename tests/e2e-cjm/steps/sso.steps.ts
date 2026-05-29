@@ -284,7 +284,16 @@ async function desktopOidcLogin(
   const kcCookies = mergeCookies("", getSetCookie(formPage));
   const html = await formPage.text();
   const action = extractFormAction(html);
-  if (!action) return { status: 500, errorCode: "no KC login form action" };
+  if (!action) {
+    const loc = formPage.headers.get("location");
+    const snippet = html.slice(0, 300).replace(/\s+/g, " ");
+    return {
+      status: 500,
+      errorCode: `no KC login form action (authorize GET status=${formPage.status}${
+        loc ? ` location=${loc}` : ""
+      } body="${snippet}")`,
+    };
+  }
 
   // (3) POST the credentials to the form action.
   const loginRes = await undiciFetch(action, {
@@ -591,9 +600,14 @@ When(
   async ({ apiBaseURL, tenantId }, tenant: string) => {
     const s = stateFor(tenantId);
     expect(tenant).toBe("globex");
-    // Change carol's email domain to globex.example (mapped to a DIFFERENT
-    // tenant id). Her persisted row is still bound to acme/default → the
-    // resolver's mode-6 check (resolved tenant ≠ existing tenant) fires.
+    // Change carol's email domain to globex.example. Under the OSS-default
+    // email_domain claim mode the tenant IS derived from the email domain, so
+    // this both (a) makes carol a NEW email identity (findUserByEmail misses)
+    // and (b) resolves her to the non-default globex tenant. A JIT create into
+    // any non-default tenant is refused up-front (v1 single-tenant invariant,
+    // CLAUDE.md rule 16) → 403 forbidden_tenant_mismatch, NOT an RLS-500 crash.
+    // (The resolver's literal returning-user mode-6 path cannot fire in
+    // email_domain mode by construction — a domain change is a new identity.)
     await kcSetUserEmail(USERS.carol.username, "carol@globex.example");
     const r = await desktopOidcLogin(apiBaseURL, USERS.carol);
     s.lastLoginStatus = r.status;
@@ -675,7 +689,19 @@ Given(
   },
 );
 
-When("the api container boots", async ({ tenantId }) => {
+// Longer step timeout: this boots an ISOLATED compose project
+// (e2e-cjm-sso16-*) whose api service is `build:`-only with no `image:` tag, so
+// `docker compose up` resolves/rebuilds the api image for that fresh project
+// before the container can boot+crash. Even with a warm BuildKit layer cache the
+// rebuild + boot + exit-poll can approach the default 30s Playwright budget
+// (live run: 40.4s → timeout, exitCode null). Give it room so the real exit-78
+// loud-fail is observed rather than the test timing out mid-build. Pure
+// test-harness timing — the production loud-fail (validateJitBoot exit 78) is
+// already unit-proven and unchanged.
+When("the api container boots", async ({ tenantId, $test }) => {
+  // Raise THIS scenario's Playwright budget (playwright-bdd 8.x has no per-step
+  // `timeout` option — only `tags` — so extend via the injected $test fixture).
+  $test.setTimeout(180_000);
   const s = stateFor(tenantId);
   s.bootResult = await bootStack({
     projectName: s.bootProjectName,

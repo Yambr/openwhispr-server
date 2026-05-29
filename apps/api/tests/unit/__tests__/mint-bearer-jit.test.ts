@@ -27,7 +27,12 @@ const ARGS = {
 
 const FAKE_TOKEN = "a".repeat(32);
 
-const ACME_TENANT_ID = "11111111-1111-1111-1111-111111111111";
+// acme maps to the DEFAULT tenant — the ONLY tenant a JIT create may land in
+// under the v1 single-installation-single-tenant posture (CLAUDE.md rule 16),
+// matching the live @sso fixture (keycloak-api-env.yml: acme.example →
+// 00000000-…). globex maps to a NON-default tenant, used to exercise the
+// new-user-into-foreign-tenant + returning-user-mismatch rejections.
+const ACME_TENANT_ID = "00000000-0000-0000-0000-000000000000";
 const GLOBEX_TENANT_ID = "22222222-2222-2222-2222-222222222222";
 
 // The JIT config the seam reads is loaded from process.env via readJitConfig();
@@ -230,6 +235,43 @@ describe("buildMintBearer JIT seam (Phase 69 / Plan 69-04 / D-69-1)", () => {
     expect(ia.createSession).not.toHaveBeenCalled();
   });
 
+  it("new user resolving to a NON-default tenant: refuses cleanly (403 forbidden_tenant_mismatch), no createOAuthUser, no RLS 500", async () => {
+    // v1 single-tenant: only DEFAULT_TENANT_ID is a valid JIT landing tenant
+    // (CLAUDE.md rule 16). A known-but-non-default tenant (globex) must be
+    // refused BEFORE createOAuthUser, else the users RLS policy rejects the
+    // INSERT and the DrizzleQueryError leaks as an unmapped HTTP 500
+    // (live @cjm-sso-1.5a: carol@globex.example).
+    jitEnv();
+    const { auth, ia } = buildFakeAuth();
+    ia.findUserByEmail.mockResolvedValue(null);
+    stubFetch({
+      sub: "s",
+      email: "newcomer@globex.example",
+      tenant: "globex",
+      groups: ["openwhispr-engineering"],
+    });
+    const captured: CapturedSql[] = [];
+    const db = makeFakeDb({ captured });
+
+    const mint = buildMintBearer({
+      auth: auth as unknown as Parameters<typeof buildMintBearer>[0]["auth"],
+      db: db as unknown as Parameters<typeof buildMintBearer>[0]["db"],
+    });
+    await expect(mint(ARGS)).rejects.toMatchObject({ code: "forbidden_tenant_mismatch" });
+    expect(ia.createOAuthUser).not.toHaveBeenCalled();
+    expect(ia.createSession).not.toHaveBeenCalled();
+    // sso.jit.rejected audit row scoped to the DEFAULT tenant, never globex.
+    const auditIdx = captured.findIndex(
+      (c) => /INSERT INTO audit_log/i.test(c.text) && /sso\.jit\.rejected/.test(c.text),
+    );
+    expect(auditIdx).toBeGreaterThanOrEqual(0);
+    const rejectionSetConfig = [...captured.slice(0, auditIdx + 1)]
+      .reverse()
+      .find((c) => /set_config/i.test(c.text));
+    expect(rejectionSetConfig?.text ?? "").not.toContain(GLOBEX_TENANT_ID);
+    expect(rejectionSetConfig?.text ?? "").toContain("00000000-0000-0000-0000-000000000000");
+  });
+
   // ── RETURNING-user branch (the if(existing) parity gap) ──────────────────
   it("returning user, group changed (admin → member): re-syncs role + emits sso.jit.role.updated; bearer still minted", async () => {
     jitEnv();
@@ -292,10 +334,23 @@ describe("buildMintBearer JIT seam (Phase 69 / Plan 69-04 / D-69-1)", () => {
     expect(ia.createSession).not.toHaveBeenCalled();
     const roleUpdate = captured.find((c) => /UPDATE\s+users\s+SET\s+role/i.test(c.text));
     expect(roleUpdate).toBeUndefined();
-    const audit = captured.find(
+    const auditIdx = captured.findIndex(
       (c) => /INSERT INTO audit_log/i.test(c.text) && /sso\.jit\.rejected/.test(c.text),
     );
-    expect(audit).toBeDefined();
+    expect(auditIdx).toBeGreaterThanOrEqual(0);
+    // The mode-6 rejection audit MUST be scoped to the DEFAULT tenant, NOT the
+    // resolved-but-mismatched (globex) tenant. The mismatched tenant may have no
+    // seeded row (it does not in the live realm), so a withTenant() under it
+    // FK/RLS-fails and masks the intended 403 with a 500 (live @cjm-sso-1.5a).
+    // The set_config that opens the rejection-audit tx is the LAST set_config
+    // captured at-or-before the audit INSERT; assert it binds the DEFAULT tenant,
+    // not globex. (globex legitimately appears earlier — the persisted-identity
+    // read runs under the resolved tenant to DETECT the mismatch.)
+    const rejectionSetConfig = [...captured.slice(0, auditIdx + 1)]
+      .reverse()
+      .find((c) => /set_config/i.test(c.text));
+    expect(rejectionSetConfig?.text ?? "").not.toContain(GLOBEX_TENANT_ID);
+    expect(rejectionSetConfig?.text ?? "").toContain("00000000-0000-0000-0000-000000000000");
   });
 
   it("returning user, unchanged group + tenant: no role write, no audit, bearer minted", async () => {
