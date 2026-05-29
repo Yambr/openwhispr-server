@@ -54,8 +54,13 @@ const KC_ADMIN_USER = process.env.KC_ADMIN_USER ?? "admin";
 const KC_ADMIN_PASSWORD = process.env.KC_ADMIN_PASSWORD ?? "admin";
 const KC_REALM = "acme";
 
-/** The desktop custom-protocol scheme the deep-link echoes (Req-7). */
-const CHANNEL_SCHEME = "openwhispr-app";
+/** The desktop custom-protocol scheme the deep-link echoes (Req-7).
+ * MUST be one of the desktop-signin built-in allow-list schemes
+ * (apps/api/src/lib/scheme-allowlist.ts BUILTIN_SCHEMES = openwhispr /
+ * openwhispr-dev / openwhispr-staging) or the test 400s with
+ * "scheme is not in the configured allow-list". `openwhispr-app` is NOT
+ * allow-listed; use the canonical built-in `openwhispr`. */
+const CHANNEL_SCHEME = "openwhispr";
 
 /** Seeded realm users (realm-openwhispr-test.json). */
 const USERS = {
