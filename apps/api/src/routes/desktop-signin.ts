@@ -189,7 +189,16 @@ export const buildDesktopSigninRoutes = (deps: DesktopSigninDeps) =>
           "redirect_uri",
           `${oidc.authUrl}/api/auth/desktop-callback/${provider}`,
         );
-        idpUrl.searchParams.set("scope", "openid email profile");
+        // Phase 69 / Plan 69-04 (D-69-1 / A1) — request the group scope so
+        // Keycloak emits `groups` in the userinfo response the desktop bearer-mint
+        // path reads (it bypasses genericOAuth's mapProfileToUser). The configured
+        // group claim name defaults to `groups`; operators overriding
+        // OIDC_GROUP_CLAIM get that scope requested instead. When JIT is disabled
+        // the bare legacy scope is unchanged (backward-compat).
+        const groupScope = process.env.OIDC_TENANT_CLAIM
+          ? ` ${process.env.OIDC_GROUP_CLAIM && process.env.OIDC_GROUP_CLAIM.length > 0 ? process.env.OIDC_GROUP_CLAIM : "groups"}`
+          : "";
+        idpUrl.searchParams.set("scope", `openid email profile${groupScope}`);
         idpUrl.searchParams.set("state", stateId);
         idpUrl.searchParams.set("code_challenge", challenge);
         idpUrl.searchParams.set("code_challenge_method", "S256");
