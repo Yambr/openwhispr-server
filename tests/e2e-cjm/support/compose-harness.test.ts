@@ -204,6 +204,67 @@ describe("bootStack — envOverrides", () => {
     expect(a.indexOf("up")).toBeLessThan(a.lastIndexOf("api"));
   });
 
+  it("runs a `--wait <prestartServices>` up BEFORE the main `up` (deterministic dep gate)", async () => {
+    const router = (_cmd: string, args: string[]): FakeChildSpec => {
+      if (args.includes("ps") && args.includes("-q")) return { stdout: "" };
+      // exit poll → api never exits (we only assert the up ordering here).
+      if (args.includes("ps") && args.includes("--format")) {
+        return { stdout: JSON.stringify({ Service: "api", State: "running", ExitCode: 0 }) };
+      }
+      return { exitCode: 0 };
+    };
+    const { spawnFn, calls } = makeSpawnRecorder(router);
+
+    await bootStack({
+      composeFiles: ["docker-compose.yml"],
+      scratchDir,
+      scenarioId: "prestart-boot",
+      spawnFn,
+      waitForReadinessFn: waitOk,
+      skipUserStackStop: true,
+      inheritStdio: false,
+      expectExit: 78,
+      targetServices: ["api"],
+      prestartServices: ["pgbouncer"],
+      expectExitTimeoutMs: 50,
+      expectExitIntervalMs: 25,
+    });
+
+    const upCalls = calls.filter((c) => c.joined.includes(" up "));
+    expect(upCalls.length, "expected a prestart `up` and a main `up`").toBeGreaterThanOrEqual(2);
+    // First up = prestart: `up -d --wait pgbouncer`.
+    const prestart = upCalls[0];
+    expect(prestart?.args).toContain("--wait");
+    expect(prestart?.args[prestart.args.length - 1]).toBe("pgbouncer");
+    // Second up = main target boot: `up -d api` WITHOUT --wait (expectExit set).
+    const main = upCalls[1];
+    expect(main?.args).not.toContain("--wait");
+    expect(main?.args[main.args.length - 1]).toBe("api");
+  });
+
+  it("skips the prestart phase when prestartServices is omitted", async () => {
+    const router = (_cmd: string, args: string[]): FakeChildSpec => {
+      if (args.includes("ps") && args.includes("-q")) return { stdout: "" };
+      return { exitCode: 0 };
+    };
+    const { spawnFn, calls } = makeSpawnRecorder(router);
+
+    await bootStack({
+      composeFiles: ["docker-compose.yml"],
+      scratchDir,
+      scenarioId: "no-prestart",
+      spawnFn,
+      waitForReadinessFn: waitOk,
+      skipUserStackStop: true,
+      inheritStdio: false,
+      targetServices: ["api"],
+    });
+
+    // Exactly one `up` (the main boot) — no separate prestart `up`.
+    const upCalls = calls.filter((c) => c.joined.includes(" up "));
+    expect(upCalls.length).toBe(1);
+  });
+
   it("brings up the whole profile when targetServices is omitted", async () => {
     const router = (_cmd: string, args: string[]): FakeChildSpec => {
       if (args.includes("ps") && args.includes("-q")) return { stdout: "" };

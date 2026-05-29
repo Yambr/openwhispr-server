@@ -209,6 +209,19 @@ export interface BootStackOptions {
    * bring up the entire profile (the default, full-stack behaviour).
    */
   targetServices?: readonly string[];
+  /**
+   * Services to bring up (and WAIT for health) BEFORE the main `up`. Use with
+   * `expectExit` + `targetServices` for fast-crash boots whose target depends on
+   * a chain that must be healthy first: the main `up -d` (no `--wait`, since the
+   * target is expected to crash) returns as soon as containers are CREATED and
+   * does NOT block on the dependency chain finishing its start — so under
+   * full-stack load contention the target can sit in `created` while its deps
+   * are still starting, and the exit-poll then races (never observing the
+   * crash → exitCode null). Pre-starting the deps with `up -d --wait` guarantees
+   * they're healthy, so the subsequent target `up` starts (and crashes) at once.
+   * Undefined → no pre-start phase (the main `up` brings up the dep closure).
+   */
+  prestartServices?: readonly string[];
 }
 
 export interface BootStackResult {
@@ -559,6 +572,32 @@ export async function bootStack(opts: BootStackOptions = {}): Promise<BootStackR
   if (mergedOverrides) {
     const scenarioId = opts.scenarioId ?? `cjm-${Date.now()}`;
     envFilePath = writeEnvOverrideFile(scratchDir, scenarioId, mergedOverrides);
+  }
+
+  // 2c. Pre-start phase: bring the dependency chain up to HEALTHY first, so the
+  //     subsequent (no-wait) target `up` starts and crashes immediately instead
+  //     of sitting in `created` while its deps churn under load. Only runs when
+  //     prestartServices is set (fast-crash boots). `up -d --wait` blocks until
+  //     these report healthy (or compose errors), giving a deterministic gate.
+  if (opts.prestartServices && opts.prestartServices.length > 0) {
+    const prestartArgs = [
+      ...(envFilePath ? ["--env-file", envFilePath] : []),
+      "-p",
+      projectName,
+      ...buildComposeFileArgs(composeFiles),
+      "--profile",
+      COMPOSE_PROFILE,
+      "up",
+      "-d",
+      "--wait",
+      ...opts.prestartServices,
+    ];
+    const prestartCode = await runCompose(prestartArgs, { spawnFn, inheritStdio });
+    if (prestartCode !== 0) {
+      throw new Error(
+        `bootStack: prestart 'docker compose ${prestartArgs.join(" ")}' failed (exit ${prestartCode})`,
+      );
+    }
   }
 
   // 3. `compose -p e2e-cjm [--env-file …] -f docker-compose.yml … --profile default up -d [--wait]`
