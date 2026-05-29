@@ -106,3 +106,19 @@ sees it. Verified at realm-import authoring time.
 
 *Phase: 69-sso-jit-live-keycloak*
 *Decisions locked: 2026-05-29 (3 advisor-researched, code-verified)*
+
+---
+
+## D-69-4 — 69-06 api↔Keycloak wiring gap → **Option A (test-fixture overlay)** + **1.6 → Option C2 (real loud-fail)**
+
+**Date:** 2026-05-29 (advisor-researched, code-verified; surfaced when 69-06 HALTED)
+
+**Gap (verified independently):** all JIT machinery merged (waves 0-2), but the api container was NEVER wired to the seeded Keycloak for the `@sso` e2e run — no `OIDC_ISSUER_URL`→realm/client/secret + no 7 JIT env vars in any compose/Makefile. `keycloak.yml` adds only the `keycloak` service, no `api:` override. So `readJitConfig()`→null, `oidcConfigured()`→false → all 7 scenarios unreachable. 69-05 shipped realm+seed+service but not the connective env.
+
+**Decision 1 (api↔Keycloak wiring) → Option A:** add `compose/test/keycloak-api-env.yml` (api: env override, `@sso`-profile-only) repointing api at `http://keycloak:8080/realms/acme` + client id/secret + the 7 JIT vars; layer it into the Makefile `@sso` branch (~line 559). This is a **TEST FIXTURE, not a prod change** — confirmed: in prod the OPERATOR sets OIDC+JIT env (SPEC-ldap-keycloak.md:90-93 worked acme example is operator config); the conformance suite already uses the identical fixture pattern (docker-compose.yml:330 `${OIDC_ISSUER_URL:-http://fixture-idp:9000}`). Prod compose defaults untouched. Wiring lives in 69-06 (the only plan that observes it; a standalone 69-05b would be unverifiable in isolation). 1.6 uses the per-scenario `bootStack({envOverrides, expectExit})` seam (byok.steps.ts:152-174) for its deliberately-broken config.
+
+**Decision 2 (@cjm-sso-1.6 boot mechanism) → Option C2 (re-scope to real loud-fail):** 1.6 as written ("non-existent realm → non-zero boot exit + `sso.jit.rejected` log") describes a mechanism that DOESN'T EXIST — a bad `OIDC_ISSUER_URL` boots clean (genericOAuth discovery is lazy), and `sso.jit.rejected` is a RUNTIME sign-in rejection per SPEC failure-mode table (SPEC:135-145), never boot-time. The ONLY merged JIT boot loud-fail is `validateJitBoot()` (oidc-jit-boot.ts:84-98): `process.exit(78)` + `FATAL oidc-jit-boot` on malformed `OIDC_TENANT_MAPPING`/`OIDC_ROLE_MAPPING` JSON — which is SPEC-mandated (SPEC:119-121). Re-scope 1.6 to assert THAT: malformed mapping JSON → `bootStack({expectExit:78})` + `FATAL oidc-jit-boot` in stderr. Reword the feature scenario + the 69-06 plan's 1.6 assertion (`FATAL oidc-jit-boot`, NOT `sso.jit.rejected`; trigger = bad JSON, NOT unreachable realm). Preserves the T-69-20 anti-DoS intent (misconfig fails loud, JIT never silently off).
+
+**Rejected C1 (new `validateJitIssuerBoot` boot-time issuer probe):** (a) new prod code ONLY to satisfy a test → CLAUDE.md hard-rule-1 violation; (b) contradicts SPEC (no boot-time issuer failure mode); (c) WRONG self-host posture — couples api boot to Keycloak liveness (restart storms on transient IdP downtime), adds a boot-time SSRF egress surface; every existing boot validator (validateEncryptionBoot/IngressBoot/LitellmBoot) checks LOCAL operator config, never remote reachability. Lazy-discovery-with-runtime-error is correct: api boots, SSO fails gracefully at sign-in until Keycloak reachable.
+
+**Net:** zero new production code; honest tests of real merged behavior; fixture overlay doesn't touch prod defaults.
