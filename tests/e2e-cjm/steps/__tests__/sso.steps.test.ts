@@ -134,12 +134,17 @@ describe("sso.steps.ts — @cjm-sso-1.* bindings (Phase 69)", () => {
         OIDC_TENANT_MAPPING: "{not valid json",
       },
       expectExit: 78,
+      // Scope the boot to api + its dep closure so the full observability/ingress
+      // stack's latency doesn't blow the Playwright budget (the 120s-timeout
+      // regression this closes alongside the fast-health overlay).
+      targetServices: ["api"],
       skipUserStackStop: true,
       inheritStdio: false,
     };
     const result = await bootStackSpy(opts);
     const [calledOpts] = bootStackSpy.mock.calls[0];
     expect((calledOpts as typeof opts).expectExit).toBe(78);
+    expect((calledOpts as typeof opts).targetServices).toEqual(["api"]);
     expect((calledOpts as typeof opts).envOverrides.OIDC_TENANT_MAPPING).toBe("{not valid json");
     // The litellm-fast-health overlay must ride along so the boot is not gated
     // by a cold litellm health probe.

@@ -176,6 +176,55 @@ describe("bootStack — envOverrides", () => {
 
     expect(process.env.S3_ENDPOINT).toBe(before);
   });
+
+  it("appends targetServices as trailing positionals on `up` (scopes the boot)", async () => {
+    const router = (_cmd: string, args: string[]): FakeChildSpec => {
+      if (args.includes("ps") && args.includes("-q")) return { stdout: "" };
+      return { exitCode: 0 };
+    };
+    const { spawnFn, calls } = makeSpawnRecorder(router);
+
+    await bootStack({
+      composeFiles: ["docker-compose.yml"],
+      scratchDir,
+      scenarioId: "scoped-boot",
+      spawnFn,
+      waitForReadinessFn: waitOk,
+      skipUserStackStop: true,
+      inheritStdio: false,
+      targetServices: ["api"],
+    });
+
+    const upCall = calls.find((c) => c.joined.includes(" up "));
+    expect(upCall, "expected an `up` call").toBeTruthy();
+    // The service name must trail `up` (and any flags), restricting the boot to
+    // api + its depends_on closure instead of the whole profile.
+    const a = upCall?.args ?? [];
+    expect(a[a.length - 1]).toBe("api");
+    expect(a.indexOf("up")).toBeLessThan(a.lastIndexOf("api"));
+  });
+
+  it("brings up the whole profile when targetServices is omitted", async () => {
+    const router = (_cmd: string, args: string[]): FakeChildSpec => {
+      if (args.includes("ps") && args.includes("-q")) return { stdout: "" };
+      return { exitCode: 0 };
+    };
+    const { spawnFn, calls } = makeSpawnRecorder(router);
+
+    await bootStack({
+      composeFiles: ["docker-compose.yml"],
+      scratchDir,
+      scenarioId: "full-boot",
+      spawnFn,
+      waitForReadinessFn: waitOk,
+      skipUserStackStop: true,
+      inheritStdio: false,
+    });
+
+    const upCall = calls.find((c) => c.joined.includes(" up "));
+    // No service positional after `up`/flags → `up -d --wait` ends the argv.
+    expect(upCall?.args[upCall.args.length - 1]).toBe("--wait");
+  });
 });
 
 describe("bootStack — expectExit + stderr capture", () => {

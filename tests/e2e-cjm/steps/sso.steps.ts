@@ -804,6 +804,13 @@ When("the api container boots", async ({ tenantId, $test }) => {
       OIDC_TENANT_MAPPING: "{not valid json",
     },
     expectExit: 78,
+    // Scope the boot to api + its depends_on closure
+    // (migrate/litellm/valkey/postgres/pgbouncer) — NOT the full --profile set,
+    // which also boots grafana/loki/tempo/mimir/otel/minio/traefik/web/worker
+    // (16 services) whose startup latency is pure dead weight for a
+    // config-validation crash. `up -d api` + the fast-health litellm overlay
+    // gets the api booting (and crashing) in well under the budget.
+    targetServices: ["api"],
     // With litellm fake-healthy in ~3s the api starts almost immediately, reaches
     // readJitConfig() → validateJitBoot() → exit 78 within ~15-25s. Poll budget
     // spans the (now-short) dependency-health wait + api boot + restart-loop

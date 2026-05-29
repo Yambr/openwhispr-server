@@ -198,6 +198,17 @@ export interface BootStackOptions {
    * behaviour (none today; reserved for future contract tests).
    */
   disableRateLimitOverlayAutoInclude?: boolean;
+  /**
+   * Restrict `docker compose up` to these service names (plus their
+   * depends_on closure) instead of the whole `--profile` set. Use for
+   * fast-fail boot-config scenarios that only need the api + its hard
+   * dependencies and would otherwise pay the full observability/ingress
+   * stack's startup latency. `up -d <svc>` still respects depends_on, so
+   * `["api"]` pulls api+migrate+litellm+valkey+postgres+pgbouncer but skips
+   * grafana/loki/tempo/mimir/otel/minio/traefik/web/worker. Undefined →
+   * bring up the entire profile (the default, full-stack behaviour).
+   */
+  targetServices?: readonly string[];
 }
 
 export interface BootStackResult {
@@ -545,6 +556,9 @@ export async function bootStack(opts: BootStackOptions = {}): Promise<BootStackR
     "up",
     "-d",
     ...(opts.expectExit === undefined ? ["--wait"] : []),
+    // Service-name positionals MUST trail all flags. When set, compose brings
+    // up only these + their depends_on closure (not the whole profile).
+    ...(opts.targetServices ?? []),
   ];
   const upCode = await runCompose(upArgs, { spawnFn, inheritStdio });
   // When expectExit is set, a non-zero up code is acceptable (the api
