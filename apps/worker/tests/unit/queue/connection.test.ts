@@ -14,13 +14,15 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 const ioredisCtorMock = vi.fn();
 
 vi.mock("ioredis", () => {
-  return {
-    default: class FakeIORedis {
-      constructor(...args: unknown[]) {
-        ioredisCtorMock(...args);
-      }
-    },
-  };
+  // The production code imports the NAMED `Redis` export (the default export's
+  // type isn't constructable under the repo's tsc settings). Provide it (and the
+  // default, for back-compat) pointing at the same capture class.
+  class FakeIORedis {
+    constructor(...args: unknown[]) {
+      ioredisCtorMock(...args);
+    }
+  }
+  return { default: FakeIORedis, Redis: FakeIORedis };
 });
 
 import { buildRedisConnection } from "../../../src/queue/connection.js";

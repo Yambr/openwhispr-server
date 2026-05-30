@@ -19,10 +19,17 @@
 import { execFileSync } from "node:child_process";
 import { existsSync } from "node:fs";
 
-// Pinned squawk-cli major. v2.52+ adopted --exclude/--include semantics
-// (no positional --rules allowlist), so we run with defaults and filter
-// the JSON output ourselves to the blocking-rule allowlist below.
-const SQUAWK_VERSION = "2";
+// Pinned squawk-cli EXACT version. v2.52+ adopted --exclude/--include semantics
+// (no positional --rules allowlist), so we run with defaults and filter the JSON
+// output ourselves to the blocking-rule allowlist below. Pinned to an exact
+// patch (not the floating `2` major) because `npx squawk-cli@2` resolves to the
+// latest 2.x at fetch time, and CI's resolution drifted to a 2.x whose JSON
+// output differed enough that the bad-* fixtures stopped tripping the blocking
+// rules — the integration tests then saw exit 0 where they expect 1 (green
+// locally on 2.55.0, red in CI on a drifted resolve). An exact pin makes the
+// gate deterministic across CI and dev. Bump deliberately when adopting a new
+// squawk.
+const SQUAWK_VERSION = "2.55.0";
 
 // Blocking rules — anything in this list causes the PR gate to fail.
 // Per Plan 09-02 interfaces + 09-RESEARCH §"Online-Migration Lint".
