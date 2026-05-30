@@ -31,7 +31,12 @@
 
 set -uo pipefail
 
-REQUIRED_RAM_BYTES=$((24 * 1024 * 1024 * 1024))
+# RAM floor for a real load-test plateau is 24 GiB. The CI `load-smoke` job runs
+# a ≤2-min mock-profile smoke (≤5 VU) on a ~16 GiB GitHub-hosted runner, which
+# does not need plateau RAM — it sets PREFLIGHT_MIN_RAM_GIB to lower the floor
+# for that scope only. Unset → 24 GiB default preserved (fix 260530-rqk).
+REQUIRED_RAM_GIB="${PREFLIGHT_MIN_RAM_GIB:-24}"
+REQUIRED_RAM_BYTES=$((REQUIRED_RAM_GIB * 1024 * 1024 * 1024))
 REQUIRED_PORTS_TCP=(9009 4000 8000 80 443)
 REQUIRED_FD_LIMIT=65535
 TRACKED_COMPOSE_FILES=(docker-compose.yml compose/docker-compose.load-test.yml)
@@ -115,9 +120,9 @@ if command -v docker >/dev/null 2>&1 && docker info >/dev/null 2>&1; then
     mem_bytes=$(python3 -c "print(int(float('$gb') * (1000**3)))" 2>/dev/null || echo 0)
   fi
   if [ "$mem_bytes" -ge "$REQUIRED_RAM_BYTES" ] 2>/dev/null; then
-    ok "Docker MemTotal=${mem_bytes} bytes >= 24 GiB"
+    ok "Docker MemTotal=${mem_bytes} bytes >= ${REQUIRED_RAM_GIB} GiB"
   else
-    fail "Docker MemTotal=${mem_bytes} bytes < 24 GiB floor (mem_raw: $mem_raw)"
+    fail "Docker MemTotal=${mem_bytes} bytes < ${REQUIRED_RAM_GIB} GiB floor (mem_raw: $mem_raw)"
   fi
 fi
 

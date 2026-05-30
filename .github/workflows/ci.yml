@@ -187,14 +187,23 @@ jobs:
           path: reports/stryker-incremental.json
           key: stryker-${{ hashFiles('pnpm-lock.yaml','vitest.config.ts','stryker.config.json') }}
       - run: pnpm install --frozen-lockfile
-      - run: pnpm test:mutation:incremental --since origin/${{ github.base_ref }}
+        # Stryker has no `--since` flag — incremental scoping is driven by
+        # `--incremental` + the cached reports/stryker-incremental.json restored
+        # above. Passing `--since` errored with `unknown option '--since'` on
+        # every PR (fix 260530-rqk).
+      - run: pnpm test:mutation:incremental
 
   pr-checklist:
     if: github.event_name == 'pull_request' && github.actor != 'dependabot[bot]'
     runs-on: ubuntu-24.04
     steps:
       - uses: mheap/require-checklist-action@9c8100a52aa9726d4648e61aa92415f6c843c990  # v2.6.1
-        with: { requireChecklist: true }
+        # skipComments: true — only the PR *body* checklist is evaluated. With
+        # the default (false) the action also scans PR comments and treats
+        # bot-injected comment checkboxes (CodeRabbit / Copilot "Create stacked
+        # PR", "Commit on current branch", …) as incomplete items, failing the
+        # gate on every PR regardless of the body checklist (fix 260530-rqk).
+        with: { requireChecklist: true, skipComments: true }
 
   lint-tdd:
     if: github.event_name == 'pull_request'
@@ -536,10 +545,24 @@ jobs:
           if [ -x tools/bootstrap.sh ]; then
             tools/bootstrap.sh --ci || true
           fi
+          # Guard: bootstrap MUST have replaced the MASTER_KEK placeholder. A
+          # masked bootstrap failure (the `|| true` above) would leave the
+          # placeholder and make `migrate` exit 1 with no visible cause — the
+          # pre-existing contract-test red. Fail loudly here instead
+          # (fix 260530-rqk; see .planning/debug/contract-test-migrate-exit1).
+          if grep -q '^MASTER_KEK=PLACEHOLDER_BOOTSTRAP_WILL_REPLACE' .env; then
+            echo "::error::bootstrap did not replace MASTER_KEK placeholder — migrate would fail" >&2
+            exit 1
+          fi
       - name: Build api + migrate images
         run: docker compose build api migrate
       - name: Bring up stack (default + contract-test profiles)
         run: docker compose --profile default --profile contract-test up -d --wait
+      - name: Capture migrate + api logs on boot failure
+        if: failure()
+        run: |
+          docker compose --profile default --profile contract-test \
+            logs --no-color migrate api postgres | tail -300
       - name: Seed conformance fixtures
         env:
           SMTP_HOST: ""
@@ -778,7 +801,11 @@ jobs:
       - uses: actions/setup-node@v5
         with: { node-version: '24', cache: 'pnpm' }
       - run: pnpm install --frozen-lockfile
-      - run: pnpm test --coverage
+        # The `test` script is already `vitest run --coverage`; appending another
+        # `--coverage` produced `vitest run --coverage --coverage` → CAC error
+        # `Expected a single value for option "--coverage"` on every PR
+        # (fix 260530-rqk). Coverage is emitted by the script itself.
+      - run: pnpm test
       - name: Capture changed files
         env:
           GH_TOKEN: ${{ github.token }}
@@ -1024,6 +1051,11 @@ jobs:
         env:
           BASELINE_VUS: "5"
           BASELINE_DURATION_SUSTAIN: "60s"
+          # A ≤2-min mock smoke (5 VU) is not a 1000-VU plateau; the ~16 GiB
+          # hosted runner is plenty. Lower the preflight RAM floor for THIS
+          # scope only — real `make load-test` keeps the 24 GiB default
+          # (fix 260530-rqk).
+          PREFLIGHT_MIN_RAM_GIB: "12"
         run: make load-smoke
       - name: Capture compose logs on failure
         if: failure()
