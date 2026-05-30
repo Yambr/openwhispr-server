@@ -73,6 +73,15 @@ describe("Phase 14 / Plan 02 — .env.slim.example conformance", () => {
       "VALKEY_PASSWORD",
       "MASTER_KEK",
       "BACKUP_AGE_IDENTITY",
+      // 260530-rqk — the remaining 4 check-default-secrets COMPOSE_REQUIRED_KEYS.
+      // pgbouncer/minio/grafana/traefik are all in the `default` compose profile
+      // and consume these at boot, so the migrate gate refuses to start without
+      // them. They were previously commented/absent, which broke
+      // `git clone && docker compose up`. Now base-required active secrets.
+      "PGBOUNCER_ADMIN_PASSWORD",
+      "MINIO_ROOT_PASSWORD",
+      "GRAFANA_ADMIN_PASSWORD",
+      "TRAEFIK_ADMIN_PASSWORD",
       // OTel disable sentinel (CONTEXT decision 5)
       "OTEL_EXPORTER_OTLP_ENDPOINT",
       // Phase 15 / Plan 02 (STRUCT-05) — Better Auth trustedOrigins env
@@ -170,11 +179,17 @@ describe("Phase 14 / Plan 02 — .env.slim.example conformance", () => {
     // self-contained (fixture-idp + seed + contract-test-runner). It is
     // still listed so Test 9 asserts its banner exists with an empty key
     // set rather than silently skipping it.
+    // 260530-rqk — TRAEFIK_ADMIN_PASSWORD and PGBOUNCER_ADMIN_PASSWORD are no
+    // longer COMMENTED overlay rows: the `default` compose profile runs both
+    // services and the migrate boot gate requires their secrets, so they are
+    // now ACTIVE base-required keys in the secrets block (asserted by Test 3).
+    // The overlay sections only document the remaining overlay-specific env
+    // (INGRESS_BASE_URL for ingress; pgbouncer has no other BYOK env).
     const expectations: Record<string, string[]> = {
       storage: ["S3_ENDPOINT=", "S3_ACCESS_KEY=", "S3_SECRET_KEY=", "S3_BUCKET="],
       observability: ["OTEL_EXPORTER_OTLP_ENDPOINT=", "OTEL_SERVICE_NAME="],
-      ingress: ["INGRESS_BASE_URL=", "TRAEFIK_ADMIN_PASSWORD="],
-      pgbouncer: ["PGBOUNCER_ADMIN_PASSWORD="],
+      ingress: ["INGRESS_BASE_URL="],
+      pgbouncer: [],
       "contract-test": [],
     };
 
@@ -209,6 +224,11 @@ describe("Phase 14 / Plan 02 — .env.slim.example conformance", () => {
       "VALKEY_PASSWORD",
       "MASTER_KEK",
       "BACKUP_AGE_IDENTITY",
+      // 260530-rqk — base-required compose secrets (default-profile services).
+      "PGBOUNCER_ADMIN_PASSWORD",
+      "MINIO_ROOT_PASSWORD",
+      "GRAFANA_ADMIN_PASSWORD",
+      "TRAEFIK_ADMIN_PASSWORD",
       "OTEL_EXPORTER_OTLP_ENDPOINT",
       "AUTH_TRUSTED_ORIGINS_EXTRA",
       // R19 — externally-reachable API origin facet.
