@@ -817,11 +817,17 @@ jobs:
       - uses: actions/setup-node@v5
         with: { node-version: '24', cache: 'pnpm' }
       - run: pnpm install --frozen-lockfile
-        # The `test` script is already `vitest run --coverage`; appending another
-        # `--coverage` produced `vitest run --coverage --coverage` → CAC error
-        # `Expected a single value for option "--coverage"` on every PR
-        # (fix 260530-rqk). Coverage is emitted by the script itself.
-      - run: pnpm test
+        # Consume the coverage report the `test` job already produced (it uploads
+        # the `coverage/` artifact) instead of RE-RUNNING the full suite here.
+        # Re-running `pnpm test` in this job re-ran the docker-compose- and
+        # helm-touching integration/tools tests WITHOUT this job's missing
+        # docker/helm setup, so they failed on `docker compose … config` /
+        # `helm dependency build` — unrelated to coverage. The `test` job (which
+        # HAS that setup) is the single source of the coverage summary
+        # (fix 260530-rqk).
+      - name: Download coverage report from the test job
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093  # v4
+        with: { name: coverage, path: coverage }
       - name: Capture changed files
         env:
           GH_TOKEN: ${{ github.token }}
