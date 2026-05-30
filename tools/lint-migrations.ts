@@ -155,6 +155,27 @@ const defaultSquawkRunner = (cmd: string, args: string[]): { stdout: string; sta
 };
 /* c8 ignore stop */
 
+/**
+ * Extract squawk's JSON diagnostics array from possibly-contaminated stdout.
+ *
+ * `npx --yes` may wrap squawk's output with install notices on stdout; we
+ * slice from the first `[` to the last `]` and parse that. Returns `[]` when
+ * no balanced array is present (genuine crash / non-JSON), so `status` alone
+ * drives the exit decision in that case.
+ */
+function extractDiagnostics(stdout: string): SquawkDiagnostic[] {
+  const start = stdout.indexOf("[");
+  const end = stdout.lastIndexOf("]");
+  if (start === -1 || end === -1 || end < start) return [];
+  const candidate = stdout.slice(start, end + 1);
+  try {
+    const parsed = JSON.parse(candidate) as unknown;
+    return Array.isArray(parsed) ? (parsed as SquawkDiagnostic[]) : [];
+  } catch {
+    return [];
+  }
+}
+
 export function runSquawkOnFile(
   file: string,
   excludeRules: string[] = [],
@@ -175,17 +196,15 @@ export function runSquawkOnFile(
 
   const { stdout, status } = runner("npx", args);
   const trimmed = stdout.trim();
-  let all: SquawkDiagnostic[] = [];
-  if (trimmed) {
-    try {
-      const parsed = JSON.parse(trimmed) as unknown;
-      if (Array.isArray(parsed)) {
-        all = parsed as SquawkDiagnostic[];
-      }
-    } catch {
-      // Non-JSON output (e.g. squawk crash); status drives exit decision.
-    }
-  }
+  // squawk's JSON array can arrive contaminated by the `npx --yes` wrapper:
+  // on a cold/forked runner npx may prepend a package-install notice
+  // ("npm warn exec …" / "added 1 package in 1s") or append a trailing
+  // notice to STDOUT around the array. A naive `JSON.parse(trimmed)` throws
+  // on that noise → empty diagnostics → blocking fixtures slip through as
+  // exit 0 (the real #15 CI flake; cold-fetch hypothesis disproven — see
+  // .planning/debug/squawk-gate-vitest-fork-empty-output-2026-05-30.md).
+  // Extract the JSON array from the first `[` to the last `]` and parse that.
+  const all = extractDiagnostics(trimmed);
   const blocking = all.filter((d) => d.rule_name && BLOCKING_RULES.has(d.rule_name));
   return { all, blocking, status, raw: trimmed };
 }
