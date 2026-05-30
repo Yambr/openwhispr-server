@@ -65,6 +65,23 @@ describe("GET /api/auth/providers — route behavior", () => {
     expect(body.providers).toEqual([{ id: "oidc", name: "OIDC", enabled: true }]);
   });
 
+  it("renders OIDC_PROVIDER_NAME as the oidc button label through the public route (id stays frozen 'oidc')", async () => {
+    app = await buildAppForEnv(
+      envOf({
+        OIDC_ISSUER_URL: "https://keycloak.example.com/realms/acme",
+        OIDC_CLIENT_ID: "cid",
+        OIDC_CLIENT_SECRET: "secret",
+        OIDC_PROVIDER_NAME: "Acme SSO",
+      }),
+    );
+    const res = await app.inject({ method: "GET", url: "/api/auth/providers" });
+    expect(res.statusCode).toBe(200);
+    const body = res.json() as {
+      providers: Array<{ id: string; name: string; enabled: boolean }>;
+    };
+    expect(body.providers).toEqual([{ id: "oidc", name: "Acme SSO", enabled: true }]);
+  });
+
   it("info-leak gate — response keys are EXACTLY ['emailVerification','providers'] and per-provider EXACTLY ['enabled','id','name']", async () => {
     app = await buildAppForEnv(
       envOf({
