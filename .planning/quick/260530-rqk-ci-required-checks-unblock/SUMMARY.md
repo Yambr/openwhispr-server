@@ -28,29 +28,52 @@ wildcard/bare-ID/malformed-exp rejected; live `.trivyignore` valid + contains
 the #33 IDs). No gate bypassed; no real security/coverage/mutation invariant
 weakened. Commit `ac5c1a61`.
 
-## NOT blind-fixed — surfaced as a distinct finding
+## Two REAL bugs the CLI fixes unmasked — both fixed (Nick: "fix both до упора")
 
-`contract-test` (REQUIRED) + `e2e-hermetic` / `e2e-phase6-quick` /
-`embedded-smoke` / `playwright` fail at `docker compose ... up --wait` because
-**`service "migrate" didn't complete successfully: exit 1`** — a real non-zero
-migrate exit (postgres reached Healthy first, so NOT a timeout). Pre-existing on
-main. This is a substantive boot failure (could also break the OSS
-`docker compose up` promise), not a CI-typo — fixing it blind risks masking a
-real bug. Leading hypothesis: the CI `tools/bootstrap.sh --ci || true` masks a
-bootstrap failure → `MASTER_KEK=PLACEHOLDER_BOOTSTRAP_WILL_REPLACE` survives →
-migrate.cjs exits 1. UNCONFIRMED (the job captured no migrate logs).
+Fixing the `mutation-quick` `--since` typo and adding the contract-test
+diagnostic made Stryker + the migrate boot actually run, exposing two genuine
+pre-existing bugs underneath. Both diagnosed from own-eyes evidence and fixed
+properly (not blind-patched).
 
-**Diagnostic landed this PR (non-invasive):** the contract-test job now (a)
-fails loudly with `::error::` if the MASTER_KEK placeholder survives bootstrap,
-and (b) captures `docker compose logs migrate api postgres` on `failure()`. The
-next CI run turns this into a real diagnosis instead of a blind guess. Full
-analysis + next steps: `.planning/debug/contract-test-migrate-exit1-2026-05-30.md`.
+### Bug B — `migrate` exits 1 / OSS `docker compose up` broken (commit 94f93ee3)
+The captured contract-test logs showed:
+`migrate-1 | refusing to start: PGBOUNCER_ADMIN_PASSWORD is unset or matches deny-list`.
+The migrate boot gate (`check-default-secrets.ts`) requires all 10
+`COMPOSE_REQUIRED_KEYS` (pgbouncer/minio/grafana/traefik all carry
+`profiles: [default]`), but `.env.slim.example` seeded only 6 — PGBOUNCER +
+TRAEFIK commented out, MINIO + GRAFANA absent. bootstrap only generates ACTIVE
+placeholders, so 4 never materialized → migrate refused. This broke CI AND every
+fresh OSS `git clone && docker compose up`. Fix: seed all 4 missing secrets;
+regression guard `tools/lint-env-required-secrets.{ts,test.ts}` cross-checks
+`.env.slim.example` against `COMPOSE_REQUIRED_KEYS` so they can't drift again.
+
+### Bug A — mutation-quick never green / Stryker dry-run aborts (commit 839d3d6b)
+With `--since` gone, Stryker ran and its initial dry-run failed: ~13 tests
+`readFileSync` a MUTATED `src/**` file and `toMatch`/`toContain` its text;
+Stryker instruments those files (`through.on("close",…)` →
+`through.on(stryMutAct_…("168") ? "" : …)`), so the literal tokens vanish and
+the tests fail → Stryker aborts before any mutant. These are source-structure
+(lint-class) assertions, meaningless under mutation. Fix (Nick decision): list
+them in `stryker.config.json` `ignorePatterns` (+ `.claude` worktree noise) so
+they're removed from the Stryker sandbox ONLY (still run + gate under
+`pnpm test`). Verified end-to-end: `stryker run --mutate .../index.ts` →
+"Initial test run succeeded. Ran 64 tests" → "mutation score 70.33 ≥ break 50".
+Regression guard `tools/lint-stryker-source-assertion-excludes.test.ts`.
+
+The contract-test job also gained a non-invasive diagnostic (MASTER_KEK
+placeholder guard + `docker compose logs migrate` on failure) for future boot
+issues. Analysis: `.planning/debug/contract-test-migrate-exit1-2026-05-30.md`.
 
 ## Verification
 - Both CLI bugs reproduced locally (RED) then confirmed resolved.
 - `bash tools/load-test/scripts/preflight.test.sh` → all pass.
-- `pnpm exec vitest run tools/lint-trivyignore.test.ts` → 12/12.
+- `lint-trivyignore` 12/12; `lint-env-required-secrets` 6/6;
+  `lint-stryker-source-assertion-excludes` 5/5; boot-refusal + check-default-
+  secrets 42/42.
+- Stryker dry-run verified GREEN end-to-end (mutation score 70.33 ≥ 50).
 - actionlint: my edits add zero new findings (3 pre-existing on main untouched).
 - `pnpm test:all` GREEN for the pre-push evidence gate. Never --no-verify.
+- Real proof = PR #48 going green on ALL the previously-red gates without admin
+  override (CI run pending after this push).
 - Real proof = PR #48 going green on the 5 fixed gates without admin override;
   `contract-test` may still be red pending the migrate diagnosis (surfaced).

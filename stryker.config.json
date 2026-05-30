@@ -16,6 +16,23 @@
     "!**/*.spec.ts",
     "!**/*.gen.ts"
   ],
+  "_ignorePatterns_note": "Source-ASSERTION tests (readFileSync a mutated src/** file + toMatch/toContain its text) break in Stryker's dry run: instrumentation rewrites the literal tokens they grep for, the dry run fails, and Stryker aborts before testing any mutant. They are lint-class, not behavior tests, so they are removed from the Stryker sandbox here (they still run + gate under `pnpm test`). `.claude` drops local agent worktrees that pollute the sandbox. Completeness guarded by tools/lint-stryker-source-assertion-excludes.test.ts. fix 260530-rqk.",
+  "ignorePatterns": [
+    ".claude",
+    "apps/api/tests/unit/lib/no-console-in-bootstrap.test.ts",
+    "apps/api/tests/unit/lib/plan-52-04-pyannote-argon2-typecheck.test.ts",
+    "apps/api/tests/unit/lib/token-rotation-doc-truth.test.ts",
+    "apps/api/tests/unit/plan-52-04b-routes-cascade.test.ts",
+    "apps/api/tests/unit/routes/agent/plan-51-12tx4-stream-disconnect-destroy.test.ts",
+    "apps/api/tests/unit/routes/notes/delete-all-error-envelope.test.ts",
+    "apps/api/tests/unit/routes/plan-51-10-routes-rest.test.ts",
+    "apps/api/tests/unit/routes/plan-51-12-conversations-hardening.test.ts",
+    "apps/api/tests/unit/routes/plan-51-12c-locker-04-conversations.test.ts",
+    "apps/api/tests/unit/routes/plan-51-12tx-transcriptions-list.test.ts",
+    "packages/litellm-client/tests/unit/plan-51-15-hardening.test.ts",
+    "packages/litellm-client/tests/unit/plan-51-15b-no-dead-exports.test.ts",
+    "packages/litellm-client/tests/unit/plan-52-01-typecheck-pin.test.ts"
+  ],
   "incremental": true,
   "incrementalFile": "reports/stryker-incremental.json",
   "thresholds": {
