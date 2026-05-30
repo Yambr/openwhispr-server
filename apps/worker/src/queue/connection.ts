@@ -25,7 +25,13 @@
 // split-env layout get a clear diagnostic instead of an opaque connect
 // failure.
 
-import IORedis from "ioredis";
+// Use the NAMED `Redis` export (aliased to IORedis), not the default export.
+// ioredis@5's default export resolves to a namespace under the repo's TS module
+// settings, which `tsc --noEmit` rejects as a type AND a constructor
+// (TS2709/TS2351 "Cannot use namespace as a type" / "not constructable"). Every
+// other call site uses the named export (apps/api/lib/dep-check.ts, index.ts,
+// packages/data tests); match it here so worker typecheck passes.
+import { Redis as IORedis } from "ioredis";
 
 export interface BuildRedisConnectionOpts {
   /**
