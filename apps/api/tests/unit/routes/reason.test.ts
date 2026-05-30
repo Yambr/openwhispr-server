@@ -644,6 +644,108 @@ describe("POST /api/reason", () => {
     });
   });
 
+  // ---------------------------------------------------------------------------
+  // #18 — per-model extras bag from config (REASONING_MODEL_PARAMS), through
+  // the REAL route into the upstream chatCompletions body.
+  // ---------------------------------------------------------------------------
+  it("#18 — config modelParams entry for the cleanup alias flows into upstream extras (overrides thinking-off)", async () => {
+    const { db } = makeFakeDb();
+    const calls: ChatCompletionRequest[] = [];
+    const litellm = makeFakeLitellm({
+      calls,
+      upstreamJson: {
+        model: "qwen3.6-cleanup",
+        choices: [{ message: { role: "assistant", content: "Clean." } }],
+        usage: { total_tokens: 5 },
+      },
+    });
+    app = buildApp({
+      db,
+      litellm,
+      defaultModel: "qwen3.6-plus",
+      cleanupModel: "qwen3.6-cleanup",
+      // operator config: cleanup alias → temperature:0 (the gr0flvsr default)
+      modelParams: { "qwen3.6-cleanup": { temperature: 0 } },
+    });
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/reason",
+      headers: { "content-type": "application/json" },
+      payload: JSON.stringify({ text: "one two three" }),
+    });
+    expect(res.statusCode).toBe(200);
+    const call = calls[0];
+    if (!call) throw new Error("expected one upstream call");
+    expect(call.model).toBe("qwen3.6-cleanup");
+    // config bag WINS — not the hardcoded thinking-off default.
+    expect(call.extras).toEqual({ temperature: 0 });
+  });
+
+  it("#18 — config modelParams entry for the agent alias flows into upstream extras", async () => {
+    const { db } = makeFakeDb();
+    const calls: ChatCompletionRequest[] = [];
+    const litellm = makeFakeLitellm({ calls });
+    app = buildApp({
+      db,
+      litellm,
+      defaultModel: "qwen3.6-plus",
+      cleanupModel: "qwen3.6-cleanup",
+      modelParams: { "qwen3.6-plus": { reasoning: { enabled: false }, temperature: 0 } },
+    });
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/reason",
+      headers: { "content-type": "application/json" },
+      // agent shape: agentName present
+      payload: JSON.stringify({ text: "summarize this", agentName: "Whispr" }),
+    });
+    expect(res.statusCode).toBe(200);
+    const call = calls[0];
+    if (!call) throw new Error("expected one upstream call");
+    expect(call.model).toBe("qwen3.6-plus");
+    expect(call.extras).toEqual({ reasoning: { enabled: false }, temperature: 0 });
+  });
+
+  it("#18 ANTI-INJECTION — client-sent body params NEVER leak into upstream extras", async () => {
+    const { db } = makeFakeDb();
+    const calls: ChatCompletionRequest[] = [];
+    const litellm = makeFakeLitellm({ calls });
+    app = buildApp({
+      db,
+      litellm,
+      defaultModel: "qwen3.6-plus",
+      cleanupModel: "qwen3.6-cleanup",
+      modelParams: { "qwen3.6-cleanup": { temperature: 0 } },
+    });
+    // A client crams extras-like keys into the JSON body, attempting to
+    // override upstream reasoning / temperature / model behaviour.
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/reason",
+      headers: { "content-type": "application/json" },
+      payload: JSON.stringify({
+        text: "one two three",
+        reasoning: { enabled: true },
+        temperature: 1.9,
+        extra_body: { chat_template_kwargs: { enable_thinking: true } },
+        extras: { injected: true },
+      }),
+    });
+    expect(res.statusCode).toBe(200);
+    const call = calls[0];
+    if (!call) throw new Error("expected one upstream call");
+    // Only the operator config bag governs extras — nothing from the body.
+    expect(call.extras).toEqual({ temperature: 0 });
+    const serialized = JSON.stringify(call.extras);
+    expect(serialized).not.toContain("1.9");
+    expect(serialized).not.toContain("injected");
+    expect(serialized).not.toContain("enable_thinking");
+    // And the upstream body's top-level fields are the server's, not the
+    // client's smuggled reasoning/temperature.
+    const upstreamSerialized = JSON.stringify(call);
+    expect(upstreamSerialized).not.toContain("1.9");
+  });
+
   it("R33 — cleanup-shape with locale 'ru' selects the RU cleanup prompt", async () => {
     const { db } = makeFakeDb();
     const calls: ChatCompletionRequest[] = [];

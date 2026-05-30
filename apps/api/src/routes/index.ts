@@ -179,6 +179,8 @@ export interface AllRoutesDeps {
     realtimeModel: string;
     /** R33 — fast cleanup-class alias for /api/reason dictation cleanup. */
     cleanupModel: string;
+    /** #18 — per-model chat-param extras bag (env `REASONING_MODEL_PARAMS`). */
+    modelParams?: Record<string, Record<string, unknown>>;
   };
   /**
    * Phase 03 / Plan 06 (D-07 REVISED): Valkey client for the diarization
@@ -581,6 +583,10 @@ export function buildAllRoutes(deps: AllRoutesDeps): readonly RoutePlugin[] {
         ? {
             defaultModel: deps.litellmModels.chatModel,
             cleanupModel: deps.litellmModels.cleanupModel,
+            // #18 — per-model extras bag (operator config) into reason deps.
+            ...(deps.litellmModels.modelParams !== undefined
+              ? { modelParams: deps.litellmModels.modelParams }
+              : {}),
           }
         : {}),
     };

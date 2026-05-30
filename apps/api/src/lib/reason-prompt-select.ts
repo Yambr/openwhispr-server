@@ -169,6 +169,19 @@ export interface ModelSelectionDeps {
   cleanupModel?: string;
   /** Default conversational chat alias (env `LITELLM_DEFAULT_CHAT_MODEL`). */
   defaultModel?: string;
+  /**
+   * #18 — per-model chat-completion param bag (litellm-style), keyed by the
+   * resolved model alias. Sourced from `REASONING_MODEL_PARAMS` env via
+   * `LitellmClientConfig.modelParams`. When an entry exists for the resolved
+   * alias it becomes the request `extras` for ALL shapes (overriding the
+   * cleanup thinking-off default); absent → backward-compat behaviour.
+   *
+   * SECURITY: this map is OPERATOR config only. `selectModelAndExtras` MUST
+   * NOT merge any request-body field into the resulting extras — doing so
+   * would let a client inject upstream params (model/tool/reasoning
+   * override). Only `body.model` is read, and only to select the alias.
+   */
+  modelParams?: Record<string, Record<string, unknown>>;
 }
 
 /** Resolved upstream model + optional pass-through extras for a request. */
@@ -200,8 +213,32 @@ export function selectModelAndExtras(
 ): ModelAndExtras {
   if (isCleanupRequest(body)) {
     const model = body.model || deps.cleanupModel || DEFAULT_CHAT_MODEL;
-    return { model, extras: { ...QWEN_THINKING_OFF_EXTRAS } };
+    // #18 — an operator-configured per-model bag overrides the hardcoded
+    // thinking-off default; absent → keep the back-compat default.
+    const configured = resolveConfiguredExtras(deps.modelParams, model);
+    return { model, extras: configured ?? { ...QWEN_THINKING_OFF_EXTRAS } };
   }
   const model = body.model ?? deps.defaultModel ?? DEFAULT_CHAT_MODEL;
-  return { model };
+  // #18 — agent shape now also honours a configured bag for its resolved
+  // alias; absent → no extras (today's behaviour, back-compat).
+  const configured = resolveConfiguredExtras(deps.modelParams, model);
+  return configured ? { model, extras: configured } : { model };
+}
+
+/**
+ * Return a SHALLOW COPY of the operator-configured extras bag for `model`,
+ * or `undefined` when no bag is configured for that alias.
+ *
+ * The copy guarantees the caller cannot mutate the shared config object,
+ * and — critically — the returned object is built ONLY from
+ * `modelParams[model]` (operator env), never from the request body. This
+ * is the anti-injection seam (see {@link ModelSelectionDeps.modelParams}).
+ */
+function resolveConfiguredExtras(
+  modelParams: Record<string, Record<string, unknown>> | undefined,
+  model: string,
+): Record<string, unknown> | undefined {
+  const bag = modelParams?.[model];
+  if (bag === undefined) return undefined;
+  return { ...bag };
 }

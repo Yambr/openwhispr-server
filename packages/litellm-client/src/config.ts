@@ -70,6 +70,24 @@ export interface LitellmClientConfig {
    */
   defaultCleanupModel: string;
   /**
+   * #18 — per-model chat-completion param bag (litellm-style). A map of
+   * model alias → an arbitrary extras object the server spreads VERBATIM
+   * into the upstream chat-completion body (the same way LiteLLM forwards
+   * `litellm_params`). Operator-owned via `REASONING_MODEL_PARAMS`
+   * (JSON map); provider-specific syntax (`reasoning:{enabled:false}` for
+   * OpenRouter, `extra_body.chat_template_kwargs` for vLLM, etc.) is placed
+   * in the env BY HAND — the server does NOT translate intent→syntax.
+   * Unset/empty → `{}`. Malformed JSON, a non-object top level, or a
+   * non-object per-alias value REFUSES to load (boot surfaces it as
+   * EX_CONFIG exit 78), same loud-fail posture as a missing master key.
+   *
+   * SECURITY: this bag is safe to spread ONLY because its source is
+   * operator env, never a request. The /api/reason resolver MUST never
+   * merge request-body fields into it (that would be an upstream-injection
+   * vector). See `apps/api/src/lib/reason-prompt-select.ts`.
+   */
+  modelParams: Record<string, Record<string, unknown>>;
+  /**
    * R32 — default undici `headersTimeout` (ms) for the non-streaming
    * methods (chat / transcribe / passthrough). Operator-owned via
    * `LITELLM_HEADERS_TIMEOUT_MS`; falls back to {@link DEFAULT_HEADERS_TIMEOUT_MS}.
@@ -183,6 +201,49 @@ export const DEFAULT_RETRY_CAP_MS = 8_000;
 /** Compose service name of the bundled LiteLLM proxy (slim/dev stack). */
 const BUNDLED_LITELLM_HOST = "litellm";
 
+/** True for a plain JSON object (`{}`), false for arrays / null / primitives. */
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+/**
+ * Parse `REASONING_MODEL_PARAMS` into a validated alias → extras-bag map.
+ *
+ * Unset/empty → `{}`. Anything malformed REFUSES with a thrown Error
+ * (the boot path turns it into EX_CONFIG exit 78, same as a missing
+ * master key) rather than silently ignoring operator misconfig:
+ *   - not parseable as JSON
+ *   - top level is not a plain object (array / string / number / null)
+ *   - any per-alias value is not a plain object
+ */
+function parseModelParams(raw: string | undefined): Record<string, Record<string, unknown>> {
+  if (raw === undefined || raw.length === 0) return {};
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch (err) {
+    const reason = err instanceof Error ? err.message : "invalid JSON";
+    throw new Error(`REASONING_MODEL_PARAMS must be a valid JSON object: ${reason}`);
+  }
+  if (!isPlainObject(parsed)) {
+    throw new Error(
+      "REASONING_MODEL_PARAMS must be a JSON object mapping model alias -> params object",
+    );
+  }
+  const out: Record<string, Record<string, unknown>> = {};
+  for (const [alias, bag] of Object.entries(parsed)) {
+    if (!isPlainObject(bag)) {
+      throw new Error(
+        `REASONING_MODEL_PARAMS["${alias}"] must be a params object (got ${
+          Array.isArray(bag) ? "array" : bag === null ? "null" : typeof bag
+        })`,
+      );
+    }
+    out[alias] = bag;
+  }
+  return out;
+}
+
 export function loadLitellmConfigFromEnv(
   env: NodeJS.ProcessEnv = process.env,
 ): LitellmClientConfig {
@@ -241,6 +302,9 @@ export function loadLitellmConfigFromEnv(
     env.REASONING_CLEANUP_MODEL && env.REASONING_CLEANUP_MODEL.length > 0
       ? env.REASONING_CLEANUP_MODEL
       : DEFAULT_CLEANUP_MODEL;
+  // #18 — per-model chat-param extras bag (litellm-style). Malformed config
+  // throws here → boot turns it into EX_CONFIG exit 78.
+  const modelParams = parseModelParams(env.REASONING_MODEL_PARAMS);
   // R32 — undici timeout posture is operator-tunable via three env knobs;
   // each falls back to its prior hardcoded literal when unset/invalid.
   const headersTimeoutMs = parsePositiveIntEnv(
@@ -273,6 +337,7 @@ export function loadLitellmConfigFromEnv(
     defaultSttModel,
     defaultRealtimeModel,
     defaultCleanupModel,
+    modelParams,
     headersTimeoutMs,
     bodyTimeoutMs,
     errorDrainTimeoutMs,
