@@ -1,0 +1,52 @@
+# #17 (B) — `live-cleanup` compose overlay.
+#
+# Live-mode overlay used EXCLUSIVELY by
+# .github/workflows/nightly-cleanup-norephrase.yml to drive the cleanup
+# no-rephrase e2e against the REAL OpenRouter instruct model. Distinct from:
+#
+#   * compose/e2e/docker-compose.e2e.yml          → hermetic mock (zero cost; PR safe)
+#   * compose/live-soak/docker-compose.live.yml   → real OpenAI Realtime ($$ per run)
+#   * compose/live-soak/docker-compose.live-cleanup.yml (this file)
+#                                                 → real OpenRouter cleanup (cheap; ~1 short completion)
+#
+# Used by the nightly workflow as:
+#
+#   docker compose -f docker-compose.yml \
+#                  -f compose/live-soak/docker-compose.live-cleanup.yml \
+#                  up -d
+#
+# What this overlay does:
+#   Overlay-binds compose/live-soak/litellm_config.live-cleanup.yaml onto the
+#   LiteLLM container's /etc/litellm/config.yaml so the `qwen3.6-cleanup`
+#   alias resolves to the real OpenRouter instruct checkpoint, consuming
+#   OPENROUTER_API_KEY from the workflow-injected environment. The production
+#   api → LiteLLM → upstream chain stays intact — only the cleanup upstream
+#   is repointed at the real provider.
+#
+# Cost discipline:
+#   The cleanup e2e issues a SINGLE short chat completion (a ~40-token
+#   transcript), so per-run spend is a fraction of a cent — far below the
+#   realtime soak's $15-25. Cost discipline here is about not running on
+#   PRs/forks (secret exposure), not about $ ceiling: the nightly workflow's
+#   if-guard restricts execution to scheduled events + tag pushes +
+#   workflow_dispatch; `on:` does NOT list pull_request, so forks cannot read
+#   OPENROUTER_API_KEY nor trigger this overlay.
+#
+# This overlay MUST NOT declare or reference a hermetic-echo/mock upstream —
+# the nightly's value is empirical (does the REAL provider clean verbatim?).
+
+services:
+  litellm:
+    volumes:
+      - ./compose/live-soak/litellm_config.live-cleanup.yaml:/etc/litellm/config.yaml:ro
+    environment:
+      # OPENROUTER_API_KEY flows from the GHA workflow → docker compose →
+      # LiteLLM container env. The live-cleanup config references it via
+      # `os.environ/OPENROUTER_API_KEY` so the key never lands in a file.
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:?OPENROUTER_API_KEY is required for the live-cleanup overlay}
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 1536M
+          cpus: "2.0"

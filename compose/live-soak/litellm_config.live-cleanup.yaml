@@ -1,0 +1,55 @@
+# #17 (B) — live-cleanup LiteLLM config overlay.
+#
+# Mounted by compose/live-soak/docker-compose.live-cleanup.yml (used
+# EXCLUSIVELY by .github/workflows/nightly-cleanup-norephrase.yml). Repoints
+# the `qwen3.6-cleanup` alias at the REAL OpenRouter backing model so the
+# nightly validates the FULL production cleanup topology end-to-end against a
+# live provider:
+#
+#   POST https://api.localhost/api/reason  (cleanup shape: text only)
+#     → Traefik websecure entrypoint
+#     → Fastify api /api/reason route
+#     → LiteLLM (chat) — THIS FILE — pointed at OpenRouter
+#     → OpenRouter (real provider, instruct checkpoint)
+#
+# WHY this exists (orthogonal to the operator's in-cluster stage litellm):
+#   This overlay catches MODEL / PROVIDER drift — "the instruct checkpoint
+#   started paraphrasing" or "OpenRouter swapped behavior under the same id".
+#   It is self-contained (only OPENROUTER_API_KEY) and needs no cluster
+#   access. The complementary axis — regression of the OPERATOR's deployed
+#   litellm config (alias/backing/temp drift after an ArgoCD sync) — is a
+#   separate future nightly (variant "A") that hits the in-cluster stage
+#   litellm directly and requires a scoped kubeconfig.
+#
+# Backing model + params mirror the operator's confirmed stage config
+# (2026-05-30 live verification): a NON-REASONING instruct checkpoint with
+# temperature:0. The instruct checkpoint + the strict cleanup system prompt
+# are what keep cleanup verbatim; temperature:0 trims residual creative
+# drift (belt-and-suspenders). If the backing model is ever swapped for a
+# reasoning-capable one, add `reasoning: {enabled: false}` here (the
+# OpenRouter reasoning-off syntax) to keep thinking suppressed.
+#
+# This file MUST NOT reference any hermetic-echo / mock upstream — the
+# nightly's value is empirical (does the REAL provider still clean without
+# rephrasing?).
+
+model_list:
+  # Cleanup-class alias pointed at the REAL OpenRouter instruct checkpoint.
+  # temperature:0 travels as a litellm_param (the same defense-in-depth the
+  # operator keeps in the production values.yaml; the server's
+  # REASONING_MODEL_PARAMS is the portable duplicate of this).
+  - model_name: qwen3.6-cleanup
+    litellm_params:
+      model: openrouter/qwen/qwen3-30b-a3b-instruct-2507
+      api_key: os.environ/OPENROUTER_API_KEY
+      temperature: 0
+
+  # Default chat alias kept resolvable so the api boot's model probe and any
+  # non-cleanup /api/reason call still have a valid upstream during the run.
+  - model_name: qwen3.6-plus
+    litellm_params:
+      model: openrouter/qwen/qwen3.6-plus
+      api_key: os.environ/OPENROUTER_API_KEY
+
+litellm_settings:
+  drop_params: true
