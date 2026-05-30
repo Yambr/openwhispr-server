@@ -111,7 +111,12 @@ describe("Phase 14 / Plan 02 — .env.slim.example conformance", () => {
     // counted as input keys — they interpolate via ${VAR}. To keep this
     // assertion strict on the input contract, filter them out before the
     // sort comparison.
-    const derived = new Set(["DATABASE_URL", "VALKEY_URL", "LITELLM_BASE_URL"]);
+    const derived = new Set([
+      "DATABASE_URL",
+      "DATABASE_URL_OWNER",
+      "VALKEY_URL",
+      "LITELLM_BASE_URL",
+    ]);
     const inputKeys = actualKeys.filter((k) => !derived.has(k));
     expect(inputKeys.sort()).toEqual([...expectedKeys].sort());
   });
@@ -245,6 +250,7 @@ describe("Phase 14 / Plan 02 — .env.slim.example conformance", () => {
       "SMTP_FROM",
       // Derived (do not edit) — ${VAR}-interpolated.
       "DATABASE_URL",
+      "DATABASE_URL_OWNER",
       "VALKEY_URL",
       "LITELLM_BASE_URL",
     ]);
