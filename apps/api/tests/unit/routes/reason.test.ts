@@ -761,4 +761,84 @@ describe("POST /api/reason", () => {
     // Agent shape -> no thinking-off extras in the request body.
     expect(call.extras).toBeUndefined();
   });
+
+  // R33 / cleanup-no-rephrase contract (Quick 260530-kkz) — REGRESSION GUARD.
+  //
+  // Incident: the cleanup model rephrased/rewrote transcripts instead of
+  // only stripping fillers. Root cause was on the litellm side (alias
+  // qwen3.6-cleanup targeted a reasoning model whose `enable_thinking:false`
+  // kwarg OpenRouter dropped → it "thought" and rewrote); the fix swapped
+  // the backing model to a strict instruct checkpoint + temperature:0.
+  //
+  // THIS test guards OUR layer's half of the contract: the route must return
+  // the cleanup model's output VERBATIM and add nothing of its own. If a
+  // future change ever inserts a server-side "polish"/post-process step on
+  // the cleanup path, this fails. It does NOT (and cannot) assert that a real
+  // model avoids rephrasing — that is the instruct-model + temp:0 litellm
+  // config's job, additionally guarded by the nightly e2e against the real
+  // stage alias (task #17). Scope here is strictly the server passthrough.
+  it("R33 — cleanup-shape returns the model output VERBATIM (no server-side rephrase/added content)", async () => {
+    const { db } = makeFakeDb();
+    const calls: ChatCompletionRequest[] = [];
+
+    // Golden pair: a dirty dictation transcript (the user's spoken input)
+    // and the exact cleaned text the (now strict-instruct) cleanup model
+    // returns — fillers/false-starts/duplicate-words removed, punctuation
+    // fixed, wording + meaning preserved, NO rephrase, NO added content.
+    const dirtyTranscript =
+      "um so yeah i was like thinking that uh we should maybe you know ship " +
+      "the the thing on friday but um idk if the tests are gonna pass by then " +
+      "so like maybe monday is safer i guess";
+    const cleanedGolden =
+      "Yeah, I was thinking we should maybe ship the thing on Friday, but I " +
+      "don't know if the tests will pass by then. Maybe Monday's safer, I guess.";
+
+    const litellm = makeFakeLitellm({
+      calls,
+      upstreamJson: {
+        model: "qwen3.6-cleanup",
+        choices: [{ message: { role: "assistant", content: cleanedGolden } }],
+        usage: { total_tokens: 42 },
+      },
+    });
+    app = buildApp({ db, litellm, defaultModel: "qwen3.6-plus", cleanupModel: "qwen3.6-cleanup" });
+
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/reason",
+      headers: { "content-type": "application/json" },
+      // Cleanup shape: text only (no model/agentName/systemPrompt).
+      payload: JSON.stringify({ text: dirtyTranscript }),
+    });
+    expect(res.statusCode).toBe(200);
+
+    // VERBATIM passthrough: response.text is byte-for-byte the model output.
+    // The server neither appends a preamble/commentary nor re-cleans/rewrites
+    // it — `reason.ts` returns choices[0].message.content unchanged.
+    const parsed = ReasonResponse.parse(res.json());
+    expect(parsed.text).toBe(cleanedGolden);
+
+    // The server adds nothing of its own: no extra leading/trailing content,
+    // and the dirty input text is NOT echoed back into the response.
+    expect(parsed.text).not.toContain(dirtyTranscript);
+    expect(parsed.text.startsWith("Yeah, I was thinking")).toBe(true);
+    expect(parsed.text.endsWith("Maybe Monday's safer, I guess.")).toBe(true);
+
+    // Still the cleanup contract on the request side: cleanup model, the
+    // cleanup system prompt is applied, the raw transcript is the user
+    // message verbatim, and thinking-off travels in the body.
+    expect(calls).toHaveLength(1);
+    const call = calls[0];
+    if (!call) throw new Error("expected one upstream call");
+    expect(call.model).toBe("qwen3.6-cleanup");
+    expect(call.messages).toHaveLength(2);
+    expect(call.messages[0]?.role).toBe("system");
+    expect(call.messages[0]?.content).toContain("text cleanup tool");
+    // The user message is the dirty transcript VERBATIM — the server does
+    // not pre-clean or alter the input before sending it upstream.
+    expect(call.messages[1]).toEqual({ role: "user", content: dirtyTranscript });
+    expect(call.extras).toEqual({
+      extra_body: { chat_template_kwargs: { enable_thinking: false } },
+    });
+  });
 });
