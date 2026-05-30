@@ -176,6 +176,15 @@ image:
   #   image v1.0.4 (A1 byok-guard export / A2 email k8s bypass / A3 worker
   #   CJS guard / A4 worker VALKEY_URL parser / A5 POST /api/locale).
   # Companion openwhispr-postgres chart 1.1.0 ships the rolconfig fix (B4).
+  # 1.0.16 — OIDC SSO Just-In-Time provisioning (Phase 69, PR #38): users
+  # are auto-provisioned with tenant + role mapped from id_token claims on
+  # first SSO sign-in (web genericOAuth + desktop mint-bearer paths share
+  # one resolveJitDecision). Proven 7/7 @cjm-sso against a live Keycloak 26.
+  # Hardening: new-user JIT into a non-default tenant now refused as a typed
+  # 403 forbidden_tenant_mismatch (was an RLS-500 leak); OIDC_TENANT_CLAIM/
+  # MAPPING/GROUP_CLAIM/ROLE_MAPPING/DEFAULT_ROLE/ROLE_PRIORITY/
+  # REVOCATION_MODE now wired through compose env. Additive migration 0032
+  # (audit_log SSO actions). No change to existing auth/DB surfaces.
   # 1.0.15 — agent stream content-chunk-before-error fix (260528-fzu):
   # server now emits a type:content chunk carrying the error text BEFORE
   # the structured type:error chunk so the immutable desktop client (which
@@ -195,7 +204,7 @@ image:
   # desktop client could not render. See docs/operations.md "Agent stream
   # error contract" section for the wire envelope + AgentErrorCode
   # taxonomy + log event schema.
-  tag: "1.0.15"
+  tag: "1.0.16"
   api:     { repository: openwhispr-api }
   web:     { repository: openwhispr-web }
   worker:  { repository: openwhispr-worker }
