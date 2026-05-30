@@ -330,6 +330,22 @@ services:
       OIDC_ISSUER_URL: ${OIDC_ISSUER_URL:-http://fixture-idp:9000}
       OIDC_CLIENT_ID: ${OIDC_CLIENT_ID:-conformance-test-client}
       OIDC_CLIENT_SECRET: ${OIDC_CLIENT_SECRET:-conformance-test-secret-do-not-use-in-prod}
+      # Phase 69 — OIDC JIT-provisioning config (oidc-jit-config.ts / readJitConfig).
+      # An operator running the bundled compose enables JIT by setting these in
+      # .env; declare the passthrough here (empty default = JIT disabled, the
+      # genericOAuth provider still works without tenant/role mapping). Without an
+      # explicit `environment:` passthrough the container would never receive
+      # these — `env_file: .env` only loads keys present in .env, and a CLI
+      # `--env-file` (used by the e2e boot harness) feeds compose substitution,
+      # not the container. validateJitBoot() loud-fails (exit 78) at boot on
+      # malformed JSON in either MAPPING var (T-69-20).
+      OIDC_TENANT_CLAIM: ${OIDC_TENANT_CLAIM:-}
+      OIDC_TENANT_MAPPING: ${OIDC_TENANT_MAPPING:-}
+      OIDC_GROUP_CLAIM: ${OIDC_GROUP_CLAIM:-}
+      OIDC_ROLE_MAPPING: ${OIDC_ROLE_MAPPING:-}
+      OIDC_DEFAULT_ROLE: ${OIDC_DEFAULT_ROLE:-}
+      OIDC_ROLE_PRIORITY: ${OIDC_ROLE_PRIORITY:-}
+      OIDC_REVOCATION_MODE: ${OIDC_REVOCATION_MODE:-}
       # Phase 03 / Plan 01 — bundled LiteLLM endpoint + master key. Override
       # LITELLM_BASE_URL in .env to point at a corporate LiteLLM (LITELLM-05).
       LITELLM_BASE_URL: ${LITELLM_BASE_URL:-http://litellm:4000}

@@ -535,24 +535,52 @@ e2e-cjm:
 	else \
 		echo "0" > .e2e-cjm-user-was-running; \
 	fi
+	@# Phase 69 / Plan 69-05 (SSO-IMPL-05) — wire the live Keycloak fixture
+	@# ONLY when the run targets the SSO scenarios (SCENARIO matches @sso).
+	@# The default (non-SSO) run is left byte-for-byte unchanged so Keycloak
+	@# is NOT booted for the base suite — preserving @cjm-sso-1.6's
+	@# empty-realm-import observation. When SSO is selected we add
+	@# `-f compose/test/keycloak.yml --profile sso`, poll Keycloak's
+	@# /health/ready, then seed realm `acme` via the Admin REST API
+	@# (scripts/seed-keycloak-realm.sh) BEFORE bddgen/playwright so the
+	@# import does not race the container.
 	@set -e; \
 	trap '$(MAKE) -s e2e-cjm-dump-logs; $(MAKE) -s e2e-cjm-teardown' EXIT INT TERM; \
+	KC_COMPOSE=""; KC_PROFILE=""; \
+	case "$$SCENARIO" in \
+		*sso*) KC_COMPOSE="-f compose/test/keycloak.yml -f compose/test/keycloak-api-env.yml"; KC_PROFILE="--profile sso"; \
+			echo "e2e-cjm: SSO run detected — adding compose/test/keycloak.yml + keycloak-api-env.yml (--profile sso, @sso-only api↔Keycloak fixture wiring per D-69-4)"; \
+			: "$${LITELLM_CONFIG_FILE:=litellm_config.contract.yaml}"; export LITELLM_CONFIG_FILE; \
+			echo "e2e-cjm: SSO run uses mock-STT LiteLLM config ($$LITELLM_CONFIG_FILE) so @cjm-sso-1.5b's real /api/transcribe upload returns a deterministic 200 (usage_ledger row) WITHOUT an external STT key — the cross-tenant isolation proof reads /api/usage. OIDC scenarios 1.1-1.6 do not touch LiteLLM.";; \
+	esac; \
 	docker compose -p e2e-cjm \
 		-f docker-compose.yml -f compose/docker-compose.embedded-litellm.yml \
 		-f compose/docker-compose.storage.yml \
 		-f compose/docker-compose.ingress.yml \
 		-f tests/e2e-cjm/compose-overrides.yml \
-		--profile default up -d --build --wait; \
+		$$KC_COMPOSE \
+		--profile default $$KC_PROFILE up -d --build --wait; \
 	pnpm tsx tests/e2e-cjm/support/wait-for-readiness.ts; \
-	# playwright-bdd 8.x does NOT auto-generate specs via `playwright
-	# test`; the generation runs only via the dedicated `bddgen` CLI
-	# (see node_modules/playwright-bdd/dist/cli/commands/test.ts).
-	# Without an explicit `bddgen` invocation the .bdd-gen/ output dir
-	# stays empty and playwright reports "Error: No tests found". Locally
-	# this was hidden by a cached .bdd-gen/ from prior runs — CI is
-	# always fresh, so the bug manifested on every push. Run bddgen
-	# explicitly before `playwright test`, scoped via the same config so
-	# `outputDir: ".bdd-gen"` resolves to tests/e2e-cjm/.bdd-gen/. \
+	if [ -n "$$KC_COMPOSE" ]; then \
+		echo "e2e-cjm: waiting for Keycloak /health/ready then seeding realm 'acme'"; \
+		KC_READY_URL="$${KC_READY_URL:-http://127.0.0.1:9000/health/ready}"; \
+		kc_ready=0; \
+		for attempt in $$(seq 1 60); do \
+			if curl -fsS "$$KC_READY_URL" 2>/dev/null | grep -q '"status": *"UP"'; then \
+				kc_ready=1; break; \
+			fi; \
+			sleep 2; \
+		done; \
+		if [ "$$kc_ready" != "1" ]; then \
+			echo "e2e-cjm: Keycloak never reported /health/ready UP within 120s" >&2; \
+			exit 1; \
+		fi; \
+		KC_URL="$${KC_URL:-http://127.0.0.1:8089}" \
+		KC_ADMIN_USER="$${KC_ADMIN_USER:-admin}" \
+		KC_ADMIN_PASSWORD="$${KC_ADMIN_PASSWORD:-admin}" \
+			bash scripts/seed-keycloak-realm.sh; \
+	fi; \
+	echo "e2e-cjm: bddgen (playwright-bdd 8.x specs are generated only by the bddgen CLI, never by 'playwright test' — without this the .bdd-gen/ dir is empty and playwright reports 'No tests found')"; \
 	(cd tests/e2e-cjm && pnpm exec bddgen --config playwright.config.ts); \
 	if [ -n "$$SCENARIO" ]; then \
 		pnpm exec playwright test --grep "$$SCENARIO" --config tests/e2e-cjm/playwright.config.ts; \
@@ -580,11 +608,26 @@ e2e-cjm-dump-logs:
 	@echo "e2e-cjm-dump-logs: wrote compose-logs/ ($$(ls compose-logs/ | wc -l) files)"
 
 e2e-cjm-teardown:
+	@# down -v MUST list the SAME compose-file superset the `up` used, or compose
+	@# cannot resolve every service/volume and leaves volumes behind — a partial
+	@# file set left 56 e2e-cjm volumes after a run, so the NEXT run's api reused
+	@# the prior postgres data (users persisted) and @cjm-sso-1.1 took the
+	@# returning-user branch instead of first-time-create → no sso.jit.user.created
+	@# → flaky 1.1 on every 2nd+ consecutive run. Include the ingress + dev-tools
+	@# overlays AND the @sso keycloak overlays unconditionally (compose tolerates
+	@# `-f` for services that a given run never started).
 	-@docker compose -p e2e-cjm \
 		-f docker-compose.yml -f compose/docker-compose.embedded-litellm.yml \
 		-f compose/docker-compose.storage.yml \
+		-f compose/docker-compose.ingress.yml \
 		-f tests/e2e-cjm/compose-overrides.yml \
+		-f compose/docker-compose.dev-tools.yml \
+		-f compose/test/keycloak.yml -f compose/test/keycloak-api-env.yml \
 		down -v --remove-orphans
+	@# Belt-and-suspenders: sweep any e2e-cjm volume `down` still left behind
+	@# (compose skips volumes it can't associate when a service is absent).
+	-@docker volume ls -q --filter "label=com.docker.compose.project=e2e-cjm" \
+		| xargs -r docker volume rm 2>/dev/null || true
 	@if [ -f .e2e-cjm-user-was-running ] && [ "$$(cat .e2e-cjm-user-was-running)" = "1" ]; then \
 		echo "e2e-cjm-teardown: restarting user 'openwhispr' project"; \
 		docker compose -p openwhispr start; \

@@ -1,0 +1,187 @@
+# SPDX-License-Identifier: FSL-1.1-ALv2
+# Phase 69 / Plan 69-06 (D-69-4 Option A) — @sso-only api↔Keycloak wiring fixture.
+#
+# This overlay is a TEST FIXTURE, NOT a production default change. It mirrors the
+# docker-compose.yml:330 fixture-idp precedent
+# (`OIDC_ISSUER_URL: ${OIDC_ISSUER_URL:-http://fixture-idp:9000}`) — an env
+# override applied ONLY when the e2e run targets the @sso scenarios (the Makefile
+# layers `-f compose/test/keycloak-api-env.yml` exclusively inside the
+# `case "$SCENARIO" in *sso*)` branch). The base docker-compose.yml api env block
+# stays byte-for-byte unchanged: in production the OPERATOR sets the OIDC + JIT env
+# (SPEC-ldap-keycloak.md:90-93 worked acme example IS operator config).
+#
+# It wires the api (and worker, which runs the same image) to the seeded Keycloak
+# realm `acme` (compose/test/keycloak-realms/realm-openwhispr-test.json, imported
+# at runtime via scripts/seed-keycloak-realm.sh) and sets the 7 JIT env vars so
+# `readJitConfig()` returns a non-null config and `resolveJitDecision` resolves
+# for the seeded users alice@acme.example / carol@acme.example.
+#
+# --- Split-horizon fix (the load-bearing wiring decision) ---------------------
+# The Playwright browser runs on the HOST; the api container runs INSIDE the
+# `openwhispr_internal` docker network. Both must reach Keycloak at the SAME
+# issuer URL or the OIDC issuer claim in the token mismatches the discovery
+# origin (Better Auth rejects it) and the browser cannot resolve the
+# in-network `keycloak:8080` authorize redirect.
+#
+# Solution: route Keycloak through the SAME Traefik instance the api uses,
+# at `https://keycloak.localhost` (covered by the existing `*.localhost`
+# wildcard cert — compose/traefik/certs/local.crt SAN). Traefik gets a
+# network alias for `keycloak.localhost` so the api container's in-network
+# discovery fetch ALSO resolves it to Traefik (mirrors the api.localhost /
+# auth.localhost aliases in compose/docker-compose.ingress.yml). Keycloak is
+# told its public hostname is `https://keycloak.localhost` via KC_HOSTNAME +
+# X-Forwarded proxy headers so every absolute URL it emits in the discovery
+# document + the issuer claim is consistent for browser AND server.
+#
+# The Traefik router for keycloak.localhost is added via the file-provider
+# dynamic config mounted below (compose/test/keycloak-traefik.yml is folded
+# into this same overlay as a dynamic-config bind on the traefik service).
+
+services:
+  keycloak:
+    environment:
+      # Public hostname Keycloak advertises in discovery + the issuer claim.
+      # KC_HOSTNAME_STRICT stays false (set in compose/test/keycloak.yml) so
+      # admin-REST seeding via 127.0.0.1:8089 still works; KC_HOSTNAME pins the
+      # frontend/issuer URL used by the OIDC flow itself.
+      KC_HOSTNAME: https://keycloak.localhost
+      KC_HOSTNAME_BACKCHANNEL_DYNAMIC: "true"
+      # Honour Traefik's X-Forwarded-* so Keycloak knows it is behind TLS
+      # termination and builds https:// URLs.
+      KC_PROXY_HEADERS: xforwarded
+      KC_HTTP_ENABLED: "true"
+
+  traefik:
+    networks:
+      openwhispr_internal:
+        aliases:
+          # In-network resolution of keycloak.localhost → Traefik, so the api
+          # container's server-side OIDC discovery fetch hits the same vhost the
+          # host browser does. Mirrors the api.localhost / auth.localhost aliases.
+          - keycloak.localhost
+    volumes:
+      # Docker Compose REPLACES a service's `volumes:` list on overlay merge (it
+      # does NOT merge them like `environment:`). So this list must RE-DECLARE
+      # every base traefik mount from compose/docker-compose.ingress.yml verbatim,
+      # then ADD the keycloak.localhost dynamic-config file. Omitting the base
+      # mounts silently drops traefik.yml / dynamic.yml / certs and breaks all
+      # routing (incl. the keycloak.localhost route this overlay exists to add →
+      # authorize 404). Keep in sync with ingress.yml's traefik.volumes.
+      - ./compose/traefik/traefik.yml:/etc/traefik/traefik.yml:ro
+      - ./compose/traefik/dynamic.yml:/etc/traefik/dynamic/dynamic.yml:ro
+      - ./compose/traefik/dynamic.dev.yml:/etc/traefik/dynamic/dynamic.dev.yml:ro
+      - ./compose/traefik/certs:/certs:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      # The keycloak.localhost router/service (added on top of the base mounts).
+      - ./compose/test/keycloak-traefik-dynamic.yml:/etc/traefik/dynamic/keycloak.yml:ro
+
+  api:
+    # The api's OIDC discovery + token fetch go to https://keycloak.localhost,
+    # which Traefik serves with the local-CA-signed *.localhost cert. Node rejects
+    # it (UNABLE_TO_VERIFY_LEAF_SIGNATURE) unless the signing root CA is trusted —
+    # the exact pattern compose/docker-compose.contract-test.yml:85,99 uses for
+    # in-network HTTPS through Traefik. Mount + trust root-ca.crt.
+    # NOTE compose REPLACES volumes on merge — re-declare the base api locales
+    # mount (docker-compose.yml) so it isn't dropped, then add root-ca.crt.
+    volumes:
+      - ./apps/api/src/i18n/locales:/app/locales:ro
+      - ./compose/traefik/certs/root-ca.crt:/certs/root-ca.crt:ro
+    environment:
+      NODE_EXTRA_CA_CERTS: /certs/root-ca.crt
+      # --- SSRF egress allowlist for the OIDC token exchange ------------------
+      # mint-bearer's token exchange + discovery fetch hit
+      # https://keycloak.localhost (→ Traefik, a private 172.x docker IP). The
+      # ssrf-dispatcher is default-deny on both hostname (OUTBOUND_ALLOWED_HOSTS)
+      # AND private IPs (RFC1918 block-list, bypassed only via
+      # OUTBOUND_PRIVATE_HOST_ALLOWLIST). Without both, the token exchange fails
+      # with "Outbound blocked by SSRF policy". Extend the base bundled-service
+      # list (docker-compose.yml:414 litellm,valkey,postgres,mailpit) with the
+      # Keycloak vhost. Mirrors the feedback_k8s_egress_smtp_default_deny pattern.
+      OUTBOUND_ALLOWED_HOSTS: litellm,valkey,postgres,mailpit,keycloak.localhost,keycloak
+      # BOTH SSRF gates are default-deny: hostname (OUTBOUND_ALLOWED_HOSTS, above)
+      # AND private-IP (RFC1918 block-list, bypassed only via this list). The
+      # bundled litellm/valkey/postgres/mailpit resolve to docker-bridge private
+      # IPs (e.g. litellm → 192.168.x.x), so they MUST appear HERE too — not only
+      # in OUTBOUND_ALLOWED_HOSTS. Earlier this list carried only the Keycloak
+      # vhost, which silently dropped litellm from the base default
+      # (docker-compose.yml:415 litellm,valkey,postgres,mailpit): @cjm-sso-1.5b's
+      # real /api/transcribe → litellm call then tripped the RFC1918 gate with a
+      # 502 SSRFBlockedError (rfc1918_192_168; host=litellm). Restore the base
+      # bundled-service set and UNION the Keycloak hosts on top.
+      OUTBOUND_PRIVATE_HOST_ALLOWLIST: litellm,valkey,postgres,mailpit,keycloak.localhost,keycloak
+      # --- ingress origin (validateIngressBoot, NODE_ENV=production) -----------
+      # The @sso run layers compose/docker-compose.ingress.yml (Traefik + the
+      # keycloak.localhost router below) AND tests/e2e-cjm/compose-overrides.yml.
+      # That overrides INGRESS_BASE_URL to the hermetic non-ingress default
+      # `http://localhost:4000` — but the @sso chain DOES run Traefik with TLS,
+      # and NODE_ENV=production (docker-compose.yml:273) requires an HTTPS origin
+      # (apps/api/src/config/auth.ts validateIngressBoot → FATAL on http). Pin the
+      # canonical Traefik https origin so the api boots healthy under the ingress
+      # overlay. Matches the base default (docker-compose.yml:283
+      # `${INGRESS_BASE_URL:-https://api.localhost}`); the OIDC callback URLs are
+      # https://api.localhost/api/auth/oauth2/callback/oidc accordingly.
+      #
+      # NOTE: this machine's local `.env` carries INGRESS_BASE_URL=http://api.localhost
+      # (dev without TLS). docker compose interpolates `.env` into the
+      # `${INGRESS_BASE_URL:-…}` defaults in the base + compose-overrides, so the
+      # api would otherwise boot with an http origin under NODE_ENV=production
+      # (embedded-litellm.yml:522) and trip validateIngressBoot. This literal
+      # https value wins (last overlay in the @sso chain) and matches the Traefik
+      # TLS vhost the @sso run actually terminates.
+      INGRESS_BASE_URL: https://api.localhost
+      # An https INGRESS_BASE_URL makes the BYOK ingress guard require
+      # INGRESS_TLS_CERT_PATH to be SET (packages/byok-guard ingressRow — it only
+      # checks presence; the api never reads the file, TLS termination is Traefik's
+      # job via its own /certs mount). Point it at the cert Traefik already serves
+      # for *.localhost so the guard is satisfied without mounting anything into api.
+      INGRESS_TLS_CERT_PATH: /certs/local.crt
+      # --- OIDC triple (genericOAuth registration via oidc-providers.ts) ------
+      # Provider id is derived as "oidc" (oidc-providers.ts:105). The realm's
+      # client `openwhispr-backend` registers the matching redirect URIs for the
+      # provider-id "oidc" callbacks (oauth2/callback/oidc + desktop-callback/oidc).
+      OIDC_ISSUER_URL: https://keycloak.localhost/realms/acme
+      OIDC_CLIENT_ID: openwhispr-backend
+      OIDC_CLIENT_SECRET: openwhispr-backend-test-secret
+      # desktop-signin.ts:184 defaults the authorize URL to `${issuer}/authorize`
+      # (Auth0-style). Keycloak's is `${issuer}/protocol/openid-connect/auth` (per
+      # the realm discovery doc) → desktop flow 404s without this. desktop-signin.ts:182
+      # documents OIDC_AUTHORIZE_URL as the operator escape hatch for this exact
+      # non-standard-path case; a real Keycloak operator sets it identically.
+      OIDC_AUTHORIZE_URL: https://keycloak.localhost/realms/acme/protocol/openid-connect/auth
+      # --- 7 JIT env vars (oidc-jit-config.ts) --------------------------------
+      # tenant claim: email_domain mode. The seeded realm emits no bespoke tenant
+      # claim — only standard email/profile + groups — so the tenant key is the
+      # email domain (alice@acme.example / carol@acme.example → "acme.example").
+      OIDC_TENANT_CLAIM: email_domain
+      # acme.example → the seeded DEFAULT tenant. The users table fails OPEN to the
+      # default tenant (CLAUDE.md rule 16 / migration 0024): a JIT create projecting
+      # a NON-default tenant would be silently rewritten by the GUC-bound column
+      # DEFAULT, so the mapping MUST resolve to DEFAULT_TENANT_ID for the row to
+      # carry the asserted tenant. (DEFAULT_TENANT_ID is LOCKER-03 allowlisted.)
+      OIDC_TENANT_MAPPING: '{"acme.example":"00000000-0000-0000-0000-000000000000","globex.example":"11111111-1111-1111-1111-111111111111"}'
+      OIDC_GROUP_CLAIM: groups
+      # group → role exact-match (SPEC: exact-match JSON only). The realm groups are
+      # openwhispr-engineering / openwhispr-admin / okta-everyone.
+      OIDC_ROLE_MAPPING: '{"openwhispr-engineering":"member","openwhispr-admin":"admin"}'
+      OIDC_ROLE_PRIORITY: "admin > member > viewer"
+      # Non-null default so a returning admin whose admin group is revoked downgrades
+      # to member (revocation_downgrade) instead of being rejected.
+      OIDC_DEFAULT_ROLE: member
+      OIDC_REVOCATION_MODE: downgrade_to_default
+
+  worker:
+    environment:
+      # The worker runs the same image; keep its JIT/OIDC env consistent so any
+      # worker-side auth helper reads the identical config (defence-in-depth —
+      # the JIT seams live in the api, but env drift between api/worker is a
+      # known operator footgun the chart-bump memory warns about).
+      OIDC_ISSUER_URL: https://keycloak.localhost/realms/acme
+      OIDC_CLIENT_ID: openwhispr-backend
+      OIDC_CLIENT_SECRET: openwhispr-backend-test-secret
+      OIDC_TENANT_CLAIM: email_domain
+      OIDC_TENANT_MAPPING: '{"acme.example":"00000000-0000-0000-0000-000000000000","globex.example":"11111111-1111-1111-1111-111111111111"}'
+      OIDC_GROUP_CLAIM: groups
+      OIDC_ROLE_MAPPING: '{"openwhispr-engineering":"member","openwhispr-admin":"admin"}'
+      OIDC_ROLE_PRIORITY: "admin > member > viewer"
+      OIDC_DEFAULT_ROLE: member
+      OIDC_REVOCATION_MODE: downgrade_to_default

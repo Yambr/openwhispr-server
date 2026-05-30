@@ -160,6 +160,58 @@ describe("GET /api/desktop-signin/:provider", () => {
     });
   });
 
+  // Phase 69 / Plan 69-04 (D-69-1 / A1) — the authorize scope is widened with
+  // the configured group claim when JIT is enabled so Keycloak emits `groups`
+  // in userinfo (the desktop bearer-mint path reads claims from userinfo).
+  describe("Phase 69 — group scope in the authorize redirect", () => {
+    it("JIT disabled (OIDC_TENANT_CLAIM unset): scope is the legacy 'openid email profile'", async () => {
+      delete process.env.OIDC_TENANT_CLAIM;
+      const { db } = makeFakeDb();
+      const app = buildApp({ db });
+      const res = await app.inject({
+        method: "GET",
+        url: "/api/desktop-signin/oidc?callbackURL=openwhispr%3A%2F%2Fcb&protocol=openwhispr",
+      });
+      expect(res.statusCode).toBe(302);
+      const url = new URL(res.headers.location as string);
+      expect(url.searchParams.get("scope")).toBe("openid email profile");
+      await app.close();
+    });
+
+    it("JIT enabled (default group claim): scope appends 'groups'", async () => {
+      process.env.OIDC_TENANT_CLAIM = "tenant";
+      delete process.env.OIDC_GROUP_CLAIM;
+      const { db } = makeFakeDb();
+      const app = buildApp({ db });
+      const res = await app.inject({
+        method: "GET",
+        url: "/api/desktop-signin/oidc?callbackURL=openwhispr%3A%2F%2Fcb&protocol=openwhispr",
+      });
+      expect(res.statusCode).toBe(302);
+      const url = new URL(res.headers.location as string);
+      expect(url.searchParams.get("scope")).toBe("openid email profile groups");
+      delete process.env.OIDC_TENANT_CLAIM;
+      await app.close();
+    });
+
+    it("JIT enabled (custom OIDC_GROUP_CLAIM): scope appends the configured claim", async () => {
+      process.env.OIDC_TENANT_CLAIM = "tenant";
+      process.env.OIDC_GROUP_CLAIM = "memberOf";
+      const { db } = makeFakeDb();
+      const app = buildApp({ db });
+      const res = await app.inject({
+        method: "GET",
+        url: "/api/desktop-signin/oidc?callbackURL=openwhispr%3A%2F%2Fcb&protocol=openwhispr",
+      });
+      expect(res.statusCode).toBe(302);
+      const url = new URL(res.headers.location as string);
+      expect(url.searchParams.get("scope")).toBe("openid email profile memberOf");
+      delete process.env.OIDC_TENANT_CLAIM;
+      delete process.env.OIDC_GROUP_CLAIM;
+      await app.close();
+    });
+  });
+
   describe("reject: invalid scheme NEVER 302s", () => {
     it("protocol=javascript → 400 + envelope", async () => {
       const { db } = makeFakeDb();

@@ -567,6 +567,19 @@ services:
       OIDC_ISSUER_URL: ${OIDC_ISSUER_URL:-}
       OIDC_CLIENT_ID: ${OIDC_CLIENT_ID:-}
       OIDC_CLIENT_SECRET: ${OIDC_CLIENT_SECRET:-}
+      # Phase 69 — OIDC JIT-provisioning config passthrough (mirrors the base
+      # docker-compose.yml api block). Empty default = JIT disabled. Required so
+      # the container actually RECEIVES these vars: `env_file: .env` only loads
+      # keys present in .env, and the e2e boot harness's CLI `--env-file` feeds
+      # compose substitution (these `${...}`), not the container's env directly.
+      # validateJitBoot() loud-fails (exit 78) on malformed MAPPING JSON at boot.
+      OIDC_TENANT_CLAIM: ${OIDC_TENANT_CLAIM:-}
+      OIDC_TENANT_MAPPING: ${OIDC_TENANT_MAPPING:-}
+      OIDC_GROUP_CLAIM: ${OIDC_GROUP_CLAIM:-}
+      OIDC_ROLE_MAPPING: ${OIDC_ROLE_MAPPING:-}
+      OIDC_DEFAULT_ROLE: ${OIDC_DEFAULT_ROLE:-}
+      OIDC_ROLE_PRIORITY: ${OIDC_ROLE_PRIORITY:-}
+      OIDC_REVOCATION_MODE: ${OIDC_REVOCATION_MODE:-}
       # Phase 03 / Plan 01 — bundled LiteLLM endpoint + master key. Override
       # LITELLM_BASE_URL in .env to point at a corporate LiteLLM (LITELLM-05).
       LITELLM_BASE_URL: ${LITELLM_BASE_URL:-http://litellm:4000}

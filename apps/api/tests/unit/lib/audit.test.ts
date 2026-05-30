@@ -151,14 +151,21 @@ afterAll(async () => {
   await container?.stop();
 });
 
-describe("recordAudit — D-A6 18-action enum", () => {
-  it("exports exactly 18 actions matching D-A6", () => {
-    expect(AUDIT_ACTIONS).toHaveLength(18);
-    expect(new Set(AUDIT_ACTIONS).size).toBe(18);
+describe("recordAudit — D-A6 action enum (21 actions post D-69-2)", () => {
+  it("exports exactly 21 actions (18 D-A6 + 3 D-69-2 sso.jit.*)", () => {
+    // D-A6 locked 18 actions (migration 0014). Phase 69 / Plan 69-02
+    // (D-69-2, migration 0032) extended the taxonomy to 21 by adding the
+    // three SSO just-in-time provisioning actions.
+    expect(AUDIT_ACTIONS).toHaveLength(21);
+    expect(new Set(AUDIT_ACTIONS).size).toBe(21);
     // Spot-check canonical members.
     expect(AUDIT_ACTIONS).toContain("auth.signin");
     expect(AUDIT_ACTIONS).toContain("security.ssrf_blocked");
     expect(AUDIT_ACTIONS).toContain("account.delete");
+    // D-69-2 additions.
+    expect(AUDIT_ACTIONS).toContain("sso.jit.user.created");
+    expect(AUDIT_ACTIONS).toContain("sso.jit.role.updated");
+    expect(AUDIT_ACTIONS).toContain("sso.jit.rejected");
   });
 
   it("exposes a Zod schema for every action", () => {

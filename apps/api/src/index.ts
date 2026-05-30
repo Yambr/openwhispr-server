@@ -711,7 +711,7 @@ export const buildApp = async (opts: BuildAppOptions = {}): Promise<FastifyInsta
   // 9. Routes.
   if (opts.auth && opts.db) {
     const mintBearer: MintBearer =
-      opts.mintBearer ?? buildMintBearer({ auth: opts.auth as never, db: opts.db });
+      opts.mintBearer ?? buildMintBearer({ auth: opts.auth as never, db: opts.db, log: app.log });
     const routes = buildAllRoutes({
       auth: opts.auth,
       db: opts.db,

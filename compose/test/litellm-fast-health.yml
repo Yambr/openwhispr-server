@@ -1,0 +1,73 @@
+# SPDX-License-Identifier: FSL-1.1-ALv2
+#
+# TEST-ONLY overlay for the @cjm-sso-1.6 boot-config loud-fail scenario.
+#
+# WHY: 1.6 boots an ISOLATED compose project (e2e-cjm-sso16-*) purely to prove
+# the api loud-fails (validateJitBoot → exit 78) on a malformed
+# OIDC_TENANT_MAPPING. The malformed-mapping loud-fail is a PURE config-
+# validation test: the api never issues a single LiteLLM/Valkey/OTel request
+# before it exits 78 (readJitConfig → validateJitBoot runs in buildAuth, and the
+# process dies there). So none of those dependencies' ACTUAL health matters — the
+# only thing that needs to be ready is the DB schema (migrate).
+#
+# The blocker this overlay removes: the api's production `depends_on` waits for
+# litellm/valkey/pgbouncer/otel-collector to be `service_healthy`. otel-collector
+# itself chains to loki/tempo/mimir, whose REAL healthchecks carry start_period
+# 15s/60s/90s — AND tempo/mimir are distroless (no shell). Under the concurrent
+# full-@sso-stack load (15 main containers + this 2nd isolated stack on one
+# daemon) the api sat in `created` for 90s+ waiting on that chain, blowing the
+# exit-poll budget (live regression: exitCode null, api never started).
+#
+# Two overrides, both 1.6-only:
+#
+# 1. api `depends_on.*.condition` → `service_started` (was `service_healthy`)
+#    for litellm/valkey/pgbouncer/otel-collector. Compose MERGES depends_on by
+#    key and an override REPLACES the per-dependency `condition` (verified on
+#    compose v2.23), so this is a clean, version-robust downgrade — NOT a
+#    healthcheck hack on distroless images. The api now starts as soon as those
+#    containers are merely STARTED (instant) instead of HEALTHY (60-90s under
+#    load), reaches validateJitBoot, and exits 78. `migrate` is kept at
+#    `service_completed_successfully` because the api genuinely needs the schema
+#    applied before buildAuth's setup-admin DB probe.
+#
+# 2. api `restart: "no"` — the production default `restart: unless-stopped` makes
+#    a boot-crash RESTART-LOOP that never settles on `State=exited`; detecting it
+#    means catching the narrow `restarting 78` backoff window, which is racy
+#    under load. With `restart: "no"` the api crashes EXACTLY ONCE and settles on
+#    `State=exited ExitCode=78`, which `compose ps --format json api` reports on
+#    the first poll tick — deterministic, no restart-loop, no load sensitivity.
+#
+# This file is NEVER layered onto a real (non-1.6) run, so the production
+# readiness gates AND restart policy are untouched everywhere else.
+# Drop host-port publishes that collide with the concurrently-running main
+# e2e-cjm stack. Under a full @sso run the main stack already binds 127.0.0.1:4000
+# (api) and 127.0.0.1:8025 (mailpit); the isolated sso16 project would fail
+# `up` with "port is already allocated", leaving every container in `created`
+# (the api never starts → never crashes → exit-poll returns null: the real live
+# regression). 1.6 reaches the api ONLY via `docker inspect` (exit-code poll), so
+# it needs no published host ports at all. `ports:` MERGES by value across compose
+# files (an override-to-`[]` is ignored), so use the `!reset` tag (honored for
+# ports on compose v2.23) to actually clear the list.
+services:
+  api:
+    restart: "no"
+    ports: !reset []
+    depends_on:
+      # Schema must be applied before buildAuth's setup-admin DB probe.
+      migrate:
+        condition: service_completed_successfully
+      # Downgraded healthy→started: the loud-fail crashes before touching these.
+      litellm:
+        condition: service_started
+      valkey:
+        condition: service_started
+      pgbouncer:
+        condition: service_started
+      otel-collector:
+        condition: service_started
+      mailpit:
+        condition: service_started
+  # mailpit is in the api's depends_on closure and publishes 127.0.0.1:8025,
+  # which the main stack already holds. Clear it (see the header note on ports).
+  mailpit:
+    ports: !reset []
