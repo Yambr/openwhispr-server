@@ -72,6 +72,115 @@ describe("loadLitellmConfigFromEnv", () => {
     expect(cfg.defaultChatModel).toBe("gemini-3-flash");
   });
 
+  // -------------------------------------------------------------------------
+  // REASONING_MODEL_PARAMS — per-model chat-param extras bag (#18).
+  //
+  // litellm-style: a JSON map alias → arbitrary extras bag that the server
+  // spreads verbatim into the upstream chat-completion body (the same way
+  // litellm forwards litellm_params). Operator puts provider-specific
+  // syntax in the env BY HAND; the server does not translate intent.
+  // Unset/empty → {} (back-compat). Malformed → throw (boot EX_CONFIG 78).
+  // -------------------------------------------------------------------------
+  describe("REASONING_MODEL_PARAMS — per-model extras bag", () => {
+    it("defaults modelParams to {} when REASONING_MODEL_PARAMS is unset", () => {
+      const cfg = loadLitellmConfigFromEnv({ LITELLM_MASTER_KEY: "sk-master-x" });
+      expect(cfg.modelParams).toEqual({});
+    });
+
+    it("defaults modelParams to {} when REASONING_MODEL_PARAMS is empty string", () => {
+      const cfg = loadLitellmConfigFromEnv({
+        LITELLM_MASTER_KEY: "sk-master-x",
+        REASONING_MODEL_PARAMS: "",
+      });
+      expect(cfg.modelParams).toEqual({});
+    });
+
+    it("parses a valid JSON map of alias → extras bag", () => {
+      const cfg = loadLitellmConfigFromEnv({
+        LITELLM_MASTER_KEY: "sk-master-x",
+        REASONING_MODEL_PARAMS: JSON.stringify({
+          "qwen3.6-cleanup": { temperature: 0 },
+          "some-reasoner": { reasoning: { enabled: false }, temperature: 0 },
+        }),
+      });
+      expect(cfg.modelParams).toEqual({
+        "qwen3.6-cleanup": { temperature: 0 },
+        "some-reasoner": { reasoning: { enabled: false }, temperature: 0 },
+      });
+    });
+
+    it("throws (EX_CONFIG path) on malformed JSON", () => {
+      expect(() =>
+        loadLitellmConfigFromEnv({
+          LITELLM_MASTER_KEY: "sk-master-x",
+          REASONING_MODEL_PARAMS: "{not valid json",
+        }),
+      ).toThrow(/REASONING_MODEL_PARAMS/);
+    });
+
+    it("throws when top-level JSON is not an object (array)", () => {
+      expect(() =>
+        loadLitellmConfigFromEnv({
+          LITELLM_MASTER_KEY: "sk-master-x",
+          REASONING_MODEL_PARAMS: JSON.stringify([{ temperature: 0 }]),
+        }),
+      ).toThrow(/REASONING_MODEL_PARAMS/);
+    });
+
+    it("throws when top-level JSON is not an object (string)", () => {
+      expect(() =>
+        loadLitellmConfigFromEnv({
+          LITELLM_MASTER_KEY: "sk-master-x",
+          REASONING_MODEL_PARAMS: JSON.stringify("temperature=0"),
+        }),
+      ).toThrow(/REASONING_MODEL_PARAMS/);
+    });
+
+    it("throws when top-level JSON is null", () => {
+      expect(() =>
+        loadLitellmConfigFromEnv({
+          LITELLM_MASTER_KEY: "sk-master-x",
+          REASONING_MODEL_PARAMS: "null",
+        }),
+      ).toThrow(/REASONING_MODEL_PARAMS/);
+    });
+
+    it("throws when a per-alias value is not a plain object", () => {
+      expect(() =>
+        loadLitellmConfigFromEnv({
+          LITELLM_MASTER_KEY: "sk-master-x",
+          REASONING_MODEL_PARAMS: JSON.stringify({ "qwen3.6-cleanup": "temperature=0" }),
+        }),
+      ).toThrow(/REASONING_MODEL_PARAMS/);
+    });
+
+    it("throws when a per-alias value is an array", () => {
+      expect(() =>
+        loadLitellmConfigFromEnv({
+          LITELLM_MASTER_KEY: "sk-master-x",
+          REASONING_MODEL_PARAMS: JSON.stringify({ "qwen3.6-cleanup": [0] }),
+        }),
+      ).toThrow(/REASONING_MODEL_PARAMS/);
+    });
+
+    it("throws when a per-alias value is null", () => {
+      expect(() =>
+        loadLitellmConfigFromEnv({
+          LITELLM_MASTER_KEY: "sk-master-x",
+          REASONING_MODEL_PARAMS: JSON.stringify({ "qwen3.6-cleanup": null }),
+        }),
+      ).toThrow(/REASONING_MODEL_PARAMS/);
+    });
+
+    it("accepts an empty object value for an alias (no-op bag)", () => {
+      const cfg = loadLitellmConfigFromEnv({
+        LITELLM_MASTER_KEY: "sk-master-x",
+        REASONING_MODEL_PARAMS: JSON.stringify({ "qwen3.6-cleanup": {} }),
+      });
+      expect(cfg.modelParams).toEqual({ "qwen3.6-cleanup": {} });
+    });
+  });
+
   // D2/D6 — STT model alias is operator-owned via LITELLM_STT_MODEL; the
   // route no longer bakes `whisper-large-v3` as a TypeScript literal.
   it("defaults defaultSttModel to DEFAULT_STT_MODEL when unset (D6)", () => {
