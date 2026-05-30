@@ -573,6 +573,31 @@ jobs:
       - name: Bootstrap fixture .env
         run: |
           cp .env.slim.example .env
+          # LITELLM_CONFIG_FILE selects the hermetic contract config so the
+          # litellm container's /health/liveliness passes without provider keys
+          # (mirrors e2e-hermetic). docker compose reads .env before the host
+          # env block, so it must live in the file. OPENWHISPR_TEST_ROUTES=true
+          # enables the conformance-only test routes the suite exercises.
+          echo "LITELLM_CONFIG_FILE=litellm_config.contract.yaml" >> .env
+          echo "OPENWHISPR_TEST_ROUTES=true" >> .env
+          # The api container runs with NODE_ENV=production (docker-compose.yml
+          # default) and its ingress-boot guard REFUSES a plaintext-HTTP origin
+          # ("FATAL ingress-boot: NODE_ENV=production requires an HTTPS origin").
+          # The contract-test compose profile is authored to run WITH the
+          # ingress overlay (Traefik terminates TLS at https://api.localhost) —
+          # its own header comment says "the runner targets https://api.localhost
+          # via Traefik ... the ingress overlay in CI". Mirror the e2e-hermetic
+          # recipe: pin every origin/auth URL to the TLS endpoint + point the
+          # BYOK ingress row at the Traefik cert (260530-rqk follow-up — the
+          # 042db624 storage-overlay fix cleared the BYOK-storage guard but left
+          # this next-in-line HTTPS guard tripping).
+          sed -i \
+            -e 's|^INGRESS_BASE_URL=.*|INGRESS_BASE_URL=https://api.localhost|' \
+            -e 's|^BETTER_AUTH_URL=.*|BETTER_AUTH_URL=https://api.localhost|' \
+            -e 's|^AUTH_URL=.*|AUTH_URL=https://api.localhost|' \
+            -e 's|^OPENWHISPR_API_URL=.*|OPENWHISPR_API_URL=https://api.localhost|' \
+            .env
+          echo "INGRESS_TLS_CERT_PATH=/etc/traefik/certs/local.crt" >> .env
           if [ -x tools/bootstrap.sh ]; then
             tools/bootstrap.sh --ci || true
           fi
@@ -591,40 +616,77 @@ jobs:
         # storage.yml — the api BYOK guard refuses to boot with
         # BYOK_STORAGE_REQUIRED unless S3_ENDPOINT is set OR the storage overlay
         # (bundled MinIO + S3_* defaults) is enabled. embedded-litellm.yml ships
-        # the minio/grafana/traefik default-profile services. Mirrors the
-        # slim-core smoke job. Before 260530-rqk this step bare-`docker compose`'d
-        # and only got this far once migrate stopped failing first.
+        # the minio/grafana/traefik default-profile services. ingress.yml —
+        # Traefik terminates TLS at https://api.localhost so the api's
+        # NODE_ENV=production HTTPS-origin guard passes (the contract-test
+        # profile is authored for this overlay). Mirrors the e2e-hermetic boot.
+        #
+        # Name the long-running services explicitly (api pulls migrate/postgres/
+        # litellm/traefik/minio/etc. transitively via depends_on; fixture-idp is
+        # standalone and the runner needs it). This EXCLUDES the one-shot
+        # `seed` + `contract-test-runner` services — they have no healthcheck and
+        # run their default CMD on `up`, which would make `--wait` either hang or
+        # run the suite prematurely. They are invoked deliberately below via
+        # `run --rm`, matching `make contract-test`.
         run: |
           docker compose -f docker-compose.yml \
             -f compose/docker-compose.embedded-litellm.yml \
+            -f compose/docker-compose.ingress.yml \
             -f compose/docker-compose.storage.yml \
             -f compose/docker-compose.contract-test.yml \
             --profile default --profile contract-test \
-            up -d --wait --wait-timeout 600
+            up -d --wait --wait-timeout 600 api fixture-idp
       - name: Capture migrate + api logs on boot failure
         if: failure()
         run: |
           docker compose -f docker-compose.yml \
             -f compose/docker-compose.embedded-litellm.yml \
+            -f compose/docker-compose.ingress.yml \
             -f compose/docker-compose.storage.yml \
             -f compose/docker-compose.contract-test.yml \
             --profile default --profile contract-test \
-            logs --no-color migrate api postgres | tail -300
-      - name: Seed conformance fixtures
-        env:
-          SMTP_HOST: ""
-          AUTH_URL: http://api.localhost
-          DATABASE_URL_OWNER: postgres://openwhispr_owner:owner-pw@127.0.0.1:5432/openwhispr
-        run: pnpm -F @openwhispr/data run seed:conformance
-      - name: Run conformance suite
-        env:
-          BACKEND_URL: http://api.localhost
-          AUTH_URL: http://auth.localhost
-          OPENWHISPR_PROTOCOL: mycorp-whispr
-        run: pnpm -F @openwhispr/contract-tests test --run
+            logs --no-color migrate api postgres traefik fixture-idp | tail -300
+      - name: Seed conformance fixtures (in-network seed container)
+        # Canonical flow (Makefile `make contract-test`): run the one-shot
+        # `seed` service via `compose run --rm`. It posts directly to api:3000
+        # on the internal docker network (its env_file/.env + SMTP_HOST="" no-op
+        # email are baked into the service def), so it has the same DNS view as
+        # the api. Host-side `pnpm seed:conformance` could not resolve the
+        # docker-internal `api`/`fixture-idp` hostnames the OAuth hop needs.
+        run: |
+          docker compose -f docker-compose.yml \
+            -f compose/docker-compose.embedded-litellm.yml \
+            -f compose/docker-compose.ingress.yml \
+            -f compose/docker-compose.storage.yml \
+            -f compose/docker-compose.contract-test.yml \
+            --profile default --profile contract-test \
+            run --rm seed
+      - name: Run conformance suite (in-network runner container)
+        # The `contract-test-runner` service (compose/docker-compose.contract-test.yml)
+        # drives the suite from INSIDE the docker network, dialing
+        # https://api.localhost through Traefik (BACKEND_URL/AUTH_URL baked into
+        # the service, root CA trusted via NODE_EXTRA_CA_CERTS). This exercises
+        # the full Traefik + TLS + cert-SAN path and resolves docker-internal
+        # DNS — neither possible from a host-side `pnpm` runner. Matches
+        # `make contract-test`.
+        run: |
+          docker compose -f docker-compose.yml \
+            -f compose/docker-compose.embedded-litellm.yml \
+            -f compose/docker-compose.ingress.yml \
+            -f compose/docker-compose.storage.yml \
+            -f compose/docker-compose.contract-test.yml \
+            --profile default --profile contract-test \
+            run --rm contract-test-runner
       - name: Capture compose logs on failure
         if: failure()
-        run: docker compose logs --no-color > compose-logs.txt
+        run: |
+          docker compose -f docker-compose.yml \
+            -f compose/docker-compose.embedded-litellm.yml \
+            -f compose/docker-compose.ingress.yml \
+            -f compose/docker-compose.storage.yml \
+            -f compose/docker-compose.contract-test.yml \
+            --profile default --profile contract-test \
+            logs --no-color > compose-logs.txt
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4
         if: failure()
         with:
@@ -632,7 +694,14 @@ jobs:
           path: compose-logs.txt
       - name: Tear down
         if: always()
-        run: docker compose down -v
+        run: |
+          docker compose -f docker-compose.yml \
+            -f compose/docker-compose.embedded-litellm.yml \
+            -f compose/docker-compose.ingress.yml \
+            -f compose/docker-compose.storage.yml \
+            -f compose/docker-compose.contract-test.yml \
+            --profile default --profile contract-test \
+            down -v --remove-orphans
 
   # === DISCIPLINE rule 3 / Phase 03 e2e back-fill ===
   # Host-side e2e suite. Boots the full docker-compose stack with the
