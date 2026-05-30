@@ -110,6 +110,88 @@ describe("listConfiguredOidcProviders — public shape (no secrets)", () => {
     // smoke check — no env mutation; default path returns Array
     expect(Array.isArray(listConfiguredOidcProviders())).toBe(true);
   });
+
+  // -------------------------------------------------------------------------
+  // OIDC_PROVIDER_NAME — operator-configurable display label (peer 3bc6n4wj).
+  //
+  // The `id` is a FROZEN round-trip contract with the desktop client
+  // (`oidc` → POST /api/desktop-signin/oidc) and MUST NOT change. Only the
+  // human-facing `name` is configurable, so an operator wiring Keycloak /
+  // Authentik / Okta can render "Continue with <Company SSO>" instead of
+  // the generic "OIDC" button. Unset → defaults to "OIDC" (backward compat).
+  // See memory project_provider_id_roundtrip_contract.
+  // -------------------------------------------------------------------------
+  describe("OIDC_PROVIDER_NAME — operator-configurable display label", () => {
+    it("uses OIDC_PROVIDER_NAME as the oidc provider's display name when set", () => {
+      const env = envOf({
+        OIDC_ISSUER_URL: "https://keycloak.example.com/realms/acme",
+        OIDC_CLIENT_ID: "cid",
+        OIDC_CLIENT_SECRET: "secret",
+        OIDC_PROVIDER_NAME: "Acme SSO",
+      });
+      expect(listConfiguredOidcProviders(env)).toEqual([
+        { id: "oidc", name: "Acme SSO", enabled: true },
+      ]);
+    });
+
+    it("keeps the FROZEN id 'oidc' even when the display name is overridden", () => {
+      const env = envOf({
+        OIDC_ISSUER_URL: "https://keycloak.example.com/realms/acme",
+        OIDC_CLIENT_ID: "cid",
+        OIDC_CLIENT_SECRET: "secret",
+        OIDC_PROVIDER_NAME: "Keycloak",
+      });
+      const [oidc] = listConfiguredOidcProviders(env);
+      expect(oidc?.id).toBe("oidc");
+    });
+
+    it("defaults to 'OIDC' when OIDC_PROVIDER_NAME is unset (backward compat)", () => {
+      const env = envOf({
+        OIDC_ISSUER_URL: "https://issuer.example.com",
+        OIDC_CLIENT_ID: "cid",
+        OIDC_CLIENT_SECRET: "secret",
+      });
+      expect(listConfiguredOidcProviders(env)).toEqual([
+        { id: "oidc", name: "OIDC", enabled: true },
+      ]);
+    });
+
+    it("defaults to 'OIDC' when OIDC_PROVIDER_NAME is set but empty/whitespace-only", () => {
+      const env = envOf({
+        OIDC_ISSUER_URL: "https://issuer.example.com",
+        OIDC_CLIENT_ID: "cid",
+        OIDC_CLIENT_SECRET: "secret",
+        OIDC_PROVIDER_NAME: "   ",
+      });
+      expect(listConfiguredOidcProviders(env)).toEqual([
+        { id: "oidc", name: "OIDC", enabled: true },
+      ]);
+    });
+
+    it("trims surrounding whitespace from OIDC_PROVIDER_NAME", () => {
+      const env = envOf({
+        OIDC_ISSUER_URL: "https://issuer.example.com",
+        OIDC_CLIENT_ID: "cid",
+        OIDC_CLIENT_SECRET: "secret",
+        OIDC_PROVIDER_NAME: "  Company SSO  ",
+      });
+      const [oidc] = listConfiguredOidcProviders(env);
+      expect(oidc?.name).toBe("Company SSO");
+    });
+
+    it("does NOT affect google / github display names", () => {
+      const env = envOf({
+        GOOGLE_CLIENT_ID: "g-cid",
+        GOOGLE_CLIENT_SECRET: "g-secret",
+        GITHUB_CLIENT_ID: "gh-cid",
+        GITHUB_CLIENT_SECRET: "gh-secret",
+        OIDC_PROVIDER_NAME: "Should Not Apply",
+      });
+      const names = Object.fromEntries(listConfiguredOidcProviders(env).map((p) => [p.id, p.name]));
+      expect(names.google).toBe("Google");
+      expect(names.github).toBe("GitHub");
+    });
+  });
 });
 
 describe("readOidcProvidersForRegistration — Better Auth shape (full config)", () => {
