@@ -557,11 +557,27 @@ jobs:
       - name: Build api + migrate images
         run: docker compose build api migrate
       - name: Bring up stack (default + contract-test profiles)
-        run: docker compose --profile default --profile contract-test up -d --wait
+        # storage.yml — the api BYOK guard refuses to boot with
+        # BYOK_STORAGE_REQUIRED unless S3_ENDPOINT is set OR the storage overlay
+        # (bundled MinIO + S3_* defaults) is enabled. embedded-litellm.yml ships
+        # the minio/grafana/traefik default-profile services. Mirrors the
+        # slim-core smoke job. Before 260530-rqk this step bare-`docker compose`'d
+        # and only got this far once migrate stopped failing first.
+        run: |
+          docker compose -f docker-compose.yml \
+            -f compose/docker-compose.embedded-litellm.yml \
+            -f compose/docker-compose.storage.yml \
+            -f compose/docker-compose.contract-test.yml \
+            --profile default --profile contract-test \
+            up -d --wait --wait-timeout 600
       - name: Capture migrate + api logs on boot failure
         if: failure()
         run: |
-          docker compose --profile default --profile contract-test \
+          docker compose -f docker-compose.yml \
+            -f compose/docker-compose.embedded-litellm.yml \
+            -f compose/docker-compose.storage.yml \
+            -f compose/docker-compose.contract-test.yml \
+            --profile default --profile contract-test \
             logs --no-color migrate api postgres | tail -300
       - name: Seed conformance fixtures
         env:
