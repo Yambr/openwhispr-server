@@ -175,6 +175,11 @@ jobs:
   mutation-quick:
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-24.04
+    # ROOT-CAUSE backstop (260530-rqk follow-up): even diff-scoped, a job should
+    # never run for hours. The full run previously ran 68+ min with NO job
+    # timeout (so it crept toward GitHub's 6h cap). With diff-scoping a real
+    # PR finishes in minutes; this ceiling fails fast if that ever regresses.
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v5
         with: { fetch-depth: 0 }
@@ -187,11 +192,37 @@ jobs:
           path: reports/stryker-incremental.json
           key: stryker-${{ hashFiles('pnpm-lock.yaml','vitest.config.ts','stryker.config.json') }}
       - run: pnpm install --frozen-lockfile
-        # Stryker has no `--since` flag — incremental scoping is driven by
-        # `--incremental` + the cached reports/stryker-incremental.json restored
-        # above. Passing `--since` errored with `unknown option '--since'` on
-        # every PR (fix 260530-rqk).
-      - run: pnpm test:mutation:incremental
+        # ROOT CAUSE (260530-rqk follow-up): `stryker run --incremental` with the
+        # config's full `mutate` globs mutates all four packages' src/ on a cold
+        # incremental cache — which every PR hits first, because the cache key is
+        # the hash of pnpm-lock/vitest.config/stryker.config (and config edits
+        # invalidate it). That is a FULL mutation run (thousands of mutants,
+        # 68+ min), not "quick". Stryker has no `--since` flag, so the real fix
+        # is to mutate ONLY the source files the PR changed:
+        # tools/stryker-diff-scope.ts diffs the merge base and emits the
+        # mutate-eligible *.ts subset (empty for docs/CI-only PRs → Stryker is
+        # skipped entirely, 0 mutants, seconds).
+      - name: Compute diff-scoped mutate set
+        id: scope
+        run: |
+          git fetch origin "$GITHUB_BASE_REF" --depth=1 || git fetch origin "$GITHUB_BASE_REF"
+          scope=$(pnpm -s exec tsx tools/stryker-diff-scope.ts "origin/$GITHUB_BASE_REF")
+          if [ -z "$scope" ]; then
+            echo "empty=true" >> "$GITHUB_OUTPUT"
+            echo "No mutate-eligible source files changed — skipping Stryker (0 mutants)."
+          else
+            echo "empty=false" >> "$GITHUB_OUTPUT"
+            printf '%s\n' "$scope" > .stryker-scope.txt
+            echo "Mutating only the PR's changed source files:"
+            cat .stryker-scope.txt
+          fi
+      - name: Run Stryker on the diff scope
+        if: steps.scope.outputs.empty == 'false'
+        run: |
+          mapfile -t files < .stryker-scope.txt
+          args=()
+          for f in "${files[@]}"; do args+=(--mutate "$f"); done
+          pnpm exec stryker run --incremental "${args[@]}"
 
   pr-checklist:
     if: github.event_name == 'pull_request' && github.actor != 'dependabot[bot]'
