@@ -117,6 +117,45 @@ describe("runSquawkOnFile", () => {
     expect(r.all).toEqual([]);
   });
 
+  // #15 REAL root cause — on a CI runner the `npx --yes squawk-cli@<ver>`
+  // wrapper can prepend a package-install notice (e.g. "npm warn exec …" /
+  // "added 1 package in 900ms") to STDOUT before squawk's JSON array. A
+  // naive `JSON.parse(stdout.trim())` throws on the leading noise → empty
+  // diagnostics → the blocking fixtures slip through as exit 0. The driver
+  // MUST extract the JSON array from contaminated stdout. (The cold-fetch
+  // pre-warm hypothesis was disproven: the binary was warm and the
+  // standalone driver worked; only the vitest-forked spawn — whose npx
+  // emitted the banner — failed. See
+  // .planning/debug/squawk-gate-vitest-fork-empty-output-2026-05-30.md)
+  it("parses the JSON array even when npx prepends an install banner to stdout", () => {
+    const diags: SquawkDiagnostic[] = [
+      { file: "x.sql", line: 2, rule_name: "require-concurrent-index-creation", message: "blk" },
+    ];
+    const banner =
+      "npm warn exec The following package was not found and will be installed: squawk-cli@2.55.0\nadded 1 package in 1s\n";
+    const fake = () => ({ stdout: banner + JSON.stringify(diags), status: 1 });
+    const r = runSquawkOnFile("x.sql", [], fake);
+    expect(r.all).toHaveLength(1);
+    expect(r.blocking).toHaveLength(1);
+    expect(r.blocking[0]!.rule_name).toBe("require-concurrent-index-creation");
+  });
+
+  it("parses the JSON array when a trailing newline/notice follows it", () => {
+    const diags: SquawkDiagnostic[] = [
+      { file: "y.sql", line: 1, rule_name: "ban-drop-column", message: "blk" },
+    ];
+    const fake = () => ({ stdout: `${JSON.stringify(diags)}\nnpm notice done\n`, status: 1 });
+    const r = runSquawkOnFile("y.sql", [], fake);
+    expect(r.all).toHaveLength(1);
+    expect(r.blocking[0]!.rule_name).toBe("ban-drop-column");
+  });
+
+  it("still returns empty on genuinely non-JSON output (no array present)", () => {
+    const fake = () => ({ stdout: "npm warn exec\nsome crash text, no json here", status: 2 });
+    const r = runSquawkOnFile("x.sql", [], fake);
+    expect(r.all).toEqual([]);
+  });
+
   it("passes --pg-version 17 and --reporter json", () => {
     let captured: string[] = [];
     const fake = (_cmd: string, args: string[]) => {
