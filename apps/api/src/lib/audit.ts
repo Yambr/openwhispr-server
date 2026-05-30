@@ -126,6 +126,21 @@ const passwordChangeMethod = z.enum(["self", "admin_forced"]);
 const keyRevokeReason = z.enum(["rotated", "manual", "compromised"]);
 const sha256Hex = z.string().length(64);
 
+// D-69-2 — SSO JIT provisioning enums. `rolesEnum` is the canonical
+// application role set (mirrors users.role); the SSO payloads carry the
+// role verbatim (non-PII). `tenantClaimMode` / `roleUpdateReason` /
+// `jitRejectionCode` are the closed value sets locked in 69-DECISIONS.md.
+const rolesEnum = z.enum(["admin", "member", "viewer"]);
+const tenantClaimMode = z.enum(["named_claim", "email_domain"]);
+const roleUpdateReason = z.enum(["group_change", "revocation_downgrade"]);
+const jitRejectionCode = z.enum([
+  "forbidden_missing_tenant_claim",
+  "forbidden_unknown_tenant",
+  "forbidden_no_role_mapping",
+  "forbidden_tenant_mismatch",
+  "invalid_oidc_profile",
+]);
+
 /**
  * Per-action payload schemas. The `satisfies Record<AuditAction, …>`
  * cast is what catches a missing entry at compile time if a new
@@ -178,6 +193,34 @@ export const auditPayloadSchemas = {
     rule: z.string().min(1),
     mode: z.enum(["enforce", "warn"]).optional(),
   }),
+  // D-69-2 — SSO JIT provisioning audit payloads. NO PII: email / name /
+  // sub / raw groups / the email_domain literal MUST NOT enter the
+  // payload. `.strict()` REJECTS any extra key (PII or otherwise) instead
+  // of silently stripping it, so a leak fails loud at the recordAudit
+  // chokepoint. The winning group is carried ONLY as a SHA-256 hash,
+  // mirroring settings.*_changed before/after_hash.
+  "sso.jit.user.created": z
+    .object({
+      tenant_id: hexUuid,
+      role: rolesEnum,
+      tenant_claim_mode: tenantClaimMode,
+      matched_group_hash: sha256Hex.optional(),
+    })
+    .strict(),
+  "sso.jit.role.updated": z
+    .object({
+      tenant_id: hexUuid,
+      before: rolesEnum,
+      after: rolesEnum,
+      reason: roleUpdateReason,
+    })
+    .strict(),
+  "sso.jit.rejected": z
+    .object({
+      tenant_id: hexUuid,
+      code: jitRejectionCode,
+    })
+    .strict(),
 } as const satisfies Record<AuditAction, z.ZodTypeAny>;
 
 /**
@@ -186,9 +229,29 @@ export const auditPayloadSchemas = {
  */
 export type AuditPayload<A extends AuditAction> = z.infer<(typeof auditPayloadSchemas)[A]>;
 
-function rejectForbidden(payload: Record<string, unknown>): void {
+/**
+ * Phase 69 / Plan 69-03 — per-action carve-outs from the forbidden-key sweep.
+ *
+ * `FORBIDDEN_AUDIT_KEYS` blocks `code` because the OAuth authorization `code`
+ * is a one-time secret that must never reach the JSONB column. But the
+ * `sso.jit.rejected` action (D-69-2) legitimately carries a `code` key whose
+ * value is a CLOSED, non-secret rejection-code enum (`jitRejectionCode`),
+ * `.strict()`-validated above — there is no secret to leak. Without this
+ * carve-out the action is structurally UNWRITABLE (the sweep throws on every
+ * emit), so the SPEC-mandated `sso.jit.rejected` audit row could never land.
+ * The allowance is scoped to (action, key) pairs so `code` stays forbidden for
+ * every other action and the OAuth-secret protection is unchanged.
+ */
+const FORBIDDEN_KEY_ACTION_ALLOWLIST: ReadonlyMap<AuditAction, ReadonlySet<string>> = new Map([
+  ["sso.jit.rejected", new Set(["code"])],
+]);
+
+function rejectForbidden(payload: Record<string, unknown>, action: AuditAction): void {
+  const allowed = FORBIDDEN_KEY_ACTION_ALLOWLIST.get(action);
   for (const key of Object.keys(payload)) {
-    if (FORBIDDEN_AUDIT_KEY_SET.has(key.toLowerCase())) {
+    const lower = key.toLowerCase();
+    if (allowed?.has(lower)) continue;
+    if (FORBIDDEN_AUDIT_KEY_SET.has(lower)) {
       throw new Error(`audit payload contains forbidden key: ${key} (D-A7 / T-bearer-leak)`);
     }
   }
@@ -297,7 +360,7 @@ export async function recordAudit<A extends AuditAction>(
   // strips unknown keys for the declared schema, but we want to reject
   // (not silently drop) so a programmer mistake fails loudly. Run the
   // sweep over the raw input.
-  rejectForbidden(payload as Record<string, unknown>);
+  rejectForbidden(payload as Record<string, unknown>, action);
 
   // Phase 10 / Plan 10-01d — Cyrillic guard (T-10-01). Scans BOTH the
   // caller-supplied payload AND the ctx user_agent because both flow

@@ -30,6 +30,8 @@ import {
   bootStack,
   DEFAULT_SCENARIO_ENV_OVERRIDES,
   DEV_TOOLS_OVERLAY,
+  removeProjectNetworks,
+  removeProjectVolumes,
   tearStack,
 } from "./compose-harness.js";
 
@@ -176,6 +178,116 @@ describe("bootStack — envOverrides", () => {
 
     expect(process.env.S3_ENDPOINT).toBe(before);
   });
+
+  it("appends targetServices as trailing positionals on `up` (scopes the boot)", async () => {
+    const router = (_cmd: string, args: string[]): FakeChildSpec => {
+      if (args.includes("ps") && args.includes("-q")) return { stdout: "" };
+      return { exitCode: 0 };
+    };
+    const { spawnFn, calls } = makeSpawnRecorder(router);
+
+    await bootStack({
+      composeFiles: ["docker-compose.yml"],
+      scratchDir,
+      scenarioId: "scoped-boot",
+      spawnFn,
+      waitForReadinessFn: waitOk,
+      skipUserStackStop: true,
+      inheritStdio: false,
+      targetServices: ["api"],
+    });
+
+    const upCall = calls.find((c) => c.joined.includes(" up "));
+    expect(upCall, "expected an `up` call").toBeTruthy();
+    // The service name must trail `up` (and any flags), restricting the boot to
+    // api + its depends_on closure instead of the whole profile.
+    const a = upCall?.args ?? [];
+    expect(a[a.length - 1]).toBe("api");
+    expect(a.indexOf("up")).toBeLessThan(a.lastIndexOf("api"));
+  });
+
+  it("runs a `--wait <prestartServices>` up BEFORE the main `up` (deterministic dep gate)", async () => {
+    const router = (_cmd: string, args: string[]): FakeChildSpec => {
+      if (args.includes("ps") && args.includes("-q")) return { stdout: "" };
+      // exit poll → api never exits (we only assert the up ordering here).
+      if (args.includes("ps") && args.includes("--format")) {
+        return { stdout: JSON.stringify({ Service: "api", State: "running", ExitCode: 0 }) };
+      }
+      return { exitCode: 0 };
+    };
+    const { spawnFn, calls } = makeSpawnRecorder(router);
+
+    await bootStack({
+      composeFiles: ["docker-compose.yml"],
+      scratchDir,
+      scenarioId: "prestart-boot",
+      spawnFn,
+      waitForReadinessFn: waitOk,
+      skipUserStackStop: true,
+      inheritStdio: false,
+      expectExit: 78,
+      targetServices: ["api"],
+      prestartServices: ["pgbouncer"],
+      expectExitTimeoutMs: 50,
+      expectExitIntervalMs: 25,
+    });
+
+    const upCalls = calls.filter((c) => c.joined.includes(" up "));
+    expect(upCalls.length, "expected a prestart `up` and a main `up`").toBeGreaterThanOrEqual(2);
+    // First up = prestart: `up -d --wait pgbouncer`.
+    const prestart = upCalls[0];
+    expect(prestart?.args).toContain("--wait");
+    expect(prestart?.args[prestart.args.length - 1]).toBe("pgbouncer");
+    // Second up = main target boot: `up -d api` WITHOUT --wait (expectExit set).
+    const main = upCalls[1];
+    expect(main?.args).not.toContain("--wait");
+    expect(main?.args[main.args.length - 1]).toBe("api");
+  });
+
+  it("skips the prestart phase when prestartServices is omitted", async () => {
+    const router = (_cmd: string, args: string[]): FakeChildSpec => {
+      if (args.includes("ps") && args.includes("-q")) return { stdout: "" };
+      return { exitCode: 0 };
+    };
+    const { spawnFn, calls } = makeSpawnRecorder(router);
+
+    await bootStack({
+      composeFiles: ["docker-compose.yml"],
+      scratchDir,
+      scenarioId: "no-prestart",
+      spawnFn,
+      waitForReadinessFn: waitOk,
+      skipUserStackStop: true,
+      inheritStdio: false,
+      targetServices: ["api"],
+    });
+
+    // Exactly one `up` (the main boot) — no separate prestart `up`.
+    const upCalls = calls.filter((c) => c.joined.includes(" up "));
+    expect(upCalls.length).toBe(1);
+  });
+
+  it("brings up the whole profile when targetServices is omitted", async () => {
+    const router = (_cmd: string, args: string[]): FakeChildSpec => {
+      if (args.includes("ps") && args.includes("-q")) return { stdout: "" };
+      return { exitCode: 0 };
+    };
+    const { spawnFn, calls } = makeSpawnRecorder(router);
+
+    await bootStack({
+      composeFiles: ["docker-compose.yml"],
+      scratchDir,
+      scenarioId: "full-boot",
+      spawnFn,
+      waitForReadinessFn: waitOk,
+      skipUserStackStop: true,
+      inheritStdio: false,
+    });
+
+    const upCall = calls.find((c) => c.joined.includes(" up "));
+    // No service positional after `up`/flags → `up -d --wait` ends the argv.
+    expect(upCall?.args[upCall.args.length - 1]).toBe("--wait");
+  });
 });
 
 describe("bootStack — expectExit + stderr capture", () => {
@@ -264,6 +376,113 @@ describe("bootStack — expectExit + stderr capture", () => {
     // Even on timeout, harness collects whatever stderr/logs exist so tests
     // can diagnose stuck boots.
     expect(typeof result.stderr).toBe("string");
+  });
+
+  it("detects a restart-looping crash via docker inspect when compose ps never shows exited (live @cjm-sso-1.6)", async () => {
+    // A boot-time non-zero exit under `restart: unless-stopped` never settles on
+    // State=exited — Docker restart-loops it, so `compose ps` flickers
+    // restarting/running with a transient ExitCode=0 (empirically verified).
+    // The harness must fall back to `docker inspect .State.ExitCode`, which
+    // carries the REAL last exit code even mid-loop.
+    const fatal = "FATAL oidc-jit-boot: OIDC_TENANT_MAPPING is not valid JSON. Refusing to boot";
+    const router = (cmd: string, args: string[]): FakeChildSpec => {
+      // openwhispr-stack running-detection.
+      if (args.includes("ps") && args.includes("-q") && args.includes("openwhispr")) {
+        return { stdout: "" };
+      }
+      // inspectApiExit's `compose ps -aq api` → return a fake container id.
+      if (args.includes("ps") && args.includes("-aq") && args.some((a) => a.startsWith("api"))) {
+        return { stdout: "deadbeefcafe\n" };
+      }
+      // exit-status poll `compose ps --format json` → ALWAYS restarting, ExitCode 0
+      // (never settles on exited — the restart-loop case).
+      if (args.includes("ps") && args.includes("--format")) {
+        return { stdout: JSON.stringify({ Service: "api", State: "restarting", ExitCode: 0 }) };
+      }
+      // `docker inspect <cid> --format ...` → the TRUE last exit code (78), mid-loop.
+      if (cmd === "docker" && args[0] === "inspect") {
+        return { stdout: "restarting 78 5\n" };
+      }
+      if (args.includes("logs") && args.includes("api")) {
+        return { stdout: `${fatal}\n` };
+      }
+      return { exitCode: 0 };
+    };
+    const { spawnFn } = makeSpawnRecorder(router);
+
+    const result = await bootStack({
+      composeFiles: ["docker-compose.yml"],
+      envOverrides: { OIDC_TENANT_CLAIM: "email_domain", OIDC_TENANT_MAPPING: "{not valid json" },
+      expectExit: 78,
+      scratchDir,
+      scenarioId: "jit-malformed-boot",
+      spawnFn,
+      waitForReadinessFn: waitOk,
+      skipUserStackStop: true,
+      inheritStdio: false,
+      expectExitTimeoutMs: 500,
+      expectExitIntervalMs: 25,
+    });
+
+    expect(result.exitCode).toBe(78);
+    expect(result.stderr).toContain("FATAL oidc-jit-boot");
+    expect(waitOk).not.toHaveBeenCalled();
+  });
+
+  it("detects a crash even when the poll keeps sampling the `running 0` window mid-restart (load race)", async () => {
+    // A crash-looping container oscillates between `restarting ExitCode=78`
+    // (backoff) and `running ExitCode=0` (the brief up-window before re-crash).
+    // Under full-stack load the running-window widens and the poll can keep
+    // sampling `running 0 <restartCount>0>` and miss the `restarting 78`
+    // instant. The harness must still resolve: it remembers the last non-zero
+    // exit and treats restartCount>0 as the definitive crash signal. This router
+    // returns `restarting 78` ONCE (so lastNonZeroExit is captured) then
+    // `running 0 7` forever — proving we don't hang waiting for another
+    // `restarting` window.
+    let inspectCalls = 0;
+    const fatal = "FATAL oidc-jit-boot: OIDC_TENANT_MAPPING is not valid JSON. Refusing to boot";
+    const router = (cmd: string, args: string[]): FakeChildSpec => {
+      if (args.includes("ps") && args.includes("-q") && args.includes("openwhispr")) {
+        return { stdout: "" };
+      }
+      if (args.includes("ps") && args.includes("-aq") && args.some((a) => a.startsWith("api"))) {
+        return { stdout: "deadbeefcafe\n" };
+      }
+      // compose ps --format json → never `exited` (restart-loop).
+      if (args.includes("ps") && args.includes("--format")) {
+        return { stdout: JSON.stringify({ Service: "api", State: "running", ExitCode: 0 }) };
+      }
+      if (cmd === "docker" && args[0] === "inspect") {
+        inspectCalls += 1;
+        // First inspect catches the `restarting 78` backoff window; every
+        // subsequent inspect samples the `running 0` up-window (restartCount>0).
+        return inspectCalls === 1 ? { stdout: "restarting 78 1\n" } : { stdout: "running 0 7\n" };
+      }
+      if (args.includes("logs") && args.includes("api")) {
+        return { stdout: `${fatal}\n` };
+      }
+      return { exitCode: 0 };
+    };
+    const { spawnFn } = makeSpawnRecorder(router);
+
+    const result = await bootStack({
+      composeFiles: ["docker-compose.yml"],
+      envOverrides: { OIDC_TENANT_CLAIM: "email_domain", OIDC_TENANT_MAPPING: "{not valid json" },
+      expectExit: 78,
+      scratchDir,
+      scenarioId: "jit-malformed-load-race",
+      spawnFn,
+      waitForReadinessFn: waitOk,
+      skipUserStackStop: true,
+      inheritStdio: false,
+      expectExitTimeoutMs: 500,
+      expectExitIntervalMs: 25,
+    });
+
+    // Resolved to the remembered non-zero exit (78), not null — even though the
+    // FIRST inspect already returns restarting/78, the point is the harness
+    // returns the crash code and never hangs on the running-window samples.
+    expect(result.exitCode).toBe(78);
   });
 });
 
@@ -444,5 +663,132 @@ describe("tearStack — temp env file cleanup", () => {
     });
 
     expect(() => readFileSync(envPath, "utf8")).toThrow();
+  });
+
+  it("auto-includes the dev-tools overlay in the `down` file set (matches bootStack → no leaked network)", async () => {
+    const router = (_cmd: string, args: string[]): FakeChildSpec => {
+      if (args.includes("ps") && args.includes("-q")) return { stdout: "" };
+      return { exitCode: 0 };
+    };
+    const { spawnFn, calls } = makeSpawnRecorder(router);
+
+    await tearStack({
+      composeFiles: ["docker-compose.yml"],
+      spawnFn,
+      skipUserStackRestart: true,
+      inheritStdio: false,
+    });
+
+    const downCall = calls.find((c) => c.joined.includes(" down "));
+    expect(downCall, "expected a `down` call").toBeTruthy();
+    // The down must list the dev-tools overlay (bootStack auto-includes it on
+    // `up`); a mismatched file set leaves the project network behind.
+    expect(downCall?.joined).toContain(DEV_TOOLS_OVERLAY);
+  });
+
+  it("does not double-add the dev-tools overlay when the caller already listed it", async () => {
+    const router = (_cmd: string, args: string[]): FakeChildSpec => {
+      if (args.includes("ps") && args.includes("-q")) return { stdout: "" };
+      return { exitCode: 0 };
+    };
+    const { spawnFn, calls } = makeSpawnRecorder(router);
+
+    await tearStack({
+      composeFiles: ["docker-compose.yml", DEV_TOOLS_OVERLAY],
+      spawnFn,
+      skipUserStackRestart: true,
+      inheritStdio: false,
+    });
+
+    const downCall = calls.find((c) => c.joined.includes(" down "));
+    const occurrences = (downCall?.args ?? []).filter((a) => a === DEV_TOOLS_OVERLAY).length;
+    expect(occurrences).toBe(1);
+  });
+
+  it("sweeps project-labeled networks `down` leaves behind (address-pool leak guard)", async () => {
+    const router = (cmd: string, args: string[]): FakeChildSpec => {
+      // `docker network ls --filter label=...project=<p>` → two orphaned nets.
+      if (cmd === "docker" && args[0] === "network" && args[1] === "ls") {
+        return { stdout: "e2e-cjm-sso16-abc_openwhispr_internal\n" };
+      }
+      // `docker network rm <name>` → success.
+      if (cmd === "docker" && args[0] === "network" && args[1] === "rm") {
+        return { exitCode: 0 };
+      }
+      if (args.includes("ps") && args.includes("-q")) return { stdout: "" };
+      return { exitCode: 0 };
+    };
+    const { spawnFn, calls } = makeSpawnRecorder(router);
+
+    await tearStack({
+      projectName: "e2e-cjm-sso16-abc",
+      composeFiles: ["docker-compose.yml"],
+      spawnFn,
+      skipUserStackRestart: true,
+      inheritStdio: false,
+    });
+
+    // tearStack must have queried networks by this project's compose label and
+    // issued a `network rm` for the orphan.
+    const lsCall = calls.find(
+      (c) => c.joined.includes("network ls") && c.joined.includes("e2e-cjm-sso16-abc"),
+    );
+    expect(lsCall, "expected a `docker network ls --filter label=...` call").toBeTruthy();
+    const rmCall = calls.find((c) => c.joined.includes("network rm"));
+    expect(rmCall?.args[rmCall.args.length - 1]).toBe("e2e-cjm-sso16-abc_openwhispr_internal");
+  });
+
+  it("removeProjectNetworks returns the removed network names and never throws", async () => {
+    const router = (cmd: string, args: string[]): FakeChildSpec => {
+      if (cmd === "docker" && args[0] === "network" && args[1] === "ls") {
+        return { stdout: "p_openwhispr_internal\np_extra\n" };
+      }
+      if (cmd === "docker" && args[0] === "network" && args[1] === "rm") return { exitCode: 0 };
+      return { exitCode: 0 };
+    };
+    const { spawnFn } = makeSpawnRecorder(router);
+
+    const removed = await removeProjectNetworks("p", spawnFn);
+    expect(removed).toEqual(["p_openwhispr_internal", "p_extra"]);
+  });
+
+  it("removeProjectVolumes sweeps label-matched volumes (stale-data leak guard)", async () => {
+    const router = (cmd: string, args: string[]): FakeChildSpec => {
+      if (cmd === "docker" && args[0] === "volume" && args[1] === "ls") {
+        return { stdout: "p_postgres_data\np_valkey_data\n" };
+      }
+      if (cmd === "docker" && args[0] === "volume" && args[1] === "rm") return { exitCode: 0 };
+      return { exitCode: 0 };
+    };
+    const { spawnFn, calls } = makeSpawnRecorder(router);
+
+    const removed = await removeProjectVolumes("p", spawnFn);
+    expect(removed).toEqual(["p_postgres_data", "p_valkey_data"]);
+    // Must filter by the compose project label, not a name glob.
+    const lsCall = calls.find((c) => c.joined.includes("volume ls"));
+    expect(lsCall?.joined).toContain("label=com.docker.compose.project=p");
+  });
+
+  it("tearStack sweeps BOTH networks and volumes by project label", async () => {
+    const router = (cmd: string, args: string[]): FakeChildSpec => {
+      if (cmd === "docker" && (args[0] === "network" || args[0] === "volume")) {
+        if (args[1] === "ls") return { stdout: `e2e-cjm-sso16-z_${args[0]}\n` };
+        if (args[1] === "rm") return { exitCode: 0 };
+      }
+      if (args.includes("ps") && args.includes("-q")) return { stdout: "" };
+      return { exitCode: 0 };
+    };
+    const { spawnFn, calls } = makeSpawnRecorder(router);
+
+    await tearStack({
+      projectName: "e2e-cjm-sso16-z",
+      composeFiles: ["docker-compose.yml"],
+      spawnFn,
+      skipUserStackRestart: true,
+      inheritStdio: false,
+    });
+
+    expect(calls.some((c) => c.joined.includes("network ls"))).toBe(true);
+    expect(calls.some((c) => c.joined.includes("volume ls"))).toBe(true);
   });
 });

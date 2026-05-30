@@ -37,6 +37,11 @@ services:
     networks:
       - openwhispr_internal
 
-networks:
-  openwhispr_internal:
-    external: true
+# NOTE (Phase 69 / Plan 69-06): the network is NOT declared `external` here.
+# This overlay is always layered on top of docker-compose.yml, which DEFINES
+# `openwhispr_internal` as a normal project-scoped bridge. Declaring it external
+# here made the merged config require a pre-existing bare `openwhispr_internal`
+# network (which the e2e-cjm `-p e2e-cjm` project never creates — it owns
+# `e2e-cjm_openwhispr_internal`), breaking the @sso stack boot. Omitting the
+# top-level network block lets keycloak inherit the base definition so it joins
+# the SAME project network as the api (required for in-network OIDC discovery).

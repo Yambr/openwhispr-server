@@ -387,17 +387,35 @@ mapping and creates the `User` row with `tenant_id = acme`.
 - Silent-failure modes: tenant assignment falls through to a default
   tenant (cross-tenant leak); JIT path silently disables.
 
-### @cjm-sso-1.5 Cross-tenant isolation — RLS rejects tenant A user from tenant B rows (negative twin, after-phase-19 — currently @expected-red)
+### @cjm-sso-1.5a Returning OIDC user with a changed tenant claim is rejected at sign-in (negative twin, after-phase-19 — currently @expected-red)
 
-Two provisioned users exist in tenants `acme` and `globex`. The `acme`
-user issues an authenticated request scoped to `globex`; the Postgres
-row-level-security policy (Phase 1 multi-tenancy) rejects with `403
-forbidden_tenant_mismatch`. This scenario is the property-level
+Per D-69-3 the original `@cjm-sso-1.5` was split into two truthful
+scenarios. `1.5a` is the sign-in-time rejection: a returning OIDC user
+(already bound to tenant `acme`) presents a CHANGED tenant claim
+(`globex`). The JIT resolver (failure-mode #6) rejects the sign-in with
+`403 forbidden_tenant_mismatch` — an auth-layer rejection, NOT a data
+read — and emits an `sso.jit.rejected` audit row. This is provable
+without the fail-open `users` table (rule 16).
+
+- Backend error branches: 403 `forbidden_tenant_mismatch`; audit action
+  `sso.jit.rejected`.
+- Silent-failure modes: tenant override leaks through OIDC token replay
+  (a returning user silently re-tenanted).
+
+### @cjm-sso-1.5b Cross-tenant read in a fail-closed table returns 404 not_found (negative twin, after-phase-19 — currently @expected-red)
+
+The read-time half of the D-69-3 split. A JIT user provisioned for
+tenant `acme` issues an authenticated read scoped to tenant `globex`'s
+row in a FAIL-CLOSED application table (transcriptions). The Postgres
+row-level-security `USING` clause filters the row out, so the read
+returns `404 not_found` — the row's existence is never leaked (a clone
+of the proven `@cjm-15.*` RLS-read pattern). This is the property-level
 regression guard for JIT not bypassing RLS.
 
-- Backend error branches: 403 `forbidden_tenant_mismatch`.
+- Backend error branches: 404 `not_found` (NOT a `forbidden_*` code that
+  would disclose existence).
 - Silent-failure modes: cross-tenant query succeeds (RLS bypass — CVE
-  class); tenant override leaks through OIDC token replay.
+  class).
 
 ### @cjm-sso-1.6 Loud-fail rejected when Keycloak provider config references missing realm (negative twin, after-phase-19 — currently @expected-red)
 
@@ -414,8 +432,8 @@ loud-fail BYOK invariant from the SPEC's env-var table.
 
 ## 15. Cross-tenant isolation (non-SSO RLS regression sentinel)
 
-Phase 24 / G8 closure. The SSO `@cjm-sso-1.5` scenario covers the
-post-JIT path but is `@expected-red @after-phase-19`. The plain
+Phase 24 / G8 closure. The SSO `@cjm-sso-1.5b` scenario covers the
+post-JIT cross-tenant read path but is `@expected-red @after-phase-19`. The plain
 email-password tenant has no equivalent CJM, so an RLS regression in
 the bundled flow can slip past the test suite. Phase 24 closes that gap.
 

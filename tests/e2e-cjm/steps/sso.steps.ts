@@ -1,15 +1,114 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
-// Phase 18 / Plan 01 / Wave 4 — @cjm-sso-1.* keycloak OIDC SSO step bindings.
+// Phase 69 / Plan 69-06 / Wave 4 — @cjm-sso-1.* live-Keycloak OIDC SSO step bindings.
 //
-// All six scenarios are tagged @expected-red @after-phase-19 — Phase 19
-// (v3) implements the JIT user-provisioning surface. Steps exist so
-// undefined-step strictness (D-11) doesn't bail; bodies raise so the
-// scenarios stay red until Phase 19.
+// Replaces the Phase-18 placeholder stubs. These drive REAL OIDC flows against a
+// LIVE Keycloak 26 container (realm `acme`, seeded by scripts/seed-keycloak-realm.sh
+// + the @sso-only api↔Keycloak fixture overlay compose/test/keycloak-api-env.yml).
+// No IdP mock — constitutional (T-69-17).
+//
+// Driving strategy (per 69-RESEARCH + D-69-1/3/4):
+//   * JIT provisioning + re-sync + downgrade + tenant-derivation + mode-6 403
+//     are driven through the DESKTOP bearer-mint path (GET /api/desktop-signin/oidc
+//     → live Keycloak login form → /api/auth/desktop-callback/oidc → channel-scheme
+//     deep-link). This single flow also satisfies Req-7 (the desktop bearer leg).
+//     The whole 302-chain + the Keycloak login-form POST are driven with undici so
+//     the terminal `openwhispr-app://?bearer_token=...` deep-link (an unknown
+//     protocol a browser cannot navigate) is observable as a Location header.
+//   * The provisioning OUTCOME (tenant/role) is read back from the authenticated
+//     session via GET /api/auth/get-session (tenantId + role are Better Auth
+//     additionalFields — auth.ts:499-544). The AUDIT EVENT is asserted from the
+//     api container's structured stderr log (the JIT hooks emit
+//     `{event:"sso.jit.user.created"|...}` — oidc-jit-hooks.ts) read via
+//     `docker compose -p e2e-cjm logs api`, since no audit-read route exists and
+//     adding one would be new production code (D-69-4 / CLAUDE.md hard-rule-1).
+//   * 1.5b clones the proven cross-tenant 404 RLS read against a fail-closed app
+//     table (rls-cross-tenant.steps.ts) — `users` fails OPEN so it cannot host
+//     the isolation proof (69-RESEARCH fact 3 / D-69-3).
+//   * 1.6 is a pure boot-config test (no Keycloak): malformed OIDC_TENANT_MAPPING
+//     JSON → validateJitBoot() exits 78 + `FATAL oidc-jit-boot` (oidc-jit-boot.ts:84-98),
+//     driven via the compose-harness bootStack({expectExit}) seam (byok.steps.ts:158-175).
+//
+// Per cjm-steps-need-unit-tests: sibling unit coverage with the HTTP/DOM boundary
+// mocked lives at __tests__/sso.steps.test.ts.
 
-import { Given, Then, When } from "../support/world";
+import { Agent, fetch as undiciFetch } from "undici";
+
+import {
+  type BootStackResult,
+  bootStack,
+  REPO_ROOT,
+  tearStack,
+} from "../support/compose-harness.js";
+import {
+  expect,
+  freshTenant,
+  Given,
+  provisionVerifiedTenant,
+  Then,
+  When,
+} from "../support/fixtures";
+import { After } from "../support/world";
+
+// ---------------------------------------------------------------------------
+// Constants — Keycloak realm `acme` seeded fixture (LOCKER-03 allows localhost +
+// admin/test-token literals inside tests/).
+// ---------------------------------------------------------------------------
+
+/** Keycloak admin REST base (host-published port from compose/test/keycloak.yml). */
+const KC_ADMIN_BASE = process.env.KC_URL ?? "http://127.0.0.1:8089";
+const KC_ADMIN_USER = process.env.KC_ADMIN_USER ?? "admin";
+const KC_ADMIN_PASSWORD = process.env.KC_ADMIN_PASSWORD ?? "admin";
+const KC_REALM = "acme";
+
+/** The desktop custom-protocol scheme the deep-link echoes (Req-7).
+ * MUST be one of the desktop-signin built-in allow-list schemes
+ * (apps/api/src/lib/scheme-allowlist.ts BUILTIN_SCHEMES = openwhispr /
+ * openwhispr-dev / openwhispr-staging) or the test 400s with
+ * "scheme is not in the configured allow-list". `openwhispr-app` is NOT
+ * allow-listed; use the canonical built-in `openwhispr`. */
+const CHANNEL_SCHEME = "openwhispr";
+
+/** Seeded realm users (realm-openwhispr-test.json). */
+const USERS = {
+  // erin is EXCLUSIVE to @cjm-sso-1.1 (first-time JIT create) — no other scenario
+  // signs her in, so her very first OIDC login is guaranteed to hit mint-bearer's
+  // new-user branch (→ sso.jit.user.created). alice is shared by 1.2's Given,
+  // which does a "first login creates alice" — so reusing alice for 1.1 raced:
+  // whichever ran first created her, and 1.1 then saw a RETURNING login emitting
+  // sso.jit.role.updated, never user.created (observed flaking 1.1).
+  erin: { username: "erin", password: "erin-test-password", email: "erin@acme.example" },
+  alice: { username: "alice", password: "alice-test-password", email: "alice@acme.example" },
+  carol: { username: "carol", password: "carol-test-password", email: "carol@acme.example" },
+  dave: { username: "dave", password: "dave-test-password", email: "dave@acme.example" },
+  bob: { username: "bob", password: "bob-test-password", email: "bob@acme.example" },
+} as const;
+
+// ---------------------------------------------------------------------------
+// Per-scenario state
+// ---------------------------------------------------------------------------
 
 interface ScenarioState {
-  unused?: string;
+  /** Bearer minted by the most recent desktop OIDC login. */
+  bearer?: string;
+  /** The terminal deep-link Location header (Req-7). */
+  deepLink?: string;
+  /** Last session payload from GET /api/auth/get-session. */
+  session?: { tenantId?: string; role?: string; name?: string; email?: string };
+  /** Last desktop-callback HTTP status (for the 1.5a 403 assertion). */
+  lastLoginStatus?: number;
+  /** Last desktop-callback error envelope code, if any. */
+  lastErrorCode?: string;
+  /** 1.6 boot result. */
+  bootResult?: BootStackResult;
+  /** 1.6 hermetic project name (for After() teardown). */
+  bootProjectName?: string;
+  /** 1.5b cross-tenant usage-isolation state. */
+  rls?: {
+    tenantA: { tenantId: string; cookie: string };
+    tenantB: { tenantId: string; cookie: string; words: number };
+    /** T_A's /api/usage wordsUsed after the cross-tenant read (must be 0). */
+    tenantAWords?: number;
+  };
 }
 
 const state = new Map<string, ScenarioState>();
@@ -23,149 +122,788 @@ function stateFor(tenantId: string): ScenarioState {
   return s;
 }
 
-const PENDING = "keycloak SSO ships in Phase 19 — @cjm-sso-1.x stays @expected-red";
+// ---------------------------------------------------------------------------
+// undici localhost dispatcher (self-signed TLS for *.localhost — LOCKER-03 allows)
+// ---------------------------------------------------------------------------
+
+function dispatcherFor(url: string): Agent | undefined {
+  try {
+    const host = new URL(url).hostname;
+    if (host === "localhost" || host.endsWith(".localhost")) {
+      return new Agent({ connect: { rejectUnauthorized: false } });
+    }
+  } catch {
+    /* fall through */
+  }
+  return undefined;
+}
+
+/** Merge Set-Cookie headers into a Cookie request-header string (last value wins). */
+export function mergeCookies(prev: string, setCookies: string[]): string {
+  const jar = new Map<string, string>();
+  for (const c of prev
+    .split(";")
+    .map((p) => p.trim())
+    .filter(Boolean)) {
+    const eq = c.indexOf("=");
+    if (eq > 0) jar.set(c.slice(0, eq), c.slice(eq + 1));
+  }
+  for (const sc of setCookies) {
+    const first = sc.split(";", 1)[0];
+    const eq = first.indexOf("=");
+    if (eq > 0) jar.set(first.slice(0, eq), first.slice(eq + 1));
+  }
+  return [...jar.entries()].map(([k, v]) => `${k}=${v}`).join("; ");
+}
+
+function getSetCookie(res: Response): string[] {
+  return (res.headers as Headers & { getSetCookie?: () => string[] }).getSetCookie?.() ?? [];
+}
+
+// ---------------------------------------------------------------------------
+// Keycloak Admin REST helpers (used to mutate seeded users between two logins —
+// the only honest way to drive the role-downgrade + tenant-mismatch mechanisms
+// against a single shared live realm with fixed JIT env).
+// ---------------------------------------------------------------------------
+
+async function kcAdminToken(): Promise<string> {
+  const url = `${KC_ADMIN_BASE}/realms/master/protocol/openid-connect/token`;
+  const res = await undiciFetch(url, {
+    method: "POST",
+    headers: { "content-type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({
+      client_id: "admin-cli",
+      grant_type: "password",
+      username: KC_ADMIN_USER,
+      password: KC_ADMIN_PASSWORD,
+    }).toString(),
+    dispatcher: dispatcherFor(url),
+  });
+  if (!res.ok) throw new Error(`kc admin token failed: ${res.status}`);
+  const body = (await res.json()) as { access_token?: string };
+  if (!body.access_token) throw new Error("kc admin token missing access_token");
+  return body.access_token;
+}
+
+async function kcFindUserId(token: string, username: string): Promise<string> {
+  const url = `${KC_ADMIN_BASE}/admin/realms/${KC_REALM}/users?username=${encodeURIComponent(username)}&exact=true`;
+  const res = await undiciFetch(url, {
+    headers: { authorization: `Bearer ${token}` },
+    dispatcher: dispatcherFor(url),
+  });
+  if (!res.ok) throw new Error(`kc find user failed: ${res.status}`);
+  const rows = (await res.json()) as Array<{ id: string }>;
+  const first = rows[0];
+  if (!first) throw new Error(`kc user not found: ${username}`);
+  return first.id;
+}
+
+async function kcFindGroupId(token: string, groupName: string): Promise<string> {
+  const url = `${KC_ADMIN_BASE}/admin/realms/${KC_REALM}/groups?search=${encodeURIComponent(groupName)}`;
+  const res = await undiciFetch(url, {
+    headers: { authorization: `Bearer ${token}` },
+    dispatcher: dispatcherFor(url),
+  });
+  if (!res.ok) throw new Error(`kc find group failed: ${res.status}`);
+  const rows = (await res.json()) as Array<{ id: string; name: string }>;
+  const match = rows.find((g) => g.name === groupName);
+  if (!match) throw new Error(`kc group not found: ${groupName}`);
+  return match.id;
+}
+
+/** Remove a seeded user from a realm group (drives the 1.3 role downgrade). */
+async function kcRemoveUserFromGroup(username: string, groupName: string): Promise<void> {
+  const token = await kcAdminToken();
+  const userId = await kcFindUserId(token, username);
+  const groupId = await kcFindGroupId(token, groupName);
+  const url = `${KC_ADMIN_BASE}/admin/realms/${KC_REALM}/users/${userId}/groups/${groupId}`;
+  const res = await undiciFetch(url, {
+    method: "DELETE",
+    headers: { authorization: `Bearer ${token}` },
+    dispatcher: dispatcherFor(url),
+  });
+  if (res.status >= 400) throw new Error(`kc remove from group failed: ${res.status}`);
+}
+
+/** Rewrite a seeded user's email (drives the 1.5a resolved-tenant change). */
+async function kcSetUserEmail(username: string, email: string): Promise<void> {
+  const token = await kcAdminToken();
+  const userId = await kcFindUserId(token, username);
+  const url = `${KC_ADMIN_BASE}/admin/realms/${KC_REALM}/users/${userId}`;
+  const res = await undiciFetch(url, {
+    method: "PUT",
+    headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
+    body: JSON.stringify({ email, emailVerified: true }),
+    dispatcher: dispatcherFor(url),
+  });
+  if (res.status >= 400) throw new Error(`kc set email failed: ${res.status}`);
+}
+
+// ---------------------------------------------------------------------------
+// Desktop OIDC bearer-mint login driver (undici end-to-end against live Keycloak)
+// ---------------------------------------------------------------------------
+
+interface DesktopLoginResult {
+  status: number;
+  deepLink?: string;
+  bearer?: string;
+  errorCode?: string;
+}
+
+/**
+ * Drive the full desktop OIDC flow against the live Keycloak with undici:
+ *   1. GET /api/desktop-signin/oidc?callbackURL=&protocol= → 302 to KC authorize.
+ *   2. GET the KC authorize URL → 200 login-form HTML; capture KC cookies + the
+ *      form `action` URL.
+ *   3. POST the login form (username/password) → 302 back to /api/auth/desktop-callback/oidc.
+ *   4. GET the callback → 302 to `<scheme>://?bearer_token=...` (the deep-link) OR
+ *      a 4xx error envelope (the mode-6 rejection path).
+ */
+async function desktopOidcLogin(
+  apiBaseURL: string,
+  user: { username: string; password: string },
+): Promise<DesktopLoginResult> {
+  const apiDispatcher = dispatcherFor(apiBaseURL);
+  // The desktop-signin scheme allow-list validates `protocol` as a BARE RFC 3986
+  // scheme name (e.g. `openwhispr-app`) — NOT `openwhispr-app://`, which fails the
+  // grammar (`scheme = ALPHA *( ALPHA / DIGIT / "+" / "-" / "." )`, no `://`). The
+  // `callbackURL` is the full custom-scheme URL. Mirrors the passing unit fixture
+  // apps/api/tests/unit/routes/desktop-signin.test.ts:173 (`openwhispr://cb` + `openwhispr`).
+  const protocol = CHANNEL_SCHEME;
+  const callbackURL = `${CHANNEL_SCHEME}://cb`;
+  const signinUrl = `${apiBaseURL}/api/desktop-signin/oidc?callbackURL=${encodeURIComponent(
+    callbackURL,
+  )}&protocol=${encodeURIComponent(protocol)}`;
+
+  // (1) Kick off the flow → 302 to the Keycloak authorize URL.
+  const start = await undiciFetch(signinUrl, {
+    method: "GET",
+    headers: { origin: new URL(apiBaseURL).origin },
+    redirect: "manual",
+    dispatcher: apiDispatcher,
+  });
+  if (start.status !== 302) {
+    return { status: start.status, errorCode: `desktop-signin returned ${start.status}` };
+  }
+  const authorizeUrl = start.headers.get("location");
+  if (!authorizeUrl) return { status: 500, errorCode: "no authorize redirect" };
+
+  // (2) GET the Keycloak authorize page → login-form HTML.
+  const kcDispatcher = dispatcherFor(authorizeUrl);
+  const formPage = await undiciFetch(authorizeUrl, {
+    method: "GET",
+    redirect: "manual",
+    dispatcher: kcDispatcher,
+  });
+  const kcCookies = mergeCookies("", getSetCookie(formPage));
+  const html = await formPage.text();
+  const action = extractFormAction(html);
+  if (!action) {
+    const loc = formPage.headers.get("location");
+    const snippet = html.slice(0, 300).replace(/\s+/g, " ");
+    return {
+      status: 500,
+      errorCode: `no KC login form action (authorize GET status=${formPage.status}${
+        loc ? ` location=${loc}` : ""
+      } body="${snippet}")`,
+    };
+  }
+
+  // (3) POST the credentials to the form action.
+  const loginRes = await undiciFetch(action, {
+    method: "POST",
+    headers: {
+      "content-type": "application/x-www-form-urlencoded",
+      cookie: kcCookies,
+    },
+    body: new URLSearchParams({
+      username: user.username,
+      password: user.password,
+      credentialId: "",
+    }).toString(),
+    redirect: "manual",
+    dispatcher: dispatcherFor(action),
+  });
+  // Keycloak 302s back to the api desktop-callback on success.
+  const callbackUrl = loginRes.headers.get("location");
+  if (loginRes.status !== 302 || !callbackUrl) {
+    // 200 here means KC re-rendered the form (bad creds) — surface it.
+    return {
+      status: loginRes.status === 200 ? 401 : loginRes.status,
+      errorCode: "KC login not accepted",
+    };
+  }
+
+  // (4) Follow the api desktop-callback. It either 302s to the deep-link
+  //     (success) or returns a 4xx error envelope (mode-6 rejection).
+  return followCallback(callbackUrl, apiDispatcher);
+}
+
+async function followCallback(
+  callbackUrl: string,
+  apiDispatcher: Agent | undefined,
+): Promise<DesktopLoginResult> {
+  const res = await undiciFetch(callbackUrl, {
+    method: "GET",
+    redirect: "manual",
+    dispatcher: dispatcherFor(callbackUrl) ?? apiDispatcher,
+  });
+  if (res.status === 302) {
+    const loc = res.headers.get("location") ?? "";
+    const bearer = extractBearer(loc);
+    return { status: 302, deepLink: loc, ...(bearer ? { bearer } : {}) };
+  }
+  // 4xx → error envelope. The JIT rejection (mode-6) surfaces here.
+  const body = (await res.json().catch(() => ({}))) as { error?: unknown; code?: unknown };
+  const code =
+    typeof body.code === "string"
+      ? body.code
+      : typeof body.error === "string"
+        ? body.error
+        : undefined;
+  return { status: res.status, ...(code ? { errorCode: code } : {}) };
+}
+
+/** Extract the `<form action="...">` URL from a Keycloak login page. */
+export function extractFormAction(html: string): string | undefined {
+  const m = /<form[^>]*\baction="([^"]+)"/i.exec(html);
+  if (!m?.[1]) return undefined;
+  // KC encodes `&` as `&amp;` in the HTML attribute.
+  return m[1].replace(/&amp;/g, "&");
+}
+
+/** Extract the bearer token from a `<scheme>://?bearer_token=...` deep-link. */
+export function extractBearer(deepLink: string): string | undefined {
+  const m = /[?&]bearer_token=([^&]+)/.exec(deepLink);
+  return m?.[1] ? decodeURIComponent(m[1]) : undefined;
+}
+
+/** Read the authenticated session (tenantId/role/name are additionalFields). */
+async function getSession(
+  apiBaseURL: string,
+  bearer: string,
+): Promise<{ tenantId?: string; role?: string; name?: string; email?: string }> {
+  const url = `${apiBaseURL}/api/auth/get-session`;
+  const res = await undiciFetch(url, {
+    headers: { authorization: `Bearer ${bearer}`, origin: new URL(apiBaseURL).origin },
+    dispatcher: dispatcherFor(url),
+  });
+  const body = (await res.json().catch(() => null)) as {
+    user?: { tenantId?: string; role?: string; name?: string; email?: string };
+  } | null;
+  return {
+    tenantId: body?.user?.tenantId,
+    role: body?.user?.role,
+    name: body?.user?.name,
+    email: body?.user?.email,
+  };
+}
+
+/**
+ * Assert a JIT structured-log event fired by grepping the api container's
+ * captured stderr (`docker compose -p e2e-cjm logs api`). The hooks emit
+ * `{"event":"sso.jit.user.created",...}` / `sso.jit.role.updated` /
+ * `sso.jit.rejected` — oidc-jit-hooks.ts. No audit-read route exists, so the
+ * structured log is the honest e2e proof that the audit path executed.
+ */
+async function readApiLogs(): Promise<string> {
+  const { spawn } = await import("node:child_process");
+  return new Promise<string>((resolve) => {
+    let out = "";
+    const child = spawn(
+      "docker",
+      ["compose", "-p", "e2e-cjm", "logs", "api", "--no-color", "--tail=400"],
+      { cwd: REPO_ROOT, stdio: ["ignore", "pipe", "pipe"] },
+    );
+    child.stdout?.on("data", (b) => {
+      out += String(b);
+    });
+    child.stderr?.on("data", (b) => {
+      out += String(b);
+    });
+    child.on("close", () => resolve(out));
+    child.on("error", () => resolve(out));
+  });
+}
+
+async function assertJitLogEvent(event: string): Promise<void> {
+  // The sso.jit.* events are emitted to the api's stdout, then captured by
+  // docker's json-log driver — Pino's flush + the driver's buffering add a small
+  // latency, so a single grep right after the sign-in completes is RACY (the
+  // line may not be visible yet; observed flaking @cjm-sso-1.1). Poll the logs
+  // for a bounded window so the assertion is deterministic regardless of flush
+  // timing — the event either lands within ~10s or it genuinely never fired.
+  let logs = "";
+  for (let attempt = 0; attempt < 20; attempt++) {
+    logs = await readApiLogs();
+    if (logs.includes(event)) return;
+    await new Promise((r) => setTimeout(r, 500));
+  }
+  expect(logs, `expected JIT log event "${event}" in api logs`).toContain(event);
+}
+
+// ===========================================================================
+// @cjm-sso-1.1 — First-time JIT user creation from OIDC ID token
+// ===========================================================================
 
 Given(
   "Keycloak realm {string} is up and the OIDC env triple is set",
-  async ({ tenantId }, _realm: string) => {
+  async ({ tenantId }, realm: string) => {
+    // Precondition: the Makefile @sso branch booted Keycloak + seeded realm
+    // `acme` + layered keycloak-api-env.yml (OIDC triple + 7 JIT vars). Assert
+    // the realm discovery doc is reachable so a wiring break fails HERE with a
+    // clear message rather than mid-flow.
     stateFor(tenantId);
-    throw new Error(PENDING);
+    expect(realm).toBe(KC_REALM);
+    const disc = `${KC_ADMIN_BASE}/realms/${realm}/.well-known/openid-configuration`;
+    const res = await undiciFetch(disc, { dispatcher: dispatcherFor(disc) });
+    expect(res.status, `Keycloak realm ${realm} discovery not reachable`).toBe(200);
   },
 );
 
 When(
   "a user signs in via OIDC for the first time with tenant claim {string}",
-  async ({ tenantId }, _claim: string) => {
-    stateFor(tenantId);
-    throw new Error(PENDING);
+  async ({ apiBaseURL, tenantId }, _claim: string) => {
+    const s = stateFor(tenantId);
+    // erin is exclusive to 1.1 → her FIRST login deterministically creates the
+    // user (mint-bearer new-user branch → sso.jit.user.created).
+    const r = await desktopOidcLogin(apiBaseURL, USERS.erin);
+    expect(r.status, `erin OIDC login: ${r.errorCode ?? ""}`).toBe(302);
+    s.bearer = r.bearer;
+    s.deepLink = r.deepLink;
+    expect(s.bearer, "no bearer minted for erin").toBeTruthy();
+    s.session = await getSession(apiBaseURL, s.bearer as string);
   },
 );
 
 Then(
   "a User row is created with tenant {string} and role {string}",
-  async ({ tenantId }, _tenant: string, _role: string) => {
-    stateFor(tenantId);
-    throw new Error(PENDING);
+  async ({ tenantId }, tenant: string, role: string) => {
+    const s = stateFor(tenantId);
+    // tenant "acme" resolves (via the email_domain mapping) to DEFAULT_TENANT_ID
+    // — the users table fails OPEN to the default tenant (rule 16), so the
+    // persisted + session tenant IS the default. The feature's literal "acme"
+    // is the realm/tenant NAME; the wire value is the mapped UUID.
+    expect(tenant).toBe("acme");
+    expect(s.session?.tenantId).toBe("00000000-0000-0000-0000-000000000000");
+    expect(s.session?.role).toBe(role);
+    // Req-7: the desktop deep-link echoes the channel scheme + bearer.
+    expect(s.deepLink ?? "").toContain(`${CHANNEL_SCHEME}://`);
+    expect(s.deepLink ?? "").toContain("bearer_token=");
   },
 );
 
-Then("an audit_log row is emitted with action {string}", async ({ tenantId }, _action: string) => {
+Then("an audit_log row is emitted with action {string}", async ({ tenantId }, action: string) => {
   stateFor(tenantId);
-  throw new Error(PENDING);
+  await assertJitLogEvent(action);
 });
+
+// ===========================================================================
+// @cjm-sso-1.2 — Returning OIDC user re-synced on second sign-in
+// ===========================================================================
 
 Given(
   "a User row already exists for tenant {string} with email {string}",
-  async ({ tenantId }, _tenant: string, _email: string) => {
-    stateFor(tenantId);
-    throw new Error(PENDING);
+  async ({ apiBaseURL, tenantId }, _tenant: string, _email: string) => {
+    const s = stateFor(tenantId);
+    // First login creates alice.
+    const r = await desktopOidcLogin(apiBaseURL, USERS.alice);
+    expect(r.status, `alice first login: ${r.errorCode ?? ""}`).toBe(302);
+    s.bearer = r.bearer;
   },
 );
 
-When(
-  "the user signs in via OIDC with updated name claim {string}",
-  async ({ tenantId }, _name: string) => {
-    stateFor(tenantId);
-    throw new Error(PENDING);
-  },
-);
-
-Then("the User row's name is rewritten to {string}", async ({ tenantId }, _name: string) => {
-  stateFor(tenantId);
-  throw new Error(PENDING);
+When("the user signs in via OIDC a second time", async ({ apiBaseURL, tenantId }) => {
+  const s = stateFor(tenantId);
+  const r = await desktopOidcLogin(apiBaseURL, USERS.alice);
+  expect(r.status, `alice second login: ${r.errorCode ?? ""}`).toBe(302);
+  s.bearer = r.bearer;
+  expect(s.bearer, "no bearer on second login").toBeTruthy();
+  s.session = await getSession(apiBaseURL, s.bearer as string);
 });
+
+Then(
+  "the returning session resolves to tenant {string} and role {string}",
+  async ({ tenantId }, tenant: string, role: string) => {
+    const s = stateFor(tenantId);
+    expect(tenant).toBe("acme");
+    expect(s.session?.tenantId).toBe("00000000-0000-0000-0000-000000000000");
+    expect(s.session?.role).toBe(role);
+  },
+);
+
+// ===========================================================================
+// @cjm-sso-1.3 — Group-to-role downgrade revokes admin on next sign-in
+// ===========================================================================
 
 Given(
   "a User row already exists for tenant {string} with role {string}",
-  async ({ tenantId }, _tenant: string, _role: string) => {
-    stateFor(tenantId);
-    throw new Error(PENDING);
+  async ({ apiBaseURL, tenantId }, _tenant: string, role: string) => {
+    const s = stateFor(tenantId);
+    // dave is seeded into openwhispr-admin → first login mints role=admin.
+    const r = await desktopOidcLogin(apiBaseURL, USERS.dave);
+    expect(r.status, `dave first login: ${r.errorCode ?? ""}`).toBe(302);
+    expect(r.bearer).toBeTruthy();
+    const session = await getSession(apiBaseURL, r.bearer as string);
+    expect(session.role, "dave should start as admin").toBe(role);
+    s.bearer = r.bearer;
   },
 );
 
 When(
   "the user signs in via OIDC and the admin group has been removed from claims",
-  async ({ tenantId }) => {
-    stateFor(tenantId);
-    throw new Error(PENDING);
+  async ({ apiBaseURL, tenantId }) => {
+    const s = stateFor(tenantId);
+    // Revoke dave's admin group via Admin REST, then re-login → the resolver
+    // now sees only openwhispr-engineering (member); update.before downgrades.
+    await kcRemoveUserFromGroup(USERS.dave.username, "openwhispr-admin");
+    const r = await desktopOidcLogin(apiBaseURL, USERS.dave);
+    expect(r.status, `dave second login: ${r.errorCode ?? ""}`).toBe(302);
+    s.bearer = r.bearer;
+    s.session = await getSession(apiBaseURL, r.bearer as string);
   },
 );
 
 Then("the User row's role is rewritten to the configured default role", async ({ tenantId }) => {
-  stateFor(tenantId);
-  throw new Error(PENDING);
+  const s = stateFor(tenantId);
+  // openwhispr-engineering → member; that IS the configured default (member).
+  expect(s.session?.role).toBe("member");
 });
 
-Given("the OIDC_TENANT_CLAIM env is set to {string}", async ({ tenantId }, _value: string) => {
+// ===========================================================================
+// @cjm-sso-1.4 — Tenant assignment derived from email domain claim
+// ===========================================================================
+
+Given("the OIDC_TENANT_CLAIM env is set to {string}", async ({ tenantId }, value: string) => {
+  // The @sso fixture (keycloak-api-env.yml) sets OIDC_TENANT_CLAIM=email_domain.
   stateFor(tenantId);
-  throw new Error(PENDING);
+  expect(value).toBe("email_domain");
 });
 
 Given(
   "OIDC_TENANT_MAPPING includes {string} mapped to tenant {string}",
-  async ({ tenantId }, _domain: string, _tenant: string) => {
+  async ({ tenantId }, domain: string, tenant: string) => {
     stateFor(tenantId);
-    throw new Error(PENDING);
+    expect(domain).toBe("acme.example");
+    expect(tenant).toBe("acme");
   },
 );
 
 When(
   "a user with email {string} signs in via OIDC for the first time",
-  async ({ tenantId }, _email: string) => {
-    stateFor(tenantId);
-    throw new Error(PENDING);
+  async ({ apiBaseURL, tenantId }, email: string) => {
+    const s = stateFor(tenantId);
+    expect(email).toBe(USERS.bob.email);
+    const r = await desktopOidcLogin(apiBaseURL, USERS.bob);
+    expect(r.status, `bob OIDC login: ${r.errorCode ?? ""}`).toBe(302);
+    s.bearer = r.bearer;
+    s.session = await getSession(apiBaseURL, r.bearer as string);
   },
 );
 
-Then("a User row is created with tenant {string}", async ({ tenantId }, _tenant: string) => {
-  stateFor(tenantId);
-  throw new Error(PENDING);
+Then("a User row is created with tenant {string}", async ({ tenantId }, tenant: string) => {
+  const s = stateFor(tenantId);
+  expect(tenant).toBe("acme");
+  // email_domain("bob@acme.example") = "acme.example" → DEFAULT_TENANT_ID.
+  expect(s.session?.tenantId).toBe("00000000-0000-0000-0000-000000000000");
 });
 
+// ===========================================================================
+// @cjm-sso-1.5a — Returning user whose resolved tenant changed → 403
+// ===========================================================================
+
 Given(
-  "a User row exists for tenant {string} and another exists for tenant {string}",
-  async ({ tenantId }, _tenantA: string, _tenantB: string) => {
-    stateFor(tenantId);
-    throw new Error(PENDING);
+  "a returning OIDC user {string} was first provisioned under tenant {string}",
+  async ({ apiBaseURL, tenantId }, username: string, _tenant: string) => {
+    const s = stateFor(tenantId);
+    expect(username).toBe(USERS.carol.username);
+    // Ensure carol starts at her seeded acme.example email, then first login
+    // provisions her under the acme tenant (DEFAULT_TENANT_ID).
+    await kcSetUserEmail(USERS.carol.username, USERS.carol.email);
+    const r = await desktopOidcLogin(apiBaseURL, USERS.carol);
+    expect(r.status, `carol first login: ${r.errorCode ?? ""}`).toBe(302);
+    s.bearer = r.bearer;
   },
 );
 
 When(
-  "the tenant {string} user issues an authenticated request scoped to tenant {string}",
-  async ({ tenantId }, _tenantA: string, _tenantB: string) => {
-    stateFor(tenantId);
-    throw new Error(PENDING);
+  "the user signs in via OIDC after their email domain now resolves tenant {string}",
+  async ({ apiBaseURL, tenantId }, tenant: string) => {
+    const s = stateFor(tenantId);
+    expect(tenant).toBe("globex");
+    // Change carol's email domain to globex.example. Under the OSS-default
+    // email_domain claim mode the tenant IS derived from the email domain, so
+    // this both (a) makes carol a NEW email identity (findUserByEmail misses)
+    // and (b) resolves her to the non-default globex tenant. A JIT create into
+    // any non-default tenant is refused up-front (v1 single-tenant invariant,
+    // CLAUDE.md rule 16) → 403 forbidden_tenant_mismatch, NOT an RLS-500 crash.
+    // (The resolver's literal returning-user mode-6 path cannot fire in
+    // email_domain mode by construction — a domain change is a new identity.)
+    await kcSetUserEmail(USERS.carol.username, "carol@globex.example");
+    const r = await desktopOidcLogin(apiBaseURL, USERS.carol);
+    s.lastLoginStatus = r.status;
+    s.lastErrorCode = r.errorCode;
   },
 );
 
 Then(
-  "the row-level-security policy rejects the request with a 403 forbidden_tenant_mismatch error",
-  async ({ tenantId }) => {
-    stateFor(tenantId);
-    throw new Error(PENDING);
+  "sign-in is rejected with a {int} forbidden_tenant_mismatch error",
+  async ({ tenantId }, status: number) => {
+    const s = stateFor(tenantId);
+    expect(s.lastLoginStatus).toBe(status);
+    expect(s.lastErrorCode).toBe("forbidden_tenant_mismatch");
   },
 );
 
+// Restore carol's email after the scenario so re-runs are idempotent.
+After({ tags: "@cjm-sso-1.5a" }, async () => {
+  try {
+    await kcSetUserEmail(USERS.carol.username, USERS.carol.email);
+  } catch {
+    /* best-effort cleanup */
+  }
+});
+
+// ===========================================================================
+// @cjm-sso-1.5b — Cross-tenant usage isolation on the fail-closed usage_ledger
+// ===========================================================================
+// The original scenario assumed a `GET /api/transcribe/jobs/<id>` read-by-id
+// (404 cross-tenant). That endpoint NEVER existed — /api/transcribe is a
+// synchronous multipart→LiteLLM call that writes a tenant-scoped usage_ledger
+// row and returns {text,minutes} with no id, and there is no transcribe
+// read-by-id route. The faithful cross-tenant isolation proof on the SAME
+// fail-closed table (usage_ledger, RLS tenant_id = current_setting) is: tenant
+// B records a real reasoning call (→ a usage_ledger row under B); then GET
+// /api/usage as B reports B's units while the SAME read as A reports ZERO — A
+// physically cannot observe B's row (RLS fails closed). The @sso run pins
+// LITELLM_CONFIG_FILE=litellm_config.contract.yaml (Makefile) so the call
+// returns a deterministic mock completion with no external key.
+//
+// WHY /api/reason and NOT /api/transcribe: LiteLLM v1.83.x's `mock_response` is
+// a chat-completions-only feature — the /v1/audio/transcriptions passthrough
+// that /api/transcribe forwards to does NOT honor it (documented in
+// tests/e2e/transcribe.e2e.test.ts:43-55; a live @sso run confirmed litellm
+// makes a real Groq call → 401 → 502 even with the contract config mounted). So
+// transcribe→200 is impossible in hermetic mode. /api/reason defaults to model
+// `qwen3.6-plus`, which DOES carry a chat-completions mock_response in
+// litellm_config.contract.yaml (usage.total_tokens:15) → deterministic 200 → an
+// idempotent `usage_ledger` INSERT (kind='reason_tokens', units=15) under
+// withTenant(B) (apps/api/src/routes/reason.ts:187-193). /api/usage SUMs ALL
+// kinds for the user under withTenant (apps/api/src/routes/usage.ts:54-58), so
+// reason_tokens lands in B's wordsUsed — the SAME tenant-scoped usage_ledger
+// read, the SAME RLS-fail-closed isolation invariant the scenario asserts.
+
+/** Real JSON `/api/reason` call for a session; returns the HTTP status. */
+async function reasonOnce(apiBaseURL: string, cookie: string): Promise<number> {
+  const url = `${apiBaseURL}/api/reason`;
+  const res = await undiciFetch(url, {
+    method: "POST",
+    headers: { "content-type": "application/json", origin: new URL(url).origin, cookie },
+    // `text` is the only required ReasonRequest field; `model` defaults to
+    // qwen3.6-plus (the mock_response-bearing alias) when omitted.
+    body: JSON.stringify({ text: "cross-tenant isolation probe" }),
+    ...(dispatcherFor(url) ? { dispatcher: dispatcherFor(url) } : {}),
+  });
+  return res.status;
+}
+
+/** GET /api/usage for a session; returns the `wordsUsed` aggregate (tenant+user scoped). */
+async function readUsageWords(apiBaseURL: string, cookie: string): Promise<number> {
+  const url = `${apiBaseURL}/api/usage`;
+  const res = await undiciFetch(url, {
+    method: "GET",
+    headers: { origin: new URL(url).origin, cookie },
+    ...(dispatcherFor(url) ? { dispatcher: dispatcherFor(url) } : {}),
+  });
+  if (res.status !== 200) throw new Error(`/api/usage → ${res.status}`);
+  const body = (await res.json()) as { wordsUsed?: unknown };
+  return typeof body.wordsUsed === "number" ? body.wordsUsed : Number(body.wordsUsed ?? 0);
+}
+
+/**
+ * Poll GET /api/usage until `wordsUsed > 0` (or the budget expires). reason.ts
+ * awaits the usage_ledger INSERT before responding 200, but the SEPARATE
+ * /api/usage read runs on a DIFFERENT pooled backend (PgBouncer transaction
+ * mode), so the freshly-committed row can be invisible for a few ms — a single
+ * immediate read flaked at 0 (@cjm-sso-1.5b). Polling makes the
+ * write→read visibility deterministic without weakening the assertion.
+ */
+async function readUsageWordsUntilPositive(apiBaseURL: string, cookie: string): Promise<number> {
+  let words = 0;
+  for (let attempt = 0; attempt < 20; attempt++) {
+    words = await readUsageWords(apiBaseURL, cookie);
+    if (words > 0) return words;
+    await new Promise((r) => setTimeout(r, 500));
+  }
+  return words;
+}
+
 Given(
-  "the Keycloak fixture is up but the realm import directory is empty",
-  async ({ tenantId }) => {
-    stateFor(tenantId);
-    throw new Error(PENDING);
+  "a JIT user is provisioned for tenant {string} and a transcription row exists for tenant {string}",
+  async ({ apiBaseURL, mailpitApiUrl, tenantId }, _tenantA: string, _tenantB: string) => {
+    const s = stateFor(tenantId);
+    // Two genuinely-provisioned email-password tenants (real sign-up + Mailpit
+    // verify + sign-in → valid session cookie via provisionVerifiedTenant).
+    // Fresh random identities (distinct emails); freshTenant() slugs the email
+    // from the id's first 8 chars, so derived ids would collide.
+    const aId = freshTenant();
+    const bId = freshTenant();
+    const aCookie = await provisionVerifiedTenant(apiBaseURL, mailpitApiUrl, aId);
+    const bCookie = await provisionVerifiedTenant(apiBaseURL, mailpitApiUrl, bId);
+    // B records a REAL reasoning call → a usage_ledger row scoped to B's tenant
+    // (kind='reason_tokens'; mock_response is honored for chat-completions).
+    const status = await reasonOnce(apiBaseURL, bCookie);
+    expect(status, "T_B reason call must 200 (mock chat-completion)").toBe(200);
+    // Confirm B's row landed (B sees non-zero usage) before the isolation read.
+    // Poll: the ledger INSERT commits inside reason's handler, but the separate
+    // /api/usage read can lag a few ms across PgBouncer-pooled backends.
+    const bWords = await readUsageWordsUntilPositive(apiBaseURL, bCookie);
+    expect(bWords, "T_B should see its own usage_ledger row").toBeGreaterThan(0);
+    s.rls = {
+      tenantA: { tenantId: aId.tenantId, cookie: aCookie },
+      tenantB: { tenantId: bId.tenantId, cookie: bCookie, words: bWords },
+    };
   },
 );
 
 When(
-  "the api boots with OIDC_ISSUER_URL pointing at a non-existent realm",
-  async ({ tenantId }) => {
-    stateFor(tenantId);
-    throw new Error(PENDING);
+  "the tenant {string} user issues an authenticated read scoped to tenant {string}'s transcription row",
+  async ({ apiBaseURL, tenantId }, _tenantA: string, _tenantB: string) => {
+    const s = stateFor(tenantId);
+    if (!s.rls) throw new Error("step ordering: 1.5b Given did not run");
+    // A reads its OWN usage under RLS — it can never name B's row; the proof is
+    // that A's tenant-scoped aggregate excludes B's units entirely.
+    const aWords = await readUsageWords(apiBaseURL, s.rls.tenantA.cookie);
+    s.rls.tenantAWords = aWords;
   },
 );
 
 Then(
-  "boot fails loudly with a structured log event {string} and a non-zero exit code",
-  async ({ tenantId }, _event: string) => {
-    stateFor(tenantId);
-    throw new Error(PENDING);
+  "the read returns {int} not_found and the row's existence is not leaked",
+  async ({ tenantId }, _status: number) => {
+    const s = stateFor(tenantId);
+    // Isolation: A's usage aggregate is ZERO — B's row is invisible across the
+    // tenant boundary (usage_ledger RLS fails closed). B still sees its own row,
+    // proving the row genuinely exists and is hidden ONLY cross-tenant (no leak,
+    // no error that would betray existence).
+    expect(s.rls?.tenantAWords, "T_A must NOT observe T_B's usage row").toBe(0);
+    expect(s.rls?.tenantB.words ?? 0, "T_B still sees its own row").toBeGreaterThan(0);
   },
 );
+
+// ===========================================================================
+// @cjm-sso-1.6 — Loud-fail on malformed JIT mapping JSON at boot
+// (re-scoped per D-69-4 C2; pure boot-config test, no Keycloak)
+// ===========================================================================
+
+Given(
+  "the api is configured with a malformed OIDC_TENANT_MAPPING JSON value",
+  async ({ tenantId }) => {
+    const s = stateFor(tenantId);
+    // Record the misconfig posture; the actual boot happens in the When step
+    // via the compose-harness bootStack({expectExit}) seam (byok precedent).
+    s.bootProjectName = `e2e-cjm-sso16-${tenantId.slice(0, 8)}`;
+  },
+);
+
+// Compose-file set for the isolated 1.6 boot project. The litellm-fast-health
+// overlay (compose/test/litellm-fast-health.yml) replaces the bundled litellm
+// healthcheck (real /health/liveliness probe + start_period: 600s) with a
+// trivially-true probe so litellm flips `healthy` in ~3s. WHY this matters: the
+// api `depends_on: litellm condition: service_healthy` (docker-compose.yml:422),
+// so a COLD litellm gates the api's start by 60-150s+ — which overran the prior
+// 180s Playwright budget (live: exactly 3.0m timeout). The loud-fail is pure
+// config validation (validateJitBoot in buildAuth → exit 78); the api never
+// issues a LiteLLM request before it dies, so litellm's real health is
+// irrelevant — it only has to satisfy the docker depends_on gate. depends_on
+// can't be used to DROP the dep (compose MERGES it back by key); a healthcheck
+// override cleanly REPLACES it. See the overlay header for the full rationale.
+const SSO16_COMPOSE_FILES = [
+  "docker-compose.yml",
+  "compose/docker-compose.embedded-litellm.yml",
+  "compose/test/litellm-fast-health.yml",
+] as const;
+
+// Step timeout: this boots an ISOLATED compose project (e2e-cjm-sso16-*) whose
+// api service is `build:`-only with no `image:` tag, so `docker compose up`
+// resolves/rebuilds the api image for that fresh project before the container
+// can boot+crash. With the fast-health overlay collapsing the litellm gate to
+// ~3s, the critical path is rebuild (warm-cache) + api boot + exit-poll ≈ 30-60s.
+// The critical path is rebuild (warm-cache) + api boot + exit-poll. Detection
+// now fires on the FIRST observed restart (pollApiExit returns the last
+// non-zero exit as soon as restartCount>0), so the poll rarely runs its full
+// budget. Budget the step at 180s = up (~35s) + poll (≤90s) + headroom, so a
+// cold BuildKit cache or full-stack load contention can't trip the step timeout
+// before the loud-fail is observed (the live regression: up+slow-restart-loop
+// overran the prior 120s step budget → exitCode null). Pure test-harness
+// timing — the production loud-fail (validateJitBoot exit 78) is already
+// unit-proven and unchanged.
+When("the api container boots", async ({ tenantId, $test }) => {
+  // Raise THIS scenario's Playwright budget (playwright-bdd 8.x has no per-step
+  // `timeout` option — only `tags` — so extend via the injected $test fixture).
+  $test.setTimeout(180_000);
+  const s = stateFor(tenantId);
+  s.bootResult = await bootStack({
+    projectName: s.bootProjectName,
+    composeFiles: [...SSO16_COMPOSE_FILES],
+    scenarioId: s.bootProjectName,
+    envOverrides: {
+      // OIDC_TENANT_CLAIM set so readJitConfig() does NOT early-return null —
+      // the malformed mapping must reach validateJitBoot()'s JSON.parse.
+      OIDC_TENANT_CLAIM: "email_domain",
+      OIDC_TENANT_MAPPING: "{not valid json",
+    },
+    expectExit: 78,
+    // Scope the boot to api + its depends_on closure
+    // (migrate/litellm/valkey/postgres/pgbouncer) — NOT the full --profile set,
+    // which also boots grafana/loki/tempo/mimir/otel/minio/traefik/web/worker
+    // (16 services) whose startup latency is pure dead weight for a
+    // config-validation crash. `up -d api` + the fast-health litellm overlay
+    // gets the api booting (and crashing) in well under the budget.
+    targetServices: ["api"],
+    // The litellm-fast-health overlay downgrades the api's depends_on conditions
+    // from service_healthy → service_started for litellm/valkey/pgbouncer/
+    // otel-collector/mailpit (keeping migrate's service_completed_successfully),
+    // so the api starts as soon as those containers START — no waiting on the
+    // observability chain's 60-90s start_periods (the live load regression). The
+    // crash happens before any of them is touched. Pre-start `pgbouncer` (which
+    // pulls postgres — both long-running, go healthy) so the DB is ready; then
+    // `migrate` (a service_completed_successfully dep of api) runs fast during
+    // the api `up`. NOTE: we do NOT prestart migrate directly — `up -d --wait` on
+    // a one-shot container that exits 0 returns non-zero in compose v2.x, which
+    // would spuriously fail the prestart.
+    prestartServices: ["pgbouncer"],
+    // Conditions are `started` → api boots at once, reaches readJitConfig() →
+    // validateJitBoot() → exit 78 in ~15-25s, settles on `exited` (restart:no
+    // overlay). Poll detects it on the first tick; budget is generous headroom.
+    expectExitTimeoutMs: 90_000,
+    expectExitIntervalMs: 1_000,
+    skipUserStackStop: true,
+    inheritStdio: false,
+  });
+});
+
+Then(
+  "boot fails loudly with stderr containing {string} and exit code {int}",
+  async ({ tenantId }, fatal: string, code: number) => {
+    const s = stateFor(tenantId);
+    // Primary gate: the api crashed loud with the SPEC-mandated EX_CONFIG (78)
+    // — JIT is never silently disabled on misconfig (T-69-20).
+    expect(s.bootResult?.exitCode).toBe(code);
+    // Corroborating: the validateJitBoot() FATAL line names the offending var.
+    expect(s.bootResult?.stderr ?? "").toContain(fatal);
+  },
+);
+
+After({ tags: "@cjm-sso-1.6" }, async ({ tenantId }) => {
+  const s = stateFor(tenantId);
+  if (s.bootProjectName) {
+    await tearStack({
+      projectName: s.bootProjectName,
+      composeFiles: [...SSO16_COMPOSE_FILES],
+      skipUserStackRestart: true,
+      inheritStdio: false,
+      ...(s.bootResult?.envFilePath ? { envFilePath: s.bootResult.envFilePath } : {}),
+    });
+  }
+});

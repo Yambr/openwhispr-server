@@ -198,6 +198,30 @@ export interface BootStackOptions {
    * behaviour (none today; reserved for future contract tests).
    */
   disableRateLimitOverlayAutoInclude?: boolean;
+  /**
+   * Restrict `docker compose up` to these service names (plus their
+   * depends_on closure) instead of the whole `--profile` set. Use for
+   * fast-fail boot-config scenarios that only need the api + its hard
+   * dependencies and would otherwise pay the full observability/ingress
+   * stack's startup latency. `up -d <svc>` still respects depends_on, so
+   * `["api"]` pulls api+migrate+litellm+valkey+postgres+pgbouncer but skips
+   * grafana/loki/tempo/mimir/otel/minio/traefik/web/worker. Undefined →
+   * bring up the entire profile (the default, full-stack behaviour).
+   */
+  targetServices?: readonly string[];
+  /**
+   * Services to bring up (and WAIT for health) BEFORE the main `up`. Use with
+   * `expectExit` + `targetServices` for fast-crash boots whose target depends on
+   * a chain that must be healthy first: the main `up -d` (no `--wait`, since the
+   * target is expected to crash) returns as soon as containers are CREATED and
+   * does NOT block on the dependency chain finishing its start — so under
+   * full-stack load contention the target can sit in `created` while its deps
+   * are still starting, and the exit-poll then races (never observing the
+   * crash → exitCode null). Pre-starting the deps with `up -d --wait` guarantees
+   * they're healthy, so the subsequent target `up` starts (and crashes) at once.
+   * Undefined → no pre-start phase (the main `up` brings up the dep closure).
+   */
+  prestartServices?: readonly string[];
 }
 
 export interface BootStackResult {
@@ -268,6 +292,85 @@ function runComposeCapture(
     child.on("close", (code) => res({ exitCode: code ?? -1, stdout }));
     child.on("error", () => res({ exitCode: -1, stdout }));
   });
+}
+
+/** Run a raw `docker` (non-compose) subcommand and capture stdout. */
+function runDockerCapture(
+  args: string[],
+  spawnFn?: typeof spawn,
+): Promise<{ exitCode: number; stdout: string }> {
+  const spawnImpl = spawnFn ?? spawn;
+  return new Promise((res) => {
+    let stdout = "";
+    const child = spawnImpl("docker", args, {
+      cwd: REPO_ROOT,
+      env: process.env,
+      stdio: ["ignore", "pipe", "ignore"],
+    });
+    (child.stdout as NodeJS.ReadableStream | null)?.on("data", (b) => {
+      stdout += String(b);
+    });
+    child.on("close", (code) => res({ exitCode: code ?? -1, stdout }));
+    child.on("error", () => res({ exitCode: -1, stdout }));
+  });
+}
+
+/**
+ * Remove docker resources of a given kind still carrying a compose project's
+ * label. Compose `down -v` leaves orphaned `<project>_*` networks AND volumes
+ * behind once a project's containers are already gone (v2.23 quirk: "No resource
+ * found to remove for project"). Each leaked network burns an address-pool slot;
+ * each leaked volume burns disk — both accumulate across the per-scenario
+ * sso16 projects and eventually break the next boot. Sweep by the
+ * `com.docker.compose.project=<project>` label. Best-effort — every step
+ * swallows errors so teardown never throws.
+ */
+async function removeProjectResources(
+  kind: "network" | "volume",
+  projectName: string,
+  spawnFn?: typeof spawn,
+): Promise<string[]> {
+  const removed: string[] = [];
+  try {
+    const { stdout } = await runDockerCapture(
+      [
+        kind,
+        "ls",
+        "--filter",
+        `label=com.docker.compose.project=${projectName}`,
+        "--format",
+        "{{.Name}}",
+      ],
+      spawnFn,
+    );
+    const names = stdout
+      .split("\n")
+      .map((n) => n.trim())
+      .filter(Boolean);
+    for (const name of names) {
+      const { exitCode } = await runDockerCapture([kind, "rm", name], spawnFn);
+      if (exitCode === 0) removed.push(name);
+    }
+  } catch {
+    /* swallow — teardown MUST NOT throw */
+  }
+  return removed;
+}
+
+/** Sweep orphaned project networks (see {@link removeProjectResources}). */
+export async function removeProjectNetworks(
+  projectName: string,
+  spawnFn?: typeof spawn,
+): Promise<string[]> {
+  return removeProjectResources("network", projectName, spawnFn);
+}
+
+/** Sweep orphaned project volumes (see {@link removeProjectResources}). */
+export async function removeProjectVolumes(
+  projectName: string,
+  spawnFn?: typeof spawn,
+): Promise<string[]> {
+  return removeProjectResources("volume", projectName, spawnFn);
 }
 
 /** Detect whether a compose project has any running containers. */
@@ -363,9 +466,65 @@ function parseComposePsJson(
 }
 
 /**
- * Poll `compose ps --format json api` until the api container reports
- * `State=exited` OR the deadline fires. Resolves with the observed exit
- * code (or null on timeout).
+ * Resolve the api container id for a project, then `docker inspect` its true
+ * last exit code + restart count. `docker compose ps --format json` reports a
+ * TRANSIENT ExitCode (0) while a container is mid restart-loop, but
+ * `inspect .State.ExitCode` carries the REAL last exit code even in the
+ * `restarting` state (empirically verified). Returns null if the container or
+ * its exit state can't be read yet.
+ */
+async function inspectApiExit(
+  projectName: string,
+  composeFiles: readonly string[],
+  envFilePath: string | undefined,
+  spawnFn: typeof spawn | undefined,
+): Promise<{ status: string; exitCode: number; restartCount: number } | null> {
+  const idArgs = [
+    ...(envFilePath ? ["--env-file", envFilePath] : []),
+    "-p",
+    projectName,
+    ...buildComposeFileArgs(composeFiles),
+    "ps",
+    "-aq",
+    "api",
+  ];
+  const { stdout: idOut } = await runComposeCapture(idArgs, { spawnFn });
+  const cid = idOut.trim().split("\n")[0]?.trim();
+  if (!cid) return null;
+  // `docker inspect` (NOT `compose`) — direct container introspection.
+  const spawnImpl = spawnFn ?? spawn;
+  const inspected = await new Promise<string>((res) => {
+    let out = "";
+    const child = spawnImpl(
+      "docker",
+      ["inspect", cid, "--format", "{{.State.Status}} {{.State.ExitCode}} {{.RestartCount}}"],
+      { cwd: REPO_ROOT, env: process.env, stdio: ["ignore", "pipe", "ignore"] },
+    );
+    (child.stdout as NodeJS.ReadableStream | null)?.on("data", (b) => {
+      out += String(b);
+    });
+    child.on("close", () => res(out));
+    child.on("error", () => res(""));
+  });
+  const [status, exitStr, restartStr] = inspected.trim().split(/\s+/);
+  if (!status) return null;
+  return {
+    status,
+    exitCode: Number.parseInt(exitStr ?? "", 10) || 0,
+    restartCount: Number.parseInt(restartStr ?? "", 10) || 0,
+  };
+}
+
+/**
+ * Poll until the api container reports a terminal loud-fail signal, then resolve
+ * its exit code (or null on timeout). A container that exits non-zero during
+ * boot with `restart: unless-stopped` does NOT settle on `State=exited` — Docker
+ * restart-loops it, so `compose ps` flickers between `restarting`/`running` and
+ * never stably shows `exited` (compose ps ExitCode reads 0 mid-loop). Detect the
+ * crash via BOTH signals: a stable `compose ps State=exited`, OR a
+ * `docker inspect` showing the container restart-looping (`restarting`, or
+ * RestartCount>0) with a non-zero last exit code. Either is an authentic
+ * loud-fail observation.
  */
 async function pollApiExit(
   projectName: string,
@@ -376,7 +535,20 @@ async function pollApiExit(
   intervalMs: number,
   spawnFn: typeof spawn | undefined,
 ): Promise<number | null> {
+  // We deliberately return the OBSERVED code even if it doesn't match
+  // expectedExit — the step layer asserts the comparison so the diagnostic
+  // surfaces in the cucumber report.
+  void expectedExit;
   const started = Date.now();
+  // Last non-zero exit code seen across the restart loop. Under `restart:
+  // unless-stopped` a crash-looping container oscillates between
+  // `restarting ExitCode=<N>` (during backoff) and `running ExitCode=0` (the
+  // brief moment it's up before re-crashing); the `running 0` window widens the
+  // sicker the backoff gets, so a point-in-time poll can repeatedly sample
+  // `running 0` and miss the `restarting N` window — especially under full-stack
+  // load contention. We therefore remember the last non-zero exit and treat
+  // ANY observed restart (restartCount > 0) as the definitive crash signal.
+  let lastNonZeroExit: number | null = null;
   while (Date.now() - started < timeoutMs) {
     const psArgs = [
       ...(envFilePath ? ["--env-file", envFilePath] : []),
@@ -392,16 +564,32 @@ async function pollApiExit(
     const rows = parseComposePsJson(stdout);
     const api = rows.find((r) => r.Service === "api") ?? rows[0];
     if (api && api.State === "exited") {
-      const observed = typeof api.ExitCode === "number" ? api.ExitCode : -1;
-      // We deliberately return the observed code even if it doesn't match
-      // expectedExit — the step layer asserts the comparison so the
-      // diagnostic surfaces in the cucumber report.
-      void expectedExit; // referenced for clarity; logic-equality is at step level
-      return observed;
+      return typeof api.ExitCode === "number" ? api.ExitCode : -1;
+    }
+    // Restart-loop case: a boot-time non-zero exit under `restart: unless-stopped`
+    // never settles on `exited`. `docker inspect` carries the true last exit code.
+    const inspected = await inspectApiExit(projectName, composeFiles, envFilePath, spawnFn);
+    if (inspected) {
+      if (inspected.exitCode !== 0) lastNonZeroExit = inspected.exitCode;
+      // `restarting`/`exited` with a non-zero code is an unambiguous crash.
+      if (
+        inspected.exitCode !== 0 &&
+        (inspected.status === "restarting" || inspected.status === "exited")
+      ) {
+        return inspected.exitCode;
+      }
+      // restartCount > 0 means the container HAS crashed at least once, even if
+      // this instant samples `running ExitCode=0` mid-restart. Return the last
+      // non-zero exit we saw (or, if we somehow only ever sampled the running
+      // window, the next loop captures the code — but a positive restartCount is
+      // itself proof the boot is not healthy).
+      if (inspected.restartCount > 0 && lastNonZeroExit !== null) {
+        return lastNonZeroExit;
+      }
     }
     await new Promise((r) => setTimeout(r, intervalMs));
   }
-  return null;
+  return lastNonZeroExit;
 }
 
 /**
@@ -465,6 +653,32 @@ export async function bootStack(opts: BootStackOptions = {}): Promise<BootStackR
     envFilePath = writeEnvOverrideFile(scratchDir, scenarioId, mergedOverrides);
   }
 
+  // 2c. Pre-start phase: bring the dependency chain up to HEALTHY first, so the
+  //     subsequent (no-wait) target `up` starts and crashes immediately instead
+  //     of sitting in `created` while its deps churn under load. Only runs when
+  //     prestartServices is set (fast-crash boots). `up -d --wait` blocks until
+  //     these report healthy (or compose errors), giving a deterministic gate.
+  if (opts.prestartServices && opts.prestartServices.length > 0) {
+    const prestartArgs = [
+      ...(envFilePath ? ["--env-file", envFilePath] : []),
+      "-p",
+      projectName,
+      ...buildComposeFileArgs(composeFiles),
+      "--profile",
+      COMPOSE_PROFILE,
+      "up",
+      "-d",
+      "--wait",
+      ...opts.prestartServices,
+    ];
+    const prestartCode = await runCompose(prestartArgs, { spawnFn, inheritStdio });
+    if (prestartCode !== 0) {
+      throw new Error(
+        `bootStack: prestart 'docker compose ${prestartArgs.join(" ")}' failed (exit ${prestartCode})`,
+      );
+    }
+  }
+
   // 3. `compose -p e2e-cjm [--env-file …] -f docker-compose.yml … --profile default up -d [--wait]`
   //    --wait is omitted when expectExit is set — we expect a fast crash,
   //    not a healthy container.
@@ -478,6 +692,9 @@ export async function bootStack(opts: BootStackOptions = {}): Promise<BootStackR
     "up",
     "-d",
     ...(opts.expectExit === undefined ? ["--wait"] : []),
+    // Service-name positionals MUST trail all flags. When set, compose brings
+    // up only these + their depends_on closure (not the whole profile).
+    ...(opts.targetServices ?? []),
   ];
   const upCode = await runCompose(upArgs, { spawnFn, inheritStdio });
   // When expectExit is set, a non-zero up code is acceptable (the api
@@ -530,7 +747,17 @@ export async function tearStack(opts: TearStackOptions = {}): Promise<{
   userStackStartExitCode: number | null;
 }> {
   const projectName = opts.projectName ?? E2E_PROJECT;
-  const composeFiles = opts.composeFiles ?? COMPOSE_FILES;
+  const baseComposeFiles = opts.composeFiles ?? COMPOSE_FILES;
+  // Mirror bootStack's auto-include of the dev-tools overlay: `down` must be
+  // invoked with the SAME compose-file set the `up` used, or compose can leave
+  // the project's network behind (the `up` declared it across files the `down`
+  // didn't list). A leaked `<project>_openwhispr_internal` network per run
+  // eventually exhausts Docker's address-pool and fails the NEXT boot with
+  // "could not find an available, non-overlapping IPv4 address pool" — observed
+  // after ~18 @cjm-sso-1.6 iterations left orphaned networks.
+  const composeFiles = baseComposeFiles.includes(DEV_TOOLS_OVERLAY)
+    ? baseComposeFiles
+    : [...baseComposeFiles, DEV_TOOLS_OVERLAY];
   const spawnFn = opts.spawnFn;
   const inheritStdio = opts.inheritStdio;
 
@@ -544,6 +771,21 @@ export async function tearStack(opts: TearStackOptions = {}): Promise<{
     "--remove-orphans",
   ];
   const e2eDownExitCode = await runCompose(downArgs, { spawnFn, inheritStdio });
+
+  // Belt-and-suspenders network sweep. `docker compose down` does NOT reliably
+  // remove a project network once all its containers are already gone — compose
+  // v2.23 reports "No resource found to remove for project <p>" and leaves the
+  // labeled `<project>_openwhispr_internal` network orphaned. Each leaked network
+  // consumes an address-pool slot; ~18 accumulate → the next boot fails with
+  // "could not find an available, non-overlapping IPv4 address pool". Sweep any
+  // network still carrying this project's compose label. Best-effort, never
+  // throws (teardown must not fail the run).
+  await removeProjectNetworks(projectName, spawnFn);
+  // Same quirk for volumes: `down -v` can leave the project's
+  // `<project>_postgres_data` etc. behind, so the next reuse of the api/postgres
+  // sees stale data (e.g. a JIT user that should be first-time already exists →
+  // @cjm-sso-1.1 flake). Sweep by label too.
+  await removeProjectVolumes(projectName, spawnFn);
 
   let userStackStartExitCode: number | null = null;
   if (!opts.skipUserStackRestart && opts.userStackWasRunning) {

@@ -49,6 +49,7 @@ import {
   ValidationError,
 } from "./errors.js";
 import { resolveApiErrorStatus } from "./lib/api-error-status.js";
+import { JitRejectionError } from "./lib/oidc-jit-hooks.js";
 import { SSRFBlockedError } from "./lib/ssrf-dispatcher.js";
 
 const JSON_CT = "application/json; charset=utf-8";
@@ -164,6 +165,18 @@ export function registerErrorHandler(app: FastifyInstance): void {
       // path/value; emit the class-default literal.
       status = 400;
       message = "Invalid request";
+    } else if (err instanceof JitRejectionError) {
+      // Phase 69 / Plan 69-03 — SSO JIT rejection (SPEC-ldap-keycloak.md
+      // failure-mode table). The 5 codes map to: forbidden_* → 403,
+      // invalid_oidc_profile → 400. The code is the wire message verbatim — it
+      // is a closed, non-PII enum (no email/sub/groups), so unlike the HI-03
+      // branches it is safe to surface. `code` doubles as the i18n lookup key.
+      // The matching sso.jit.rejected audit row + structured log are emitted at
+      // the rejection site (oidc-jit-hooks.ts emitRejected), mirroring the
+      // error-handler ssrf dual-emit precedent.
+      status = err.code === "invalid_oidc_profile" ? 400 : 403;
+      message = err.code;
+      code = err.code;
     } else if (err instanceof ValidationError) {
       status = 400;
       message = err.message || "Invalid request";
