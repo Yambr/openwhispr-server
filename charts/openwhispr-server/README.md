@@ -301,8 +301,14 @@ kubectl create secret generic openwhispr-auth \
   --from-literal=OAUTH_GITHUB_CLIENT_SECRET="..." \
   --from-literal=OIDC_ISSUER_URL="https://idp.example.com" \
   --from-literal=OIDC_CLIENT_ID="..." \
-  --from-literal=OIDC_CLIENT_SECRET="..."
+  --from-literal=OIDC_CLIENT_SECRET="..." \
+  --from-literal=OIDC_PROVIDER_NAME="Acme SSO"   # optional — sign-in button label; defaults to "OIDC"
 ```
+
+`OIDC_PROVIDER_NAME` is optional: it sets the human-facing label on the
+generic SSO button ("Continue with Acme SSO") rendered by the wizard, auth
+screens, and desktop client. The provider id stays the frozen `oidc`; only
+the display name changes. Unset → defaults to `"OIDC"`.
 
 ## Toggles
 

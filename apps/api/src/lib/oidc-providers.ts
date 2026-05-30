@@ -58,6 +58,26 @@ function oidcConfigured(env: NodeJS.ProcessEnv): boolean {
   );
 }
 
+/** Default display label for the generic OIDC button when no override is set. */
+const DEFAULT_OIDC_PROVIDER_NAME = "OIDC";
+
+/**
+ * Operator-configurable display label for the single generic OIDC button.
+ *
+ * The provider `id` stays the FROZEN `"oidc"` round-trip contract with the
+ * desktop client (it POSTs back to `/api/desktop-signin/oidc`); only the
+ * human-facing `name` is overridable, so an operator wiring Keycloak /
+ * Authentik / Okta / any IdP can render "Continue with <Company SSO>"
+ * instead of the generic "OIDC". Unset / blank → `"OIDC"` (backward compat).
+ * Surrounding whitespace is trimmed.
+ */
+function oidcProviderName(env: NodeJS.ProcessEnv): string {
+  const raw = env.OIDC_PROVIDER_NAME;
+  if (typeof raw !== "string") return DEFAULT_OIDC_PROVIDER_NAME;
+  const trimmed = raw.trim();
+  return trimmed.length > 0 ? trimmed : DEFAULT_OIDC_PROVIDER_NAME;
+}
+
 /**
  * Return the public list of configured OIDC providers — safe to ship
  * to unauthenticated clients. Order: google, github, oidc.
@@ -76,7 +96,7 @@ export function listConfiguredOidcProviders(
     out.push({ id: "github", name: "GitHub", enabled: true });
   }
   if (oidcConfigured(env)) {
-    out.push({ id: "oidc", name: "OIDC", enabled: true });
+    out.push({ id: "oidc", name: oidcProviderName(env), enabled: true });
   }
   return out;
 }
