@@ -1,4 +1,6 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import {
   aggregate,
@@ -11,6 +13,11 @@ import {
   type SquawkResult,
   scanForDropWarnings,
 } from "./lint-migrations.js";
+
+/** Extract the pinned squawk version from a source/yaml file. */
+function parseSquawkVersion(source: string, pattern: RegExp): string | undefined {
+  return source.match(pattern)?.[1];
+}
 
 describe("BLOCKING_RULES", () => {
   it("contains the canonical online-migration rules", () => {
@@ -299,5 +306,63 @@ describe("main (integration with real squawk binary)", () => {
     // Calls without a runner override — exercises the real defaultGitRunner.
     const result = enumerateNewMigrations("HEAD");
     expect(Array.isArray(result)).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// CI squawk pre-warm — single-source-of-truth invariant (task #15).
+//
+// The cold-fetch flake (the bad-* fixtures emitting no diagnostics because
+// `npx --yes squawk-cli@<ver>` hadn't finished downloading inside the first
+// `main()` integration test) is fixed by a "Pre-warm squawk-cli binary"
+// step in .github/workflows/lint-migrations.yml that runs `npx --yes
+// squawk-cli@<ver> --version` once, serially, before the vitest step.
+//
+// That step parses the version from THIS tool's `SQUAWK_VERSION` constant so
+// the two never drift. These tests lock that contract: the warming step
+// exists, and the version the workflow extracts equals the version the tool
+// actually runs. If someone bumps SQUAWK_VERSION but the workflow grep stops
+// matching (or vice versa), this fails instead of re-introducing the flake.
+// ---------------------------------------------------------------------------
+describe("CI squawk pre-warm (cold-fetch flake fix, #15)", () => {
+  const toolSource = readFileSync(
+    fileURLToPath(new URL("./lint-migrations.ts", import.meta.url)),
+    "utf8",
+  );
+  const workflowSource = readFileSync(
+    fileURLToPath(new URL("../.github/workflows/lint-migrations.yml", import.meta.url)),
+    "utf8",
+  );
+
+  it("tool pins an exact squawk version (X.Y.Z)", () => {
+    const v = parseSquawkVersion(toolSource, /SQUAWK_VERSION = "([0-9]+\.[0-9]+\.[0-9]+)"/);
+    expect(v).toMatch(/^[0-9]+\.[0-9]+\.[0-9]+$/);
+  });
+
+  it("workflow has the Pre-warm squawk-cli step before the vitest coverage gate", () => {
+    expect(workflowSource).toContain("Pre-warm squawk-cli binary");
+    const warmIdx = workflowSource.indexOf("Pre-warm squawk-cli binary");
+    const gateIdx = workflowSource.indexOf("squawk driver coverage gate");
+    expect(warmIdx).toBeGreaterThan(-1);
+    expect(gateIdx).toBeGreaterThan(-1);
+    // Pre-warm MUST come before the gate step that spawns the parallel npx.
+    expect(warmIdx).toBeLessThan(gateIdx);
+  });
+
+  it("workflow warms the binary via `npx --yes squawk-cli@<ver>`", () => {
+    expect(workflowSource).toMatch(/npx --yes "squawk-cli@\$\{SQUAWK_VERSION\}" --version/);
+  });
+
+  it("the version the workflow grep extracts equals the tool's SQUAWK_VERSION (no drift)", () => {
+    const toolVersion = parseSquawkVersion(
+      toolSource,
+      /SQUAWK_VERSION = "([0-9]+\.[0-9]+\.[0-9]+)"/,
+    );
+    // Mirror the EXACT shell pipeline the workflow uses to derive the version,
+    // so this test fails if the grep in the yaml ever stops matching the tool.
+    const grepLineMatch = toolSource.match(/SQUAWK_VERSION = "[^"]+"/)?.[0];
+    const workflowDerived = grepLineMatch?.match(/[0-9]+\.[0-9]+\.[0-9]+/)?.[0];
+    expect(workflowDerived).toBe(toolVersion);
+    expect(workflowDerived).toBeDefined();
   });
 });

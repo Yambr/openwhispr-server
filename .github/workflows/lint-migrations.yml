@@ -45,6 +45,25 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      # Pre-warm the pinned squawk-cli binary into the npx cache BEFORE any
+      # step shells `npx --yes squawk-cli@<ver>`. On a cold runner the first
+      # invocation pays the download cost; when that happens inside a vitest
+      # `main()` integration test (120s timeout, but the spawn returns empty
+      # stdout if the fetch hasn't resolved), the bad-* fixtures emit no
+      # diagnostics → exit 0 where the test expects 1 → false-red. Warming it
+      # once, serially, up front makes every later spawn hit the warm cache.
+      # The version is read from the tool's single source of truth
+      # (SQUAWK_VERSION in tools/lint-migrations.ts) so the two never drift.
+      - name: Pre-warm squawk-cli binary (cold-fetch flake fix)
+        run: |
+          SQUAWK_VERSION="$(grep -oE 'SQUAWK_VERSION = "[^"]+"' tools/lint-migrations.ts | grep -oE '[0-9]+\.[0-9]+\.[0-9]+')"
+          if [ -z "$SQUAWK_VERSION" ]; then
+            echo "::error::could not parse SQUAWK_VERSION from tools/lint-migrations.ts"
+            exit 1
+          fi
+          echo "Warming squawk-cli@${SQUAWK_VERSION} into the npx cache…"
+          npx --yes "squawk-cli@${SQUAWK_VERSION}" --version
+
       - name: Squawk lint (new migrations vs PR base)
         if: github.event_name == 'pull_request'
         run: |
