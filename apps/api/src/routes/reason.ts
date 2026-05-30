@@ -73,6 +73,17 @@ export interface ReasonDeps {
    * into this route file.
    */
   cleanupModel?: string;
+  /**
+   * #18 — per-model chat-completion param bag (litellm-style), keyed by the
+   * resolved model alias. Production threads this from
+   * `loadLitellmConfigFromEnv().modelParams` (env `REASONING_MODEL_PARAMS`).
+   * When an entry exists for the resolved alias it becomes the upstream
+   * request `extras`, overriding the cleanup thinking-off default; absent →
+   * backward-compat behaviour. The bag is OPERATOR config only — never
+   * merged with request-body fields (anti-injection; see
+   * `reason-prompt-select.ts`).
+   */
+  modelParams?: Record<string, Record<string, unknown>>;
 }
 
 interface UpstreamChatJson {
@@ -138,6 +149,7 @@ export const buildReasonRoutes = (deps: ReasonDeps) =>
         const { model, extras } = selectModelAndExtras(body, {
           ...(deps.cleanupModel !== undefined ? { cleanupModel: deps.cleanupModel } : {}),
           ...(deps.defaultModel !== undefined ? { defaultModel: deps.defaultModel } : {}),
+          ...(deps.modelParams !== undefined ? { modelParams: deps.modelParams } : {}),
         });
 
         let upstreamJson: UpstreamChatJson;

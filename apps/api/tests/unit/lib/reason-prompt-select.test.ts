@@ -255,4 +255,99 @@ describe("selectModelAndExtras() — LAYER 2 model routing + thinking-off", () =
       extra_body: { chat_template_kwargs: { enable_thinking: false } },
     });
   });
+
+  // -------------------------------------------------------------------------
+  // #18 — per-model extras bag from config (litellm-style). When deps carry
+  // a modelParams map, the resolved alias's bag becomes `extras` for ALL
+  // request shapes; absent → backward-compat (cleanup keeps thinking-off
+  // default, agent keeps none). The bag comes ONLY from operator config,
+  // never from the request body (anti-injection).
+  // -------------------------------------------------------------------------
+  describe("#18 — config-driven per-model extras (modelParams)", () => {
+    it("cleanup shape: modelParams entry for the cleanup alias OVERRIDES the thinking-off default", () => {
+      const res = selectModelAndExtras(body(), {
+        cleanupModel: CLEANUP_MODEL,
+        defaultModel: DEFAULT_MODEL,
+        modelParams: { [CLEANUP_MODEL]: { temperature: 0 } },
+      });
+      expect(res.model).toBe(CLEANUP_MODEL);
+      // the config bag wins — NOT the hardcoded QWEN_THINKING_OFF_EXTRAS
+      expect(res.extras).toEqual({ temperature: 0 });
+    });
+
+    it("cleanup shape: NO modelParams entry → backward-compat thinking-off default", () => {
+      const res = selectModelAndExtras(body(), {
+        cleanupModel: CLEANUP_MODEL,
+        defaultModel: DEFAULT_MODEL,
+        modelParams: { "some-other-model": { temperature: 0.5 } },
+      });
+      expect(res.model).toBe(CLEANUP_MODEL);
+      expect(res.extras).toEqual(QWEN_THINKING_OFF_EXTRAS);
+    });
+
+    it("agent shape: modelParams entry for the resolved model applies extras (not just cleanup)", () => {
+      const res = selectModelAndExtras(body({ agentName: "Whispr" }), {
+        cleanupModel: CLEANUP_MODEL,
+        defaultModel: DEFAULT_MODEL,
+        modelParams: { [DEFAULT_MODEL]: { reasoning: { enabled: false }, temperature: 0 } },
+      });
+      expect(res.model).toBe(DEFAULT_MODEL);
+      expect(res.extras).toEqual({ reasoning: { enabled: false }, temperature: 0 });
+    });
+
+    it("agent shape: NO modelParams entry → no extras (backward-compat)", () => {
+      const res = selectModelAndExtras(body({ agentName: "Whispr" }), {
+        cleanupModel: CLEANUP_MODEL,
+        defaultModel: DEFAULT_MODEL,
+        modelParams: { [CLEANUP_MODEL]: { temperature: 0 } },
+      });
+      expect(res.model).toBe(DEFAULT_MODEL);
+      expect(res.extras).toBeUndefined();
+    });
+
+    it("explicit body.model: modelParams keyed on the EXPLICIT alias applies", () => {
+      const res = selectModelAndExtras(body({ model: "gpt-4o-mini" }), {
+        cleanupModel: CLEANUP_MODEL,
+        defaultModel: DEFAULT_MODEL,
+        modelParams: { "gpt-4o-mini": { reasoning_effort: "minimal" } },
+      });
+      expect(res.model).toBe("gpt-4o-mini");
+      expect(res.extras).toEqual({ reasoning_effort: "minimal" });
+    });
+
+    it("empty modelParams map → identical to no map (cleanup thinking-off default)", () => {
+      const res = selectModelAndExtras(body(), {
+        cleanupModel: CLEANUP_MODEL,
+        defaultModel: DEFAULT_MODEL,
+        modelParams: {},
+      });
+      expect(res.extras).toEqual(QWEN_THINKING_OFF_EXTRAS);
+    });
+
+    it("ANTI-INJECTION: extras come ONLY from config, never from request body fields", () => {
+      // A malicious/confused client crams extras-like keys into the body.
+      // None of them may leak into the resolved extras — only the operator
+      // config bag (here: none for this alias) governs.
+      const malicious = body({
+        // biome-ignore lint/suspicious/noExplicitAny: deliberately smuggling unknown body keys
+        ...({
+          reasoning: { enabled: true },
+          temperature: 1.9,
+          extra_body: { chat_template_kwargs: { enable_thinking: true } },
+          extras: { injected: true },
+        } as any),
+      });
+      const res = selectModelAndExtras(malicious, {
+        cleanupModel: CLEANUP_MODEL,
+        defaultModel: DEFAULT_MODEL,
+        modelParams: { [CLEANUP_MODEL]: { temperature: 0 } },
+      });
+      // Only the operator config bag — the smuggled body keys are ignored.
+      expect(res.extras).toEqual({ temperature: 0 });
+      const serialized = JSON.stringify(res.extras);
+      expect(serialized).not.toContain("1.9");
+      expect(serialized).not.toContain("injected");
+      expect(serialized).not.toContain("enable_thinking");
+    });
+  });
 });
