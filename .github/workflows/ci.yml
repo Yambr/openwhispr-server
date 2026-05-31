@@ -655,14 +655,21 @@ jobs:
             -f compose/docker-compose.contract-test.yml \
             --profile default --profile contract-test \
             up -d --wait --wait-timeout 600 api
-          # Bring up fixture-idp without blocking the wait; the runner gates on it.
+          # Bring fixture-idp up AND wait for it healthy in a SEPARATE step, AFTER
+          # the api/litellm heavy boot has finished (CPU now free, so the trivial
+          # node server binds in <1s and passes its widened 90s/10-retry health
+          # window). Doing its --wait here — rather than folding it into the api
+          # wait above (where it was CPU-starved) or leaving it unwaited (where the
+          # later `compose run` RECREATED it and reset its health clock, 260530-rqk
+          # CI run 78707461305) — means it is already-healthy and the `run --no-deps`
+          # steps below never touch it.
           docker compose -f docker-compose.yml \
             -f compose/docker-compose.embedded-litellm.yml \
             -f compose/docker-compose.ingress.yml \
             -f compose/docker-compose.storage.yml \
             -f compose/docker-compose.contract-test.yml \
             --profile default --profile contract-test \
-            up -d fixture-idp
+            up -d --wait --wait-timeout 300 fixture-idp
       - name: Capture migrate + api logs on boot failure
         if: failure()
         run: |
@@ -687,7 +694,7 @@ jobs:
             -f compose/docker-compose.storage.yml \
             -f compose/docker-compose.contract-test.yml \
             --profile default --profile contract-test \
-            run --rm seed
+            run --rm --no-deps seed
       - name: Run conformance suite (in-network runner container)
         # The `contract-test-runner` service (compose/docker-compose.contract-test.yml)
         # drives the suite from INSIDE the docker network, dialing
@@ -703,7 +710,7 @@ jobs:
             -f compose/docker-compose.storage.yml \
             -f compose/docker-compose.contract-test.yml \
             --profile default --profile contract-test \
-            run --rm contract-test-runner
+            run --rm --no-deps contract-test-runner
       - name: Capture compose logs on failure
         if: failure()
         run: |

@@ -35,6 +35,13 @@ COPY pnpm-lock.yaml pnpm-workspace.yaml package.json ./
 COPY apps/api/package.json apps/api/
 COPY packages/data/package.json packages/data/
 COPY packages/contract-tests/package.json packages/contract-tests/
+# packages/contract-tests depends on "@openwhispr/wire-schemas": "workspace:*"
+# (src/schemas.ts re-exports its request/response shapes). Its manifest must be
+# present so the `--filter @openwhispr/contract-tests...` transitive install
+# resolves + symlinks the workspace package; without it the runner aborts 28
+# files at collection with "Cannot find package '@openwhispr/wire-schemas'"
+# (260530-rqk CI run 78707461305). Mirrors apps/api/Dockerfile.
+COPY packages/wire-schemas/package.json packages/wire-schemas/
 
 # Install only the contract-tests subgraph (`...` walks transitive deps).
 # --ignore-scripts skips lefthook prepare (no purpose in this image).
@@ -57,6 +64,12 @@ COPY tsconfig.base.json ./
 # OPENWHISPR_TEST_EVIDENCE_SHA, so it degrades cleanly inside the throwaway
 # (--rm) runner where there is no .git. Copy just the one file.
 COPY tools/test-evidence-reporter.ts tools/test-evidence-reporter.ts
+
+# @openwhispr/wire-schemas resolves its exports straight to ./src/*.ts (no build
+# step — package.json main is ./src/index.ts), so the symlinked workspace package
+# needs its actual source in the image, not just the manifest above. Without this
+# the import resolves the symlink but finds no files (260530-rqk).
+COPY packages/wire-schemas packages/wire-schemas
 
 # Test source. Bind-mount in compose for fast iteration during local
 # dev would defeat the linux-arch isolation we set up above, so we COPY
