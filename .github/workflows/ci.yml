@@ -175,6 +175,11 @@ jobs:
   mutation-quick:
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-24.04
+    # ROOT-CAUSE backstop (260530-rqk follow-up): even diff-scoped, a job should
+    # never run for hours. The full run previously ran 68+ min with NO job
+    # timeout (so it crept toward GitHub's 6h cap). With diff-scoping a real
+    # PR finishes in minutes; this ceiling fails fast if that ever regresses.
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v5
         with: { fetch-depth: 0 }
@@ -187,14 +192,49 @@ jobs:
           path: reports/stryker-incremental.json
           key: stryker-${{ hashFiles('pnpm-lock.yaml','vitest.config.ts','stryker.config.json') }}
       - run: pnpm install --frozen-lockfile
-      - run: pnpm test:mutation:incremental --since origin/${{ github.base_ref }}
+        # ROOT CAUSE (260530-rqk follow-up): `stryker run --incremental` with the
+        # config's full `mutate` globs mutates all four packages' src/ on a cold
+        # incremental cache — which every PR hits first, because the cache key is
+        # the hash of pnpm-lock/vitest.config/stryker.config (and config edits
+        # invalidate it). That is a FULL mutation run (thousands of mutants,
+        # 68+ min), not "quick". Stryker has no `--since` flag, so the real fix
+        # is to mutate ONLY the source files the PR changed:
+        # tools/stryker-diff-scope.ts diffs the merge base and emits the
+        # mutate-eligible *.ts subset (empty for docs/CI-only PRs → Stryker is
+        # skipped entirely, 0 mutants, seconds).
+      - name: Compute diff-scoped mutate set
+        id: scope
+        run: |
+          git fetch origin "$GITHUB_BASE_REF" --depth=1 || git fetch origin "$GITHUB_BASE_REF"
+          scope=$(pnpm -s exec tsx tools/stryker-diff-scope.ts "origin/$GITHUB_BASE_REF")
+          if [ -z "$scope" ]; then
+            echo "empty=true" >> "$GITHUB_OUTPUT"
+            echo "No mutate-eligible source files changed — skipping Stryker (0 mutants)."
+          else
+            echo "empty=false" >> "$GITHUB_OUTPUT"
+            printf '%s\n' "$scope" > .stryker-scope.txt
+            echo "Mutating only the PR's changed source files:"
+            cat .stryker-scope.txt
+          fi
+      - name: Run Stryker on the diff scope
+        if: steps.scope.outputs.empty == 'false'
+        run: |
+          mapfile -t files < .stryker-scope.txt
+          args=()
+          for f in "${files[@]}"; do args+=(--mutate "$f"); done
+          pnpm exec stryker run --incremental "${args[@]}"
 
   pr-checklist:
     if: github.event_name == 'pull_request' && github.actor != 'dependabot[bot]'
     runs-on: ubuntu-24.04
     steps:
       - uses: mheap/require-checklist-action@9c8100a52aa9726d4648e61aa92415f6c843c990  # v2.6.1
-        with: { requireChecklist: true }
+        # skipComments: true — only the PR *body* checklist is evaluated. With
+        # the default (false) the action also scans PR comments and treats
+        # bot-injected comment checkboxes (CodeRabbit / Copilot "Create stacked
+        # PR", "Commit on current branch", …) as incomplete items, failing the
+        # gate on every PR regardless of the body checklist (fix 260530-rqk).
+        with: { requireChecklist: true, skipComments: true }
 
   lint-tdd:
     if: github.event_name == 'pull_request'
@@ -518,8 +558,16 @@ jobs:
     timeout-minutes: 20
     env:
       OPENWHISPR_PROTOCOL: mycorp-whispr
-      AUTH_URL: http://api.localhost
-      OPENWHISPR_API_URL: http://api.localhost
+      # HTTPS, not HTTP: docker-compose.yml interpolates AUTH_URL/OPENWHISPR_API_URL
+      # from SHELL env first (`${AUTH_URL:-https://api.localhost}`), so this
+      # job-level block OVERRIDES whatever the .env file holds. The pre-ingress
+      # http:// values here were the real reason the api kept hitting
+      # `FATAL auth-boot: NODE_ENV=production with non-HTTPS AUTH_URL` even after
+      # the .env was pinned — the .env sed never won against this. The stack now
+      # runs behind the ingress overlay (Traefik TLS at https://api.localhost),
+      # so pin these to https too (260530-rqk follow-up).
+      AUTH_URL: https://api.localhost
+      OPENWHISPR_API_URL: https://api.localhost
     steps:
       - uses: step-security/harden-runner@9af89fc71515a100421586dfdb3dc9c984fbf411  # v2.19.4
         with: { egress-policy: audit }
@@ -533,28 +581,146 @@ jobs:
       - name: Bootstrap fixture .env
         run: |
           cp .env.slim.example .env
+          # Run bootstrap FIRST — it regenerates .env from the .env.slim.example
+          # key list (fills/derives secrets), so any key NOT in that template is
+          # DROPPED. Therefore every contract-test-specific override below MUST be
+          # appended/applied AFTER bootstrap, or it silently vanishes (260530-rqk
+          # follow-up bug: INGRESS_TLS_CERT_PATH was appended pre-bootstrap → wiped
+          # → api's BYOK_INGRESS_REQUIRED guard refused boot).
           if [ -x tools/bootstrap.sh ]; then
             tools/bootstrap.sh --ci || true
+          fi
+          # Guard: bootstrap MUST have replaced the MASTER_KEK placeholder. A
+          # masked bootstrap failure (the `|| true` above) would leave the
+          # placeholder and make `migrate` exit 1 with no visible cause — the
+          # pre-existing contract-test red. Fail loudly here instead
+          # (fix 260530-rqk; see .planning/debug/contract-test-migrate-exit1).
+          if grep -q '^MASTER_KEK=PLACEHOLDER_BOOTSTRAP_WILL_REPLACE' .env; then
+            echo "::error::bootstrap did not replace MASTER_KEK placeholder — migrate would fail" >&2
+            exit 1
+          fi
+          # --- contract-test overrides, applied POST-bootstrap so they survive ---
+          # LITELLM_CONFIG_FILE selects the hermetic contract config so litellm's
+          # /health/liveliness passes without provider keys; OPENWHISPR_TEST_ROUTES
+          # enables the conformance-only routes the suite exercises.
+          echo "LITELLM_CONFIG_FILE=litellm_config.contract.yaml" >> .env
+          echo "OPENWHISPR_TEST_ROUTES=true" >> .env
+          # The api runs NODE_ENV=production and (a) refuses a plaintext-HTTP
+          # origin and (b) its BYOK_INGRESS guard requires INGRESS_TLS_CERT_PATH
+          # once the ingress overlay is layered with an https:// origin. The
+          # contract-test profile is authored to run WITH the ingress overlay
+          # (Traefik terminates TLS at https://api.localhost). Mirror e2e-hermetic:
+          # pin every origin/auth URL to the TLS endpoint + point the BYOK ingress
+          # row at the Traefik cert baked into the traefik image.
+          sed -i \
+            -e 's|^INGRESS_BASE_URL=.*|INGRESS_BASE_URL=https://api.localhost|' \
+            -e 's|^BETTER_AUTH_URL=.*|BETTER_AUTH_URL=https://api.localhost|' \
+            -e 's|^AUTH_URL=.*|AUTH_URL=https://api.localhost|' \
+            -e 's|^OPENWHISPR_API_URL=.*|OPENWHISPR_API_URL=https://api.localhost|' \
+            .env
+          echo "INGRESS_TLS_CERT_PATH=/etc/traefik/certs/local.crt" >> .env
+          # Sanity: the override the BYOK guard needs MUST be present post-bootstrap.
+          if ! grep -q '^INGRESS_TLS_CERT_PATH=' .env; then
+            echo "::error::INGRESS_TLS_CERT_PATH missing after bootstrap — BYOK ingress guard will refuse" >&2
+            exit 1
           fi
       - name: Build api + migrate images
         run: docker compose build api migrate
       - name: Bring up stack (default + contract-test profiles)
-        run: docker compose --profile default --profile contract-test up -d --wait
-      - name: Seed conformance fixtures
-        env:
-          SMTP_HOST: ""
-          AUTH_URL: http://api.localhost
-          DATABASE_URL_OWNER: postgres://openwhispr_owner:owner-pw@127.0.0.1:5432/openwhispr
-        run: pnpm -F @openwhispr/data run seed:conformance
-      - name: Run conformance suite
-        env:
-          BACKEND_URL: http://api.localhost
-          AUTH_URL: http://auth.localhost
-          OPENWHISPR_PROTOCOL: mycorp-whispr
-        run: pnpm -F @openwhispr/contract-tests test --run
+        # storage.yml — the api BYOK guard refuses to boot with
+        # BYOK_STORAGE_REQUIRED unless S3_ENDPOINT is set OR the storage overlay
+        # (bundled MinIO + S3_* defaults) is enabled. embedded-litellm.yml ships
+        # the minio/grafana/traefik default-profile services. ingress.yml —
+        # Traefik terminates TLS at https://api.localhost so the api's
+        # NODE_ENV=production HTTPS-origin guard passes (the contract-test
+        # profile is authored for this overlay). Mirrors the e2e-hermetic boot.
+        #
+        # --wait ONLY on `api` (it pulls migrate/postgres/litellm/traefik/minio/
+        # etc. transitively via depends_on). fixture-idp is DELIBERATELY excluded
+        # from this wait: it's a trivial node:http server, but on the 2-core CI
+        # runner it is CPU-starved while the api 24-step build + litellm's ~5-min
+        # prisma migrate saturate both cores, so it took 130s+ to bind :9000 —
+        # past any reasonable health window — and tripped `--wait`. It is brought
+        # up (no wait) and the `contract-test-runner` step below waits for it via
+        # its own `depends_on: fixture-idp healthy`, by which point the heavy boot
+        # has finished and CPU is free, so it binds in <1s (260530-rqk).
+        # The one-shot `seed` + `contract-test-runner` are also excluded (no
+        # healthcheck; would run their CMD on `up`); invoked via `run --rm` below,
+        # matching `make contract-test`.
+        run: |
+          docker compose -f docker-compose.yml \
+            -f compose/docker-compose.embedded-litellm.yml \
+            -f compose/docker-compose.ingress.yml \
+            -f compose/docker-compose.storage.yml \
+            -f compose/docker-compose.contract-test.yml \
+            --profile default --profile contract-test \
+            up -d --wait --wait-timeout 600 api
+          # Bring fixture-idp up AND wait for it healthy in a SEPARATE step, AFTER
+          # the api/litellm heavy boot has finished (CPU now free, so the trivial
+          # node server binds in <1s and passes its widened 90s/10-retry health
+          # window). Doing its --wait here — rather than folding it into the api
+          # wait above (where it was CPU-starved) or leaving it unwaited (where the
+          # later `compose run` RECREATED it and reset its health clock, 260530-rqk
+          # CI run 78707461305) — means it is already-healthy and the `run --no-deps`
+          # steps below never touch it.
+          docker compose -f docker-compose.yml \
+            -f compose/docker-compose.embedded-litellm.yml \
+            -f compose/docker-compose.ingress.yml \
+            -f compose/docker-compose.storage.yml \
+            -f compose/docker-compose.contract-test.yml \
+            --profile default --profile contract-test \
+            up -d --wait --wait-timeout 420 fixture-idp
+      - name: Capture migrate + api logs on boot failure
+        if: failure()
+        run: |
+          docker compose -f docker-compose.yml \
+            -f compose/docker-compose.embedded-litellm.yml \
+            -f compose/docker-compose.ingress.yml \
+            -f compose/docker-compose.storage.yml \
+            -f compose/docker-compose.contract-test.yml \
+            --profile default --profile contract-test \
+            logs --no-color migrate api postgres traefik fixture-idp | tail -300
+      - name: Seed conformance fixtures (in-network seed container)
+        # Canonical flow (Makefile `make contract-test`): run the one-shot
+        # `seed` service via `compose run --rm`. It posts directly to api:3000
+        # on the internal docker network (its env_file/.env + SMTP_HOST="" no-op
+        # email are baked into the service def), so it has the same DNS view as
+        # the api. Host-side `pnpm seed:conformance` could not resolve the
+        # docker-internal `api`/`fixture-idp` hostnames the OAuth hop needs.
+        run: |
+          docker compose -f docker-compose.yml \
+            -f compose/docker-compose.embedded-litellm.yml \
+            -f compose/docker-compose.ingress.yml \
+            -f compose/docker-compose.storage.yml \
+            -f compose/docker-compose.contract-test.yml \
+            --profile default --profile contract-test \
+            run --rm --no-deps seed
+      - name: Run conformance suite (in-network runner container)
+        # The `contract-test-runner` service (compose/docker-compose.contract-test.yml)
+        # drives the suite from INSIDE the docker network, dialing
+        # https://api.localhost through Traefik (BACKEND_URL/AUTH_URL baked into
+        # the service, root CA trusted via NODE_EXTRA_CA_CERTS). This exercises
+        # the full Traefik + TLS + cert-SAN path and resolves docker-internal
+        # DNS — neither possible from a host-side `pnpm` runner. Matches
+        # `make contract-test`.
+        run: |
+          docker compose -f docker-compose.yml \
+            -f compose/docker-compose.embedded-litellm.yml \
+            -f compose/docker-compose.ingress.yml \
+            -f compose/docker-compose.storage.yml \
+            -f compose/docker-compose.contract-test.yml \
+            --profile default --profile contract-test \
+            run --rm --no-deps contract-test-runner
       - name: Capture compose logs on failure
         if: failure()
-        run: docker compose logs --no-color > compose-logs.txt
+        run: |
+          docker compose -f docker-compose.yml \
+            -f compose/docker-compose.embedded-litellm.yml \
+            -f compose/docker-compose.ingress.yml \
+            -f compose/docker-compose.storage.yml \
+            -f compose/docker-compose.contract-test.yml \
+            --profile default --profile contract-test \
+            logs --no-color > compose-logs.txt
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4
         if: failure()
         with:
@@ -562,7 +728,14 @@ jobs:
           path: compose-logs.txt
       - name: Tear down
         if: always()
-        run: docker compose down -v
+        run: |
+          docker compose -f docker-compose.yml \
+            -f compose/docker-compose.embedded-litellm.yml \
+            -f compose/docker-compose.ingress.yml \
+            -f compose/docker-compose.storage.yml \
+            -f compose/docker-compose.contract-test.yml \
+            --profile default --profile contract-test \
+            down -v --remove-orphans
 
   # === DISCIPLINE rule 3 / Phase 03 e2e back-fill ===
   # Host-side e2e suite. Boots the full docker-compose stack with the
@@ -778,7 +951,17 @@ jobs:
       - uses: actions/setup-node@v5
         with: { node-version: '24', cache: 'pnpm' }
       - run: pnpm install --frozen-lockfile
-      - run: pnpm test --coverage
+        # Consume the coverage report the `test` job already produced (it uploads
+        # the `coverage/` artifact) instead of RE-RUNNING the full suite here.
+        # Re-running `pnpm test` in this job re-ran the docker-compose- and
+        # helm-touching integration/tools tests WITHOUT this job's missing
+        # docker/helm setup, so they failed on `docker compose … config` /
+        # `helm dependency build` — unrelated to coverage. The `test` job (which
+        # HAS that setup) is the single source of the coverage summary
+        # (fix 260530-rqk).
+      - name: Download coverage report from the test job
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093  # v4
+        with: { name: coverage, path: coverage }
       - name: Capture changed files
         env:
           GH_TOKEN: ${{ github.token }}
@@ -814,28 +997,12 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - name: Bootstrap fixture .env
         run: |
-          # The slim template (5-key operator contract) comments out
-          # PGBOUNCER_ADMIN_PASSWORD + TRAEFIK_ADMIN_PASSWORD and omits
-          # MINIO_ROOT_PASSWORD + GRAFANA_ADMIN_PASSWORD entirely. The
-          # api/migrate container entrypoint (check-default-secrets.ts)
-          # ALWAYS requires the full REQUIRED_KEYS set, so build a CI
-          # template that uncomments + appends the missing slots, then run
-          # bootstrap.sh against it via BOOTSTRAP_ENV_TEMPLATE so the
-          # generator fills every slot.
+          # .env.slim.example now ships the full check-default-secrets
+          # REQUIRED_KEYS set ACTIVE (PGBOUNCER/TRAEFIK/MINIO/GRAFANA secrets +
+          # DATABASE_URL_OWNER) — bootstrap fills/derives every slot. The
+          # former uncomment + grep||echo workaround block was removed as dead
+          # (260530-rqk); guarded by tools/lint-env-required-secrets.test.ts.
           cp .env.slim.example .env.ci.template
-          sed -i \
-            -e 's/^# *PGBOUNCER_ADMIN_PASSWORD=/PGBOUNCER_ADMIN_PASSWORD=/' \
-            -e 's/^# *TRAEFIK_ADMIN_PASSWORD=/TRAEFIK_ADMIN_PASSWORD=/' \
-            .env.ci.template
-          grep -q '^MINIO_ROOT_PASSWORD=' .env.ci.template || \
-            echo 'MINIO_ROOT_PASSWORD=PLACEHOLDER_BOOTSTRAP_WILL_REPLACE' >> .env.ci.template
-          grep -q '^GRAFANA_ADMIN_PASSWORD=' .env.ci.template || \
-            echo 'GRAFANA_ADMIN_PASSWORD=PLACEHOLDER_BOOTSTRAP_WILL_REPLACE' >> .env.ci.template
-          # migrate container refuses to run without DATABASE_URL_OWNER. Slim
-          # template only ships the app DSN — synthesize the owner DSN as a
-          # composite of POSTGRES_OWNER_PASSWORD (bootstrap fills the password).
-          grep -q '^DATABASE_URL_OWNER=' .env.ci.template || \
-            echo 'DATABASE_URL_OWNER=postgres://openwhispr_owner:${POSTGRES_OWNER_PASSWORD}@postgres:5432/openwhispr?sslmode=disable' >> .env.ci.template
           # LITELLM_CONFIG_FILE selects the hermetic contract config so the
           # litellm container's /health/liveliness check passes without
           # outbound provider keys. docker compose reads .env BEFORE the
@@ -1024,6 +1191,11 @@ jobs:
         env:
           BASELINE_VUS: "5"
           BASELINE_DURATION_SUSTAIN: "60s"
+          # A ≤2-min mock smoke (5 VU) is not a 1000-VU plateau; the ~16 GiB
+          # hosted runner is plenty. Lower the preflight RAM floor for THIS
+          # scope only — real `make load-test` keeps the 24 GiB default
+          # (fix 260530-rqk).
+          PREFLIGHT_MIN_RAM_GIB: "12"
         run: make load-smoke
       - name: Capture compose logs on failure
         if: failure()
