@@ -573,31 +573,12 @@ jobs:
       - name: Bootstrap fixture .env
         run: |
           cp .env.slim.example .env
-          # LITELLM_CONFIG_FILE selects the hermetic contract config so the
-          # litellm container's /health/liveliness passes without provider keys
-          # (mirrors e2e-hermetic). docker compose reads .env before the host
-          # env block, so it must live in the file. OPENWHISPR_TEST_ROUTES=true
-          # enables the conformance-only test routes the suite exercises.
-          echo "LITELLM_CONFIG_FILE=litellm_config.contract.yaml" >> .env
-          echo "OPENWHISPR_TEST_ROUTES=true" >> .env
-          # The api container runs with NODE_ENV=production (docker-compose.yml
-          # default) and its ingress-boot guard REFUSES a plaintext-HTTP origin
-          # ("FATAL ingress-boot: NODE_ENV=production requires an HTTPS origin").
-          # The contract-test compose profile is authored to run WITH the
-          # ingress overlay (Traefik terminates TLS at https://api.localhost) —
-          # its own header comment says "the runner targets https://api.localhost
-          # via Traefik ... the ingress overlay in CI". Mirror the e2e-hermetic
-          # recipe: pin every origin/auth URL to the TLS endpoint + point the
-          # BYOK ingress row at the Traefik cert (260530-rqk follow-up — the
-          # 042db624 storage-overlay fix cleared the BYOK-storage guard but left
-          # this next-in-line HTTPS guard tripping).
-          sed -i \
-            -e 's|^INGRESS_BASE_URL=.*|INGRESS_BASE_URL=https://api.localhost|' \
-            -e 's|^BETTER_AUTH_URL=.*|BETTER_AUTH_URL=https://api.localhost|' \
-            -e 's|^AUTH_URL=.*|AUTH_URL=https://api.localhost|' \
-            -e 's|^OPENWHISPR_API_URL=.*|OPENWHISPR_API_URL=https://api.localhost|' \
-            .env
-          echo "INGRESS_TLS_CERT_PATH=/etc/traefik/certs/local.crt" >> .env
+          # Run bootstrap FIRST — it regenerates .env from the .env.slim.example
+          # key list (fills/derives secrets), so any key NOT in that template is
+          # DROPPED. Therefore every contract-test-specific override below MUST be
+          # appended/applied AFTER bootstrap, or it silently vanishes (260530-rqk
+          # follow-up bug: INGRESS_TLS_CERT_PATH was appended pre-bootstrap → wiped
+          # → api's BYOK_INGRESS_REQUIRED guard refused boot).
           if [ -x tools/bootstrap.sh ]; then
             tools/bootstrap.sh --ci || true
           fi
@@ -608,6 +589,31 @@ jobs:
           # (fix 260530-rqk; see .planning/debug/contract-test-migrate-exit1).
           if grep -q '^MASTER_KEK=PLACEHOLDER_BOOTSTRAP_WILL_REPLACE' .env; then
             echo "::error::bootstrap did not replace MASTER_KEK placeholder — migrate would fail" >&2
+            exit 1
+          fi
+          # --- contract-test overrides, applied POST-bootstrap so they survive ---
+          # LITELLM_CONFIG_FILE selects the hermetic contract config so litellm's
+          # /health/liveliness passes without provider keys; OPENWHISPR_TEST_ROUTES
+          # enables the conformance-only routes the suite exercises.
+          echo "LITELLM_CONFIG_FILE=litellm_config.contract.yaml" >> .env
+          echo "OPENWHISPR_TEST_ROUTES=true" >> .env
+          # The api runs NODE_ENV=production and (a) refuses a plaintext-HTTP
+          # origin and (b) its BYOK_INGRESS guard requires INGRESS_TLS_CERT_PATH
+          # once the ingress overlay is layered with an https:// origin. The
+          # contract-test profile is authored to run WITH the ingress overlay
+          # (Traefik terminates TLS at https://api.localhost). Mirror e2e-hermetic:
+          # pin every origin/auth URL to the TLS endpoint + point the BYOK ingress
+          # row at the Traefik cert baked into the traefik image.
+          sed -i \
+            -e 's|^INGRESS_BASE_URL=.*|INGRESS_BASE_URL=https://api.localhost|' \
+            -e 's|^BETTER_AUTH_URL=.*|BETTER_AUTH_URL=https://api.localhost|' \
+            -e 's|^AUTH_URL=.*|AUTH_URL=https://api.localhost|' \
+            -e 's|^OPENWHISPR_API_URL=.*|OPENWHISPR_API_URL=https://api.localhost|' \
+            .env
+          echo "INGRESS_TLS_CERT_PATH=/etc/traefik/certs/local.crt" >> .env
+          # Sanity: the override the BYOK guard needs MUST be present post-bootstrap.
+          if ! grep -q '^INGRESS_TLS_CERT_PATH=' .env; then
+            echo "::error::INGRESS_TLS_CERT_PATH missing after bootstrap — BYOK ingress guard will refuse" >&2
             exit 1
           fi
       - name: Build api + migrate images
