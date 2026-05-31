@@ -57,7 +57,11 @@ async function fetchJson<T>(url: string): Promise<T> {
   return (await res.json()) as T;
 }
 
-const DOCS_HREF = "/docs/litellm-target-spec.md";
+// Quick 260531-dlx — the litellm-target-spec doc lives in the repo, not served
+// by the web app, so the prior in-app `/docs/...` path 404'd. Point at the
+// GitHub blob URL (opens in a new tab) so the link actually resolves.
+const DOCS_HREF =
+  "https://github.com/Yambr/openwhispr-server/blob/main/docs/litellm-target-spec.md";
 
 function SkeletonTable(): React.JSX.Element {
   return (

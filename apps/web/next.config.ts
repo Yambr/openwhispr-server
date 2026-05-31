@@ -40,6 +40,15 @@ const nextConfig: NextConfig = {
   reactStrictMode: true,
   poweredByHeader: false,
   typedRoutes: true,
+  // Quick 260531-dlx — surface the release version to the client bundle so the
+  // AuthShell footer badge tracks the shipped tag instead of a hardcoded
+  // literal. The release pipeline sets NEXT_PUBLIC_APP_VERSION (or
+  // OPENWHISPR_IMAGE_TAG); fall back to "0.0.0" for local dev. Next inlines
+  // NEXT_PUBLIC_* at build time, so this is evaluated once per image build.
+  env: {
+    NEXT_PUBLIC_APP_VERSION:
+      process.env.NEXT_PUBLIC_APP_VERSION ?? process.env.OPENWHISPR_IMAGE_TAG ?? "0.0.0",
+  },
   async headers() {
     // Phase 51 / Plan 51-04 — CSP now lives in middleware.ts (per-
     // request nonce). The constants below are the security headers
