@@ -558,8 +558,16 @@ jobs:
     timeout-minutes: 20
     env:
       OPENWHISPR_PROTOCOL: mycorp-whispr
-      AUTH_URL: http://api.localhost
-      OPENWHISPR_API_URL: http://api.localhost
+      # HTTPS, not HTTP: docker-compose.yml interpolates AUTH_URL/OPENWHISPR_API_URL
+      # from SHELL env first (`${AUTH_URL:-https://api.localhost}`), so this
+      # job-level block OVERRIDES whatever the .env file holds. The pre-ingress
+      # http:// values here were the real reason the api kept hitting
+      # `FATAL auth-boot: NODE_ENV=production with non-HTTPS AUTH_URL` even after
+      # the .env was pinned — the .env sed never won against this. The stack now
+      # runs behind the ingress overlay (Traefik TLS at https://api.localhost),
+      # so pin these to https too (260530-rqk follow-up).
+      AUTH_URL: https://api.localhost
+      OPENWHISPR_API_URL: https://api.localhost
     steps:
       - uses: step-security/harden-runner@9af89fc71515a100421586dfdb3dc9c984fbf411  # v2.19.4
         with: { egress-policy: audit }

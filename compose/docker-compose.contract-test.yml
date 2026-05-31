@@ -27,8 +27,14 @@ services:
       test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:9000/livez"]
       interval: 5s
       timeout: 3s
-      retries: 5
-      start_period: 5s
+      # retries + start_period widened (260530-rqk): on a 2-core CI runner the
+      # node process is CPU-starved while api+migrate build and litellm runs its
+      # ~5-min prisma migrate, so the fixture took ~70s to bind :9000 and the old
+      # 5s start_period + 25s retry window declared it unhealthy before it ever
+      # listened. This is a test-only fixture (profiles:[contract-test], never
+      # production); a generous health window costs nothing and removes the flake.
+      retries: 10
+      start_period: 90s
 
   # Phase 02.3 — One-shot conformance fixture seeder. Reuses the api image
   # (ships data/dist/seed-conformance.cjs via the Phase 02.1 Dockerfile).
