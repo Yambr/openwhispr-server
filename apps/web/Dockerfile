@@ -99,12 +99,17 @@ ARG NEXT_PUBLIC_OIDC_PROVIDERS=""
 # `http://localhost:4000`. Empty default would break the rewrite, so
 # default to the docker-internal URL.
 ARG NEXT_PUBLIC_API_URL="http://api:3000"
+# Quick 260531-dlx — release version shown in the AuthShell footer badge.
+# release.yml passes the resolved image tag; empty default keeps next.config's
+# own OPENWHISPR_IMAGE_TAG/"0.0.0" fallback for local `docker compose build`.
+ARG NEXT_PUBLIC_APP_VERSION=""
 ENV NEXT_PUBLIC_GRAFANA_BASE_URL=${NEXT_PUBLIC_GRAFANA_BASE_URL}
 ENV NEXT_PUBLIC_TEMPO_BASE_URL=${NEXT_PUBLIC_TEMPO_BASE_URL}
 ENV NEXT_PUBLIC_MIMIR_BASE_URL=${NEXT_PUBLIC_MIMIR_BASE_URL}
 ENV NEXT_PUBLIC_LOKI_BASE_URL=${NEXT_PUBLIC_LOKI_BASE_URL}
 ENV NEXT_PUBLIC_OIDC_PROVIDERS=${NEXT_PUBLIC_OIDC_PROVIDERS}
 ENV NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL}
+ENV NEXT_PUBLIC_APP_VERSION=${NEXT_PUBLIC_APP_VERSION}
 RUN pnpm --filter @openwhispr/web build
 
 # ----- runner: minimal image, non-root, healthcheck -----
