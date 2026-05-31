@@ -29,12 +29,22 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  # ---- Per-arch NATIVE build (no QEMU) ----
+  # Each {image × platform} pair builds on its OWN-architecture runner —
+  # amd64 on `ubuntu-24.04`, arm64 on `ubuntu-24.04-arm64` (free GA runners
+  # on public repos). This REPLACES the prior single-job QEMU-emulated
+  # `platforms: linux/amd64,linux/arm64` build, whose emulated arm64 leg
+  # stalled the napi-heavy api/worker images (@node-rs/argon2 Rust + ~50
+  # @opentelemetry/auto-instrumentations-node pkgs) for 90-140min on a cold
+  # GHA cache (260531 v1.0.17 release). Native builds finish in ~5-13min per
+  # arch. Each job pushes BY DIGEST (no tag); the `merge-manifest` job below
+  # stitches the two per-arch digests into the final multi-arch tag. See
+  # memory project_release_arm64_qemu_slow + .planning/deferred-items.md.
   build-image:
-    runs-on: ubuntu-24.04
     strategy:
       fail-fast: false
       matrix:
-        include:
+        image:
           - name: cnpg-postgres-17-pgpartman
             context: images/cnpg-postgres-17-pgpartman
             dockerfile: Dockerfile
@@ -69,6 +79,18 @@ jobs:
             context: .
             dockerfile: tools/test-probe/Dockerfile
             pg_minor: ""
+        platform:
+          - arch: amd64
+            runner: ubuntu-24.04
+          - arch: arm64
+            runner: ubuntu-24.04-arm64
+    # Native runner picked per platform — NO QEMU emulation.
+    runs-on: ${{ matrix.platform.runner }}
+    # Defence-in-depth: a native build that exceeds 40min is wedged, not
+    # slow (cold-cache native api/worker finish in ~13min). Fail fast
+    # instead of crawling toward the 6h GitHub job ceiling, which is what
+    # let the emulated arm64 stall hide for 2.3h on 260531.
+    timeout-minutes: 40
     steps:
       - uses: actions/checkout@v4
 
@@ -83,8 +105,98 @@ jobs:
             echo "value=${ref}" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@v3
+      # No `docker/setup-qemu-action` here — the whole point of the per-arch
+      # split is that each runner builds its NATIVE architecture without
+      # emulation.
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Compute image repo (lowercase owner)
+        id: repo
+        run: |
+          # GHCR rejects uppercase in repository names; `github.repository_owner`
+          # echoes the org slug verbatim (e.g. `Yambr`) — lowercase it via shell
+          # parameter expansion. Without this the build fails fast with
+          # "invalid tag: repository name must be lowercase" and no image is
+          # pushed (v0.9.0 + v0.9.1 first-attempt both crashed here).
+          owner=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
+          echo "value=ghcr.io/${owner}/openwhispr-${{ matrix.image.name }}" >> "$GITHUB_OUTPUT"
+
+      - name: Build and push by digest (native ${{ matrix.platform.arch }})
+        id: build
+        uses: docker/build-push-action@v7
+        with:
+          context: ${{ matrix.image.context }}
+          file: ${{ matrix.image.context }}/${{ matrix.image.dockerfile }}
+          platforms: linux/${{ matrix.platform.arch }}
+          # Push by DIGEST (no tag) — the merge-manifest job assembles the
+          # final tag from both per-arch digests. `push-by-digest=true`
+          # uploads the image and prints its digest to steps.build.outputs.
+          outputs: type=image,name=${{ steps.repo.outputs.value }},push-by-digest=true,name-canonical=true,push=true
+          provenance: true
+          sbom: true
+          # Per-arch cache scope so amd64 and arm64 don't clobber each other.
+          cache-from: type=gha,scope=${{ matrix.image.name }}-${{ matrix.platform.arch }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.image.name }}-${{ matrix.platform.arch }}
+          # Quick-task 260528-370 — build-info propagation. Only
+          # apps/api/Dockerfile's runtime stage declares matching ARGs;
+          # the other 5 images silently drop unused build-args without
+          # warning (Docker behavior), so a single block serves all 6.
+          build-args: |
+            BUILD_VERSION=${{ steps.tag.outputs.value }}
+            BUILD_SHA=${{ github.sha }}
+            IMAGE_TAG=${{ steps.tag.outputs.value }}
+
+      - name: Export digest
+        run: |
+          mkdir -p /tmp/digests
+          digest="${{ steps.build.outputs.digest }}"
+          # Filename = the digest's sha256 hex (strip the "sha256:" prefix).
+          touch "/tmp/digests/${digest#sha256:}"
+
+      - name: Upload digest artifact
+        uses: actions/upload-artifact@v4
+        with:
+          # One artifact per {image,arch} — the merge job globs them per image.
+          name: digest-${{ matrix.image.name }}-${{ matrix.platform.arch }}
+          path: /tmp/digests/*
+          if-no-files-found: error
+          retention-days: 1
+
+  # ---- Assemble the multi-arch manifest from the per-arch digests ----
+  # For each image, pull the amd64 + arm64 digests built above and create
+  # the final tagged multi-arch image with `docker buildx imagetools create`.
+  # This is what makes `docker pull ...:<tag>` resolve to the right arch.
+  merge-manifest:
+    needs: [build-image]
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        image:
+          - { name: cnpg-postgres-17-pgpartman, pg_minor: "17.6" }
+          - { name: postgres-17-pgpartman, pg_minor: "17.5" }
+          - { name: api, pg_minor: "" }
+          - { name: web, pg_minor: "" }
+          - { name: worker, pg_minor: "" }
+          - { name: test-probe, pg_minor: "" }
+    steps:
+      - name: Resolve image tag
+        id: tag
+        run: |
+          if [ -n "${{ inputs.tag }}" ]; then
+            echo "value=${{ inputs.tag }}" >> "$GITHUB_OUTPUT"
+          else
+            ref="${GITHUB_REF_NAME#v}"
+            echo "value=${ref}" >> "$GITHUB_OUTPUT"
+          fi
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v4
@@ -96,54 +208,53 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Compute tag list
-        id: taglist
-        run: |
-          # GHCR rejects uppercase in repository names; `github.repository_owner`
-          # echoes the org slug verbatim (e.g. `Yambr`) — lowercase it via shell
-          # parameter expansion. Without this the build fails fast with
-          # "invalid tag: repository name must be lowercase" and no image is
-          # pushed (v0.9.0 + v0.9.1 first-attempt both crashed here).
-          owner=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
-          base="ghcr.io/${owner}/openwhispr-${{ matrix.name }}"
-          tag="${{ steps.tag.outputs.value }}"
-          pg="${{ matrix.pg_minor }}"
-          {
-            echo "tags<<EOF"
-            echo "${base}:${tag}"
-            if [ -n "${pg}" ]; then
-              echo "${base}:${pg}-${tag}"
-            fi
-            echo "EOF"
-          } >> "$GITHUB_OUTPUT"
-
-      - name: Build and push (multi-arch)
-        uses: docker/build-push-action@v7
+      - name: Download digests for this image
+        uses: actions/download-artifact@v4
         with:
-          context: ${{ matrix.context }}
-          file: ${{ matrix.context }}/${{ matrix.dockerfile }}
-          platforms: linux/amd64,linux/arm64
-          push: true
-          tags: ${{ steps.taglist.outputs.tags }}
-          provenance: true
-          sbom: true
-          cache-from: type=gha,scope=${{ matrix.name }}
-          cache-to: type=gha,mode=max,scope=${{ matrix.name }}
-          # Quick-task 260528-370 — build-info propagation. Only
-          # apps/api/Dockerfile's runtime stage declares matching ARGs;
-          # the other 5 matrix entries (cnpg-postgres-17-pgpartman,
-          # postgres-17-pgpartman, web, worker, test-probe) silently
-          # drop unused build-args without warning (Docker behavior),
-          # so a single block here serves all 6 images without a
-          # per-matrix conditional. `steps.tag.outputs.value` is the
-          # resolved tag (e.g. "1.0.14"); BUILD_VERSION and IMAGE_TAG
-          # are identical today but retain separate slots for forward
-          # compatibility with chart-only releases that ship the same
-          # image under a new tag.
-          build-args: |
-            BUILD_VERSION=${{ steps.tag.outputs.value }}
-            BUILD_SHA=${{ github.sha }}
-            IMAGE_TAG=${{ steps.tag.outputs.value }}
+          path: /tmp/digests
+          pattern: digest-${{ matrix.image.name }}-*
+          merge-multiple: true
+
+      - name: Create + push multi-arch manifest
+        run: |
+          owner=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
+          repo="ghcr.io/${owner}/openwhispr-${{ matrix.image.name }}"
+          tag="${{ steps.tag.outputs.value }}"
+          pg="${{ matrix.image.pg_minor }}"
+
+          # Build the `repo@sha256:<digest>` source-ref list from the
+          # per-arch digest filenames (the digest hex was the touch'd name).
+          refs=()
+          for f in /tmp/digests/*; do
+            [ -e "$f" ] || continue
+            refs+=("${repo}@sha256:$(basename "$f")")
+          done
+          if [ "${#refs[@]}" -eq 0 ]; then
+            echo "ERROR: no per-arch digests found for ${{ matrix.image.name }}" >&2
+            exit 1
+          fi
+
+          # Tag list: always :<tag>, plus :<pg_minor>-<tag> for postgres images.
+          tags=("--tag" "${repo}:${tag}")
+          if [ -n "${pg}" ]; then
+            tags+=("--tag" "${repo}:${pg}-${tag}")
+          fi
+
+          echo "Merging ${#refs[@]} per-arch digest(s) into ${repo}:${tag}"
+          docker buildx imagetools create "${tags[@]}" "${refs[@]}"
+
+      - name: Verify multi-arch manifest
+        run: |
+          owner=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
+          repo="ghcr.io/${owner}/openwhispr-${{ matrix.image.name }}"
+          tag="${{ steps.tag.outputs.value }}"
+          # Confirm BOTH arches are present in the published manifest list.
+          docker buildx imagetools inspect "${repo}:${tag}"
+          docker buildx imagetools inspect "${repo}:${tag}" --format '{{json .}}' \
+            | grep -q 'linux/amd64' || { echo "amd64 missing from manifest" >&2; exit 1; }
+          docker buildx imagetools inspect "${repo}:${tag}" --format '{{json .}}' \
+            | grep -q 'linux/arm64' || { echo "arm64 missing from manifest" >&2; exit 1; }
+          echo "OK: ${repo}:${tag} is multi-arch (amd64 + arm64)"
 
   create-image-release:
     # Forward-only Release surface for `v*` image tags. Prior to this job,
@@ -166,7 +277,12 @@ jobs:
     # (~2 min) and may create the v* Release with a chart body; this job
     # finishes after ~25 min and softprops/action-gh-release@v2 overwrites
     # the body with the canonical image-release content (R8 mitigation).
-    needs: [build-image]
+    #
+    # Depends on `merge-manifest` (not `build-image`): the per-arch jobs
+    # push only digests; the final tagged multi-arch images exist only
+    # after merge-manifest assembles them, so the Release body's pull
+    # commands would be hallucinations if gated on build-image alone.
+    needs: [merge-manifest]
     if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-24.04
     permissions:
