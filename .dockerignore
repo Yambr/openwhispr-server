@@ -8,6 +8,17 @@ dist
 *.test.ts
 *.test.tsx
 **/__tests__/**
+# 260530-rqk — scoped re-inclusion: the contract-test-runner image MUST contain
+# packages/contract-tests' __tests__/ enumeration tests. The HI-04 drift guard
+# asserts __tests__/negative-matrix-enumeration.test.ts exists, and that
+# enumeration test (skipIf(!REACHABLE)) is the actual route-inventory drift
+# check that fetches /api/_test/route-list in-network — without this negation
+# both are stripped from the runner image, so the drift protection the suite
+# advertises silently never ran in CI. Path-scoped to contract-tests, so the
+# api/migrate/worker runtime images keep stripping __tests__/ everywhere else.
+!packages/contract-tests/**/__tests__
+!packages/contract-tests/**/__tests__/**
+!packages/contract-tests/**/*.test.ts
 .env
 .env.*
 !.env.example

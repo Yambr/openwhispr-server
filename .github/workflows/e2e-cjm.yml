@@ -51,35 +51,12 @@ jobs:
           if [ -x tools/bootstrap.sh ]; then
             tools/bootstrap.sh --ci || true
           fi
-          # Overlay-required + deny-list-gated secrets that live OUTSIDE
-          # the slim contract (the slim template ships them COMMENTED
-          # OUT for the 5-key operator contract; bootstrap.sh only iterates
-          # over keys present in the template, so commented-out lines are
-          # invisible to it and must be appended here).
-          #
-          # PGBOUNCER_ADMIN_PASSWORD + TRAEFIK_ADMIN_PASSWORD — required
-          # by check-default-secrets.ts gate in migrate / api containers.
-          # Without them migrate refuses to start ("refusing to start:
-          # PGBOUNCER_ADMIN_PASSWORD is unset or matches deny-list") and
-          # api never boots, surfacing as "dependency failed to start".
-          # Confirmed root cause via Wave 2 #3 compose-logs artifact.
-          #
-          # MINIO_ROOT_PASSWORD + GRAFANA_ADMIN_PASSWORD — minio + grafana
-          # refuse blank-password boots; embedded-litellm + storage
-          # overlays both ship them as sidecars.
-          {
-            echo "PGBOUNCER_ADMIN_PASSWORD=$(openssl rand -base64 32 | tr -d '\n=' | tr '+/' '-_')"
-            echo "TRAEFIK_ADMIN_PASSWORD=$(openssl rand -base64 32 | tr -d '\n=' | tr '+/' '-_')"
-            echo "MINIO_ROOT_PASSWORD=$(openssl rand -base64 32 | tr -d '\n=' | tr '+/' '-_')"
-            echo "GRAFANA_ADMIN_PASSWORD=$(openssl rand -base64 32 | tr -d '\n=' | tr '+/' '-_')"
-          } >> .env
-          # migrate container refuses to run without DATABASE_URL_OWNER
-          # ("migrate: DATABASE_URL_OWNER not set — refusing to run as owner").
-          # The slim template only ships the app DSN (DATABASE_URL);
-          # synthesize the owner DSN as a composite that interpolates
-          # the bootstrap-generated POSTGRES_OWNER_PASSWORD at compose
-          # time. Mirrors the slim-core smoke job in ci.yml.
-          echo 'DATABASE_URL_OWNER=postgres://openwhispr_owner:${POSTGRES_OWNER_PASSWORD}@postgres:5432/openwhispr?sslmode=disable' >> .env
+          # NOTE (260530-rqk): the PGBOUNCER/TRAEFIK/MINIO/GRAFANA secrets and
+          # DATABASE_URL_OWNER are now ACTIVE in .env.slim.example, so bootstrap
+          # generates/derives all five — the former manual `echo … >> .env`
+          # workaround block was removed as dead. Guarded by
+          # tools/lint-env-required-secrets.test.ts + the Phase-14 conformance
+          # test, so they can't silently drop out of slim again.
           # api refuses to boot under NODE_ENV=production without an
           # HTTPS origin ("FATAL ingress-boot: NODE_ENV=production requires
           # an HTTPS origin"). The Traefik ingress overlay terminates TLS

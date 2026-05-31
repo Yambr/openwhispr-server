@@ -1,0 +1,20 @@
+# .trivyignore — scoped, justified suppressions for the trivy-fs gate.
+#
+# RULES (enforced by tools/lint-trivyignore.test.ts):
+#   * One advisory ID per line (CVE-… or GHSA-…), optional `exp:YYYY-MM-DD`.
+#   * Every suppression MUST carry a justification comment immediately above it.
+#   * Suppress SPECIFIC advisory IDs only — never a severity class or `*`. A new,
+#     unrelated CRITICAL/HIGH must still fail the gate.
+#
+# ──────────────────────────────────────────────────────────────────────────
+# tmp <= 0.2.3 — Path Traversal via unsanitized prefix/postfix (Dependabot #33).
+# Transitive, DEVELOPMENT scope only (pulled in via the testcontainers/test
+# toolchain — see pnpm-lock.yaml `dependency.scope: development`). It never ships
+# in any runtime image: production Docker stages install with --prod and the
+# `tmp` chain is dev-only. Zero production exposure. Tracked in
+# .planning/deferred-items.md and memory project_dependabot_tmp_path_traversal.
+# Remove once the upstream dep that pins `tmp` releases a patched range.
+# exp:2026-08-31 — re-evaluate; if `tmp` is still pinned, extend with a fresh
+# justification rather than letting this silently persist.
+CVE-2026-44705
+GHSA-ph9p-34f9-6g65

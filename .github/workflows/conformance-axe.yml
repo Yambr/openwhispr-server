@@ -57,21 +57,11 @@ jobs:
           if [ -x tools/bootstrap.sh ]; then
             tools/bootstrap.sh --ci || true
           fi
-          # See .github/workflows/e2e-cjm.yml for the long-form rationale.
-          # Slim template ships PGBOUNCER_ADMIN / TRAEFIK_ADMIN /
-          # MINIO_ROOT / GRAFANA_ADMIN passwords COMMENTED OUT (5-key
-          # operator contract); bootstrap.sh only iterates over keys
-          # present in the template, so commented-out lines are invisible
-          # to it and must be appended here directly.
-          {
-            echo "PGBOUNCER_ADMIN_PASSWORD=$(openssl rand -base64 32 | tr -d '\n=' | tr '+/' '-_')"
-            echo "TRAEFIK_ADMIN_PASSWORD=$(openssl rand -base64 32 | tr -d '\n=' | tr '+/' '-_')"
-            echo "MINIO_ROOT_PASSWORD=$(openssl rand -base64 32 | tr -d '\n=' | tr '+/' '-_')"
-            echo "GRAFANA_ADMIN_PASSWORD=$(openssl rand -base64 32 | tr -d '\n=' | tr '+/' '-_')"
-          } >> .env
-          # Mirror e2e-cjm.yml — migrate refuses without DATABASE_URL_OWNER.
-          echo 'DATABASE_URL_OWNER=postgres://openwhispr_owner:${POSTGRES_OWNER_PASSWORD}@postgres:5432/openwhispr?sslmode=disable' >> .env
-          # Mirror e2e-cjm.yml — api refuses NODE_ENV=production without
+          # NOTE (260530-rqk): PGBOUNCER/TRAEFIK/MINIO/GRAFANA + DATABASE_URL_OWNER
+          # are now ACTIVE in .env.slim.example (bootstrap generates/derives all
+          # five), so the former manual `echo … >> .env` workaround was removed
+          # as dead. See e2e-cjm.yml.
+          # api refuses NODE_ENV=production without
           # an HTTPS origin. Pin every origin/auth URL to Traefik's
           # TLS-terminating https://api.localhost.
           sed -i \

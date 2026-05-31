@@ -16,7 +16,6 @@
       "lint-rls",
       "lint-tenant-context",
       "test-migration",
-      "contract-test",
       "verify-images",
       "lint-gherkin-tags",
       "lint-playwright-config",

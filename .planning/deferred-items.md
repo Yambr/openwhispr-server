@@ -738,3 +738,20 @@ The 227 unannotated-skip violations come from a class of runtime-skip patterns t
 4. Tag `v1.0.12` + `openwhispr-server-1.0.15` on the green-merge SHA.
 
 **Acceptance criterion**: `pnpm test:evidence:projects-self-test` exits 0 against a HEAD where every fragment has `fail=0`, `exit_code=0`, `unannotated_skip=0`. At that point the atomic merge-to-main is unblocked; the gate self-accepts the push that closes the gate scope.
+
+---
+
+## DEFERRED (260530-rqk): contract-test removed from branch-protection required — GH runner too small for the full stack
+
+**Decision (Nick, 2026-05-31):** Remove `contract-test` from `scripts/branch-protection.json` required contexts and admin-merge PR #48 on the other 20/21 required checks green. The contract-test runner-capacity issue is deferred to a separate task.
+
+**WHY (root-caused, verified live):** The conformance suite itself is GREEN — proven locally end-to-end on the real docker stack (`Test Files 12 passed | 32 skipped; Tests 81 passed | 193 skipped; runner exit 0`) after fixing 7 pre-existing layers (BYOK-storage → ingress-HTTPS → BYOK-ingress → auth-HTTPS → reporter-load → fixture-idp-recreate → wire-schemas; all in commits a1b36807..dbae5196). The ONLY remaining failure is environmental: on the 2-core GitHub-hosted `ubuntu-24.04` runner, the `fixture-idp` container (a trivial node:http server that binds in ~1s STANDALONE — isolated repro confirmed) is CPU-starved for an UNBOUNDED time under the full contract-test stack (api+litellm+postgres+minio+traefik+pgbouncer+otel+loki+tempo+mimir+valkey+mailpit). Measured fixture-idp start→listen: 136s (run 78709708036) then 358s (run on dbae5196) — wildly variable, so NO fixed `start_period` is safe. Log evidence shows litellm keeps running `prisma` (checkpoint.prisma.io network calls) for 6+ minutes AFTER reporting healthy, continuing to saturate both cores past the `up --wait api` barrier.
+
+**The durable fix options (pick in the follow-up task):**
+1. Run `contract-test` on a larger runner (4/8-core) — needs org-level runner access; fixes root cause (stack > runner).
+2. Disable litellm prisma checkpoint telemetry (`CHECKPOINT_DISABLE=1`) + gate fixture-idp/seed/runner on litellm being TRULY idle, not just healthcheck-green.
+3. Slim the contract-test stack (don't boot the full observability quintet — loki/tempo/mimir/otel/grafana — for a wire-conformance suite).
+
+**Re-add criterion:** once the runner reliably boots the stack, restore `"contract-test"` to `scripts/branch-protection.json` contexts (line ~19, between `test-migration` and `verify-images`) and re-apply branch protection.
+
+**All fixes ARE on the branch** (and improve contract-test even while non-required): the 7-layer chain means contract-test on CI now gets all the way to "fixture-idp slow to start" instead of "api won't boot" — real progress banked.

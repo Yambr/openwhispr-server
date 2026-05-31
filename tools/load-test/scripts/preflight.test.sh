@@ -183,6 +183,42 @@ else
   fail "preflight.sh handling of missing k6 + docker fallback unexpected (rc=$rc, out=$out)"
 fi
 
+# T9: PREFLIGHT_MIN_RAM_GIB override lets a smaller host pass the RAM check.
+# A ~16 GiB GitHub-hosted runner running a ≤2-min mock smoke does not need the
+# 24 GiB plateau floor; CI sets PREFLIGHT_MIN_RAM_GIB=12 (fix 260530-rqk).
+# 17179869184 bytes = 16 GiB Docker MemTotal.
+stubdir=$(make_stubdir)
+stub_set "$stubdir" docker 'if [ "$1" = "info" ]; then echo "MemTotal: 17179869184"; fi; exit 0'
+stub_set "$stubdir" lsof 'exit 1'
+stub_set "$stubdir" sysctl 'echo "kern.maxfilesperproc: 65535"'
+stub_set "$stubdir" k6 'echo "k6 v0.50.0"'
+stub_set "$stubdir" git 'echo ""'
+out=$(env -i PATH="$stubdir:/usr/bin:/bin" HOME="$HOME" PREFLIGHT_MIN_RAM_GIB=12 "$PREFLIGHT" --yes 2>&1)
+rc=$?
+# rc=0 and NO RAM-floor failure line means the override took effect. (Per-check
+# OK lines only print under --verbose, so assert on the absence of the failure.)
+if [ "$rc" -eq 0 ] && ! echo "$out" | grep -q -i -E "GiB floor"; then
+  pass "preflight.sh honors PREFLIGHT_MIN_RAM_GIB override (16 GiB passes a 12 GiB floor)"
+else
+  fail "preflight.sh ignored PREFLIGHT_MIN_RAM_GIB override (rc=$rc, out=$out)"
+fi
+
+# T10: the DEFAULT RAM floor is unchanged — 16 GiB still refused without the
+# override. Guards against the override accidentally lowering the plateau floor.
+stubdir=$(make_stubdir)
+stub_set "$stubdir" docker 'if [ "$1" = "info" ]; then echo "MemTotal: 17179869184"; fi; exit 0'
+stub_set "$stubdir" lsof 'exit 1'
+stub_set "$stubdir" sysctl 'echo "kern.maxfilesperproc: 65535"'
+stub_set "$stubdir" k6 'echo "k6 v0.50.0"'
+stub_set "$stubdir" git 'echo ""'
+out=$(env -i PATH="$stubdir:/usr/bin:/bin" HOME="$HOME" "$PREFLIGHT" --yes 2>&1)
+rc=$?
+if [ "$rc" -ne 0 ] && echo "$out" | grep -q -i -E "(ram|memory|mem)"; then
+  pass "preflight.sh keeps the 24 GiB default floor when PREFLIGHT_MIN_RAM_GIB is unset"
+else
+  fail "preflight.sh default RAM floor regressed — 16 GiB should refuse (rc=$rc, out=$out)"
+fi
+
 echo
 if [ "$FAILS" -eq 0 ]; then
   printf "\033[32mAll preflight tests PASSED.\033[0m\n"
