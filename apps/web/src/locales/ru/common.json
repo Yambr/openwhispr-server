@@ -1,33 +1,73 @@
 {
   "common": {
     "action": {
-      "cancel": { "label": "Отмена" },
-      "close": { "label": "Закрыть" },
-      "confirm": { "label": "Подтвердить" },
-      "copy": { "label": "Копировать" },
-      "yes": { "label": "Да" },
-      "no": { "label": "Нет" }
+      "cancel": {
+        "label": "Отмена"
+      },
+      "close": {
+        "label": "Закрыть"
+      },
+      "confirm": {
+        "label": "Подтвердить"
+      },
+      "copy": {
+        "label": "Копировать"
+      },
+      "yes": {
+        "label": "Да"
+      },
+      "no": {
+        "label": "Нет"
+      }
     },
     "brand": {
-      "app": { "title": { "label": "OpenWhispr" } },
-      "admin": { "title": { "label": "OpenWhispr — Админ" } },
-      "auth": { "title": { "label": "OpenWhispr Server" } },
-      "mode": { "admin": { "label": "Режим администратора" } }
+      "app": {
+        "title": {
+          "label": "OpenWhispr"
+        }
+      },
+      "admin": {
+        "title": {
+          "label": "OpenWhispr — Админ"
+        }
+      },
+      "auth": {
+        "title": {
+          "label": "OpenWhispr Server"
+        }
+      },
+      "mode": {
+        "admin": {
+          "label": "Режим администратора"
+        }
+      }
     },
     "session": {
-      "thisDevice": { "label": "это устройство" }
+      "thisDevice": {
+        "label": "это устройство"
+      }
     },
     "placeholder": {
-      "untitled": { "label": "(без названия)" }
+      "untitled": {
+        "label": "(без названия)"
+      }
     },
     "error": {
       "boundary": {
-        "title": { "text": "Что-то пошло не так" },
-        "body": { "text": "Произошла непредвиденная ошибка при отображении этой страницы." },
-        "retry": { "label": "Повторить" }
+        "title": {
+          "text": "Что-то пошло не так"
+        },
+        "body": {
+          "text": "Произошла непредвиденная ошибка при отображении этой страницы."
+        },
+        "retry": {
+          "label": "Повторить"
+        }
       },
       "network": {
-        "title": { "text": "Сетевая ошибка" },
+        "title": {
+          "text": "Сетевая ошибка"
+        },
         "body": {
           "text": "Не удалось связаться с сервером OpenWhispr. Проверьте подключение и повторите попытку."
         }
@@ -35,32 +75,64 @@
     },
     "auth": {
       "shell": {
-        "kicker": { "default": { "text": "Self-host · v1" } },
-        "title": { "default": { "text": "Ваша речь — на ваших серверах." } },
+        "kicker": {
+          "default": {
+            "text": "Self-host · v1"
+          }
+        },
+        "title": {
+          "default": {
+            "text": "Ваша речь — на ваших серверах."
+          }
+        },
         "quote": {
           "default": {
             "text": "Приватное распознавание речи, структурированные заметки и история диалогов — в вашей собственной среде, с полным аудит-логом."
           }
         },
         "footer": {
-          "status": { "text": "Статус" },
-          "docs": { "text": "Документация" },
-          "github": { "text": "GitHub" }
+          "status": {
+            "text": "Статус"
+          },
+          "docs": {
+            "text": "Документация"
+          },
+          "github": {
+            "text": "GitHub"
+          }
         }
       }
     },
     "language": {
-      "label": { "label": "Язык" },
-      "english": { "label": "English" },
-      "russian": { "label": "Русский" }
+      "label": {
+        "label": "Язык"
+      },
+      "english": {
+        "label": "English"
+      },
+      "russian": {
+        "label": "Русский"
+      }
     },
-    "loading": { "label": "Загрузка…" },
-    "signout": { "label": "Выйти" },
+    "loading": {
+      "label": "Загрузка…"
+    },
+    "signout": {
+      "label": "Выйти"
+    },
     "theme": {
-      "toggle": { "label": "Переключить тему" },
-      "light": { "label": "Светлая" },
-      "dark": { "label": "Тёмная" },
-      "system": { "label": "Системная" }
+      "toggle": {
+        "label": "Переключить тему"
+      },
+      "light": {
+        "label": "Светлая"
+      },
+      "dark": {
+        "label": "Тёмная"
+      },
+      "system": {
+        "label": "Системная"
+      }
     },
     "test": {
       "plural": {
@@ -68,7 +140,9 @@
       }
     },
     "validation": {
-      "email": { "invalid": "Введите корректный адрес электронной почты." },
+      "email": {
+        "invalid": "Введите корректный адрес электронной почты."
+      },
       "password": {
         "min_length": "Пароль должен содержать не менее 12 символов.",
         "mixed_classes": "Пароль должен содержать заглавную, строчную букву и цифру."
@@ -77,6 +151,100 @@
       "string": {
         "too_short": "Значение слишком короткое.",
         "too_long": "Значение слишком длинное."
+      }
+    },
+    "download": {
+      "heading": {
+        "title": {
+          "text": "Скачать OpenWhispr"
+        },
+        "subtitle": {
+          "text": "Приватный голосовой ввод для вашего компьютера. Выберите платформу ниже."
+        }
+      },
+      "primary": {
+        "label": {
+          "text": "Скачать для {platform}"
+        },
+        "detecting": {
+          "text": "Определяем вашу платформу…"
+        }
+      },
+      "platform": {
+        "mac": {
+          "label": {
+            "text": "macOS"
+          }
+        },
+        "windows": {
+          "label": {
+            "text": "Windows"
+          }
+        },
+        "linux": {
+          "label": {
+            "text": "Linux"
+          }
+        }
+      },
+      "variant": {
+        "mac_arm64": {
+          "label": {
+            "text": "Apple Silicon (.dmg)"
+          }
+        },
+        "mac_x64": {
+          "label": {
+            "text": "Intel (.dmg)"
+          }
+        },
+        "win_installer": {
+          "label": {
+            "text": "Установщик (.exe)"
+          }
+        },
+        "win_portable": {
+          "label": {
+            "text": "Портативная версия (.exe)"
+          }
+        },
+        "linux_appimage": {
+          "label": {
+            "text": "AppImage"
+          }
+        },
+        "linux_deb": {
+          "label": {
+            "text": "Debian/Ubuntu (.deb)"
+          }
+        },
+        "linux_targz": {
+          "label": {
+            "text": "Архив (.tar.gz)"
+          }
+        }
+      },
+      "version": {
+        "label": {
+          "text": "Версия {version}"
+        }
+      },
+      "fallback": {
+        "text": "Не удалось загрузить последние релизы — посмотрите все загрузки на GitHub."
+      },
+      "releases": {
+        "link": {
+          "label": {
+            "text": "Все релизы на GitHub"
+          }
+        }
+      },
+      "signin": {
+        "link": {
+          "label": {
+            "text": "Уже есть аккаунт? Войти"
+          }
+        }
       }
     }
   }

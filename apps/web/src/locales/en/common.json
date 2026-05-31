@@ -1,33 +1,73 @@
 {
   "common": {
     "action": {
-      "cancel": { "label": "Cancel" },
-      "close": { "label": "Close" },
-      "confirm": { "label": "Confirm" },
-      "copy": { "label": "Copy" },
-      "yes": { "label": "Yes" },
-      "no": { "label": "No" }
+      "cancel": {
+        "label": "Cancel"
+      },
+      "close": {
+        "label": "Close"
+      },
+      "confirm": {
+        "label": "Confirm"
+      },
+      "copy": {
+        "label": "Copy"
+      },
+      "yes": {
+        "label": "Yes"
+      },
+      "no": {
+        "label": "No"
+      }
     },
     "brand": {
-      "app": { "title": { "label": "OpenWhispr" } },
-      "admin": { "title": { "label": "OpenWhispr — Admin" } },
-      "auth": { "title": { "label": "OpenWhispr Server" } },
-      "mode": { "admin": { "label": "Admin mode" } }
+      "app": {
+        "title": {
+          "label": "OpenWhispr"
+        }
+      },
+      "admin": {
+        "title": {
+          "label": "OpenWhispr — Admin"
+        }
+      },
+      "auth": {
+        "title": {
+          "label": "OpenWhispr Server"
+        }
+      },
+      "mode": {
+        "admin": {
+          "label": "Admin mode"
+        }
+      }
     },
     "session": {
-      "thisDevice": { "label": "this device" }
+      "thisDevice": {
+        "label": "this device"
+      }
     },
     "placeholder": {
-      "untitled": { "label": "(untitled)" }
+      "untitled": {
+        "label": "(untitled)"
+      }
     },
     "error": {
       "boundary": {
-        "title": { "text": "Something went wrong" },
-        "body": { "text": "An unexpected error occurred while rendering this page." },
-        "retry": { "label": "Retry" }
+        "title": {
+          "text": "Something went wrong"
+        },
+        "body": {
+          "text": "An unexpected error occurred while rendering this page."
+        },
+        "retry": {
+          "label": "Retry"
+        }
       },
       "network": {
-        "title": { "text": "Network error" },
+        "title": {
+          "text": "Network error"
+        },
         "body": {
           "text": "Could not reach the OpenWhispr server. Check your connection and retry."
         }
@@ -35,32 +75,64 @@
     },
     "auth": {
       "shell": {
-        "kicker": { "default": { "text": "Self-host · v1" } },
-        "title": { "default": { "text": "Your speech, on your servers." } },
+        "kicker": {
+          "default": {
+            "text": "Self-host · v1"
+          }
+        },
+        "title": {
+          "default": {
+            "text": "Your speech, on your servers."
+          }
+        },
         "quote": {
           "default": {
             "text": "Private speech-to-text, structured notes, and conversation history — running in your own environment, with full audit trail."
           }
         },
         "footer": {
-          "status": { "text": "Status" },
-          "docs": { "text": "Docs" },
-          "github": { "text": "GitHub" }
+          "status": {
+            "text": "Status"
+          },
+          "docs": {
+            "text": "Docs"
+          },
+          "github": {
+            "text": "GitHub"
+          }
         }
       }
     },
     "language": {
-      "label": { "label": "Language" },
-      "english": { "label": "English" },
-      "russian": { "label": "Русский" }
+      "label": {
+        "label": "Language"
+      },
+      "english": {
+        "label": "English"
+      },
+      "russian": {
+        "label": "Русский"
+      }
     },
-    "loading": { "label": "Loading…" },
-    "signout": { "label": "Sign out" },
+    "loading": {
+      "label": "Loading…"
+    },
+    "signout": {
+      "label": "Sign out"
+    },
     "theme": {
-      "toggle": { "label": "Toggle theme" },
-      "light": { "label": "Light" },
-      "dark": { "label": "Dark" },
-      "system": { "label": "System" }
+      "toggle": {
+        "label": "Toggle theme"
+      },
+      "light": {
+        "label": "Light"
+      },
+      "dark": {
+        "label": "Dark"
+      },
+      "system": {
+        "label": "System"
+      }
     },
     "test": {
       "plural": {
@@ -68,7 +140,9 @@
       }
     },
     "validation": {
-      "email": { "invalid": "Enter a valid email address." },
+      "email": {
+        "invalid": "Enter a valid email address."
+      },
       "password": {
         "min_length": "Password must be at least 12 characters.",
         "mixed_classes": "Password must include upper-, lower-case, and a digit."
@@ -77,6 +151,100 @@
       "string": {
         "too_short": "Value is too short.",
         "too_long": "Value is too long."
+      }
+    },
+    "download": {
+      "heading": {
+        "title": {
+          "text": "Download OpenWhispr"
+        },
+        "subtitle": {
+          "text": "Private speech-to-text for your desktop. Pick your platform below."
+        }
+      },
+      "primary": {
+        "label": {
+          "text": "Download for {platform}"
+        },
+        "detecting": {
+          "text": "Detecting your platform…"
+        }
+      },
+      "platform": {
+        "mac": {
+          "label": {
+            "text": "macOS"
+          }
+        },
+        "windows": {
+          "label": {
+            "text": "Windows"
+          }
+        },
+        "linux": {
+          "label": {
+            "text": "Linux"
+          }
+        }
+      },
+      "variant": {
+        "mac_arm64": {
+          "label": {
+            "text": "Apple Silicon (.dmg)"
+          }
+        },
+        "mac_x64": {
+          "label": {
+            "text": "Intel (.dmg)"
+          }
+        },
+        "win_installer": {
+          "label": {
+            "text": "Installer (.exe)"
+          }
+        },
+        "win_portable": {
+          "label": {
+            "text": "Portable (.exe)"
+          }
+        },
+        "linux_appimage": {
+          "label": {
+            "text": "AppImage"
+          }
+        },
+        "linux_deb": {
+          "label": {
+            "text": "Debian/Ubuntu (.deb)"
+          }
+        },
+        "linux_targz": {
+          "label": {
+            "text": "Tarball (.tar.gz)"
+          }
+        }
+      },
+      "version": {
+        "label": {
+          "text": "Version {version}"
+        }
+      },
+      "fallback": {
+        "text": "Latest releases could not be loaded — browse all downloads on GitHub."
+      },
+      "releases": {
+        "link": {
+          "label": {
+            "text": "All releases on GitHub"
+          }
+        }
+      },
+      "signin": {
+        "link": {
+          "label": {
+            "text": "Already have an account? Sign in"
+          }
+        }
       }
     }
   }
