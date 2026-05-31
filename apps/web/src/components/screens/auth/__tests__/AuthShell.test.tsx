@@ -8,7 +8,7 @@
 //   4. Footer links Status / Docs / GitHub rendered with i18n-driven labels.
 //   5. Default copy resolves from `common.auth.shell.kicker.default.text`, etc.
 import { render, screen } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { I18nProvider } from "@/lib/i18n-client";
 
 const resources = {
@@ -43,6 +43,10 @@ function Wrap({ children }: { children: React.ReactNode }) {
 }
 
 describe("AuthShell (Phase 18.1.1 / Plan 04 — D-13)", () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
   it("renders children in the form slot and a side panel <aside>", async () => {
     const { AuthShell } = await import("../AuthShell");
     render(
@@ -109,6 +113,24 @@ describe("AuthShell (Phase 18.1.1 / Plan 04 — D-13)", () => {
     expect(screen.getByRole("link", { name: /status/i })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: /docs/i })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: /github/i })).toBeInTheDocument();
+  });
+
+  // Quick 260531-dlx — the version badge must NOT be a hardcoded literal
+  // (it shipped as "v1.0.4" while the real release was 1.0.17). It reads
+  // NEXT_PUBLIC_APP_VERSION so a release bump propagates automatically.
+  it("renders the version from NEXT_PUBLIC_APP_VERSION (not a hardcoded literal)", async () => {
+    vi.stubEnv("NEXT_PUBLIC_APP_VERSION", "9.9.9");
+    const { AuthShell } = await import("../AuthShell");
+    render(
+      <Wrap>
+        <AuthShell>
+          <div>child</div>
+        </AuthShell>
+      </Wrap>,
+    );
+    expect(screen.getByText(/^v9\.9\.9$/)).toBeInTheDocument();
+    // The stale hardcode must be gone.
+    expect(screen.queryByText(/^v1\.0\.4$/)).toBeNull();
   });
 
   it("falls back to default i18n keys when no side props are passed", async () => {

@@ -63,7 +63,10 @@ export function AuthShell({
           <p className="mt-3 max-w-[40ch] text-muted-foreground text-sm leading-relaxed">{quote}</p>
         </div>
         <div className="relative z-10 flex items-center gap-3 text-muted-foreground text-xs">
-          <span className="font-mono">v1.0.4</span>
+          {/* Quick 260531-dlx — sourced from NEXT_PUBLIC_APP_VERSION (wired in
+              next.config.ts from package.json) so a release bump propagates
+              automatically instead of rotting as a hardcoded literal. */}
+          <span className="font-mono">v{process.env.NEXT_PUBLIC_APP_VERSION ?? "0.0.0"}</span>
           <span aria-hidden="true">·</span>
           <a
             href="https://github.com/Yambr/openwhispr-server/actions"

@@ -169,6 +169,13 @@ describe("ConfigClient — header + chrome", () => {
     const docs = screen.getByRole("link", { name: /docs: how to override/i });
     expect(docs).toHaveAttribute("target", "_blank");
     expect(docs).toHaveAttribute("rel", expect.stringContaining("noopener"));
+    // Quick 260531-dlx — the docs link must point at the GitHub blob URL, NOT
+    // the dead in-app /docs/* path (the .md file is never served by the web
+    // app → 404). Regression sentinel against the broken /docs link.
+    expect(docs).toHaveAttribute(
+      "href",
+      "https://github.com/Yambr/openwhispr-server/blob/main/docs/litellm-target-spec.md",
+    );
   });
 
   it("D-API4 — does NOT render an env-block of any kind", async () => {
