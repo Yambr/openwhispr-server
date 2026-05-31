@@ -176,6 +176,16 @@ image:
   #   image v1.0.4 (A1 byok-guard export / A2 email k8s bypass / A3 worker
   #   CJS guard / A4 worker VALKEY_URL parser / A5 POST /api/locale).
   # Companion openwhispr-postgres chart 1.1.0 ships the rolconfig fix (B4).
+  # 1.0.18 — public /download page on the web console (Quick 260531-dlx):
+  # new no-auth /download route fetches the latest desktop installer from the
+  # Yambr/openwhispr GitHub releases (1h cache, graceful releases-picker
+  # fallback if GitHub is unreachable), detects the visitor's OS and surfaces
+  # a per-platform download chooser (mac arm64/x64, win installer/portable,
+  # linux AppImage/deb/tar.gz). Also fixes two stale frontend refs: the admin
+  # Config "Override docs" button now points at the GitHub blob URL (was a
+  # 404 in-app /docs/* path), and the AuthShell footer version badge reads
+  # NEXT_PUBLIC_APP_VERSION (was a hardcoded v1.0.4). Web-only; no DB/auth/
+  # schema/wire change.
   # 1.0.17 — two operator-facing config surfaces + CI/lint hardening:
   # (a) OIDC_PROVIDER_NAME (#43) — operator-configurable label for the
   # generic-OIDC sign-in button (was a hardcoded string the desktop +
@@ -213,7 +223,7 @@ image:
   # desktop client could not render. See docs/operations.md "Agent stream
   # error contract" section for the wire envelope + AgentErrorCode
   # taxonomy + log event schema.
-  tag: "1.0.17"
+  tag: "1.0.18"
   api:     { repository: openwhispr-api }
   web:     { repository: openwhispr-web }
   worker:  { repository: openwhispr-worker }

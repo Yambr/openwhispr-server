@@ -153,6 +153,7 @@ jobs:
             BUILD_VERSION=${{ steps.tag.outputs.value }}
             BUILD_SHA=${{ github.sha }}
             IMAGE_TAG=${{ steps.tag.outputs.value }}
+            NEXT_PUBLIC_APP_VERSION=${{ steps.tag.outputs.value }}
 
       - name: Export digest
         run: |
