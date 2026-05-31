@@ -635,13 +635,18 @@ jobs:
         # NODE_ENV=production HTTPS-origin guard passes (the contract-test
         # profile is authored for this overlay). Mirrors the e2e-hermetic boot.
         #
-        # Name the long-running services explicitly (api pulls migrate/postgres/
-        # litellm/traefik/minio/etc. transitively via depends_on; fixture-idp is
-        # standalone and the runner needs it). This EXCLUDES the one-shot
-        # `seed` + `contract-test-runner` services — they have no healthcheck and
-        # run their default CMD on `up`, which would make `--wait` either hang or
-        # run the suite prematurely. They are invoked deliberately below via
-        # `run --rm`, matching `make contract-test`.
+        # --wait ONLY on `api` (it pulls migrate/postgres/litellm/traefik/minio/
+        # etc. transitively via depends_on). fixture-idp is DELIBERATELY excluded
+        # from this wait: it's a trivial node:http server, but on the 2-core CI
+        # runner it is CPU-starved while the api 24-step build + litellm's ~5-min
+        # prisma migrate saturate both cores, so it took 130s+ to bind :9000 —
+        # past any reasonable health window — and tripped `--wait`. It is brought
+        # up (no wait) and the `contract-test-runner` step below waits for it via
+        # its own `depends_on: fixture-idp healthy`, by which point the heavy boot
+        # has finished and CPU is free, so it binds in <1s (260530-rqk).
+        # The one-shot `seed` + `contract-test-runner` are also excluded (no
+        # healthcheck; would run their CMD on `up`); invoked via `run --rm` below,
+        # matching `make contract-test`.
         run: |
           docker compose -f docker-compose.yml \
             -f compose/docker-compose.embedded-litellm.yml \
@@ -649,7 +654,15 @@ jobs:
             -f compose/docker-compose.storage.yml \
             -f compose/docker-compose.contract-test.yml \
             --profile default --profile contract-test \
-            up -d --wait --wait-timeout 600 api fixture-idp
+            up -d --wait --wait-timeout 600 api
+          # Bring up fixture-idp without blocking the wait; the runner gates on it.
+          docker compose -f docker-compose.yml \
+            -f compose/docker-compose.embedded-litellm.yml \
+            -f compose/docker-compose.ingress.yml \
+            -f compose/docker-compose.storage.yml \
+            -f compose/docker-compose.contract-test.yml \
+            --profile default --profile contract-test \
+            up -d fixture-idp
       - name: Capture migrate + api logs on boot failure
         if: failure()
         run: |

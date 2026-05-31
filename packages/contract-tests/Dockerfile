@@ -48,6 +48,16 @@ RUN pnpm install --frozen-lockfile --ignore-scripts \
 # resolves inside the image.
 COPY tsconfig.base.json ./
 
+# packages/contract-tests/vitest.config.ts wires a custom vitest reporter at
+# `resolve(ROOT_DIR, "tools/test-evidence-reporter.ts")` (ROOT_DIR=/app). Without
+# this file the runner aborts at startup with "Failed to load custom Reporter
+# from /app/tools/test-evidence-reporter.ts" before a single conformance test
+# runs — the real reason contract-test stayed red (260530-rqk). The reporter only
+# imports Node built-ins; its git-SHA lookup is try/caught and honours
+# OPENWHISPR_TEST_EVIDENCE_SHA, so it degrades cleanly inside the throwaway
+# (--rm) runner where there is no .git. Copy just the one file.
+COPY tools/test-evidence-reporter.ts tools/test-evidence-reporter.ts
+
 # Test source. Bind-mount in compose for fast iteration during local
 # dev would defeat the linux-arch isolation we set up above, so we COPY
 # instead — the image rebuilds on test changes (cheap; one layer).
