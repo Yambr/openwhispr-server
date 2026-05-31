@@ -176,6 +176,15 @@ image:
   #   image v1.0.4 (A1 byok-guard export / A2 email k8s bypass / A3 worker
   #   CJS guard / A4 worker VALKEY_URL parser / A5 POST /api/locale).
   # Companion openwhispr-postgres chart 1.1.0 ships the rolconfig fix (B4).
+  # 1.0.17 — two operator-facing config surfaces + CI/lint hardening:
+  # (a) OIDC_PROVIDER_NAME (#43) — operator-configurable label for the
+  # generic-OIDC sign-in button (was a hardcoded string the desktop +
+  # web clients rendered verbatim); (b) REASONING_MODEL_PARAMS (#44) —
+  # per-model chat-param extras bag, litellm-style env-JSON, so reasoning
+  # backends get model-specific knobs (e.g. temperature/enable_thinking)
+  # without an adapter layer or request-body merge. Plus a cleanup-shape
+  # no-rephrase regression guard (#42) and a robust lint-migrations squawk
+  # JSON parser (#46). Additive env only — no DB/auth/schema/wire change.
   # 1.0.16 — OIDC SSO Just-In-Time provisioning (Phase 69, PR #38): users
   # are auto-provisioned with tenant + role mapped from id_token claims on
   # first SSO sign-in (web genericOAuth + desktop mint-bearer paths share
@@ -204,7 +213,7 @@ image:
   # desktop client could not render. See docs/operations.md "Agent stream
   # error contract" section for the wire envelope + AgentErrorCode
   # taxonomy + log event schema.
-  tag: "1.0.16"
+  tag: "1.0.17"
   api:     { repository: openwhispr-api }
   web:     { repository: openwhispr-web }
   worker:  { repository: openwhispr-worker }

@@ -77,3 +77,48 @@ issues. Analysis: `.planning/debug/contract-test-migrate-exit1-2026-05-30.md`.
   override (CI run pending after this push).
 - Real proof = PR #48 going green on the 5 fixed gates without admin override;
   `contract-test` may still be red pending the migrate diagnosis (surfaced).
+
+## 2026-05-31 follow-up — mutation-quick root cause + contract-test ingress fix
+
+Two more commits, both pushed/committed AFTER the first CI run revealed the
+real (non-typo) issues:
+
+1. **mutation-quick 68min → 25s (`a1b36807`, PUSHED, GREEN on CI).** Root cause
+   was NOT a typo: `stryker run --incremental` mutated all 4 packages' src/ on a
+   cold incremental cache (cache key = hash of pnpm-lock/vitest/stryker config,
+   which my edits invalidated), i.e. a FULL run with no job timeout. Fix:
+   `tools/stryker-diff-scope.ts` (+13 TDD unit tests) diffs the merge base and
+   mutates ONLY the PR's changed *.ts (empty for docs/CI-only PRs → 0 mutants →
+   seconds). + `timeout-minutes: 20` backstop. CI confirmed: mutation-quick PASS
+   25s (own eyes, PR #48).
+
+2. **coverage-floor (`0cf91116`, PUSHED, GREEN 25s) + contract-test
+   (`c654ca57`, COMMITTED, NOT yet pushed).** coverage-floor now consumes the
+   `test` job's coverage artifact instead of re-running the suite. contract-test
+   root cause (read from CI job log, own eyes): after the storage-overlay fix
+   cleared the BYOK guard, the api hit the NEXT pre-existing barrier —
+   `FATAL ingress-boot: NODE_ENV=production requires an HTTPS origin` — because
+   the job booted WITHOUT the ingress overlay the contract-test profile is
+   authored for. Fix (NOT a guard weakening — the guard is intentional): layer
+   `compose/docker-compose.ingress.yml` + pin https://api.localhost origins +
+   cert path, and run the canonical in-network `seed` + `contract-test-runner`
+   containers (matching `make contract-test`) instead of host-side pnpm.
+
+## BLOCKED (handoff state, 2026-05-31 ~02:1x local)
+- `c654ca57` (contract-test fix) is COMMITTED locally but NOT pushed: the
+  SHA-strict pre-push test-evidence gate needs `c654ca57`-stamped fragments from
+  a full `pnpm test:all`, but the LOCAL Docker Desktop VM is wedged — `docker
+  run` hangs indefinitely even on cached images, surviving a full app
+  quit+kill-9+relaunch. `test:all` stalls on the docker-booting projects
+  (tests-self-tests/tests-integration). Safe non-destructive recovery exhausted;
+  a destructive VM data-reset was NOT done (machine owner asleep, unauthorized).
+- `--no-verify` is constitutionally banned; gaming the gate with empty backfill
+  fragments (#65 gap) was deliberately NOT done.
+- RESUME when Docker is healthy (`docker run --rm alpine:3 echo ok` returns):
+  `pnpm test:all` (keep .env present) → verify 23 `c654ca57*` fragments
+  passed/exit 0 → `git push --force-with-lease` (NEVER --no-verify) → watch
+  contract-test go green on PR #48 → all 21 runnable required green
+  (verify-images is path-filtered, non-applicable) → owner admin-merge #48 →
+  ping peer gr0flvsr (k8s) to deploy.
+- CURRENT PR #48 (a1b36807) required state: 20/21 GREEN; only contract-test red
+  (the thing c654ca57 fixes).
