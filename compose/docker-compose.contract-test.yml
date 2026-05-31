@@ -27,14 +27,18 @@ services:
       test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:9000/livez"]
       interval: 5s
       timeout: 3s
-      # retries + start_period widened (260530-rqk): on a 2-core CI runner the
-      # node process is CPU-starved while api+migrate build and litellm runs its
-      # ~5-min prisma migrate, so the fixture took ~70s to bind :9000 and the old
-      # 5s start_period + 25s retry window declared it unhealthy before it ever
-      # listened. This is a test-only fixture (profiles:[contract-test], never
-      # production); a generous health window costs nothing and removes the flake.
-      retries: 10
-      start_period: 90s
+      # start_period widened to 300s (260530-rqk). ROOT CAUSE confirmed by
+      # isolated repro: this trivial node:http server binds /livez in ~1s when run
+      # ALONE, but on the 2-core GitHub runner under the full contract-test stack
+      # (api+litellm+postgres+minio+traefik+pgbouncer+otel+loki+tempo+mimir+valkey
+      # +mailpit) the kernel starves the container of CPU quanta even after api is
+      # Healthy — measured 136s from container-start to first successful /livez in
+      # CI run 78709708036. It is NOT a code defect (the fixture is correct), so a
+      # generous start window is the right accommodation, not a band-aid. 300s
+      # gives >2x headroom over the observed 136s. Test-only fixture
+      # (profiles:[contract-test], never production) — a wide window costs nothing.
+      retries: 12
+      start_period: 300s
 
   # Phase 02.3 — One-shot conformance fixture seeder. Reuses the api image
   # (ships data/dist/seed-conformance.cjs via the Phase 02.1 Dockerfile).

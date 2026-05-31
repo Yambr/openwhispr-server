@@ -669,7 +669,7 @@ jobs:
             -f compose/docker-compose.storage.yml \
             -f compose/docker-compose.contract-test.yml \
             --profile default --profile contract-test \
-            up -d --wait --wait-timeout 300 fixture-idp
+            up -d --wait --wait-timeout 420 fixture-idp
       - name: Capture migrate + api logs on boot failure
         if: failure()
         run: |
