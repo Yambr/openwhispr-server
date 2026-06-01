@@ -133,6 +133,24 @@ export interface DiarizationDeps {
    */
   speachesFetch?: typeof fetch;
   /**
+   * Quick 260601 — bearer key for the outbound Speaches diarization POST.
+   *
+   * In the bundled docker-compose stack the Speaches container is open (no
+   * auth) and this is UNSET — the outbound request carries no Authorization
+   * header (back-compat). In the corporate poste where `SPEACHES_DIARIZATION_URL`
+   * points at an internal LiteLLM gateway exposing `/v1/audio/diarization`
+   * via `pass_through_endpoints` with `auth: true`, the gateway validates a
+   * virtual/master key — without this header it 401s while STT/realtime
+   * (which route through litellm-client's `authHeaders()`) keep working.
+   *
+   * Resolved at the index.ts env boundary (routes/index.ts) with the same
+   * precedence litellm-client uses: an explicit `SPEACHES_DIARIZATION_API_KEY`
+   * override wins, else `loadLitellmConfigFromEnv().masterKey`
+   * (= `LITELLM_VIRTUAL_KEY ?? LITELLM_MASTER_KEY`). When neither is set the
+   * dep is omitted and no header is sent.
+   */
+  speachesDiarizationApiKey?: string;
+  /**
    * Phase 68 — operator-owned pyannote.ai REST base URL, resolved from
    * `PYANNOTE_BASE_URL` at the `index.ts` env boundary (config/diarization.ts).
    * Threaded into the pyannote client factory. When omitted, the client
@@ -455,6 +473,10 @@ function mapPyannoteError(err: unknown, reply: FastifyReply, req: FastifyRequest
 function handleSpeachesDiarization(deps: DiarizationDeps) {
   const baseUrl = deps.speachesDiarizationUrl as string; // guarded at registration
   const fetchImpl: typeof fetch = deps.speachesFetch ?? globalThis.fetch;
+  // Quick 260601 — resolve the optional bearer key ONCE at handler build time.
+  // Trim guards against an env var set to whitespace; an empty result means
+  // "no auth" (bundled open Speaches) and the header is omitted below.
+  const apiKey = deps.speachesDiarizationApiKey?.trim();
   // Phase 68 — operator-tunable model alias (SPEACHES_DIARIZATION_MODEL),
   // resolved once at handler build time; bundled-default constant when no
   // dep was threaded from the env boundary.
@@ -547,13 +569,22 @@ function handleSpeachesDiarization(deps: DiarizationDeps) {
     const tail = Buffer.from(`${CRLF}--${boundary}--${CRLF}`, "utf8");
     const outBody = Buffer.concat([head, fileBuffer, tail]);
 
+    // Quick 260601 — attach the bearer key when configured. Lower-case header
+    // name for consistency with the rest of the codebase (undici normalises).
+    // When `apiKey` is empty/undefined the header is omitted so the bundled
+    // open-Speaches compose scenario is unaffected (back-compat).
+    const outHeaders: Record<string, string> = {
+      "content-type": `multipart/form-data; boundary=${boundary}`,
+    };
+    if (apiKey) {
+      outHeaders.authorization = `Bearer ${apiKey}`;
+    }
+
     let upstream: Response;
     try {
       upstream = await fetchImpl(`${baseUrl}/v1/audio/diarization`, {
         method: "POST",
-        headers: {
-          "content-type": `multipart/form-data; boundary=${boundary}`,
-        },
+        headers: outHeaders,
         body: outBody,
       });
     } catch (err) {

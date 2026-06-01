@@ -77,6 +77,8 @@ describe("REDACT_PATHS (D-T4 canonical list)", () => {
       "YANDEX_API_KEY",
       "LITELLM_VIRTUAL_KEY",
       "LITELLM_MASTER_KEY",
+      // Quick 260601 — Speaches diarization passthrough override key.
+      "SPEACHES_DIARIZATION_API_KEY",
     ]) {
       expect(REDACT_PATHS).toContain(env);
     }
@@ -127,6 +129,7 @@ describe("makePino sentinel sweep", () => {
         YANDEX_API_KEY: SENTINEL,
         LITELLM_VIRTUAL_KEY: SENTINEL,
         LITELLM_MASTER_KEY: SENTINEL,
+        SPEACHES_DIARIZATION_API_KEY: SENTINEL,
       },
       "sentinel sweep",
     );

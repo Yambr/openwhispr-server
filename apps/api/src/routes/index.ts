@@ -294,6 +294,21 @@ export interface AllRoutesDeps {
 }
 
 /**
+ * Quick 260601 — return the first argument whose trimmed value is non-empty,
+ * else `undefined`. Used to resolve the Speaches diarization bearer key with
+ * the litellm-client HI-2 precedence (override → virtual → master) WITHOUT
+ * calling `loadLitellmConfigFromEnv`, which throws when no litellm key is set.
+ */
+function firstNonEmptyEnv(...candidates: (string | undefined)[]): string | undefined {
+  for (const candidate of candidates) {
+    if (candidate !== undefined && candidate.trim().length > 0) {
+      return candidate;
+    }
+  }
+  return undefined;
+}
+
+/**
  * Build the ordered array of route plugin functions for `buildApp` to
  * register. Plan 04 calls this after the rate-limit plugin is in place
  * so per-route `config.rateLimit` is honored.
@@ -663,6 +678,23 @@ export function buildAllRoutes(deps: AllRoutesDeps): readonly RoutePlugin[] {
     const speachesUrl = process.env.SPEACHES_DIARIZATION_URL;
     if (speachesUrl && speachesUrl.length > 0) {
       diarizationDeps.speachesDiarizationUrl = speachesUrl;
+      // Quick 260601 — when the Speaches diarization endpoint is fronted by a
+      // corporate LiteLLM gateway (pass_through_endpoints auth:true), the
+      // outbound POST must carry a bearer key or the gateway 401s. Resolve
+      // with the same precedence litellm-client uses (HI-2): an explicit
+      // SPEACHES_DIARIZATION_API_KEY override wins, else LITELLM_VIRTUAL_KEY,
+      // else LITELLM_MASTER_KEY. We read these directly (NOT via
+      // loadLitellmConfigFromEnv, which THROWS when no litellm key is set) so
+      // the bundled open-Speaches load-test profile — speachesUrl set, no
+      // litellm key — still registers and sends no Authorization header.
+      const resolvedKey = firstNonEmptyEnv(
+        process.env.SPEACHES_DIARIZATION_API_KEY,
+        process.env.LITELLM_VIRTUAL_KEY,
+        process.env.LITELLM_MASTER_KEY,
+      );
+      if (resolvedKey) {
+        diarizationDeps.speachesDiarizationApiKey = resolvedKey;
+      }
     }
     plugins.push(buildDiarizationRoutes(diarizationDeps));
   }

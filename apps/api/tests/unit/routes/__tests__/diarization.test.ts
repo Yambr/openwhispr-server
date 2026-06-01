@@ -1446,6 +1446,84 @@ describe("POST /v1/audio/diarization", () => {
       }
     });
 
+    it("sends Authorization: Bearer when speachesDiarizationApiKey is set (corp LiteLLM gateway)", async () => {
+      // Quick 260601 — when the Speaches diarization endpoint is fronted by a
+      // corporate LiteLLM gateway with `pass_through_endpoints` auth:true, the
+      // outbound POST MUST carry the virtual/master key or the gateway 401s.
+      let capturedAuth: string | null = null;
+      const speachesFetch = async (_input: string | URL | Request, init?: RequestInit) => {
+        const h = init?.headers as Record<string, string> | undefined;
+        capturedAuth = h?.authorization ?? h?.Authorization ?? null;
+        return new Response(
+          JSON.stringify({ segments: [{ start: 0, end: 1, speaker: "SPEAKER_00" }] }),
+          { status: 200, headers: { "content-type": "application/json" } },
+        );
+      };
+      const a = Fastify({ logger: false });
+      registerErrorHandler(a);
+      a.register(fastifyMultipart, {
+        attachFieldsToBody: false as const,
+        limits: { fileSize: 100 * 1024 * 1024 },
+      });
+      a.register(zodTypeProvider);
+      a.addHook("onRequest", async (req) => {
+        req.user = { id: TEST_USER, email: "fixture@conformance.test" };
+        req.tenant = TEST_TENANT;
+      });
+      a.register(
+        buildDiarizationRoutes({
+          redis: makeFakeRedis(),
+          speachesDiarizationUrl: "http://speaches.internal.test:8000",
+          speachesDiarizationApiKey: "sk-virtual-corp-key",
+          speachesFetch: speachesFetch as unknown as typeof fetch,
+        }),
+      );
+      try {
+        const { body, contentType } = multipartBody("audio");
+        const res = await a.inject({
+          method: "POST",
+          url: "/v1/audio/diarization",
+          headers: { "content-type": contentType },
+          payload: body,
+        });
+        expect(res.statusCode).toBe(200);
+        expect(capturedAuth).toBe("Bearer sk-virtual-corp-key");
+      } finally {
+        await a.close();
+      }
+    });
+
+    it("omits Authorization when no key is set (back-compat with bundled open Speaches)", async () => {
+      // The bundled docker-compose Speaches container has no auth; sending an
+      // empty Bearer would be wrong. With no key the header MUST be absent.
+      let hadAuthHeader = true;
+      const speachesFetch = async (_input: string | URL | Request, init?: RequestInit) => {
+        const h = init?.headers as Record<string, string> | undefined;
+        hadAuthHeader = h?.authorization !== undefined || h?.Authorization !== undefined;
+        return new Response(
+          JSON.stringify({ segments: [{ start: 0, end: 1, speaker: "SPEAKER_00" }] }),
+          { status: 200, headers: { "content-type": "application/json" } },
+        );
+      };
+      // buildSpeachesApp injects NO speachesDiarizationApiKey.
+      const appNoKey = buildSpeachesApp({
+        speachesFetch: speachesFetch as unknown as typeof fetch,
+      });
+      try {
+        const { body, contentType } = multipartBody("audio");
+        const res = await appNoKey.inject({
+          method: "POST",
+          url: "/v1/audio/diarization",
+          headers: { "content-type": contentType },
+          payload: body,
+        });
+        expect(res.statusCode).toBe(200);
+        expect(hadAuthHeader).toBe(false);
+      } finally {
+        await appNoKey.close();
+      }
+    });
+
     it("maps Speaches 5xx to 503 envelope (operator-actionable)", async () => {
       const speachesFetch = async () =>
         new Response("internal error", {
