@@ -176,6 +176,17 @@ image:
   #   image v1.0.4 (A1 byok-guard export / A2 email k8s bypass / A3 worker
   #   CJS guard / A4 worker VALKEY_URL parser / A5 POST /api/locale).
   # Companion openwhispr-postgres chart 1.1.0 ships the rolconfig fix (B4).
+  # 1.0.19 — diarization Speaches passthrough Authorization fix (Quick
+  # 260601-d1a): the /v1/audio/diarization Speaches branch (gated by
+  # SPEACHES_DIARIZATION_URL) now sends Authorization: Bearer <key> on its
+  # outbound POST, fixing a 401 when the diarization endpoint is fronted by a
+  # corporate LiteLLM gateway (pass_through_endpoints auth:true). The key is
+  # resolved with litellm-client HI-2 precedence: SPEACHES_DIARIZATION_API_KEY
+  # (new optional override) -> LITELLM_VIRTUAL_KEY -> LITELLM_MASTER_KEY; no
+  # key set -> no header (back-compat with the bundled open Speaches
+  # container). api-image-only change; no DB/schema/wire/web change. Operators
+  # already running with LITELLM_MASTER_KEY (or LITELLM_VIRTUAL_KEY) need no
+  # config change — the fallback picks the existing key up automatically.
   # 1.0.18 — public /download page on the web console (Quick 260531-dlx):
   # new no-auth /download route fetches the latest desktop installer from the
   # Yambr/openwhispr GitHub releases (1h cache, graceful releases-picker
@@ -223,7 +234,7 @@ image:
   # desktop client could not render. See docs/operations.md "Agent stream
   # error contract" section for the wire envelope + AgentErrorCode
   # taxonomy + log event schema.
-  tag: "1.0.18"
+  tag: "1.0.19"
   api:     { repository: openwhispr-api }
   web:     { repository: openwhispr-web }
   worker:  { repository: openwhispr-worker }
