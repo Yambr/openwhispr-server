@@ -20,7 +20,7 @@
 //      when the route is invoked (proves mockDiarization opt is threaded).
 
 import type { ExecutableTx, TransactionalDb } from "@openwhispr/data";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { buildApp } from "../../../src/index.js";
 import type { RedisLike } from "../../../src/lib/idempotency-cache.js";
 import type { AuthLike } from "../../../src/middleware/dual-auth.js";
@@ -63,6 +63,10 @@ function fakeAuth(): AuthLike {
 }
 
 describe("buildApp — CR-01 redis/diarization wiring", () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
   it("registers /v1/audio/diarization in the route tree when redis is supplied", async () => {
     const app = await buildApp({
       db: fakeDb(),
@@ -85,6 +89,28 @@ describe("buildApp — CR-01 redis/diarization wiring", () => {
     try {
       const tree = app.printRoutes({ commonPrefix: false });
       expect(tree).not.toContain("/v1/audio/diarization");
+    } finally {
+      await app.close();
+    }
+  });
+
+  it("registers /v1/audio/diarization when SPEACHES_DIARIZATION_URL is set but NO litellm key exists (open-Speaches load-test profile must not throw)", async () => {
+    // Quick 260601 — the Speaches-key resolution must NOT call
+    // loadLitellmConfigFromEnv (which THROWS when neither LITELLM_VIRTUAL_KEY
+    // nor LITELLM_MASTER_KEY is set). Regression guard: the bundled
+    // open-Speaches load-test profile sets only SPEACHES_DIARIZATION_URL.
+    vi.stubEnv("SPEACHES_DIARIZATION_URL", "http://speaches.internal.test:8000");
+    vi.stubEnv("SPEACHES_DIARIZATION_API_KEY", "");
+    vi.stubEnv("LITELLM_VIRTUAL_KEY", "");
+    vi.stubEnv("LITELLM_MASTER_KEY", "");
+    const app = await buildApp({
+      db: fakeDb(),
+      auth: fakeAuth(),
+      redis: fakeRedis(),
+    });
+    try {
+      const tree = app.printRoutes({ commonPrefix: false });
+      expect(tree).toContain("/v1/audio/diarization");
     } finally {
       await app.close();
     }
