@@ -40,6 +40,23 @@ const here =
 const MIGRATIONS_FOLDER = resolve(here, "..", "migrations");
 
 /**
+ * Quick 260602-x6z (upstream #4) — libpq session GUCs applied to the MIGRATE
+ * pool ONLY (never the app pool). They let a SINGLE NOBYPASSRLS role replay the
+ * full migration history on a fresh DB without relying on a BYPASSRLS role
+ * attribute:
+ *   - `app.bypass=on`  → satisfies post-0033 RLS policies (the claim-driven arm).
+ *   - `app.tenant_id=<default tenant>` → satisfies pre-0033 policy WITH CHECK on
+ *     the seed/backfill DML in 0004 (UPDATE users) + 0006 (INSERT tenant_settings),
+ *     whose rows are all the nil-UUID 'default' tenant on a fresh DB.
+ * This is the operator's verified DSN workaround
+ * (`options=-c app.bypass=on -c app.tenant_id=...`) baked into the runner.
+ * CRITICAL: scoped to the migrate pool — the app pool (makeAppDb / DATABASE_URL)
+ * NEVER carries these, so RLS stays full-force for application traffic.
+ */
+export const MIGRATE_SESSION_OPTIONS =
+  "-c app.bypass=on -c app.tenant_id=00000000-0000-0000-0000-000000000000";
+
+/**
  * Whitelist a Postgres identifier for safe interpolation into DDL where
  * parameterized binds are not accepted (CREATE DATABASE OWNER ...).
  * Accepts only the canonical SQL identifier shape `[A-Za-z_][A-Za-z0-9_]*`.
@@ -212,7 +229,7 @@ async function main(): Promise<void> {
     await ensureLitellmDatabase(adminUrl, owner);
   }
 
-  const pool = new Pool(buildPoolConfig(url, { max: 2 }));
+  const pool = new Pool(buildPoolConfig(url, { max: 2, options: MIGRATE_SESSION_OPTIONS }));
   try {
     const db = drizzle(pool);
     await migrate(db, {

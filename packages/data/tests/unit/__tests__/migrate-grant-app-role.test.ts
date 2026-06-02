@@ -8,7 +8,33 @@
 // unsafe identifiers — verified here so a malicious env can't inject DDL.
 
 import { describe, expect, it, vi } from "vitest";
-import { grantAppRoleMembership } from "../../../src/migrate.js";
+import { buildPoolConfig } from "../../../src/client.js";
+import { grantAppRoleMembership, MIGRATE_SESSION_OPTIONS } from "../../../src/migrate.js";
+
+describe("MIGRATE_SESSION_OPTIONS (quick 260602-x6z, upstream #4)", () => {
+  it("sets app.bypass=on and app.tenant_id=<default tenant> as libpq GUCs", () => {
+    expect(MIGRATE_SESSION_OPTIONS).toContain("-c app.bypass=on");
+    expect(MIGRATE_SESSION_OPTIONS).toContain(
+      "-c app.tenant_id=00000000-0000-0000-0000-000000000000",
+    );
+  });
+
+  it("the APP pool config carries NO bypass GUCs (RLS stays full-force for app traffic)", () => {
+    // The migrate-only options must NEVER leak into the app pool. buildPoolConfig
+    // for an app DSN gets no `options` unless a caller explicitly passes one.
+    const appCfg = buildPoolConfig("postgres://openwhispr_app:pw@pgbouncer:5432/openwhispr");
+    expect(appCfg.options).toBeUndefined();
+    expect(JSON.stringify(appCfg)).not.toContain("app.bypass");
+  });
+
+  it("the MIGRATE pool config carries the options when passed (mirrors migrate.ts)", () => {
+    const migrateCfg = buildPoolConfig("postgres://openwhispr_owner:pw@postgres:5432/openwhispr", {
+      max: 2,
+      options: MIGRATE_SESSION_OPTIONS,
+    });
+    expect(migrateCfg.options).toBe(MIGRATE_SESSION_OPTIONS);
+  });
+});
 
 interface QueryCall {
   text: string;

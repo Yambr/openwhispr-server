@@ -45,14 +45,32 @@ ALTER TABLE "user_settings"   ENABLE ROW LEVEL SECURITY;
 ALTER TABLE "user_settings"   FORCE  ROW LEVEL SECURITY;
 --> statement-breakpoint
 
+-- Quick 260602-x6z (upstream #4) — bypass-aware at creation. The claim-driven
+-- `app.bypass` arm + the NULLIF fail-closed form (later reshaped by 0018/0033)
+-- are applied HERE so this migration is self-contained: a fresh replay under a
+-- NOBYPASSRLS role passes the seed-backfill INSERT below without relying on a
+-- later retrofit. The migrate runner sets app.bypass=on + app.tenant_id=<default>
+-- (MIGRATE_SESSION_OPTIONS) so both arms are satisfiable during replay.
 CREATE POLICY "tenant_settings_isolation" ON "tenant_settings"
-	USING ("tenant_id" = current_setting('app.tenant_id', true)::uuid)
-	WITH CHECK ("tenant_id" = current_setting('app.tenant_id', true)::uuid);
+	USING (
+		current_setting('app.bypass', true) = 'on'
+		OR "tenant_id" = NULLIF(current_setting('app.tenant_id', true), '')::uuid
+	)
+	WITH CHECK (
+		current_setting('app.bypass', true) = 'on'
+		OR "tenant_id" = NULLIF(current_setting('app.tenant_id', true), '')::uuid
+	);
 --> statement-breakpoint
 
 CREATE POLICY "user_settings_isolation" ON "user_settings"
-	USING ("tenant_id" = current_setting('app.tenant_id', true)::uuid)
-	WITH CHECK ("tenant_id" = current_setting('app.tenant_id', true)::uuid);
+	USING (
+		current_setting('app.bypass', true) = 'on'
+		OR "tenant_id" = NULLIF(current_setting('app.tenant_id', true), '')::uuid
+	)
+	WITH CHECK (
+		current_setting('app.bypass', true) = 'on'
+		OR "tenant_id" = NULLIF(current_setting('app.tenant_id', true), '')::uuid
+	);
 --> statement-breakpoint
 
 -- AFTER INSERT trigger function (Pitfall #8 — AFTER, not BEFORE).
