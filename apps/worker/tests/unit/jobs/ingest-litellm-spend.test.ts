@@ -838,17 +838,23 @@ describe("BullMQ wiring (no-redis smoke)", () => {
       },
     } as never;
     let inserted = 0;
+    // Quick 260602-j9z (blocker #2) — the FORCE-RLS users/usage_ledger touches
+    // now flow through withSystemBypassClient, which checks out a client. The
+    // fake pool must expose connect() returning a client delegating to the same
+    // query logic. BEGIN / COMMIT / set_config fall through to `{ rows: [] }`.
+    const ownerQuery = async (text: string) => {
+      if (/SELECT\s+tenant_id\s+FROM\s+users/i.test(text)) {
+        return { rows: [{ tenant_id: "tenant-1" }] };
+      }
+      if (/INSERT\s+INTO\s+usage_ledger/i.test(text)) {
+        inserted++;
+        return { rowCount: 1 };
+      }
+      return { rows: [] };
+    };
     const appOwnerPool = {
-      async query(text: string) {
-        if (/SELECT\s+tenant_id\s+FROM\s+users/i.test(text)) {
-          return { rows: [{ tenant_id: "tenant-1" }] };
-        }
-        if (/INSERT\s+INTO\s+usage_ledger/i.test(text)) {
-          inserted++;
-          return { rowCount: 1 };
-        }
-        return { rows: [] };
-      },
+      query: ownerQuery,
+      connect: async () => ({ query: ownerQuery, release() {} }),
     } as never;
     const result = await runIngestOnce({
       litellmPool,
@@ -882,14 +888,17 @@ describe("BullMQ wiring (no-redis smoke)", () => {
         };
       },
     } as never;
+    // Quick 260602-j9z (blocker #2) — bypass-client path: expose connect().
+    const ownerQueryConflict = async (text: string) => {
+      if (/SELECT\s+tenant_id\s+FROM\s+users/i.test(text)) {
+        return { rows: [{ tenant_id: "tenant-1" }] };
+      }
+      // Simulate ON CONFLICT DO NOTHING: rowCount is null.
+      return { rowCount: null };
+    };
     const appOwnerPool = {
-      async query(text: string) {
-        if (/SELECT\s+tenant_id\s+FROM\s+users/i.test(text)) {
-          return { rows: [{ tenant_id: "tenant-1" }] };
-        }
-        // Simulate ON CONFLICT DO NOTHING: rowCount is null.
-        return { rowCount: null };
-      },
+      query: ownerQueryConflict,
+      connect: async () => ({ query: ownerQueryConflict, release() {} }),
     } as never;
     const result = await runIngestOnce({
       litellmPool,
@@ -921,17 +930,19 @@ describe("BullMQ wiring (no-redis smoke)", () => {
       },
     } as never;
     let captured: unknown[] | undefined;
+    const ownerQueryCapture = async (text: string, params?: unknown[]) => {
+      if (/SELECT\s+tenant_id/i.test(text)) {
+        return { rows: [{ tenant_id: "tenant-1" }] };
+      }
+      if (/INSERT\s+INTO\s+usage_ledger/i.test(text)) {
+        captured = params;
+        return { rowCount: 1 };
+      }
+      return { rows: [] };
+    };
     const appOwnerPool = {
-      async query(text: string, params?: unknown[]) {
-        if (/SELECT\s+tenant_id/i.test(text)) {
-          return { rows: [{ tenant_id: "tenant-1" }] };
-        }
-        if (/INSERT\s+INTO\s+usage_ledger/i.test(text)) {
-          captured = params;
-          return { rowCount: 1 };
-        }
-        return { rows: [] };
-      },
+      query: ownerQueryCapture,
+      connect: async () => ({ query: ownerQueryCapture, release() {} }),
     } as never;
     await runIngestOnce({
       litellmPool,
@@ -977,17 +988,19 @@ describe("BullMQ wiring (no-redis smoke)", () => {
       },
     } as never;
     let insertCount = 0;
+    const ownerQueryInsertCount = async (text: string) => {
+      if (/SELECT\s+tenant_id\s+FROM\s+users/i.test(text)) {
+        return { rows: [{ tenant_id: "tenant-1" }] };
+      }
+      if (/INSERT\s+INTO\s+usage_ledger/i.test(text)) {
+        insertCount++;
+        return { rowCount: 1 };
+      }
+      return { rows: [] };
+    };
     const appOwnerPool = {
-      async query(text: string) {
-        if (/SELECT\s+tenant_id\s+FROM\s+users/i.test(text)) {
-          return { rows: [{ tenant_id: "tenant-1" }] };
-        }
-        if (/INSERT\s+INTO\s+usage_ledger/i.test(text)) {
-          insertCount++;
-          return { rowCount: 1 };
-        }
-        return { rows: [] };
-      },
+      query: ownerQueryInsertCount,
+      connect: async () => ({ query: ownerQueryInsertCount, release() {} }),
     } as never;
     const result = await runIngestOnce({
       litellmPool,
@@ -1027,17 +1040,19 @@ describe("BullMQ wiring (no-redis smoke)", () => {
       },
     } as never;
     let captured: unknown[] | undefined;
+    const ownerQueryCapture2 = async (text: string, params?: unknown[]) => {
+      if (/SELECT\s+tenant_id\s+FROM\s+users/i.test(text)) {
+        return { rows: [{ tenant_id: "tenant-1" }] };
+      }
+      if (/INSERT\s+INTO\s+usage_ledger/i.test(text)) {
+        captured = params;
+        return { rowCount: 1 };
+      }
+      return { rows: [] };
+    };
     const appOwnerPool = {
-      async query(text: string, params?: unknown[]) {
-        if (/SELECT\s+tenant_id\s+FROM\s+users/i.test(text)) {
-          return { rows: [{ tenant_id: "tenant-1" }] };
-        }
-        if (/INSERT\s+INTO\s+usage_ledger/i.test(text)) {
-          captured = params;
-          return { rowCount: 1 };
-        }
-        return { rows: [] };
-      },
+      query: ownerQueryCapture2,
+      connect: async () => ({ query: ownerQueryCapture2, release() {} }),
     } as never;
     const result = await runIngestOnce({
       litellmPool,
@@ -1072,13 +1087,15 @@ describe("BullMQ wiring (no-redis smoke)", () => {
         };
       },
     } as never;
+    const ownerQueryTokenPriced = async (text: string) => {
+      if (/SELECT\s+tenant_id\s+FROM\s+users/i.test(text)) {
+        return { rows: [{ tenant_id: "tenant-1" }] };
+      }
+      return { rowCount: 1 };
+    };
     const appOwnerPool = {
-      async query(text: string) {
-        if (/SELECT\s+tenant_id\s+FROM\s+users/i.test(text)) {
-          return { rows: [{ tenant_id: "tenant-1" }] };
-        }
-        return { rowCount: 1 };
-      },
+      query: ownerQueryTokenPriced,
+      connect: async () => ({ query: ownerQueryTokenPriced, release() {} }),
     } as never;
     const result = await runIngestOnce({
       litellmPool,

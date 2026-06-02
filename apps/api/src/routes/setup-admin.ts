@@ -42,7 +42,7 @@
 // safeParse is therefore defence-in-depth, not a violation of single-
 // gate doctrine.
 
-import type { ExecutableTx, TransactionalDb } from "@openwhispr/data";
+import { type ExecutableTx, type TransactionalDb, withSystemBypassClient } from "@openwhispr/data";
 import { sql } from "drizzle-orm";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import type { Pool } from "pg";
@@ -326,9 +326,14 @@ export const buildSetupAdminRoutes = (deps: SetupAdminDeps) =>
 
         if (claimRowCount === 0) {
           // Race-loser / already-completed. P1: 200, NEVER 409.
-          const adminRes = await ownerPool.query<AdminLookupRow>(
-            `SELECT email FROM users WHERE role = 'admin' ORDER BY created_at ASC LIMIT 1`,
-          );
+          // Quick 260602-j9z (blocker #2) — read the FORCE-RLS `users` table
+          // via the claim-driven bypass so first-tenant bootstrap works on a
+          // single NOBYPASSRLS role (no owner-BYPASSRLS reliance).
+          const adminRes = (await withSystemBypassClient(ownerPool, (client) =>
+            client.query(
+              `SELECT email FROM users WHERE role = 'admin' ORDER BY created_at ASC LIMIT 1`,
+            ),
+          )) as { rows: AdminLookupRow[] };
           const existingEmail = adminRes.rows[0]?.email;
           return reply.code(200).send({ admin: { email: existingEmail }, alreadyCompleted: true });
         }
@@ -365,6 +370,12 @@ export const buildSetupAdminRoutes = (deps: SetupAdminDeps) =>
           });
         }
 
+        // Capture user.id locally so TS flow analysis keeps the non-null
+        // narrowing from the guard above across the bypass / db.transaction
+        // closure boundaries (signUpResult.data was checked at line 354 but
+        // the narrowing is otherwise lost inside async lambdas).
+        const newAdminUserId: string = signUpResult.data.user.id;
+
         // 5. Flip role server-side. Bearer branch BYPASSES the
         //    email_verified predicate (R8.3 + P6) -- that's its raison
         //    d'etre as the operator-recovery / corporate-internal path.
@@ -373,19 +384,24 @@ export const buildSetupAdminRoutes = (deps: SetupAdminDeps) =>
         // the role flip fails (transient pool error / statement timeout
         // / net blip).
         try {
-          await ownerPool.query(`UPDATE users SET role = 'admin' WHERE id = $1`, [
-            signUpResult.data.user.id,
-          ]);
+          // Quick 260602-j9z (blocker #2) — FORCE-RLS `users` role flip via the
+          // claim-driven bypass (single NOBYPASSRLS role). Without it the
+          // UPDATE silently affects 0 rows and the admin is never promoted.
+          await withSystemBypassClient(ownerPool, (client) =>
+            client.query(`UPDATE users SET role = 'admin' WHERE id = $1`, [newAdminUserId]),
+          );
         } catch (err) {
           req.log.error(
-            { err, userId: signUpResult.data.user.id },
+            { err, userId: newAdminUserId },
             "role_flip_failed_rolling_back_setup_admin",
           );
           try {
-            await ownerPool.query(`DELETE FROM users WHERE id = $1`, [signUpResult.data.user.id]);
+            await withSystemBypassClient(ownerPool, (client) =>
+              client.query(`DELETE FROM users WHERE id = $1`, [newAdminUserId]),
+            );
           } catch (cleanupErr) {
             req.log.warn(
-              { err: cleanupErr, userId: signUpResult.data.user.id },
+              { err: cleanupErr, userId: newAdminUserId },
               "role_flip_cleanup_user_delete_failed",
             );
           }
@@ -428,12 +444,6 @@ export const buildSetupAdminRoutes = (deps: SetupAdminDeps) =>
         //    audited action commits" is best-effort here because we
         //    cannot atomically wrap signUpEmail (BA owns its own
         //    transaction).
-        //
-        // Capture user.id locally so TS flow analysis sees the
-        // non-null narrowing across the db.transaction closure boundary
-        // (signUpResult.data was checked at line 354 but the narrowing
-        // is otherwise lost inside async lambdas).
-        const newAdminUserId: string = signUpResult.data.user.id;
         const tenantIdForAudit = await resolveDefaultTenantId();
         try {
           const ctx: AuditCtx = auditCtxFromRequest(req, tenantIdForAudit, newAdminUserId);

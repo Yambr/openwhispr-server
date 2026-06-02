@@ -239,6 +239,13 @@
       "when": 1781712000000,
       "tag": "0032_audit_log_sso_actions",
       "breakpoints": true
+    },
+    {
+      "idx": 34,
+      "version": "7",
+      "when": 1781798400000,
+      "tag": "0033_rls_claim_driven_bypass",
+      "breakpoints": true
     }
   ]
 }

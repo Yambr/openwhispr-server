@@ -220,11 +220,60 @@ async function main(): Promise<void> {
       migrationsSchema: "_meta",
       migrationsTable: "__drizzle_migrations",
     });
+    // Quick 260602-j9z (blocker #2) — custom-role GRANT inheritance. The
+    // in-migration GRANTs target the literal role `openwhispr_app` under
+    // `IF EXISTS`, so on a managed Postgres whose single role is named
+    // `svcdb_*` those grants silently no-op. When the operator sets
+    // `DATABASE_APP_ROLE` to a non-default name, make that role a MEMBER of
+    // `openwhispr_app` so it inherits the entire canonical GRANT chain in ONE
+    // statement (no per-table GRANT duplication). No-op + safe when either
+    // role is absent. Claim-driven RLS bypass (migration 0033) already lets a
+    // single NOBYPASSRLS role run every path; this closes the privilege gap.
+    await grantAppRoleMembership(pool, process.env);
     // biome-ignore lint/suspicious/noConsole: one-shot CLI script
     console.log("migrate: ok");
   } finally {
     await pool.end();
   }
+}
+
+/**
+ * Quick 260602-j9z (blocker #2) — when `DATABASE_APP_ROLE` names a role other
+ * than the canonical `openwhispr_app`, GRANT that role membership in
+ * `openwhispr_app` so it inherits every table/sequence/function privilege the
+ * migrations granted. Idempotent + guarded: skips when the env is unset or
+ * equals the default, and when either role does not exist (so a fresh compose
+ * bring-up that hasn't created the custom role is unaffected). `pgIdent`
+ * validates both names — never string-interpolates an unsafe identifier.
+ */
+export async function grantAppRoleMembership(
+  pool: Pick<Pool, "query">,
+  env: NodeJS.ProcessEnv = process.env,
+  log: (msg: string) => void = (m) => {
+    // biome-ignore lint/suspicious/noConsole: one-shot CLI script
+    console.log(m);
+  },
+): Promise<void> {
+  const CANONICAL_APP_ROLE = "openwhispr_app";
+  const appRole = env.DATABASE_APP_ROLE?.trim();
+  if (!appRole || appRole === CANONICAL_APP_ROLE) return;
+  const member = pgIdent(appRole);
+  const canonical = pgIdent(CANONICAL_APP_ROLE);
+  const { rows } = await pool.query<{ both: boolean }>(
+    `SELECT (
+       EXISTS (SELECT 1 FROM pg_roles WHERE rolname = $1)
+       AND EXISTS (SELECT 1 FROM pg_roles WHERE rolname = $2)
+     ) AS both`,
+    [appRole, CANONICAL_APP_ROLE],
+  );
+  if (!rows[0]?.both) {
+    log(
+      `migrate: skipping app-role membership grant — ${appRole} or ${CANONICAL_APP_ROLE} does not exist`,
+    );
+    return;
+  }
+  await pool.query(`GRANT ${canonical} TO ${member}`);
+  log(`migrate: granted ${canonical} membership to ${member} (inherits app GRANT chain)`);
 }
 
 // Phase 03 Plan 01 Task 2 — guard the auto-execution so this module is

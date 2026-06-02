@@ -15,7 +15,11 @@
 // safety claim is covered by `pgbouncer-interleave.test.ts`. Here we only
 // pin down the call shape (parameterization, ordering, validation gate).
 import { describe, expect, it, vi } from "vitest";
-import { withTenant } from "../../../src/tenant-context.js";
+import {
+  withSystemBypass,
+  withSystemBypassClient,
+  withTenant,
+} from "../../../src/tenant-context.js";
 
 interface RecordedExecute {
   sqlString: string;
@@ -155,5 +159,76 @@ describe("withTenant — Phase 32 fail-closed contract", () => {
     expect(src).toMatch(/Phase 32/);
     expect(src).toMatch(/fail[- ]closed/i);
     expect(src).toMatch(/42501|permission denied/i);
+  });
+});
+
+// Quick 260602-j9z / blocker #2 — claim-driven bypass helpers. Unit-level
+// call-shape contract (the real cross-tenant behaviour is the security proof
+// in rls-claim-bypass.property.test.ts against a NOBYPASSRLS testcontainer).
+describe("withSystemBypass (Drizzle-tx variant)", () => {
+  it("opens a tx and sets set_config('app.bypass', 'on', true) before fn runs", async () => {
+    const { db, calls, transaction } = makeSpyDb();
+    let fnSawBypassFirst = false;
+    const result = await withSystemBypass(db as never, async () => {
+      fnSawBypassFirst = calls.length === 1;
+      return "ok";
+    });
+    expect(result).toBe("ok");
+    expect(transaction).toHaveBeenCalledTimes(1);
+    expect(fnSawBypassFirst).toBe(true);
+    expect(calls).toHaveLength(1);
+    expect(calls[0]?.sqlString).toContain("set_config('app.bypass', 'on', true)");
+  });
+
+  it("propagates fn rejection (tx rolls back)", async () => {
+    const { db } = makeSpyDb();
+    await expect(
+      withSystemBypass(db as never, async () => {
+        throw new Error("boom");
+      }),
+    ).rejects.toThrowError("boom");
+  });
+});
+
+describe("withSystemBypassClient (raw pg.Pool variant)", () => {
+  function makeSpyPool() {
+    const queries: string[] = [];
+    let released = false;
+    const client = {
+      query: vi.fn(async (text: string) => {
+        queries.push(text);
+        return { rows: [], rowCount: 0 };
+      }),
+      release: vi.fn(() => {
+        released = true;
+      }),
+    };
+    const pool = { connect: vi.fn(async () => client) };
+    return { pool, client, queries, isReleased: () => released };
+  }
+
+  it("BEGIN → set_config('app.bypass','on',true) → fn → COMMIT, then releases", async () => {
+    const { pool, queries, isReleased } = makeSpyPool();
+    let fnSawSetup = false;
+    const result = await withSystemBypassClient(pool as never, async () => {
+      fnSawSetup =
+        queries[0] === "BEGIN" && queries[1] === "SELECT set_config('app.bypass', 'on', true)";
+      return 7;
+    });
+    expect(result).toBe(7);
+    expect(fnSawSetup).toBe(true);
+    expect(queries).toEqual(["BEGIN", "SELECT set_config('app.bypass', 'on', true)", "COMMIT"]);
+    expect(isReleased()).toBe(true);
+  });
+
+  it("ROLLBACK + release on fn rejection, and re-throws", async () => {
+    const { pool, queries, isReleased } = makeSpyPool();
+    await expect(
+      withSystemBypassClient(pool as never, async () => {
+        throw new Error("fn-failed");
+      }),
+    ).rejects.toThrowError("fn-failed");
+    expect(queries).toEqual(["BEGIN", "SELECT set_config('app.bypass', 'on', true)", "ROLLBACK"]);
+    expect(isReleased()).toBe(true);
   });
 });
