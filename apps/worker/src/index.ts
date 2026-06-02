@@ -143,7 +143,14 @@ async function main(): Promise<void> {
   // race with the drain. Non-fatal — try/catch lives inside the helper.
   await drainStaleVkrKeys(redis, log);
 
-  const litellmPool = makeLitellmPool();
+  // Quick 260602-eth — spend reconciliation reads LiteLLM_SpendLogs cross-DB.
+  // On a self-host pointed at an EXTERNAL LiteLLM gateway there is no LiteLLM
+  // DB to reach into, so `spendReconciliationEnabled` resolves false and we
+  // never construct the pool (makeLitellmPool would otherwise throw on the
+  // missing URL). The ingest/reconciliation workers + cron are gated on it
+  // below; every other job runs regardless.
+  const spendReconciliationEnabled = workerConfig.spendReconciliationEnabled;
+  const litellmPool = spendReconciliationEnabled ? makeLitellmPool() : null;
   const appOwnerPool = makeAppOwnerPool();
   // Phase 66 / CR-09 — the inline maintenancePool gets the SAME shared
   // PgBouncer guard makeAppOwnerPool / makeLitellmPool use. Pre-fix it
@@ -160,22 +167,23 @@ async function main(): Promise<void> {
     max: 1,
   });
 
-  // Pre-existing ingest queue (Phase 3 wiring kept intact).
-  const ingestQueue = createIngestQueue(redis);
-  await ingestIngestSchedulerSafe(ingestQueue);
+  // Pre-existing ingest queue (Phase 3 wiring kept intact). Gated on
+  // spend-reconciliation (quick 260602-eth) — the ingest job reads LiteLLM's
+  // DB cross-DB and is meaningless without it.
+  const ingestQueue = spendReconciliationEnabled ? createIngestQueue(redis) : null;
+  if (ingestQueue) {
+    await ingestIngestSchedulerSafe(ingestQueue);
+  }
 
-  // Phase 6 typed queue registry + scheduler.
+  // Phase 6 typed queue registry + scheduler. The reconciliation cron is
+  // suppressed when spend reconciliation is disabled; usage-rollup + partman
+  // always install.
   const registry = buildQueueRegistry(connection);
-  await installSchedulers(registry);
+  await installSchedulers(registry, { reconciliationEnabled: spendReconciliationEnabled });
 
-  // Workers.
-  const ingestWorker = createIngestWorker({
-    litellmPool,
-    appOwnerPool,
-    connection,
-    redis,
-  });
-
+  // Workers. The LiteLLM-DB-dependent trio (ingest + the two reconciliation
+  // workers) is only constructed when spend reconciliation is enabled
+  // (quick 260602-eth); on external-gateway deploys litellmPool is null.
   const emailWorker = new Worker(
     QUEUE_NAMES.emailDelivery,
     buildEmailDeliveryHandler({
@@ -199,23 +207,6 @@ async function main(): Promise<void> {
     buildUsageRollupTenantHandler({ pool: appOwnerPool }),
     { connection },
   );
-  const reconciliationCheckWorker = new Worker(
-    QUEUE_NAMES.reconciliationDailyCheck,
-    buildReconciliationDailyCheckHandler({
-      litellmPool,
-      appOwnerPool,
-      discrepancyQueue: registry.reconciliationDiscrepancy,
-    }),
-    { connection },
-  );
-  const reconciliationDiscrepancyWorker = new Worker(
-    QUEUE_NAMES.reconciliationDiscrepancy,
-    buildReconciliationDiscrepancyHandler({
-      pool: appOwnerPool,
-      ingestDeps: { litellmPool, appOwnerPool, connection, redis },
-    }),
-    { connection },
-  );
   const partmanWorker = new Worker(
     QUEUE_NAMES.partmanMaintenance,
     buildPartmanMaintenanceHandler({
@@ -230,18 +221,55 @@ async function main(): Promise<void> {
     { connection },
   );
 
-  const workers = [
-    ingestWorker,
+  // Always-on workers (no LiteLLM-DB dependency).
+  const workers: Worker[] = [
     emailWorker,
     rollupDispatcherWorker,
     rollupTenantWorker,
-    reconciliationCheckWorker,
-    reconciliationDiscrepancyWorker,
     partmanWorker,
     auditArchiveWorker,
   ];
 
-  log.info({ workers: workers.length }, "worker started");
+  // Pools drained on shutdown — appOwnerPool + maintenancePool always; the
+  // LiteLLM pool only when constructed.
+  const pools: Pool[] = [appOwnerPool, maintenancePool];
+
+  // Quick 260602-eth — the spend-reconciliation trio (ingest + the two
+  // reconciliation workers) is wired only when a LiteLLM DB is reachable.
+  // `litellmPool` is non-null inside this branch, satisfying the handler deps
+  // without a non-null assertion.
+  if (litellmPool) {
+    const ingestWorker = createIngestWorker({
+      litellmPool,
+      appOwnerPool,
+      connection,
+      redis,
+    });
+    const reconciliationCheckWorker = new Worker(
+      QUEUE_NAMES.reconciliationDailyCheck,
+      buildReconciliationDailyCheckHandler({
+        litellmPool,
+        appOwnerPool,
+        discrepancyQueue: registry.reconciliationDiscrepancy,
+      }),
+      { connection },
+    );
+    const reconciliationDiscrepancyWorker = new Worker(
+      QUEUE_NAMES.reconciliationDiscrepancy,
+      buildReconciliationDiscrepancyHandler({
+        pool: appOwnerPool,
+        ingestDeps: { litellmPool, appOwnerPool, connection, redis },
+      }),
+      { connection },
+    );
+    workers.push(ingestWorker, reconciliationCheckWorker, reconciliationDiscrepancyWorker);
+    pools.push(litellmPool);
+  }
+
+  log.info(
+    { workers: workers.length, spendReconciliation: spendReconciliationEnabled },
+    "worker started",
+  );
 
   let shuttingDown = false;
   const shutdown = async (signal: string): Promise<void> => {
@@ -257,7 +285,7 @@ async function main(): Promise<void> {
       workers,
       ingestQueue,
       closeRegistry: () => closeQueueRegistry(registry),
-      pools: [litellmPool, appOwnerPool, maintenancePool],
+      pools,
       redis,
       logger: log,
     });

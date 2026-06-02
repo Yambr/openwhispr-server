@@ -32,8 +32,12 @@ export interface AsyncQuittable {
 export interface ShutdownDeps {
   /** BullMQ Worker instances to drain. */
   workers: AsyncCloseable[];
-  /** The pre-existing ingest queue handle. */
-  ingestQueue: AsyncCloseable;
+  /**
+   * The pre-existing ingest queue handle. `null` when spend reconciliation
+   * is disabled (quick 260602-eth) — the queue is never created on an
+   * external-LiteLLM-gateway deploy, so there is nothing to drain.
+   */
+  ingestQueue: AsyncCloseable | null;
   /** Closes the typed queue registry. */
   closeRegistry: () => Promise<unknown>;
   /** pg pools to end (litellm, appOwner, maintenance). */
@@ -66,8 +70,10 @@ export async function runShutdown(deps: ShutdownDeps): Promise<number> {
 
   // Each subsequent teardown is awaited inside its own guard so one throw
   // sets the flag without skipping the rest.
+  const ingestQueue = deps.ingestQueue;
   const steps: Array<{ label: string; run: () => Promise<unknown> }> = [
-    { label: "ingest-queue", run: () => deps.ingestQueue.close() },
+    // Skipped entirely when the ingest queue was never constructed.
+    ...(ingestQueue ? [{ label: "ingest-queue", run: () => ingestQueue.close() }] : []),
     { label: "queue-registry", run: () => deps.closeRegistry() },
     ...deps.pools.map((p, i) => ({
       label: `pool-${i}`,

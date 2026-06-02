@@ -5,7 +5,11 @@
 // patterns. Queue handles are stubbed (BullMQ Job Scheduler API surface).
 
 import { describe, expect, it } from "vitest";
-import { DEFAULT_SCHEDULER_CONFIG, installSchedulers } from "../../src/scheduler.js";
+import {
+  DEFAULT_SCHEDULER_CONFIG,
+  dateStringForJob,
+  installSchedulers,
+} from "../../src/scheduler.js";
 
 interface Capture {
   id: string;
@@ -108,5 +112,45 @@ describe("installSchedulers (Phase 6 Plan 06-08)", () => {
       reconciliationCron: "0 1 * * *",
       partmanCron: "0 2 * * *",
     });
+  });
+
+  // Quick 260602-eth — reconciliation scheduler is gated when the worker
+  // runs without a LiteLLM DB (external-gateway deploy). usage-rollup +
+  // partman ALWAYS install; only reconciliation-daily-check is suppressed.
+  it("installs all three schedulers when reconciliationEnabled is omitted (default true)", async () => {
+    const r = makeRegistry();
+    await installSchedulers(r as any, {});
+    expect(r.usageRollupDispatcher.captures).toHaveLength(1);
+    expect(r.reconciliationDailyCheck.captures).toHaveLength(1);
+    expect(r.partmanMaintenance.captures).toHaveLength(1);
+  });
+
+  it("installs all three schedulers when reconciliationEnabled is true", async () => {
+    const r = makeRegistry();
+    await installSchedulers(r as any, { reconciliationEnabled: true });
+    expect(r.reconciliationDailyCheck.captures).toHaveLength(1);
+  });
+
+  it("does NOT upsert the reconciliation scheduler when reconciliationEnabled is false", async () => {
+    const r = makeRegistry();
+    await installSchedulers(r as any, { reconciliationEnabled: false });
+    // reconciliation suppressed...
+    expect(r.reconciliationDailyCheck.captures).toHaveLength(0);
+    // ...but usage-rollup + partman still install.
+    expect(r.usageRollupDispatcher.captures).toHaveLength(1);
+    expect(r.partmanMaintenance.captures).toHaveLength(1);
+  });
+});
+
+describe("dateStringForJob (Plan 51-05 helper)", () => {
+  it("derives the UTC day from job.timestamp", () => {
+    // 2026-05-11T23:30:00Z → same UTC calendar day.
+    expect(dateStringForJob({ timestamp: Date.UTC(2026, 4, 11, 23, 30, 0) })).toBe("2026-05-11");
+  });
+
+  it("falls back to the current day when timestamp is absent", () => {
+    // Without a numeric timestamp the helper uses Date.now(); assert the
+    // ISO-date shape rather than an exact day to stay deterministic.
+    expect(dateStringForJob({})).toMatch(/^\d{4}-\d{2}-\d{2}$/);
   });
 });

@@ -24,6 +24,28 @@ export interface WorkerConfig {
    * undelivered email fails the job so BullMQ retries / DLQs it.
    */
   allowSmtpFallback: boolean;
+
+  /**
+   * When `true`, the worker constructs the LiteLLM co-tenant DB pool and
+   * registers the spend-reconciliation jobs (`ingest-litellm-spend`,
+   * `reconciliation-daily-check`, `reconciliation-discrepancy`) plus the
+   * reconciliation cron. These jobs read `LiteLLM_SpendLogs` DIRECTLY out
+   * of LiteLLM's own database (cross-DB), so they cannot run without a
+   * reachable LiteLLM DB URL.
+   *
+   * Resolution requires BOTH:
+   *   1. an explicit operator opt-in (`SPEND_RECONCILIATION_ENABLED=1`/`true`), AND
+   *   2. a LiteLLM DB URL (`LITELLM_READ_DATABASE_URL` ?? `LITELLM_DATABASE_URL`).
+   *
+   * It auto-resolves to `false` when no LiteLLM DB URL is set — EVEN IF the
+   * flag is on — because there is nothing to reconcile against. On a
+   * corporate self-host pointed at an EXTERNAL LiteLLM gateway, the worker
+   * must NOT reach into that gateway's database (cross-service DB access is
+   * a deploy-policy violation; spend is metered gateway-side per
+   * virtual-key). Like `allowSmtpFallback`, it is NEVER derived from
+   * `NODE_ENV`. Default OFF.
+   */
+  spendReconciliationEnabled: boolean;
 }
 
 /** Truthy-string parse — accepts `"1"` and `"true"` (case-insensitive). */
@@ -39,7 +61,12 @@ function envFlag(raw: string | undefined): boolean {
  * `process.env`.
  */
 export function loadWorkerConfig(env: NodeJS.ProcessEnv = process.env): WorkerConfig {
+  // A LiteLLM DB URL is a hard prerequisite for spend reconciliation — the
+  // jobs read LiteLLM_SpendLogs cross-DB. `?.trim()` so an empty-string env
+  // (set-but-blank in a values.yaml) counts as absent.
+  const litellmDbUrl = env.LITELLM_READ_DATABASE_URL?.trim() || env.LITELLM_DATABASE_URL?.trim();
   return {
     allowSmtpFallback: envFlag(env.EMAIL_FALLBACK_NONFATAL),
+    spendReconciliationEnabled: envFlag(env.SPEND_RECONCILIATION_ENABLED) && Boolean(litellmDbUrl),
   };
 }

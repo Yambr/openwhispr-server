@@ -39,9 +39,20 @@ export interface SchedulerConfig {
   usageRollupCron?: string;
   reconciliationCron?: string;
   partmanCron?: string;
+  /**
+   * Quick 260602-eth — when `false`, the reconciliation-daily-check cron is
+   * NOT installed. Set by the entrypoint to the resolved
+   * `spendReconciliationEnabled`: a worker pointed at an EXTERNAL LiteLLM
+   * gateway has no LiteLLM DB to reconcile against, so the cron would only
+   * enqueue jobs that fail. usage-rollup + partman are unaffected and ALWAYS
+   * install. Defaults to `true` to preserve the bundled-LiteLLM behaviour.
+   */
+  reconciliationEnabled?: boolean;
 }
 
-export const DEFAULT_SCHEDULER_CONFIG: Required<SchedulerConfig> = {
+// Cron strings only — `reconciliationEnabled` is a runtime toggle defaulted
+// in installSchedulers, deliberately NOT part of this locked cron contract.
+export const DEFAULT_SCHEDULER_CONFIG: Required<Omit<SchedulerConfig, "reconciliationEnabled">> = {
   usageRollupCron: "5 0 * * *",
   reconciliationCron: "0 1 * * *",
   partmanCron: "0 2 * * *",
@@ -63,7 +74,11 @@ export async function installSchedulers(
   // is wire-compatible with existing tests and so a future per-boot
   // backfill plan can re-enable explicit-date payloads without a
   // breaking change.
-  const cfg = { ...DEFAULT_SCHEDULER_CONFIG, ...config };
+  // `reconciliationEnabled` defaults to `true` here (NOT in
+  // DEFAULT_SCHEDULER_CONFIG, whose `Required<>`-shaped cron-only contract is
+  // locked by a test) so an omitted flag preserves the bundled-LiteLLM
+  // behaviour.
+  const cfg = { reconciliationEnabled: true, ...DEFAULT_SCHEDULER_CONFIG, ...config };
 
   // 1. usage-rollup-daily-dispatcher
   await registry.usageRollupDispatcher.upsertJobScheduler(
@@ -72,12 +87,15 @@ export async function installSchedulers(
     { name: "usage-rollup-daily", data: {} },
   );
 
-  // 2. reconciliation-daily-check
-  await registry.reconciliationDailyCheck.upsertJobScheduler(
-    "reconciliation-daily",
-    { pattern: cfg.reconciliationCron, tz: "UTC" },
-    { name: "reconciliation-daily-check", data: {} },
-  );
+  // 2. reconciliation-daily-check — gated on a reachable LiteLLM DB
+  //    (quick 260602-eth). Skipped on external-gateway deploys.
+  if (cfg.reconciliationEnabled) {
+    await registry.reconciliationDailyCheck.upsertJobScheduler(
+      "reconciliation-daily",
+      { pattern: cfg.reconciliationCron, tz: "UTC" },
+      { name: "reconciliation-daily-check", data: {} },
+    );
+  }
 
   // 3. partman-maintenance — empty-payload, no jobData parsing.
   await registry.partmanMaintenance.upsertJobScheduler(
