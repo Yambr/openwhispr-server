@@ -105,19 +105,46 @@ function makeSignUpEmail(
  */
 function makeFailingRoleFlipPool(realPool: Pool, opts: { failOnce?: boolean } = {}): Pool {
   let failed = false;
+  // Shared fail-injection for the role-flip UPDATE, applied to BOTH pool.query
+  // and the client returned by pool.connect(). Quick 260602-j9z (blocker #2):
+  // the role flip now runs through withSystemBypassClient, which checks out a
+  // client and issues the UPDATE on THAT client — so the Proxy must intercept
+  // connect() too, else the failure injection never fires.
+  const maybeFail = (
+    sqlText: string,
+    pass: () => Promise<unknown>,
+  ): Promise<unknown> | undefined => {
+    if (/^\s*UPDATE\s+users\s+SET\s+role\b/i.test(sqlText)) {
+      if (opts.failOnce && failed) return pass();
+      failed = true;
+      return Promise.reject(new Error("simulated role flip failure"));
+    }
+    return undefined;
+  };
   return new Proxy(realPool, {
     get(target, prop, receiver) {
       if (prop === "query") {
         return (sql: string, params?: unknown[]) => {
           const sqlText = typeof sql === "string" ? sql : "";
-          if (/^\s*UPDATE\s+users\s+SET\s+role\b/i.test(sqlText)) {
-            if (opts.failOnce && failed) {
-              return target.query(sql as never, params as never);
-            }
-            failed = true;
-            return Promise.reject(new Error("simulated role flip failure"));
-          }
-          return target.query(sql as never, params as never);
+          return (
+            maybeFail(sqlText, () => target.query(sql as never, params as never)) ??
+            target.query(sql as never, params as never)
+          );
+        };
+      }
+      if (prop === "connect") {
+        return async () => {
+          const client = await target.connect();
+          return {
+            query: (sql: string, params?: unknown[]) => {
+              const sqlText = typeof sql === "string" ? sql : "";
+              return (
+                maybeFail(sqlText, () => client.query(sql as never, params as never)) ??
+                client.query(sql as never, params as never)
+              );
+            },
+            release: () => client.release(),
+          };
         };
       }
       return Reflect.get(target, prop, receiver);

@@ -15,6 +15,7 @@
 // are not observed.
 
 import { metrics } from "@opentelemetry/api";
+import { withSystemBypassClient } from "@openwhispr/data";
 import type { Pool } from "pg";
 import { z } from "zod";
 import type { TypedQueue } from "../lib/typed-queue.js";
@@ -165,48 +166,48 @@ export function buildReconciliationDailyCheckHandler(
         new Set(litellmRows.map((r) => r.end_user).filter((v): v is string => v !== null)),
       );
       const userToTenant = new Map<string, string>();
-      if (distinctEndUsers.length > 0) {
-        const mapRes = await deps.appOwnerPool.query<{ id: string; tenant_id: string }>(
-          `SELECT id::text AS id, tenant_id::text AS tenant_id
-             FROM users
-            WHERE id = ANY($1::uuid[])`,
-          [distinctEndUsers],
-        );
-        for (const r of mapRes.rows) userToTenant.set(r.id, r.tenant_id);
-      }
-      for (const row of litellmRows) {
-        if (!row.end_user) continue;
-        const tid = userToTenant.get(row.end_user);
-        if (!tid) continue;
-        const existing = litellmByTenant.get(tid) ?? { row_count: 0, spend_cents: 0 };
-        existing.row_count += Number(row.row_count);
-        existing.spend_cents += Number(row.spend_cents);
-        litellmByTenant.set(tid, existing);
-      }
+      // Quick 260602-j9z (blocker #2) — both cross-tenant reads of the
+      // FORCE-RLS `users` + `usage_ledger` tables run inside ONE claim-driven
+      // bypass transaction (single NOBYPASSRLS role; one BEGIN/COMMIT, one
+      // checked-out connection). A single tx is both cheaper than two and a
+      // consistent system-mode snapshot. The litellm aggregation in between
+      // touches only in-memory maps, so it is safe inside the tx.
+      const { rows: ledgerRows } = await withSystemBypassClient(
+        deps.appOwnerPool,
+        async (client) => {
+          if (distinctEndUsers.length > 0) {
+            const mapRes = (await client.query(
+              `SELECT id::text AS id, tenant_id::text AS tenant_id
+               FROM users
+              WHERE id = ANY($1::uuid[])`,
+              [distinctEndUsers],
+            )) as { rows: Array<{ id: string; tenant_id: string }> };
+            for (const r of mapRes.rows) userToTenant.set(r.id, r.tenant_id);
+          }
+          for (const row of litellmRows) {
+            if (!row.end_user) continue;
+            const tid = userToTenant.get(row.end_user);
+            if (!tid) continue;
+            const existing = litellmByTenant.get(tid) ?? { row_count: 0, spend_cents: 0 };
+            existing.row_count += Number(row.row_count);
+            existing.spend_cents += Number(row.spend_cents);
+            litellmByTenant.set(tid, existing);
+          }
 
-      // Ledger side: count + sum (we don't have spend on the ledger; treat
-      // units as the comparable count axis only when ledger_spend_cents is
-      // not directly tracked. For this check, ledger_spend_cents is held
-      // at 0 and only the row count drives drift_pct. This is the agreed
-      // shape until DATA-* adds a spend column to usage_ledger.)
-      const { rows: ledgerRows } = await deps.appOwnerPool.query<{
-        tenant_id: string;
-        row_count: string;
-      }>(
-        // Phase 58 Track B / worker:CR-02 — bucket by COALESCE(event_at,
-        // created_at), the SAME expression usage-rollup-daily uses. The
-        // LiteLLM side already buckets by "startTime"; bucketing the ledger
-        // side by the worker ingest timestamp made the drift gauge compare
-        // mismatched windows and report a false 0 (or false breach) for
-        // rows ingested across a UTC-midnight boundary. event_at carries
-        // the LiteLLM startTime; NULL-event_at historical rows fall back to
-        // created_at so no published reconciliation number shifts.
-        `SELECT tenant_id::text AS tenant_id, COUNT(*)::text AS row_count
-           FROM usage_ledger
-          WHERE COALESCE(event_at, created_at) >= $1::timestamptz
-            AND COALESCE(event_at, created_at) <  $2::timestamptz
-          GROUP BY tenant_id`,
-        [windowStart, windowEnd],
+          // Ledger side: count + sum. Phase 58 Track B / worker:CR-02 — bucket
+          // by COALESCE(event_at, created_at), the SAME expression
+          // usage-rollup-daily uses, so the drift gauge compares matched windows
+          // (event_at carries the LiteLLM startTime; NULL-event_at historical
+          // rows fall back to created_at so no published number shifts).
+          return (await client.query(
+            `SELECT tenant_id::text AS tenant_id, COUNT(*)::text AS row_count
+             FROM usage_ledger
+            WHERE COALESCE(event_at, created_at) >= $1::timestamptz
+              AND COALESCE(event_at, created_at) <  $2::timestamptz
+            GROUP BY tenant_id`,
+            [windowStart, windowEnd],
+          )) as { rows: Array<{ tenant_id: string; row_count: string }> };
+        },
       );
       const ledgerByTenant = new Map<string, number>();
       for (const r of ledgerRows) ledgerByTenant.set(r.tenant_id, Number(r.row_count));

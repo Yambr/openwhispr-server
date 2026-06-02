@@ -92,7 +92,11 @@ beforeEach(async () => {
   await h.llPool.query(`TRUNCATE "LiteLLM_SpendLogs"`);
   await h.appPool.query("TRUNCATE usage_ledger");
   _resetDriftStoreForTest();
-});
+  // Quick 260602-j9z (blocker #2) — generous hook budget: the per-query bypass
+  // BEGIN/COMMIT round-trips lengthen each tick, and TRUNCATE takes ACCESS
+  // EXCLUSIVE; under loaded testcontainer Docker the default 10s hook timeout
+  // is too tight. Logic is unaffected (passes fast in isolation).
+}, 30_000);
 
 function fakeJob(data: unknown): Job {
   return { data, queueName: "reconciliation-daily-check", id: "rd-1" } as unknown as Job;
@@ -455,20 +459,38 @@ SUITE("reconciliation-daily-check (D-R2)", () => {
     );
 
     // Spy on appOwnerPool to count the user->tenant resolution queries.
+    // Quick 260602-j9z (blocker #2) — the user->tenant resolution now flows
+    // through withSystemBypassClient, which checks out a client and issues the
+    // query on THAT client (not pool.query). So the spy must wrap BOTH
+    // pool.query (other call sites) AND the client returned by pool.connect().
+    // Quick 260602-j9z (blocker #2) — the user->tenant resolution now flows
+    // through withSystemBypassClient, which checks out a client and issues the
+    // query on THAT client. We spy by wrapping connect() to return a PROXY
+    // around the real client: the proxy intercepts query() to count the batched
+    // user resolution, and on release() restores nothing (the real client is
+    // untouched, so no leaked mutation / no held connection — the earlier
+    // in-place mutation of the pooled client's query method deadlocked a later
+    // test because the proxy is now per-checkout and the real connection is
+    // returned to the pool cleanly).
     const userTenantQueryCalls: unknown[][] = [];
-    const realQuery = h.appPool.query.bind(h.appPool);
-    const spyPool: Pool = {
-      ...h.appPool,
-      query: (async (text: string, params?: unknown[]) => {
-        if (
-          /FROM\s+users\s+WHERE\s+id\s*=\s*ANY/i.test(text) ||
-          /FROM\s+users\s+WHERE\s+id\s*=\s*\$1/i.test(text)
-        ) {
-          userTenantQueryCalls.push(params ?? []);
-        }
-        return realQuery(text, params);
-      }) as never,
-    } as Pool;
+    const realConnect = h.appPool.connect.bind(h.appPool);
+    const matchesUserResolve = (text: string): boolean =>
+      /FROM\s+users\s+WHERE\s+id\s*=\s*ANY/i.test(text) ||
+      /FROM\s+users\s+WHERE\s+id\s*=\s*\$1/i.test(text);
+    const spyPool = {
+      connect: async () => {
+        const client = await realConnect();
+        return {
+          query: (text: string, params?: unknown[]) => {
+            if (typeof text === "string" && matchesUserResolve(text)) {
+              userTenantQueryCalls.push(params ?? []);
+            }
+            return client.query(text as never, params as never);
+          },
+          release: () => client.release(),
+        };
+      },
+    } as unknown as Pool;
 
     const handler = buildReconciliationDailyCheckHandler({
       litellmPool: h.llPool,
@@ -570,7 +592,11 @@ SUITE("reconciliation-daily-check (D-R2)", () => {
     expect(midHandlerObservations).toHaveLength(1);
     expect(midHandlerObservations[0]?.[1].tenant_id).toBe(TENANT_A);
     expect(midHandlerObservations[0]?.[0]).toBe(100);
-  });
+    // Quick 260602-j9z (blocker #2) — two-tick handler + per-query bypass
+    // BEGIN/COMMIT round-trips push this (already the file's slowest) test
+    // over the 10s default under loaded testcontainer Docker. Passes <2s in
+    // isolation; raise the budget so it isn't a contention-flaky gate.
+  }, 30_000);
 
   it("gauge callbacks observe fresh post-tick state (no stale prior-tick leak)", async () => {
     if (!h) throw new Error("harness");

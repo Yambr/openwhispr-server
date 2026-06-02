@@ -29,6 +29,7 @@
 // is a thin shim that delegates to runIngestOnce on every job invocation.
 
 import { metrics } from "@opentelemetry/api";
+import { withSystemBypassClient } from "@openwhispr/data";
 import { makePino } from "@openwhispr/observability";
 import type { ConnectionOptions } from "bullmq";
 import { Queue, Worker } from "bullmq";
@@ -239,11 +240,15 @@ export async function runIngestOnce(
     // up-front on the owner pool so the SpendLogs scan stays single-query.
     let allowedUserIds: string[] | null = null;
     if (opts.tenantId !== undefined) {
-      const ures = await deps.appOwnerPool.query<{ id: string }>(
-        `SELECT id::text AS id FROM users WHERE tenant_id = $1::uuid`,
-        [opts.tenantId],
+      // Quick 260602-j9z (blocker #2) — cross-tenant read of the FORCE-RLS
+      // `users` table via the claim-driven bypass so a single NOBYPASSRLS role
+      // works (no owner-BYPASSRLS reliance).
+      const ures = await withSystemBypassClient(deps.appOwnerPool, (client) =>
+        client.query(`SELECT id::text AS id FROM users WHERE tenant_id = $1::uuid`, [
+          opts.tenantId,
+        ]),
       );
-      allowedUserIds = ures.rows.map((r) => r.id);
+      allowedUserIds = (ures as { rows: Array<{ id: string }> }).rows.map((r) => r.id);
       if (allowedUserIds.length === 0) {
         // No users for this tenant — windowed scan would return 0 anyway,
         // and the empty-array branch of ANY($1::text[]) is correctly empty,
@@ -338,10 +343,9 @@ export async function runIngestOnce(
       continue;
     }
 
-    const tenantRes = await deps.appOwnerPool.query<{ tenant_id: string }>(
-      `SELECT tenant_id FROM users WHERE id = $1::uuid LIMIT 1`,
-      [userId],
-    );
+    const tenantRes = (await withSystemBypassClient(deps.appOwnerPool, (client) =>
+      client.query(`SELECT tenant_id FROM users WHERE id = $1::uuid LIMIT 1`, [userId]),
+    )) as { rows: Array<{ tenant_id: string }> };
     const tenantId = tenantRes.rows[0]?.tenant_id;
     if (!tenantId) {
       // Recoverable: the users row (user/tenant mapping) can materialize
@@ -378,14 +382,20 @@ export async function runIngestOnce(
     // can bucket rows by when the spend actually occurred, not by the worker
     // ingest timestamp (created_at). Normalized to a Date via `rowStart` —
     // the same normalization used for the watermark below.
-    const insertRes = await deps.appOwnerPool.query(
-      `
+    // Quick 260602-j9z (blocker #2) — the FORCE-RLS usage_ledger INSERT is a
+    // cross-tenant write (the worker iterates all tenants' spend), so it runs
+    // through the claim-driven bypass. On a single NOBYPASSRLS role this would
+    // otherwise raise 42501 and silently kill billing ingest.
+    const insertRes = (await withSystemBypassClient(deps.appOwnerPool, (client) =>
+      client.query(
+        `
         INSERT INTO usage_ledger (tenant_id, user_id, request_id, kind, units, event_at)
         VALUES ($1::uuid, $2::uuid, $3, $4, $5, $6::timestamptz)
         ON CONFLICT (request_id) DO NOTHING
       `,
-      [tenantId, userId, ourRid, kind, units, rowStart(r).toISOString()],
-    );
+        [tenantId, userId, ourRid, kind, units, rowStart(r).toISOString()],
+      ),
+    )) as { rowCount: number | null };
     if ((insertRes.rowCount ?? 0) > 0) {
       processed++;
     }

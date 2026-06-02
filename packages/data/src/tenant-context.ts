@@ -103,3 +103,80 @@ export async function withTenant<TX extends ExecutableTx, T>(
     return fn(tx);
   });
 }
+
+/**
+ * Quick 260602-j9z / blocker #2 — claim-driven privileged/cross-tenant escape
+ * (Supabase `service_role` style). Opens a transaction, sets the
+ * transaction-scoped `app.bypass='on'` GUC, runs `fn(tx)`, commits/rolls back.
+ *
+ * Migration `0033_rls_claim_driven_bypass.sql` makes every tenant-table RLS
+ * policy honor this claim via an OR arm, so a SINGLE NOBYPASSRLS Postgres role
+ * (corporate managed `svcdb_*`) can run system jobs + bootstrap that need
+ * cross-tenant access — without the owner role's `BYPASSRLS` attribute.
+ *
+ * SECURITY CONTRACT — this MUST only be called from system jobs (worker
+ * cross-tenant aggregates/ingest) and first-tenant bootstrap, NEVER from a
+ * request-hot-path. A normal request flows through `withTenant` which sets ONLY
+ * `app.tenant_id`; it never sets `app.bypass`, so the policy's bypass arm is
+ * false and tenant isolation is unchanged. `set_config(..., true)` is
+ * transaction-scoped, so the claim is released at COMMIT/ROLLBACK and cannot
+ * leak across PgBouncer connection reuse. The 16-table × 3-context property
+ * test (`rls-claim-bypass.property.test.ts`) is the proof.
+ *
+ * This Drizzle-transaction variant is for callers already on a Drizzle `db`.
+ * Raw `pg.Pool` call sites use {@link withSystemBypassClient}.
+ */
+export async function withSystemBypass<TX extends ExecutableTx, T>(
+  db: TransactionalDb<TX>,
+  fn: (tx: TX) => Promise<T>,
+): Promise<T> {
+  return db.transaction(async (tx) => {
+    await tx.execute(sql`SELECT set_config('app.bypass', 'on', true)`);
+    return fn(tx);
+  });
+}
+
+/** Minimal pg.PoolClient surface used by {@link withSystemBypassClient}. */
+export interface BypassPoolClient {
+  query(text: string, values?: unknown[]): Promise<unknown>;
+  release(): void;
+}
+
+/** Minimal pg.Pool surface that hands out a {@link BypassPoolClient}. */
+export interface BypassPool {
+  connect(): Promise<BypassPoolClient>;
+}
+
+/**
+ * Raw-`pg.Pool` sibling of {@link withSystemBypass}. Checks out a client,
+ * opens a transaction, sets the transaction-scoped `app.bypass='on'` claim, runs
+ * `fn(client)`, then COMMITs (or ROLLBACKs on throw) and releases the client.
+ *
+ * Same SECURITY CONTRACT as {@link withSystemBypass}: system jobs + bootstrap
+ * only. Use this for the worker's `appOwnerPool.query(...)` cross-tenant call
+ * sites (ingest-litellm-spend, reconciliation-daily-check, usage-rollup
+ * dispatcher) and the bootstrap owner-pool `users` writes, which issue raw
+ * `pg` queries rather than Drizzle transactions.
+ */
+export async function withSystemBypassClient<T>(
+  pool: BypassPool,
+  fn: (client: BypassPoolClient) => Promise<T>,
+): Promise<T> {
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    await client.query("SELECT set_config('app.bypass', 'on', true)");
+    const result = await fn(client);
+    await client.query("COMMIT");
+    return result;
+  } catch (err) {
+    try {
+      await client.query("ROLLBACK");
+    } catch {
+      // ignore rollback failure — surface the original error.
+    }
+    throw err;
+  } finally {
+    client.release();
+  }
+}

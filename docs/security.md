@@ -358,7 +358,7 @@ Semantics per (op, context) cell after migration 0018:
 
 **Coverage.** The 16-table × 4-op × 2-context = **128-case** property test on a real Postgres testcontainer is at `packages/data/tests/unit/__tests__/rls-fail-closed.property.test.ts`. The migration test at `packages/data/migrations/__tests__/0018-rls-fail-closed.test.ts` proves the role-default is cleared, the four column DEFAULTs are dropped, every policy body contains a `NULLIF(current_setting(...)` cast, and squawk lint exits 0.
 
-**Operator note.** `withTenant()` (`packages/data/src/tenant-context.ts`) is the only sanctioned entry into a tenant-scoped query. System jobs that legitimately need to span tenants connect via the `openwhispr_owner` role (BYPASSRLS); see `packages/data/src/system-context.ts` and the BullMQ `withSystemContext()` wrapper for the codified pattern.
+**Operator note.** `withTenant()` (`packages/data/src/tenant-context.ts`) is the only sanctioned entry into a tenant-scoped query. System jobs that legitimately need to span tenants set a transaction-scoped **`app.bypass` claim** via `withSystemBypass()` / `withSystemBypassClient()` (see §11.2 below) — a single NOBYPASSRLS role suffices. The `openwhispr_owner` role's `BYPASSRLS` attribute is **no longer required** as of the claim-driven posture (migration `0033`).
 
 **Threat IDs closed.** TM-RLS-DEFAULT (default-tenant leakage). Registry entry in section 9.
 
@@ -375,6 +375,27 @@ The Phase 32 fail-closed posture above is **not uniform** across all 16 tenant-s
 **The durable fix is a named v2-blocker.** The proper resolution — "D3" — is a request-scoped, per-request Better Auth adapter, each bound to a connection that has `set_config('app.tenant_id', <resolved-tenant>, true)` already applied, replacing the current module-singleton `betterAuth({...})` adapter binding. D3 makes the Better Auth surface genuinely fail-closed and multi-tenant-ready. It is a Better Auth integration rewrite, deferred to v2; tracked in `.planning/deferred-items.md` (the "Phase 57 — data:CR-02" entry).
 
 **Coverage.** The cohort boundary is pinned by the property test at `packages/data/tests/unit/__tests__/rls-posture-boundary.test.ts` (real Postgres testcontainer). It asserts the 12 application tables refuse a bare INSERT and the 4 Better Auth tables admit one bound to the default tenant — and is structured to fail loudly on _either_ half of a partial regression (an app table gaining a fail-open DEFAULT, or a Better Auth table losing its DEFAULT without the D3 adapter fix landing alongside).
+
+### 11.2 Claim-driven privileged bypass — single NOBYPASSRLS role (quick 260602-j9z)
+
+**Why.** Corporate managed Postgres (AWS RDS, GCP Cloud SQL, Azure, on-prem managed) typically issues exactly ONE application role (`svcdb_*`) that is `NOBYPASSRLS` and non-superuser; the security team will not grant `BYPASSRLS`. The privileged/cross-tenant path (first-tenant bootstrap + the worker's spend-ingest / reconciliation / usage-rollup-dispatcher jobs) previously relied on the `openwhispr_owner` role's `BYPASSRLS` attribute, so it could not run there.
+
+**The posture.** Migration `0033_rls_claim_driven_bypass.sql` reshapes all 16 tenant-table RLS policies to a Supabase `service_role`-style claim:
+
+```
+USING / WITH CHECK (
+  current_setting('app.bypass', true) = 'on'
+  OR "tenant_id" = NULLIF(current_setting('app.tenant_id', true), '')::uuid
+)
+```
+
+A privileged caller opens a transaction and sets `set_config('app.bypass', 'on', true)` (transaction-scoped) before its cross-tenant query, via the data-package helpers `withSystemBypass(db, fn)` (Drizzle) / `withSystemBypassClient(pool, fn)` (raw `pg.Pool`). **`BYPASSRLS` is no longer required** — a single `NOBYPASSRLS` role runs every path. `makeOwnerDb()` / the owner pool stay; on a single-role deploy `DATABASE_URL_OWNER` and `DATABASE_URL` point at the same `svcdb_*` role, and the bypass now comes from the **claim**, not the role attribute.
+
+**Isolation is preserved.** A normal request flows through `withTenant()`, which sets ONLY `app.tenant_id` and NEVER `app.bypass` — so the policy's left OR-arm is false and tenant isolation is unchanged. `app.bypass` is only ever set by `withSystemBypass[Client]`, which is called solely from system jobs + bootstrap, never a request-hot-path. `set_config(..., true)` is transaction-scoped, so the claim is released at COMMIT/ROLLBACK and cannot leak across PgBouncer connection reuse.
+
+**Coverage.** The 16-table × {bypass-works, isolation-preserved, fail-closed-preserved} property test on a real Postgres testcontainer with a `NOBYPASSRLS` role (proving the CLAIM, not the role attribute, grants access) is at `packages/data/tests/unit/__tests__/rls-claim-bypass.property.test.ts` (81 cases). The pre-existing fail-closed 128-case proof (`rls-fail-closed.property.test.ts`) still passes intact — the OR-arm adds no fail-open path when `app.bypass` is unset.
+
+**Role-name independence.** In-migration GRANTs target the literal role `openwhispr_app`. When the operator runs on a custom-named role, set `DATABASE_APP_ROLE` (and `DATABASE_OWNER_ROLE`); the migrate runner then `GRANT openwhispr_app TO <role>` so the custom role inherits the full canonical GRANT chain in one statement (`packages/data/src/migrate.ts grantAppRoleMembership`, idempotent + skipped when either role is absent).
 
 ---
 

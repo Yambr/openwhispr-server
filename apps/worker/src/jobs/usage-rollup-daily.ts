@@ -16,6 +16,7 @@
 // already-existing. If a future deploy needs the columns explicit, see
 // Plan 06-04's review.
 
+import { withSystemBypassClient } from "@openwhispr/data";
 import type { Pool } from "pg";
 import { z } from "zod";
 import type { TypedQueue } from "../lib/typed-queue.js";
@@ -78,13 +79,20 @@ export function buildUsageRollupDispatcher(
       // ingested 30s after UTC midnight must roll up into the day its spend
       // occurred, not the day it landed. Historical rows have NULL event_at
       // and fall back to created_at — no already-published number shifts.
-      const { rows } = await deps.ownerPool.query<{ tenant_id: string }>(
-        `SELECT DISTINCT tenant_id::text AS tenant_id
-         FROM usage_ledger
-        WHERE COALESCE(event_at, created_at) >= ($1::date)
-          AND COALESCE(event_at, created_at) <  ($1::date + INTERVAL '1 day')`,
-        [date],
-      );
+      // Quick 260602-j9z (blocker #2) — this cross-tenant SELECT on the
+      // FORCE-RLS usage_ledger table runs through the claim-driven bypass so a
+      // single NOBYPASSRLS role works (no reliance on the owner BYPASSRLS
+      // attribute). withSystemBypassClient sets app.bypass='on' inside a tx.
+      const rows = await withSystemBypassClient(deps.ownerPool, async (client) => {
+        const res = (await client.query(
+          `SELECT DISTINCT tenant_id::text AS tenant_id
+             FROM usage_ledger
+            WHERE COALESCE(event_at, created_at) >= ($1::date)
+              AND COALESCE(event_at, created_at) <  ($1::date + INTERVAL '1 day')`,
+          [date],
+        )) as { rows: Array<{ tenant_id: string }> };
+        return res.rows;
+      });
       for (const row of rows) {
         await deps.childQueue.add("usage-rollup-daily-tenant", {
           tenant_id: row.tenant_id,
