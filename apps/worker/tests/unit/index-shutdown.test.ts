@@ -59,6 +59,24 @@ describe("CR-08 — runShutdown exit code", () => {
     expect(code).toBe(1);
   });
 
+  it("quick 260602-eth: a null ingestQueue is skipped, not drained, and stays clean", async () => {
+    let registryClosed = false;
+    const code = await runShutdown({
+      workers: [okWorker()],
+      // Spend reconciliation disabled → no ingest queue was ever created.
+      ingestQueue: null,
+      closeRegistry: async () => {
+        registryClosed = true;
+      },
+      pools: [okPool(), okPool()],
+      redis: okRedis,
+      logger: silentLogger,
+    });
+    // No ingest-queue drain to fail → clean exit, registry still drained.
+    expect(code).toBe(0);
+    expect(registryClosed).toBe(true);
+  });
+
   it("CR-08: a failing step does not abort the remaining drains", async () => {
     let registryClosed = false;
     let redisQuit = false;
