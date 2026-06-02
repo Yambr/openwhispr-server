@@ -176,6 +176,20 @@ image:
   #   image v1.0.4 (A1 byok-guard export / A2 email k8s bypass / A3 worker
   #   CJS guard / A4 worker VALKEY_URL parser / A5 POST /api/locale).
   # Companion openwhispr-postgres chart 1.1.0 ships the rolconfig fix (B4).
+  # 1.0.20 — managed-Postgres / external-LiteLLM deploy compat (3 upstream
+  # blockers; Quick 260602-eth/fda/j9z). (#3) SPEND_RECONCILIATION_ENABLED:
+  # the worker boots without LITELLM_DATABASE_URL and never connects to
+  # LiteLLM's own DB unless reconciliation is explicitly opted in. (#1)
+  # audit_log migration auto-detects pg_partman — present => monthly
+  # auto-rotation, absent => native audit_log_default DEFAULT partition (so
+  # auth.signin works on a managed PG with no partman); AUDIT_LOG_DISABLED=1
+  # kill-switch. (#2) claim-driven app.bypass RLS (migration 0033): the
+  # privileged/cross-tenant path (bootstrap + worker system jobs) uses a
+  # transaction-scoped app.bypass GUC instead of a BYPASSRLS role attribute,
+  # so a SINGLE NOBYPASSRLS role (corporate svcdb_*) runs every path; tenant
+  # isolation preserved (81-case NOBYPASSRLS property proof). DATABASE_APP_ROLE
+  # / DATABASE_OWNER_ROLE let a custom-named role inherit the GRANT chain.
+  # See docs/security.md §11.2. No wire/web change.
   # 1.0.19 — diarization Speaches passthrough Authorization fix (Quick
   # 260601-d1a): the /v1/audio/diarization Speaches branch (gated by
   # SPEACHES_DIARIZATION_URL) now sends Authorization: Bearer <key> on its
@@ -234,7 +248,7 @@ image:
   # desktop client could not render. See docs/operations.md "Agent stream
   # error contract" section for the wire envelope + AgentErrorCode
   # taxonomy + log event schema.
-  tag: "1.0.19"
+  tag: "1.0.20"
   api:     { repository: openwhispr-api }
   web:     { repository: openwhispr-web }
   worker:  { repository: openwhispr-worker }
