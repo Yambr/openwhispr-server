@@ -22,7 +22,7 @@ import { PostgreSqlContainer, type StartedPostgreSqlContainer } from "@testconta
 import { drizzle, type NodePgDatabase } from "drizzle-orm/node-postgres";
 import { migrate } from "drizzle-orm/node-postgres/migrator";
 import { Pool } from "pg";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import {
   AUDIT_ACTIONS,
   type AuditCtx,
@@ -554,5 +554,54 @@ describe("recordAudit — schema enforcement", () => {
     });
     const stored = await getPayload("auth.signout");
     expect(stored.ip).toBeNull();
+  });
+});
+
+// Quick 260602-fda — AUDIT_LOG_DISABLED kill-switch (blocker #1 / option A).
+// Real-surface: drive recordAudit through a real withTenant tx and assert
+// the row IS / IS NOT written depending on the flag.
+describe("recordAudit — AUDIT_LOG_DISABLED kill-switch", () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  it("writes NO row when AUDIT_LOG_DISABLED=1 (no-op)", async () => {
+    vi.stubEnv("AUDIT_LOG_DISABLED", "1");
+    const before = await countRows("admin.role_changed");
+    await withTenant(db, tenantA, async (tx) => {
+      await recordAudit(tx, baseCtx(), "admin.role_changed", {
+        target_user_id: USER_A_UUID,
+        old_role: "user",
+        new_role: "admin",
+      });
+    });
+    const after = await countRows("admin.role_changed");
+    expect(after).toBe(before);
+  });
+
+  it("writes NO row when AUDIT_LOG_DISABLED=true (case-insensitive)", async () => {
+    vi.stubEnv("AUDIT_LOG_DISABLED", "true");
+    const before = await countRows("auth.password_change");
+    await withTenant(db, tenantA, async (tx) => {
+      await recordAudit(tx, baseCtx(), "auth.password_change", { method: "password" });
+    });
+    expect(await countRows("auth.password_change")).toBe(before);
+  });
+
+  it("writes the row normally when AUDIT_LOG_DISABLED is unset (default fail-closed)", async () => {
+    const before = await countRows("auth.signin");
+    await withTenant(db, tenantA, async (tx) => {
+      await recordAudit(tx, baseCtx(), "auth.signin", { method: "password" });
+    });
+    expect(await countRows("auth.signin")).toBe(before + 1);
+  });
+
+  it("writes the row when AUDIT_LOG_DISABLED=0 (falsey value)", async () => {
+    vi.stubEnv("AUDIT_LOG_DISABLED", "0");
+    const before = await countRows("auth.signout");
+    await withTenant(db, tenantA, async (tx) => {
+      await recordAudit(tx, baseCtx(), "auth.signout", {});
+    });
+    expect(await countRows("auth.signout")).toBe(before + 1);
   });
 });

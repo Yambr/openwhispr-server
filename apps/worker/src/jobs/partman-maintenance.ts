@@ -61,6 +61,18 @@ export function buildPartmanMaintenanceHandler(
   deps: PartmanMaintenanceDeps,
 ): (job: import("bullmq").Job) => Promise<{ detached: string[] }> {
   return withSystemContext(partmanMaintenanceSchema, async (): Promise<{ detached: string[] }> => {
+    // Quick 260602-fda (blocker #1) — pg_partman is OPTIONAL. On a managed
+    // Postgres where the extension is not installed (migration 0014 fell back
+    // to a native DEFAULT partition), there is no `partman.run_maintenance_proc`
+    // to call. Probe first and no-op cleanly so this always-on daily cron does
+    // not throw on every tick and burn BullMQ retries forever.
+    const probe = await deps.maintenancePool.query(
+      "SELECT 1 FROM pg_extension WHERE extname = 'pg_partman'",
+    );
+    if (probe.rows.length === 0) {
+      return { detached: [] };
+    }
+
     // Acquire a fresh client and run the maintenance procedure directly.
     // CALL semantics: partman.run_maintenance_proc() opens its own tx
     // internally (it COMMITs across child-partition operations). We must
