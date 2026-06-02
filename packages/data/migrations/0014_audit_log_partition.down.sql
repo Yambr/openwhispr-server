@@ -23,8 +23,18 @@ CREATE TEMPORARY TABLE _audit_log_snapshot AS
 	  FROM "audit_log";
 --> statement-breakpoint
 
--- 2. De-register from pg_partman.
-DELETE FROM partman.part_config WHERE parent_table = 'public.audit_log';
+-- 2. De-register from pg_partman — only if the extension is installed.
+--    Quick 260602-fda: on a managed Postgres without pg_partman the up
+--    migration fell back to a native DEFAULT partition and never registered
+--    with partman, so the part_config row (and the partman schema) do not
+--    exist. Guard the DELETE so the rollback also works there.
+DO $$
+BEGIN
+	IF EXISTS (SELECT 1 FROM pg_extension WHERE extname = 'pg_partman') THEN
+		DELETE FROM partman.part_config WHERE parent_table = 'public.audit_log';
+	END IF;
+END
+$$;
 --> statement-breakpoint
 
 -- 3. Drop the partitioned parent + all children in one statement.

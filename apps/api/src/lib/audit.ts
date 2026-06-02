@@ -343,12 +343,32 @@ const MAX_USER_AGENT_CHARS = 512;
  * the route's failure. Grafana alert on `level=error AND msg=~"audit"`
  * is the surface; Plan 06-11 (alerts) extends this.
  */
+/**
+ * Quick 260602-fda (blocker #1 / option A) — operator kill-switch. When
+ * `AUDIT_LOG_DISABLED` is `"1"` or `"true"` (case-insensitive), `recordAudit`
+ * is a no-op: no validation, no INSERT. This lets an operator run on a
+ * managed Postgres that does not need an audit trail at all (and frees them
+ * from the fail-closed in-transaction INSERT that would otherwise block
+ * `auth.signin` if the audit_log partition were unavailable). Default OFF —
+ * audit stays fail-closed. Read directly from `process.env` like the existing
+ * `AUDIT_REDACT_IP` operator knob (not a NODE_ENV branch — LOCKER-01 unaffected).
+ */
+function auditDisabled(): boolean {
+  const raw = process.env.AUDIT_LOG_DISABLED;
+  if (typeof raw !== "string") return false;
+  const v = raw.trim().toLowerCase();
+  return v === "1" || v === "true";
+}
+
 export async function recordAudit<A extends AuditAction>(
   tx: ExecutableTx,
   ctx: AuditCtx,
   action: A,
   payload: AuditPayload<A>,
 ): Promise<void> {
+  // Operator kill-switch: skip entirely (no validation, no INSERT).
+  if (auditDisabled()) return;
+
   // Validate ctx (uuid + ip + ua shape).
   ctxSchema.parse(ctx);
 

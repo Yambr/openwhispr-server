@@ -174,6 +174,90 @@ SUITE("partman-maintenance (D-A4)", () => {
     expect(attempted).toEqual(detachedFixture);
   });
 
+  it("quick 260602-fda: no-ops (no run_maintenance_proc CALL) when pg_partman is absent", async () => {
+    // Managed Postgres without pg_partman: the always-on cron must not burn
+    // BullMQ retries. The handler probes pg_extension; when partman is
+    // absent it returns { detached: [] } WITHOUT issuing the CALL.
+    //
+    // Pure-unit stub pool: the extension probe returns zero rows; assert the
+    // handler never CALLs run_maintenance_proc and never connects a client.
+    let calledRunMaintenance = false;
+    let connectedClient = false;
+    const fakePool = {
+      async connect() {
+        connectedClient = true;
+        return {
+          async query(text: string) {
+            if (/run_maintenance_proc/.test(text)) calledRunMaintenance = true;
+            return { rows: [] };
+          },
+          release() {
+            /* no-op */
+          },
+        };
+      },
+      async query(text: string) {
+        // pg_extension presence probe → no partman row.
+        if (/pg_extension/.test(text) && /pg_partman/.test(text)) {
+          return { rows: [] };
+        }
+        if (/run_maintenance_proc/.test(text)) calledRunMaintenance = true;
+        return { rows: [] };
+      },
+    } as unknown as Pool;
+
+    const enq: Array<{ partition_name: string }> = [];
+    const handler = buildPartmanMaintenanceHandler({
+      maintenancePool: fakePool,
+      auditArchiveQueue: {
+        async add(_n, d) {
+          enq.push(d as { partition_name: string });
+          return {} as never;
+        },
+      },
+    });
+    const result = (await handler(fakeJob())) as unknown as { detached: string[] };
+    expect(result.detached).toEqual([]);
+    expect(calledRunMaintenance).toBe(false);
+    expect(connectedClient).toBe(false);
+    expect(enq).toHaveLength(0);
+  });
+
+  it("quick 260602-fda: still runs maintenance when pg_partman IS present (stub probe returns a row)", async () => {
+    let calledRunMaintenance = false;
+    const fakeClient = {
+      async query(text: string) {
+        if (/run_maintenance_proc/.test(text)) calledRunMaintenance = true;
+        return { rows: [] };
+      },
+      release() {
+        /* no-op */
+      },
+    };
+    const fakePool = {
+      async connect() {
+        return fakeClient;
+      },
+      async query(text: string) {
+        if (/pg_extension/.test(text) && /pg_partman/.test(text)) {
+          return { rows: [{ one: 1 }] };
+        }
+        return { rows: [] };
+      },
+    } as unknown as Pool;
+
+    const handler = buildPartmanMaintenanceHandler({
+      maintenancePool: fakePool,
+      auditArchiveQueue: {
+        async add() {
+          return {} as never;
+        },
+      },
+    });
+    await handler(fakeJob());
+    expect(calledRunMaintenance).toBe(true);
+  });
+
   it("uses a fresh non-transactional connection (CALL semantics)", () => {
     // Static-source contract: the handler issues `CALL partman.run_maintenance_proc()`
     // (CALL, not SELECT, and not wrapped in BEGIN). Verified by handler source.

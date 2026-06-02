@@ -95,24 +95,54 @@ CREATE POLICY "audit_log_tenant_isolation" ON "audit_log"
 	WITH CHECK ("tenant_id" = current_setting('app.tenant_id', true)::uuid);
 --> statement-breakpoint
 
--- 5. Register with pg_partman: monthly RANGE, premake 4 ----------------------
-SELECT partman.create_parent(
-	p_parent_table  => 'public.audit_log',
-	p_control       => 'created_at',
-	p_type          => 'range',
-	p_interval      => '1 month',
-	p_premake       => 4
-);
---> statement-breakpoint
-
--- 6. Configure retention to 13 months, keep_table=true ----------------------
-UPDATE partman.part_config
-	 SET retention                = '13 months',
-	     retention_keep_table     = true,
-	     retention_keep_index     = false,
-	     infinite_time_partitions = true,
-	     inherit_privileges       = true
- WHERE parent_table = 'public.audit_log';
+-- 5+6. Partition strategy — pg_partman when available, native DEFAULT
+--      partition otherwise (quick 260602-fda, blocker #1).
+--
+-- Managed cloud Postgres (and any cluster where pg_partman is not
+-- installed — pg_partman is NOT a trusted extension, so it needs a server
+-- package + superuser CREATE EXTENSION) would otherwise fail this
+-- migration: partman.create_parent + partman.part_config do not exist and
+-- the audited fail-closed INSERT on auth.signin would then have no child
+-- partition to route into. We auto-detect:
+--
+--   * pg_partman present  → register the parent (monthly RANGE, premake 4)
+--     + retention (13 months, keep_table) — full auto-rotation. Operators
+--     who install partman get rotation with zero further config ("turn it
+--     on and it works").
+--   * pg_partman absent   → create a single native DEFAULT partition so
+--     every row routes into `audit_log_default`. INSERTs / auth.signin work
+--     with zero partman dependency; there is just no automatic monthly
+--     child creation or retention. The daily partman-maintenance worker job
+--     no-ops when the extension is absent.
+--
+-- audit_log itself is ALWAYS a partitioned parent (steps 1-4 above), so the
+-- shape is identical for downstream readers in both branches.
+DO $$
+BEGIN
+	IF EXISTS (SELECT 1 FROM pg_extension WHERE extname = 'pg_partman') THEN
+		PERFORM partman.create_parent(
+			p_parent_table  => 'public.audit_log',
+			p_control       => 'created_at',
+			p_type          => 'range',
+			p_interval      => '1 month',
+			p_premake       => 4
+		);
+		UPDATE partman.part_config
+			 SET retention                = '13 months',
+			     retention_keep_table     = true,
+			     retention_keep_index     = false,
+			     infinite_time_partitions = true,
+			     inherit_privileges       = true
+		 WHERE parent_table = 'public.audit_log';
+	ELSE
+		-- No pg_partman: a single catch-all DEFAULT partition keeps the
+		-- partitioned parent insertable. `IF NOT EXISTS` keeps the migration
+		-- idempotent if re-run by hand.
+		CREATE TABLE IF NOT EXISTS "audit_log_default"
+			PARTITION OF "audit_log" DEFAULT;
+	END IF;
+END
+$$;
 --> statement-breakpoint
 
 -- 7. Copy legacy rows into the partitioned parent ---------------------------
