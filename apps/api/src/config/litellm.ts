@@ -20,9 +20,19 @@
 // In development / test, the guard returns silently — the caller's
 // existing catch-and-warn path stays in place.
 //
+// #5 (peer gr0flvsr) — the corporate-override path provisions a
+// `LITELLM_VIRTUAL_KEY` and never sets `LITELLM_MASTER_KEY` (HI-2).
+// `loadLitellmConfigFromEnv()` already prefers VIRTUAL over MASTER, so the
+// runtime client boots fine — but this guard read MASTER directly and
+// refused, blocking the operator who configured it correctly. The guard now
+// resolves the EFFECTIVE key the same way (VIRTUAL wins) and accepts either.
+// The dev-default footgun check then applies to the EFFECTIVE key: when a
+// real virtual key is in play the master is unused, so a stale dev-default
+// master must not block boot.
+//
 // LOCKER-01 compliance: this module lives under `config/` which is in
-// the allowlist for `process.env.*` reads. Only `NODE_ENV` and
-// `LITELLM_MASTER_KEY` are inspected.
+// the allowlist for `process.env.*` reads. Only `NODE_ENV`,
+// `LITELLM_VIRTUAL_KEY` and `LITELLM_MASTER_KEY` are inspected.
 
 const EX_CONFIG = 78;
 
@@ -46,20 +56,27 @@ export function validateLitellmBoot(
     return;
   }
 
+  // Resolve the EFFECTIVE credential with the same precedence as
+  // loadLitellmConfigFromEnv (HI-2): a non-empty LITELLM_VIRTUAL_KEY wins,
+  // else LITELLM_MASTER_KEY. Either being present means a credential is
+  // configured and the 4 LiteLLM routes will register.
+  const virtualKey = env.LITELLM_VIRTUAL_KEY ?? "";
   const masterKey = env.LITELLM_MASTER_KEY ?? "";
+  const effectiveKey = virtualKey.length > 0 ? virtualKey : masterKey;
 
-  if (masterKey.length === 0) {
+  if (effectiveKey.length === 0) {
     onFail(
-      `litellm-boot: NODE_ENV=production with missing LITELLM_MASTER_KEY. ` +
-        `Refusing to boot — without it, the api silently drops 4 routes ` +
-        `(transcribe, reason, diarization, realtime) while /api/health ` +
-        `still reports ok. Set LITELLM_MASTER_KEY in your .env.`,
+      `litellm-boot: NODE_ENV=production with no LiteLLM credential. ` +
+        `Set LITELLM_VIRTUAL_KEY (corporate-override path) or ` +
+        `LITELLM_MASTER_KEY. Refusing to boot — without one, the api ` +
+        `silently drops 4 routes (transcribe, reason, diarization, ` +
+        `realtime) while /api/health still reports ok.`,
     );
   }
 
-  if (masterKey === DEV_OVERLAY_DEFAULT_MASTER_KEY) {
+  if (effectiveKey === DEV_OVERLAY_DEFAULT_MASTER_KEY) {
     onFail(
-      `litellm-boot: NODE_ENV=production with LITELLM_MASTER_KEY=` +
+      `litellm-boot: NODE_ENV=production with the LiteLLM key set to ` +
         `"sk-dev-master-key-do-not-use-in-prod". Refusing to boot — this is ` +
         `the well-known dev-tools overlay default and must never reach ` +
         `production. Generate a real key for the deployment.`,
