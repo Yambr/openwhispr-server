@@ -227,6 +227,36 @@ Okta for admins) should front-end with Keycloak/Authentik configured as a
 broker and point OpenWhispr at the broker's realm. SAML support is deferred
 to v2 (COMPL-01).
 
+## OIDC-only login (disable email/password)
+
+For corporate deployments where users must authenticate **only** through your
+IdP, disable local (email/password) login by setting:
+
+```bash
+OPENWHISPR_DISABLE_LOCAL_LOGIN=1
+```
+
+Default-safe: local login is **ON** unless this is exactly `"1"` (`"0"`, empty,
+unset, or any other value keep it on). It is **not** auto-disabled by
+configuring OIDC — disabling is a deliberate, explicit act.
+
+When disabled, the server enforces this **server-side**, not just in the UI:
+
+- `POST /api/auth/sign-in/email`, `/sign-up/email`, `/request-password-reset`,
+  `/reset-password` return **403 `LOCAL_LOGIN_DISABLED`** (localized via
+  `Accept-Language`). Better Auth's native layer additionally 400s the
+  email sign-in/sign-up routes (`EMAIL_PASSWORD_DISABLED` /
+  `EMAIL_PASSWORD_SIGN_UP_DISABLED`).
+- `GET /api/auth/providers` reports `"localLogin": { "enabled": false }` so the
+  web + desktop clients hide the email/password form and render only the
+  configured SSO buttons.
+
+> **Lockout warning.** The admin is the **first user to complete the `/setup`
+> wizard** (`role='admin'`); there is **no separate break-glass admin login**.
+> If you disable local login and your IdP later becomes unavailable, you will be
+> locked out of your own installation. Keep at least one working auth method.
+> Recovery: unset `OPENWHISPR_DISABLE_LOCAL_LOGIN` and restart the API container.
+
 ## Verification
 
 After restarting the API container with OIDC env set, the desktop client's

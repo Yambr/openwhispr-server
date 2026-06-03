@@ -44,6 +44,11 @@ const CLASS_TO_CODE = {
   // centralized envelope handler.
   UpstreamError: "UPSTREAM_ERROR",
   ConflictError: "CONFLICT",
+  // Upstream #9 — 403 class. Required here or the scanner short-circuits at the
+  // `exprText in CLASS_TO_CODE` gate and the per-instance code LOCAL_LOGIN_DISABLED
+  // (thrown as `new ForbiddenError("LOCAL_LOGIN_DISABLED", ...)`) is never
+  // collected → ships unvalidated (plan-checker B-1).
+  ForbiddenError: "FORBIDDEN",
 } as const;
 
 type TypedErrorClass = keyof typeof CLASS_TO_CODE;
@@ -153,6 +158,17 @@ describe("i18n key completeness — typed-error <-> locale parity (Phase 10-01a)
       const code = CLASS_TO_CODE[cls];
       expect(en[code], `class ${cls} is thrown but en.errors.${code} is missing`).toBeTruthy();
       expect(ru[code], `class ${cls} is thrown but ru.errors.${code} is missing`).toBeTruthy();
+    }
+  });
+
+  it("ships FORBIDDEN + LOCAL_LOGIN_DISABLED in BOTH en and ru (upstream #9, explicit presence)", () => {
+    // The en/ru SYMMETRY test (above) passes even if a code is absent from BOTH
+    // files; the per-instance/class scans only catch codes that are statically
+    // discoverable. Pin the two #9 codes explicitly so a future locale edit that
+    // drops them goes RED regardless of the scanner's reach.
+    for (const code of ["FORBIDDEN", "LOCAL_LOGIN_DISABLED"]) {
+      expect(en[code], `missing en.errors.${code}`).toBeTruthy();
+      expect(ru[code], `missing ru.errors.${code}`).toBeTruthy();
     }
   });
 

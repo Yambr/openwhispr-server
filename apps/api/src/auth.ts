@@ -52,7 +52,7 @@ import { cookieDomainConfig } from "./lib/cookie-domain.js";
 import { resolveDefaultTenantId } from "./lib/default-tenant.js";
 import { readJitConfig } from "./lib/oidc-jit-config.js";
 import { buildJitDatabaseHooks, makeMapProfileToUser } from "./lib/oidc-jit-hooks.js";
-import { readOidcProvidersForRegistration } from "./lib/oidc-providers.js";
+import { localLoginEnabled, readOidcProvidersForRegistration } from "./lib/oidc-providers.js";
 import { rewriteVerificationCallbackUrl } from "./lib/verification-callback-url.js";
 
 /**
@@ -562,7 +562,14 @@ export function buildAuth(opts: BuildAuthOptions): AuthInstance {
       additionalFields: { ...(SIDECAR_ADDITIONAL_FIELDS.verification ?? {}) },
     },
     emailAndPassword: {
-      enabled: true,
+      // Upstream #9 — secondary native layer for OIDC-only deployments. When
+      // OPENWHISPR_DISABLE_LOCAL_LOGIN=1, Better Auth 1.6.x returns 400
+      // EMAIL_PASSWORD_DISABLED / EMAIL_PASSWORD_SIGN_UP_DISABLED on the email
+      // sign-in / sign-up routes (it does NOT 404 them, and does NOT gate the
+      // password-reset routes — so this is defence-in-depth, NOT the real gate).
+      // The authoritative server-side block lives in the better-auth-handler
+      // preHandler (403 LOCAL_LOGIN_DISABLED across all four credential routes).
+      enabled: localLoginEnabled(process.env),
       // Phase 08-07 / D-LOAD-EV — load-test profiles set
       // OPENWHISPR_DISABLE_EMAIL_VERIFICATION=1 so the synthetic k6 setup
       // can pre-provision 1000 users via /api/auth/sign-up/email and read

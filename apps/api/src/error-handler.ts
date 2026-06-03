@@ -41,6 +41,7 @@ import { ZodError } from "zod";
 import {
   AuthError,
   ConflictError,
+  ForbiddenError,
   NotFoundError,
   RateLimitError,
   ServerError,
@@ -184,6 +185,14 @@ export function registerErrorHandler(app: FastifyInstance): void {
     } else if (err instanceof AuthError) {
       status = 401;
       message = err.message || "Session expired";
+      code = err.code;
+    } else if (err instanceof ForbiddenError) {
+      // 403 — request is well-formed but server policy forbids it (e.g. local
+      // email/password login disabled). `code` doubles as the i18n lookup key
+      // (LOCAL_LOGIN_DISABLED / FORBIDDEN), mirroring the JitRejectionError
+      // 403 path above.
+      status = 403;
+      message = err.message || "Forbidden";
       code = err.code;
     } else if (err instanceof NotFoundError) {
       status = 404;

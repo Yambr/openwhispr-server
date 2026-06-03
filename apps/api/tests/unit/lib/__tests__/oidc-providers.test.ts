@@ -10,6 +10,7 @@
 import { describe, expect, it } from "vitest";
 import {
   listConfiguredOidcProviders,
+  localLoginEnabled,
   readOidcProvidersForRegistration,
 } from "../../../../src/lib/oidc-providers.js";
 
@@ -317,5 +318,35 @@ describe("readOidcProvidersForRegistration — Better Auth shape (full config)",
         "profile",
       ]);
     });
+  });
+});
+
+describe("localLoginEnabled — disable-local-login posture (upstream #9)", () => {
+  it("is enabled by default (env unset)", () => {
+    expect(localLoginEnabled(envOf({}))).toBe(true);
+  });
+
+  it("is disabled ONLY when OPENWHISPR_DISABLE_LOCAL_LOGIN is exactly '1'", () => {
+    expect(localLoginEnabled(envOf({ OPENWHISPR_DISABLE_LOCAL_LOGIN: "1" }))).toBe(false);
+  });
+
+  it("stays enabled for any other value (0 / true / yes / empty)", () => {
+    for (const v of ["0", "true", "yes", "", " 1 "]) {
+      expect(localLoginEnabled(envOf({ OPENWHISPR_DISABLE_LOCAL_LOGIN: v })), `value=${v}`).toBe(
+        true,
+      );
+    }
+  });
+
+  it("is NOT coupled to OIDC presence (configuring OIDC keeps local login on)", () => {
+    expect(
+      localLoginEnabled(
+        envOf({
+          OIDC_ISSUER_URL: "https://issuer.example.com",
+          OIDC_CLIENT_ID: "cid",
+          OIDC_CLIENT_SECRET: "secret",
+        }),
+      ),
+    ).toBe(true);
   });
 });
