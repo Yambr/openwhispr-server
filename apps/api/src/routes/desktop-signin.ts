@@ -48,6 +48,7 @@ import {
 import { sql } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
 import { resolveDefaultTenantId } from "../lib/default-tenant.js";
+import { discoverOidc } from "../lib/oidc-discovery.js";
 import { generatePkceVerifier, pkceChallengeS256 } from "../lib/pkce.js";
 import { validateScheme } from "../lib/scheme-allowlist.js";
 
@@ -142,6 +143,39 @@ export const buildDesktopSigninRoutes = (deps: DesktopSigninDeps) =>
             .send({ error: "invalid callback scheme" });
         }
 
+        // #10 — resolve the authorize URL BEFORE any PKCE/state write so a
+        // failing IdP discovery costs zero DB writes (no oauth_state row + 6
+        // encryption sidecars). OIDC_AUTHORIZE_URL is the manual override
+        // (no fetch); otherwise resolve `authorization_endpoint` from the
+        // issuer's discovery doc — IdPs whose authorize path is not
+        // `/authorize` (Dex serves `/auth`) now work without the override.
+        // discoverOidc applies the HI-04 https + issuer-origin affiliation
+        // guard to the authorization_endpoint (a poisoned doc must not 302
+        // the user to an attacker authorize page carrying the real client_id
+        // + state). Any discovery failure → 503 (never a 302 to a guessed URL).
+        let authorizeBase: string;
+        const overrideAuthorizeUrl = process.env.OIDC_AUTHORIZE_URL;
+        if (overrideAuthorizeUrl && overrideAuthorizeUrl.length > 0) {
+          authorizeBase = overrideAuthorizeUrl;
+        } else {
+          try {
+            const doc = await discoverOidc(oidc.issuerUrl);
+            if (!doc.authorization_endpoint) {
+              throw new Error("discovery doc has no authorization_endpoint");
+            }
+            authorizeBase = doc.authorization_endpoint;
+          } catch (err) {
+            req.log.warn(
+              { reason: err instanceof Error ? err.message : "unknown" },
+              "oidc discovery failed",
+            );
+            return reply
+              .code(503)
+              .type("application/json; charset=utf-8")
+              .send({ error: "oidc discovery failed" });
+          }
+        }
+
         // Generate PKCE pair.
         const verifier = generatePkceVerifier();
         const challenge = pkceChallengeS256(verifier);
@@ -175,13 +209,8 @@ export const buildDesktopSigninRoutes = (deps: DesktopSigninDeps) =>
           return row.id;
         });
 
-        // Build the IdP authorize URL. We use the issuer's `/authorize`
-        // path directly; full discovery-doc lookup is Better Auth's
-        // concern when the genericOAuth plugin runs the callback exchange
-        // (Task 2). Self-host operators with a non-standard authorize
-        // path can override via OIDC_AUTHORIZE_URL (rare).
-        const trimmedIssuer = oidc.issuerUrl.replace(/\/+$/, "");
-        const authorizeBase = process.env.OIDC_AUTHORIZE_URL ?? `${trimmedIssuer}/authorize`;
+        // Build the IdP authorize URL from the discovery-resolved (or
+        // operator-overridden) `authorizeBase` computed above.
         const idpUrl = new URL(authorizeBase);
         idpUrl.searchParams.set("response_type", "code");
         idpUrl.searchParams.set("client_id", oidc.clientId);

@@ -32,11 +32,11 @@
 import type { ExecutableTx, TransactionalDb } from "@openwhispr/data";
 import { withTenant } from "@openwhispr/data";
 import { sql } from "drizzle-orm";
-import { LRUCache } from "lru-cache";
 import { z } from "zod";
 import type { MintBearer, MintBearerArgs } from "../routes/auth-callback.js";
 import { type AuditCtx, recordAudit } from "./audit.js";
 import { resolveDefaultTenantId } from "./default-tenant.js";
+import { discoverOidc } from "./oidc-discovery.js";
 import { type JitConfig, readJitConfig } from "./oidc-jit-config.js";
 import { JitRejectionError } from "./oidc-jit-hooks.js";
 import { type ExistingIdentity, resolveJitDecision } from "./oidc-jit-resolver.js";
@@ -116,17 +116,6 @@ interface OidcUserinfo {
   [claim: string]: unknown;
 }
 
-// HI-04 — the OIDC discovery doc is zod-validated before caching.
-// `token_endpoint` / `userinfo_endpoint` MUST be absolute https:// URLs;
-// the scheme + same-origin checks below additionally pin them to the
-// issuer's origin so a poisoned discovery response cannot redirect the
-// `client_secret` exchange to an attacker endpoint.
-const OidcDiscoveryDocSchema = z.object({
-  token_endpoint: z.string().url(),
-  userinfo_endpoint: z.string().url(),
-});
-type OidcDiscoveryDoc = z.infer<typeof OidcDiscoveryDocSchema>;
-
 function requireEnv(name: string): string {
   const value = process.env[name];
   if (!value || value.length === 0) {
@@ -135,122 +124,11 @@ function requireEnv(name: string): string {
   return value;
 }
 
-// HI-04 — bounded, TTL'd cache for the OIDC discovery doc.
-//
-// OIDC Discovery 1.0 §4 explicitly permits caching the metadata
-// document. The original implementation used a bare process-lifetime
-// `Map` with NO TTL and NO size bound: a poisoned discovery response
-// (token-endpoint swap) was cached for the entire process life, and a
-// rotated/refreshed IdP could not recover without a pod roll.
-//
-// `lru-cache` (the same library `dep-check.ts` uses) provides the
-// bounded-size + TTL semantics natively: `max` evicts the
-// least-recently-used issuer on overflow; `ttl` (60 min) lets a
-// refreshed IdP recover on the next callback — an expired entry is a
-// transparent miss (`get` returns `undefined`), triggering a re-fetch.
-const MAX_CACHE_ENTRIES = 16;
-const DISCOVERY_TTL_MS = 60 * 60 * 1000;
-
-const discoveryCache = new LRUCache<string, OidcDiscoveryDoc>({
-  max: MAX_CACHE_ENTRIES,
-  ttl: DISCOVERY_TTL_MS,
-  // `Date.now()` is the TTL clock. `lru-cache` defaults to
-  // `performance.now()` when `performance` is present; at a 60-minute
-  // TTL granularity a wall-clock-vs-monotonic distinction is immaterial,
-  // and `Date.now()` keeps the TTL deterministically controllable under
-  // test fake timers.
-  perf: { now: () => Date.now() },
-  // `ttlResolution: 0` disables `lru-cache`'s 1-second `now()` memoization
-  // (which it normally refreshes via an internal `setTimeout`). At a
-  // 60-minute TTL the per-read clock call is negligible, and disabling
-  // the memoization makes expiry depend solely on the injected `perf`
-  // clock — no reliance on a background timer firing.
-  ttlResolution: 0,
-});
-
-/**
- * HI-04 — assert an OIDC endpoint URL is an https:// URL whose origin
- * matches the issuer's origin (or an explicit operator-configured
- * allowlist origin). A non-affiliated origin on `token_endpoint` /
- * `userinfo_endpoint` is the exact attacker primitive HI-04 describes
- * (redirect the `client_secret` exchange). Default-deny: an operator
- * with a legitimate split-domain IdP sets `OIDC_DISCOVERY_ALLOWED_ORIGINS`
- * (csv of `https://...` origins).
- */
-function assertEndpointAffiliated(label: string, endpoint: string, issuerOrigin: string): void {
-  let url: URL;
-  try {
-    url = new URL(endpoint);
-  } catch {
-    throw new Error(`mint bearer: discovery ${label} is not a valid URL`);
-  }
-  if (url.protocol !== "https:") {
-    throw new Error(`mint bearer: discovery ${label} must be https`);
-  }
-  if (url.origin === issuerOrigin) return;
-  const allowed = (process.env.OIDC_DISCOVERY_ALLOWED_ORIGINS ?? "")
-    .split(",")
-    .map((o) => o.trim())
-    .filter((o) => o.length > 0);
-  if (allowed.includes(url.origin)) return;
-  throw new Error(`mint bearer: discovery ${label} origin not affiliated with issuer`);
-}
-
-/**
- * Fetch (and cache) the OIDC issuer's discovery doc. Per RFC 8414 /
- * OpenID Connect Discovery 1.0 §4, the metadata document lives at
- * `${issuer}/.well-known/openid-configuration` and contains the
- * `token_endpoint` + `userinfo_endpoint` URLs the relying party uses
- * for code exchange and profile retrieval. Operators set ONE env var
- * (OIDC_ISSUER_URL) and we resolve the rest — matches Better Auth
- * genericOAuth's lazy-discovery contract (auth.ts:89–90).
- *
- * HI-04 — the fetched document is zod-validated AND each endpoint is
- * checked for https + issuer-origin affiliation BEFORE caching; an
- * expired cache entry is treated as a miss and re-fetched.
- *
- * T-02.7-07 — error messages include the HTTP status only, NEVER the
- * response body (discovery doc may be served from a misconfigured
- * proxy that leaks PII or attacker-controlled values).
- */
-async function discoverOidc(issuerUrl: string): Promise<OidcDiscoveryDoc> {
-  const issuer = issuerUrl.replace(/\/+$/, "");
-  // An expired entry is a transparent miss — `get` returns `undefined`
-  // once the TTL elapses, so no manual expiry/delete bookkeeping.
-  const cached = discoveryCache.get(issuer);
-  if (cached) return cached;
-
-  const url = `${issuer}/.well-known/openid-configuration`;
-  const res = await fetch(url);
-  if (!res.ok) {
-    throw new Error(`mint bearer: discovery ${res.status} (issuer=${issuer})`);
-  }
-  const parsed = OidcDiscoveryDocSchema.safeParse(await res.json());
-  if (!parsed.success) {
-    // HI-04 — never cache an unvalidated doc; fail loud (no body leak).
-    throw new Error(`mint bearer: discovery doc failed schema validation (issuer=${issuer})`);
-  }
-  const doc = parsed.data;
-
-  let issuerOrigin: string;
-  try {
-    issuerOrigin = new URL(issuer).origin;
-  } catch {
-    throw new Error(`mint bearer: OIDC_ISSUER_URL is not a valid URL`);
-  }
-  assertEndpointAffiliated("token_endpoint", doc.token_endpoint, issuerOrigin);
-  assertEndpointAffiliated("userinfo_endpoint", doc.userinfo_endpoint, issuerOrigin);
-
-  // HI-04 — cache only after zod-validation + origin-affiliation pass;
-  // `lru-cache` bounds the size (LRU eviction) and applies the TTL.
-  discoveryCache.set(issuer, doc);
-  return doc;
-}
-
-/** Test-only: clear the discovery cache between vitest runs. */
-export function __resetOidcDiscoveryCacheForTests(): void {
-  discoveryCache.clear();
-}
+// HI-04 — OIDC discovery (zod-validated + https/origin-affiliation guard +
+// bounded LRU/TTL cache) now lives in the shared lib/oidc-discovery.ts so the
+// desktop-signin authorize path (#10) reuses the SAME hardened fetcher. The
+// reset helper is re-exported for back-compat with mint-bearer-discovery.test.ts.
+export { __resetOidcDiscoveryCacheForTests } from "./oidc-discovery.js";
 
 // ── Phase 69 / Plan 69-04 — desktop JIT seam helpers (D-69-1) ───────────────
 //
