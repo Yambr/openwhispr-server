@@ -23,6 +23,8 @@
 // rendering ("Continue with Google" / "Continue with GitHub" /
 // "Continue with SSO") and is asserted by the contract test.
 
+import { readJitConfig } from "./oidc-jit-config.js";
+
 /** Public shape returned by `GET /api/auth/providers`. NEVER carries secrets. */
 export interface ConfiguredProvider {
   readonly id: "google" | "github" | "oidc";
@@ -36,9 +38,20 @@ export interface OidcProviderRegistration {
   readonly discoveryUrl: string;
   readonly clientId: string;
   readonly clientSecret: string;
+  /**
+   * OAuth scopes requested at the IdP authorize step. MUST be a mutable
+   * `string[]` (not `readonly`): the `{...provider}` spread in apps/api/src/
+   * auth.ts feeds this verbatim into Better Auth's `genericOAuth` config, whose
+   * type is `scopes?: string[]` — a `readonly string[]` value fails TS2345 and
+   * LOCKER-02 forbids casting it away. Always non-empty and `openid`-first.
+   */
+  readonly scopes: string[];
 }
 
 const DEFAULT_ENV: NodeJS.ProcessEnv = process.env;
+
+/** Base scopes when OIDC_SCOPES is unset. `openid` is mandatory for OIDC. */
+const DEFAULT_OIDC_SCOPES: readonly string[] = ["openid", "email", "profile"];
 
 function present(value: string | undefined): value is string {
   return typeof value === "string" && value.length > 0;
@@ -115,6 +128,65 @@ export function listConfiguredOidcProviders(
  * this helper because `betterAuth({...providers})` uses a different
  * config shape for them.
  */
+/**
+ * Resolve the OAuth scopes the web genericOAuth flow requests at the IdP.
+ *
+ * Brings the web path into parity with the desktop server flow
+ * (routes/desktop-signin.ts, which sets `openid email profile` + the group
+ * scope when JIT is enabled). Better Auth's `genericOAuth` only emits the
+ * `scope=` authorize param when this array is non-empty, and the IdP (e.g.
+ * Dex) returns no `id_token` without `openid` — so `openid` is mandatory.
+ *
+ * Resolution:
+ *  - Base: `OIDC_SCOPES` (CSV) when it yields ≥1 non-empty token, else the
+ *    default `["openid","email","profile"]`. The override REPLACES the default.
+ *  - `openid` is force-prepended if absent (OIDC is nonfunctional without it),
+ *    even on an `OIDC_SCOPES` override.
+ *  - JIT-group parity: when JIT is enabled (`OIDC_TENANT_CLAIM` set), append the
+ *    group claim. We reuse `readJitConfig(env).groupClaim` — the SAME value the
+ *    desktop flow derives from `OIDC_GROUP_CLAIM || "groups"` — instead of
+ *    re-reading the env vars, keeping a single source of truth (D-08 zero-drift).
+ *  - Deduped, preserving first occurrence, with `openid` at index 0.
+ *
+ * NOTE: `readJitConfig` inherits the boot loud-fail (`validateJitBoot` →
+ * `process.exit(78)` on malformed OIDC_*_MAPPING JSON). Callers in tests that
+ * flip JIT on must not pass malformed mapping JSON through here.
+ *
+ * Module-private (not exported): the only consumer is
+ * `readOidcProvidersForRegistration` below, and the unit tests exercise every
+ * branch through that public seam (the object Better Auth actually receives) —
+ * so it needs no standalone export (avoids a LOCKER-04 dead-export).
+ */
+function resolveOidcScopes(env: NodeJS.ProcessEnv = DEFAULT_ENV): string[] {
+  const raw = env.OIDC_SCOPES;
+  const overridden =
+    typeof raw === "string"
+      ? raw
+          .split(",")
+          .map((s) => s.trim())
+          .filter((s) => s.length > 0)
+      : [];
+  const base = overridden.length > 0 ? overridden : [...DEFAULT_OIDC_SCOPES];
+
+  // openid is mandatory — prepend when the override dropped it.
+  const withOpenid = base.includes("openid") ? base : ["openid", ...base];
+
+  // JIT-group parity with the desktop flow: append the resolved group claim.
+  const jit = readJitConfig(env);
+  const withGroup = jit ? [...withOpenid, jit.groupClaim] : withOpenid;
+
+  // Dedupe, openid first (the includes() guard above guarantees its presence).
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const scope of withGroup) {
+    if (!seen.has(scope)) {
+      seen.add(scope);
+      out.push(scope);
+    }
+  }
+  return out;
+}
+
 export function readOidcProvidersForRegistration(
   env: NodeJS.ProcessEnv = DEFAULT_ENV,
 ): readonly OidcProviderRegistration[] {
@@ -126,6 +198,7 @@ export function readOidcProvidersForRegistration(
       discoveryUrl: `${issuer.replace(/\/+$/, "")}/.well-known/openid-configuration`,
       clientId: env.OIDC_CLIENT_ID!,
       clientSecret: env.OIDC_CLIENT_SECRET!,
+      scopes: resolveOidcScopes(env),
     },
   ];
 }

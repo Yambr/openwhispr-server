@@ -231,4 +231,91 @@ describe("readOidcProvidersForRegistration — Better Auth shape (full config)",
   it("defaults to process.env when called with no argument", () => {
     expect(Array.isArray(readOidcProvidersForRegistration())).toBe(true);
   });
+
+  // -------------------------------------------------------------------------
+  // scopes — upstream #6 (peer gr0flvsr): the web SSO button drives Better
+  // Auth's genericOAuth, which only sets the IdP `scope=` param when the
+  // registration's `scopes` array is non-empty. Without `openid` the IdP (Dex)
+  // never returns an id_token → web sign-in cannot complete. This block pins
+  // the resolved scopes, mirroring the desktop flow (routes/desktop-signin.ts:
+  // `openid email profile` + the group scope when JIT is enabled).
+  // -------------------------------------------------------------------------
+  describe("scopes — genericOAuth authorize-URL scope= (upstream #6)", () => {
+    const baseEnv = {
+      OIDC_ISSUER_URL: "https://issuer.example.com",
+      OIDC_CLIENT_ID: "cid",
+      OIDC_CLIENT_SECRET: "secret",
+    } as const;
+
+    function scopesOf(extra: Record<string, string | undefined>): string[] {
+      const out = readOidcProvidersForRegistration(envOf({ ...baseEnv, ...extra }));
+      return [...(out[0]?.scopes ?? [])];
+    }
+
+    it("(1) default (no OIDC_SCOPES, no JIT) → [openid, email, profile]", () => {
+      expect(scopesOf({})).toEqual(["openid", "email", "profile"]);
+    });
+
+    it("(2) JIT on, no OIDC_GROUP_CLAIM → appends 'groups'", () => {
+      expect(scopesOf({ OIDC_TENANT_CLAIM: "email_domain" })).toEqual([
+        "openid",
+        "email",
+        "profile",
+        "groups",
+      ]);
+    });
+
+    it("(3) JIT on + OIDC_GROUP_CLAIM='role_groups' → appends 'role_groups'", () => {
+      expect(
+        scopesOf({ OIDC_TENANT_CLAIM: "email_domain", OIDC_GROUP_CLAIM: "role_groups" }),
+      ).toEqual(["openid", "email", "profile", "role_groups"]);
+    });
+
+    it("(4) OIDC_SCOPES='openid,email' override → exactly [openid, email]", () => {
+      expect(scopesOf({ OIDC_SCOPES: "openid,email" })).toEqual(["openid", "email"]);
+    });
+
+    it("(5) OIDC_SCOPES='email,profile' (operator forgot openid) → openid prepended", () => {
+      expect(scopesOf({ OIDC_SCOPES: "email,profile" })).toEqual(["openid", "email", "profile"]);
+    });
+
+    it("(6) OIDC_SCOPES override + JIT on → group appended + deduped", () => {
+      expect(scopesOf({ OIDC_SCOPES: "openid,email", OIDC_TENANT_CLAIM: "email_domain" })).toEqual([
+        "openid",
+        "email",
+        "groups",
+      ]);
+    });
+
+    it("(7) OIDC_SCOPES='openid,email,groups' + JIT (group=groups) → 'groups' once", () => {
+      expect(
+        scopesOf({ OIDC_SCOPES: "openid,email,groups", OIDC_TENANT_CLAIM: "email_domain" }),
+      ).toEqual(["openid", "email", "groups"]);
+    });
+
+    it("(8) registration entry carries a non-empty scopes array containing 'openid'", () => {
+      const out = readOidcProvidersForRegistration(envOf({ ...baseEnv }));
+      expect(out[0]?.scopes).toBeDefined();
+      expect((out[0]?.scopes ?? []).length).toBeGreaterThan(0);
+      expect(out[0]?.scopes).toContain("openid");
+    });
+
+    it("(9) OIDC_SCOPES empty / whitespace-only → falls back to default", () => {
+      expect(scopesOf({ OIDC_SCOPES: "" })).toEqual(["openid", "email", "profile"]);
+      expect(scopesOf({ OIDC_SCOPES: "   " })).toEqual(["openid", "email", "profile"]);
+      expect(scopesOf({ OIDC_SCOPES: " , , " })).toEqual(["openid", "email", "profile"]);
+    });
+
+    it("(10) OIDC_SCOPES with intra-override duplicates → deduped", () => {
+      expect(scopesOf({ OIDC_SCOPES: "openid,openid,email" })).toEqual(["openid", "email"]);
+    });
+
+    it("trims whitespace around each CSV scope token", () => {
+      expect(scopesOf({ OIDC_SCOPES: " openid , email , profile " })).toEqual([
+        "openid",
+        "email",
+        "profile",
+      ]);
+    });
+  });
 });
