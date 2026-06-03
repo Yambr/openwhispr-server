@@ -97,7 +97,7 @@ apps/api/src/lib/mint-bearer.ts:148  # issue-31-04-debt-LOCKER-04-dead-export-ph
 apps/api/src/lib/mint-bearer.ts:41  # issue-31-04-debt-LOCKER-04-dead-export-phase-38
 apps/api/src/lib/mint-bearer.ts:69  # issue-31-04-debt-LOCKER-04-dead-export-phase-38
 apps/api/src/lib/mint-bearer.ts:73  # issue-31-04-debt-LOCKER-04-dead-export-phase-38
-apps/api/src/lib/oidc-providers.ts:34  # issue-31-04-debt-LOCKER-04-dead-export-phase-38
+apps/api/src/lib/oidc-providers.ts:36  # issue-31-04-debt-LOCKER-04-dead-export-phase-38
 apps/api/src/lib/pyannote-client.ts:122  # issue-31-04-debt-LOCKER-04-dead-export-phase-38
 apps/api/src/lib/pyannote-client.ts:90  # issue-31-04-debt-LOCKER-04-dead-export-phase-38
 apps/api/src/lib/pyannote-client.ts:92  # issue-31-04-debt-LOCKER-04-dead-export-phase-38
