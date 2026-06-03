@@ -32,6 +32,7 @@ apps/api/src/routes/setup-admin.ts:57  # canonical-default-tenant (drift +2 by q
 packages/data/src/seed/conformance.ts:35  # canonical-default-tenant
 packages/data/src/schema/tenants.ts:4  # canonical-default-tenant
 packages/data/src/migrate.ts:57  # canonical-default-tenant (MIGRATE_SESSION_OPTIONS app.tenant_id GUC, upstream #4)
+packages/data/src/migrate.ts:339  # canonical-default-tenant (bindAppRoleTenantDefault ALTER ROLE app.tenant_id rolconfig, upstream #7)
 
 # --- (b) MIGRATION DEBT — port / localhost literals (target Phase 41.c / future) ---
 # Entries here are runtime hardcodes (literal strings used in non-env-fallback
