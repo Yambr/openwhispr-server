@@ -27,24 +27,80 @@ import { i18n } from "../i18n/init.js";
 export type SupportedLocale = "en" | "ru";
 
 /**
- * The cleanup SHAPE: NO `agentName` AND NO `systemPrompt` AND empty/absent
- * `model`. `ReasonRequest` declares all three `.nullish()`
- * (`string | null | undefined`); `model` may additionally be the empty
- * string `""` (the client sends `"model":""` on a fresh session before
- * the store resolves a model). "absent" therefore means
- * `=== undefined || === null` for agentName/systemPrompt, plus `=== ""`
- * for model.
+ * The 4 client-declared request classes (BACKEND_SPEC `requestKind`). The
+ * client (≥ v1.7.18) sets this explicitly on every /api/reason call:
+ * `"cleanup"` for dictation cleanup, `"agent"`/`"summary"`/`"title"` for the
+ * reasoning paths.
+ */
+export type RequestKind = "cleanup" | "agent" | "summary" | "title";
+
+/** The internal routing class the two layers branch on. */
+export type RequestClass = "cleanup" | "reasoning";
+
+const REQUEST_KINDS: readonly RequestKind[] = ["cleanup", "agent", "summary", "title"];
+
+/**
+ * Narrow an arbitrary (passthrough-tolerated) `requestKind` value to one of
+ * the 4 known literals. Unknown / null / undefined / wrong-type → `false`.
  *
- * When this returns `true` the request is a dictation-cleanup call and
- * gets the cleanup persona + fast-model routing; otherwise it is an agent
- * call and keeps the conversational behaviour.
+ * Fail-SAFE: a garbage value never throws and never 400s upstream (the wire
+ * schema bounds it as a plain string, NOT `z.enum`) — it just fails this
+ * guard so the caller falls back to the legacy shape heuristic.
+ */
+export function isRequestKind(value: unknown): value is RequestKind {
+  return typeof value === "string" && (REQUEST_KINDS as readonly string[]).includes(value);
+}
+
+/**
+ * PRIMARY router. Maps an explicit `body.requestKind` to the internal routing
+ * class, IGNORING the `agentName`/`systemPrompt`/`model` body shape:
+ *
+ *   - `"cleanup"`                    → `"cleanup"`
+ *   - `"agent"` | `"summary"` | `"title"` → `"reasoning"`
+ *   - absent / null / garbage        → `undefined` (caller falls back to the
+ *                                       {@link isCleanupRequest} heuristic)
+ *
+ * `agentName` is deliberately NOT consulted — it is always non-empty from the
+ * client's localStorage and is useless for the cleanup-vs-reasoning decision.
+ */
+export function resolveRequestClass(body: ReasonRequest): RequestClass | undefined {
+  const kind = (body as { requestKind?: unknown }).requestKind;
+  if (!isRequestKind(kind)) return undefined;
+  return kind === "cleanup" ? "cleanup" : "reasoning";
+}
+
+/**
+ * The FALLBACK cleanup SHAPE heuristic, used ONLY when no explicit (valid)
+ * `requestKind` is present. This is the PERMANENT compatibility layer for
+ * clients that do not send `requestKind` — the deployed desktop client
+ * ≤ v1.7.17 and all upstream OpenWhispr clients (which never send it).
+ *
+ * The cleanup shape is: NO `systemPrompt` AND empty/absent `model`. The
+ * discriminator is `systemPrompt`: a real agent dictation ALWAYS forwards a
+ * non-empty `systemPrompt` (the client's agent branch sends
+ * `resolvePrompt("dictationAgent")`), whereas a cleanup dictation sends none.
+ *
+ * `agentName` is NOT consulted — it is always non-empty from the client's
+ * localStorage even for a cleanup dictation made while an agent is configured.
+ * Consulting it (the previous `agentAbsent && …` formula) misrouted exactly
+ * that case — cleanup-while-agent-configured — to the reasoning model with
+ * thinking ON (the live regression this fix addresses).
+ *
+ * `model` is kept as defence-in-depth: a request carrying an explicit model
+ * but no systemPrompt routes to reasoning, not cleanup (the explicit model is
+ * an intentional reasoning signal). On the deployed clients `model` is never
+ * sent, so this term is inert for them — it only guards future/other clients.
+ *
+ * `ReasonRequest` declares the fields `.nullish()` (`string | null |
+ * undefined`); `model` may additionally be `""` (a fresh session before the
+ * store resolves a model). "absent" therefore means `=== undefined || ===
+ * null` for systemPrompt, plus `=== ""` for model.
  */
 export function isCleanupRequest(body: ReasonRequest): boolean {
-  const agentAbsent = body.agentName === undefined || body.agentName === null;
   const systemAbsent = body.systemPrompt === undefined || body.systemPrompt === null;
   const model = body.model;
   const modelAbsent = model === undefined || model === null || model === "";
-  return agentAbsent && systemAbsent && modelAbsent;
+  return systemAbsent && modelAbsent;
 }
 
 /**
@@ -116,26 +172,39 @@ function cleanupSystemContent(body: ReasonRequest, locale: SupportedLocale): str
 /**
  * Build the upstream `messages` array for a /api/reason request.
  *
- *   - cleanup shape  → `[system(<cleanupSystemContent>), user(text)]`
+ * Routing is PRIMARY-then-fallback: the explicit `requestKind` (via
+ * {@link resolveRequestClass}) decides the class when present, otherwise the
+ * {@link isCleanupRequest} shape heuristic does.
+ *
+ *   - cleanup class  → `[system(<cleanupSystemContent>), user(text)]`
  *     where `<cleanupSystemContent>` follows the three-tier precedence:
  *     non-empty `body.customPrompt` (Prompt-Studio override) → else the
- *     localized `prompts.cleanupPrompt` default.
- *   - agent shape w/ `systemPrompt` → `[system(systemPrompt), user(text)]`
- *   - agent shape w/ only `agentName` → `[user(text)]`
- *
- * The agentName-only branch deliberately emits NO system message — that
- * is today's behaviour and R33 must not regress it (the cleanup persona
- * is added ONLY for the cleanup shape).
+ *     localized `prompts.cleanupPrompt` default. The body's `systemPrompt`
+ *     is IGNORED for the cleanup class.
+ *   - reasoning class w/ `systemPrompt` → `[system(systemPrompt), user(text)]`
+ *   - reasoning class w/o `systemPrompt` → `[user(text)]` (NO system message)
  */
 export function selectMessages(body: ReasonRequest, locale: SupportedLocale): ChatMessage[] {
   const userMsg: ChatMessage = { role: "user", content: body.text };
-  if (isCleanupRequest(body)) {
-    return [{ role: "system", content: cleanupSystemContent(body, locale) }, userMsg];
-  }
-  if (body.systemPrompt !== undefined && body.systemPrompt !== null) {
-    return [{ role: "system", content: body.systemPrompt }, userMsg];
-  }
-  return [userMsg];
+  const cleanupMessages = (): ChatMessage[] => [
+    { role: "system", content: cleanupSystemContent(body, locale) },
+    userMsg,
+  ];
+  // The reasoning shape uses `systemPrompt` as the persona when present, else
+  // NO system message (the conversational default) — identical for the
+  // PRIMARY "reasoning" class and the fallback non-cleanup path.
+  const reasoningMessages = (): ChatMessage[] =>
+    body.systemPrompt !== undefined && body.systemPrompt !== null
+      ? [{ role: "system", content: body.systemPrompt }, userMsg]
+      : [userMsg];
+
+  // PRIMARY: an explicit requestKind decides, IGNORING the body shape.
+  const cls = resolveRequestClass(body);
+  if (cls === "cleanup") return cleanupMessages();
+  if (cls === "reasoning") return reasoningMessages();
+
+  // FALLBACK (requestKind absent/garbage): the legacy shape heuristic.
+  return isCleanupRequest(body) ? cleanupMessages() : reasoningMessages();
 }
 
 // ---------------------------------------------------------------------------
@@ -211,16 +280,40 @@ export function selectModelAndExtras(
   body: ReasonRequest,
   deps: ModelSelectionDeps,
 ): ModelAndExtras {
-  if (isCleanupRequest(body)) {
-    const model = body.model || deps.cleanupModel || DEFAULT_CHAT_MODEL;
-    // #18 — an operator-configured per-model bag overrides the hardcoded
-    // thinking-off default; absent → keep the back-compat default.
-    const configured = resolveConfiguredExtras(deps.modelParams, model);
-    return { model, extras: configured ?? { ...QWEN_THINKING_OFF_EXTRAS } };
-  }
+  // PRIMARY: an explicit requestKind decides, IGNORING the body shape.
+  const cls = resolveRequestClass(body);
+  if (cls === "cleanup") return cleanupModelAndExtras(body, deps);
+  if (cls === "reasoning") return reasoningModelAndExtras(body, deps);
+
+  // FALLBACK (requestKind absent/garbage): the legacy shape heuristic.
+  return isCleanupRequest(body)
+    ? cleanupModelAndExtras(body, deps)
+    : reasoningModelAndExtras(body, deps);
+}
+
+/**
+ * Cleanup-class model + extras. `body.model || cleanupModel || DEFAULT` uses
+ * `||` (NOT `??`) deliberately: the client sends `model:""` on a fresh
+ * session, and `""` must fall through to the cleanup alias. Thinking-OFF is
+ * the default unless an operator `modelParams` bag for the resolved alias
+ * overrides it (#18). The bag is read ONLY from operator config, never the
+ * request body (anti-injection — see {@link ModelSelectionDeps.modelParams}).
+ */
+function cleanupModelAndExtras(body: ReasonRequest, deps: ModelSelectionDeps): ModelAndExtras {
+  const model = body.model || deps.cleanupModel || DEFAULT_CHAT_MODEL;
+  const configured = resolveConfiguredExtras(deps.modelParams, model);
+  return { model, extras: configured ?? { ...QWEN_THINKING_OFF_EXTRAS } };
+}
+
+/**
+ * Reasoning-class model + extras. `body.model ?? defaultModel ?? DEFAULT`
+ * uses `??` to match the historical agent-branch resolution. NO forced
+ * thinking-off; an operator `modelParams` bag for the resolved alias applies
+ * if present (#18), else no extras. Same anti-injection guarantee as
+ * {@link cleanupModelAndExtras}.
+ */
+function reasoningModelAndExtras(body: ReasonRequest, deps: ModelSelectionDeps): ModelAndExtras {
   const model = body.model ?? deps.defaultModel ?? DEFAULT_CHAT_MODEL;
-  // #18 — agent shape now also honours a configured bag for its resolved
-  // alias; absent → no extras (today's behaviour, back-compat).
   const configured = resolveConfiguredExtras(deps.modelParams, model);
   return configured ? { model, extras: configured } : { model };
 }

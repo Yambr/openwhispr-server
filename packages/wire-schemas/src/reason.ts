@@ -61,6 +61,18 @@ export const ReasonRequest = z
     text: z.string().min(1).max(MAX_REASON_TEXT_LENGTH),
     model: z.string().min(1).max(128).nullish(),
     agentName: z.string().max(MAX_META_STRING_LENGTH).nullish(),
+    // requestKind — the PRIMARY routing class the client declares
+    // explicitly (BACKEND_SPEC). The 4 known literals are "cleanup" |
+    // "agent" | "summary" | "title", but this is intentionally a BOUNDED
+    // STRING, NOT `z.enum([...])`: an unknown value (a future 5th kind, a
+    // proxy, a partially-updated client) MUST fall through to the legacy
+    // shape heuristic (fail-safe) rather than 400 and break the dictation
+    // flow. The 4-literal narrowing happens at runtime via `isRequestKind`
+    // in `apps/api/src/lib/reason-prompt-select.ts` — the wire layer only
+    // bounds the shape, the routing layer owns the business rule. `.nullish()`
+    // per the sibling-field convention (the client may send `null` for an
+    // unset optional; see the lines 47-58 rationale).
+    requestKind: z.string().max(32).nullish(),
     customDictionary: z.array(z.string().max(MAX_META_STRING_LENGTH)).nullish(),
     customPrompt: z.string().max(MAX_PROMPT_LENGTH).nullish(),
     systemPrompt: z.string().max(MAX_PROMPT_LENGTH).nullish(),

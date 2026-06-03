@@ -11,8 +11,10 @@ import enLocale from "../../../src/i18n/locales/en.json" with { type: "json" };
 import ruLocale from "../../../src/i18n/locales/ru.json" with { type: "json" };
 import {
   isCleanupRequest,
+  isRequestKind,
   QWEN_THINKING_OFF_EXTRAS,
   resolveLocale,
+  resolveRequestClass,
   selectMessages,
   selectModelAndExtras,
 } from "../../../src/lib/reason-prompt-select.js";
@@ -29,10 +31,25 @@ function body(overrides: Partial<ReasonRequest> = {}): ReasonRequest {
   return { text: "one two three", ...overrides } as ReasonRequest;
 }
 
-describe("isCleanupRequest() — cleanup-shape detection matrix", () => {
-  // The cleanup shape is: NO agentName AND NO systemPrompt AND empty/absent
-  // model. "absent" === undefined | null for agentName/systemPrompt; for
-  // model it ALSO includes "".
+describe("isCleanupRequest() — cleanup-shape detection matrix (FALLBACK heuristic)", () => {
+  // cleanup-routing (#36): the FALLBACK heuristic is now WEAKENED — it no
+  // longer consults `agentName`. The cleanup shape is: NO systemPrompt AND
+  // empty/absent model. `agentName` is ALWAYS non-empty from the client's
+  // localStorage, so it is useless for cleanup-vs-reasoning and was the root
+  // cause of the live regression: a cleanup dictation made WHILE an agent is
+  // configured sends a (non-empty) agentName but NO systemPrompt — the old
+  // `agentAbsent && ...` formula made it `false`, wrongly routing cleanup to
+  // the reasoning model. The discriminator is now `systemPrompt`: a real
+  // agent dictation ALWAYS forwards a non-empty systemPrompt (verified in the
+  // client: audioManager agent branch sends resolvePrompt("dictationAgent")),
+  // so systemAbsent reliably distinguishes cleanup from agent. `model` is kept
+  // as defence-in-depth (a future client sending an explicit model without a
+  // systemPrompt routes to reasoning, not cleanup).
+  //
+  // This heuristic is the PERMANENT fallback for clients that do NOT send the
+  // explicit `requestKind` field (≤v1.7.17 desktop + all upstream clients).
+  // "absent" === undefined | null for systemPrompt; for model it ALSO
+  // includes "".
   const absentLike = [undefined, null] as const;
   const modelAbsentLike = [undefined, null, ""] as const;
   const presentLike = ["x"] as const;
@@ -42,10 +59,10 @@ describe("isCleanupRequest() — cleanup-shape detection matrix", () => {
   for (const agentName of [...absentLike, ...presentLike]) {
     for (const systemPrompt of [...absentLike, ...presentLike]) {
       for (const model of [...modelAbsentLike, ...modelPresentLike]) {
-        const agentAbsent = agentName === undefined || agentName === null;
         const systemAbsent = systemPrompt === undefined || systemPrompt === null;
         const modelAbsent = model === undefined || model === null || model === "";
-        const expected = agentAbsent && systemAbsent && modelAbsent;
+        // WEAKENED contract: agentName is NOT consulted.
+        const expected = systemAbsent && modelAbsent;
         it(`agentName=${JSON.stringify(agentName)} systemPrompt=${JSON.stringify(
           systemPrompt,
         )} model=${JSON.stringify(model)} -> ${expected}`, () => {
@@ -62,6 +79,77 @@ describe("isCleanupRequest() — cleanup-shape detection matrix", () => {
       }
     }
   }
+
+  // Hand-written NON-PARAMETRIC pins. The matrix above recomputes `expected`
+  // from the same formula as the implementation (a self-consistent mirror —
+  // a weak oracle that would pass for ANY matching formula). These literal
+  // assertions pin the INTENDED contract independently.
+  it("PIN: cleanup-while-agent-configured (agentName set, NO systemPrompt, NO model) -> TRUE (the Nick regression fix)", () => {
+    expect(isCleanupRequest(body({ agentName: "Whispr" }))).toBe(true);
+  });
+  it("PIN: agent dictation (non-empty systemPrompt) -> FALSE (stays reasoning)", () => {
+    expect(isCleanupRequest(body({ agentName: "Whispr", systemPrompt: "You are Whispr." }))).toBe(
+      false,
+    );
+  });
+  it("PIN: explicit model without systemPrompt -> FALSE (defence-in-depth, reasoning)", () => {
+    expect(isCleanupRequest(body({ agentName: "Whispr", model: "gpt-4o-mini" }))).toBe(false);
+  });
+  it("PIN: pure cleanup (nothing set) -> TRUE", () => {
+    expect(isCleanupRequest(body())).toBe(true);
+  });
+});
+
+describe("isRequestKind() — runtime narrowing of the requestKind literal", () => {
+  it("is true for each of the 4 known literals", () => {
+    for (const k of ["cleanup", "agent", "summary", "title"]) {
+      expect(isRequestKind(k)).toBe(true);
+    }
+  });
+  it("is false for an unknown string, empty string, null, undefined, number, object", () => {
+    for (const v of ["chatbot", "", null, undefined, 7, {}]) {
+      expect(isRequestKind(v)).toBe(false);
+    }
+  });
+});
+
+describe("resolveRequestClass() — PRIMARY router (requestKind → class)", () => {
+  function withKind(requestKind: unknown): ReasonRequest {
+    return body({ ...({ requestKind } as Partial<ReasonRequest>) });
+  }
+  it("'cleanup' -> 'cleanup'", () => {
+    expect(resolveRequestClass(withKind("cleanup"))).toBe("cleanup");
+  });
+  it("'agent' -> 'reasoning'", () => {
+    expect(resolveRequestClass(withKind("agent"))).toBe("reasoning");
+  });
+  it("'summary' -> 'reasoning'", () => {
+    expect(resolveRequestClass(withKind("summary"))).toBe("reasoning");
+  });
+  it("'title' -> 'reasoning'", () => {
+    expect(resolveRequestClass(withKind("title"))).toBe("reasoning");
+  });
+  it("garbage string -> undefined (fall back to heuristic)", () => {
+    expect(resolveRequestClass(withKind("chatbot"))).toBeUndefined();
+  });
+  it("null -> undefined", () => {
+    expect(resolveRequestClass(withKind(null))).toBeUndefined();
+  });
+  it("absent -> undefined", () => {
+    expect(resolveRequestClass(body())).toBeUndefined();
+  });
+  it("IGNORES body shape: requestKind 'cleanup' wins over a fully agent-shaped body", () => {
+    expect(
+      resolveRequestClass(
+        body({
+          ...({ requestKind: "cleanup" } as Partial<ReasonRequest>),
+          agentName: "Whispr",
+          systemPrompt: "be a pirate",
+          model: "gpt-4o-mini",
+        }),
+      ),
+    ).toBe("cleanup");
+  });
 });
 
 describe("resolveLocale()", () => {
@@ -151,14 +239,23 @@ describe("selectMessages()", () => {
     expect(msgs[0]?.content).toBe(RU_CLEANUP_PROMPT);
   });
 
-  it("customPrompt does NOT override the agent shape (agentName-only stays system-message-free)", () => {
-    // customPrompt is a cleanup-shape-only override; an agent-shape
-    // request must not gain a system message from it (no regression).
+  it("customPrompt does NOT override the agent shape (systemPrompt-carrying agent stays its own system message)", () => {
+    // cleanup-routing (#36): a REAL agent dictation carries a non-empty
+    // systemPrompt (the discriminator). customPrompt is a cleanup-only
+    // override and must not displace the agent's systemPrompt.
     const msgs = selectMessages(
-      body({ agentName: "Whispr", customPrompt: "some override", text: "do it" }),
+      body({
+        agentName: "Whispr",
+        systemPrompt: "You are Whispr.",
+        customPrompt: "some override",
+        text: "do it",
+      }),
       "en",
     );
-    expect(msgs).toEqual([{ role: "user", content: "do it" }]);
+    expect(msgs).toEqual([
+      { role: "system", content: "You are Whispr." },
+      { role: "user", content: "do it" },
+    ]);
   });
 
   it("agent shape with systemPrompt -> [system(systemPrompt), user]", () => {
@@ -169,9 +266,88 @@ describe("selectMessages()", () => {
     ]);
   });
 
-  it("agent shape with only agentName -> [user] (no system prompt — no regression)", () => {
-    const msgs = selectMessages(body({ agentName: "Whispr", text: "do the thing" }), "en");
-    expect(msgs).toEqual([{ role: "user", content: "do the thing" }]);
+  it("cleanup-while-agent-configured (agentName set, NO systemPrompt) -> cleanup persona (Nick regression fix)", () => {
+    // cleanup-routing (#36): the OLD contract returned [user] only here
+    // (treating bare agentName as agent). That was the bug — a cleanup
+    // dictation made while an agent is configured. It now gets the cleanup
+    // persona, like any other cleanup request.
+    const msgs = selectMessages(body({ agentName: "Whispr", text: "uh do the thing" }), "en");
+    expect(msgs).toHaveLength(2);
+    expect(msgs[0]?.role).toBe("system");
+    expect(msgs[0]?.content).toBe(EN_CLEANUP_PROMPT);
+    expect(msgs[1]).toEqual({ role: "user", content: "uh do the thing" });
+  });
+});
+
+describe("selectMessages() — requestKind PRIMARY routing (cleanup-routing #36)", () => {
+  /** Build a body with an explicit requestKind plus optional overrides. */
+  function kindBody(requestKind: string, overrides: Partial<ReasonRequest> = {}): ReasonRequest {
+    return body({ ...({ requestKind } as Partial<ReasonRequest>), ...overrides });
+  }
+
+  it("requestKind 'cleanup' with a stray systemPrompt -> cleanup persona (systemPrompt IGNORED)", () => {
+    const msgs = selectMessages(
+      kindBody("cleanup", { systemPrompt: "be a pirate", text: "uh one two" }),
+      "en",
+    );
+    expect(msgs).toHaveLength(2);
+    expect(msgs[0]?.role).toBe("system");
+    expect(msgs[0]?.content).toBe(EN_CLEANUP_PROMPT);
+    expect(msgs[0]?.content).not.toBe("be a pirate");
+    expect(msgs[1]).toEqual({ role: "user", content: "uh one two" });
+  });
+
+  it("requestKind 'cleanup' with stray agentName + model -> cleanup persona", () => {
+    const msgs = selectMessages(
+      kindBody("cleanup", { agentName: "X", model: "gpt-4o-mini", text: "uh one two" }),
+      "en",
+    );
+    expect(msgs[0]?.content).toBe(EN_CLEANUP_PROMPT);
+  });
+
+  it("requestKind 'cleanup' honours customPrompt tier-1 verbatim", () => {
+    const msgs = selectMessages(kindBody("cleanup", { customPrompt: "STRIP.", text: "t" }), "en");
+    expect(msgs[0]).toEqual({ role: "system", content: "STRIP." });
+  });
+
+  it("requestKind 'agent' with NO systemPrompt -> [user] only, NOT cleanup persona", () => {
+    // The headline routing case: by shape alone (nothing set) the FALLBACK
+    // heuristic would say cleanup, but the explicit requestKind forces
+    // reasoning → no cleanup system message.
+    const msgs = selectMessages(kindBody("agent", { text: "do it" }), "en");
+    expect(msgs).toEqual([{ role: "user", content: "do it" }]);
+  });
+
+  it("requestKind 'agent' WITH systemPrompt -> [system(systemPrompt), user]", () => {
+    const msgs = selectMessages(kindBody("agent", { systemPrompt: "P", text: "t" }), "en");
+    expect(msgs).toEqual([
+      { role: "system", content: "P" },
+      { role: "user", content: "t" },
+    ]);
+  });
+
+  it("requestKind 'summary' with no systemPrompt -> [user] only (reasoning)", () => {
+    expect(selectMessages(kindBody("summary", { text: "t" }), "en")).toEqual([
+      { role: "user", content: "t" },
+    ]);
+  });
+
+  it("requestKind 'title' with no systemPrompt -> [user] only (reasoning)", () => {
+    expect(selectMessages(kindBody("title", { text: "t" }), "en")).toEqual([
+      { role: "user", content: "t" },
+    ]);
+  });
+
+  it("garbage requestKind -> FALLBACK heuristic (cleanup shape -> cleanup persona)", () => {
+    const msgs = selectMessages(kindBody("chatbot", { text: "t" }), "en");
+    expect(msgs[0]?.content).toBe(EN_CLEANUP_PROMPT);
+  });
+
+  it("garbage requestKind + agentName-only -> FALLBACK -> cleanup persona (weakened heuristic)", () => {
+    // With the weakened fallback, agentName-only-without-systemPrompt is now
+    // a cleanup shape — so a garbage requestKind on that body still cleanups.
+    const msgs = selectMessages(kindBody("chatbot", { agentName: "Whispr", text: "x" }), "en");
+    expect(msgs[0]?.content).toBe(EN_CLEANUP_PROMPT);
   });
 });
 
@@ -201,13 +377,29 @@ describe("selectModelAndExtras() — LAYER 2 model routing + thinking-off", () =
     expect(res.extras).toBeDefined();
   });
 
-  it("agent shape (agentName) -> defaultModel chain, NO thinking-off extras", () => {
-    const res = selectModelAndExtras(body({ agentName: "Whispr" }), {
+  it("agent shape (systemPrompt-carrying) -> defaultModel chain, NO thinking-off extras", () => {
+    // cleanup-routing (#36): a genuine agent dictation is identified by its
+    // non-empty systemPrompt (bare agentName is now cleanup-while-agent-set).
+    const res = selectModelAndExtras(body({ agentName: "Whispr", systemPrompt: "be Whispr" }), {
       cleanupModel: CLEANUP_MODEL,
       defaultModel: DEFAULT_MODEL,
     });
     expect(res.model).toBe(DEFAULT_MODEL);
     expect(res.extras).toBeUndefined();
+  });
+
+  it("cleanup-while-agent-configured (agentName, NO systemPrompt) -> cleanupModel + thinking-off (Nick regression fix)", () => {
+    // The OLD contract returned defaultModel/no-extras here; that was the bug
+    // (cleanup wrongly routed to the reasoning model WITH thinking on).
+    const res = selectModelAndExtras(body({ agentName: "Whispr" }), {
+      cleanupModel: CLEANUP_MODEL,
+      defaultModel: DEFAULT_MODEL,
+    });
+    expect(res.model).toBe(CLEANUP_MODEL);
+    expect(
+      (res.extras as { extra_body?: { chat_template_kwargs?: { enable_thinking?: boolean } } })
+        .extra_body?.chat_template_kwargs?.enable_thinking,
+    ).toBe(false);
   });
 
   it("agent shape (systemPrompt) -> defaultModel, no extras", () => {
@@ -238,7 +430,9 @@ describe("selectModelAndExtras() — LAYER 2 model routing + thinking-off", () =
   });
 
   it("agent shape falls back to DEFAULT_CHAT_MODEL when defaultModel omitted", () => {
-    const res = selectModelAndExtras(body({ agentName: "Whispr" }), {
+    // cleanup-routing (#36): carry a systemPrompt so this stays a genuine
+    // agent-shape test under the weakened fallback heuristic.
+    const res = selectModelAndExtras(body({ agentName: "Whispr", systemPrompt: "be Whispr" }), {
       cleanupModel: CLEANUP_MODEL,
     });
     expect(res.model).toBe("qwen3.6-plus");
@@ -286,7 +480,8 @@ describe("selectModelAndExtras() — LAYER 2 model routing + thinking-off", () =
     });
 
     it("agent shape: modelParams entry for the resolved model applies extras (not just cleanup)", () => {
-      const res = selectModelAndExtras(body({ agentName: "Whispr" }), {
+      // cleanup-routing (#36): systemPrompt makes this a genuine agent shape.
+      const res = selectModelAndExtras(body({ agentName: "Whispr", systemPrompt: "be Whispr" }), {
         cleanupModel: CLEANUP_MODEL,
         defaultModel: DEFAULT_MODEL,
         modelParams: { [DEFAULT_MODEL]: { reasoning: { enabled: false }, temperature: 0 } },
@@ -296,7 +491,7 @@ describe("selectModelAndExtras() — LAYER 2 model routing + thinking-off", () =
     });
 
     it("agent shape: NO modelParams entry → no extras (backward-compat)", () => {
-      const res = selectModelAndExtras(body({ agentName: "Whispr" }), {
+      const res = selectModelAndExtras(body({ agentName: "Whispr", systemPrompt: "be Whispr" }), {
         cleanupModel: CLEANUP_MODEL,
         defaultModel: DEFAULT_MODEL,
         modelParams: { [CLEANUP_MODEL]: { temperature: 0 } },
@@ -343,6 +538,139 @@ describe("selectModelAndExtras() — LAYER 2 model routing + thinking-off", () =
         modelParams: { [CLEANUP_MODEL]: { temperature: 0 } },
       });
       // Only the operator config bag — the smuggled body keys are ignored.
+      expect(res.extras).toEqual({ temperature: 0 });
+      const serialized = JSON.stringify(res.extras);
+      expect(serialized).not.toContain("1.9");
+      expect(serialized).not.toContain("injected");
+      expect(serialized).not.toContain("enable_thinking");
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // cleanup-routing (#36) — requestKind PRIMARY routing for model + extras.
+  // -------------------------------------------------------------------------
+  describe("requestKind PRIMARY routing", () => {
+    function kindBody(requestKind: string, overrides: Partial<ReasonRequest> = {}): ReasonRequest {
+      return body({ ...({ requestKind } as Partial<ReasonRequest>), ...overrides });
+    }
+    const thinkingOff = (extras: unknown) =>
+      (extras as { extra_body?: { chat_template_kwargs?: { enable_thinking?: boolean } } })
+        .extra_body?.chat_template_kwargs?.enable_thinking;
+
+    it("requestKind 'cleanup' -> cleanupModel + thinking-off, IGNORING agent-shaped body", () => {
+      const res = selectModelAndExtras(
+        kindBody("cleanup", { agentName: "X", systemPrompt: "Y", model: "" }),
+        { cleanupModel: CLEANUP_MODEL, defaultModel: DEFAULT_MODEL },
+      );
+      expect(res.model).toBe(CLEANUP_MODEL);
+      expect(thinkingOff(res.extras)).toBe(false);
+    });
+
+    it("requestKind 'cleanup' with explicit non-empty body.model -> that model wins, still thinking-off", () => {
+      const res = selectModelAndExtras(kindBody("cleanup", { model: "gpt-4o-mini" }), {
+        cleanupModel: CLEANUP_MODEL,
+        defaultModel: DEFAULT_MODEL,
+      });
+      expect(res.model).toBe("gpt-4o-mini");
+      expect(thinkingOff(res.extras)).toBe(false);
+    });
+
+    it("requestKind 'cleanup' with model:'' falls through to cleanupModel (|| not ??)", () => {
+      const res = selectModelAndExtras(kindBody("cleanup", { model: "" }), {
+        cleanupModel: CLEANUP_MODEL,
+        defaultModel: DEFAULT_MODEL,
+      });
+      expect(res.model).toBe(CLEANUP_MODEL);
+    });
+
+    it("requestKind 'agent' with NO systemPrompt -> defaultModel, NO thinking-off (NOT cleanup)", () => {
+      // Headline routing case: a bare body that the heuristic would call
+      // cleanup, but requestKind forces the reasoning model with no extras.
+      const res = selectModelAndExtras(kindBody("agent"), {
+        cleanupModel: CLEANUP_MODEL,
+        defaultModel: DEFAULT_MODEL,
+      });
+      expect(res.model).toBe(DEFAULT_MODEL);
+      expect(res.extras).toBeUndefined();
+    });
+
+    it("requestKind 'summary' -> defaultModel, no extras", () => {
+      const res = selectModelAndExtras(kindBody("summary"), {
+        cleanupModel: CLEANUP_MODEL,
+        defaultModel: DEFAULT_MODEL,
+      });
+      expect(res.model).toBe(DEFAULT_MODEL);
+      expect(res.extras).toBeUndefined();
+    });
+
+    it("requestKind 'title' -> defaultModel, no extras", () => {
+      const res = selectModelAndExtras(kindBody("title"), {
+        cleanupModel: CLEANUP_MODEL,
+        defaultModel: DEFAULT_MODEL,
+      });
+      expect(res.model).toBe(DEFAULT_MODEL);
+      expect(res.extras).toBeUndefined();
+    });
+
+    it("requestKind 'agent' with explicit body.model -> that model wins (??)", () => {
+      const res = selectModelAndExtras(kindBody("agent", { model: "gpt-4o-mini" }), {
+        cleanupModel: CLEANUP_MODEL,
+        defaultModel: DEFAULT_MODEL,
+      });
+      expect(res.model).toBe("gpt-4o-mini");
+    });
+
+    it("requestKind 'cleanup': modelParams entry OVERRIDES thinking-off default", () => {
+      const res = selectModelAndExtras(kindBody("cleanup"), {
+        cleanupModel: CLEANUP_MODEL,
+        defaultModel: DEFAULT_MODEL,
+        modelParams: { [CLEANUP_MODEL]: { temperature: 0 } },
+      });
+      expect(res.extras).toEqual({ temperature: 0 });
+    });
+
+    it("requestKind 'agent': modelParams entry on the resolved alias applies extras", () => {
+      const res = selectModelAndExtras(kindBody("agent"), {
+        cleanupModel: CLEANUP_MODEL,
+        defaultModel: DEFAULT_MODEL,
+        modelParams: { [DEFAULT_MODEL]: { temperature: 0 } },
+      });
+      expect(res.extras).toEqual({ temperature: 0 });
+    });
+
+    it("garbage requestKind -> FALLBACK -> cleanup shape gets cleanupModel + thinking-off", () => {
+      const res = selectModelAndExtras(kindBody("chatbot"), {
+        cleanupModel: CLEANUP_MODEL,
+        defaultModel: DEFAULT_MODEL,
+      });
+      expect(res.model).toBe(CLEANUP_MODEL);
+      expect(thinkingOff(res.extras)).toBe(false);
+    });
+
+    it("garbage requestKind + systemPrompt -> FALLBACK -> reasoning, no extras", () => {
+      const res = selectModelAndExtras(kindBody("chatbot", { systemPrompt: "be Whispr" }), {
+        cleanupModel: CLEANUP_MODEL,
+        defaultModel: DEFAULT_MODEL,
+      });
+      expect(res.model).toBe(DEFAULT_MODEL);
+      expect(res.extras).toBeUndefined();
+    });
+
+    it("ANTI-INJECTION: a spoofed requestKind cannot inject extras — extras come ONLY from operator modelParams", () => {
+      const malicious = kindBody("agent", {
+        // biome-ignore lint/suspicious/noExplicitAny: deliberately smuggling unknown body keys
+        ...({
+          extra_body: { chat_template_kwargs: { enable_thinking: true } },
+          temperature: 1.9,
+          reasoning: { injected: true },
+          extras: { injected: true },
+        } as any),
+      });
+      const res = selectModelAndExtras(malicious, {
+        cleanupModel: CLEANUP_MODEL,
+        defaultModel: DEFAULT_MODEL,
+        modelParams: { [DEFAULT_MODEL]: { temperature: 0 } },
+      });
       expect(res.extras).toEqual({ temperature: 0 });
       const serialized = JSON.stringify(res.extras);
       expect(serialized).not.toContain("1.9");
