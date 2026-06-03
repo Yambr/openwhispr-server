@@ -247,6 +247,16 @@ async function main(): Promise<void> {
     // role is absent. Claim-driven RLS bypass (migration 0033) already lets a
     // single NOBYPASSRLS role run every path; this closes the privilege gap.
     await grantAppRoleMembership(pool, process.env);
+    // Quick 260603-rls (blocker #7) — bind the default-tenant GUC on the
+    // renamed managed role. The in-migration `ALTER ROLE openwhispr_app SET
+    // app.tenant_id` (0003/0024) is guarded by `IF EXISTS … 'openwhispr_app'`,
+    // so on a managed Postgres whose role is `svcdb_*` the rolconfig is never
+    // applied to the role the app connects as → GUC unset → Better Auth's
+    // pre-auth `verification` INSERT 500s under FORCE RLS. Re-apply the same
+    // rolconfig to `DATABASE_APP_ROLE`. Order-independent w.r.t. the GRANT
+    // above (rolconfig is a config default, not a privilege); placed after for
+    // symmetry. No-op + safe when the env is unset/default or the role absent.
+    await bindAppRoleTenantDefault(pool, process.env);
     // biome-ignore lint/suspicious/noConsole: one-shot CLI script
     console.log("migrate: ok");
   } finally {
@@ -291,6 +301,55 @@ export async function grantAppRoleMembership(
   }
   await pool.query(`GRANT ${canonical} TO ${member}`);
   log(`migrate: granted ${canonical} membership to ${member} (inherits app GRANT chain)`);
+}
+
+/**
+ * Quick 260603-rls (blocker #7) — bind the default-tenant GUC on a renamed
+ * managed app-role. Migrations 0003/0024 run
+ * `ALTER ROLE openwhispr_app SET app.tenant_id TO '<default-tenant>'` under an
+ * `IF EXISTS (… rolname = 'openwhispr_app')` guard; this rolconfig is what
+ * binds `app.tenant_id` at backend-connect so Better Auth's bare adapter
+ * INSERTs resolve their `tenant_id` column DEFAULT to the default tenant. On a
+ * managed Postgres whose single login role is `svcdb_*`, that guard is false →
+ * the GUC is never bound for the role the app actually connects as → the
+ * pre-auth `verification` INSERT lands a NULL tenant_id → FORCE RLS WITH CHECK
+ * violation → 500 on sign-in (CLAUDE.md rule 16 cohort). Re-apply the SAME
+ * rolconfig to `DATABASE_APP_ROLE`.
+ *
+ * The operator-named role MUST be the LOGIN role the app connects as (the same
+ * role that needs the GRANT chain via `grantAppRoleMembership`); a rolconfig on
+ * a NOLOGIN group role is recorded but inert. Idempotent: `ALTER ROLE … SET`
+ * overwrites any prior value. No-op + safe when the env is unset/equals the
+ * canonical role (migrations already cover `openwhispr_app`) or the role is
+ * absent (a fresh compose bring-up). `pgIdent` validates the name — the role in
+ * `ALTER ROLE <ident>` cannot be a parameterized bind, so reject anything
+ * outside `[A-Za-z_][A-Za-z0-9_]*` before interpolation. The tenant literal is
+ * the constitutional nil-UUID default tenant (LOCKER-03 allowlisted), matching
+ * both migrations + `MIGRATE_SESSION_OPTIONS`.
+ */
+export async function bindAppRoleTenantDefault(
+  pool: Pick<Pool, "query">,
+  env: NodeJS.ProcessEnv = process.env,
+  log: (msg: string) => void = (m) => {
+    // biome-ignore lint/suspicious/noConsole: one-shot CLI script
+    console.log(m);
+  },
+): Promise<void> {
+  const CANONICAL_APP_ROLE = "openwhispr_app";
+  const DEFAULT_TENANT_ID = "00000000-0000-0000-0000-000000000000";
+  const appRole = env.DATABASE_APP_ROLE?.trim();
+  if (!appRole || appRole === CANONICAL_APP_ROLE) return;
+  const role = pgIdent(appRole);
+  const { rows } = await pool.query<{ present: boolean }>(
+    `SELECT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = $1) AS present`,
+    [appRole],
+  );
+  if (!rows[0]?.present) {
+    log(`migrate: skipping app.tenant_id rolconfig — role ${appRole} does not exist`);
+    return;
+  }
+  await pool.query(`ALTER ROLE ${role} SET app.tenant_id TO '${DEFAULT_TENANT_ID}'`);
+  log(`migrate: bound app.tenant_id default tenant on ${role} (renamed managed app-role)`);
 }
 
 // Phase 03 Plan 01 Task 2 — guard the auto-execution so this module is

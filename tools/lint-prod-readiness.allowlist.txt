@@ -491,6 +491,7 @@ packages/data/src/migrate.ts:100  # issue-31-04-debt-LOCKER-04-dead-export-phase
 packages/data/src/migrate.ts:120  # issue-31-04-debt-LOCKER-04-dead-export-phase-38
 packages/data/src/migrate.ts:43  # issue-31-04-debt-LOCKER-04-dead-export-phase-38
 packages/data/src/migrate.ts:65  # issue-31-04-debt-LOCKER-04-dead-export-phase-38
+packages/data/src/migrate.ts:330  # issue-31-04-debt-LOCKER-04-dead-export-phase-38 (bindAppRoleTenantDefault, upstream #7 — CLI-only export like grantAppRoleMembership sibling)
 packages/data/src/seed/conformance.ts:119  # issue-31-04-debt-LOCKER-04-dead-export-phase-38
 packages/data/src/seed/conformance.ts:178  # issue-31-04-debt-LOCKER-04-dead-export-phase-38
 packages/data/src/seed/conformance.ts:24  # issue-31-04-debt-LOCKER-04-dead-export-phase-38
