@@ -14,8 +14,8 @@ type: application
 # yanked. NO Chart.yaml dependencies — Postgres, Valkey, LiteLLM, S3,
 # SMTP, cert-manager, and ingress controllers are all operator
 # prerequisites (BYOK).
-version: 1.0.23
-appVersion: "1.0.20"
+version: 1.1.0
+appVersion: "1.1.0"
 kubeVersion: ">=1.28.0-0"
 home: https://github.com/Yambr/openwhispr-server
 sources:

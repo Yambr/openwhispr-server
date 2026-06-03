@@ -176,6 +176,25 @@ image:
   #   image v1.0.4 (A1 byok-guard export / A2 email k8s bypass / A3 worker
   #   CJS guard / A4 worker VALKEY_URL parser / A5 POST /api/locale).
   # Companion openwhispr-postgres chart 1.1.0 ships the rolconfig fix (B4).
+  # 1.1.0 — chart + app version lines REALIGNED to a single number from here
+  # on (chart version == appVersion == image tag; the prior +3 chart drift is
+  # retired — health `version` now matches the chart you deployed). Ships two
+  # managed-Postgres / web-SSO upstream follow-ups (peer gr0flvsr; Quick
+  # 260602-x6z + 260603-j3a). (#4) fresh `migrate` now
+  # succeeds under a SINGLE NOBYPASSRLS role: the 1.0.20 claim-driven RLS fix
+  # (migration 0033) was a retrofit on the final policy state, so on a clean
+  # DB the 0006 tenant_settings seed INSERT ran under FORCE RLS before 0033's
+  # bypass arm existed -> 42501 unless owner had BYPASSRLS. The migrate runner
+  # now sets app.bypass=on + app.tenant_id=<default> on the migrate pool ONLY
+  # (never the app pool — RLS stays full-force for app traffic), and 0006's
+  # policies are bypass-aware at creation. (#6) web SSO genericOAuth now
+  # requests scopes: the provider registration carried no `scopes`, so Better
+  # Auth sent an empty scope= to the IdP -> no openid -> no id_token -> web
+  # sign-in could not complete. Default openid/email/profile, new OIDC_SCOPES
+  # CSV override (openid always included), JIT group scope appended when
+  # OIDC_TENANT_CLAIM is set — bringing the web path into parity with the
+  # desktop sign-in flow. No DB-schema/wire/web change beyond the additive
+  # OIDC_SCOPES env.
   # 1.0.20 — managed-Postgres / external-LiteLLM deploy compat (3 upstream
   # blockers; Quick 260602-eth/fda/j9z). (#3) SPEND_RECONCILIATION_ENABLED:
   # the worker boots without LITELLM_DATABASE_URL and never connects to
@@ -248,7 +267,7 @@ image:
   # desktop client could not render. See docs/operations.md "Agent stream
   # error contract" section for the wire envelope + AgentErrorCode
   # taxonomy + log event schema.
-  tag: "1.0.20"
+  tag: "1.1.0"
   api:     { repository: openwhispr-api }
   web:     { repository: openwhispr-web }
   worker:  { repository: openwhispr-worker }
