@@ -216,7 +216,9 @@ describe("POST /api/reason", () => {
       method: "POST",
       url: "/api/reason",
       headers: { "content-type": "application/json" },
-      payload: JSON.stringify({ text: "hello", agentName: "Whispr" }),
+      // cleanup-routing (#36): a genuine agent shape carries a non-empty
+      // systemPrompt (the discriminator). agentName alone is now cleanup.
+      payload: JSON.stringify({ text: "hello", agentName: "Whispr", systemPrompt: "be Whispr" }),
     });
     expect(res.statusCode).toBe(200);
     const parsed = ReasonResponse.parse(res.json());
@@ -228,9 +230,9 @@ describe("POST /api/reason", () => {
 
   // D3a — R28: `body.model` may arrive explicitly null; the route must
   // treat null like absent and fall through to the injected default.
-  // R33 — agent shape (`agentName` set) so the `defaultModel` chain
-  // applies; the cleanup-shape null-model path is covered by the R33
-  // cleanup tests below.
+  // cleanup-routing (#36) — agent shape is now identified by a non-empty
+  // `systemPrompt` (bare agentName is cleanup-while-agent-set), so this
+  // genuine-agent test carries one to exercise the `defaultModel` chain.
   it("treats body.model=null like absent and uses the injected default (D3a/R28)", async () => {
     const { db } = makeFakeDb();
     const calls: ChatCompletionRequest[] = [];
@@ -240,7 +242,12 @@ describe("POST /api/reason", () => {
       method: "POST",
       url: "/api/reason",
       headers: { "content-type": "application/json" },
-      payload: JSON.stringify({ text: "hello", model: null, agentName: "Whispr" }),
+      payload: JSON.stringify({
+        text: "hello",
+        model: null,
+        agentName: "Whispr",
+        systemPrompt: "be Whispr",
+      }),
     });
     expect(res.statusCode).toBe(200);
     expect(calls[0]?.model).toBe("corp-chat-internal");
@@ -696,8 +703,12 @@ describe("POST /api/reason", () => {
       method: "POST",
       url: "/api/reason",
       headers: { "content-type": "application/json" },
-      // agent shape: agentName present
-      payload: JSON.stringify({ text: "summarize this", agentName: "Whispr" }),
+      // cleanup-routing (#36): agent shape = non-empty systemPrompt.
+      payload: JSON.stringify({
+        text: "summarize this",
+        agentName: "Whispr",
+        systemPrompt: "be Whispr",
+      }),
     });
     expect(res.statusCode).toBe(200);
     const call = calls[0];
@@ -849,8 +860,16 @@ describe("POST /api/reason", () => {
       method: "POST",
       url: "/api/reason",
       headers: { "content-type": "application/json" },
-      // agentName set -> agent shape (no systemPrompt -> no system message).
-      payload: JSON.stringify({ text: "summarize this", agentName: "Whispr" }),
+      // cleanup-routing (#36): a REAL agent dictation always carries a
+      // non-empty systemPrompt (the discriminator) — that is what the
+      // immutable v1.7.17 client forwards (resolvePrompt("dictationAgent")).
+      // agentName alone is NOT an agent signal (it is always non-empty from
+      // localStorage); bare agentName is cleanup-while-agent-configured.
+      payload: JSON.stringify({
+        text: "summarize this",
+        agentName: "Whispr",
+        systemPrompt: "You are Whispr, a helpful assistant.",
+      }),
     });
     expect(res.statusCode).toBe(200);
     const call = calls[0];
@@ -858,10 +877,126 @@ describe("POST /api/reason", () => {
 
     // Agent shape -> default conversational model, NOT the cleanup model.
     expect(call.model).toBe("qwen3.6-plus");
-    // agentName-only -> no system message (today's behaviour, not regressed).
-    expect(call.messages).toEqual([{ role: "user", content: "summarize this" }]);
+    // Agent systemPrompt becomes the system message.
+    expect(call.messages).toEqual([
+      { role: "system", content: "You are Whispr, a helpful assistant." },
+      { role: "user", content: "summarize this" },
+    ]);
     // Agent shape -> no thinking-off extras in the request body.
     expect(call.extras).toBeUndefined();
+  });
+
+  it("cleanup-routing #36 — cleanup-while-agent-configured (agentName, NO systemPrompt) -> cleanup model + thinking-off (Nick regression)", async () => {
+    const { db } = makeFakeDb();
+    const calls: ChatCompletionRequest[] = [];
+    const litellm = makeFakeLitellm({ calls });
+    app = buildApp({ db, litellm, defaultModel: "qwen3.6-plus", cleanupModel: "qwen3.6-cleanup" });
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/reason",
+      headers: { "content-type": "application/json" },
+      // The live regression body: an agent is configured (agentName present)
+      // but this is a CLEANUP dictation, so no systemPrompt and no model.
+      // v1.7.17 sends exactly this and does NOT send requestKind.
+      payload: JSON.stringify({ text: "uh one two three", agentName: "Whispr" }),
+    });
+    expect(res.statusCode).toBe(200);
+    const call = calls[0];
+    if (!call) throw new Error("expected one upstream call");
+    expect(call.model).toBe("qwen3.6-cleanup");
+    expect(call.messages[0]?.role).toBe("system");
+    expect(call.messages[0]?.content).toContain("text cleanup tool");
+    expect(
+      (call.extras as { extra_body?: { chat_template_kwargs?: { enable_thinking?: boolean } } })
+        ?.extra_body?.chat_template_kwargs?.enable_thinking,
+    ).toBe(false);
+  });
+
+  it("cleanup-routing #36 — requestKind 'cleanup' (PRIMARY) -> cleanup model + thinking-off, systemPrompt IGNORED", async () => {
+    const { db } = makeFakeDb();
+    const calls: ChatCompletionRequest[] = [];
+    const litellm = makeFakeLitellm({ calls });
+    app = buildApp({ db, litellm, defaultModel: "qwen3.6-plus", cleanupModel: "qwen3.6-cleanup" });
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/reason",
+      headers: { "content-type": "application/json" },
+      payload: JSON.stringify({
+        text: "uh one two",
+        requestKind: "cleanup",
+        systemPrompt: "be a pirate",
+      }),
+    });
+    expect(res.statusCode).toBe(200);
+    const call = calls[0];
+    if (!call) throw new Error("expected one upstream call");
+    expect(call.model).toBe("qwen3.6-cleanup");
+    expect(call.messages[0]?.content).toContain("text cleanup tool");
+    expect(call.messages[0]?.content).not.toContain("pirate");
+    expect(
+      (call.extras as { extra_body?: { chat_template_kwargs?: { enable_thinking?: boolean } } })
+        ?.extra_body?.chat_template_kwargs?.enable_thinking,
+    ).toBe(false);
+  });
+
+  it("cleanup-routing #36 — requestKind 'agent' (PRIMARY) with no systemPrompt -> default model, NO system message, NO thinking-off", async () => {
+    const { db } = makeFakeDb();
+    const calls: ChatCompletionRequest[] = [];
+    const litellm = makeFakeLitellm({
+      calls,
+      upstreamJson: {
+        model: "qwen3.6-plus",
+        choices: [{ message: { role: "assistant", content: "agent reply" } }],
+        usage: { total_tokens: 4 },
+      },
+    });
+    app = buildApp({ db, litellm, defaultModel: "qwen3.6-plus", cleanupModel: "qwen3.6-cleanup" });
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/reason",
+      headers: { "content-type": "application/json" },
+      payload: JSON.stringify({ text: "summarize this", requestKind: "agent" }),
+    });
+    expect(res.statusCode).toBe(200);
+    const call = calls[0];
+    if (!call) throw new Error("expected one upstream call");
+    expect(call.model).toBe("qwen3.6-plus");
+    expect(call.messages).toEqual([{ role: "user", content: "summarize this" }]);
+    expect(call.extras).toBeUndefined();
+  });
+
+  it("cleanup-routing #36 — garbage requestKind POST -> 200, FALLBACK heuristic (bare body -> cleanup model)", async () => {
+    const { db } = makeFakeDb();
+    const calls: ChatCompletionRequest[] = [];
+    const litellm = makeFakeLitellm({ calls });
+    app = buildApp({ db, litellm, defaultModel: "qwen3.6-plus", cleanupModel: "qwen3.6-cleanup" });
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/reason",
+      headers: { "content-type": "application/json" },
+      payload: JSON.stringify({ text: "uh one two", requestKind: "chatbot" }),
+    });
+    // Fail-safe: a garbage requestKind must NOT 400 — it falls through.
+    expect(res.statusCode).toBe(200);
+    const call = calls[0];
+    if (!call) throw new Error("expected one upstream call");
+    expect(call.model).toBe("qwen3.6-cleanup");
+  });
+
+  it("cleanup-routing #36 — requestKind over 32 chars POST -> 400 canonical envelope", async () => {
+    const { db } = makeFakeDb();
+    const calls: ChatCompletionRequest[] = [];
+    const litellm = makeFakeLitellm({ calls });
+    app = buildApp({ db, litellm, defaultModel: "qwen3.6-plus", cleanupModel: "qwen3.6-cleanup" });
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/reason",
+      headers: { "content-type": "application/json" },
+      payload: JSON.stringify({ text: "x", requestKind: "a".repeat(33) }),
+    });
+    expect(res.statusCode).toBe(400);
+    expect(JSON.parse(res.body)).toHaveProperty("error");
+    expect(calls).toHaveLength(0);
   });
 
   // R33 / cleanup-no-rephrase contract (Quick 260530-kkz) — REGRESSION GUARD.

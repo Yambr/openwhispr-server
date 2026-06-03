@@ -66,11 +66,12 @@ export interface ReasonDeps {
    * R33 — operator-owned fast cleanup-class model. Production threads
    * this from `loadLitellmConfigFromEnv().defaultCleanupModel` (env
    * `REASONING_CLEANUP_MODEL`, bundled default `DEFAULT_CLEANUP_MODEL`).
-   * The route routes the cleanup request shape (no agentName, no
-   * systemPrompt, empty/absent model) to this alias with thinking
-   * disabled. When omitted, `selectModelAndExtras()` falls back to the
-   * bundled `DEFAULT_CHAT_MODEL` — no `qwen3.6-cleanup` literal is baked
-   * into this route file.
+   * The route routes the cleanup class to this alias with thinking
+   * disabled — either by the explicit `requestKind:"cleanup"` PRIMARY
+   * marker or, for clients that send no `requestKind`, by the fallback
+   * shape heuristic (no systemPrompt, empty/absent model). When omitted,
+   * `selectModelAndExtras()` falls back to the bundled `DEFAULT_CHAT_MODEL`
+   * — no `qwen3.6-cleanup` literal is baked into this route file.
    */
   cleanupModel?: string;
   /**
