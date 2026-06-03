@@ -516,6 +516,11 @@
       }
     },
     "signin": {
+      "local-login-disabled": {
+        "body": {
+          "text": "Local sign-in is disabled. Use single sign-on to continue."
+        }
+      },
       "action": {
         "forgotPassword": {
           "link": {
@@ -679,6 +684,11 @@
       }
     },
     "signup": {
+      "local-login-disabled": {
+        "body": {
+          "text": "Local sign-up is disabled. Use single sign-on to continue."
+        }
+      },
       "action": {
         "signin-link": {
           "label": "Already have an account? Sign in"

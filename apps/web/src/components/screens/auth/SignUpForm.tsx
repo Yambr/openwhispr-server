@@ -36,6 +36,7 @@ import { signUpSchema } from "@/lib/schemas/auth";
 import { AuthShell } from "./AuthShell";
 import { OidcButtons } from "./OidcButtons";
 import { PasswordInputWithToggle } from "./PasswordInputWithToggle";
+import { useAuthProviders } from "./useAuthProviders";
 
 type ErrorKind = "duplicate" | "generic" | null;
 
@@ -66,6 +67,9 @@ export function passwordStrength(value: string): StrengthSlot {
 
 export function SignUpForm(): React.JSX.Element {
   const { t } = useTranslation(["end-user", "common"]);
+  // Upstream #9 (web half) — gate local-login affordances on the server's
+  // localLogin posture (default-safe; see useAuthProviders + SignInForm).
+  const { localLoginEnabled } = useAuthProviders();
   const [submitting, setSubmitting] = useState(false);
   const [errorKind, setErrorKind] = useState<ErrorKind>(null);
   const [success, setSuccess] = useState(false);
@@ -172,46 +176,54 @@ export function SignUpForm(): React.JSX.Element {
           </Alert>
         ) : null}
         <OidcButtons namespace="signup" />
-        <Separator />
-        <Form {...form}>
-          <form
-            onSubmit={form.handleSubmit(onSubmit as never)}
-            className="flex flex-col gap-3"
-            noValidate
-          >
-            <FormField
-              control={form.control}
-              name="name"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>{t("end-user.signup.form.name.label")}</FormLabel>
-                  <FormControl>
-                    <Input type="text" autoComplete="name" disabled={submitting} {...field} />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-            <FormField
-              control={form.control}
-              name="email"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>{t("end-user.signup.form.email.label")}</FormLabel>
-                  <FormControl>
-                    <Input type="email" autoComplete="email" disabled={submitting} {...field} />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-            <FormField
-              control={form.control}
-              name="password"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>{t("end-user.signup.form.password.label")}</FormLabel>
-                  {/*
+        {/*
+          Upstream #9 — hide the local sign-up form (name/email/password +
+          strength meter + submit) and the sign-in cross-link when the server
+          disables local login (localLogin.enabled:false). Leave OidcButtons +
+          header + error alert visible. Default-safe (see useAuthProviders).
+        */}
+        {localLoginEnabled ? (
+          <>
+            <Separator />
+            <Form {...form}>
+              <form
+                onSubmit={form.handleSubmit(onSubmit as never)}
+                className="flex flex-col gap-3"
+                noValidate
+              >
+                <FormField
+                  control={form.control}
+                  name="name"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>{t("end-user.signup.form.name.label")}</FormLabel>
+                      <FormControl>
+                        <Input type="text" autoComplete="name" disabled={submitting} {...field} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={form.control}
+                  name="email"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>{t("end-user.signup.form.email.label")}</FormLabel>
+                      <FormControl>
+                        <Input type="email" autoComplete="email" disabled={submitting} {...field} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={form.control}
+                  name="password"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>{t("end-user.signup.form.password.label")}</FormLabel>
+                      {/*
                     Phase 55-02-b — eye-toggle pattern via shared building
                     block. The strength-meter shadow setState (setPasswordValue)
                     is preserved by chaining the onChange after field.onChange,
@@ -220,59 +232,69 @@ export function SignUpForm(): React.JSX.Element {
                     internally — see component header for the Radix-Slot
                     rationale (do NOT wrap this in <FormControl> here).
                   */}
-                  <PasswordInputWithToggle
-                    autoComplete="new-password"
-                    disabled={submitting}
-                    togglePasswordShowLabel={t("end-user.common.action.togglePassword.show.label")}
-                    togglePasswordHideLabel={t("end-user.common.action.togglePassword.hide.label")}
-                    {...field}
-                    onChange={(e) => {
-                      field.onChange(e);
-                      setPasswordValue(e.target.value);
-                    }}
-                  />
-                  {/* D-25 — 4px strength meter; bands map to red/orange/yellow/green. */}
-                  {passwordValue.length > 0 ? (
-                    <div data-testid="password-strength-meter" className="flex flex-col gap-1">
-                      <div className="h-1 w-full overflow-hidden rounded bg-muted">
-                        <div
-                          className={`h-full transition-all ${strength.fillClass}`}
-                          style={{ width: `${(strength.score / 4) * 100}%` }}
-                          aria-hidden="true"
-                        />
-                      </div>
-                      <span
-                        className="text-muted-foreground text-xs"
-                        data-strength-band={strength.bandKey}
-                      >
-                        {bandLabel}
-                      </span>
-                    </div>
-                  ) : null}
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-            {/*
+                      <PasswordInputWithToggle
+                        autoComplete="new-password"
+                        disabled={submitting}
+                        togglePasswordShowLabel={t(
+                          "end-user.common.action.togglePassword.show.label",
+                        )}
+                        togglePasswordHideLabel={t(
+                          "end-user.common.action.togglePassword.hide.label",
+                        )}
+                        {...field}
+                        onChange={(e) => {
+                          field.onChange(e);
+                          setPasswordValue(e.target.value);
+                        }}
+                      />
+                      {/* D-25 — 4px strength meter; bands map to red/orange/yellow/green. */}
+                      {passwordValue.length > 0 ? (
+                        <div data-testid="password-strength-meter" className="flex flex-col gap-1">
+                          <div className="h-1 w-full overflow-hidden rounded bg-muted">
+                            <div
+                              className={`h-full transition-all ${strength.fillClass}`}
+                              style={{ width: `${(strength.score / 4) * 100}%` }}
+                              aria-hidden="true"
+                            />
+                          </div>
+                          <span
+                            className="text-muted-foreground text-xs"
+                            data-strength-band={strength.bandKey}
+                          >
+                            {bandLabel}
+                          </span>
+                        </div>
+                      ) : null}
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                {/*
               W-1 SCOPE-OUT (Phase 18.1.1-04-05): terms checkbox deferred
               to Phase 19.x. The /terms and /privacy routes do not yet
               exist under apps/web/src/app/(public)/; the planner W-1
               guard mandates that the checkbox stays out until they ship.
               Tracked in .planning/deferred-items.md §18.1.1-04-05.
             */}
-            <Button type="submit" disabled={submitting}>
-              {t("end-user.signup.form.submit.label")}
-            </Button>
-          </form>
-        </Form>
-        <p className="text-center text-sm">
-          <Link
-            href="/sign-in"
-            className="text-primary underline underline-offset-4 hover:opacity-80"
-          >
-            {t("end-user.signup.action.signin-link.label")}
-          </Link>
-        </p>
+                <Button type="submit" disabled={submitting}>
+                  {t("end-user.signup.form.submit.label")}
+                </Button>
+              </form>
+            </Form>
+            <p className="text-center text-sm">
+              <Link
+                href="/sign-in"
+                className="text-primary underline underline-offset-4 hover:opacity-80"
+              >
+                {t("end-user.signup.action.signin-link.label")}
+              </Link>
+            </p>
+          </>
+        ) : (
+          <p role="status" className="text-muted-foreground text-sm">
+            {t("end-user.signup.local-login-disabled.body.text")}
+          </p>
+        )}
       </div>
     </AuthShell>
   );

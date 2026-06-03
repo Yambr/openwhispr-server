@@ -516,6 +516,11 @@
       }
     },
     "signin": {
+      "local-login-disabled": {
+        "body": {
+          "text": "Локальный вход отключён. Используйте единый вход (SSO)."
+        }
+      },
       "action": {
         "forgotPassword": {
           "link": {
@@ -681,6 +686,11 @@
       }
     },
     "signup": {
+      "local-login-disabled": {
+        "body": {
+          "text": "Локальная регистрация отключена. Используйте единый вход (SSO)."
+        }
+      },
       "action": {
         "signin-link": {
           "label": "Уже есть аккаунт? Войдите"
