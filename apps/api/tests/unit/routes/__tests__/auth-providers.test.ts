@@ -37,16 +37,38 @@ describe("GET /api/auth/providers — route behavior", () => {
     }
   });
 
-  it("returns 200 + {providers:[], emailVerification:{...}} when zero providers configured", async () => {
+  it("returns 200 + {providers:[], emailVerification:{...}, localLogin:{...}} when zero providers configured", async () => {
     app = await buildAppForEnv(envOf({}));
     const res = await app.inject({ method: "GET", url: "/api/auth/providers" });
     expect(res.statusCode).toBe(200);
     const body = res.json() as {
       providers: unknown[];
       emailVerification: { required: boolean; configured: boolean };
+      localLogin: { enabled: boolean };
     };
     expect(body.providers).toEqual([]);
     expect(body.emailVerification).toEqual({ required: true, configured: false });
+    // Upstream #9 — local login is ON by default (default-safe).
+    expect(body.localLogin).toEqual({ enabled: true });
+  });
+
+  it("localLogin.enabled is false when OPENWHISPR_DISABLE_LOCAL_LOGIN=1 (upstream #9)", async () => {
+    app = await buildAppForEnv(envOf({ OPENWHISPR_DISABLE_LOCAL_LOGIN: "1" }));
+    const res = await app.inject({ method: "GET", url: "/api/auth/providers" });
+    expect(res.statusCode).toBe(200);
+    const body = res.json() as { localLogin: { enabled: boolean } };
+    expect(body.localLogin).toEqual({ enabled: false });
+  });
+
+  it("localLogin.enabled stays true for non-'1' disable values (only '1' disables)", async () => {
+    for (const v of ["0", "true", "yes", ""]) {
+      app = await buildAppForEnv(envOf({ OPENWHISPR_DISABLE_LOCAL_LOGIN: v }));
+      const res = await app.inject({ method: "GET", url: "/api/auth/providers" });
+      const body = res.json() as { localLogin: { enabled: boolean } };
+      expect(body.localLogin, `value=${JSON.stringify(v)}`).toEqual({ enabled: true });
+      await app.close();
+      app = undefined;
+    }
   });
 
   it("returns one OIDC provider when all three OIDC envs are set", async () => {
@@ -82,7 +104,7 @@ describe("GET /api/auth/providers — route behavior", () => {
     expect(body.providers).toEqual([{ id: "oidc", name: "Acme SSO", enabled: true }]);
   });
 
-  it("info-leak gate — response keys are EXACTLY ['emailVerification','providers'] and per-provider EXACTLY ['enabled','id','name']", async () => {
+  it("info-leak gate — response keys are EXACTLY ['emailVerification','localLogin','providers'] and per-provider EXACTLY ['enabled','id','name']", async () => {
     app = await buildAppForEnv(
       envOf({
         OIDC_ISSUER_URL: "https://issuer.example.com",
@@ -95,7 +117,7 @@ describe("GET /api/auth/providers — route behavior", () => {
     const res = await app.inject({ method: "GET", url: "/api/auth/providers" });
     expect(res.statusCode).toBe(200);
     const body = res.json() as Record<string, unknown>;
-    expect(Object.keys(body).sort()).toEqual(["emailVerification", "providers"]);
+    expect(Object.keys(body).sort()).toEqual(["emailVerification", "localLogin", "providers"]);
     const providers = body.providers as Array<Record<string, unknown>>;
     for (const p of providers) {
       expect(Object.keys(p).sort()).toEqual(["enabled", "id", "name"]);

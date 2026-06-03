@@ -19,6 +19,7 @@ import { z } from "zod";
 import { registerErrorHandler } from "../../src/error-handler.js";
 import {
   AuthError,
+  ForbiddenError,
   NotFoundError,
   RateLimitError,
   ServerError,
@@ -48,6 +49,12 @@ describe("registerErrorHandler — global envelope (D-13)", () => {
     });
     app.get("/throw-notfound", async () => {
       throw new NotFoundError("user not found");
+    });
+    app.get("/throw-forbidden", async () => {
+      throw new ForbiddenError("LOCAL_LOGIN_DISABLED", "local login is disabled");
+    });
+    app.get("/throw-forbidden-default", async () => {
+      throw new ForbiddenError("");
     });
     app.get("/throw-ratelimit", async () => {
       throw new RateLimitError("too many requests");
@@ -176,6 +183,18 @@ describe("registerErrorHandler — global envelope (D-13)", () => {
     const res = await app.inject({ method: "GET", url: "/throw-notfound" });
     expect(res.statusCode).toBe(404);
     expect(res.json().error).toBe("user not found");
+  });
+
+  it("maps ForbiddenError -> 403 with envelope (upstream #9)", async () => {
+    const res = await app.inject({ method: "GET", url: "/throw-forbidden" });
+    expect(res.statusCode).toBe(403);
+    expect(res.json().error).toBe("local login is disabled");
+  });
+
+  it("maps ForbiddenError with empty message to default 'Forbidden'", async () => {
+    const res = await app.inject({ method: "GET", url: "/throw-forbidden-default" });
+    expect(res.statusCode).toBe(403);
+    expect(res.json().error).toBe("Forbidden");
   });
 
   it("HI-03 — maps RateLimitError -> 429 with the class-default literal (no err.message echo)", async () => {

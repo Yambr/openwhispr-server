@@ -2,6 +2,8 @@
   "errors": {
     "VALIDATION_ERROR": "Invalid request",
     "AUTH_ERROR": "Session expired",
+    "FORBIDDEN": "Forbidden",
+    "LOCAL_LOGIN_DISABLED": "Local (email/password) login is disabled on this server",
     "NOT_FOUND": "Not found",
     "RATE_LIMITED": "Too many requests",
     "SERVICE_UNAVAILABLE": "Service temporarily unavailable",

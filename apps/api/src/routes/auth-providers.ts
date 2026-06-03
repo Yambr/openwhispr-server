@@ -21,7 +21,11 @@
 
 import { createHash } from "node:crypto";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
-import { type ConfiguredProvider, listConfiguredOidcProviders } from "../lib/oidc-providers.js";
+import {
+  type ConfiguredProvider,
+  listConfiguredOidcProviders,
+  localLoginEnabled,
+} from "../lib/oidc-providers.js";
 
 export interface AuthProvidersDeps {
   /** Optional env override for tests. Defaults to `process.env`. */
@@ -33,9 +37,22 @@ export interface EmailVerificationPosture {
   readonly configured: boolean;
 }
 
+/**
+ * Upstream #9 — local (email/password) login posture. `enabled:false` when the
+ * operator set OPENWHISPR_DISABLE_LOCAL_LOGIN=1 (OIDC-only deployment). Clients
+ * render the email/password form IFF `enabled === true`, and treat this as
+ * authoritative — the server also BLOCKS the credential routes (403
+ * LOCAL_LOGIN_DISABLED) when disabled. Nested object mirrors
+ * `emailVerification` so future local-auth posture can extend without wire churn.
+ */
+export interface LocalLoginPosture {
+  readonly enabled: boolean;
+}
+
 export interface AuthProvidersResponse {
   readonly providers: readonly ConfiguredProvider[];
   readonly emailVerification: EmailVerificationPosture;
+  readonly localLogin: LocalLoginPosture;
 }
 
 /**
@@ -60,6 +77,7 @@ function buildResponseBody(env: NodeJS.ProcessEnv): AuthProvidersResponse {
   return {
     providers: listConfiguredOidcProviders(env),
     emailVerification: deriveEmailVerification(env),
+    localLogin: { enabled: localLoginEnabled(env) },
   };
 }
 

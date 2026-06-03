@@ -2,6 +2,8 @@
   "errors": {
     "VALIDATION_ERROR": "Некорректный запрос",
     "AUTH_ERROR": "Сессия истекла",
+    "FORBIDDEN": "Доступ запрещён",
+    "LOCAL_LOGIN_DISABLED": "Вход по email и паролю отключён на этом сервере",
     "NOT_FOUND": "Ресурс не найден",
     "RATE_LIMITED": "Слишком много запросов",
     "SERVICE_UNAVAILABLE": "Сервис временно недоступен",

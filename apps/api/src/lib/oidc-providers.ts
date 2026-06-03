@@ -50,6 +50,28 @@ export interface OidcProviderRegistration {
 
 const DEFAULT_ENV: NodeJS.ProcessEnv = process.env;
 
+/**
+ * Upstream #9 — single source of truth for the local (email/password) login
+ * posture. Local login is ON by default; an operator who wants OIDC-only
+ * sign-in sets `OPENWHISPR_DISABLE_LOCAL_LOGIN=1` (matching the sibling
+ * `OPENWHISPR_DISABLE_*` toggles: `=== "1"` is the ONLY disabling value, so
+ * `"0"` / `""` / unset / any other string keep it enabled).
+ *
+ * Read by all three consumers so a flip is observed identically everywhere
+ * (D-08 zero-drift, enforced by the oidc-providers contract test):
+ *   - apps/api/src/auth.ts — gates `emailAndPassword.enabled` (native BA layer).
+ *   - apps/api/src/routes/auth-providers.ts — announces `localLogin.enabled`.
+ *   - apps/api/src/routes/better-auth-handler.ts — the preHandler 403 gate.
+ *
+ * NOT auto-disabled by OIDC presence: the admin is the first user to complete
+ * the /setup wizard (no break-glass login), so coupling "OIDC configured" to
+ * "local login off" would strand the operator on an IdP outage. Disabling is a
+ * deliberate, explicit, default-safe act.
+ */
+export function localLoginEnabled(env: NodeJS.ProcessEnv = DEFAULT_ENV): boolean {
+  return env.OPENWHISPR_DISABLE_LOCAL_LOGIN !== "1";
+}
+
 /** Base scopes when OIDC_SCOPES is unset. `openid` is mandatory for OIDC. */
 const DEFAULT_OIDC_SCOPES: readonly string[] = ["openid", "email", "profile"];
 

@@ -75,6 +75,22 @@ export class AuthError extends Error implements Coded {
   }
 }
 
+/**
+ * 403 — authenticated/anonymous caller is recognized but the action is
+ * not permitted by server policy (e.g. local email/password login disabled
+ * via OPENWHISPR_DISABLE_LOCAL_LOGIN). Distinct from AuthError (401 — identity
+ * missing/invalid): here the request is well-formed but the server forbids it.
+ */
+export class ForbiddenError extends Error implements Coded {
+  override name = "ForbiddenError";
+  readonly code: string;
+  constructor(arg1?: string, arg2?: string) {
+    const { code, message } = pickCodeAndMessage("FORBIDDEN", arg1, arg2);
+    super(message);
+    this.code = code;
+  }
+}
+
 /** 404 — route exists but the addressed resource does not. */
 export class NotFoundError extends Error implements Coded {
   override name = "NotFoundError";

@@ -24,7 +24,9 @@ import type { ExecutableTx, TransactionalDb } from "@openwhispr/data";
 import { withTenant } from "@openwhispr/data";
 import { sql } from "drizzle-orm";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
+import { ForbiddenError } from "../errors.js";
 import { resolveDefaultTenantId } from "../lib/default-tenant.js";
+import { localLoginEnabled } from "../lib/oidc-providers.js";
 import type { AuthLike } from "../middleware/dual-auth.js";
 import { fastifyHeadersToWebHeaders } from "../middleware/dual-auth.js";
 
@@ -104,6 +106,32 @@ function isSignUpEmailRequest(req: FastifyRequest): boolean {
   return path === "/api/auth/sign-up/email";
 }
 
+/**
+ * Upstream #9 — the complete set of ANONYMOUS local-credential entry points in
+ * Better Auth 1.6.x (verified own-eyes; no username/phone/magic-link/passkey
+ * plugins are loaded in apps/api/src/auth.ts). When local login is disabled,
+ * the preHandler blocks all four with a localized 403 BEFORE Better Auth runs:
+ *   - /sign-in/email, /sign-up/email      (BA natively 400s these too, but the
+ *                                          403 is the authoritative envelope)
+ *   - /request-password-reset, /reset-password  (BA does NOT gate these on
+ *                                          emailAndPassword.enabled, so this
+ *                                          preHandler is the ONLY block for them)
+ * `change-password` / `set-password` are session-authed (a different threat) and
+ * are intentionally NOT blocked here. POST-only — a GET never sets credentials.
+ */
+const LOCAL_CREDENTIAL_PATHS = new Set<string>([
+  "/api/auth/sign-in/email",
+  "/api/auth/sign-up/email",
+  "/api/auth/request-password-reset",
+  "/api/auth/reset-password",
+]);
+
+function isLocalCredentialRoute(req: FastifyRequest): boolean {
+  if (req.method !== "POST") return false;
+  const path = req.url.split("?", 1)[0] ?? req.url;
+  return LOCAL_CREDENTIAL_PATHS.has(path);
+}
+
 function extractEmail(body: unknown): string | undefined {
   if (body === null || body === undefined) return undefined;
   if (typeof body !== "object") return undefined;
@@ -176,6 +204,9 @@ export const buildBetterAuthHandlerRoutes = (deps: BetterAuthHandlerDeps) =>
   async function betterAuthHandlerRoutes(app: FastifyInstance): Promise<void> {
     const { auth, db } = deps;
     const enumerationOptOut = process.env.OPENWHISPR_DISABLE_EMAIL_ENUMERATION_PROTECTION === "1";
+    // Upstream #9 — resolved once at registration; the env flip needs a process
+    // restart (matches the other OPENWHISPR_DISABLE_* gates that read at boot).
+    const localLoginDisabled = !localLoginEnabled(process.env);
 
     const handler = auth.handler;
     if (typeof handler !== "function") {
@@ -184,6 +215,49 @@ export const buildBetterAuthHandlerRoutes = (deps: BetterAuthHandlerDeps) =>
           "Better Auth instance is missing the universal handler entry point",
       );
     }
+
+    // Compose the (optional) pre-Better-Auth gates into ONE preHandler. The
+    // local-login block runs FIRST (a thrown ForbiddenError short-circuits to
+    // setErrorHandler, which localizes via errors.LOCAL_LOGIN_DISABLED and emits
+    // the canonical 403 envelope — and costs ZERO DB work). The enumeration
+    // dup-probe runs only when its env+db are both present.
+    const needsPreHandler = localLoginDisabled || (enumerationOptOut && db);
+    const preHandler = needsPreHandler
+      ? async (req: FastifyRequest, reply: FastifyReply): Promise<unknown> => {
+          // (1) Local-login disabled — block all four anonymous credential
+          // routes BEFORE Better Auth / any DB probe.
+          if (localLoginDisabled && isLocalCredentialRoute(req)) {
+            throw new ForbiddenError(
+              "LOCAL_LOGIN_DISABLED",
+              "Local (email/password) login is disabled on this server",
+            );
+          }
+          // (2) Email-enumeration opt-out dup-probe (guarded on db).
+          if (enumerationOptOut && db) {
+            if (!isSignUpEmailRequest(req)) return;
+            const email = extractEmail(req.body);
+            if (!email) return; // let BA's own validator handle missing email
+            const tenantId = await resolveDefaultTenantId();
+            let dup = false;
+            try {
+              dup = await emailAlreadyRegistered(db, tenantId, email);
+            } catch (err) {
+              req.log?.warn?.(
+                { err },
+                "better-auth-handler: duplicate-email probe failed; deferring to Better Auth",
+              );
+              return;
+            }
+            if (dup) {
+              return reply.code(422).send({
+                code: "USER_ALREADY_EXISTS",
+                message: "User with this email already exists",
+              });
+            }
+          }
+          return;
+        }
+      : undefined;
 
     app.all(
       "/api/auth/*",
@@ -194,32 +268,7 @@ export const buildBetterAuthHandlerRoutes = (deps: BetterAuthHandlerDeps) =>
         // relying on the global default leaves this unauthenticated write
         // surface under-protected.
         config: { auth: false, rateLimit: { max: 20, timeWindow: "1 minute" } },
-        ...(enumerationOptOut && db
-          ? {
-              preHandler: async (req: FastifyRequest, reply: FastifyReply) => {
-                if (!isSignUpEmailRequest(req)) return;
-                const email = extractEmail(req.body);
-                if (!email) return; // let BA's own validator handle missing email
-                const tenantId = await resolveDefaultTenantId();
-                let dup = false;
-                try {
-                  dup = await emailAlreadyRegistered(db, tenantId, email);
-                } catch (err) {
-                  req.log?.warn?.(
-                    { err },
-                    "better-auth-handler: duplicate-email probe failed; deferring to Better Auth",
-                  );
-                  return;
-                }
-                if (dup) {
-                  return reply.code(422).send({
-                    code: "USER_ALREADY_EXISTS",
-                    message: "User with this email already exists",
-                  });
-                }
-              },
-            }
-          : {}),
+        ...(preHandler ? { preHandler } : {}),
       },
       async (req: FastifyRequest, reply: FastifyReply) => {
         const url = buildRequestUrl(req);
