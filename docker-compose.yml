@@ -322,6 +322,12 @@ services:
       # spec can surface the duplicate-email Alert. Production operators
       # leave this unset to retain the canonical anti-enumeration behaviour.
       OPENWHISPR_DISABLE_EMAIL_ENUMERATION_PROTECTION: ${OPENWHISPR_DISABLE_EMAIL_ENUMERATION_PROTECTION:-}
+      # Upstream #9 — OIDC-only deployments set this to "1" to disable local
+      # (email/password) login. Default-safe: unset/"0" keeps it ON. When "1",
+      # the api blocks sign-in/sign-up/password-reset (403 LOCAL_LOGIN_DISABLED)
+      # and GET /api/auth/providers reports localLogin.enabled:false so clients
+      # hide the email/password form. NOT auto-enabled by configuring OIDC.
+      OPENWHISPR_DISABLE_LOCAL_LOGIN: ${OPENWHISPR_DISABLE_LOCAL_LOGIN:-}
       # Phase 02.13 — OIDC env defaults. Better Auth's genericOAuth uses LAZY
       # discovery (it only fetches `${OIDC_ISSUER_URL}/.well-known/openid-configuration`
       # when an OAuth flow is actually attempted). Operators with real OIDC
