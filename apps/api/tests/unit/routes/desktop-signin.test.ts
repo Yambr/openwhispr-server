@@ -20,13 +20,43 @@
 
 import { ErrorEnvelope } from "@openwhispr/contract-tests/schemas";
 import Fastify, { type FastifyInstance } from "fastify";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { registerErrorHandler } from "../../../src/error-handler.js";
 import { _resetDefaultTenantCacheForTesting } from "../../../src/lib/default-tenant.js";
+import { __resetOidcDiscoveryCacheForTests } from "../../../src/lib/oidc-discovery.js";
 import { rateLimitPlugin } from "../../../src/plugins/rate-limit.js";
 import { buildDesktopSigninRoutes } from "../../../src/routes/desktop-signin.js";
 
 const DEFAULT_TENANT = "00000000-0000-0000-0000-000000000000";
+
+// #10 — the handler now resolves the authorize URL from the IdP discovery doc
+// (`${issuer}/.well-known/openid-configuration`) instead of hardcoding
+// `${issuer}/authorize`. We stub `globalThis.fetch` to return a Dex-style doc
+// whose `authorization_endpoint` is `/auth` (NOT `/authorize`) so the tests
+// prove the discovered path is used. `OIDC_DISCOVERY_DOC` is mutated per-test
+// for the failure/override cases.
+const DEX_AUTHORIZE = "https://idp.example.com/auth";
+let discoveryDoc: Record<string, unknown> | null;
+let discoveryStatus: number;
+
+function stubDiscoveryFetch(): void {
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (input: string | URL) => {
+      const url = String(input);
+      if (url.includes("/.well-known/openid-configuration")) {
+        if (discoveryStatus !== 200) {
+          return new Response("err", { status: discoveryStatus });
+        }
+        return new Response(JSON.stringify(discoveryDoc), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        });
+      }
+      throw new Error(`unexpected fetch in test: ${url}`);
+    }),
+  );
+}
 
 interface RecordedQuery {
   sql: string;
@@ -101,12 +131,23 @@ function clearOidcEnv(): void {
 describe("GET /api/desktop-signin/:provider", () => {
   beforeEach(() => {
     _resetDefaultTenantCacheForTesting();
+    __resetOidcDiscoveryCacheForTests();
     process.env = { ...ORIGINAL_ENV };
     setOidcEnv();
     delete process.env.OPENWHISPR_PROTOCOL;
+    // Default: a healthy Dex-style discovery doc with authorize at `/auth`.
+    discoveryDoc = {
+      authorization_endpoint: DEX_AUTHORIZE,
+      token_endpoint: "https://idp.example.com/token",
+      userinfo_endpoint: "https://idp.example.com/userinfo",
+    };
+    discoveryStatus = 200;
+    stubDiscoveryFetch();
   });
 
   afterEach(() => {
+    vi.unstubAllGlobals();
+    __resetOidcDiscoveryCacheForTests();
     process.env = { ...ORIGINAL_ENV };
   });
 
@@ -123,7 +164,9 @@ describe("GET /api/desktop-signin/:provider", () => {
         });
         expect(res.statusCode).toBe(302);
         const loc = res.headers.location as string;
-        expect(loc.startsWith("https://idp.example.com/authorize?")).toBe(true);
+        // #10 — proves the authorize URL came from discovery
+        // (authorization_endpoint = `/auth`), NOT the old hardcoded `/authorize`.
+        expect(loc.startsWith("https://idp.example.com/auth?")).toBe(true);
         const url = new URL(loc);
         expect(url.searchParams.get("response_type")).toBe("code");
         expect(url.searchParams.get("client_id")).toBe("test-client");
@@ -156,6 +199,92 @@ describe("GET /api/desktop-signin/:provider", () => {
         url: "/api/desktop-signin/oidc?callbackURL=mycorp-whispr%3A%2F%2Fcb&protocol=mycorp-whispr",
       });
       expect(res.statusCode).toBe(302);
+      await app.close();
+    });
+  });
+
+  // #10 (peer gr0flvsr) — desktop-signin resolves the authorize URL from the
+  // IdP discovery doc, not a hardcoded `${issuer}/authorize`. Dex serves
+  // `/auth`; the old hardcode 302'd to a 404.
+  describe("#10 — authorize URL from OIDC discovery", () => {
+    it("uses authorization_endpoint from discovery (Dex /auth, not /authorize)", async () => {
+      const { db } = makeFakeDb();
+      const app = buildApp({ db });
+      const res = await app.inject({
+        method: "GET",
+        url: "/api/desktop-signin/oidc?callbackURL=openwhispr%3A%2F%2Fcb&protocol=openwhispr",
+      });
+      expect(res.statusCode).toBe(302);
+      const loc = res.headers.location as string;
+      expect(loc.startsWith(`${DEX_AUTHORIZE}?`)).toBe(true);
+      expect(loc).not.toContain("/authorize?");
+      await app.close();
+    });
+
+    it("OIDC_AUTHORIZE_URL override wins and makes NO discovery fetch", async () => {
+      process.env.OIDC_AUTHORIZE_URL = "https://idp.example.com/custom-authorize";
+      const fetchSpy = globalThis.fetch as unknown as ReturnType<typeof vi.fn>;
+      const { db } = makeFakeDb();
+      const app = buildApp({ db });
+      const res = await app.inject({
+        method: "GET",
+        url: "/api/desktop-signin/oidc?callbackURL=openwhispr%3A%2F%2Fcb&protocol=openwhispr",
+      });
+      expect(res.statusCode).toBe(302);
+      const loc = res.headers.location as string;
+      expect(loc.startsWith("https://idp.example.com/custom-authorize?")).toBe(true);
+      // override path must NOT hit discovery
+      const discoveryCalls = fetchSpy.mock.calls.filter((c) =>
+        String(c[0]).includes("/.well-known/openid-configuration"),
+      );
+      expect(discoveryCalls).toHaveLength(0);
+      await app.close();
+    });
+
+    it("discovery non-2xx → 503 + envelope, NEVER 302, NO oauth_state INSERT", async () => {
+      discoveryStatus = 500;
+      const { db, recorded } = makeFakeDb();
+      const app = buildApp({ db });
+      const res = await app.inject({
+        method: "GET",
+        url: "/api/desktop-signin/oidc?callbackURL=openwhispr%3A%2F%2Fcb&protocol=openwhispr",
+      });
+      expect(res.statusCode).toBe(503);
+      // discovery precedes the write — no oauth_state row burned on failure
+      expect(recorded.find((r) => /INSERT INTO oauth_state/i.test(r.sql))).toBeUndefined();
+      await app.close();
+    });
+
+    it("discovery doc missing authorization_endpoint → 503, NO INSERT", async () => {
+      discoveryDoc = {
+        token_endpoint: "https://idp.example.com/token",
+        userinfo_endpoint: "https://idp.example.com/userinfo",
+      };
+      const { db, recorded } = makeFakeDb();
+      const app = buildApp({ db });
+      const res = await app.inject({
+        method: "GET",
+        url: "/api/desktop-signin/oidc?callbackURL=openwhispr%3A%2F%2Fcb&protocol=openwhispr",
+      });
+      expect(res.statusCode).toBe(503);
+      expect(recorded.find((r) => /INSERT INTO oauth_state/i.test(r.sql))).toBeUndefined();
+      await app.close();
+    });
+
+    it("discovery authorization_endpoint on a non-affiliated origin → 503 (SSRF guard), NO INSERT", async () => {
+      discoveryDoc = {
+        authorization_endpoint: "https://evil.attacker.test/auth",
+        token_endpoint: "https://idp.example.com/token",
+        userinfo_endpoint: "https://idp.example.com/userinfo",
+      };
+      const { db, recorded } = makeFakeDb();
+      const app = buildApp({ db });
+      const res = await app.inject({
+        method: "GET",
+        url: "/api/desktop-signin/oidc?callbackURL=openwhispr%3A%2F%2Fcb&protocol=openwhispr",
+      });
+      expect(res.statusCode).toBe(503);
+      expect(recorded.find((r) => /INSERT INTO oauth_state/i.test(r.sql))).toBeUndefined();
       await app.close();
     });
   });
