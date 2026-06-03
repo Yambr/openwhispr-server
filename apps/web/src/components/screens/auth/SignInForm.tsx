@@ -61,6 +61,7 @@ import { signInSchema } from "@/lib/schemas/auth";
 import { AuthShell } from "./AuthShell";
 import { OidcButtons } from "./OidcButtons";
 import { PasswordInputWithToggle } from "./PasswordInputWithToggle";
+import { useAuthProviders } from "./useAuthProviders";
 
 type SignInState =
   | { kind: "idle" }
@@ -71,6 +72,15 @@ export function SignInForm(): React.JSX.Element {
   const { t } = useTranslation(["end-user", "common"]);
   const router = useRouter();
   const searchParams = useSearchParams();
+  // Upstream #9 (web half) — gate the local-login affordances on the server's
+  // localLogin posture. A SECOND useAuthProviders instance (OidcButtons calls
+  // it internally too) → 2 GET /api/auth/providers per screen; the endpoint is
+  // public + ETag-cached + credentials:'omit', so the cost is negligible and we
+  // do NOT lift state into props (that would break OidcButtons' standalone
+  // contract + conformance). `localLoginEnabled` is default-safe: absent flag
+  // (old server) / loading / network failure ⇒ true (never hide the only form
+  // on uncertainty); only an explicit {enabled:false} hides it.
+  const { localLoginEnabled } = useAuthProviders();
   // HI-01 — validated post-sign-in destination from the `?from=` param.
   const destination = safeFromParam(searchParams.get("from"));
   // F8 — verify-email-complete 302s back here with `?verified=1` after a
@@ -207,40 +217,50 @@ export function SignInForm(): React.JSX.Element {
         ) : null}
         {/* D-17 order: OIDC row FIRST, then text-in-rule separator, then form. */}
         <OidcButtons namespace="signin" />
-        {/* D-19 text-in-rule separator. */}
-        <div className="relative my-1 flex items-center" aria-hidden={false}>
-          <span className="h-px flex-1 bg-border" />
-          <span className="px-3 text-muted-foreground text-xs uppercase tracking-wider">
-            {t("end-user.signin.separator.email.text")}
-          </span>
-          <span className="h-px flex-1 bg-border" />
-        </div>
-        <Form {...form}>
-          <form
-            onSubmit={form.handleSubmit(onSubmit as never)}
-            className="flex flex-col gap-3"
-            noValidate
-          >
-            <FormField
-              control={form.control}
-              name="email"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>{t("end-user.signin.form.email.label")}</FormLabel>
-                  <FormControl>
-                    <Input type="email" autoComplete="email" disabled={submitting} {...field} />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-            <FormField
-              control={form.control}
-              name="password"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>{t("end-user.signin.form.password.label")}</FormLabel>
-                  {/*
+        {/*
+          Upstream #9 — when the server disables local login
+          (OPENWHISPR_DISABLE_LOCAL_LOGIN=1 → localLogin.enabled:false), hide the
+          email/password form, the "or with email" separator, forgot-password,
+          submit, and the sign-up cross-link — leaving ONLY the SSO buttons above
+          plus a localized explanatory line. Default-safe: absent flag / old
+          server / fetch failure keeps the form (see useAuthProviders).
+        */}
+        {localLoginEnabled ? (
+          <>
+            {/* D-19 text-in-rule separator. */}
+            <div className="relative my-1 flex items-center" aria-hidden={false}>
+              <span className="h-px flex-1 bg-border" />
+              <span className="px-3 text-muted-foreground text-xs uppercase tracking-wider">
+                {t("end-user.signin.separator.email.text")}
+              </span>
+              <span className="h-px flex-1 bg-border" />
+            </div>
+            <Form {...form}>
+              <form
+                onSubmit={form.handleSubmit(onSubmit as never)}
+                className="flex flex-col gap-3"
+                noValidate
+              >
+                <FormField
+                  control={form.control}
+                  name="email"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>{t("end-user.signin.form.email.label")}</FormLabel>
+                      <FormControl>
+                        <Input type="email" autoComplete="email" disabled={submitting} {...field} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={form.control}
+                  name="password"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>{t("end-user.signin.form.password.label")}</FormLabel>
+                      {/*
                     Phase 55-02-b — inline eye-toggle block extracted to
                     `PasswordInputWithToggle.tsx`. The component renders the
                     same <div className="relative"> wrapper + <FormControl>
@@ -250,37 +270,41 @@ export function SignInForm(): React.JSX.Element {
                     Radix Slot forwards id/aria-describedby to <Input>, not
                     the wrapper div (see PasswordInputWithToggle.tsx header).
                   */}
-                  <PasswordInputWithToggle
-                    autoComplete="current-password"
-                    disabled={submitting}
-                    togglePasswordShowLabel={t("end-user.common.action.togglePassword.show.label")}
-                    togglePasswordHideLabel={t("end-user.common.action.togglePassword.hide.label")}
-                    {...field}
-                  />
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-            <FormField
-              control={form.control}
-              name="rememberDevice"
-              render={({ field }) => (
-                <FormItem className="flex items-center gap-2 space-y-0">
-                  <FormControl>
-                    <Checkbox
-                      checked={field.value === true}
-                      onCheckedChange={(v) => field.onChange(v === true)}
-                      disabled={submitting}
-                      aria-label={t("end-user.signin.action.rememberDevice.label")}
-                    />
-                  </FormControl>
-                  <FormLabel className="cursor-pointer font-normal text-sm">
-                    {t("end-user.signin.action.rememberDevice.label")}
-                  </FormLabel>
-                </FormItem>
-              )}
-            />
-            {/*
+                      <PasswordInputWithToggle
+                        autoComplete="current-password"
+                        disabled={submitting}
+                        togglePasswordShowLabel={t(
+                          "end-user.common.action.togglePassword.show.label",
+                        )}
+                        togglePasswordHideLabel={t(
+                          "end-user.common.action.togglePassword.hide.label",
+                        )}
+                        {...field}
+                      />
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={form.control}
+                  name="rememberDevice"
+                  render={({ field }) => (
+                    <FormItem className="flex items-center gap-2 space-y-0">
+                      <FormControl>
+                        <Checkbox
+                          checked={field.value === true}
+                          onCheckedChange={(v) => field.onChange(v === true)}
+                          disabled={submitting}
+                          aria-label={t("end-user.signin.action.rememberDevice.label")}
+                        />
+                      </FormControl>
+                      <FormLabel className="cursor-pointer font-normal text-sm">
+                        {t("end-user.signin.action.rememberDevice.label")}
+                      </FormLabel>
+                    </FormItem>
+                  )}
+                />
+                {/*
               Phase 55-01-a: user-authorized reversal of D-UX2 (Phase 18.1.1).
               The previous muted "Forgot password? — coming soon" sentinel
               is replaced with a live link to the /forgot-password route
@@ -288,25 +312,34 @@ export function SignInForm(): React.JSX.Element {
               coverage audit + explicit user sign-off (see file header).
               Closes BUG-54-PRD-RESET-UI-MISSING.
             */}
-            <Link
-              href="/forgot-password"
-              className="text-sm text-primary underline underline-offset-4 hover:opacity-80"
-            >
-              {t("end-user.signin.action.forgotPassword.link.label")}
-            </Link>
-            <Button type="submit" disabled={submitting}>
-              {t("end-user.signin.form.submit.label")}
-            </Button>
-          </form>
-        </Form>
-        <p className="text-center text-sm">
-          <Link
-            href="/sign-up"
-            className="text-primary underline underline-offset-4 hover:opacity-80"
-          >
-            {t("end-user.signin.action.signup-link.label")}
-          </Link>
-        </p>
+                <Link
+                  href="/forgot-password"
+                  className="text-sm text-primary underline underline-offset-4 hover:opacity-80"
+                >
+                  {t("end-user.signin.action.forgotPassword.link.label")}
+                </Link>
+                <Button type="submit" disabled={submitting}>
+                  {t("end-user.signin.form.submit.label")}
+                </Button>
+              </form>
+            </Form>
+            <p className="text-center text-sm">
+              <Link
+                href="/sign-up"
+                className="text-primary underline underline-offset-4 hover:opacity-80"
+              >
+                {t("end-user.signin.action.signup-link.label")}
+              </Link>
+            </p>
+          </>
+        ) : (
+          // Upstream #9 — OIDC-only: explain the absent local form so a screen
+          // with the SSO button(s) above is self-evident (and not blank if zero
+          // providers happen to be configured).
+          <p role="status" className="text-muted-foreground text-sm">
+            {t("end-user.signin.local-login-disabled.body.text")}
+          </p>
+        )}
       </div>
     </AuthShell>
   );

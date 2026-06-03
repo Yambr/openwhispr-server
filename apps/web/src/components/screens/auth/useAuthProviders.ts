@@ -38,9 +38,16 @@ export interface EmailVerificationPosture {
   readonly configured: boolean;
 }
 
+/** Mirror of apps/api/src/routes/auth-providers.ts `LocalLoginPosture` (upstream #9). */
+export interface LocalLoginPosture {
+  readonly enabled: boolean;
+}
+
 interface AuthProvidersResponseBody {
   providers?: ConfiguredProvider[];
   emailVerification?: EmailVerificationPosture;
+  // Upstream #9 — present on server ≥1.2.0; ABSENT on old servers ≤1.1.0.
+  localLogin?: LocalLoginPosture;
 }
 
 export interface UseAuthProvidersResult {
@@ -48,6 +55,20 @@ export interface UseAuthProvidersResult {
   readonly providers: readonly ConfiguredProvider[];
   /** True until the fetch settles (resolved OR rejected). */
   readonly loading: boolean;
+  /**
+   * Upstream #9 — whether the server permits local (email/password) login.
+   * Consumers (SignInForm/SignUpForm) hide the email/password form when this
+   * is false and render only the SSO buttons.
+   *
+   * BACK-COMPAT + FAIL-SAFE contract (the `!== false` default): the field is
+   * ABSENT on old servers (≤1.1.0) and on the fail-closed network-error path
+   * (no body) — both resolve to `true`, so a missing flag or a transient
+   * `/api/auth/providers` blip NEVER locks a user out of the only form. Only an
+   * EXPLICIT `{ enabled: false }` (server ≥1.2.0 with OPENWHISPR_DISABLE_LOCAL_LOGIN=1)
+   * disables the form. While loading (`data === null`) it is likewise `true`
+   * (default-safe: render the form, then hide it if the resolved flag is false).
+   */
+  readonly localLoginEnabled: boolean;
 }
 
 export function useAuthProviders(): UseAuthProvidersResult {
@@ -80,5 +101,9 @@ export function useAuthProviders(): UseAuthProvidersResult {
   return {
     providers: data?.providers ?? [],
     loading: data === null,
+    // `!== false` is the back-compat + fail-safe + loading default: absent field
+    // (old server), no body (network error path), and `data === null` (loading)
+    // all yield `true`. Only an explicit `{ enabled: false }` disables.
+    localLoginEnabled: data?.localLogin?.enabled !== false,
   };
 }
