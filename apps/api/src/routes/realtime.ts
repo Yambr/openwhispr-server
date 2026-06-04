@@ -252,7 +252,12 @@ const REALTIME_TRANSCRIPTION_INTENT = "transcription";
  *
  * Exported for direct unit-testing of the URL-construction logic.
  */
-export function buildUpstreamUrl(deps: RealtimeDeps, rawClientUrl: string, userId: string): string {
+export function buildUpstreamUrl(
+  deps: RealtimeDeps,
+  rawClientUrl: string,
+  userId: string,
+  endUser?: string,
+): string {
   // The client's raw URL is an origin-form path: `/v1/realtime?intent=...`.
   // Pull its query params; the relay owns intent/user/model and overwrites
   // them below, so client-supplied values for those are ignored.
@@ -295,8 +300,13 @@ export function buildUpstreamUrl(deps: RealtimeDeps, rawClientUrl: string, userI
   // D1 / T-03-07-05 — force the operator-configured model alias (LiteLLM
   // routes `/v1/realtime` on `?model=`).
   u.searchParams.set("model", deps.realtimeModel);
-  // D-03 / LITELLM-04 — per-user spend attribution.
-  u.searchParams.set("user", userId);
+  // D-03 / LITELLM-04 + upstream #4 (D-2) — per-user spend attribution on
+  // the OpenAI-compatible `?user=` param. Prefer the authenticated end-user
+  // EMAIL when available (operator-facing attribution), falling back to the
+  // UUID. The stable LiteLLM end-user key (`openwhispr_user_id` in the
+  // spend-logs-metadata header built by buildUpstreamHeaders) STAYS the
+  // UUID (D-1) — only this OpenAI `?user=` attribution carries the email.
+  u.searchParams.set("user", endUser ?? userId);
   return u.toString();
 }
 
@@ -548,8 +558,14 @@ export const buildRealtimeRoutes = (deps: RealtimeDeps) =>
       },
       (clientSocket: WebSocket, req: FastifyRequest) => {
         const userId = req.user?.id ?? "anonymous";
+        // Upstream #4 (D-2) — operator-facing end-user attribution on the
+        // litellm-mode `?user=` param. Email IS reachable at the WSS-upgrade
+        // seam (`req.user.email`); prefer it, fall back to the UUID. The
+        // stable LiteLLM end-user key (`openwhispr_user_id` in the
+        // spend-logs metadata header) stays the UUID (D-1).
+        const endUser = req.user?.email ?? userId;
         const rawUrl = req.raw.url ?? req.url;
-        const upstreamUrl = buildUpstreamUrl(deps, rawUrl, userId);
+        const upstreamUrl = buildUpstreamUrl(deps, rawUrl, userId, endUser);
         const headers = buildUpstreamHeaders(deps, userId, req.id);
 
         // v1.0.9 — per-upgrade language resolution.

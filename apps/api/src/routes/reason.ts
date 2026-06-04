@@ -169,6 +169,13 @@ export const buildReasonRoutes = (deps: ReasonDeps) =>
             // field. The shared client always overrides body.user with
             // req.user.id; T-03-05-01 mitigation belt-and-suspenders.
             userId: req.user.id,
+            // Upstream #4 (D-2) — operator-facing end-user attribution: the
+            // authenticated EMAIL flows into body.user (preferred over the
+            // UUID) and, when LITELLM_USER_HEADER_NAME is configured, into
+            // that header. `userId` (the UUID) stays the stable
+            // x-litellm-end-user-id key (D-1). Falls back to the UUID if
+            // email is somehow absent on the session.
+            endUser: req.user.email ?? req.user.id,
             requestId: req.id,
           });
           upstreamJson = (await upstream.body.json()) as UpstreamChatJson;

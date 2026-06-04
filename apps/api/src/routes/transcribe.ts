@@ -224,6 +224,12 @@ export const buildTranscribeRoutes = (deps: TranscribeDeps) =>
             body: peeked.body,
             contentType: peeked.contentType,
             userId: req.user.id,
+            // Upstream #4 (D-2) — the multipart /v1/audio/transcriptions
+            // body has no JSON `user` slot, so the configurable
+            // LITELLM_USER_HEADER_NAME header is this route's only
+            // attribution vector for the end-user EMAIL. `userId` (the
+            // UUID) stays the stable x-litellm-end-user-id key (D-1).
+            endUser: req.user.email ?? req.user.id,
             requestId: req.id,
           });
           upstreamJson = (await upstream.body.json()) as UpstreamWhisperJson;

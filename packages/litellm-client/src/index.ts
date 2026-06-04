@@ -196,6 +196,17 @@ export interface ChatCompletionRequest {
   messages: Array<{ role: string; content: string }>;
   userId: string;
   requestId: string;
+  /**
+   * Upstream #4 — authenticated end-user EMAIL (server-derived from the
+   * Better Auth session: `req.user.email`), used for operator-facing
+   * attribution. When present it becomes the body `user` field AND, when
+   * `config.userHeaderName` is configured, the value of that header.
+   * `userId` (the UUID) STAYS `x-litellm-end-user-id` (LiteLLM's stable
+   * end-user key + spend-logs anchor — D-1). System/background calls with
+   * no authed user omit this → body `user` falls back to the UUID and no
+   * email header is emitted (D-3).
+   */
+  endUser?: string;
   /** Pass-through additional OpenAI chat-completion params (temperature, max_tokens, ...). */
   extras?: Record<string, unknown>;
   /** Phase 41.f / HI-1 — abort signal forwarded to undici. */
@@ -234,6 +245,13 @@ export interface AudioTranscriptionRequest {
   userId: string;
   requestId: string;
   /**
+   * Upstream #4 — authenticated end-user EMAIL for operator attribution.
+   * The multipart `/v1/audio/transcriptions` body has no JSON `user` slot,
+   * so the configurable `config.userHeaderName` header is this method's
+   * ONLY attribution vector. `x-litellm-end-user-id` stays the UUID (D-1).
+   */
+  endUser?: string;
+  /**
    * Phase 19.2 / Plan 02 — SERVER-ERRORS Entry 11 closure.
    *
    * LiteLLM Proxy's `/v1/audio/transcriptions` rejects requests with
@@ -263,6 +281,13 @@ export interface PassthroughRequest {
   contentType?: string;
   userId: string;
   requestId: string;
+  /**
+   * Upstream #4 — authenticated end-user EMAIL for operator attribution.
+   * The passthrough body is opaque (no JSON `user` slot), so the
+   * configurable `config.userHeaderName` header is this method's ONLY
+   * attribution vector. `x-litellm-end-user-id` stays the UUID (D-1).
+   */
+  endUser?: string;
   /** Phase 41.f / HI-1 — abort signal forwarded to undici. */
   signal?: AbortSignal;
   /** Phase 41.f / HI-1 — undici headersTimeout override. */
@@ -426,7 +451,11 @@ export function buildLitellmClient(
     }
   }
 
-  function authHeaders(userId: string, requestId: string): Record<string, string> {
+  function authHeaders(
+    userId: string,
+    requestId: string,
+    endUser?: string,
+  ): Record<string, string> {
     // Phase 51 / Plan 51-15 (REVIEW HIGH) — defence-in-depth CR/LF
     // rejection on caller-supplied header values. Production callsites
     // (apps/api routes) source these from `req.user.id` (UUID) and
@@ -440,13 +469,29 @@ export function buildLitellmClient(
     if (/[\r\n]/.test(requestId)) {
       throw new Error("litellm-client: requestId must not contain CR/LF");
     }
-    return {
+    // Upstream #4 (T-oc4-02) — `endUser` is server-derived from the Better
+    // Auth session (`req.user.email`), never client-asserted, but we apply
+    // the same CR/LF belt as userId/requestId: it flows into an outbound
+    // header value when `config.userHeaderName` is configured.
+    if (endUser !== undefined && /[\r\n]/.test(endUser)) {
+      throw new Error("litellm-client: endUser must not contain CR/LF");
+    }
+    const headers: Record<string, string> = {
       authorization: `Bearer ${config.masterKey}`,
+      // D-1 — `x-litellm-end-user-id` STAYS the stable UUID (LiteLLM's
+      // end-user key + spend-logs anchor); emails are mutable.
       "x-litellm-end-user-id": userId,
       "x-litellm-spend-logs-metadata": JSON.stringify({
         openwhispr_request_id: requestId,
       }),
     };
+    // Upstream #4 / D-2 — emit the operator-configured email header ONLY
+    // when BOTH the name is configured AND an endUser email is present.
+    // Opt-in (D-3): no header name → no email header regardless of endUser.
+    if (config.userHeaderName !== undefined && endUser !== undefined) {
+      headers[config.userHeaderName] = endUser;
+    }
+    return headers;
   }
 
   async function ensureOk(
@@ -477,7 +522,10 @@ export function buildLitellmClient(
         ...req.extras,
         model,
         messages: req.messages,
-        user: req.userId, // D-03: per-user attribution via OpenAI-compatible field
+        // D-03 / upstream #4 (D-2): per-user attribution via the
+        // OpenAI-compatible `user` field. Prefer the end-user EMAIL when
+        // present; fall back to the UUID for system/background calls.
+        user: req.endUser ?? req.userId,
       });
       // litellm-patterns A4 — retry loop wrapping ONLY chatCompletions.
       // chatCompletionsStream MUST NOT be retried (a partially-consumed
@@ -500,7 +548,7 @@ export function buildLitellmClient(
           const reqOpts: Record<string, unknown> = {
             method: "POST",
             headers: {
-              ...authHeaders(req.userId, req.requestId),
+              ...authHeaders(req.userId, req.requestId, req.endUser),
               "content-type": "application/json",
             },
             body,
@@ -563,7 +611,9 @@ export function buildLitellmClient(
         ...req.extras,
         model,
         messages: req.messages,
-        user: req.userId, // D-03
+        // D-03 / upstream #4 (D-2) — prefer the end-user EMAIL, fall back
+        // to the UUID for system/background calls.
+        user: req.endUser ?? req.userId,
         stream: true,
         stream_options: mergedStreamOptions,
       });
@@ -573,7 +623,7 @@ export function buildLitellmClient(
       const requestOpts: Record<string, unknown> = {
         method: "POST",
         headers: {
-          ...authHeaders(req.userId, req.requestId),
+          ...authHeaders(req.userId, req.requestId, req.endUser),
           "content-type": "application/json",
         },
         body,
@@ -661,7 +711,7 @@ export function buildLitellmClient(
       const reqOpts: Record<string, unknown> = {
         method: "POST",
         headers: {
-          ...authHeaders(args.userId, args.requestId),
+          ...authHeaders(args.userId, args.requestId, args.endUser),
           "content-type": args.contentType,
         },
         body,
@@ -676,7 +726,11 @@ export function buildLitellmClient(
 
     async passthrough(path, args) {
       ssrfGate();
-      const headers: Record<string, string> = authHeaders(args.userId, args.requestId);
+      const headers: Record<string, string> = authHeaders(
+        args.userId,
+        args.requestId,
+        args.endUser,
+      );
       if (args.contentType) headers["content-type"] = args.contentType;
       // Phase 41.f / HI-1 — forward headersTimeout / bodyTimeout / signal.
       // R32 — env-tunable defaults; per-call override still wins.

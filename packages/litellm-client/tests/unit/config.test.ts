@@ -437,4 +437,54 @@ describe("HI-3 — https assertion on production base-URL override", () => {
     });
     expect(cfg.baseUrl).toBe("http://aimodels.example.com");
   });
+
+  // -------------------------------------------------------------------------
+  // Upstream #4 — LITELLM_USER_HEADER_NAME (configurable end-user email
+  // header). Opt-in: when set, every gateway call emits that header carrying
+  // the authenticated user's email (or fallback id). When unset the header is
+  // OMITTED entirely (no literal default ships — LOCKER-03). The header NAME
+  // is operator-controlled, so a CR/LF or colon in it is REFUSED at load
+  // (T-oc4-01) — an operator typo cannot inject a second header / split the
+  // request.
+  // -------------------------------------------------------------------------
+  describe("LITELLM_USER_HEADER_NAME — configurable end-user email header", () => {
+    it("defaults userHeaderName to undefined when unset (opt-in)", () => {
+      const cfg = loadLitellmConfigFromEnv({ LITELLM_MASTER_KEY: "sk-master-x" });
+      expect(cfg.userHeaderName).toBeUndefined();
+    });
+
+    it("treats an empty LITELLM_USER_HEADER_NAME as unset (same seam as model envs)", () => {
+      const cfg = loadLitellmConfigFromEnv({
+        LITELLM_MASTER_KEY: "sk-master-x",
+        LITELLM_USER_HEADER_NAME: "",
+      });
+      expect(cfg.userHeaderName).toBeUndefined();
+    });
+
+    it("loads a valid header token from LITELLM_USER_HEADER_NAME", () => {
+      const cfg = loadLitellmConfigFromEnv({
+        LITELLM_MASTER_KEY: "sk-master-x",
+        LITELLM_USER_HEADER_NAME: "X-OpenWhispr-User-Email",
+      });
+      expect(cfg.userHeaderName).toBe("X-OpenWhispr-User-Email");
+    });
+
+    it("refuses to load a header name containing CR/LF (T-oc4-01)", () => {
+      expect(() =>
+        loadLitellmConfigFromEnv({
+          LITELLM_MASTER_KEY: "sk-master-x",
+          LITELLM_USER_HEADER_NAME: "X-Email\r\nX-Injected",
+        }),
+      ).toThrow(/LITELLM_USER_HEADER_NAME/);
+    });
+
+    it("refuses to load a header name containing a colon (T-oc4-01)", () => {
+      expect(() =>
+        loadLitellmConfigFromEnv({
+          LITELLM_MASTER_KEY: "sk-master-x",
+          LITELLM_USER_HEADER_NAME: "X-Email: value",
+        }),
+      ).toThrow(/LITELLM_USER_HEADER_NAME/);
+    });
+  });
 });

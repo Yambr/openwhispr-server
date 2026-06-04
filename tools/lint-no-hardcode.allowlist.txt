@@ -112,7 +112,7 @@ packages/data/src/seed/conformance.ts:123  # canonical-fixture-api-localhost
 # users. Retagged in Phase 31 / Plan 31-08 (was previously in bucket (b)
 # MIGRATION-DEBT, which was a mis-classification — these are intentional
 # defaults, not migration debt). See 31-08-DECISIONS.md §D-2.
-packages/litellm-client/src/config.ts:135  # permanent-docker-compose-internal-url (drifted 29 → 48 by Phase 68 HI-2/HI-3 config-loader header expansion; 48 → 62 by quick-260522-envmodels DEFAULT_STT_MODEL/DEFAULT_REALTIME_MODEL constants; 62 → 83 by R32 DEFAULT_HEADERS/BODY/ERROR_DRAIN_TIMEOUT_MS constants) (R33 +10 cleanup-model wiring) (+2 by quick-58 AUDIT-LIB-01 env-parse.js import) (+22 by quick-260523-a3a4 A4 LITELLM_RETRY_* config knobs + interface fields) (#18 +18 modelParams interface field + parseModelParams helper)
+packages/litellm-client/src/config.ts:151  # permanent-docker-compose-internal-url (drifted 29 → 48 by Phase 68 HI-2/HI-3 config-loader header expansion; 48 → 62 by quick-260522-envmodels DEFAULT_STT_MODEL/DEFAULT_REALTIME_MODEL constants; 62 → 83 by R32 DEFAULT_HEADERS/BODY/ERROR_DRAIN_TIMEOUT_MS constants) (R33 +10 cleanup-model wiring) (+2 by quick-58 AUDIT-LIB-01 env-parse.js import) (+22 by quick-260523-a3a4 A4 LITELLM_RETRY_* config knobs + interface fields) (#18 +18 modelParams interface field + parseModelParams helper) (+16 by quick-260604-oc4 userHeaderName interface field + parseUserHeaderName helper)
 
 # --- (e) PERMANENT — desktop auth-bridge contract address (DO NOT REMOVE) ---
 # R22: the OpenWhispr Electron client (immutable, ships separately) runs a
