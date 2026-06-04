@@ -893,10 +893,11 @@ Cross-references:
 ### `LITELLM_USER_HEADER_NAME` — end-user email attribution (upstream #4)
 
 > **OPT-IN.** When set, every LiteLLM gateway call (chat/agent, cleanup,
-> STT, realtime) emits this HTTP header carrying the authenticated user's
-> EMAIL, so an operator LiteLLM (or its spend dashboard) can attribute
-> usage by human-readable identity. Unset → no email header is emitted
-> (there is no default header name).
+> STT, embeddings, rerank, realtime, and diarization in its
+> Speaches/LiteLLM-passthrough mode) emits this HTTP header carrying the
+> authenticated user's EMAIL, so an operator LiteLLM (or its spend
+> dashboard) can attribute usage by human-readable identity. Unset → no
+> email header is emitted (there is no default header name).
 
 Identity surfaces on each gateway call in three places, kept distinct on
 purpose:
@@ -933,7 +934,11 @@ stringData:
 Cross-references:
 - Source: `packages/litellm-client/src/config.ts` (`userHeaderName`),
   `packages/litellm-client/src/index.ts` (`endUser` + `authHeaders`),
-  `apps/api/src/routes/{reason,transcribe,realtime}.ts` call sites.
+  `apps/api/src/routes/{reason,transcribe,embeddings,rerank,realtime}.ts`
+  call sites, and `apps/api/src/routes/diarization.ts`
+  (`handleSpeachesDiarization` — the Speaches/LiteLLM-passthrough branch
+  builds the same email header directly; the pyannote.ai branch has no
+  LiteLLM hop and is unaffected).
 - Tests: `packages/litellm-client/tests/unit/auth-headers.test.ts` +
   `packages/litellm-client/tests/unit/config.test.ts`.
 

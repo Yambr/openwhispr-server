@@ -727,6 +727,17 @@ export function buildAllRoutes(deps: AllRoutesDeps): readonly RoutePlugin[] {
       if (resolvedKey) {
         diarizationDeps.speachesDiarizationApiKey = resolvedKey;
       }
+      // Quick 260604-v0p — the Speaches diarization URL fronts a LiteLLM
+      // gateway in the corporate pose; carry the operator end-user email
+      // header (LITELLM_USER_HEADER_NAME) so diarization spend is attributed
+      // per-user exactly like every other LiteLLM-direction endpoint. Opt-in:
+      // omitted when the env is unset (bundled open-Speaches sends no email
+      // header). Scoped to the Speaches branch only — the pyannote.ai branch
+      // has no LiteLLM hop.
+      const userHeaderName = process.env.LITELLM_USER_HEADER_NAME;
+      if (userHeaderName && userHeaderName.length > 0) {
+        diarizationDeps.userHeaderName = userHeaderName;
+      }
     }
     plugins.push(buildDiarizationRoutes(diarizationDeps));
   }
