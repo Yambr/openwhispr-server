@@ -61,6 +61,7 @@ import {
 import { buildDeleteAccountRoutes, type DeleteAccountDeps } from "./delete-account.js";
 import { buildDesktopSigninRoutes, type DesktopSigninDeps } from "./desktop-signin.js";
 import { buildDiarizationRoutes, type DiarizationDeps } from "./diarization.js";
+import { buildEmbeddingsRoutes, type EmbeddingsDeps } from "./embeddings.js";
 import {
   buildFoldersBatchCreateRoutes,
   type FoldersBatchCreateDeps,
@@ -181,6 +182,10 @@ export interface AllRoutesDeps {
     cleanupModel: string;
     /** #18 — per-model chat-param extras bag (env `REASONING_MODEL_PARAMS`). */
     modelParams?: Record<string, Record<string, unknown>>;
+    /** U65 — operator embeddings model alias (env `LITELLM_EMBEDDING_MODEL`). */
+    embeddingModel?: string;
+    /** U65 — operator rerank model alias (env `LITELLM_RERANK_MODEL`). */
+    rerankModel?: string;
   };
   /**
    * Phase 03 / Plan 06 (D-07 REVISED): Valkey client for the diarization
@@ -606,6 +611,18 @@ export function buildAllRoutes(deps: AllRoutesDeps): readonly RoutePlugin[] {
         : {}),
     };
     plugins.push(buildReasonRoutes(reasonDeps));
+    // U65 — POST /api/embeddings forwards to the operator gateway via the
+    // shared litellm passthrough, so it shares the same litellm-presence
+    // gate. The operator model alias is threaded only when configured; when
+    // absent the route returns a clean 503 (no client-side fallback). This
+    // registration IS the non-test importer satisfying LOCKER-04.
+    const embeddingsDeps: EmbeddingsDeps = {
+      litellm: deps.litellm,
+      ...(deps.litellmModels?.embeddingModel
+        ? { embeddingModel: deps.litellmModels.embeddingModel }
+        : {}),
+    };
+    plugins.push(buildEmbeddingsRoutes(embeddingsDeps));
   }
   // R31 — WSS /v1/realtime frame-aware relay. Registered independently of
   // the `deps.litellm` gate above because the `direct` backend bypasses

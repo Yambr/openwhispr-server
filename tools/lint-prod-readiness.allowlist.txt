@@ -20,6 +20,7 @@ apps/api/src/routes/conversations/search.ts:42  # issue-31-04-debt-LOCKER-04-rou
 apps/api/src/routes/conversations/update.ts:37  # issue-31-04-debt-LOCKER-04-route-bulkfix-31-08
 apps/api/src/routes/desktop-signin.ts:76  # issue-31-04-debt-LOCKER-04-route-bulkfix-31-08
 apps/api/src/routes/diarization.ts:139  # issue-31-04-debt-LOCKER-04-route-bulkfix-31-08
+apps/api/src/routes/embeddings.ts:69  # issue-31-04-debt-LOCKER-04-route-bulkfix-31-08 (quick-260604-u65 — manual EmbeddingsRequest.parse() inside handler IS the body validation, mirrors reason.ts)
 apps/api/src/routes/folders/batch-create.ts:39  # issue-31-04-debt-LOCKER-04-route-bulkfix-31-08
 apps/api/src/routes/folders/create.ts:27  # issue-31-04-debt-LOCKER-04-route-bulkfix-31-08
 apps/api/src/routes/folders/delete.ts:29  # issue-31-04-debt-LOCKER-04-route-bulkfix-31-08
