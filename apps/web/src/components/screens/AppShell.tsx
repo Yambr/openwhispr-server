@@ -33,6 +33,7 @@ const NAV: NavItem[] = [
   { href: "/app/notes", key: "end-user.notes-list.nav.sidebar.label" },
   { href: "/app/conversations", key: "end-user.conv-list.nav.sidebar.label" },
   { href: "/app/account", key: "end-user.account.nav.sidebar.label" },
+  { href: "/download", key: "end-user.download.nav.sidebar.label" },
 ];
 
 export function AppShell({ children }: { children: ReactNode }): React.JSX.Element {
@@ -75,6 +76,9 @@ export function AppShell({ children }: { children: ReactNode }): React.JSX.Eleme
       </aside>
       <div className="flex flex-1 flex-col">
         <header className="flex h-14 items-center justify-end gap-2 border-b border-border px-4">
+          <Button asChild size="sm" variant="outline">
+            <Link href="/download">{t("common:common.download.header.button.label.text")}</Link>
+          </Button>
           <LanguageSwitcher />
           <ThemeSwitcher />
           <Button onClick={handleSignOut} size="sm" variant="outline">

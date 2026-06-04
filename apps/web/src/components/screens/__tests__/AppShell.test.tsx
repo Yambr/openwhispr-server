@@ -6,6 +6,8 @@
 //   - sign-out button visible with copy key `common.signout.label`
 //   - theme switcher button visible
 //   - children render in main area
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { I18nProvider } from "@/lib/i18n-client";
@@ -35,12 +37,14 @@ const resources = {
       "notes-list": { nav: { sidebar: { label: "Notes" } } },
       "conv-list": { nav: { sidebar: { label: "Conversations" } } },
       account: { nav: { sidebar: { label: "Account" } } },
+      download: { nav: { sidebar: { label: "Desktop app" } } },
     },
   },
   common: {
     common: {
       signout: { label: "Sign out" },
       theme: { toggle: { label: "Toggle theme" } },
+      download: { header: { button: { label: { text: "Download" } } } },
     },
   },
 } as Record<string, Record<string, unknown>>;
@@ -117,5 +121,59 @@ describe("AppShell (Phase 07.1 / Plan 06)", () => {
     );
     await user.click(screen.getByRole("button", { name: /sign out/i }));
     expect(signOut).toHaveBeenCalled();
+  });
+
+  it("renders a sidebar nav item linking to /download", () => {
+    render(
+      <Wrap>
+        <AppShell>
+          <span>child</span>
+        </AppShell>
+      </Wrap>,
+    );
+    expect(screen.getByRole("link", { name: /desktop app/i })).toHaveAttribute("href", "/download");
+  });
+
+  it("renders a compact download button in the header linking to /download", () => {
+    render(
+      <Wrap>
+        <AppShell>
+          <span>child</span>
+        </AppShell>
+      </Wrap>,
+    );
+    // Button asChild + next/link mock renders as <a>, so the header download
+    // affordance is a link role with the button's exact text. The /^download$/i
+    // exact-name match distinguishes it from the /desktop app/i sidebar item.
+    expect(screen.getByRole("link", { name: /^download$/i })).toHaveAttribute("href", "/download");
+  });
+
+  it("both locales define the new download keys (parity)", () => {
+    interface NestedLocale {
+      [key: string]: string | NestedLocale;
+    }
+    const localesDir = join(process.cwd(), "src", "locales");
+    function load(locale: string, ns: string): NestedLocale {
+      const raw = readFileSync(join(localesDir, locale, `${ns}.json`), "utf8");
+      return JSON.parse(raw) as NestedLocale;
+    }
+    for (const locale of ["en", "ru"]) {
+      const endUser = load(locale, "end-user");
+      const endUserRoot = endUser["end-user"] as NestedLocale;
+      const dlNav = (
+        ((endUserRoot.download as NestedLocale).nav as NestedLocale).sidebar as NestedLocale
+      ).label;
+      expect(typeof dlNav).toBe("string");
+      expect((dlNav as string).length).toBeGreaterThan(0);
+
+      const common = load(locale, "common");
+      const commonRoot = common.common as NestedLocale;
+      const headerBtn = (
+        (((commonRoot.download as NestedLocale).header as NestedLocale).button as NestedLocale)
+          .label as NestedLocale
+      ).text;
+      expect(typeof headerBtn).toBe("string");
+      expect((headerBtn as string).length).toBeGreaterThan(0);
+    }
   });
 });

@@ -245,6 +245,13 @@
             "text": "Already have an account? Sign in"
           }
         }
+      },
+      "header": {
+        "button": {
+          "label": {
+            "text": "Download"
+          }
+        }
       }
     }
   }

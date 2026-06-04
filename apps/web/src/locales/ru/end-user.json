@@ -515,6 +515,13 @@
         }
       }
     },
+    "download": {
+      "nav": {
+        "sidebar": {
+          "label": "Десктоп-приложение"
+        }
+      }
+    },
     "signin": {
       "local-login-disabled": {
         "body": {
