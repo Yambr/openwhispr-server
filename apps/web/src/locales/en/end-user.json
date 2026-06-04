@@ -543,6 +543,9 @@
         "signup-link": {
           "label": "Don't have an account? Sign up"
         },
+        "download-link": {
+          "label": "Download the desktop app"
+        },
         "togglePassword": {
           "hide": {
             "label": "Hide password"

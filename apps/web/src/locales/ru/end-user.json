@@ -543,6 +543,9 @@
         "signup-link": {
           "label": "Нет аккаунта? Зарегистрируйтесь"
         },
+        "download-link": {
+          "label": "Скачать десктоп-приложение"
+        },
         "togglePassword": {
           "hide": {
             "label": "Скрыть пароль"

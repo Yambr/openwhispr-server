@@ -9,6 +9,8 @@
 //   - Sign-up link rendered (end-user.signin.action.signup-link.label)
 //   - Invalid email shows inline RHF validation error
 //   - Submit calls authClient.signIn.email; on error renders Alert
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -124,6 +126,7 @@ const resources = {
             link: { label: "Forgot password?" },
           },
           "signup-link": { label: "Don't have an account? Sign up" },
+          "download-link": { label: "Download the desktop app" },
           resendVerification: { label: "Resend verification email" },
           // Phase 18.1.1 / Plan 04 / Task 04 (D-21..D-23) — new keys
           rememberDevice: { label: "Remember this device" },
@@ -257,6 +260,37 @@ describe("SignInForm (Phase 07.1 / Plan 07 — U1)", () => {
       </Wrap>,
     );
     expect(screen.getByRole("link", { name: /sign up/i })).toHaveAttribute("href", "/sign-up");
+  });
+
+  it("renders a 'Download the desktop app' link to /download in local-login mode", async () => {
+    const { SignInForm } = await import("../SignInForm");
+    render(
+      <Wrap>
+        <SignInForm />
+      </Wrap>,
+    );
+    expect(screen.getByRole("link", { name: /download the desktop app/i })).toHaveAttribute(
+      "href",
+      "/download",
+    );
+  });
+
+  it("both locales define signin download-link key (parity)", () => {
+    interface NestedLocale {
+      [key: string]: string | NestedLocale;
+    }
+    const localesDir = join(process.cwd(), "src", "locales");
+    function load(locale: string): NestedLocale {
+      const raw = readFileSync(join(localesDir, locale, "end-user.json"), "utf8");
+      return JSON.parse(raw) as NestedLocale;
+    }
+    for (const locale of ["en", "ru"]) {
+      const endUserRoot = load(locale)["end-user"] as NestedLocale;
+      const action = (endUserRoot.signin as NestedLocale).action as NestedLocale;
+      const label = (action["download-link"] as NestedLocale).label;
+      expect(typeof label).toBe("string");
+      expect((label as string).length).toBeGreaterThan(0);
+    }
   });
 
   it("submits valid credentials by calling authClient.signIn.email", async () => {
