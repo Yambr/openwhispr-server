@@ -32,6 +32,11 @@ import {
 } from "../../../src/routes/realtime.js";
 
 const TEST_USER = "11111111-1111-1111-1111-111111111111";
+// Upstream #4 (D-2) — the authenticated end-user EMAIL the route seam reads
+// from `req.user.email`. The litellm-mode `?user=` attribution now prefers
+// it over the UUID; the stable end-user key (`openwhispr_user_id` in the
+// spend-logs metadata header) stays the UUID (D-1).
+const TEST_USER_EMAIL = "fixture@conformance.test";
 const TEST_MASTER_KEY = "sk-litellm-master-test-only";
 const TEST_REALTIME_MODEL = "realtime-default";
 // R31 DEFECT 6 — transcription config the relay injects on upstream open.
@@ -135,7 +140,7 @@ async function buildApp(opts: {
     app.addHook("onRequest", async (req) => {
       (req as unknown as { user: { id: string; email: string } }).user = {
         id: TEST_USER,
-        email: "fixture@conformance.test",
+        email: TEST_USER_EMAIL,
       };
     });
   }
@@ -193,7 +198,21 @@ describe("buildUpstreamUrl — forces ?intent=transcription + ?model/?user injec
     // the relay forces it (R31 LIVE-RUN FINDING; not a Beta-only param).
     expect(u.searchParams.get("intent")).toBe("transcription");
     expect(u.searchParams.get("model")).toBe(TEST_REALTIME_MODEL);
+    // No endUser arg → ?user= falls back to the UUID (system-call / back-compat).
     expect(u.searchParams.get("user")).toBe(TEST_USER);
+  });
+
+  it("litellm mode: ?user= prefers the endUser EMAIL when provided (upstream #4 / D-2)", () => {
+    const out = buildUpstreamUrl(
+      litellmDeps,
+      "/v1/realtime?intent=transcription",
+      TEST_USER,
+      TEST_USER_EMAIL,
+    );
+    const u = new URL(out);
+    // D-2 — the OpenAI `?user=` attribution carries the email; the UUID
+    // remains the stable end-user key in the spend-logs metadata header.
+    expect(u.searchParams.get("user")).toBe(TEST_USER_EMAIL);
   });
 
   it("litellm mode: overwrites a client-supplied ?model/?user/?intent (tamper-normalization)", () => {
@@ -335,7 +354,11 @@ describe("WSS /v1/realtime route — relay behaviour", () => {
     // ?intent=transcription MUST reach the upstream — GA needs it to open
     // a transcription session.
     expect(u.searchParams.get("intent")).toBe("transcription");
-    expect(u.searchParams.get("user")).toBe(TEST_USER);
+    // Upstream #4 (D-2) — the route seam reads `req.user.email`, so the
+    // OpenAI `?user=` attribution carries the EMAIL (preferred over the
+    // UUID). The stable LiteLLM end-user key stays the UUID in the
+    // spend-logs metadata header (asserted by buildUpstreamHeaders tests).
+    expect(u.searchParams.get("user")).toBe(TEST_USER_EMAIL);
     expect(u.searchParams.get("model")).toBe(TEST_REALTIME_MODEL);
 
     ws.close();

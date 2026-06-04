@@ -130,6 +130,22 @@ export interface LitellmClientConfig {
    * cap is treated as "use jittered exponential instead".
    */
   retryCapMs: number;
+  /**
+   * Upstream #4 — OPT-IN configurable HTTP header carrying the
+   * authenticated end-user's EMAIL (or fallback UUID) on every gateway
+   * call. Operator-owned via `LITELLM_USER_HEADER_NAME`. When `undefined`
+   * (the default — empty string treated as unset) NO such header is
+   * emitted: there is no literal default header name in route or client
+   * code (LOCKER-03). When set, `authHeaders` emits
+   * `{[userHeaderName]: endUser}` ONLY when `endUser` is also present.
+   *
+   * SECURITY (T-oc4-01): the header NAME is operator-controlled, so the
+   * loader REFUSES a value containing CR/LF or a colon — an operator typo
+   * cannot inject a second header or split the outbound request. The body
+   * `user` field carries email-or-UUID regardless of this header;
+   * `x-litellm-end-user-id` always stays the stable UUID (D-1).
+   */
+  userHeaderName?: string;
 }
 
 export const DEFAULT_LITELLM_BASE_URL = "http://litellm:4000";
@@ -244,6 +260,27 @@ function parseModelParams(raw: string | undefined): Record<string, Record<string
   return out;
 }
 
+/**
+ * Upstream #4 — resolve + validate `LITELLM_USER_HEADER_NAME`.
+ *
+ * Empty/unset → `undefined` (header is opt-in; same empty-is-unset seam as
+ * the model envs). A non-empty value MUST be a single safe HTTP header
+ * token: CR, LF and `:` are REFUSED (T-oc4-01) so an operator typo cannot
+ * inject a second header or split the outbound request. The loud-fail
+ * posture mirrors the master-key check — boot turns the throw into an
+ * EX_CONFIG exit.
+ */
+function parseUserHeaderName(raw: string | undefined): string | undefined {
+  if (raw === undefined || raw.length === 0) return undefined;
+  if (/[\r\n:]/.test(raw)) {
+    throw new Error(
+      "LITELLM_USER_HEADER_NAME must be a single HTTP header token without CR, LF or ':' " +
+        "(an operator typo must not be able to inject a second header)",
+    );
+  }
+  return raw;
+}
+
 export function loadLitellmConfigFromEnv(
   env: NodeJS.ProcessEnv = process.env,
 ): LitellmClientConfig {
@@ -325,6 +362,9 @@ export function loadLitellmConfigFromEnv(
   );
   const retryBaseMs = parsePositiveIntEnv(env.LITELLM_RETRY_BASE_MS, DEFAULT_RETRY_BASE_MS);
   const retryCapMs = parsePositiveIntEnv(env.LITELLM_RETRY_CAP_MS, DEFAULT_RETRY_CAP_MS);
+  // Upstream #4 — opt-in configurable end-user email header. Validated +
+  // empty-is-unset; CR/LF/`:` in the name REFUSES to load (T-oc4-01).
+  const userHeaderName = parseUserHeaderName(env.LITELLM_USER_HEADER_NAME);
   return {
     baseUrl,
     masterKey,
@@ -344,5 +384,9 @@ export function loadLitellmConfigFromEnv(
     retryMaxAttempts,
     retryBaseMs,
     retryCapMs,
+    // Conditional spread keeps `userHeaderName` genuinely ABSENT (not
+    // `: undefined`) under `exactOptionalPropertyTypes` when the env is
+    // unset — the header stays opt-in with no key leaking into the config.
+    ...(userHeaderName !== undefined ? { userHeaderName } : {}),
   };
 }
