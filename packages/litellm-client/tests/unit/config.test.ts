@@ -251,6 +251,54 @@ describe("loadLitellmConfigFromEnv", () => {
     expect(cfg.defaultCleanupModel).toBe(DEFAULT_CLEANUP_MODEL);
   });
 
+  // U65 — embeddings model alias is operator-owned via LITELLM_EMBEDDING_MODEL.
+  // Unlike the STT/realtime/cleanup aliases there is NO literal default: when
+  // unset the field is absent (undefined) so the route returns a clean 503 and
+  // the capability flag is false. Generic placeholder alias only.
+  it("carries defaultEmbeddingModel when LITELLM_EMBEDDING_MODEL is set (U65)", () => {
+    const cfg = loadLitellmConfigFromEnv({
+      LITELLM_MASTER_KEY: "sk-master-x",
+      LITELLM_EMBEDDING_MODEL: "op-embed-alias",
+    });
+    expect(cfg.defaultEmbeddingModel).toBe("op-embed-alias");
+  });
+
+  it("leaves defaultEmbeddingModel undefined when LITELLM_EMBEDDING_MODEL is unset (U65, no default)", () => {
+    const cfg = loadLitellmConfigFromEnv({ LITELLM_MASTER_KEY: "sk-master-x" });
+    expect(cfg.defaultEmbeddingModel).toBeUndefined();
+  });
+
+  it("treats an empty LITELLM_EMBEDDING_MODEL as unset (undefined) (U65)", () => {
+    const cfg = loadLitellmConfigFromEnv({
+      LITELLM_MASTER_KEY: "sk-master-x",
+      LITELLM_EMBEDDING_MODEL: "",
+    });
+    expect(cfg.defaultEmbeddingModel).toBeUndefined();
+  });
+
+  // U65 — rerank model alias is operator-owned via LITELLM_RERANK_MODEL; same
+  // no-literal-default seam as embeddings.
+  it("carries defaultRerankModel when LITELLM_RERANK_MODEL is set (U65)", () => {
+    const cfg = loadLitellmConfigFromEnv({
+      LITELLM_MASTER_KEY: "sk-master-x",
+      LITELLM_RERANK_MODEL: "op-rerank-alias",
+    });
+    expect(cfg.defaultRerankModel).toBe("op-rerank-alias");
+  });
+
+  it("leaves defaultRerankModel undefined when LITELLM_RERANK_MODEL is unset (U65, no default)", () => {
+    const cfg = loadLitellmConfigFromEnv({ LITELLM_MASTER_KEY: "sk-master-x" });
+    expect(cfg.defaultRerankModel).toBeUndefined();
+  });
+
+  it("treats an empty LITELLM_RERANK_MODEL as unset (undefined) (U65)", () => {
+    const cfg = loadLitellmConfigFromEnv({
+      LITELLM_MASTER_KEY: "sk-master-x",
+      LITELLM_RERANK_MODEL: "",
+    });
+    expect(cfg.defaultRerankModel).toBeUndefined();
+  });
+
   it("falls back to default base URL when LITELLM_BASE_URL is empty string", () => {
     const cfg = loadLitellmConfigFromEnv({
       LITELLM_MASTER_KEY: "sk-master-x",
