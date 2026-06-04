@@ -20,6 +20,8 @@ node_modules/
 !.env.embedded.example
 !.env.slim.example
 !.env.full.example
+!.env.external.example
+!.env.local-speaches.example
 *.key
 *.pem
 

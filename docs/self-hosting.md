@@ -173,6 +173,38 @@ reachable** origin:
 All three vars must agree. The slim test `.env` (and
 `.env.slim.example`) ship pinned to `http://localhost:4000`.
 
+## Reverse-proxy body size (audio upload `413` fix)
+
+The api accepts multipart audio uploads up to a **100 MB** hard cap
+(`MULTIPART_OPTIONS.limits.fileSize = 100 * 1024 * 1024` at
+`apps/api/src/index.ts:231`). `/api/transcribe` and
+`/v1/audio/diarization` are the affected routes — a long recording can
+easily exceed a reverse proxy's default request-body limit.
+
+If you terminate TLS / route through your own reverse proxy in front of
+the api, you MUST raise its request-body limit to **≥ 100 MB**, otherwise
+the proxy rejects the upload with **`413 Request Entity Too Large`**
+before it ever reaches the api — the symptom is a `413` on
+`/api/transcribe` with audio the api itself would have accepted.
+
+- **nginx** — the default `client_max_body_size` is **1 MB**. Set:
+
+  ```nginx
+  client_max_body_size 100m;
+  ```
+
+  in the relevant `http` / `server` / `location` block.
+- **Traefik** — has **no** request-body size limit by default, so the
+  bundled `:8443` / `:443` entrypoints need no change. If you have added
+  a `buffering` middleware with `maxRequestBodyBytes`, raise it to
+  `104857600` (100 MB) or remove the limit on the transcribe path.
+- **Other proxies** (HAProxy, Envoy, cloud LB) — locate the equivalent
+  request-body / payload limit and raise it to ≥ 100 MB.
+
+The bundled single-host compose stack routes through Traefik and works
+out of the box; this section matters only when an operator inserts their
+own proxy hop.
+
 ## Cross-references
 
 - Wire shapes (byte-for-byte authoritative): `BACKEND_SPEC.md`

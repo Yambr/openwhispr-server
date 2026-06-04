@@ -854,6 +854,117 @@ Cross-references:
   `src/helpers/openaiRealtimeStreaming.js`. Coordinated with peer
   `wd6g78xz`.
 
+### `REALTIME_FORCE_TRANSCRIPTION_MODEL` — operator realtime model wins (upstream #1.5)
+
+> **Default `true`.** The operator-configured realtime transcription
+> model (`REALTIME_TRANSCRIPTION_MODEL`) is force-pinned on every
+> client→upstream `session.update` / `transcription_session.update`
+> frame, so a client-supplied realtime transcription model can NEVER
+> override it. The client's `language` field still passes through.
+
+The desktop client originates a `session.update` carrying
+`session.audio.input.transcription.model: <client model>` when it is not
+preconfigured. Left unchecked, a buggy or malicious client could redirect
+realtime transcription to an unintended (or more expensive / ungranted)
+model. With force mode on, the relay pins the operator model on BOTH the
+Beta-translation path and the GA `session.update` passthrough path before
+the frame reaches the upstream.
+
+**Configuration:**
+
+- Unset / `true` / `1` → **force ON** (operator model wins; recommended
+  default).
+- `0` / `false` (case-insensitive) → **force OFF** (honor the
+  client-supplied model). Use only if you intentionally let clients pick
+  their own realtime model.
+- The model VALUE comes from `REALTIME_TRANSCRIPTION_MODEL` (no new value
+  knob); this flag only toggles whether it is enforced.
+
+Cross-references:
+- Source: `apps/api/src/config/realtime.ts`
+  (`forceTranscriptionModel`), `apps/api/src/lib/realtime-frame-translate.ts`
+  (`translateClientToUpstream(frame, forceTranscriptionModel?)`),
+  `apps/api/src/routes/realtime.ts` (threaded via `bridgeRealtimeSockets`).
+- Tests: `apps/api/tests/unit/lib/realtime-frame-translate.test.ts`
+  (force-model Beta + GA paths) and
+  `apps/api/tests/unit/config/realtime.test.ts`
+  (`REALTIME_FORCE_TRANSCRIPTION_MODEL` default-on / opt-out matrix).
+
+### `LITELLM_USER_HEADER_NAME` — end-user email attribution (upstream #4)
+
+> **OPT-IN.** When set, every LiteLLM gateway call (chat/agent, cleanup,
+> STT, realtime) emits this HTTP header carrying the authenticated user's
+> EMAIL, so an operator LiteLLM (or its spend dashboard) can attribute
+> usage by human-readable identity. Unset → no email header is emitted
+> (there is no default header name).
+
+Identity surfaces on each gateway call in three places, kept distinct on
+purpose:
+
+1. **Body `user` field** (chat/agent + cleanup only — the multipart STT
+   and opaque passthrough/realtime calls have no JSON body slot): carries
+   the EMAIL when available, falling back to the UUID. Always present —
+   not gated on `LITELLM_USER_HEADER_NAME`.
+2. **`x-litellm-end-user-id` header**: ALWAYS the stable UUID
+   (`req.user.id`). This is LiteLLM's end-user key + spend-logs anchor;
+   emails are mutable, so the keying identity must stay the UUID.
+3. **`LITELLM_USER_HEADER_NAME` header** (this var): the configurable,
+   opt-in EMAIL header. Emitted ONLY when the var is set AND an
+   authenticated email is present. For the multipart STT and opaque
+   passthrough/realtime calls this header is the ONLY attribution vector
+   (they have no body `user` slot).
+
+For the realtime relay (litellm mode) the equivalent OpenAI attribution
+is the `?user=` query param, which carries the email when available; the
+spend-logs `openwhispr_user_id` field stays the UUID.
+
+**Validation (T-oc4-01):** the header NAME is operator-controlled, so a
+value containing CR, LF or `:` is REFUSED at boot (the loader throws →
+EX_CONFIG). An operator typo cannot inject a second header or split the
+outbound request. An empty value is treated as unset.
+
+**Configuration example:**
+
+```yaml
+stringData:
+  LITELLM_USER_HEADER_NAME: X-OpenWhispr-User-Email
+```
+
+Cross-references:
+- Source: `packages/litellm-client/src/config.ts` (`userHeaderName`),
+  `packages/litellm-client/src/index.ts` (`endUser` + `authHeaders`),
+  `apps/api/src/routes/{reason,transcribe,realtime}.ts` call sites.
+- Tests: `packages/litellm-client/tests/unit/auth-headers.test.ts` +
+  `packages/litellm-client/tests/unit/config.test.ts`.
+
+### Reasoning / thinking-off contract (`requestKind`, upstream #2.4)
+
+The thinking-OFF directive
+(`extra_body.chat_template_kwargs.enable_thinking:false`, a Qwen3/vLLM
+syntax) applies to the **CLEANUP request class ONLY** — dictation cleanup
+must not "reason". It is provider-specific: backends other than
+Qwen3/vLLM ignore the kwarg silently (e.g. OpenRouter keeps reasoning on),
+so the directive alone does not guarantee thinking is off — the model
+choice matters too.
+
+The cleanup-vs-agent routing class is **EXPLICIT** via `requestKind`
+(shipped #36):
+
+- **PRIMARY:** the client sends `body.requestKind` (`"cleanup"` or
+  `"agent"`). The server schema accepts it as a plain string (fail-safe,
+  not a strict enum) and routes on it directly.
+- **FALLBACK:** when `requestKind` is absent, the weakened
+  `isCleanupRequest` heuristic infers the class from the request shape.
+
+The configurable seam for per-model reasoning syntax is
+`REASONING_MODEL_PARAMS` (a litellm-style per-alias params bag spread
+verbatim into the upstream body) plus `REASONING_CLEANUP_MODEL` (the fast
+cleanup-class alias). No new env var is required — point the cleanup alias
+at a non-reasoning instruct checkpoint, or supply the provider's own
+reasoning-off syntax via `REASONING_MODEL_PARAMS`. The server NEVER merges
+request-body fields into that bag (that would be an upstream-injection
+vector — see `apps/api/src/lib/reason-prompt-select.ts`).
+
 ## Phase 4 — Streaming + Realtime env vars
 
 Phase 4 added three env-keyed token-mint endpoints. Each refuses to
