@@ -965,6 +965,32 @@ reasoning-off syntax via `REASONING_MODEL_PARAMS`. The server NEVER merges
 request-body fields into that bag (that would be an upstream-injection
 vector — see `apps/api/src/lib/reason-prompt-select.ts`).
 
+### Embeddings + rerank model aliases (`/api/embeddings`, `/api/rerank`)
+
+`POST /api/embeddings` and `POST /api/rerank` forward to the operator
+gateway via the shared LiteLLM passthrough. Unlike the chat / STT / realtime
+aliases these have **no bundled default**:
+
+| Env var | Required | Default | Consumed by | Notes |
+|---------|----------|---------|-------------|-------|
+| `LITELLM_EMBEDDING_MODEL` | for `/api/embeddings` | none — route returns 503 if unset | `apps/api/src/routes/embeddings.ts` | Operator gateway embeddings model alias (in-perimeter model). Point it at an embeddings model alias registered in your gateway catalog. |
+| `LITELLM_RERANK_MODEL` | for `/api/rerank` | none — route returns 503 if unset | `apps/api/src/routes/rerank.ts` | Operator gateway rerank model alias (in-perimeter model). |
+
+Contract — **server-or-clean-error, no fallback**:
+
+- When the env var is unset **and** the request body omits `model`, the route
+  returns a clean `503` (operator-config) **before** any upstream call, and
+  `GET /api/capabilities` reports `features.embeddings` / `features.rerank`
+  as `false`. The desktop client reads that capability flag first and does
+  **not** fall back to any client-side (onnx / cloud) path — if the server
+  cannot do it, the client surfaces a clean failure.
+- An upstream `4xx`/`5xx` (e.g. the model alias is not installed in the
+  gateway catalog → `404`) propagates to the client as a clean `502`. The
+  upstream body is logged server-side, never echoed on the wire envelope.
+- A caller-supplied `model` in the request body overrides the env alias; the
+  server forwards only the validated request fields (no raw body pass-through,
+  no merge of request fields into operator config).
+
 ## Phase 4 — Streaming + Realtime env vars
 
 Phase 4 added three env-keyed token-mint endpoints. Each refuses to
