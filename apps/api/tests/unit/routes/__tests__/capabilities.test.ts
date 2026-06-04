@@ -107,8 +107,22 @@ describe("GET /api/capabilities", () => {
     expect(setup.status).toBe("pending");
     expect(auth.providers).toEqual([]);
     const features = body.features as Record<string, unknown>;
-    expect(Object.keys(features).sort()).toEqual(["agent", "realtime", "transcribe"]);
-    expect(features).toEqual({ transcribe: true, agent: true, realtime: true });
+    expect(Object.keys(features).sort()).toEqual([
+      "agent",
+      "embeddings",
+      "realtime",
+      "rerank",
+      "transcribe",
+    ]);
+    // U65 — embeddings/rerank are gated on the respective model env (unset
+    // here → false) in addition to LITELLM_MASTER_KEY.
+    expect(features).toEqual({
+      transcribe: true,
+      agent: true,
+      realtime: true,
+      embeddings: false,
+      rerank: false,
+    });
   });
 
   it("treats a missing setup_state row as 'pending' (defensive robustness)", async () => {
@@ -135,7 +149,13 @@ describe("GET /api/capabilities", () => {
     const res = await app.inject({ method: "GET", url: "/api/capabilities" });
     expect(res.statusCode).toBe(200);
     const body = res.json() as { features: Record<string, boolean> };
-    expect(body.features).toEqual({ transcribe: false, agent: false, realtime: false });
+    expect(body.features).toEqual({
+      transcribe: false,
+      agent: false,
+      realtime: false,
+      embeddings: false,
+      rerank: false,
+    });
   });
 
   it("realtime requires both LITELLM_MASTER_KEY AND OPENAI_API_KEY", async () => {
@@ -147,7 +167,150 @@ describe("GET /api/capabilities", () => {
     });
     const res = await app.inject({ method: "GET", url: "/api/capabilities" });
     const body = res.json() as { features: Record<string, boolean> };
-    expect(body.features).toEqual({ transcribe: true, agent: true, realtime: false });
+    expect(body.features).toEqual({
+      transcribe: true,
+      agent: true,
+      realtime: false,
+      embeddings: false,
+      rerank: false,
+    });
+  });
+
+  // U65 — embeddings/rerank feature gates.
+  it("features.embeddings true only when LITELLM_MASTER_KEY AND LITELLM_EMBEDDING_MODEL are set", async () => {
+    app = await buildCapabilitiesApp({
+      db: booted.db,
+      env: {
+        LITELLM_MASTER_KEY: "sk",
+        LITELLM_EMBEDDING_MODEL: "op-embed-alias",
+      } as NodeJS.ProcessEnv,
+      user: USER,
+      tenantId: TENANT_A,
+    });
+    const res = await app.inject({ method: "GET", url: "/api/capabilities" });
+    const body = res.json() as { features: Record<string, boolean> };
+    expect(body.features.embeddings).toBe(true);
+  });
+
+  it("features.embeddings false when LITELLM_EMBEDDING_MODEL is set but LITELLM_MASTER_KEY is unset", async () => {
+    app = await buildCapabilitiesApp({
+      db: booted.db,
+      env: { LITELLM_EMBEDDING_MODEL: "op-embed-alias" } as NodeJS.ProcessEnv,
+      user: USER,
+      tenantId: TENANT_A,
+    });
+    const res = await app.inject({ method: "GET", url: "/api/capabilities" });
+    const body = res.json() as { features: Record<string, boolean> };
+    expect(body.features.embeddings).toBe(false);
+  });
+
+  it("features.embeddings false when LITELLM_MASTER_KEY is set but LITELLM_EMBEDDING_MODEL is unset", async () => {
+    app = await buildCapabilitiesApp({
+      db: booted.db,
+      env: { LITELLM_MASTER_KEY: "sk" } as NodeJS.ProcessEnv,
+      user: USER,
+      tenantId: TENANT_A,
+    });
+    const res = await app.inject({ method: "GET", url: "/api/capabilities" });
+    const body = res.json() as { features: Record<string, boolean> };
+    expect(body.features.embeddings).toBe(false);
+  });
+
+  it("features.rerank true only when LITELLM_MASTER_KEY AND LITELLM_RERANK_MODEL are set", async () => {
+    app = await buildCapabilitiesApp({
+      db: booted.db,
+      env: {
+        LITELLM_MASTER_KEY: "sk",
+        LITELLM_RERANK_MODEL: "op-rerank-alias",
+      } as NodeJS.ProcessEnv,
+      user: USER,
+      tenantId: TENANT_A,
+    });
+    const res = await app.inject({ method: "GET", url: "/api/capabilities" });
+    const body = res.json() as { features: Record<string, boolean> };
+    expect(body.features.rerank).toBe(true);
+  });
+
+  it("features.rerank false when LITELLM_RERANK_MODEL is set but LITELLM_MASTER_KEY is unset", async () => {
+    app = await buildCapabilitiesApp({
+      db: booted.db,
+      env: { LITELLM_RERANK_MODEL: "op-rerank-alias" } as NodeJS.ProcessEnv,
+      user: USER,
+      tenantId: TENANT_A,
+    });
+    const res = await app.inject({ method: "GET", url: "/api/capabilities" });
+    const body = res.json() as { features: Record<string, boolean> };
+    expect(body.features.rerank).toBe(false);
+  });
+
+  it("features.rerank false when LITELLM_MASTER_KEY is set but LITELLM_RERANK_MODEL is unset", async () => {
+    app = await buildCapabilitiesApp({
+      db: booted.db,
+      env: { LITELLM_MASTER_KEY: "sk" } as NodeJS.ProcessEnv,
+      user: USER,
+      tenantId: TENANT_A,
+    });
+    const res = await app.inject({ method: "GET", url: "/api/capabilities" });
+    const body = res.json() as { features: Record<string, boolean> };
+    expect(body.features.rerank).toBe(false);
+  });
+
+  it("ETag rotates when LITELLM_EMBEDDING_MODEL flips set <-> unset (same tenant, same status)", async () => {
+    const appUnset = await buildCapabilitiesApp({
+      db: booted.db,
+      env: { LITELLM_MASTER_KEY: "sk" } as NodeJS.ProcessEnv,
+      user: USER,
+      tenantId: TENANT_A,
+    });
+    const appSet = await buildCapabilitiesApp({
+      db: booted.db,
+      env: {
+        LITELLM_MASTER_KEY: "sk",
+        LITELLM_EMBEDDING_MODEL: "op-embed-alias",
+      } as NodeJS.ProcessEnv,
+      user: USER,
+      tenantId: TENANT_A,
+    });
+    try {
+      const unset = await appUnset.inject({ method: "GET", url: "/api/capabilities" });
+      const set = await appSet.inject({ method: "GET", url: "/api/capabilities" });
+      expect(unset.statusCode).toBe(200);
+      expect(set.statusCode).toBe(200);
+      // The ETag must change when the embeddings model env flips so a cached
+      // client re-fetches the new capability flag.
+      expect(unset.headers.etag).not.toBe(set.headers.etag);
+    } finally {
+      await appUnset.close();
+      await appSet.close();
+    }
+  });
+
+  it("ETag rotates when LITELLM_RERANK_MODEL flips set <-> unset (same tenant, same status)", async () => {
+    const appUnset = await buildCapabilitiesApp({
+      db: booted.db,
+      env: { LITELLM_MASTER_KEY: "sk" } as NodeJS.ProcessEnv,
+      user: USER,
+      tenantId: TENANT_A,
+    });
+    const appSet = await buildCapabilitiesApp({
+      db: booted.db,
+      env: {
+        LITELLM_MASTER_KEY: "sk",
+        LITELLM_RERANK_MODEL: "op-rerank-alias",
+      } as NodeJS.ProcessEnv,
+      user: USER,
+      tenantId: TENANT_A,
+    });
+    try {
+      const unset = await appUnset.inject({ method: "GET", url: "/api/capabilities" });
+      const set = await appSet.inject({ method: "GET", url: "/api/capabilities" });
+      expect(unset.statusCode).toBe(200);
+      expect(set.statusCode).toBe(200);
+      expect(unset.headers.etag).not.toBe(set.headers.etag);
+    } finally {
+      await appUnset.close();
+      await appSet.close();
+    }
   });
 
   it("emits Cache-Control: private, max-age=30 + weak ETag; matching If-None-Match → 304", async () => {

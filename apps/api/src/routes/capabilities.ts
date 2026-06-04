@@ -63,6 +63,18 @@ interface FeaturesSection {
   readonly transcribe: boolean;
   readonly agent: boolean;
   readonly realtime: boolean;
+  /**
+   * U65 — POST /api/embeddings is available. Gated on the LiteLLM proxy
+   * (LITELLM_MASTER_KEY) AND an operator-configured embeddings model alias
+   * (LITELLM_EMBEDDING_MODEL). The desktop client reads this flag first and
+   * does NOT fall back to its local onnx worker when false.
+   */
+  readonly embeddings: boolean;
+  /**
+   * U65 — POST /api/rerank is available. Gated on LITELLM_MASTER_KEY AND an
+   * operator-configured rerank model alias (LITELLM_RERANK_MODEL).
+   */
+  readonly rerank: boolean;
 }
 
 export interface CapabilitiesResponse {
@@ -80,6 +92,13 @@ function deriveFeatures(env: NodeJS.ProcessEnv): FeaturesSection {
   const hasLitellm =
     typeof env.LITELLM_MASTER_KEY === "string" && env.LITELLM_MASTER_KEY.length > 0;
   const hasOpenAI = typeof env.OPENAI_API_KEY === "string" && env.OPENAI_API_KEY.length > 0;
+  // U65 — embeddings/rerank require the LiteLLM proxy AND the respective
+  // operator-configured model alias. No model env → feature false (and the
+  // route returns a clean 503; the client honors its no-fallback contract).
+  const hasEmbeddingModel =
+    typeof env.LITELLM_EMBEDDING_MODEL === "string" && env.LITELLM_EMBEDDING_MODEL.length > 0;
+  const hasRerankModel =
+    typeof env.LITELLM_RERANK_MODEL === "string" && env.LITELLM_RERANK_MODEL.length > 0;
   return {
     transcribe: hasLitellm,
     agent: hasLitellm,
@@ -87,6 +106,8 @@ function deriveFeatures(env: NodeJS.ProcessEnv): FeaturesSection {
     // upstream side (the realtime route mints OpenAI Realtime session
     // tokens). Either missing → feature is unavailable.
     realtime: hasLitellm && hasOpenAI,
+    embeddings: hasLitellm && hasEmbeddingModel,
+    rerank: hasLitellm && hasRerankModel,
   };
 }
 
@@ -110,6 +131,10 @@ function envHash(env: NodeJS.ProcessEnv): string {
     "SMTP_HOST",
     "LITELLM_MASTER_KEY",
     "OPENAI_API_KEY",
+    // U65 — rotate the ETag when the embeddings/rerank model envs flip so a
+    // cached client re-fetches the new capability flag.
+    "LITELLM_EMBEDDING_MODEL",
+    "LITELLM_RERANK_MODEL",
   ];
   const composite = keys.map((k) => `${k}=${env[k] ?? ""}`).join("\n");
   return createHash("sha256").update(composite).digest("hex").slice(0, 16);
