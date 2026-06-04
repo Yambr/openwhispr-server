@@ -84,6 +84,7 @@ import { buildNotesSearchRoutes, type NotesSearchDeps } from "./notes/search.js"
 import { buildNotesUpdateRoutes, type NotesUpdateDeps } from "./notes/update.js";
 import { buildRealtimeRoutes, type RealtimeDeps } from "./realtime.js";
 import { buildReasonRoutes, type ReasonDeps } from "./reason.js";
+import { buildRerankRoutes, type RerankDeps } from "./rerank.js";
 import {
   buildSetupAdminRoutes,
   type SetupAdminRenameTenant,
@@ -623,6 +624,14 @@ export function buildAllRoutes(deps: AllRoutesDeps): readonly RoutePlugin[] {
         : {}),
     };
     plugins.push(buildEmbeddingsRoutes(embeddingsDeps));
+    // U65 — POST /api/rerank is the sibling forward (same litellm-presence
+    // gate). Operator model alias threaded only when configured; absent →
+    // clean 503. Registration IS the non-test importer (LOCKER-04).
+    const rerankDeps: RerankDeps = {
+      litellm: deps.litellm,
+      ...(deps.litellmModels?.rerankModel ? { rerankModel: deps.litellmModels.rerankModel } : {}),
+    };
+    plugins.push(buildRerankRoutes(rerankDeps));
   }
   // R31 — WSS /v1/realtime frame-aware relay. Registered independently of
   // the `deps.litellm` gate above because the `direct` backend bypasses

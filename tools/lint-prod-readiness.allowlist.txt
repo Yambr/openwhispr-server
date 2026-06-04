@@ -36,6 +36,7 @@ apps/api/src/routes/notes/list.ts:38  # issue-31-04-debt-LOCKER-04-route-bulkfix
 apps/api/src/routes/notes/search.ts:47  # issue-31-04-debt-LOCKER-04-route-bulkfix-31-08
 apps/api/src/routes/notes/update.ts:89  # issue-31-04-debt-LOCKER-04-route-bulkfix-31-08
 apps/api/src/routes/reason.ts:104  # issue-31-04-debt-LOCKER-04-route-bulkfix-31-08 (R33 line-drift: cleanupModel JSDoc + selector imports pushed the route decl down)
+apps/api/src/routes/rerank.ts:68  # issue-31-04-debt-LOCKER-04-route-bulkfix-31-08 (quick-260604-u65 — manual RerankRequest.parse() inside handler IS the body validation, mirrors reason.ts)
 apps/api/src/routes/setup-admin.ts:146  # issue-31-04-debt-LOCKER-04-route-bulkfix-31-08
 apps/api/src/routes/setup-state.ts:62  # issue-31-04-debt-LOCKER-04-route-bulkfix-31-08
 apps/api/src/routes/streaming-usage.ts:54  # issue-31-04-debt-LOCKER-04-route-bulkfix-31-08
