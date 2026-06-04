@@ -7,7 +7,8 @@
 //   - theme switcher button visible
 //   - children render in main area
 import { readFileSync } from "node:fs";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { I18nProvider } from "@/lib/i18n-client";
@@ -152,7 +153,12 @@ describe("AppShell (Phase 07.1 / Plan 06)", () => {
     interface NestedLocale {
       [key: string]: string | NestedLocale;
     }
-    const localesDir = join(process.cwd(), "src", "locales");
+    // Anchor on THIS file's location (apps/web/src/components/screens/__tests__)
+    // so the test resolves the locales dir regardless of the cwd the runner
+    // was launched from — `process.cwd()` is the monorepo root under
+    // `pnpm test:all`, which would point at the nonexistent root `src/locales`.
+    const here = dirname(fileURLToPath(import.meta.url));
+    const localesDir = join(here, "..", "..", "..", "locales");
     function load(locale: string, ns: string): NestedLocale {
       const raw = readFileSync(join(localesDir, locale, `${ns}.json`), "utf8");
       return JSON.parse(raw) as NestedLocale;

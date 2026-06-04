@@ -10,7 +10,8 @@
 //   - Invalid email shows inline RHF validation error
 //   - Submit calls authClient.signIn.email; on error renders Alert
 import { readFileSync } from "node:fs";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -279,7 +280,11 @@ describe("SignInForm (Phase 07.1 / Plan 07 — U1)", () => {
     interface NestedLocale {
       [key: string]: string | NestedLocale;
     }
-    const localesDir = join(process.cwd(), "src", "locales");
+    // Anchor on THIS file's location (apps/web/src/components/screens/auth/__tests__)
+    // so the locales dir resolves regardless of the runner's cwd —
+    // `process.cwd()` is the monorepo root under `pnpm test:all`.
+    const here = dirname(fileURLToPath(import.meta.url));
+    const localesDir = join(here, "..", "..", "..", "..", "locales");
     function load(locale: string): NestedLocale {
       const raw = readFileSync(join(localesDir, locale, "end-user.json"), "utf8");
       return JSON.parse(raw) as NestedLocale;
