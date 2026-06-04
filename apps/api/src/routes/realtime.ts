@@ -216,6 +216,15 @@ export interface RealtimeDeps {
    * routes/index.ts threads it from `realtimeConfig.transcription`.
    */
   transcription: RelayTranscriptionConfig;
+  /**
+   * Upstream #1.5 (D-4) — when `true` (default), the operator transcription
+   * model (`transcription.model`) is force-pinned on every client→upstream
+   * session.update frame so a client-supplied realtime model can never
+   * override it (T-oc4-03). routes/index.ts threads it from
+   * `realtimeConfig.forceTranscriptionModel`; absent → treated as `true`
+   * (default-on, matching the config-loader default).
+   */
+  forceTranscriptionModel?: boolean;
 }
 
 /**
@@ -366,6 +375,12 @@ export function bridgeRealtimeSockets(
   upstreamSocket: WebSocket,
   transcription: RelayTranscriptionConfig,
   log?: { warn: (obj: unknown, msg: string) => void },
+  // Upstream #1.5 (D-4) — the operator transcription model to force-pin on
+  // every client→upstream session.update / transcription_session.update
+  // frame. `undefined` = force OFF (honor the client's model; back-compat).
+  // Resolved by the caller from `RealtimeConfig.forceTranscriptionModel`:
+  // `forceTranscriptionModel ? transcription.model : undefined`.
+  forceTranscriptionModel?: string,
 ): void {
   // Buffer client frames that arrive before the upstream WS is OPEN —
   // the desktop client may send `transcription_session.update` the
@@ -398,7 +413,7 @@ export function bridgeRealtimeSockets(
       );
       return;
     }
-    const translated = translateClientToUpstream(parsed.frame);
+    const translated = translateClientToUpstream(parsed.frame, forceTranscriptionModel);
     upstreamSocket.send(JSON.stringify(translated));
   };
 
@@ -613,7 +628,20 @@ export const buildRealtimeRoutes = (deps: RealtimeDeps) =>
           headers,
           handshakeTimeout: 10_000,
         });
-        bridgeRealtimeSockets(clientSocket, upstreamSocket, perUpgradeTranscription, req.log);
+        // Upstream #1.5 (D-4) — resolve the force-model string for this
+        // upgrade: when forcing is on (default), pass the operator model so
+        // a client-supplied realtime transcription model is overridden;
+        // when off, pass undefined so the client model passes through.
+        // `forceTranscriptionModel` absent on deps → default-on.
+        const forcedModel =
+          deps.forceTranscriptionModel === false ? undefined : perUpgradeTranscription.model;
+        bridgeRealtimeSockets(
+          clientSocket,
+          upstreamSocket,
+          perUpgradeTranscription,
+          req.log,
+          forcedModel,
+        );
       },
     );
   };

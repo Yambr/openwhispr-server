@@ -193,6 +193,16 @@ export interface RealtimeConfig {
    * relay must originate one regardless of backend.
    */
   transcription: RealtimeTranscriptionConfig;
+  /**
+   * Upstream #1.5 (D-4) — when `true` (the DEFAULT), the operator-configured
+   * transcription model ({@link RealtimeTranscriptionConfig.model}, from
+   * `REALTIME_TRANSCRIPTION_MODEL`) is force-pinned on every client→upstream
+   * `session.update` / `transcription_session.update` frame, so a
+   * client-supplied realtime transcription model can NEVER override it
+   * (T-oc4-03). Operators opt out (honor the client's model) by setting
+   * `REALTIME_FORCE_TRANSCRIPTION_MODEL` to `0`/`false` (case-insensitive).
+   */
+  forceTranscriptionModel: boolean;
 }
 
 /**
@@ -306,5 +316,18 @@ export function loadRealtimeConfigFromEnv(env: NodeJS.ProcessEnv = process.env):
     ...(language !== undefined ? { language } : {}),
   };
 
-  return { backend, openaiRealtimeUrl, openaiApiKey, openaiRealtimeModel, transcription };
+  // Upstream #1.5 (D-4) — force the operator transcription model by
+  // default. Only an explicit "0"/"false" (case-insensitive, trimmed)
+  // opts out; unset/blank/anything-else keeps the default-on posture.
+  const rawForce = trim(env.REALTIME_FORCE_TRANSCRIPTION_MODEL)?.toLowerCase();
+  const forceTranscriptionModel = !(rawForce === "0" || rawForce === "false");
+
+  return {
+    backend,
+    openaiRealtimeUrl,
+    openaiApiKey,
+    openaiRealtimeModel,
+    transcription,
+    forceTranscriptionModel,
+  };
 }

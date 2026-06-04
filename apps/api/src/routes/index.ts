@@ -646,6 +646,12 @@ export function buildAllRoutes(deps: AllRoutesDeps): readonly RoutePlugin[] {
         // own `session.update`). Falls back to all-defaults when no
         // `realtimeConfig` was threaded.
         transcription: realtimeConfig?.transcription ?? DEFAULT_REALTIME_TRANSCRIPTION,
+        // Upstream #1.5 (D-4) — force the operator transcription model over
+        // a client-supplied one. Default-on: when no `realtimeConfig` was
+        // threaded, the RealtimeDeps absence-is-on default applies.
+        ...(realtimeConfig !== undefined
+          ? { forceTranscriptionModel: realtimeConfig.forceTranscriptionModel }
+          : {}),
       };
       plugins.push(buildRealtimeRoutes(realtimeDeps));
     }
