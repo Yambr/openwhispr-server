@@ -318,17 +318,108 @@ export function buildRelaySessionUpdateFrame(config: RelayTranscriptionConfig): 
  * in Beta and GA and fall through the early return UNCHANGED. Every other
  * frame type is likewise returned unchanged (same object reference).
  */
-export function translateClientToUpstream(frame: RealtimeFrame): RealtimeFrame {
+export function translateClientToUpstream(
+  frame: RealtimeFrame,
+  forceTranscriptionModel?: string,
+): RealtimeFrame {
+  // Upstream #1.5 (D-4) — when a non-empty force value is supplied, the
+  // operator-configured transcription model wins over any client-supplied
+  // model on BOTH the Beta-translation path and the GA passthrough path
+  // (T-oc4-03). When `forceTranscriptionModel` is undefined/empty, today's
+  // behavior is preserved exactly (back-compat: client model passes through).
+  const force =
+    forceTranscriptionModel !== undefined && forceTranscriptionModel.length > 0
+      ? forceTranscriptionModel
+      : undefined;
+
   if (frame.type !== "transcription_session.update") {
+    // GA passthrough path: a GA-aware client sends `session.update`
+    // DIRECTLY. Today it falls through unchanged; in force mode we pin the
+    // transcription model when the frame carries one.
+    if (force !== undefined && frame.type === "session.update") {
+      return pinSessionUpdateModel(frame, force);
+    }
     return frame;
   }
   const incomingSession = isPlainObject(frame.session) ? frame.session : {};
   const { type: _clientType, session: _clientSession, ...rest } = frame;
+  const ga = betaToGaSessionPayload(incomingSession);
+  // Beta path: pin the model AFTER restructuring (preserve language +
+  // siblings). betaToGaSessionPayload copies input_audio_transcription
+  // verbatim into session.audio.input.transcription.
+  if (force !== undefined) {
+    pinGaTranscriptionModel(ga, force);
+  }
   return {
     ...rest,
     type: "session.update",
-    session: betaToGaSessionPayload(incomingSession),
+    session: ga,
   };
+}
+
+/**
+ * Upstream #1.5 (D-4) — return a shallow-cloned GA `session.update` frame
+ * with `session.audio.input.transcription.model` pinned to `force`,
+ * preserving `language` and every sibling field. When the frame carries no
+ * `session.audio.input.transcription` block there is nothing to override,
+ * so the ORIGINAL frame reference is returned unchanged.
+ */
+function pinSessionUpdateModel(frame: RealtimeFrame, force: string): RealtimeFrame {
+  const session = isPlainObject(frame.session) ? frame.session : undefined;
+  if (session === undefined) return frame;
+  const audio = isPlainObject(session.audio) ? session.audio : undefined;
+  if (audio === undefined) return frame;
+  const input = isPlainObject(audio.input) ? audio.input : undefined;
+  if (input === undefined) return frame;
+  const transcription = isPlainObject(input.transcription) ? input.transcription : undefined;
+  if (transcription === undefined) return frame;
+  // Shallow-clone down to the transcription object so the input frame
+  // (owned by the caller's parse result) is never mutated.
+  return {
+    ...frame,
+    session: {
+      ...session,
+      audio: {
+        ...audio,
+        input: {
+          ...input,
+          transcription: { ...transcription, model: force },
+        },
+      },
+    },
+  };
+}
+
+/**
+ * Upstream #1.5 (D-4) — pin the transcription model in-place on a GA
+ * session payload produced by {@link betaToGaSessionPayload}. The payload
+ * is freshly constructed by that helper (not caller-owned), so an in-place
+ * write is safe. Creates the `audio.input.transcription` chain when absent
+ * so the operator model is enforced even if the client sent no model.
+ */
+function pinGaTranscriptionModel(ga: Record<string, unknown>, force: string): void {
+  let audio: Record<string, unknown>;
+  if (isPlainObject(ga.audio)) {
+    audio = ga.audio;
+  } else {
+    audio = {};
+    ga.audio = audio;
+  }
+  let input: Record<string, unknown>;
+  if (isPlainObject(audio.input)) {
+    input = audio.input;
+  } else {
+    input = {};
+    audio.input = input;
+  }
+  let transcription: Record<string, unknown>;
+  if (isPlainObject(input.transcription)) {
+    transcription = input.transcription;
+  } else {
+    transcription = {};
+    input.transcription = transcription;
+  }
+  transcription.model = force;
 }
 
 /**

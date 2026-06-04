@@ -133,4 +133,49 @@ describe("loadRealtimeConfigFromEnv", () => {
     expect(t.vadThreshold).toBe(0.6);
     expect(t.vadSilenceMs).toBe(600);
   });
+
+  // Upstream #1.5 — REALTIME_FORCE_TRANSCRIPTION_MODEL (D-4). Default ON:
+  // the operator model (REALTIME_TRANSCRIPTION_MODEL) wins over a
+  // client-supplied realtime transcription model. "0"/"false"
+  // (case-insensitive) opt out to honor the client.
+  describe("REALTIME_FORCE_TRANSCRIPTION_MODEL — operator model wins (D-4)", () => {
+    it("defaults forceTranscriptionModel to true when unset", () => {
+      expect(loadRealtimeConfigFromEnv({}).forceTranscriptionModel).toBe(true);
+    });
+
+    it('treats "0" as false (honor the client)', () => {
+      expect(
+        loadRealtimeConfigFromEnv({ REALTIME_FORCE_TRANSCRIPTION_MODEL: "0" })
+          .forceTranscriptionModel,
+      ).toBe(false);
+    });
+
+    it('treats "false" (case-insensitive) as false', () => {
+      expect(
+        loadRealtimeConfigFromEnv({ REALTIME_FORCE_TRANSCRIPTION_MODEL: "FALSE" })
+          .forceTranscriptionModel,
+      ).toBe(false);
+    });
+
+    it('treats "1" as true', () => {
+      expect(
+        loadRealtimeConfigFromEnv({ REALTIME_FORCE_TRANSCRIPTION_MODEL: "1" })
+          .forceTranscriptionModel,
+      ).toBe(true);
+    });
+
+    it('treats "true" (case-insensitive) as true', () => {
+      expect(
+        loadRealtimeConfigFromEnv({ REALTIME_FORCE_TRANSCRIPTION_MODEL: "True" })
+          .forceTranscriptionModel,
+      ).toBe(true);
+    });
+
+    it("treats a blank value as unset (default on)", () => {
+      expect(
+        loadRealtimeConfigFromEnv({ REALTIME_FORCE_TRANSCRIPTION_MODEL: "   " })
+          .forceTranscriptionModel,
+      ).toBe(true);
+    });
+  });
 });

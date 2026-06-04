@@ -251,6 +251,89 @@ describe("translateClientToUpstream — Beta → GA", () => {
   });
 });
 
+describe("translateClientToUpstream — force operator transcription model (upstream #1.5 / D-4)", () => {
+  it("GA session.update: pins transcription.model to the forced value, preserves language", () => {
+    const gaFrame: RealtimeFrame = {
+      type: "session.update",
+      session: {
+        type: "transcription",
+        audio: {
+          input: {
+            format: { type: "audio/pcm", rate: REALTIME_PCM_SAMPLE_RATE },
+            transcription: { model: "gpt-4o-mini-transcribe", language: "en" },
+          },
+        },
+      },
+    };
+    const out = translateClientToUpstream(gaFrame, "gpt-4o-transcribe");
+    const session = out.session as Record<string, unknown>;
+    const input = (session.audio as Record<string, unknown>).input as Record<string, unknown>;
+    const transcription = input.transcription as Record<string, unknown>;
+    expect(transcription.model).toBe("gpt-4o-transcribe");
+    // Client language must still pass through unchanged.
+    expect(transcription.language).toBe("en");
+  });
+
+  it("GA session.update: does NOT mutate the input frame (returns a clone)", () => {
+    const gaFrame: RealtimeFrame = {
+      type: "session.update",
+      session: {
+        type: "transcription",
+        audio: { input: { transcription: { model: "client-model" } } },
+      },
+    };
+    const out = translateClientToUpstream(gaFrame, "forced-model");
+    expect(out).not.toBe(gaFrame);
+    // Original frame untouched.
+    const origTranscription = (
+      ((gaFrame.session as Record<string, unknown>).audio as Record<string, unknown>)
+        .input as Record<string, unknown>
+    ).transcription as Record<string, unknown>;
+    expect(origTranscription.model).toBe("client-model");
+  });
+
+  it("GA session.update WITHOUT transcription block: returned unchanged (same reference)", () => {
+    const gaFrame: RealtimeFrame = {
+      type: "session.update",
+      session: { type: "transcription", audio: { input: { format: { type: "audio/pcm" } } } },
+    };
+    expect(translateClientToUpstream(gaFrame, "forced-model")).toBe(gaFrame);
+  });
+
+  it("Beta transcription_session.update: forced value overrides the client model, language kept", () => {
+    const beta: RealtimeFrame = {
+      type: "transcription_session.update",
+      session: {
+        input_audio_format: "pcm16",
+        input_audio_transcription: { model: "bad-client-model", language: "ru" },
+      },
+    };
+    const out = translateClientToUpstream(beta, "gpt-4o-transcribe");
+    const session = out.session as Record<string, unknown>;
+    const input = (session.audio as Record<string, unknown>).input as Record<string, unknown>;
+    const transcription = input.transcription as Record<string, unknown>;
+    expect(out.type).toBe("session.update");
+    expect(transcription.model).toBe("gpt-4o-transcribe");
+    expect(transcription.language).toBe("ru");
+  });
+
+  it("force arg omitted: client model passes through UNCHANGED (back-compat)", () => {
+    const beta: RealtimeFrame = {
+      type: "transcription_session.update",
+      session: { input_audio_transcription: { model: "client-model" } },
+    };
+    const out = translateClientToUpstream(beta);
+    const session = out.session as Record<string, unknown>;
+    const input = (session.audio as Record<string, unknown>).input as Record<string, unknown>;
+    expect((input.transcription as Record<string, unknown>).model).toBe("client-model");
+  });
+
+  it("non-session frame with a force arg: returned unchanged (same reference)", () => {
+    const audioFrame: RealtimeFrame = { type: "input_audio_buffer.append", audio: "b64" };
+    expect(translateClientToUpstream(audioFrame, "forced-model")).toBe(audioFrame);
+  });
+});
+
 describe("translateUpstreamToClient — passthrough (GA→GA per current client contract)", () => {
   it("passes session.created through unchanged", () => {
     const frame: RealtimeFrame = {
