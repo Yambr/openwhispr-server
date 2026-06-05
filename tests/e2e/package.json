@@ -11,7 +11,7 @@
   },
   "dependencies": {
     "testcontainers": "^11.14.0",
-    "tough-cookie": "5.1.2",
+    "tough-cookie": "6.0.1",
     "ws": "^8.21.0",
     "zod": "4.4.3"
   },

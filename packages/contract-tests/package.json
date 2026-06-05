@@ -33,7 +33,7 @@
   "dependencies": {
     "@openwhispr/wire-schemas": "workspace:*",
     "pg": "8.21.0",
-    "tough-cookie": "5.1.2",
+    "tough-cookie": "6.0.1",
     "zod": "4.4.3"
   },
   "devDependencies": {
