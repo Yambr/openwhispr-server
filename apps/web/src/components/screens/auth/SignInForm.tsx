@@ -340,6 +340,19 @@ export function SignInForm(): React.JSX.Element {
             {t("end-user.signin.local-login-disabled.body.text")}
           </p>
         )}
+        {/*
+          Desktop-client discoverability — rendered OUTSIDE the localLogin
+          ternary so the CTA appears in BOTH local-login and OIDC-only modes.
+          Targets the existing internal /download route (never GitHub directly).
+        */}
+        <p className="text-center text-sm">
+          <Link
+            href="/download"
+            className="text-primary underline underline-offset-4 hover:opacity-80"
+          >
+            {t("end-user.signin.action.download-link.label")}
+          </Link>
+        </p>
       </div>
     </AuthShell>
   );

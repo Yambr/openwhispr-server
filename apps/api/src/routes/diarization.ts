@@ -175,6 +175,20 @@ export interface DiarizationDeps {
    * the `SPEACHES_DIARIZATION_MODEL` bundled default.
    */
   speachesModel?: string;
+  /**
+   * Quick 260604-v0p — operator-configured end-user email header NAME,
+   * resolved from `LITELLM_USER_HEADER_NAME` (the SAME env litellm-client
+   * uses for every other LiteLLM-direction endpoint). When the Speaches
+   * diarization URL fronts a corporate LiteLLM gateway, the outbound POST
+   * must carry the authenticated user's email under this header so the
+   * gateway can attribute diarization spend per-user — exactly like
+   * /api/reason, /api/transcribe, /api/embeddings, /api/rerank, and
+   * realtime. Opt-in: when UNSET, NO email header is emitted (back-compat
+   * with the bundled open-Speaches compose scenario). Wired ONLY in the
+   * Speaches branch (routes/index.ts) — the pyannote.ai branch has no
+   * LiteLLM hop. Mirrors litellm-client authHeaders' D-2/D-3 contract.
+   */
+  userHeaderName?: string;
 }
 
 /**
@@ -481,6 +495,10 @@ function handleSpeachesDiarization(deps: DiarizationDeps) {
   // resolved once at handler build time; bundled-default constant when no
   // dep was threaded from the env boundary.
   const speachesModel = deps.speachesModel ?? SPEACHES_DIARIZATION_MODEL;
+  // Quick 260604-v0p — operator end-user email header NAME
+  // (LITELLM_USER_HEADER_NAME). Trimmed once; empty/whitespace → no email
+  // header (opt-in). Mirrors litellm-client authHeaders' D-2/D-3.
+  const userHeaderName = deps.userHeaderName?.trim();
   return async (req: FastifyRequest, reply: FastifyReply) => {
     if (!req.user || !req.tenant) {
       throw new AuthError("UNAUTHORIZED", "unauthorized");
@@ -578,6 +596,22 @@ function handleSpeachesDiarization(deps: DiarizationDeps) {
     };
     if (apiKey) {
       outHeaders.authorization = `Bearer ${apiKey}`;
+    }
+    // Quick 260604-v0p — end-user email attribution, consistent with every
+    // other LiteLLM-direction endpoint (litellm-client authHeaders). The
+    // stable `x-litellm-end-user-id` UUID is LiteLLM's end-user key; the
+    // operator-configured `userHeaderName` carries the (mutable) email.
+    // Both are server-derived from the Better Auth session (never
+    // client-asserted); we apply the same CR/LF belt litellm-client does on
+    // the email value. The email header is emitted ONLY when BOTH the
+    // header name is configured AND an email is present (opt-in, D-2/D-3).
+    const endUserEmail = req.user.email;
+    outHeaders["x-litellm-end-user-id"] = req.user.id;
+    if (userHeaderName && typeof endUserEmail === "string" && endUserEmail.length > 0) {
+      if (/[\r\n]/.test(endUserEmail)) {
+        throw new ValidationError("INVALID_END_USER", "end-user email must not contain CR/LF");
+      }
+      outHeaders[userHeaderName] = endUserEmail;
     }
 
     let upstream: Response;

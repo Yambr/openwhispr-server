@@ -944,6 +944,15 @@ if (import.meta.url === `file://${process.argv[1]}`) {
       cleanupModel: litellmConfig.defaultCleanupModel,
       // #18 — per-model extras bag, same litellmConfig source of truth.
       modelParams: litellmConfig.modelParams,
+      // U65 — operator embeddings/rerank aliases threaded only when set
+      // (conditional spread keeps them absent under exactOptionalPropertyTypes);
+      // unset → the route returns a clean 503 + capability flag false.
+      ...(litellmConfig.defaultEmbeddingModel !== undefined
+        ? { embeddingModel: litellmConfig.defaultEmbeddingModel }
+        : {}),
+      ...(litellmConfig.defaultRerankModel !== undefined
+        ? { rerankModel: litellmConfig.defaultRerankModel }
+        : {}),
     };
   } catch (err) {
     // Phase 13 review HI-02 / Plan 51-13b: do NOT log `err.message` —

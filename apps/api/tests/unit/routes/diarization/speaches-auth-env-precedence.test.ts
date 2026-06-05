@@ -169,3 +169,68 @@ describe("buildAllRoutes — Speaches diarization Authorization env precedence",
     expect(await captureOutboundAuth()).toBeNull();
   });
 });
+
+// Quick 260604-v0p — diarization (the Speaches/LiteLLM passthrough branch)
+// must carry the SAME operator end-user email attribution as every other
+// LiteLLM-direction endpoint (/api/reason, /api/transcribe, /api/embeddings,
+// /api/rerank, realtime). In the corporate pose SPEACHES_DIARIZATION_URL is a
+// LiteLLM gateway with `pass_through_endpoints`; without the email header the
+// gateway cannot attribute diarization spend to the user. Contract mirrors
+// litellm-client authHeaders: emit `<LITELLM_USER_HEADER_NAME>: <email>` ONLY
+// when the header name is configured AND an email is present, plus the stable
+// `x-litellm-end-user-id: <uuid>` end-user key.
+describe("buildAllRoutes — Speaches diarization end-user email attribution", () => {
+  beforeEach(() => {
+    vi.stubEnv("SPEACHES_DIARIZATION_URL", "http://speaches.internal.test:8000");
+  });
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    vi.unstubAllGlobals();
+  });
+
+  async function captureOutboundHeaders(): Promise<Record<string, string>> {
+    let captured: Record<string, string> = {};
+    const stubFetch = vi.fn(async (_input: string | URL | Request, init?: RequestInit) => {
+      const h = (init?.headers ?? {}) as Record<string, string>;
+      captured = h;
+      return new Response(
+        JSON.stringify({ segments: [{ start: 0, end: 1, speaker: "SPEAKER_00" }] }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      );
+    });
+    vi.stubGlobal("fetch", stubFetch);
+    const app = await bootDiarizationFromEnv();
+    try {
+      const { body, contentType } = multipartBody("audio-bytes");
+      const res = await app.inject({
+        method: "POST",
+        url: "/v1/audio/diarization",
+        headers: { "content-type": contentType },
+        payload: body,
+      });
+      expect(res.statusCode).toBe(200);
+      expect(stubFetch).toHaveBeenCalledTimes(1);
+    } finally {
+      await app.close();
+    }
+    return captured;
+  }
+
+  it("emits the operator email header + x-litellm-end-user-id when LITELLM_USER_HEADER_NAME is set", async () => {
+    vi.stubEnv("LITELLM_USER_HEADER_NAME", "X-OpenWhispr-User-Email");
+    const h = await captureOutboundHeaders();
+    // TEST_USER.email = "fixture@conformance.test"; TEST_USER.id = the UUID.
+    expect(h["X-OpenWhispr-User-Email"] ?? h["x-openwhispr-user-email"]).toBe(
+      "fixture@conformance.test",
+    );
+    expect(h["x-litellm-end-user-id"]).toBe("11111111-1111-1111-1111-111111111111");
+  });
+
+  it("emits NO email header when LITELLM_USER_HEADER_NAME is unset (opt-in)", async () => {
+    vi.stubEnv("LITELLM_USER_HEADER_NAME", "");
+    const h = await captureOutboundHeaders();
+    // No header name configured → the email must not appear under any key.
+    const values = Object.values(h);
+    expect(values).not.toContain("fixture@conformance.test");
+  });
+});

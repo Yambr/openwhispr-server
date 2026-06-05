@@ -63,6 +63,7 @@ const resources = {
           rememberDevice: { label: "Remember this device" },
           forgotPassword: { link: { label: "Forgot password?" } },
           "signup-link": { label: "Don't have an account? Sign up" },
+          "download-link": { label: "Download the desktop app" },
           resendVerification: { label: "Resend verification email" },
         },
         error: { title: { text: "Error" }, body: { text: "Could not sign in." } },
@@ -124,6 +125,26 @@ describe("SignInForm — localLogin gating (upstream #9 web half)", () => {
     expect(screen.queryByRole("link", { name: /sign up/i })).not.toBeInTheDocument();
     // The localized SSO-only explanatory line is shown.
     expect(screen.getByText(/local sign-in is disabled/i)).toBeInTheDocument();
+  });
+
+  it("renders the download link in OIDC-only mode too (CTA sits outside the localLogin ternary)", async () => {
+    stubProviders(false);
+    const { SignInForm } = await import("../SignInForm");
+    render(
+      <Wrap>
+        <SignInForm />
+      </Wrap>,
+    );
+    // Prove the OIDC-only branch is active: the local form is hidden …
+    expect(
+      await screen.findByRole("button", { name: /continue with google/i }),
+    ).toBeInTheDocument();
+    expect(screen.queryByLabelText(/email/i)).not.toBeInTheDocument();
+    // … yet the download CTA is STILL present, proving it renders in both modes.
+    expect(screen.getByRole("link", { name: /download the desktop app/i })).toHaveAttribute(
+      "href",
+      "/download",
+    );
   });
 
   it("localLogin.enabled === true → renders the form as today", async () => {

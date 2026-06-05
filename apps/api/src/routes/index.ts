@@ -61,6 +61,7 @@ import {
 import { buildDeleteAccountRoutes, type DeleteAccountDeps } from "./delete-account.js";
 import { buildDesktopSigninRoutes, type DesktopSigninDeps } from "./desktop-signin.js";
 import { buildDiarizationRoutes, type DiarizationDeps } from "./diarization.js";
+import { buildEmbeddingsRoutes, type EmbeddingsDeps } from "./embeddings.js";
 import {
   buildFoldersBatchCreateRoutes,
   type FoldersBatchCreateDeps,
@@ -83,6 +84,7 @@ import { buildNotesSearchRoutes, type NotesSearchDeps } from "./notes/search.js"
 import { buildNotesUpdateRoutes, type NotesUpdateDeps } from "./notes/update.js";
 import { buildRealtimeRoutes, type RealtimeDeps } from "./realtime.js";
 import { buildReasonRoutes, type ReasonDeps } from "./reason.js";
+import { buildRerankRoutes, type RerankDeps } from "./rerank.js";
 import {
   buildSetupAdminRoutes,
   type SetupAdminRenameTenant,
@@ -181,6 +183,10 @@ export interface AllRoutesDeps {
     cleanupModel: string;
     /** #18 — per-model chat-param extras bag (env `REASONING_MODEL_PARAMS`). */
     modelParams?: Record<string, Record<string, unknown>>;
+    /** U65 — operator embeddings model alias (env `LITELLM_EMBEDDING_MODEL`). */
+    embeddingModel?: string;
+    /** U65 — operator rerank model alias (env `LITELLM_RERANK_MODEL`). */
+    rerankModel?: string;
   };
   /**
    * Phase 03 / Plan 06 (D-07 REVISED): Valkey client for the diarization
@@ -606,6 +612,26 @@ export function buildAllRoutes(deps: AllRoutesDeps): readonly RoutePlugin[] {
         : {}),
     };
     plugins.push(buildReasonRoutes(reasonDeps));
+    // U65 — POST /api/embeddings forwards to the operator gateway via the
+    // shared litellm passthrough, so it shares the same litellm-presence
+    // gate. The operator model alias is threaded only when configured; when
+    // absent the route returns a clean 503 (no client-side fallback). This
+    // registration IS the non-test importer satisfying LOCKER-04.
+    const embeddingsDeps: EmbeddingsDeps = {
+      litellm: deps.litellm,
+      ...(deps.litellmModels?.embeddingModel
+        ? { embeddingModel: deps.litellmModels.embeddingModel }
+        : {}),
+    };
+    plugins.push(buildEmbeddingsRoutes(embeddingsDeps));
+    // U65 — POST /api/rerank is the sibling forward (same litellm-presence
+    // gate). Operator model alias threaded only when configured; absent →
+    // clean 503. Registration IS the non-test importer (LOCKER-04).
+    const rerankDeps: RerankDeps = {
+      litellm: deps.litellm,
+      ...(deps.litellmModels?.rerankModel ? { rerankModel: deps.litellmModels.rerankModel } : {}),
+    };
+    plugins.push(buildRerankRoutes(rerankDeps));
   }
   // R31 — WSS /v1/realtime frame-aware relay. Registered independently of
   // the `deps.litellm` gate above because the `direct` backend bypasses
@@ -700,6 +726,17 @@ export function buildAllRoutes(deps: AllRoutesDeps): readonly RoutePlugin[] {
       );
       if (resolvedKey) {
         diarizationDeps.speachesDiarizationApiKey = resolvedKey;
+      }
+      // Quick 260604-v0p — the Speaches diarization URL fronts a LiteLLM
+      // gateway in the corporate pose; carry the operator end-user email
+      // header (LITELLM_USER_HEADER_NAME) so diarization spend is attributed
+      // per-user exactly like every other LiteLLM-direction endpoint. Opt-in:
+      // omitted when the env is unset (bundled open-Speaches sends no email
+      // header). Scoped to the Speaches branch only — the pyannote.ai branch
+      // has no LiteLLM hop.
+      const userHeaderName = process.env.LITELLM_USER_HEADER_NAME;
+      if (userHeaderName && userHeaderName.length > 0) {
+        diarizationDeps.userHeaderName = userHeaderName;
       }
     }
     plugins.push(buildDiarizationRoutes(diarizationDeps));

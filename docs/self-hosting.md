@@ -92,6 +92,27 @@ All three token routes share a per-user 30/min rate limit keyed on
 `req.user.id` (T-04-04 mitigation: leaked-bearer abuse is bounded
 per-user, not per-IP).
 
+### Embeddings + rerank endpoints (`/api/embeddings`, `/api/rerank`)
+
+`POST /api/embeddings` and `POST /api/rerank` forward to the operator
+gateway via the shared LiteLLM passthrough. They require the operator to
+register an embeddings / rerank model alias in their gateway catalog and set
+the corresponding env var:
+
+| Env var | Required | Default | Consumed by | Notes |
+|---------|----------|---------|-------------|-------|
+| `LITELLM_EMBEDDING_MODEL` | for `/api/embeddings` | none — route returns 503 if unset | `apps/api/src/routes/embeddings.ts` | Operator gateway embeddings model alias (in-perimeter model). |
+| `LITELLM_RERANK_MODEL` | for `/api/rerank` | none — route returns 503 if unset | `apps/api/src/routes/rerank.ts` | Operator gateway rerank model alias (in-perimeter model). |
+
+There is **no client-side fallback**: when the env var is unset the route
+returns a clean `503` and `GET /api/capabilities` reports
+`features.embeddings` / `features.rerank` as `false`. The desktop client
+reads that capability flag first — if it is `false` the client does not
+attempt the call, and if a configured call fails upstream the client treats
+the non-2xx as a clean failure rather than falling back to a local path
+(server-or-clean-error). See [`operations.md`](./operations.md) for the full
+forward + error-mapping contract.
+
 ### Where to set the env vars
 
 Single-host self-host (docker-compose):
