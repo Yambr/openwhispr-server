@@ -11,7 +11,7 @@
 // NDJSON streaming chat handler that composes the Wave-1 utilities:
 //   * sseToNdjson (apps/api/src/lib/sse-parser.ts)
 //   * createToolCallAccumulator (apps/api/src/lib/tool-call-accumulator.ts)
-//   * translateLegacyTools + prependSystemPrompt (./translate-tools.ts)
+//   * translateLegacyTools + normalizeSystemMessages (./translate-tools.ts)
 //
 // Wire shape: BACKEND_SPEC §/api/agent/stream — Content-Type
 // `application/x-ndjson`, one BACKEND_SPEC chunk per line, finish chunk
@@ -59,7 +59,7 @@ import { classifyUpstreamError } from "../../lib/agent-upstream-error-classify.j
 import { type StreamChunk, sseToNdjson } from "../../lib/sse-parser.js";
 import { createToolCallAccumulator } from "../../lib/tool-call-accumulator.js";
 import type { ZodTypeProvider } from "../../plugins/zod-type-provider.js";
-import { prependSystemPrompt, translateLegacyTools } from "./translate-tools.js";
+import { normalizeSystemMessages, translateLegacyTools } from "./translate-tools.js";
 
 export interface AgentStreamDeps {
   db: TransactionalDb<ExecutableTx>;
@@ -198,9 +198,14 @@ export const buildAgentStreamRoutes = (deps: AgentStreamDeps) =>
         // `systemPrompt` / `tools` / `model` are `T | null | undefined`.
         // The helpers narrow to `T | undefined`; `?? undefined` collapses
         // a client-sent `null` to `undefined` (semantically identical —
-        // the field is unset). prependSystemPrompt's falsy-check and
-        // resolveModel's `??` already treat both the same.
-        const messages = prependSystemPrompt(body.messages ?? [], body.systemPrompt ?? undefined);
+        // the field is unset). normalizeSystemMessages's falsy-check and
+        // resolveModel's `??` already treat both the same. upstream-#14 —
+        // normalizeSystemMessages folds systemPrompt + any in-array system
+        // messages into EXACTLY ONE merged system message at index [0].
+        const messages = normalizeSystemMessages(
+          body.messages ?? [],
+          body.systemPrompt ?? undefined,
+        );
         const extras: Record<string, unknown> = {};
         if (body.tools !== undefined && body.tools !== null) {
           extras.tools = translateLegacyTools(body.tools);
