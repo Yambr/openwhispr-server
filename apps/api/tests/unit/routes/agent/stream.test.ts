@@ -328,7 +328,7 @@ describe("POST /api/agent/stream", () => {
     // session those are `null`, so the body literally carries
     // `"model":null`. `.optional()` rejected `null`; `.nullish()` admits
     // it and the handler treats null === undefined (resolveModel `??`,
-    // prependSystemPrompt falsy-check, tools null-skip).
+    // normalizeSystemMessages falsy-check, tools null-skip).
     agent
       .get(LITELLM_BASE)
       .intercept({ path: LITELLM_PATH, method: "POST" })
@@ -511,7 +511,11 @@ describe("POST /api/agent/stream", () => {
     }
   });
 
-  it("Test 4 — systemPrompt is additively prepended; original system message preserved", async () => {
+  it("Test 4 — upstream-#14: systemPrompt + distinct leading system MERGE into EXACTLY ONE system", async () => {
+    // SUPERSEDES the old D-11 additive-prepend assertion. The gateway's
+    // strict chat template rejects >1 leading system message, so the
+    // forwarded body must carry a SINGLE merged system at index [0]
+    // ("be helpful\n\nyou are a sloth") and the user turn after it.
     let captured: Record<string, unknown> | null = null;
     agent
       .get(LITELLM_BASE)
@@ -541,9 +545,53 @@ describe("POST /api/agent/stream", () => {
         role: string;
         content: string;
       }>;
-      expect(messages[0]).toEqual({ role: "system", content: "be helpful" });
-      expect(messages[1]).toEqual({ role: "system", content: "you are a sloth" });
-      expect(messages[2]).toEqual({ role: "user", content: "hi" });
+      expect(messages.filter((m) => m.role === "system")).toHaveLength(1);
+      expect(messages[0]).toEqual({ role: "system", content: "be helpful\n\nyou are a sloth" });
+      expect(messages[1]).toEqual({ role: "user", content: "hi" });
+      expect(messages).toHaveLength(2);
+    } finally {
+      await app.close();
+    }
+  });
+
+  it("Test 4b — upstream-#14: byte-identical systemPrompt + leading system collapse to ONE (the 400 root cause)", async () => {
+    // The desktop client's exact failing body: messages[0] is a system
+    // message byte-identical to body.systemPrompt. Must forward a SINGLE
+    // system message with content "P" (NOT "P\n\nP") — eliminates the qwen
+    // HTTP 400 on every cloud agent-chat request.
+    let captured: Record<string, unknown> | null = null;
+    agent
+      .get(LITELLM_BASE)
+      .intercept({ path: LITELLM_PATH, method: "POST" })
+      .reply(200, (opts) => {
+        const raw = typeof opts.body === "string" ? opts.body : String(opts.body ?? "");
+        captured = JSON.parse(raw) as Record<string, unknown>;
+        return buildTextOnlySse();
+      });
+
+    const app = await buildTestApp({ bearerMap: { "Bearer ok-u1": "u1" } });
+    try {
+      await app.inject({
+        method: "POST",
+        url: "/api/agent/stream",
+        headers: { authorization: "Bearer ok-u1", "content-type": "application/json" },
+        payload: {
+          systemPrompt: "P",
+          messages: [
+            { role: "system", content: "P" },
+            { role: "user", content: "hi" },
+          ],
+        },
+      });
+      expect(captured).not.toBeNull();
+      const messages = (captured as Record<string, unknown>).messages as Array<{
+        role: string;
+        content: string;
+      }>;
+      expect(messages.filter((m) => m.role === "system")).toHaveLength(1);
+      expect(messages[0]).toEqual({ role: "system", content: "P" });
+      expect(messages[0].content).not.toBe("P\n\nP");
+      expect(messages[1]).toEqual({ role: "user", content: "hi" });
     } finally {
       await app.close();
     }
