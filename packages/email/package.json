@@ -15,12 +15,12 @@
   },
   "dependencies": {
     "@openwhispr/byok-guard": "workspace:*",
-    "nodemailer": "^8.0.7"
+    "nodemailer": "^8.0.10"
   },
   "devDependencies": {
     "@types/node": "25.6.2",
     "@types/nodemailer": "^8.0.0",
     "typescript": "6.0.3",
-    "vitest": "4.1.5"
+    "vitest": "4.1.8"
   }
 }
