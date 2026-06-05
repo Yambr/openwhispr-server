@@ -44,6 +44,11 @@ jobs:
       - run: pnpm lint:phase-tag-comments
       - run: pnpm lint:dockerfile-tls
       - run: pnpm lint:no-dockerhub-pg-image
+      # Quick 260605-ikx — CHANGELOG well-formedness + appVersion parity, plus
+      # the two version-bind tool suites (≥90% coverage on all axes).
+      - run: pnpm lint:changelog
+      - run: pnpm test:changelog-extract
+      - run: pnpm test:lint-changelog
       # Phase 31 / Plan 07 / LOCKER-08 — aggregate lockers gate.
       # `make lint:lockers` fans out to all six locker binaries via the
       # `lint:lockers` aggregate package.json script. LOCKER-04/05/06
