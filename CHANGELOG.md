@@ -9,6 +9,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 _Nothing yet._
 
+## [1.2.4] - 2026-06-05
+
+### Fixed
+
+- `/api/agent/stream` now normalizes the forwarded chat messages to exactly one
+  system message at index 0, merging an optional `systemPrompt` and any in-array
+  system messages into a single deduplicated block while preserving the order of
+  all non-system messages. Previously a client that sent both `messages[0]` as a
+  system message and a byte-identical `systemPrompt` produced two leading system
+  messages, which strict gateway chat templates reject with HTTP 400.
+
 ## [1.2.3] - 2026-06-05
 
 ### Added
@@ -130,7 +141,8 @@ _Nothing yet._
 - Pre-push test-evidence gate validates the tip commit only, keeping it
   compatible with the test-driven workflow.
 
-[Unreleased]: https://github.com/Yambr/openwhispr-server/compare/v1.2.3...HEAD
+[Unreleased]: https://github.com/Yambr/openwhispr-server/compare/v1.2.4...HEAD
+[1.2.4]: https://github.com/Yambr/openwhispr-server/compare/v1.2.3...v1.2.4
 [1.2.3]: https://github.com/Yambr/openwhispr-server/compare/v1.2.2...v1.2.3
 [1.2.2]: https://github.com/Yambr/openwhispr-server/compare/v1.2.1...v1.2.2
 [1.2.1]: https://github.com/Yambr/openwhispr-server/compare/v1.2.0...v1.2.1
