@@ -291,6 +291,15 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # tsx is needed by the "Build Release body" step below to extract the
+      # matching CHANGELOG section. This job otherwise has no JS toolchain.
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24.x
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+
       - name: Resolve image tag
         id: tag
         run: |
@@ -314,10 +323,19 @@ jobs:
           # who want to confirm chart/image pairing. Falls through
           # silently if yq is missing (preinstalled on ubuntu-24.04).
           chart_app_version=$(yq '.appVersion' charts/openwhispr-server/Chart.yaml 2>/dev/null || echo "${VERSION}")
+          # Extract the matching CHANGELOG section. NO `|| true`: when the
+          # section is missing, changelog-extract.ts exits non-zero and (with
+          # the step's default fail-fast) FAILS the release — a tag without a
+          # CHANGELOG entry cannot ship. This is the version→changelog bind.
+          changelog_section=$(pnpm exec tsx tools/changelog-extract.ts CHANGELOG.md "${VERSION}")
           cat > body.md <<EOF
           # OpenWhispr Server ${REF_NAME}
 
           Self-hosted OpenWhispr backend — see [README](https://github.com/Yambr/openwhispr-server#readme) and [operations runbook](https://github.com/Yambr/openwhispr-server/blob/main/docs/operations.md).
+
+          ## What's changed
+
+          ${changelog_section}
 
           ## Container images
 
