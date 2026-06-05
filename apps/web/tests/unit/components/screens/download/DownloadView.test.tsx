@@ -11,7 +11,7 @@
 //   4. Fallback mode surfaces the GitHub releases link.
 //   5. All copy is i18n-driven (renders the provided resources, not literals).
 import { render, screen, within } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import {
   OPENWHISPR_DESKTOP_REPO,
   type ParsedRelease,
@@ -85,8 +85,42 @@ function Wrap({ children }: { children: React.ReactNode }) {
   );
 }
 
+// The component re-detects the visitor's OS on mount from navigator.userAgent
+// (progressive enhancement) and lets that override `serverDetection`. The host
+// runner's UA differs between dev machines (macOS) and CI runners (Linux), so a
+// test asserting on `serverDetection` alone is non-deterministic. Pin the UA at
+// the navigator boundary (the OS-detection input) so the mount-time re-detect is
+// reproducible regardless of where the suite runs.
+function stubUserAgent(ua: string): void {
+  Object.defineProperty(globalThis.navigator, "userAgent", {
+    value: ua,
+    configurable: true,
+  });
+  Object.defineProperty(globalThis.navigator, "platform", {
+    value: "",
+    configurable: true,
+  });
+}
+
+const MAC_UA =
+  "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko)";
+// A UA detectOs maps to "unknown" — no "windows", "macintosh"/"mac os x", or
+// "linux" token — so the client re-detect does not override an unknown
+// serverDetection. (An iOS UA would NOT work here: it contains "Mac OS X" and
+// detectOs would resolve it to mac.)
+const UNKNOWN_UA = "Mozilla/5.0 (Unknown; rv:120.0) Gecko/20100101";
+
+afterEach(() => {
+  // jsdom installs userAgent/platform as own props; deleting our override
+  // restores the prototype getter for any later suite in the same worker.
+  delete (globalThis.navigator as unknown as Record<string, unknown>).userAgent;
+  delete (globalThis.navigator as unknown as Record<string, unknown>).platform;
+});
+
 describe("DownloadView", () => {
   it("renders a primary CTA pointing at the detected OS installer (real href)", async () => {
+    // Pin the client re-detect to macOS so it agrees with serverDetection.
+    stubUserAgent(MAC_UA);
     const { DownloadView } = await import("@/components/screens/download/DownloadView");
     const parsed = realParsed();
     render(
@@ -122,6 +156,9 @@ describe("DownloadView", () => {
   });
 
   it("omits the primary CTA when the OS is unknown", async () => {
+    // Client re-detect must also yield unknown, otherwise it would override the
+    // unknown serverDetection and surface a primary CTA.
+    stubUserAgent(UNKNOWN_UA);
     const { DownloadView } = await import("@/components/screens/download/DownloadView");
     render(
       <Wrap>
