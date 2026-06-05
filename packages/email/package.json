@@ -15,7 +15,7 @@
   },
   "dependencies": {
     "@openwhispr/byok-guard": "workspace:*",
-    "nodemailer": "^8.0.7"
+    "nodemailer": "^8.0.10"
   },
   "devDependencies": {
     "@types/node": "25.6.2",
