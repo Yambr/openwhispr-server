@@ -14,7 +14,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { main, parseAppVersion, parseReleasedVersions } from "./lint-changelog.js";
+import { escapeRegExp, main, parseAppVersion, parseReleasedVersions } from "./lint-changelog.js";
 
 let root: string;
 
@@ -74,6 +74,29 @@ describe("parseAppVersion", () => {
   });
   it("returns null when no appVersion line is present", () => {
     expect(parseAppVersion("name: x\n")).toBeNull();
+  });
+});
+
+describe("escapeRegExp (CodeQL #39 — js/incomplete-sanitization)", () => {
+  it("escapes every regex metacharacter, not just the dot", () => {
+    // The incomplete `version.replace(/\./g, "\\.")` only escaped `.`, leaving
+    // backslash and every other metachar live. A correct escaper neutralizes
+    // all of them so the resulting pattern matches the literal input.
+    const metachars = ["\\", ".", "+", "*", "(", ")", "[", "]", "^", "$", "?", "{", "}", "|"];
+    for (const ch of metachars) {
+      const input = `1.2.3${ch}x`;
+      const escaped = escapeRegExp(input);
+      // The escaped form must match the literal input string anchored end-to-end…
+      expect(new RegExp(`^${escaped}$`).test(input)).toBe(true);
+      // …and must NOT silently treat the metachar as a regex operator: a
+      // sibling string that the unescaped metachar would have matched must fail.
+      expect(new RegExp(`^${escaped}$`).test("1X2X3yyx")).toBe(false);
+    }
+  });
+
+  it("leaves plain semver characters untouched in behavior", () => {
+    expect(new RegExp(`^${escapeRegExp("1.2.34")}$`).test("1.2.34")).toBe(true);
+    expect(new RegExp(`^${escapeRegExp("1.2.34")}$`).test("1X2X34")).toBe(false);
   });
 });
 
