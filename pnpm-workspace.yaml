@@ -46,3 +46,6 @@ overrides:
   # consumer to the patched line; pnpm-lock currently has ws@8.18.1
   # and ws@2.18.0 alongside the patched 8.20.1.
   ws@<8.20.1: ">=8.20.1 <9.0.0"
+  # tmp@<0.2.6: path traversal via unsanitized prefix/postfix
+  # (GHSA-ph9p-34f9-6g65); transitive via testcontainers, dev-only.
+  tmp@<0.2.6: ">=0.2.6 <0.3.0"
