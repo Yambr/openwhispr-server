@@ -33,6 +33,8 @@
     "test:lint-no-suppressions": "vitest run tools/lint-no-suppressions.test.ts --coverage --coverage.include=tools/lint-no-suppressions.ts --coverage.exclude= --coverage.all=false --coverage.thresholds.lines=90 --coverage.thresholds.branches=90 --coverage.thresholds.functions=90 --coverage.thresholds.statements=90",
     "lint:no-hardcode": "tsx tools/lint-no-hardcode.ts",
     "test:lint-no-hardcode": "vitest run tools/lint-no-hardcode.test.ts --coverage --coverage.include=tools/lint-no-hardcode.ts --coverage.exclude= --coverage.all=false --coverage.thresholds.lines=90 --coverage.thresholds.branches=90 --coverage.thresholds.functions=90 --coverage.thresholds.statements=90",
+    "changelog:extract": "tsx tools/changelog-extract.ts",
+    "test:changelog-extract": "vitest run tools/changelog-extract.test.ts --coverage --coverage.include=tools/changelog-extract.ts --coverage.exclude= --coverage.all=false --coverage.thresholds.lines=90 --coverage.thresholds.branches=90 --coverage.thresholds.functions=90 --coverage.thresholds.statements=90",
     "lint:shell-credential-interpolation": "tsx tools/lint-shell-credential-interpolation.ts",
     "test:lint-shell-credential-interpolation": "vitest run tools/lint-shell-credential-interpolation.test.ts --coverage --coverage.include=tools/lint-shell-credential-interpolation.ts --coverage.exclude= --coverage.all=false --coverage.thresholds.lines=90 --coverage.thresholds.branches=90 --coverage.thresholds.functions=90 --coverage.thresholds.statements=90",
     "lint:prod-readiness": "tsx tools/lint-prod-readiness.ts --warn-only",
