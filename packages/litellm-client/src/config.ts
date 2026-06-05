@@ -70,6 +70,24 @@ export interface LitellmClientConfig {
    */
   defaultCleanupModel: string;
   /**
+   * U65 — operator-owned embeddings model alias for POST /api/embeddings.
+   * Operator-owned via `LITELLM_EMBEDDING_MODEL`. Unlike the STT/realtime/
+   * cleanup aliases there is intentionally NO literal default: when the env
+   * is unset this field is ABSENT (undefined), the /api/embeddings route
+   * returns a clean 503 (operator-config), and capabilities.features.embeddings
+   * is false. There is NO client-side fallback — server-or-clean-error. The
+   * alias resolution lives in the operator gateway catalog, never as a route
+   * literal.
+   */
+  defaultEmbeddingModel?: string;
+  /**
+   * U65 — operator-owned rerank model alias for POST /api/rerank. Operator-
+   * owned via `LITELLM_RERANK_MODEL`; same no-literal-default seam as
+   * {@link defaultEmbeddingModel} (unset → undefined → clean 503 + capability
+   * flag false, no fallback).
+   */
+  defaultRerankModel?: string;
+  /**
    * #18 — per-model chat-completion param bag (litellm-style). A map of
    * model alias → an arbitrary extras object the server spreads VERBATIM
    * into the upstream chat-completion body (the same way LiteLLM forwards
@@ -339,6 +357,18 @@ export function loadLitellmConfigFromEnv(
     env.REASONING_CLEANUP_MODEL && env.REASONING_CLEANUP_MODEL.length > 0
       ? env.REASONING_CLEANUP_MODEL
       : DEFAULT_CLEANUP_MODEL;
+  // U65 — embeddings + rerank aliases follow the same empty-string-is-unset
+  // seam, but with NO literal default: unset → undefined (no
+  // DEFAULT_*_MODEL constant). The route returns a clean 503 and the
+  // capability flag is false when the operator has not configured a model.
+  const defaultEmbeddingModel =
+    env.LITELLM_EMBEDDING_MODEL && env.LITELLM_EMBEDDING_MODEL.length > 0
+      ? env.LITELLM_EMBEDDING_MODEL
+      : undefined;
+  const defaultRerankModel =
+    env.LITELLM_RERANK_MODEL && env.LITELLM_RERANK_MODEL.length > 0
+      ? env.LITELLM_RERANK_MODEL
+      : undefined;
   // #18 — per-model chat-param extras bag (litellm-style). Malformed config
   // throws here → boot turns it into EX_CONFIG exit 78.
   const modelParams = parseModelParams(env.REASONING_MODEL_PARAMS);
@@ -377,6 +407,11 @@ export function loadLitellmConfigFromEnv(
     defaultSttModel,
     defaultRealtimeModel,
     defaultCleanupModel,
+    // U65 — conditional spread keeps the embeddings/rerank aliases genuinely
+    // ABSENT (not `: undefined`) under exactOptionalPropertyTypes when the env
+    // is unset — same posture as `userHeaderName` below.
+    ...(defaultEmbeddingModel !== undefined ? { defaultEmbeddingModel } : {}),
+    ...(defaultRerankModel !== undefined ? { defaultRerankModel } : {}),
     modelParams,
     headersTimeoutMs,
     bodyTimeoutMs,
