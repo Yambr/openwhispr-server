@@ -30,6 +30,16 @@ const RELEASED_HEADER = /^## \[(\d+\.\d+\.\d+)\] - (\d{4}-\d{2}-\d{2})\s*$/;
 const ANY_RELEASED_HEADER = /^## \[(\d+\.\d+\.\d+)\]/;
 const APP_VERSION_LINE = /^appVersion:\s*"?([0-9]+\.[0-9]+\.[0-9]+)"?\s*$/m;
 
+/**
+ * Escape every RegExp metacharacter in `s` so it matches literally.
+ * CodeQL #39 (js/incomplete-sanitization): the prior inline
+ * `version.replace(/\./g, "\\.")` escaped only `.`, leaving backslash and the
+ * other metachars live. This escapes the full set `. * + ? ^ $ { } ( ) | [ ] \`.
+ */
+export function escapeRegExp(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
 /** Parse the chart appVersion from Chart.yaml text (line-regex, no yaml dep). */
 export function parseAppVersion(text: string): string | null {
   const m = text.match(APP_VERSION_LINE);
@@ -79,7 +89,7 @@ export async function main(argv: string[]): Promise<number> {
   // 3. Every released version has a matching footer link line.
   const released = parseReleasedVersions(changelog);
   for (const version of released) {
-    const footer = new RegExp(`^\\[${version.replace(/\./g, "\\.")}\\]:\\s`, "m");
+    const footer = new RegExp(`^\\[${escapeRegExp(version)}\\]:\\s`, "m");
     if (!footer.test(changelog)) {
       failures.push(`released version ${version} has no \`[${version}]:\` footer link`);
     }
