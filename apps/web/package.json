@@ -52,7 +52,7 @@
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "@vitejs/plugin-react": "^5.0.5",
-    "@vitest/coverage-v8": "4.1.5",
+    "@vitest/coverage-v8": "4.1.8",
     "accept-language-parser": "^1.5.0",
     "happy-dom": "^20.0.0",
     "i18next-icu": "^2.4.3",
