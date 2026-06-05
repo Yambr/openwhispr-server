@@ -35,6 +35,8 @@
     "test:lint-no-hardcode": "vitest run tools/lint-no-hardcode.test.ts --coverage --coverage.include=tools/lint-no-hardcode.ts --coverage.exclude= --coverage.all=false --coverage.thresholds.lines=90 --coverage.thresholds.branches=90 --coverage.thresholds.functions=90 --coverage.thresholds.statements=90",
     "changelog:extract": "tsx tools/changelog-extract.ts",
     "test:changelog-extract": "vitest run tools/changelog-extract.test.ts --coverage --coverage.include=tools/changelog-extract.ts --coverage.exclude= --coverage.all=false --coverage.thresholds.lines=90 --coverage.thresholds.branches=90 --coverage.thresholds.functions=90 --coverage.thresholds.statements=90",
+    "lint:changelog": "tsx tools/lint-changelog.ts CHANGELOG.md charts/openwhispr-server/Chart.yaml",
+    "test:lint-changelog": "vitest run tools/lint-changelog.test.ts --coverage --coverage.include=tools/lint-changelog.ts --coverage.exclude= --coverage.all=false --coverage.thresholds.lines=90 --coverage.thresholds.branches=90 --coverage.thresholds.functions=90 --coverage.thresholds.statements=90",
     "lint:shell-credential-interpolation": "tsx tools/lint-shell-credential-interpolation.ts",
     "test:lint-shell-credential-interpolation": "vitest run tools/lint-shell-credential-interpolation.test.ts --coverage --coverage.include=tools/lint-shell-credential-interpolation.ts --coverage.exclude= --coverage.all=false --coverage.thresholds.lines=90 --coverage.thresholds.branches=90 --coverage.thresholds.functions=90 --coverage.thresholds.statements=90",
     "lint:prod-readiness": "tsx tools/lint-prod-readiness.ts --warn-only",
