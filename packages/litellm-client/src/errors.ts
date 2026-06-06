@@ -3,7 +3,7 @@
 //
 // Two distinct error types so route handlers can map cleanly:
 //   * MissingProviderKeyError -> 503 envelope (operator-actionable: set
-//     OPENROUTER_API_KEY / GROQ_API_KEY / PYANNOTE_API_KEY in .env).
+//     OPENROUTER_API_KEY / GROQ_API_KEY in .env).
 //     This is RESEARCH Pitfall #8 — silent 401-from-upstream looks like
 //     a user auth failure to the desktop and triggers logout. We MUST
 //     pre-check provider keys on the bundled-default path and surface a

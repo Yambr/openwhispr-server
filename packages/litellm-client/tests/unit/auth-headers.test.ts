@@ -33,7 +33,6 @@ function baseConfig(overrides: Partial<LitellmClientConfig> = {}): LitellmClient
     providerKeys: {
       openrouter: "sk-or-test",
       groq: "gsk-test",
-      pyannote: "hf-test",
     },
     defaultChatModel: "qwen3.6-plus",
     defaultSttModel: "whisper-large-v3",

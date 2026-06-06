@@ -36,7 +36,6 @@ import { parsePositiveIntEnv } from "./env-parse.js";
 export interface LitellmProviderKeys {
   openrouter: string | undefined;
   groq: string | undefined;
-  pyannote: string | undefined;
 }
 
 export interface LitellmClientConfig {
@@ -401,7 +400,6 @@ export function loadLitellmConfigFromEnv(
     providerKeys: {
       openrouter: env.OPENROUTER_API_KEY ? env.OPENROUTER_API_KEY : undefined,
       groq: env.GROQ_API_KEY ? env.GROQ_API_KEY : undefined,
-      pyannote: env.PYANNOTE_API_KEY ? env.PYANNOTE_API_KEY : undefined,
     },
     defaultChatModel,
     defaultSttModel,
