@@ -17,7 +17,7 @@ jobs:
     steps:
       - uses: step-security/harden-runner@9af89fc71515a100421586dfdb3dc9c984fbf411  # v2.19.4
         with: { egress-policy: audit }
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
         with: { fetch-depth: 0 }
       - uses: pnpm/action-setup@v4
         with: { version: 11.0.8 }
@@ -32,7 +32,7 @@ jobs:
       # fetch-depth: 0 — needed by Phase 31 / Plan 07 LOCKER-09's
       # allowlist-diff CI step (below) so `git show origin/<base>:<path>`
       # resolves against the PR base branch.
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
         with: { fetch-depth: 0 }
       - uses: pnpm/action-setup@v4
         with: { version: 11.0.8 }
@@ -72,7 +72,7 @@ jobs:
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
         with: { fetch-depth: 0 }
       # Strict (`commitlint.config.cjs`) for human authors; relaxed
       # (`commitlint.config.dependabot.cjs`) only for `dependabot[bot]`.
@@ -86,7 +86,7 @@ jobs:
   typecheck:
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
       - uses: pnpm/action-setup@v4
         with: { version: 11.0.8 }
       - uses: actions/setup-node@v5
@@ -102,7 +102,7 @@ jobs:
   i18n-completeness:
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
       - uses: pnpm/action-setup@v4
         with: { version: 11.0.8 }
       - uses: actions/setup-node@v5
@@ -125,7 +125,7 @@ jobs:
     env:
       TESTCONTAINERS_RYUK_DISABLED: "true"
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
       - uses: pnpm/action-setup@v4
         with: { version: 11.0.8 }
       - uses: actions/setup-node@v5
@@ -186,7 +186,7 @@ jobs:
     # PR finishes in minutes; this ceiling fails fast if that ever regresses.
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
         with: { fetch-depth: 0 }
       - uses: pnpm/action-setup@v4
         with: { version: 11.0.8 }
@@ -246,7 +246,7 @@ jobs:
     runs-on: ubuntu-24.04
     continue-on-error: true   # advisory in v1 (Plan 03 / D-21)
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
         with: { fetch-depth: 0 }
       - uses: pnpm/action-setup@v4
         with: { version: 11.0.8 }
@@ -267,7 +267,7 @@ jobs:
     steps:
       - uses: step-security/harden-runner@9af89fc71515a100421586dfdb3dc9c984fbf411  # v2.19.4
         with: { egress-policy: audit }
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
         with: { fetch-depth: 0 }
       - uses: pnpm/action-setup@v4
         with: { version: 11.0.8 }
@@ -283,7 +283,7 @@ jobs:
     steps:
       - uses: step-security/harden-runner@9af89fc71515a100421586dfdb3dc9c984fbf411  # v2.19.4
         with: { egress-policy: audit }
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
         with: { fetch-depth: 0 }
       - uses: pnpm/action-setup@v4
         with: { version: 11.0.8 }
@@ -329,7 +329,7 @@ jobs:
     steps:
       - uses: step-security/harden-runner@9af89fc71515a100421586dfdb3dc9c984fbf411  # v2.19.4
         with: { egress-policy: audit }
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
         with: { fetch-depth: 0 }
       - uses: pnpm/action-setup@v4
         with: { version: 11.0.8 }
@@ -428,7 +428,7 @@ jobs:
     steps:
       - uses: step-security/harden-runner@9af89fc71515a100421586dfdb3dc9c984fbf411  # v2.19.4
         with: { egress-policy: audit }
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
         with: { fetch-depth: 0 }
       - uses: pnpm/action-setup@v4
         with: { version: 11.0.8 }
@@ -576,7 +576,7 @@ jobs:
     steps:
       - uses: step-security/harden-runner@9af89fc71515a100421586dfdb3dc9c984fbf411  # v2.19.4
         with: { egress-policy: audit }
-      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd  # v5
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10  # v6.0.3
         with: { fetch-depth: 0 }
       - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1  # v4
         with: { version: 11.0.8 }
@@ -757,7 +757,7 @@ jobs:
     steps:
       - uses: step-security/harden-runner@9af89fc71515a100421586dfdb3dc9c984fbf411  # v2.19.4
         with: { egress-policy: audit }
-      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd  # v5
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10  # v6.0.3
         with: { fetch-depth: 0 }
       - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1  # v4
         with: { version: 11.0.8 }
@@ -816,7 +816,7 @@ jobs:
     steps:
       - uses: step-security/harden-runner@9af89fc71515a100421586dfdb3dc9c984fbf411  # v2.19.4
         with: { egress-policy: audit }
-      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd  # v5
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10  # v6.0.3
         with: { fetch-depth: 0 }
       - uses: docker/setup-buildx-action@d7f5e7f509e45cec5c76c4d5afdd7de93d0b3df5  # v4.1.0
       - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1  # v4
@@ -873,7 +873,7 @@ jobs:
   lint-gherkin-tags:
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
       - uses: pnpm/action-setup@v4
         with: { version: 11.0.8 }
       - uses: actions/setup-node@v5
@@ -885,7 +885,7 @@ jobs:
   lint-playwright-config:
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
       - uses: pnpm/action-setup@v4
         with: { version: 11.0.8 }
       - uses: actions/setup-node@v5
@@ -897,7 +897,7 @@ jobs:
   lint-steps-have-unit-tests:
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
       - uses: pnpm/action-setup@v4
         with: { version: 11.0.8 }
       - uses: actions/setup-node@v5
@@ -915,7 +915,7 @@ jobs:
       contents: read
       pull-requests: read
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
         with: { fetch-depth: 0 }
       - uses: pnpm/action-setup@v4
         with: { version: 11.0.8 }
@@ -947,7 +947,7 @@ jobs:
       contents: read
       pull-requests: read
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
         with: { fetch-depth: 0 }
       - uses: pnpm/action-setup@v4
         with: { version: 11.0.8 }
@@ -992,7 +992,7 @@ jobs:
       # to time out with "dependency failed to start: litellm unhealthy".
       LITELLM_CONFIG_FILE: litellm_config.contract.yaml
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
       - uses: pnpm/action-setup@v4
         with: { version: 11.0.8 }
       - uses: actions/setup-node@v5
@@ -1094,7 +1094,7 @@ jobs:
     steps:
       - uses: step-security/harden-runner@9af89fc71515a100421586dfdb3dc9c984fbf411  # v2.19.4
         with: { egress-policy: audit }
-      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd  # v5
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10  # v6.0.3
         with: { fetch-depth: 0 }
       - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1  # v4
         with: { version: 11.0.8 }
@@ -1169,7 +1169,7 @@ jobs:
     steps:
       - uses: step-security/harden-runner@9af89fc71515a100421586dfdb3dc9c984fbf411  # v2.19.4
         with: { egress-policy: audit }
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
         with: { fetch-depth: 0 }
       - uses: pnpm/action-setup@v4
         with: { version: 11.0.8 }
@@ -1276,7 +1276,7 @@ jobs:
     steps:
       - uses: step-security/harden-runner@9af89fc71515a100421586dfdb3dc9c984fbf411  # v2.19.4
         with: { egress-policy: audit }
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
         with: { fetch-depth: 0 }
       - name: Bootstrap fixture .env (env interpolation source)
         run: |
@@ -1305,7 +1305,7 @@ jobs:
     steps:
       - uses: step-security/harden-runner@9af89fc71515a100421586dfdb3dc9c984fbf411  # v2.19.4
         with: { egress-policy: audit }
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
         with: { fetch-depth: 0 }
       - uses: pnpm/action-setup@v4
         with: { version: 11.0.8 }

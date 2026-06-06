@@ -92,7 +92,7 @@ jobs:
     # let the emulated arm64 stall hide for 2.3h on 260531.
     timeout-minutes: 40
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Resolve image tag
         id: tag
@@ -289,7 +289,7 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       # tsx is needed by the "Build Release body" step below to extract the
       # matching CHANGELOG section. This job otherwise has no JS toolchain.

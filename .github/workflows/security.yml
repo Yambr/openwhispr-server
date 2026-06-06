@@ -16,7 +16,7 @@ jobs:
     steps:
       - uses: step-security/harden-runner@9af89fc71515a100421586dfdb3dc9c984fbf411  # v2.19.4
         with: { egress-policy: audit }
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
         with: { fetch-depth: 0 }
       # Phase 260516-kya / Plan 01 — L3 secret-leak gate.
       # config-path explicit so CI consumes the SAME .gitleaks.toml as
@@ -50,7 +50,7 @@ jobs:
     steps:
       - uses: step-security/harden-runner@9af89fc71515a100421586dfdb3dc9c984fbf411  # v2.19.4
         with: { egress-policy: audit }
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
       - uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25  # v0.36.0 (post-2026-03 incident recovery)
         with:
           scan-type: fs
@@ -75,7 +75,7 @@ jobs:
       matrix:
         language: [javascript-typescript]
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
       - uses: github/codeql-action/init@v4
         with:
           languages: ${{ matrix.language }}
@@ -89,7 +89,7 @@ jobs:
   license-scan:
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
       - uses: pnpm/action-setup@v4
         with: { version: 11.0.8 }
       - uses: actions/setup-node@v5
