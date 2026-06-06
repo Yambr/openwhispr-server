@@ -47,5 +47,5 @@ services:
       # path is what fires (rule=link_local_v4), not the allow-list
       # gate (rule=host_not_allowed).  Other entries mirror the
       # .env.example default so the rest of the stack stays functional.
-      OUTBOUND_ALLOWED_HOSTS: "openrouter.ai,api.tavily.com,search-api.aistudio.yandex.ru,api.pyannote.ai,litellm,speaches,mailpit,169.254.169.254"
+      OUTBOUND_ALLOWED_HOSTS: "openrouter.ai,api.tavily.com,search-api.aistudio.yandex.ru,litellm,speaches,mailpit,169.254.169.254"
       OUTBOUND_SSRF_MODE: enforce

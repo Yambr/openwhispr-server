@@ -2,8 +2,8 @@
 // Phase 03 / Plan 04 / Task 2 — buildAllRoutes registry tests.
 //
 // Verifies the conditional registration semantics for the litellm-backed
-// routes (transcribe in Plan 04, reason/diarization/realtime arriving in
-// Plans 05/06/07). When `deps.litellm` is omitted, the transcribe route
+// routes (transcribe in Plan 04, reason/realtime arriving in
+// Plans 05/07). When `deps.litellm` is omitted, the transcribe route
 // is NOT registered — operators get a canonical 404 envelope on
 // /api/transcribe via the centralized notFoundHandler. When `deps.litellm`
 // is present, the transcribe route appears in the plugin array.

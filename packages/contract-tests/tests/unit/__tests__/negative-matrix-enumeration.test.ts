@@ -136,7 +136,7 @@ describe.skipIf(!REACHABLE)(
 
       // Filter runtime routes to the surfaces under test. We assert on
       // both `/api/*` (the public wire surface) AND `/v1/*` (LiteLLM
-      // pass-through realtime + diarization, registered conditionally).
+      // pass-through realtime, registered conditionally).
       const surfaceRoutes = [...routes].filter(
         (p) => p.startsWith("/api/") || p.startsWith("/v1/"),
       );

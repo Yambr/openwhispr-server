@@ -3,7 +3,7 @@
 //
 // Asserts the api process resolves a single source of truth for
 // LITELLM_BASE_URL — the value used by /api/transcribe + /api/reason +
-// /v1/audio/diarization + /v1/realtime is the SAME value the operator
+// /v1/realtime is the SAME value the operator
 // supplies in the env. Concretely: the api exposes a test-only
 // introspection route `GET /api/_test/litellm-baseurl` (gated by
 // OPENWHISPR_TEST_ROUTES, registered only when the LiteLLM client was
@@ -13,8 +13,8 @@
 //
 // Why this proves PROVIDER-01:
 //   * The api constructs ONE LitellmClient via `loadLitellmConfigFromEnv()`
-//     and threads it into transcribe/reason/diarization/realtime route
-//     factories (apps/api/src/routes/index.ts). All four routes call
+//     and threads it into transcribe/reason/realtime route
+//     factories (apps/api/src/routes/index.ts). All routes call
 //     `client.audioTranscriptions(...)` / `client.chatCompletions(...)` /
 //     etc. — each method derives its URL from the same `config.baseUrl`
 //     captured at construction time.

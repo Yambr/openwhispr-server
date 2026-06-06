@@ -12,8 +12,6 @@
 //     a small enum surface. The handler echoes the values back into
 //     the response verbatim, so a client can poison documented wire
 //     fields.
-//   * diarization.ts — `.passthrough()` accepts arbitrary keys AND
-//     `start/end` accept NaN / Infinity / negative numbers.
 //   * delete-account.ts — `z.object({}).passthrough()` accepts literally
 //     any object, defeating the purpose of having a wire schema.
 //   * check-user.ts + verification-status.ts — email lacks `.max()` on
@@ -23,7 +21,6 @@
 import { describe, expect, it } from "vitest";
 import { CheckUserRequest } from "../../../src/check-user.js";
 import { DeleteAccountResponse } from "../../../src/delete-account.js";
-import { DiarizationResponse } from "../../../src/diarization.js";
 import { ReasonRequest } from "../../../src/reason.js";
 import { VerificationStatusQuery } from "../../../src/verification-status.js";
 
@@ -62,36 +59,6 @@ describe("Plan 51-07 — wire-schemas hardening", () => {
 
     it("R23 — tolerates a stray `matchType` (removed from request schema, .passthrough())", () => {
       const r = ReasonRequest.safeParse({ text: "ok", matchType: "junk" });
-      expect(r.success).toBe(true);
-    });
-  });
-
-  describe("diarization.ts", () => {
-    it("rejects NaN start/end", () => {
-      const r = DiarizationResponse.safeParse({
-        segments: [{ start: Number.NaN, end: 1, speaker: "S1" }],
-      });
-      expect(r.success).toBe(false);
-    });
-
-    it("rejects Infinity start/end", () => {
-      const r = DiarizationResponse.safeParse({
-        segments: [{ start: 0, end: Number.POSITIVE_INFINITY, speaker: "S1" }],
-      });
-      expect(r.success).toBe(false);
-    });
-
-    it("rejects negative start", () => {
-      const r = DiarizationResponse.safeParse({
-        segments: [{ start: -1, end: 1, speaker: "S1" }],
-      });
-      expect(r.success).toBe(false);
-    });
-
-    it("accepts well-formed segments", () => {
-      const r = DiarizationResponse.safeParse({
-        segments: [{ start: 0, end: 1.5, speaker: "S1" }],
-      });
       expect(r.success).toBe(true);
     });
   });

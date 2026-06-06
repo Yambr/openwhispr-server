@@ -10,8 +10,8 @@
 //
 // The production refuse path closes the silent-route-drop hole: when
 // LITELLM_MASTER_KEY is unset, loadLitellmConfigFromEnv() throws,
-// apps/api/src/index.ts catches and silently skips the 4 LiteLLM-backed
-// routes (transcribe, reason, diarization, realtime). /api/health
+// apps/api/src/index.ts catches and silently skips the LiteLLM-backed
+// routes (transcribe, reason, realtime). /api/health
 // still returns ok=true — the breakage is invisible.
 
 import { describe, expect, it, vi } from "vitest";

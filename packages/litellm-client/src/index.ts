@@ -12,9 +12,9 @@
 //      so OBS-04 can correlate LiteLLM_SpendLogs rows back to our
 //      structured log lines.
 //
-// All three Phase 3 hot routes (transcribe / reason / diarization) plus
-// the realtime token mint consume this client; corporate operators flip
-// LITELLM_BASE_URL to their internal proxy and every route follows.
+// The Phase 3 hot routes (transcribe / reason) plus the realtime token
+// mint consume this client; corporate operators flip LITELLM_BASE_URL to
+// their internal proxy and every route follows.
 //
 // Threat T-03-03-03 (provider-key absence): when the client knows the
 // requested model maps to a bundled-default provider whose key is unset,

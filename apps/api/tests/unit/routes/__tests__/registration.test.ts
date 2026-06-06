@@ -124,26 +124,6 @@ describe("buildAllRoutes — Phase 04 registration of agent/stream + 3 token rou
     expect(tree).toContain("/api/auth/desktop-callback");
   });
 
-  it("Test 7 (branch coverage) — diarization mockMode flips on MOCK_DIARIZATION env even when mockDiarization opt is undefined", async () => {
-    const fakeRedis = {
-      get: async () => null,
-      set: async () => "OK",
-    } as unknown as AllRoutesDeps["redis"];
-    const prev = process.env.MOCK_DIARIZATION;
-    process.env.MOCK_DIARIZATION = "true";
-    try {
-      const tree = await buildRouteTree({
-        db: fakeDb(),
-        auth: fakeAuth(),
-        redis: fakeRedis,
-      });
-      expect(tree).toContain("/v1/audio/diarization");
-    } finally {
-      if (prev === undefined) delete process.env.MOCK_DIARIZATION;
-      else process.env.MOCK_DIARIZATION = prev;
-    }
-  });
-
   it("Test 8 (branch coverage) — test-only routes register when OPENWHISPR_TEST_ROUTES env is true", async () => {
     // Phase 57 / Track C — api-routes-rest:CR-02 + CR-03. The
     // OPENWHISPR_TEST_ROUTES opt-in is honored ONLY when NODE_ENV is not
@@ -168,20 +148,6 @@ describe("buildAllRoutes — Phase 04 registration of agent/stream + 3 token rou
       if (prevOw === undefined) delete process.env.OPENWHISPR_TEST_ROUTES;
       else process.env.OPENWHISPR_TEST_ROUTES = prevOw;
     }
-  });
-
-  it("Test 5 (branch coverage) — diarization route registers when deps.redis is provided", async () => {
-    const fakeRedis = {
-      get: async () => null,
-      set: async () => "OK",
-    } as unknown as AllRoutesDeps["redis"];
-    const tree = await buildRouteTree({
-      db: fakeDb(),
-      auth: fakeAuth(),
-      redis: fakeRedis,
-      mockDiarization: true,
-    });
-    expect(tree).toContain("/v1/audio/diarization");
   });
 
   it("Test 4 — existing /v1/realtime route is still registered when litellm + masterKey are wired (Phase 3 regression guard)", async () => {

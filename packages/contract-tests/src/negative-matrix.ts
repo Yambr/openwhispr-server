@@ -134,8 +134,6 @@ export const PHASE_2_4_BASELINE_ROUTES: readonly string[] = [
   "/api/agent/stream",
   // Phase 3 realtime WSS reverse-proxy (registered when masterKey present)
   "/v1/realtime",
-  // Phase 3 diarization (registered when redis client present)
-  "/v1/audio/diarization",
   // Test-only diagnostic seam (gated on OPENWHISPR_TEST_ROUTES=true)
   "/api/_test/force-rotate",
   "/api/_test/health-authed",

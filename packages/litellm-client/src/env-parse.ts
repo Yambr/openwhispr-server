@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 // AUDIT-LIB-01 (LIB-1) — single shared positive-number env parser.
 //
-// Before this module, five copies of the same logic existed under four
-// names: `readPositiveInt` (apps/api config/diarization.ts +
-// config/web-search.ts), `numericEnv` (config/realtime.ts),
-// `parsePositiveIntEnv` (this package's config.ts) and an inline
-// `parseTimeoutEnv` (apps/api index.ts). They drifted on two axes:
+// Before this module, several copies of the same logic existed under four
+// names: `readPositiveInt` (apps/api config/web-search.ts), `numericEnv`
+// (config/realtime.ts), `parsePositiveIntEnv` (this package's config.ts)
+// and an inline `parseTimeoutEnv` (apps/api index.ts). They drifted on two
+// axes:
 // integer-only vs. any-positive-finite, and return-fallback vs.
 // return-undefined-and-warn.
 //
