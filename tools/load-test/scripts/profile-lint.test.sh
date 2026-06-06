@@ -288,8 +288,7 @@ fi
 # canonical PRELOAD_MODELS env (08.5-RESEARCH §G3 / §P1). Assertion shifts.
 preload=$(yq_py "$REAL_OUT" "services.speaches.environment.PRELOAD_MODELS")
 if [ "$preload" != "__MISSING__" ] \
-  && echo "$preload" | grep -q "Systran/faster-whisper-large-v3" \
-  && echo "$preload" | grep -q "pyannote/speaker-diarization-community-1"; then
+  && echo "$preload" | grep -q "Systran/faster-whisper-large-v3"; then
   pass "speaches.PRELOAD_MODELS=$preload"
 else
   fail "speaches.PRELOAD_MODELS missing or incomplete (got: $preload)"

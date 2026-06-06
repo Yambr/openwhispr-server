@@ -5,15 +5,6 @@
 #   - STT (D-11): Groq Whisper-large-v3 (https://api.groq.com/openai/v1).
 #   - Realtime (D-12): OpenAI Realtime API direct (mode: realtime).
 #
-# Diarization (pyannote.ai) is NOT configured here per D-07 REVISED (2026-05-10).
-# The Fastify route apps/api/src/routes/diarization.ts orchestrates pyannote.ai's
-# 4-step async API (media/input → presigned PUT → diarize → poll jobs/{jobId})
-# because LiteLLM pass_through_endpoints is single-hop and cannot drive it.
-# Corporate operators with a single-hop pyannote-compatible endpoint behind their
-# own LiteLLM may add pass_through_endpoints in their override config and route
-# traffic via LITELLM_BASE_URL — but bundled mode does NOT use LiteLLM for
-# diarization. (HIGH-2 spike RESOLVED — Option A locked.)
-#
 # Corporate operators OVERRIDE this entire surface by setting LITELLM_BASE_URL
 # to point at their internal LiteLLM (LITELLM-05). The bundled container is
 # only used when LITELLM_BASE_URL=http://litellm:4000 (the default).

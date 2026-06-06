@@ -11,9 +11,9 @@
 
 ## What This Solves
 
-The OpenWhispr Server contract suite verifies wire-shape conformance against `BACKEND_SPEC.md` for `/api/transcribe`, `/api/reason`, `/v1/audio/diarization`, and `WSS /v1/realtime`. CI (and operator dev laptops) need to exercise the real network path through `Traefik → api → litellm` without:
+The OpenWhispr Server contract suite verifies wire-shape conformance against `BACKEND_SPEC.md` for `/api/transcribe`, `/api/reason`, and `WSS /v1/realtime`. CI (and operator dev laptops) need to exercise the real network path through `Traefik → api → litellm` without:
 
-- Burning real OpenAI / OpenRouter / Groq / pyannote.ai quota on every PR.
+- Burning real OpenAI / OpenRouter / Groq quota on every PR.
 - Requiring operator-supplied API keys to clone-and-test the repo.
 - Adding fragile network dependencies that flake when an upstream provider has a bad day.
 
@@ -65,20 +65,6 @@ model_list:
 
 ---
 
-## Diarization Mock
-
-Diarization bypasses LiteLLM entirely per **D-07 REVISED** (see `docs/litellm-target-spec.md` "Diarization (Sync-Wrapper Pattern)"). There is therefore no LiteLLM `mock_response` for diarization; the route never reaches the LiteLLM container.
-
-Instead, the Fastify route (`apps/api/src/routes/diarization.ts`) honors a `MOCK_DIARIZATION=true` env flag (Plan 06) and short-circuits to a fixture response before constructing any pyannote client. This means:
-
-- **No `PYANNOTE_API_KEY` is needed** in the contract-test profile.
-- **No outbound calls to pyannote.ai** — CI never reaches the provider.
-- The fixture response shape matches the production `200` body byte-for-byte (`{duration, segments[]}`), so the contract test exercises the same Zod parser the desktop client implicitly relies on.
-
-The contract-test profile sets `MOCK_DIARIZATION=true` on the api service. Production deployments must NOT set this; the bootstrap deny-list refuses to start when the flag is enabled in a non-test profile (T-03-06-06 mitigation).
-
----
-
 ## ⚠️ Operator Warning — Do Not Leak `LITELLM_CONFIG_FILE` Into a Live Deploy
 
 `LITELLM_CONFIG_FILE` selects which config the `litellm` service mounts. **It must be unset (or `litellm_config.yaml`) for any live / slim-core deployment.** When it is left set to `litellm_config.contract.yaml`, the proxy comes up in hermetic mock mode and behaves asymmetrically:
@@ -123,12 +109,11 @@ docker compose --profile default --profile contract-test down -v
 | Symptom                                                                                | Likely cause                                                                            | Fix                                                                                                            |
 | -------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------- |
 | `mock_response` payload appears unparsed in test assertions                            | Test reads `text` field from non-mock-aware code path                                   | Check that the model alias under test maps to a `litellm_config.contract.yaml` entry with `mock_response`      |
-| Diarization tests fail with `PyannoteUnavailableError`                                 | `MOCK_DIARIZATION` env not propagated to the api service in your local override         | Confirm `docker compose --profile contract-test config` shows `MOCK_DIARIZATION=true` in the api environment   |
 | Realtime test times out at upgrade                                                     | LiteLLM container is starting; readiness probe not green yet                            | Re-run after `docker compose ps` shows `litellm` healthy                                                       |
 | Container restart loop on `litellm`                                                    | `LITELLM_CONFIG_FILE` not honored — check the volume mount expression in compose        | Verify Plan 01's `./compose/litellm/${LITELLM_CONFIG_FILE:-litellm_config.yaml}:...` is present                |
 | `/api/transcribe` → 502 on a live stack while `/api/reason` returns 200                | `LITELLM_CONFIG_FILE` leaked from a `make contract-test` run — `litellm` is on the mock config; audio passthrough does not honor `mock_response` | `unset LITELLM_CONFIG_FILE && docker compose up -d --force-recreate litellm`; confirm `grep -c mock_response /etc/litellm/config.yaml` → `0` |
 
-For real-API exercise (operator-paid quota), use `make e2e-test` after creating `.env.e2e` with `OPENROUTER_API_KEY`, `GROQ_API_KEY`, `OPENAI_API_KEY`, and `PYANNOTE_API_KEY`. See `Makefile` for the target.
+For real-API exercise (operator-paid quota), use `make e2e-test` after creating `.env.e2e` with `OPENROUTER_API_KEY`, `GROQ_API_KEY`, and `OPENAI_API_KEY`. See `Makefile` for the target.
 
 ---
 

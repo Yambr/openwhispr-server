@@ -312,7 +312,7 @@ A process-wide undici Dispatcher with an SSRF interceptor sits at
 `apps/api/src/lib/ssrf-dispatcher.ts`. `setGlobalDispatcher(...)` is
 called in `apps/api/src/bootstrap.ts` before any route registers,
 so every transitive `fetch()` is gated -- Better Auth OIDC redirects,
-LiteLLM, Tavily, Yandex, pyannote, future user-URL-fetching features.
+LiteLLM, Tavily, Yandex, future user-URL-fetching features.
 
 The flow per outbound request:
 
@@ -332,7 +332,7 @@ AWS-ready posture.
 Env knobs:
 
 ```bash
-OUTBOUND_ALLOWED_HOSTS=openrouter.ai,api.tavily.com,api.pyannote.ai,litellm,*.amazonaws.com
+OUTBOUND_ALLOWED_HOSTS=openrouter.ai,api.tavily.com,litellm,*.amazonaws.com
 OUTBOUND_PRIVATE_HOST_ALLOWLIST=litellm,speaches,mailpit,valkey,postgres,pgbouncer
 OUTBOUND_ALLOW_LOOPBACK=0
 OUTBOUND_SSRF_MODE=enforce   # enforce | warn

@@ -42,7 +42,7 @@ If the phase ships and the scenario does NOT flip, that is a regression — open
 |---|---|---|---|---|
 | G1 | LiteLLM virtual-key rotation | `POST /api/admin/tenants/:id/keys/rotate` | `features/byok-key-rotation.feature` | `@cjm-byok-rotation.1` |
 | G2 | Per-tenant STT/LLM override via settings | `PUT /api/settings/{stt,llm}` | `features/tenant-settings-override.feature` | `@cjm-9.*` |
-| G3 | Diarization round-trip | `POST /v1/audio/diarization` | `features/diarization.feature` | `@cjm-10.*` |
+| G3 | Diarization round-trip | REMOVED — server-side diarization removed (Quick 260606-g90); diarization is client-local (sherpa-onnx). No server wire surface. | — | — |
 | G4 | Realtime streaming user journey | `WSS /v1/realtime` | `features/realtime-stream.feature` | `@cjm-11.*` |
 | G5 | Agent stream NDJSON wire shape | `POST /api/agent/stream` | `features/agent-stream.feature` | `@cjm-12.*` |
 | G6 | Web-search (Tavily/Yandex via mock) | `POST /api/agent/web-search` | `features/web-search.feature` | `@cjm-13.*` |

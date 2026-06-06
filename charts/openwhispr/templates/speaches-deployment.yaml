@@ -1,7 +1,6 @@
 {{/*
 Speaches Deployment + Service + PVC — Phase 11 / Plan 11-03b
-(Variant C — local Speaches for self-contained transcription +
-diarization).
+(Variant C — local Speaches for self-contained transcription).
 
 Renders ONLY when `bundledAi.enabled=true` (Variant C). The default
 Variant A (embedded LiteLLM + hosted Whisper) leaves bundledAi.enabled
@@ -69,7 +68,7 @@ spec:
               protocol: TCP
           env:
             - name: PRELOAD_MODELS
-              value: '["Systran/faster-whisper-large-v3","pyannote/speaker-diarization-community-1"]'
+              value: '["Systran/faster-whisper-large-v3"]'
             - name: ENABLE_UI
               value: "false"
             # HF_TOKEN is delivered via envFrom from the shared secret

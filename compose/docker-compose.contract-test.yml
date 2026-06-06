@@ -102,7 +102,6 @@ services:
       # Default-empty so the runner still boots when the host hasn't
       # exported them.
       RUN_E2E: ${RUN_E2E:-}
-      MOCK_DIARIZATION: ${MOCK_DIARIZATION:-}
       OPENWHISPR_TEST_ROUTES: ${OPENWHISPR_TEST_ROUTES:-}
       MISSING_KEY_TEST_MODE: ${MISSING_KEY_TEST_MODE:-}
     volumes:

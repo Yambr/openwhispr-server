@@ -72,8 +72,7 @@ jobs:
   # Runs `make e2e-test` which boots the full docker-compose stack with the
   # production litellm_config.yaml (NOT the mock contract-test config) and
   # hits real Groq STT (D-11) + OpenRouter chat (reason) + OpenAI Realtime
-  # (D-12) + pyannote.ai diarization (D-07 sync-wrapper) endpoints with
-  # the operator-supplied keys.
+  # (D-12) endpoints with the operator-supplied keys.
   #
   # CRITICAL — `secrets` context is NOT available in job-level `if:`
   # conditions (CRIT-1). Using `if: ${{ secrets.X != '' }}` at the job
@@ -132,18 +131,14 @@ jobs:
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
           GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-          PYANNOTE_API_KEY: ${{ secrets.PYANNOTE_API_KEY }}
         run: |
           : > .env.e2e
           printf 'OPENROUTER_API_KEY=%s\n' "$OPENROUTER_API_KEY" >> .env.e2e
           printf 'GROQ_API_KEY=%s\n' "$GROQ_API_KEY" >> .env.e2e
           # OPENAI_API_KEY powers Realtime E2E (D-12). When absent, the
           # realtime contract test skips at runtime; non-realtime E2E
-          # paths still execute. PYANNOTE_API_KEY is required by the
-          # diarization sync-wrapper (D-07 REVISED) — make e2e-test
-          # refuses to run without it (Plan 09 Makefile guard).
+          # paths still execute.
           printf 'OPENAI_API_KEY=%s\n' "$OPENAI_API_KEY" >> .env.e2e
-          printf 'PYANNOTE_API_KEY=%s\n' "$PYANNOTE_API_KEY" >> .env.e2e
       - name: Run E2E
         if: steps.gate.outputs.have_keys == 'true'
         run: make e2e-test
@@ -259,8 +254,8 @@ jobs:
   #
   # PR-gate runs the 3 fastest tests via ci.yml's `e2e-phase6-quick`
   # job; this nightly runs all 8. Hermetic — no real provider keys
-  # needed; LITELLM_CONFIG_FILE=litellm_config.contract.yaml +
-  # MOCK_DIARIZATION=true keeps the stack self-contained.
+  # needed; LITELLM_CONFIG_FILE=litellm_config.contract.yaml keeps the
+  # stack self-contained.
   #
   # Mirrors nightly-realtime-soak.yml structure for compose lifecycle
   # + log-on-failure artifact upload. NOT in branch-protection

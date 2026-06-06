@@ -21,7 +21,7 @@
 #   * Postgres max_connections=500 + load-test.conf overlay
 #   * api/traefik ulimits.nofile soft=hard=65535 (D-TUNE-2)
 #   * Mimir host port 9009 publication so k6 prometheus-rw can reach it
-#   * Speaches CPU ASR/diarization (load-test-realistic only)
+#   * Speaches CPU ASR (load-test-realistic only)
 #
 # NOTE on profile gating: docker-compose profiles are additive across files.
 # Re-declaring an existing service WITHOUT a `profiles:` list inherits the
@@ -296,7 +296,7 @@ services:
       # Mirrors the value documented in .env.example for normal dev usage,
       # but pinned in-compose so the load-test profile is reproducible
       # regardless of operator .env content.
-      OUTBOUND_ALLOWED_HOSTS: "litellm,speaches,mailpit,openrouter.ai,api.tavily.com,search-api.aistudio.yandex.ru,api.pyannote.ai"
+      OUTBOUND_ALLOWED_HOSTS: "litellm,speaches,mailpit,openrouter.ai,api.tavily.com,search-api.aistudio.yandex.ru"
       # Plan 08.1-01 Task 5 — bypass the rfc1918/loopback IP block-list
       # for internal compose-DNS hostnames. Without this, the api's SSRF
       # dispatcher rejects every call to litellm/mock-litellm because
@@ -424,28 +424,21 @@ services:
           cpus: "2.0"
 
   # ---------------------------------------------------------------------
-  # speaches: CPU-mode ASR + diarization for load-test-realistic. CPU
-  # inference is slow (Whisper-large-v3 ~ 0.5 RTF on M-class CPU); the
-  # 180s start_period buys time for model weights to be downloaded and
-  # warmed at first boot. Pinned to a Speaches release that ships a
-  # CPU-only image — the master-cuda-12.6.3 tag is GPU-only and will not
-  # start on Docker Desktop without nvidia-container-runtime.
+  # speaches: CPU-mode ASR for load-test-realistic. CPU inference is slow
+  # (Whisper-large-v3 ~ 0.5 RTF on M-class CPU); the 180s start_period
+  # buys time for model weights to be downloaded and warmed at first boot.
+  # Pinned to a Speaches release that ships a CPU-only image — the
+  # master-cuda-12.6.3 tag is GPU-only and will not start on Docker
+  # Desktop without nvidia-container-runtime.
   #
   # WHISPER_MODEL is the canonical Systran/faster-whisper-large-v3 from
-  # the Speaches default catalog. pyannote diarization runs in-process;
-  # operators set HF_TOKEN in .env to authorise the pyannote-3.1 model
-  # download (gated weights). Without HF_TOKEN, the realistic profile
-  # still boots but diarization endpoints surface a 503 envelope.
+  # the Speaches default catalog. Operators set HF_TOKEN in .env to
+  # authorise any gated model weight download.
   # ---------------------------------------------------------------------
   speaches:
-    # Phase 08.6-01: build from upstream master branch instead of the
-    # `latest-cpu` tag (v0.8.2) because the released tag does NOT expose
-    # /v1/audio/diarization (verified empirically against /openapi.json —
-    # only /v1/audio/{transcriptions,translations,speech,voices,models}
-    # are present). The diarization router (src/speaches/routers/diarization.py)
-    # lives on master and ships POST /v1/audio/diarization returning the
-    # synchronous {duration, segments[]} shape that matches our internal
-    # DiarizationResponse contract.
+    # Phase 08.6-01: build from upstream master branch (the `latest-cpu`
+    # tag v0.8.2 lags master for some routers). The CPU build is selected
+    # via BASE_IMAGE below.
     #
     # Canonical CPU build mechanism (per upstream compose.cpu.yaml): the
     # single Dockerfile accepts BASE_IMAGE as a build-arg. Defaulting to
@@ -454,8 +447,8 @@ services:
     #
     # First build is ~10 min (uv sync + Python deps + ~2 GB image). The
     # named volume speaches_models caches HF weights across boots; first
-    # boot also fetches ~3 GB of pyannote + whisper weights, hence the
-    # generous start_period below.
+    # boot also fetches the whisper weights, hence the generous
+    # start_period below.
     build:
       context: https://github.com/speaches-ai/speaches.git#master
       dockerfile: Dockerfile
@@ -476,7 +469,7 @@ services:
       # Phase 08.6-01: Speaches master uses pydantic-settings list parsing
       # for PRELOAD_MODELS — comma-separated strings throw SettingsError.
       # The canonical format is a JSON array.
-      PRELOAD_MODELS: '["Systran/faster-whisper-large-v3","pyannote/speaker-diarization-community-1"]'
+      PRELOAD_MODELS: '["Systran/faster-whisper-large-v3"]'
       HF_TOKEN: ${HF_TOKEN:-}
       ENABLE_UI: "false"
     healthcheck:
@@ -487,7 +480,7 @@ services:
       timeout: 5s
       retries: 5
       # Phase 08.5-01 Task 2: 600s start buffer for the first-ever boot
-      # (~3 GB HF model download — Whisper-large-v3 + pyannote weights).
+      # (HF model download — Whisper-large-v3 weights).
       # Subsequent boots find the weights cached in the named volume
       # and report healthy within the normal interval (08.5-RESEARCH §P8).
       # Phase 08.6-01: bumped to 1200s — building speaches from master

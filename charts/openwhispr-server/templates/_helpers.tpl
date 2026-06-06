@@ -79,7 +79,7 @@ ServiceAccount name.
 
 {{/*
 Operator-supplied Secret name carrying the chart-owned env keys
-(BETTER_AUTH_SECRET, MASTER_KEK, PYANNOTE_API_KEY, TAVILY_API_KEY,
+(BETTER_AUTH_SECRET, MASTER_KEK, TAVILY_API_KEY,
 YANDEX_SEARCH_API_KEY, YANDEX_FOLDER_ID). When `secrets.secretName` is
 empty the default is `<fullname>-secrets`. Consumed by api/web/worker
 Deployments via envFrom.

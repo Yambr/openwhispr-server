@@ -1,12 +1,12 @@
 # Variant C — local Speaches chart overlay (Plan 11-03).
 #
-# GPU-equipped operators wanting fully self-contained transcription +
-# diarization run this overlay on top of the chart defaults. It:
+# GPU-equipped operators wanting fully self-contained transcription
+# run this overlay on top of the chart defaults. It:
 #   - flips bundledAi.enabled=true so the chart renders the Speaches
 #     workload (Deployment + Service + PVC) in addition to the embedded
 #     LiteLLM
 #   - sets bundledAi.requireHfToken=true so the boot gate refuses to
-#     start without HF_TOKEN (gated pyannote weights)
+#     start without HF_TOKEN (gated model weights)
 #   - swaps the embedded LiteLLM model alias for whisper-large-v3 to
 #     point at the in-cluster Speaches Service instead of routing out
 #     to a hosted provider
@@ -32,12 +32,9 @@ litellm:
 # Variant C-defining toggle — bundled AI (Speaches) ON.
 bundledAi:
   enabled: true
-  # HF_TOKEN is gated weight-download credential for the pyannote
-  # diarization model. Without it, the diarization endpoint surfaces 503;
-  # transcription still works (Whisper weights are ungated). Operators
-  # who only need transcription can set this to false AND drop HF_TOKEN
-  # from .env / ESO, BUT must also disable the diarization route at the
-  # api layer (see docs/operations.md §Variant C).
+  # HF_TOKEN is the gated weight-download credential for Speaches model
+  # weights. Operators whose preloaded models are all ungated can set
+  # this to false AND drop HF_TOKEN from .env / ESO.
   requireHfToken: true
   speaches:
     # GPU operators override: image: speaches/speaches:master-cuda-12.6.3

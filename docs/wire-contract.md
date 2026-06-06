@@ -35,7 +35,6 @@ surface, see `packages/contract-tests/src/negative-matrix.test.ts`
 | -------------------------------- | ------ | ------ | ----- |
 | `/api/transcribe`                | POST   | bearer | multipart audio → Whisper via LiteLLM |
 | `/api/reason`                    | POST   | bearer | LLM completion; shape-keyed prompt + model routing (R33) |
-| `/v1/audio/diarization`          | POST   | bearer | pyannote pass-through; idempotency cache |
 | `/v1/realtime`                   | WSS    | bearer | OpenAI Realtime / Speaches reverse-proxy |
 
 #### `/api/reason` — prompt selection + model routing (R33)

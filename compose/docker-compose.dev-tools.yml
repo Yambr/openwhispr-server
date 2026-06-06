@@ -36,7 +36,7 @@ services:
       # rate limit posture is unchanged.
       OPENWHISPR_DISABLE_RATE_LIMIT: "1"
       # Phase 53 / BUG-53-41 — without LITELLM_MASTER_KEY the api boot
-      # path silently drops 4 routes (transcribe, reason, diarization,
+      # path silently drops the LiteLLM routes (transcribe, reason,
       # realtime) because loadLitellmConfigFromEnv() throws and the
       # catch arm registers nothing. The dev-tools overlay seeds a
       # well-known dev value so OOB `docker compose up` boots with

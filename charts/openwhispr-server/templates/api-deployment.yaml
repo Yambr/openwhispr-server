@@ -3,7 +3,7 @@ api Deployment — Fastify HTTP server on port 3000.
 
 Env wiring (MVP; peer-approved):
   - envFrom: <secretsName> (chart-owned operator Secret —
-        BETTER_AUTH_SECRET, MASTER_KEK, PYANNOTE_API_KEY,
+        BETTER_AUTH_SECRET, MASTER_KEK,
         TAVILY_API_KEY, YANDEX_SEARCH_API_KEY, YANDEX_FOLDER_ID)
   - envFrom: <configName> (NODE_ENV, LOG_LEVEL, anything in .Values.env)
   - envFrom: .Values.s3.envFromSecret (S3_*)

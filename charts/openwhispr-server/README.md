@@ -89,7 +89,6 @@ and wired through values; the table below shows the
 | ------------------------- | ------------------------------------------------- |
 | `BETTER_AUTH_SECRET`      | Better Auth session-cookie signing                |
 | `MASTER_KEK`              | Envelope-encryption KEK for at-rest credentials   |
-| `PYANNOTE_API_KEY`        | pyannote diarization (optional; soft-degrades)    |
 | `TAVILY_API_KEY`          | Tavily web-search provider (optional)             |
 | `YANDEX_SEARCH_API_KEY`   | Yandex Search provider (optional)                 |
 | `YANDEX_FOLDER_ID`        | Yandex Cloud folder ID (optional)                 |
@@ -100,7 +99,6 @@ Create:
 kubectl create secret generic openwhispr-server-secrets \
   --from-literal=BETTER_AUTH_SECRET="$(openssl rand -hex 32)" \
   --from-literal=MASTER_KEK="$(openssl rand -base64 32)" \
-  --from-literal=PYANNOTE_API_KEY=... \
   --from-literal=TAVILY_API_KEY=...
 ```
 

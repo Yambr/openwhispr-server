@@ -132,12 +132,11 @@ if command -v docker >/dev/null 2>&1; then
     _fail "realistic overlay missing litellm_config.realistic.yaml mount"
   fi
 
-  # T9: Speaches PRELOAD_MODELS env contains both expected model ids.
-  if grep -E "PRELOAD_MODELS.*Systran/faster-whisper-large-v3" "$RENDER_LOG" >/dev/null 2>&1 \
-    && grep -E "PRELOAD_MODELS.*pyannote/speaker-diarization-community-1" "$RENDER_LOG" >/dev/null 2>&1; then
-    _pass "speaches.PRELOAD_MODELS includes whisper + pyannote ids"
+  # T9: Speaches PRELOAD_MODELS env contains the expected model id.
+  if grep -E "PRELOAD_MODELS.*Systran/faster-whisper-large-v3" "$RENDER_LOG" >/dev/null 2>&1; then
+    _pass "speaches.PRELOAD_MODELS includes whisper id"
   else
-    _fail "speaches.PRELOAD_MODELS missing one or both model ids"
+    _fail "speaches.PRELOAD_MODELS missing the whisper model id"
   fi
 
   # T10: Speaches HF cache mount targets /home/ubuntu/.cache/huggingface

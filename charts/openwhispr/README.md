@@ -44,7 +44,6 @@ The 8 required keys:
 | `litellmMasterKey`         | `LITELLM_MASTER_KEY`      |
 | `openrouterApiKey`         | `OPENROUTER_API_KEY`      |
 | `openaiApiKey`             | `OPENAI_API_KEY`          |
-| `pyannoteApiKey`           | `PYANNOTE_API_KEY`        |
 | `hfToken`                  | `HF_TOKEN`                |
 | `postgresOwnerPassword`    | `POSTGRES_OWNER_PASSWORD` |
 | `pgbouncerAdminPassword`   | `PGBOUNCER_ADMIN_PASSWORD`|
@@ -62,7 +61,6 @@ helm install ow charts/openwhispr \
   --set-string secrets.litellmMasterKey=$(openssl rand -base64 32) \
   --set-string secrets.openrouterApiKey=sk-or-... \
   --set-string secrets.openaiApiKey=sk-... \
-  --set-string secrets.pyannoteApiKey=pyn-... \
   --set-string secrets.hfToken=hf_... \
   --set-string secrets.postgresOwnerPassword=$(openssl rand -base64 32) \
   --set-string secrets.pgbouncerAdminPassword=$(openssl rand -base64 32) \

@@ -7,7 +7,7 @@ All shapes below are quoted from the upstream spec. Citations of the form
 `BACKEND_SPEC.md:L<line>` point at the exact range that was extracted.
 
 > **Contract rule (D-09):** every endpoint plan in Phase 03 (Plans 03 — `/api/transcribe`,
-> 04 — `/api/reason`, 05 — agent stream / token-mint, 06 — diarization, 07 — realtime WSS)
+> 04 — `/api/reason`, 05 — agent stream / token-mint, 07 — realtime WSS)
 > implements the schema defined in *this* document. If the upstream spec diverges from
 > what is recorded here, this document is updated FIRST and the dependent plans rebase.
 
@@ -182,54 +182,10 @@ their preferred default in their override LiteLLM config; no code change require
 
 ---
 
-## Diarization
-
-**Source:** the upstream `BACKEND_SPEC.md` does NOT enumerate a diarization endpoint
-in its Cloud Endpoints section. Diarization is documented only in passing
-(`BACKEND_SPEC.md:L801`):
-
-> Diarization-per-realtime-session — Phase 05 keeps diarization local (sherpa-onnx).
-> The backend's `/v1/audio/diarization` endpoint (Speaches+pyannote) is documented
-> in upstream Speaches docs but not yet wired into the desktop client.
-
-This text is verbatim from `BACKEND_SPEC.md:L801`. The desktop client therefore does
-not currently call any server-side diarization route; the surface exists for future
-desktop work and for non-desktop clients (web console, CLI) and for the Speaches
-companion deployment described in `speaches-audio.md`.
-
-```text
-Quoted source: BACKEND_SPEC.md:L800-L802 (paraphrased here, verbatim above):
-  "Out of scope for v1: Diarization-per-realtime-session ... The backend's
-  /v1/audio/diarization endpoint (Speaches+pyannote) is documented in upstream
-  Speaches docs but not yet wired into the desktop client."
-```
-
-### Decision: diarization mount
-
-**Resolution of D-09 open question (mount path):**
-
-- **Locked path:** `POST /v1/audio/diarization` (single canonical mount).
-- **Rationale:** Speaches' OpenAI-compatible namespace already publishes
-  `/v1/audio/diarization`; the upstream desktop spec references that exact path
-  (`BACKEND_SPEC.md:L801`). Mounting under `/v1/audio/...` keeps the surface
-  consistent with `/v1/audio/transcriptions` (Plan 03) and `/v1/realtime` (Plan 07),
-  and it matches what corporate-override LiteLLM proxies serve when an operator points
-  `LITELLM_BASE_URL` at their internal Speaches+pyannote stack.
-- **No `/api/diarization` alias is shipped in v1.** A second mount-point would force
-  every contract test, OIDC trusted-origin entry, and observability label to ship
-  twice with no caller benefit. If a future desktop release calls `/api/diarization`
-  the alias is added without breaking existing callers.
-
-**Implementation owner (D-07 REVISED, 2026-05-10):** `apps/api/src/routes/diarization.ts`
-(authored in Plan 06). The Fastify route orchestrates pyannote.ai's 4-step async API
-(presigned upload → diarize → poll). LiteLLM `pass_through_endpoints` is single-hop
-and cannot drive the flow, so `compose/litellm/litellm_config.yaml` deliberately
-omits a pyannote pass-through entry. Corporate operators with their own single-hop
-pyannote-compatible endpoint MAY add `pass_through_endpoints` in their override
-LiteLLM config and route via `LITELLM_BASE_URL`, but bundled mode does not.
-
-**Auth (Plan 06):** `Authorization: Bearer <token>` (cookie fallback) — symmetric
-with `/api/transcribe` and `/api/reason`.
+> **Server-side diarization removed (Quick 260606-g90):** diarization is
+> client-local (the desktop performs speaker splitting with sherpa-onnx). The
+> server no longer exposes any `/v1/audio/diarization` route. This doc previously
+> specified that surface; it has been removed to match the live wire contract.
 
 ---
 

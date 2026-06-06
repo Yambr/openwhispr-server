@@ -21,7 +21,6 @@ secrets:
   litellmMasterKey: "kind-dev-litellm-master-key"
   openrouterApiKey: "kind-dev-openrouter"
   openaiApiKey: "kind-dev-openai"
-  pyannoteApiKey: "kind-dev-pyannote"
   hfToken: "kind-dev-hf"
   postgresOwnerPassword: "kind-dev-postgres-owner"
   pgbouncerAdminPassword: "kind-dev-pgbouncer-admin"

@@ -893,8 +893,7 @@ Cross-references:
 ### `LITELLM_USER_HEADER_NAME` — end-user email attribution (upstream #4)
 
 > **OPT-IN.** When set, every LiteLLM gateway call (chat/agent, cleanup,
-> STT, embeddings, rerank, realtime, and diarization in its
-> Speaches/LiteLLM-passthrough mode) emits this HTTP header carrying the
+> STT, embeddings, rerank, realtime) emits this HTTP header carrying the
 > authenticated user's EMAIL, so an operator LiteLLM (or its spend
 > dashboard) can attribute usage by human-readable identity. Unset → no
 > email header is emitted (there is no default header name).
@@ -935,10 +934,7 @@ Cross-references:
 - Source: `packages/litellm-client/src/config.ts` (`userHeaderName`),
   `packages/litellm-client/src/index.ts` (`endUser` + `authHeaders`),
   `apps/api/src/routes/{reason,transcribe,embeddings,rerank,realtime}.ts`
-  call sites, and `apps/api/src/routes/diarization.ts`
-  (`handleSpeachesDiarization` — the Speaches/LiteLLM-passthrough branch
-  builds the same email header directly; the pyannote.ai branch has no
-  LiteLLM hop and is unaffected).
+  call sites.
 - Tests: `packages/litellm-client/tests/unit/auth-headers.test.ts` +
   `packages/litellm-client/tests/unit/config.test.ts`.
 
@@ -1058,7 +1054,7 @@ OpenWhispr ships TWO load-test profiles. Each has a distinct purpose:
 | Profile | LLM upstream | Purpose | Hardware ask |
 |---|---|---|---|
 | `mock` | `compose/mock-litellm` Fastify stub with simulated latency (1500 ms ± 400 transcribe, 300 ms ± 80 chat, ~200 ms ± 50 first stream token) | Measure the **gateway**: auth, DB, PgBouncer, Valkey, ingress, NDJSON / WSS frame plumbing in isolation. Numbers are architecture-bound. | Any dev box. 1000 VU × 30 min plateau passes on a Mac M-series with 32 GB allocated to Docker. |
-| `realistic` | Bundled Speaches (Whisper-large-v3 + pyannote) routed through LiteLLM per `docs/litellm-target-spec.md` — plus paid providers (OpenRouter / OpenAI Realtime) on a 10-call smoke gate | Prove the **wiring** is correct against real STT + chat + realtime upstreams. Numbers on a Mac are **advisory only** — Whisper CTranslate2 saturates CPU on Apple Silicon per `08-RESEARCH.md` §Pitfall 2. | Plateau requires H100-class GPU. Mac runs the boot + smoke + short baseline; the operator re-runs the plateau on GPU hardware to substitute production numbers. |
+| `realistic` | Bundled Speaches (Whisper-large-v3) routed through LiteLLM per `docs/litellm-target-spec.md` — plus paid providers (OpenRouter / OpenAI Realtime) on a 10-call smoke gate | Prove the **wiring** is correct against real STT + chat + realtime upstreams. Numbers on a Mac are **advisory only** — Whisper CTranslate2 saturates CPU on Apple Silicon per `08-RESEARCH.md` §Pitfall 2. | Plateau requires H100-class GPU. Mac runs the boot + smoke + short baseline; the operator re-runs the plateau on GPU hardware to substitute production numbers. |
 
 The mock profile is what an operator with a corporate LiteLLM target (per
 `docs/litellm-target-spec.md`) should use to size their gateway tier — the
@@ -1390,7 +1386,6 @@ Required keys (chart enforces ≥ 32 chars and rejects `CHANGE_ME` /
   - `secrets.litellmMasterKey`
   - `secrets.openrouterApiKey`
   - `secrets.openaiApiKey`
-  - `secrets.pyannoteApiKey`
   - `secrets.hfToken`
   - `secrets.postgresOwnerPassword`
   - `secrets.pgbouncerAdminPassword`

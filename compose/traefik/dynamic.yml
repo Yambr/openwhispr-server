@@ -80,19 +80,6 @@ http:
       priority: 100
       tls: {}
 
-    # Phase 08.6-04 — diarization endpoint mounts at /v1/audio/diarization
-    # (NOT under /api/*), per the wire contract (BACKEND_SPEC.md +
-    # docs/wire-contracts-phase-3.md). Without this router the request
-    # falls through to the `web@docker` router which returns 404. Bind
-    # to the standard websecure entrypoint on :443 — short-JSON traffic,
-    # no long-lived-tuned transport required.
-    api-audio:
-      rule: "Host(`api.localhost`) && PathPrefix(`/v1/audio`)"
-      service: api-svc
-      entryPoints: [websecure]
-      priority: 100
-      tls: {}
-
   services:
     api-svc:
       loadBalancer:

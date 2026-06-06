@@ -15,7 +15,7 @@
 #
 # What's NOT included: speaches, mock-litellm, fixture-idp, seed,
 # contract-test-runner. Variant C operators who need local Speaches with
-# gated pyannote weights run the separate Variant C overlay (Plan 11-03).
+# gated model weights run the separate Variant C overlay (Plan 11-03).
 #
 # HF_TOKEN is intentionally absent — Variant A never downloads gated
 # Hugging Face artifacts. See .env.embedded.example for the 12-key Variant A
@@ -458,12 +458,6 @@ services:
       OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
       GROQ_API_KEY: ${GROQ_API_KEY:-}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
-      # Phase 03 D-07 REVISED — PYANNOTE_API_KEY is consumed by the
-      # Fastify diarization route on the `api` service, NEVER forwarded
-      # into the litellm container. Threat T-03-01-06 mitigation: the
-      # absence of PYANNOTE_API_KEY here is intentional and verified by
-      # the plan's automated check (grep PYANNOTE on the litellm env
-      # block must return zero hits).
     command: ["--config", "/etc/litellm/config.yaml", "--port", "4000", "--num_workers", "2"]
     volumes:
       # Phase 03 e2e fix — LITELLM_CONFIG_FILE selects the active config:
@@ -584,23 +578,11 @@ services:
       # LITELLM_BASE_URL in .env to point at a corporate LiteLLM (LITELLM-05).
       LITELLM_BASE_URL: ${LITELLM_BASE_URL:-http://litellm:4000}
       LITELLM_MASTER_KEY: ${LITELLM_MASTER_KEY}
-      # Phase 03 D-07 REVISED — pyannote.ai key is consumed by the Fastify
-      # diarization route (apps/api/src/routes/diarization.ts in Plan 06),
-      # NOT by the LiteLLM sidecar. Forwarded only to the api container.
-      PYANNOTE_API_KEY: ${PYANNOTE_API_KEY:-}
-      # Phase 03 e2e back-fill — MOCK_DIARIZATION=true short-circuits the
-      # diarization route to a fixture response (apps/api/src/routes/diarization.ts:71).
-      # Forwarded from the host env so `make e2e-hermetic` (and any other
-      # caller that wants the mock-mode happy path without a real
-      # PYANNOTE_API_KEY) can opt in via export. Default is empty —
-      # production operators MUST NOT set this in their .env (mock mode
-      # returns canned segments regardless of audio content).
-      MOCK_DIARIZATION: ${MOCK_DIARIZATION:-}
-      # Phase 03 / CR-01 fix — Valkey URL for the diarization idempotency
-      # cache. buildApp() reads VALKEY_URL and constructs the redis client;
-      # if unset the /v1/audio/diarization route is intentionally NOT
-      # registered (operator-actionable 404). Wire to the bundled valkey
-      # service so default `docker compose up` boots with diarization on.
+      # Valkey URL — backs the rate-limit store, the /readyz dep-check
+      # probe, and the BullMQ email-delivery queue. buildApp() reads
+      # VALKEY_URL and constructs the redis client; when unset the /readyz
+      # dep-check reports "depCheck not wired". Wire to the bundled valkey
+      # service so default `docker compose up` boots with the probe on.
       VALKEY_URL: ${VALKEY_URL:-redis://:${VALKEY_PASSWORD}@valkey:6379/0}
       # Phase 6 / Plan 06-12c — OTel SDK exporter endpoint. The api's
       # otel-bootstrap.ts (Plan 06-03) constructs NodeSDK without an
