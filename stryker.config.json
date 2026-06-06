@@ -39,7 +39,6 @@
     "apps/api/tests/unit/routes/agent/stream.test.ts",
     "apps/api/tests/unit/routes/agent/web-search-envvar-label.test.ts",
     "apps/api/tests/unit/routes/conversations/messages-role-contract.test.ts",
-    "apps/api/tests/unit/routes/diarization/wr-08-error-envelope.test.ts",
     "apps/api/tests/unit/routes/folders/locker-04-schema.test.ts",
     "apps/api/tests/unit/routes/notes/delete-all-error-envelope.test.ts",
     "apps/api/tests/unit/routes/notes/locker-04-schema.test.ts",
