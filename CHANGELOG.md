@@ -9,6 +9,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 _Nothing yet._
 
+## [1.2.5] - 2026-06-06
+
+### Removed
+
+- Server-side speaker diarization (`POST /v1/audio/diarization`) and all of its
+  supporting code: the pyannote.ai async-orchestration client, the diarization
+  idempotency cache, the diarization config resolver, and the
+  `DiarizationResponse` wire schema. Diarization is client-local — the desktop
+  performs speaker splitting offline and no client flow called the server route,
+  so the endpoint had no consumer. The `PYANNOTE_*`, `SPEACHES_DIARIZATION_*`,
+  and `MOCK_DIARIZATION` environment variables are dropped from the compose
+  files, Helm chart, and `.env` examples.
+- Dead `pyannote` provider plumbing from the LiteLLM client (provider-key
+  mapping, known-provider prefix) and the now-orphaned `PYANNOTE_API_KEY` /
+  `SPEACHES_DIARIZATION_API_KEY` log-redaction entries.
+
 ## [1.2.4] - 2026-06-05
 
 ### Fixed
@@ -141,7 +157,8 @@ _Nothing yet._
 - Pre-push test-evidence gate validates the tip commit only, keeping it
   compatible with the test-driven workflow.
 
-[Unreleased]: https://github.com/Yambr/openwhispr-server/compare/v1.2.4...HEAD
+[Unreleased]: https://github.com/Yambr/openwhispr-server/compare/v1.2.5...HEAD
+[1.2.5]: https://github.com/Yambr/openwhispr-server/compare/v1.2.4...v1.2.5
 [1.2.4]: https://github.com/Yambr/openwhispr-server/compare/v1.2.3...v1.2.4
 [1.2.3]: https://github.com/Yambr/openwhispr-server/compare/v1.2.2...v1.2.3
 [1.2.2]: https://github.com/Yambr/openwhispr-server/compare/v1.2.1...v1.2.2
