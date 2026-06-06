@@ -167,7 +167,7 @@ jobs:
       - run: pnpm test
       - uses: davelosert/vitest-coverage-report-action@02f3c2e641286b7fa308cd3e430783103ce6103b  # v2.12.0
         if: always()
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: always()
         with: { name: coverage, path: coverage/ }
       - name: Sweep orphaned testcontainers and prune volumes
@@ -726,7 +726,7 @@ jobs:
             -f compose/docker-compose.contract-test.yml \
             --profile default --profile contract-test \
             logs --no-color > compose-logs.txt
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
         if: failure()
         with:
           name: compose-logs
@@ -785,7 +785,7 @@ jobs:
       - name: Capture compose logs on failure
         if: failure()
         run: docker compose logs --no-color > compose-logs-e2e.txt
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
         if: failure()
         with:
           name: compose-logs-e2e
@@ -850,12 +850,12 @@ jobs:
       - name: Capture compose logs on failure
         if: failure()
         run: docker compose logs --no-color > compose-logs-phase6-quick.txt || true
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
         if: failure()
         with:
           name: compose-logs-phase6-quick
           path: compose-logs-phase6-quick.txt
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
         if: failure()
         with:
           name: phase6-quick-junit
@@ -1067,7 +1067,7 @@ jobs:
               logs --no-color --tail=500 "$svc" \
               > "compose-logs/${svc}.log" 2>&1 || true
           done
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
         if: failure()
         with:
           name: smoke-logs
@@ -1144,7 +1144,7 @@ jobs:
             -f compose/docker-compose.embedded-litellm.yml \
             -f compose/docker-compose.ingress.yml \
             logs --no-color > compose-logs-embedded-smoke.txt || true
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
         if: failure()
         with:
           name: compose-logs-embedded-smoke
@@ -1203,7 +1203,7 @@ jobs:
       - name: Capture compose logs on failure
         if: failure()
         run: docker compose logs --tail=200 --no-color > load-smoke-logs.txt || true
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
         if: failure()
         with:
           name: load-smoke-logs

@@ -118,7 +118,7 @@ jobs:
           done
       - name: Upload compose logs on failure
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: compose-logs-conformance-axe
           path: compose-logs/
@@ -135,7 +135,7 @@ jobs:
           echo "OK: no containers with label=org.testcontainers=true remain."
       - name: Upload playwright trace on failure
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: conformance-axe-trace
           path: tests/conformance/ui-spec/test-results/

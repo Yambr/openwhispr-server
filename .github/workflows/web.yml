@@ -75,7 +75,7 @@ jobs:
       # build if anyone disables / removes an i18n test file but leaves
       # the rest of the suite green.
       - run: pnpm --filter @openwhispr/web test:web-i18n
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: web-coverage
@@ -179,14 +179,14 @@ jobs:
         run: pnpm --filter @openwhispr/web exec playwright test
       - name: Upload Playwright report on failure
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: playwright-report
           path: apps/web/playwright-report/
       - name: Capture compose logs on failure
         if: failure()
         run: docker compose logs --no-color > compose-logs-web.txt || true
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: failure()
         with:
           name: compose-logs-web
