@@ -559,14 +559,6 @@ and SHOULD instruct the client to clear the session cookie (via
   expired session (session-lifetime bypass — CVE class); 5xx with the
   expired token in a stack trace.
 
-## 10. Diarization — REMOVED (client-local)
-
-**Quick 260606-g90:** the server-side diarization journey (`POST
-/v1/audio/diarization`) has been removed. Diarization is client-local — the
-OpenWhispr desktop performs speaker splitting offline with sherpa-onnx, and no
-client flow called the server route. The former `@cjm-10.1` / `@cjm-10.2`
-journeys are retired; there is no server diarization wire surface to cover.
-
 ## 11. Realtime WSS — user journey (G4 closure)
 
 Phase 29 closes G4 from `.planning/qa-audit/2026-05-16-cjm-coverage.md`.
