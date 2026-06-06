@@ -76,8 +76,6 @@ export const DEFAULT_HELM_ARGS = [
   "--set-string",
   "secrets.openaiApiKey=parity-fake-1234567890abcdef1234567890",
   "--set-string",
-  "secrets.pyannoteApiKey=parity-fake-1234567890abcdef1234567890",
-  "--set-string",
   "secrets.hfToken=parity-fake-1234567890abcdef1234567890",
   "--set-string",
   "secrets.postgresOwnerPassword=parity-fake-1234567890abcdef1234567890",

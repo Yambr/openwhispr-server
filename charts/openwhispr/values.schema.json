@@ -101,10 +101,6 @@
           "type": "string",
           "not": { "enum": ["CHANGE_ME", "changeme"] }
         },
-        "pyannoteApiKey": {
-          "type": "string",
-          "not": { "enum": ["CHANGE_ME", "changeme"] }
-        },
         "hfToken": {
           "type": "string",
           "not": { "enum": ["CHANGE_ME", "changeme"] }

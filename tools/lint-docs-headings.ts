@@ -4,14 +4,13 @@
  * lint-docs-headings.ts — Phase 03 / Plan 01 / Task 1 (D-09).
  *
  * Asserts a target markdown file contains every H2 section listed in its
- * required-sections argv (default: the four Phase 3 wire-contract sections
- * `POST /api/transcribe`, `POST /api/reason`, `Diarization`, `WSS /v1/realtime`).
+ * required-sections argv (default: the Phase 3 wire-contract sections
+ * `POST /api/transcribe`, `POST /api/reason`, `WSS /v1/realtime`).
  *
  * Also enforces shape rules for `docs/wire-contracts-phase-3.md`:
  *   - At least one fenced code block per required H2 section (verbatim quote).
  *   - At least one `BACKEND_SPEC.md:L` source-line citation in the document.
  *   - The "Decision: wordsUsed semantics" subsection is present (resolves A5/A6).
- *   - The "Decision: diarization mount" subsection is present (resolves D-09 mount).
  *
  * Exit codes:
  *   0 — all required sections + shape rules satisfied
@@ -28,11 +27,10 @@ import { exit } from "node:process";
 const REQUIRED_PHASE_3_H2S = [
   "POST /api/transcribe",
   "POST /api/reason",
-  "Diarization",
   "WSS /v1/realtime",
 ] as const;
 
-const REQUIRED_DECISIONS = ["wordsUsed semantics", "diarization mount"] as const;
+const REQUIRED_DECISIONS = ["wordsUsed semantics"] as const;
 
 // Phase 03 / Plan 09 — operator-facing docs (LITELLM-05 + LITELLM-06).
 // docs/litellm-target-spec.md: bundled-default + corporate-override topology.
@@ -43,31 +41,21 @@ const REQUIRED_TARGET_SPEC_H2S = [
   "Corporate-Override Configuration",
   "Request ID Propagation",
   "Env Override Path",
-  "Diarization (Sync-Wrapper Pattern)",
   "Realtime WSS Topology",
   "Spend Log Ingestion",
 ] as const;
 
-// D-07 REVISED grep-asserted phrases in docs/litellm-target-spec.md.
-const REQUIRED_TARGET_SPEC_PHRASES = [
-  "sync-wrapper",
-  "4-step",
-  "Idempotency-Key",
-  "1500",
-  "PYANNOTE_API_KEY",
-  "NOT via LiteLLM",
-  "speaches-audio.md",
-] as const;
+// Grep-asserted phrases in docs/litellm-target-spec.md.
+const REQUIRED_TARGET_SPEC_PHRASES = ["speaches-audio.md"] as const;
 
 const REQUIRED_MOCK_MODE_H2S = [
   "What This Solves",
   "How It Works",
   "Per-Model mock_response",
-  "Diarization Mock",
   "Running Locally",
 ] as const;
 
-const REQUIRED_MOCK_MODE_PHRASES = ["MOCK_DIARIZATION"] as const;
+const REQUIRED_MOCK_MODE_PHRASES = [] as const;
 
 interface Issue {
   rule: string;

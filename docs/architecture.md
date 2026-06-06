@@ -314,7 +314,7 @@ Per-queue defaults (centralised in `apps/worker/src/queues.ts`):
 
 | Knob              | Default                                | Rationale                                                          |
 | ----------------- | -------------------------------------- | ------------------------------------------------------------------ |
-| `attempts`        | 5                                      | survives transient SMTP / pyannote / LiteLLM blips                 |
+| `attempts`        | 5                                      | survives transient SMTP / LiteLLM blips                            |
 | `backoff`         | exponential, base 1s                   | 1s, 2s, 4s, 8s, 16s                                                |
 | `removeOnComplete`| age 24h OR count 1000                  | keep a short trail for ops introspection                           |
 | `removeOnFail`    | age 7d                                 | keep dead-letter visibility for a week                             |

@@ -193,12 +193,6 @@ services:
       OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
       GROQ_API_KEY: ${GROQ_API_KEY:-}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
-      # Phase 03 D-07 REVISED — PYANNOTE_API_KEY is consumed by the
-      # Fastify diarization route on the `api` service, NEVER forwarded
-      # into the litellm container. Threat T-03-01-06 mitigation: the
-      # absence of PYANNOTE_API_KEY here is intentional and verified by
-      # the plan's automated check (grep PYANNOTE on the litellm env
-      # block must return zero hits).
     command: ["--config", "/etc/litellm/config.yaml", "--port", "4000", "--num_workers", "2"]
     volumes:
       # Phase 03 e2e fix — LITELLM_CONFIG_FILE selects the active config:
@@ -374,28 +368,16 @@ services:
       OPENAI_REALTIME_URL: ${OPENAI_REALTIME_URL:-}
       # R31 — direct-mode `?model=` (real OpenAI model; default gpt-realtime).
       OPENAI_REALTIME_MODEL: ${OPENAI_REALTIME_MODEL:-}
-      # Phase 03 D-07 REVISED — pyannote.ai key is consumed by the Fastify
-      # diarization route (apps/api/src/routes/diarization.ts in Plan 06),
-      # NOT by the LiteLLM sidecar. Forwarded only to the api container.
-      PYANNOTE_API_KEY: ${PYANNOTE_API_KEY:-}
-      # Phase 03 e2e back-fill — MOCK_DIARIZATION=true short-circuits the
-      # diarization route to a fixture response (apps/api/src/routes/diarization.ts:71).
-      # Forwarded from the host env so `make e2e-hermetic` (and any other
-      # caller that wants the mock-mode happy path without a real
-      # PYANNOTE_API_KEY) can opt in via export. Default is empty —
-      # production operators MUST NOT set this in their .env (mock mode
-      # returns canned segments regardless of audio content).
-      MOCK_DIARIZATION: ${MOCK_DIARIZATION:-}
       # Phase 61 / R19 — slim-core ships the bundled `mailpit` service as
       # its dev/test SMTP catch-all. `EmailSender.ts` defaults SMTP_PORT
       # to 587; mailpit listens on 1025. `.env` carries SMTP_HOST=mailpit.
       # Corporate operators override SMTP_HOST / SMTP_PORT in their .env.
       SMTP_PORT: ${SMTP_PORT:-1025}
-      # Phase 03 / CR-01 fix — Valkey URL for the diarization idempotency
-      # cache. buildApp() reads VALKEY_URL and constructs the redis client;
-      # if unset the /v1/audio/diarization route is intentionally NOT
-      # registered (operator-actionable 404). Wire to the bundled valkey
-      # service so default `docker compose up` boots with diarization on.
+      # Valkey URL — backs the rate-limit store, the /readyz dep-check
+      # probe, and the BullMQ email-delivery queue. buildApp() reads
+      # VALKEY_URL and constructs the redis client; when unset the /readyz
+      # dep-check reports "depCheck not wired". Wire to the bundled valkey
+      # service so default `docker compose up` boots with the probe on.
       VALKEY_URL: ${VALKEY_URL:-redis://:${VALKEY_PASSWORD}@valkey:6379/0}
       # Phase 14 / Plan 14-01 (SLIM-01): OTEL_EXPORTER_OTLP_ENDPOINT has
       # NO default fallback. With slim-core base (no otel-collector

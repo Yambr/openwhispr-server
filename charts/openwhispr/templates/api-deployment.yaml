@@ -5,7 +5,7 @@ Compose-parity for the `api` service in docker-compose.yml. Mirrors:
   - image:         .Values.image.api.repository : tag (defaults to .Chart.AppVersion)
   - ports:         3000 (Fastify HTTP)
   - envFrom:       <fullname>-secrets (LITELLM_MASTER_KEY, OPENROUTER_API_KEY,
-                   OPENAI_API_KEY, PYANNOTE_API_KEY, HF_TOKEN,
+                   OPENAI_API_KEY, HF_TOKEN,
                    POSTGRES_OWNER_PASSWORD, PGBOUNCER_ADMIN_PASSWORD,
                    BETTER_AUTH_SECRET)
   - DATABASE_URL:  -> CNPG Pooler RW service (transaction-mode pooling)
@@ -139,8 +139,9 @@ spec:
             - name: REDIS_URL
               value: "redis://{{ include "openwhispr.valkeyHost" . }}:6379"
             # Finding 09.1-F28 — app code reads VALKEY_URL (alias for
-            # REDIS_URL but the codebase grew to use both names). Without
-            # it, /v1/audio/diarization is silently disabled at boot.
+            # REDIS_URL but the codebase grew to use both names). Backs the
+            # rate-limit store, the /readyz dep-check probe, and the BullMQ
+            # email-delivery queue.
             - name: VALKEY_URL
               value: "redis://{{ include "openwhispr.valkeyHost" . }}:6379"
             {{- if .Values.storage.enabled }}

@@ -195,12 +195,7 @@ Plan 11-01 — single source of truth consumed by:
 
 The list is the 13 core keys required by every variant. HF_TOKEN is
 appended ONLY when .Values.bundledAi.enabled is true (Variant C — local
-Speaches container needing the gated pyannote weights).
-
-PYANNOTE_API_KEY is deliberately NOT in the required list: per Plan 11-01
-<interfaces>, /v1/audio/diarization gracefully degrades to 503 when the
-key is absent, so it is soft-warned only (compose-side bootstrap.sh) and
-must not block pod startup.
+Speaches container needing the gated model weights).
 
 Output is a single-space-joined string so templates can `splitList " "`.
 */}}

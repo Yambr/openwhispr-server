@@ -746,7 +746,7 @@ jobs:
   # Host-side e2e suite. Boots the full docker-compose stack with the
   # hermetic mock-LiteLLM contract config, then dials https://api.localhost
   # through Traefik (TLS) round-tripping POST /api/transcribe, /api/reason,
-  # /v1/audio/diarization, and the WSS /v1/realtime auth gate. Requires NO
+  # and the WSS /v1/realtime auth gate. Requires NO
   # provider keys — every chat-completions / transcription call short-
   # circuits inside LiteLLM via mock_response. The wire-shape e2e matrix
   # MUST always run on every PR per DISCIPLINE rule 6.
@@ -808,8 +808,7 @@ jobs:
   # Each test owns its docker-compose lifecycle via testcontainers
   # DockerComposeEnvironment (see tests/e2e/helpers/phase6-compose.ts).
   # No real provider keys required — LITELLM_CONFIG_FILE=
-  # litellm_config.contract.yaml + MOCK_DIARIZATION=true keeps the
-  # stack hermetic.
+  # litellm_config.contract.yaml keeps the stack hermetic.
   e2e-phase6-quick:
     runs-on: ubuntu-24.04
     needs: [lint, typecheck, test]
@@ -841,7 +840,6 @@ jobs:
           E2E=1 \
           LITELLM_CONFIG_FILE=litellm_config.contract.yaml \
           OPENWHISPR_TEST_ROUTES=true \
-          MOCK_DIARIZATION=true \
           NODE_TLS_REJECT_UNAUTHORIZED=0 \
           TESTCONTAINERS_RYUK_DISABLED=true \
           pnpm exec vitest run --config tests/e2e/vitest.e2e.config.ts \

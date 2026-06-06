@@ -57,7 +57,6 @@ jobs:
             litellmMasterKey \
             openrouterApiKey \
             openaiApiKey \
-            pyannoteApiKey \
             hfToken \
             postgresOwnerPassword \
             postgresAppPassword \
@@ -92,7 +91,6 @@ jobs:
             --set-string secrets.litellmMasterKey=${{ steps.secrets.outputs.litellmMasterKey }} \
             --set-string secrets.openrouterApiKey=${{ steps.secrets.outputs.openrouterApiKey }} \
             --set-string secrets.openaiApiKey=${{ steps.secrets.outputs.openaiApiKey }} \
-            --set-string secrets.pyannoteApiKey=${{ steps.secrets.outputs.pyannoteApiKey }} \
             --set-string secrets.hfToken=${{ steps.secrets.outputs.hfToken }} \
             --set-string secrets.postgresOwnerPassword=${{ steps.secrets.outputs.postgresOwnerPassword }} \
             --set-string secrets.postgresAppPassword=${{ steps.secrets.outputs.postgresAppPassword }} \
@@ -112,7 +110,6 @@ jobs:
             --set-string secrets.litellmMasterKey=${{ steps.secrets.outputs.litellmMasterKey }} \
             --set-string secrets.openrouterApiKey=${{ steps.secrets.outputs.openrouterApiKey }} \
             --set-string secrets.openaiApiKey=${{ steps.secrets.outputs.openaiApiKey }} \
-            --set-string secrets.pyannoteApiKey=${{ steps.secrets.outputs.pyannoteApiKey }} \
             --set-string secrets.hfToken=${{ steps.secrets.outputs.hfToken }} \
             --set-string secrets.postgresOwnerPassword=${{ steps.secrets.outputs.postgresOwnerPassword }} \
             --set-string secrets.postgresAppPassword=${{ steps.secrets.outputs.postgresAppPassword }} \

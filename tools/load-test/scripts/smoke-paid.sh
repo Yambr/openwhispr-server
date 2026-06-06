@@ -7,7 +7,7 @@
 #
 # Per user 2026-05-13 (memory: loadtest-cost-discipline):
 #   - Plateaus run against LOCAL models only (Speaches, mock-litellm).
-#   - Paid providers (OpenAI, OpenRouter, Groq, pyannote.ai) get smoke
+#   - Paid providers (OpenAI, OpenRouter, Groq) get smoke
 #     proof-of-wiring only — exactly this script.
 #
 # Routes exercised (1 call each, except agent-stream which is
@@ -23,12 +23,7 @@
 #   POST /v1/chat/completions  — model=gpt-4o-mini      (OpenRouter)
 #   POST /v1/audio/transcriptions  — model=whisper-large-v3 (Speaches)
 #
-# Phase 08.6-03: 8th call exercises /v1/audio/diarization against the
-# local Speaches branch (SPEACHES_DIARIZATION_URL wired in realistic
-# overlay). LOCAL — no paid-provider cost.
-#   POST /v1/audio/diarization  — Speaches (LOCAL)
-#
-# Total: 8 distinct calls (still under 10-cap).
+# Total: 7 distinct calls (still under 10-cap).
 #
 # Exit codes:
 #   0 — all PASS, ws_msgs_sent > 0 on realtime
@@ -213,47 +208,6 @@ probe "litellm-chat-gpt4o-mini" "200" \
   -H 'content-type: application/json' \
   -d '{"model":"gpt-4o-mini","messages":[{"role":"user","content":"reply with the word ok"}],"max_tokens":10}' || true
 
-# 8. /api/diarization — Speaches local (Phase 08.6) ----------------------
-# Posts the same 5s WAV fixture to /v1/audio/diarization. The realistic
-# profile wires SPEACHES_DIARIZATION_URL=http://speaches:8000 so the api
-# route bypasses pyannote.ai entirely. Asserts 200 + segments[] non-empty
-# in the parsed JSON body.
-
-log ""
-log "[8/8] api /v1/audio/diarization (Speaches local, LOCAL)"
-if [[ ! -f "${FIXTURE}" ]]; then
-  log "  SKIP  diarization fixture not found at ${FIXTURE}"
-else
-  DIAR_BODY_FILE=/tmp/smoke-paid-diar-body
-  DIAR_STATUS=$(curl -ksS -o "${DIAR_BODY_FILE}" -w '%{http_code}' \
-    -X POST "${BASE_URL}/v1/audio/diarization" \
-    -H "authorization: Bearer ${TOKEN}" \
-    -F "file=@${FIXTURE};type=audio/wav" 2>>"${LOG_FILE}" || echo "000")
-  if [[ "${DIAR_STATUS}" == "200" ]]; then
-    # Wiring proof: 200 + a parseable JSON body with a `segments` array.
-    # Segment count may be 0 for the 5s mono fixture (Speaches's
-    # community-1 model needs ≥2 distinct speakers within the audio
-    # window to emit segments). The route + Traefik + Speaches stack is
-    # proven by status=200 + schema-valid body.
-    DIAR_DURATION=$(jq -r '.duration // empty' "${DIAR_BODY_FILE}" 2>/dev/null || echo "")
-    DIAR_HAS_SEGS=$(jq -r 'has("segments") | tostring' "${DIAR_BODY_FILE}" 2>/dev/null || echo "false")
-    if [[ -n "${DIAR_DURATION}" && "${DIAR_HAS_SEGS}" == "true" ]]; then
-      SEG_COUNT=$(jq -r '.segments | length' "${DIAR_BODY_FILE}" 2>/dev/null || echo "0")
-      PASS_COUNT=$((PASS_COUNT + 1))
-      log "  PASS  api-diarization-speaches  status=200 duration=${DIAR_DURATION}s segments=${SEG_COUNT}"
-    else
-      FAIL_COUNT=$((FAIL_COUNT + 1))
-      FAILURES+=("api-diarization-malformed-body")
-      log "  FAIL  api-diarization-speaches  status=200 but body lacks duration/segments (body: $(head -c 200 "${DIAR_BODY_FILE}"))"
-    fi
-  else
-    FAIL_COUNT=$((FAIL_COUNT + 1))
-    FAILURES+=("api-diarization-speaches status=${DIAR_STATUS}")
-    log "  FAIL  api-diarization-speaches  status=${DIAR_STATUS} (expected 200)"
-    log "        body: $(head -c 200 "${DIAR_BODY_FILE}")"
-  fi
-fi
-
 # Summary ---------------------------------------------------------------
 
 log ""
@@ -267,5 +221,5 @@ if (( FAIL_COUNT > 0 )); then
   printf '%s\n' "${RED}smoke-paid: ${FAIL_COUNT} call(s) failed${RESET}" >&2
   exit 1
 fi
-printf '%s\n' "${GREEN}smoke-paid: PASS (${PASS_COUNT}/8 calls, log: ${LOG_FILE})${RESET}" >&2
+printf '%s\n' "${GREEN}smoke-paid: PASS (${PASS_COUNT}/7 calls, log: ${LOG_FILE})${RESET}" >&2
 exit 0

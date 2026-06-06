@@ -568,7 +568,7 @@ The api refuses to boot when `NODE_ENV=production` and any of the following hold
 
 Behavior: `validateLitellmBoot()` writes a `FATAL litellm-boot: …` line to stderr and exits with status code 78 (`EX_CONFIG`, matching `validateAuthBoot` in §3 and `validateEncryptionBoot` in §12).
 
-Without this guard, the api would catch `loadLitellmConfigFromEnv()`'s throw, log a single `litellm.client.unavailable` line at warn level, and silently skip registering the four LiteLLM-backed routes (`/api/transcribe`, `/api/reason`, `/v1/audio/diarization`, `/v1/realtime`). `/api/health` would still return `{"status":"ok"}` — the breakage is invisible until an operator hits a 404.
+Without this guard, the api would catch `loadLitellmConfigFromEnv()`'s throw, log a single `litellm.client.unavailable` line at warn level, and silently skip registering the LiteLLM-backed routes (`/api/transcribe`, `/api/reason`, `/v1/realtime`). `/api/health` would still return `{"status":"ok"}` — the breakage is invisible until an operator hits a 404.
 
 In `NODE_ENV=development` or `NODE_ENV=test` the guard is permissive (the dev-tools overlay seeds the default key; vitest never wires the var). The catch-and-warn path remains for those environments so a developer running without a real key sees the 404 envelope on those routes (the right operator UX, distinct from a transient-looking 503 on a registered-but-dead route).
 

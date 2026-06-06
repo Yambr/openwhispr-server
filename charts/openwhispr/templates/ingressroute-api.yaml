@@ -1,10 +1,8 @@
 {{/*
 Traefik IngressRoute — api short-JSON routes on :443 (websecure).
 
-Mirrors compose/traefik/dynamic.yml routers `api` (PathPrefix /api) +
-`api-audio` (PathPrefix /v1/audio, priority 100 — /v1/audio/diarization
-mounts outside /api/* per BACKEND_SPEC.md). Traefik 3 CRD API
-(traefik.io/v1alpha1).
+Mirrors compose/traefik/dynamic.yml router `api` (PathPrefix /api).
+Traefik 3 CRD API (traefik.io/v1alpha1).
 
 Phase 04 Plan 05 lock-in: this route is bound EXCLUSIVELY to the
 :443 entrypoint. Long-running WSS /v1/realtime lives on the dedicated
@@ -28,15 +26,6 @@ spec:
   routes:
     - match: Host(`{{ .Values.host.api }}`) && PathPrefix(`/api`)
       kind: Rule
-      services:
-        - name: {{ $fullname }}-api
-          port: 3000
-      middlewares:
-        - name: {{ $fullname }}-forwarded-headers
-          namespace: {{ .Release.Namespace }}
-    - match: Host(`{{ .Values.host.api }}`) && PathPrefix(`/v1/audio`)
-      kind: Rule
-      priority: 100
       services:
         - name: {{ $fullname }}-api
           port: 3000

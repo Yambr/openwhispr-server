@@ -76,10 +76,8 @@ if ! $COMPOSE exec -T speaches sh -c '
   _bail "transcription request failed"
 fi
 
-# Strict mode: also assert PRELOAD_MODELS landed both expected model
-# directories under the HF cache. Without these the pre-warm above
-# might have succeeded against a partially loaded Whisper while the
-# pyannote weights silently failed to materialise.
+# Strict mode: also assert PRELOAD_MODELS landed the expected model
+# directory under the HF cache.
 if [ "$STRICT" -eq 1 ]; then
   echo "[pre-warm] strict — checking HF model dirs are resident..."
   HUB_LIST=$($COMPOSE exec -T speaches sh -c \
@@ -87,10 +85,7 @@ if [ "$STRICT" -eq 1 ]; then
   if ! printf '%s' "$HUB_LIST" | grep -q 'models--Systran--faster-whisper-large-v3'; then
     _bail "Whisper-large-v3 model dir missing from HF cache (PRELOAD_MODELS did not land)"
   fi
-  if ! printf '%s' "$HUB_LIST" | grep -q 'models--pyannote--speaker-diarization-community-1'; then
-    _bail "pyannote community-1 model dir missing from HF cache (PRELOAD_MODELS did not land or HF_TOKEN missing)"
-  fi
-  echo "[pre-warm] strict — both preloaded model dirs present"
+  echo "[pre-warm] strict — preloaded model dir present"
 fi
 
 echo "[pre-warm] OK — Whisper model now resident"

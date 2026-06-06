@@ -1,8 +1,9 @@
 # OpenWhispr Desktop Client
 
 The OpenWhispr desktop client is an Electron application that captures
-microphone input, sends it to this server for transcription / reasoning /
-diarization, and renders the result inline. The client is built and
+microphone input, sends it to this server for transcription / reasoning,
+and renders the result inline. (Diarization is performed client-local with
+sherpa-onnx — the server has no diarization route.) The client is built and
 distributed separately so it can ship signed builds and integrate with
 OS-native audio capture.
 
@@ -43,7 +44,7 @@ provider keys on the server side change.
 |---|---|
 | **Variant A — Embedded LiteLLM** (OSS quickstart) | Works out of the box once provider keys (`OPENROUTER_API_KEY`, `GROQ_API_KEY`, etc.) are set in `.env`. |
 | **Variant B — External corporate LiteLLM** | Client is unchanged; the server forwards through your corporate LiteLLM via `LITELLM_BASE_URL` / `LITELLM_VIRTUAL_KEY`. |
-| **Variant C — Local Speaches + pyannote** | Client is unchanged; transcription and diarization run offline on the operator's GPU host. Requires `HF_TOKEN` (gated pyannote weights). |
+| **Variant C — Local Speaches** | Client is unchanged; transcription runs offline on the operator's GPU host. Requires `HF_TOKEN` (gated model weights). |
 
 See [`self-hosting.md`](./self-hosting.md) for the full matrix.
 

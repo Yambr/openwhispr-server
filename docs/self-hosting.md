@@ -15,16 +15,13 @@ The embedded-LiteLLM compose + chart bundle is the canonical OSS entrypoint. Fre
 
 Variant A does NOT require `HF_TOKEN`. The chart's
 `openwhispr.requiredSecretKeys` helper only appends that key when
-`bundledAi.enabled=true` (Variant C — local Speaches with gated pyannote
+`bundledAi.enabled=true` (Variant C — local Speaches with gated model
 weights). The relocated `HF_TOKEN` block in `.env.example` lives under a
 `# Variant C only` banner; ignore it for Variant A.
 
-**Provider key scoping.** `PYANNOTE_API_KEY` is required only when
-`/v1/audio/diarization` routes to pyannote.ai. When
-`SPEACHES_DIARIZATION_URL` is set (Variant C, local Speaches), the
-pyannote key is bypassed entirely. `HF_TOKEN` is required only for
-Variant C (Speaches needs it to download gated pyannote weights).
-Variant A operators using hosted providers skip both.
+**Provider key scoping.** `HF_TOKEN` is required only for Variant C
+(Speaches needs it to download gated model weights). Variant A operators
+using hosted providers skip it.
 
 ## Realtime ingress (`:8443`)
 
@@ -198,9 +195,9 @@ All three vars must agree. The slim test `.env` (and
 
 The api accepts multipart audio uploads up to a **100 MB** hard cap
 (`MULTIPART_OPTIONS.limits.fileSize = 100 * 1024 * 1024` at
-`apps/api/src/index.ts:231`). `/api/transcribe` and
-`/v1/audio/diarization` are the affected routes — a long recording can
-easily exceed a reverse proxy's default request-body limit.
+`apps/api/src/index.ts:231`). `/api/transcribe` is the affected route — a
+long recording can easily exceed a reverse proxy's default request-body
+limit.
 
 If you terminate TLS / route through your own reverse proxy in front of
 the api, you MUST raise its request-body limit to **≥ 100 MB**, otherwise

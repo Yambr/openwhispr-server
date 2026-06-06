@@ -17,12 +17,6 @@
 # is what this profile demonstrates; LLM/realtime stays on public
 # providers because we don't host a local LLM container in OSS default.
 # Operators with on-prem LLM gateways override LITELLM_BASE_URL.
-#
-# Diarization (pass_through_endpoints) is wired here matching
-# speaches-audio.md Section 2 — even though the Mac smoke skips
-# diarization (08.5-RESEARCH §G7 / §3), having the pass-through in
-# the config is correct topology and free of cost (no warm hit unless
-# k6 invokes it).
 
 model_list:
   # ---- LLMs (OpenRouter — unchanged from bundled litellm_config.yaml) ----
@@ -128,14 +122,6 @@ general_settings:
   master_key: os.environ/LITELLM_MASTER_KEY
   database_url: os.environ/LITELLM_DATABASE_URL
   store_model_in_db: True
-  # NOTE: pass_through_endpoints with `auth: true` requires LiteLLM
-  # Enterprise license — startup crashes without it. speaches-audio.md
-  # §2 uses this in production (corporate operators have Enterprise),
-  # but Mac OSS load-test runs use community LiteLLM. Diarization is
-  # not exercised by the load-test smoke OR plateau, so we omit the
-  # pass-through entirely. Operators who run realistic against
-  # Enterprise LiteLLM should re-add the pass_through_endpoints block
-  # per speaches-audio.md §2.
 
 litellm_settings:
   drop_params: True

@@ -11,7 +11,7 @@
 #
 # Variant A NEVER renders HF_TOKEN in the Secret or ExternalSecret because
 # bundledAi.enabled=false → openwhispr.requiredSecretKeys omits it. Operators
-# wanting local Speaches with gated pyannote weights should use Variant C
+# wanting local Speaches with gated model weights should use Variant C
 # (values-corporate-litellm.yaml or a Variant C overlay shipped by 11-03).
 #
 # Hard defaults baked in:
@@ -42,9 +42,6 @@ secrets:
   #   GRAFANA_ADMIN_PASSWORD — generate
   #   MASTER_KEK             — base64url 32 bytes (openssl rand 32 | basenc --base64url -w0 | tr -d =)
   #   BACKUP_AGE_IDENTITY    — age-keygen -o - (AGE-SECRET-KEY-1...)
-  #
-  # Soft-warned (best-effort, /v1/audio/diarization gracefully 503s if absent):
-  #   PYANNOTE_API_KEY       — https://pyannote.ai (Audience-7 / community-1)
   #
   # NOT required for Variant A (would be required for Variant C only):
   #   HF_TOKEN               — https://huggingface.co/settings/tokens
