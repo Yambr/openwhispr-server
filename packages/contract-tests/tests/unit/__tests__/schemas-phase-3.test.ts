@@ -9,7 +9,6 @@
 
 import { describe, expect, it } from "vitest";
 import {
-  DiarizationResponse,
   ReasonRequest,
   ReasonResponse,
   TranscribeRequestFields,
@@ -158,37 +157,5 @@ describe("ReasonResponse", () => {
 
   it("response is forward-compat (extra fields allowed — no .strict)", () => {
     expect(ReasonResponse.safeParse({ ...valid, requestId: "abc" }).success).toBe(true);
-  });
-});
-
-describe("DiarizationResponse", () => {
-  it("accepts segments array with start/end/speaker", () => {
-    const result = DiarizationResponse.safeParse({
-      segments: [
-        { start: 0, end: 1.2, speaker: "SPEAKER_00" },
-        { start: 1.2, end: 3.5, speaker: "SPEAKER_01" },
-      ],
-    });
-    expect(result.success).toBe(true);
-  });
-
-  it("rejects missing speaker on a segment", () => {
-    const result = DiarizationResponse.safeParse({
-      segments: [{ start: 0, end: 1 }],
-    });
-    expect(result.success).toBe(false);
-  });
-
-  it("strict — rejects upstream pyannote extras (Plan 51-07 dropped .passthrough())", () => {
-    // Plan 51-07 (REVIEW wire-schemas HIGH) — .passthrough() removed.
-    // Extra keys (durationSec, diarizationModel, etc.) are now refused
-    // at the wire boundary so a malformed upstream cannot smuggle
-    // arbitrary fields into the client.
-    const result = DiarizationResponse.safeParse({
-      segments: [{ start: 0, end: 1, speaker: "SPEAKER_00" }],
-      diarizationModel: "pyannote/speaker-diarization-3.1",
-      durationSec: 1.0,
-    });
-    expect(result.success).toBe(false);
   });
 });

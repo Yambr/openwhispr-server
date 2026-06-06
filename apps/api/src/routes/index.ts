@@ -16,7 +16,6 @@
 import type { ExecutableTx, TransactionalDb } from "@openwhispr/data";
 import type { LitellmClient } from "@openwhispr/litellm-client";
 import type { FastifyInstance } from "fastify";
-import type { DiarizationConfig } from "../config/diarization.js";
 import {
   DEFAULT_OPENAI_REALTIME_URL,
   DEFAULT_REALTIME_TRANSCRIPTION,
@@ -24,7 +23,6 @@ import {
 } from "../config/realtime.js";
 import { loadSttSettingsConfigFromEnv, type SttSettingsConfig } from "../config/stt-settings.js";
 import type { WebSearchConfig } from "../config/web-search.js";
-import type { RedisLike } from "../lib/idempotency-cache.js";
 import type { AuthLike } from "../middleware/dual-auth.js";
 import { type AgentStreamDeps, buildAgentStreamRoutes } from "./agent/stream.js";
 import { buildWebSearchRoutes, type WebSearchDeps } from "./agent/web-search.js";
@@ -60,7 +58,6 @@ import {
 } from "./conversations/update.js";
 import { buildDeleteAccountRoutes, type DeleteAccountDeps } from "./delete-account.js";
 import { buildDesktopSigninRoutes, type DesktopSigninDeps } from "./desktop-signin.js";
-import { buildDiarizationRoutes, type DiarizationDeps } from "./diarization.js";
 import { buildEmbeddingsRoutes, type EmbeddingsDeps } from "./embeddings.js";
 import {
   buildFoldersBatchCreateRoutes,
@@ -146,7 +143,7 @@ export interface AllRoutesDeps {
   /**
    * Phase 03 / Plan 04+: present when LITELLM_MASTER_KEY is configured at
    * buildApp() time. Routes that require LiteLLM (transcribe, reason,
-   * diarization, realtime token) are conditionally registered. When
+   * realtime token) are conditionally registered. When
    * absent, those routes are NOT registered — operators get a 404 on
    * unconfigured surfaces, which the centralized notFoundHandler maps to
    * the canonical envelope. The 404 (not 503) is intentional — it tells
@@ -188,24 +185,6 @@ export interface AllRoutesDeps {
     /** U65 — operator rerank model alias (env `LITELLM_RERANK_MODEL`). */
     rerankModel?: string;
   };
-  /**
-   * Phase 03 / Plan 06 (D-07 REVISED): Valkey client for the diarization
-   * route's Stripe-style idempotency cache. When supplied (production
-   * wires the same client used by the rate-limit plugin), the
-   * /v1/audio/diarization route is registered. When omitted, the route
-   * is NOT registered and the centralized notFoundHandler emits the
-   * canonical 404 envelope (operator must wire VALKEY_URL to enable
-   * diarization in bundled mode).
-   */
-  redis?: RedisLike;
-  /**
-   * Phase 03 / Plan 06 (D-07 REVISED): MOCK_DIARIZATION=true short-
-   * circuits the diarization route to a fixture response. Set in the
-   * contract-test profile so `make contract-test` runs hermetically
-   * (no pyannote.ai dependency in CI). Production .env MUST NOT set
-   * this — bootstrap.sh deny-list refuses placeholder values.
-   */
-  mockDiarization?: boolean;
   /**
    * Phase 12 / Plan 12-03 — POST /api/setup/admin wiring. When supplied,
    * the route is registered; when omitted (e.g. minimal-mode boot, or a
@@ -271,14 +250,6 @@ export interface AllRoutesDeps {
    */
   webSearchConfig?: WebSearchConfig;
   /**
-   * Phase 68 — operator-owned diarization configuration (pyannote.ai
-   * base URL, poll cadence/ceiling, Speaches model alias). Resolved via
-   * `loadDiarizationConfigFromEnv()` at the `index.ts` env boundary
-   * (LOCKER-01) and threaded into the diarization route deps. Omitted ->
-   * bundled-default literals.
-   */
-  diarizationConfig?: DiarizationConfig;
-  /**
    * R31 — operator-owned realtime-relay backend configuration
    * (`REALTIME_BACKEND`, `OPENAI_REALTIME_URL`, and — in `direct` mode —
    * `OPENAI_API_KEY`). Resolved via `loadRealtimeConfigFromEnv()` at the
@@ -297,21 +268,6 @@ export interface AllRoutesDeps {
    * `config/` boundary).
    */
   sttSettingsConfig?: SttSettingsConfig;
-}
-
-/**
- * Quick 260601 — return the first argument whose trimmed value is non-empty,
- * else `undefined`. Used to resolve the Speaches diarization bearer key with
- * the litellm-client HI-2 precedence (override → virtual → master) WITHOUT
- * calling `loadLitellmConfigFromEnv`, which throws when no litellm key is set.
- */
-function firstNonEmptyEnv(...candidates: (string | undefined)[]): string | undefined {
-  for (const candidate of candidates) {
-    if (candidate !== undefined && candidate.trim().length > 0) {
-      return candidate;
-    }
-  }
-  return undefined;
 }
 
 /**
@@ -549,9 +505,8 @@ export function buildAllRoutes(deps: AllRoutesDeps): readonly RoutePlugin[] {
   ];
   // Phase 12 / Plan 12-03 — POST /api/setup/admin (idempotent wizard
   // claim). Conditionally registered: needs an owner pool + a bound
-  // signUpEmail callable. Same conditional-registration pattern as
-  // `if (deps.redis)` above for diarization. When omitted, the
-  // centralized notFoundHandler emits the canonical 404 envelope.
+  // signUpEmail callable. When omitted, the centralized notFoundHandler
+  // emits the canonical 404 envelope.
   if (deps.setupAdmin) {
     plugins.push(
       buildSetupAdminRoutes({
@@ -682,65 +637,6 @@ export function buildAllRoutes(deps: AllRoutesDeps): readonly RoutePlugin[] {
       plugins.push(buildRealtimeRoutes(realtimeDeps));
     }
   }
-  // Phase 03 / Plan 06 (D-07 REVISED): conditionally register the
-  // diarization route. Bundled-mode requires a Valkey client (idempotency
-  // cache backing) — when omitted, the route is NOT registered and the
-  // notFoundHandler emits the canonical 404 envelope. PYANNOTE_API_KEY is
-  // consumed inside the route at request time (NOT at registration), so a
-  // missing key surfaces as 503 (Pitfall #8 — never 401 to the desktop)
-  // only when the route is actually invoked.
-  if (deps.redis) {
-    const diarizationDeps: DiarizationDeps = {
-      redis: deps.redis,
-      mockMode: deps.mockDiarization === true || process.env.MOCK_DIARIZATION === "true",
-    };
-    // Phase 68 — thread the env-resolved diarization config (pyannote.ai
-    // base URL, poll cadence/ceiling, Speaches model). Mutation-after-
-    // declaration matches the speachesDiarizationUrl pattern below.
-    if (deps.diarizationConfig) {
-      diarizationDeps.pyannoteBaseUrl = deps.diarizationConfig.pyannoteBaseUrl;
-      diarizationDeps.pollIntervalMs = deps.diarizationConfig.pollIntervalMs;
-      diarizationDeps.pollCeilingMs = deps.diarizationConfig.pollCeilingMs;
-      diarizationDeps.speachesModel = deps.diarizationConfig.speachesModel;
-    }
-    // Phase 08.6-02: SPEACHES_DIARIZATION_URL switches the route to a
-    // local Speaches branch (sync multipart POST → /v1/audio/diarization).
-    // Used by the load-test-realistic profile. When unset, the pyannote.ai
-    // async branch is used (production default).
-    const speachesUrl = process.env.SPEACHES_DIARIZATION_URL;
-    if (speachesUrl && speachesUrl.length > 0) {
-      diarizationDeps.speachesDiarizationUrl = speachesUrl;
-      // Quick 260601 — when the Speaches diarization endpoint is fronted by a
-      // corporate LiteLLM gateway (pass_through_endpoints auth:true), the
-      // outbound POST must carry a bearer key or the gateway 401s. Resolve
-      // with the same precedence litellm-client uses (HI-2): an explicit
-      // SPEACHES_DIARIZATION_API_KEY override wins, else LITELLM_VIRTUAL_KEY,
-      // else LITELLM_MASTER_KEY. We read these directly (NOT via
-      // loadLitellmConfigFromEnv, which THROWS when no litellm key is set) so
-      // the bundled open-Speaches load-test profile — speachesUrl set, no
-      // litellm key — still registers and sends no Authorization header.
-      const resolvedKey = firstNonEmptyEnv(
-        process.env.SPEACHES_DIARIZATION_API_KEY,
-        process.env.LITELLM_VIRTUAL_KEY,
-        process.env.LITELLM_MASTER_KEY,
-      );
-      if (resolvedKey) {
-        diarizationDeps.speachesDiarizationApiKey = resolvedKey;
-      }
-      // Quick 260604-v0p — the Speaches diarization URL fronts a LiteLLM
-      // gateway in the corporate pose; carry the operator end-user email
-      // header (LITELLM_USER_HEADER_NAME) so diarization spend is attributed
-      // per-user exactly like every other LiteLLM-direction endpoint. Opt-in:
-      // omitted when the env is unset (bundled open-Speaches sends no email
-      // header). Scoped to the Speaches branch only — the pyannote.ai branch
-      // has no LiteLLM hop.
-      const userHeaderName = process.env.LITELLM_USER_HEADER_NAME;
-      if (userHeaderName && userHeaderName.length > 0) {
-        diarizationDeps.userHeaderName = userHeaderName;
-      }
-    }
-    plugins.push(buildDiarizationRoutes(diarizationDeps));
-  }
   // Plan 08: register the /api/_test/* surface when explicitly enabled
   // OR when running under NODE_ENV='test'. The plugin itself enforces
   // the gate as well — defense in depth.
@@ -799,7 +695,6 @@ export {
   buildDeepgramTokenRoutes,
   buildDeleteAccountRoutes,
   buildDesktopSigninRoutes,
-  buildDiarizationRoutes,
   buildFoldersBatchCreateRoutes,
   buildFoldersCreateRoutes,
   buildFoldersDeleteRoutes,

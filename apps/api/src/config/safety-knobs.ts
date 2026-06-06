@@ -1,13 +1,11 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 // Phase 57 / Track F — api-core:CR-01 production safety-knob boot guard.
 //
-// Four env knobs disable anti-abuse / verification controls or swap in a
-// mock backend:
+// Three env knobs disable anti-abuse / verification controls:
 //
 //   - OPENWHISPR_DISABLE_RATE_LIMIT          — turns off the rate limiter
 //   - OPENWHISPR_DISABLE_EMAIL_VERIFICATION  — skips email-verification gate
 //   - OPENWHISPR_DISABLE_SESSION_COOKIE_CACHE — disables the cookie cache
-//   - MOCK_DIARIZATION                       — replaces diarization with a fixture
 //
 // Each is a legitimate dev / test / load-test affordance, but a single
 // leaked `.env` line in a public-facing production deploy silently disables
@@ -21,19 +19,18 @@
 //
 // LOCKER-01 compliance: this module lives under `config/`, the allowlist
 // for `process.env.*` reads — the NODE_ENV branch here is permitted. The
-// knob-READ sites in plugins/routes read only `OPENWHISPR_DISABLE_*` /
-// `MOCK_DIARIZATION` (not NODE_ENV) and are unchanged; this gate adds a
+// knob-READ sites in plugins/routes read only `OPENWHISPR_DISABLE_*`
+// (not NODE_ENV) and are unchanged; this gate adds a
 // boot-time veto in front of them.
 
 /** Process exit code for configuration errors (sysexits.h EX_CONFIG). */
 export const EX_CONFIG = 78;
 
-/** The four production-dangerous env knobs vetoed under NODE_ENV=production. */
+/** The production-dangerous env knobs vetoed under NODE_ENV=production. */
 export const SAFETY_KNOBS = [
   "OPENWHISPR_DISABLE_RATE_LIMIT",
   "OPENWHISPR_DISABLE_EMAIL_VERIFICATION",
   "OPENWHISPR_DISABLE_SESSION_COOKIE_CACHE",
-  "MOCK_DIARIZATION",
 ] as const;
 
 function isTruthy(value: string | undefined): boolean {
@@ -63,7 +60,7 @@ export function validateSafetyKnobsBoot(
   onFail(
     `safety-knobs-boot [EX_CONFIG]: ${offenders.join(", ")} set with ` +
       `NODE_ENV=production. These knobs disable anti-abuse / email-verification / ` +
-      `session-cookie-cache controls (or swap in a mock diarization backend) and ` +
+      `session-cookie-cache controls and ` +
       `are dev/test/load-test only — refusing to boot. Unset the knob, or run ` +
       `with NODE_ENV=development for local profiles. See docs/security.md ` +
       `§safety-knobs. Closes api-core:CR-01 (Phase 57).`,

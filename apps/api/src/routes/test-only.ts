@@ -342,7 +342,7 @@ export function buildTestOnlyRoutes(deps: TestOnlyDeps) {
     // /api/_test/* gate above keeps it safe.
     app.get("/api/_test/route-list", { config: { rateLimit: false } }, async () => {
       // app.printRoutes is the canonical Fastify route-tree introspection
-      // API (also used by apps/api/src/__tests__/build-app-diarization-wiring.test.ts).
+      // API used by the build-app route-wiring unit tests.
       const tree = app.printRoutes({ commonPrefix: false });
       return { tree };
     });

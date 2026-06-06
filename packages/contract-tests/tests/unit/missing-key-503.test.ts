@@ -2,8 +2,8 @@
 // Phase 03 / Plan 10 / Task 1 — Pitfall #8: missing provider key → 503 (NOT 401).
 //
 // Pitfall #8 (recorded in 03-CONTEXT.md): a misconfigured provider key
-// (GROQ_API_KEY for STT, OPENROUTER_API_KEY for reason, PYANNOTE_API_KEY
-// for diarization) MUST surface to the desktop client as a 503 envelope —
+// (GROQ_API_KEY for STT, OPENROUTER_API_KEY for reason) MUST surface to
+// the desktop client as a 503 envelope —
 // NEVER a 401. A 401 would falsely indicate session expiry, triggering
 // the desktop's `tokenStore.js` rotation logic and producing a confusing
 // loop. 503 is the correct semantic: "the api is reachable and the user
@@ -16,10 +16,9 @@
 // We gate via the `MISSING_KEY_TEST_MODE=1` env so the same source file
 // is harmless under the standard suite — it.skipIf bypasses every it().
 //
-// Coverage for the three Phase 3 LiteLLM-backed routes:
+// Coverage for the Phase 3 LiteLLM-backed routes:
 //   * POST /api/transcribe       — D-11 STT on Groq, GROQ_API_KEY
 //   * POST /api/reason           — OPENROUTER_API_KEY
-//   * POST /v1/audio/diarization — D-07 sync-wrapper, PYANNOTE_API_KEY
 //
 // Each must:
 //   1. Return HTTP 503.
@@ -70,24 +69,6 @@ describe.skipIf(!REACHABLE || !MISSING_KEY_MODE)(
       const json = await res.json();
       const env = ErrorEnvelope.parse(json);
       expect(env.error).toMatch(/OPENROUTER_API_KEY|reason|provider/i);
-    });
-
-    it("diarization returns 503 mentioning PYANNOTE_API_KEY when the key is unset", async () => {
-      // Diarization route enforces sync-wrapper PYANNOTE_API_KEY check at
-      // request time (apps/api/src/lib/pyannote-client.ts). Missing key
-      // surfaces 503 with an actionable message; the route is NEVER 401.
-      const jar = await signInFixture("fixture@conformance.test");
-      const { body, contentType } = audioMultipartBody();
-      const res = await jar.fetch(`${BACKEND_URL}/v1/audio/diarization`, {
-        method: "POST",
-        headers: { "content-type": contentType },
-        body,
-      });
-      expect(res.status).toBe(503);
-      expect(res.status).not.toBe(401);
-      const json = await res.json();
-      const env = ErrorEnvelope.parse(json);
-      expect(env.error).toMatch(/PYANNOTE_API_KEY|diarization|provider/i);
     });
   },
 );

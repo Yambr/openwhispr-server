@@ -3,8 +3,8 @@
 // step binding, plus the per-tenant response register the canonical
 // handler reads from.
 //
-// Eight CJM step files previously each declared their own copy of this
-// step (tenant-settings-override, diarization, rls-cross-tenant,
+// Several CJM step files previously each declared their own copy of this
+// step (tenant-settings-override, rls-cross-tenant,
 // agent-stream, web-search, session-refresh, byok-key-rotation,
 // byok-corporate-litellm). playwright-bdd refuses to load the suite
 // with `Error: Multiple definitions matched scenario step`, so the

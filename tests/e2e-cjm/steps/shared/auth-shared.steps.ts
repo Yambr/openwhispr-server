@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 // Phase r34 / quick — canonical `Given "a signed-in user"` step binding.
 //
-// Six CJM step files previously each declared their own copy of this
+// Several CJM step files previously each declared their own copy of this
 // step (agent-stream, byok-corporate-litellm, byok-key-rotation,
-// diarization, realtime-stream, web-search). playwright-bdd refuses to
+// realtime-stream, web-search). playwright-bdd refuses to
 // load the suite with `Error: Multiple definitions matched scenario
 // step`, so the entire e2e-cjm CI lane is signal-free.
 //

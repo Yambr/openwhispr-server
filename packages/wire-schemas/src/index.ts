@@ -12,7 +12,6 @@ export * from "./api-keys.js";
 export * from "./check-user.js";
 export * from "./conversations.js";
 export * from "./delete-account.js";
-export * from "./diarization.js";
 export * from "./folders.js";
 export * from "./input-datetime.js";
 export * from "./locale.js";

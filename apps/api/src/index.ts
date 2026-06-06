@@ -102,7 +102,6 @@ validateBetterAuthSecretBoot();
 // loud-fail posture as validateEncryptionBoot / validateBetterAuthSecretBoot.
 import { validateIngressBoot } from "./config/auth.js";
 import { type BuildInfo, parseBuildInfoFromEnv } from "./config/build-info.js";
-import { type DiarizationConfig, loadDiarizationConfigFromEnv } from "./config/diarization.js";
 import {
   loadRealtimeConfigFromEnv,
   type RealtimeConfig,
@@ -116,8 +115,8 @@ validateIngressBoot();
 // Phase 57 / Track F (REVIEW api-core CRITICAL CR-01) — production
 // safety-knob boot gate. OPENWHISPR_DISABLE_RATE_LIMIT /
 // OPENWHISPR_DISABLE_EMAIL_VERIFICATION / OPENWHISPR_DISABLE_SESSION_COOKIE_CACHE
-// / MOCK_DIARIZATION disable anti-abuse / verification controls or swap in a
-// mock backend. They are legitimate dev/test/load-test affordances but a
+// disable anti-abuse / verification controls. They are legitimate
+// dev/test/load-test affordances but a
 // single leaked env line in production silently disables core security
 // controls. validateSafetyKnobsBoot REFUSES to start (exit 78 EX_CONFIG)
 // when any knob is truthy under NODE_ENV=production — same loud-fail posture
@@ -191,7 +190,6 @@ import { i18nPlugin } from "./i18n/init.js";
 import { recordAudit } from "./lib/audit.js";
 import { resolveDefaultTenantId } from "./lib/default-tenant.js";
 import { type DepCheck, makeDepCheck } from "./lib/dep-check.js";
-import type { RedisLike } from "./lib/idempotency-cache.js";
 import { makeSsrfBoundRequest } from "./lib/litellm-ssrf-request.js";
 import { buildMintBearer } from "./lib/mint-bearer.js";
 import {
@@ -222,7 +220,7 @@ type RecordPreviousToken = typeof recordPreviousTokenLib;
  * @fastify/multipart options used at buildApp level (HIGH-4).
  *
  * Exported so multipart-registered.test.ts can assert against the exact
- * shape AND so future Wave-2 plans (transcribe / diarization) can read
+ * shape AND so future Wave-2 plans (transcribe) can read
  * the canonical values rather than re-deriving them. Mutating this
  * object MUST stay in sync with the wire-contract docs.
  */
@@ -285,8 +283,8 @@ export interface BuildAppOptions {
   recordPreviousToken?: RecordPreviousToken;
   /**
    * Phase 03 / Plan 04+: when supplied, the build registers the LiteLLM-
-   * backed routes (transcribe today; reason/diarization/realtime as
-   * Plans 05/06/07 land). Production constructs via
+   * backed routes (transcribe today; reason/realtime as
+   * Plans 05/07 land). Production constructs via
    * `buildLitellmClient(loadLitellmConfigFromEnv())` and passes it
    * through; tests inject fakes that satisfy the LitellmClient surface.
    */
@@ -319,25 +317,6 @@ export interface BuildAppOptions {
    * registered and /v1/realtime returns 404.
    */
   litellmMasterKey?: string;
-  /**
-   * Phase 03 / Plan 06 (CR-01): pre-connected Valkey/Redis client used by
-   * the diarization route's Stripe-style idempotency cache (and potentially
-   * other request-time caches in future plans). Production constructs a
-   * @redis/client `createClient({url: VALKEY_URL})` in the entrypoint and
-   * passes it through; tests inject a fake `RedisLike`. When omitted, the
-   * /v1/audio/diarization route is NOT registered — operators get the
-   * canonical 404 envelope from notFoundHandler (operator-actionable
-   * "wire VALKEY_URL" signal, distinct from a runtime 503).
-   */
-  redis?: RedisLike;
-  /**
-   * Phase 03 / Plan 06: short-circuit the diarization route to a fixture
-   * response (no pyannote.ai dependency). Used by the contract-test
-   * profile so `make contract-test` runs hermetically. Production .env
-   * MUST NOT enable this (bootstrap.sh deny-list refuses placeholder
-   * values in real deploys).
-   */
-  mockDiarization?: boolean;
   /**
    * Phase 6 / Plan 06-04 (OBS-05, D-P2): dep-check function for the
    * /readyz + /startupz probes. Production wires
@@ -434,14 +413,6 @@ export interface BuildAppOptions {
    */
   webSearchConfig?: WebSearchConfig;
   /**
-   * Phase 68 — operator-owned diarization configuration (pyannote.ai
-   * base URL, poll cadence/ceiling, Speaches model alias). Resolved from
-   * env via `loadDiarizationConfigFromEnv()` and threaded to
-   * `buildAllRoutes`; consumed via injected deps so no route/lib file
-   * reads `process.env` (LOCKER-01).
-   */
-  diarizationConfig?: DiarizationConfig;
-  /**
    * R31 — operator-owned realtime-relay backend configuration
    * (`REALTIME_BACKEND`, `OPENAI_REALTIME_URL`, `OPENAI_API_KEY`).
    * Resolved from env via `loadRealtimeConfigFromEnv()` and threaded to
@@ -494,10 +465,10 @@ export const buildApp = async (opts: BuildAppOptions = {}): Promise<FastifyInsta
   await app.register(fastifyCookie);
 
   // 3b. HIGH-4 (Plan 03 Task 2 / Wave 1): register @fastify/multipart ONCE
-  //     at buildApp level. Both Plan 04 (/api/transcribe) and Plan 06
-  //     (/api/diarization) consume multipart streaming — registering here
-  //     in Wave 1 (single sibling owns the shared edit) avoids the
-  //     Wave-2 cross-plan edit collision on this file.
+  //     at buildApp level. Plan 04 (/api/transcribe) consumes multipart
+  //     streaming — registering here in Wave 1 (single sibling owns the
+  //     shared edit) avoids the Wave-2 cross-plan edit collision on this
+  //     file.
   //
   //     attachFieldsToBody:false is REQUIRED — routes forward req.raw
   //     (or the AsyncIterable parts() iterator) directly to LiteLLM via
@@ -723,13 +694,6 @@ export const buildApp = async (opts: BuildAppOptions = {}): Promise<FastifyInsta
       // D2/D3a/D4 — forward the operator-owned model aliases so the
       // transcribe / reason / realtime-token route deps carry them.
       ...(opts.litellmModels ? { litellmModels: opts.litellmModels } : {}),
-      // Phase 03 / Plan 06 (CR-01): forward the Valkey client + the
-      // mockDiarization flag so /v1/audio/diarization is registered when
-      // the operator wired VALKEY_URL at boot. Without this thread-through,
-      // buildAllRoutes (which gates the route on `deps.redis`) silently
-      // dropped the route in every prod boot.
-      ...(opts.redis ? { redis: opts.redis } : {}),
-      ...(opts.mockDiarization !== undefined ? { mockDiarization: opts.mockDiarization } : {}),
       // Phase 55-05b / BUG-55-05 — without this thread-through,
       // routes/index.ts gates POST /api/setup/admin on
       // `deps.setupAdmin` being truthy and silently drops the route.
@@ -742,10 +706,9 @@ export const buildApp = async (opts: BuildAppOptions = {}): Promise<FastifyInsta
       // Whisper alias, provider timeouts) resolved from env at the
       // entrypoint boundary so the token-mint routes never bake a literal.
       ...(opts.tokenProviders ? { tokenProviders: opts.tokenProviders } : {}),
-      // Phase 68 — operator-owned web-search + diarization adapter config
-      // resolved from env at the entrypoint boundary (LOCKER-01).
+      // Phase 68 — operator-owned web-search adapter config resolved from
+      // env at the entrypoint boundary (LOCKER-01).
       ...(opts.webSearchConfig ? { webSearchConfig: opts.webSearchConfig } : {}),
-      ...(opts.diarizationConfig ? { diarizationConfig: opts.diarizationConfig } : {}),
       ...(opts.realtimeConfig ? { realtimeConfig: opts.realtimeConfig } : {}),
       // AUDIT-LIB-02 — operator-owned STT / note-recording env-default
       // settings resolved from env at the entrypoint boundary (LOCKER-01).
@@ -846,7 +809,7 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   // the operator has not configured Valkey/Redis, we leave
   // `enqueueEmail` undefined and `buildAuth` falls back to the inline
   // `email.send` path (backward compat for OSS quickstart). Connection
-  // shape mirrors the diarization ioredis client below.
+  // shape mirrors the readiness-probe ioredis client below.
   let enqueueEmail: ((p: import("./auth.js").EmailDeliveryPayload) => Promise<void>) | undefined;
   if (process.env.VALKEY_URL) {
     try {
@@ -897,15 +860,15 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   let auth: AuthLike | undefined;
   // Phase 03 / Plan 04: construct the shared LiteLLM client when
   // LITELLM_MASTER_KEY is configured. Missing key -> log a one-line
-  // warning and skip; transcribe/reason/diarization/realtime routes are
+  // warning and skip; transcribe/reason/realtime routes are
   // simply not registered (404 on unconfigured surfaces, not 503 — the
   // operator gets a clear "you forgot to set LITELLM_MASTER_KEY" signal
   // distinct from a per-provider 503 emitted from inside the route).
   // BUG-53-41-remaining (a) — production guard: refuse to boot when
   // NODE_ENV=production and LITELLM_MASTER_KEY is missing or set to
   // the well-known dev-tools overlay default. Without this guard the
-  // catch arm below silently drops 4 routes (transcribe, reason,
-  // diarization, realtime) while /api/health still returns ok. Mirror
+  // catch arm below silently drops the LiteLLM-backed routes (transcribe,
+  // reason, realtime) while /api/health still returns ok. Mirror
   // of validateAuthBoot's EX_CONFIG exit-78 pattern.
   const { validateLitellmBoot } = await import("./config/litellm.js");
   validateLitellmBoot();
@@ -965,32 +928,27 @@ if (import.meta.url === `file://${process.argv[1]}`) {
         litellm_base_url: redactUrl(process.env.LITELLM_BASE_URL ?? ""),
         err_name: (err as Error).name,
       },
-      "LiteLLM client not constructed; LITELLM-backed routes (transcribe, reason, diarization, realtime) will not be registered",
+      "LiteLLM client not constructed; LITELLM-backed routes (transcribe, reason, realtime) will not be registered",
     );
   }
-  // Phase 03 / Plan 06 (CR-01) + e2e fix: construct the Valkey/Redis
-  // client for the diarization idempotency cache. We use ioredis (same
-  // library as apps/worker and required by @fastify/rate-limit's
-  // RedisStore which calls `redis.defineCommand('rateLimit', ...)` for
-  // an atomic Lua-script counter+TTL op — `@redis/client` does NOT
-  // expose defineCommand, which crashed the api at boot when VALKEY_URL
-  // was set). Single ioredis client serves both rate-limit and
-  // diarization since both consume the same RedisLike subset (get/set
-  // with EX/NX/PX flags). When VALKEY_URL is unset, leave `redis`
-  // undefined — buildAllRoutes will skip /v1/audio/diarization
-  // registration and operators get an operator-actionable 404 from
-  // notFoundHandler (one-line warning below tells them exactly what to
-  // set).
-  let redis: RedisLike | undefined;
+  // OBS-05 — construct the Valkey/Redis client that backs the /readyz +
+  // /startupz dep-check probe. We use ioredis (same library as apps/worker
+  // and required by @fastify/rate-limit's RedisStore which calls
+  // `redis.defineCommand('rateLimit', ...)` for an atomic Lua-script
+  // counter+TTL op — `@redis/client` does NOT expose defineCommand, which
+  // crashed the api at boot when VALKEY_URL was set). When VALKEY_URL is
+  // unset, leave `redis` undefined — the dep-check is then not wired and
+  // /readyz returns 503 with `error:"depCheck not wired"` (operator-
+  // actionable: the one-line warning below tells them what to set).
+  let redis: import("ioredis").Redis | undefined;
   if (process.env.VALKEY_URL) {
     try {
       const { Redis } = await import("ioredis");
       const url = process.env.VALKEY_URL;
-      const client = new Redis(url, {
+      redis = new Redis(url, {
         maxRetriesPerRequest: null,
         lazyConnect: false,
       });
-      redis = client as unknown as RedisLike;
     } catch (err) {
       // Phase 13 review HI-02 / Plan 51-13b: ioredis throws errors whose
       // `.message` embeds the offending URL verbatim. Pino path scrubs
@@ -1001,16 +959,15 @@ if (import.meta.url === `file://${process.argv[1]}`) {
           valkey_url: redactUrl(process.env.VALKEY_URL ?? ""),
           err_name: (err as Error).name,
         },
-        "Valkey client not constructed; /v1/audio/diarization will NOT be registered. Set VALKEY_URL to enable diarization",
+        "Valkey client not constructed; /readyz dep-check will report depCheck not wired. Set VALKEY_URL to enable the readiness probe",
       );
     }
   } else {
     bootLog.warn(
       { event: "valkey.url.unset" },
-      "VALKEY_URL is unset; /v1/audio/diarization will NOT be registered (operator-actionable: set VALKEY_URL to enable bundled-mode diarization)",
+      "VALKEY_URL is unset; /readyz dep-check will report depCheck not wired (operator-actionable: set VALKEY_URL to enable the readiness probe)",
     );
   }
-  const mockDiarization = process.env.MOCK_DIARIZATION === "true";
   // Streaming-token-provider config — resolved from env HERE (the
   // entrypoint is a LOCKER-01-sanctioned env-reading boundary) so the
   // token-mint route files (openai-realtime / assemblyai / deepgram /
@@ -1071,14 +1028,11 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   // routes never bake a model literal. Set only when the litellm config
   // was loadable (same gate as the client itself).
   if (litellmModels) buildOpts.litellmModels = litellmModels;
-  if (redis) buildOpts.redis = redis;
-  if (mockDiarization) buildOpts.mockDiarization = true;
-  // Phase 68 — resolve the operator-owned web-search + diarization adapter
-  // config from env HERE, at the entrypoint env boundary (LOCKER-01). The
-  // loaders return bundled-default literals when no var is set, so this is
+  // Phase 68 — resolve the operator-owned web-search adapter config from
+  // env HERE, at the entrypoint env boundary (LOCKER-01). The loader
+  // returns bundled-default literals when no var is set, so this is
   // behavior-preserving for default deployments.
   buildOpts.webSearchConfig = loadWebSearchConfigFromEnv();
-  buildOpts.diarizationConfig = loadDiarizationConfigFromEnv();
   // AUDIT-LIB-02 — resolve the STT / note-recording env-default settings
   // (bottom tier of the settings-resolution chain) at the entrypoint env
   // boundary (LOCKER-01). The Zod loader yields documented defaults for
@@ -1101,16 +1055,14 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   }
   // Phase 6 / Plan 06-04 (OBS-05, D-P2) — wire the /readyz dep-check.
   // Reuses the same pg.Pool returned by makeAppDb and the ioredis client
-  // already constructed for rate-limit/diarization. When either is
-  // absent, /readyz returns 503 with `error:"depCheck not wired"` so
-  // operators get an actionable signal.
+  // constructed above for the readiness probe. When either is absent,
+  // /readyz returns 503 with `error:"depCheck not wired"` so operators
+  // get an actionable signal.
   const litellmBaseUrl = process.env.LITELLM_BASE_URL ?? "http://litellm:4000";
   if (redis) {
     buildOpts.depCheck = makeDepCheck({
       pg: appPool,
-      // The ioredis instance constructed above satisfies the dep-check
-      // surface (ping()) — narrow the cast to the structural minimum.
-      valkey: redis as unknown as import("ioredis").Redis,
+      valkey: redis,
       litellmUrl: litellmBaseUrl,
     });
   }

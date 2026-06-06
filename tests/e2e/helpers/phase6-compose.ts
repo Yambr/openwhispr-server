@@ -9,10 +9,10 @@
 //
 // Design:
 //   - testcontainers v11 `DockerComposeEnvironment` boots the project
-//     root `docker-compose.yml` with the `default` profile, the
-//     hermetic mock-LiteLLM config (litellm_config.contract.yaml), and
-//     MOCK_DIARIZATION=true. This avoids requiring provider keys
-//     (no GROQ_API_KEY / OPENROUTER_API_KEY / PYANNOTE_API_KEY) so
+//     root `docker-compose.yml` with the `default` profile and the
+//     hermetic mock-LiteLLM config (litellm_config.contract.yaml).
+//     This avoids requiring provider keys
+//     (no GROQ_API_KEY / OPENROUTER_API_KEY) so
 //     the gate runs from a fresh clone with only `.env` + `make build`.
 //   - Wait strategy: poll the api `/livez` route through the HOST
 //     network (mapped Traefik :443) rather than the testcontainers
@@ -75,7 +75,6 @@ export const BACKEND_URL = "https://api.localhost";
 export const HERMETIC_ENV: Record<string, string> = {
   LITELLM_CONFIG_FILE: "litellm_config.contract.yaml",
   OPENWHISPR_TEST_ROUTES: "true",
-  MOCK_DIARIZATION: "true",
   // Plan 51-25 — explicitly route OTel spans through the collector
   // bundled by the observability overlay. The local `.env` may carry
   // `OTEL_EXPORTER_OTLP_ENDPOINT=disabled` (slim-core default); without

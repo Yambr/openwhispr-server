@@ -1,9 +1,8 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 // Phase 03 Plan 03 Task 2 — @fastify/multipart registered at buildApp
-// level (HIGH-4 fix). Both Plan 04 (/api/transcribe) and Plan 06
-// (/api/diarization) need multipart streaming; registering ONCE here in
-// Wave 1 prevents the Wave-2 cross-plan edit collision on
-// apps/api/src/index.ts.
+// level (HIGH-4 fix). Plan 04 (/api/transcribe) needs multipart
+// streaming; registering ONCE here in Wave 1 prevents the Wave-2
+// cross-plan edit collision on apps/api/src/index.ts.
 //
 // Behaviors asserted:
 //   1. registered: app exposes the 'multipart/form-data' content-type
@@ -34,7 +33,7 @@ describe("apps/api buildApp — @fastify/multipart wiring (HIGH-4)", () => {
   });
 
   it("MULTIPART_OPTIONS exports the canonical 100 MB cap and attachFieldsToBody=false", () => {
-    // HIGH-4: future Wave-2 plans (transcribe, diarization) MUST read
+    // HIGH-4: future Wave-2 plans (transcribe) MUST read
     // these values from MULTIPART_OPTIONS, not redefine them locally.
     expect(MULTIPART_OPTIONS.attachFieldsToBody).toBe(false);
     expect(MULTIPART_OPTIONS.limits.fileSize).toBe(100 * 1024 * 1024);

@@ -39,7 +39,6 @@ export {
   CheckUserRequest,
   CheckUserResponse,
   DeleteAccountResponse,
-  DiarizationResponse,
   OpenAIRealtimeTokenResponse,
   ReasonRequest,
   ReasonResponse,
@@ -116,7 +115,7 @@ export const TranscribeResponse = z.object({
 });
 export type TranscribeResponse = z.infer<typeof TranscribeResponse>;
 
-// Phase 40 — ReasonRequest, ReasonResponse, DiarizationResponse moved
+// Phase 40 — ReasonRequest, ReasonResponse moved
 // to `@openwhispr/wire-schemas` (re-exported above for compat).
 
 // ---------------------------------------------------------------------

@@ -30,11 +30,6 @@ export const BACKEND_URL = "https://api.localhost";
 export const HERMETIC_ENV = {
   LITELLM_CONFIG_FILE: "litellm_config.contract.yaml",
   OPENWHISPR_TEST_ROUTES: "true",
-  // Forwarded into the api container via the docker-compose `environment:`
-  // interpolation `MOCK_DIARIZATION: ${MOCK_DIARIZATION:-}`. With this set
-  // the /v1/audio/diarization route returns canned segments without
-  // calling pyannote.ai — required for hermetic e2e (no PYANNOTE_API_KEY).
-  MOCK_DIARIZATION: "true",
 } as const;
 
 /**
@@ -180,7 +175,7 @@ export async function waitForApiHealth(deadlineMs = 120_000): Promise<void> {
 /**
  * Read a fixture audio file from `tests/fixtures/audio/`. Returns a
  * single-part `multipart/form-data` body suitable for posting to
- * `/api/transcribe` or `/v1/audio/diarization`.
+ * `/api/transcribe`.
  */
 export interface AudioMultipartBody {
   body: Buffer;

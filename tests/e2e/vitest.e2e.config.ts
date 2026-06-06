@@ -6,7 +6,7 @@
 // DISCIPLINE rule 3 back-fill suite that discovers `*.e2e.test.ts`).
 // Plan 09 introduces two new tests under the simpler `*.test.ts`
 // glob to keep the realtime+stream suite independently runnable
-// without dragging in the legacy diarization/transcribe/reason
+// without dragging in the legacy transcribe/reason
 // e2e fixtures (which require a different stack-up shape).
 //
 // Discovery:

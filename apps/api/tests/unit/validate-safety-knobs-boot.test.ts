@@ -3,9 +3,9 @@
 //
 // validateSafetyKnobsBoot() refuses to start (exit 78 EX_CONFIG, matching
 // validateEncryptionBoot / validateAuthBoot / validateIngressBoot) when ANY
-// of the four production safety knobs is set to a truthy value while
+// of the production safety knobs is set to a truthy value while
 // NODE_ENV=production. The knobs disable anti-abuse / email-verification /
-// session-cookie-cache controls or swap in a mock diarization backend — all
+// session-cookie-cache controls — all
 // legitimate dev/test/load-test affordances but dangerous in production.
 // Pre-fix the knobs only WARN-logged and continued.
 
@@ -16,7 +16,6 @@ const KNOBS = [
   "OPENWHISPR_DISABLE_RATE_LIMIT",
   "OPENWHISPR_DISABLE_EMAIL_VERIFICATION",
   "OPENWHISPR_DISABLE_SESSION_COOKIE_CACHE",
-  "MOCK_DIARIZATION",
 ] as const;
 
 describe("api-core:CR-01 — production safety knobs exit 78 when set in production", () => {
@@ -42,7 +41,6 @@ describe("api-core:CR-01 — production safety knobs exit 78 when set in product
     ["OPENWHISPR_DISABLE_RATE_LIMIT", "true"],
     ["OPENWHISPR_DISABLE_EMAIL_VERIFICATION", "1"],
     ["OPENWHISPR_DISABLE_SESSION_COOKIE_CACHE", "1"],
-    ["MOCK_DIARIZATION", "true"],
   ])("exits 78 when %s=%s and NODE_ENV=production", (knob, val) => {
     process.env.NODE_ENV = "production";
     process.env[knob] = val;

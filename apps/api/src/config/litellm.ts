@@ -4,8 +4,8 @@
 // Closes the silent-route-drop hole: when `LITELLM_MASTER_KEY` is unset,
 // `loadLitellmConfigFromEnv()` (packages/litellm-client/src/config.ts:36)
 // throws, and `apps/api/src/index.ts:629` catches → silently skips
-// registering the 4 LiteLLM-backed routes (transcribe, reason,
-// diarization, realtime). `/api/health` still returns ok=true. The
+// registering the LiteLLM-backed routes (transcribe, reason,
+// realtime). `/api/health` still returns ok=true. The
 // breakage is invisible until an operator hits a 404.
 //
 // `validateLitellmBoot()` is invoked from the boot pathway BEFORE
@@ -59,7 +59,7 @@ export function validateLitellmBoot(
   // Resolve the EFFECTIVE credential with the same precedence as
   // loadLitellmConfigFromEnv (HI-2): a non-empty LITELLM_VIRTUAL_KEY wins,
   // else LITELLM_MASTER_KEY. Either being present means a credential is
-  // configured and the 4 LiteLLM routes will register.
+  // configured and the LiteLLM routes will register.
   const virtualKey = env.LITELLM_VIRTUAL_KEY ?? "";
   const masterKey = env.LITELLM_MASTER_KEY ?? "";
   const effectiveKey = virtualKey.length > 0 ? virtualKey : masterKey;
@@ -69,7 +69,7 @@ export function validateLitellmBoot(
       `litellm-boot: NODE_ENV=production with no LiteLLM credential. ` +
         `Set LITELLM_VIRTUAL_KEY (corporate-override path) or ` +
         `LITELLM_MASTER_KEY. Refusing to boot — without one, the api ` +
-        `silently drops 4 routes (transcribe, reason, diarization, ` +
+        `silently drops the LiteLLM routes (transcribe, reason, ` +
         `realtime) while /api/health still reports ok.`,
     );
   }
