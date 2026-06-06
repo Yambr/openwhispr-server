@@ -294,7 +294,7 @@ jobs:
       # tsx is needed by the "Build Release body" step below to extract the
       # matching CHANGELOG section. This job otherwise has no JS toolchain.
       - uses: pnpm/action-setup@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v6
         with:
           node-version: 24.x
           cache: pnpm
