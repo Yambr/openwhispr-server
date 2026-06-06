@@ -27,7 +27,7 @@
 import generated from "./litellm-aliases.generated.json" with { type: "json" };
 import { parseYamlAliases, parseYamlBundledProviders } from "./model-aliases-yaml-test-seam.js";
 
-const KNOWN_PROVIDER_PREFIXES = ["openrouter", "groq", "pyannote"] as const;
+const KNOWN_PROVIDER_PREFIXES = ["openrouter", "groq"] as const;
 type KnownProvider = (typeof KNOWN_PROVIDER_PREFIXES)[number];
 
 interface GeneratedAliases {

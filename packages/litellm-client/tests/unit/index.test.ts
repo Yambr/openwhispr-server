@@ -34,7 +34,6 @@ function baseConfig(overrides: Partial<LitellmClientConfig> = {}): LitellmClient
     providerKeys: {
       openrouter: "sk-or-test",
       groq: "gsk-test",
-      pyannote: "hf-test",
     },
     defaultChatModel: "qwen3.6-plus",
     defaultSttModel: "whisper-large-v3",
@@ -172,7 +171,7 @@ describe("buildLitellmClient — chatCompletions", () => {
 
   it("throws MissingProviderKeyError when bundled model needs a provider whose key is unset", async () => {
     const cfg = baseConfig({
-      providerKeys: { openrouter: undefined, groq: "gsk-x", pyannote: "hf-x" },
+      providerKeys: { openrouter: undefined, groq: "gsk-x" },
     });
     const client = buildLitellmClient(cfg, { isOverride: false });
     await expect(
@@ -187,7 +186,7 @@ describe("buildLitellmClient — chatCompletions", () => {
 
   it("MissingProviderKeyError carries the offending env-var name and model alias", async () => {
     const cfg = baseConfig({
-      providerKeys: { openrouter: undefined, groq: "gsk-x", pyannote: "hf-x" },
+      providerKeys: { openrouter: undefined, groq: "gsk-x" },
     });
     const client = buildLitellmClient(cfg, { isOverride: false });
     try {
@@ -210,7 +209,7 @@ describe("buildLitellmClient — chatCompletions", () => {
 
   it("skips provider-key check when isOverride=true (corporate proxy mode)", async () => {
     const cfg = baseConfig({
-      providerKeys: { openrouter: undefined, groq: undefined, pyannote: undefined },
+      providerKeys: { openrouter: undefined, groq: undefined },
     });
     agent
       .get(BASE)
@@ -229,7 +228,7 @@ describe("buildLitellmClient — chatCompletions", () => {
 
   it("does NOT pre-check unknown models (defers to upstream for canonical 4xx)", async () => {
     const cfg = baseConfig({
-      providerKeys: { openrouter: undefined, groq: undefined, pyannote: undefined },
+      providerKeys: { openrouter: undefined, groq: undefined },
     });
     agent
       .get(BASE)
@@ -447,7 +446,7 @@ describe("buildLitellmClient — audioTranscriptions", () => {
 
   it("throws MissingProviderKeyError when GROQ_API_KEY is unset (whisper-large-v3 -> groq)", async () => {
     const cfg = baseConfig({
-      providerKeys: { openrouter: "sk-or", groq: undefined, pyannote: "hf" },
+      providerKeys: { openrouter: "sk-or", groq: undefined },
     });
     const client = buildLitellmClient(cfg, { isOverride: false });
     const stream = Readable.from([Buffer.from("audio")]);
@@ -1019,7 +1018,6 @@ describe("buildLitellmClient — surface", () => {
   it("PROVIDER_ENV_VAR maps every provider key to the documented env var", () => {
     expect(PROVIDER_ENV_VAR.openrouter).toBe("OPENROUTER_API_KEY");
     expect(PROVIDER_ENV_VAR.groq).toBe("GROQ_API_KEY");
-    expect(PROVIDER_ENV_VAR.pyannote).toBe("PYANNOTE_API_KEY");
   });
 
   it("auto-detects override mode from process.env when isOverride option is omitted", async () => {
@@ -1035,7 +1033,7 @@ describe("buildLitellmClient — surface", () => {
         .intercept({ path: "/v1/chat/completions", method: "POST" })
         .reply(200, { ok: true });
       const cfg = baseConfig({
-        providerKeys: { openrouter: undefined, groq: undefined, pyannote: undefined },
+        providerKeys: { openrouter: undefined, groq: undefined },
       });
       // No isOverride option supplied -> derived from process.env.
       const client = buildLitellmClient(cfg);

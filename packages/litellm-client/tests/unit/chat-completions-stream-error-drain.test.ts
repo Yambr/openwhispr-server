@@ -44,7 +44,7 @@ function baseConfig(errorDrainTimeoutMs: number): LitellmClientConfig {
   return {
     baseUrl: "http://litellm:4000",
     masterKey: "sk-master-test",
-    providerKeys: { openrouter: "sk-or-test", groq: "gsk-test", pyannote: "hf-test" },
+    providerKeys: { openrouter: "sk-or-test", groq: "gsk-test" },
     defaultChatModel: "qwen3.6-plus",
     defaultSttModel: "whisper-large-v3",
     defaultRealtimeModel: "gpt-realtime",

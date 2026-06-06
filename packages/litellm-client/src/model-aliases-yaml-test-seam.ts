@@ -21,7 +21,7 @@ interface RawLitellmConfig {
   }>;
 }
 
-const KNOWN_PROVIDER_PREFIXES = ["openrouter", "groq", "pyannote"] as const;
+const KNOWN_PROVIDER_PREFIXES = ["openrouter", "groq"] as const;
 type KnownProvider = (typeof KNOWN_PROVIDER_PREFIXES)[number];
 
 function readYamlModelList(yamlPath: string): NonNullable<RawLitellmConfig["model_list"]> {

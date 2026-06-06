@@ -133,7 +133,6 @@ export const BUNDLED_MODEL_PROVIDER: Record<string, keyof LitellmProviderKeys> =
 export const PROVIDER_ENV_VAR: Record<keyof LitellmProviderKeys, string> = {
   openrouter: "OPENROUTER_API_KEY",
   groq: "GROQ_API_KEY",
-  pyannote: "PYANNOTE_API_KEY",
 };
 
 /**

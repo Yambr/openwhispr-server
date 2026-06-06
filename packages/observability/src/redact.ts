@@ -73,24 +73,18 @@ export const REDACT_PATHS: readonly string[] = [
   "OPENAI_API_KEY",
   "OPENROUTER_API_KEY",
   "GROQ_API_KEY",
-  "PYANNOTE_API_KEY",
   "TAVILY_API_KEY",
   "YANDEX_API_KEY",
   "LITELLM_VIRTUAL_KEY",
   "LITELLM_MASTER_KEY",
-  // Quick 260601 — explicit override key for the Speaches diarization
-  // passthrough when fronted by a corporate LiteLLM gateway.
-  "SPEACHES_DIARIZATION_API_KEY",
   // ── Wildcards for the env-key family (covers *.OPENAI_API_KEY etc.) ─
   "*.OPENAI_API_KEY",
   "*.OPENROUTER_API_KEY",
   "*.GROQ_API_KEY",
-  "*.PYANNOTE_API_KEY",
   "*.TAVILY_API_KEY",
   "*.YANDEX_API_KEY",
   "*.LITELLM_VIRTUAL_KEY",
   "*.LITELLM_MASTER_KEY",
-  "*.SPEACHES_DIARIZATION_API_KEY",
   // ── Phase 51 / Plan 51-09 (REVIEW worker HIGH + small-pkgs MEDIUM)
   // Boot-time secrets (encryption KEK, Better-Auth signing key).
   "MASTER_KEK",

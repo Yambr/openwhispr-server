@@ -19,7 +19,6 @@ describe("loadLitellmConfigFromEnv", () => {
     expect(cfg.defaultChatModel).toBe(DEFAULT_CHAT_MODEL);
     expect(cfg.providerKeys.openrouter).toBeUndefined();
     expect(cfg.providerKeys.groq).toBeUndefined();
-    expect(cfg.providerKeys.pyannote).toBeUndefined();
   });
 
   it("honors operator override of LITELLM_BASE_URL (PROVIDER-01 / LITELLM-05)", () => {
@@ -45,11 +44,9 @@ describe("loadLitellmConfigFromEnv", () => {
       LITELLM_MASTER_KEY: "sk-master-x",
       OPENROUTER_API_KEY: "sk-or-1",
       GROQ_API_KEY: "gsk-1",
-      PYANNOTE_API_KEY: "hf-1",
     });
     expect(cfg.providerKeys.openrouter).toBe("sk-or-1");
     expect(cfg.providerKeys.groq).toBe("gsk-1");
-    expect(cfg.providerKeys.pyannote).toBe("hf-1");
   });
 
   it("treats empty-string provider keys as undefined", () => {
@@ -57,11 +54,9 @@ describe("loadLitellmConfigFromEnv", () => {
       LITELLM_MASTER_KEY: "sk-master-x",
       OPENROUTER_API_KEY: "",
       GROQ_API_KEY: "",
-      PYANNOTE_API_KEY: "",
     });
     expect(cfg.providerKeys.openrouter).toBeUndefined();
     expect(cfg.providerKeys.groq).toBeUndefined();
-    expect(cfg.providerKeys.pyannote).toBeUndefined();
   });
 
   it("honors LITELLM_DEFAULT_CHAT_MODEL override (D-06)", () => {
