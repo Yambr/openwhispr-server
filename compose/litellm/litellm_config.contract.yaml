@@ -16,11 +16,22 @@
 # Operators MUST NOT use this config in production — it returns canned
 # data on every chat-completions / transcription call.
 model_list:
+  # 260610-nar — PLAIN-STRING mock_response. POST /api/reason now uses the
+  # streamed chat-completions upstream (internal-stream-then-buffer). When the
+  # upstream request is stream:true, LiteLLM treats `mock_response` as the
+  # LITERAL assistant message content and chunks it into real SSE
+  # `delta.content` frames + a terminal `finish_reason:"stop"` frame + (because
+  # our client forces stream_options.include_usage:true — litellm-client
+  # index.ts:605) a final usage chunk. So a plain string is the correct mock:
+  # the accumulator reassembles exactly "mocked reasoning" and reads the
+  # synthesized usage. (A multi-line `data:` mock would be chunked literally,
+  # so the accumulated text would be the raw SSE string — verified live
+  # 2026-06-10; do NOT use SSE-shaped mock_response here.)
   - model_name: qwen3.6-plus
     litellm_params:
       model: openai/qwen3.6-plus
       api_key: "fake-key-for-mock"
-      mock_response: '{"id":"chatcmpl-mock","object":"chat.completion","created":1000,"model":"qwen3.6-plus","choices":[{"index":0,"message":{"role":"assistant","content":"mocked reasoning"},"finish_reason":"stop"}],"usage":{"prompt_tokens":10,"completion_tokens":5,"total_tokens":15}}'
+      mock_response: "mocked reasoning"
   - model_name: gemini-3-flash
     litellm_params:
       model: openai/gemini-3-flash
@@ -32,11 +43,16 @@ model_list:
       api_key: "fake-key-for-mock"
       mock_response: '{"id":"chatcmpl-mock","object":"chat.completion","created":1000,"model":"gpt-4o-mini","choices":[{"index":0,"message":{"role":"assistant","content":"mock"},"finish_reason":"stop"}],"usage":{"prompt_tokens":1,"completion_tokens":1,"total_tokens":2}}'
   # R33 — cleanup-class alias; parity with the bundled litellm_config.yaml.
+  # 260610-nar — PLAIN-STRING mock (cleanup shape is the bare-{text} reason
+  # body; the default reason model with no agentName/systemPrompt resolves to
+  # the cleanup alias). Same "mocked reasoning" canary; see the qwen3.6-plus
+  # note above for why a plain string (not an SSE body) is correct under
+  # stream:true.
   - model_name: qwen3.6-cleanup
     litellm_params:
       model: openai/qwen3.6-cleanup
       api_key: "fake-key-for-mock"
-      mock_response: '{"id":"chatcmpl-mock","object":"chat.completion","created":1000,"model":"qwen3.6-cleanup","choices":[{"index":0,"message":{"role":"assistant","content":"mocked reasoning"},"finish_reason":"stop"}],"usage":{"prompt_tokens":10,"completion_tokens":5,"total_tokens":15}}'
+      mock_response: "mocked reasoning"
   - model_name: whisper-large-v3
     litellm_params:
       model: groq/whisper-large-v3
