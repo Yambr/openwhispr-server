@@ -33,6 +33,7 @@
 // MAY route through different providers; we surface 'litellm' as the
 // generic provider when the model alias is not in our bundled table.
 
+import { Readable } from "node:stream";
 import { type ExecutableTx, type TransactionalDb, withTenant } from "@openwhispr/data";
 import {
   type LitellmClient,
@@ -48,6 +49,11 @@ import {
   selectMessages,
   selectModelAndExtras,
 } from "../lib/reason-prompt-select.js";
+import {
+  accumulateReasonStream,
+  type ReasonAccumulation,
+  ReasonStreamIncompleteError,
+} from "../lib/reason-stream-accumulate.js";
 
 export interface ReasonDeps {
   db: TransactionalDb<ExecutableTx>;
@@ -85,12 +91,6 @@ export interface ReasonDeps {
    * `reason-prompt-select.ts`).
    */
   modelParams?: Record<string, Record<string, unknown>>;
-}
-
-interface UpstreamChatJson {
-  model?: string;
-  choices?: Array<{ message?: { role?: string; content?: string } }>;
-  usage?: { prompt_tokens?: number; completion_tokens?: number; total_tokens?: number };
 }
 
 /**
@@ -153,9 +153,17 @@ export const buildReasonRoutes = (deps: ReasonDeps) =>
           ...(deps.modelParams !== undefined ? { modelParams: deps.modelParams } : {}),
         });
 
-        let upstreamJson: UpstreamChatJson;
+        // 260610-nar — internal-stream-then-buffer. The route uses the
+        // EXISTING `chatCompletionsStream()` (stream:true) so the gateway
+        // flushes response headers + the first SSE token fast, satisfying
+        // undici's `headersTimeout` structurally; the long thinking tail is
+        // bounded by the stream path's `bodyTimeout:0` (per-chunk-idle, not
+        // total — index.ts:629). The streamed deltas are accumulated into the
+        // full text BEFORE any 200 is sent, so the client wire surface stays
+        // byte-identical and NO SSE/NDJSON is emitted to the client.
+        let acc: ReasonAccumulation;
         try {
-          const upstream = await deps.litellm.chatCompletions({
+          const upstream = await deps.litellm.chatCompletionsStream({
             model,
             messages,
             // R33 — for the cleanup shape `extras` carries the Qwen3
@@ -174,11 +182,19 @@ export const buildReasonRoutes = (deps: ReasonDeps) =>
             // UUID) and, when LITELLM_USER_HEADER_NAME is configured, into
             // that header. `userId` (the UUID) stays the stable
             // x-litellm-end-user-id key (D-1). Falls back to the UUID if
-            // email is somehow absent on the session.
+            // email is somehow absent on the session. `streamOptions` left
+            // default — the client forces `include_usage:true` (index.ts:605)
+            // so the terminal SSE usage chunk carries total_tokens.
             endUser: req.user.email ?? req.user.id,
             requestId: req.id,
           });
-          upstreamJson = (await upstream.body.json()) as UpstreamChatJson;
+          // Bridge the Node Readable body → Web ReadableStream<Uint8Array>
+          // (zero-copy) and accumulate-and-inspect the WHOLE stream before
+          // we emit any 200. A failed/partial stream rejects here, BEFORE
+          // the usage_ledger INSERT and the reply — never a partial 200.
+          acc = await accumulateReasonStream(
+            Readable.toWeb(upstream.body as Readable) as ReadableStream<Uint8Array>,
+          );
         } catch (err) {
           if (err instanceof MissingProviderKeyError) {
             // 503 — operator-actionable config issue. NEVER 401 (Pitfall #8).
@@ -188,7 +204,22 @@ export const buildReasonRoutes = (deps: ReasonDeps) =>
             throw new ServiceUnavailable("SERVICE_UNAVAILABLE", "Service temporarily unavailable");
           }
           if (err instanceof LitellmUpstreamError) {
+            // Thrown by chatCompletionsStream BEFORE the body opens (pre-2xx
+            // upstream failure — index.ts:647-656).
             req.log.warn({ status: err.status }, "litellm upstream error on /api/reason");
+            throw new UpstreamError(
+              "REASONING_UPSTREAM_FAILED",
+              "upstream reasoning provider failure",
+            );
+          }
+          if (err instanceof ReasonStreamIncompleteError) {
+            // 260610-nar / T-nar-02 — a mid-stream error frame, premature
+            // close, or missing terminal usage AFTER 200 SSE headers. The
+            // accumulator never attaches the upstream blob (T-nar-03), so we
+            // emit the same generic 502 envelope as the pre-200 branch. No
+            // partial 200, no ledger row (we are still inside the try, before
+            // the INSERT + reply).
+            req.log.warn({ err }, "incomplete reasoning stream on /api/reason");
             throw new UpstreamError(
               "REASONING_UPSTREAM_FAILED",
               "upstream reasoning provider failure",
@@ -197,7 +228,7 @@ export const buildReasonRoutes = (deps: ReasonDeps) =>
           throw err;
         }
 
-        const tokens = upstreamJson.usage?.total_tokens ?? 0;
+        const tokens = acc.usage.totalTokens;
 
         // DATA-03 — idempotent ledger insert. Plan 08 spend-ingest worker
         // converges on the same row via the request_id UNIQUE index.
@@ -212,9 +243,13 @@ export const buildReasonRoutes = (deps: ReasonDeps) =>
           `);
         });
 
-        const responseModel = upstreamJson.model ?? model;
+        // 260610-nar — the streaming deltas do not reliably echo `model`
+        // (the non-streaming path read `upstreamJson.model`). The requested
+        // alias is the authoritative wire value and matches every existing
+        // test asserting `parsed.model === requested/default alias`.
+        const responseModel = model;
         const response: ReasonResponse = {
-          text: upstreamJson.choices?.[0]?.message?.content ?? "",
+          text: acc.text,
           model: responseModel,
           provider: MODEL_PROVIDER[responseModel] ?? MODEL_PROVIDER[model] ?? "litellm",
           // R23: `promptMode` / `matchType` are RESPONSE-shape fields and

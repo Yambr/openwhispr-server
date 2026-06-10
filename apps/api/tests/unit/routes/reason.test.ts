@@ -20,6 +20,7 @@
 //   * idempotent re-post (same request_id) — both 200, ON CONFLICT clause present
 //   * custom promptMode + matchType echoed verbatim
 
+import { Readable } from "node:stream";
 import { ErrorEnvelope, ReasonResponse } from "@openwhispr/contract-tests/schemas";
 import {
   type ChatCompletionRequest,
@@ -79,22 +80,84 @@ function makeFakeDb(): {
 }
 
 interface FakeLitellmOpts {
-  /** Records every chatCompletions call. */
+  /** Records every chatCompletionsStream call (same `calls` array as before). */
   calls: ChatCompletionRequest[];
-  /** When set, chatCompletions throws this error instead of returning. */
+  /**
+   * When set, chatCompletionsStream throws this error BEFORE the body opens
+   * (mirrors the client throwing MissingProviderKeyError / LitellmUpstreamError
+   * pre-2xx at index.ts:647-656).
+   */
   throws?: Error;
   /**
-   * Override the upstream JSON response. Default: a representative
-   * mock_response payload mirroring compose/litellm/litellm_config.contract.yaml.
+   * Override the upstream JSON response. The fake synthesizes an SSE byte
+   * stream from this shape: one content delta carrying
+   * `choices[0].message.content`, then a terminal frame with
+   * `finish_reason:"stop"` + `usage` (total_tokens), then `[DONE]`. Default
+   * mirrors compose/litellm/litellm_config.contract.yaml.
    */
   upstreamJson?: {
     model?: string;
     choices?: Array<{ message?: { role?: string; content?: string } }>;
     usage?: { total_tokens?: number };
   };
+  /**
+   * Quick 260610-nar — raw SSE body override (escape hatch for the new
+   * mid-stream-error / premature-close route tests). When provided it is
+   * emitted verbatim as the stream body, bypassing `upstreamJson` synthesis.
+   */
+  rawSse?: string;
+}
+
+/** Synthesize OpenAI-compatible SSE frames from the legacy upstreamJson shape. */
+function sseFromJson(json: NonNullable<FakeLitellmOpts["upstreamJson"]>): string {
+  const content = json.choices?.[0]?.message?.content ?? "";
+  const total = json.usage?.total_tokens;
+  const frames: string[] = [`data: ${JSON.stringify({ choices: [{ delta: { content } }] })}`, ""];
+  const terminal: Record<string, unknown> = {
+    choices: [{ delta: {}, finish_reason: "stop" }],
+  };
+  // Mirror the contract.yaml usage envelope; reconstructed total when present.
+  if (total !== undefined) {
+    terminal.usage = { prompt_tokens: 0, completion_tokens: 0, total_tokens: total };
+  } else {
+    // No usage on the wire — the accumulator must reject (premature/no-usage).
+    // Tests that omit usage expect a 5xx, so this path is only hit by them.
+    terminal.usage = undefined;
+  }
+  // When usage is omitted entirely, still emit a finish frame WITHOUT usage so
+  // the accumulator's "no usage captured" rejection fires (parity with the
+  // legacy "missing usage -> units=0" intent now mapped to a 5xx is handled by
+  // the dedicated test; the default path always carries usage).
+  if (terminal.usage === undefined) {
+    delete terminal.usage;
+  }
+  frames.push(`data: ${JSON.stringify(terminal)}`, "", "data: [DONE]", "");
+  return frames.join("\n");
+}
+
+function makeStreamBody(sse: string): Readable {
+  return Readable.from([Buffer.from(sse, "utf-8")]);
 }
 
 function makeFakeLitellm(opts: FakeLitellmOpts): LitellmClient {
+  const streamImpl = async (req: ChatCompletionRequest) => {
+    opts.calls.push(req);
+    if (opts.throws) throw opts.throws;
+    const sse =
+      opts.rawSse ??
+      sseFromJson(
+        opts.upstreamJson ?? {
+          model: req.model ?? "qwen3.6-plus",
+          choices: [{ message: { role: "assistant", content: "mocked reasoning" } }],
+          usage: { total_tokens: 15 },
+        },
+      );
+    return {
+      statusCode: 200,
+      headers: {},
+      body: makeStreamBody(sse),
+    } as unknown as Awaited<ReturnType<LitellmClient["chatCompletionsStream"]>>;
+  };
   return {
     baseUrl: "http://litellm.test:4000",
     audioTranscriptions: () => {
@@ -103,23 +166,10 @@ function makeFakeLitellm(opts: FakeLitellmOpts): LitellmClient {
     passthrough: () => {
       throw new Error("passthrough not used in this test");
     },
-    async chatCompletions(req) {
-      opts.calls.push(req);
-      if (opts.throws) throw opts.throws;
-      const json = opts.upstreamJson ?? {
-        model: req.model ?? "qwen3.6-plus",
-        choices: [{ message: { role: "assistant", content: "mocked reasoning" } }],
-        usage: { total_tokens: 15 },
-      };
-      return {
-        statusCode: 200,
-        body: {
-          async json() {
-            return json;
-          },
-        },
-      } as unknown as Awaited<ReturnType<LitellmClient["chatCompletions"]>>;
+    chatCompletions: () => {
+      throw new Error("chatCompletions must not be called — reason path streams (260610-nar)");
     },
+    chatCompletionsStream: streamImpl,
   };
 }
 
@@ -554,16 +604,27 @@ describe("POST /api/reason", () => {
     expect(env.error).not.toMatch(/totally unexpected/);
   });
 
-  it("derives wordsRemaining-equivalent from upstream usage; missing usage -> units=0", async () => {
+  // 260610-nar — UNDER THE STREAMING PATH the semantics CHANGE: a stream that
+  // closes WITHOUT a terminal usage chunk is now an INCOMPLETE stream (the
+  // accumulator cannot reconstruct total_tokens, so it cannot guarantee a
+  // correct ledger row). It REJECTS → 502, rather than the legacy
+  // non-streaming behaviour of a 200 with units=0. No partial ledger row is
+  // written. The "correct total_tokens" happy path is covered by Test A/D
+  // below; this test pins the no-usage-frame -> 5xx contract.
+  it("260610-nar — a stream with NO terminal usage chunk -> 502 (no silent units=0 200)", async () => {
     const { db, recorded } = makeFakeDb();
     const calls: ChatCompletionRequest[] = [];
     const litellm = makeFakeLitellm({
       calls,
-      upstreamJson: {
-        model: "qwen3.6-plus",
-        choices: [{ message: { role: "assistant", content: "no usage stats" } }],
-        // usage omitted entirely
-      },
+      // Content frame then a finish frame WITHOUT usage, then [DONE].
+      rawSse: [
+        'data: {"choices":[{"delta":{"content":"no usage stats"}}]}',
+        "",
+        'data: {"choices":[{"delta":{},"finish_reason":"stop"}]}',
+        "",
+        "data: [DONE]",
+        "",
+      ].join("\n"),
     });
     app = buildApp({ db, litellm });
     const res = await app.inject({
@@ -572,11 +633,12 @@ describe("POST /api/reason", () => {
       headers: { "content-type": "application/json" },
       payload: JSON.stringify({ text: "hi" }),
     });
-    expect(res.statusCode).toBe(200);
+    expect(res.statusCode).toBe(502);
+    const env = ErrorEnvelope.parse(res.json());
+    expect(env.error).toBe("upstream reasoning provider failure");
+    // No ledger row written on a failed stream (inspect-before-insert).
     const insert = recorded.find((r) => /INSERT INTO usage_ledger/i.test(r.sql));
-    expect(insert).toBeDefined();
-    // units=0 inlined into SQL by drizzle's StringChunk path under our recorder.
-    expect(insert?.sql).toMatch(/0\s*\)\s*ON CONFLICT/);
+    expect(insert).toBeUndefined();
   });
 
   // R28 (quick-task 20260522) — the immutable desktop client builds the
@@ -1077,5 +1139,162 @@ describe("POST /api/reason", () => {
     expect(call.extras).toEqual({
       extra_body: { chat_template_kwargs: { enable_thinking: false } },
     });
+  });
+
+  // ===========================================================================
+  // Quick 260610-nar — internal-stream-then-buffer headline tests.
+  // The route now calls chatCompletionsStream + accumulate-and-inspect-before-200.
+  // ===========================================================================
+
+  // Test A — happy stream -> 200 with concatenated text + ledger units = total.
+  it("260610-nar Test A — happy stream -> 200, concatenated text, ledger units == terminal total_tokens", async () => {
+    const { db, recorded } = makeFakeDb();
+    const calls: ChatCompletionRequest[] = [];
+    const litellm = makeFakeLitellm({
+      calls,
+      // Two content deltas + a terminal usage(total_tokens:15) frame.
+      rawSse: [
+        'data: {"choices":[{"delta":{"content":"mocked"}}]}',
+        "",
+        'data: {"choices":[{"delta":{"content":" reasoning"}}]}',
+        "",
+        'data: {"choices":[{"delta":{},"finish_reason":"stop"}],"usage":{"prompt_tokens":10,"completion_tokens":5,"total_tokens":15}}',
+        "",
+        "data: [DONE]",
+        "",
+      ].join("\n"),
+    });
+    app = buildApp({ db, litellm });
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/reason",
+      headers: { "content-type": "application/json" },
+      payload: JSON.stringify({ text: "hello" }),
+    });
+    expect(res.statusCode).toBe(200);
+    const parsed = ReasonResponse.parse(res.json());
+    expect(parsed.text).toBe("mocked reasoning");
+    expect(parsed.model).toBe("qwen3.6-plus");
+    expect(parsed.provider).toBe("openrouter");
+    expect(parsed.promptMode).toBe("default");
+    expect(parsed.matchType).toBe("default");
+
+    // The recorded call went through the STREAM method.
+    expect(calls).toHaveLength(1);
+    expect(calls[0]?.userId).toBe(TEST_USER);
+
+    // Ledger units == reconstructed total_tokens (15).
+    const insert = recorded.find((r) => /INSERT INTO usage_ledger/i.test(r.sql));
+    expect(insert).toBeDefined();
+    expect(insert?.sql).toMatch(/15\s*\)\s*ON CONFLICT/);
+  });
+
+  // Test B — mid-stream error AFTER 200 headers -> 502, NOT a partial 200.
+  it("260610-nar Test B — mid-stream SSE error frame -> 502 REASONING_UPSTREAM_FAILED, no partial text, no master-key leak", async () => {
+    const { db, recorded } = makeFakeDb();
+    const calls: ChatCompletionRequest[] = [];
+    const litellm = makeFakeLitellm({
+      calls,
+      rawSse: [
+        'data: {"choices":[{"delta":{"content":"PARTIAL-LEAK-CANARY"}}]}',
+        "",
+        'data: {"error":{"message":"Bearer sk-litellm-master-DO-NOT-LEAK upstream exploded"}}',
+        "",
+        "data: [DONE]",
+        "",
+      ].join("\n"),
+    });
+    app = buildApp({ db, litellm });
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/reason",
+      headers: { "content-type": "application/json" },
+      payload: JSON.stringify({ text: "hello" }),
+    });
+    expect(res.statusCode).toBe(502);
+    const env = ErrorEnvelope.parse(res.json());
+    expect(env.error).toBe("upstream reasoning provider failure");
+    // Never a partial-200: the accumulated partial text is absent from the wire.
+    expect(res.body).not.toContain("PARTIAL-LEAK-CANARY");
+    // T-nar-03 — no upstream master-key-shaped blob echoed.
+    expect(res.body).not.toMatch(/sk-litellm-master/);
+    // No ledger row on a failed stream.
+    const insert = recorded.find((r) => /INSERT INTO usage_ledger/i.test(r.sql));
+    expect(insert).toBeUndefined();
+  });
+
+  // Test C — premature close (content frames, no finish_reason/usage) -> 502.
+  it("260610-nar Test C — premature close (no finish_reason) -> 502, no partial 200", async () => {
+    const { db, recorded } = makeFakeDb();
+    const calls: ChatCompletionRequest[] = [];
+    const litellm = makeFakeLitellm({
+      calls,
+      rawSse: [
+        'data: {"choices":[{"delta":{"content":"only content"}}]}',
+        "",
+        'data: {"choices":[{"delta":{"content":" then close"}}]}',
+        "",
+        // ends WITHOUT finish_reason / usage / [DONE].
+      ].join("\n"),
+    });
+    app = buildApp({ db, litellm });
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/reason",
+      headers: { "content-type": "application/json" },
+      payload: JSON.stringify({ text: "hello" }),
+    });
+    expect(res.statusCode).toBe(502);
+    const env = ErrorEnvelope.parse(res.json());
+    expect(env.error).toBe("upstream reasoning provider failure");
+    expect(res.body).not.toContain("only content");
+    const insert = recorded.find((r) => /INSERT INTO usage_ledger/i.test(r.sql));
+    expect(insert).toBeUndefined();
+  });
+
+  // Test D — usage reconstruction parity: only prompt+completion -> ledger sum.
+  it("260610-nar Test D — terminal usage with no total_tokens -> ledger units == prompt+completion", async () => {
+    const { db, recorded } = makeFakeDb();
+    const calls: ChatCompletionRequest[] = [];
+    const litellm = makeFakeLitellm({
+      calls,
+      rawSse: [
+        'data: {"choices":[{"delta":{"content":"x"}}]}',
+        "",
+        'data: {"choices":[{"delta":{},"finish_reason":"stop"}],"usage":{"prompt_tokens":7,"completion_tokens":5}}',
+        "",
+        "data: [DONE]",
+        "",
+      ].join("\n"),
+    });
+    app = buildApp({ db, litellm });
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/reason",
+      headers: { "content-type": "application/json" },
+      payload: JSON.stringify({ text: "hello" }),
+    });
+    expect(res.statusCode).toBe(200);
+    const insert = recorded.find((r) => /INSERT INTO usage_ledger/i.test(r.sql));
+    expect(insert).toBeDefined();
+    // 7 + 5 = 12 reconstructed.
+    expect(insert?.sql).toMatch(/12\s*\)\s*ON CONFLICT/);
+  });
+
+  // Contract guard — the success response keys are EXACTLY the canonical five.
+  it("260610-nar — success response keys are exactly { text, model, provider, promptMode, matchType }", async () => {
+    const { db } = makeFakeDb();
+    const calls: ChatCompletionRequest[] = [];
+    const litellm = makeFakeLitellm({ calls });
+    app = buildApp({ db, litellm });
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/reason",
+      headers: { "content-type": "application/json" },
+      payload: JSON.stringify({ text: "hello" }),
+    });
+    expect(res.statusCode).toBe(200);
+    const keys = Object.keys(res.json() as Record<string, unknown>).sort();
+    expect(keys).toEqual(["matchType", "model", "promptMode", "provider", "text"]);
   });
 });

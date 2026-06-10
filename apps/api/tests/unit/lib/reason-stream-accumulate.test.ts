@@ -80,7 +80,12 @@ describe("accumulateReasonStream", () => {
     const sse = [
       'data: {"choices":[{"delta":{"content":"partial secret"}}]}',
       "",
+      // The error frame is followed by [DONE] so it is properly framed
+      // (terminated by "\n\n") and the error branch is exercised — the
+      // upstream may still send a terminal sentinel after an error event.
       'data: {"error":{"message":"upstream exploded with sk-litellm-master-DO-NOT-LEAK"}}',
+      "",
+      "data: [DONE]",
       "",
     ].join("\n");
     await expect(accumulateReasonStream(streamFrom(sse))).rejects.toBeInstanceOf(
@@ -142,5 +147,54 @@ describe("accumulateReasonStream", () => {
     );
     expect(acc.text).toBe("Hello");
     expect(acc.usage.totalTokens).toBe(2);
+  });
+
+  it("ignores a frame that has no `data: ` line (comment/keep-alive frame)", async () => {
+    // SSE comment / keep-alive frames (":heartbeat") carry no `data: ` line —
+    // they must be skipped without affecting accumulation.
+    const sse = [
+      ": keep-alive heartbeat",
+      "",
+      'data: {"choices":[{"delta":{"content":"after heartbeat"}}]}',
+      "",
+      'data: {"choices":[{"delta":{},"finish_reason":"stop"}],"usage":{"prompt_tokens":1,"completion_tokens":1,"total_tokens":2}}',
+      "",
+      "data: [DONE]",
+      "",
+    ].join("\n");
+    const acc = await accumulateReasonStream(streamFrom(sse));
+    expect(acc.text).toBe("after heartbeat");
+    expect(acc.usage.totalTokens).toBe(2);
+  });
+
+  it("treats an explicit `error:null` frame as NOT an error (continues normally)", async () => {
+    // A frame whose `error` is explicitly null is not an error event — the
+    // `!== null` guard must let it through so accumulation continues.
+    const sse = [
+      'data: {"error":null,"choices":[{"delta":{"content":"not an error"}}]}',
+      "",
+      'data: {"choices":[{"delta":{},"finish_reason":"stop"}],"usage":{"prompt_tokens":1,"completion_tokens":1,"total_tokens":2}}',
+      "",
+      "data: [DONE]",
+      "",
+    ].join("\n");
+    const acc = await accumulateReasonStream(streamFrom(sse));
+    expect(acc.text).toBe("not an error");
+    expect(acc.usage.totalTokens).toBe(2);
+  });
+
+  it("reconstructs usage when prompt_tokens/completion_tokens are absent (?? 0 arms)", async () => {
+    // A terminal usage object carrying ONLY total_tokens (no prompt/completion)
+    // exercises the `?? 0` fallbacks on both fields.
+    const sse = [
+      'data: {"choices":[{"delta":{"content":"z"}}]}',
+      "",
+      'data: {"choices":[{"delta":{},"finish_reason":"stop"}],"usage":{"total_tokens":4}}',
+      "",
+      "data: [DONE]",
+      "",
+    ].join("\n");
+    const acc = await accumulateReasonStream(streamFrom(sse));
+    expect(acc.usage).toEqual({ promptTokens: 0, completionTokens: 0, totalTokens: 4 });
   });
 });
