@@ -9,6 +9,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 _Nothing yet._
 
+## [1.2.6] - 2026-06-10
+
+### Fixed
+
+- `POST /api/reason` no longer returns HTTP 500 with `UND_ERR_HEADERS_TIMEOUT`
+  (~30s) when the reasoning model thinks for longer than undici's 30s
+  `headersTimeout` before emitting its first output token. The route now calls
+  the upstream gateway with `stream: true` internally (via the existing
+  `chatCompletionsStream`) so response headers and the first SSE token arrive
+  promptly; the server accumulates the streamed deltas into the full text and
+  returns the same single JSON body `{ text, model, provider, promptMode,
+  matchType }`. The client wire surface is byte-identical — no client change is
+  required. A mid-stream upstream failure that arrives after the 200 SSE
+  headers is detected before any response is sent and surfaces as a clean
+  `REASONING_UPSTREAM_FAILED` 5xx envelope, never a partial 200. `usage`
+  accounting is preserved (reconstructed from the terminal SSE usage chunk).
+
 ## [1.2.5] - 2026-06-06
 
 ### Removed
