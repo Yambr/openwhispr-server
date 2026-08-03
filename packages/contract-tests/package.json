@@ -32,14 +32,14 @@
   },
   "dependencies": {
     "@openwhispr/wire-schemas": "workspace:*",
-    "pg": "8.21.0",
+    "pg": "8.22.0",
     "tough-cookie": "5.1.2",
     "zod": "4.4.3"
   },
   "devDependencies": {
-    "@types/pg": "^8.20.0",
+    "@types/pg": "^8.20.1",
     "@types/ws": "^8.18.1",
-    "vitest": "4.1.5",
-    "ws": "^8.21.0"
+    "vitest": "4.1.10",
+    "ws": "^8.21.1"
   }
 }
