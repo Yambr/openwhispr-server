@@ -16,7 +16,7 @@
     "test:cov": "vitest run --coverage --coverage.include=src/probe.ts --coverage.exclude= --coverage.all=false --coverage.thresholds.lines=90 --coverage.thresholds.branches=85 --coverage.thresholds.functions=90 --coverage.thresholds.statements=90"
   },
   "dependencies": {
-    "undici": "7.25.0"
+    "undici": "7.29.0"
   },
   "devDependencies": {
     "@types/node": "^22.10.0",
