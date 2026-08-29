@@ -423,29 +423,61 @@ function pinGaTranscriptionModel(ga: Record<string, unknown>, force: string): vo
 }
 
 /**
+ * Upstream session events whose ONLY difference between the retired Beta
+ * vocabulary and GA is the event NAME — the payload is carried across
+ * untouched.
+ *
+ * WR-11 — kept as a map rather than a `switch` so the pass-through path
+ * is a single lookup miss: every frame type absent from this table is
+ * returned by reference, which is what the GA-upstream tests assert.
+ */
+const UPSTREAM_BETA_TO_GA_EVENT: Readonly<Record<string, string>> = {
+  "transcription_session.created": "session.created",
+  "transcription_session.updated": "session.updated",
+};
+
+/**
  * Translate an UPSTREAM→CLIENT frame.
  *
- * Currently a pure passthrough — every upstream frame is returned with
- * the same object reference, no type rewrite, no payload restructuring.
- * The actually-shipping desktop client (upstream OpenWhispr at
- * /Users/dev/openwhispr/src/helpers/openaiRealtimeStreaming.js:132-177
- * AND Yambr fork v1.7.8) speaks OpenAI Realtime GA throughout: its switch
- * table handles `case "session.created"` / `case "session.updated"`
- * directly and has zero references to `transcription_session.*` events.
+ * Renames the two retired-Beta session events to their GA equivalents
+ * (see {@link UPSTREAM_BETA_TO_GA_EVENT}); every other frame — GA session
+ * events, `conversation.item.input_audio_transcription.*` results,
+ * `input_audio_buffer.*`, `error` — is returned with the SAME object
+ * reference, no rewrite, no payload restructuring.
  *
- * The function is retained as a named export — and `routes/realtime.ts`
- * calls it on every upstream→client frame — so a future divergence (e.g.
- * a future client variant that needs GA→something rewrites) can hook here
- * without touching call sites in the relay.
+ * WHY THE RENAME EXISTS (WR-11, 260829). This function used to be a pure
+ * identity: the actually-shipping desktop client (upstream OpenWhispr
+ * `src/helpers/openaiRealtimeStreaming.js` AND the Yambr fork) speaks GA
+ * throughout — its switch table handles `case "session.created"` /
+ * `case "session.updated"` and has ZERO references to
+ * `transcription_session.*` — so no client-facing rename seemed needed.
+ * The missing half of that reasoning was the UPSTREAM: it is not always
+ * GA either.
  *
- * Operational note: the relay self-injects its own GA `session.update`
- * frame on upstream open (DEFECT 6, see {@link buildRelaySessionUpdateFrame}).
- * The upstream's resulting `session.updated` echo is swallowed by the
- * `relaySessionUpdateEchoPending` flag in `bridgeRealtimeSockets` BEFORE
- * this translator is called — the swallow is a quality-of-life filter
- * (no unsolicited update echoes reach the client) rather than a
- * correctness gate.
+ * The relay FORCES `?intent=transcription` onto the upstream URL
+ * (`buildUpstreamUrl` in routes/realtime.ts), because OpenAI GA needs it
+ * to open a transcription session at all (R31 DEFECT 5). On a corporate
+ * LiteLLM → GigaAM realtime stand that very param ALSO switches the
+ * event vocabulary to Beta. Measured live, same stand, same audio:
+ *
+ *   with `?intent=transcription`    → transcription_session.created/.updated
+ *   without `?intent=transcription` → session.created/.updated
+ *
+ * with byte-identical transcription results either way. So the frames the
+ * client waits for arrived under names it does not know: the connect
+ * promise was never resolved, and the client rejected on its own 15s
+ * ceiling with "OpenAI Realtime connection timeout" — socket still OPEN,
+ * `audioBytesSent: 0`, and nothing logged server-side, because from the
+ * relay's point of view a frame had been forwarded successfully.
+ *
+ * Dropping the forced `?intent` would fix our stand and BREAK every
+ * operator whose upstream is really OpenAI GA (DEFECT 5 again), so the
+ * normalization lives here instead: the relay is the dialect boundary,
+ * and this is where it holds it. For a GA upstream the table misses and
+ * the function stays the identity it was.
  */
 export function translateUpstreamToClient(frame: RealtimeFrame): RealtimeFrame {
-  return frame;
+  const gaType = UPSTREAM_BETA_TO_GA_EVENT[frame.type];
+  if (gaType === undefined) return frame;
+  return { ...frame, type: gaType };
 }

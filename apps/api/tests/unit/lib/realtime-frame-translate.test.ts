@@ -334,7 +334,7 @@ describe("translateClientToUpstream — force operator transcription model (upst
   });
 });
 
-describe("translateUpstreamToClient — passthrough (GA→GA per current client contract)", () => {
+describe("translateUpstreamToClient — normalize the upstream dialect to GA", () => {
   it("passes session.created through unchanged", () => {
     const frame: RealtimeFrame = {
       type: "session.created",
@@ -409,9 +409,44 @@ describe("translateUpstreamToClient — passthrough (GA→GA per current client 
     expect(translateUpstreamToClient(err)).toBe(err);
   });
 
-  it("does not double-translate an already-Beta frame", () => {
-    const already: RealtimeFrame = { type: "transcription_session.created" };
-    expect(translateUpstreamToClient(already)).toBe(already);
+  // WR-11 (260829) — the upstream dialect is NOT guaranteed to be GA.
+  // Measured live against the corporate LiteLLM -> GigaAM realtime stand:
+  // WITH the relay-forced `?intent=transcription` the upstream answers in
+  // the retired BETA vocabulary (`transcription_session.created` /
+  // `transcription_session.updated`); WITHOUT that param the very same
+  // stand answers GA (`session.created` / `session.updated`) and
+  // transcribes the same audio identically. The shipping desktop client
+  // speaks GA ONLY — its switch table has `case "session.created"` /
+  // `case "session.updated"` and ZERO references to
+  // `transcription_session.*` (14 vs 0 occurrences in the packaged
+  // app.asar). So a Beta name reaching the client matches no branch, the
+  // connect promise never resolves, and the client rejects with
+  // "OpenAI Realtime connection timeout" after its 15s ceiling — with the
+  // socket still OPEN and the relay logging nothing. The relay declares
+  // itself the GA contract boundary, so it must hold that boundary here.
+  it("renames a Beta transcription_session.created to GA session.created", () => {
+    const beta: RealtimeFrame = {
+      type: "transcription_session.created",
+      session: { id: "sess_1" },
+    };
+    const result = translateUpstreamToClient(beta);
+    expect(result.type).toBe("session.created");
+    // Only the event NAME differs between dialects for this frame — the
+    // payload rides along by reference, untouched.
+    expect(result.session).toBe(beta.session);
+    // The input frame is never mutated in place.
+    expect(beta.type).toBe("transcription_session.created");
+  });
+
+  it("renames a Beta transcription_session.updated to GA session.updated", () => {
+    const beta: RealtimeFrame = {
+      type: "transcription_session.updated",
+      session: { type: "transcription" },
+    };
+    const result = translateUpstreamToClient(beta);
+    expect(result.type).toBe("session.updated");
+    expect(result.session).toBe(beta.session);
+    expect(beta.type).toBe("transcription_session.updated");
   });
 });
 

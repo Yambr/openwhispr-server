@@ -478,17 +478,23 @@ export function bridgeRealtimeSockets(
       );
       return;
     }
+    // WR-11 — normalize the upstream dialect FIRST. A Beta-speaking
+    // upstream sends `transcription_session.updated`, so every check
+    // below MUST key on the canonical GA name of the TRANSLATED frame; a
+    // check against the raw frame type silently stops matching.
+    const translated = translateUpstreamToClient(parsed.frame);
     // R31 DEFECT 6 — swallow the `session.updated` echo for the relay's
     // OWN self-injected `session.update`. The preconfigured client did
     // not send an update and would receive an unsolicited
-    // `transcription_session.updated`; while harmless to that client's
-    // state machine, dropping it keeps the client-visible frame stream
-    // faithful to what a Design-A preconfigured session looks like.
-    if (relaySessionUpdateEchoPending && parsed.frame.type === "session.updated") {
+    // `session.updated`; while harmless to that client's state machine,
+    // dropping it keeps the client-visible frame stream faithful to what
+    // a Design-A preconfigured session looks like. Only the FIRST echo is
+    // dropped — the upstream echoes every `session.update` separately, so
+    // a non-preconfigured client still gets the echo of its own update.
+    if (relaySessionUpdateEchoPending && translated.type === "session.updated") {
       relaySessionUpdateEchoPending = false;
       return;
     }
-    const translated = translateUpstreamToClient(parsed.frame);
     clientSocket.send(JSON.stringify(translated));
   });
 
