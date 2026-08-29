@@ -518,6 +518,26 @@ export function bridgeRealtimeSockets(
   clientSocket.on("pong", () => {
     lastPongAt = Date.now();
   });
+  // WR-12 — the same liveness check on the UPSTREAM leg. Without it a
+  // path that dies with no close frame (a proxy dropping the connection,
+  // a firewall losing state, a gateway pod evicted mid-session) is
+  // invisible: the relay keeps forwarding audio into a black hole while
+  // its client leg stays perfectly healthy, because the client really is
+  // alive. The client cannot notice either — its own keepalive pings are
+  // answered by US, automatically, below the application — so the user
+  // just sees the transcript stop updating, with no error and no
+  // reconnect. Tearing both legs down turns that silence into a
+  // definitive close the client can act on.
+  let lastUpstreamPongAt = Date.now();
+  upstreamSocket.on("pong", () => {
+    lastUpstreamPongAt = Date.now();
+  });
+  // The upstream is usually still CONNECTING when the bridge is wired
+  // (the route dials and bridges in the same tick), so start its clock
+  // when the socket actually opens rather than at bridge time.
+  upstreamSocket.on("open", () => {
+    lastUpstreamPongAt = Date.now();
+  });
   let heartbeatTimer: NodeJS.Timeout | undefined;
   const stopHeartbeat = (): void => {
     if (heartbeatTimer !== undefined) {
@@ -526,7 +546,14 @@ export function bridgeRealtimeSockets(
     }
   };
   heartbeatTimer = setInterval(() => {
-    if (Date.now() - lastPongAt > intervalMs + timeoutMs) {
+    const now = Date.now();
+    // Either peer going quiet is fatal to the session, and both are torn
+    // down together: a half-open relay serves nobody and still holds an
+    // upstream session slot.
+    if (
+      now - lastPongAt > intervalMs + timeoutMs ||
+      now - lastUpstreamPongAt > intervalMs + timeoutMs
+    ) {
       // `terminate`, not `close`: a frozen peer will never complete a
       // closing handshake, and waiting for one would hold the slot for
       // the full close timeout.
@@ -535,12 +562,22 @@ export function bridgeRealtimeSockets(
       upstreamSocket.terminate();
       return;
     }
-    if (clientSocket.readyState !== WebSocket.OPEN) return;
-    try {
-      clientSocket.ping();
-    } catch {
-      // Socket died between the readyState check and the ping — the
-      // close/error handlers own the teardown.
+    // Each leg is pinged independently — a leg that is not OPEN yet (or
+    // any more) is simply skipped, never a reason to skip the other.
+    if (clientSocket.readyState === WebSocket.OPEN) {
+      try {
+        clientSocket.ping();
+      } catch {
+        // Socket died between the readyState check and the ping — the
+        // close/error handlers own the teardown.
+      }
+    }
+    if (upstreamSocket.readyState === WebSocket.OPEN) {
+      try {
+        upstreamSocket.ping();
+      } catch {
+        // Same race as above, on the upstream leg.
+      }
     }
   }, intervalMs);
 
