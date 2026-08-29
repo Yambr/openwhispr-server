@@ -9,6 +9,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 _Nothing yet._
 
+## [1.2.7] - 2026-08-29
+
+### Fixed
+
+- The realtime relay (`/v1/realtime`) no longer leaks an upstream session slot
+  when a client dies without a FIN/RST (VPN drop, laptop sleep). Such a client
+  leaves the TCP connection ESTABLISHED, so `clientSocket.on("close")` never
+  fires, `closeBoth()` is never called, and the relay held its upstream leg —
+  and the upstream's session slot — until the edge proxy's read timeout.
+  The upstream's own keepalive could not detect this either: `ws` (and the
+  Python `websockets` used by an intermediate proxy) answer ping frames
+  automatically, below the application, so the upstream saw a healthy peer —
+  the relay — while the real client was long gone. The relay now runs its own
+  ping/pong heartbeat on the client leg (20s interval, 20s timeout, mirroring
+  the usual uvicorn `ws_ping_interval`/`ws_ping_timeout`) and terminates BOTH
+  legs when the pongs stop, so a dead client is detected in ~40s worst case
+  and the slot is released through the normal path. `terminate` rather than
+  `close`: a frozen peer never completes a closing handshake. The heartbeat
+  timer is cleared in `closeBoth` and in every error/unexpected-response path.
+  Tuning is injectable via `RealtimeDeps.heartbeat` (tests run it on
+  millisecond timings); production uses the `DEFAULT_REALTIME_HEARTBEAT_*`
+  constants.
+
 ## [1.2.6] - 2026-06-10
 
 ### Fixed
@@ -174,7 +197,9 @@ _Nothing yet._
 - Pre-push test-evidence gate validates the tip commit only, keeping it
   compatible with the test-driven workflow.
 
-[Unreleased]: https://github.com/Yambr/openwhispr-server/compare/v1.2.5...HEAD
+[Unreleased]: https://github.com/Yambr/openwhispr-server/compare/v1.2.7...HEAD
+[1.2.7]: https://github.com/Yambr/openwhispr-server/compare/v1.2.6...v1.2.7
+[1.2.6]: https://github.com/Yambr/openwhispr-server/compare/v1.2.5...v1.2.6
 [1.2.5]: https://github.com/Yambr/openwhispr-server/compare/v1.2.4...v1.2.5
 [1.2.4]: https://github.com/Yambr/openwhispr-server/compare/v1.2.3...v1.2.4
 [1.2.3]: https://github.com/Yambr/openwhispr-server/compare/v1.2.2...v1.2.3
