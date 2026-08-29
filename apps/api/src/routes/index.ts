@@ -34,6 +34,7 @@ import {
 import { type AuthProvidersDeps, buildAuthProvidersRoutes } from "./auth-providers.js";
 import { type BetterAuthHandlerDeps, buildBetterAuthHandlerRoutes } from "./better-auth-handler.js";
 import { buildCapabilitiesRoutes, type CapabilitiesDeps } from "./capabilities.js";
+import { buildMeSpacesRoutes } from "./me-spaces.js";
 import { buildCheckUserRoutes, type CheckUserDeps } from "./check-user.js";
 import {
   buildConversationsCreateRoutes,
@@ -335,6 +336,11 @@ export function buildAllRoutes(deps: AllRoutesDeps): readonly RoutePlugin[] {
     buildLocaleRoutes(localeDeps),
     buildAuthProvidersRoutes(authProvidersDeps),
     buildCapabilitiesRoutes(capabilitiesDeps),
+    // Account-scope guard the desktop calls on every sign-in. Registered
+    // unconditionally and with no deps: it answers a constant empty list, and
+    // without it the 1.9.x client cannot validate a session at all. See
+    // me-spaces.ts for why a missing route hangs the app.
+    buildMeSpacesRoutes(),
     buildSetupStateRoutes(setupStateDeps),
     buildCheckUserRoutes(checkUserDeps),
     buildVerificationStatusRoutes(verificationDeps),

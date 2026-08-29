@@ -9,6 +9,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 _Nothing yet._
 
+## [1.2.10] - 2026-08-30
+
+### Added
+
+- **`GET /api/me/spaces`.** The desktop calls this on every sign-in, and not to
+  render a list: `SyncService.verifyTeamSpacesForAccount` uses the answer to
+  decide which locally cached team spaces the account may keep, destructively
+  purging the rest so one account's content cannot survive into another's
+  session. The check is deliberately fail-closed, so on a server without the
+  route the 404 propagates, the session never validates, and the app hangs on
+  its loading screen retrying every 30 seconds — which is what desktop 1.9.3
+  did against 1.2.9. The route answers an empty list, which is the correct
+  answer here rather than a placeholder: this deployment has no team spaces, so
+  no account belongs to one. Anonymous callers get 401, not a well-formed
+  answer.
+
+### Fixed
+
+- **Keep-alive now outlives the reverse proxy's.** Fastify defaults to a 72s
+  `keepAliveTimeout` while the ingress pools idle upstream connections for
+  300s, so nginx could hand a request to a socket Node had already begun
+  closing — intermittent 502s with nothing in the application log to explain
+  them. The server now holds 305s, above the proxy, so the proxy is always the
+  side that closes first. `headersTimeout` moves with it: Fastify leaves that at
+  Node's 60s default, which was already *below* the keep-alive it sets, so a
+  socket mid-request could be reaped before it finished sending headers. Both
+  values are pinned by `keepalive-proxy-alignment.test.ts`; change them and the
+  ingress annotation together.
+
 ## [1.2.9] - 2026-08-29
 
 ### Fixed

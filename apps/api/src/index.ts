@@ -166,6 +166,20 @@ import { installGlobalSSRF } from "./bootstrap.js";
 // client never depends on the mutable global dispatcher surviving boot.
 const ssrfDispatcher = installGlobalSSRF();
 
+// Keep-alive budget, in milliseconds. Both values are load-bearing against the
+// reverse proxy in front of this service and are pinned by
+// tests/unit/keepalive-proxy-alignment.test.ts.
+//
+//   ingress `upstream-keepalive-timeout` : 300s  ← the proxy's idle pool
+//   KEEP_ALIVE_TIMEOUT_MS               : 305s  ← must exceed it
+//   HEADERS_TIMEOUT_MS                  : 310s  ← must exceed keep-alive
+//
+// The ordering is the whole point: whoever closes first must be the proxy, and
+// a socket that has already started a request must not be reaped before it can
+// finish sending its headers.
+const KEEP_ALIVE_TIMEOUT_MS = 305_000;
+const HEADERS_TIMEOUT_MS = 310_000;
+
 import fastifyCookie from "@fastify/cookie";
 import fastifyMultipart from "@fastify/multipart";
 // Phase 51 / Plan 51-02 (REVIEW CR-10) — switched from the old
@@ -447,7 +461,30 @@ export const buildApp = async (opts: BuildAppOptions = {}): Promise<FastifyInsta
   const app = Fastify({
     loggerInstance: opts.logger ?? makePino({ base: { service: "api" } }),
     trustProxy: true,
+    // Must stay ABOVE the reverse proxy's upstream keep-alive (the ingress
+    // annotation `upstream-keepalive-timeout: 300`), so the PROXY is always the
+    // side that closes an idle pooled connection. With the defaults it is the
+    // other way round — Fastify's 72s against the proxy's 300s — and the proxy
+    // then writes requests into sockets Node has already begun closing, which
+    // surfaces as intermittent 502s with nothing in the application log.
+    // Pinned by tests/unit/keepalive-proxy-alignment.test.ts; change the
+    // ingress annotation and this value together, never one alone.
+    keepAliveTimeout: KEEP_ALIVE_TIMEOUT_MS,
   });
+
+  // Fastify sets keepAliveTimeout but leaves headersTimeout at Node's 60s
+  // default, so the shipped pairing was already inverted (60s headers vs 72s
+  // keep-alive) before this change and gets worse once keep-alive is raised:
+  // headersTimeout governs a socket that has STARTED a request, and if it fires
+  // first Node tears the connection down mid-request. Node has no init option
+  // for it, so it is assigned on the underlying server before listen().
+  // Guarded: a real Fastify instance always exposes the Node server here, but
+  // suites that mock the `fastify` module hand back a bare object with no
+  // `server` (see tests/unit/__tests__/entrypoint-db-shape.test.ts), and an
+  // unguarded write throws during buildApp. Skipping is safe — the value is
+  // asserted against a REAL instance in keepalive-proxy-alignment.test.ts, so a
+  // genuine miss still fails the suite rather than hiding here.
+  if (app.server) app.server.headersTimeout = HEADERS_TIMEOUT_MS;
 
   // 2. Centralized error handler FIRST so plugin errors during
   //    register get the envelope.
