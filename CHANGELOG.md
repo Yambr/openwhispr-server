@@ -9,6 +9,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 _Nothing yet._
 
+## [1.2.8] - 2026-08-29
+
+### Fixed
+
+- The realtime relay (`/v1/realtime`) now normalizes a **Beta-speaking upstream**
+  to GA before the frame reaches the desktop client, so realtime transcription
+  starts at all against an upstream that answers in the retired vocabulary.
+  Symptom: the client opened the WSS, the socket stayed OPEN, no server event
+  was ever recognized, and the client rejected on its own 15s ceiling with
+  `OpenAI Realtime connection timeout` (`audioBytesSent: 0`, `segments: 0`) —
+  while the server logged the upgrade and nothing else, because nothing had
+  failed. Cause: the relay FORCES `?intent=transcription` on the upstream URL
+  (OpenAI GA needs it to open a transcription session at all), and on some
+  OpenAI-compatible upstreams that same param ALSO switches the event
+  vocabulary to Beta — measured on one stand, same audio: with the param
+  `transcription_session.created`/`.updated`, without it
+  `session.created`/`.updated`, byte-identical transcription either way.
+  `translateUpstreamToClient` was an identity function, written when the
+  shipping desktop client turned out to speak GA, on the unstated assumption
+  that the upstream always does too; the client's switch table handles
+  `session.created`/`session.updated` and has no `transcription_session.*`
+  branch at all, so the Beta name resolved nothing. The translator now renames
+  those two session events and returns every other frame by reference, making
+  this a strict no-op for a genuinely GA upstream. Dropping the forced
+  `?intent` would fix such a stand and break every operator whose upstream
+  really is OpenAI GA, so the normalization lives at the dialect boundary the
+  relay already claims to be.
+- The relay's `session.updated` echo-swallow (R31 DEFECT 6) now runs AFTER the
+  upstream→client translation. It keyed on the raw frame type, so against a
+  Beta upstream it silently stopped matching and the relay's own self-injected
+  `session.update` echo leaked to the client.
+
 ## [1.2.7] - 2026-08-29
 
 ### Fixed
@@ -197,7 +229,8 @@ _Nothing yet._
 - Pre-push test-evidence gate validates the tip commit only, keeping it
   compatible with the test-driven workflow.
 
-[Unreleased]: https://github.com/Yambr/openwhispr-server/compare/v1.2.7...HEAD
+[Unreleased]: https://github.com/Yambr/openwhispr-server/compare/v1.2.8...HEAD
+[1.2.8]: https://github.com/Yambr/openwhispr-server/compare/v1.2.7...v1.2.8
 [1.2.7]: https://github.com/Yambr/openwhispr-server/compare/v1.2.6...v1.2.7
 [1.2.6]: https://github.com/Yambr/openwhispr-server/compare/v1.2.5...v1.2.6
 [1.2.5]: https://github.com/Yambr/openwhispr-server/compare/v1.2.4...v1.2.5
