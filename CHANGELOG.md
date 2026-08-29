@@ -9,6 +9,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 _Nothing yet._
 
+## [1.2.9] - 2026-08-29
+
+### Fixed
+
+- The realtime relay now runs its ping/pong heartbeat on the **upstream** leg as
+  well as the client leg. 1.2.7 covered the client leg; the upstream leg kept
+  nothing but `handshakeTimeout` — a ceiling on the handshake only, with no
+  liveness check once the socket is open. That is the same hole on the other
+  leg, and its symptom is worse because it is completely silent: when the path
+  to the upstream dies WITHOUT a close frame (a proxy dropping the connection, a
+  firewall losing state, a gateway pod evicted mid-session), the relay never
+  learns the upstream is gone. It keeps forwarding audio into a black hole while
+  its client leg stays perfectly healthy — the client really is alive and
+  answers every ping — and the client cannot notice either, because its own
+  keepalive pings are answered by the relay automatically, below the
+  application. The user just sees the live transcript stop updating, with no
+  error, no close and no reconnect. Both legs are now pinged on the same timer
+  and torn down together when either peer stops answering, turning that silence
+  into a definitive close the client can act on. Each leg is pinged
+  independently (a leg that is not OPEN is skipped, never a reason to skip the
+  other), and the upstream clock starts on its `open` event because the route
+  dials and bridges in the same tick. A cleanly dying upstream was already
+  handled — its close frame reaches `closeBoth`; this covers the case where no
+  frame ever arrives.
+
 ## [1.2.8] - 2026-08-29
 
 ### Fixed
@@ -229,7 +254,8 @@ _Nothing yet._
 - Pre-push test-evidence gate validates the tip commit only, keeping it
   compatible with the test-driven workflow.
 
-[Unreleased]: https://github.com/Yambr/openwhispr-server/compare/v1.2.8...HEAD
+[Unreleased]: https://github.com/Yambr/openwhispr-server/compare/v1.2.9...HEAD
+[1.2.9]: https://github.com/Yambr/openwhispr-server/compare/v1.2.8...v1.2.9
 [1.2.8]: https://github.com/Yambr/openwhispr-server/compare/v1.2.7...v1.2.8
 [1.2.7]: https://github.com/Yambr/openwhispr-server/compare/v1.2.6...v1.2.7
 [1.2.6]: https://github.com/Yambr/openwhispr-server/compare/v1.2.5...v1.2.6
