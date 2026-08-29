@@ -1,0 +1,175 @@
+# SPDX-License-Identifier: FSL-1.1-ALv2
+#
+# Reusable per-arch image build. Called once per architecture by
+# release.yml so that each arch is an INDEPENDENT job graph node.
+#
+# Why reusable rather than a `platform` matrix axis inside one job
+# (260829): with both arches as cells of a single `build-image` matrix,
+# `merge-manifest`'s `needs: [build-image]` waited for EVERY cell. When
+# GitHub had no `ubuntu-24.04-arm64` capacity, the arm64 cells sat
+# `queued` indefinitely — on v1.2.7 all six amd64 builds went green in
+# ~10 min while six arm64 cells were still queued 30+ min later, so the
+# manifest was never created and the release tag never appeared in GHCR
+# at all. Splitting the call per arch lets `merge-manifest` depend on
+# amd64 alone and publish the tag immediately; `merge-manifest-multiarch`
+# re-stitches the same tag with the arm64 digest whenever it lands.
+#
+# Each job builds its NATIVE architecture — no `docker/setup-qemu-action`
+# anywhere. That is the 260531 invariant: the emulated arm64 leg stalled
+# the napi-heavy api/worker images (@node-rs/argon2 Rust + ~50
+# @opentelemetry/auto-instrumentations-node pkgs) for 90-140 min on a
+# cold GHA cache. Native builds finish in ~5-13 min per arch.
+#
+# Images are pushed BY DIGEST (no tag); the caller's merge jobs assemble
+# the tags. Shape is pinned by
+# tools/__tests__/release-workflow-native-multiarch.test.ts.
+
+name: build-images-arch
+
+on:
+  workflow_call:
+    inputs:
+      arch:
+        description: Target architecture (amd64 | arm64) — one per call, never both.
+        required: true
+        type: string
+      runner:
+        description: NATIVE runner label for that architecture (no QEMU).
+        required: true
+        type: string
+      tag:
+        description: Explicit image tag; empty means derive it from the git ref.
+        required: false
+        type: string
+        default: ""
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        image:
+          - name: cnpg-postgres-17-pgpartman
+            context: images/cnpg-postgres-17-pgpartman
+            dockerfile: Dockerfile
+            # Convenience tag includes PG minor so the chart's values.schema.json
+            # regex (`^.+:17\.[0-9]+.*$`) is always satisfied without manual edits.
+            pg_minor: "17.6"
+          # Compose / testcontainer variant: alpine + pg_partman 5.2.4 built
+          # from source with NO_BGW=1. Consumed by docker-compose.yml,
+          # compose/docker-compose.embedded-litellm.yml, and ~22 integration
+          # tests via `PostgreSqlContainer("ghcr.io/<owner>/openwhispr-postgres-17-pgpartman:...")`.
+          # Distinct from the CNPG variant above (pg_partman 5.1.0 apt-package,
+          # debian-trixie base, BGW preload) — see
+          # .planning/quick/20260524-postgres-ghcr-publish/CONTEXT.md for the
+          # keep-two-images rationale.
+          - name: postgres-17-pgpartman
+            context: compose/postgres
+            dockerfile: Dockerfile
+            pg_minor: "17.5"
+          - name: api
+            context: .
+            dockerfile: apps/api/Dockerfile
+            pg_minor: ""
+          - name: web
+            context: .
+            dockerfile: apps/web/Dockerfile
+            pg_minor: ""
+          - name: worker
+            context: .
+            dockerfile: apps/worker/Dockerfile
+            pg_minor: ""
+          - name: test-probe
+            context: .
+            dockerfile: tools/test-probe/Dockerfile
+            pg_minor: ""
+    # Native runner supplied by the caller — NO QEMU emulation.
+    runs-on: ${{ inputs.runner }}
+    # Defence-in-depth: a native build that exceeds 40min is wedged, not
+    # slow (cold-cache native api/worker finish in ~13min). Fail fast
+    # instead of crawling toward the 6h GitHub job ceiling, which is what
+    # let the emulated arm64 stall hide for 2.3h on 260531.
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Resolve image tag
+        id: tag
+        run: |
+          if [ -n "${{ inputs.tag }}" ]; then
+            echo "value=${{ inputs.tag }}" >> "$GITHUB_OUTPUT"
+          else
+            # Strip leading `v` from ref tags so chart appVersion alignment is clean.
+            ref="${GITHUB_REF_NAME#v}"
+            echo "value=${ref}" >> "$GITHUB_OUTPUT"
+          fi
+
+      # No `docker/setup-qemu-action` here — the whole point of the per-arch
+      # split is that each runner builds its NATIVE architecture without
+      # emulation.
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Compute image repo (lowercase owner)
+        id: repo
+        run: |
+          # GHCR rejects uppercase in repository names; `github.repository_owner`
+          # echoes the org slug verbatim (e.g. `Yambr`) — lowercase it via shell
+          # parameter expansion. Without this the build fails fast with
+          # "invalid tag: repository name must be lowercase" and no image is
+          # pushed (v0.9.0 + v0.9.1 first-attempt both crashed here).
+          owner=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
+          echo "value=ghcr.io/${owner}/openwhispr-${{ matrix.image.name }}" >> "$GITHUB_OUTPUT"
+
+      - name: Build and push by digest (native ${{ inputs.arch }})
+        id: build
+        uses: docker/build-push-action@v7
+        with:
+          context: ${{ matrix.image.context }}
+          file: ${{ matrix.image.context }}/${{ matrix.image.dockerfile }}
+          platforms: linux/${{ inputs.arch }}
+          # Push by DIGEST (no tag) — the caller's merge jobs assemble the
+          # final tag from the per-arch digests. `push-by-digest=true`
+          # uploads the image and prints its digest to steps.build.outputs.
+          outputs: type=image,name=${{ steps.repo.outputs.value }},push-by-digest=true,name-canonical=true,push=true
+          provenance: true
+          sbom: true
+          # Per-arch cache scope so amd64 and arm64 don't clobber each other.
+          cache-from: type=gha,scope=${{ matrix.image.name }}-${{ inputs.arch }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.image.name }}-${{ inputs.arch }}
+          # Quick-task 260528-370 — build-info propagation. Only
+          # apps/api/Dockerfile's runtime stage declares matching ARGs;
+          # the other 5 images silently drop unused build-args without
+          # warning (Docker behavior), so a single block serves all 6.
+          build-args: |
+            BUILD_VERSION=${{ steps.tag.outputs.value }}
+            BUILD_SHA=${{ github.sha }}
+            IMAGE_TAG=${{ steps.tag.outputs.value }}
+            NEXT_PUBLIC_APP_VERSION=${{ steps.tag.outputs.value }}
+
+      - name: Export digest
+        run: |
+          mkdir -p /tmp/digests
+          digest="${{ steps.build.outputs.digest }}"
+          # Filename = the digest's sha256 hex (strip the "sha256:" prefix).
+          touch "/tmp/digests/${digest#sha256:}"
+
+      - name: Upload digest artifact
+        uses: actions/upload-artifact@v4
+        with:
+          # One artifact per {image,arch} — the merge jobs glob them per image.
+          name: digest-${{ matrix.image.name }}-${{ inputs.arch }}
+          path: /tmp/digests/*
+          if-no-files-found: error
+          retention-days: 1
