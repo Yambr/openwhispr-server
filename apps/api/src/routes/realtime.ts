@@ -136,7 +136,12 @@
 import type { LitellmClient } from "@openwhispr/litellm-client";
 import type { FastifyInstance, FastifyRequest } from "fastify";
 import { type RawData, WebSocket } from "ws";
-import { REALTIME_LANGUAGE_WHITELIST, type RealtimeBackend } from "../config/realtime.js";
+import {
+  DEFAULT_REALTIME_HEARTBEAT_INTERVAL_MS,
+  DEFAULT_REALTIME_HEARTBEAT_TIMEOUT_MS,
+  REALTIME_LANGUAGE_WHITELIST,
+  type RealtimeBackend,
+} from "../config/realtime.js";
 import { AuthError } from "../errors.js";
 import { mapUpstreamStatusToCloseCode } from "../lib/realtime-close-code.js";
 import {
@@ -225,6 +230,23 @@ export interface RealtimeDeps {
    * (default-on, matching the config-loader default).
    */
   forceTranscriptionModel?: boolean;
+  /**
+   * WR-10 — client-leg heartbeat tuning. Absent → the
+   * `DEFAULT_REALTIME_HEARTBEAT_*` constants. Injected (rather than read
+   * from env) so tests can run the heartbeat on millisecond timings
+   * instead of the 20s production cadence.
+   */
+  heartbeat?: RelayHeartbeatConfig;
+}
+
+/**
+ * WR-10 — ping/pong parameters for the relay's CLIENT leg.
+ */
+export interface RelayHeartbeatConfig {
+  /** How often the relay pings the client. */
+  intervalMs: number;
+  /** How long a client may go without answering before both legs are torn down. */
+  timeoutMs: number;
 }
 
 /**
@@ -381,6 +403,8 @@ export function bridgeRealtimeSockets(
   // Resolved by the caller from `RealtimeConfig.forceTranscriptionModel`:
   // `forceTranscriptionModel ? transcription.model : undefined`.
   forceTranscriptionModel?: string,
+  // WR-10 — client-leg ping/pong cadence. Omitted → production defaults.
+  heartbeat?: RelayHeartbeatConfig,
 ): void {
   // Buffer client frames that arrive before the upstream WS is OPEN —
   // the desktop client may send `transcription_session.update` the
@@ -468,9 +492,57 @@ export function bridgeRealtimeSockets(
     clientSocket.send(JSON.stringify(translated));
   });
 
+  // WR-10 — CLIENT-LEG HEARTBEAT. A client that dies without a FIN/RST
+  // (VPN drop, laptop sleep) leaves the TCP connection ESTABLISHED, so
+  // `clientSocket.on("close")` never fires and this relay would hold its
+  // upstream leg — and the upstream's session slot — until the edge
+  // proxy's read timeout. The upstream's own keepalive cannot detect it
+  // either: `ws` answers ping frames automatically, below the
+  // application, so the upstream sees a healthy peer (us) while the real
+  // client is long gone. The relay is the only party that can tell a
+  // frozen client from a merely quiet one, so it pings the client itself
+  // and tears BOTH legs down when the pongs stop.
+  const { intervalMs, timeoutMs } = heartbeat ?? {
+    intervalMs: DEFAULT_REALTIME_HEARTBEAT_INTERVAL_MS,
+    timeoutMs: DEFAULT_REALTIME_HEARTBEAT_TIMEOUT_MS,
+  };
+  // `ws` answers ping automatically, so this timestamp advances for any
+  // live client — including a preconfigured one that sends no frames.
+  let lastPongAt = Date.now();
+  clientSocket.on("pong", () => {
+    lastPongAt = Date.now();
+  });
+  let heartbeatTimer: NodeJS.Timeout | undefined;
+  const stopHeartbeat = (): void => {
+    if (heartbeatTimer !== undefined) {
+      clearInterval(heartbeatTimer);
+      heartbeatTimer = undefined;
+    }
+  };
+  heartbeatTimer = setInterval(() => {
+    if (Date.now() - lastPongAt > intervalMs + timeoutMs) {
+      // `terminate`, not `close`: a frozen peer will never complete a
+      // closing handshake, and waiting for one would hold the slot for
+      // the full close timeout.
+      stopHeartbeat();
+      clientSocket.terminate();
+      upstreamSocket.terminate();
+      return;
+    }
+    if (clientSocket.readyState !== WebSocket.OPEN) return;
+    try {
+      clientSocket.ping();
+    } catch {
+      // Socket died between the readyState check and the ping — the
+      // close/error handlers own the teardown.
+    }
+  }, intervalMs);
+
   // Close propagation — when either side closes, close the other with the
   // same code/reason so neither half lingers.
   const closeBoth = (initiator: "client" | "upstream", code: number, reason: Buffer): void => {
+    // A timer outliving its sockets is itself a leak.
+    stopHeartbeat();
     const peer = initiator === "client" ? upstreamSocket : clientSocket;
     if (peer.readyState === WebSocket.OPEN || peer.readyState === WebSocket.CONNECTING) {
       // WS close codes 1000–1015 + 3000–4999 are valid on the wire;
@@ -488,9 +560,11 @@ export function bridgeRealtimeSockets(
   upstreamSocket.on("close", (code, reason) => closeBoth("upstream", code, reason));
 
   clientSocket.on("error", () => {
+    stopHeartbeat();
     if (upstreamSocket.readyState === WebSocket.OPEN) upstreamSocket.terminate();
   });
   upstreamSocket.on("error", () => {
+    stopHeartbeat();
     if (clientSocket.readyState === WebSocket.OPEN) {
       // Surface the upstream failure in-band before tearing down so the
       // desktop client sees a definitive close rather than a silent drop.
@@ -514,6 +588,7 @@ export function bridgeRealtimeSockets(
   // wire codes but fall outside `safeCode`'s 1000-1003 + 3000-4999 window,
   // so routing them through `closeBoth`/`safeCode` would clobber them.
   upstreamSocket.on("unexpected-response", (_req, res) => {
+    stopHeartbeat();
     const { code, reason } = mapUpstreamStatusToCloseCode(res.statusCode ?? 0);
     if (clientSocket.readyState === WebSocket.OPEN) {
       try {
@@ -641,6 +716,7 @@ export const buildRealtimeRoutes = (deps: RealtimeDeps) =>
           perUpgradeTranscription,
           req.log,
           forcedModel,
+          deps.heartbeat,
         );
       },
     );

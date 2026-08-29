@@ -118,6 +118,27 @@ export const DEFAULT_REALTIME_VAD_SILENCE_MS = 600;
 export const DEFAULT_REALTIME_VAD_PREFIX_PADDING_MS = 500;
 
 /**
+ * WR-10 — client-leg heartbeat. The relay pings the CLIENT every
+ * `INTERVAL` ms and tears both legs down when no pong came back within
+ * `TIMEOUT` ms of the previous ping.
+ *
+ * Why the relay must do this itself: a client that dies without a
+ * FIN/RST (VPN drop, laptop sleep) leaves the TCP connection
+ * ESTABLISHED, so `clientSocket.on("close")` never fires and the relay
+ * would hold its upstream leg — and the upstream's session slot — until
+ * the edge proxy's read timeout. The upstream's own keepalive cannot
+ * save us either: `ws` answers ping frames automatically, below the
+ * application, so the upstream sees a healthy peer (the relay) while the
+ * real client is long gone. Only the relay sits between the two and can
+ * tell a frozen client from a quiet one.
+ *
+ * 20s/20s mirrors the common uvicorn `ws_ping_interval`/`ws_ping_timeout`
+ * default, so a dead client is detected in ~40s worst case.
+ */
+export const DEFAULT_REALTIME_HEARTBEAT_INTERVAL_MS = 20_000;
+export const DEFAULT_REALTIME_HEARTBEAT_TIMEOUT_MS = 20_000;
+
+/**
  * v1.0.9 — accepted set of language hints carried by the
  * relay-originated GA `session.update`'s
  * `session.audio.input.transcription.language` field. Matches the v1
