@@ -146,8 +146,16 @@ jobs:
           # and demanding it would re-introduce exactly the coupling this split
           # removes. `merge-manifest-multiarch` asserts BOTH arches later.
           docker buildx imagetools inspect "${repo}:${tag}"
+          # Assert on the platform FIELDS. The JSON spells them as
+          # {"architecture":"amd64","os":"linux"} — the literal string
+          # "linux/amd64" never appears, so the old `| grep -q 'linux/amd64'`
+          # could only ever return 1. It stayed invisible while arm64 kept this
+          # job from running at all; the first release that reached it failed
+          # all six matrix cells on a tag that was in fact correct (260829).
           docker buildx imagetools inspect "${repo}:${tag}" --format '{{json .}}' \
-            | grep -q 'linux/amd64' || { echo "amd64 missing from manifest" >&2; exit 1; }
+            | jq -e '[.manifest.manifests[]?.platform | select(. != null)
+                      | "\(.os)/\(.architecture)"] | index("linux/amd64") != null' >/dev/null \
+            || { echo "amd64 missing from manifest" >&2; exit 1; }
           echo "OK: ${repo}:${tag} serves linux/amd64"
 
   # ---- Fold arm64 into the SAME tag once its digest lands ----
@@ -232,10 +240,20 @@ jobs:
           tag="${{ steps.tag.outputs.value }}"
           # Confirm BOTH arches are present in the published manifest list.
           docker buildx imagetools inspect "${repo}:${tag}"
-          docker buildx imagetools inspect "${repo}:${tag}" --format '{{json .}}' \
-            | grep -q 'linux/amd64' || { echo "amd64 missing from manifest" >&2; exit 1; }
-          docker buildx imagetools inspect "${repo}:${tag}" --format '{{json .}}' \
-            | grep -q 'linux/arm64' || { echo "arm64 missing from manifest" >&2; exit 1; }
+          # Structured read of the platform fields — see the amd64 verify above
+          # for why grepping the raw JSON silently never matched.
+          platforms=$(docker buildx imagetools inspect "${repo}:${tag}" --format '{{json .}}' \
+            | jq -r '[.manifest.manifests[]?.platform | select(. != null)
+                      | "\(.os)/\(.architecture)"] | join(" ")')
+          echo "manifest platforms: ${platforms}"
+          case "${platforms}" in
+            *linux/amd64*) ;;
+            *) echo "amd64 missing from manifest" >&2; exit 1;;
+          esac
+          case "${platforms}" in
+            *linux/arm64*) ;;
+            *) echo "arm64 missing from manifest" >&2; exit 1;;
+          esac
           echo "OK: ${repo}:${tag} is multi-arch (amd64 + arm64)"
 
   create-image-release:

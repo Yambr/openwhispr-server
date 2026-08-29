@@ -159,6 +159,27 @@ describe("release.yml — native multi-arch build invariants", () => {
     expect(t).toBeLessThanOrEqual(60);
   });
 
+  it("(8b) manifest verification parses the platform fields, never greps the raw JSON", () => {
+    // 260829 — the original verify step ran
+    //   imagetools inspect --format '{{json .}}' | grep -q 'linux/amd64'
+    // but that JSON spells the platform as {"architecture":"amd64","os":"linux"} —
+    // the literal string `linux/amd64` never appears, so the grep ALWAYS
+    // returned 1. It stayed hidden because merge-manifest never ran to
+    // completion (arm64 blocked it); the moment the arm64 split let it run,
+    // all six merge-manifest jobs failed on a tag that was in fact correct.
+    const jobs = loadJobs(RELEASE_PATH);
+    for (const name of ["merge-manifest", "merge-manifest-multiarch"]) {
+      const runText = (jobs[name]?.steps ?? []).map((s) => s.run ?? "").join("\n");
+      const greppedJson = /--format\s+'\{\{json \.\}\}'[^\n]*\|\s*grep/.test(runText);
+      expect(greppedJson, `${name} must not grep the raw JSON for a platform string`).toBe(false);
+      // The platform assertion must go through a structured read of the
+      // architecture/os fields.
+      expect(runText, `${name} must assert the platform structurally`).toMatch(
+        /\.architecture|\.platform/,
+      );
+    }
+  });
+
   it("(8) merge-manifest-multiarch re-stitches the tag once arm64 lands, and verifies both arches", () => {
     const jobs = loadJobs(RELEASE_PATH);
     const multi = jobs["merge-manifest-multiarch"];
