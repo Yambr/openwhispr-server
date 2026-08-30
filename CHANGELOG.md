@@ -9,6 +9,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 _Nothing yet._
 
+## [1.2.11] - 2026-08-30
+
+Two things: the wire contract the 1.9.x desktop actually speaks, and team spaces.
+
+1.2.10 answered `GET /api/me/spaces` to unblock sign-in. That route is also the desktop's team-scope capability probe, so unblocking sign-in necessarily switched every note and folder call to the team-capable form — which this server then rejected. Sign-in worked and nothing synced. Accepting that form is not optional, and it is also the foundation team spaces needed.
+
+### Added
+
+- **Team spaces.** A space is a shared tree of notes and folders; a team is who may open it. Any employee may create either, and the creator manages what they created. Members read, write, edit, delete and SEARCH shared content; a colleague's personal notes stay untouchable throughout.
+- Endpoints for spaces (create, rename, retire, assign/unassign a team, list who can open it), teams (create, list, roster, add/remove member, retire), and the workspace bootstrap (`/api/workspaces`, its member picker, `/api/me/joinable`).
+- `teams.ad_group` and a `user_groups` table, created ahead of use so binding a team to a directory group needs no migration over live note data.
+
+### Fixed
+
+- **Delta sync had never worked.** The desktop advances its `?since=` cursor with the last row's `updated_at` while the server filtered and ordered by `created_at`, so an edit to an older note entered no delta window at all and never reached a second device. The delta axis is now `(updated_at, id) ASC`, with matching partial indexes.
+- **List paths emitted non-ISO timestamps.** Rows read through raw SQL came back as Postgres text, so the same row serialized differently depending on which route produced it — and the client hands that value straight back as its cursor, where URL decoding turns the `+00` offset into a space and the next page 400s.
+- **Batch pushes exceeded Fastify's 1 MiB default.** A handful of meeting transcripts clears it, and the desktop cannot split the chunk, so it retried the same oversized body forever. Raised on the batch routes only.
+- **Agent conversations never synced.** Message metadata was a flat scalar map; the desktop stores an assistant turn's tool calls as nested structure. Metadata is now bounded by size and depth instead of value type.
+- `?scope=all`, `before_id` and `since_id` are accepted on the note and folder listings, and `workspace_id`/`space_id` on every push.
+
+### Security
+
+- Row visibility for spaces lives in the query predicate, because RLS here is tenant-scoped only. Writing into a space you cannot reach is a 403, never a silent demotion to the personal tree.
+
 ## [1.2.10] - 2026-08-30
 
 ### Added
@@ -284,6 +308,8 @@ _Nothing yet._
   compatible with the test-driven workflow.
 
 [Unreleased]: https://github.com/Yambr/openwhispr-server/compare/v1.2.9...HEAD
+[1.2.11]: https://github.com/Yambr/openwhispr-server/compare/v1.2.10...v1.2.11
+[1.2.10]: https://github.com/Yambr/openwhispr-server/compare/v1.2.9...v1.2.10
 [1.2.9]: https://github.com/Yambr/openwhispr-server/compare/v1.2.8...v1.2.9
 [1.2.8]: https://github.com/Yambr/openwhispr-server/compare/v1.2.7...v1.2.8
 [1.2.7]: https://github.com/Yambr/openwhispr-server/compare/v1.2.6...v1.2.7
