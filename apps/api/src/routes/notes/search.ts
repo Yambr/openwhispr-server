@@ -25,6 +25,7 @@ import { sql } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { AuthError, ValidationError } from "../../errors.js";
+import { buildSpaceScopedWhere } from "../../lib/space-scope.js";
 import { type CloudNoteRow, rowToCloudNote } from "./shape.js";
 
 const SearchRequestSchema = z
@@ -67,6 +68,13 @@ export const buildNotesSearchRoutes = (deps: NotesSearchDeps) =>
         const tenantId = req.tenant;
         const userId = req.user.id;
 
+        // Space-aware, like the tree itself. A note visible in a shared space
+        // but missing from search is the worst kind of gap: nothing reports it,
+        // the user simply concludes the note is not there. The predicate's
+        // first arm still requires ownership, so search cannot become a way to
+        // read a colleague's personal notes by guessing a word in them.
+        const scoped = buildSpaceScopedWhere(userId);
+
         const rows = await withTenant(deps.db, tenantId, async (tx) => {
           // websearch_to_tsquery('simple', $1) — RESEARCH upgrade of D-26.
           // ts_rank(content_search, query) AS score per upstream
@@ -75,7 +83,7 @@ export const buildNotesSearchRoutes = (deps: NotesSearchDeps) =>
             SELECT n.*, ts_rank(n.content_search, q) AS score
               FROM "notes" n,
                    websearch_to_tsquery('simple', ${body.query}) AS q
-             WHERE n."user_id" = ${userId}::uuid
+             WHERE ${scoped}
                AND n."deleted_at" IS NULL
                AND n.content_search @@ q
           ORDER BY score DESC, n.created_at DESC
