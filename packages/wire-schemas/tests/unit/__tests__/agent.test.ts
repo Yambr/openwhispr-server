@@ -34,6 +34,27 @@ describe("AgentStreamRequestSchema", () => {
     ).toBe(true);
   });
 
+  // The agent tool loop appends TWO messages per tool call (the assistant's
+  // tool-call turn and the result), so the cap is spent twice as fast as the
+  // number of calls. At 50 it was reachable by ordinary work: a desktop session
+  // that ran 24 tool calls sent 48 + 3 conversational = 51 messages and got a
+  // 400 "Invalid request" mid-task — the agent had already searched and read
+  // two dozen notes and simply stopped. 256 sits far above anything the client
+  // can produce on its own (MAX_TOOL_STEPS = 20), so the ceiling is the
+  // client's, not ours, and the real abuse control is the body-size limit.
+  it("accepts a long tool-loop conversation (256 messages)", () => {
+    const messages = Array.from({ length: 256 }, (_, i) => ({
+      role: i % 2 === 0 ? "assistant" : "tool",
+      content: "x",
+    }));
+    expect(AgentStreamRequestSchema.safeParse({ messages }).success).toBe(true);
+  });
+
+  it("still refuses a conversation past the cap", () => {
+    const messages = Array.from({ length: 257 }, () => ({ role: "user", content: "x" }));
+    expect(AgentStreamRequestSchema.safeParse({ messages }).success).toBe(false);
+  });
+
   it("rejects missing messages field (required)", () => {
     expect(AgentStreamRequestSchema.safeParse({}).success).toBe(false);
   });
@@ -69,11 +90,6 @@ describe("AgentStreamRequestSchema", () => {
     expect(AgentStreamRequestSchema.safeParse({ messages: [], appVersion: long }).success).toBe(
       false,
     );
-  });
-
-  it("rejects messages.length > 50 (cost-multiplier cap)", () => {
-    const messages = Array.from({ length: 51 }, () => ({ role: "user", content: "x" }));
-    expect(AgentStreamRequestSchema.safeParse({ messages }).success).toBe(false);
   });
 
   it("rejects tools.length > 64", () => {

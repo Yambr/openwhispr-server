@@ -53,6 +53,18 @@ import {
   LitellmUpstreamError,
 } from "@openwhispr/litellm-client";
 import { AgentStreamRequestSchema } from "@openwhispr/wire-schemas";
+
+/**
+ * Body limit for the agent stream.
+ *
+ * A tool loop that reads notes carries their full contents forward in the
+ * conversation — 256 messages of note text is megabytes, not kilobytes. 16 MiB
+ * covers a long session with room to spare while staying an order of magnitude
+ * under the batch endpoints, and the per-user rate limit (20/min) remains the
+ * control that actually bounds cost on this route.
+ */
+const AGENT_STREAM_BODY_LIMIT_BYTES = 16 * 1024 * 1024;
+
 import type { FastifyInstance } from "fastify";
 import { AuthError } from "../../errors.js";
 import { classifyUpstreamError } from "../../lib/agent-upstream-error-classify.js";
@@ -110,6 +122,13 @@ export const buildAgentStreamRoutes = (deps: AgentStreamDeps) =>
       schema: {
         body: AgentStreamRequestSchema,
       },
+      // Raising the message cap to 256 without this would just rename the
+      // failure: a tool loop that reads two dozen notes carries their contents
+      // in the conversation, and Fastify's 1 MiB default turns "Invalid
+      // request" into "Request body is too large" at roughly the same point.
+      // The rate limit below (20/min/user) is what bounds the cost; the body
+      // size only has to be big enough for a real session.
+      bodyLimit: AGENT_STREAM_BODY_LIMIT_BYTES,
       config: {
         // Phase 41.b / HI-03 — authed-only route; skip the IP-tier
         // onRequest hook on anonymous traffic to avoid `owrl:ip:*` bucket

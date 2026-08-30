@@ -75,7 +75,16 @@ export type AgentLegacyTool = z.infer<typeof AgentLegacyToolSchema>;
  */
 export const AgentStreamRequestSchema = z
   .object({
-    messages: z.array(AgentChatMessageSchema).min(0).max(50),
+    // The desktop's agent loop appends TWO messages per tool call — the
+    // assistant's tool-call turn and its result — so this budget is spent twice
+    // as fast as the number of calls. At 50 it was reachable by ordinary work:
+    // a session that ran 24 tool calls sent 48 + 3 conversational = 51 and got
+    // back a 400 "Invalid request" mid-task, after the agent had already
+    // searched and read two dozen notes. The client's own ceiling is
+    // MAX_TOOL_STEPS = 20 steps (several calls per step), so 256 puts the limit
+    // where it belongs — on the client — and leaves the real anti-abuse control
+    // to the request body size.
+    messages: z.array(AgentChatMessageSchema).min(0).max(256),
     model: z.string().min(1).max(128).nullish(),
     systemPrompt: z.string().max(16_384).nullish(),
     tools: z.array(AgentLegacyToolSchema).max(64).nullish(),

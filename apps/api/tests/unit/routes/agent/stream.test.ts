@@ -1173,10 +1173,16 @@ describe("POST /api/agent/stream", () => {
     }
   });
 
-  it("Test 21 (HI-02) — oversize messages (> 50) is rejected with 400 (cost-multiplier cap)", async () => {
+  // The cap moved 50 → 256. It was reachable by ordinary work: the desktop's
+  // tool loop appends TWO messages per tool call, so a session that ran 24
+  // calls sent 51 messages and got this 400 back mid-task, after the agent had
+  // already searched and read two dozen notes. The route still refuses an
+  // oversized conversation — the number is what changed, and it now sits above
+  // anything the client can generate on its own (MAX_TOOL_STEPS = 20).
+  it("Test 21 (HI-02) — an oversize conversation is rejected with 400 (cost-multiplier cap)", async () => {
     const app = await buildTestApp({ bearerMap: { "Bearer ok-u1": "u1" } });
     try {
-      const messages = Array.from({ length: 51 }, () => ({
+      const messages = Array.from({ length: 257 }, () => ({
         role: "user",
         content: "x",
       }));
