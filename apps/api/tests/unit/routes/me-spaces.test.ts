@@ -22,15 +22,21 @@
 // exist on this deployment. The client then finds nothing to purge (there is no
 // local team content either) and proceeds to sign in. Personal notes are
 // untouched — the purge only considers rows whose kind is "team".
+import { drizzle } from "drizzle-orm/node-postgres";
 import Fastify, { type FastifyInstance } from "fastify";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import type { Pool } from "pg";
+import { afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { registerErrorHandler } from "../../../src/error-handler.js";
 import { buildMeSpacesRoutes } from "../../../src/routes/me-spaces.js";
+import { getSharedRoutePool } from "../../support/shared-route-pool.js";
 
 const USER = { id: "22222222-2222-2222-2222-222222222222", email: "a@example.com" };
 const TENANT = "00000000-0000-0000-0000-000000000000";
 
-/** Bare app: this route reads no database, so none is booted. */
+// The route reads the space tables now, so it runs against real Postgres.
+// The assertions below are unchanged: an account in no team still belongs to no
+// space, and that empty list is the answer that lets sign-in proceed.
+let pool: Pool;
 async function buildApp(opts: { authed: boolean }): Promise<FastifyInstance> {
   const app = Fastify({ logger: false });
   // The real app registers this first; without it an AuthError surfaces as a
@@ -40,10 +46,14 @@ async function buildApp(opts: { authed: boolean }): Promise<FastifyInstance> {
   app.addHook("preHandler", async (req) => {
     if (opts.authed) {
       (req as { user?: unknown }).user = USER;
-      (req as { tenant?: unknown }).tenant = { id: TENANT };
+      // A string, as the auth hook sets it. This fixture used to hand over
+      // `{ id: TENANT }`, which only ever passed because the route checked the
+      // value for truthiness and never used it; the moment it reached
+      // withTenant() the mismatch surfaced as a 500.
+      (req as { tenant?: unknown }).tenant = TENANT;
     }
   });
-  await app.register(buildMeSpacesRoutes());
+  await app.register(buildMeSpacesRoutes({ db: drizzle(pool) }));
   await app.ready();
   return app;
 }
@@ -53,6 +63,10 @@ let app: FastifyInstance;
 afterEach(async () => {
   await app?.close();
 });
+
+beforeAll(async () => {
+  pool = await getSharedRoutePool();
+}, 180_000);
 
 describe("GET /api/me/spaces", () => {
   beforeEach(() => {

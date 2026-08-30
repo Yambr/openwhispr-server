@@ -23,6 +23,7 @@ import {
   parseListQuery,
 } from "../../lib/keyset-pagination.js";
 import { withSoftDelete } from "../../lib/soft-delete.js";
+import { buildVisibilityWhere } from "../../lib/space-scope.js";
 import { type CloudFolderRow, rowToCloudFolder } from "./shape.js";
 
 export interface FoldersListDeps {
@@ -35,6 +36,7 @@ interface ListQuery {
   since?: string;
   before_id?: string;
   since_id?: string;
+  scope?: "all";
 }
 
 // LOCKER-04 inv-14 — declarative querystring schema (mirrors
@@ -81,11 +83,15 @@ export const buildFoldersListRoutes = (deps: FoldersListDeps) =>
         const softDelete = withSoftDelete();
         const orderLimit = buildKeysetOrderLimit(parsed);
 
+        // Team-space visibility — the same predicate notes/list uses. RLS is
+        // tenant-scoped only, so this clause is what separates colleagues.
+        const visibility = buildVisibilityWhere(userId, (req.query as ListQuery).scope);
+
         const rows = await withTenant(deps.db, tenantId, async (tx) => {
           // ORDER BY (created_at, id) DESC paired with folders_keyset_idx.
           const result = (await tx.execute(sql`
             SELECT * FROM "folders"
-             WHERE "user_id" = ${userId}::uuid${softDelete}${keysetWhere}${orderLimit}
+             WHERE ${visibility}${softDelete}${keysetWhere}${orderLimit}
           `)) as { rows?: CloudFolderRow[] };
           return result.rows ?? [];
         });

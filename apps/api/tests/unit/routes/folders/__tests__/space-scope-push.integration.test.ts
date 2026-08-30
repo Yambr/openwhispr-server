@@ -89,7 +89,13 @@ describe("integration — folders push carrying explicit null space scope", () =
     expect(created.map((f) => f.client_folder_id)).toEqual(["scope-batch-1"]);
   });
 
-  it("refuses a non-null space_id rather than filing the row as personal", async () => {
+  it("refuses an unreachable space rather than filing the row as personal", async () => {
+    // CONTRACT CHANGE, not a softened expectation. While no space could exist,
+    // a non-null `space_id` was a 400: the payload described something the
+    // deployment had no concept of. Spaces exist now, so naming one is a
+    // well-formed request that may or may not be permitted — an unreachable
+    // space is a 403 (assertSpaceWritable). What has NOT changed is the thing
+    // that matters: the row is never quietly filed as personal.
     const res = await app.inject({
       method: "POST",
       url: "/api/folders/create",
@@ -100,6 +106,6 @@ describe("integration — folders push carrying explicit null space scope", () =
       },
     });
 
-    expect(res.statusCode).toBe(400);
+    expect(res.statusCode).toBe(403);
   });
 });

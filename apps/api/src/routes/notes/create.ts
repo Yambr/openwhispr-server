@@ -21,6 +21,7 @@ import { NoteInputSchema } from "@openwhispr/wire-schemas";
 import type { FastifyInstance } from "fastify";
 import { AuthError } from "../../errors.js";
 import { createOrReturnExisting } from "../../lib/client-id-upsert.js";
+import { assertSpaceWritable } from "../../lib/space-scope.js";
 import { type CloudNoteRow, normalizeNoteType, rowToCloudNote } from "./shape.js";
 
 export interface NotesCreateDeps {
@@ -45,9 +46,14 @@ export const buildNotesCreateRoutes = (deps: NotesCreateDeps) =>
         const userId = req.user.id;
 
         const row = await withTenant(deps.db, tenantId, async (tx) => {
+          // Naming a space you cannot reach is an access attempt, not a bad
+          // payload — 403, and nothing is written under any scope.
+          if (body.space_id) await assertSpaceWritable(tx, userId, body.space_id);
+
           const insertValues: Record<string, unknown> = {
             tenant_id: tenantId,
             user_id: userId,
+            space_id: body.space_id ?? null,
             client_note_id: body.client_note_id ?? null,
             folder_id: body.folder_id ?? null,
             title: body.title ?? null,

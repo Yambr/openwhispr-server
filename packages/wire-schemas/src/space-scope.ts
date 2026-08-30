@@ -9,17 +9,18 @@
  * (SyncService.pushScopeFields), which the `.strict()` input schemas rejected
  * outright: folder and note sync answered 400 on every push.
  *
- * `z.null()` rather than `z.string().uuid().nullable()` is deliberate while
- * team spaces are unimplemented. A row claiming a space this deployment does
- * not have is a real disagreement between client and server, and accepting it
- * would silently file that row into the caller's personal tree — a mis-scoping
- * the desktop's own purge logic can never detect or undo. Widening this to
- * accept a real space id is the wire change that lands WITH the spaces
- * implementation, not before it.
+ * A real space id is accepted now that spaces exist. The SHAPE is all this
+ * schema decides: whether the caller may actually write into the space it names
+ * is an ACCESS question, answered by assertSpaceWritable() in the route with a
+ * 403 — not a 400. Silently dropping an unauthorized scope is the one outcome
+ * that must never happen: the desktop marks the row synced and the author
+ * believes their note is shared while nobody else can see it.
  */
 import { z } from "zod";
 
 export const SPACE_SCOPE_INPUT_FIELDS = {
-  workspace_id: z.null().optional(),
-  space_id: z.null().optional(),
+  /** The single workspace (the tenant). Echoed by the client; not authoritative. */
+  workspace_id: z.string().uuid().nullable().optional(),
+  /** Null (or absent) means personal — which is what every legacy row is. */
+  space_id: z.string().uuid().nullable().optional(),
 } as const;

@@ -27,6 +27,7 @@ import { z } from "zod";
 import { BATCH_BODY_LIMIT_BYTES } from "../../config/batch-body-limit.js";
 import { AuthError, ValidationError } from "../../errors.js";
 import { createOrReturnExisting } from "../../lib/client-id-upsert.js";
+import { assertSpaceWritable } from "../../lib/space-scope.js";
 import { type CloudNoteRow, normalizeNoteType } from "./shape.js";
 
 const MAX_BATCH_SIZE = 500;
@@ -79,6 +80,16 @@ export const buildNotesBatchCreateRoutes = (deps: NotesBatchCreateDeps) =>
         const userId = req.user.id;
 
         const created = await withTenant(deps.db, tenantId, async (tx) => {
+          // Every distinct space named in the batch is authorized ONCE, before
+          // a single row is written. Checking per-row inside the loop would let
+          // an unauthorized row abort a batch that had already inserted others
+          // — the transaction rolls back, but the client cannot tell which of
+          // its 50 rows was the problem.
+          const namedSpaces = new Set(
+            notesInput.map((n) => n.space_id).filter((id): id is string => Boolean(id)),
+          );
+          for (const id of namedSpaces) await assertSpaceWritable(tx, userId, id);
+
           const results: { client_note_id: string; id: string }[] = [];
           // Sequential within ONE transaction. Parallel would race on the
           // ON CONFLICT path because concurrent INSERTs into the same
@@ -88,6 +99,7 @@ export const buildNotesBatchCreateRoutes = (deps: NotesBatchCreateDeps) =>
             const insertValues: Record<string, unknown> = {
               tenant_id: tenantId,
               user_id: userId,
+              space_id: input.space_id ?? null,
               client_note_id: input.client_note_id ?? null,
               folder_id: input.folder_id ?? null,
               title: input.title ?? null,

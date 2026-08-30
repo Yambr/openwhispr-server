@@ -46,6 +46,7 @@ export interface CloudNoteRow {
   calendar_event_id: string | null;
   diarization_enabled: number | null;
   expected_speaker_count: number | null;
+  space_id?: string | null;
   deleted_at: Date | string | null;
   created_at: Date | string;
   updated_at: Date | string;
@@ -125,11 +126,16 @@ export function rowToCloudNote(row: CloudNoteRow): {
       row.expected_speaker_count === null || row.expected_speaker_count === undefined
         ? null
         : Number(row.expected_speaker_count),
-    // Space scope. Team spaces are not implemented here yet, so every row is
-    // personal and both fields are an explicit null rather than absent — the
-    // desktop reads them on every pulled row (SyncService.resolveSpaceForCloudRow).
-    workspace_id: null,
-    space_id: null,
+    // Space scope, read on every pulled row by the desktop
+    // (SyncService.resolveSpaceForCloudRow). Explicit nulls, never absent: a
+    // missing key would be read as "keep the current scope" and a shared note
+    // would settle into the reader's personal tree.
+    //
+    // There is exactly one workspace here — the tenant — so a row carries it
+    // only when it is actually in a space; a personal row is in no workspace,
+    // which is the shape the client pushes for one (SyncService.pushScopeFields).
+    workspace_id: row.space_id ? (row.tenant_id ?? null) : null,
+    space_id: row.space_id ?? null,
     // The note's OWNER, not its last editor. SyncService.pullNotes reads
     // `cloudNote.user_id!` to backfill the local owner column, so this must be
     // the real value.

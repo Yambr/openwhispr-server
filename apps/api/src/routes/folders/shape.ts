@@ -21,6 +21,7 @@ export interface CloudFolderRow {
   parent_folder_id?: string | null;
   is_default: boolean;
   sort_order: number;
+  space_id?: string | null;
   deleted_at: Date | string | null;
   created_at: Date | string;
   updated_at: Date | string;
@@ -66,9 +67,11 @@ export function rowToCloudFolder(row: CloudFolderRow): {
     name: row.name,
     is_default: Boolean(row.is_default),
     sort_order: Number(row.sort_order ?? 0),
-    // Space scope — see notes/shape.ts. Explicit nulls, not absent keys.
-    workspace_id: null,
-    space_id: null,
+    // Space scope — see notes/shape.ts for why these are explicit nulls
+    // rather than absent keys, and why the workspace rides along only for a
+    // row that is actually in a space.
+    workspace_id: row.space_id ? (row.tenant_id ?? null) : null,
+    space_id: row.space_id ?? null,
     deleted_at: isoOrNull(row.deleted_at),
     created_at: isoNonNull(row.created_at),
     updated_at: isoNonNull(row.updated_at),

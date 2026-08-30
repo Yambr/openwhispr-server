@@ -19,6 +19,7 @@ import { FolderInputSchema } from "@openwhispr/wire-schemas";
 import type { FastifyInstance } from "fastify";
 import { AuthError } from "../../errors.js";
 import { createOrReturnExisting } from "../../lib/client-id-upsert.js";
+import { assertSpaceWritable } from "../../lib/space-scope.js";
 import { type CloudFolderRow, rowToCloudFolder } from "./shape.js";
 
 export interface FoldersCreateDeps {
@@ -44,9 +45,14 @@ export const buildFoldersCreateRoutes = (deps: FoldersCreateDeps) =>
         const userId = req.user.id;
 
         const row = await withTenant(deps.db, tenantId, async (tx) => {
+          // Same rule as notes: an unreachable space is 403, never a silent
+          // demotion to the personal tree.
+          if (body.space_id) await assertSpaceWritable(tx, userId, body.space_id);
+
           const insertValues: Record<string, unknown> = {
             tenant_id: tenantId,
             user_id: userId,
+            space_id: body.space_id ?? null,
             client_folder_id: body.client_folder_id ?? null,
             name: body.name,
             is_default: body.is_default ?? false,

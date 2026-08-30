@@ -337,11 +337,10 @@ export function buildAllRoutes(deps: AllRoutesDeps): readonly RoutePlugin[] {
     buildLocaleRoutes(localeDeps),
     buildAuthProvidersRoutes(authProvidersDeps),
     buildCapabilitiesRoutes(capabilitiesDeps),
-    // Account-scope guard the desktop calls on every sign-in. Registered
-    // unconditionally and with no deps: it answers a constant empty list, and
-    // without it the 1.9.x client cannot validate a session at all. See
-    // me-spaces.ts for why a missing route hangs the app.
-    buildMeSpacesRoutes(),
+    // Account-scope guard the desktop calls on every sign-in — and the probe
+    // that tells it this server understands space scope. Without it the 1.9.x
+    // client cannot validate a session at all; see me-spaces.ts.
+    buildMeSpacesRoutes({ db: deps.db }),
     // Workspace bootstrap the desktop runs alongside the scope guard. Answers
     // the tenant as the single workspace and an empty joinable list; see
     // workspaces.ts for why neither is a stub.

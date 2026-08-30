@@ -21,6 +21,7 @@ import { z } from "zod";
 import { BATCH_BODY_LIMIT_BYTES } from "../../config/batch-body-limit.js";
 import { AuthError, ValidationError } from "../../errors.js";
 import { createOrReturnExisting } from "../../lib/client-id-upsert.js";
+import { assertSpaceWritable } from "../../lib/space-scope.js";
 import { type CloudFolderRow, rowToCloudFolder } from "./shape.js";
 
 const MAX_BATCH_SIZE = 500;
@@ -68,11 +69,19 @@ export const buildFoldersBatchCreateRoutes = (deps: FoldersBatchCreateDeps) =>
         const userId = req.user.id;
 
         const created = await withTenant(deps.db, tenantId, async (tx) => {
+          // Authorize every distinct space once, before any row is written —
+          // see notes/batch-create.ts for why not per-row.
+          const namedSpaces = new Set(
+            foldersInput.map((f) => f.space_id).filter((id): id is string => Boolean(id)),
+          );
+          for (const id of namedSpaces) await assertSpaceWritable(tx, userId, id);
+
           const results: ReturnType<typeof rowToCloudFolder>[] = [];
           for (const input of foldersInput) {
             const insertValues: Record<string, unknown> = {
               tenant_id: tenantId,
               user_id: userId,
+              space_id: input.space_id ?? null,
               client_folder_id: input.client_folder_id ?? null,
               name: input.name,
               is_default: input.is_default ?? false,

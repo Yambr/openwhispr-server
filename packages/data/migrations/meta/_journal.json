@@ -253,6 +253,13 @@
       "when": 1781884800000,
       "tag": "0034_delta_sync_indexes",
       "breakpoints": true
+    },
+    {
+      "idx": 36,
+      "version": "7",
+      "when": 1781971200000,
+      "tag": "0035_team_spaces",
+      "breakpoints": true
     }
   ]
 }

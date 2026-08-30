@@ -22,6 +22,7 @@ import {
   parseListQuery,
 } from "../../lib/keyset-pagination.js";
 import { withSoftDelete } from "../../lib/soft-delete.js";
+import { buildVisibilityWhere } from "../../lib/space-scope.js";
 import { type CloudNoteRow, rowToCloudNote } from "./shape.js";
 
 export interface NotesListDeps {
@@ -34,6 +35,7 @@ interface ListQuery {
   since?: string;
   before_id?: string;
   since_id?: string;
+  scope?: "all";
 }
 
 // LOCKER-04 inv-14 — declarative querystring schema (mirrors
@@ -86,11 +88,16 @@ export const buildNotesListRoutes = (deps: NotesListDeps) =>
         const softDelete = withSoftDelete();
         const orderLimit = buildKeysetOrderLimit(parsed);
 
+        // Team-space visibility. RLS here is tenant-scoped only, so this
+        // predicate is what separates one colleague's rows from another's —
+        // see lib/space-scope.ts.
+        const visibility = buildVisibilityWhere(userId, (req.query as ListQuery).scope);
+
         const rows = await withTenant(deps.db, tenantId, async (tx) => {
           // ORDER BY (created_at, id) DESC paired with notes_keyset_idx.
           const result = (await tx.execute(sql`
             SELECT * FROM "notes"
-             WHERE "user_id" = ${userId}::uuid${softDelete}${keysetWhere}${orderLimit}
+             WHERE ${visibility}${softDelete}${keysetWhere}${orderLimit}
           `)) as { rows?: CloudNoteRow[] };
           return result.rows ?? [];
         });

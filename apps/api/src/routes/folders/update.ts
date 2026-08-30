@@ -17,18 +17,19 @@ import { sql } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { AuthError, NotFoundError } from "../../errors.js";
+import { assertSpaceWritable } from "../../lib/space-scope.js";
 import { type CloudFolderRow, rowToCloudFolder } from "./shape.js";
 
 // Static allowlist of mutable columns (defense-in-depth).
-const MUTABLE_COLS = ["name", "is_default", "sort_order"] as const;
+const MUTABLE_COLS = ["name", "is_default", "sort_order", "space_id"] as const;
 type MutableCol = (typeof MUTABLE_COLS)[number];
 
 const UpdateBodySchema = z.object({
   // Space scope. These update bodies are NOT `.strict()`, so an unknown key
-  // used to pass silently — a non-null `space_id` was accepted and then
-  // ignored, which is worse than a refusal. Declaring the pair makes the
-  // update path agree with create: explicit nulls are fine, a claimed space is
-  // a 400 until team spaces exist.
+  // passed silently before it was declared here — a `space_id` was accepted and
+  // then ignored, which is worse than a refusal. Now the pair is declared, the
+  // column is mutable, and reaching an unauthorized space is a 403 from
+  // assertSpaceWritable rather than a quiet no-op.
   ...SPACE_SCOPE_INPUT_FIELDS,
   id: z.string().uuid(),
   name: z.string().optional(),
@@ -44,6 +45,7 @@ const FIELD_MAP: Record<string, MutableCol> = {
   name: "name",
   is_default: "is_default",
   sort_order: "sort_order",
+  space_id: "space_id",
 };
 
 export interface FoldersUpdateDeps {
@@ -84,6 +86,10 @@ export const buildFoldersUpdateRoutes = (deps: FoldersUpdateDeps) =>
         );
 
         const row = await withTenant(deps.db, tenantId, async (tx) => {
+          // A move INTO a space needs access to the destination — see
+          // notes/update.ts.
+          if (body.space_id) await assertSpaceWritable(tx, userId, body.space_id);
+
           const result = (await tx.execute(sql`
             UPDATE "folders"
                SET ${setClause}

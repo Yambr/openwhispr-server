@@ -97,7 +97,7 @@ describe("integration — notes push carrying explicit null space scope", () => 
     expect(res.statusCode).toBe(200);
   });
 
-  it("refuses a non-null space_id on update too, instead of ignoring it", async () => {
+  it("refuses an unreachable space on update too, instead of ignoring it", async () => {
     const created = await app.inject({
       method: "POST",
       url: "/api/notes/create",
@@ -114,10 +114,16 @@ describe("integration — notes push carrying explicit null space scope", () => 
     // The update body is not `.strict()`, so before the scope pair was declared
     // this key was accepted and silently dropped — the client would believe the
     // note had moved into a space that does not exist.
-    expect(res.statusCode).toBe(400);
+    expect(res.statusCode).toBe(403);
   });
 
-  it("refuses a non-null space_id rather than filing the row as personal", async () => {
+  it("refuses an unreachable space rather than filing the row as personal", async () => {
+    // CONTRACT CHANGE, not a softened expectation. While no space could exist,
+    // a non-null `space_id` was a 400: the payload described something the
+    // deployment had no concept of. Spaces exist now, so naming one is a
+    // well-formed request that may or may not be permitted — an unreachable
+    // space is a 403 (assertSpaceWritable). What has NOT changed is the thing
+    // that matters: the row is never quietly filed as personal.
     const res = await app.inject({
       method: "POST",
       url: "/api/notes/create",
@@ -128,6 +134,6 @@ describe("integration — notes push carrying explicit null space scope", () => 
       },
     });
 
-    expect(res.statusCode).toBe(400);
+    expect(res.statusCode).toBe(403);
   });
 });
