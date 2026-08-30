@@ -164,9 +164,20 @@ describe("CONTRACT-01 — R10 CloudMessage response shape (6 fields)", () => {
     expect(() => CloudMessageSchema.parse({ ...fixture, role: "wizard" })).toThrow();
   });
 
-  it("rejects metadata when stringified bytes exceed 4 KiB (T-MSG-INJ)", () => {
-    const oversized = { blob: "x".repeat(5000) };
+  // CONTRACT CHANGE, not a softened bound. Metadata is bounded by SIZE and
+  // DEPTH now, not by value type: the desktop persists an assistant turn's tool
+  // calls as `{ toolCalls: ToolCallInfo[] }` — nested objects and arrays — so a
+  // scalar-only, 4 KiB record 400'd every agent conversation and agent history
+  // never synced at all. The cap survives at 64 KiB, which is the anti-abuse
+  // control (T-MSG-INJ); only the shape and the number moved.
+  it("rejects metadata when stringified bytes exceed the size cap (T-MSG-INJ)", () => {
+    const oversized = { blob: "x".repeat(128 * 1024) };
     expect(() => CloudMessageSchema.parse({ ...fixture, metadata: oversized })).toThrow();
+  });
+
+  it("accepts the nested tool-call metadata the desktop actually stores", () => {
+    const metadata = { toolCalls: [{ id: "call_1", name: "search_notes", status: "completed" }] };
+    expect(() => CloudMessageSchema.parse({ ...fixture, metadata })).not.toThrow();
   });
 });
 
