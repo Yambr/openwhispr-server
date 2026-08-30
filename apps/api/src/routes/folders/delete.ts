@@ -21,6 +21,7 @@ import { sql } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { AuthError, NotFoundError } from "../../errors.js";
+import { buildSpaceScopedWhere } from "../../lib/space-scope.js";
 
 const DeleteBodySchema = z.object({
   id: z.string().uuid(),
@@ -47,13 +48,20 @@ export const buildFoldersDeleteRoutes = (deps: FoldersDeleteDeps) =>
         const tenantId = req.tenant;
         const userId = req.user.id;
 
+        const scoped = buildSpaceScopedWhere(userId);
+        // Space-aware. A shared row belongs to the SPACE, not to whoever
+        // typed it first: the pre-spaces owner-only predicate answered 404
+        // for a note the caller could plainly see in the tree, and the
+        // desktop gives no hint that the write failed — the change was simply
+        // lost. A colleague's PERSONAL row stays untouchable, because the
+        // predicate's first arm still requires ownership.
         const deleted = await withTenant(deps.db, tenantId, async (tx) => {
           // Hard delete — contained notes detach to folder_id = NULL via
           // FK ON DELETE SET NULL (notes.folder_id, schema/notes.ts:26).
           const result = (await tx.execute(sql`
             DELETE FROM "folders"
              WHERE "id" = ${body.id}::uuid
-               AND "user_id" = ${userId}::uuid
+               AND ${scoped}
              RETURNING "id"
           `)) as { rows?: { id: string }[] };
           return result.rows?.[0];

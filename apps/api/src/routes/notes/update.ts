@@ -20,7 +20,7 @@ import { sql } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { AuthError, NotFoundError } from "../../errors.js";
-import { assertSpaceWritable } from "../../lib/space-scope.js";
+import { assertSpaceWritable, buildSpaceScopedWhere } from "../../lib/space-scope.js";
 import { type CloudNoteRow, rowToCloudNote } from "./shape.js";
 
 // Allowed mutable columns. STRICT allowlist — defends against
@@ -132,6 +132,7 @@ export const buildNotesUpdateRoutes = (deps: NotesUpdateDeps) =>
           sql``,
         );
 
+        const scoped = buildSpaceScopedWhere(userId);
         const row = await withTenant(deps.db, tenantId, async (tx) => {
           // A move INTO a space needs access to the destination. Without this
           // the column was simply ignored — the row stayed where it was, the
@@ -139,11 +140,17 @@ export const buildNotesUpdateRoutes = (deps: NotesUpdateDeps) =>
           // had never reached.
           if (body.space_id) await assertSpaceWritable(tx, userId, body.space_id);
 
+          // Space-aware. A shared row belongs to the SPACE, not to whoever
+          // typed it first: the pre-spaces owner-only predicate answered 404
+          // for a note the caller could plainly see in the tree, and the
+          // desktop gives no hint that the write failed — the change was simply
+          // lost. A colleague's PERSONAL row stays untouchable, because the
+          // predicate's first arm still requires ownership.
           const result = (await tx.execute(sql`
             UPDATE "notes"
                SET ${setClause}
              WHERE "id" = ${body.id}::uuid
-               AND "user_id" = ${userId}::uuid
+               AND ${scoped}
                AND "deleted_at" IS NULL
              RETURNING *
           `)) as { rows?: CloudNoteRow[] };

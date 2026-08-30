@@ -24,6 +24,7 @@ import Fastify, { type FastifyInstance } from "fastify";
 import type { Pool } from "pg";
 import { afterEach, beforeAll, describe, expect, it } from "vitest";
 import { registerErrorHandler } from "../../../src/error-handler.js";
+import { zodTypeProvider } from "../../../src/plugins/zod-type-provider.js";
 import { buildWorkspacesRoutes, slugify } from "../../../src/routes/workspaces.js";
 import { getSharedRoutePool } from "../../support/shared-route-pool.js";
 
@@ -41,6 +42,9 @@ beforeAll(async () => {
 async function buildApp(opts: { authed: boolean }): Promise<FastifyInstance> {
   const app = Fastify({ logger: false });
   registerErrorHandler(app);
+  // The members route declares a Zod params schema (LOCKER-04); without the
+  // provider Fastify reads it as JSON Schema and refuses to build the route.
+  await app.register(zodTypeProvider);
   app.addHook("preHandler", async (req) => {
     if (opts.authed) {
       (req as { user?: unknown }).user = USER;

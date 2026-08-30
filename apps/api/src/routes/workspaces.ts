@@ -22,8 +22,21 @@
 import { type ExecutableTx, type TransactionalDb, withTenant } from "@openwhispr/data";
 import { sql } from "drizzle-orm";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
-import { AuthError } from "../errors.js";
+import { z } from "zod";
+import { AuthError, NotFoundError } from "../errors.js";
 import { slugify } from "../lib/slug.js";
+
+const WorkspaceParams = z.object({ workspaceId: z.string().uuid() }).strict();
+
+/** Colleagues offered by the team-roster picker. */
+export interface WorkspaceMember {
+  user_id: string;
+  role: "owner" | "admin" | "member";
+  joined_at: string;
+  email: string;
+  name: string | null;
+  image: string | null;
+}
 
 export interface WorkspacesDeps {
   db: TransactionalDb<ExecutableTx>;
@@ -50,6 +63,13 @@ export interface Workspace {
   created_at: string;
   updated_at: string;
   role: "owner" | "admin" | "member";
+}
+
+interface WorkspaceUserRow {
+  id: string;
+  email: string;
+  name: string | null;
+  created_at: Date | string;
 }
 
 interface TenantRow {
@@ -123,6 +143,55 @@ export const buildWorkspacesRoutes = (deps: WorkspacesDeps) =>
               },
             ]
           : [];
+
+        reply.header("Cache-Control", "no-store");
+        return reply.send({ data });
+      },
+    });
+
+    app.route({
+      method: "GET",
+      url: "/api/workspaces/:workspaceId/members",
+      schema: { params: WorkspaceParams },
+      config: { rateLimit: { max: 120, timeWindow: "1 minute" } },
+      handler: async (req: FastifyRequest, reply: FastifyReply) => {
+        if (!req.user || !req.tenant) {
+          throw new AuthError("UNAUTHORIZED", "unauthorized");
+        }
+        const tenantId = req.tenant;
+        const { workspaceId } = WorkspaceParams.parse(req.params);
+        // Exactly one workspace exists here; a different id is a stale client
+        // or someone probing, and neither should get a colleague list back.
+        if (workspaceId !== tenantId) {
+          throw new NotFoundError("WORKSPACE_NOT_FOUND", "workspace not found");
+        }
+
+        const rows = await withTenant(deps.db, tenantId, async (tx) => {
+          // Everyone in the tenant, because the tenant IS the company and the
+          // directory already vetted every one of them. Deliberately narrow:
+          // this is a picker an ordinary employee calls, so it returns what the
+          // roster UI renders and nothing more — widening it later should be a
+          // decision, not a side effect.
+          const result = (await tx.execute(sql`
+            SELECT "id", "email", "name", "created_at"
+              FROM "users"
+             ORDER BY "email" ASC
+          `)) as { rows?: WorkspaceUserRow[] };
+          return result.rows ?? [];
+        });
+
+        const data: WorkspaceMember[] = rows.map((u) => ({
+          user_id: u.id,
+          // Membership of the single workspace is not graded here; who may
+          // change a given team or space is decided per-object in teams.ts and
+          // spaces.ts.
+          role: "member",
+          joined_at: iso(u.created_at),
+          email: u.email,
+          name: u.name ?? null,
+          // No avatar storage; the field exists because the client reads it.
+          image: null,
+        }));
 
         reply.header("Cache-Control", "no-store");
         return reply.send({ data });

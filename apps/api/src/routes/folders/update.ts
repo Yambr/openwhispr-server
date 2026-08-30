@@ -17,7 +17,7 @@ import { sql } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { AuthError, NotFoundError } from "../../errors.js";
-import { assertSpaceWritable } from "../../lib/space-scope.js";
+import { assertSpaceWritable, buildSpaceScopedWhere } from "../../lib/space-scope.js";
 import { type CloudFolderRow, rowToCloudFolder } from "./shape.js";
 
 // Static allowlist of mutable columns (defense-in-depth).
@@ -85,6 +85,13 @@ export const buildFoldersUpdateRoutes = (deps: FoldersUpdateDeps) =>
           sql``,
         );
 
+        const scoped = buildSpaceScopedWhere(userId);
+        // Space-aware. A shared row belongs to the SPACE, not to whoever
+        // typed it first: the pre-spaces owner-only predicate answered 404
+        // for a note the caller could plainly see in the tree, and the
+        // desktop gives no hint that the write failed — the change was simply
+        // lost. A colleague's PERSONAL row stays untouchable, because the
+        // predicate's first arm still requires ownership.
         const row = await withTenant(deps.db, tenantId, async (tx) => {
           // A move INTO a space needs access to the destination — see
           // notes/update.ts.
@@ -94,7 +101,7 @@ export const buildFoldersUpdateRoutes = (deps: FoldersUpdateDeps) =>
             UPDATE "folders"
                SET ${setClause}
              WHERE "id" = ${body.id}::uuid
-               AND "user_id" = ${userId}::uuid
+               AND ${scoped}
                AND "deleted_at" IS NULL
              RETURNING *
           `)) as { rows?: CloudFolderRow[] };
