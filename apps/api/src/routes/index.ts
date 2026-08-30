@@ -89,8 +89,10 @@ import {
   type SetupAdminSignUpEmail,
 } from "./setup-admin.js";
 import { buildSetupStateRoutes, type SetupStateDeps } from "./setup-state.js";
+import { buildSpacesRoutes } from "./spaces.js";
 import { buildStreamingUsageRoutes, type StreamingUsageDeps } from "./streaming-usage.js";
 import { buildSttConfigRoutes, type SttConfigDeps } from "./stt-config.js";
+import { buildTeamsRoutes } from "./teams.js";
 import { buildTestOnlyRoutes } from "./test-only.js";
 import { buildAssemblyAITokenRoutes } from "./tokens/assemblyai.js";
 import { buildDeepgramTokenRoutes } from "./tokens/deepgram.js";
@@ -345,6 +347,11 @@ export function buildAllRoutes(deps: AllRoutesDeps): readonly RoutePlugin[] {
     // the tenant as the single workspace and an empty joinable list; see
     // workspaces.ts for why neither is a stub.
     buildWorkspacesRoutes({ db: deps.db }),
+    // Team spaces: who may open a shared tree, and the tree itself. Content
+    // access is decided separately, by lib/space-scope.ts in the notes and
+    // folders routes.
+    buildTeamsRoutes({ db: deps.db }),
+    buildSpacesRoutes({ db: deps.db }),
     buildSetupStateRoutes(setupStateDeps),
     buildCheckUserRoutes(checkUserDeps),
     buildVerificationStatusRoutes(verificationDeps),

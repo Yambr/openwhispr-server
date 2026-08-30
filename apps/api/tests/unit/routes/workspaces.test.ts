@@ -14,11 +14,11 @@
 //   * /api/me/joinable — empty. Joining is not something a user does here;
 //     membership follows the directory, so there is nothing to request.
 //
-// `role` is deliberately "member" for now. It gates the workspace-management
-// UI (spacePermissions.canManageWorkspace → owner|admin), and this API has no
-// team or space endpoints yet — advertising management rights would surface
-// buttons whose every action 404s. It becomes "admin" in the same change that
-// ships those endpoints.
+// `role` is "admin" for everyone. It gates the workspace-management UI
+// (spacePermissions.canManageWorkspace → owner|admin), and any employee may
+// create a team and a space here, so everyone gets that surface. Who may change
+// a PARTICULAR team or space is decided per-object in teams.ts and spaces.ts,
+// not by this flag.
 import { drizzle } from "drizzle-orm/node-postgres";
 import Fastify, { type FastifyInstance } from "fastify";
 import type { Pool } from "pg";
@@ -68,7 +68,7 @@ describe("GET /api/workspaces", () => {
     const { data } = res.json() as { data: { id: string; role: string; name: string }[] };
     expect(data).toHaveLength(1);
     expect(data[0]!.id).toBe(TENANT);
-    expect(data[0]!.role).toBe("member");
+    expect(data[0]!.role).toBe("admin");
     // Name comes from the tenants row, not from a constant in the handler.
     const { rows } = await pool.query<{ name: string }>(`SELECT name FROM tenants WHERE id = $1`, [
       TENANT,

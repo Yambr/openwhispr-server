@@ -23,6 +23,7 @@ import { type ExecutableTx, type TransactionalDb, withTenant } from "@openwhispr
 import { sql } from "drizzle-orm";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { AuthError } from "../errors.js";
+import { slugify } from "../lib/slug.js";
 
 export interface WorkspacesDeps {
   db: TransactionalDb<ExecutableTx>;
@@ -64,16 +65,8 @@ function iso(v: Date | string): string {
   return Number.isNaN(parsed.getTime()) ? String(v) : parsed.toISOString();
 }
 
-/** Lowercase, hyphenated, ASCII-safe — the desktop uses it only as a key. */
-export function slugify(name: string): string {
-  const slug = name
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "");
-  // A tenant named entirely in non-Latin characters slugifies to nothing;
-  // "workspace" keeps the field non-empty without pretending to transliterate.
-  return slug.length > 0 ? slug : "workspace";
-}
+// Shared with teams and spaces, which need the same rules — see lib/slug.ts.
+export { slugify };
 
 export const buildWorkspacesRoutes = (deps: WorkspacesDeps) =>
   async function workspacesRoutes(app: FastifyInstance): Promise<void> {
@@ -121,11 +114,12 @@ export const buildWorkspacesRoutes = (deps: WorkspacesDeps) =>
                 created_at: iso(tenant.created_at),
                 updated_at: iso(tenant.updated_at),
                 // Gates the workspace-management UI
-                // (spacePermissions.canManageWorkspace → owner|admin). There
-                // are no team or space endpoints yet, so advertising management
-                // rights would surface buttons whose every action 404s. This
-                // becomes "admin" in the change that ships those endpoints.
-                role: "member",
+                // (spacePermissions.canManageWorkspace → owner|admin). Every
+                // employee may create a team and a space here, so every
+                // employee gets the management surface — the per-space and
+                // per-team checks are what actually decide who may change
+                // WHAT, in teams.ts and spaces.ts.
+                role: "admin",
               },
             ]
           : [];
