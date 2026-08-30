@@ -12,6 +12,7 @@
 //
 // updated_at is bumped server-side regardless of input.
 import { type ExecutableTx, type TransactionalDb, withTenant } from "@openwhispr/data";
+import { SPACE_SCOPE_INPUT_FIELDS } from "@openwhispr/wire-schemas";
 import { sql } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
@@ -23,6 +24,12 @@ const MUTABLE_COLS = ["name", "is_default", "sort_order"] as const;
 type MutableCol = (typeof MUTABLE_COLS)[number];
 
 const UpdateBodySchema = z.object({
+  // Space scope. These update bodies are NOT `.strict()`, so an unknown key
+  // used to pass silently — a non-null `space_id` was accepted and then
+  // ignored, which is worse than a refusal. Declaring the pair makes the
+  // update path agree with create: explicit nulls are fine, a claimed space is
+  // a 400 until team spaces exist.
+  ...SPACE_SCOPE_INPUT_FIELDS,
   id: z.string().uuid(),
   name: z.string().optional(),
   is_default: z.boolean().optional(),

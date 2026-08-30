@@ -332,10 +332,10 @@ describe("conversations + messages schemas", () => {
     ).toBe(false);
   });
 
-  it("ConversationInput rejects oversize metadata (>4 KB stringified)", () => {
+  it("ConversationInput rejects oversize metadata (past the stringified cap)", () => {
     const big = "x".repeat(1024);
     const bigMeta: Record<string, string> = {};
-    for (let i = 0; i < 10; i++) bigMeta[`k${i}`] = big;
+    for (let i = 0; i < 128; i++) bigMeta[`k${i}`] = big;
     expect(
       ConversationInputSchema.safeParse({
         messages: [{ role: "user", content: "hi", metadata: bigMeta }],
@@ -343,12 +343,14 @@ describe("conversations + messages schemas", () => {
     ).toBe(false);
   });
 
-  it("ConversationInput rejects unbounded value types in metadata (no nested objects)", () => {
+  // See conversations.test.ts: nesting is now bounded by depth, not forbidden,
+  // because the desktop persists tool calls as nested structure.
+  it("ConversationInput accepts nested metadata within the depth bound", () => {
     expect(
       ConversationInputSchema.safeParse({
-        messages: [{ role: "user", content: "hi", metadata: { nested: { evil: true } } }],
+        messages: [{ role: "user", content: "hi", metadata: { toolCalls: [{ id: "call_1" }] } }],
       }).success,
-    ).toBe(false);
+    ).toBe(true);
   });
 
   it("CloudConversation accepts the canonical full row shape", () => {

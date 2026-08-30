@@ -33,6 +33,8 @@ interface ListQuery {
   limit?: string;
   before?: string;
   since?: string;
+  before_id?: string;
+  since_id?: string;
 }
 
 // LOCKER-04 inv-14 — declarative querystring schema (mirrors
@@ -44,6 +46,11 @@ const ListQuerySchema = z
     limit: z.string().optional(),
     before: z.string().optional(),
     since: z.string().optional(),
+    // Keyset tie-breakers, mirroring notes/list.ts.
+    before_id: z.string().uuid().optional(),
+    since_id: z.string().uuid().optional(),
+    // Team-scope selector — see notes/list.ts for why this must be accepted.
+    scope: z.literal("all").optional(),
   })
   .strict();
 

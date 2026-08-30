@@ -15,6 +15,7 @@
 // PATCH may carry `updated_at` from its own clock but the server is
 // the source of truth on this field.
 import { type ExecutableTx, type TransactionalDb, withTenant } from "@openwhispr/data";
+import { SPACE_SCOPE_INPUT_FIELDS } from "@openwhispr/wire-schemas";
 import { sql } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
@@ -42,6 +43,12 @@ const MUTABLE_COLS = [
 type MutableCol = (typeof MUTABLE_COLS)[number];
 
 const UpdateBodySchema = z.object({
+  // Space scope. These update bodies are NOT `.strict()`, so an unknown key
+  // used to pass silently — a non-null `space_id` was accepted and then
+  // ignored, which is worse than a refusal. Declaring the pair makes the
+  // update path agree with create: explicit nulls are fine, a claimed space is
+  // a 400 until team spaces exist.
+  ...SPACE_SCOPE_INPUT_FIELDS,
   id: z.string().uuid(),
   title: z.string().nullable().optional(),
   content: z.string().optional(),

@@ -41,8 +41,11 @@ async function seedNotes(n: number): Promise<{ id: string; created_at: string }[
   const out: { id: string; created_at: string }[] = [];
   for (let i = 0; i < n; i++) {
     const { rows } = await pool.query<{ id: string; created_at: Date }>(
-      `INSERT INTO notes (tenant_id, user_id, client_note_id, title, content, created_at)
-         VALUES ($1, $2, $3, $4, $5, $6)
+      // A row whose `updated_at` is unrelated to its `created_at` is not a shape
+      // the desktop ever produces, and seeding one is what let these fixtures pass
+      // while `?since=` filtered the wrong column. Stagger both together.
+      `INSERT INTO notes (tenant_id, user_id, client_note_id, title, content, created_at, updated_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $6)
          RETURNING id, created_at`,
       [
         "00000000-0000-0000-0000-000000000000",

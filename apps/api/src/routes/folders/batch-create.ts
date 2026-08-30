@@ -18,6 +18,7 @@ import { type ExecutableTx, type TransactionalDb, withTenant } from "@openwhispr
 import { FolderInputSchema } from "@openwhispr/wire-schemas";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
+import { BATCH_BODY_LIMIT_BYTES } from "../../config/batch-body-limit.js";
 import { AuthError, ValidationError } from "../../errors.js";
 import { createOrReturnExisting } from "../../lib/client-id-upsert.js";
 import { type CloudFolderRow, rowToCloudFolder } from "./shape.js";
@@ -45,6 +46,9 @@ export const buildFoldersBatchCreateRoutes = (deps: FoldersBatchCreateDeps) =>
       schema: { body: BatchCreateBodySchema },
       // D-30 / T-05-04 — tighter rate limit on the batch endpoint.
       config: { rateLimit: { max: 5, timeWindow: "1 minute" } },
+      // Desktop chunks of 50 rows clear Fastify's 1 MiB default; see
+      // config/batch-body-limit.ts for why this is per-route.
+      bodyLimit: BATCH_BODY_LIMIT_BYTES,
       handler: async (req, reply) => {
         if (!req.user || !req.tenant) {
           throw new AuthError("UNAUTHORIZED", "unauthorized");

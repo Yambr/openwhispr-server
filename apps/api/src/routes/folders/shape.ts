@@ -29,7 +29,15 @@ export interface CloudFolderRow {
 function isoOrNull(v: Date | string | null | undefined): string | null {
   if (v === null || v === undefined) return null;
   if (v instanceof Date) return v.toISOString();
-  return String(v);
+  // Rows read through a raw `tx.execute` arrive as node-postgres TEXT
+  // ("2026-01-01 00:00:00+00"), not Date objects, so the list paths emitted a
+  // non-ISO timestamp while create/update emitted ISO for the very same row.
+  // The desktop hands this value straight back as its `?before=` / `?since=`
+  // cursor, and URL decoding turns the `+00` offset into a space — the next
+  // page 400s on an unparseable timestamp. The wire schema declares ISO 8601,
+  // so normalize here and the shape is identical whichever route produced it.
+  const parsed = new Date(v);
+  return Number.isNaN(parsed.getTime()) ? String(v) : parsed.toISOString();
 }
 
 function isoNonNull(v: Date | string | null | undefined): string {
@@ -46,6 +54,8 @@ export function rowToCloudFolder(row: CloudFolderRow): {
   name: string;
   is_default: boolean;
   sort_order: number;
+  workspace_id: string | null;
+  space_id: string | null;
   deleted_at: string | null;
   created_at: string;
   updated_at: string;
@@ -56,6 +66,9 @@ export function rowToCloudFolder(row: CloudFolderRow): {
     name: row.name,
     is_default: Boolean(row.is_default),
     sort_order: Number(row.sort_order ?? 0),
+    // Space scope — see notes/shape.ts. Explicit nulls, not absent keys.
+    workspace_id: null,
+    space_id: null,
     deleted_at: isoOrNull(row.deleted_at),
     created_at: isoNonNull(row.created_at),
     updated_at: isoNonNull(row.updated_at),

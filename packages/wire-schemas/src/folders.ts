@@ -7,6 +7,7 @@
  * non-neg integer sort_order, bounded name length.
  */
 import { z } from "zod";
+import { SPACE_SCOPE_INPUT_FIELDS } from "./space-scope.js";
 
 const ISO_DATETIME = z.string().datetime({ offset: true });
 const NAME_MAX = 256;
@@ -17,6 +18,7 @@ export const FolderInputSchema = z
     client_folder_id: z.string().min(1).max(128).optional(),
     is_default: z.boolean().optional(),
     sort_order: z.number().int().nonnegative().optional(),
+    ...SPACE_SCOPE_INPUT_FIELDS,
   })
   .strict();
 export type FolderInput = z.infer<typeof FolderInputSchema>;

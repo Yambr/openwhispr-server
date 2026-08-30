@@ -246,6 +246,13 @@
       "when": 1781798400000,
       "tag": "0033_rls_claim_driven_bypass",
       "breakpoints": true
+    },
+    {
+      "idx": 35,
+      "version": "7",
+      "when": 1781884800000,
+      "tag": "0034_delta_sync_indexes",
+      "breakpoints": true
     }
   ]
 }

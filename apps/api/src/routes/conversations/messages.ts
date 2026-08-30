@@ -26,7 +26,7 @@
 // additionally bind by user_id in every WHERE clause to keep EXPLAIN
 // output obvious (matches the established Plan 05 pattern).
 import { type ExecutableTx, type TransactionalDb, withTenant } from "@openwhispr/data";
-import { MetadataSchema } from "@openwhispr/wire-schemas";
+import { METADATA_MAX_BYTES, MetadataSchema } from "@openwhispr/wire-schemas";
 import { sql } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
@@ -45,7 +45,12 @@ import { type CloudMessageRow, rowToCloudMessage } from "./shape.js";
 // smuggle bytes via whitespace; we re-stringify with no spaces.
 // Plan 51-12c — de-exported (LOCKER-04 dead-export, no external
 // consumers).
-const MESSAGE_METADATA_MAX_BYTES = 4096;
+// Sourced from the canonical schema rather than restated. This defence-in-depth
+// check and MetadataSchema's own refinement used to carry the number
+// independently, so raising the schema cap for desktop tool-call metadata would
+// have left the route rejecting at the old 4 KiB — accepted on create, refused
+// on the very next message.
+const MESSAGE_METADATA_MAX_BYTES = METADATA_MAX_BYTES;
 
 // Phase 51 / Plan 51-12 (REVIEW routes-conversations HIGH) — content
 // length cap. Pre-fix the metadata field was capped at 4 KiB but
@@ -124,7 +129,10 @@ export const buildConversationsMessagesRoutes = (deps: ConversationsMessagesDeps
         // i18n code path stays exercised.
         const metaBytes = Buffer.byteLength(JSON.stringify(body.metadata ?? {}), "utf8");
         if (metaBytes > MESSAGE_METADATA_MAX_BYTES) {
-          throw new ValidationError("METADATA_TOO_LARGE", "metadata exceeds 4096 bytes (4KB cap)");
+          throw new ValidationError(
+            "METADATA_TOO_LARGE",
+            `metadata exceeds ${MESSAGE_METADATA_MAX_BYTES} bytes`,
+          );
         }
 
         const tenantId = req.tenant;

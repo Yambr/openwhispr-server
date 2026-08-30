@@ -15,20 +15,31 @@ describe("H-3 — conversations MetadataSchema", () => {
     expect(() => MetadataSchema.parse({ source: "desktop", count: 3, pinned: true })).not.toThrow();
   });
 
-  it("rejects a nested-object value", () => {
-    expect(() => MetadataSchema.parse({ evil: { nested: true } })).toThrow();
+  // CONTRACT CHANGE (not a relaxed expectation): metadata is bounded by SIZE
+  // and DEPTH now, not by value type. The scalar-only rule described a client
+  // that does not exist — the desktop persists `{ toolCalls: ToolCallInfo[] }`,
+  // objects and arrays included (chat/useChatPersistence.ts) — so the rule
+  // blocked a real feature instead of protecting anything.
+  it("accepts a nested-object value", () => {
+    expect(() => MetadataSchema.parse({ toolCall: { name: "search_notes" } })).not.toThrow();
   });
 
-  it("rejects an array value", () => {
-    expect(() => MetadataSchema.parse({ list: [1, 2, 3] })).toThrow();
+  it("accepts an array value", () => {
+    expect(() => MetadataSchema.parse({ toolCalls: [{ id: "call_1" }] })).not.toThrow();
+  });
+
+  it("still refuses a payload nested past the depth bound", () => {
+    let deep: unknown = "leaf";
+    for (let i = 0; i < 64; i++) deep = { next: deep };
+    expect(() => MetadataSchema.parse({ deep })).toThrow();
   });
 
   it("rejects a key longer than 64 chars", () => {
     expect(() => MetadataSchema.parse({ ["k".repeat(65)]: "v" })).toThrow();
   });
 
-  it("rejects a metadata object exceeding the 4 KiB stringified cap", () => {
-    const huge = { big: "x".repeat(5000) };
+  it("rejects a metadata object exceeding the stringified size cap", () => {
+    const huge = { big: "x".repeat(128 * 1024) };
     expect(() => MetadataSchema.parse(huge)).toThrow();
   });
 
@@ -37,7 +48,7 @@ describe("H-3 — conversations MetadataSchema", () => {
   // end-user string ("metadata too large") — it must be a stable
   // machine key the route localizes via i18next.
   it("H-1: the size-refinement issue message is the machine key metadata.too_large", () => {
-    const huge = { big: "x".repeat(5000) };
+    const huge = { big: "x".repeat(128 * 1024) };
     const result = MetadataSchema.safeParse(huge);
     expect(result.success).toBe(false);
     if (result.success) return;

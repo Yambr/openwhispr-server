@@ -20,6 +20,7 @@
  */
 import { z } from "zod";
 import { INPUT_DATETIME } from "./input-datetime.js";
+import { SPACE_SCOPE_INPUT_FIELDS } from "./space-scope.js";
 
 export const NoteTypeSchema = z.enum(["personal", "meeting", "upload"]);
 export type NoteType = z.infer<typeof NoteTypeSchema>;
@@ -67,6 +68,7 @@ export const NoteInputSchema = z
     folder_id: z.string().max(SHORT_TEXT).nullable().optional(),
     created_at: INPUT_DATETIME.optional(),
     updated_at: INPUT_DATETIME.optional(),
+    ...SPACE_SCOPE_INPUT_FIELDS,
   })
   .strict();
 export type NoteInput = z.infer<typeof NoteInputSchema>;

@@ -19,7 +19,13 @@ const UUID = z.string().uuid();
 const TITLE_MAX = 1024;
 const CLIENT_ID = z.string().min(1).max(128);
 const MESSAGE_CONTENT_MAX = 256 * 1024; // 256 KB
-const METADATA_MAX_BYTES = 4096;
+// The desktop stores an assistant turn's tool calls here, and a search_notes
+// result set is comfortably larger than the original 4 KiB. The cap — not the
+// value type — is the anti-abuse control (T-MSG-INJ), so it stays, just sized
+// for the payload the client it mirrors actually produces. Still an order of
+// magnitude under MESSAGE_CONTENT_MAX, which is the field that gets forwarded
+// downstream and therefore carries the cost multiplier.
+export const METADATA_MAX_BYTES = 64 * 1024;
 
 export const ConversationRoleSchema = z.enum(["user", "assistant", "system"]);
 
@@ -31,11 +37,40 @@ export const ConversationRoleSchema = z.enum(["user", "assistant", "system"]);
 // (NOT inline English). The route maps the key through i18next so the
 // end-user error message is localized — wire schemas must never carry an
 // inline-English end-user string.
+// Metadata holds arbitrary JSON, bounded by SIZE and DEPTH rather than by
+// value type. The previous scalar-only union modeled a narrower client than the
+// one this package mirrors: the desktop persists
+// `metadata: { toolCalls: ToolCallInfo[] }` (chat/useChatPersistence.ts), where
+// each entry nests objects and — for search_notes — an array of them
+// (chat/types.ts). Every conversation push carrying an agent turn 400'd on the
+// `toolCalls` key, so agent history never synced.
+//
+// The depth bound is not decoration. A recursive Zod value schema would
+// stack-overflow on a payload that nests thousands of arrays inside the size
+// cap — turning a validation rule into a crash — so the walk below is
+// ITERATIVE and rejects anything deeper than a tool-call payload can justify.
+const METADATA_MAX_DEPTH = 8;
+
+function withinMetadataDepth(value: unknown): boolean {
+  const stack: { node: unknown; depth: number }[] = [{ node: value, depth: 0 }];
+  while (stack.length > 0) {
+    const { node, depth } = stack.pop() as { node: unknown; depth: number };
+    if (depth > METADATA_MAX_DEPTH) return false;
+    if (Array.isArray(node)) {
+      for (const item of node) stack.push({ node: item, depth: depth + 1 });
+    } else if (node !== null && typeof node === "object") {
+      for (const item of Object.values(node)) stack.push({ node: item, depth: depth + 1 });
+    }
+  }
+  return true;
+}
+
 export const MetadataSchema = z
-  .record(z.string().min(1).max(64), z.union([z.string().max(1024), z.number(), z.boolean()]))
+  .record(z.string().min(1).max(64), z.unknown())
   .refine((meta) => JSON.stringify(meta).length <= METADATA_MAX_BYTES, {
     message: "metadata.too_large",
-  });
+  })
+  .refine(withinMetadataDepth, { message: "metadata.too_deep" });
 
 export const ConversationInputSchema = z
   .object({

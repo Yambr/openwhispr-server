@@ -54,7 +54,15 @@ export interface CloudNoteRow {
 function isoOrNull(v: Date | string | null | undefined): string | null {
   if (v === null || v === undefined) return null;
   if (v instanceof Date) return v.toISOString();
-  return String(v);
+  // Rows read through a raw `tx.execute` arrive as node-postgres TEXT
+  // ("2026-01-01 00:00:00+00"), not Date objects, so the list paths emitted a
+  // non-ISO timestamp while create/update emitted ISO for the very same row.
+  // The desktop hands this value straight back as its `?before=` / `?since=`
+  // cursor, and URL decoding turns the `+00` offset into a space — the next
+  // page 400s on an unparseable timestamp. The wire schema declares ISO 8601,
+  // so normalize here and the shape is identical whichever route produced it.
+  const parsed = new Date(v);
+  return Number.isNaN(parsed.getTime()) ? String(v) : parsed.toISOString();
 }
 
 function isoNonNull(v: Date | string | null | undefined): string {
@@ -83,6 +91,10 @@ export function rowToCloudNote(row: CloudNoteRow): {
   calendar_event_id: string | null;
   diarization_enabled: number | null;
   expected_speaker_count: number | null;
+  workspace_id: string | null;
+  space_id: string | null;
+  user_id: string | null;
+  updated_by_user_id: string | null;
   deleted_at: string | null;
   created_at: string;
   updated_at: string;
@@ -113,6 +125,17 @@ export function rowToCloudNote(row: CloudNoteRow): {
       row.expected_speaker_count === null || row.expected_speaker_count === undefined
         ? null
         : Number(row.expected_speaker_count),
+    // Space scope. Team spaces are not implemented here yet, so every row is
+    // personal and both fields are an explicit null rather than absent — the
+    // desktop reads them on every pulled row (SyncService.resolveSpaceForCloudRow).
+    workspace_id: null,
+    space_id: null,
+    // The note's OWNER, not its last editor. SyncService.pullNotes reads
+    // `cloudNote.user_id!` to backfill the local owner column, so this must be
+    // the real value.
+    user_id: row.user_id ?? null,
+    // Last editor. Single-owner rows have no separate editor to name.
+    updated_by_user_id: null,
     deleted_at: isoOrNull(row.deleted_at),
     created_at: isoNonNull(row.created_at),
     updated_at: isoNonNull(row.updated_at),

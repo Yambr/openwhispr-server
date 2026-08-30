@@ -32,6 +32,8 @@ interface ListQuery {
   limit?: string;
   before?: string;
   since?: string;
+  before_id?: string;
+  since_id?: string;
 }
 
 // LOCKER-04 inv-14 — declarative querystring schema (mirrors
@@ -43,6 +45,17 @@ const ListQuerySchema = z
     limit: z.string().optional(),
     before: z.string().optional(),
     since: z.string().optional(),
+    // Keyset tie-breakers. Timestamps are not unique — legacy desktop SQLite
+    // rows carry second precision — so the client pairs every cursor with the
+    // last row's id (services/noteListQuery.ts).
+    before_id: z.string().uuid().optional(),
+    since_id: z.string().uuid().optional(),
+    // Team-scope selector. The desktop attaches `scope=all` to every pull once
+    // GET /api/me/spaces answers 200, which flips its team-space capability
+    // flag (SyncService.syncSpaces). No spaces exist here yet, so "all" is the
+    // caller's personal rows — the same answer, not an error. Rejecting it as
+    // an unrecognized key is what killed note sync against the 1.9.x desktop.
+    scope: z.literal("all").optional(),
   })
   .strict();
 

@@ -93,36 +93,72 @@ describe("parseListQuery — D-25 limit/before/since clamping", () => {
 
 describe("buildKeysetWhere — SQL fragment for keyset paging", () => {
   it("returns empty fragment when neither before nor since set", () => {
-    const sql = buildKeysetWhere({ before: undefined, since: undefined });
+    const sql = buildKeysetWhere({
+      before: undefined,
+      beforeId: undefined,
+      since: undefined,
+      sinceId: undefined,
+    });
     expect(stringify(sql).trim()).toBe("");
   });
 
   it("emits created_at < before fragment when before set", () => {
     const sql = buildKeysetWhere({
       before: new Date("2026-01-01T00:00:00Z"),
+      beforeId: undefined,
       since: undefined,
+      sinceId: undefined,
     });
     expect(stringify(sql)).toMatch(/created_at < /);
     expect(stringify(sql)).toMatch(/timestamptz/);
   });
 
-  it("emits created_at > since fragment when since set", () => {
+  // The delta axis is `updated_at`, not `created_at`. This expectation used to
+  // read `created_at > since`, which is what silently dropped every edit to an
+  // older note from every delta pull — the client's cursor is an `updated_at`
+  // (SyncService.pullNotes). The old expectation described the bug, so it moved
+  // with the fix rather than being preserved.
+  it("emits updated_at > since fragment when since set", () => {
     const sql = buildKeysetWhere({
       before: undefined,
+      beforeId: undefined,
       since: new Date("2026-01-01T00:00:00Z"),
+      sinceId: undefined,
     });
-    expect(stringify(sql)).toMatch(/created_at > /);
+    expect(stringify(sql)).toMatch(/updated_at > /);
   });
 
   it("emits both fragments joined with AND when both set", () => {
     const sql = buildKeysetWhere({
       before: new Date("2026-02-01T00:00:00Z"),
+      beforeId: undefined,
       since: new Date("2026-01-01T00:00:00Z"),
+      sinceId: undefined,
     });
     const text = stringify(sql);
     expect(text).toMatch(/created_at < /);
-    expect(text).toMatch(/created_at > /);
+    expect(text).toMatch(/updated_at > /);
     expect(text).toMatch(/AND/);
+  });
+
+  it("emits a (created_at, id) tuple compare when before_id accompanies before", () => {
+    const sql = buildKeysetWhere({
+      before: new Date("2026-01-01T00:00:00Z"),
+      beforeId: "11111111-1111-4111-8111-111111111111",
+      since: undefined,
+      sinceId: undefined,
+    });
+    expect(stringify(sql)).toMatch(/\(created_at, id\) < /);
+  });
+
+  it("emits an (updated_at, id) tuple compare when since_id accompanies since", () => {
+    const sql = buildKeysetWhere({
+      before: undefined,
+      beforeId: undefined,
+      since: new Date("2026-01-01T00:00:00Z"),
+      sinceId: "11111111-1111-4111-8111-111111111111",
+    });
+    expect(stringify(sql)).toMatch(/\(updated_at, id\) > /);
   });
 });
 
@@ -131,11 +167,26 @@ describe("buildKeysetOrderLimit — ORDER BY + LIMIT tail", () => {
     const sql = buildKeysetOrderLimit({
       limit: 25,
       before: undefined,
+      beforeId: undefined,
       since: undefined,
+      sinceId: undefined,
     });
     const text = stringify(sql);
     // Grep audit: `(created_at, id)` ordering — pair with partial index.
     expect(text).toMatch(/ORDER BY created_at DESC, id DESC/);
     expect(text).toMatch(/LIMIT /);
+  });
+
+  it("emits '(updated_at, id) ASC' on a delta page so the client's cursor advances", () => {
+    const sql = buildKeysetOrderLimit({
+      limit: 25,
+      before: undefined,
+      beforeId: undefined,
+      since: new Date("2026-01-01T00:00:00Z"),
+      sinceId: undefined,
+    });
+    // The client takes the LAST row of the page as its next cursor. Descending
+    // order hands it the oldest edit and it re-requests the same page forever.
+    expect(stringify(sql)).toMatch(/ORDER BY updated_at ASC, id ASC/);
   });
 });

@@ -34,7 +34,6 @@ import {
 import { type AuthProvidersDeps, buildAuthProvidersRoutes } from "./auth-providers.js";
 import { type BetterAuthHandlerDeps, buildBetterAuthHandlerRoutes } from "./better-auth-handler.js";
 import { buildCapabilitiesRoutes, type CapabilitiesDeps } from "./capabilities.js";
-import { buildMeSpacesRoutes } from "./me-spaces.js";
 import { buildCheckUserRoutes, type CheckUserDeps } from "./check-user.js";
 import {
   buildConversationsCreateRoutes,
@@ -69,6 +68,7 @@ import { buildFoldersDeleteRoutes, type FoldersDeleteDeps } from "./folders/dele
 import { buildFoldersListRoutes, type FoldersListDeps } from "./folders/list.js";
 import { buildFoldersUpdateRoutes, type FoldersUpdateDeps } from "./folders/update.js";
 import { buildLocaleRoutes, type LocaleDeps } from "./locale.js";
+import { buildMeSpacesRoutes } from "./me-spaces.js";
 import {
   buildNoteRecordingConfigRoutes,
   type NoteRecordingConfigDeps,
@@ -128,6 +128,7 @@ import {
   buildVerifyEmailCompleteRoutes,
   type VerifyEmailCompleteDeps,
 } from "./verify-email-complete.js";
+import { buildWorkspacesRoutes } from "./workspaces.js";
 
 export type RoutePlugin = (app: FastifyInstance) => Promise<void>;
 
@@ -341,6 +342,10 @@ export function buildAllRoutes(deps: AllRoutesDeps): readonly RoutePlugin[] {
     // without it the 1.9.x client cannot validate a session at all. See
     // me-spaces.ts for why a missing route hangs the app.
     buildMeSpacesRoutes(),
+    // Workspace bootstrap the desktop runs alongside the scope guard. Answers
+    // the tenant as the single workspace and an empty joinable list; see
+    // workspaces.ts for why neither is a stub.
+    buildWorkspacesRoutes({ db: deps.db }),
     buildSetupStateRoutes(setupStateDeps),
     buildCheckUserRoutes(checkUserDeps),
     buildVerificationStatusRoutes(verificationDeps),

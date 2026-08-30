@@ -122,9 +122,41 @@ describe("integration — WIRE-25 /api/conversations/messages POST", () => {
     expect((r2.json() as { content: string }).content).toBe("first content");
   });
 
-  it("metadata > 4 KiB returns 400 envelope (T-MSG-INJ)", async () => {
+  it("nested tool-call metadata is stored, not rejected", async () => {
+    const cid = await createConversation(appA, "tool-call-meta");
+    // What the desktop actually persists for an assistant turn
+    // (chat/useChatPersistence.ts). A scalar-only metadata contract 400'd this
+    // and agent history never synced.
+    const metadata = {
+      toolCalls: [
+        {
+          id: "call_1",
+          name: "search_notes",
+          arguments: '{"query":"review"}',
+          status: "completed",
+          metadata: [{ note_id: "n-1", score: 0.9 }],
+        },
+      ],
+    };
+    const res = await appA.inject({
+      method: "POST",
+      url: "/api/conversations/messages",
+      headers: { "content-type": "application/json" },
+      payload: JSON.stringify({
+        conversation_id: cid,
+        role: "assistant",
+        content: "Found one.",
+        metadata,
+      }),
+    });
+
+    expect(res.statusCode).toBe(201);
+    expect((res.json() as { metadata: unknown }).metadata).toEqual(metadata);
+  });
+
+  it("metadata past the size cap returns 400 envelope (T-MSG-INJ)", async () => {
     const cid = await createConversation(appA, "big-meta");
-    const oversized = { blob: "x".repeat(5000) };
+    const oversized = { blob: "x".repeat(128 * 1024) };
     const res = await appA.inject({
       method: "POST",
       url: "/api/conversations/messages",
@@ -136,7 +168,7 @@ describe("integration — WIRE-25 /api/conversations/messages POST", () => {
         metadata: oversized,
       }),
     });
-    // H-3 (Phase 64) — the 4 KiB cap is now enforced by the canonical
+    // H-3 (Phase 64) — the size cap is enforced by the canonical
     // MetadataSchema at the parse boundary (a ZodError → the canonical
     // "Invalid request" 400 envelope), in addition to the kept runtime
     // METADATA_TOO_LARGE check. Either way the oversized payload is

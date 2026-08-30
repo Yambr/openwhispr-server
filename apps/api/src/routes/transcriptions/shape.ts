@@ -51,7 +51,15 @@ export interface CloudTranscriptionRow {
 function isoOrNull(v: Date | string | null | undefined): string | null {
   if (v === null || v === undefined) return null;
   if (v instanceof Date) return v.toISOString();
-  return String(v);
+  // Rows read through a raw `tx.execute` arrive as node-postgres TEXT
+  // ("2026-01-01 00:00:00+00"), not Date objects, so the list paths emitted a
+  // non-ISO timestamp while create/update emitted ISO for the very same row.
+  // The desktop hands this value straight back as its `?before=` / `?since=`
+  // cursor, and URL decoding turns the `+00` offset into a space — the next
+  // page 400s on an unparseable timestamp. The wire schema declares ISO 8601,
+  // so normalize here and the shape is identical whichever route produced it.
+  const parsed = new Date(v);
+  return Number.isNaN(parsed.getTime()) ? String(v) : parsed.toISOString();
 }
 
 function isoNonNull(v: Date | string | null | undefined): string {
