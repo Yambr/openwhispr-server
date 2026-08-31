@@ -33,7 +33,7 @@ jobs:
   typecheck:
     runs-on: ubuntu-24.04
     steps:
-      - uses: step-security/harden-runner@9af89fc71515a100421586dfdb3dc9c984fbf411  # v2.19.4
+      - uses: step-security/harden-runner@05e31511f85b41b11d1cf0ef85d0992719546e2c  # v2.21.0
         with: { egress-policy: audit }
       - uses: actions/checkout@v5
       - uses: pnpm/action-setup@v4
@@ -46,7 +46,7 @@ jobs:
   lint:
     runs-on: ubuntu-24.04
     steps:
-      - uses: step-security/harden-runner@9af89fc71515a100421586dfdb3dc9c984fbf411  # v2.19.4
+      - uses: step-security/harden-runner@05e31511f85b41b11d1cf0ef85d0992719546e2c  # v2.21.0
         with: { egress-policy: audit }
       - uses: actions/checkout@v5
       - uses: pnpm/action-setup@v4
@@ -60,7 +60,7 @@ jobs:
     runs-on: ubuntu-24.04
     needs: [typecheck]
     steps:
-      - uses: step-security/harden-runner@9af89fc71515a100421586dfdb3dc9c984fbf411  # v2.19.4
+      - uses: step-security/harden-runner@05e31511f85b41b11d1cf0ef85d0992719546e2c  # v2.21.0
         with: { egress-policy: audit }
       - uses: actions/checkout@v5
       - uses: pnpm/action-setup@v4
@@ -85,7 +85,7 @@ jobs:
     runs-on: ubuntu-24.04
     needs: [typecheck, vitest]
     steps:
-      - uses: step-security/harden-runner@9af89fc71515a100421586dfdb3dc9c984fbf411  # v2.19.4
+      - uses: step-security/harden-runner@05e31511f85b41b11d1cf0ef85d0992719546e2c  # v2.21.0
         with: { egress-policy: audit }
       - uses: actions/checkout@v5
       - uses: pnpm/action-setup@v4
@@ -105,7 +105,7 @@ jobs:
       NODE_EXTRA_CA_CERTS: ${{ github.workspace }}/compose/traefik/certs/root-ca.crt
       CI: '1'
     steps:
-      - uses: step-security/harden-runner@9af89fc71515a100421586dfdb3dc9c984fbf411  # v2.19.4
+      - uses: step-security/harden-runner@05e31511f85b41b11d1cf0ef85d0992719546e2c  # v2.21.0
         with: { egress-policy: audit }
       - uses: actions/checkout@v5
       - uses: pnpm/action-setup@v4

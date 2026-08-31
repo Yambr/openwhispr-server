@@ -15,7 +15,7 @@ jobs:
   lint:
     runs-on: ubuntu-24.04
     steps:
-      - uses: step-security/harden-runner@9af89fc71515a100421586dfdb3dc9c984fbf411  # v2.19.4
+      - uses: step-security/harden-runner@05e31511f85b41b11d1cf0ef85d0992719546e2c  # v2.21.0
         with: { egress-policy: audit }
       - uses: actions/checkout@v5
         with: { fetch-depth: 0 }
@@ -165,7 +165,7 @@ jobs:
           helm repo update
           helm dependency build charts/openwhispr
       - run: pnpm test
-      - uses: davelosert/vitest-coverage-report-action@02f3c2e641286b7fa308cd3e430783103ce6103b  # v2.12.0
+      - uses: davelosert/vitest-coverage-report-action@8b157684c6a6b259b97d45e72b44242865c0f6a5  # v2.12.2
         if: always()
       - uses: actions/upload-artifact@v4
         if: always()
@@ -265,7 +265,7 @@ jobs:
   lint-tenant-context:
     runs-on: ubuntu-24.04
     steps:
-      - uses: step-security/harden-runner@9af89fc71515a100421586dfdb3dc9c984fbf411  # v2.19.4
+      - uses: step-security/harden-runner@05e31511f85b41b11d1cf0ef85d0992719546e2c  # v2.21.0
         with: { egress-policy: audit }
       - uses: actions/checkout@v5
         with: { fetch-depth: 0 }
@@ -281,7 +281,7 @@ jobs:
     runs-on: ubuntu-24.04
     needs: []
     steps:
-      - uses: step-security/harden-runner@9af89fc71515a100421586dfdb3dc9c984fbf411  # v2.19.4
+      - uses: step-security/harden-runner@05e31511f85b41b11d1cf0ef85d0992719546e2c  # v2.21.0
         with: { egress-policy: audit }
       - uses: actions/checkout@v5
         with: { fetch-depth: 0 }
@@ -327,7 +327,7 @@ jobs:
       POSTGRES_OWNER_PASSWORD: owner-pw
       POSTGRES_APP_PASSWORD: app-pw
     steps:
-      - uses: step-security/harden-runner@9af89fc71515a100421586dfdb3dc9c984fbf411  # v2.19.4
+      - uses: step-security/harden-runner@05e31511f85b41b11d1cf0ef85d0992719546e2c  # v2.21.0
         with: { egress-policy: audit }
       - uses: actions/checkout@v5
         with: { fetch-depth: 0 }
@@ -426,7 +426,7 @@ jobs:
       POSTGRES_OWNER_PASSWORD: owner-pw
       POSTGRES_APP_PASSWORD: app-pw
     steps:
-      - uses: step-security/harden-runner@9af89fc71515a100421586dfdb3dc9c984fbf411  # v2.19.4
+      - uses: step-security/harden-runner@05e31511f85b41b11d1cf0ef85d0992719546e2c  # v2.21.0
         with: { egress-policy: audit }
       - uses: actions/checkout@v5
         with: { fetch-depth: 0 }
@@ -574,7 +574,7 @@ jobs:
       AUTH_URL: https://api.localhost
       OPENWHISPR_API_URL: https://api.localhost
     steps:
-      - uses: step-security/harden-runner@9af89fc71515a100421586dfdb3dc9c984fbf411  # v2.19.4
+      - uses: step-security/harden-runner@05e31511f85b41b11d1cf0ef85d0992719546e2c  # v2.21.0
         with: { egress-policy: audit }
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd  # v5
         with: { fetch-depth: 0 }
@@ -755,7 +755,7 @@ jobs:
     needs: [lint, typecheck, test]
     timeout-minutes: 25
     steps:
-      - uses: step-security/harden-runner@9af89fc71515a100421586dfdb3dc9c984fbf411  # v2.19.4
+      - uses: step-security/harden-runner@05e31511f85b41b11d1cf0ef85d0992719546e2c  # v2.21.0
         with: { egress-policy: audit }
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd  # v5
         with: { fetch-depth: 0 }
@@ -814,7 +814,7 @@ jobs:
     needs: [lint, typecheck, test]
     timeout-minutes: 20
     steps:
-      - uses: step-security/harden-runner@9af89fc71515a100421586dfdb3dc9c984fbf411  # v2.19.4
+      - uses: step-security/harden-runner@05e31511f85b41b11d1cf0ef85d0992719546e2c  # v2.21.0
         with: { egress-policy: audit }
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd  # v5
         with: { fetch-depth: 0 }
@@ -1092,7 +1092,7 @@ jobs:
       # no outbound egress (mirrors the contract-test profile).
       LITELLM_CONFIG_FILE: litellm_config.contract.yaml
     steps:
-      - uses: step-security/harden-runner@9af89fc71515a100421586dfdb3dc9c984fbf411  # v2.19.4
+      - uses: step-security/harden-runner@05e31511f85b41b11d1cf0ef85d0992719546e2c  # v2.21.0
         with: { egress-policy: audit }
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd  # v5
         with: { fetch-depth: 0 }
@@ -1167,7 +1167,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
-      - uses: step-security/harden-runner@9af89fc71515a100421586dfdb3dc9c984fbf411  # v2.19.4
+      - uses: step-security/harden-runner@05e31511f85b41b11d1cf0ef85d0992719546e2c  # v2.21.0
         with: { egress-policy: audit }
       - uses: actions/checkout@v5
         with: { fetch-depth: 0 }
@@ -1274,7 +1274,7 @@ jobs:
             files: "-f docker-compose.yml -f compose/e2e/docker-compose.e2e.yml"
             profiles: "--profile default --profile e2e"
     steps:
-      - uses: step-security/harden-runner@9af89fc71515a100421586dfdb3dc9c984fbf411  # v2.19.4
+      - uses: step-security/harden-runner@05e31511f85b41b11d1cf0ef85d0992719546e2c  # v2.21.0
         with: { egress-policy: audit }
       - uses: actions/checkout@v5
         with: { fetch-depth: 0 }
@@ -1303,7 +1303,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - uses: step-security/harden-runner@9af89fc71515a100421586dfdb3dc9c984fbf411  # v2.19.4
+      - uses: step-security/harden-runner@05e31511f85b41b11d1cf0ef85d0992719546e2c  # v2.21.0
         with: { egress-policy: audit }
       - uses: actions/checkout@v5
         with: { fetch-depth: 0 }
