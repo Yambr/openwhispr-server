@@ -37,7 +37,7 @@
     "fast-check": "4.8.0",
     "ioredis": "^5.10.1",
     "pino": "^9.4.0",
-    "testcontainers": "^11.14.0",
+    "testcontainers": "^12.1.0",
     "zod": "4.4.3"
   }
 }
