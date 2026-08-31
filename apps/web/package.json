@@ -51,7 +51,7 @@
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
-    "@vitejs/plugin-react": "^5.0.5",
+    "@vitejs/plugin-react": "^6.1.1",
     "@vitest/coverage-v8": "4.1.5",
     "accept-language-parser": "^1.5.0",
     "happy-dom": "^20.0.0",
