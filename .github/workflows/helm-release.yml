@@ -154,7 +154,7 @@ jobs:
           git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
       - name: Run chart-releaser (GitHub Pages index)
-        uses: helm/chart-releaser-action@v1.7.0
+        uses: helm/chart-releaser-action@v1.8.0
         with:
           charts_dir: charts
           skip_existing: true
